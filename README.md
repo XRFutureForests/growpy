@@ -1,93 +1,346 @@
-# The Grove
+# The Grove 2.2 - Procedural Tree Generation
 
+The Grove is a powerful Python library for procedural tree generation, designed for experienced developers who want to integrate realistic tree growth simulation into their pipelines. This project includes the core Python bindings and a comprehensive set of species presets.
 
+## Overview
 
-## Getting started
+The Grove Core is built as a Python module that simulates realistic tree growth using advanced algorithms. It can generate 3D tree models in various formats (OBJ, USD), making it suitable for use in 3D applications, game engines, and visual effects pipelines.
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+**Key Features:**
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+- Procedural tree growth simulation based on realistic biological processes
+- 50+ pre-configured species presets (Oak, Pine, Birch, etc.)
+- Support for multiple output formats (OBJ, USD)
+- Customizable growth parameters
+- Support for creating tree scenes from CSV data
+- Cross-platform compatibility (Windows, macOS, Linux)
 
-## Add your files
+## Project Structure
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
-
+```text
+src/the_grove_22/
+├── modules/the_grove_22_core/     # Core Python module
+├── presets/                       # Species-specific JSON presets
+├── documentation/                 # HTML documentation
+├── textures/                      # Bark and leaf textures
+└── twigs/                         # Twig geometry files
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/xr-future-forests-lab/the-grove.git
-git branch -M main
-git push -uf origin main
+
+## Installation & Setup
+
+### Requirements
+
+- Python 3.7+
+- The Grove requires platform-specific binary modules
+
+### Module Loading
+
+The Grove automatically detects your platform and loads the appropriate binary:
+
+- Linux: `the_grove_22_core_linux.so` *(Note: Currently missing - may need macOS/Windows)*
+- Windows: `the_grove_22_core_windows.pyd`
+- macOS (Apple Silicon): `the_grove_22_core_macos.so`
+- macOS (Intel): `the_grove_22_core_macos_intel.so`
+
+Add the modules directory to your Python path:
+
+```python
+import sys
+sys.path.append('/path/to/the-grove/src/the_grove_22/modules')
+import the_grove_22_core
 ```
 
-## Integrate with your tools
+## Basic Usage
 
-- [ ] [Set up project integrations](https://gitlab.com/xr-future-forests-lab/the-grove/-/settings/integrations)
+### Simple Tree Generation
 
-## Collaborate with your team
+```python
+import the_grove_22_core
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+# Create a new grove (tree collection)
+grove = the_grove_22_core.Grove()
 
-## Test and Deploy
+# Simulate 10 years of growth
+grove.simulate(10)
 
-Use the built-in continuous integration in GitLab.
+# Build 3D models with specified resolution
+models = grove.build_models({"resolution": 32})
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+# Export to OBJ format
+obj_string = the_grove_22_core.io.model_to_obj_string(models[0])
+with open('tree.obj', 'w') as f:
+    f.write(obj_string)
+```
 
-***
+### Using Species Presets
 
-# Editing this README
+```python
+import the_grove_22_core
+import json
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+# Load a species preset (e.g., European Oak)
+with open('src/the_grove_22/presets/Fagaceae - European oak.seed.json', 'r') as f:
+    preset_data = json.load(f)
 
-## Suggestions for a good README
+# Create grove and apply preset
+grove = the_grove_22_core.Grove()
+props = grove.get_properties()
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+# Apply preset properties
+for key, value in preset_data.items():
+    try:
+        setattr(props, key, value)
+    except TypeError:
+        print(f"Skipping property {key}, incorrect type")
 
-## Name
-Choose a self-explaining name for your project.
+grove.set_properties(props)
+grove.simulate(15)  # Grow for 15 years
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+# Build and export
+models = grove.build_models({"resolution": 16})
+```
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+## Creating Tree Scenes from CSV Data
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+For your use case of creating ~20 trees from CSV data with position, species, and height/age information:
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+### CSV Format Example
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+```csv
+x,y,z,species,age,height
+0.0,0.0,0.0,Fagaceae - European oak,15,8.5
+10.0,0.0,5.0,Pinaceae - Scots pine,12,6.2
+-5.0,0.0,8.0,Betulaceae - Silver birch,8,4.1
+```
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+### Complete Scene Generation Script
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+```python
+import the_grove_22_core
+import csv
+import json
+import os
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+def load_preset(preset_name):
+    """Load species preset from JSON file"""
+    preset_path = f"src/the_grove_22/presets/{preset_name}.seed.json"
+    if os.path.exists(preset_path):
+        with open(preset_path, 'r') as f:
+            return json.load(f)
+    return None
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+def create_tree_scene_from_csv(csv_file, output_dir="output"):
+    """Create a scene of trees from CSV data"""
+    os.makedirs(output_dir, exist_ok=True)
+    
+    with open(csv_file, 'r') as f:
+        reader = csv.DictReader(f)
+        
+        for i, row in enumerate(reader):
+            # Extract data from CSV
+            x, y, z = float(row['x']), float(row['y']), float(row['z'])
+            species = row['species']
+            age = int(row['age'])
+            target_height = float(row.get('height', 0))  # Optional
+            
+            print(f"Creating tree {i+1}: {species} at ({x}, {y}, {z}), age {age}")
+            
+            # Create new grove for this tree
+            grove = the_grove_22_core.Grove()
+            
+            # Load and apply species preset
+            preset_data = load_preset(species)
+            if preset_data:
+                props = grove.get_properties()
+                for key, value in preset_data.items():
+                    try:
+                        setattr(props, key, value)
+                    except (TypeError, AttributeError):
+                        pass  # Skip invalid properties
+                grove.set_properties(props)
+            
+            # Position the tree
+            grove.replant_tree(0, 
+                             the_grove_22_core.Vector(x, y, z),
+                             the_grove_22_core.Rotation(0, 0, 0))
+            
+            # Simulate growth
+            grove.simulate(age)
+            
+            # Build model
+            models = grove.build_models({
+                "resolution": 16,
+                "resolution_reduce": 0.8,
+                "build_blend": True,
+                "build_end_cap": True
+            })
+            
+            # Export to OBJ
+            if models:
+                obj_string = the_grove_22_core.io.model_to_obj_string(models[0])
+                filename = f"{output_dir}/tree_{i+1:03d}_{species.replace(' ', '_')}.obj"
+                with open(filename, 'w') as f:
+                    f.write(obj_string)
+                
+                print(f"  -> Exported to {filename}")
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+# Usage
+create_tree_scene_from_csv("trees.csv")
+```
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+### Combined Scene Export
 
-## License
-For open source projects, say how it is licensed.
+```python
+def create_combined_scene_from_csv(csv_file, output_file="forest_scene.obj"):
+    """Create a single combined OBJ file with all trees"""
+    grove = the_grove_22_core.Grove()
+    
+    with open(csv_file, 'r') as f:
+        reader = csv.DictReader(f)
+        first_tree = True
+        
+        for i, row in enumerate(reader):
+            x, y, z = float(row['x']), float(row['y']), float(row['z'])
+            species = row['species']
+            age = int(row['age'])
+            
+            if first_tree:
+                first_tree = False
+                # Configure the first tree
+                preset_data = load_preset(species)
+                if preset_data:
+                    props = grove.get_properties()
+                    for key, value in preset_data.items():
+                        try:
+                            setattr(props, key, value)
+                        except (TypeError, AttributeError):
+                            pass
+                    grove.set_properties(props)
+            else:
+                # Add additional trees to the grove
+                position = the_grove_22_core.Vector(x, y, z)
+                direction = the_grove_22_core.Vector(0, 0, 1)
+                grove.add_new_tree(position, direction, 0)
+    
+    # Simulate all trees
+    grove.simulate(max(ages_from_csv))  # You'd need to track max age
+    
+    # Build as single model
+    combined_model = grove.build_as_one_model({"resolution": 16})
+    
+    # Export
+    obj_string = the_grove_22_core.io.model_to_obj_string(combined_model)
+    with open(output_file, 'w') as f:
+        f.write(obj_string)
+```
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+## Available Species Presets
+
+The Grove includes 50+ scientifically-named presets:
+
+**Trees by Family:**
+
+- **Fagaceae**: European oak, Red oak, White oak, Beech, Sweet chestnut
+- **Pinaceae**: Scots pine, Austrian pine, Ponderosa pine, Fir, Grand fir
+- **Betulaceae**: Silver birch, Paper birch, Downy birch, Alder, Hazel
+- **Salicaceae**: Aspen, Grey poplar, Italian poplar, Weeping willow
+- **And many more...**
+
+## Growth Parameters
+
+Key properties you can modify:
+
+- `grow_nodes`: Number of nodes to grow per flush (default: 4)
+- `grow_length`: Length of each growth segment (default: 0.5)
+- `favor_bright`: How much to favor bright directions (0.0-1.0)
+- `turn_to_light`: Light tropism strength (0.0-1.0)
+- `thicken_tips`: Branch tip thickness (default: 0.006)
+- `bend_mass`: How much branches bend under weight (0.0-1.0)
+
+## Build Options
+
+When calling `build_models()`:
+
+- `resolution`: Number of points at tree base (default: 16)
+- `resolution_reduce`: How fast resolution decreases (0.0-1.0, default: 0.8)
+- `texture_repeat`: Bark texture repetitions around trunk (default: 3)
+- `build_cutoff_thickness`: Minimum branch thickness to build (default: 0.0)
+- `build_blend`: Add blending geometry at branch junctions (default: True)
+- `build_end_cap`: Close branch ends (default: True)
+
+## Important Notes
+
+### Rust-Python Ownership
+
+The Grove is written in Rust, which has different memory management than Python. Always use getter/setter methods:
+
+```python
+# ❌ This won't work (creates copies):
+grove.trees[0].nodes[4].dead = True
+
+# ✅ Do this instead:
+props = grove.get_properties()
+props.some_setting = new_value
+grove.set_properties(props)
+```
+
+### Platform Compatibility
+
+- **Linux**: May require the macOS binary renamed to `the_grove_22_core_linux.so`
+- **Windows**: Should work with included `.pyd` file
+- **macOS**: Works with both Intel and Apple Silicon binaries
+
+## Advanced Features
+
+- **Manual Pruning**: Use `grove.manual_prune(RayTree)` to prune against geometry
+- **Manual Drawing**: Guide growth with `grove.manual_draw(start_node, guide_path)`
+- **Random Seeds**: Set `grove.set_random_seed(seed)` for reproducible results
+- **Multiple Formats**: Export to USD with `model_to_usda_string()` (Studio edition)
+
+## Troubleshooting
+
+1. **Module Import Errors**: Ensure the correct binary for your platform exists
+2. **Performance**: Use lower `resolution` values for faster builds
+3. **Memory**: Process trees individually for large scenes
+4. **Linux**: May need to use macOS binary or compile from source
+
+## GrowPy Python Module
+
+We've created **GrowPy**, a simple Python module that makes it easy to generate forests from CSV data. GrowPy provides a single function interface to The Grove.
+
+### Quick Start with GrowPy
+
+```python
+from growpy import grow_forest_from_csv
+
+# Generate trees from CSV
+generated_files = grow_forest_from_csv(
+    csv_file="data/demo_forest.csv",
+    output_dir="data/output"
+)
+
+print(f"Generated {len(generated_files)} tree models")
+```
+
+See the [GrowPy documentation](src/growpy/README.md) for details.
+
+### Quick Test
+
+```bash
+cd src
+python test_simple.py
+```
+
+This generates tree models from the demo CSV and saves them as OBJ files.
+
+## Example Projects
+
+- **GrowPy Module**: Simple Python package in `src/growpy/` with single-function forest generation
+- **Demo Forest**: See `data/demo_forest.csv` for a 20-tree example scene with mixed species
+- **Test Script**: Run `src/test_simple.py` to test the module
+- **Species Presets**: Browse `src/the_grove_22/presets/` for 50+ species parameters
+- **Documentation**: Explore `src/the_grove_22/documentation/` for comprehensive API docs
+
+---
+
+**The Grove 2.2** - For procedural tree generation in production pipelines
