@@ -306,7 +306,7 @@ grove.set_properties(props)
 
 ## GrowPy Python Module
 
-We've created **GrowPy**, a simple Python module that makes it easy to generate forests from CSV data. GrowPy provides a single function interface to The Grove.
+We've created **GrowPy**, a simple Python module that makes it easy to generate forests from CSV data. GrowPy provides a single function interface to The Grove's procedural tree generation system.
 
 ### Quick Start with GrowPy
 
@@ -322,7 +322,49 @@ generated_files = grow_forest_from_csv(
 print(f"Generated {len(generated_files)} tree models")
 ```
 
-See the [GrowPy documentation](src/growpy/README.md) for details.
+### CSV Format
+
+Your CSV file must include these columns:
+
+- `x`, `y`, `z`: Tree position coordinates (float)
+- `species`: Species name matching a preset (string)
+- `age`: Tree age in years (integer)
+- `height`: Optional target height in meters (float)
+
+### Example CSV
+
+```csv
+x,y,z,species,age,height
+0.0,0.0,0.0,Fagaceae - European oak,25,12.5
+15.0,2.0,0.0,Pinaceae - Scots pine,18,9.2
+-8.0,5.0,0.0,Betulaceae - Silver birch,12,7.8
+```
+
+### Available Functions
+
+- `grow_forest_from_csv()`: Generate individual tree OBJ files
+- `grow_combined_forest_from_csv()`: Generate single combined forest OBJ
+- `list_available_species()`: Get all available species names
+- `validate_csv_format()`: Check CSV format before processing
+
+### Quick Demo
+
+```bash
+# Run the complete demo (shows all GrowPy features)
+python growpy_demo.py
+```
+
+The demo includes:
+
+- Species exploration and filtering
+- CSV validation examples
+- Quick 3-tree forest generation
+- Custom mixed-species forest
+- Combined forest (single OBJ)
+- Full 20-tree demo forest
+- Error handling demonstrations
+
+See the [GrowPy documentation](src/growpy/README.md) for complete API details.
 
 ### Quick Test
 
@@ -337,7 +379,7 @@ This generates tree models from the demo CSV and saves them as OBJ files.
 
 - **GrowPy Module**: Simple Python package in `src/growpy/` with single-function forest generation
 - **Demo Forest**: See `data/demo_forest.csv` for a 20-tree example scene with mixed species
-- **Test Script**: Run `src/test_simple.py` to test the module
+- **Complete Demo**: Run `growpy_demo.py` to see all features in action
 - **Species Presets**: Browse `src/the_grove_22/presets/` for 50+ species parameters
 - **Documentation**: Explore `src/the_grove_22/documentation/` for comprehensive API docs
 
