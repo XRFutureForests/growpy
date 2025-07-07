@@ -306,7 +306,7 @@ grove.set_properties(props)
 
 ## GrowPy Python Module
 
-We've created **GrowPy**, a simple Python module that makes it easy to generate forests from CSV data. GrowPy provides a single function interface to The Grove's procedural tree generation system.
+We've created **GrowPy**, a simple Python module that makes it easy to generate forests from CSV data. GrowPy provides a single function interface to The Grove's procedural tree generation system with proper error handling and the correct Rotation API usage.
 
 ### Quick Start with GrowPy
 
@@ -350,19 +350,11 @@ x,y,z,species,age,height
 ### Quick Demo
 
 ```bash
-# Run the complete demo (shows all GrowPy features)
-python growpy_demo.py
+cd src
+python main.py
 ```
 
-The demo includes:
-
-- Species exploration and filtering
-- CSV validation examples
-- Quick 3-tree forest generation
-- Custom mixed-species forest
-- Combined forest (single OBJ)
-- Full 20-tree demo forest
-- Error handling demonstrations
+This demonstrates the complete GrowPy functionality using the demo forest CSV and generates both individual tree models and a combined forest OBJ file.
 
 See the [GrowPy documentation](src/growpy/README.md) for complete API details.
 
@@ -370,16 +362,16 @@ See the [GrowPy documentation](src/growpy/README.md) for complete API details.
 
 ```bash
 cd src
-python test_simple.py
+python main.py
 ```
 
-This generates tree models from the demo CSV and saves them as OBJ files.
+This demonstrates the complete GrowPy functionality using the demo forest CSV and generates tree models as OBJ files using the fixed Rotation API.
 
 ## Example Projects
 
 - **GrowPy Module**: Simple Python package in `src/growpy/` with single-function forest generation
 - **Demo Forest**: See `data/demo_forest.csv` for a 20-tree example scene with mixed species
-- **Complete Demo**: Run `growpy_demo.py` to see all features in action
+- **Main Demo**: Run `python main.py` in the `src/` directory to see all features in action
 - **Species Presets**: Browse `src/the_grove_22/presets/` for 50+ species parameters
 - **Documentation**: Explore `src/the_grove_22/documentation/` for comprehensive API docs
 

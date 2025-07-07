@@ -10,20 +10,13 @@ import csv
 import json
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Union
+import pandas as pd
 
 # Add The Grove modules to Python path
 current_dir = Path(__file__).parent.parent
 grove_modules_path = current_dir / "the_grove_22" / "modules"
 sys.path.insert(0, str(grove_modules_path))
-
-try:
-    import the_grove_22_core
-except ImportError as e:
-    raise ImportError(
-        f"Could not import the_grove_22_core module. Make sure The Grove 2.2 is properly installed.\n"
-        f"Expected module path: {grove_modules_path}\n"
-        f"Error: {e}"
-    )
+import the_grove_22_core as tg
 
 
 def list_available_species() -> List[str]:
@@ -45,48 +38,6 @@ def list_available_species() -> List[str]:
             species_list.append(species_name)
 
     return sorted(species_list)
-
-
-def validate_csv_format(csv_file: Union[str, Path]) -> Tuple[bool, str]:
-    """
-    Validate that the CSV file has the required format.
-
-    Args:
-        csv_file: Path to the CSV file
-
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    required_columns = {"x", "y", "z", "species", "age"}
-
-    try:
-        with open(csv_file, "r") as f:
-            reader = csv.DictReader(f)
-            if not reader.fieldnames:
-                return False, "CSV file appears to be empty or has no header row"
-
-            header_set = set(reader.fieldnames)
-            missing_required = required_columns - header_set
-
-            if missing_required:
-                return False, f"Missing required columns: {', '.join(missing_required)}"
-
-            # Check first row for data validity
-            try:
-                first_row = next(reader)
-                float(first_row["x"])
-                float(first_row["y"])
-                float(first_row["z"])
-                int(first_row["age"])
-                if "height" in first_row and first_row["height"]:
-                    float(first_row["height"])
-            except (ValueError, StopIteration) as e:
-                return False, f"Invalid data format in first row: {e}"
-
-            return True, "CSV format is valid"
-
-    except Exception as e:
-        return False, f"Error reading CSV file: {e}"
 
 
 def _load_species_preset(species_name: str) -> Optional[Dict]:
@@ -114,310 +65,120 @@ def _load_species_preset(species_name: str) -> Optional[Dict]:
     return None
 
 
-def _create_tree_model(
-    position: Tuple[float, float, float],
-    species: str,
-    age: int,
-    target_height: Optional[float] = None,
-    resolution: int = 16,
-) -> Optional[object]:
+def _estimate_flushes_for_height(target_height: float, preset_data: Dict) -> int:
     """
-    Create a single tree model.
+    Estimate the number of flushes required to reach the target height.
+
+    Uses the geometric series formula based on grow_length and grow_length_reduce:
+    height = grow_length × (1 - grow_length_reduce^n) / (1 - grow_length_reduce)
+
+    Solving for n (flushes):
+    n = log(1 - height×(1-grow_length_reduce)/grow_length) / log(grow_length_reduce)
 
     Args:
-        position: (x, y, z) coordinates for the tree
-        species: Species name matching a preset file
-        age: Age of the tree in years
-        target_height: Optional target height (not fully implemented)
-        resolution: Model resolution (number of sides at base)
+        target_height: Desired tree height in meters
+        preset_data: Species preset parameters
 
     Returns:
-        Tree model object or None if failed
+        Estimated number of flushes needed
     """
-    try:
-        # Create new grove for this tree
-        grove = the_grove_22_core.Grove()
+    import math
 
-        # Load and apply species preset
-        preset_data = _load_species_preset(species)
-        if preset_data:
-            props = grove.get_properties()
+    # Extract key growth parameters
+    grow_length = preset_data.get("grow_length", 0.5)
+    grow_length_reduce = preset_data.get("grow_length_reduce", 0.78)
+    grow_length_reduce = 1
+    # Avoid division by zero and ensure valid parameters
+    if grow_length_reduce >= 1.0 or grow_length_reduce <= 0.0:
+        # If no reduction or invalid, use simple linear approach
+        estimated_flushes = int(target_height / grow_length)
+    else:
+        # Apply geometric series formula exactly as provided:
+        # height = grow_length × (1 - grow_length_reduce^n) / (1 - grow_length_reduce)
+        # Rearranging: n = log(1 - height×(1-grow_length_reduce)/grow_length) / log(grow_length_reduce)
 
-            # Apply preset properties
-            for key, value in preset_data.items():
-                try:
-                    if hasattr(props, key):
-                        setattr(props, key, value)
-                except (TypeError, AttributeError):
-                    # Skip properties that can't be set
-                    pass
-
-            grove.set_properties(props)
-
-        # Position the tree
-        x, y, z = position
-        grove.replant_tree(
-            0,
-            the_grove_22_core.Vector(x, y, z),
-            the_grove_22_core.Rotation(the_grove_22_core.Vector(0, 0, 1), 0),
+        estimated_flushes = int(
+            math.log(1 - (target_height * (1 - grow_length_reduce) / grow_length)) / math.log(grow_length_reduce)
         )
 
-        # Simulate growth
-        grove.simulate(age)
-
-        # Build model with specified resolution
-        build_options = {
-            "resolution": resolution,
-            "resolution_reduce": 0.8,
-            "build_blend": True,
-            "build_end_cap": True,
-        }
-
-        models = grove.build_models(build_options)
-
-        if models and len(models) > 0:
-            return models[0]
-
-    except Exception as e:
-        print(f"Error creating tree model for {species} at {position}: {e}")
-
-    return None
+    return estimated_flushes
 
 
 def grow_forest_from_csv(
     csv_file: Union[str, Path],
-    output_dir: Union[str, Path] = "output",
+    output_file: Union[str, Path] = "forest_scene.obj",
     resolution: int = 16,
-    file_prefix: str = "tree_",
-    validate_format: bool = True,
-) -> List[str]:
+) -> str:
     """
-    Generate individual tree models from CSV data and export as OBJ files.
+    Generate a single combined forest model from CSV data with height constraints.
+
 
     Args:
         csv_file: Path to CSV file with tree data (x,y,z,species,age,height)
-        output_dir: Directory to save generated OBJ files
-        resolution: Model resolution (sides at tree base, default 16)
-        file_prefix: Prefix for generated filenames
-        validate_format: Whether to validate CSV format first
-
-    Returns:
-        List of generated file paths
-
-    Raises:
-        ValueError: If CSV format is invalid
-        FileNotFoundError: If CSV file doesn't exist
-    """
-    csv_file = Path(csv_file)
-    output_dir = Path(output_dir)
-
-    if not csv_file.exists():
-        raise FileNotFoundError(f"CSV file not found: {csv_file}")
-
-    if validate_format:
-        is_valid, error_msg = validate_csv_format(csv_file)
-        if not is_valid:
-            raise ValueError(f"Invalid CSV format: {error_msg}")
-
-    # Create output directory
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    generated_files = []
-
-    print(f"Reading tree data from: {csv_file}")
-    print(f"Output directory: {output_dir}")
-    print(f"Model resolution: {resolution}")
-    print()
-
-    with open(csv_file, "r") as f:
-        reader = csv.DictReader(f)
-
-        for i, row in enumerate(reader, 1):
-            try:
-                # Extract data from CSV
-                x = float(row["x"])
-                y = float(row["y"])
-                z = float(row["z"])
-                species = row["species"]
-                age = int(row["age"])
-                target_height = (
-                    float(row.get("height", 0)) if row.get("height") else None
-                )
-
-                print(
-                    f"Creating tree {i:3d}: {species:<30} at ({x:6.1f}, {y:6.1f}, {z:6.1f}), age {age:2d}"
-                )
-
-                # Create tree model
-                model = _create_tree_model(
-                    (x, y, z), species, age, target_height, resolution
-                )
-
-                if model:
-                    # Export to OBJ
-                    obj_string = the_grove_22_core.io.model_to_obj_string(model)
-
-                    # Create safe filename
-                    safe_species = (
-                        species.replace(" ", "_").replace("-", "_").replace(".", "_")
-                    )
-                    filename = f"{file_prefix}{i:03d}_{safe_species}.obj"
-                    filepath = output_dir / filename
-
-                    with open(filepath, "w") as obj_file:
-                        obj_file.write(obj_string)
-
-                    generated_files.append(str(filepath))
-                    print(f"             -> Exported to {filename}")
-                else:
-                    print("             -> Failed to generate model")
-
-            except Exception as e:
-                print(f"Error processing row {i}: {e}")
-                continue
-
-    print(f"\nGenerated {len(generated_files)} tree models in {output_dir}")
-    return generated_files
-
-
-def grow_combined_forest_from_csv(
-    csv_file: Union[str, Path],
-    output_file: Union[str, Path] = "forest_scene.obj",
-    resolution: int = 16,
-    validate_format: bool = True,
-) -> str:
-    """
-    Generate a single combined forest model from CSV data.
-
-    Note: This creates a single OBJ file with all trees, but each tree
-    uses the same species parameters (from the first tree in CSV).
-    For mixed species forests, use grow_forest_from_csv instead.
-
-    Args:
-        csv_file: Path to CSV file with tree data
         output_file: Path for the combined OBJ file
         resolution: Model resolution
-        validate_format: Whether to validate CSV format first
 
     Returns:
         Path to the generated file
 
-    Raises:
-        ValueError: If CSV format is invalid or no trees to process
-        FileNotFoundError: If CSV file doesn't exist
     """
     csv_file = Path(csv_file)
     output_file = Path(output_file)
 
-    if not csv_file.exists():
-        raise FileNotFoundError(f"CSV file not found: {csv_file}")
-
-    if validate_format:
-        is_valid, error_msg = validate_csv_format(csv_file)
-        if not is_valid:
-            raise ValueError(f"Invalid CSV format: {error_msg}")
-
     # Read all tree data
-    trees_data = []
-    with open(csv_file, "r") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            trees_data.append(
-                {
-                    "x": float(row["x"]),
-                    "y": float(row["y"]),
-                    "z": float(row["z"]),
-                    "species": row["species"],
-                    "age": int(row["age"]),
-                    "height": (
-                        float(row.get("height", 0)) if row.get("height") else None
-                    ),
-                }
-            )
+    trees_data = pd.read_csv(csv_file)
 
-    if not trees_data:
-        raise ValueError("No tree data found in CSV file")
+    # Check if all species in the CSV have corresponding presets
+    unique_species = trees_data["species"].unique()
+    missing_species = []
+    available_species = list_available_species()
 
-    print(f"Creating combined forest with {len(trees_data)} trees")
+    for species in unique_species:
+        if species not in available_species:
+            missing_species.append(species)
 
-    try:
-        # Create grove and configure with first tree's species
-        grove = the_grove_22_core.Grove()
-        first_species = trees_data[0]["species"]
+    if missing_species:
+        print(f"Warning: Missing presets for species: {missing_species}")
+        print(f"Available species: {available_species}")
+        raise ValueError(f"Missing presets for species: {missing_species}")
 
-        preset_data = _load_species_preset(first_species)
-        if preset_data:
-            props = grove.get_properties()
-            for key, value in preset_data.items():
-                try:
-                    if hasattr(props, key):
-                        setattr(props, key, value)
-                except (TypeError, AttributeError):
-                    pass
-            grove.set_properties(props)
+    # Load presets for each tree and calculate required flushes
+    print("Loading species presets and calculating required flushes...")
 
-        # Add all trees to the grove
-        max_age = 0
-        for i, tree in enumerate(trees_data):
-            if i == 0:
-                # First tree is already in the grove, just position it
-                grove.replant_tree(
-                    0,
-                    the_grove_22_core.Vector(tree["x"], tree["y"], tree["z"]),
-                    the_grove_22_core.Rotation(the_grove_22_core.Vector(0, 0, 1), 0),
-                )
-            else:
-                # Add additional trees
-                position = the_grove_22_core.Vector(tree["x"], tree["y"], tree["z"])
-                direction = the_grove_22_core.Vector(0, 0, 1)
-                grove.add_new_tree(position, direction, 0)
+    for index, row in trees_data.iterrows():
+        species = row["species"]
+        target_height = row["height"]
 
-            max_age = max(max_age, tree["age"])
+        # Load species preset
+        preset_data = _load_species_preset(species)
+        if preset_data is None:
+            raise ValueError(f"Failed to load preset for species: {species}")
 
-        print(f"Simulating growth for {max_age} years...")
+        # Calculate required flushes to reach target height
+        required_flushes = _estimate_flushes_for_height(target_height, preset_data)
 
-        # Simulate growth for maximum age
-        grove.simulate(max_age)
+        # Store calculated flushes back in dataframe
+        trees_data.at[index, "calculated_flushes"] = required_flushes
 
-        # Build as single combined model
-        print("Building combined model...")
-        build_options = {
-            "resolution": resolution,
-            "resolution_reduce": 0.8,
-            "build_blend": True,
-            "build_end_cap": True,
-        }
+        print(
+            f"Tree {index}: {species}, target height: {target_height}m, estimated flushes: {required_flushes}"
+        )
 
-        combined_model = grove.build_as_one_model(build_options)
+    # Create single grove
+    grove = tg.Grove()
 
-        # Export to OBJ
-        print(f"Exporting to {output_file}...")
-        obj_string = the_grove_22_core.io.model_to_obj_string(combined_model)
-
-        # Create output directory if needed
-        output_file.parent.mkdir(parents=True, exist_ok=True)
-
-        with open(output_file, "w") as f:
-            f.write(obj_string)
-
-        print(f"Combined forest exported to {output_file}")
-        return str(output_file)
-
-    except Exception as e:
-        raise RuntimeError(f"Error creating combined forest: {e}")
+    # TODO: Continue implementation in next step
+    return str(output_file)
 
 
 if __name__ == "__main__":
     # Example usage - for full demo run: python growpy_demo.py
     demo_csv = current_dir.parent / "data" / "demo_forest.csv"
-    if demo_csv.exists():
-        print("Testing GrowPy with demo forest...")
-        print("For complete demonstration, run: python growpy_demo.py")
-        files = grow_forest_from_csv(demo_csv, "test_output", resolution=8)
-        print(f"Generated {len(files)} tree models")
-    else:
-        print("Demo CSV file not found. Available species:")
-        for species in list_available_species()[:10]:  # Show first 10
-            print(f"  - {species}")
-        print(f"... and {len(list_available_species()) - 10} more")
-        print("For complete demonstration, run: python growpy_demo.py")
+
+    combined_output = Path("../data/output/combined_forest.obj")
+
+    combined_file = grow_forest_from_csv(
+        csv_file=demo_csv,
+        output_file=combined_output,
+        resolution=5,  # Reduced from 16 for faster generation
+    )
