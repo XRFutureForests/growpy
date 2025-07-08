@@ -87,18 +87,19 @@ def _estimate_flushes_for_height(target_height: float, preset_data: Dict) -> int
     # Extract key growth parameters
     grow_length = preset_data.get("grow_length", 0.5)
     grow_length_reduce = preset_data.get("grow_length_reduce", 0.78)
-    grow_length_reduce = 1
+
     # Avoid division by zero and ensure valid parameters
     if grow_length_reduce >= 1.0 or grow_length_reduce <= 0.0:
         # If no reduction or invalid, use simple linear approach
-        estimated_flushes = int(target_height / grow_length)
+        estimated_flushes = int(target_height / grow_length / 3)
     else:
         # Apply geometric series formula exactly as provided:
         # height = grow_length × (1 - grow_length_reduce^n) / (1 - grow_length_reduce)
         # Rearranging: n = log(1 - height×(1-grow_length_reduce)/grow_length) / log(grow_length_reduce)
 
         estimated_flushes = int(
-            math.log(1 - (target_height * (1 - grow_length_reduce) / grow_length)) / math.log(grow_length_reduce)
+            math.log(1 - (target_height * (1 - grow_length_reduce) / grow_length))
+            / math.log(grow_length_reduce)
         )
 
     return estimated_flushes
@@ -167,7 +168,61 @@ def grow_forest_from_csv(
     # Create single grove
     grove = tg.Grove()
 
-    # TODO: Continue implementation in next step
+    # Apply a representative species preset to the grove
+    # Since Grove works with one set of properties, we'll use the most common species
+    species_counts = trees_data["species"].value_counts()
+    representative_species = str(species_counts.index[0])  # Most common species
+
+    print(f"Applying preset from representative species: {representative_species}")
+    representative_preset = _load_species_preset(representative_species)
+
+    if representative_preset:
+        # Apply preset using Grove's properties system
+        props = grove.get_properties()
+
+        for key, value in representative_preset.items():
+            # Apply preset parameters to grove properties
+            if isinstance(value, (int, float, bool)):
+                try:
+                    setattr(props, key, value)
+                except (AttributeError, TypeError):
+                    # Property might not exist or have wrong type, skip
+                    pass
+
+        # Set the modified properties back to the grove
+        grove.set_properties(props)
+        print(f"Applied {len(representative_preset)} preset parameters to grove")
+
+    # Add each tree to the grove with position, direction, and delay
+    print("Adding trees to grove...")
+
+    # Find the maximum flushes needed to determine delays
+    max_flushes = int(trees_data["calculated_flushes"].max())
+
+    for index, row in trees_data.iterrows():
+        # Get tree position from CSV (x, y, z coordinates)
+        position = [float(row["x"]), float(row["y"]), float(row["z"])]
+
+        # Set upward direction for tree growth
+        direction = [0.0, 0.0, 1.0]  # Growing upward in Z direction
+
+        # Calculate delay: trees that need more flushes should start earlier
+        required_flushes = int(row["calculated_flushes"])
+        delay = max_flushes - required_flushes
+
+        # Add tree to grove
+        grove.add_new_tree(position, direction, delay)
+
+        species = row["species"]
+        print(
+            f"Added tree {index}: {species} at ({position[0]}, {position[1]}, {position[2]}) with delay {delay} (needs {required_flushes} flushes)"
+        )
+
+    print(
+        f"Grove created with {len(trees_data)} trees. Maximum flushes needed: {max_flushes}"
+    )
+    print(f"Note: All trees use {representative_species} growth characteristics")
+
     return str(output_file)
 
 
