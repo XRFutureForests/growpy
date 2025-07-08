@@ -97,10 +97,25 @@ def _estimate_flushes_for_height(target_height: float, preset_data: Dict) -> int
         # height = grow_length × (1 - grow_length_reduce^n) / (1 - grow_length_reduce)
         # Rearranging: n = log(1 - height×(1-grow_length_reduce)/grow_length) / log(grow_length_reduce)
 
-        estimated_flushes = int(
-            math.log(1 - (target_height * (1 - grow_length_reduce) / grow_length))
-            / math.log(grow_length_reduce)
-        )
+        denominator = 1.0 - grow_length_reduce
+        fraction = target_height * denominator / grow_length
+
+        # Check if the target height is achievable with this formula
+        if fraction >= 1.0:
+            # Height is at or beyond the theoretical maximum for this species
+            # Use a large number of flushes
+            estimated_flushes = max(50, int(target_height / grow_length))
+        else:
+            inner_log_arg = 1.0 - fraction
+            if inner_log_arg <= 0:
+                estimated_flushes = max(50, int(target_height / grow_length))
+            else:
+                estimated_flushes = int(
+                    math.log(inner_log_arg) / math.log(grow_length_reduce)
+                )
+
+    # Ensure reasonable bounds (limit to smaller numbers for faster testing)
+    estimated_flushes = max(5, min(20, estimated_flushes))
 
     return estimated_flushes
 
@@ -165,63 +180,171 @@ def grow_forest_from_csv(
             f"Tree {index}: {species}, target height: {target_height}m, estimated flushes: {required_flushes}"
         )
 
-    # Create single grove
-    grove = tg.Grove()
+    # Create separate groves for each species (proper "grow together" approach)
+    print("Creating species-specific groves...")
 
-    # Apply a representative species preset to the grove
-    # Since Grove works with one set of properties, we'll use the most common species
-    species_counts = trees_data["species"].value_counts()
-    representative_species = str(species_counts.index[0])  # Most common species
+    # Group trees by species
+    species_groups = trees_data.groupby("species")
+    list_of_groves = []
+    grove_species_map = {}
 
-    print(f"Applying preset from representative species: {representative_species}")
-    representative_preset = _load_species_preset(representative_species)
+    for species, group_data in species_groups:
+        print(f"Creating grove for species: {species} ({len(group_data)} trees)")
 
-    if representative_preset:
-        # Apply preset using Grove's properties system
-        props = grove.get_properties()
+        # Create grove for this species
+        grove = tg.Grove()
 
-        for key, value in representative_preset.items():
-            # Apply preset parameters to grove properties
-            if isinstance(value, (int, float, bool)):
-                try:
-                    setattr(props, key, value)
-                except (AttributeError, TypeError):
-                    # Property might not exist or have wrong type, skip
-                    pass
+        # Load and apply species-specific preset
+        species_preset = _load_species_preset(str(species))
+        if species_preset:
+            props = grove.get_properties()
 
-        # Set the modified properties back to the grove
-        grove.set_properties(props)
-        print(f"Applied {len(representative_preset)} preset parameters to grove")
+            for key, value in species_preset.items():
+                if isinstance(value, (int, float, bool)):
+                    try:
+                        setattr(props, key, value)
+                    except (AttributeError, TypeError):
+                        pass
 
-    # Add each tree to the grove with position, direction, and delay
-    print("Adding trees to grove...")
+            grove.set_properties(props)
+            print(f"Applied {species} preset to grove")
 
-    # Find the maximum flushes needed to determine delays
+        # Find max flushes needed for this species
+        max_flushes_species = int(group_data["calculated_flushes"].max())
+
+        # Add trees of this species to their grove
+        for index, row in group_data.iterrows():
+            x, y, z = float(row["x"]), float(row["y"]), float(row["z"])
+            position = tg.Vector(x, y, z)
+            direction = tg.Vector(0.0, 0.0, 1.0)
+
+            required_flushes = int(row["calculated_flushes"])
+            delay = max_flushes_species - required_flushes
+
+            grove.add_new_tree(position, direction, delay)
+
+            print(f"Added {species} tree at ({x}, {y}, {z}) with delay {delay}")
+
+        list_of_groves.append(grove)
+        grove_species_map[len(list_of_groves) - 1] = species
+
+    # Calculate total simulation flushes needed across all species
     max_flushes = int(trees_data["calculated_flushes"].max())
 
-    for index, row in trees_data.iterrows():
-        # Get tree position from CSV (x, y, z coordinates)
-        position = [float(row["x"]), float(row["y"]), float(row["z"])]
+    print(
+        f"\nGrowing {len(list_of_groves)} groves together for {max_flushes} flushes..."
+    )
 
-        # Set upward direction for tree growth
-        direction = [0.0, 0.0, 1.0]  # Growing upward in Z direction
+    # Grow all groves together with shared light environment
+    for flush_num in range(max_flushes):
+        print(f"Simulating flush {flush_num + 1}/{max_flushes}")
 
-        # Calculate delay: trees that need more flushes should start earlier
-        required_flushes = int(row["calculated_flushes"])
-        delay = max_flushes - required_flushes
+        # Collect shade geometry from all groves
+        coords = []
+        for grove in list_of_groves:
+            coords.extend(grove.create_shade_geometry_coords())
 
-        # Add tree to grove
-        grove.add_new_tree(position, direction, delay)
-
-        species = row["species"]
-        print(
-            f"Added tree {index}: {species} at ({position[0]}, {position[1]}, {position[2]}) with delay {delay} (needs {required_flushes} flushes)"
-        )
+        # Calculate shade and simulate each grove
+        for i, grove in enumerate(list_of_groves):
+            grove.calculate_shade_together(coords)
+            grove.simulate(1)
 
     print(
-        f"Grove created with {len(trees_data)} trees. Maximum flushes needed: {max_flushes}"
+        f"Simulation complete! All {len(list_of_groves)} species groves grown together."
     )
-    print(f"Note: All trees use {representative_species} growth characteristics")
+
+    # Build 3D models from all groves
+    print("\nBuilding 3D models...")
+
+    # Ensure output directory exists
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
+    # Build options for model generation
+    build_options = {
+        "resolution": resolution,
+        "reduce": 0.8,  # Reduce geometry complexity on thinner branches
+        "texture_repeat": 3,  # Bark texture repetitions
+        "build_end_cap": True,  # Close branch ends
+        "build_blend": True,  # Smooth branch transitions
+    }
+
+    # Collect all models from all groves
+    all_points = []
+    all_faces = []
+    all_uvs = []
+    vertex_offset = 0
+
+    for grove_index, grove in enumerate(list_of_groves):
+        species = grove_species_map[grove_index]
+        print(f"Building models for {species} grove...")
+
+        # Build model for this grove
+        model = grove.build_as_one_model(build_options)
+
+        # Add this grove's geometry to the combined model
+        grove_points = model.points
+        grove_faces = model.faces
+        grove_uvs = model.uvs
+
+        # Add points (vertices)
+        all_points.extend(grove_points)
+
+        # Add faces with adjusted vertex indices
+        for face in grove_faces:
+            adjusted_face = [vertex_index + vertex_offset for vertex_index in face]
+            all_faces.append(adjusted_face)
+
+        # Add UV coordinates
+        all_uvs.extend(grove_uvs)
+
+        # Update vertex offset for next grove
+        vertex_offset += len(grove_points)
+
+        print(
+            f"Added {len(grove_points)} vertices and {len(grove_faces)} faces from {species}"
+        )
+
+    # Write combined OBJ file
+    print(f"\nExporting combined forest to {output_file}...")
+
+    with open(output_file, "w") as obj_file:
+        # Write header
+        obj_file.write("# Forest model generated by GrowPy\n")
+        obj_file.write(
+            f"# Contains {len(list_of_groves)} species: {list(grove_species_map.values())}\n"
+        )
+        obj_file.write(
+            f"# Total vertices: {len(all_points)}, Total faces: {len(all_faces)}\n\n"
+        )
+
+        # Write vertices
+        for point in all_points:
+            obj_file.write(f"v {point.x:.6f} {point.y:.6f} {point.z:.6f}\n")
+
+        # Write UV coordinates if available
+        if all_uvs:
+            obj_file.write("\n")
+            for uv in all_uvs:
+                # UV coordinates might be tuples or Vector objects
+                if hasattr(uv, "x"):
+                    obj_file.write(f"vt {uv.x:.6f} {uv.y:.6f}\n")
+                else:
+                    obj_file.write(f"vt {uv[0]:.6f} {uv[1]:.6f}\n")
+
+        # Write faces
+        obj_file.write("\n")
+        for face in all_faces:
+            if all_uvs:
+                # Include UV indices if UVs are available
+                face_str = " ".join([f"{v}/{v}" for v in face])
+            else:
+                # Vertex indices only
+                face_str = " ".join([str(v) for v in face])
+            obj_file.write(f"f {face_str}\n")
+
+    print(f"Successfully exported forest model to {output_file}")
+    print(f"Model contains {len(all_points)} vertices and {len(all_faces)} faces")
+    print(f"Species included: {list(grove_species_map.values())}")
 
     return str(output_file)
 
@@ -235,5 +358,5 @@ if __name__ == "__main__":
     combined_file = grow_forest_from_csv(
         csv_file=demo_csv,
         output_file=combined_output,
-        resolution=5,  # Reduced from 16 for faster generation
+        resolution=10,  # Reduced from 16 for faster generation
     )
