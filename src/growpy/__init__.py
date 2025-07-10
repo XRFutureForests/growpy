@@ -1,28 +1,44 @@
 """
-GrowPy - A Python module for generating forest models from CSV data using The Grove 2.2
+GrowPy - Lightweight CSV to tree generation using The Grove 2.2
+==============================================================
 
-This module provides a simple interface to The Grove's procedural tree generation system,
-allowing users to create realistic 3D tree models from CSV data containing tree positions,
-species, and growth parameters.
+Simplified interface for generating procedural trees from CSV data.
+Leverages Grove 2.2's existing functionality with minimal overhead.
 
-Main functions:
-- grow_forest_from_csv: Generate individual tree models from CSV data
-- grow_combined_forest_from_csv: Generate a single combined forest model
+Key Features:
+- Direct use of Grove's build_models() for individual tree generation
+- Leverages Grove's built-in preset system for species
+- Implements Grove's recommended approach for mixed species forests
+- Minimal abstraction layer over Grove's core functionality
+
+Example Usage:
+    import growpy
+
+    # Simple usage
+    files = growpy.generate_trees("trees.csv")
+
+    # Custom configuration
+    config = growpy.GrowPyConfig(
+        growth_cycles=15,
+        resolution=32
+    )
+    files = growpy.generate_trees("trees.csv", config)
 """
 
-from .growpy import (
-    grow_forest_from_csv,
-    grow_combined_forest_from_csv,
-    list_available_species,
-    validate_csv_format,
-)
+from .config import GrowPyConfig, ExportFormat
+from .growpy import generate_trees, list_species, get_grove_info, GrowPyError
 
-__version__ = "1.0.0"
-__author__ = "The Grove Project"
+__version__ = "2.0.0"
+__author__ = "GrowPy Team"
 
 __all__ = [
-    "grow_forest_from_csv",
-    "grow_combined_forest_from_csv",
-    "list_available_species",
-    "validate_csv_format",
+    # Main API
+    "generate_trees",
+    "list_species",
+    "get_grove_info",
+    # Configuration
+    "GrowPyConfig",
+    "ExportFormat",
+    # Exceptions
+    "GrowPyError",
 ]
