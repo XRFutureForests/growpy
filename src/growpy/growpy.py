@@ -1,484 +1,421 @@
 """
-GrowPy - Main module for forest generation from CSV data
+GrowPy - Lightweight CSV to tree generation using The Grove 2.2
+==============================================================
 
-This module provides functionality to generate 3D tree models from CSV data
-using The Grove 2.2 procedural tree generation system.
+Focused on leveraging Grove's existing functionality for mixed species forests.
 """
 
 import sys
-import csv
-import json
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple, Union
-import pandas as pd
+from typing import List, Union, Optional
 
-# Add The Grove modules to Python path
-current_dir = Path(__file__).parent.parent
-grove_modules_path = current_dir / "the_grove_22" / "modules"
-sys.path.insert(0, str(grove_modules_path))
-import the_grove_22_core as tg
+# Add Grove modules to path
+from .config import GrowPyConfig
+
+# Find Grove paths
+DEFAULT_GROVE_PATH = Path(__file__).parent.parent / "the_grove_22"
+DEFAULT_PRESETS_PATH = DEFAULT_GROVE_PATH / "presets"
+DEFAULT_MODULES_PATH = DEFAULT_GROVE_PATH / "modules"
+
+sys.path.insert(0, str(DEFAULT_MODULES_PATH))
+
+try:
+    import the_grove_22_core as grove_core
+    import pandas as pd
+except ImportError as e:
+    raise RuntimeError(f"Required dependencies not found: {e}")
 
 
-def list_available_species() -> List[str]:
+class GrowPyError(Exception):
+    """GrowPy specific errors."""
+
+    pass
+
+
+def list_species() -> List[str]:
+    """Get list of available tree species."""
+    if not DEFAULT_PRESETS_PATH.exists():
+        return []
+
+    species = []
+    for preset_file in DEFAULT_PRESETS_PATH.glob("*.seed.json"):
+        species_name = preset_file.stem
+        if species_name.endswith(".seed"):
+            species_name = species_name[:-5]
+
+        # Skip malformed or empty species names (including ones that start with '.')
+        if species_name and species_name != "" and not species_name.startswith("."):
+            species.append(species_name)
+
+    return sorted(species)
+
+
+def get_grove_info() -> dict:
+    """Get Grove version and edition information."""
+    try:
+        return {
+            "version": grove_core.about.release,
+            "edition": grove_core.about.edition,
+            "description": grove_core.about.about,
+        }
+    except Exception:
+        return {
+            "version": "unknown",
+            "edition": "unknown",
+            "description": "Grove info unavailable",
+        }
+
+
+def safe_apply_species_preset(grove, species: str) -> bool:
     """
-    List all available species presets.
-
-    Returns:
-        List of species names that can be used in CSV files
-    """
-    presets_dir = current_dir / "the_grove_22" / "presets"
-    species_list = []
-
-    if presets_dir.exists():
-        for preset_file in presets_dir.glob("*.seed.json"):
-            # Remove .seed from the filename to get clean species name
-            species_name = preset_file.stem
-            if species_name.endswith(".seed"):
-                species_name = species_name[:-5]  # Remove '.seed' suffix
-            species_list.append(species_name)
-
-    return sorted(species_list)
-
-
-def _load_species_preset(species_name: str) -> Optional[Dict]:
-    """
-    Load species preset data from JSON file.
+    Safely apply species preset, catching Grove compatibility issues.
 
     Args:
-        species_name: Name of the species preset
+        grove: Grove object
+        species: Species name
 
     Returns:
-        Dictionary with preset data or None if not found
+        True if preset was applied successfully, False if there was an issue
     """
-    presets_dir = current_dir / "the_grove_22" / "presets"
-    preset_path = presets_dir / f"{species_name}.seed.json"
+    try:
+        return apply_species_preset(grove, species)
+    except Exception as e:
+        # Catch any exceptions that might escape from apply_species_preset
+        error_str = str(e)
+        error_type = str(type(e))
 
-    if preset_path.exists():
-        try:
-            with open(preset_path, "r") as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"Warning: Could not load preset for {species_name}: {e}")
-    else:
-        print(f"Warning: Species preset not found: {species_name}")
-
-    return None
-
-
-def _estimate_flushes_for_height(target_height: float, preset_data: Dict) -> int:
-    """
-    Estimate the number of flushes required to reach the target height.
-
-    Uses the geometric series formula based on grow_length and grow_length_reduce:
-    height = grow_length × (1 - grow_length_reduce^n) / (1 - grow_length_reduce)
-
-    Solving for n (flushes):
-    n = log(1 - height×(1-grow_length_reduce)/grow_length) / log(grow_length_reduce)
-
-    Args:
-        target_height: Desired tree height in meters
-        preset_data: Species preset parameters
-
-    Returns:
-        Estimated number of flushes needed
-    """
-    import math
-
-    # Extract key growth parameters
-    grow_length = preset_data.get("grow_length", 0.5)
-    grow_length_reduce = preset_data.get("grow_length_reduce", 0.78)
-
-    # Avoid division by zero and ensure valid parameters
-    if grow_length_reduce >= 1.0 or grow_length_reduce <= 0.0:
-        # If no reduction or invalid, use simple linear approach
-        estimated_flushes = int(target_height / grow_length / 3)
-    else:
-        # Apply geometric series formula exactly as provided:
-        # height = grow_length × (1 - grow_length_reduce^n) / (1 - grow_length_reduce)
-        # Rearranging: n = log(1 - height×(1-grow_length_reduce)/grow_length) / log(grow_length_reduce)
-
-        denominator = 1.0 - grow_length_reduce
-        fraction = target_height * denominator / grow_length
-
-        # Check if the target height is achievable with this formula
-        if fraction >= 1.0:
-            # Height is at or beyond the theoretical maximum for this species
-            # Use a large number of flushes
-            estimated_flushes = max(50, int(target_height / grow_length))
+        if (
+            "PanicException" in error_type
+            or "invalid type" in error_str
+            or "expected usize" in error_str
+            or "called `Result::unwrap()` on an `Err` value" in error_str
+        ):
+            print(
+                f"Warning: Grove compatibility issue with preset '{species}' - using default properties"
+            )
+            return False
         else:
-            inner_log_arg = 1.0 - fraction
-            if inner_log_arg <= 0:
-                estimated_flushes = max(50, int(target_height / grow_length))
-            else:
-                estimated_flushes = int(
-                    math.log(inner_log_arg) / math.log(grow_length_reduce)
-                )
-
-    # Ensure reasonable bounds (limit to smaller numbers for faster testing)
-    estimated_flushes = max(5, min(20, estimated_flushes))
-
-    return estimated_flushes
+            print(f"Warning: Unexpected error with preset '{species}': {e}")
+            return False
 
 
-def grow_forest_from_csv(
-    csv_file: Union[str, Path],
-    output_directory: Union[str, Path] = "forest_output",
-    resolution: int = 16,
-    flushes: int = 10,
-    base_name: str = "forest",
-    # Build options
-    reduce: float = 0.8,
-    texture_repeat: int = 3,
-    build_end_cap: bool = True,
-    build_blend: bool = True,
-    build_cutoff_age: int = 0,
-    build_cutoff_thickness: float = 0.0,
-) -> str:
+def apply_species_preset(grove, species: str) -> bool:
     """
-    Generate individual tree models from CSV data.
+    Apply species preset to Grove using Grove's built-in preset loading.
 
     Args:
-        csv_file: Path to CSV file with tree data (x,y,z,species,age,height)
-        output_directory: Directory where individual tree OBJ files will be saved
-        resolution: Model resolution (higher = more detail)
-        flushes: Number of growth flushes to simulate for all trees
-        base_name: Base name for generated files (default: "forest")
-        
-        # Build options (control tree geometry generation):
-        reduce: Reduce geometry complexity on thinner branches (0.0-1.0, default: 0.8)
-        texture_repeat: Number of bark texture repetitions (default: 3)
-        build_end_cap: Close branch ends (default: True)
-        build_blend: Smooth branch transitions (default: True)
-        build_cutoff_age: Skip branches younger than this age (default: 0 - keep all)
-        build_cutoff_thickness: Skip branches thinner than this (default: 0.0 - keep all)
+        grove: Grove object
+        species: Species name
 
     Returns:
-        Path to the summary file
-
-    Note: The strange pointy artifacts are often caused by build_cutoff_age > 0 or 
-    build_cutoff_thickness > 0.0, which can remove important structural branches.
-    Try build_cutoff_age=0 and build_cutoff_thickness=0.0 for cleaner results.
+        True if preset was applied successfully
     """
-    csv_file = Path(csv_file)
-    output_dir = Path(output_directory)
+    preset_path = DEFAULT_PRESETS_PATH / f"{species}.seed.json"
+    if not preset_path.exists():
+        print(f"Warning: No preset found for species '{species}'")
+        return False
 
-    # Read all tree data
-    trees_data = pd.read_csv(csv_file)
+    try:
+        # Read preset file
+        with open(preset_path, "r") as f:
+            preset_json = f.read()
 
-    # Check if all species in the CSV have corresponding presets
-    unique_species = trees_data["species"].unique()
-    missing_species = []
-    available_species = list_available_species()
+        # Use Grove's built-in preset loading
+        properties = grove_core.io.properties_from_json_string(preset_json)
+        grove.set_properties(properties)
+        return True
 
-    for species in unique_species:
-        if species not in available_species:
-            missing_species.append(species)
+    except Exception as e:
+        # Handle Grove parsing errors gracefully
+        error_msg = str(e)
+        error_type = str(type(e))
 
-    if missing_species:
-        print(f"Warning: Missing presets for species: {missing_species}")
-        print(f"Available species: {available_species}")
-        raise ValueError(f"Missing presets for species: {missing_species}")
+        if (
+            "PanicException" in error_type
+            or "invalid type" in error_msg
+            or "expected usize" in error_msg
+            or "called `Result::unwrap()` on an `Err` value" in error_msg
+        ):
+            print(
+                f"Warning: Grove version compatibility issue with preset '{species}': JSON format incompatibility"
+            )
+            print("  This is a known issue with some Grove 2.2 preset files")
+            return False
+        else:
+            print(f"Warning: Error applying preset for {species}: {e}")
+            return False
 
-    # Load presets for each tree (no flush calculation needed)
-    print("Loading species presets...")
 
-    # Validate that all species have presets
-    for species in unique_species:
-        preset_data = _load_species_preset(species)
-        if preset_data is None:
-            raise ValueError(f"Failed to load preset for species: {species}")
+def generate_trees(
+    csv_path: Union[str, Path], config: Optional[GrowPyConfig] = None
+) -> List[str]:
+    """
+    Generate trees from CSV data using The Grove 2.2.
 
-    print(f"All species presets validated. Using {flushes} flushes for all trees.")
+    Args:
+        csv_path: Path to CSV file with columns: x, y, z, species
+        config: Optional configuration
 
-    # Create separate groves for each species (proper "grow together" approach)
-    print("Creating species-specific groves...")
+    Returns:
+        List of generated file paths
 
-    # Group trees by species
-    species_groups = trees_data.groupby("species")
-    list_of_groves = []
-    grove_species_map = {}
-    grove_tree_positions = {}  # Track original positions for each grove
+    Example:
+        files = generate_trees("forest.csv")
 
-    for species, group_data in species_groups:
-        print(f"Creating grove for species: {species} ({len(group_data)} trees)")
+        # With custom config
+        config = GrowPyConfig(growth_cycles=15, resolution=32)
+        files = generate_trees("forest.csv", config)
+    """
+    config = config or GrowPyConfig()
+    csv_path = Path(csv_path)
 
-        # Create grove for this species
-        grove = tg.Grove()
+    if not csv_path.exists():
+        raise GrowPyError(f"CSV file not found: {csv_path}")
 
-        # Store original positions for this grove
-        grove_positions = []
+    # Load CSV data
+    try:
+        data = pd.read_csv(csv_path)
+        _validate_csv_data(data)
+    except Exception as e:
+        raise GrowPyError(f"Error loading CSV: {e}")
 
-        # Load and apply species-specific preset
-        species_preset = _load_species_preset(str(species))
-        if species_preset:
-            props = grove.get_properties()
+    # Validate species
+    unique_species = data["species"].unique()
+    available_species = list_species()
+    invalid_species = [s for s in unique_species if s not in available_species]
+    if invalid_species:
+        raise GrowPyError(
+            f"Unknown species: {invalid_species}. Available: {available_species}"
+        )
 
-            for key, value in species_preset.items():
-                if isinstance(value, (int, float, bool)):
-                    try:
-                        setattr(props, key, value)
-                    except (AttributeError, TypeError):
-                        pass
+    # Create output directory
+    config.output_dir.mkdir(parents=True, exist_ok=True)
 
-            grove.set_properties(props)
-            print(f"Applied {species} preset to grove")
+    # Generate individual trees
+    return _generate_individual_species(data, config)
 
-        # Add trees of this species to their grove
-        for index, row in group_data.iterrows():
-            # Access coordinates by column name to ensure correct mapping
-            x, y, z = float(row.x), float(row.y), float(row.z)
-            
-            # Store original position for later use during export
-            grove_positions.append((x, y, z))
-            
-            # Use coordinates as specified in CSV (no coordinate transformation)
-            position = tg.Vector(x, y, z)
-            direction = tg.Vector(0.0, 0.0, 1.0)  # Z-up (standard for many 3D applications)
 
-            # No delay needed since all trees use the same number of flushes
-            delay = 0
+def _generate_individual_species(data, config: GrowPyConfig) -> List[str]:
+    """Generate separate grove for each species using Grove's mixing species approach."""
+    print(f"Generating {len(data)} trees as individual species groves...")
 
+    groves = []
+
+    # Create grove for each species
+    for species, group in data.groupby("species"):
+        grove = grove_core.Grove()
+
+        # Clear default tree as recommended in Grove documentation
+        grove.clear_trees()
+
+        if config.random_seed:
+            grove.set_random_seed(config.random_seed + hash(species) % 1000)
+
+        # Apply species preset using Grove's built-in system
+        preset_success = safe_apply_species_preset(grove, species)
+        if not preset_success:
+            print(
+                f"  Warning: Using default properties for {species} (preset failed to load)"
+            )
+            # Continue with default Grove properties rather than failing
+
+        # Add trees at positions using Grove's add_new_tree
+        positions = []
+        for _, row in group.iterrows():
+            positions.append(
+                grove_core.Vector(float(row.x), float(row.y), float(row.z))
+            )
+
+        # Apply position variation if enabled (using Grove's tree_math)
+        if config.add_position_variation and len(positions) > 1:
+            try:
+                # Use Grove's add_variation function for natural positioning
+                positions, directions, delays = grove_core.tree_math.add_variation(
+                    positions,
+                    random_shift=config.position_random_shift,
+                    seed=config.random_seed or 0,
+                )
+            except Exception as e:
+                print(f"Warning: Could not apply position variation: {e}")
+                # Fallback to default directions and no delays
+                directions = [grove_core.Vector(0.0, 0.0, 1.0)] * len(positions)
+                delays = [0] * len(positions)
+        else:
+            # Default directions and no delays
+            directions = [grove_core.Vector(0.0, 0.0, 1.0)] * len(positions)
+            delays = [0] * len(positions)
+
+        # Add trees to grove
+        for position, direction, delay in zip(positions, directions, delays):
             grove.add_new_tree(position, direction, delay)
 
-            print(f"Added {species} tree at ({x}, {y}, {z})")
+        # Validate grove has trees
+        if len(grove.trees) == 0:
+            print(f"Warning: No trees added to {species} grove")
+            continue
 
-        list_of_groves.append(grove)
-        grove_species_map[len(list_of_groves) - 1] = species
-        grove_tree_positions[len(list_of_groves) - 1] = grove_positions
+        groves.append((grove, species, len(group)))
+        print(f"  Created {species} grove with {len(group)} trees")
 
-    # Calculate total simulation flushes needed (now just use the fixed parameter)
-    max_flushes = flushes
+    if not groves:
+        raise GrowPyError("No valid groves created")
 
+    # Simulate all groves together with shared light environment (per Grove docs)
     print(
-        f"\nGrowing {len(list_of_groves)} groves together for {max_flushes} flushes..."
+        f"Simulating {len(groves)} groves together for {config.growth_cycles} cycles..."
     )
+    grove_objects = [g[0] for g in groves]
 
-    # Grow all groves together with shared light environment
-    for flush_num in range(max_flushes):
-        print(f"Simulating flush {flush_num + 1}/{max_flushes}")
-
-        # Collect shade geometry from all groves
+    # Follow exact pattern from "Mixing species" documentation
+    for cycle in range(config.growth_cycles):
+        # Step 1: Collect shade geometry from all groves
         coords = []
-        for grove in list_of_groves:
+        for grove in grove_objects:
             coords.extend(grove.create_shade_geometry_coords())
 
-        # Calculate shade and simulate each grove
-        for i, grove in enumerate(list_of_groves):
+        # Step 2: Calculate shade and simulate each grove
+        for grove in grove_objects:
             grove.calculate_shade_together(coords)
-            grove.simulate(1)
+            grove.simulate(1)  # One flush at a time as documented
 
-    print(
-        f"Simulation complete! All {len(list_of_groves)} species groves grown together."
-    )
+    # Build and export models with position information
+    exported_files = []
+    for grove, species, tree_count in groves:
+        models = grove.build_models(config.to_grove_build_options())
 
-    # Build 3D models from all groves as individual tree files
-    print("\nBuilding individual tree models...")
+        if not models:
+            print(f"Warning: No models built for {species}")
+            continue
 
-    # Ensure output directory exists
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Use the base_name parameter for individual files
+        # Get the original positions for this species from the CSV data
+        species_group = data[data["species"] == species]
+        positions = [
+            grove_core.Vector(float(row.x), float(row.y), float(row.z))
+            for _, row in species_group.iterrows()
+        ]
 
-    # Build options for model generation (now using function parameters)
-    build_options = {
-        "resolution": resolution,
-        "reduce": reduce,
-        "texture_repeat": texture_repeat,
-        "build_end_cap": build_end_cap,
-        "build_blend": build_blend,
-        "build_cutoff_age": build_cutoff_age,
-        "build_cutoff_thickness": build_cutoff_thickness,
-    }
-
-    # Track generated files and statistics
-    generated_files = []
-    total_trees = 0
-    total_vertices = 0
-    total_faces = 0
-    global_tree_counter = 1  # Start from 1 for clearer numbering
-
-    for grove_index, grove in enumerate(list_of_groves):
-        species = grove_species_map[grove_index]
-        original_positions = grove_tree_positions[grove_index]
-        expected_tree_count = len(original_positions)
-        print(f"Building individual models for {species} grove...")
-
-        # Build individual models for each tree in this grove
-        models = grove.build_models(build_options)
-        
-        print(f"Grove for {species} with {expected_tree_count} trees generated {len(models)} models")
-        
-        # Debug: Check model sizes
         for i, model in enumerate(models):
-            print(f"  Model {i}: {len(model.points)} vertices, {len(model.faces)} faces")
-        
-        # If we get more models than expected, only use the largest one (full tree)
-        if len(models) > expected_tree_count:
-            print(f"  Warning: Got {len(models)} models for {expected_tree_count} trees. Using largest models only.")
-            # Sort models by vertex count and take the largest ones
-            models_with_sizes = [(i, len(model.points), model) for i, model in enumerate(models)]
-            models_with_sizes.sort(key=lambda x: x[1], reverse=True)  # Sort by vertex count, largest first
-            models = [item[2] for item in models_with_sizes[:expected_tree_count]]  # Take only as many as we have trees
-            print(f"  Selected {len(models)} largest models")
-        
-        # Save each tree as a separate OBJ file
-        for tree_index, model in enumerate(models):
-            # Get the original world position for this tree
-            if tree_index < len(original_positions):
-                orig_x, orig_y, orig_z = original_positions[tree_index]
+            # Get the corresponding position for this tree
+            tree_position = (
+                positions[i] if i < len(positions) else grove_core.Vector(0.0, 0.0, 0.0)
+            )
+
+            # Include position in filename for identification
+            position_suffix = (
+                f"_x{tree_position.x:.1f}_y{tree_position.y:.1f}_z{tree_position.z:.1f}"
+            )
+
+            filename = f"{species.replace(' ', '_')}_{i:03d}{position_suffix}.{config.export_format.value}"
+            file_path = config.output_dir / filename
+
+            # Export with position translation
+            _export_model_with_position(
+                model, file_path, config.export_format, config, tree_position
+            )
+            exported_files.append(str(file_path))
+
+    print(f"Exported {len(exported_files)} individual tree files with positions")
+    return exported_files
+
+
+def _export_model_with_position(
+    model,
+    file_path: Path,
+    export_format,
+    config: GrowPyConfig,
+    position: Optional[grove_core.Vector] = None,
+):
+    """Export model using Grove's built-in export functions with optional position translation."""
+    try:
+        # Apply coordinate system transformation if needed (Grove Model feature)
+        if config.up_axis != "Z":  # Grove default is Z-up
+            model.set_up_axis(config.up_axis)
+
+        if export_format.value == "obj":
+            # Use Grove's built-in OBJ export (studio edition feature)
+            if hasattr(grove_core.io, "model_to_obj_string"):
+                obj_string = grove_core.io.model_to_obj_string(model)
+
+                # If we have a position, translate the vertices in the OBJ string
+                if position and (
+                    position.x != 0.0 or position.y != 0.0 or position.z != 0.0
+                ):
+                    obj_string = _translate_obj_vertices(obj_string, position)
+
+                with open(file_path, "w") as f:
+                    f.write(obj_string)
             else:
-                orig_x, orig_y, orig_z = 0.0, 0.0, 0.0  # Fallback
-            
-            # Create filename with global tree counter for clarity
-            tree_filename = f"{base_name}_tree_{global_tree_counter:03d}_{species.replace(' - ', '_').replace(' ', '_')}.obj"
-            tree_filepath = output_dir / tree_filename
-            
-            # Use The Grove's built-in OBJ export (much more robust)
-            try:
-                obj_string = tg.io.model_to_obj_string(model)
-                
-                # Apply world position transformation to the OBJ string
-                if orig_x != 0.0 or orig_y != 0.0 or orig_z != 0.0:
-                    obj_lines = obj_string.split('\n')
-                    transformed_lines = []
-                    
-                    for line in obj_lines:
-                        if line.startswith('v '):  # Vertex line
-                            parts = line.split()
-                            if len(parts) >= 4:  # v x y z
-                                try:
-                                    # Original Grove coordinates (Z-up) - keep tree geometry unchanged
-                                    grove_x = float(parts[1])
-                                    grove_y = float(parts[2])
-                                    grove_z = float(parts[3])
-                                    
-                                    # Apply world position offset with coordinate transformation
-                                    # Transform position coordinates: CSV X,Y -> Blender X,-Z (horizontal plane)
-                                    world_x = grove_x + orig_x  # X position stays X
-                                    world_y = grove_y + orig_z  # Tree Y (up) gets Z position offset  
-                                    world_z = grove_z - orig_y  # Tree Z (depth) gets inverted Y position offset
-                                    
-                                    transformed_lines.append(f"v {world_x:.6f} {world_y:.6f} {world_z:.6f}")
-                                except (ValueError, IndexError):
-                                    transformed_lines.append(line)  # Keep original if parsing fails
-                            else:
-                                transformed_lines.append(line)
-                        else:
-                            transformed_lines.append(line)  # Keep non-vertex lines as-is
-                    
-                    obj_string = '\n'.join(transformed_lines)
-                
-                # Add our custom header with metadata
-                header_lines = [
-                    "# Individual tree model generated by GrowPy",
-                    "# Coordinate system: Grove Z-up preserved, position coordinates transformed",
-                    "# Import settings for Blender: Forward: -Z Forward, Up: Y Up", 
-                    "# Tree geometry: Grove Z-up preserved (trees stay upright)",
-                    "# Position mapping: CSV X,Y -> Blender X,-Z (horizontal distribution with Y inverted)",
-                    f"# Species: {species}",
-                    f"# Global tree number: {global_tree_counter}",
-                    f"# Tree index in species: {tree_index}",
-                    f"# Original world position (CSV): ({orig_x}, {orig_y}, {orig_z})",
-                    f"# Vertices: {len(model.points)}, Faces: {len(model.faces)}",
-                    "",
-                ]
-                
-                # Combine header with Grove's OBJ export
-                final_obj_content = "\n".join(header_lines) + obj_string
-                
-                # Write to file
-                with open(tree_filepath, "w") as obj_file:
-                    obj_file.write(final_obj_content)
-                    
-            except Exception as e:
-                print(f"  Error using Grove's OBJ export: {e}")
-                print("  Falling back to manual OBJ export...")
-                
-                # Fallback to manual export if Grove's export fails
-                points = model.points
-                faces = model.faces
-                uvs = model.uvs
+                raise GrowPyError("OBJ export not available in this Grove edition")
 
-                with open(tree_filepath, "w") as obj_file:
-                    # Write header
-                    obj_file.write("# Individual tree model generated by GrowPy (manual export)\n")
-                    obj_file.write("# Coordinate system: Grove Z-up preserved, position coordinates transformed\n")
-                    obj_file.write(f"# Species: {species}\n")
-                    obj_file.write(f"# Global tree number: {global_tree_counter}\n")
-                    obj_file.write(f"# Original world position (CSV): ({orig_x}, {orig_y}, {orig_z})\n")
-                    obj_file.write(f"# Vertices: {len(points)}, Faces: {len(faces)}\n\n")
+        elif export_format.value == "usd":
+            # Use Grove's built-in USD export (studio edition feature)
+            if hasattr(grove_core.io, "model_to_usda_string"):
+                usd_string = grove_core.io.model_to_usda_string(model)
 
-                    # Write vertices with world position transformation
-                    for point in points:
-                        # Transform position coordinates: CSV X,Y -> Blender X,-Z (horizontal plane)
-                        # Keep tree geometry in Grove Z-up (trees stay upright)
-                        world_x = point.x + orig_x  # X position stays X
-                        world_y = point.y + orig_z  # Tree Y (up) gets Z position offset
-                        world_z = point.z - orig_y  # Tree Z (depth) gets inverted Y position offset
-                        obj_file.write(f"v {world_x:.6f} {world_y:.6f} {world_z:.6f}\n")
+                # Note: USD translation would need different implementation
+                if position and (
+                    position.x != 0.0 or position.y != 0.0 or position.z != 0.0
+                ):
+                    print(
+                        "Warning: Position translation not implemented for USD format"
+                    )
 
-                    # Write UV coordinates if available
-                    if uvs:
-                        obj_file.write("\n")
-                        for uv in uvs:
-                            if hasattr(uv, "x"):
-                                obj_file.write(f"vt {uv.x:.6f} {uv.y:.6f}\n")
-                            else:
-                                obj_file.write(f"vt {uv[0]:.6f} {uv[1]:.6f}\n")
+                with open(file_path, "w") as f:
+                    f.write(usd_string)
+            else:
+                raise GrowPyError("USD export not available in this Grove edition")
+        else:
+            raise GrowPyError(f"Unsupported export format: {export_format}")
 
-                    # Write faces (ensure 1-based indexing for OBJ format)
-                    obj_file.write("\n")
-                    for face in faces:
-                        if uvs:
-                            # Include UV indices if UVs are available
-                            face_str = " ".join([f"{v}/{v}" for v in face])
-                        else:
-                            # Vertex indices only
-                            face_str = " ".join([str(v) for v in face])
-                        obj_file.write(f"f {face_str}\n")
-
-            generated_files.append(str(tree_filepath))
-            total_trees += 1
-            total_vertices += len(model.points)
-            total_faces += len(model.faces)
-            global_tree_counter += 1  # Increment global counter
-            
-            print(f"  Saved tree {global_tree_counter-1}: {tree_filename} at world pos ({orig_x}, {orig_y}, {orig_z}) ({len(model.points)} vertices, {len(model.faces)} faces)")
-
-    # Create a summary file listing all generated trees
-    summary_file = output_dir / f"{base_name}_summary.txt"
-    with open(summary_file, "w") as summary:
-        summary.write("Forest Generation Summary\n")
-        summary.write("=" * 50 + "\n")
-        summary.write(f"Total trees generated: {total_trees}\n")
-        summary.write(f"Total vertices: {total_vertices}\n")
-        summary.write(f"Total faces: {total_faces}\n")
-        summary.write(f"Species included: {list(grove_species_map.values())}\n\n")
-        summary.write("Generated files:\n")
-        summary.write("-" * 20 + "\n")
-        for filepath in generated_files:
-            summary.write(f"{Path(filepath).name}\n")
-
-    print(f"\nSuccessfully generated {total_trees} individual tree models!")
-    print(f"Total geometry: {total_vertices} vertices, {total_faces} faces")
-    print(f"Files saved to: {output_dir}")
-    print(f"Summary saved to: {summary_file}")
-
-    return str(summary_file)
+    except Exception as e:
+        raise GrowPyError(f"Export failed for {file_path}: {e}")
 
 
-if __name__ == "__main__":
-    # Example usage - for full demo run
-    demo_csv = current_dir.parent / "data" / "demo_forest.csv"
-    combined_output_dir = Path("../data/output")
+def _translate_obj_vertices(obj_string: str, position: grove_core.Vector) -> str:
+    """Translate all vertices in an OBJ string by the given position offset."""
+    lines = obj_string.split("\n")
+    translated_lines = []
 
-    combined_file = grow_forest_from_csv(
-        csv_file=demo_csv,
-        output_directory=combined_output_dir,
-        resolution=10,  # Reduced from 16 for faster generation
-        flushes=8,  # Fixed number of flushes for all trees
-        base_name="demo_forest",
-        # Build options to avoid artifacts
-        build_cutoff_age=0,  # Keep all branches (prevents pointy artifacts)
-        build_cutoff_thickness=0.0,  # Keep all branches (prevents gaps)
-    )
+    for line in lines:
+        if line.startswith("v "):  # Vertex line
+            parts = line.split()
+            if len(parts) >= 4:  # 'v x y z' (and optionally w)
+                try:
+                    # Fix coordinate mapping for Blender: CSV (x,y,z) -> OBJ (x,-z,y)
+                    # This corrects the Y-Z axis swap and Y-axis inversion in Blender
+                    x = float(parts[1]) + position.x  # X stays X
+                    y = float(parts[2]) - position.z  # CSV Z becomes OBJ Y (negated)
+                    z = float(parts[3]) + position.y  # CSV Y becomes OBJ Z
+
+                    # Reconstruct the vertex line with corrected coordinates
+                    translated_line = f"v {x:.6f} {y:.6f} {z:.6f}"
+                    if len(parts) > 4:  # Include w component if present
+                        translated_line += f" {parts[4]}"
+                    translated_lines.append(translated_line)
+                except (ValueError, IndexError):
+                    # If parsing fails, keep original line
+                    translated_lines.append(line)
+            else:
+                translated_lines.append(line)
+        else:
+            # Non-vertex lines pass through unchanged
+            translated_lines.append(line)
+
+    return "\n".join(translated_lines)
+
+
+def _export_model(model, file_path: Path, export_format, config: GrowPyConfig):
+    """Export model using Grove's built-in export functions (legacy function for compatibility)."""
+    return _export_model_with_position(model, file_path, export_format, config, None)
+
+
+def _validate_csv_data(data) -> None:
+    """Validate CSV has required columns."""
+    required = ["x", "y", "z", "species"]
+    missing = [col for col in required if col not in data.columns]
+    if missing:
+        raise ValueError(f"Missing columns: {missing}")
+
+    for col in required:
+        if data[col].isnull().any():
+            raise ValueError(f"Column '{col}' contains missing values")
