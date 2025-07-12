@@ -5,15 +5,6 @@ Configuration for GrowPy - simplified and focused on Grove 2.2 integration.
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
 from pathlib import Path
-from enum import Enum
-
-
-class ExportFormat(Enum):
-    """Export format for tree models."""
-
-    OBJ = "obj"
-    USD = "usd"
-
 
 @dataclass
 class GrowPyConfig:
@@ -21,21 +12,26 @@ class GrowPyConfig:
 
     # Core settings
     growth_cycles: int = 10
-    random_seed: Optional[int] = None
-    export_format: ExportFormat = ExportFormat.OBJ
+    random_seed: Optional[int] = 42
     output_dir: Path = Path("output")
 
-    # Model quality (passed directly to Grove)
+    # Build options
     resolution: int = 16
-
-    # Advanced options (following Grove's capabilities)
-    add_position_variation: bool = False  # Use Grove's tree_math.add_variation
-    position_random_shift: float = 0.5  # Random shift for tree positions
-    up_axis: str = "Z"  # Coordinate system: "Y" or "Z"
+    resolution_reduce: float = 0.8
+    texture_repeat: int = 3
+    build_cutoff_age: int = 0
+    build_cutoff_thickness: float = 0.0
+    build_blend: bool = True
+    build_end_cap: bool = True
 
     def to_grove_build_options(self) -> Dict[str, Any]:
         """Convert to Grove build options dictionary."""
         return {
             "resolution": self.resolution,
-            "build_end_cap": True,
+            "resolution_reduce": self.resolution_reduce,
+            "texture_repeat": self.texture_repeat,
+            "build_cutoff_age": self.build_cutoff_age,
+            "build_cutoff_thickness": self.build_cutoff_thickness,
+            "build_blend": self.build_blend,
+            "build_end_cap": self.build_end_cap,
         }
