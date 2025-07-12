@@ -26,7 +26,7 @@ Example Usage:
 """
 
 from .config import GrowPyConfig, ExportFormat
-from .growpy import generate_trees, list_species, get_grove_info, GrowPyError
+from .grow_forest import generate_trees, list_species, get_grove_info, GrowPyError
 
 __version__ = "2.0.0"
 __author__ = "GrowPy Team"
