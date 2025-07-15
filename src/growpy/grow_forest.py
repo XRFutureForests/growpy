@@ -7,18 +7,10 @@ import pandas as pd
 from config import GrowPyConfig
 from utils import validate_csv_data, apply_species_preset
 from tqdm import tqdm
+import the_grove_22_core as gc  # type: ignore
 
 # Data paths
 DEFAULT_DATA_PATH = Path(__file__).parent.parent.parent / "data"
-
-# Grove paths
-DEFAULT_GROVE_PATH = Path(__file__).parent.parent / "the_grove_22"
-DEFAULT_PRESETS_PATH = DEFAULT_GROVE_PATH / "presets"
-DEFAULT_MODULES_PATH = DEFAULT_GROVE_PATH / "modules"
-
-sys.path.insert(0, str(DEFAULT_MODULES_PATH))
-
-import the_grove_22_core as gc
 
 
 def add_trees(
