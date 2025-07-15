@@ -1,7 +1,11 @@
 {
-    "python-envs.pythonProjects": [
-        
-    ],
+    "python-envs.pythonProjects": [],
     "python-envs.defaultPackageManager": "ms-python.python:conda",
-    "python-envs.defaultEnvManager": "ms-python.python:conda"
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python.analysis.extraPaths": [
+        "./src/the_grove_22/modules"
+    ],
+    "python.autoComplete.extraPaths": [
+        "./src/the_grove_22/modules"
+    ]
 }
