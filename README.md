@@ -28,9 +28,26 @@ src/the_grove_22/
 
 ## Installation & Setup
 
+### Environment Setup
+
+The project includes a conda environment configuration. To create the environment in your project folder:
+
+```bash
+conda env create --prefix ./.conda -f environment.yml
+```
+
+#### Activate the environment
+
+```bash
+conda activate ./.conda
+```
+
+**Note:** Always use the `--prefix` flag with `conda env create` to install the environment in the project folder.
+
 ### Requirements
 
-- Python 3.7+
+- Python 3.11.*
+- Conda
 - The Grove requires platform-specific binary modules
 
 ### Module Loading
