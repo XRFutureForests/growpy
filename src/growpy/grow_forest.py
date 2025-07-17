@@ -148,9 +148,9 @@ def export_forest(
 if __name__ == "__main__":
     # Example usage
     config = GrowPyConfig()
-    config.output_dir = Path(DEFAULT_DATA_PATH / "bu" / "output")
+    config.output_dir = Path(DEFAULT_DATA_PATH / "output")
 
-    csv_path = Path(DEFAULT_DATA_PATH / "bu" / "demo_forest_with_predicted_age.csv")
+    csv_path = Path(DEFAULT_DATA_PATH / "demo_forest_with_predicted_age.csv")
 
     forest = []
     forest = add_trees(forest, csv_path, config)
