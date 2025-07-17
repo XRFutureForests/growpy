@@ -6,7 +6,7 @@ forest generation pipeline and combines them into a single FBX file with proper
 LOD naming conventions for use in game engines like Unity, Unreal, or other 3D applications.
 
 Usage:
-    python combine_lods_to_fbx.py --input_dir data/bu/output --output_dir fbx_output
+    python combine_lods_to_fbx.py --input_dir data/output --output_dir fbx_output
 
 Requirements:
     - Blender (with bpy module available)
@@ -347,8 +347,8 @@ def main():
     parser.add_argument(
         "--input_dir", 
         type=str, 
-        default="data/bu/output",
-        help="Directory containing LOD OBJ files (default: data/bu/output)"
+        default="data/woutput",
+        help="Directory containing LOD OBJ files (default: data/output)"
     )
     
     parser.add_argument(

@@ -3,13 +3,15 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.13
+  - python=3.11
   - pip
-  - numpy
+  - numpy=1.*
   - pandas
   - matplotlib
   - scikit-learn
+  - tqdm
   - pip:
-    - bpy # Add pip-only packages here if needed
-    # - some-pip-package
-prefix: ./.conda
+    - bpy
+
+variables:
+  PYTHONPATH: $CONDA_PREFIX/../../src/the_grove_22/modules:$PYTHONPATH
