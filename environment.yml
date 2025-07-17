@@ -10,6 +10,6 @@ dependencies:
   - matplotlib
   - scikit-learn
   - pip:
-    - # Add pip-only packages here if needed
+    - bpy # Add pip-only packages here if needed
     # - some-pip-package
 prefix: ./.conda

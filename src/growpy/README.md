@@ -14,6 +14,8 @@ GrowPy is designed to be a thin wrapper around The Grove 2.2's powerful tree gen
 
 - **Species Management**: Direct use of Grove's `.seed.json` preset files
 - **Mixed Species Forests**: Implements Grove's documented approach for shared light environments
+- **Multiple LOD Levels**: Generates 6 levels of detail (LOD0_Ultra through LOD5_Minimal) for optimization
+- **FBX Export**: Combines LOD files into game-ready FBX format for Unity/Unreal
 - **Flexible Export**: Individual trees per species or combined forest models
 - **Lightweight**: Minimal code between your CSV data and Grove's tree generation
 
@@ -57,6 +59,23 @@ x,y,z,species
 
 - **Individual**: Separate grove per species using `Grove.build_models()`
 - **Combined**: Single forest using `Grove.build_as_one_model()`
+- **LOD Levels**: Six detail levels per species (Ultra, High, Medium, Low, VeryLow, Minimal)
+
+## LOD to FBX Conversion
+
+After generating LOD files, use the included script to create game-ready FBX files:
+
+```bash
+# Convert all LOD files to FBX format for game engines
+python combine_lods_to_fbx.py --input_dir data/output --output_dir fbx_assets
+
+# Check what files would be processed
+python combine_lods_to_fbx.py --input_dir data/output --check_only
+```
+
+**Requirements**: Blender Python API (`pip install bpy`)
+
+See `README_LOD_TO_FBX.md` for detailed instructions.
 
 ## Dependencies
 
