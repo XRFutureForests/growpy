@@ -1,18 +1,20 @@
-import sys
-from pathlib import Path
-from typing import List, Tuple
-import pandas as pd
-from utils import list_species, apply_species_preset
-from config import GrowPyConfig
-from tqdm import tqdm
-import matplotlib.pyplot as plt
-from sklearn.linear_model import LinearRegression
-import numpy as np
 import pickle
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+# Now import our modules
 import the_grove_22_core as gc
+from config import GrowPyConfig
+from helper import apply_species_preset
+from sklearn.linear_model import LinearRegression
+from tqdm import tqdm
 
 # Data paths
 DEFAULT_DATA_PATH = Path(__file__).parent.parent.parent / "data"
+
 
 def calculate_tree_height(grove, tree_index=0):
     """Calculate tree height by finding the maximum Z-coordinate of all nodes."""
@@ -41,7 +43,7 @@ data = pd.read_csv(csv_path)
 species = data["species"].unique().tolist()
 
 config = GrowPyConfig()
-config.growth_cycles = 75
+config.growth_cycles = 15
 
 height_curves = pd.DataFrame(index=species, columns=range(config.growth_cycles))
 

@@ -1,24 +1,22 @@
-import sys
 from pathlib import Path
 from typing import List
 
-# Add Grove modules to path
+import the_grove_22_core as gc
 
 # Grove paths
 DEFAULT_GROVE_PATH = Path(__file__).parent.parent / "the_grove_22"
 DEFAULT_PRESETS_PATH = DEFAULT_GROVE_PATH / "presets"
-DEFAULT_MODULES_PATH = DEFAULT_GROVE_PATH / "modules"
 
-sys.path.insert(0, str(DEFAULT_MODULES_PATH))
-
-import the_grove_22_core as gc
 
 def list_species() -> List[str]:
     """Get list of available tree species."""
     species = []
     for preset_file in DEFAULT_PRESETS_PATH.glob("*.seed.json"):
-        species_name = preset_file.stem[:-5]
-        species.append(species_name)
+        species_name = preset_file.stem[:-5]  # Remove .seed extension
+        if species_name and not species_name.startswith(
+            "."
+        ):  # Filter out invalid names
+            species.append(species_name)
 
     return sorted(species)
 
