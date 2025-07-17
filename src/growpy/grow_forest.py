@@ -1,13 +1,11 @@
-import sys
 from pathlib import Path
 from typing import List, Tuple
-import pandas as pd
 
-# Add Grove modules to path
+import pandas as pd
+import the_grove_22_core as gc
 from config import GrowPyConfig
-from utils import validate_csv_data, apply_species_preset
+from helper import apply_species_preset, validate_csv_data
 from tqdm import tqdm
-import the_grove_22_core as gc  # type: ignore
 
 # Data paths
 DEFAULT_DATA_PATH = Path(__file__).parent.parent.parent / "data"
