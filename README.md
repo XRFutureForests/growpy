@@ -18,31 +18,68 @@ The Grove Core is built as a Python module that simulates realistic tree growth 
 ## Project Structure
 
 ```text
-src/the_grove_22/
-├── modules/the_grove_22_core/     # Core Python module
-├── presets/                       # Species-specific JSON presets
-├── documentation/                 # HTML documentation
-├── textures/                      # Bark and leaf textures
-└── twigs/                         # Twig geometry files
+data/
+├── input/                         # Input CSV files
+│   └── demo_forest.csv           # Example forest data (x,y,z,species,height)
+└── output/                       # Organized outputs by input name
+    └── demo_forest/              # Output for demo_forest.csv
+        ├── analysis/             # Height curves, age models, analysis data
+        ├── groves/               # Grove JSON files for Blender
+        └── tree_models/          # Individual USD and FBX models by species
+            ├── Fagaceae___Beech/
+            │   ├── *.usd         # USD files for all LOD levels
+            │   └── *.fbx         # FBX files for game engines
+            └── [other species]/
+
+src/
+├── growpy/                       # Simplified Python interface
+├── the_grove_22/                 # Core Grove 2.2 system
+│   ├── modules/the_grove_22_core/ # Core Python module
+│   ├── presets/                  # Species-specific JSON presets
+│   ├── documentation/            # HTML documentation
+│   ├── textures/                 # Bark and leaf textures
+│   └── twigs/                    # Twig geometry files
+└── utils/                        # Utility functions
+
+generate_forest.py                # Main generation script
 ```
 
-## Installation & Setup
+## Quick Start
 
-### Environment Setup
-
-The project includes a conda environment configuration. To create the environment in your project folder:
+### 1. Setup Environment
 
 ```bash
 conda env create --prefix ./.conda -f environment.yml
-```
-
-#### Activate the environment
-
-```bash
 conda activate ./.conda
 ```
 
-**Note:** Always use the `--prefix` flag with `conda env create` to install the environment in the project folder.
+### 2. Prepare Input Data
+
+Place your CSV file in `data/input/` with columns: `x,y,z,species,height`
+
+### 3. Generate Forest
+
+```bash
+python generate_forest.py
+```
+
+This will create an organized output structure in `data/output/{input_name}/` with:
+
+- Grove JSON files for Blender import
+- Individual tree USD models organized by species
+- Analysis data and height curves
+- FBX files for game engines
+
+### 4. Access Results
+
+```
+data/output/demo_forest/
+├── groves/           # Import JSON files into Blender
+├── tree_models/      # Use USD and FBX files organized by species
+│   ├── Species1/     # USD files (all LOD levels) + FBX files
+│   └── Species2/     # USD files (all LOD levels) + FBX files
+└── analysis/         # Review growth curves and predictions
+```
 
 ### Requirements
 
@@ -250,6 +287,67 @@ def create_combined_scene_from_csv(csv_file, output_file="forest_scene.obj"):
     with open(output_file, 'w') as f:
         f.write(obj_string)
 ```
+
+## Configuration System
+
+The Grove supports flexible configuration through both code and configuration files.
+
+### Using config.ini
+
+Create a `config.ini` file in your project root to customize behavior:
+
+```ini
+[simulation]
+# Number of flushes for height curve generation
+height_model_flushes = 15
+
+# Maximum simulation cycles (auto-calculated if 'none')
+growth_cycles = none
+
+# Random seed for reproducible results
+random_seed = 42
+
+# Age to flush ratio (years per flush)
+age_to_flush_ratio = 4.0
+
+[output]
+output_dir = data/output
+fbx_output_dir = none
+
+[build]
+# 3D model quality settings
+resolution = 16
+resolution_reduce = 0.8
+texture_repeat = 3
+build_cutoff_age = 0
+build_cutoff_thickness = 0.0
+build_blend = true
+build_end_cap = true
+```
+
+### Configuration in Code
+
+```python
+from growpy.config import GrowPyConfig
+
+# Load from config.ini
+config = GrowPyConfig.from_config_file(Path("config.ini"))
+
+# Or use defaults and modify
+config = GrowPyConfig()
+config.height_model_flushes = 20  # More detailed height curves
+config.age_to_flush_ratio = 3.0   # Faster growth (3 years per flush)
+
+# Generate sample config.ini
+config.to_config_file(Path("my_config.ini"))
+```
+
+### Key Parameters
+
+- **`height_model_flushes`**: Controls how many growth cycles are used to generate height curves for age prediction
+- **`growth_cycles`**: Maximum simulation cycles (auto-calculated from tree ages if not specified)
+- **`age_to_flush_ratio`**: How many years of real tree age each flush represents (default: 4.0)
+- **Build options**: Control 3D model quality and polygon count
 
 ## Available Species Presets
 
