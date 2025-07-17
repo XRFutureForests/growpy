@@ -1,0 +1,15 @@
+name: the-grove-env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.13
+  - pip
+  - numpy
+  - pandas
+  - matplotlib
+  - scikit-learn
+  - pip:
+    - # Add pip-only packages here if needed
+    # - some-pip-package
+prefix: ./.conda
