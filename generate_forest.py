@@ -85,16 +85,17 @@ def main():
     print("   • Create linear regression models to predict age from height")
     print("   • Apply age predictions to all trees based on their heights")
     forest = []
-    forest = add_trees(forest, csv_path, config)
+    forest, growth_cycles = add_trees(forest, csv_path, config)
 
     print(f"   Loaded {len(forest)} species:")
     for grove, species, tree_count in forest:
         print(f"   • {species}: {tree_count} trees")
+    print(f"   Growth cycles required: {growth_cycles}")
     print()
 
     # Step 2: Simulate growth
     print("🌱 Simulating forest growth...")
-    grow_forest(forest, config)
+    grow_forest(forest, config, growth_cycles)
     print("   ✅ Growth simulation complete")
     print()
 
@@ -105,9 +106,10 @@ def main():
     print("\n📄 Exporting grove JSON files...")
     export_grove_json_files(forest, output_dir, input_name)
 
-    # Export individual tree USD models with LOD levels
+    # Export individual tree USD models with selected LOD levels
     print("\n🌳 Exporting individual tree models as USD files...")
-    lod_configs = GrowPyConfig.get_lod_configs()
+    lod_configs = config.get_selected_lod_configs()
+    print(f"   Using LOD levels: {list(lod_configs.keys())}")
     export_individual_tree_models(
         forest,
         output_dir,
