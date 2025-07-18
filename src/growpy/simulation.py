@@ -416,11 +416,6 @@ def _validate_forest_data(data: pd.DataFrame) -> None:
             logger.warning(f"Found {num_duplicates} trees with duplicate positions")
 
 
-def _calculate_max_growth_cycles(data: pd.DataFrame, config: GrowPyConfig) -> int:
-    """Calculate maximum growth cycles needed based on predicted flushes."""
-    max_flushes = data["required_flushes"].max()
-    return int(max_flushes / config.age_to_flush_ratio) + 1  # Ensure at least one flush
-
 
 def _create_grove_for_species(
     species_name: str,

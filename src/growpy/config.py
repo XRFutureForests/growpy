@@ -40,9 +40,7 @@ class GrowPyConfig:
     build_end_cap: bool = True
 
     # Age prediction settings
-    age_to_flush_ratio: float = (
-        1.0  # How many years of age per flush (default: 1 year/flush)
-    )
+    # Note: age_to_flush_ratio removed to avoid timing issues
 
     @classmethod
     def from_config_file(cls, config_path: Path) -> "GrowPyConfig":
@@ -102,11 +100,7 @@ class GrowPyConfig:
                             raise ConfigurationError("random_seed must be non-negative")
                         kwargs["random_seed"] = seed
                         
-                if "age_to_flush_ratio" in simulation:
-                    ratio = simulation.getfloat("age_to_flush_ratio")
-                    if ratio <= 0:
-                        raise ConfigurationError("age_to_flush_ratio must be positive")
-                    kwargs["age_to_flush_ratio"] = ratio
+                # age_to_flush_ratio removed - was causing timing issues
                     
             except (ValueError, configparser.Error) as e:
                 raise ConfigurationError(f"Invalid value in simulation section: {e}")
@@ -193,7 +187,7 @@ class GrowPyConfig:
             "random_seed": (
                 str(self.random_seed) if self.random_seed is not None else "none"
             ),
-            "age_to_flush_ratio": str(self.age_to_flush_ratio),
+            # age_to_flush_ratio removed
         }
 
         # [output] section
