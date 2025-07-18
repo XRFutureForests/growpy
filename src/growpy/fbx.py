@@ -8,7 +8,10 @@ LOD naming conventions for use in game engines like Unity, Unreal, or other 3D a
 Supported formats: OBJ, USD
 
 Usage:
-    python fbx.py --input_dir data/output --output_dir data/output/fbx
+    # Import and use the LODCombiner class in your Python code
+    from growpy.fbx import LODCombiner
+    combiner = LODCombiner(input_dir, output_dir)
+    results = combiner.combine_all_lods()
 
 Requirements:
     - Blender (with bpy module available)
@@ -17,10 +20,8 @@ Requirements:
 Author: Generated for The Grove forest generation pipeline
 """
 
-import argparse
 import logging
 import re
-import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -396,76 +397,5 @@ class LODCombiner:
                     f.write(f"  - {species}\n")
 
 
-def main():
-    """Main function for command-line usage."""
-    parser = argparse.ArgumentParser(
-        description="Combine LOD OBJ files into FBX files for game engines"
-    )
-
-    parser.add_argument(
-        "--input_dir",
-        type=str,
-        default="data/output",
-        help="Directory containing LOD OBJ files (default: data/output)",
-    )
-
-    parser.add_argument(
-        "--output_dir",
-        type=str,
-        default="data/output/fbx",
-        help="Directory to save FBX files (default: data/output/fbx)",
-    )
-
-    parser.add_argument(
-        "--scale",
-        type=float,
-        default=1.0,
-        help="Scale factor to apply to all meshes (default: 1.0)",
-    )
-
-    parser.add_argument(
-        "--check_only",
-        action="store_true",
-        help="Only check for LOD files, don't process them",
-    )
-
-    args = parser.parse_args()
-
-    # Convert to absolute paths
-    input_dir = Path(args.input_dir).resolve()
-    output_dir = Path(args.output_dir).resolve()
-
-    if not input_dir.exists():
-        return 1
-
-    # Check Blender availability
-    if not BLENDER_AVAILABLE:
-        return 1
-
-    # Initialize combiner
-    combiner = LODCombiner(input_dir, output_dir, args.scale)
-
-    # Check for LOD files
-    species_groups = combiner.group_lod_files()
-
-    if not species_groups:
-        return 1
-
-    if args.check_only:
-        return 0
-
-    # Process all species
-    results = combiner.combine_all_lods()
-
-    # Create manifest
-    combiner.create_manifest(results)
-
-    # Return based on success rate
-    successful = sum(1 for success in results.values() if success)
-    total = len(results)
-
-    return 0 if successful == total else 1
 
 
-if __name__ == "__main__":
-    sys.exit(main())

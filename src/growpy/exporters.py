@@ -71,43 +71,6 @@ def export_grove_json_files(
     return exported_files
 
 
-def export_combined_grove_models(
-    forest_data: ForestData,
-    output_directory: Path,
-    lod_configurations: LodConfigs | None = None,
-    model_format: ModelFormat = ModelFormat.OBJ,
-    input_name: str = "demo_forest",
-) -> ExportedFiles:
-    """
-    Export grove models with all trees combined into single models per species.
-
-    Args:
-        forest_data: List of (grove, species_name, tree_count) tuples
-        output_directory: Directory to save model files
-        lod_configurations: Dictionary of LOD configurations. If None, uses defaults
-        model_format: Format to export models (OBJ or USD)
-        input_name: Name of the input file (without extension) for subfolder organization
-
-    Returns:
-        List of paths to exported model files
-    """
-    # Create input-specific subfolder with grove models subfolder
-    input_output_dir = output_directory / input_name / "grove_models"
-    _ensure_directory_exists(input_output_dir)
-    exported_files = []
-
-    lod_configs = lod_configurations or GrowPyConfig.get_lod_configs()
-
-    for grove, species_name, _ in tqdm(
-        forest_data, desc="Exporting grove models", unit="species"
-    ):
-        species_files = _export_grove_models_for_species(
-            grove, species_name, lod_configs, input_output_dir, model_format
-        )
-        exported_files.extend(species_files)
-
-    _print_grove_models_summary(exported_files, model_format)
-    return exported_files
 
 
 def export_individual_tree_models(
@@ -168,31 +131,6 @@ def export_individual_tree_models(
     return exported_files
 
 
-def create_custom_export_summary(
-    json_files: ExportedFiles, model_files: ExportedFiles, model_format: ModelFormat
-) -> Dict[str, Any]:
-    """
-    Create a custom export summary for exported files.
-
-    Args:
-        json_files: List of exported JSON file paths
-        model_files: List of exported model file paths
-        model_format: Format of the model files
-    """
-    summary_data = {}
-
-    if json_files:
-        total_json_size_mb = _calculate_total_file_size_mb(json_files)
-        summary_data["json_files"] = len(json_files)
-        summary_data["json_size_mb"] = total_json_size_mb
-
-    if model_files:
-        total_model_size_mb = _calculate_total_file_size_mb(model_files)
-        summary_data["model_files"] = len(model_files)
-        summary_data["model_size_mb"] = total_model_size_mb
-        summary_data["model_format"] = model_format.value.upper()
-
-    return summary_data
 
 
 # Private helper functions
@@ -220,35 +158,6 @@ def _create_grove_json_file(
     return file_path
 
 
-def _export_grove_models_for_species(
-    grove: gc.Grove,
-    species_name: str,
-    lod_configs: LodConfigs,
-    output_directory: Path,
-    model_format: ModelFormat,
-) -> ExportedFiles:
-    """Export all LOD levels for a single species as combined grove models."""
-    exported_files = []
-    sanitized_name = _sanitize_species_name(species_name)
-
-    # Create species-specific subfolder within grove_models
-    species_output_dir = output_directory / sanitized_name
-    _ensure_directory_exists(species_output_dir)
-
-    for lod_name, lod_settings in tqdm(
-        lod_configs.items(),
-        desc=f"Exporting LODs for {species_name}",
-        unit="LOD",
-        leave=False,
-    ):
-        model = grove.build_as_one_model(lod_settings)
-        filename = f"{sanitized_name}_{lod_name}.{model_format.value}"
-        file_path = species_output_dir / filename
-
-        _write_model_to_file(model, file_path, model_format)
-        exported_files.append(file_path)
-
-    return exported_files
 
 
 def _export_individual_trees_for_species(
@@ -316,20 +225,6 @@ def _print_json_export_summary(exported_files: ExportedFiles) -> Dict[str, Any]:
     return {"files_exported": len(exported_files), "total_size_mb": total_size_mb}
 
 
-def _print_grove_models_summary(
-    exported_files: ExportedFiles, model_format: ModelFormat
-) -> Dict[str, Any]:
-    """Create summary data for grove models export."""
-    if not exported_files:
-        return {"error": "No files were exported"}
-
-    species_lod_counts = _count_species_and_lods(exported_files, "_LOD")
-    return {
-        "files_exported": len(exported_files),
-        "model_format": model_format.value.upper(),
-        "species_count": len(species_lod_counts),
-        "species_lod_counts": species_lod_counts,
-    }
 
 
 def _print_individual_trees_summary(
@@ -386,10 +281,6 @@ def _count_species_and_trees(file_paths: ExportedFiles) -> Dict[str, int]:
     return species_counts
 
 
-def _get_lod_configuration_table() -> Dict[str, Any]:
-    """Get the LOD configuration table as data."""
-    lod_configs = GrowPyConfig.get_lod_configs()
-    return {"lod_levels": list(lod_configs.keys()), "configurations": lod_configs}
 
 
 def _export_individual_trees_as_usd(
