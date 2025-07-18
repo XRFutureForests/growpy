@@ -22,7 +22,7 @@ class GrowPyConfig:
     """Lightweight configuration for GrowPy tree generation."""
 
     # Core simulation settings
-    height_model_flushes: int = 75  # Number of flushes for height curve generation
+    height_model_cycles: int = 75  # Number of cycles for height curve generation
     random_seed: Optional[int] = 42
 
     # Output settings
@@ -32,7 +32,7 @@ class GrowPyConfig:
     lod_levels: List[str] = field(default_factory=lambda: ["all"])
 
     # Age prediction settings
-    # Note: age_to_flush_ratio removed to avoid timing issues
+    # Note: age_to_cycle_ratio removed to avoid timing issues
 
     @classmethod
     def from_config_file(cls, config_path: Path) -> "GrowPyConfig":
@@ -66,11 +66,11 @@ class GrowPyConfig:
             simulation = config["simulation"]
 
             try:
-                if "height_model_flushes" in simulation:
-                    flushes = simulation.getint("height_model_flushes")
-                    if flushes <= 0:
-                        raise ConfigurationError("height_model_flushes must be positive")
-                    kwargs["height_model_flushes"] = flushes
+                if "height_model_cycles" in simulation:
+                    cycles = simulation.getint("height_model_cycles")
+                    if cycles <= 0:
+                        raise ConfigurationError("height_model_cycles must be positive")
+                    kwargs["height_model_cycles"] = cycles
                         
                 if "random_seed" in simulation:
                     seed_val = simulation.get("random_seed", "")
@@ -82,7 +82,7 @@ class GrowPyConfig:
                             raise ConfigurationError("random_seed must be non-negative")
                         kwargs["random_seed"] = seed
                         
-                # age_to_flush_ratio removed - was causing timing issues
+                # age_to_cycle_ratio removed - was causing timing issues
                     
             except (ValueError, configparser.Error) as e:
                 raise ConfigurationError(f"Invalid value in simulation section: {e}")
@@ -137,11 +137,11 @@ class GrowPyConfig:
 
         # [simulation] section
         config["simulation"] = {
-            "height_model_flushes": str(self.height_model_flushes),
+            "height_model_cycles": str(self.height_model_cycles),
             "random_seed": (
                 str(self.random_seed) if self.random_seed is not None else "none"
             ),
-            # age_to_flush_ratio removed
+            # age_to_cycle_ratio removed
         }
 
         # [output] section
