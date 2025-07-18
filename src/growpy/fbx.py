@@ -18,17 +18,29 @@ Author: Generated for The Grove forest generation pipeline
 """
 
 import argparse
+import logging
 import re
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 try:
     import bpy
 
     BLENDER_AVAILABLE = True
-except ImportError:
+    logger.info("Blender (bpy) module imported successfully")
+except ImportError as e:
     BLENDER_AVAILABLE = False
+    logger.warning(f"Blender (bpy) module not available: {e}")
+
+
+class BlenderOperationError(Exception):
+    """Exception raised when Blender operations fail."""
+    pass
 
 
 class LODCombiner:
@@ -132,15 +144,20 @@ class LODCombiner:
     def clear_scene(self):
         """Clear all objects from the current Blender scene."""
         if not BLENDER_AVAILABLE:
-            return
+            raise BlenderOperationError("Blender is not available")
 
-        # Select all mesh objects
-        bpy.ops.object.select_all(action="SELECT")
-        bpy.ops.object.delete(use_global=False)
+        try:
+            # Select all mesh objects
+            bpy.ops.object.select_all(action="SELECT")
+            bpy.ops.object.delete(use_global=False)
 
-        # Clear mesh data that's no longer used
-        for mesh in bpy.data.meshes:
-            bpy.data.meshes.remove(mesh)
+            # Clear mesh data that's no longer used
+            for mesh in bpy.data.meshes:
+                bpy.data.meshes.remove(mesh)
+            
+            logger.debug("Scene cleared successfully")
+        except Exception as e:
+            raise BlenderOperationError(f"Failed to clear scene: {e}")
 
     def import_model(self, model_path: Path, object_name: str) -> bool:
         """
@@ -154,6 +171,11 @@ class LODCombiner:
             True if successful, False otherwise
         """
         if not BLENDER_AVAILABLE:
+            logger.error("Blender is not available for import operations")
+            return False
+
+        if not model_path.exists():
+            logger.error(f"Model file does not exist: {model_path}")
             return False
 
         try:
@@ -162,9 +184,12 @@ class LODCombiner:
             # Import based on file extension
             if file_ext == ".obj":
                 bpy.ops.wm.obj_import(filepath=str(model_path))
+                logger.debug(f"Imported OBJ file: {model_path}")
             elif file_ext in {".usd", ".usda", ".usdc"}:
                 bpy.ops.wm.usd_import(filepath=str(model_path))
+                logger.debug(f"Imported USD file: {model_path}")
             else:
+                logger.error(f"Unsupported file format: {file_ext}")
                 return False
 
             # Get the imported object (should be the last selected)
@@ -183,12 +208,15 @@ class LODCombiner:
                         location=False, rotation=False, scale=True
                     )
 
+                logger.debug(f"Successfully imported and named object: {object_name}")
                 return True
+            else:
+                logger.error(f"No objects were imported from {model_path}")
+                return False
 
-        except Exception:
-            pass
-
-        return False
+        except Exception as e:
+            logger.error(f"Failed to import model {model_path}: {e}")
+            return False
 
     def setup_lod_group(
         self, species: str, model_files: List[Tuple[str, Path]]
@@ -233,9 +261,13 @@ class LODCombiner:
             True if successful, False otherwise
         """
         if not BLENDER_AVAILABLE:
+            logger.error("Blender is not available for FBX export")
             return False
 
         try:
+            # Ensure output directory exists
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
             # FBX export settings optimized for game engines
             bpy.ops.export_scene.fbx(
                 filepath=str(output_path),
@@ -266,9 +298,11 @@ class LODCombiner:
                 batch_mode="OFF",
             )
 
+            logger.info(f"Successfully exported FBX: {output_path}")
             return True
 
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to export FBX {output_path}: {e}")
             return False
 
     def process_species(
@@ -345,7 +379,7 @@ class LODCombiner:
 
             for species, success in results.items():
                 if success:
-                    fbx_file = f"{species}_LODs.fbx"
+                    fbx_file = f"{species}_Models.fbx"
                     f.write(f"✓ {fbx_file}\n")
                     successful.append(species)
                 else:
@@ -371,7 +405,7 @@ def main():
     parser.add_argument(
         "--input_dir",
         type=str,
-        default="data/woutput",
+        default="data/output",
         help="Directory containing LOD OBJ files (default: data/output)",
     )
 
