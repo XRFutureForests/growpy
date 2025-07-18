@@ -5,6 +5,7 @@ This module provides functions to create groves from CSV data and simulate
 forest growth using The Grove's built-in light competition system.
 """
 
+import logging
 import pickle
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -17,6 +18,14 @@ from sklearn.linear_model import LinearRegression
 from tqdm import tqdm
 
 from .config import GrowPyConfig
+
+# Set up logging
+logger = logging.getLogger(__name__)
+
+
+class ValidationError(Exception):
+    """Exception raised when input validation fails."""
+    pass
 from .exporters import (
     ModelFormat,
     export_grove_json_files,
@@ -36,23 +45,45 @@ DEFAULT_OUTPUT_PATH = DEFAULT_DATA_PATH / "output"
 
 
 def calculate_tree_height(grove: gc.Grove, tree_index: int = 0) -> float:
-    """Calculate tree height by finding the maximum Z-coordinate of all nodes."""
+    """
+    Calculate tree height by finding the maximum Z-coordinate of all nodes.
+    
+    Args:
+        grove: Grove object containing trees
+        tree_index: Index of the tree to measure (default: 0)
+        
+    Returns:
+        Tree height as float
+        
+    Raises:
+        ValidationError: If tree index is invalid or grove is empty
+    """
+    if not grove.trees:
+        raise ValidationError("Grove contains no trees")
+        
+    if tree_index < 0 or tree_index >= len(grove.trees):
+        raise ValidationError(f"Invalid tree index {tree_index}. Grove has {len(grove.trees)} trees")
+    
     max_z = 0.0
 
     def traverse_branch(branch):
         nonlocal max_z
+        if not hasattr(branch, 'nodes'):
+            return
+            
         for node in branch.nodes:
             # node.pos is the absolute position as Vector(x, y, z)
-            if node.pos.z > max_z:
-                max_z = node.pos.z
+            if hasattr(node, 'pos') and hasattr(node.pos, 'z'):
+                if node.pos.z > max_z:
+                    max_z = node.pos.z
 
             # Recursively check side branches
-            for side_branch in node.side_branches:
-                traverse_branch(side_branch)
+            if hasattr(node, 'side_branches'):
+                for side_branch in node.side_branches:
+                    traverse_branch(side_branch)
 
-    # Get the first tree (trunk branch)
-    if grove.trees and len(grove.trees) > tree_index:
-        traverse_branch(grove.trees[tree_index])
+    # Get the specified tree (trunk branch)
+    traverse_branch(grove.trees[tree_index])
 
     return max_z
 
@@ -122,11 +153,11 @@ def generate_height_curves(
     return height_curves
 
 
-def create_age_prediction_models(
+def create_flush_prediction_models(
     height_curves: pd.DataFrame, output_dir: Path
 ) -> Dict[str, LinearRegression]:
     """
-    Create linear regression models to predict age from height for each species.
+    Create linear regression models to predict required flushes from target height for each species.
 
     Args:
         height_curves: DataFrame containing height curves for each species
@@ -135,33 +166,27 @@ def create_age_prediction_models(
     Returns:
         Dictionary mapping species names to trained LinearRegression models
     """
-    height_to_age_models = {}
+    height_to_flush_models = {}
 
     for species_name in height_curves.index:
-        # Get height data for this species
         heights = np.array(height_curves.loc[species_name].values)
-        ages = np.array(range(1, height_curves.shape[1] + 1))
-
-        # Create and fit linear regression model
+        flushes = np.array(range(1, height_curves.shape[1] + 1))
         model = LinearRegression()
-        model.fit(heights.reshape(-1, 1), ages.reshape(-1, 1))
+        model.fit(heights.reshape(-1, 1), flushes.reshape(-1, 1))
+        height_to_flush_models[species_name] = model
 
-        # Store the model
-        height_to_age_models[species_name] = model
-
-    # Save the models
-    models_path = output_dir / "height_to_age_models.pkl"
+    models_path = output_dir / "height_to_flush_models.pkl"
     with open(models_path, "wb") as f:
-        pickle.dump(height_to_age_models, f)
+        pickle.dump(height_to_flush_models, f)
 
-    return height_to_age_models
+    return height_to_flush_models
 
 
-def predict_age_from_height(
+def predict_flushes_from_height(
     species_name: str, height: float, models: Dict[str, LinearRegression]
 ) -> int:
     """
-    Predict tree age from height using the linear model for the given species.
+    Predict required flushes from height using the linear model for the given species.
 
     Args:
         species_name: Name of the species
@@ -169,35 +194,61 @@ def predict_age_from_height(
         models: Dictionary of trained models
 
     Returns:
-        Predicted age as integer
+        Predicted flushes needed as integer
+        
+    Raises:
+        ValueError: If species not found in models or height is invalid
+        ValidationError: If prediction fails
     """
     if species_name not in models:
         raise ValueError(f"No model available for species: {species_name}")
+    
+    # Validate height input
+    if not isinstance(height, (int, float)) or not np.isfinite(height):
+        raise ValidationError(f"Invalid height value: {height}")
+    
+    if height <= 0:
+        raise ValidationError(f"Height must be positive: {height}")
 
-    model = models[species_name]
-    predicted_age = model.predict(np.array([[height]]))[0][0]
-    return max(0, int(predicted_age))  # Ensure age is not negative
+    try:
+        model = models[species_name]
+        prediction = model.predict(np.array([[height]]))
+        
+        # Safe array access with bounds checking
+        if len(prediction) == 0 or len(prediction[0]) == 0:
+            raise ValidationError("Model returned empty prediction")
+            
+        predicted_flushes = prediction[0][0]
+        
+        # Validate prediction result
+        if not np.isfinite(predicted_flushes):
+            raise ValidationError(f"Model prediction is not finite: {predicted_flushes}")
+            
+        return max(1, int(predicted_flushes))  # Ensure at least 1 flush
+        
+    except Exception as e:
+        raise ValidationError(f"Prediction failed for species {species_name}, height {height}: {e}")
 
 
-def add_predicted_ages_to_data(
+def add_predicted_flushes_to_data(
     data: pd.DataFrame, models: Dict[str, LinearRegression]
 ) -> pd.DataFrame:
     """
-    Add predicted ages to forest data based on height and species.
+    Add predicted required flushes to forest data based on height and species.
 
     Args:
         data: Original forest data DataFrame
-        models: Dictionary of trained age prediction models
+        models: Dictionary of trained flush prediction models
 
     Returns:
-        DataFrame with added 'predicted_age' column
+        DataFrame with added 'required_flushes' column
     """
-    data_with_ages = data.copy()
-    data_with_ages["predicted_age"] = data_with_ages.apply(
-        lambda row: predict_age_from_height(row["species"], row["height"], models),
+    data_with_flushes = data.copy()
+    data_with_flushes["required_flushes"] = data_with_flushes.apply(
+        lambda row: predict_flushes_from_height(row["species"], row["height"], models),
         axis=1,
     )
-    return data_with_ages
+    return data_with_flushes
 
 
 def create_forest_from_csv(csv_path: Path, config: GrowPyConfig) -> ForestData:
@@ -233,6 +284,9 @@ def create_forest_from_csv(csv_path: Path, config: GrowPyConfig) -> ForestData:
     for col in required:
         if data[col].isnull().any():
             raise ValueError(f"Column '{col}' contains missing values")
+            
+    # Validate numerical data ranges
+    _validate_forest_data(data)
 
     # Validate species
     unique_species = data["species"].unique()
@@ -254,21 +308,21 @@ def create_forest_from_csv(csv_path: Path, config: GrowPyConfig) -> ForestData:
     input_output_dir = config.output_dir / input_name / "analysis"
     input_output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Always generate height curves and age prediction models
+    # Always generate height curves and flush prediction models
     height_curves = generate_height_curves(species_list, config, input_output_dir)
 
-    # Create age prediction models
-    models = create_age_prediction_models(height_curves, input_output_dir)
+    # Create flush prediction models instead of age prediction models
+    models = create_flush_prediction_models(height_curves, input_output_dir)
 
-    # Add predicted ages to the data
-    data = add_predicted_ages_to_data(data, models)
+    # Add predicted flushes to the data
+    data = add_predicted_flushes_to_data(data, models)
 
     # Save the enhanced data for future use
-    enhanced_csv_path = input_output_dir / f"{input_name}_with_predicted_age.csv"
+    enhanced_csv_path = input_output_dir / f"{input_name}_with_predicted_flushes.csv"
     data.to_csv(enhanced_csv_path, index=False)
 
-    # Set growth cycles based on maximum predicted age if not explicitly set
-    max_flushes = _calculate_max_growth_cycles(data, config)
+    # Set growth cycles based on maximum required flushes
+    max_flushes = int(data["required_flushes"].max()) + 1
     if config.growth_cycles is None:
         config.growth_cycles = max_flushes
 
@@ -330,10 +384,42 @@ def grow_forest(forest_data: ForestData, config: GrowPyConfig) -> None:
 
 
 # Private helper functions
+def _validate_forest_data(data: pd.DataFrame) -> None:
+    """
+    Validate numerical data in forest CSV for reasonable ranges.
+    
+    Args:
+        data: DataFrame containing forest data
+        
+    Raises:
+        ValidationError: If data contains invalid values
+    """
+    # Validate coordinates are finite
+    coordinate_cols = ['x', 'y', 'z']
+    for col in coordinate_cols:
+        if col in data.columns:
+            if not data[col].apply(lambda x: np.isfinite(x)).all():
+                raise ValidationError(f"Column '{col}' contains invalid values (inf/nan)")
+    
+    # Validate heights are positive
+    if 'height' in data.columns:
+        if (data['height'] <= 0).any():
+            raise ValidationError("Tree heights must be positive")
+        if (data['height'] > 200).any():  # Reasonable upper bound
+            logger.warning("Some trees have heights > 200m, which may be unrealistic")
+    
+    # Check for duplicate positions (potential data issue)
+    if len(coordinate_cols) == 3 and all(col in data.columns for col in coordinate_cols):
+        duplicates = data.duplicated(subset=coordinate_cols, keep=False)
+        if duplicates.any():
+            num_duplicates = duplicates.sum()
+            logger.warning(f"Found {num_duplicates} trees with duplicate positions")
+
+
 def _calculate_max_growth_cycles(data: pd.DataFrame, config: GrowPyConfig) -> int:
-    """Calculate maximum growth cycles needed based on predicted ages."""
-    max_age = data["predicted_age"].max()
-    return int(max_age / config.age_to_flush_ratio) + 1  # Ensure at least one flush
+    """Calculate maximum growth cycles needed based on predicted flushes."""
+    max_flushes = data["required_flushes"].max()
+    return int(max_flushes / config.age_to_flush_ratio) + 1  # Ensure at least one flush
 
 
 def _create_grove_for_species(
@@ -358,18 +444,47 @@ def _create_grove_for_species(
 def _add_trees_to_grove(
     grove: gc.Grove, species_data: pd.DataFrame, max_flushes: int, config: GrowPyConfig
 ) -> None:
-    """Add trees to a grove based on CSV data."""
+    """
+    Add trees to a grove based on CSV data with pre-computed required flushes.
+
+    The delay system ensures all trees finish growing at their CSV heights simultaneously:
+    - Trees needing fewer flushes get longer delays (start later)
+    - Trees needing more flushes get shorter delays (start earlier)
+    """
     for _, tree_row in species_data.iterrows():
         position = _create_tree_position(tree_row)
         direction = _create_default_direction()
-        delay = _calculate_growth_delay(tree_row, max_flushes, config)
-
+        delay = _calculate_simple_delay(tree_row, max_flushes, config)
         grove.add_new_tree(position, direction, delay)
 
 
 def _create_tree_position(tree_row: pd.Series) -> TreePosition:
-    """Create a 3D position vector from CSV row data."""
-    return gc.Vector(float(tree_row.x), float(tree_row.y), float(tree_row.z))
+    """
+    Create a 3D position vector from CSV row data.
+
+    Note: Uses CSV coordinates directly (X, Y, Z as-is).
+    If importing into Blender, you may need to flip Y-axis by scaling Y by -1
+    after import due to coordinate system differences. See docs/IMPORT_ISSUES.md
+    
+    Args:
+        tree_row: Pandas Series with x, y, z coordinates
+        
+    Returns:
+        3D position vector
+        
+    Raises:
+        ValidationError: If coordinates are invalid
+    """
+    try:
+        x, y, z = float(tree_row.x), float(tree_row.y), float(tree_row.z)
+        
+        # Validate coordinates are finite
+        if not all(np.isfinite([x, y, z])):
+            raise ValidationError(f"Invalid coordinates: x={x}, y={y}, z={z}")
+            
+        return gc.Vector(x, y, z)
+    except (ValueError, TypeError) as e:
+        raise ValidationError(f"Failed to parse coordinates: {e}")
 
 
 def _create_default_direction() -> TreeDirection:
@@ -377,12 +492,31 @@ def _create_default_direction() -> TreeDirection:
     return gc.Vector(0.0, 0.0, 1.0)
 
 
-def _calculate_growth_delay(
+def _calculate_simple_delay(
     tree_row: pd.Series, max_flushes: int, config: GrowPyConfig
 ) -> int:
-    """Calculate growth delay based on predicted age."""
-    required_flushes = int(tree_row["predicted_age"] / config.age_to_flush_ratio) + 1
-    return max_flushes - required_flushes
+    """
+    Calculate growth delay for a tree based on its required flushes.
+    
+    Args:
+        tree_row: Row containing tree data including 'required_flushes'
+        max_flushes: Maximum flushes needed across all trees
+        config: Configuration object (unused but kept for API consistency)
+    
+    Returns:
+        Delay in growth cycles (non-negative integer)
+    """
+    required_flushes = tree_row["required_flushes"]
+    
+    # Delay = total_flushes - flushes_needed
+    # Trees that need fewer flushes get longer delays
+    # Trees that need more flushes get shorter delays
+    delay = max_flushes - required_flushes
+    
+    # Ensure delay is non-negative
+    return max(0, delay)
+
+
 
 
 def _extract_grove_objects(forest_data: ForestData) -> List[gc.Grove]:
@@ -407,30 +541,5 @@ def _simulate_growth_cycle(
         grove.simulate(1)  # One flush at a time as documented
 
 
-def _run_example_simulation() -> None:
-    """Run an example simulation for testing purposes."""
-    config = GrowPyConfig()
-    config.output_dir = Path(DEFAULT_OUTPUT_PATH)
-
-    csv_path = Path(DEFAULT_INPUT_PATH / "demo_forest.csv")
-    input_name = csv_path.stem  # "demo_forest"
-
-    # Create forest and simulate growth
-    forest_data = create_forest_from_csv(csv_path, config)
-    simulate_forest_growth(forest_data, config)
-
-    # Export results with organized structure
-    export_grove_json_files(forest_data, config.output_dir, input_name)
-
-    lod_configs = GrowPyConfig.get_lod_configs()
-    export_individual_tree_models(
-        forest_data,
-        config.output_dir,
-        lod_configs,
-        model_format=ModelFormat.USD,
-        input_name=input_name,
-    )
-
-
 if __name__ == "__main__":
-    _run_example_simulation()
+    print("This module provides forest simulation functionality.")

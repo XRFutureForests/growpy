@@ -3,9 +3,18 @@ Configuration for GrowPy - simplified and focused on Grove 2.2 integration.
 """
 
 import configparser
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+# Set up logging
+logger = logging.getLogger(__name__)
+
+
+class ConfigurationError(Exception):
+    """Exception raised when configuration is invalid."""
+    pass
 
 
 @dataclass
@@ -32,7 +41,7 @@ class GrowPyConfig:
 
     # Age prediction settings
     age_to_flush_ratio: float = (
-        1.0  # How many years of age per flush (default: 4 years/flush)
+        1.0  # How many years of age per flush (default: 1 year/flush)
     )
 
     @classmethod
@@ -45,12 +54,19 @@ class GrowPyConfig:
 
         Returns:
             GrowPyConfig instance with settings from the file
+            
+        Raises:
+            FileNotFoundError: If config file doesn't exist
+            ConfigurationError: If config file is malformed or has invalid values
         """
         if not config_path.exists():
             raise FileNotFoundError(f"Configuration file not found: {config_path}")
 
         config = configparser.ConfigParser()
-        config.read(config_path)
+        try:
+            config.read(config_path)
+        except configparser.Error as e:
+            raise ConfigurationError(f"Invalid configuration file format: {e}")
 
         # Start with defaults
         kwargs = {}
@@ -59,57 +75,103 @@ class GrowPyConfig:
         if config.has_section("simulation"):
             simulation = config["simulation"]
 
-            if "height_model_flushes" in simulation:
-                kwargs["height_model_flushes"] = simulation.getint(
-                    "height_model_flushes"
-                )
-            if "growth_cycles" in simulation:
-                cycles_val = simulation.get("growth_cycles", "")
-                kwargs["growth_cycles"] = (
-                    None if cycles_val.lower() == "none" else int(cycles_val)
-                )
-            if "random_seed" in simulation:
-                seed_val = simulation.get("random_seed", "")
-                kwargs["random_seed"] = (
-                    None if seed_val.lower() == "none" else int(seed_val)
-                )
-            if "age_to_flush_ratio" in simulation:
-                kwargs["age_to_flush_ratio"] = simulation.getfloat("age_to_flush_ratio")
+            try:
+                if "height_model_flushes" in simulation:
+                    flushes = simulation.getint("height_model_flushes")
+                    if flushes <= 0:
+                        raise ConfigurationError("height_model_flushes must be positive")
+                    kwargs["height_model_flushes"] = flushes
+                    
+                if "growth_cycles" in simulation:
+                    cycles_val = simulation.get("growth_cycles", "")
+                    if cycles_val.lower() == "none":
+                        kwargs["growth_cycles"] = None
+                    else:
+                        cycles = int(cycles_val)
+                        if cycles <= 0:
+                            raise ConfigurationError("growth_cycles must be positive")
+                        kwargs["growth_cycles"] = cycles
+                        
+                if "random_seed" in simulation:
+                    seed_val = simulation.get("random_seed", "")
+                    if seed_val.lower() == "none":
+                        kwargs["random_seed"] = None
+                    else:
+                        seed = int(seed_val)
+                        if seed < 0:
+                            raise ConfigurationError("random_seed must be non-negative")
+                        kwargs["random_seed"] = seed
+                        
+                if "age_to_flush_ratio" in simulation:
+                    ratio = simulation.getfloat("age_to_flush_ratio")
+                    if ratio <= 0:
+                        raise ConfigurationError("age_to_flush_ratio must be positive")
+                    kwargs["age_to_flush_ratio"] = ratio
+                    
+            except (ValueError, configparser.Error) as e:
+                raise ConfigurationError(f"Invalid value in simulation section: {e}")
 
         # Parse [output] section
         if config.has_section("output"):
             output = config["output"]
 
-            if "output_dir" in output:
-                output_dir = output.get("output_dir")
-                if output_dir:
-                    kwargs["output_dir"] = Path(output_dir)
-            if "fbx_output_dir" in output:
-                fbx_dir = output.get("fbx_output_dir", "")
-                kwargs["fbx_output_dir"] = (
-                    None if fbx_dir.lower() == "none" else Path(fbx_dir)
-                )
+            try:
+                if "output_dir" in output:
+                    output_dir = output.get("output_dir")
+                    if output_dir:
+                        kwargs["output_dir"] = Path(output_dir)
+                        
+                if "fbx_output_dir" in output:
+                    fbx_dir = output.get("fbx_output_dir", "")
+                    kwargs["fbx_output_dir"] = (
+                        None if fbx_dir.lower() == "none" else Path(fbx_dir)
+                    )
+            except Exception as e:
+                raise ConfigurationError(f"Invalid value in output section: {e}")
 
         # Parse [build] section
         if config.has_section("build"):
             build = config["build"]
 
-            if "resolution" in build:
-                kwargs["resolution"] = build.getint("resolution")
-            if "resolution_reduce" in build:
-                kwargs["resolution_reduce"] = build.getfloat("resolution_reduce")
-            if "texture_repeat" in build:
-                kwargs["texture_repeat"] = build.getint("texture_repeat")
-            if "build_cutoff_age" in build:
-                kwargs["build_cutoff_age"] = build.getint("build_cutoff_age")
-            if "build_cutoff_thickness" in build:
-                kwargs["build_cutoff_thickness"] = build.getfloat(
-                    "build_cutoff_thickness"
-                )
-            if "build_blend" in build:
-                kwargs["build_blend"] = build.getboolean("build_blend")
-            if "build_end_cap" in build:
-                kwargs["build_end_cap"] = build.getboolean("build_end_cap")
+            try:
+                if "resolution" in build:
+                    resolution = build.getint("resolution")
+                    if resolution <= 0:
+                        raise ConfigurationError("resolution must be positive")
+                    kwargs["resolution"] = resolution
+                    
+                if "resolution_reduce" in build:
+                    reduce_val = build.getfloat("resolution_reduce")
+                    if not 0 < reduce_val <= 1:
+                        raise ConfigurationError("resolution_reduce must be between 0 and 1")
+                    kwargs["resolution_reduce"] = reduce_val
+                    
+                if "texture_repeat" in build:
+                    repeat = build.getint("texture_repeat")
+                    if repeat <= 0:
+                        raise ConfigurationError("texture_repeat must be positive")
+                    kwargs["texture_repeat"] = repeat
+                    
+                if "build_cutoff_age" in build:
+                    age = build.getint("build_cutoff_age")
+                    if age < 0:
+                        raise ConfigurationError("build_cutoff_age must be non-negative")
+                    kwargs["build_cutoff_age"] = age
+                    
+                if "build_cutoff_thickness" in build:
+                    thickness = build.getfloat("build_cutoff_thickness")
+                    if thickness < 0:
+                        raise ConfigurationError("build_cutoff_thickness must be non-negative")
+                    kwargs["build_cutoff_thickness"] = thickness
+                    
+                if "build_blend" in build:
+                    kwargs["build_blend"] = build.getboolean("build_blend")
+                    
+                if "build_end_cap" in build:
+                    kwargs["build_end_cap"] = build.getboolean("build_end_cap")
+                    
+            except (ValueError, configparser.Error) as e:
+                raise ConfigurationError(f"Invalid value in build section: {e}")
 
         return cls(**kwargs)
 
