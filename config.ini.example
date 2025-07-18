@@ -7,9 +7,6 @@
 # This determines how many growth cycles are simulated to create height models
 height_model_flushes = 75
 
-# Maximum growth cycles for forest simulation (auto-calculated if not set)
-# If not specified, this will be calculated based on the maximum predicted tree age
-# growth_cycles = none
 
 # Random seed for reproducible results (set to 'none' for random behavior)
 random_seed = 42
@@ -21,30 +18,13 @@ random_seed = 42
 # Base output directory for all generated files
 output_dir = data/output
 
-# Specific directory for FBX exports (uses output_dir/fbx if not set)
-fbx_output_dir = none
-
 [build]
-# 3D model generation parameters
-# These affect the polygon count and visual quality of generated models
-
-# Base resolution (number of sides for branch cross-sections)
-resolution = 16
-
-# How quickly to reduce resolution on thinner branches (0.0-1.0)
-resolution_reduce = 0.8
-
-# Number of times to repeat bark texture around circumference
-texture_repeat = 3
-
-# Stop building branches after this age (0 = build all)
-build_cutoff_age = 0
-
-# Stop building branches thinner than this diameter
-build_cutoff_thickness = 0.0
-
-# Add smooth transitions between main and side branches
-build_blend = true
-
-# Add geometry caps to branch ends
-build_end_cap = true
+# LOD (Level of Detail) configuration
+# Specify which LOD levels to generate (comma-separated)
+# Available levels: LOD0_Ultra, LOD1_High, LOD2_Medium, LOD3_Low, LOD4_VeryLow, LOD5_Minimal
+# Use 'all' to generate all LOD levels, or specify specific levels for single/subset generation
+# Examples:
+#   lod_levels = all                    # Generate all 6 LOD levels
+#   lod_levels = LOD1_High              # Generate only high quality model
+#   lod_levels = LOD2_Medium, LOD3_Low  # Generate medium and low quality models
+lod_levels = all
