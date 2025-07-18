@@ -14,9 +14,8 @@ height_model_flushes = 75
 # Random seed for reproducible results (set to 'none' for random behavior)
 random_seed = 42
 
-# Age to flush ratio - how many years of real tree age per growth flush
-# Default: 1.0 means each flush represents ~1 years of growth
-age_to_flush_ratio = 5.0
+# Note: age_to_flush_ratio removed to avoid growth timing issues
+# Use height_model_flushes to control simulation time instead
 
 [output]
 # Base output directory for all generated files
