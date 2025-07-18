@@ -14,27 +14,129 @@ Input Requirements:
 - No age column needed - ages are predicted from heights automatically
 """
 
+import logging
 import sys
 from pathlib import Path
 
 
+def setup_logging():
+    """Setup logging configuration."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler('forest_generation.log')
+        ]
+    )
+
+
+def check_analysis_files_exist(output_dir, input_name):
+    """Check if analysis files already exist."""
+    analysis_dir = output_dir / input_name / "analysis"
+    required_files = [
+        "height_curves.csv",
+        "height_to_cycle_models.pkl",
+        f"{input_name}_with_predicted_cycles.csv"
+    ]
+    return all((analysis_dir / file).exists() for file in required_files)
+
+
+def check_grove_files_exist(output_dir, input_name, forest):
+    """Check if grove JSON files already exist."""
+    groves_dir = output_dir / input_name / "groves"
+    if not groves_dir.exists():
+        return False
+    
+    # Check if all species have JSON files
+    for _, species, _ in forest:
+        species_file = groves_dir / f"{species.replace(' - ', '_').replace(' ', '_')}_grove.json"
+        if not species_file.exists():
+            return False
+    return True
+
+
+def check_tree_models_exist(output_dir, input_name, forest, lod_configs, model_format):
+    """Check if tree model files already exist."""
+    tree_models_dir = output_dir / input_name / "tree_models"
+    if not tree_models_dir.exists():
+        return False
+    
+    # Check if all species have model files for all LOD levels
+    for _, species, _ in forest:
+        species_dir = tree_models_dir / species.replace(' - ', '_').replace(' ', '_')
+        if not species_dir.exists():
+            return False
+        
+        # Check each LOD level
+        for lod_name in lod_configs.keys():
+            extension = "usd" if model_format.name == "USD" else "fbx"
+            model_file = species_dir / f"{species.replace(' - ', '_').replace(' ', '_')}_tree_000_{lod_name}.{extension}"
+            if not model_file.exists():
+                return False
+    return True
+
+
+def check_all_outputs_exist(output_dir, input_name, lod_configs):
+    """Check if all output files exist (analysis, groves, USD, FBX)."""
+    # Check analysis files
+    analysis_dir = output_dir / input_name / "analysis"
+    required_files = [
+        "height_curves.csv",
+        "height_to_cycle_models.pkl",
+        f"{input_name}_with_predicted_cycles.csv"
+    ]
+    if not all((analysis_dir / file).exists() for file in required_files):
+        return False
+    
+    # Check grove files exist (we need to load forest to check species)
+    groves_dir = output_dir / input_name / "groves"
+    if not groves_dir.exists() or not any(groves_dir.glob("*_grove.json")):
+        return False
+    
+    # Check USD files exist
+    tree_models_dir = output_dir / input_name / "tree_models"
+    if not tree_models_dir.exists():
+        return False
+    
+    # Check if at least some model files exist
+    for species_dir in tree_models_dir.iterdir():
+        if species_dir.is_dir():
+            # Check if we have both USD and FBX files
+            usd_files = list(species_dir.glob("*.usd"))
+            fbx_files = list(species_dir.glob("*.fbx"))
+            if len(usd_files) < len(lod_configs) or len(fbx_files) == 0:
+                return False
+    
+    return True
+
+
 def main():
     """Generate forest models from demo data."""
+    setup_logging()
+    logger = logging.getLogger(__name__)
+    
     # Add src to path for imports
     src_path = Path(__file__).parent / "src"
     sys.path.insert(0, str(src_path))
 
     # Import after path setup
+    import pandas as pd
     from growpy.config import GrowPyConfig
     from growpy.exporters import (
         ModelFormat,
         export_grove_json_files,
         export_individual_tree_models,
     )
-    from growpy.simulation import add_trees, grow_forest
+    from growpy.simulation import (
+        load_and_validate_csv,
+        generate_height_curves_and_models,
+        add_growth_predictions_to_data,
+        create_groves_from_data,
+        simulate_forest_growth
+    )
 
-    print("🌲 Grove Forest Generator")
-    print("=" * 50)
+    logger.info("Starting Grove Forest Generator")
 
     # Setup paths
     data_dir = Path(__file__).parent / "data"
@@ -44,8 +146,8 @@ def main():
     config_path = Path(__file__).parent / "config.ini"
 
     if not csv_path.exists():
-        print(f"❌ Error: Could not find {csv_path}")
-        print("   Make sure the demo forest CSV file exists in the input folder.")
+        logger.error(f"Could not find {csv_path}")
+        logger.error("Make sure the demo forest CSV file exists in the input folder.")
         return 1
 
     # Get input name for organized output structure
@@ -53,96 +155,120 @@ def main():
 
     # Configure simulation - try to load from config.ini, fallback to defaults
     if config_path.exists():
-        print(f"📋 Loading configuration from {config_path}")
+        logger.info(f"Loading configuration from {config_path}")
         try:
             config = GrowPyConfig.from_config_file(config_path)
-            print("   ✅ Configuration loaded successfully")
+            logger.info("Configuration loaded successfully")
         except Exception as e:
-            print(f"   ⚠️  Warning: Could not load config file ({e})")
-            print("   Using default configuration")
+            logger.warning(f"Could not load config file ({e})")
+            logger.info("Using default configuration")
             config = GrowPyConfig()
     else:
-        print("📋 Using default configuration (no config.ini found)")
+        logger.info("Using default configuration (no config.ini found)")
         config = GrowPyConfig()
         # Create a sample config.ini file for user reference
         try:
             config.to_config_file(config_path)
-            print(f"   📄 Created sample config.ini at {config_path}")
+            logger.info(f"Created sample config.ini at {config_path}")
         except Exception as e:
-            print(f"   ⚠️  Could not create sample config.ini: {e}")
+            logger.warning(f"Could not create sample config.ini: {e}")
 
     config.output_dir = output_dir
 
-    print(f"📁 Input:  {csv_path}")
-    print(f"📁 Output: {output_dir}/{input_name}/")
-    print()
+    logger.info(f"Input:  {csv_path}")
+    logger.info(f"Output: {output_dir}/{input_name}/")
+
+    # Quick check if all outputs already exist
+    lod_configs = config.get_selected_lod_configs()
+    if check_all_outputs_exist(output_dir, input_name, lod_configs):
+        logger.info("All output files already exist. Forest generation is complete!")
+        logger.info(f"Check output directory: {output_dir}/{input_name}/")
+        return 0
 
     # Step 1: Load forest data and generate age predictions
-    print("📊 Loading forest data and generating age predictions...")
-    print("   This step will:")
-    print("   • Load tree positions, species, and heights from CSV")
-    print("   • Generate height curves for each species through simulation")
-    print("   • Create linear regression models to predict age from height")
-    print("   • Apply age predictions to all trees based on their heights")
-    forest = []
-    forest, growth_cycles = add_trees(forest, csv_path, config)
+    if check_analysis_files_exist(output_dir, input_name):
+        logger.info("Analysis files already exist, skipping forest data loading and age prediction")
+        # Load existing enhanced data
+        enhanced_csv_path = output_dir / input_name / "analysis" / f"{input_name}_with_predicted_cycles.csv"
+        if not enhanced_csv_path.exists():
+            logger.error(f"Enhanced CSV file not found: {enhanced_csv_path}")
+            return 1
+        
+        enhanced_data = pd.read_csv(enhanced_csv_path)
+        growth_cycles = int(enhanced_data["required_cycles"].max()) + 1
+        forest = create_groves_from_data(enhanced_data, growth_cycles, config)
+        logger.info(f"Loaded {len(forest)} species for export steps")
+    else:
+        logger.info("Loading forest data and generating age predictions...")
+        # Step 1: Load and validate CSV data
+        data = load_and_validate_csv(csv_path)
+        
+        # Step 2: Generate height curves and prediction models
+        _, models = generate_height_curves_and_models(data, csv_path, config)
+        
+        # Step 3: Create enhanced data with growth cycle predictions
+        enhanced_data, growth_cycles = add_growth_predictions_to_data(data, models, csv_path, config)
+        
+        # Step 4: Create grove objects
+        forest = create_groves_from_data(enhanced_data, growth_cycles, config)
+        
+        logger.info(f"Loaded {len(forest)} species:")
+        for _, species, tree_count in forest:
+            logger.info(f"  • {species}: {tree_count} trees")
+        logger.info(f"Growth cycles required: {growth_cycles}")
 
-    print(f"   Loaded {len(forest)} species:")
-    for grove, species, tree_count in forest:
-        print(f"   • {species}: {tree_count} trees")
-    print(f"   Growth cycles required: {growth_cycles}")
-    print()
-
-    # Step 2: Simulate growth
-    print("🌱 Simulating forest growth...")
-    grow_forest(forest, config, growth_cycles)
-    print("   ✅ Growth simulation complete")
-    print()
+        # Step 2: Simulate growth
+        logger.info("Simulating forest growth...")
+        simulate_forest_growth(forest, config, growth_cycles)
+        logger.info("Growth simulation complete")
 
     # Step 3: Export models
-    print("💾 Exporting forest data...")
+    logger.info("Starting export process...")
 
     # Export grove JSON files for Blender import
-    print("\n📄 Exporting grove JSON files...")
-    export_grove_json_files(forest, output_dir, input_name)
+    if check_grove_files_exist(output_dir, input_name, forest):
+        logger.info("Grove JSON files already exist, skipping export")
+    else:
+        logger.info("Exporting grove JSON files...")
+        export_grove_json_files(forest, output_dir, input_name)
+        logger.info("Grove JSON export complete")
 
     # Export individual tree USD models with selected LOD levels
-    print("\n🌳 Exporting individual tree models as USD files...")
-    lod_configs = config.get_selected_lod_configs()
-    print(f"   Using LOD levels: {list(lod_configs.keys())}")
-    export_individual_tree_models(
-        forest,
-        output_dir,
-        lod_configs,
-        model_format=ModelFormat.USD,
-        input_name=input_name,
-    )
+    logger.info(f"Using LOD levels: {list(lod_configs.keys())}")
+    
+    if check_tree_models_exist(output_dir, input_name, forest, lod_configs, ModelFormat.USD):
+        logger.info("USD tree models already exist, skipping export")
+    else:
+        logger.info("Exporting individual tree models as USD files...")
+        export_individual_tree_models(
+            forest,
+            output_dir,
+            lod_configs,
+            model_format=ModelFormat.USD,
+            input_name=input_name,
+        )
+        logger.info("USD export complete")
 
     # Step 4: Export as FBX using integrated functionality (optional)
-    print("\n🔄 Exporting individual tree models as FBX files...")
-    export_individual_tree_models(
-        forest,
-        output_dir,
-        lod_configs,
-        model_format=ModelFormat.FBX,
-        input_name=input_name,
-    )
+    if check_tree_models_exist(output_dir, input_name, forest, lod_configs, ModelFormat.FBX):
+        logger.info("FBX tree models already exist, skipping export")
+    else:
+        logger.info("Exporting individual tree models as FBX files...")
+        export_individual_tree_models(
+            forest,
+            output_dir,
+            lod_configs,
+            model_format=ModelFormat.FBX,
+            input_name=input_name,
+        )
+        logger.info("FBX export complete")
 
-    print("\n🎉 Forest generation complete!")
-    print(f"   Check output directory: {output_dir}/{input_name}/")
-    print("\n📁 Directory structure:")
-    print(f"   {output_dir}/{input_name}/groves/           - JSON files for Blender")
-    print(
-        f"   {output_dir}/{input_name}/tree_models/      - USD and FBX models organized by species"
-    )
-    print(
-        f"   {output_dir}/{input_name}/analysis/        - Height curves and age prediction data"
-    )
-    print("\n💡 Next steps:")
-    print("   • Import JSON files into Blender for animation")
-    print("   • Use USD files in game engines or 3D software")
-    print("   • Use FBX files for Unity, Unreal Engine, or other game engines")
-    print("   • Each species has its own subfolder with all model formats")
+    logger.info("Forest generation complete!")
+    logger.info(f"Check output directory: {output_dir}/{input_name}/")
+    logger.info("Directory structure:")
+    logger.info(f"  {output_dir}/{input_name}/groves/           - JSON files for Blender")
+    logger.info(f"  {output_dir}/{input_name}/tree_models/      - USD and FBX models organized by species")
+    logger.info(f"  {output_dir}/{input_name}/analysis/        - Height curves and age prediction data")
 
     return 0
 

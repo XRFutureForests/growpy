@@ -3,16 +3,16 @@
 # Copy this file to 'config.ini' and modify the values as needed
 
 [simulation]
-# Number of flushes used specifically for height curve generation
+# Number of cycles used specifically for height curve generation
 # This determines how many growth cycles are simulated to create height models
-height_model_flushes = 75
+height_model_cycles = 75
 
 
 # Random seed for reproducible results (set to 'none' for random behavior)
 random_seed = 42
 
-# Note: age_to_flush_ratio removed to avoid growth timing issues
-# Use height_model_flushes to control simulation time instead
+# Note: age_to_cycle_ratio removed to avoid growth timing issues
+# Use height_model_cycles to control simulation time instead
 
 [output]
 # Base output directory for all generated files
