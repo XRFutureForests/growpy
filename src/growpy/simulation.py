@@ -26,11 +26,6 @@ logger = logging.getLogger(__name__)
 class ValidationError(Exception):
     """Exception raised when input validation fails."""
     pass
-from .exporters import (
-    ModelFormat,
-    export_grove_json_files,
-    export_individual_tree_models,
-)
 from .species_utils import apply_species_preset
 
 # Type aliases for better readability
@@ -323,20 +318,19 @@ def create_forest_from_csv(csv_path: Path, config: GrowPyConfig) -> ForestData:
 
     # Set growth cycles based on maximum required flushes
     max_flushes = int(data["required_flushes"].max()) + 1
-    if config.growth_cycles is None:
-        config.growth_cycles = max_flushes
+    growth_cycles = max_flushes
 
     forest_data = []
     for species_name, species_group in data.groupby("species"):
         grove = _create_grove_for_species(
-            str(species_name), species_group, max_flushes, config
+            str(species_name), species_group, growth_cycles, config
         )
         forest_data.append((grove, str(species_name), len(species_group)))
 
-    return forest_data
+    return forest_data, growth_cycles
 
 
-def simulate_forest_growth(forest_data: ForestData, config: GrowPyConfig) -> None:
+def simulate_forest_growth(forest_data: ForestData, config: GrowPyConfig, growth_cycles: int) -> None:
     """
     Simulate forest growth with light competition between all trees.
 
@@ -346,18 +340,14 @@ def simulate_forest_growth(forest_data: ForestData, config: GrowPyConfig) -> Non
     Args:
         forest_data: List of (grove, species_name, tree_count) tuples
         config: Configuration object containing growth parameters
+        growth_cycles: Number of growth cycles to simulate
     """
     if not forest_data:
         return
 
     grove_objects = _extract_grove_objects(forest_data)
 
-    # Ensure growth_cycles is set
-    cycles = config.growth_cycles
-    if cycles is None:
-        cycles = config.height_model_flushes  # Fallback to height model flushes
-
-    for cycle in tqdm(range(cycles), desc="Growing forest", unit="cycle"):
+    for cycle in tqdm(range(growth_cycles), desc="Growing forest", unit="cycle"):
         # Collect shade geometry from all groves for light competition
         shade_coordinates = _collect_shade_geometry(grove_objects)
 
@@ -374,13 +364,13 @@ def add_trees(forest: List, csv_path: Path, config: GrowPyConfig) -> ForestData:
     return create_forest_from_csv(csv_path, config)
 
 
-def grow_forest(forest_data: ForestData, config: GrowPyConfig) -> None:
+def grow_forest(forest_data: ForestData, config: GrowPyConfig, growth_cycles: int) -> None:
     """
     Legacy function for backwards compatibility.
 
     Deprecated: Use simulate_forest_growth instead.
     """
-    simulate_forest_growth(forest_data, config)
+    simulate_forest_growth(forest_data, config, growth_cycles)
 
 
 # Private helper functions
@@ -535,6 +525,3 @@ def _simulate_growth_cycle(
         grove.calculate_shade_together(shade_coordinates)
         grove.simulate(1)  # One flush at a time as documented
 
-
-if __name__ == "__main__":
-    print("This module provides forest simulation functionality.")
