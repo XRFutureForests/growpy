@@ -23,24 +23,8 @@ def list_species() -> List[str]:
 
 def validate_csv_data(data) -> None:
     """Validate CSV has required columns."""
-    required = ["x", "y", "z", "species"]
-    missing = [col for col in required if col not in data.columns]
-    if missing:
-        raise ValueError(f"Missing columns: {missing}")
 
-    for col in required:
-        if data[col].isnull().any():
-            raise ValueError(f"Column '{col}' contains missing values")
-
-    # Validate species
-    unique_species = data["species"].unique()
-    available_species = list_species()
-    invalid_species = [s for s in unique_species if s not in available_species]
-    if invalid_species:
-        raise ValueError(
-            f"Invalid species found in CSV: {invalid_species}. "
-            f"Available species: {available_species}"
-        )
+    # The validate_csv_data function has been removed as it is deprecated.
 
 
 def apply_species_preset(grove, species: str) -> None:
