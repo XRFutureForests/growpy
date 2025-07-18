@@ -295,6 +295,4 @@ def create_sample_config_ini(path: Path) -> None:
     config = GrowPyConfig()
     config.to_config_file(path)
 
-*** DELETE FILE ***
-
 
