@@ -7,6 +7,7 @@ This module provides functions to export forest data in various formats:
 - Individual tree models or combined grove models
 """
 
+import logging
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -15,6 +16,14 @@ import the_grove_22_core as gc
 from tqdm import tqdm
 
 from .config import GrowPyConfig
+
+# Set up logging
+logger = logging.getLogger(__name__)
+
+
+class ExportError(Exception):
+    """Exception raised when export operations fail."""
+    pass
 
 
 class ModelFormat(Enum):
@@ -438,23 +447,33 @@ def _convert_usd_to_fbx(
         for species_name, species_usd_files in species_groups.items():
             species_input_dir = output_directory / species_name
 
-            # Create LOD combiner for this species
-            lod_combiner = LODCombiner(
-                input_dir=species_input_dir,
-                output_dir=species_input_dir,  # Output to same directory as USD files
-            )
+            try:
+                # Create LOD combiner for this species
+                lod_combiner = LODCombiner(
+                    input_dir=species_input_dir,
+                    output_dir=species_input_dir,  # Output to same directory as USD files
+                )
 
-            # Convert this species' USD files to FBX
-            lod_combiner.combine_all_lods()
+                # Convert this species' USD files to FBX
+                lod_combiner.combine_all_lods()
 
-            # Collect FBX files created for this species
-            if species_input_dir.exists():
-                species_fbx_files = list(species_input_dir.glob("*.fbx"))
-                fbx_files.extend(species_fbx_files)
+                # Collect FBX files created for this species
+                if species_input_dir.exists():
+                    species_fbx_files = list(species_input_dir.glob("*.fbx"))
+                    fbx_files.extend(species_fbx_files)
+                    logger.info(f"Successfully converted {len(species_fbx_files)} FBX files for {species_name}")
+                else:
+                    logger.warning(f"No FBX files found for {species_name} after conversion")
+                    
+            except Exception as e:
+                logger.error(f"Failed to convert USD to FBX for species {species_name}: {e}")
+                continue
 
         return fbx_files
 
-    except ImportError:
+    except ImportError as e:
+        logger.error(f"FBX conversion not available: {e}")
         return []
-    except Exception:
+    except Exception as e:
+        logger.error(f"Unexpected error during FBX conversion: {e}")
         return []
