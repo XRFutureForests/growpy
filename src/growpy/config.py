@@ -272,17 +272,10 @@ class GrowPyConfig:
 
 
 
-def create_lod_series() -> List[GrowPyConfig]:
-    """Create a series of LOD configurations for testing."""
-    lod_levels = [
-        "LOD0_Ultra",
-        "LOD1_High",
-        "LOD2_Medium",
-        "LOD3_Low",
-        "LOD4_VeryLow",
-        "LOD5_Minimal",
-    ]
-    return [GrowPyConfig.create_lod_config(lod) for lod in lod_levels]
+# Module constants
+DEFAULT_HEIGHT_MODEL_CYCLES = 75
+DEFAULT_RANDOM_SEED = 42
+DEFAULT_OUTPUT_DIR = Path("output")
 
 
 def create_sample_config_ini(path: Path) -> None:
