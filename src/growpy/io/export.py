@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Tuple
 import the_grove_22_core as gc
 from tqdm import tqdm
 
-from .config import GrowPyConfig
+from ..core.config import GrowPyConfig
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -318,7 +318,7 @@ def _convert_usd_to_fbx(
         List of FBX file paths created
     """
     try:
-        from .config import GrowPyConfig
+        from ..core.config import GrowPyConfig
         from .fbx import LODCombiner
 
         # Group USD files by species (they're already in species subfolders)

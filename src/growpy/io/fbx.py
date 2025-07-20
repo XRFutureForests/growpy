@@ -11,7 +11,7 @@ triangle-based placement system and .blend twig models from the twigs directory.
 
 Usage:
     # Import and use the LODCombiner class in your Python code
-    from growpy.fbx import LODCombiner
+    from growpy.io.fbx import LODCombiner
     combiner = LODCombiner(input_dir, output_dir)
     results = combiner.combine_all_lods()
 
@@ -90,11 +90,13 @@ class LODCombiner:
         
         # Auto-detect twigs directory if not provided
         if twigs_dir is None:
-            # Try to find twigs directory relative to input_dir
+            # Try to find twigs directory in common locations
             possible_twigs = [
-                self.input_dir / "twigs",
-                self.input_dir.parent / "twigs", 
-                self.input_dir.parent.parent / "src" / "the_grove_22" / "twigs"
+                self.input_dir / "twigs",  # In the input directory
+                self.input_dir.parent / "twigs",  # In the parent of input directory
+                Path(__file__).parent.parent.parent / "the_grove_22" / "twigs",  # Relative to growpy package
+                Path.cwd() / "src" / "the_grove_22" / "twigs",  # From project root
+                Path(__file__).resolve().parent.parent.parent.parent / "src" / "the_grove_22" / "twigs"  # Alternative from package location
             ]
             for possible_dir in possible_twigs:
                 if possible_dir.exists():
@@ -153,7 +155,7 @@ class LODCombiner:
 
     def find_twig_for_species(self, species_name: str) -> Optional[Path]:
         """
-        Find the most appropriate twig for a given species.
+        Find the most appropriate twig for a given species using mapping system.
         
         Args:
             species_name: Species name to find twig for
@@ -163,13 +165,73 @@ class LODCombiner:
         """
         if not self.twigs_dir or not self.twigs_dir.exists():
             return None
+        
+        # Try to use the mapping system first
+        twig_name = None
+        try:
+            from ..core.mapping import get_twig_name, get_species_mapper
             
+            # Get mapped twig name
+            twig_name = get_twig_name(species_name)
+            
+            # If no direct mapping, try fallback logic
+            if not twig_name:
+                mapper = get_species_mapper()
+                twig_name = mapper.get_fallback_twig(species_name)
+                if twig_name:
+                    logger.info(f"Using fallback twig '{twig_name}' for species '{species_name}'")
+            else:
+                logger.debug(f"Mapped species '{species_name}' to twig '{twig_name}'")
+                
+        except ImportError:
+            logger.warning("Species mapping not available, using legacy twig detection")
+        
+        # If we have a mapped twig name, try to find it
+        if twig_name:
+            twig_path = self._find_twig_by_name(twig_name)
+            if twig_path:
+                return twig_path
+            else:
+                logger.warning(f"Mapped twig '{twig_name}' not found in twigs directory")
+        
+        # Fallback to legacy detection method
+        return self._legacy_find_twig(species_name)
+    
+    def _find_twig_by_name(self, twig_name: str) -> Optional[Path]:
+        """Find twig .blend file by twig name."""
+        if not self.twigs_dir or not self.twigs_dir.exists():
+            return None
+            
+        # Look for exact twig directory match
+        twig_dir = self.twigs_dir / twig_name
+        if twig_dir.exists() and twig_dir.is_dir():
+            blend_files = list(twig_dir.glob("*.blend"))
+            if blend_files:
+                return blend_files[0]
+        
+        # Look for partial matches (case-insensitive)
+        for twig_dir in self.twigs_dir.iterdir():
+            if not twig_dir.is_dir():
+                continue
+            if twig_name.lower() in twig_dir.name.lower():
+                blend_files = list(twig_dir.glob("*.blend"))
+                if blend_files:
+                    return blend_files[0]
+        
+        return None
+    
+    def _legacy_find_twig(self, species_name: str) -> Optional[Path]:
+        """Legacy twig finding method (for backward compatibility)."""
         # Extract main species name (e.g., "Fagaceae___Beech" -> "Beech")
         species_parts = species_name.split("___")
         if len(species_parts) > 1:
             main_species = species_parts[-1]
         else:
-            main_species = species_name
+            # Also try " - " separator (common in preset names)
+            if " - " in species_name:
+                main_species = species_name.split(" - ")[-1]
+            else:
+                main_species = species_name
             
         # Look for matching twig directories
         for twig_dir in self.twigs_dir.iterdir():
@@ -183,13 +245,13 @@ class LODCombiner:
                 if blend_files:
                     return blend_files[0]  # Return first .blend file
                     
-        # Fallback: try to find a generic twig
+        # Final fallback: try to find any twig
         for twig_dir in self.twigs_dir.iterdir():
             if not twig_dir.is_dir():
                 continue
             blend_files = list(twig_dir.glob("*.blend"))
             if blend_files:
-                logger.info(f"Using fallback twig {twig_dir.name} for species {species_name}")
+                logger.info(f"Using generic fallback twig {twig_dir.name} for species {species_name}")
                 return blend_files[0]
                 
         return None
@@ -757,7 +819,7 @@ class LODCombiner:
             import sys
             sys.path.append(str(Path(__file__).parent.parent / "the_grove_22" / "modules"))
             import the_grove_22_core as gc
-            from growpy.config import GrowPyConfig
+            from growpy.core.config import GrowPyConfig
         except ImportError as e:
             logger.error(f"Failed to import Grove core: {e}")
             return {}
@@ -896,7 +958,7 @@ def main():
             
         # Load forest data and generate models with Grove
         try:
-            from growpy.simulation import simulate_forest_from_csv
+            from growpy.workflows.simulation import simulate_forest_from_csv
             
             logger.info(f"Loading forest data from {args.forest_csv}")
             forest_data = simulate_forest_from_csv(args.forest_csv)
