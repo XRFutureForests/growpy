@@ -122,13 +122,13 @@ def main():
 
     # Import after path setup
     import pandas as pd
-    from growpy.config import GrowPyConfig
-    from growpy.exporters import (
+    from growpy.core.config import GrowPyConfig
+    from growpy.io.export import (
         ModelFormat,
         export_grove_json_files,
         export_individual_tree_models,
     )
-    from growpy.simulation import (
+    from growpy.workflows.simulation import (
         load_and_validate_csv,
         generate_height_curves_and_models,
         add_growth_predictions_to_data,

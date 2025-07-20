@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import List, Dict, Any
 from tqdm import tqdm
 
-from ..io.grove_io import save_multiple_groves
-from ..io.model_io import save_lod_models
-from ..config import GrowPyConfig
+from ..io.grove import save_multiple_groves
+from ..io.models import save_lod_models
+from ..core.config import GrowPyConfig
 
 logger = logging.getLogger(__name__)
 

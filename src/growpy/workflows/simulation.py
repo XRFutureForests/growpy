@@ -22,7 +22,7 @@ import the_grove_22_core as gc
 from sklearn.linear_model import LinearRegression
 from tqdm import tqdm
 
-from .config import GrowPyConfig
+from ..core.config import GrowPyConfig
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 class ValidationError(Exception):
     """Exception raised when input validation fails."""
     pass
-from .species_utils import apply_species_preset
+from ..core.species import apply_species_preset
 
 # Type aliases for better readability
 ForestData = List[Tuple[gc.Grove, str, int]]
@@ -287,7 +287,7 @@ def load_and_validate_csv(csv_path: Path) -> pd.DataFrame:
 
     # Validate species
     unique_species = data["species"].unique()
-    from .species_utils import list_species
+    from ..core.species import list_species
 
     available_species = list_species()
     invalid_species = [s for s in unique_species if s not in available_species]

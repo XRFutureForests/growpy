@@ -5,7 +5,7 @@ Height calculation and curve generation functions.
 import logging
 from typing import List, Tuple
 import the_grove_22_core as gc
-from ..config import GrowPyConfig
+from .config import GrowPyConfig
 from .grove import create_grove, simulate_grove_growth
 
 logger = logging.getLogger(__name__)

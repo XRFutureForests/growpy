@@ -23,24 +23,35 @@ conda activate ./.conda
 python generate_forest.py
 
 # Direct growpy usage (run example simulation)
-python -m growpy.simulation
+python -m growpy.workflows.simulation
 
 # Test FBX conversion functionality
-python -m growpy.fbx --input_dir data/output/demo_forest/tree_models --output_dir data/output/fbx
+python -m growpy.io.fbx --input_dir data/output/demo_forest/tree_models --output_dir data/output/fbx
 
 # Run configuration validation
-python -m growpy.config
+python -m growpy.core.config
 ```
 
 ### Testing & Validation
 ```bash
 # Test individual modules
-python src/growpy/simulation.py  # Runs example simulation
-python src/growpy/config.py      # Shows LOD configurations
-python src/growpy/fbx.py         # Tests FBX conversion pipeline
+python src/growpy/workflows/simulation.py        # Runs example simulation
+python src/growpy/core/config.py                 # Shows LOD configurations
+python src/growpy/io/fbx.py                      # Tests FBX conversion pipeline
+
+# Test core functionality
+python src/growpy/core/height.py                 # Tests height curve generation
+python src/growpy/core/predict.py                # Tests age prediction
+
+# Test I/O operations
+python src/growpy/io/csv.py                      # Tests CSV loading functionality
+python src/growpy/io/models.py                   # Tests model export functionality
+
+# Test workflows
+python src/growpy/workflows/forest.py            # Tests complete workflow
 
 # Validate CSV format (check species against presets)
-python -c "from growpy.species_utils import list_species; print(list_species())"
+python -c "from growpy.core.species import list_species; print(list_species())"
 ```
 
 ## Architecture Overview
@@ -54,11 +65,24 @@ python -c "from growpy.species_utils import list_species; print(list_species())"
 - **Textures and twigs**: Supporting assets for 3D rendering
 
 **GrowPy Python Interface** (`src/growpy/`):
-- **simulation.py**: Main forest generation pipeline with age prediction
-- **config.py**: Configuration management with LOD (Level of Detail) presets
-- **exporters.py**: Multi-format export (JSON, USD, FBX) with species organization
-- **fbx.py**: Blender-based FBX conversion with LOD combining
-- **species_utils.py**: Species validation and preset loading
+- **core/**: Core functionality and configuration
+  - **config.py**: Configuration management with LOD presets  
+  - **species.py**: Species validation and preset loading
+  - **grove.py**: Grove object management and operations
+  - **height.py**: Height curve generation and analysis
+  - **predict.py**: Age prediction from height models
+  - **validate.py**: Data validation utilities
+- **io/**: Input/output operations
+  - **csv.py**: CSV file loading and validation
+  - **models.py**: 3D model export (OBJ, USD formats)
+  - **grove.py**: Grove JSON serialization for Blender
+  - **export.py**: Multi-format export coordination (JSON, USD, FBX)
+  - **fbx.py**: Blender-based FBX conversion with LOD combining
+- **workflows/**: High-level workflow orchestration
+  - **simulation.py**: Main forest generation pipeline with age prediction
+  - **forest.py**: Complete forest generation pipeline
+  - **analysis.py**: Height curve generation workflow
+  - **export.py**: Model export workflow
 
 ### Data Flow Architecture
 
