@@ -10,7 +10,7 @@ import the_grove_22_core as gc
 logger = logging.getLogger(__name__)
 
 
-def save_model(model: gc.Model, file_path: Path, format: str = "obj") -> None:
+def save_model(model, file_path: Path, format: str = "obj") -> None:
     """
     Save 3D model to file.
     
@@ -29,7 +29,7 @@ def save_model(model: gc.Model, file_path: Path, format: str = "obj") -> None:
         if format.lower() == "obj":
             model_string = gc.io.model_to_obj_string(model)
         elif format.lower() == "usd":
-            model_string = gc.io.model_to_usd_string(model)
+            model_string = gc.io.model_to_usda_string(model)
         else:
             raise ValueError(f"Unsupported format: {format}")
         
@@ -42,7 +42,7 @@ def save_model(model: gc.Model, file_path: Path, format: str = "obj") -> None:
         raise ValueError(f"Failed to save model: {e}")
 
 
-def save_multiple_models(models: List[gc.Model], file_paths: List[Path], 
+def save_multiple_models(models: List, file_paths: List[Path], 
                         format: str = "obj") -> List[Path]:
     """
     Save multiple models to files.

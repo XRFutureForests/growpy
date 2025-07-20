@@ -9,10 +9,10 @@ import pandas as pd
 import the_grove_22_core as gc
 
 from ..core.grove import create_grove, add_tree_to_grove, calculate_shared_light_competition
-from ..core.validation import validate_forest_data
-from ..core.prediction import predict_cycles_for_data
-from ..io.csv_io import load_csv
-from ..config import GrowPyConfig
+from ..core.validate import validate_forest_data
+from ..core.predict import predict_cycles_for_data
+from ..io.csv import load_csv
+from ..core.config import GrowPyConfig
 
 logger = logging.getLogger(__name__)
 

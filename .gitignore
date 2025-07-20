@@ -1,5 +1,5 @@
 # Data files
-/data
+/data/output/
 
 # Conda environment
 /.conda
