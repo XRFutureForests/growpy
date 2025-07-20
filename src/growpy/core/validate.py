@@ -5,7 +5,7 @@ Data validation functions.
 import logging
 from typing import List
 import pandas as pd
-from ..species_utils import list_species
+from .species import list_species
 
 logger = logging.getLogger(__name__)
 

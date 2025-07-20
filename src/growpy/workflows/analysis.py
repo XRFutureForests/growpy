@@ -9,8 +9,8 @@ import pandas as pd
 import pickle
 
 from ..core.height import generate_height_curves_for_species
-from ..core.prediction import create_species_prediction_models
-from ..config import GrowPyConfig
+from ..core.predict import create_species_prediction_models
+from ..core.config import GrowPyConfig
 
 logger = logging.getLogger(__name__)
 

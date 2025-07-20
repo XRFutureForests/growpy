@@ -5,7 +5,7 @@ CSV input/output operations.
 import logging
 from pathlib import Path
 import pandas as pd
-from ..core.validation import validate_csv_data
+from ..core.validate import validate_csv_data
 
 logger = logging.getLogger(__name__)
 

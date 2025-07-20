@@ -25,7 +25,7 @@ Quick Start:
     export_individual_models(forest_data, config.output_dir)
 """
 
-from .config import GrowPyConfig
+from .core.config import GrowPyConfig
 
 # Import key classes for convenience
 from .workflows import create_forest_from_csv, simulate_forest_growth

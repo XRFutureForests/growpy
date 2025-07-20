@@ -5,7 +5,7 @@ Grove creation and management functions.
 from pathlib import Path
 from typing import List, Tuple
 import the_grove_22_core as gc
-from ..species_utils import apply_species_preset as _apply_preset
+from .species import apply_species_preset as _apply_preset
 
 
 def create_grove(species: str, random_seed: int = None) -> gc.Grove:
