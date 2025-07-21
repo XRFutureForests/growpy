@@ -1,4 +1,4 @@
-name: the-grove-env
+name: the-grove
 channels:
   - conda-forge
   - defaults
@@ -10,8 +10,10 @@ dependencies:
   - matplotlib
   - scikit-learn
   - tqdm
+
   - pip:
     - bpy
+    - usd-core
 
 variables:
-  PYTHONPATH: $CONDA_PREFIX/../../src/the_grove_22/modules:$PYTHONPATH
+  PYTHONPATH: C:\Users\Maximilian Sperlich\Git\the-grove\src\the_grove_22\modules

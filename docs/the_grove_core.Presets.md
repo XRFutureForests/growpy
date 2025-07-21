@@ -59,4 +59,4 @@ for key, value in preset_dictionary.items():
 grove.set_properties(props)
 ```
 
-# the grove/the grove core/python api #
+the grove/the grove core/python api
