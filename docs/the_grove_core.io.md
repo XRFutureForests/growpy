@@ -123,4 +123,4 @@ def Xform "Grove"
 
 Importing this USDA file will load in all the trees as one grove. Chances are you’re wondering why The Grove doesn’t do this work for you. Well, USD is flexible, and each studio uses it in its own way. This way you can easily piece together your own custom exporter with your own naming conventions, and perhaps even add some extra data along the way.
 
-# the grove/the grove core/python api #
+the grove/the grove core/python api

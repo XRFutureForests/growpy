@@ -1,0 +1,387 @@
+{
+  "Betulaceae - Alder": {
+    "species": "Betulaceae - Alder",
+    "cycles": 10,
+    "final_height": 1.6883665285673972,
+    "max_height": 1.6883665285673972,
+    "growth_rate": 0.1688366528567397
+  },
+  "Betulaceae - Downy birch": {
+    "species": "Betulaceae - Downy birch",
+    "cycles": 10,
+    "final_height": 1.539484704844976,
+    "max_height": 1.576667715975614,
+    "growth_rate": 0.1539484704844976
+  },
+  "Betulaceae - Hazel": {
+    "species": "Betulaceae - Hazel",
+    "cycles": 10,
+    "final_height": 1.7052919210881958,
+    "max_height": 1.7052919210881958,
+    "growth_rate": 0.1705291921088196
+  },
+  "Betulaceae - Hornbeam": {
+    "species": "Betulaceae - Hornbeam",
+    "cycles": 10,
+    "final_height": 2.060579236835915,
+    "max_height": 2.060579236835915,
+    "growth_rate": 0.2060579236835915
+  },
+  "Betulaceae - Paper birch": {
+    "species": "Betulaceae - Paper birch",
+    "cycles": 10,
+    "final_height": 1.604068662351437,
+    "max_height": 1.7281982440149986,
+    "growth_rate": 0.16040686623514372
+  },
+  "Betulaceae - Silver birch": {
+    "species": "Betulaceae - Silver birch",
+    "cycles": 10,
+    "final_height": 1.6224123126954717,
+    "max_height": 1.6224123126954717,
+    "growth_rate": 0.16224123126954718
+  },
+  "Canabaceae - Hackberry": {
+    "species": "Canabaceae - Hackberry",
+    "cycles": 10,
+    "final_height": 1.6462217847056364,
+    "max_height": 1.6854992243413642,
+    "growth_rate": 0.16462217847056365
+  },
+  "Cupressaceae - Swamp cypress": {
+    "species": "Cupressaceae - Swamp cypress",
+    "cycles": 10,
+    "final_height": 1.668552374447791,
+    "max_height": 1.668552374447791,
+    "growth_rate": 0.1668552374447791
+  },
+  "Cupressaceae - Western redcedar": {
+    "species": "Cupressaceae - Western redcedar",
+    "cycles": 10,
+    "final_height": 1.1014199461557552,
+    "max_height": 1.2786560636456508,
+    "growth_rate": 0.11014199461557553
+  },
+  "Fabaceae - Honey locust": {
+    "species": "Fabaceae - Honey locust",
+    "cycles": 10,
+    "final_height": 3.4395153541176438,
+    "max_height": 3.4395153541176438,
+    "growth_rate": 0.3439515354117644
+  },
+  "Fabaceae - Robinia": {
+    "species": "Fabaceae - Robinia",
+    "cycles": 10,
+    "final_height": 1.4786824551954492,
+    "max_height": 1.8646195873238012,
+    "growth_rate": 0.14786824551954492
+  },
+  "Fabaceae - Umbrella acacia": {
+    "species": "Fabaceae - Umbrella acacia",
+    "cycles": 10,
+    "final_height": 1.2927820092079882,
+    "max_height": 1.2927820092079882,
+    "growth_rate": 0.12927820092079884
+  },
+  "Fagaceae - Beech": {
+    "species": "Fagaceae - Beech",
+    "cycles": 10,
+    "final_height": 1.2677092024931638,
+    "max_height": 1.323206687646284,
+    "growth_rate": 0.12677092024931638
+  },
+  "Fagaceae - European oak": {
+    "species": "Fagaceae - European oak",
+    "cycles": 10,
+    "final_height": 1.5767542866899724,
+    "max_height": 1.9352603458081956,
+    "growth_rate": 0.15767542866899725
+  },
+  "Fagaceae - Red oak": {
+    "species": "Fagaceae - Red oak",
+    "cycles": 10,
+    "final_height": 1.7789771727863888,
+    "max_height": 1.7789771727863888,
+    "growth_rate": 0.17789771727863887
+  },
+  "Fagaceae - Sweet chestnut": {
+    "species": "Fagaceae - Sweet chestnut",
+    "cycles": 10,
+    "final_height": 1.9935252009210085,
+    "max_height": 1.9935252009210085,
+    "growth_rate": 0.19935252009210086
+  },
+  "Fagaceae - White oak": {
+    "species": "Fagaceae - White oak",
+    "cycles": 10,
+    "final_height": 4.393804641070394,
+    "max_height": 4.393804641070394,
+    "growth_rate": 0.43938046410703946
+  },
+  "Ginkgoaceae - Ginkgo biloba": {
+    "species": "Ginkgoaceae - Ginkgo biloba",
+    "cycles": 10,
+    "final_height": 1.567038191339348,
+    "max_height": 1.606249850624085,
+    "growth_rate": 0.1567038191339348
+  },
+  "Juglandaceae - Walnut": {
+    "species": "Juglandaceae - Walnut",
+    "cycles": 10,
+    "final_height": 2.5608706547408358,
+    "max_height": 2.5608706547408358,
+    "growth_rate": 0.25608706547408355
+  },
+  "Juglandaceae - Wingnut": {
+    "species": "Juglandaceae - Wingnut",
+    "cycles": 10,
+    "final_height": 2.6264441422573404,
+    "max_height": 2.6264441422573404,
+    "growth_rate": 0.26264441422573404
+  },
+  "Lauraceae - Avocado": {
+    "species": "Lauraceae - Avocado",
+    "cycles": 10,
+    "final_height": 1.806688159942685,
+    "max_height": 1.806688159942685,
+    "growth_rate": 0.18066881599426848
+  },
+  "Magnoliaceae - Magnolia": {
+    "species": "Magnoliaceae - Magnolia",
+    "cycles": 10,
+    "final_height": 1.8651467693951995,
+    "max_height": 1.8651467693951995,
+    "growth_rate": 0.18651467693951995
+  },
+  "Malvaceae - Linden": {
+    "species": "Malvaceae - Linden",
+    "cycles": 10,
+    "final_height": 1.632177262133914,
+    "max_height": 1.6781367204521056,
+    "growth_rate": 0.1632177262133914
+  },
+  "Myrtaceae - Blue gum": {
+    "species": "Myrtaceae - Blue gum",
+    "cycles": 10,
+    "final_height": 2.4426423523483995,
+    "max_height": 2.4426423523483995,
+    "growth_rate": 0.24426423523483995
+  },
+  "Myrtaceae - Manna gum": {
+    "species": "Myrtaceae - Manna gum",
+    "cycles": 10,
+    "final_height": 2.4019296301614066,
+    "max_height": 2.4537805165124205,
+    "growth_rate": 0.24019296301614065
+  },
+  "Nyssaceae - Black tupelo": {
+    "species": "Nyssaceae - Black tupelo",
+    "cycles": 10,
+    "final_height": 2.0134541971277806,
+    "max_height": 2.0134541971277806,
+    "growth_rate": 0.20134541971277806
+  },
+  "Oleaceae - Ash": {
+    "species": "Oleaceae - Ash",
+    "cycles": 10,
+    "final_height": 3.734002778183324,
+    "max_height": 3.734002778183324,
+    "growth_rate": 0.3734002778183324
+  },
+  "Oleaceae - Narrow-leaved ash": {
+    "species": "Oleaceae - Narrow-leaved ash",
+    "cycles": 10,
+    "final_height": 3.4238262173718197,
+    "max_height": 3.4238262173718197,
+    "growth_rate": 0.342382621737182
+  },
+  "Oleaceae - One-leaved ash": {
+    "species": "Oleaceae - One-leaved ash",
+    "cycles": 10,
+    "final_height": 3.198790239946337,
+    "max_height": 3.198790239946337,
+    "growth_rate": 0.3198790239946337
+  },
+  "Pinaceae - Austrian pine": {
+    "species": "Pinaceae - Austrian pine",
+    "cycles": 10,
+    "final_height": 1.7835511120460052,
+    "max_height": 1.7835511120460052,
+    "growth_rate": 0.1783551112046005
+  },
+  "Pinaceae - Fir": {
+    "species": "Pinaceae - Fir",
+    "cycles": 10,
+    "final_height": 1.1972067208973771,
+    "max_height": 1.1972067208973771,
+    "growth_rate": 0.11972067208973772
+  },
+  "Pinaceae - Grand fir": {
+    "species": "Pinaceae - Grand fir",
+    "cycles": 10,
+    "final_height": 1.0459016406039092,
+    "max_height": 1.1807963218915383,
+    "growth_rate": 0.10459016406039093
+  },
+  "Pinaceae - Lodgepole pine": {
+    "species": "Pinaceae - Lodgepole pine",
+    "cycles": 10,
+    "final_height": 0.7885932412167911,
+    "max_height": 1.6079345462291792,
+    "growth_rate": 0.0788593241216791
+  },
+  "Pinaceae - Longleaf pine": {
+    "species": "Pinaceae - Longleaf pine",
+    "cycles": 10,
+    "final_height": 2.4457151958910353,
+    "max_height": 2.4457151958910353,
+    "growth_rate": 0.24457151958910353
+  },
+  "Pinaceae - Monterey pine": {
+    "species": "Pinaceae - Monterey pine",
+    "cycles": 10,
+    "final_height": 1.0919344981582308,
+    "max_height": 1.1886088209559684,
+    "growth_rate": 0.10919344981582309
+  },
+  "Pinaceae - Ponderosa pine": {
+    "species": "Pinaceae - Ponderosa pine",
+    "cycles": 10,
+    "final_height": 1.000614776806119,
+    "max_height": 1.000614776806119,
+    "growth_rate": 0.10006147768061191
+  },
+  "Pinaceae - Scots pine": {
+    "species": "Pinaceae - Scots pine",
+    "cycles": 10,
+    "final_height": 0.6350594007690133,
+    "max_height": 0.7319908085888718,
+    "growth_rate": 0.06350594007690133
+  },
+  "Pinaceae - Stone pine": {
+    "species": "Pinaceae - Stone pine",
+    "cycles": 10,
+    "final_height": 2.5726951927324784,
+    "max_height": 2.6361738550411897,
+    "growth_rate": 0.2572695192732478
+  },
+  "Pinaceae - Western hemlock": {
+    "species": "Pinaceae - Western hemlock",
+    "cycles": 10,
+    "final_height": 3.54809167651912,
+    "max_height": 3.54809167651912,
+    "growth_rate": 0.354809167651912
+  },
+  "Platanaceae - London plane tree": {
+    "species": "Platanaceae - London plane tree",
+    "cycles": 10,
+    "final_height": 3.626500357792383,
+    "max_height": 3.626500357792383,
+    "growth_rate": 0.36265003577923827
+  },
+  "Rosaceae - Hawthorn": {
+    "species": "Rosaceae - Hawthorn",
+    "cycles": 10,
+    "final_height": 2.0504574279606707,
+    "max_height": 2.0504574279606707,
+    "growth_rate": 0.20504574279606708
+  },
+  "Rosaceae - Japanese cherry": {
+    "species": "Rosaceae - Japanese cherry",
+    "cycles": 10,
+    "final_height": 3.136384929491837,
+    "max_height": 3.136384929491837,
+    "growth_rate": 0.31363849294918367
+  },
+  "Rosaceae - Wild apple": {
+    "species": "Rosaceae - Wild apple",
+    "cycles": 10,
+    "final_height": 1.412659224522221,
+    "max_height": 1.412659224522221,
+    "growth_rate": 0.14126592245222208
+  },
+  "Rosaceae - Wild cherry": {
+    "species": "Rosaceae - Wild cherry",
+    "cycles": 10,
+    "final_height": 4.264649136808678,
+    "max_height": 4.264649136808678,
+    "growth_rate": 0.42646491368086775
+  },
+  "Salicaceae - Aspen": {
+    "species": "Salicaceae - Aspen",
+    "cycles": 10,
+    "final_height": 1.1953101980381442,
+    "max_height": 1.3726510050700567,
+    "growth_rate": 0.11953101980381442
+  },
+  "Salicaceae - Grey poplar": {
+    "species": "Salicaceae - Grey poplar",
+    "cycles": 10,
+    "final_height": 3.211970288981025,
+    "max_height": 3.2413890664301457,
+    "growth_rate": 0.3211970288981025
+  },
+  "Salicaceae - Italian poplar": {
+    "species": "Salicaceae - Italian poplar",
+    "cycles": 10,
+    "final_height": 2.743819643532875,
+    "max_height": 2.743819643532875,
+    "growth_rate": 0.27438196435328754
+  },
+  "Salicaceae - Weeping willow": {
+    "species": "Salicaceae - Weeping willow",
+    "cycles": 10,
+    "final_height": 2.2475460618059437,
+    "max_height": 2.6615304396646646,
+    "growth_rate": 0.22475460618059437
+  },
+  "Salicaceae - Willow": {
+    "species": "Salicaceae - Willow",
+    "cycles": 10,
+    "final_height": 2.0260898016048428,
+    "max_height": 2.0260898016048428,
+    "growth_rate": 0.2026089801604843
+  },
+  "Sapindaceae - Field maple": {
+    "species": "Sapindaceae - Field maple",
+    "cycles": 10,
+    "final_height": 1.3324419159136116,
+    "max_height": 1.3370547844009402,
+    "growth_rate": 0.13324419159136117
+  },
+  "Sapindaceae - Horse chestnut": {
+    "species": "Sapindaceae - Horse chestnut",
+    "cycles": 10,
+    "final_height": 2.8057261379751783,
+    "max_height": 2.8057261379751783,
+    "growth_rate": 0.28057261379751786
+  },
+  "Sapindaceae - Japanese maple": {
+    "species": "Sapindaceae - Japanese maple",
+    "cycles": 10,
+    "final_height": 1.0582802778463545,
+    "max_height": 1.060976112166239,
+    "growth_rate": 0.10582802778463545
+  },
+  "Sapindaceae - Maple": {
+    "species": "Sapindaceae - Maple",
+    "cycles": 10,
+    "final_height": 1.9380342762492115,
+    "max_height": 2.0632094012715605,
+    "growth_rate": 0.19380342762492114
+  },
+  "Taxaceae - Yew": {
+    "species": "Taxaceae - Yew",
+    "cycles": 10,
+    "final_height": 1.8627057992309544,
+    "max_height": 1.8627057992309544,
+    "growth_rate": 0.18627057992309543
+  },
+  "Ulmaceae - Elm": {
+    "species": "Ulmaceae - Elm",
+    "cycles": 10,
+    "final_height": 1.8027231005398425,
+    "max_height": 1.9838890425495985,
+    "growth_rate": 0.18027231005398425
+  }
+}

@@ -1,0 +1,284 @@
+Grove Species Growth Analysis Summary
+========================================
+
+Analysis Parameters:
+- Growth cycles: 10
+- Species analyzed: 55
+
+Species Growth Summary:
+-------------------------
+Betulaceae - Alder:
+  Final height: 1.69
+  Growth rate: 0.169 units/cycle
+  Max height: 1.69
+
+Betulaceae - Downy birch:
+  Final height: 1.54
+  Growth rate: 0.154 units/cycle
+  Max height: 1.58
+
+Betulaceae - Hazel:
+  Final height: 1.71
+  Growth rate: 0.171 units/cycle
+  Max height: 1.71
+
+Betulaceae - Hornbeam:
+  Final height: 2.06
+  Growth rate: 0.206 units/cycle
+  Max height: 2.06
+
+Betulaceae - Paper birch:
+  Final height: 1.60
+  Growth rate: 0.160 units/cycle
+  Max height: 1.73
+
+Betulaceae - Silver birch:
+  Final height: 1.62
+  Growth rate: 0.162 units/cycle
+  Max height: 1.62
+
+Canabaceae - Hackberry:
+  Final height: 1.65
+  Growth rate: 0.165 units/cycle
+  Max height: 1.69
+
+Cupressaceae - Swamp cypress:
+  Final height: 1.67
+  Growth rate: 0.167 units/cycle
+  Max height: 1.67
+
+Cupressaceae - Western redcedar:
+  Final height: 1.10
+  Growth rate: 0.110 units/cycle
+  Max height: 1.28
+
+Fabaceae - Honey locust:
+  Final height: 3.44
+  Growth rate: 0.344 units/cycle
+  Max height: 3.44
+
+Fabaceae - Robinia:
+  Final height: 1.48
+  Growth rate: 0.148 units/cycle
+  Max height: 1.86
+
+Fabaceae - Umbrella acacia:
+  Final height: 1.29
+  Growth rate: 0.129 units/cycle
+  Max height: 1.29
+
+Fagaceae - Beech:
+  Final height: 1.27
+  Growth rate: 0.127 units/cycle
+  Max height: 1.32
+
+Fagaceae - European oak:
+  Final height: 1.58
+  Growth rate: 0.158 units/cycle
+  Max height: 1.94
+
+Fagaceae - Red oak:
+  Final height: 1.78
+  Growth rate: 0.178 units/cycle
+  Max height: 1.78
+
+Fagaceae - Sweet chestnut:
+  Final height: 1.99
+  Growth rate: 0.199 units/cycle
+  Max height: 1.99
+
+Fagaceae - White oak:
+  Final height: 4.39
+  Growth rate: 0.439 units/cycle
+  Max height: 4.39
+
+Ginkgoaceae - Ginkgo biloba:
+  Final height: 1.57
+  Growth rate: 0.157 units/cycle
+  Max height: 1.61
+
+Juglandaceae - Walnut:
+  Final height: 2.56
+  Growth rate: 0.256 units/cycle
+  Max height: 2.56
+
+Juglandaceae - Wingnut:
+  Final height: 2.63
+  Growth rate: 0.263 units/cycle
+  Max height: 2.63
+
+Lauraceae - Avocado:
+  Final height: 1.81
+  Growth rate: 0.181 units/cycle
+  Max height: 1.81
+
+Magnoliaceae - Magnolia:
+  Final height: 1.87
+  Growth rate: 0.187 units/cycle
+  Max height: 1.87
+
+Malvaceae - Linden:
+  Final height: 1.63
+  Growth rate: 0.163 units/cycle
+  Max height: 1.68
+
+Myrtaceae - Blue gum:
+  Final height: 2.44
+  Growth rate: 0.244 units/cycle
+  Max height: 2.44
+
+Myrtaceae - Manna gum:
+  Final height: 2.40
+  Growth rate: 0.240 units/cycle
+  Max height: 2.45
+
+Nyssaceae - Black tupelo:
+  Final height: 2.01
+  Growth rate: 0.201 units/cycle
+  Max height: 2.01
+
+Oleaceae - Ash:
+  Final height: 3.73
+  Growth rate: 0.373 units/cycle
+  Max height: 3.73
+
+Oleaceae - Narrow-leaved ash:
+  Final height: 3.42
+  Growth rate: 0.342 units/cycle
+  Max height: 3.42
+
+Oleaceae - One-leaved ash:
+  Final height: 3.20
+  Growth rate: 0.320 units/cycle
+  Max height: 3.20
+
+Pinaceae - Austrian pine:
+  Final height: 1.78
+  Growth rate: 0.178 units/cycle
+  Max height: 1.78
+
+Pinaceae - Fir:
+  Final height: 1.20
+  Growth rate: 0.120 units/cycle
+  Max height: 1.20
+
+Pinaceae - Grand fir:
+  Final height: 1.05
+  Growth rate: 0.105 units/cycle
+  Max height: 1.18
+
+Pinaceae - Lodgepole pine:
+  Final height: 0.79
+  Growth rate: 0.079 units/cycle
+  Max height: 1.61
+
+Pinaceae - Longleaf pine:
+  Final height: 2.45
+  Growth rate: 0.245 units/cycle
+  Max height: 2.45
+
+Pinaceae - Monterey pine:
+  Final height: 1.09
+  Growth rate: 0.109 units/cycle
+  Max height: 1.19
+
+Pinaceae - Ponderosa pine:
+  Final height: 1.00
+  Growth rate: 0.100 units/cycle
+  Max height: 1.00
+
+Pinaceae - Scots pine:
+  Final height: 0.64
+  Growth rate: 0.064 units/cycle
+  Max height: 0.73
+
+Pinaceae - Stone pine:
+  Final height: 2.57
+  Growth rate: 0.257 units/cycle
+  Max height: 2.64
+
+Pinaceae - Western hemlock:
+  Final height: 3.55
+  Growth rate: 0.355 units/cycle
+  Max height: 3.55
+
+Platanaceae - London plane tree:
+  Final height: 3.63
+  Growth rate: 0.363 units/cycle
+  Max height: 3.63
+
+Rosaceae - Hawthorn:
+  Final height: 2.05
+  Growth rate: 0.205 units/cycle
+  Max height: 2.05
+
+Rosaceae - Japanese cherry:
+  Final height: 3.14
+  Growth rate: 0.314 units/cycle
+  Max height: 3.14
+
+Rosaceae - Wild apple:
+  Final height: 1.41
+  Growth rate: 0.141 units/cycle
+  Max height: 1.41
+
+Rosaceae - Wild cherry:
+  Final height: 4.26
+  Growth rate: 0.426 units/cycle
+  Max height: 4.26
+
+Salicaceae - Aspen:
+  Final height: 1.20
+  Growth rate: 0.120 units/cycle
+  Max height: 1.37
+
+Salicaceae - Grey poplar:
+  Final height: 3.21
+  Growth rate: 0.321 units/cycle
+  Max height: 3.24
+
+Salicaceae - Italian poplar:
+  Final height: 2.74
+  Growth rate: 0.274 units/cycle
+  Max height: 2.74
+
+Salicaceae - Weeping willow:
+  Final height: 2.25
+  Growth rate: 0.225 units/cycle
+  Max height: 2.66
+
+Salicaceae - Willow:
+  Final height: 2.03
+  Growth rate: 0.203 units/cycle
+  Max height: 2.03
+
+Sapindaceae - Field maple:
+  Final height: 1.33
+  Growth rate: 0.133 units/cycle
+  Max height: 1.34
+
+Sapindaceae - Horse chestnut:
+  Final height: 2.81
+  Growth rate: 0.281 units/cycle
+  Max height: 2.81
+
+Sapindaceae - Japanese maple:
+  Final height: 1.06
+  Growth rate: 0.106 units/cycle
+  Max height: 1.06
+
+Sapindaceae - Maple:
+  Final height: 1.94
+  Growth rate: 0.194 units/cycle
+  Max height: 2.06
+
+Taxaceae - Yew:
+  Final height: 1.86
+  Growth rate: 0.186 units/cycle
+  Max height: 1.86
+
+Ulmaceae - Elm:
+  Final height: 1.80
+  Growth rate: 0.180 units/cycle
+  Max height: 1.98
+

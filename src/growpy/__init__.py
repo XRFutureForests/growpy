@@ -1,48 +1,28 @@
 """
-GrowPy - Clean, modular interface for The Grove 2.2
-===================================================
+GrowPy - Clean interface for The Grove 2.2 with USD multi-LOD support
+====================================================================
 
-A streamlined, atomic approach to procedural tree generation from CSV data.
-Designed for clarity, maintainability, and ease of use.
+Streamlined procedural tree generation with native USD output and twig instancing.
 
 Key Features:
-- Atomic, single-responsibility functions
-- Clear separation of concerns across modules
-- Automatic age prediction from height data
-- Flexible workflows for different use cases
-- Comprehensive validation and error handling
+- USD multi-LOD export with variants (eliminates FBX pipeline)
+- Efficient twig instancing via USD prototypes
+- Clean, minimal API focused on essential functionality
+- Direct game engine compatibility
 
 Quick Start:
-    from growpy import GrowPyConfig
-    from growpy.workflows import create_forest_from_csv, simulate_forest_growth
-    from growpy.workflows import export_grove_jsons, export_individual_models
-
-    # Complete pipeline
+    from growpy.core.config import GrowPyConfig
+    from growpy.io.models import export_forest_models_with_twigs
+    
+    # Generate USD trees with all LODs and twig instances
     config = GrowPyConfig()
-    forest_data, data = create_forest_from_csv(csv_path)
-    simulate_forest_growth(forest_data)
-    export_grove_jsons(forest_data, config.output_dir)
-    export_individual_models(forest_data, config.output_dir)
+    forest_data = simulate_forest_from_csv("forest.csv")
+    usd_files = export_forest_models_with_twigs(forest_data, output_dir, config.get_lod_configs())
 """
 
 from .core.config import GrowPyConfig
 
-# Import key classes for convenience
-from .workflows import create_forest_from_csv, simulate_forest_growth
-from .workflows import export_grove_jsons, export_individual_models
-from .workflows import analyze_species_heights, create_height_models
-
-__version__ = "3.0.0"
+__version__ = "4.0.0"
 __author__ = "GrowPy Team"
 
-__all__ = [
-    # Configuration
-    "GrowPyConfig",
-    # Main workflows
-    "create_forest_from_csv",
-    "simulate_forest_growth", 
-    "export_grove_jsons",
-    "export_individual_models",
-    "analyze_species_heights",
-    "create_height_models",
-]
+__all__ = ["GrowPyConfig"]
