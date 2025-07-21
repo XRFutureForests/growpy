@@ -21,38 +21,8 @@ conda activate ./.conda
 ```bash
 # Generate forest from demo data
 python generate_forest.py
-
-# Direct growpy usage (run example simulation)
-python -m growpy.workflows.simulation
-
-# Test FBX conversion functionality
-python -m growpy.io.fbx --input_dir data/output/demo_forest/tree_models --output_dir data/output/fbx
-
-# Run configuration validation
-python -m growpy.core.config
 ```
 
-### Testing & Validation
-```bash
-# Test individual modules
-python src/growpy/workflows/simulation.py        # Runs example simulation
-python src/growpy/core/config.py                 # Shows LOD configurations
-python src/growpy/io/fbx.py                      # Tests FBX conversion pipeline
-
-# Test core functionality
-python src/growpy/core/height.py                 # Tests height curve generation
-python src/growpy/core/predict.py                # Tests age prediction
-
-# Test I/O operations
-python src/growpy/io/csv.py                      # Tests CSV loading functionality
-python src/growpy/io/models.py                   # Tests model export functionality
-
-# Test workflows
-python src/growpy/workflows/forest.py            # Tests complete workflow
-
-# Validate CSV format (check species against presets)
-python -c "from growpy.core.species import list_species; print(list_species())"
-```
 
 ## Architecture Overview
 
@@ -64,44 +34,39 @@ python -c "from growpy.core.species import list_species; print(list_species())"
 - **Species presets**: 50+ JSON files with realistic tree parameters
 - **Textures and twigs**: Supporting assets for 3D rendering
 
-**GrowPy Python Interface** (`src/growpy/`):
-- **core/**: Core functionality and configuration
+**GrowPy Python Interface** (`src/growpy/`) - **Simplified and Cleaned**:
+- **core/**: Essential functionality only
   - **config.py**: Configuration management with LOD presets  
   - **species.py**: Species validation and preset loading
   - **grove.py**: Grove object management and operations
-  - **height.py**: Height curve generation and analysis
-  - **predict.py**: Age prediction from height models
   - **validate.py**: Data validation utilities
-- **io/**: Input/output operations
-  - **csv.py**: CSV file loading and validation
-  - **models.py**: 3D model export (OBJ, USD formats)
-  - **grove.py**: Grove JSON serialization for Blender
-  - **export.py**: Multi-format export coordination (JSON, USD, FBX)
-  - **fbx.py**: Blender-based FBX conversion with LOD combining
-- **workflows/**: High-level workflow orchestration
-  - **simulation.py**: Main forest generation pipeline with age prediction
-  - **forest.py**: Complete forest generation pipeline
-  - **analysis.py**: Height curve generation workflow
-  - **export.py**: Model export workflow
+- **io/**: USD multi-LOD export only
+  - **models.py**: USD model export with multi-LOD variants and twig instancing
+
+**Utilities** (`src/utils/`):
+- **species_growth_analysis.py**: Generate species-wide height curves and age prediction models (run once for all species)
+- **convert_twigs_to_usd.py**: Convert Grove twig .blend files to USD prototypes for instancing
 
 ### Data Flow Architecture
 
-1. **CSV Input** → **Age Prediction Pipeline**:
-   - CSV requires: `x, y, z, species, height` (no age column needed)
-   - Generates species-specific height curves through simulation
-   - Creates linear regression models to predict age from height
-   - Applies age predictions to all trees
+1. **Utilities Setup** (run once):
+   - **Species Growth Analysis**: `python src/utils/species_growth_analysis.py` generates growth models for all species
+   - **USD Twig Conversion**: `python src/utils/convert_twigs_to_usd.py` converts .blend twigs to USD prototypes
 
-2. **Forest Simulation** → **Light Competition**:
+2. **CSV Input** → **Age Prediction** (`generate_forest.py`):
+   - CSV requires: `x, y, z, species, height` (no age column needed)
+   - Loads pre-generated species growth models from utils
+   - Applies age predictions to all trees using cached linear regression models
+
+3. **Forest Simulation** → **Light Competition**:
    - Groups trees by species into separate `Grove` objects
    - Simulates growth with shared light environment
    - Uses delay system to synchronize tree growth to target heights
 
-3. **Multi-Format Export** → **Organized Output**:
+4. **USD Multi-LOD Export** → **Game Engine Ready**:
    - **JSON files**: For Blender import (`data/output/{input_name}/groves/`)
-   - **USD models**: Individual trees with LOD levels (`data/output/{input_name}/tree_models/{species}/`)
-   - **FBX models**: Game engine format via Blender conversion
-   - **Analysis data**: Height curves and prediction models
+   - **USD multi-LOD files**: Single files per tree with all LOD variants and twig instances (`data/output/{input_name}/usd_trees_multi_lod/{species}/`)
+   - **No FBX needed**: Game engines (Unity 2024+, Unreal 5+) support USD natively
 
 ### Configuration System Architecture
 
@@ -131,24 +96,15 @@ grove.set_properties(props)
 - **Preset validation** against available species list
 - **JSON-based properties** applied via `gc.io.properties_from_json_string()`
 
-### Error Handling Strategy
-- **Custom exceptions**: `ValidationError`, `ConfigurationError`, `BlenderOperationError`, `ExportError`
-- **Comprehensive logging** with structured error messages
-- **Input validation** for coordinates, heights, and species names
-- **Bounds checking** for array access and model predictions
-
 ### Platform Compatibility
 - **Windows**: `the_grove_22_core_windows.pyd`
 - **macOS (Apple Silicon)**: `the_grove_22_core_macos.so`
 - **macOS (Intel)**: `the_grove_22_core_macos_intel.so`
-- **Linux**: May need macOS binary renamed to `the_grove_22_core_linux.so`
 
 ## Key Configuration Parameters
 
 ### Simulation Control
 - `height_model_flushes`: Growth cycles for height curve generation (default: 75)
-- `age_to_flush_ratio`: Years per growth flush (default: 1.0, don't modify)
-- `growth_cycles`: Auto-calculated from predicted ages if not specified
 
 ### Build Quality Control
 - `resolution`: Branch cross-section sides (4-24, default: 16)
@@ -175,24 +131,17 @@ x,y,z,species,height
 - **Shared light environment** via `grove.calculate_shade_together()`
 - **Synchronized growth cycles** with species-specific delays
 
-## FBX Export Pipeline
+## USD Multi-LOD Export Pipeline
 
-**Blender Integration**:
-- **Automatic USD→FBX conversion** via `bpy` module
-- **LOD combining**: Groups all LOD levels into single FBX files
-- **Species organization**: Maintains folder structure during conversion
-- **Error handling**: Graceful fallbacks when Blender unavailable
+**Native Game Engine Support**:
+- **USD variants**: Multiple LOD levels in single files (LOD0_Ultra through LOD5_Minimal)
+- **Twig instancing**: Efficient USD prototypes with references for massive performance gains
+- **Direct import**: Unity 2024+ and Unreal 5+ support USD natively
 
 ## Common Issues & Solutions
 
 ### Import Errors
 - **the_grove_22_core not found**: Check `PYTHONPATH` includes `src/the_grove_22/modules`
-- **Platform binary missing**: Rename/symlink appropriate binary file
-
-### Performance Optimization
-- **Reduce `height_model_flushes`** (not `age_to_flush_ratio`) for faster simulation
-- **Use higher LOD levels** (LOD3_Low, LOD4_VeryLow) for lower polygon counts
-- **Process species separately** for large forests to manage memory
 
 ### Data Validation
 - **Species names** must match preset files exactly (case-sensitive)
@@ -208,4 +157,7 @@ When modifying the codebase:
 3. **Run complete pipeline** with `generate_forest.py`
 4. **Check output structure** in `data/output/{input_name}/`
 
-The system is designed to be resilient with comprehensive error handling and validation at each step.
+The system is designed to be resilient and efficient with:
+- **Clean, minimal API** without verbose logging or complex exception handling
+- **Separated concerns**: Analysis utilities run once, forest generation uses cached models
+- **USD-focused**: Eliminates FBX pipeline complexity while providing superior performance
