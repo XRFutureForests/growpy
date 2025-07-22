@@ -23,7 +23,7 @@ Quick Start:
     # Export using Grove's native capabilities
 """
 
-from .age_prediction import calculate_growth_cycles_from_height
+from .cycle_prediction import calculate_growth_cycles_from_height
 from .config import GrowPyConfig
 from .forest import (
     create_forest_groves,
@@ -60,15 +60,6 @@ __all__ = [
     # Forest operations
     "load_forest_csv", "create_forest_groves", "simulate_forest_growth", "get_forest_summary",
     
-    # Age prediction
-    "calculate_growth_cycles_from_height"
-]    
-    # Validation
-    "validate_csv_data",
-    
-    # Forest operations
-    "load_forest_csv", "create_forest_groves", "simulate_forest_growth", "get_forest_summary",
-    
-    # Age prediction
+    # Cycle prediction
     "calculate_growth_cycles_from_height"
 ]

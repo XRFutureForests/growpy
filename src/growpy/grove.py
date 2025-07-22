@@ -114,4 +114,4 @@ def save_model_to_usd(model, output_path: Path) -> bool:
         
         return True
     except Exception:
-        return False        return False
+        return False
