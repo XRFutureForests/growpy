@@ -187,54 +187,58 @@ class TwigToUSDConverter:
             # Clear scene first
             self.clear_blender_scene()
             
-            # Load .blend file - ensure absolute path
+            # Simple approach: Just open the blend file directly 
             absolute_blend_path = str(blend_path.resolve())
-            with bpy.data.libraries.load(absolute_blend_path) as (data_from, data_to):
-                data_to.objects = data_from.objects
-                
-            # Find the main twig mesh (largest by vertex count)
+            
+            # Open blend file (this replaces current scene completely)
+            bpy.ops.wm.open_mainfile(filepath=absolute_blend_path, load_ui=False)
+            
+            # Find the best mesh object (by vertex count)
             best_object = None
             max_vertices = 0
             
-            for obj in data_to.objects:
-                if obj and obj.type == 'MESH' and obj.data:
+            for obj in bpy.data.objects:
+                if obj and obj.type == 'MESH' and obj.data and len(obj.data.vertices) > 0:
                     vertex_count = len(obj.data.vertices)
                     if vertex_count > max_vertices:
                         max_vertices = vertex_count
                         best_object = obj
                         
             if not best_object:
-                logger.warning(f"No suitable mesh found in {blend_path.name}")
+                logger.warning(f"No mesh objects found in {blend_path.name}")
                 return None
                 
-            # Link object to scene
-            bpy.context.collection.objects.link(best_object)
+            # Make sure object is selected and active
             bpy.context.view_layer.objects.active = best_object
+            best_object.select_set(True)
             
-            # Extract geometry data
-            mesh = best_object.data
+            # Create a bmesh instance to process the mesh data
+            bm = bmesh.new()
+            bm.from_mesh(best_object.data)
             
-            # Ensure mesh has face indices
-            if not mesh.loop_triangles:
-                mesh.calc_loop_triangles()
-                
-            # Extract vertices
-            vertices = [(v.co.x, v.co.y, v.co.z) for v in mesh.vertices]
+            # Triangulate the mesh to ensure consistent face structure
+            bmesh.ops.triangulate(bm, faces=bm.faces[:])
             
-            # Extract faces (convert to triangles)
-            faces = []
-            for tri in mesh.loop_triangles:
-                faces.append([tri.vertices[0], tri.vertices[1], tri.vertices[2]])
-                
-            # Extract normals
-            normals = [(v.normal.x, v.normal.y, v.normal.z) for v in mesh.vertices]
+            # Update the mesh
+            bm.to_mesh(best_object.data)
             
-            # Extract UV coordinates (if available)
+            # Extract geometry data from bmesh (keep original scale - 20cm is correct for twigs)
+            vertices = [(v.co.x, v.co.y, v.co.z) for v in bm.verts]
+            faces = [[f.verts[i].index for i in range(len(f.verts))] for f in bm.faces]
+            normals = [(v.normal.x, v.normal.y, v.normal.z) for v in bm.verts]
+            
+            # Extract UVs if available
             uvs = []
-            if mesh.uv_layers:
-                uv_layer = mesh.uv_layers[0]
-                uvs = [(loop[uv_layer.data[loop.index].uv[0]], loop[uv_layer.data[loop.index].uv[1]]) 
-                      for loop in mesh.loops]
+            if bm.loops.layers.uv:
+                uv_layer = bm.loops.layers.uv.active
+                if uv_layer:
+                    uvs = []
+                    for face in bm.faces:
+                        for loop in face.loops:
+                            uv = loop[uv_layer].uv
+                            uvs.append((uv.x, uv.y))
+            
+            bm.free()  # Clean up bmesh
             
             geometry_data = {
                 'vertices': vertices,
@@ -283,8 +287,8 @@ class TwigToUSDConverter:
                 import shutil
                 shutil.copy2(source_path, dest_path)
                 
-                # Store relative path for USD references
-                rel_path = f"./textures/{dest_filename}"
+                # Store relative path for USD references (use textures/ for Blender compatibility)
+                rel_path = f"textures/{dest_filename}"
                 copied_textures[texture_type] = rel_path
                 
                 logger.debug(f"Copied texture: {source_path.name} -> {dest_filename}")
@@ -431,20 +435,26 @@ class TwigToUSDConverter:
             # Set UVs if available
             if geometry_data['uvs']:
                 uvs = Vt.Vec2fArray([Gf.Vec2f(uv[0], uv[1]) for uv in geometry_data['uvs']])
-                primvar = mesh_prim.CreatePrimvar("st", Sdf.ValueTypeNames.TexCoord2fArray)
+                primvar = UsdGeom.PrimvarsAPI(mesh_prim).CreatePrimvar("st", Sdf.ValueTypeNames.TexCoord2fArray)
                 primvar.Set(uvs)
                 primvar.SetInterpolation("vertex")
                 
-            # Bind material if available
+            # Bind material if available (optional - don't fail if this doesn't work)
             if material_path and Path(material_path).exists():
-                # Reference the material
-                material_ref_path = f"./materials/{Path(material_path).name}"
-                stage.GetRootLayer().subLayerPaths.append(material_ref_path)
-                
-                # Bind material to mesh
-                UsdShade.MaterialBindingAPI(mesh_prim).Bind(
-                    UsdShade.Material(stage.GetPrimAtPath(f"/Materials/{species_name}_Material"))
-                )
+                try:
+                    # Reference the material using relative path
+                    material_ref_path = f"../materials/{Path(material_path).name}"
+                    stage.GetRootLayer().subLayerPaths.append(material_ref_path)
+                    
+                    # Bind material to mesh
+                    binding_api = UsdShade.MaterialBindingAPI(mesh_prim)
+                    material_prim_path = f"/Materials/{species_name}_Material"
+                    material = UsdShade.Material(stage.GetPrimAtPath(material_prim_path))
+                    binding_api.Bind(material)
+                    
+                    logger.debug(f"Successfully bound material for {species_name}")
+                except Exception as e:
+                    logger.warning(f"Failed to bind material for {species_name}: {e}. Continuing without material.")
                 
             # Set metadata
             root_prim.SetMetadata("kind", "component")
