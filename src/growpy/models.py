@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 import the_grove_22_core as gc
 
-from ..core.forest import ForestGroves
+from .forest import ForestGroves
 
 
 def export_grove_json(grove: gc.Grove, output_path: Path) -> bool:
@@ -23,7 +23,7 @@ def export_grove_json(grove: gc.Grove, output_path: Path) -> bool:
         return False
 
 
-def export_model_usd(model: gc.Model, output_path: Path) -> bool:
+def export_model_usd(model, output_path: Path) -> bool:
     """Export model to USD using Grove's native USD output."""
     try:
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -39,7 +39,7 @@ def export_model_usd(model: gc.Model, output_path: Path) -> bool:
 
 def build_lod_models(
     grove: gc.Grove, lod_configs: Dict[str, Dict[str, Any]]
-) -> Dict[str, List[gc.Model]]:
+) -> Dict[str, List]:
     """Build multiple LOD variants of grove models."""
     lod_models = {}
     for lod_name, config in lod_configs.items():
