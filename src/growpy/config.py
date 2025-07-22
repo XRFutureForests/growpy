@@ -34,8 +34,6 @@ class GrowPyConfig:
         # Parse [simulation] section
         if config.has_section("simulation"):
             simulation = config["simulation"]
-            if "height_model_cycles" in simulation:
-                kwargs["height_model_cycles"] = simulation.getint("height_model_cycles")
             if "random_seed" in simulation:
                 seed_val = simulation.get("random_seed", "")
                 kwargs["random_seed"] = None if seed_val.lower() == "none" else int(seed_val)
@@ -62,7 +60,6 @@ class GrowPyConfig:
         """Save current configuration to a config.ini file."""
         config = configparser.ConfigParser()
         config["simulation"] = {
-            "height_model_cycles": str(self.height_model_cycles),
             "random_seed": str(self.random_seed) if self.random_seed is not None else "none",
         }
         config["output"] = {"output_dir": str(self.output_dir)}
@@ -138,23 +135,5 @@ class GrowPyConfig:
                 "build_end_cap": False,  # No end caps
             },
         }
-
-    @classmethod
-    def create_lod_config(cls, lod_level: str, **kwargs) -> "GrowPyConfig":
-        """Create a GrowPyConfig instance with specified LOD settings."""
-        lod_configs = cls.get_lod_configs()
-        config = cls(**kwargs)
-        lod_settings = lod_configs[lod_level]
-        for key, value in lod_settings.items():
-            setattr(config, key, value)
-        return config
-
-
-    def get_selected_lod_configs(self) -> Dict[str, Dict[str, Any]]:
-        """Get the LOD configurations selected by the user."""
-        all_lod_configs = self.get_lod_configs()
-        if self.lod_levels == ["all"]:
-            return all_lod_configs
-        return {lod: all_lod_configs[lod] for lod in self.lod_levels if lod in all_lod_configs}
 
 
