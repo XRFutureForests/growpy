@@ -39,7 +39,6 @@ python generate_forest.py
   - **config.py**: Configuration management with LOD presets  
   - **species.py**: Species validation and preset loading
   - **grove.py**: Grove object management and operations
-  - **validate.py**: Data validation utilities
 - **io/**: USD multi-LOD export only
   - **models.py**: USD model export with multi-LOD variants and twig instancing
 

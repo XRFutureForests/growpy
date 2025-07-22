@@ -2,13 +2,13 @@ Grove Species Growth Analysis Summary
 ========================================
 
 Analysis Parameters:
-- Growth cycles: 20
+- Growth cycles: 75
 - Species analyzed: 1
 
 Species Growth Summary:
 -------------------------
 Pinaceae - Fir:
-  Final height: 4.19
-  Growth rate: 0.209 units/cycle
-  Max height: 4.19
+  Final height: 18.92
+  Growth rate: 0.252 units/cycle
+  Max height: 18.92
 
