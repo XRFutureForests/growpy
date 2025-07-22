@@ -12,8 +12,7 @@ from typing import Any, Dict, List, Optional
 class GrowPyConfig:
     """Lightweight configuration for GrowPy tree generation."""
 
-    # Core simulation settings
-    height_model_cycles: int = 75  # Number of cycles for height curve generation
+    # Core simulation settings# Number of cycles for height curve generation
     random_seed: Optional[int] = 42
 
     # Output settings

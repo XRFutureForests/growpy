@@ -7,31 +7,22 @@ import pandas as pd
 import the_grove_22_core as gc
 
 from .forest import ForestGroves
+from .grove import save_grove_to_json
 
 
-def export_grove_json(grove: gc.Grove, output_path: Path) -> bool:
-    """Export grove to JSON using Grove's core functionality."""
+def save_model_to_usd(model, output_path: Path) -> None:
+    """Save 3D model to USD file using Grove's native USD output."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    usd_string = gc.io.model_to_usda_string(model)
+
+    with open(output_path, "w") as f:
+        f.write(usd_string)
+
+
+def save_model_usd(model, output_path: Path) -> bool:
+    """Save model to USD using Grove's native USD output."""
     try:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        json_string = gc.io.grove_to_json_string(grove)
-
-        with open(output_path, "w") as f:
-            f.write(json_string)
-
-        return True
-    except Exception:
-        return False
-
-
-def export_model_usd(model, output_path: Path) -> bool:
-    """Export model to USD using Grove's native USD output."""
-    try:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        usd_string = gc.io.model_to_usda_string(model)
-
-        with open(output_path, "w") as f:
-            f.write(usd_string)
-
+        save_model_to_usd(model, output_path)
         return True
     except Exception:
         return False
@@ -47,10 +38,8 @@ def build_lod_models(
     return lod_models
 
 
-def export_forest_groves_json(
-    forest_groves: ForestGroves, output_dir: Path
-) -> List[Path]:
-    """Export all forest groves to JSON files."""
+def save_forest_groves_json(forest_groves: ForestGroves, output_dir: Path) -> None:
+    """Save all forest groves to JSON files."""
     output_dir.mkdir(parents=True, exist_ok=True)
     exported_files = []
 
@@ -59,19 +48,16 @@ def export_forest_groves_json(
         filename = f"{safe_name}_grove.json"
         file_path = output_dir / filename
 
-        if export_grove_json(grove, file_path):
-            exported_files.append(file_path)
-
-    return exported_files
+        save_grove_to_json(grove, file_path)
 
 
-def export_forest_usd_models(
+def save_forest_usd_models(
     forest_groves: ForestGroves,
     output_dir: Path,
     lod_configs: Dict[str, Dict[str, Any]],
     forest_data: Optional[pd.DataFrame] = None,
 ) -> List[Path]:
-    """Export forest models to USD with multiple LOD variants."""
+    """Save forest models to USD with multiple LOD variants."""
     models_dir = output_dir / "usd_models"
     models_dir.mkdir(parents=True, exist_ok=True)
     exported_files = []
@@ -130,7 +116,7 @@ def export_forest_usd_models(
             filename = f"{species_name.replace(' ', '_')}_tree_{tree_idx:03d}.usda"
             file_path = species_dir / filename
 
-            if export_model_usd(base_model, file_path):
+            if save_model_usd(base_model, file_path):
                 exported_files.append(file_path)
 
     return exported_files
