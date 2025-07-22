@@ -460,7 +460,6 @@ x,y,z,species,age,height
 - `grow_forest_from_csv()`: Generate individual tree OBJ files
 - `grow_combined_forest_from_csv()`: Generate single combined forest OBJ
 - `list_available_species()`: Get all available species names
-- `validate_csv_format()`: Check CSV format before processing
 
 ### Quick Demo
 
