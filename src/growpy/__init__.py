@@ -1,28 +1,74 @@
 """
-GrowPy - Clean interface for The Grove 2.2 with USD multi-LOD support
-====================================================================
+GrowPy - Simplified atomic functions for The Grove 2.2
+======================================================
 
-Streamlined procedural tree generation with native USD output and twig instancing.
+Clean, atomic procedural tree generation using Grove's core functionality.
 
 Key Features:
-- USD multi-LOD export with variants (eliminates FBX pipeline)
-- Efficient twig instancing via USD prototypes
-- Clean, minimal API focused on essential functionality
-- Direct game engine compatibility
+- Atomic, single-purpose functions for easy composition
+- Direct Grove core integration without abstraction layers
+- Native USD export using Grove's built-in capabilities
+- Minimal API focused on essential functionality
+- Performance-optimized with minimal overhead
 
 Quick Start:
-    from growpy.core.config import GrowPyConfig
-    from growpy.io.models import export_forest_models_with_twigs
+    from growpy import GrowPyConfig, load_forest_csv, create_forest_groves, simulate_forest_growth
+    from growpy.models import export_forest_groves_json, export_forest_usd_models
     
-    # Generate USD trees with all LODs and twig instances
+    # Simple atomic workflow
     config = GrowPyConfig()
-    forest_data = simulate_forest_from_csv("forest.csv")
-    usd_files = export_forest_models_with_twigs(forest_data, output_dir, config.get_lod_configs())
+    forest_data = load_forest_csv("forest.csv")
+    forest_groves = create_forest_groves(forest_data)
+    simulate_forest_growth(forest_groves, cycles=20)
+    # Export using Grove's native capabilities
 """
 
-from .core.config import GrowPyConfig
+from .age_prediction import calculate_growth_cycles_from_height
+from .config import GrowPyConfig
+from .forest import (
+    create_forest_groves,
+    get_forest_summary,
+    load_forest_csv,
+    simulate_forest_growth,
+)
+from .grove import (
+    add_tree_to_grove,
+    apply_species_preset,
+    build_grove_models,
+    calculate_shared_shade,
+    create_grove,
+    list_species,
+    load_grove_from_json,
+    save_grove_to_json,
+    save_model_to_usd,
+    simulate_grove,
+)
+from .validate import validate_csv_data
 
-__version__ = "4.0.0"
-__author__ = "GrowPy Team"
-
-__all__ = ["GrowPyConfig"]
+__all__ = [
+    # Core Grove operations
+    "list_species", "create_grove", "apply_species_preset", "add_tree_to_grove",
+    "simulate_grove", "build_grove_models", "calculate_shared_shade",
+    "save_grove_to_json", "load_grove_from_json", "save_model_to_usd",
+    
+    # Configuration
+    "GrowPyConfig",
+    
+    # Validation
+    "validate_csv_data",
+    
+    # Forest operations
+    "load_forest_csv", "create_forest_groves", "simulate_forest_growth", "get_forest_summary",
+    
+    # Age prediction
+    "calculate_growth_cycles_from_height"
+]    
+    # Validation
+    "validate_csv_data",
+    
+    # Forest operations
+    "load_forest_csv", "create_forest_groves", "simulate_forest_growth", "get_forest_summary",
+    
+    # Age prediction
+    "calculate_growth_cycles_from_height"
+]
