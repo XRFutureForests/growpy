@@ -13,17 +13,16 @@ src_path = Path(__file__).parent / "src"
 grove_core_path = src_path / "the_grove_22" / "modules"
 sys.path.insert(0, str(src_path))
 sys.path.insert(0, str(grove_core_path))
+import pandas as pd
 
 # Import simplified atomic functions
 from growpy import (
     GrowPyConfig,
     calculate_growth_cycles_from_height,
     create_forest_groves,
-    get_forest_summary,
-    load_forest_csv,
     simulate_forest_growth,
 )
-from growpy.models import export_forest_groves_json, export_forest_usd_models
+from growpy.models import save_forest_groves_json, save_forest_usd_models
 
 
 def main():
@@ -56,39 +55,34 @@ def main():
 
     # Step 1: Load forest data
     print("\n1. Loading forest data...")
-    forest_data = load_forest_csv(csv_path)
+    forest_data = pd.read_csv(csv_path)
     print(f"   Loaded {len(forest_data)} trees from CSV")
 
     # Step 2: Calculate growth cycles
     print("\n2. Calculating growth cycles...")
-    enhanced_data, max_cycles = calculate_growth_cycles_from_height(forest_data)
+    calculate_growth_cycles_from_height(forest_data)
+    max_cycles = forest_data["growth_cycles"].max()
     print(f"   Growth cycles calculated: {max_cycles}")
 
     # Step 3: Create forest groves
     print("\n3. Creating forest groves...")
-    forest_groves = create_forest_groves(enhanced_data, config.random_seed)
+    forest_groves = create_forest_groves(forest_data, config.random_seed)
 
     # Step 4: Simulate forest growth
     print("\n4. Simulating forest growth...")
-    simulate_forest_growth(forest_groves, max_cycles, use_light_competition=True)
-
-    # Show summary
-    summary = get_forest_summary(forest_groves)
-    print(
-        f"   Simulation complete: {summary['species_count']} species, {summary['total_trees']} trees"
-    )
+    simulate_forest_growth(forest_groves, max_cycles)
 
     # Step 5: Export files
     print("\n5. Exporting files...")
 
     # Export grove JSONs for Blender
     grove_dir = output_dir / input_name / "groves"
-    grove_files = export_forest_groves_json(forest_groves, grove_dir)
+    save_forest_groves_json(forest_groves, grove_dir)
 
     # Export USD models with LOD variants
     lod_configs = config.get_selected_lod_configs()
-    usd_files = export_forest_usd_models(
-        forest_groves, output_dir / input_name, lod_configs, enhanced_data
+    usd_files = save_forest_usd_models(
+        forest_groves, output_dir / input_name, lod_configs, forest_data
     )
 
     # Final summary
@@ -109,4 +103,5 @@ if __name__ == "__main__":
     sys.exit(main())
 
 if __name__ == "__main__":
+    sys.exit(main())
     sys.exit(main())
