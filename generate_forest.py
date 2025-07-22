@@ -15,19 +15,21 @@ sys.path.insert(0, str(src_path))
 sys.path.insert(0, str(grove_core_path))
 import pandas as pd
 
-# Import simplified atomic functions
+# Import hierarchical modular functions
 from growpy import (
     GrowPyConfig,
+    build_lod_models,
     calculate_growth_cycles_from_height,
-    create_forest_groves,
+    create_forest,
+    save_grove_to_json,
+    save_tree_to_usd,
     simulate_forest_growth,
 )
-from growpy.models import save_forest_groves_json, save_forest_usd_models
 
 
 def main():
-    """Generate forest models using simplified growpy functions."""
-    print("Grove Forest Generator v4.1 - Simplified Atomic Functions")
+    """Generate forest models using hierarchical modular functions."""
+    print("Grove Forest Generator v4.1 - Hierarchical Modular Functions")
     print("=" * 60)
 
     # Setup paths
@@ -66,42 +68,30 @@ def main():
 
     # Step 3: Create forest groves
     print("\n3. Creating forest groves...")
-    forest_groves = create_forest_groves(forest_data, config.random_seed)
+    forest = create_forest(forest_data, config.random_seed)
 
     # Step 4: Simulate forest growth
     print("\n4. Simulating forest growth...")
-    simulate_forest_growth(forest_groves, max_cycles)
+    simulate_forest_growth(forest, max_cycles)
 
     # Step 5: Export files
     print("\n5. Exporting files...")
-
+    lod_configs = config.get_lod_configs()
     # Export grove JSONs for Blender
-    grove_dir = output_dir / input_name / "groves"
-    save_forest_groves_json(forest_groves, grove_dir)
+    for grove, species_name, tree_count in forest:
+        species_name = species_name.replace(" ", "").replace("-", "_")
+        forest_dir = output_dir / input_name
+        forest_dir.mkdir(parents=True, exist_ok=True)
+        filename = f"{species_name}_grove.json"
+        file_path = forest_dir / filename
+        save_grove_to_json(grove, file_path)
 
-    # Export USD models with LOD variants
-    lod_configs = config.get_selected_lod_configs()
-    usd_files = save_forest_usd_models(
-        forest_groves, output_dir / input_name, lod_configs, forest_data
-    )
-
-    # Final summary
-    print("\n" + "=" * 60)
-    print("Forest generation complete!")
-    print("\nExport Summary:")
-    print(f"  Grove JSON files: {len(grove_files)}")
-    print(f"  USD model files: {len(usd_files)}")
-
-    print(f"\nOutput structure:")
-    print(f"  {grove_dir}/              - JSON files for Blender import")
-    print(f"  {output_dir / input_name / 'usd_models'}/  - USD tree files")
-
-    return 0
+        lod_models = build_lod_models(grove, lod_configs)
+        for lod_name, models in lod_models.items():
+            for i, model in enumerate(models):
+                model_path = forest_dir / f"{species_name}_{lod_name}_{i}.usda"
+                save_tree_to_usd(model, model_path)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
-
-if __name__ == "__main__":
-    sys.exit(main())
     sys.exit(main())

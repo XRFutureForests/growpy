@@ -430,7 +430,7 @@ def save_model_with_twigs_to_usd(
 
 
 def generate_forest_with_twigs(
-    forest_groves: List[Tuple[gc.Grove, str]],
+    forest: List[Tuple[gc.Grove, str]],
     output_dir: Path,
     twig_density: float = 1.0,
     twig_scale: float = 1.0,
@@ -441,7 +441,7 @@ def generate_forest_with_twigs(
     Generate USD files for a forest with twig instances.
 
     Args:
-        forest_groves: List of (grove, species_model) tuples
+        forest: List of (grove, species_model) tuples
         output_dir: Directory for output USD files
         twig_density: Density factor for twig placement
         twig_scale: Scale factor for twigs
@@ -452,7 +452,7 @@ def generate_forest_with_twigs(
         Dictionary with generation results and statistics
     """
     results = {
-        "total_groves": len(forest_groves),
+        "total_groves": len(forest),
         "successful_exports": 0,
         "failed_exports": 0,
         "twig_assignments": {},
@@ -465,7 +465,7 @@ def generate_forest_with_twigs(
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    for i, (grove, species_model) in enumerate(forest_groves):
+    for i, (grove, species_model) in enumerate(forest):
         try:
             # Build models for this grove
             models = grove.build_models(build_options or {})

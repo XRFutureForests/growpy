@@ -3,7 +3,10 @@
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import pandas as pd
 import the_grove_22_core as gc
+
+from .tree import save_tree_models
 
 
 def list_species() -> List[str]:
@@ -59,19 +62,7 @@ def add_tree_to_grove(
     grove.add_new_tree(position_vector, direction_vector, delay)
 
 
-def calculate_shared_shade(groves: List[gc.Grove]) -> None:
-    """Calculate shared light competition between groves using Grove's core shade system."""
-    if len(groves) <= 1:
-        return
 
-    # Collect shade geometry from all groves
-    all_coords = []
-    for grove in groves:
-        all_coords.extend(grove.create_shade_geometry_coords())
-
-    # Apply shared shade calculation to each grove
-    for grove in groves:
-        grove.calculate_shade_together(all_coords)
 
 
 def save_grove_to_json(grove: gc.Grove, output_path: Path) -> None:
@@ -81,11 +72,3 @@ def save_grove_to_json(grove: gc.Grove, output_path: Path) -> None:
 
     with open(output_path, "w") as f:
         f.write(json_string)
-
-
-def load_grove_from_json(json_path: Path) -> gc.Grove:
-    """Load grove from JSON file using Grove's core io functionality."""
-    with open(json_path, "r") as f:
-        json_string = f.read()
-
-    return gc.io.grove_from_json_string(json_string)
