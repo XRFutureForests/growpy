@@ -45,12 +45,27 @@ except ImportError as e:
 class TwigToUSDConverter:
     """Converts Grove twig .blend files to USD prototypes."""
     
-    # Supported texture types mapping
+    # Supported texture types mapping - comprehensive patterns found in Grove twigs
     TEXTURE_MAPPING = {
-        'diffuse': ['Diffuse.jpg', 'Bottom.png', 'Top.png', '_diffuse.png'],
-        'normal': ['Normal.jpg', 'TopNormal.png', 'TopBump.png', '_normal.png'],
-        'alpha': ['Alpha.jpg', '_alpha.png', '_opacity.png'],
-        'translucent': ['Translucent.jpg', '_translucent.png'],
+        'diffuse': [
+            'Diffuse.jpg', '_diffuse.png', '_diffuse.jpg',
+            'Bottom.png', 'Top.png', 
+            'FallBottom.png', 'FallTop.png',
+            'SummerBottom.png', 'SummerTop.png',
+            '.png', '.jpg'  # For single texture files like Bottlebrush.png
+        ],
+        'normal': [
+            'Normal.jpg', '_normal.png', '_normals.png', '_normal.jpg',
+            'TopNormal.png', 'TopBump.png', 'Bump.png',
+            'FallBump.png', 'SummerBump.png'
+        ],
+        'alpha': [
+            'Alpha.jpg', '_alpha.png', '_alpha.jpg', '_opacity.png',
+            '_alpha_incuding_petioles.png'  # Special case for Hackberry
+        ],
+        'translucent': [
+            'Translucent.jpg', '_translucent.png', '_translucent.jpg'
+        ],
         'roughness': ['Roughness.jpg', '_roughness.png'],
         'metallic': ['Metallic.jpg', '_metallic.png']
     }
@@ -103,7 +118,7 @@ class TwigToUSDConverter:
         
     def find_textures_for_twig(self, twig_dir: Path, species_name: str) -> Dict[str, Path]:
         """
-        Find texture files for a twig species.
+        Find texture files for a twig species using comprehensive pattern matching.
         
         Args:
             twig_dir: Twig directory path
@@ -118,25 +133,101 @@ class TwigToUSDConverter:
         # Check both main directory and textures subdirectory
         search_dirs = [twig_dir, texture_dir] if texture_dir.exists() else [twig_dir]
         
+        # Extract base species name variations for better matching
+        base_names = [
+            species_name,  # Original: EuropeanBeech
+            species_name.replace('Twig', '').replace('twig', ''),  # Remove Twig: EuropeanBeech
+            twig_dir.name.replace('Twig', '').replace('twig', ''),  # From directory: EuropeanBeech
+        ]
+        
+        # Add common shortened forms (e.g., EuropeanBeech -> Beech)
+        for name in base_names.copy():
+            if 'European' in name:
+                base_names.append(name.replace('European', ''))
+            if 'Japanese' in name:
+                base_names.append(name.replace('Japanese', ''))
+            if 'Common' in name:
+                base_names.append(name.replace('Common', ''))
+                
         for search_dir in search_dirs:
             for texture_type, patterns in self.TEXTURE_MAPPING.items():
                 if texture_type in textures:
                     continue  # Already found
                     
                 for pattern in patterns:
-                    # Try different naming conventions
-                    possible_names = [
-                        f"{species_name}{pattern}",
-                        f"{species_name.replace('Twig', '')}{pattern}",
-                        pattern.lstrip('_'),  # Remove leading underscore
-                        f"Twig{pattern}"
-                    ]
+                    # Handle single texture files (e.g., Bottlebrush.png, EucalyptusGlobulus.png)
+                    if pattern in ['.png', '.jpg']:
+                        for ext in ['.png', '.jpg']:
+                            for base_name in base_names:
+                                # Try various combinations
+                                possible_names = [
+                                    f"{base_name}{ext}",
+                                    f"{twig_dir.name.replace('Twig', '')}{ext}",
+                                    # Special cases found in actual data
+                                    f"EucalyptusGlobulus{ext}",  # BlueGumTwig
+                                    f"Bottlebrush{ext}",        # BottlebrushTwig
+                                    f"JapaneseCherry{ext}",     # JapaneseCherryTwig
+                                    f"SaucerMagnolia{ext}",     # SaucerMagnoliaTwig
+                                    f"ScotsPine{ext}",          # ScotsPineTwig
+                                ]
+                                
+                                for name in possible_names:
+                                    texture_path = search_dir / name
+                                    if texture_path.exists():
+                                        textures[texture_type] = texture_path
+                                        break
+                                if texture_type in textures:
+                                    break
+                            if texture_type in textures:
+                                break
+                        continue
+                        
+                    # Try different naming conventions for specific patterns
+                    possible_names = []
                     
+                    for base_name in base_names:
+                        # Direct concatenation (BeechDiffuse.jpg)
+                        possible_names.append(f"{base_name}{pattern}")
+                        
+                        # With species prefix (EuropeanBeechDiffuse.jpg - less common)
+                        possible_names.append(f"{twig_dir.name.replace('Twig', '')}{pattern}")
+                        
+                        # Pattern without prefix (Bottom.png, Top.png, etc.)
+                        possible_names.append(pattern.lstrip('_'))
+                        
+                        # Scientific name patterns (found in some twigs)
+                        possible_names.extend([
+                            f"AlnusGlutinosaLaciniata{pattern}",  # CutLeavedAlderTwig
+                            f"SalixCaprea{pattern}",             # GoatWillowTwig
+                            f"CeltisOccidentalis{pattern}",      # HackberryTwig
+                            f"CorylusAvellana{pattern}",         # HazelTwig
+                            f"AcerPalmatumAtropurpureum{pattern}", # JapeneseMapleAtropurpureumTwig
+                            f"QuercusPalustris{pattern}",        # PinOakTwig
+                            f"MagnoliaXSoulangeana{pattern}",    # SaucerMagnoliaSummerTwig
+                            f"MalusSylvestris{pattern}",         # WildAppleTwig
+                        ])
+                        
+                        # Handle seasonal variations
+                        if 'Fall' in twig_dir.name:
+                            possible_names.extend([
+                                f"{base_name}Fall{pattern}",
+                                f"{base_name.replace('Fall', '')}Fall{pattern}",
+                            ])
+                        if 'Summer' in twig_dir.name:
+                            possible_names.extend([
+                                f"{base_name}Summer{pattern}",
+                                f"{base_name.replace('Summer', '')}Summer{pattern}",
+                            ])
+                    
+                    # Check all possible names
                     for name in possible_names:
                         texture_path = search_dir / name
                         if texture_path.exists():
                             textures[texture_type] = texture_path
                             break
+                    
+                    if texture_type in textures:
+                        break
                             
         logger.debug(f"Found {len(textures)} textures for {species_name}: {list(textures.keys())}")
         return textures
