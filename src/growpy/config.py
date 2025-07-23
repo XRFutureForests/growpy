@@ -214,7 +214,7 @@ class GrowPyConfig:
             Path to the growth model directory or None if species not found or no growth model available.
         """
         df = cls.load_species_lookup()
-        growth_model = df.loc[df["common_name"] == common_name, "growth_model"].values[
+        growth_model = df.loc[df["Common Name"] == common_name, "Growth Model"].values[
             0
         ]
 
@@ -236,7 +236,7 @@ class GrowPyConfig:
             Path to the bark texture file or None if species not found.
         """
         df = cls.load_species_lookup()
-        bark_texture = df.loc[df["common_name"] == common_name, "bark_texture"].values[
+        bark_texture = df.loc[df["Common Name"] == common_name, "Bark Texture"].values[
             0
         ]
         assets_dir = cls.get_assets_directory()
@@ -280,7 +280,7 @@ class GrowPyConfig:
             Path to the twig prototype file or None if species not found or no twig available.
         """
         df = cls.load_species_lookup()
-        twig_name = df.loc[df["common_name"] == common_name, "twig"].values[0]
+        twig_name = df.loc[df["Common Name"] == common_name, "Twig"].values[0]
         prototype_name = twig_name + "_prototype.usda"
         assets_dir = cls.get_assets_directory()
         prototypes_dir = assets_dir / "twigs" / "prototypes"
@@ -299,7 +299,7 @@ class GrowPyConfig:
             Path to the twig material file or None if species not found or no twig available.
         """
         df = cls.load_species_lookup()
-        twig_name = df.loc[df["common_name"] == common_name, "twig"].values[0]
+        twig_name = df.loc[df["Common Name"] == common_name, "Twig"].values[0]
         material_name = twig_name + "_material.usda"
         assets_dir = cls.get_assets_directory()
         materials_dir = assets_dir / "twigs" / "materials"
@@ -358,19 +358,19 @@ class GrowPyConfig:
             Path to the preset file or None if species not found.
         """
         df = cls.load_species_lookup()
-        preset_name = df.loc[df["common_name"] == common_name, "preset"].values[0]
+        preset_name = df.loc[df["Common Name"] == common_name, "Preset"].values[0]
         assets_dir = cls.get_assets_directory()
         preset_path = assets_dir / "presets" / preset_name
         return preset_path
 
     @classmethod
-    def get_lod_configs(cls) -> Dict[str, Dict[str, Any]]:
+    def get_all_lod_configs(cls) -> Dict[str, Dict[str, Any]]:
         """
-        Get different Level of Detail (LOD) build configurations.
+        Get all available Level of Detail (LOD) build configurations.
         Each successive LOD reduces polygon count significantly.
 
         Returns:
-            Dict containing LOD configurations from highest to lowest detail
+            Dict containing all LOD configurations from highest to lowest detail
         """
         return {
             "LOD0_Ultra": {
@@ -428,3 +428,24 @@ class GrowPyConfig:
                 "build_end_cap": False,  # No end caps
             },
         }
+
+    def get_lod_configs(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Get filtered Level of Detail (LOD) build configurations based on the instance's lod_levels setting.
+
+        Returns:
+            Dict containing LOD configurations filtered by the user's selection
+        """
+        all_configs = self.get_all_lod_configs()
+        
+        # If "all" is in the lod_levels, return all configurations
+        if "all" in self.lod_levels:
+            return all_configs
+        
+        # Filter configurations based on the user's selection
+        filtered_configs = {}
+        for lod_level in self.lod_levels:
+            if lod_level in all_configs:
+                filtered_configs[lod_level] = all_configs[lod_level]
+        
+        return filtered_configs
