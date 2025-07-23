@@ -27,21 +27,26 @@ import the_grove_22_core as gc
 from sklearn.linear_model import LinearRegression
 from tqdm import tqdm
 
+# Use refactored growpy package
+from growpy import apply_species_preset, list_species
+
 
 class SpeciesGrowthAnalyzer:
     """Analyzes growth patterns for Grove species and creates prediction models."""
 
-    def __init__(self, output_dir: Path, height_model_flushes: int = 75):
+    def __init__(self, output_dir: Path, height_model_flushes: int = 75, num_seeds: int = 3):
         """
         Initialize the growth analyzer.
 
         Args:
             output_dir: Directory to save growth models
             height_model_flushes: Number of growth cycles for height curve generation
+            num_seeds: Number of different random seeds to average for robust curves
         """
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.height_model_flushes = height_model_flushes
+        self.num_seeds = num_seeds
 
         # Results storage
         self.height_curves = {}  # species -> list of heights per cycle
@@ -49,153 +54,168 @@ class SpeciesGrowthAnalyzer:
         self.analysis_metadata = {}  # species -> analysis info
 
     def get_available_species(self) -> List[str]:
-        """Get list of all available Grove species presets."""
-        # Find presets directory relative to this script
-        presets_dir = Path(__file__).parent.parent / "the_grove_22" / "presets"
+        """Get list of all available Grove species presets using growpy."""
+        try:
+            return list_species()
+        except Exception:
+            # Fallback to manual directory scanning
+            presets_dir = Path(__file__).parent.parent / "the_grove_22" / "presets"
+            
+            if not presets_dir.exists():
+                raise FileNotFoundError(f"Presets directory not found: {presets_dir}")
 
-        if not presets_dir.exists():
-            raise FileNotFoundError(f"Presets directory not found: {presets_dir}")
+            species_list = []
+            for preset_file in presets_dir.glob("*.seed.json"):
+                try:
+                    species_name = preset_file.stem
+                    if species_name.endswith(".seed"):
+                        species_name = species_name[:-5]
 
-        species_list = []
-        for preset_file in presets_dir.glob("*.seed.json"):
-            try:
-                # Remove .seed.json extension to get species name
-                species_name = preset_file.stem
-                if species_name.endswith(".seed"):
-                    species_name = species_name[:-5]
+                    if species_name and not species_name.startswith("."):
+                        species_list.append(species_name)
+                except Exception:
+                    continue
 
-                if species_name and not species_name.startswith("."):
-                    species_list.append(species_name)
-            except Exception:
-                continue
-
-        return sorted(species_list)
+            return sorted(species_list)
 
     def generate_height_curve_for_species(
         self, species: str
     ) -> Tuple[List[float], Dict[str, Any]]:
         """
-        Generate height curve for a single species by simulating growth.
+        Generate height curve for a single species by simulating growth with multiple seeds.
+        Averages results to account for random variation.
 
         Args:
             species: Species name
 
         Returns:
-            Tuple of (height_curve, metadata)
+            Tuple of (averaged_height_curve, metadata)
         """
-        grove = gc.Grove()
-        grove.set_random_seed(42)  # Consistent results
-
-        # Apply species preset
-        try:
-            # Load preset from file system
-            presets_dir = Path(__file__).parent.parent / "the_grove_22" / "presets"
-            preset_path = presets_dir / f"{species}.seed.json"
-
-            if not preset_path.exists():
-                raise FileNotFoundError(f"Preset file not found: {preset_path}")
-
-            with open(preset_path, "r") as f:
-                preset_json = f.read()
-
-            # Apply preset to grove
-            properties = gc.io.properties_from_json_string(preset_json)
-            grove.set_properties(properties)
-
-        except Exception as e:
-            raise ValueError(f"Failed to apply preset for {species}: {e}")
-
-        # Clear any default trees and add a single tree at origin
-        grove.clear_trees()  # Remove the default tree
-        grove.add_new_tree(gc.Vector(0, 0, 0), gc.Vector(0, 0, 1), 0)
-
-        # Record height after each cycle
-        heights = []
-
-        # Progress bar for growth cycles
-        cycle_progress = tqdm(
-            range(self.height_model_flushes),
-            desc=f"Growing {species}",
+        all_curves = []
+        seed_metadata = []
+        
+        # Test multiple seeds to get robust average
+        seeds_to_test = [1, 23, 42, 100, 500, 777, 1337, 2023, 5555][:self.num_seeds]
+        
+        seed_progress = tqdm(
+            seeds_to_test,
+            desc=f"Testing seeds for {species[:25]}",
             leave=False,
             disable=False,
         )
+        
+        for seed in seed_progress:
+            grove = gc.Grove()
+            grove.set_random_seed(seed)
 
-        for cycle in cycle_progress:
-            grove.simulate(1)
+            # Apply species preset using growpy
+            try:
+                apply_species_preset(grove, species)
+            except Exception as e:
+                # Fallback to manual preset loading
+                try:
+                    presets_dir = Path(__file__).parent.parent / "the_grove_22" / "presets"
+                    preset_path = presets_dir / f"{species}.seed.json"
 
-            # Get tree height using more robust method
-            if grove.trees and len(grove.trees) > 0:
-                tree = grove.trees[0]  # Get the main trunk
+                    if not preset_path.exists():
+                        raise FileNotFoundError(f"Preset file not found: {preset_path}")
 
-                if hasattr(tree, "nodes") and len(tree.nodes) > 0:
-                    # Method 1: Simple approach - find the highest node Z position
-                    max_height = 0.0
+                    with open(preset_path, "r") as f:
+                        preset_json = f.read()
 
-                    # Traverse all nodes in the main trunk
-                    for node in tree.nodes:
-                        if node.pos.z > max_height:
-                            max_height = node.pos.z
+                    properties = gc.io.properties_from_json_string(preset_json)
+                    grove.set_properties(properties)
+                except Exception as e2:
+                    raise ValueError(f"Failed to apply preset for {species}: {e} (fallback: {e2})")
 
-                    # Also check side branches recursively
-                    def find_max_height_in_branch(branch):
-                        local_max = 0.0
-                        if hasattr(branch, "nodes"):
-                            for node in branch.nodes:
-                                if node.pos.z > local_max:
-                                    local_max = node.pos.z
+            # Clear any default trees and add a single tree at origin
+            grove.clear_trees()
+            grove.add_new_tree(gc.Vector(0, 0, 0), gc.Vector(0, 0, 1), 0)
 
-                                # Check side branches
-                                if (
-                                    hasattr(node, "side_branches")
-                                    and node.side_branches
-                                ):
-                                    for side_branch in node.side_branches:
-                                        side_max = find_max_height_in_branch(
-                                            side_branch
-                                        )
-                                        if side_max > local_max:
-                                            local_max = side_max
-                        return local_max
+            # Record height after each cycle for this seed
+            heights_this_seed = []
+            max_height_achieved = 0.0
 
-                    # Get max height from entire tree structure
-                    tree_max_height = find_max_height_in_branch(tree)
-                    max_height = max(max_height, tree_max_height)
+            # Growth simulation
+            for cycle in range(self.height_model_flushes):
+                grove.simulate(1)
 
-                    heights.append(max_height)
+                # Get tree height using more robust method
+                current_height = 0.0
+                if grove.trees and len(grove.trees) > 0:
+                    tree = grove.trees[0]
 
-                    # Update progress bar with current height
-                    cycle_progress.set_postfix(height=f"{max_height:.2f}")
+                    if hasattr(tree, "nodes") and len(tree.nodes) > 0:
+                        # Find the highest node Z position
+                        max_height = 0.0
+                        for node in tree.nodes:
+                            if node.pos.z > max_height:
+                                max_height = node.pos.z
 
-                    # Debug output for first few cycles and every 10 cycles after
-                    if cycle < 5 or cycle % 10 == 0:
-                        side_branch_count = sum(
-                            (
-                                len(node.side_branches)
-                                if hasattr(node, "side_branches") and node.side_branches
-                                else 0
-                            )
-                            for node in tree.nodes
-                        )
-                        tqdm.write(
-                            f"  Cycle {cycle + 1}: height = {max_height:.3f}, nodes = {len(tree.nodes)}, side_branches = {side_branch_count}"
-                        )
+                        # Also check side branches recursively
+                        def find_max_height_in_branch(branch):
+                            local_max = 0.0
+                            if hasattr(branch, "nodes"):
+                                for node in branch.nodes:
+                                    if node.pos.z > local_max:
+                                        local_max = node.pos.z
+                                    if (hasattr(node, "side_branches") and node.side_branches):
+                                        for side_branch in node.side_branches:
+                                            side_max = find_max_height_in_branch(side_branch)
+                                            if side_max > local_max:
+                                                local_max = side_max
+                            return local_max
+
+                        tree_max_height = find_max_height_in_branch(tree)
+                        current_height = max(max_height, tree_max_height)
+                        
+                        # Update max height achieved if current height is higher
+                        if current_height > max_height_achieved:
+                            max_height_achieved = current_height
+                        
+                        # Store the maximum height achieved so far (prevents decline)
+                        heights_this_seed.append(max_height_achieved)
+                    else:
+                        heights_this_seed.append(max_height_achieved)
                 else:
-                    heights.append(0.0)
-                    tqdm.write(f"  Cycle {cycle + 1}: No nodes found in tree")
+                    heights_this_seed.append(max_height_achieved)
+            
+            all_curves.append(heights_this_seed)
+            seed_metadata.append({
+                'seed': seed,
+                'final_height': heights_this_seed[-1] if heights_this_seed else 0.0,
+                'max_height': max_height_achieved
+            })
+            
+            seed_progress.set_postfix(seed=seed, height=f"{max_height_achieved:.2f}")
+
+        # Average the curves across all seeds
+        if not all_curves:
+            raise ValueError(f"No successful growth curves generated for {species}")
+        
+        # Calculate average height at each cycle
+        avg_heights = []
+        for cycle in range(self.height_model_flushes):
+            cycle_heights = [curve[cycle] for curve in all_curves if cycle < len(curve)]
+            if cycle_heights:
+                avg_heights.append(sum(cycle_heights) / len(cycle_heights))
             else:
-                heights.append(0.0)
-                tqdm.write(f"  Cycle {cycle + 1}: No trees found in grove")
+                avg_heights.append(0.0)
 
         metadata = {
             "species": species,
             "cycles": self.height_model_flushes,
-            "final_height": heights[-1] if heights else 0.0,
-            "max_height": max(heights) if heights else 0.0,
-            "growth_rate": heights[-1] / self.height_model_flushes if heights else 0.0,
-            "height_curve": heights,  # Include full curve for debugging
+            "num_seeds": len(all_curves),
+            "seeds_tested": [m['seed'] for m in seed_metadata],
+            "final_height": avg_heights[-1] if avg_heights else 0.0,
+            "max_height": max(avg_heights) if avg_heights else 0.0,
+            "growth_rate": max(avg_heights) / self.height_model_flushes if avg_heights else 0.0,
+            "height_curve": avg_heights,
+            "seed_results": seed_metadata,
+            "note": "Height curve averaged across multiple seeds to account for random variation"
         }
 
-        return heights, metadata
+        return avg_heights, metadata
 
     def create_growth_model_for_species(
         self, species: str, height_curve: List[float]
@@ -231,26 +251,6 @@ class SpeciesGrowthAnalyzer:
         model.fit(heights, cycles)
 
         return model
-
-    def predict_required_cycles(self, species: str, target_height: float) -> int:
-        """
-        Predict number of cycles required to reach target height.
-
-        Args:
-            species: Species name
-            target_height: Target height
-
-        Returns:
-            Predicted number of cycles
-        """
-        if species not in self.growth_models:
-            raise ValueError(f"No growth model available for {species}")
-
-        model = self.growth_models[species]
-        predicted_cycles = model.predict([[target_height]])[0]
-
-        # Ensure reasonable bounds
-        return max(1, min(int(predicted_cycles), self.height_model_flushes * 2))
 
     def analyze_all_species(self) -> Dict[str, bool]:
         """
@@ -303,9 +303,9 @@ class SpeciesGrowthAnalyzer:
 
     def save_species_results(self, species: str):
         """Save results for a single species in its own subfolder."""
-        # Create species-specific subfolder
+        # Create species-specific subfolder directly under output_dir
         species_safe = species.replace(" - ", "_").replace(" ", "_").replace("/", "_")
-        species_dir = self.output_dir / "species" / species_safe
+        species_dir = self.output_dir / species_safe
         species_dir.mkdir(parents=True, exist_ok=True)
 
         if species in self.height_curves:
@@ -337,56 +337,17 @@ class SpeciesGrowthAnalyzer:
         return species_dir
 
     def save_growth_models(self):
-        """Save all growth models and metadata to files."""
-        # Save global models as before
-        models_path = self.output_dir / "species_growth_models.pkl"
-        with open(models_path, "wb") as f:
-            pickle.dump(self.growth_models, f)
-
-        curves_path = self.output_dir / "species_height_curves.json"
-        with open(curves_path, "w") as f:
-            json.dump(self.height_curves, f, indent=2)
-
-        metadata_path = self.output_dir / "species_analysis_metadata.json"
-        with open(metadata_path, "w") as f:
-            json.dump(self.analysis_metadata, f, indent=2)
-
-        # Also save individual species results
+        """Save growth models in species-specific subfolders only."""
         tqdm.write("Saving individual species results...")
+        saved_count = 0
         for species in tqdm(
             self.analysis_metadata.keys(), desc="Saving species", leave=False
         ):
             species_dir = self.save_species_results(species)
+            saved_count += 1
 
-        tqdm.write(f"Saved growth models: {models_path}")
-        tqdm.write(f"Saved height curves: {curves_path}")
-        tqdm.write(f"Saved analysis metadata: {metadata_path}")
-        tqdm.write(
-            f"Saved individual species results to: {self.output_dir / 'species'}"
-        )
+        tqdm.write(f"Saved {saved_count} species models to individual subfolders in: {self.output_dir}")
 
-    def create_prediction_summary(self):
-        """Create human-readable summary of growth analysis."""
-        summary_path = self.output_dir / "growth_analysis_summary.txt"
-
-        with open(summary_path, "w") as f:
-            f.write("Grove Species Growth Analysis Summary\n")
-            f.write("=" * 40 + "\n\n")
-
-            f.write(f"Analysis Parameters:\n")
-            f.write(f"- Growth cycles: {self.height_model_flushes}\n")
-            f.write(f"- Species analyzed: {len(self.analysis_metadata)}\n\n")
-
-            f.write("Species Growth Summary:\n")
-            f.write("-" * 25 + "\n")
-
-            for species, metadata in sorted(self.analysis_metadata.items()):
-                f.write(f"{species}:\n")
-                f.write(f"  Final height: {metadata['final_height']:.2f}\n")
-                f.write(f"  Growth rate: {metadata['growth_rate']:.3f} units/cycle\n")
-                f.write(f"  Max height: {metadata['max_height']:.2f}\n\n")
-
-        tqdm.write(f"Created summary: {summary_path}")
 
 
 def main():
@@ -404,6 +365,9 @@ def main():
         "--cycles", type=int, default=75, help="Number of growth cycles for analysis"
     )
     parser.add_argument(
+        "--seeds", type=int, default=3, help="Number of random seeds to average for robust curves"
+    )
+    parser.add_argument(
         "--species",
         type=str,
         help="Specific species to analyze (if not provided, analyzes all species)",
@@ -412,7 +376,7 @@ def main():
     args = parser.parse_args()
 
     # Create analyzer
-    analyzer = SpeciesGrowthAnalyzer(args.output_dir, args.cycles)
+    analyzer = SpeciesGrowthAnalyzer(args.output_dir, args.cycles, args.seeds)
 
     if args.species:
         # Analyze single species
@@ -440,13 +404,11 @@ def main():
             tqdm.write(f"Growth rate: {metadata['growth_rate']:.3f} units/cycle")
             tqdm.write(f"Max height: {metadata['max_height']:.2f}")
 
-            # Save global results
+            # Save results
             analyzer.save_growth_models()
-            analyzer.create_prediction_summary()
 
             tqdm.write(f"\nSuccess: Generated growth model for {args.species}")
-            tqdm.write(f"Individual results saved to: {species_dir}")
-            tqdm.write(f"Global models saved to: {args.output_dir}")
+            tqdm.write(f"Results saved to: {species_dir}")
             return True
 
         except Exception as e:
@@ -457,9 +419,8 @@ def main():
         tqdm.write("Analyzing all species...")
         results = analyzer.analyze_all_species()
 
-        # Save global results
+        # Save results
         analyzer.save_growth_models()
-        analyzer.create_prediction_summary()
 
         # Report results
         successful = sum(1 for success in results.values() if success)
@@ -469,7 +430,7 @@ def main():
             tqdm.write(
                 f"\nSuccess: Generated growth models for {successful}/{total} species"
             )
-            tqdm.write(f"Models saved to: {args.output_dir}")
+            tqdm.write(f"Models saved to species-specific subfolders in: {args.output_dir}")
             return True
         else:
             tqdm.write(f"\nFailed: No growth models generated")

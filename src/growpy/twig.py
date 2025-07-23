@@ -10,12 +10,10 @@ import the_grove_22_core as gc
 
 
 def load_twig_lookup_table(csv_path: Optional[Path] = None) -> pd.DataFrame:
-    """Load the CommonName-ScientificName-Model-Twig-BarkTexture lookup table."""
+    """Load the tree_asset_lookup lookup table."""
     if csv_path is None:
         csv_path = (
-            Path(__file__).parent.parent.parent
-            / "data"
-            / "CommonName-ScientificName-Model-Twig-BarkTexture.csv"
+            Path(__file__).parent.parent.parent / "data" / "tree_asset_lookup.csv"
         )
 
     return pd.read_csv(csv_path)
