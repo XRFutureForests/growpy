@@ -50,3 +50,9 @@ def build_lod_models(
     for lod_name, config in lod_configs.items():
         lod_models[lod_name] = grove.build_models(config)
     return lod_models
+
+
+def merge_lod_models():
+    """Read multiple LOD USD files by species and merge them into a single USD file."""
+    config = get_config()
+    pass
