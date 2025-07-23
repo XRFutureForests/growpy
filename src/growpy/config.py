@@ -27,10 +27,38 @@ Example usage:
 """
 
 import configparser
-import csv
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+import pandas as pd
+
+
+# Global config registry
+_global_config: Optional['GrowPyConfig'] = None
+
+
+def get_global_config() -> Optional['GrowPyConfig']:
+    """Get the currently active global config instance."""
+    return _global_config
+
+
+def set_global_config(config: 'GrowPyConfig') -> None:
+    """Set the global config instance that will be used by all modules."""
+    global _global_config
+    _global_config = config
+
+
+def get_config() -> 'GrowPyConfig':
+    """
+    Get config instance with automatic fallback:
+    1. Global config instance (if set)
+    2. New default config instance (fallback)
+    """
+    if _global_config is not None:
+        return _global_config
+        
+    return GrowPyConfig()
 
 
 @dataclass
@@ -49,12 +77,24 @@ class GrowPyConfig:
     # Age prediction settings
     # Note: age_to_cycle_ratio removed to avoid timing issues
 
-    # Class variable to cache the species lookup table
-    _species_lookup: Optional[Dict[str, Dict[str, str]]] = None
+    # Class variable to cache the species lookup DataFrame
+    _species_df: Optional[pd.DataFrame] = None
+    
+    def __post_init__(self):
+        """Automatically register this config as global if none exists."""
+        global _global_config
+        if _global_config is None:
+            _global_config = self
 
     @classmethod
-    def from_config_file(cls, config_path: Path) -> "GrowPyConfig":
-        """Create a GrowPyConfig instance from a config.ini file."""
+    def from_config_file(cls, config_path: Path, set_as_global: bool = True) -> "GrowPyConfig":
+        """
+        Create a GrowPyConfig instance from a config.ini file.
+        
+        Args:
+            config_path: Path to the config file
+            set_as_global: Whether to automatically set this as the global config
+        """
         config = configparser.ConfigParser()
         config.read(config_path)
         kwargs = {}
@@ -88,7 +128,13 @@ class GrowPyConfig:
                         level.strip() for level in lod_levels_str.split(",")
                     ]
 
-        return cls(**kwargs)
+        instance = cls(**kwargs)
+        
+        # Explicitly set as global config if requested
+        if set_as_global:
+            set_global_config(instance)
+            
+        return instance
 
     def to_config_file(self, config_path: Path) -> None:
         """Save current configuration to a config.ini file."""
@@ -109,78 +155,156 @@ class GrowPyConfig:
             config.write(f)
 
     @classmethod
-    def load_species_lookup(
-        cls, csv_path: Optional[Path] = None
-    ) -> Dict[str, Dict[str, str]]:
+    def load_species_lookup(cls, csv_path: Optional[Path] = None) -> pd.DataFrame:
         """
-        Load the species lookup table from CSV file.
+        Load the species lookup table from CSV file using pandas.
 
         Args:
             csv_path: Path to the CSV file. If None, uses default location.
 
         Returns:
-            Dictionary with common names as keys and species data as values.
+            DataFrame with species data.
         """
-        if cls._species_lookup is not None:
-            return cls._species_lookup
+        if cls._species_df is not None:
+            return cls._species_df
 
         if csv_path is None:
-            # Default path relative to this file
-            current_dir = Path(__file__).parent
-            csv_path = current_dir / "../../data/tree_asset_lookup.csv"
+            # Default path using pathlib parents
+            current_file = Path(__file__)
+            project_root = current_file.parents[2]  # Go up to project root
+            csv_path = project_root / "data" / "tree_asset_lookup.csv"
 
-        species_lookup = {}
-
-        try:
-            with open(csv_path, "r", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    common_name = row["Common Name"].strip()
-                    species_lookup[common_name] = {
-                        "scientific_name": row["Scientific Name"].strip(),
-                        "preset": row["Preset"].strip(),
-                        "twig": row["Twig"].strip(),
-                        "bark_texture": row["Bark Texture"].strip(),
-                        "growth_model": (
-                            row["Growth Model"].strip()
-                            if row["Growth Model"].strip()
-                            else None
-                        ),
-                    }
-        except FileNotFoundError:
-            print(f"Warning: Species lookup CSV not found at {csv_path}")
-            species_lookup = {}
-        except Exception as e:
-            print(f"Warning: Error loading species lookup CSV: {e}")
-            species_lookup = {}
-
-        cls._species_lookup = species_lookup
-        return species_lookup
+        cls._species_df = pd.read_csv(csv_path, encoding="utf-8")
+        return cls._species_df
 
     @classmethod
-    def get_species_data(cls, common_name: str) -> Optional[Dict[str, str]]:
+    def get_data_directory(cls) -> Path:
         """
-        Get species data for a given common name.
+        Get the base data directory path.
+
+        Returns:
+            Path to the data directory.
+        """
+        current_file = Path(__file__)
+        # Navigate from src/growpy/config.py to the project root, then to data
+        project_root = current_file.parents[
+            2
+        ]  # Go up 2 levels: growpy -> src -> project_root
+        return project_root / "data"
+
+    @classmethod
+    def get_assets_directory(cls) -> Path:
+        """
+        Get the assets directory path.
+
+        Returns:
+            Path to the assets directory (data/assets).
+        """
+        return cls.get_data_directory() / "assets"
+
+    @classmethod
+    def get_growth_model_path(cls, common_name: str) -> Path:
+        """
+        Get the full path to the growth model directory for a given species.
 
         Args:
             common_name: The common name of the species.
 
         Returns:
-            Dictionary with species data or None if not found.
+            Path to the growth model directory or None if species not found or no growth model available.
         """
-        lookup_table = cls.load_species_lookup()
-        return lookup_table.get(common_name)
+        df = cls.load_species_lookup()
+        growth_model = df.loc[df["common_name"] == common_name, "growth_model"].values[
+            0
+        ]
+
+        # Default path relative to this file - now under assets
+        assets_dir = cls.get_assets_directory()
+        base_path = assets_dir / "growth_models"
+
+        return base_path / growth_model
 
     @classmethod
-    def get_available_species(cls) -> List[str]:
+    def get_bark_texture_path(cls, common_name: str) -> Optional[Path]:
         """
-        Get list of all available species common names.
+        Get the full path to the bark texture file for a given species.
+
+        Args:
+            common_name: The common name of the species.
 
         Returns:
-            List of common names from the species lookup table.
+            Path to the bark texture file or None if species not found.
         """
-        lookup_table = cls.load_species_lookup()
-        return list(lookup_table.keys())
+        df = cls.load_species_lookup()
+        bark_texture = df.loc[df["common_name"] == common_name, "bark_texture"].values[
+            0
+        ]
+        assets_dir = cls.get_assets_directory()
+        texture_path = assets_dir / "textures" / bark_texture
+        return texture_path
+
+    @classmethod
+    def get_twig_for_species(cls, common_name: str) -> Optional[str]:
+        """
+        Get the twig name for a given species.
+
+        Args:
+            common_name: The common name of the species.
+
+        Returns:
+            Twig name or None if species not found or no twig available.
+        """
+        df = cls.load_species_lookup()
+        
+        if df.empty:
+            return None
+            
+        # Find the row for this species
+        species_row = df[df["Common Name"] == common_name]
+        
+        if species_row.empty:
+            return None
+            
+        twig = species_row.iloc[0]["Twig"]
+        return str(twig) if pd.notna(twig) and str(twig) not in ["—", "", "nan"] else None
+
+    @classmethod
+    def get_twig_prototype_path(cls, common_name: str) -> Optional[Path]:
+        """
+        Get the full path to the twig prototype file for a given species.
+
+        Args:
+            common_name: The common name of the species.
+
+        Returns:
+            Path to the twig prototype file or None if species not found or no twig available.
+        """
+        df = cls.load_species_lookup()
+        twig_name = df.loc[df["common_name"] == common_name, "twig"].values[0]
+        prototype_name = twig_name + "_prototype.usda"
+        assets_dir = cls.get_assets_directory()
+        prototypes_dir = assets_dir / "twigs" / "prototypes"
+        prototype_path = prototypes_dir / prototype_name
+        return prototype_path
+
+    @classmethod
+    def get_twig_material_path(cls, common_name: str) -> Optional[Path]:
+        """
+        Get the full path to the twig material file for a given species.
+
+        Args:
+            common_name: The common name of the species.
+
+        Returns:
+            Path to the twig material file or None if species not found or no twig available.
+        """
+        df = cls.load_species_lookup()
+        twig_name = df.loc[df["common_name"] == common_name, "twig"].values[0]
+        material_name = twig_name + "_material.usda"
+        assets_dir = cls.get_assets_directory()
+        materials_dir = assets_dir / "twigs" / "materials"
+        material_path = materials_dir / material_name
+        return material_path
 
     @classmethod
     def get_preset_for_species(cls, common_name: str) -> Optional[str]:
@@ -193,139 +317,51 @@ class GrowPyConfig:
         Returns:
             Preset filename or None if species not found.
         """
-        species_data = cls.get_species_data(common_name)
-        return species_data["preset"] if species_data else None
-
-    @classmethod
-    def get_growth_model_for_species(cls, common_name: str) -> Optional[str]:
-        """
-        Get the growth model directory name for a given species.
-
-        Args:
-            common_name: The common name of the species.
-
-        Returns:
-            Growth model directory name or None if species not found or no growth model available.
-        """
-        species_data = cls.get_species_data(common_name)
-        return species_data["growth_model"] if species_data else None
-
-    @classmethod
-    def get_bark_texture_for_species(cls, common_name: str) -> Optional[str]:
-        """
-        Get the bark texture filename for a given species.
-
-        Args:
-            common_name: The common name of the species.
-
-        Returns:
-            Bark texture filename or None if species not found.
-        """
-        species_data = cls.get_species_data(common_name)
-        return species_data["bark_texture"] if species_data else None
-
-    @classmethod
-    def get_twig_for_species(cls, common_name: str) -> Optional[str]:
-        """
-        Get the twig type for a given species.
-
-        Args:
-            common_name: The common name of the species.
-
-        Returns:
-            Twig type or None if species not found.
-        """
-        species_data = cls.get_species_data(common_name)
-        return species_data["twig"] if species_data else None
-
-    @classmethod
-    def get_growth_model_path(
-        cls, common_name: str, base_path: Optional[Path] = None
-    ) -> Optional[Path]:
-        """
-        Get the full path to the growth model directory for a given species.
-
-        Args:
-            common_name: The common name of the species.
-            base_path: Base path to the growth_models directory. If None, uses default location.
-
-        Returns:
-            Path to the growth model directory or None if species not found or no growth model available.
-        """
-        growth_model = cls.get_growth_model_for_species(common_name)
-        if not growth_model:
+        df = cls.load_species_lookup()
+        
+        if df.empty:
             return None
-
-        if base_path is None:
-            # Default path relative to this file
-            current_dir = Path(__file__).parent
-            base_path = current_dir / "../../data/growth_models"
-
-            return base_path / growth_model
+            
+        # Find the row for this species
+        species_row = df[df["Common Name"] == common_name]
+        
+        if species_row.empty:
+            return None
+            
+        preset = species_row.iloc[0]["Preset"]
+        return str(preset) if pd.notna(preset) else None
 
     @classmethod
-    def get_species_by_family(cls, family_prefix: str) -> List[str]:
+    def get_available_species(cls) -> List[str]:
         """
-        Get all species that belong to a specific botanical family.
-
-        Args:
-            family_prefix: The family prefix to search for (e.g., 'Fagaceae', 'Pinaceae').
+        Get list of all available species common names.
 
         Returns:
-            List of common names for species in that family.
+            List of common names from the species lookup table.
         """
-        lookup_table = cls.load_species_lookup()
-        matching_species = []
-
-        for common_name, data in lookup_table.items():
-            if data["preset"].startswith(family_prefix):
-                matching_species.append(common_name)
-
-        return sorted(matching_species)
+        df = cls.load_species_lookup()
+        
+        if df.empty:
+            return []
+            
+        return df["Common Name"].tolist()
 
     @classmethod
-    def get_available_families(cls) -> List[str]:
+    def get_preset_path(cls, common_name: str) -> Path:
         """
-        Get list of all available botanical families.
-
-        Returns:
-            List of family names extracted from preset filenames.
-        """
-        lookup_table = cls.load_species_lookup()
-        families = set()
-
-        for data in lookup_table.values():
-            preset = data["preset"]
-            if " - " in preset:
-                family = preset.split(" - ")[0]
-                families.add(family)
-
-        return sorted(families)
-
-    @classmethod
-    def get_species_with_growth_models(cls) -> List[str]:
-        """
-        Get all species that have growth models available.
-
-        Returns:
-            List of common names for species with growth models.
-        """
-        lookup_table = cls.load_species_lookup()
-        return [name for name, data in lookup_table.items() if data["growth_model"]]
-
-    @classmethod
-    def get_scientific_name_for_species(cls, common_name: str) -> Optional[str]:
-        """
-        Get the scientific name for a given species.
+        Get the full path to the preset file for a given species.
 
         Args:
             common_name: The common name of the species.
 
         Returns:
-            Scientific name or None if species not found.
+            Path to the preset file or None if species not found.
         """
-        species_data = cls.get_species_data(common_name)
-        return species_data["scientific_name"] if species_data else None
+        df = cls.load_species_lookup()
+        preset_name = df.loc[df["common_name"] == common_name, "preset"].values[0]
+        assets_dir = cls.get_assets_directory()
+        preset_path = assets_dir / "presets" / preset_name
+        return preset_path
 
     @classmethod
     def get_lod_configs(cls) -> Dict[str, Dict[str, Any]]:
