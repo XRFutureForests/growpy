@@ -1,25 +1,25 @@
 """Atomic forest simulation functions for multi-species groves."""
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Tuple
 
 import pandas as pd
 import the_grove_22_core as gc
 
+# No direct config import needed - grove functions handle config internally
 from .grove import add_tree_to_grove, create_grove
 
 # Type alias for cleaner code
 ForestGroves = List[Tuple[gc.Grove, str, int]]
 
 
-def create_forest(
-    forest_data: pd.DataFrame, random_seed: Optional[int] = None
-) -> ForestGroves:
-    """Create groves for each species in forest data."""
+def create_forest(forest_data: pd.DataFrame) -> ForestGroves:
+    """Create groves for each species in forest data using global config."""
     forest = []
 
     for species_name, species_data in forest_data.groupby("species"):
-        grove = create_grove(str(species_name), random_seed)
+        # create_grove will automatically use global config seed
+        grove = create_grove(str(species_name))
 
         # Add all trees of this species to the grove
         for _, row in species_data.iterrows():

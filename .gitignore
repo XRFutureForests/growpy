@@ -1,7 +1,6 @@
 # Data files
 /data/output/
-/data/growth_models/
-/data/twigs/
+/data/assets/
 
 # Conda environment
 /.conda

@@ -8,47 +8,68 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 import the_grove_22_core as gc
 
+from .config import get_config
+
 
 def load_twig_lookup_table(csv_path: Optional[Path] = None) -> pd.DataFrame:
-    """Load the tree_asset_lookup lookup table."""
+    """Load the tree_asset_lookup lookup table using global config."""
+    # Get global config (creates default if none set)
+    config = get_config()
+    
     if csv_path is None:
-        csv_path = (
-            Path(__file__).parent.parent.parent / "data" / "tree_asset_lookup.csv"
-        )
+        # Use config's data directory (more robust)
+        data_dir = config.get_data_directory()
+        csv_path = data_dir / "tree_asset_lookup.csv"
 
     return pd.read_csv(csv_path)
 
 
 def load_twig_conversion_report(json_path: Optional[Path] = None) -> Dict[str, Any]:
-    """Load the twig conversion report containing USD twig metadata."""
+    """Load the twig conversion report containing USD twig metadata using global config."""
+    # Get global config (creates default if none set)
+    config = get_config()
+    
     if json_path is None:
-        json_path = (
-            Path(__file__).parent.parent.parent
-            / "data"
-            / "twigs"
-            / "conversion_report.json"
-        )
+        # Use config's assets directory
+        assets_dir = config.get_assets_directory()
+        json_path = assets_dir / "twigs" / "conversion_report.json"
 
     with open(json_path, "r") as f:
         return json.load(f)
 
 
 def get_twig_for_species(
-    species_model: str, lookup_table: pd.DataFrame
+    species_model: str, 
+    lookup_table: Optional[pd.DataFrame] = None
 ) -> Optional[str]:
     """
     Get the appropriate twig for a species model.
 
     Args:
         species_model: The species model name (e.g., 'Pinaceae - Fir.seed.json')
-        lookup_table: DataFrame with species-twig mappings
+        lookup_table: DataFrame with species-twig mappings (loaded if None)
 
     Returns:
         Twig name or None if no match found or twig is unavailable
     """
-    # Clean the species model name to match the lookup table
+    # Get global config (creates default if none set)
+    config = get_config()
+    
+    if lookup_table is None:
+        lookup_table = load_twig_lookup_table()
+    
+    # Try to get twig from config first (using preset name as key)
+    try:
+        # Remove .seed.json extension to get clean species name
+        species_name = species_model.replace(".seed.json", "")
+        twig_name = config.get_twig_for_species(species_name)
+        if twig_name and twig_name not in ["—", "", None] and not pd.isna(twig_name):
+            return twig_name
+    except Exception:
+        pass
+    
+    # Fallback to lookup table matching
     model_name = species_model.replace(".seed.json", ".seed.json")
-
     matches = lookup_table[lookup_table["Model"] == model_name]
 
     if matches.empty:
@@ -64,21 +85,29 @@ def get_twig_for_species(
 
 
 def get_twig_usd_paths(
-    twig_name: str, conversion_report: Dict[str, Any], base_path: Optional[Path] = None
+    twig_name: str, 
+    conversion_report: Optional[Dict[str, Any]] = None, 
+    base_path: Optional[Path] = None
 ) -> Dict[str, str]:
     """
-    Get USD file paths for a twig.
+    Get USD file paths for a twig using global config.
 
     Args:
         twig_name: Name of the twig (e.g., 'PacificSilverFir')
-        conversion_report: Twig conversion report data
-        base_path: Base path for resolving relative paths
+        conversion_report: Twig conversion report data (loaded if None)
+        base_path: Base path for resolving relative paths (uses config if None)
 
     Returns:
         Dictionary with 'prototype' and 'material' paths
     """
+    # Get global config (creates default if none set)
+    config = get_config()
+    
+    if conversion_report is None:
+        conversion_report = load_twig_conversion_report()
+    
     if base_path is None:
-        base_path = Path(__file__).parent.parent.parent
+        base_path = config.get_assets_directory()
 
     # Remove 'Twig' suffix if present for lookup
     lookup_name = twig_name.replace("Twig", "")
@@ -93,15 +122,25 @@ def get_twig_usd_paths(
 
     paths = {}
 
-    # Get prototype path
+    # Get prototype path - try both relative and absolute approaches
     if twig_info.get("prototype_path"):
-        prototype_path = base_path / twig_info["prototype_path"]
+        # Try relative to assets directory first
+        prototype_path = base_path / "twigs" / "prototypes" / f"{lookup_name}_prototype.usda"
+        if not prototype_path.exists():
+            # Try the path from conversion report
+            prototype_path = base_path / twig_info["prototype_path"]
+        
         if prototype_path.exists():
             paths["prototype"] = str(prototype_path)
 
-    # Get material path
+    # Get material path - try both relative and absolute approaches  
     if twig_info.get("material_path"):
-        material_path = base_path / twig_info["material_path"]
+        # Try relative to assets directory first
+        material_path = base_path / "twigs" / "materials" / f"{lookup_name}_material.usda"
+        if not material_path.exists():
+            # Try the path from conversion report
+            material_path = base_path / twig_info["material_path"]
+        
         if material_path.exists():
             paths["material"] = str(material_path)
 
@@ -297,7 +336,7 @@ def add_twigs_to_model_usd(
     conversion_report: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
-    Add twig instances to an existing model USD string.
+    Add twig instances to an existing model USD string using global config.
 
     Args:
         model_usd: Original USD content for the tree model
@@ -312,7 +351,7 @@ def add_twigs_to_model_usd(
     Returns:
         Modified USD content with twig instances
     """
-    # Load lookup data if not provided
+    # Load lookup data if not provided using global config
     if lookup_table is None:
         lookup_table = load_twig_lookup_table()
 
@@ -324,7 +363,7 @@ def add_twigs_to_model_usd(
     if not twig_name:
         return model_usd  # No twig available for this species
 
-    # Get twig USD paths
+    # Get twig USD paths using global config
     twig_paths = get_twig_usd_paths(twig_name, conversion_report)
     if not twig_paths:
         return model_usd  # No USD files available for this twig
