@@ -95,7 +95,7 @@ class SpeciesGrowthAnalyzer:
         seed_metadata = []
         
         # Test multiple seeds to get robust average
-        seeds_to_test = [1, 23, 42, 100, 500, 777, 1337, 2023, 5555][:self.num_seeds]
+        seeds_to_test = [1, 7, 13, 23, 42, 100, 111, 123, 666][:self.num_seeds]
         
         seed_progress = tqdm(
             seeds_to_test,
@@ -189,33 +189,33 @@ class SpeciesGrowthAnalyzer:
             
             seed_progress.set_postfix(seed=seed, height=f"{max_height_achieved:.2f}")
 
-        # Average the curves across all seeds
+        # Take maximum heights across all seeds to eliminate tree death effects
         if not all_curves:
             raise ValueError(f"No successful growth curves generated for {species}")
         
-        # Calculate average height at each cycle
-        avg_heights = []
+        # Calculate maximum height at each cycle (best case across all seeds)
+        max_heights = []
         for cycle in range(self.height_model_flushes):
             cycle_heights = [curve[cycle] for curve in all_curves if cycle < len(curve)]
             if cycle_heights:
-                avg_heights.append(sum(cycle_heights) / len(cycle_heights))
+                max_heights.append(max(cycle_heights))
             else:
-                avg_heights.append(0.0)
+                max_heights.append(0.0)
 
         metadata = {
             "species": species,
             "cycles": self.height_model_flushes,
             "num_seeds": len(all_curves),
             "seeds_tested": [m['seed'] for m in seed_metadata],
-            "final_height": avg_heights[-1] if avg_heights else 0.0,
-            "max_height": max(avg_heights) if avg_heights else 0.0,
-            "growth_rate": max(avg_heights) / self.height_model_flushes if avg_heights else 0.0,
-            "height_curve": avg_heights,
+            "final_height": max_heights[-1] if max_heights else 0.0,
+            "max_height": max(max_heights) if max_heights else 0.0,
+            "growth_rate": max(max_heights) / self.height_model_flushes if max_heights else 0.0,
+            "height_curve": max_heights,
             "seed_results": seed_metadata,
-            "note": "Height curve averaged across multiple seeds to account for random variation"
+            "note": "Height curve uses maximum height per cycle across multiple seeds to eliminate tree death effects"
         }
 
-        return avg_heights, metadata
+        return max_heights, metadata
 
     def create_growth_model_for_species(
         self, species: str, height_curve: List[float]

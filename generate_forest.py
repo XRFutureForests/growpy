@@ -24,6 +24,7 @@ from growpy import (
     save_grove_to_json,
     save_tree_to_usd,
     simulate_forest_growth,
+    set_global_config,
 )
 
 
@@ -43,13 +44,14 @@ def main():
         print(f"Error: CSV file not found: {csv_path}")
         return 1
 
-    # Load configuration
+    # Load configuration and set as global
     if config_path.exists():
-        config = GrowPyConfig.from_config_file(config_path)
-        print(f"Loaded configuration from {config_path.name}")
+        config = GrowPyConfig.from_config_file(config_path, set_as_global=True)
+        print(f"Loaded configuration from {config_path.name} and set as global")
     else:
         config = GrowPyConfig()
-        print("Using default configuration")
+        set_global_config(config)
+        print("Using default configuration and set as global")
 
     input_name = csv_path.stem
     print(f"Input: {csv_path}")
@@ -62,13 +64,13 @@ def main():
 
     # Step 2: Calculate growth cycles
     print("\n2. Calculating growth cycles...")
-    calculate_growth_cycles_from_height(forest_data)
+    calculate_growth_cycles_from_height(forest_data)  # Uses global config automatically
     max_cycles = forest_data["growth_cycles"].max()
     print(f"   Growth cycles calculated: {max_cycles}")
 
     # Step 3: Create forest groves
     print("\n3. Creating forest groves...")
-    forest = create_forest(forest_data, config.random_seed)
+    forest = create_forest(forest_data)  # Uses global config automatically
 
     # Step 4: Simulate forest growth
     print("\n4. Simulating forest growth...")
