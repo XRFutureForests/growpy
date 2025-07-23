@@ -5,6 +5,7 @@ from typing import List, Tuple
 
 import pandas as pd
 import the_grove_22_core as gc
+from tqdm import tqdm
 
 # No direct config import needed - grove functions handle config internally
 from .grove import add_tree_to_grove, create_grove
@@ -51,7 +52,7 @@ def simulate_forest_growth(forest: ForestGroves, cycles: int) -> None:
     """Simulate forest growth with optional light competition."""
     groves = [grove for grove, _, _ in forest]
 
-    for _ in range(cycles):
+    for _ in tqdm(range(cycles), desc="Simulating forest growth"):
         # Calculate shared light competition if enabled
         if len(groves) > 1:
             calculate_shared_shade(groves)
