@@ -5,10 +5,18 @@ This module provides the GrowPyConfig class which handles:
 - Basic simulation configuration (random seed, output directory, LOD levels)
 - Species lookup functionality from tree_asset_lookup.csv
 - LOD (Level of Detail) configuration presets
+- Twig asset path resolution for the new distributed USD structure
 
 The species lookup table is automatically loaded and cached when first accessed,
 providing convenient methods to get preset files, bark textures, growth models, and other
 species data by common name.
+
+Twig USD assets are now organized in a distributed structure where each twig species
+has its own directory with USD files:
+    data/assets/twigs/[SpeciesName]Twig/usd/
+    ├── prototypes/[SpeciesName]_prototype.usda
+    ├── materials/[SpeciesName]_material.usda
+    └── textures/[SpeciesName]_[textureType].[ext]
 
 Example usage:
     config = GrowPyConfig()
@@ -22,34 +30,39 @@ Example usage:
     # Get just the preset file for a species
     preset = config.get_preset_for_species("European beech")
 
-    # Get the growth model directory for a species
-    growth_model = config.get_growth_model_for_species("European beech")
+    # Get twig USD paths for a species
+    prototype_path = config.get_twig_prototype_path("European beech")
+    material_path = config.get_twig_material_path("European beech")
+
+    # Get USD catalog information
+    available_usd_twigs = config.get_available_usd_twigs()
+    twig_info = config.get_usd_twig_info("EuropeanBeech")
 """
 
 import configparser
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-
 # Global config registry
-_global_config: Optional['GrowPyConfig'] = None
+_global_config: Optional["GrowPyConfig"] = None
 
 
-def get_global_config() -> Optional['GrowPyConfig']:
+def get_global_config() -> Optional["GrowPyConfig"]:
     """Get the currently active global config instance."""
     return _global_config
 
 
-def set_global_config(config: 'GrowPyConfig') -> None:
+def set_global_config(config: "GrowPyConfig") -> None:
     """Set the global config instance that will be used by all modules."""
     global _global_config
     _global_config = config
 
 
-def get_config() -> 'GrowPyConfig':
+def get_config() -> "GrowPyConfig":
     """
     Get config instance with automatic fallback:
     1. Global config instance (if set)
@@ -57,7 +70,7 @@ def get_config() -> 'GrowPyConfig':
     """
     if _global_config is not None:
         return _global_config
-        
+
     return GrowPyConfig()
 
 
@@ -79,7 +92,7 @@ class GrowPyConfig:
 
     # Class variable to cache the species lookup DataFrame
     _species_df: Optional[pd.DataFrame] = None
-    
+
     def __post_init__(self):
         """Automatically register this config as global if none exists."""
         global _global_config
@@ -87,10 +100,12 @@ class GrowPyConfig:
             _global_config = self
 
     @classmethod
-    def from_config_file(cls, config_path: Path, set_as_global: bool = True) -> "GrowPyConfig":
+    def from_config_file(
+        cls, config_path: Path, set_as_global: bool = True
+    ) -> "GrowPyConfig":
         """
         Create a GrowPyConfig instance from a config.ini file.
-        
+
         Args:
             config_path: Path to the config file
             set_as_global: Whether to automatically set this as the global config
@@ -129,11 +144,11 @@ class GrowPyConfig:
                     ]
 
         instance = cls(**kwargs)
-        
+
         # Explicitly set as global config if requested
         if set_as_global:
             set_global_config(instance)
-            
+
         return instance
 
     def to_config_file(self, config_path: Path) -> None:
@@ -255,18 +270,20 @@ class GrowPyConfig:
             Twig name or None if species not found or no twig available.
         """
         df = cls.load_species_lookup()
-        
+
         if df.empty:
             return None
-            
+
         # Find the row for this species
         species_row = df[df["Common Name"] == common_name]
-        
+
         if species_row.empty:
             return None
-            
+
         twig = species_row.iloc[0]["Twig"]
-        return str(twig) if pd.notna(twig) and str(twig) not in ["—", "", "nan"] else None
+        return (
+            str(twig) if pd.notna(twig) and str(twig) not in ["—", "", "nan"] else None
+        )
 
     @classmethod
     def get_twig_prototype_path(cls, common_name: str) -> Optional[Path]:
@@ -279,12 +296,15 @@ class GrowPyConfig:
         Returns:
             Path to the twig prototype file or None if species not found or no twig available.
         """
-        df = cls.load_species_lookup()
-        twig_name = df.loc[df["Common Name"] == common_name, "Twig"].values[0]
+        twig_name = cls.get_twig_for_species(common_name)
+        if not twig_name:
+            return None
+
+        # New distributed structure: each twig has its own USD directory
         prototype_name = twig_name + "_prototype.usda"
         assets_dir = cls.get_assets_directory()
-        prototypes_dir = assets_dir / "twigs" / "prototypes"
-        prototype_path = prototypes_dir / prototype_name
+        twig_dir = assets_dir / "twigs" / f"{twig_name}Twig"
+        prototype_path = twig_dir / "usd" / "prototypes" / prototype_name
         return prototype_path
 
     @classmethod
@@ -298,13 +318,129 @@ class GrowPyConfig:
         Returns:
             Path to the twig material file or None if species not found or no twig available.
         """
-        df = cls.load_species_lookup()
-        twig_name = df.loc[df["Common Name"] == common_name, "Twig"].values[0]
+        twig_name = cls.get_twig_for_species(common_name)
+        if not twig_name:
+            return None
+
+        # New distributed structure: each twig has its own USD directory
         material_name = twig_name + "_material.usda"
         assets_dir = cls.get_assets_directory()
-        materials_dir = assets_dir / "twigs" / "materials"
-        material_path = materials_dir / material_name
+        twig_dir = assets_dir / "twigs" / f"{twig_name}Twig"
+        material_path = twig_dir / "usd" / "materials" / material_name
         return material_path
+
+    @classmethod
+    def get_twig_directory_path(cls, common_name: str) -> Optional[Path]:
+        """
+        Get the full path to the twig directory for a given species.
+
+        Args:
+            common_name: The common name of the species.
+
+        Returns:
+            Path to the twig directory or None if species not found or no twig available.
+        """
+        twig_name = cls.get_twig_for_species(common_name)
+        if not twig_name:
+            return None
+
+        assets_dir = cls.get_assets_directory()
+        twig_dir = assets_dir / "twigs" / f"{twig_name}Twig"
+        return twig_dir
+
+    @classmethod
+    def get_twig_usd_directory_path(cls, common_name: str) -> Optional[Path]:
+        """
+        Get the full path to the twig's USD directory for a given species.
+
+        Args:
+            common_name: The common name of the species.
+
+        Returns:
+            Path to the twig's USD directory or None if species not found or no twig available.
+        """
+        twig_dir = cls.get_twig_directory_path(common_name)
+        if not twig_dir:
+            return None
+
+        return twig_dir / "usd"
+
+    @classmethod
+    def get_twig_textures_path(cls, common_name: str) -> Optional[Path]:
+        """
+        Get the full path to the twig's USD textures directory for a given species.
+
+        Args:
+            common_name: The common name of the species.
+
+        Returns:
+            Path to the twig's USD textures directory or None if species not found or no twig available.
+        """
+        usd_dir = cls.get_twig_usd_directory_path(common_name)
+        if not usd_dir:
+            return None
+
+        return usd_dir / "textures"
+
+    @classmethod
+    def get_usd_catalog_path(cls) -> Path:
+        """
+        Get the path to the USD catalog file.
+
+        Returns:
+            Path to the USD catalog JSON file.
+        """
+        assets_dir = cls.get_assets_directory()
+        return assets_dir / "twigs" / "usd_catalog.json"
+
+    @classmethod
+    def load_usd_catalog(cls) -> Optional[Dict[str, Any]]:
+        """
+        Load the USD catalog containing information about all converted twigs.
+
+        Returns:
+            Dictionary containing catalog data or None if catalog doesn't exist.
+        """
+        catalog_path = cls.get_usd_catalog_path()
+        if not catalog_path.exists():
+            return None
+
+        try:
+            with open(catalog_path, "r") as f:
+                return json.load(f)
+        except Exception:
+            return None
+
+    @classmethod
+    def get_available_usd_twigs(cls) -> List[str]:
+        """
+        Get list of all species that have USD twig conversions available.
+
+        Returns:
+            List of species names that have USD files available.
+        """
+        catalog = cls.load_usd_catalog()
+        if not catalog:
+            return []
+
+        return list(catalog.get("twigs", {}).keys())
+
+    @classmethod
+    def get_usd_twig_info(cls, species_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get USD information for a specific species from the catalog.
+
+        Args:
+            species_name: The species name (as used in USD conversion, e.g., "EuropeanBeech").
+
+        Returns:
+            Dictionary containing USD twig information or None if not found.
+        """
+        catalog = cls.load_usd_catalog()
+        if not catalog:
+            return None
+
+        return catalog.get("twigs", {}).get(species_name)
 
     @classmethod
     def get_preset_for_species(cls, common_name: str) -> Optional[str]:
@@ -318,16 +454,16 @@ class GrowPyConfig:
             Preset filename or None if species not found.
         """
         df = cls.load_species_lookup()
-        
+
         if df.empty:
             return None
-            
+
         # Find the row for this species
         species_row = df[df["Common Name"] == common_name]
-        
+
         if species_row.empty:
             return None
-            
+
         preset = species_row.iloc[0]["Preset"]
         return str(preset) if pd.notna(preset) else None
 
@@ -340,10 +476,10 @@ class GrowPyConfig:
             List of common names from the species lookup table.
         """
         df = cls.load_species_lookup()
-        
+
         if df.empty:
             return []
-            
+
         return df["Common Name"].tolist()
 
     @classmethod
@@ -437,15 +573,15 @@ class GrowPyConfig:
             Dict containing LOD configurations filtered by the user's selection
         """
         all_configs = self.get_all_lod_configs()
-        
+
         # If "all" is in the lod_levels, return all configurations
         if "all" in self.lod_levels:
             return all_configs
-        
+
         # Filter configurations based on the user's selection
         filtered_configs = {}
         for lod_level in self.lod_levels:
             if lod_level in all_configs:
                 filtered_configs[lod_level] = all_configs[lod_level]
-        
+
         return filtered_configs

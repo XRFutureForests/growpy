@@ -1,272 +1,123 @@
-"""Twig assignment and USD integration for tree models."""
+"""Minimal twig enhancement for USD files."""
 
-import json
-import math
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
-import pandas as pd
-import the_grove_22_core as gc
 
-from .config import get_config
-from .tree import calculate_face_centers_and_normals, read_usda_file
+# Platform-specific Grove core import with fallback
+try:
+    import the_grove_22_core as gc
+except ImportError:
+    print("Warning: the_grove_22_core not available")
+    gc = None
 
+from pxr import Usd, Vt
 
-class TwigData:
-    """Data class to store twig position and attribute information."""
-
-    def __init__(
-        self,
-        position: Tuple[float, float, float],
-        normal: Tuple[float, float, float],
-        twig_type: str,
-        rotation: Optional[Tuple[float, float, float, float]] = None,
-    ):
-        """
-        Initialize twig data.
-
-        Args:
-            position: 3D position (x, y, z) of the twig base
-            normal: Surface normal direction (x, y, z)
-            twig_type: Type of twig ('end', 'side', 'upward', 'dead')
-            rotation: Optional quaternion rotation (x, y, z, w)
-        """
-        self.position = position
-        self.normal = normal
-        self.twig_type = twig_type
-        self.rotation = rotation or self._calculate_rotation_from_normal(normal)
-
-    def _calculate_rotation_from_normal(
-        self, normal: Tuple[float, float, float]
-    ) -> Tuple[float, float, float, float]:
-        """
-        Calculate quaternion rotation from surface normal.
-
-        The Grove expects twigs to point along the X-axis, so we need to rotate
-        from the X-axis to align with the surface normal.
-
-        Args:
-            normal: Surface normal direction
-
-        Returns:
-            Quaternion rotation (x, y, z, w)
-        """
-        # Default twig direction is along X-axis
-        default_dir = np.array([1.0, 0.0, 0.0])
-        target_dir = np.array(normal)
-
-        # Normalize vectors
-        target_dir = target_dir / np.linalg.norm(target_dir)
-
-        # Calculate rotation axis and angle
-        cross = np.cross(default_dir, target_dir)
-        dot = np.dot(default_dir, target_dir)
-
-        # Handle edge cases
-        if np.allclose(cross, 0):
-            if dot > 0:
-                # Same direction
-                return (0.0, 0.0, 0.0, 1.0)
-            else:
-                # Opposite direction, rotate 180 degrees around Y-axis
-                return (0.0, 1.0, 0.0, 0.0)
-
-        # Calculate quaternion
-        axis = cross / np.linalg.norm(cross)
-        angle = math.acos(np.clip(dot, -1.0, 1.0))
-
-        half_angle = angle / 2.0
-        w = math.cos(half_angle)
-        sin_half = math.sin(half_angle)
-        x = axis[0] * sin_half
-        y = axis[1] * sin_half
-        z = axis[2] * sin_half
-
-        return (x, y, z, w)
+usda_file = Path(
+    "/Users/maximiliansperlich/Developer/the-grove/data/output/small_demo/Norwayspruce_LOD1_High_002.usda"
+)
 
 
-def extract_twig_positions_from_usda(usda_data: Dict[str, Any]) -> List[TwigData]:
-    """
-    Extract twig positions and attributes from parsed USDA data.
+stage = Usd.Stage.Open(str(usda_file))
+[x for x in stage.Traverse()]
+tree = stage.GetPrimAtPath("/Tree/Tree")
+tree.GetPropertyNames()
 
-    Args:
-        usda_data: Parsed USDA data from read_usda_file()
+# Extract attributes from the tree
+face_vertex_counts = list(tree.GetAttribute("faceVertexCounts").Get())  # Number of vertices per face
+face_vertex_indices = list(tree.GetAttribute("faceVertexIndices").Get())  # Indices of vertices for each face
 
-    Returns:
-        List of TwigData objects containing position, normal, and type information
-    """
-    twig_positions = []
+# Extract points and other attributes
+points = list(tree.GetAttribute("points").Get())
+uv = list(tree.GetAttribute("primvars:st").Get())  # UV
+age = list(tree.GetAttribute("primvars:Age").Get())
+dead = list(tree.GetAttribute("primvars:Dead").Get())
+thickness = list(tree.GetAttribute("primvars:Thickness").Get())
+twig_end = list(tree.GetAttribute("primvars:TwigEnd").Get())  # Long / Apical
+twig_side = list(tree.GetAttribute("primvars:TwigSide").Get())  # Short / Lateral
+twig_upward = list(tree.GetAttribute("primvars:TwigUpward").Get())  # Upward
+twig_dead = list(tree.GetAttribute("primvars:TwigDead").Get())  # Dead
 
-    # Get mesh data
-    points = usda_data.get("points", [])
-    face_vertex_counts = usda_data.get("face_vertex_counts", [])
-    face_vertex_indices = usda_data.get("face_vertex_indices", [])
+# Convert attributes to numpy arrays
+face_vertex_indices_np = np.array(face_vertex_indices)
+face_vertex_counts_np = np.array(face_vertex_counts)
+split_indices = np.cumsum(face_vertex_counts_np)[:-1]
+faces_numpy = np.split(face_vertex_indices_np, split_indices)
+faces_tuples = [list(face) for face in faces_numpy]
 
-    # Get twig attributes
-    twig_end = usda_data.get("twig_end", [])
-    twig_side = usda_data.get("twig_side", [])
-    twig_upward = usda_data.get("twig_upward", [])
-    twig_dead = usda_data.get("twig_dead", [])
+# Filter faces based on twig attributes
+faces_end = [face for (face, end) in zip(faces_tuples, twig_end) if end==1]
+faces_side = [face for (face, side) in zip(faces_tuples, twig_side) if side==1]
+faces_upward = [face for (face, upward) in zip(faces_tuples, twig_upward) if upward==1]
+faces_dead = [face for (face, dead) in zip(faces_tuples, twig_dead) if dead==1]
 
-    if not points or not face_vertex_counts:
-        return twig_positions
+def calculate_centroid(points: Vt.Vec3fArray, face: List[int]) -> np.ndarray:
+    """Calculate the centroid of a face."""
+    face_points = np.array([points[i] for i in face])
+    return tuple(np.mean(face_points, axis=0))
 
-    # Calculate face centers and normals
-    face_centers, face_normals = calculate_face_centers_and_normals(
-        points, face_vertex_counts, face_vertex_indices
+def calculate_normal(points: Vt.Vec3fArray, face: List[int]) -> np.ndarray:
+    """Calculate the normal vector of a face."""
+    face_points = np.array([points[i] for i in face])
+    v1 = face_points[1] - face_points[0]
+    v2 = face_points[2] - face_points[0]
+    normal = np.cross(v1, v2)
+    return tuple(normal / np.linalg.norm(normal))
+
+def calculate_quaternion_from_normal(normal: np.ndarray) -> List[float]:
+    """Calculate a quaternion that rotates from the default up direction to the normal vector."""
+    normal = normal / np.linalg.norm(normal)  # Ensure normalized
+    
+    # Default up direction (assuming twigs point up by default)
+    up = np.array([0.0, 1.0, 0.0])
+    
+    # If normal is already pointing up, return identity quaternion
+    if np.allclose(normal, up):
+        return [1.0, 0.0, 0.0, 0.0]  # w, x, y, z
+    
+    # If normal is pointing down, rotate 180 degrees around X axis
+    if np.allclose(normal, -up):
+        return [0.0, 1.0, 0.0, 0.0]  # w, x, y, z
+    
+    # Calculate rotation axis (cross product of up and normal)
+    axis = np.cross(up, normal)
+    axis = axis / np.linalg.norm(axis)
+    
+    # Calculate rotation angle
+    dot_product = np.dot(up, normal)
+    angle = np.arccos(np.clip(dot_product, -1.0, 1.0))
+    
+    # Convert to quaternion
+    half_angle = angle * 0.5
+    sin_half = np.sin(half_angle)
+    cos_half = np.cos(half_angle)
+    
+    # Return quaternion as (w, x, y, z)
+    return (
+        cos_half,           # w
+        axis[0] * sin_half, # x
+        axis[1] * sin_half, # y
+        axis[2] * sin_half  # z
     )
 
-    # Extract transformation matrix for coordinate transformation
-    transform = usda_data.get("transform_matrix", np.eye(4))
+centroid_end = [calculate_centroid(points, face) for face in faces_end]
+normal_end = [calculate_normal(points, face) for face in faces_end]
+centroid_side = [calculate_centroid(points, face) for face in faces_side]
+normal_side = [calculate_normal(points, face) for face in faces_side]
+quaternion_side = [calculate_quaternion_from_normal(n) for n in normal_side]
+centroid_upward = [calculate_centroid(points, face) for face in faces_upward]
+normal_upward = [calculate_normal(points, face) for face in faces_upward]
+centroid_dead = [calculate_centroid(points, face) for face in faces_dead]
+normal_dead = [calculate_normal(points, face) for face in faces_dead]
 
-    # Process each face and check for twig attributes
-    num_faces = len(face_centers)
-
-    for i in range(num_faces):
-        center = face_centers[i]
-        normal = face_normals[i]
-
-        # Apply transformation to position and normal
-        pos_homo = np.array([center[0], center[1], center[2], 1.0])
-        transformed_pos = transform @ pos_homo
-        final_position = (transformed_pos[0], transformed_pos[1], transformed_pos[2])
-
-        # Transform normal (only rotation, no translation)
-        normal_homo = np.array([normal[0], normal[1], normal[2], 0.0])
-        transformed_normal = transform @ normal_homo
-        final_normal = (
-            transformed_normal[0],
-            transformed_normal[1],
-            transformed_normal[2],
-        )
-
-        # Normalize the transformed normal
-        norm_length = math.sqrt(sum(x * x for x in final_normal))
-        if norm_length > 0:
-            final_normal = tuple(x / norm_length for x in final_normal)
-
-        # Check twig attributes (attributes are per-face)
-        twig_types = []
-
-        if i < len(twig_end) and twig_end[i] == 1:
-            twig_types.append("end")
-        if i < len(twig_side) and twig_side[i] == 1:
-            twig_types.append("side")
-        if i < len(twig_upward) and twig_upward[i] == 1:
-            twig_types.append("upward")
-        if i < len(twig_dead) and twig_dead[i] == 1:
-            twig_types.append("dead")
-
-        # Create TwigData objects for each twig type found at this face
-        for twig_type in twig_types:
-            twig_data = TwigData(
-                position=final_position, normal=final_normal, twig_type=twig_type
-            )
-            twig_positions.append(twig_data)
-
-    return twig_positions
-
-
-def extract_twigs_from_usda_file(file_path: str) -> List[TwigData]:
-    """
-    Complete pipeline to extract twig positions from a USDA file.
-
-    Args:
-        file_path: Path to the USDA file
-
-    Returns:
-        List of TwigData objects with position, normal, and type information
-
-    Raises:
-        FileNotFoundError: If the USDA file doesn't exist
-        ValueError: If the USDA file format is invalid
-    """
-    # Read and parse the USDA file
-    usda_data = read_usda_file(file_path)
-
-    # Extract twig positions and attributes
-    twig_positions = extract_twig_positions_from_usda(usda_data)
-
-    return twig_positions
-
-
-def save_twig_data_to_csv(twig_data: List[TwigData], output_path: str) -> None:
-    """
-    Save twig data to a CSV file for analysis or further processing.
-
-    Args:
-        twig_data: List of TwigData objects
-        output_path: Path where to save the CSV file
-    """
-    if not twig_data:
-        print("No twig data to save")
-        return
-
-    # Convert to pandas DataFrame
-    data_rows = []
-    for twig in twig_data:
-        row = {
-            "position_x": twig.position[0],
-            "position_y": twig.position[1],
-            "position_z": twig.position[2],
-            "normal_x": twig.normal[0],
-            "normal_y": twig.normal[1],
-            "normal_z": twig.normal[2],
-            "twig_type": twig.twig_type,
-            "rotation_x": twig.rotation[0],
-            "rotation_y": twig.rotation[1],
-            "rotation_z": twig.rotation[2],
-            "rotation_w": twig.rotation[3],
-        }
-        data_rows.append(row)
-
-    df = pd.DataFrame(data_rows)
-    df.to_csv(output_path, index=False)
-    print(f"Saved {len(twig_data)} twig positions to {output_path}")
-
-
-def analyze_twig_distribution(twig_data: List[TwigData]) -> Dict[str, Any]:
-    """
-    Analyze the distribution of twig types and positions.
-
-    Args:
-        twig_data: List of TwigData objects
-
-    Returns:
-        Dictionary with analysis results
-    """
-    if not twig_data:
-        return {}
-
-    # Count twig types
-    type_counts = {}
-    positions = []
-
-    for twig in twig_data:
-        twig_type = twig.twig_type
-        type_counts[twig_type] = type_counts.get(twig_type, 0) + 1
-        positions.append(twig.position)
-
-    # Calculate position statistics
-    positions_array = np.array(positions)
-
-    analysis = {
-        "total_twigs": len(twig_data),
-        "twig_type_counts": type_counts,
-        "position_bounds": {
-            "min_x": float(np.min(positions_array[:, 0])),
-            "max_x": float(np.max(positions_array[:, 0])),
-            "min_y": float(np.min(positions_array[:, 1])),
-            "max_y": float(np.max(positions_array[:, 1])),
-            "min_z": float(np.min(positions_array[:, 2])),
-            "max_z": float(np.max(positions_array[:, 2])),
-        },
-        "position_centroid": {
-            "x": float(np.mean(positions_array[:, 0])),
-            "y": float(np.mean(positions_array[:, 1])),
-            "z": float(np.mean(positions_array[:, 2])),
-        },
-    }
-
-    return analysis
+with open("twig_side.txt", "w") as f:
+    for _ in range(len(centroid_side)):
+        f.write("0, ")
+    f.write("\n")
+    for centroid in centroid_side:
+        f.write(f"{centroid}, ")
+    f.write("\n")
+    for quaternion in quaternion_side:
+        f.write(f"{quaternion}, ")
+    f.write("\n")
