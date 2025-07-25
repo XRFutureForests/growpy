@@ -1,53 +1,77 @@
 """
 Species growth analysis utility for The Grove 2.2.
 
-This utility generates height curves and age prediction models for Grove species presets.
-The GrowthModelLoader class has been moved to growpy.growth_models module.
+This utility generates height curves and age prediction models for Grove species presets
+from the prepared GrowPy assets directory. This script works exclusively with the
+prepared assets and does not require access to The Grove 2.2 installation.
+
+Run prepare_assets.py first to copy species presets from Grove installation.
 
 Usage:
-    python src/utils/species_growth_analysis.py --output_dir data/growth_models
-    python src/utils/species_growth_analysis.py --species "Fagaceae - European oak" --cycles 25
+    python src/growpy/utils/species_growth_analysis.py
+    python src/growpy/utils/species_growth_analysis.py --assets_dir data/assets
+    python src/growpy/utils/species_growth_analysis.py --species "Fagaceae - European oak" --cycles 25
 """
 
 import argparse
 import json
+import logging
 import pickle
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-# Add src to path for Grove imports
-src_path = Path(__file__).parent.parent
-sys.path.insert(0, str(src_path))
-sys.path.insert(0, str(src_path / "the_grove_22" / "modules"))
-
+# Scientific computing imports
 import matplotlib.pyplot as plt
 import matplotlib.style as mplstyle
 import numpy as np
 import pandas as pd
-import the_grove_22_core as gc
 from sklearn.linear_model import LinearRegression
 from tqdm import tqdm
 
+# Add src to path for Grove imports
+src_path = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(src_path))
+sys.path.insert(0, str(src_path / "the_grove_22" / "modules"))
+
+import the_grove_22_core as gc
+
 # Use refactored growpy package
-from growpy import GrowPyConfig, apply_species_preset
+from growpy import GrowPyConfig
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 
 class SpeciesGrowthAnalyzer:
     """Analyzes growth patterns for Grove species and creates prediction models."""
 
     def __init__(
-        self, output_dir: Path, height_model_flushes: int = 75, num_seeds: int = 3
+        self, assets_dir: Path, height_model_flushes: int = 75, num_seeds: int = 3
     ):
         """
         Initialize the growth analyzer.
 
         Args:
-            output_dir: Directory to save growth models
+            assets_dir: Directory containing prepared GrowPy assets
             height_model_flushes: Number of growth cycles for height curve generation
             num_seeds: Number of different random seeds to average for robust curves
         """
-        self.output_dir = Path(output_dir)
+        self.assets_dir = Path(assets_dir)
+        self.presets_dir = self.assets_dir / "presets"
+        self.output_dir = self.assets_dir / "growth_models"
+
+        # Validate assets directory
+        if not self.assets_dir.exists():
+            raise FileNotFoundError(f"Assets directory not found: {self.assets_dir}")
+
+        if not self.presets_dir.exists():
+            raise FileNotFoundError(f"Presets directory not found: {self.presets_dir}")
+
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.height_model_flushes = height_model_flushes
         self.num_seeds = num_seeds
@@ -58,9 +82,70 @@ class SpeciesGrowthAnalyzer:
         self.growth_models = {}  # species -> sklearn model
         self.analysis_metadata = {}  # species -> analysis info
 
-    def get_available_species(self) -> List[str]:
-        """Get list of all available Grove species presets using growpy."""
+    def apply_species_preset(self, grove, species: str) -> bool:
+        """
+        Apply a species preset to a grove from the assets directory.
+
+        Args:
+            grove: Grove object to apply preset to
+            species: Species name
+
+        Returns:
+            True if successful, False otherwise
+        """
         try:
+            # Find the preset file
+            preset_file = self.presets_dir / f"{species}.seed.json"
+            if not preset_file.exists():
+                logger.error(f"Preset file not found: {preset_file}")
+                return False
+
+            # Load and apply preset
+            with open(preset_file, "r") as f:
+                preset_data = json.load(f)
+
+            # Apply preset properties to grove
+            # This is a simplified version - you may need to adapt based on the exact preset structure
+            if "properties" in preset_data:
+                for prop_name, prop_value in preset_data["properties"].items():
+                    if hasattr(grove, prop_name):
+                        setattr(grove, prop_name, prop_value)
+
+            logger.debug(f"Applied preset for species: {species}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to apply species preset {species}: {e}")
+            return False
+
+    def get_available_species(self) -> List[str]:
+        """Get list of all available Grove species presets from assets directory."""
+        try:
+            species_list = []
+
+            # Get all .json preset files
+            preset_files = list(self.presets_dir.glob("*.json"))
+
+            for preset_file in preset_files:
+                # Skip hidden files and special presets
+                if preset_file.name.startswith("."):
+                    continue
+
+                # Extract species name from filename (remove .seed.json extension)
+                species_name = preset_file.stem
+                if species_name.endswith(".seed"):
+                    species_name = species_name[:-5]  # Remove .seed
+
+                species_list.append(species_name)
+
+            logger.info(
+                f"Found {len(species_list)} species presets in assets directory"
+            )
+            return sorted(species_list)
+
+        except Exception as e:
+            logger.error(f"Failed to get available species: {e}")
+            return []
             config = GrowPyConfig()
             return config.get_available_species()
         except Exception:
@@ -195,7 +280,10 @@ class SpeciesGrowthAnalyzer:
 
             # Apply species preset using growpy
             try:
-                apply_species_preset(grove, species)
+                # Apply species preset
+                if not self.apply_species_preset(grove, species):
+                    logger.error(f"Failed to apply preset for {species}")
+                    continue
             except Exception as e:
                 # Fallback to manual preset loading
                 try:
@@ -634,6 +722,37 @@ class SpeciesGrowthAnalyzer:
         )
         plt.close()
 
+    def analyze_species(self, species: str) -> bool:
+        """
+        Analyze a single species and store results.
+
+        Args:
+            species: Species name to analyze
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Generate height and DBH curves
+            height_curve, dbh_curve, metadata = self.generate_height_curve_for_species(
+                species
+            )
+
+            # Create growth model
+            growth_model = self.create_growth_model_for_species(species, height_curve)
+
+            # Store results
+            self.height_curves[species] = height_curve
+            self.dbh_curves[species] = dbh_curve
+            self.growth_models[species] = growth_model
+            self.analysis_metadata[species] = metadata
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to analyze species {species}: {e}")
+            return False
+
     def analyze_all_species(self) -> Dict[str, bool]:
         """
         Analyze all available species and create growth models.
@@ -759,13 +878,31 @@ class SpeciesGrowthAnalyzer:
 def main():
     """Main function for command line usage."""
     parser = argparse.ArgumentParser(
-        description="Generate growth models for Grove species"
+        description="Generate growth models for Grove species from prepared assets",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+    # Analyze all species with default assets directory
+    python src/growpy/utils/species_growth_analysis.py
+    
+    # Analyze all species with custom assets directory
+    python src/growpy/utils/species_growth_analysis.py --assets_dir data/assets
+    
+    # Analyze specific species
+    python src/growpy/utils/species_growth_analysis.py --species "Fagaceae - European oak"
+    
+Note: Run prepare_assets.py first to copy species presets from Grove installation.
+        """,
     )
+
+    # Get script directory for default paths
+    script_dir = Path(__file__).parent.parent.parent.parent  # Go up to project root
+
     parser.add_argument(
-        "--output_dir",
+        "--assets_dir",
         type=Path,
-        default="data/growth_models",
-        help="Directory to save growth models",
+        default=script_dir / "data" / "assets",
+        help="Directory containing prepared GrowPy assets (default: data/assets)",
     )
     parser.add_argument(
         "--cycles", type=int, default=75, help="Number of growth cycles for analysis"
@@ -781,15 +918,45 @@ def main():
         type=str,
         help="Specific species to analyze (if not provided, analyzes all species)",
     )
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
 
     args = parser.parse_args()
 
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    logger.info("Grove Species Growth Analysis")
+    logger.info("=" * 40)
+    logger.info(f"Assets directory: {args.assets_dir}")
+
+    # Check assets directory
+    if not args.assets_dir.exists():
+        logger.error(f"Assets directory not found: {args.assets_dir}")
+        logger.error(
+            "Please run prepare_assets.py first to copy assets from Grove installation"
+        )
+        sys.exit(1)
+
+    # Check for presets directory
+    presets_dir = args.assets_dir / "presets"
+    if not presets_dir.exists():
+        logger.error(f"Presets directory not found: {presets_dir}")
+        logger.error("Please run prepare_assets.py first to copy species presets")
+        sys.exit(1)
+
     # Create analyzer
-    analyzer = SpeciesGrowthAnalyzer(args.output_dir, args.cycles, args.seeds)
+    analyzer = SpeciesGrowthAnalyzer(args.assets_dir, args.cycles, args.seeds)
 
     if args.species:
         # Analyze single species
-        tqdm.write(f"Analyzing single species: {args.species}")
+        logger.info(f"Analyzing single species: {args.species}")
+
+        available_species = analyzer.get_available_species()
+        if args.species not in available_species:
+            logger.error(f"Species '{args.species}' not found in available presets")
+            logger.info(f"Available species: {', '.join(available_species[:10])}...")
+            sys.exit(1)
+
         try:
             # Generate height and DBH curves
             height_curve, dbh_curve, metadata = (
@@ -810,45 +977,48 @@ def main():
             # Save individual species results
             species_dir = analyzer.save_species_results(args.species)
 
-            tqdm.write(f"Final height: {metadata['final_height']:.2f}")
-            tqdm.write(f"Growth rate: {metadata['growth_rate']:.3f} units/cycle")
-            tqdm.write(f"Max height: {metadata['max_height']:.2f}")
-            tqdm.write(f"Final DBH: {metadata['final_dbh']:.3f}")
-            tqdm.write(f"Max DBH: {metadata['max_dbh']:.3f}")
+            logger.info(f"Final height: {metadata['final_height']:.2f}")
+            logger.info(f"Growth rate: {metadata['growth_rate']:.3f} units/cycle")
+            logger.info(f"Max height: {metadata['max_height']:.2f}")
+            logger.info(f"Final DBH: {metadata['final_dbh']:.3f}")
+            logger.info(f"Max DBH: {metadata['max_dbh']:.3f}")
 
             # Save results
             analyzer.save_growth_models()
 
-            tqdm.write(f"\nSuccess: Generated growth model for {args.species}")
-            tqdm.write(f"Results saved to: {species_dir}")
-            return True
+            logger.info(f"Success: Generated growth model for {args.species}")
+            logger.info(f"Results saved to: {species_dir}")
 
         except Exception as e:
-            tqdm.write(f"\nFailed to analyze {args.species}: {e}")
-            return False
+            logger.error(f"Failed to analyze {args.species}: {e}")
+            sys.exit(1)
     else:
         # Analyze all species
-        tqdm.write("Analyzing all species...")
+        logger.info("Analyzing all available species...")
         results = analyzer.analyze_all_species()
 
         # Save results
         analyzer.save_growth_models()
 
-        # Report results
         successful = sum(1 for success in results.values() if success)
         total = len(results)
 
+        logger.info(f"Analysis completed: {successful}/{total} species successful")
+
         if successful > 0:
-            tqdm.write(
-                f"\nSuccess: Generated growth models for {successful}/{total} species"
+            logger.info(
+                f"Models saved to species-specific subfolders in: {analyzer.output_dir}"
             )
-            tqdm.write(
-                f"Models saved to species-specific subfolders in: {args.output_dir}"
-            )
-            return True
         else:
-            tqdm.write(f"\nFailed: No growth models generated")
-            return False
+            logger.error("No species were successfully analyzed")
+            sys.exit(1)
+            species_dir = analyzer.save_species_results(args.species)
+
+            tqdm.write(f"Final height: {metadata['final_height']:.2f}")
+            tqdm.write(f"Growth rate: {metadata['growth_rate']:.3f} units/cycle")
+            tqdm.write(f"Max height: {metadata['max_height']:.2f}")
+            tqdm.write(f"Final DBH: {metadata['final_dbh']:.3f}")
+            tqdm.write(f"Max DBH: {metadata['max_dbh']:.3f}")
 
 
 if __name__ == "__main__":

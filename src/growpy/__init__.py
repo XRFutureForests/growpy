@@ -1,81 +1,60 @@
 """
-GrowPy - Enhanced Hierarchical Interface for The Grove 2.2
-==========================================================
+GrowPy - Minimal Forest Simulation for The Grove 2.2
+====================================================
 
-Clean, production-ready procedural tree generation using Grove's core functionality with
-comprehensive configuration management, multi-species simulation, and advanced features
-discovered from The Grove's Blender addon.
+Essential functions for creating forests from CSV data with multi-species
+light competition, then exporting to USD with twig enhancements.
 
-Module Structure:
-- config: Configuration management with LOD presets and species lookup
-- forest: Multi-species forest simulation with light competition
-- grove: Grove-level operations with advanced serialization and physics
-- tree: Model building with full attribute access and animation support
-- twig: Twig handling and USD integration
-- properties: Advanced property management (optional)
+Core Workflow:
+1. Load CSV with tree positions, species, heights
+2. Calculate growth cycles from heights
+3. Create multi-species forest (separate groves per species)
+4. Simulate growth with light competition
+5. Build LOD models and export to USD
+6. Add twig instances
 
-Enhanced Features (from Blender addon analysis):
-- Multi-grove light competition simulation
-- Compressed grove serialization with fallback support
-- Advanced model building with spring shapes for animation
-- Complete model attribute access (age, thickness, photosynthesis, etc.)
-- Physics-aware simulation with property synchronization
-- Platform-specific core import with graceful fallbacks
-- Production-level error handling and validation
+Usage:
+    from growpy import *
 
-Core Features:
-- Hierarchical, modular design for clear separation of concerns
-- Direct Grove core integration without abstraction layers
-- Native USD export using Grove's built-in capabilities
-- Comprehensive asset management via GrowPyConfig
-- Species lookup and asset path resolution
-- LOD (Level of Detail) configuration system
-- Performance-optimized with minimal overhead
+    # Load and process CSV
+    forest_data = pd.read_csv("trees.csv")
+    calculate_growth_cycles_from_height(forest_data)
 
-Quick Start:
-    from growpy import GrowPyConfig, create_forest, simulate_forest_growth
-
-    # Configuration-driven workflow with global config
-    config = GrowPyConfig()  # Automatically becomes global config
-    print(f"Available species: {config.get_available_species()}")
-
-    # All functions automatically use global config
+    # Create and simulate forest
     forest = create_forest(forest_data)
-    simulate_forest_growth(forest, cycles=20, enable_light_competition=True)
+    simulate_forest_growth(forest, cycles=20)
 
-    # Advanced property management (optional)
-    from growpy import properties
-    properties.modify_grove_properties(grove, favor_bright=0.9, turn_to_light=0.3)
+    # Export to USD with enhancements
+    lod_configs = config.get_lod_configs()
+    for grove, species_name, _ in forest:
+        lod_models = build_lod_models(grove, lod_configs)
+        for lod_name, models in lod_models.items():
+            for i, model in enumerate(models):
+                save_tree_to_usd(model, f"{species_name}_{lod_name}_{i:03d}.usda")
+
+    # Add enhancements
+    twig.batch_add_twig_instances_to_usd_directory(output_dir)
 """
 
-from .config import GrowPyConfig, get_global_config, set_global_config
-from .forest import (
-    calculate_shared_shade, 
-    create_forest, 
-    simulate_forest_growth,
-    save_forest_state,
-)
-from .grove import (
-    add_tree_to_grove,
-    apply_species_preset,
-    create_grove,
-    save_grove_to_json,
-    load_grove_from_file,
-    get_grove_properties,
-    set_grove_properties,
-    update_physics,
-    simulate_grove_growth,
-)
+from . import twig
+from .config import GrowPyConfig, get_config
+from .forest import create_forest, simulate_forest_growth
+from .grove import add_tree_to_grove, create_grove
 from .tree import (
     build_lod_models,
-    build_spring_models,
     calculate_growth_cycles_from_height,
-    get_model_attributes,
     save_tree_to_usd,
 )
 
-# Optional advanced modules - import on demand to maintain minimalistic approach
-try:
-    from . import properties  # Advanced property management
-except ImportError:
-    properties = None
+__all__ = [
+    "GrowPyConfig",
+    "get_config",
+    "create_forest",
+    "simulate_forest_growth",
+    "create_grove",
+    "add_tree_to_grove",
+    "calculate_growth_cycles_from_height",
+    "build_lod_models",
+    "save_tree_to_usd",
+    "twig",
+]
