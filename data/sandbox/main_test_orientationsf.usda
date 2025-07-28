@@ -37,12 +37,11 @@ def Xform "Root"
         }
     }
 
-    # PointInstancer referencing the prototype
+    # PointInstancer with different quaternion format attempts
     def PointInstancer "Twigs"
     {
         rel prototypes = [</Root/Prototypes/TwigPrototype/ScotsPineTwig>]
         int[] protoIndices = [0, 0, 0, 0]
-        int64[] ids = [1, 2, 3, 4]
 
         point3f[] positions = [
             (0.5, 0.5, 0.0),
@@ -51,12 +50,12 @@ def Xform "Root"
             (0.5, 1.5, 0.0)
         ]
 
-        # Simple rotations around Y-axis using the same format as minimal example
-        quath[] orientations = [
-            (1.0, 0.0, 0.0, 0.0),             # No rotation (0°)
-            (0.7071068, 0.0, 0.7071068, 0.0), # 90° around Y-axis
-            (0.0, 0.0, 1.0, 0.0),             # 180° around Y-axis
-            (-0.7071068, 0.0, 0.7071068, 0.0) # 270° around Y-axis
+        # Try using orientationsf with full precision
+        quatf[] orientationsf = [
+            (1.0, 0.0, 0.0, 0.0),             # Identity quaternion
+            (0.7071067811865476, 0.0, 0.7071067811865475, 0.0), # 90° Y rotation
+            (0.0, 0.0, 1.0, 0.0),             # 180° Y rotation
+            (-0.7071067811865476, 0.0, 0.7071067811865475, 0.0) # 270° Y rotation
         ]
 
         # Scales (XYZ)
