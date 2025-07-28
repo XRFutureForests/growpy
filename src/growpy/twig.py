@@ -5,6 +5,14 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
+# Configuration
+APPLY_Z_TO_Y_TRANSFORM = (
+    False  # Set to False since twig geometry is now properly Z-up oriented
+)
+FLIP_FACE_NORMALS = (
+    False  # Set to True if face normals point inward and should be flipped outward
+)
+
 # Platform-specific Grove core import with fallback
 try:
     import the_grove_22_core as gc
@@ -15,10 +23,10 @@ except ImportError:
 from pxr import Usd, Vt
 
 usda_file = Path(
-    "/Users/maximiliansperlich/Developer/the-grove/data/output/small_demo/Norwayspruce_LOD3_Low_003.usda"
+    "/Users/maximiliansperlich/Developer/the-grove/data/output/small_demo/Norwayspruce_LOD1_High_000.usda"
 )
 twig_file = Path(
-    "/Users/maximiliansperlich/Developer/the-grove/data/assets/twigs/ScotsPineTwig/ScotsPineVariationATwig.usda"   
+    "/Users/maximiliansperlich/Developer/the-grove/data/assets/twigs/ScotsPineTwig/ScotsPineVariationATwig.usda"
 )
 
 stage = Usd.Stage.Open(str(usda_file))
@@ -61,73 +69,204 @@ faces_upward = [
 faces_dead = [face for (face, dead) in zip(faces_tuples, twig_dead) if dead == 1]
 
 
-def calculate_centroid(points: Vt.Vec3fArray, face: List[int]) -> np.ndarray:
+def calculate_centroid(points: Vt.Vec3fArray, face: List[int]) -> tuple:
     """Calculate the centroid of a face."""
     face_points = np.array([points[i] for i in face])
     return tuple(np.mean(face_points, axis=0))
 
 
-def calculate_normal(points: Vt.Vec3fArray, face: List[int]) -> np.ndarray:
-    """Calculate the normal vector of a face."""
+def calculate_normal(points: Vt.Vec3fArray, face: List[int]) -> tuple:
+    """Calculate the normal vector of a face with improved robustness."""
     face_points = np.array([points[i] for i in face])
+
+    # Need at least 3 points to calculate a normal
+    if len(face) < 3:
+        print(f"Warning: face has fewer than 3 vertices: {face}")
+        return (0.0, 1.0, 0.0)  # Default to up
+
+    # Use first 3 points to calculate normal (works for triangles and quads)
     v1 = face_points[1] - face_points[0]
     v2 = face_points[2] - face_points[0]
     normal = np.cross(v1, v2)
-    return tuple(normal / np.linalg.norm(normal))
+
+    # Check for degenerate faces (zero or near-zero normal)
+    norm_length = np.linalg.norm(normal)
+    if norm_length < 1e-10:
+        print(f"Warning: degenerate face with points {face_points[:3]}")
+        return (0.0, 1.0, 0.0)  # Default to up
+
+    # Normalize the normal
+    normalized_normal = normal / norm_length
+
+    # Optionally flip normals if they point inward
+    if FLIP_FACE_NORMALS:
+        normalized_normal = -normalized_normal
+
+    return tuple(normalized_normal)
 
 
-def calculate_quaternion_from_normal(normal: np.ndarray) -> List[float]:
-    """Calculate a quaternion that rotates from the default up direction to the normal vector."""
+def calculate_quaternion_from_normal(
+    normal, apply_z_to_y_transform=True
+) -> List[float]:
+    """Calculate a quaternion that rotates from the default X-forward direction to the normal vector.
+    
+    Since the twig is now properly Z-up oriented, most adjustments should be rotations on a 
+    horizontal plane. Only twigs pointing strongly upward should show strong vertical rotation.
+    
+    The twig's natural orientation:
+    - Forward: +X axis
+    - Up: +Z axis (preserved for most orientations)
+    - Right: +Y axis
+
+    According to Grove documentation: "the Grove assumes the branch is pointing in the direction
+    of the X-axis. This means that when you are in top view, the base of the branch should be
+    on the left, and it should be growing out to the right."
+
+    Args:
+        normal: The surface normal vector to align the twig to
+        apply_z_to_y_transform: Legacy parameter, now ignored since twig is Z-up
+
+    USD quaternions use (x, y, z, w) format, not (w, x, y, z) format.
+    """
+    # Convert tuple to numpy array if needed
+    if isinstance(normal, tuple):
+        normal = np.array(normal)
+
     normal = normal / np.linalg.norm(normal)  # Ensure normalized
 
-    # Default up direction (assuming twigs point up by default)
-    up = np.array([0.0, 1.0, 0.0])
+    # Default forward direction for twigs (Grove standard: +X axis)
+    default_forward = np.array([1.0, 0.0, 0.0])
+    
+    # Default up direction for Z-up twig
+    default_up = np.array([0.0, 0.0, 1.0])
 
-    # If normal is already pointing up, return identity quaternion
-    if np.allclose(normal, up):
-        return [1.0, 0.0, 0.0, 0.0]  # w, x, y, z
+    # Target forward direction is the surface normal
+    target_forward = normal
+    
+    # For most face normals, we want to keep the twig's up direction close to +Z
+    # Only for strongly vertical normals do we allow significant vertical rotation
+    
+    # Check if the normal is pointing strongly upward or downward
+    vertical_component = abs(target_forward[2])  # |Z component|
+    
+    if vertical_component > 0.8:  # Normal is strongly vertical
+        # For vertical surfaces, allow the twig to rotate into vertical orientation
+        # Use Y axis as reference for the twig's up direction
+        if abs(target_forward[1]) < 0.9:  # Not parallel to Y
+            reference = np.array([0.0, 1.0, 0.0])  # Y axis
+        else:  # Parallel to Y, use X axis
+            reference = np.array([1.0, 0.0, 0.0])  # X axis
+            
+        twig_right = np.cross(target_forward, reference)
+        twig_right = twig_right / np.linalg.norm(twig_right)
+        twig_up = np.cross(twig_right, target_forward)
+        twig_up = twig_up / np.linalg.norm(twig_up)
+        
+    else:  # Normal is mostly horizontal
+        # For horizontal surfaces, keep the twig's up direction close to +Z
+        # This means mostly rotating in the horizontal plane
+        
+        # Project the default up vector (+Z) onto the plane perpendicular to target_forward
+        projected_up = default_up - np.dot(default_up, target_forward) * target_forward
+        projected_up_length = np.linalg.norm(projected_up)
+        
+        if projected_up_length > 0.1:  # Good projection
+            twig_up = projected_up / projected_up_length
+        else:  # Bad projection, use fallback
+            # If +Z is too parallel to normal, use +Y as reference
+            reference = np.array([0.0, 1.0, 0.0])
+            twig_right = np.cross(target_forward, reference)
+            twig_right = twig_right / np.linalg.norm(twig_right)
+            twig_up = np.cross(twig_right, target_forward)
+            twig_up = twig_up / np.linalg.norm(twig_up)
+        
+        # Calculate right vector
+        twig_right = np.cross(target_forward, twig_up)
+        twig_right = twig_right / np.linalg.norm(twig_right)
+    
+    # Create rotation matrix from default orientation to target orientation
+    # Default: +X forward, +Z up, +Y right
+    # Target: target_forward, twig_up, twig_right
+    rotation_matrix = np.array([
+        [target_forward[0], twig_up[0], twig_right[0]],
+        [target_forward[1], twig_up[1], twig_right[1]], 
+        [target_forward[2], twig_up[2], twig_right[2]]
+    ])
+    
+    # Convert rotation matrix to quaternion
+    quat = rotation_matrix_to_quaternion(rotation_matrix)
 
-    # If normal is pointing down, rotate 180 degrees around X axis
-    if np.allclose(normal, -up):
-        return [0.0, 1.0, 0.0, 0.0]  # w, x, y, z
+    return quat
 
-    # Calculate rotation axis (cross product of up and normal)
-    axis = np.cross(up, normal)
-    axis = axis / np.linalg.norm(axis)
 
-    # Calculate rotation angle
-    dot_product = np.dot(up, normal)
-    angle = np.arccos(np.clip(dot_product, -1.0, 1.0))
+def rotation_matrix_to_quaternion(R):
+    """Convert a 3x3 rotation matrix to quaternion in [x, y, z, w] format."""
+    trace = R[0, 0] + R[1, 1] + R[2, 2]
 
-    # Convert to quaternion
-    half_angle = angle * 0.5
-    sin_half = np.sin(half_angle)
-    cos_half = np.cos(half_angle)
+    if trace > 0:
+        s = np.sqrt(trace + 1.0) * 2  # s = 4 * qw
+        w = 0.25 * s
+        x = (R[2, 1] - R[1, 2]) / s
+        y = (R[0, 2] - R[2, 0]) / s
+        z = (R[1, 0] - R[0, 1]) / s
+    elif R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
+        s = np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2]) * 2  # s = 4 * qx
+        w = (R[2, 1] - R[1, 2]) / s
+        x = 0.25 * s
+        y = (R[0, 1] + R[1, 0]) / s
+        z = (R[0, 2] + R[2, 0]) / s
+    elif R[1, 1] > R[2, 2]:
+        s = np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2]) * 2  # s = 4 * qy
+        w = (R[0, 2] - R[2, 0]) / s
+        x = (R[0, 1] + R[1, 0]) / s
+        y = 0.25 * s
+        z = (R[1, 2] + R[2, 1]) / s
+    else:
+        s = np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1]) * 2  # s = 4 * qz
+        w = (R[1, 0] - R[0, 1]) / s
+        x = (R[0, 2] + R[2, 0]) / s
+        y = (R[1, 2] + R[2, 1]) / s
+        z = 0.25 * s
 
-    # Return quaternion as (w, x, y, z)
-    return (
-        cos_half,  # w
-        axis[0] * sin_half,  # x
-        axis[1] * sin_half,  # y
-        axis[2] * sin_half,  # z
-    )
+    return [x, y, z, w]
+
+
+def multiply_quaternions(q1, q2):
+    """Multiply two quaternions in (x, y, z, w) format."""
+    x1, y1, z1, w1 = q1
+    x2, y2, z2, w2 = q2
+
+    return [
+        w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,  # x
+        w1 * y2 + y1 * w2 + z1 * x2 - x1 * z2,  # y
+        w1 * z2 + z1 * w2 + x1 * y2 - y1 * x2,  # z
+        w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,  # w
+    ]
 
 
 centroid_end = [calculate_centroid(points, face) for face in faces_end]
 normal_end = [calculate_normal(points, face) for face in faces_end]
-quaternion_end = [calculate_quaternion_from_normal(n) for n in normal_end]
+quaternion_end = [
+    calculate_quaternion_from_normal(n, APPLY_Z_TO_Y_TRANSFORM) for n in normal_end
+]
 
 centroid_side = [calculate_centroid(points, face) for face in faces_side]
 normal_side = [calculate_normal(points, face) for face in faces_side]
-quaternion_side = [calculate_quaternion_from_normal(n) for n in normal_side]
+quaternion_side = [
+    calculate_quaternion_from_normal(n, APPLY_Z_TO_Y_TRANSFORM) for n in normal_side
+]
 
 centroid_upward = [calculate_centroid(points, face) for face in faces_upward]
 normal_upward = [calculate_normal(points, face) for face in faces_upward]
-quaternion_upward = [calculate_quaternion_from_normal(n) for n in normal_upward]
-    
+quaternion_upward = [
+    calculate_quaternion_from_normal(n, APPLY_Z_TO_Y_TRANSFORM) for n in normal_upward
+]
+
 centroid_dead = [calculate_centroid(points, face) for face in faces_dead]
 normal_dead = [calculate_normal(points, face) for face in faces_dead]
-quaternion_dead = [calculate_quaternion_from_normal(n) for n in normal_dead]
+quaternion_dead = [
+    calculate_quaternion_from_normal(n, APPLY_Z_TO_Y_TRANSFORM) for n in normal_dead
+]
 
 
 def write_usd_pointinstancer(positions, orientations, filename="twig_side.txt"):
@@ -158,11 +297,9 @@ def write_usd_pointinstancer(positions, orientations, filename="twig_side.txt"):
                 f.write(", ")
         f.write("        ]\n")
         f.write("\n")
-        f.write("        quatf[] orientations = [")
+        f.write("        quath[] orientations = [")
         for i, quat in enumerate(orientations):
-            f.write(
-                f"({quat[0]:.4f}, {quat[1]:.4f}, {quat[2]:.4f}, {quat[3]:.4f})"
-            )
+            f.write(f"({quat[0]:.4f}, {quat[1]:.4f}, {quat[2]:.4f}, {quat[3]:.4f})")
             if i < len(orientations) - 1:
                 f.write(", ")
         f.write("        ]\n")
@@ -178,9 +315,7 @@ def write_usd_pointinstancer(positions, orientations, filename="twig_side.txt"):
 
 # Process all twig types (combine side, end, and upward twigs)
 all_positions = centroid_side + centroid_end + centroid_upward
-all_quaternions = (
-    quaternion_side + quaternion_end + quaternion_upward
-)
+all_quaternions = quaternion_side + quaternion_end + quaternion_upward
 
 # Write the USD PointInstancer section
 write_usd_pointinstancer(all_positions, all_quaternions, "twig_side.txt")
