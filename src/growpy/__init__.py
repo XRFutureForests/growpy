@@ -36,7 +36,6 @@ Usage:
     twig.batch_add_twig_instances_to_usd_directory(output_dir)
 """
 
-from . import twig
 from .config import GrowPyConfig, get_config
 from .forest import create_forest, simulate_forest_growth
 from .grove import add_tree_to_grove, create_grove
@@ -56,5 +55,4 @@ __all__ = [
     "calculate_growth_cycles_from_height",
     "build_lod_models",
     "save_tree_to_usd",
-    "twig",
 ]

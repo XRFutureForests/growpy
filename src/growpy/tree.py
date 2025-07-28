@@ -37,8 +37,8 @@ def calculate_growth_cycles_from_height(forest_data: pd.DataFrame) -> None:
     forest_data["delay"] = max_cycles - forest_data["growth_cycles"]
 
 
-def save_tree_to_usd(model, output_path: Path, add_twigs: bool = True) -> None:
-    """Save tree model to USD file, optionally with twig instances."""
+def save_tree_to_usd(model, output_path: Path) -> None:
+    """Save tree model to USD file."""
     if gc is None:
         raise ImportError("Grove core not available")
 
@@ -47,11 +47,6 @@ def save_tree_to_usd(model, output_path: Path, add_twigs: bool = True) -> None:
 
     with open(output_path, "w") as f:
         f.write(usd_string)
-    
-    # Add twig instances if requested
-    if add_twigs:
-        from .twig import add_twig_instances_to_usd_file
-        add_twig_instances_to_usd_file(output_path)
 
 
 def build_lod_models(grove, lod_configs: Dict[str, Dict[str, Any]]) -> Dict[str, List]:

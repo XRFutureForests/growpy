@@ -42,6 +42,7 @@ def Xform "Root"
     {
         rel prototypes = [</Root/Prototypes/TwigPrototype/ScotsPineTwig>]
         int[] protoIndices = [0, 0, 0, 0]
+        int64[] ids = [1, 2, 3, 4]
 
         point3f[] positions = [
             (0.5, 0.5, 0.0),
@@ -50,13 +51,12 @@ def Xform "Root"
             (0.5, 1.5, 0.0)
         ]
 
-        # Orientations as unit quaternions (w, x, y, z)
-        # Rotations: 0°, 90°, 180°, 270° around Z axis
-        quatf[] orientations = [
-            (1, 0, 0, 0),
-            (0.707, 0, 0, 0.707),
-            (0, 0, 0, 1),
-            (0.707, 0, 0, -0.707)
+        # Simple rotations around Y-axis using the same format as minimal example
+        quath[] orientations = [
+            (1.0, 0.0, 0.0, 0.0),             # No rotation (0°)
+            (0.7071068, 0.0, 0.7071068, 0.0), # 90° around Y-axis
+            (0.0, 0.0, 1.0, 0.0),             # 180° around Y-axis
+            (-0.7071068, 0.0, 0.7071068, 0.0) # 270° around Y-axis
         ]
 
         # Scales (XYZ)
