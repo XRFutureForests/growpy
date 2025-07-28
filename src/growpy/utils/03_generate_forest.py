@@ -24,7 +24,6 @@ from growpy import (
     create_forest,
     save_tree_to_usd,
     simulate_forest_growth,
-    twig,
 )
 
 
@@ -34,8 +33,12 @@ def main():
     print("=" * 30)
 
     # Fixed paths - no command line arguments needed
-    csv_path = Path(__file__).parent.parent.parent.parent / "data" / "input" / "small_demo.csv"
-    output_dir = Path(__file__).parent.parent.parent.parent / "data" / "output" / csv_path.stem
+    csv_path = (
+        Path(__file__).parent.parent.parent.parent / "data" / "input" / "small_demo.csv"
+    )
+    output_dir = (
+        Path(__file__).parent.parent.parent.parent / "data" / "output" / csv_path.stem
+    )
 
     if not csv_path.exists():
         print(f"❌ CSV file not found: {csv_path}")

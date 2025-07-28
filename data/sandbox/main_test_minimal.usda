@@ -37,34 +37,28 @@ def Xform "Root"
         }
     }
 
-    # PointInstancer referencing the prototype
+    # Minimal PointInstancer with just 2 instances to debug
     def PointInstancer "Twigs"
     {
         rel prototypes = [</Root/Prototypes/TwigPrototype/ScotsPineTwig>]
-        int[] protoIndices = [0, 0, 0, 0]
-        int64[] ids = [1, 2, 3, 4]
+        int[] protoIndices = [0, 0]
+        int64[] ids = [1, 2]
 
         point3f[] positions = [
             (0.5, 0.5, 0.0),
-            (1.5, 0.5, 0.0),
-            (1.5, 1.5, 0.0),
-            (0.5, 1.5, 0.0)
+            (1.5, 0.5, 0.0)
         ]
 
-        # Simple rotations around Y-axis using the same format as minimal example
+        # Simple 90-degree rotation test
         quath[] orientations = [
-            (1.0, 0.0, 0.0, 0.0),             # No rotation (0°)
-            (0.7071068, 0.0, 0.7071068, 0.0), # 90° around Y-axis
-            (0.0, 0.0, 1.0, 0.0),             # 180° around Y-axis
-            (-0.7071068, 0.0, 0.7071068, 0.0) # 270° around Y-axis
+            (1.0, 0.0, 0.0, 0.0),             # No rotation
+            (0.7071068, 0.0, 0.7071068, 0.0)  # 90° around Y-axis
         ]
 
-        # Scales (XYZ)
+        # Simple uniform scales
         float3[] scales = [
             (1.0, 1.0, 1.0),
-            (0.5, 0.5, 0.5),
-            (1.5, 1.5, 1.5),
-            (1.0, 2.0, 1.0)
+            (1.0, 1.0, 1.0)
         ]
     }
 }
