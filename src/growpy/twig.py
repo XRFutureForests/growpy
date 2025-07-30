@@ -109,10 +109,10 @@ def calculate_quaternion_from_normal(
     normal, apply_z_to_y_transform=True
 ) -> List[float]:
     """Calculate a quaternion that rotates from the default X-forward direction to the normal vector.
-    
-    Since the twig is now properly Z-up oriented, most adjustments should be rotations on a 
+
+    Since the twig is now properly Z-up oriented, most adjustments should be rotations on a
     horizontal plane. Only twigs pointing strongly upward should show strong vertical rotation.
-    
+
     The twig's natural orientation:
     - Forward: +X axis
     - Up: +Z axis (preserved for most orientations)
@@ -136,19 +136,19 @@ def calculate_quaternion_from_normal(
 
     # Default forward direction for twigs (Grove standard: +X axis)
     default_forward = np.array([1.0, 0.0, 0.0])
-    
+
     # Default up direction for Z-up twig
     default_up = np.array([0.0, 0.0, 1.0])
 
     # Target forward direction is the surface normal
     target_forward = normal
-    
+
     # For most face normals, we want to keep the twig's up direction close to +Z
     # Only for strongly vertical normals do we allow significant vertical rotation
-    
+
     # Check if the normal is pointing strongly upward or downward
     vertical_component = abs(target_forward[2])  # |Z component|
-    
+
     if vertical_component > 0.8:  # Normal is strongly vertical
         # For vertical surfaces, allow the twig to rotate into vertical orientation
         # Use Y axis as reference for the twig's up direction
@@ -156,20 +156,20 @@ def calculate_quaternion_from_normal(
             reference = np.array([0.0, 1.0, 0.0])  # Y axis
         else:  # Parallel to Y, use X axis
             reference = np.array([1.0, 0.0, 0.0])  # X axis
-            
+
         twig_right = np.cross(target_forward, reference)
         twig_right = twig_right / np.linalg.norm(twig_right)
         twig_up = np.cross(twig_right, target_forward)
         twig_up = twig_up / np.linalg.norm(twig_up)
-        
+
     else:  # Normal is mostly horizontal
         # For horizontal surfaces, keep the twig's up direction close to +Z
         # This means mostly rotating in the horizontal plane
-        
+
         # Project the default up vector (+Z) onto the plane perpendicular to target_forward
         projected_up = default_up - np.dot(default_up, target_forward) * target_forward
         projected_up_length = np.linalg.norm(projected_up)
-        
+
         if projected_up_length > 0.1:  # Good projection
             twig_up = projected_up / projected_up_length
         else:  # Bad projection, use fallback
@@ -179,20 +179,22 @@ def calculate_quaternion_from_normal(
             twig_right = twig_right / np.linalg.norm(twig_right)
             twig_up = np.cross(twig_right, target_forward)
             twig_up = twig_up / np.linalg.norm(twig_up)
-        
+
         # Calculate right vector
         twig_right = np.cross(target_forward, twig_up)
         twig_right = twig_right / np.linalg.norm(twig_right)
-    
+
     # Create rotation matrix from default orientation to target orientation
     # Default: +X forward, +Z up, +Y right
     # Target: target_forward, twig_up, twig_right
-    rotation_matrix = np.array([
-        [target_forward[0], twig_up[0], twig_right[0]],
-        [target_forward[1], twig_up[1], twig_right[1]], 
-        [target_forward[2], twig_up[2], twig_right[2]]
-    ])
-    
+    rotation_matrix = np.array(
+        [
+            [target_forward[0], twig_up[0], twig_right[0]],
+            [target_forward[1], twig_up[1], twig_right[1]],
+            [target_forward[2], twig_up[2], twig_right[2]],
+        ]
+    )
+
     # Convert rotation matrix to quaternion
     quat = rotation_matrix_to_quaternion(rotation_matrix)
 
