@@ -1,5 +1,31 @@
-"""Minimal twig enhancement for USD files."""
+"""
+Minimal twig enhancement for USD files.
 
+IMPLEMENTATION SUMMARY:
+======================
+
+This module processes USD files exported from The Grove to extract twig placement
+information and generate PointInstancer data for rendering twigs in USD-compliant
+3D applications (Blender, Unreal, Maya, etc.).
+
+KEY DISCOVERIES FROM GROVE DOCUMENTATION:
+- Twig orientation standard: Grove assumes branches point in +X direction
+- Face normals of twig triangles point in the direction of growth (NOT outward from surface)
+- Quote: "Twig duplication triangle are oriented toward the direction of growth,
+  so for these triangles the direction attribute equals the face normal"
+
+CORRECTED APPROACH:
+- Face normals directly represent the branch growth direction
+- Calculate quaternion to rotate twig from default +X forward to face normal direction
+- No Grove core dependencies required - works purely with USD data
+
+OUTPUT:
+- Generates USD PointInstancer with positions and orientations
+- Supports all twig types: end, side, upward, and dead twigs
+- Quaternions in USD format: (w, x, y, z)
+"""
+
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -13,20 +39,16 @@ FLIP_FACE_NORMALS = (
     False  # Set to True if face normals point inward and should be flipped outward
 )
 
-# Platform-specific Grove core import with fallback
-try:
-    import the_grove_22_core as gc
-except ImportError:
-    print("Warning: the_grove_22_core not available")
-    gc = None
+# Note: Grove core not required for USD file processing
+# This module works directly with USD files exported from The Grove
 
 from pxr import Usd, Vt
 
 usda_file = Path(
-    "/Users/maximiliansperlich/Developer/the-grove/data/output/small_demo/Norwayspruce_LOD1_High_000.usda"
+    r"C:\Users\Maximilian Sperlich\Git\the-grove\data\output\small_demo\Norwayspruce_LOD1_High_000.usda"
 )
 twig_file = Path(
-    "/Users/maximiliansperlich/Developer/the-grove/data/assets/twigs/ScotsPineTwig/ScotsPineVariationATwig.usda"
+    r"C:\Users\Maximilian Sperlich\Git\the-grove\data\output\small_demo\ScotsPineVariationATwig.usda"
 )
 
 stage = Usd.Stage.Open(str(usda_file))
@@ -69,13 +91,13 @@ faces_upward = [
 faces_dead = [face for (face, dead) in zip(faces_tuples, twig_dead) if dead == 1]
 
 
-def calculate_centroid(points: Vt.Vec3fArray, face: List[int]) -> tuple:
+def calculate_centroid(points: list, face: List[int]) -> tuple:
     """Calculate the centroid of a face."""
     face_points = np.array([points[i] for i in face])
     return tuple(np.mean(face_points, axis=0))
 
 
-def calculate_normal(points: Vt.Vec3fArray, face: List[int]) -> tuple:
+def calculate_normal(points: list, face: List[int]) -> tuple:
     """Calculate the normal vector of a face with improved robustness."""
     face_points = np.array([points[i] for i in face])
 
@@ -110,21 +132,19 @@ def calculate_quaternion_from_normal(
 ) -> List[float]:
     """Calculate a quaternion that rotates from the default X-forward direction to the normal vector.
 
-    Since the twig is now properly Z-up oriented, most adjustments should be rotations on a
-    horizontal plane. Only twigs pointing strongly upward should show strong vertical rotation.
+    IMPORTANT: According to Grove documentation, twig triangles' normals point in the
+    direction of growth (the branch direction), NOT outward from the surface.
+    The twig should align its +X axis (forward direction) with this normal.
 
-    The twig's natural orientation:
-    - Forward: +X axis
-    - Up: +Z axis (preserved for most orientations)
-    - Right: +Y axis
+    From Grove docs: "Twig duplication triangle are oriented toward the direction of growth,
+    so for these triangles the direction attribute equals the face normal."
 
-    According to Grove documentation: "the Grove assumes the branch is pointing in the direction
-    of the X-axis. This means that when you are in top view, the base of the branch should be
-    on the left, and it should be growing out to the right."
+    NOTE: Coordinate system conversion is now handled during Blender→USD export,
+    so we can use the normal directly without additional transformations.
 
     Args:
-        normal: The surface normal vector to align the twig to
-        apply_z_to_y_transform: Legacy parameter, now ignored since twig is Z-up
+        normal: The face normal vector (which IS the growth direction)
+        apply_z_to_y_transform: Legacy parameter, now ignored since conversion is handled at export
 
     USD quaternions use (x, y, z, w) format, not (w, x, y, z) format.
     """
@@ -137,68 +157,49 @@ def calculate_quaternion_from_normal(
     # Default forward direction for twigs (Grove standard: +X axis)
     default_forward = np.array([1.0, 0.0, 0.0])
 
-    # Default up direction for Z-up twig
-    default_up = np.array([0.0, 0.0, 1.0])
-
-    # Target forward direction is the surface normal
+    # Target forward direction is the face normal (growth direction)
+    # No coordinate conversion needed since it's handled during USD export
     target_forward = normal
 
-    # For most face normals, we want to keep the twig's up direction close to +Z
-    # Only for strongly vertical normals do we allow significant vertical rotation
+    # Use Grove's equivalent of Rotation.from_vector_to_vector
+    # This calculates the shortest rotation from default_forward to target_forward
 
-    # Check if the normal is pointing strongly upward or downward
-    vertical_component = abs(target_forward[2])  # |Z component|
+    # If vectors are already aligned, return identity quaternion
+    dot_product = np.dot(default_forward, target_forward)
+    if dot_product > 0.9999:  # Nearly identical
+        return [0.0, 0.0, 0.0, 1.0]  # Identity quaternion
 
-    if vertical_component > 0.8:  # Normal is strongly vertical
-        # For vertical surfaces, allow the twig to rotate into vertical orientation
-        # Use Y axis as reference for the twig's up direction
-        if abs(target_forward[1]) < 0.9:  # Not parallel to Y
-            reference = np.array([0.0, 1.0, 0.0])  # Y axis
-        else:  # Parallel to Y, use X axis
-            reference = np.array([1.0, 0.0, 0.0])  # X axis
+    if dot_product < -0.9999:  # Nearly opposite
+        # Find a perpendicular axis to rotate around 180 degrees
+        if abs(default_forward[1]) < 0.9:
+            perpendicular = np.array([0.0, 1.0, 0.0])  # Use Y axis
+        else:
+            perpendicular = np.array([0.0, 0.0, 1.0])  # Use Z axis
+        return [
+            perpendicular[0],
+            perpendicular[1],
+            perpendicular[2],
+            0.0,
+        ]  # 180-degree rotation
 
-        twig_right = np.cross(target_forward, reference)
-        twig_right = twig_right / np.linalg.norm(twig_right)
-        twig_up = np.cross(twig_right, target_forward)
-        twig_up = twig_up / np.linalg.norm(twig_up)
+    # Calculate the rotation axis (cross product)
+    rotation_axis = np.cross(default_forward, target_forward)
+    rotation_axis = rotation_axis / np.linalg.norm(rotation_axis)
 
-    else:  # Normal is mostly horizontal
-        # For horizontal surfaces, keep the twig's up direction close to +Z
-        # This means mostly rotating in the horizontal plane
+    # Calculate the rotation angle
+    angle = np.arccos(np.clip(dot_product, -1.0, 1.0))
 
-        # Project the default up vector (+Z) onto the plane perpendicular to target_forward
-        projected_up = default_up - np.dot(default_up, target_forward) * target_forward
-        projected_up_length = np.linalg.norm(projected_up)
+    # Convert axis-angle to quaternion
+    half_angle = angle * 0.5
+    sin_half = np.sin(half_angle)
+    cos_half = np.cos(half_angle)
 
-        if projected_up_length > 0.1:  # Good projection
-            twig_up = projected_up / projected_up_length
-        else:  # Bad projection, use fallback
-            # If +Z is too parallel to normal, use +Y as reference
-            reference = np.array([0.0, 1.0, 0.0])
-            twig_right = np.cross(target_forward, reference)
-            twig_right = twig_right / np.linalg.norm(twig_right)
-            twig_up = np.cross(twig_right, target_forward)
-            twig_up = twig_up / np.linalg.norm(twig_up)
-
-        # Calculate right vector
-        twig_right = np.cross(target_forward, twig_up)
-        twig_right = twig_right / np.linalg.norm(twig_right)
-
-    # Create rotation matrix from default orientation to target orientation
-    # Default: +X forward, +Z up, +Y right
-    # Target: target_forward, twig_up, twig_right
-    rotation_matrix = np.array(
-        [
-            [target_forward[0], twig_up[0], twig_right[0]],
-            [target_forward[1], twig_up[1], twig_right[1]],
-            [target_forward[2], twig_up[2], twig_right[2]],
-        ]
-    )
-
-    # Convert rotation matrix to quaternion
-    quat = rotation_matrix_to_quaternion(rotation_matrix)
-
-    return quat
+    return [
+        rotation_axis[0] * sin_half,  # x
+        rotation_axis[1] * sin_half,  # y
+        rotation_axis[2] * sin_half,  # z
+        cos_half,  # w
+    ]
 
 
 def rotation_matrix_to_quaternion(R):
@@ -248,24 +249,28 @@ def multiply_quaternions(q1, q2):
 
 centroid_end = [calculate_centroid(points, face) for face in faces_end]
 normal_end = [calculate_normal(points, face) for face in faces_end]
+# Calculate quaternions using the corrected approach (face normal = growth direction)
 quaternion_end = [
     calculate_quaternion_from_normal(n, APPLY_Z_TO_Y_TRANSFORM) for n in normal_end
 ]
 
 centroid_side = [calculate_centroid(points, face) for face in faces_side]
 normal_side = [calculate_normal(points, face) for face in faces_side]
+# Calculate quaternions using the corrected approach (face normal = growth direction)
 quaternion_side = [
     calculate_quaternion_from_normal(n, APPLY_Z_TO_Y_TRANSFORM) for n in normal_side
 ]
 
 centroid_upward = [calculate_centroid(points, face) for face in faces_upward]
 normal_upward = [calculate_normal(points, face) for face in faces_upward]
+# Calculate quaternions using the corrected approach (face normal = growth direction)
 quaternion_upward = [
     calculate_quaternion_from_normal(n, APPLY_Z_TO_Y_TRANSFORM) for n in normal_upward
 ]
 
 centroid_dead = [calculate_centroid(points, face) for face in faces_dead]
 normal_dead = [calculate_normal(points, face) for face in faces_dead]
+# Calculate quaternions using the corrected approach (face normal = growth direction)
 quaternion_dead = [
     calculate_quaternion_from_normal(n, APPLY_Z_TO_Y_TRANSFORM) for n in normal_dead
 ]
@@ -274,6 +279,43 @@ quaternion_dead = [
 def write_usd_pointinstancer(positions, orientations, filename="twig_side.txt"):
     """Write USD PointInstancer section for twigs."""
     with open(filename, "w") as f:
+        f.write('def PointInstancer "TwigInstances"\n')
+        f.write("{\n")
+        f.write("    rel prototypes = </TwigPrototype>\n")
+        f.write(
+            "    int[] prototypeIndices = [" + ", ".join(["0"] * len(positions)) + "]\n"
+        )
+        f.write("    point3f[] positions = [\n")
+
+        # Write positions
+        for i, pos in enumerate(positions):
+            f.write(f"        ({pos[0]:.6f}, {pos[1]:.6f}, {pos[2]:.6f})")
+            if i < len(positions) - 1:
+                f.write(",")
+            f.write("\n")
+
+        f.write("    ]\n")
+        f.write("    quatf[] orientations = [\n")
+
+        # Write orientations (quaternions)
+        for i, quat in enumerate(orientations):
+            f.write(
+                f"        ({quat[3]:.6f}, {quat[0]:.6f}, {quat[1]:.6f}, {quat[2]:.6f})"
+            )  # USD format: (w, x, y, z)
+            if i < len(orientations) - 1:
+                f.write(",")
+            f.write("\n")
+
+        f.write("    ]\n")
+        f.write("}\n")
+        f.write("\n")
+        f.write('def Mesh "TwigPrototype"\n')
+        f.write("{\n")
+        f.write("    # Reference to your twig geometry here\n")
+        f.write(
+            "    # Example: references = @./ScotsPineVariationATwig.usda@</TwigMesh>\n"
+        )
+        f.write("}\n")
         f.write('    def Scope "Prototypes"\n')
         f.write("    {\n")
         f.write('        def "TwigPrototype" (\n')
