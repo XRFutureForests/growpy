@@ -12,9 +12,6 @@ This script provides a streamlined forest simulation workflow:
 import sys
 from pathlib import Path
 
-# Add paths for imports
-src_path = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(src_path))
 import pandas as pd
 
 from growpy import (
@@ -88,4 +85,5 @@ def main():
 
 
 if __name__ == "__main__":
+    sys.exit(main())
     sys.exit(main())
