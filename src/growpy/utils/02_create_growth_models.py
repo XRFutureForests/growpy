@@ -16,11 +16,13 @@ Usage:
 import argparse
 import json
 import logging
+import multiprocessing as mp
 import pickle
 import sys
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Scientific computing imports
 import matplotlib.pyplot as plt
@@ -45,6 +47,64 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+
+def process_single_species_parallel(args_tuple):
+    """
+    Process a single species in parallel.
+
+    This function is designed to be called by multiprocessing workers.
+    It takes a tuple of arguments to work around multiprocessing limitations.
+
+    Args:
+        args_tuple: Tuple of (species, assets_dir, height_model_flushes, num_seeds)
+
+    Returns:
+        Tuple of (species, success, results_dict, error_message)
+    """
+    species, assets_dir, height_model_flushes, num_seeds = args_tuple
+
+    try:
+        # Set up logging for this process
+        process_logger = logging.getLogger(f"species_{species}")
+
+        # Import Grove modules inside the worker process to avoid pickling issues
+        import sys
+        from pathlib import Path
+
+        # Add src to path for Grove imports
+        src_path = Path(assets_dir).parent.parent / "src"
+        sys.path.insert(0, str(src_path))
+        sys.path.insert(0, str(src_path / "the_grove_22" / "modules"))
+
+        import the_grove_22_core as gc
+
+        from growpy import GrowPyConfig
+
+        # Create a temporary analyzer instance for this species
+        analyzer = SpeciesGrowthAnalyzer(assets_dir, height_model_flushes, num_seeds)
+
+        # Generate height and DBH curves
+        height_curve, dbh_curve, metadata = analyzer.generate_height_curve_for_species(
+            species
+        )
+
+        # Create growth model
+        growth_model = analyzer.create_growth_model_for_species(species, height_curve)
+
+        # Prepare results dictionary
+        results = {
+            "height_curve": height_curve,
+            "dbh_curve": dbh_curve,
+            "metadata": metadata,
+            "growth_model": growth_model,
+        }
+
+        return (species, True, results, None)
+
+    except Exception as e:
+        error_msg = f"Failed to process {species}: {str(e)}"
+        return (species, False, None, error_msg)
 
 
 class SpeciesGrowthAnalyzer:
@@ -145,29 +205,32 @@ class SpeciesGrowthAnalyzer:
 
         except Exception as e:
             logger.error(f"Failed to get available species: {e}")
-            return []
-            config = GrowPyConfig()
-            return config.get_available_species()
-        except Exception:
-            # Fallback to manual directory scanning
-            presets_dir = Path(__file__).parent.parent / "the_grove_22" / "presets"
+            # Fallback to GrowPyConfig if available
+            try:
+                config = GrowPyConfig()
+                return config.get_available_species()
+            except Exception:
+                # Final fallback to manual directory scanning
+                presets_dir = Path(__file__).parent.parent / "the_grove_22" / "presets"
 
-            if not presets_dir.exists():
-                raise FileNotFoundError(f"Presets directory not found: {presets_dir}")
+                if not presets_dir.exists():
+                    raise FileNotFoundError(
+                        f"Presets directory not found: {presets_dir}"
+                    )
 
-            species_list = []
-            for preset_file in presets_dir.glob("*.seed.json"):
-                try:
-                    species_name = preset_file.stem
-                    if species_name.endswith(".seed"):
-                        species_name = species_name[:-5]
+                species_list = []
+                for preset_file in presets_dir.glob("*.seed.json"):
+                    try:
+                        species_name = preset_file.stem
+                        if species_name.endswith(".seed"):
+                            species_name = species_name[:-5]
 
-                    if species_name and not species_name.startswith("."):
-                        species_list.append(species_name)
-                except Exception:
-                    continue
+                        if species_name and not species_name.startswith("."):
+                            species_list.append(species_name)
+                    except Exception:
+                        continue
 
-            return sorted(species_list)
+                return sorted(species_list)
 
     def calculate_dbh_at_height(self, tree, target_height: float = 1.3) -> float:
         """
@@ -753,9 +816,27 @@ class SpeciesGrowthAnalyzer:
             logger.error(f"Failed to analyze species {species}: {e}")
             return False
 
-    def analyze_all_species(self) -> Dict[str, bool]:
+    def analyze_all_species(
+        self, parallel: bool = True, max_workers: Optional[int] = None
+    ) -> Dict[str, bool]:
         """
         Analyze all available species and create growth models.
+
+        Args:
+            parallel: Whether to use parallel processing (default: True)
+            max_workers: Maximum number of parallel workers (default: CPU count - 1)
+
+        Returns:
+            Dictionary mapping species to success status
+        """
+        if parallel:
+            return self.analyze_all_species_parallel(max_workers)
+        else:
+            return self.analyze_all_species_sequential()
+
+    def analyze_all_species_sequential(self) -> Dict[str, bool]:
+        """
+        Analyze all available species sequentially (original implementation).
 
         Returns:
             Dictionary mapping species to success status
@@ -764,7 +845,7 @@ class SpeciesGrowthAnalyzer:
         results = {}
 
         # Progress bar for species analysis
-        species_progress = tqdm(species_list, desc="Analyzing species")
+        species_progress = tqdm(species_list, desc="Analyzing species (sequential)")
 
         for species in species_progress:
             species_progress.set_description(f"Analyzing: {species[:30]}...")
@@ -789,11 +870,6 @@ class SpeciesGrowthAnalyzer:
                 # Save individual species results immediately
                 self.save_species_results(species)
 
-                species_progress.set_postfix(
-                    height=f"{metadata['final_height']:.2f}",
-                    rate=f"{metadata['growth_rate']:.3f}",
-                )
-
                 results[species] = True
 
             except Exception as e:
@@ -802,6 +878,87 @@ class SpeciesGrowthAnalyzer:
 
         successful = sum(1 for success in results.values() if success)
         tqdm.write(f"\nAnalysis complete: {successful}/{len(species_list)} species")
+
+        return results
+
+    def analyze_all_species_parallel(
+        self, max_workers: Optional[int] = None
+    ) -> Dict[str, bool]:
+        """
+        Analyze all available species using parallel processing.
+
+        Args:
+            max_workers: Maximum number of parallel workers (default: CPU count - 1)
+
+        Returns:
+            Dictionary mapping species to success status
+        """
+        species_list = self.get_available_species()
+        results = {}
+
+        # Determine number of workers
+        if max_workers is None:
+            max_workers = max(1, mp.cpu_count() - 1)  # Leave one CPU free
+
+        logger.info(
+            f"Using {max_workers} parallel workers for {len(species_list)} species"
+        )
+
+        # Prepare arguments for parallel processing
+        process_args = [
+            (species, self.assets_dir, self.height_model_flushes, self.num_seeds)
+            for species in species_list
+        ]
+
+        # Use ProcessPoolExecutor for parallel execution
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_species = {
+                executor.submit(process_single_species_parallel, args): args[0]
+                for args in process_args
+            }
+
+            # Progress bar for completed tasks
+            completed_progress = tqdm(
+                total=len(species_list),
+                desc="Analyzing species (parallel)",
+                unit="species",
+            )
+
+            # Collect results as they complete
+            for future in as_completed(future_to_species):
+                species_name = future_to_species[future]
+
+                try:
+                    species, success, species_results, error_msg = future.result()
+
+                    if success and species_results is not None:
+                        # Store results
+                        self.height_curves[species] = species_results["height_curve"]
+                        self.dbh_curves[species] = species_results["dbh_curve"]
+                        self.growth_models[species] = species_results["growth_model"]
+                        self.analysis_metadata[species] = species_results["metadata"]
+
+                        # Save individual species results immediately
+                        self.save_species_results(species)
+
+                        results[species] = True
+                    else:
+                        tqdm.write(f"FAILED {species}: {error_msg}")
+                        results[species] = False
+
+                except Exception as e:
+                    tqdm.write(f"FAILED {species_name}: {e}")
+                    results[species_name] = False
+
+                completed_progress.update(1)
+
+            completed_progress.close()
+
+        successful = sum(1 for success in results.values() if success)
+        tqdm.write(
+            f"\nParallel analysis complete: {successful}/{len(species_list)} species"
+        )
 
         return results
 
@@ -882,16 +1039,23 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    # Analyze all species with default assets directory
+    # Analyze all species with default assets directory (parallel processing)
     python src/growpy/utils/species_growth_analysis.py
     
-    # Analyze all species with custom assets directory
+    # Analyze all species with custom assets directory (parallel processing)
     python src/growpy/utils/species_growth_analysis.py --assets_dir data/assets
+    
+    # Analyze all species sequentially (no parallel processing)
+    python src/growpy/utils/species_growth_analysis.py --no-parallel
+    
+    # Analyze all species with custom number of workers
+    python src/growpy/utils/species_growth_analysis.py --workers 4
     
     # Analyze specific species
     python src/growpy/utils/species_growth_analysis.py --species "Fagaceae - European oak"
     
 Note: Run prepare_assets.py first to copy species presets from Grove installation.
+      Parallel processing significantly speeds up analysis when processing multiple species.
         """,
     )
 
@@ -919,15 +1083,41 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         help="Specific species to analyze (if not provided, analyzes all species)",
     )
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument(
+        "--parallel",
+        action="store_true",
+        default=True,
+        help="Use parallel processing (default: True)",
+    )
+    parser.add_argument(
+        "--no-parallel",
+        action="store_true",
+        help="Disable parallel processing (run sequentially)",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Number of parallel workers (default: CPU count - 1)",
+    )
 
     args = parser.parse_args()
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
+    # Determine parallel processing settings
+    use_parallel = args.parallel and not args.no_parallel
+    max_workers = args.workers
+
     logger.info("Grove Species Growth Analysis")
     logger.info("=" * 40)
     logger.info(f"Assets directory: {args.assets_dir}")
+    logger.info(f"Parallel processing: {'Enabled' if use_parallel else 'Disabled'}")
+    if use_parallel and max_workers:
+        logger.info(f"Max workers: {max_workers}")
+    elif use_parallel:
+        logger.info(f"Max workers: {max(1, mp.cpu_count() - 1)} (CPU count - 1)")
 
     # Check assets directory
     if not args.assets_dir.exists():
@@ -995,7 +1185,9 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
     else:
         # Analyze all species
         logger.info("Analyzing all available species...")
-        results = analyzer.analyze_all_species()
+        results = analyzer.analyze_all_species(
+            parallel=use_parallel, max_workers=max_workers
+        )
 
         # Save results
         analyzer.save_growth_models()
@@ -1022,4 +1214,6 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
 
 if __name__ == "__main__":
+    # For Windows multiprocessing support
+    mp.set_start_method("spawn", force=True)
     main()
