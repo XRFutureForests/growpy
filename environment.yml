@@ -14,6 +14,3 @@ dependencies:
   - pip:
     - bpy
     - usd-core
-
-variables:
-  PYTHONPATH: C:\Users\Maximilian Sperlich\Git\the-grove\src\the_grove_22\modules
