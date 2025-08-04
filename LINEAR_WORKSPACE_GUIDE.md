@@ -1,8 +1,28 @@
-# Linear + MCP + Workspace Integration Guide
+# Linear Workspace Guide - The Grove Repository
 
-## Overview
+## Repository Role: Logic Tier - Tree Asset Generation Service
 
-This workspace is part of a structured project management approach using Linear issues, MCP (Model Context Protocol) integration, and dedicated VS Code workspaces per project.
+This repository is part of the **XR Future Forests Lab multi-repository architecture** and serves as the **Tree Asset Generation Service** within the Logic Tier. It coordinates with the central planning hub and other specialized repositories.
+
+## Multi-Repository Architecture Context
+
+### **Planning Hub**: XR Future Forests Lab Repository
+
+- **Role**: Central planning and coordination workspace
+- **Contains**: Architecture documentation, issue distribution, milestone tracking
+- **Linear Integration**: Coordinates work across all three specialized repositories
+
+### **This Repository**: The Grove (Tree Asset Generation)
+
+- **Architecture**: Logic Tier - Tree Asset Generation Service
+- **Linear Project**: Create Virtual Forest Ecosense (`50992750-6878-41ca-92a4-520f9ee40c0c`)
+- **Team**: XR Future Forests (`5e3b87df-5f1a-4f70-8621-4ced0ed7bdcf`)
+- **Focus**: 3D tree model generation for VR/AR applications using The Grove core
+
+### **Sibling Repositories**
+
+- **🗄️ Digital Twin Repository**: Data Tier implementation (PostgreSQL + PostGIS database)
+- **☁️ Potree Docker Repository**: Logic Tier - Point Cloud Processing + Web Platform Service
 
 ## Project Structure
 
