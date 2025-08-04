@@ -1,0 +1,98 @@
+#usda 1.0
+(
+    defaultPrim = "root"
+    doc = "Simplified Beech Twig for Testing Orientation"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+def Xform "root" (
+    customData = {
+        dictionary Blender = {
+            bool generated = 1
+        }
+    }
+)
+{
+    float3 xformOp:rotateXYZ = (-90, -90, 0)
+    uniform token[] xformOpOrder = ["xformOp:rotateXYZ"]
+
+    def Xform "SimplifiedBeechTwig"
+    {
+        custom string userProperties:blender:object_name = "SimplifiedBeechTwig"
+        custom string userProperties:Copyright = "The Grove Demo"
+        float3 xformOp:rotateXYZ = (0, -0, 0)
+        float3 xformOp:scale = (1, 1, 1)
+        double3 xformOp:translate = (0.02, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ", "xformOp:scale"]
+
+        def Mesh "SimplifiedBeechTwig" (
+            active = true
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform bool doubleSided = 1
+            float3[] extent = [(-0.02, -0.02, -0.001), (0.06, 0.02, 0.002)]
+            
+            # Simplified leaf-like shape: just a few faces to represent a leaf
+            # Main leaf blade (2 triangles) + small stem (2 triangles) = 4 faces
+            int[] faceVertexCounts = [3, 3, 3, 3]
+            
+            int[] faceVertexIndices = [
+                # Main leaf blade (diamond shape, 2 triangles)
+                0, 1, 2,    # left half of leaf
+                0, 2, 3,    # right half of leaf
+                # Small connecting stem (2 triangles)
+                4, 5, 0,    # stem triangle 1  
+                5, 6, 0     # stem triangle 2
+            ]
+            
+            # Leaf-shaped vertices: clearly asymmetric to show orientation
+            # Connection point at origin (0,0,0), leaf extends in positive directions
+            point3f[] points = [
+                # Leaf attachment point (where it connects to branch) - AT ORIGIN
+                ( 0.0,   0.0,   0.0),   # 0: attachment point (CONNECTION POINT)
+                # Leaf blade points (leaf-like shape extending from origin)
+                (-0.015, 0.02,  0.001), # 1: left side of leaf
+                ( 0.06,  0.0,   0.0),   # 2: leaf tip (POINTS FORWARD - shows direction!)
+                ( 0.015, -0.02, 0.001), # 3: right side of leaf (asymmetric)
+                # Small stem points (extending back from attachment point)
+                (-0.01,  0.005, 0.0),   # 4: stem left
+                (-0.01, -0.005, 0.0),   # 5: stem right  
+                (-0.02,  0.0,   0.0)    # 6: stem base (extends backwards from connection)
+            ]
+            
+            # Simple UV mapping
+            texCoord2f[] primvars:st = [
+                (0.5, 0.0),   # attachment point
+                (0.0, 0.8),   # left leaf
+                (1.0, 0.5),   # leaf tip
+                (0.0, 0.2),   # right leaf  
+                (0.3, 0.6),   # stem left
+                (0.3, 0.4),   # stem right
+                (0.0, 0.5)    # stem base
+            ] (
+                interpolation = "vertex"
+            )
+            
+            rel material:binding = </root/_materials/SimplifiedBeechMaterial>
+        }
+    }
+}
+
+def Scope "_materials"
+{
+    def Material "SimplifiedBeechMaterial"
+    {
+        token outputs:surface.connect = </root/_materials/SimplifiedBeechMaterial/PBRShader.outputs:surface>
+        
+        def Shader "PBRShader"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor = (0.2, 0.8, 0.3)  # Green color for leaf
+            float inputs:metallic = 0.0
+            float inputs:roughness = 0.7
+            token outputs:surface
+        }
+    }
+}
