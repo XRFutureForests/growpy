@@ -44,10 +44,10 @@ from pxr import Usd, Vt
 
 
 usda_file = Path(
-    r"C:\Users\Maximilian Sperlich\Git\the-grove\data\output\small_demo\Norwayspruce_LOD1_High_000.usda"
+    r"C:\Users\Maximilian Sperlich\Git\the-grove\data\sandbox\demo_tree.usda"
 )
 twig_file = Path(
-    r"C:\Users\Maximilian Sperlich\Git\the-grove\data\output\small_demo\ScotsPineVariationATwig_ScotsPineVariationATwig.usda"
+    r"C:\Users\Maximilian Sperlich\Git\the-grove\data\sandbox\demo_arrow_twig.usda"
 )
 
 stage = Usd.Stage.Open(str(usda_file))
@@ -273,7 +273,7 @@ def write_usd_pointinstancer_to_tree_file(positions, orientations, tree_file_pat
     # Add the prototype reference
     twig_content.append('    def "TwigPrototype" (')
     twig_content.append(
-        "        references = @./ScotsPineVariationATwig_ScotsPineVariationATwig.usda@</root/ScotsPineVariationATwig>"
+        "        references = @./demo_arrow_twig.usda@</root/DemoArrowTwig>"
     )
     twig_content.append("    )")
     twig_content.append("    {")
