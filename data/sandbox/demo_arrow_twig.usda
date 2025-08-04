@@ -1,0 +1,96 @@
+#usda 1.0
+(
+    defaultPrim = "root"
+    doc = "Demo Arrow Twig for Testing Orientation"
+    metersPerUnit = 1
+    upAxis = "Y"
+)
+
+def Xform "root" (
+    customData = {
+        dictionary Blender = {
+            bool generated = 1
+        }
+    }
+)
+{
+    float3 xformOp:rotateXYZ = (-90, -90, 0)
+    uniform token[] xformOpOrder = ["xformOp:rotateXYZ"]
+
+    def Xform "DemoArrowTwig"
+    {
+        custom string userProperties:blender:object_name = "DemoArrowTwig"
+        custom string userProperties:Copyright = "The Grove Demo"
+        float3 xformOp:rotateXYZ = (0, -0, 0)
+        float3 xformOp:scale = (1, 1, 1)
+        double3 xformOp:translate = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ", "xformOp:scale"]
+
+        def Mesh "DemoArrowTwig" (
+            active = true
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform bool doubleSided = 1
+            float3[] extent = [(0.0, -0.01, -0.001), (0.12, 0.01, 0.001)]
+            
+            # Arrow shape: shaft + triangular arrowhead
+            # 4 quads for shaft, 1 triangle for arrowhead = 5 faces
+            int[] faceVertexCounts = [4, 4, 4, 4, 3]
+            
+            int[] faceVertexIndices = [
+                # Arrow shaft (rectangular, 4 quads)
+                0, 1, 3, 2,    # bottom face
+                1, 4, 5, 3,    # right face  
+                4, 6, 7, 5,    # top face
+                6, 0, 2, 7,    # left face
+                # Arrowhead (triangle pointing forward)
+                3, 5, 8        # arrowhead triangle
+            ]
+            
+            # Arrow-shaped vertices: clear directionality
+            # Connection point at origin (0,0,0), arrow extends in positive X direction
+            point3f[] points = [
+                # Arrow shaft (rectangular base) - starts at origin
+                ( 0.0, -0.01, 0.0),    # 0: bottom-left back (CONNECTION POINT)
+                ( 0.0,  0.01, 0.0),    # 1: top-left back (CONNECTION POINT)  
+                ( 0.09, -0.01, 0.0),   # 2: bottom-right back
+                ( 0.09,  0.01, 0.0),   # 3: top-right back
+                ( 0.0,  0.01, 0.0),    # 4: top-left front (duplicate for faces)
+                ( 0.09,  0.01, 0.0),   # 5: top-right front (duplicate for faces)
+                ( 0.0, -0.01, 0.0),    # 6: bottom-left front (duplicate for faces)  
+                ( 0.09, -0.01, 0.0),   # 7: bottom-right front (duplicate for faces)
+                # Arrowhead point (clearly showing direction)
+                ( 0.12,  0.0,  0.0)    # 8: arrow point - THIS SHOWS THE DIRECTION!
+            ]
+            
+            # Simple UV mapping
+            texCoord2f[] primvars:st = [
+                (0.0, 0.0), (0.0, 1.0), (0.8, 0.0), (0.8, 1.0),  # shaft
+                (0.0, 1.0), (0.8, 1.0), (0.0, 0.0), (0.8, 0.0),  # duplicates
+                (1.0, 0.5)  # arrow point
+            ] (
+                interpolation = "vertex"
+            )
+            
+            rel material:binding = </root/_materials/DemoArrowMaterial>
+        }
+    }
+}
+
+def Scope "_materials"
+{
+    def Material "DemoArrowMaterial"
+    {
+        token outputs:surface.connect = </root/_materials/DemoArrowMaterial/PBRShader.outputs:surface>
+        
+        def Shader "PBRShader"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            color3f inputs:diffuseColor = (0.8, 0.2, 0.2)  # Red color for visibility
+            float inputs:metallic = 0.0
+            float inputs:roughness = 0.8
+            token outputs:surface
+        }
+    }
+}
