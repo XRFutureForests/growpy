@@ -1,271 +1,261 @@
 """
-Minimal twig enhancement for USD files.
+Simplified twig enhancement for USD files - using Grove's face-based system.
 
-IMPLEMENTATION SUMMARY:
-======================
-
-This module processes USD files exported from The Grove to extract twig placement
-information and generate PointInstancer data for rendering twigs in USD-compliant
-3D applications (Blender, Unreal, Maya, etc.).
-
-KEY DISCOVERIES FROM GROVE DOCUMENTATION:
-- Twig orientation standard: Grove assumes branches point in +X direction
-- Face normals of twig triangles point in the direction of growth (NOT outward from surface)
-- Quote: "Twig duplication triangle are oriented toward the direction of growth,
-  so for these triangles the direction attribute equals the face normal"
-
-COORDINATE SYSTEM CHALLENGE:
-- Tree mesh: Usually Y-up coordinate system from Grove export
-- Twig USD files: Z-up coordinate system (upAxis="Z" in USD header)
-- This mismatch causes twigs to appear incorrectly oriented
-
-CORRECTED APPROACH:
-- Face normals directly represent the branch growth direction
-- Apply coordinate system transformation (Y-up to Z-up) to align orientations
-- Calculate quaternion to rotate twig from default +X forward to transformed normal direction
-- Apply additional coordinate correction for USD twig orientation
-- No Grove core dependencies required - works purely with USD data
-
-OUTPUT:
-- Generates USD PointInstancer with positions and orientations
-- Supports all twig types: end, side, upward, and dead twigs
-- Quaternions in USD format: (w, x, y, z)
+GROVE TWIG SYSTEM:
+- Each face (triangle, quad, or polygon) marked with primvars:Twig* gets a twig
+- Twig position = face center (centroid of all vertices)
+- Twig direction = face surface normal (using Newell's method for any polygon)
+- Works with any polygon, not just triangles!
 """
 
+import math
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List
 
 import numpy as np
-from pxr import Usd, Vt
-
-# Note: Grove core not required for USD file processing
-# This module works directly with USD files exported from The Grove
+from pxr import Usd, UsdGeom, Vt
 
 
-usda_file = Path(
-    r"C:\Users\Maximilian Sperlich\Git\the-grove\data\sandbox\demo_tree.usda"
-)
-twig_file = Path(
-    r"C:\Users\Maximilian Sperlich\Git\the-grove\data\sandbox\demo_arrow_twig.usda"
-)
+def calculate_face_center(points, face):
+    """Calculate the center of a face (polygon) given its vertex indices.
 
-stage = Usd.Stage.Open(str(usda_file))
-[x for x in stage.Traverse()]
-tree = stage.GetPrimAtPath("/Tree/Tree")
-tree.GetPropertyNames()
+    Args:
+        points: List of 3D points (vertices)
+        face: List of vertex indices that form the face
 
-# Extract attributes from the tree
-face_vertex_counts = list(
-    tree.GetAttribute("faceVertexCounts").Get()
-)  # Number of vertices per face
-face_vertex_indices = list(
-    tree.GetAttribute("faceVertexIndices").Get()
-)  # Indices of vertices for each face
-
-# Extract points and other attributes
-points = list(tree.GetAttribute("points").Get())
-uv = list(tree.GetAttribute("primvars:st").Get())  # UV
-age = list(tree.GetAttribute("primvars:Age").Get())
-dead = list(tree.GetAttribute("primvars:Dead").Get())
-thickness = list(tree.GetAttribute("primvars:Thickness").Get())
-twig_end = list(tree.GetAttribute("primvars:TwigEnd").Get())  # Long / Apical
-twig_side = list(tree.GetAttribute("primvars:TwigSide").Get())  # Short / Lateral
-twig_upward = list(tree.GetAttribute("primvars:TwigUpward").Get())  # Upward
-twig_dead = list(tree.GetAttribute("primvars:TwigDead").Get())  # Dead
-
-# Convert attributes to numpy arrays
-face_vertex_indices_np = np.array(face_vertex_indices)
-face_vertex_counts_np = np.array(face_vertex_counts)
-split_indices = np.cumsum(face_vertex_counts_np)[:-1]
-faces_numpy = np.split(face_vertex_indices_np, split_indices)
-faces_tuples = [list(face) for face in faces_numpy]
-
-# Filter faces based on twig attributes
-faces_end = [face for (face, end) in zip(faces_tuples, twig_end) if end == 1]
-faces_side = [face for (face, side) in zip(faces_tuples, twig_side) if side == 1]
-faces_upward = [
-    face for (face, upward) in zip(faces_tuples, twig_upward) if upward == 1
-]
-faces_dead = [face for (face, dead) in zip(faces_tuples, twig_dead) if dead == 1]
-
-
-def calculate_centroid(points: list, face: List[int]) -> tuple:
-    """Calculate the centroid of a face."""
-    face_points = np.array([points[i] for i in face])
-    return tuple(np.mean(face_points, axis=0))
-
-
-def calculate_normal(points: list, face: List[int]) -> tuple:
-    """Calculate the normal vector of a face with improved robustness."""
-    face_points = np.array([points[i] for i in face])
-
-    # Need at least 3 points to calculate a normal
-    if len(face) < 3:
-        print(f"Warning: face has fewer than 3 vertices: {face}")
-        return (0.0, 1.0, 0.0)  # Default to up
-
-    # Use first 3 points to calculate normal (works for triangles and quads)
-    v1 = face_points[1] - face_points[0]
-    v2 = face_points[2] - face_points[0]
-    normal = np.cross(v1, v2)
-
-    # Check for degenerate faces (zero or near-zero normal)
-    norm_length = np.linalg.norm(normal)
-    if norm_length < 1e-10:
-        print(f"Warning: degenerate face with points {face_points[:3]}")
-        return (0.0, 1.0, 0.0)  # Default to up
-
-    # Normalize the normal
-    normalized_normal = normal / norm_length
-
-    # Optionally flip normals if they point inward (this is typically not needed)
-    # if needed: normalized_normal = -normalized_normal
-
-    return tuple(normalized_normal)
-
-
-def calculate_quaternion_from_normal(normal) -> List[float]:
-    """Calculate a quaternion that orients the twig to align with the branch growth direction.
-
-    FIXED APPROACH TO PREVENT ROLLING:
-    - Align the twig's forward direction (+X) with the branch normal (growth direction)
-    - Ensure the twig's up direction (+Z) remains consistent and doesn't "roll"
-    - Build a proper orthonormal basis to prevent arbitrary rotations around the forward axis
-
-    USD quaternions use (x, y, z, w) format.
+    Returns:
+        tuple: (x, y, z) coordinates of the face center
     """
-    # Convert tuple to numpy array if needed
-    if isinstance(normal, tuple):
-        normal = np.array(normal)
+    if len(face) == 0:
+        return (0, 0, 0)
 
-    normal = normal / np.linalg.norm(normal)  # Ensure normalized
+    # Get all vertices of the face
+    face_vertices = [points[idx] for idx in face]
 
-    # Build orthonormal coordinate system:
-    # - local_x (forward) = branch normal direction
-    # - local_z (up) = as close to world +Z as possible (prevents rolling)
-    # - local_y (right) = completes right-handed system
+    # Calculate centroid (average of all vertices)
+    x = sum(vertex[0] for vertex in face_vertices) / len(face_vertices)
+    y = sum(vertex[1] for vertex in face_vertices) / len(face_vertices)
+    z = sum(vertex[2] for vertex in face_vertices) / len(face_vertices)
 
-    local_x = normal  # Forward direction aligns with branch growth
+    return (x, y, z)
 
-    # Use world +Z as the preferred "up" direction to prevent rolling
-    world_z = np.array([0.0, 0.0, 1.0])
 
-    # Handle the special case where the branch points straight up or down in Z
-    if abs(np.dot(local_x, world_z)) > 0.95:
-        # Branch is nearly parallel to Z-axis, use world +Y as reference
-        reference = np.array([0.0, 1.0, 0.0])
-        local_y = np.cross(local_x, reference)
-        local_y = local_y / np.linalg.norm(local_y)
-        local_z = np.cross(local_x, local_y)
+def calculate_face_normal(points, face):
+    """Calculate the normal vector of a face assuming clockwise winding order.
+    Uses Newell's method which works for any polygon, not just triangles.
+    The normal will point outward from the surface when vertices are ordered clockwise.
+
+    Args:
+        points: List of 3D points (vertices)
+        face: List of vertex indices that form the face (clockwise order)
+
+    Returns:
+        tuple: (x, y, z) normalized normal vector pointing outward
+    """
+    if len(face) < 3:
+        return (0, 0, 1)  # Default up vector
+
+    # Get face vertices
+    face_vertices = [points[idx] for idx in face]
+
+    # Use Newell's method to calculate normal (clockwise winding)
+    normal = [0.0, 0.0, 0.0]
+
+    for i in range(len(face_vertices)):
+        v1 = face_vertices[i]
+        v2 = face_vertices[(i + 1) % len(face_vertices)]
+
+        # Newell's method - this gives correct normal for clockwise winding
+        normal[0] += (v1[1] - v2[1]) * (v1[2] + v2[2])
+        normal[1] += (v1[2] - v2[2]) * (v1[0] + v2[0])
+        normal[2] += (v1[0] - v2[0]) * (v1[1] + v2[1])
+
+    # Normalize the vector
+    length = math.sqrt(normal[0] ** 2 + normal[1] ** 2 + normal[2] ** 2)
+    if length > 0:
+        normal = (normal[0] / length, normal[1] / length, normal[2] / length)
     else:
-        # Normal case: project world_z onto plane perpendicular to local_x
-        # This gives us the up direction that's closest to +Z without rolling
-        local_z = world_z - np.dot(world_z, local_x) * local_x
-        local_z = local_z / np.linalg.norm(local_z)
+        normal = (0, 0, 1)  # Default up vector
 
-        # Complete the right-handed coordinate system
-        local_y = np.cross(local_z, local_x)
-        local_y = local_y / np.linalg.norm(local_y)
-
-    # Build rotation matrix from local axes (column vectors: X, Y, Z)
-    rotation_matrix = np.column_stack([local_x, local_y, local_z])
-
-    # Convert rotation matrix to quaternion
-    return rotation_matrix_to_quaternion(rotation_matrix)
+    return normal
 
 
-def rotation_matrix_to_quaternion(R):
-    """Convert a 3x3 rotation matrix to quaternion in [x, y, z, w] format."""
-    trace = R[0, 0] + R[1, 1] + R[2, 2]
+def calculate_xyz_rotation_angles(normal):
+    """Calculate the X, Y, Z rotation angles for twig orientation.
 
-    if trace > 0:
-        s = np.sqrt(trace + 1.0) * 2  # s = 4 * qw
-        w = 0.25 * s
-        x = (R[2, 1] - R[1, 2]) / s
-        y = (R[0, 2] - R[2, 0]) / s
-        z = (R[1, 0] - R[0, 1]) / s
-    elif R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
-        s = np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2]) * 2  # s = 4 * qx
-        w = (R[2, 1] - R[1, 2]) / s
-        x = 0.25 * s
-        y = (R[0, 1] + R[1, 0]) / s
-        z = (R[0, 2] + R[2, 0]) / s
-    elif R[1, 1] > R[2, 2]:
-        s = np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2]) * 2  # s = 4 * qy
-        w = (R[0, 2] - R[2, 0]) / s
-        x = (R[0, 1] + R[1, 0]) / s
-        y = 0.25 * s
-        z = (R[1, 2] + R[2, 1]) / s
+    Based on user requirements:
+    - Default orientation: pointing towards diagonal between x and -y (roughly (1, -1, 0))
+    - Y rotation: yaw around Z-axis (horizontal turning)
+    - X rotation: roll around the pointing direction
+    - Z rotation: pitch around the perpendicular horizontal axis
+
+    Args:
+        normal: tuple (x, y, z) representing the target direction (normalized)
+
+    Returns:
+        tuple: (rot_x, rot_y, rot_z) angles in degrees
+               rot_x - roll around pointing direction
+               rot_y - yaw around Z-axis (horizontal turning)
+               rot_z - pitch around perpendicular horizontal axis
+    """
+    nx, ny, nz = normal
+
+    # Calculate Y rotation (yaw) - rotation around Z-axis
+    # This determines the horizontal direction
+    rot_y_rad = math.atan2(-ny, nx)  # From (1, 0, 0) to (nx, ny, 0) projection
+
+    # Calculate Z rotation (pitch) - rotation to tilt up/down
+    # After Y rotation, we need to account for the vertical component
+    horizontal_length = math.sqrt(nx * nx + ny * ny)
+    rot_z_rad = math.atan2(nz, horizontal_length)
+
+    # For now, keep X rotation (roll) as 0 to avoid unwanted twisting
+    # This can be adjusted later if specific roll control is needed
+    rot_x_rad = 0.0
+
+    # Convert to degrees
+    rot_x = math.degrees(rot_x_rad)
+    rot_y = math.degrees(rot_y_rad)
+    rot_z = math.degrees(rot_z_rad)
+
+    return (rot_x, rot_y, rot_z)
+
+
+def xyz_angles_to_quaternion(rot_x, rot_y, rot_z):
+    """Convert X, Y, Z rotation angles to a quaternion.
+
+    Based on user's expected behavior:
+    - X rotation: roll around X-axis (doesn't change direction when pointing along X)
+    - Y rotation: yaw around Z-axis (horizontal turning toward Y)
+    - Z rotation: pitch around negative Y-axis (up/down tilt toward Z)
+
+    Args:
+        rot_x: roll around X-axis in degrees
+        rot_y: yaw around Z-axis in degrees (horizontal turning)
+        rot_z: pitch around negative Y-axis in degrees (up/down tilt)
+
+    Returns:
+        tuple: (w, x, y, z) quaternion components in USD format
+    """
+    # Convert degrees to radians for calculations
+    rot_x_rad = math.radians(rot_x)
+    rot_y_rad = math.radians(rot_y)
+    rot_z_rad = math.radians(rot_z)
+
+    # Convert to half-angles for quaternion calculation
+    half_x = rot_x_rad / 2
+    half_y = rot_y_rad / 2
+    half_z = rot_z_rad / 2
+
+    # Calculate quaternion components for each rotation
+    cos_x, sin_x = math.cos(half_x), math.sin(half_x)
+    cos_y, sin_y = math.cos(half_y), math.sin(half_y)
+    cos_z, sin_z = math.cos(half_z), math.sin(half_z)
+
+    # Based on the test results:
+    # Y rotation around Z-axis: quaternion = (cos(y/2), 0, 0, sin(y/2))
+    # Z rotation around -Y-axis: quaternion = (cos(z/2), 0, -sin(z/2), 0)
+    # X rotation around X-axis: quaternion = (cos(x/2), sin(x/2), 0, 0)
+
+    # Create individual quaternions
+    quat_x = (cos_x, sin_x, 0, 0)  # X rotation around X-axis
+    quat_y = (cos_y, 0, 0, sin_y)  # Y rotation around Z-axis
+    quat_z = (cos_z, 0, -sin_z, 0)  # Z rotation around -Y-axis
+
+    # Combine quaternions: first Y (yaw), then Z (pitch), then X (roll)
+    # Q = Qx * Qz * Qy
+
+    # First combine Qz * Qy
+    temp_w = (
+        quat_z[0] * quat_y[0]
+        - quat_z[1] * quat_y[1]
+        - quat_z[2] * quat_y[2]
+        - quat_z[3] * quat_y[3]
+    )
+    temp_x = (
+        quat_z[0] * quat_y[1]
+        + quat_z[1] * quat_y[0]
+        + quat_z[2] * quat_y[3]
+        - quat_z[3] * quat_y[2]
+    )
+    temp_y = (
+        quat_z[0] * quat_y[2]
+        - quat_z[1] * quat_y[3]
+        + quat_z[2] * quat_y[0]
+        + quat_z[3] * quat_y[1]
+    )
+    temp_z = (
+        quat_z[0] * quat_y[3]
+        + quat_z[1] * quat_y[2]
+        - quat_z[2] * quat_y[1]
+        + quat_z[3] * quat_y[0]
+    )
+
+    # Then multiply by Qx
+    w = (
+        quat_x[0] * temp_w
+        - quat_x[1] * temp_x
+        - quat_x[2] * temp_y
+        - quat_x[3] * temp_z
+    )
+    x = (
+        quat_x[0] * temp_x
+        + quat_x[1] * temp_w
+        + quat_x[2] * temp_z
+        - quat_x[3] * temp_y
+    )
+    y = (
+        quat_x[0] * temp_y
+        - quat_x[1] * temp_z
+        + quat_x[2] * temp_w
+        + quat_x[3] * temp_x
+    )
+    z = (
+        quat_x[0] * temp_z
+        + quat_x[1] * temp_y
+        - quat_x[2] * temp_x
+        + quat_x[3] * temp_w
+    )
+
+    return (w, x, y, z)
+
+
+def quaternion_from_direction(normal):
+    """Convert a direction vector (normal) to a quaternion rotation.
+    This rotates the twig from its default orientation to align with the face normal.
+
+    Args:
+        normal: tuple (x, y, z) representing the face normal direction
+
+    Returns:
+        tuple: (w, x, y, z) quaternion components in USD format
+    """
+    # Normalize the input vector
+    nx, ny, nz = normal
+    length = math.sqrt(nx * nx + ny * ny + nz * nz)
+    if length > 0:
+        normal = (nx / length, ny / length, nz / length)
     else:
-        s = np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1]) * 2  # s = 4 * qz
-        w = (R[1, 0] - R[0, 1]) / s
-        x = (R[0, 2] + R[2, 0]) / s
-        y = (R[1, 2] + R[2, 1]) / s
-        z = 0.25 * s
+        return (1, 0, 0, 0)  # Identity quaternion for zero vector
 
-    return [x, y, z, w]
+    # Calculate the XYZ rotation angles needed
+    rot_x, rot_y, rot_z = calculate_xyz_rotation_angles(normal)
 
+    # Convert angles to quaternion
+    quaternion = xyz_angles_to_quaternion(rot_x, rot_y, rot_z)
 
-def multiply_quaternions(q1, q2):
-    """Multiply two quaternions in (x, y, z, w) format."""
-    x1, y1, z1, w1 = q1
-    x2, y2, z2, w2 = q2
-
-    return [
-        w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,  # x
-        w1 * y2 + y1 * w2 + z1 * x2 - x1 * z2,  # y
-        w1 * z2 + z1 * w2 + x1 * y2 - y1 * x2,  # z
-        w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,  # w
-    ]
+    return quaternion
 
 
-centroid_end = [calculate_centroid(points, face) for face in faces_end]
-normal_end = [calculate_normal(points, face) for face in faces_end]
-# Calculate quaternions using the corrected approach (face normal = growth direction)
-quaternion_end = [calculate_quaternion_from_normal(n) for n in normal_end]
-
-centroid_side = [calculate_centroid(points, face) for face in faces_side]
-normal_side = [calculate_normal(points, face) for face in faces_side]
-# Calculate quaternions using the corrected approach (face normal = growth direction)
-quaternion_side = [calculate_quaternion_from_normal(n) for n in normal_side]
-
-centroid_upward = [calculate_centroid(points, face) for face in faces_upward]
-normal_upward = [calculate_normal(points, face) for face in faces_upward]
-# Calculate quaternions using the corrected approach (face normal = growth direction)
-quaternion_upward = [calculate_quaternion_from_normal(n) for n in normal_upward]
-
-centroid_dead = [calculate_centroid(points, face) for face in faces_dead]
-normal_dead = [calculate_normal(points, face) for face in faces_dead]
-# Calculate quaternions using the corrected approach (face normal = growth direction)
-quaternion_dead = [calculate_quaternion_from_normal(n) for n in normal_dead]
-
-
-def write_usd_pointinstancer_to_tree_file(positions, orientations, tree_file_path):
-    """Write USD PointInstancer section directly into the tree USD file."""
-    import re
+def write_usd_pointinstancer(
+    positions, orientations, tree_file_path, twig_file_path, twig_xform_name
+):
+    """Write USD PointInstancer into the tree file."""
 
     # Read the original tree file
     with open(tree_file_path, "r") as f:
         content = f.read()
-
-    # Find the position where to insert the twig data (look for the comment)
-    insert_marker = "# twig_side.txt content to be placed here"
-    if insert_marker not in content:
-        print(
-            f"Warning: Could not find insertion marker '{insert_marker}' in {tree_file_path}"
-        )
-        print("Adding twig data at the end of the Tree definition...")
-        # Look for the closing brace of the Tree Xform
-        tree_end_pattern = r'(def Xform "Tree"\s*{.*?)(})\s*$'
-        match = re.search(tree_end_pattern, content, re.DOTALL)
-        if match:
-            insert_position = match.end(1)
-        else:
-            print("Error: Could not find Tree Xform definition")
-            return False
-    else:
-        insert_position = content.find(insert_marker)
 
     # Generate the twig USD content
     twig_content = []
@@ -273,7 +263,7 @@ def write_usd_pointinstancer_to_tree_file(positions, orientations, tree_file_pat
     # Add the prototype reference
     twig_content.append('    def "TwigPrototype" (')
     twig_content.append(
-        "        references = @./demo_arrow_twig.usda@</root/DemoArrowTwig>"
+        f"        references = @{twig_file_path}@</root/{twig_xform_name}>"
     )
     twig_content.append("    )")
     twig_content.append("    {")
@@ -292,327 +282,251 @@ def write_usd_pointinstancer_to_tree_file(positions, orientations, tree_file_pat
     )
     twig_content.append("")
 
-    # Add positions (space-separated format)
+    # Add positions
     positions_str = ", ".join(
-        [f"({pos[0]:.4f}, {pos[1]:.4f}, {pos[2]:.4f})" for pos in positions]
+        [f"({p[0]:.4f}, {p[1]:.4f}, {p[2]:.4f})" for p in positions]
     )
     twig_content.append(f"        point3f[] positions = [{positions_str}]")
     twig_content.append("")
 
-    # Add orientations (quaternions in USD format: x, y, z, w) - space-separated format
+    # Add orientations
     orientations_str = ", ".join(
-        [
-            f"({quat[0]:.6f}, {quat[1]:.6f}, {quat[2]:.6f}, {quat[3]:.6f})"
-            for quat in orientations
-        ]
+        [f"({q[0]:.6f}, {q[1]:.6f}, {q[2]:.6f}, {q[3]:.6f})" for q in orientations]
     )
     twig_content.append(f"        quath[] orientations = [{orientations_str}]")
     twig_content.append("")
 
-    # Add scales (space-separated format)
-    scales_str = ", ".join(["(1.0, 1.0, 1.0)" for _ in range(len(positions))])
-    twig_content.append(f"        float3[] scales = [{scales_str}]")
+    # Add uniform scale
+    twig_content.append("        float3[] scales = [(1, 1, 1)]")
     twig_content.append("    }")
 
-    # Join the twig content
+    # Join and insert content
     twig_usd_text = "\n".join(twig_content)
 
-    # Insert the twig content into the file
-    if insert_marker in content:
-        new_content = content.replace(insert_marker, twig_usd_text)
-    else:
-        # Insert before the closing brace
-        new_content = (
-            content[:insert_position]
-            + "\n\n"
-            + twig_usd_text
-            + "\n"
-            + content[insert_position:]
-        )
+    # Find insertion point (before the last closing brace)
+    last_brace = content.rfind("}")
+    if last_brace == -1:
+        print("Error: Could not find closing brace in tree file")
+        return False
 
-    # Write the modified content back to the file
+    # Insert the twig content
+    new_content = (
+        content[:last_brace] + "\n" + twig_usd_text + "\n" + content[last_brace:]
+    )
+
+    # Write the modified content
     output_file = tree_file_path.replace(".usda", "_with_twigs.usda")
     with open(output_file, "w") as f:
         f.write(new_content)
 
-    print(f"Twig data successfully integrated into {output_file}")
-    return True
+    print(f"✅ Twig data successfully written to {output_file}")
 
 
-# Process all twig types (combine side, end, and upward twigs)
-all_positions = centroid_side + centroid_end + centroid_upward
+def apply_quaternion_to_vector(quat, vector):
+    """Apply a quaternion rotation to a 3D vector.
 
-# CORRECTION: The twig USD file has a built-in rotation: (-90, -90, 0) degrees
-# This corresponds to rotations around X, Y, Z axes in that order
-# We need to apply the inverse rotation to counteract this
+    Args:
+        quat: (w, x, y, z) quaternion
+        vector: (x, y, z) vector to rotate
 
-
-def euler_to_quaternion(roll, pitch, yaw):
-    """Convert Euler angles (in degrees) to quaternion [x, y, z, w]."""
-    # Convert degrees to radians
-    roll = np.radians(roll)
-    pitch = np.radians(pitch)
-    yaw = np.radians(yaw)
-
-    # Calculate half angles
-    cr = np.cos(roll * 0.5)
-    sr = np.sin(roll * 0.5)
-    cp = np.cos(pitch * 0.5)
-    sp = np.sin(pitch * 0.5)
-    cy = np.cos(yaw * 0.5)
-    sy = np.sin(yaw * 0.5)
-
-    # Calculate quaternion components
-    w = cr * cp * cy + sr * sp * sy
-    x = sr * cp * cy - cr * sp * sy
-    y = cr * sp * cy + sr * cp * sy
-    z = cr * cp * sy - sr * sp * cy
-
-    return [x, y, z, w]
-
-
-# The twig has rotateXYZ = (-90, -90, 0), so we apply the inverse: (90, 90, 0)
-# ADDITIONAL ISSUE: After correction, twigs point +Y but are upside down
-# We need 180° rotation AROUND the forward axis (+Y) to flip them right-side up
-
-# Step 1: Counteract the built-in rotation
-base_correction = euler_to_quaternion(90, 90, 0)
-
-# Step 2: Add 180-degree rotation AROUND the forward axis (+Y) to flip upside down twigs
-# Since the forward axis is now +Y, we need to roll around Y axis
-# In Euler XYZ order: (roll=0, pitch=0, yaw=180) means 180° around Z
-# But since our forward is +Y, we want 180° around Y axis which is roll
-flip_correction = euler_to_quaternion(0, 0, 180)  # 180° around Z to flip up/down
-
-# Step 3: Combine the base corrections using quaternion multiplication (function defined earlier)
-base_combined_correction = multiply_quaternions(base_correction, flip_correction)
-
-print(f"Base correction quaternion (counteract built-in rotation): {base_correction}")
-print(f"Flip correction quaternion (180° around Z to flip up/down): {flip_correction}")
-print(f"Base combined correction quaternion: {base_combined_correction}")
-
-# Step 4: INDIVIDUAL TWIG ORIENTATION based on Grove documentation
-# Grove expects twigs to point in +X direction (branch growth direction)
-# We need to rotate each twig so its +X axis aligns with the branch growth direction (face normal)
-
-
-def calculate_twig_orientation_quaternion(face_normal, base_correction_quat):
+    Returns:
+        tuple: rotated (x, y, z) vector
     """
-    Calculate the quaternion to orient a twig based on branch growth direction.
+    w, qx, qy, qz = quat
+    x, y, z = vector
 
-    CORRECTED APPROACH for USD converted twigs:
-    After base correction, twigs point in +Y direction and are right-side up.
-    We want each twig to point in the direction of its face_normal (branch growth direction).
+    # Convert vector to quaternion form (0, x, y, z)
+    # Apply rotation: result = q * v * q_conjugate
 
-    So we need to rotate from +Y to face_normal direction.
-    """
-    # Convert face normal to numpy array and normalize
-    if isinstance(face_normal, tuple):
-        face_normal = np.array(face_normal)
-    face_normal = face_normal / np.linalg.norm(face_normal)
+    # First: q * v
+    temp_w = -qx * x - qy * y - qz * z
+    temp_x = w * x + qy * z - qz * y
+    temp_y = w * y + qz * x - qx * z
+    temp_z = w * z + qx * y - qy * x
 
-    # After base correction, twigs point in +Y direction
-    current_forward = np.array([0.0, 1.0, 0.0])  # +Y (current twig orientation)
-    target_forward = face_normal  # Where we want the twig to point
+    # Then: (q * v) * q_conjugate
+    result_x = temp_w * (-qx) + temp_x * w + temp_y * (-qz) - temp_z * (-qy)
+    result_y = temp_w * (-qy) + temp_y * w + temp_z * (-qx) - temp_x * (-qz)
+    result_z = temp_w * (-qz) + temp_z * w + temp_x * (-qy) - temp_y * (-qx)
 
-    # Calculate rotation quaternion from current_forward to target_forward
-    dot_product = np.dot(current_forward, target_forward)
-
-    if dot_product > 0.999999:
-        # Vectors are already aligned - no rotation needed
-        directional_rotation = [0.0, 0.0, 0.0, 1.0]
-    elif dot_product < -0.999999:
-        # Vectors are opposite - need 180° rotation
-        # Find a perpendicular axis for rotation
-        if abs(current_forward[0]) < 0.9:
-            rotation_axis = np.array([1.0, 0.0, 0.0])
-        else:
-            rotation_axis = np.array([0.0, 0.0, 1.0])
-        # 180° rotation quaternion
-        directional_rotation = [
-            rotation_axis[0],
-            rotation_axis[1],
-            rotation_axis[2],
-            0.0,
-        ]
-    else:
-        # General case - calculate axis and angle
-        rotation_axis = np.cross(current_forward, target_forward)
-        rotation_axis = rotation_axis / np.linalg.norm(rotation_axis)
-
-        # Calculate rotation angle
-        rotation_angle = np.arccos(np.clip(dot_product, -1.0, 1.0))
-
-        # Create quaternion from axis-angle
-        half_angle = rotation_angle * 0.5
-        sin_half = np.sin(half_angle)
-        cos_half = np.cos(half_angle)
-
-        directional_rotation = [
-            rotation_axis[0] * sin_half,  # x
-            rotation_axis[1] * sin_half,  # y
-            rotation_axis[2] * sin_half,  # z
-            cos_half,  # w
-        ]
-
-    # Combine base correction with directional rotation
-    final_quaternion = multiply_quaternions(base_correction_quat, directional_rotation)
-    return final_quaternion
+    return (result_x, result_y, result_z)
 
 
-# Calculate individual orientations for each twig type
-print(
-    "\n🔄 Adding directional rotation to orient twigs along branch growth directions..."
-)
+def test_rotations():
+    """Test function to verify rotation behavior with specific angle combinations."""
+    print("🧪 Testing rotation combinations...")
+    print("=" * 60)
+
+    # Starting vector (1, 0, 0) - pointing along +X axis
+    start_vector = (1, 0, 0)
+    print(
+        f"Starting vector: ({start_vector[0]:.3f}, {start_vector[1]:.3f}, {start_vector[2]:.3f})"
+    )
+    print()
+
+    print("INDIVIDUAL ROTATIONS TEST:")
+    test_cases = [
+        (0, 0, 0, "Default"),
+        (0, 45, 0, "Y=45"),
+        (0, 0, 45, "Z=45"),
+        (90, 0, 0, "X=90"),
+    ]
+
+    for rot_x, rot_y, rot_z, description in test_cases:
+        quaternion = xyz_angles_to_quaternion(rot_x, rot_y, rot_z)
+        rotated_vector = apply_quaternion_to_vector(quaternion, start_vector)
+        print(
+            f"  {description}: ({rotated_vector[0]:.3f}, {rotated_vector[1]:.3f}, {rotated_vector[2]:.3f})"
+        )
+
+    print()
+    print("COMBINED ROTATIONS TEST:")
+    combined_cases = [
+        (90, 45, 0, "X=90, Y=45 (should be Y then X)"),
+        (0, 45, 90, "Y=45, Z=90"),
+        (90, 0, 45, "X=90, Z=45"),
+        (90, 45, 45, "X=90, Y=45, Z=45"),
+    ]
+
+    for rot_x, rot_y, rot_z, description in combined_cases:
+        quaternion = xyz_angles_to_quaternion(rot_x, rot_y, rot_z)
+        rotated_vector = apply_quaternion_to_vector(quaternion, start_vector)
+        print(
+            f"  {description}: ({rotated_vector[0]:.3f}, {rotated_vector[1]:.3f}, {rotated_vector[2]:.3f})"
+        )
+
+    print()
+    print("MANUAL COMBINATION TEST (Y then X):")
+    # Manually combine Y=45 then X=90 to see what we should get
+    quat_y45 = xyz_angles_to_quaternion(0, 45, 0)
+    quat_x90 = xyz_angles_to_quaternion(90, 0, 0)
+
+    # Apply Y rotation first
+    step1 = apply_quaternion_to_vector(quat_y45, start_vector)
+    print(f"  After Y=45: ({step1[0]:.3f}, {step1[1]:.3f}, {step1[2]:.3f})")
+
+    # Then apply X rotation to the result
+    step2 = apply_quaternion_to_vector(quat_x90, step1)
+    print(f"  After X=90: ({step2[0]:.3f}, {step2[1]:.3f}, {step2[2]:.3f})")
+
+    print()
+    print("EXPECTED vs ACTUAL:")
+    print("  Expected X=90, Y=45: (0.707, 0.707, 0.000)")
+    actual = apply_quaternion_to_vector(
+        xyz_angles_to_quaternion(90, 45, 0), start_vector
+    )
+    print(f"  Actual X=90, Y=45:   ({actual[0]:.3f}, {actual[1]:.3f}, {actual[2]:.3f})")
+    print()
+    print("💡 Note: X rotation is roll and shouldn't change the pointing direction")
+    print("   when the vector is already pointing along the X-axis.")
 
 
-def calculate_simple_directional_rotation(face_normal):
-    """
-    Calculate a rotation that points the twig toward face_normal while keeping
-    the twig's "up" direction as close to world +Z as possible.
+def main():
+    """Main function to process Grove USD and add twigs."""
+    # Configuration
+    usda_file = Path(
+        r"C:\Users\Maximilian Sperlich\Git\the-grove\data\output\small_demo\Norwayspruce_LOD2_Medium_002.usda"
+    )
+    twig_file_path = "../../assets/twigs/ScotsPineTwig/ScotsPineVariationATwig_ScotsPineVariationATwig.usda"
+    twig_xform_name = "ScotsPineVariationATwig"
 
-    This prevents unwanted rolling and keeps twigs oriented naturally.
-    """
-    # Convert face normal to numpy array and normalize
-    if isinstance(face_normal, tuple):
-        face_normal = np.array(face_normal)
-    face_normal = face_normal / np.linalg.norm(face_normal)
+    # Open the USD stage
+    stage = Usd.Stage.Open(str(usda_file))
+    tree = stage.GetPrimAtPath("/Tree/Tree")
 
-    # Build a proper coordinate system for the twig:
-    # - forward = face_normal (where twig should point)
-    # - up = as close to world +Z as possible
-    # - right = completes the right-handed system
+    # Extract mesh data
+    face_vertex_counts = list(tree.GetAttribute("faceVertexCounts").Get())
+    face_vertex_indices = list(tree.GetAttribute("faceVertexIndices").Get())
+    points = list(tree.GetAttribute("points").Get())
 
-    forward = face_normal
-    world_up = np.array([0.0, 0.0, 1.0])
+    # Extract twig attributes
+    twig_end = list(tree.GetAttribute("primvars:TwigEnd").Get())
+    twig_side = list(tree.GetAttribute("primvars:TwigSide").Get())
+    twig_upward = list(tree.GetAttribute("primvars:TwigUpward").Get())
 
-    # Handle the case where forward is parallel to world_up
-    if abs(np.dot(forward, world_up)) > 0.95:
-        # Forward is nearly parallel to +Z, use world +Y as reference
-        reference = np.array([0.0, 1.0, 0.0])
-        right = np.cross(forward, reference)
-        right = right / np.linalg.norm(right)
-        up = np.cross(right, forward)
-    else:
-        # Normal case: project world_up onto plane perpendicular to forward
-        up = world_up - np.dot(world_up, forward) * forward
-        up = up / np.linalg.norm(up)
-        right = np.cross(up, forward)
-        right = right / np.linalg.norm(right)
+    # Convert to face lists
+    face_vertex_indices_np = np.array(face_vertex_indices)
+    face_vertex_counts_np = np.array(face_vertex_counts)
+    split_indices = np.cumsum(face_vertex_counts_np)[:-1]
+    faces = np.split(face_vertex_indices_np, split_indices)
+    faces_list = [list(face) for face in faces]
 
-    # Create rotation matrix from the coordinate system
-    # But we need to account for the fact that after base correction,
-    # twigs point in +Y direction, not +X
+    # Collect twig data
+    all_positions = []
+    all_orientations = []
 
-    # After base correction: twig points +Y, up is +Z
-    # We want: twig points toward 'forward', up is toward 'up'
+    # Process each face
+    for i, face in enumerate(faces_list):
+        # Check if this face should have a twig
+        has_twig = False
+        twig_type = None
 
-    # Current twig coordinate system (after base correction)
-    current_forward = np.array([0.0, 1.0, 0.0])  # +Y
-    current_up = np.array([0.0, 0.0, 1.0])  # +Z
-    current_right = np.array([1.0, 0.0, 0.0])  # +X
+        if i < len(twig_end) and twig_end[i] == 1:
+            has_twig = True
+            twig_type = "end"
+        elif i < len(twig_side) and twig_side[i] == 1:
+            has_twig = True
+            twig_type = "side"
+        elif i < len(twig_upward) and twig_upward[i] == 1:
+            has_twig = True
+            twig_type = "upward"
 
-    # Target coordinate system
-    target_forward = forward
-    target_up = up
-    target_right = right
+        if has_twig:
+            # Calculate face center and normal
+            face_center = calculate_face_center(points, face)
+            normal = calculate_face_normal(points, face)
 
-    # Build rotation matrices
-    current_matrix = np.column_stack([current_right, current_forward, current_up])
-    target_matrix = np.column_stack([target_right, target_forward, target_up])
+            # Place twig so its base (attachment point) sits on the surface
+            # From twig extent: X ranges from ~0 to 0.175, so twig base is at X=0
+            # Offset the position slightly outward along the normal
+            base_offset = 0.001  # Very small offset to prevent Z-fighting
+            position = (
+                face_center[0] + normal[0] * base_offset,
+                face_center[1] + normal[1] * base_offset,
+                face_center[2] + normal[2] * base_offset,
+            )
+            all_positions.append(position)
 
-    # Calculate rotation matrix from current to target
-    rotation_matrix = target_matrix @ current_matrix.T
+            # Calculate orientation quaternion
+            rot_x, rot_y, rot_z = calculate_xyz_rotation_angles(normal)
+            quaternion = xyz_angles_to_quaternion(rot_x, rot_y, rot_z)
+            all_orientations.append(quaternion)
 
-    # Convert rotation matrix to quaternion
-    def matrix_to_quaternion(R):
-        trace = R[0, 0] + R[1, 1] + R[2, 2]
-        if trace > 0:
-            s = np.sqrt(trace + 1.0) * 2
-            w = 0.25 * s
-            x = (R[2, 1] - R[1, 2]) / s
-            y = (R[0, 2] - R[2, 0]) / s
-            z = (R[1, 0] - R[0, 1]) / s
-        elif R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
-            s = np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2]) * 2
-            w = (R[2, 1] - R[1, 2]) / s
-            x = 0.25 * s
-            y = (R[0, 1] + R[1, 0]) / s
-            z = (R[0, 2] + R[2, 0]) / s
-        elif R[1, 1] > R[2, 2]:
-            s = np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2]) * 2
-            w = (R[0, 2] - R[2, 0]) / s
-            x = (R[0, 1] + R[1, 0]) / s
-            y = 0.25 * s
-            z = (R[1, 2] + R[2, 1]) / s
-        else:
-            s = np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1]) * 2
-            w = (R[1, 0] - R[0, 1]) / s
-            x = (R[0, 2] + R[2, 0]) / s
-            y = (R[1, 2] + R[2, 1]) / s
-            z = 0.25 * s
-        return [x, y, z, w]
+            # Debug: Print angles for first few twigs
+            if len(all_positions) <= 3:
+                print(f"\n🔍 DEBUG Twig {len(all_positions)}:")
+                print(
+                    f"  Face center: ({face_center[0]:.4f}, {face_center[1]:.4f}, {face_center[2]:.4f})"
+                )
+                print(
+                    f"  Face normal: ({normal[0]:.4f}, {normal[1]:.4f}, {normal[2]:.4f})"
+                )
+                print(f"  X rotation: {rot_x:.1f}°")
+                print(f"  Y rotation: {rot_y:.1f}°")
+                print(f"  Z rotation: {rot_z:.1f}°")
+                print(
+                    f"  Quaternion: ({quaternion[0]:.4f}, {quaternion[1]:.4f}, {quaternion[2]:.4f}, {quaternion[3]:.4f})"
+                )
 
-    return matrix_to_quaternion(rotation_matrix)
+    print(f"\n🌲 Twig placement summary:")
+    print(f"  Total twigs: {len(all_positions)}")
+
+    # Write the USD PointInstancer
+    write_usd_pointinstancer(
+        all_positions, all_orientations, str(usda_file), twig_file_path, twig_xform_name
+    )
 
 
-# Calculate directional rotations for each twig
-directional_quaternions = []
+if __name__ == "__main__":
+    print("🔧 Fixed quaternion rotation system")
+    print("Individual rotations:")
+    print("- Y rotation: yaw (horizontal turning)")
+    print("- Z rotation: pitch (vertical tilt)")
+    print("- X rotation: roll (around pointing direction)")
+    print()
 
-# Side twigs
-for normal in normal_side:
-    dir_quat = calculate_simple_directional_rotation(normal)
-    final_quat = multiply_quaternions(base_combined_correction, dir_quat)
-    directional_quaternions.append(final_quat)
+    # Test the fixed implementation
+    # test_rotations()
 
-# End twigs
-for normal in normal_end:
-    dir_quat = calculate_simple_directional_rotation(normal)
-    final_quat = multiply_quaternions(base_combined_correction, dir_quat)
-    directional_quaternions.append(final_quat)
-
-# Upward twigs
-for normal in normal_upward:
-    dir_quat = calculate_simple_directional_rotation(normal)
-    final_quat = multiply_quaternions(base_combined_correction, dir_quat)
-    directional_quaternions.append(final_quat)
-
-all_quaternions = directional_quaternions
-
-print(f"\n🔍 DEBUG: Directional twig orientations (first 3 twigs):")
-for i in range(min(3, len(all_positions))):
-    pos = all_positions[i]
-    quat = all_quaternions[i]
-    if i < len(normal_side):
-        normal = normal_side[i]
-        twig_type = "side"
-    elif i < len(normal_side) + len(normal_end):
-        normal = normal_end[i - len(normal_side)]
-        twig_type = "end"
-    else:
-        normal = normal_upward[i - len(normal_side) - len(normal_end)]
-        twig_type = "upward"
-
-    print(f"  Twig {i+1} ({twig_type}): pos=({pos[0]:.3f}, {pos[1]:.3f}, {pos[2]:.3f})")
-    print(f"    target_direction=({normal[0]:.3f}, {normal[1]:.3f}, {normal[2]:.3f})")
-    print(f"    quat=({quat[0]:.3f}, {quat[1]:.3f}, {quat[2]:.3f}, {quat[3]:.3f})")
-
-print(
-    f"Total twigs: {len(all_positions)} (each oriented toward its branch growth direction)"
-)
-print("🎯 Each twig should now point in the direction of its face normal")
-
-# Write the USD PointInstancer section directly into the tree file
-tree_file_path = usda_file  # Use the original file directly
-success = write_usd_pointinstancer_to_tree_file(
-    all_positions, all_quaternions, str(tree_file_path)
-)
-
-if success:
-    print(f"Generated PointInstancer with {len(all_positions)} twigs:")
-    print(f"  - {len(centroid_side)} side twigs")
-    print(f"  - {len(centroid_end)} end twigs")
-    print(f"  - {len(centroid_upward)} upward twigs")
-    print(f"Twig data integrated into tree file: {tree_file_path.stem}_with_twigs.usda")
-else:
-    print("Failed to integrate twig data into tree file")
+    # Run the main twig processing with fixed rotations
+    main()
