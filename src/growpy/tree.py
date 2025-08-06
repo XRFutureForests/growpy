@@ -41,7 +41,9 @@ def save_tree_to_usd(model, output_path: Path) -> None:
     """Save tree model to USD file."""
     if gc is None:
         raise ImportError("Grove core not available")
-
+    model.set_up_axis("Z")  # Ensure Z-up for USD compatibility
+    model.set_winding_order("CLOCKWISE")
+    model.triangulate()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     usd_string = gc.io.model_to_usda_string(model)
 

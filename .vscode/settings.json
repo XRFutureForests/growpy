@@ -5,13 +5,13 @@
     ],
     "python.terminal.activateEnvironment": true,
     "terminal.integrated.env.windows": {
-        "PYTHONPATH": "src;src/the_grove_22/modules"
+        "PYTHONPATH": "${workspaceFolder}/src;${workspaceFolder}/src/the_grove_22/modules"
     },
     "terminal.integrated.env.osx": {
-        "PYTHONPATH": "src:src/the_grove_22/modules"
+        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}/src/the_grove_22/modules"
     },
     "terminal.integrated.env.linux": {
-        "PYTHONPATH": "src:src/the_grove_22/modules"
+        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}/src/the_grove_22/modules"
     },
     "python.envFile": "${workspaceFolder}/.env",
     "python.analysis.autoImportCompletions": true,
@@ -19,5 +19,8 @@
     "python.analysis.completeFunctionParens": true,
     "python.analysis.fixAll": [
         
-    ]
+    ],
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "python-envs.pythonProjects": []
 }
