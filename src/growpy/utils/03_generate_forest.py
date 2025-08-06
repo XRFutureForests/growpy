@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from tqdm import tqdm
 
 from growpy import (
     GrowPyConfig,
@@ -22,6 +23,39 @@ from growpy import (
     save_tree_to_usd,
     simulate_forest_growth,
 )
+
+
+def simulate_forest_growth_with_progress(forest, cycles, pbar):
+    """Simulate forest growth with progress tracking."""
+    # Import grove core here to match the original function
+    try:
+        import the_grove_22_core as gc
+    except ImportError:
+        raise ImportError("Grove core not available")
+
+    groves = [grove for grove, _, _ in forest]
+
+    for cycle in range(cycles):
+        # Calculate shared light competition between species
+        if len(groves) > 1:
+            all_coords = []
+            for grove in groves:
+                all_coords.extend(grove.create_shade_geometry_coords())
+
+            for grove in groves:
+                grove.calculate_shade_together(all_coords)
+
+        # Simulate one growth cycle for each grove
+        for grove, _, _ in forest:
+            grove.weigh_and_bend()
+            grove.simulate(1)
+        
+        # Update progress bar
+        pbar.update(1)
+        pbar.set_postfix({
+            'cycle': f'{cycle + 1}/{cycles}',
+            'groves': len(groves)
+        })
 
 
 def main():
@@ -61,7 +95,14 @@ def main():
 
     # Simulate growth with light competition
     print(f"\n🌱 Simulating growth ({max_cycles} cycles)")
-    simulate_forest_growth(forest, max_cycles)
+    
+    # Create a custom simulation function with progress tracking
+    if max_cycles > 0:
+        with tqdm(total=max_cycles, desc="Growth cycles", unit="cycle") as pbar:
+            # We'll need to modify simulate_forest_growth or create our own version
+            # For now, let's call the original function and update progress manually
+            simulate_forest_growth_with_progress(forest, max_cycles, pbar)
+    
     print(f"✓ Growth simulation complete")
 
     # Export to USD
@@ -70,20 +111,35 @@ def main():
     config = GrowPyConfig()
     lod_configs = config.get_lod_configs()
 
-    total_exported = 0
+    # Calculate total number of models to export for progress tracking
+    total_models = 0
+    export_tasks = []
+    
     for grove, species_name, tree_count in forest:
         species_clean = species_name.replace(" ", "").replace("-", "_")
         lod_models = build_lod_models(grove, lod_configs)
-
+        
         for lod_name, models in lod_models.items():
             for i, model in enumerate(models):
                 filename = f"{species_clean}_{lod_name}_{i:03d}.usda"
-                save_tree_to_usd(model, output_dir / filename)
-                total_exported += 1
+                export_tasks.append((model, output_dir / filename, species_clean, lod_name, i))
+                total_models += 1
+
+    # Export with progress bar
+    total_exported = 0
+    with tqdm(total=total_models, desc="Exporting USD", unit="model") as pbar:
+        for model, filepath, species, lod_name, index in export_tasks:
+            save_tree_to_usd(model, filepath)
+            total_exported += 1
+            pbar.update(1)
+            pbar.set_postfix({
+                'species': species,
+                'lod': lod_name,
+                'exported': total_exported
+            })
 
     print(f"✓ Exported {total_exported} USD models")
 
 
 if __name__ == "__main__":
-    sys.exit(main())
     sys.exit(main())
