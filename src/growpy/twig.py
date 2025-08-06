@@ -424,9 +424,7 @@ def test_rotations():
 def main():
     """Main function to process Grove USD and add twigs."""
     # Configuration
-    usda_file = Path(
-        r"C:\Users\Maximilian Sperlich\Git\the-grove\data\output\small_demo\Norwayspruce_LOD2_Medium_002.usda"
-    )
+    usda_file = Path(__file__).parent.parent.parent / "data" / "output" / "small_demo" / "Norwayspruce_LOD2_Medium_002.usda"
     twig_file_path = "../../assets/twigs/ScotsPineTwig/ScotsPineVariationATwig_ScotsPineVariationATwig.usda"
     twig_xform_name = "ScotsPineVariationATwig"
 
@@ -491,22 +489,6 @@ def main():
             rot_x, rot_y, rot_z = calculate_xyz_rotation_angles(normal)
             quaternion = xyz_angles_to_quaternion(rot_x, rot_y, rot_z)
             all_orientations.append(quaternion)
-
-            # Debug: Print angles for first few twigs
-            if len(all_positions) <= 3:
-                print(f"\n🔍 DEBUG Twig {len(all_positions)}:")
-                print(
-                    f"  Face center: ({face_center[0]:.4f}, {face_center[1]:.4f}, {face_center[2]:.4f})"
-                )
-                print(
-                    f"  Face normal: ({normal[0]:.4f}, {normal[1]:.4f}, {normal[2]:.4f})"
-                )
-                print(f"  X rotation: {rot_x:.1f}°")
-                print(f"  Y rotation: {rot_y:.1f}°")
-                print(f"  Z rotation: {rot_z:.1f}°")
-                print(
-                    f"  Quaternion: ({quaternion[0]:.4f}, {quaternion[1]:.4f}, {quaternion[2]:.4f}, {quaternion[3]:.4f})"
-                )
 
     print(f"\n🌲 Twig placement summary:")
     print(f"  Total twigs: {len(all_positions)}")

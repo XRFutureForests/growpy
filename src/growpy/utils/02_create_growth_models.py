@@ -41,12 +41,17 @@ import the_grove_22_core as gc
 
 # Use refactored growpy package
 from growpy import GrowPyConfig
+from growpy.grove import create_grove
 
 # Set up logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+# Suppress verbose matplotlib logging (font finding, etc.)
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
+logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
 
 
 def process_single_species_parallel(args_tuple):
@@ -144,34 +149,40 @@ class SpeciesGrowthAnalyzer:
 
     def apply_species_preset(self, grove, species: str) -> bool:
         """
-        Apply a species preset to a grove from the assets directory.
+        Apply a species preset to a grove using Grove's built-in method.
 
         Args:
             grove: Grove object to apply preset to
-            species: Species name
+            species: Species name (e.g., "Fagaceae - European oak")
 
         Returns:
             True if successful, False otherwise
         """
         try:
-            # Find the preset file
-            preset_file = self.presets_dir / f"{species}.seed.json"
-            if not preset_file.exists():
-                logger.error(f"Preset file not found: {preset_file}")
-                return False
+            # Use GrowPyConfig to get the proper preset path
+            config = GrowPyConfig()
+            
+            # First try to find the species by exact match in the lookup table
+            available_species = config.get_available_species()
+            if species in available_species:
+                preset_path = config.get_preset_path(species)
+            else:
+                # Fallback to manual file lookup in assets directory
+                preset_file = self.presets_dir / f"{species}.seed.json"
+                if not preset_file.exists():
+                    logger.error(f"Preset file not found: {preset_file}")
+                    return False
+                preset_path = preset_file
 
-            # Load and apply preset
-            with open(preset_file, "r") as f:
-                preset_data = json.load(f)
+            # Use Grove's built-in method to load and apply preset
+            with open(preset_path, "r") as f:
+                preset_json = f.read()
 
-            # Apply preset properties to grove
-            # This is a simplified version - you may need to adapt based on the exact preset structure
-            if "properties" in preset_data:
-                for prop_name, prop_value in preset_data["properties"].items():
-                    if hasattr(grove, prop_name):
-                        setattr(grove, prop_name, prop_value)
+            # Use Grove's io.properties_from_json_string method for proper preset loading
+            properties = gc.io.properties_from_json_string(preset_json)
+            grove.set_properties(properties)
 
-            logger.debug(f"Applied preset for species: {species}")
+            logger.debug(f"Applied preset for species: {species} using Grove's built-in method")
             return True
 
         except Exception as e:
@@ -179,7 +190,22 @@ class SpeciesGrowthAnalyzer:
             return False
 
     def get_available_species(self) -> List[str]:
-        """Get list of all available Grove species presets from assets directory."""
+        """Get list of all available Grove species presets using GrowPyConfig first."""
+        try:
+            # First try to use GrowPyConfig which uses the lookup table
+            config = GrowPyConfig()
+            species_list = config.get_available_species()
+            
+            if species_list:
+                logger.info(
+                    f"Found {len(species_list)} species from GrowPyConfig lookup table"
+                )
+                return sorted(species_list)
+                
+        except Exception as e:
+            logger.warning(f"GrowPyConfig method failed: {e}, falling back to directory scanning")
+
+        # Fallback to directory scanning
         try:
             species_list = []
 
@@ -204,13 +230,9 @@ class SpeciesGrowthAnalyzer:
             return sorted(species_list)
 
         except Exception as e:
-            logger.error(f"Failed to get available species: {e}")
-            # Fallback to GrowPyConfig if available
+            logger.error(f"Failed to get available species from directory: {e}")
+            # Final fallback to manual directory scanning from Grove installation
             try:
-                config = GrowPyConfig()
-                return config.get_available_species()
-            except Exception:
-                # Final fallback to manual directory scanning
                 presets_dir = Path(__file__).parent.parent / "the_grove_22" / "presets"
 
                 if not presets_dir.exists():
@@ -231,6 +253,45 @@ class SpeciesGrowthAnalyzer:
                         continue
 
                 return sorted(species_list)
+            except Exception:
+                logger.error("All fallback methods failed to get species list")
+                return []
+
+    def get_growth_model_name_for_species(self, species: str) -> str:
+        """
+        Get the correct growth model folder name for a species from the lookup table.
+        
+        Args:
+            species: Species name (e.g., "Fagaceae - European oak")
+            
+        Returns:
+            Growth model name from lookup table (e.g., "Fagaceae_European_oak")
+        """
+        try:
+            # Use GrowPyConfig to get the growth model name from lookup table
+            config = GrowPyConfig()
+            df = config.load_species_lookup()
+            
+            # Try to find by exact match first (assuming species is the preset name without .seed.json)
+            preset_name = f"{species}.seed.json"
+            growth_model_matches = df.loc[df["Preset"] == preset_name, "Growth Model"]
+            
+            if not growth_model_matches.empty:
+                return growth_model_matches.values[0]
+            
+            # Fallback: try to match by common name (in case species is a common name)
+            growth_model_matches = df.loc[df["Common Name"] == species, "Growth Model"]
+            
+            if not growth_model_matches.empty:
+                return growth_model_matches.values[0]
+            
+            # Final fallback: create a safe folder name from species name
+            logger.warning(f"Could not find growth model name for species '{species}' in lookup table, using fallback naming")
+            return species.replace(" - ", "_").replace(" ", "_").replace("/", "_")
+            
+        except Exception as e:
+            logger.warning(f"Error getting growth model name for '{species}': {e}, using fallback naming")
+            return species.replace(" - ", "_").replace(" ", "_").replace("/", "_")
 
     def calculate_dbh_at_height(self, tree, target_height: float = 1.3) -> float:
         """
@@ -338,35 +399,13 @@ class SpeciesGrowthAnalyzer:
         )
 
         for seed in seed_progress:
-            grove = gc.Grove()
-            grove.set_random_seed(seed)
-
-            # Apply species preset using growpy
+            # Create grove with species preset using growpy
             try:
-                # Apply species preset
-                if not self.apply_species_preset(grove, species):
-                    logger.error(f"Failed to apply preset for {species}")
-                    continue
+                grove = create_grove(species=species)
+                grove.set_random_seed(seed)
             except Exception as e:
-                # Fallback to manual preset loading
-                try:
-                    presets_dir = (
-                        Path(__file__).parent.parent / "the_grove_22" / "presets"
-                    )
-                    preset_path = presets_dir / f"{species}.seed.json"
-
-                    if not preset_path.exists():
-                        raise FileNotFoundError(f"Preset file not found: {preset_path}")
-
-                    with open(preset_path, "r") as f:
-                        preset_json = f.read()
-
-                    properties = gc.io.properties_from_json_string(preset_json)
-                    grove.set_properties(properties)
-                except Exception as e2:
-                    raise ValueError(
-                        f"Failed to apply preset for {species}: {e} (fallback: {e2})"
-                    )
+                logger.error(f"Failed to create grove with species {species}: {e}")
+                continue
 
             # Clear any default trees and add a single tree at origin
             grove.clear_trees()
@@ -451,8 +490,6 @@ class SpeciesGrowthAnalyzer:
 
             seed_progress.set_postfix(
                 seed=seed,
-                height=f"{max_height_achieved:.2f}",
-                dbh=f"{max_dbh_achieved:.3f}",
             )
 
         # Take maximum values across all seeds to eliminate tree death effects
@@ -964,9 +1001,9 @@ class SpeciesGrowthAnalyzer:
 
     def save_species_results(self, species: str):
         """Save results for a single species in its own subfolder."""
-        # Create species-specific subfolder directly under output_dir
-        species_safe = species.replace(" - ", "_").replace(" ", "_").replace("/", "_")
-        species_dir = self.output_dir / species_safe
+        # Create species-specific subfolder using growth model name from lookup table
+        growth_model_name = self.get_growth_model_name_for_species(species)
+        species_dir = self.output_dir / growth_model_name
         species_dir.mkdir(parents=True, exist_ok=True)
 
         if species in self.height_curves:
@@ -1069,7 +1106,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         help="Directory containing prepared GrowPy assets (default: data/assets)",
     )
     parser.add_argument(
-        "--cycles", type=int, default=75, help="Number of growth cycles for analysis"
+        "--cycles", type=int, default=25, help="Number of growth cycles for analysis"
     )
     parser.add_argument(
         "--seeds",
@@ -1105,6 +1142,9 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
+        # Keep matplotlib logging suppressed even in verbose mode
+        logging.getLogger('matplotlib').setLevel(logging.WARNING)
+        logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
 
     # Determine parallel processing settings
     use_parallel = args.parallel and not args.no_parallel
