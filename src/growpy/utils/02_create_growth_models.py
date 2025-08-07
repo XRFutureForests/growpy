@@ -50,8 +50,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Suppress verbose matplotlib logging (font finding, etc.)
-logging.getLogger('matplotlib').setLevel(logging.WARNING)
-logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
+logging.getLogger("matplotlib").setLevel(logging.WARNING)
+logging.getLogger("matplotlib.font_manager").setLevel(logging.WARNING)
 
 
 def process_single_species_parallel(args_tuple):
@@ -149,7 +149,7 @@ class SpeciesGrowthAnalyzer:
 
     def apply_species_preset(self, grove, species: str) -> bool:
         """
-        Apply a species preset to a grove using Grove's built-in method.
+        Apply a species preset to a grove using direct file loading.
 
         Args:
             grove: Grove object to apply preset to
@@ -159,30 +159,23 @@ class SpeciesGrowthAnalyzer:
             True if successful, False otherwise
         """
         try:
-            # Use GrowPyConfig to get the proper preset path
-            config = GrowPyConfig()
-            
-            # First try to find the species by exact match in the lookup table
-            available_species = config.get_available_species()
-            if species in available_species:
-                preset_path = config.get_preset_path(species)
-            else:
-                # Fallback to manual file lookup in assets directory
-                preset_file = self.presets_dir / f"{species}.seed.json"
-                if not preset_file.exists():
-                    logger.error(f"Preset file not found: {preset_file}")
-                    return False
-                preset_path = preset_file
+            # Find the preset file directly in the assets directory
+            preset_file = self.presets_dir / f"{species}.seed.json"
+            if not preset_file.exists():
+                logger.error(f"Preset file not found: {preset_file}")
+                return False
 
             # Use Grove's built-in method to load and apply preset
-            with open(preset_path, "r") as f:
+            with open(preset_file, "r") as f:
                 preset_json = f.read()
 
             # Use Grove's io.properties_from_json_string method for proper preset loading
             properties = gc.io.properties_from_json_string(preset_json)
             grove.set_properties(properties)
 
-            logger.debug(f"Applied preset for species: {species} using Grove's built-in method")
+            logger.debug(
+                f"Applied preset for species: {species} from file: {preset_file}"
+            )
             return True
 
         except Exception as e:
@@ -190,26 +183,11 @@ class SpeciesGrowthAnalyzer:
             return False
 
     def get_available_species(self) -> List[str]:
-        """Get list of all available Grove species presets using GrowPyConfig first."""
-        try:
-            # First try to use GrowPyConfig which uses the lookup table
-            config = GrowPyConfig()
-            species_list = config.get_available_species()
-            
-            if species_list:
-                logger.info(
-                    f"Found {len(species_list)} species from GrowPyConfig lookup table"
-                )
-                return sorted(species_list)
-                
-        except Exception as e:
-            logger.warning(f"GrowPyConfig method failed: {e}, falling back to directory scanning")
-
-        # Fallback to directory scanning
+        """Get list of all available Grove species presets directly from preset files."""
         try:
             species_list = []
 
-            # Get all .json preset files
+            # Get all preset files from the assets directory
             preset_files = list(self.presets_dir.glob("*.json"))
 
             for preset_file in preset_files:
@@ -222,7 +200,9 @@ class SpeciesGrowthAnalyzer:
                 if species_name.endswith(".seed"):
                     species_name = species_name[:-5]  # Remove .seed
 
-                species_list.append(species_name)
+                # Skip empty names
+                if species_name:
+                    species_list.append(species_name)
 
             logger.info(
                 f"Found {len(species_list)} species presets in assets directory"
@@ -231,67 +211,37 @@ class SpeciesGrowthAnalyzer:
 
         except Exception as e:
             logger.error(f"Failed to get available species from directory: {e}")
-            # Final fallback to manual directory scanning from Grove installation
-            try:
-                presets_dir = Path(__file__).parent.parent / "the_grove_22" / "presets"
-
-                if not presets_dir.exists():
-                    raise FileNotFoundError(
-                        f"Presets directory not found: {presets_dir}"
-                    )
-
-                species_list = []
-                for preset_file in presets_dir.glob("*.seed.json"):
-                    try:
-                        species_name = preset_file.stem
-                        if species_name.endswith(".seed"):
-                            species_name = species_name[:-5]
-
-                        if species_name and not species_name.startswith("."):
-                            species_list.append(species_name)
-                    except Exception:
-                        continue
-
-                return sorted(species_list)
-            except Exception:
-                logger.error("All fallback methods failed to get species list")
-                return []
+            return []
 
     def get_growth_model_name_for_species(self, species: str) -> str:
         """
-        Get the correct growth model folder name for a species from the lookup table.
-        
+        Generate a growth model folder name directly from the species preset name.
+
         Args:
             species: Species name (e.g., "Fagaceae - European oak")
-            
+
         Returns:
-            Growth model name from lookup table (e.g., "Fagaceae_European_oak")
+            Growth model name based on preset name (e.g., "Fagaceae_European_oak")
         """
-        try:
-            # Use GrowPyConfig to get the growth model name from lookup table
-            config = GrowPyConfig()
-            df = config.load_species_lookup()
-            
-            # Try to find by exact match first (assuming species is the preset name without .seed.json)
-            preset_name = f"{species}.seed.json"
-            growth_model_matches = df.loc[df["Preset"] == preset_name, "Growth Model"]
-            
-            if not growth_model_matches.empty:
-                return growth_model_matches.values[0]
-            
-            # Fallback: try to match by common name (in case species is a common name)
-            growth_model_matches = df.loc[df["Common Name"] == species, "Growth Model"]
-            
-            if not growth_model_matches.empty:
-                return growth_model_matches.values[0]
-            
-            # Final fallback: create a safe folder name from species name
-            logger.warning(f"Could not find growth model name for species '{species}' in lookup table, using fallback naming")
-            return species.replace(" - ", "_").replace(" ", "_").replace("/", "_")
-            
-        except Exception as e:
-            logger.warning(f"Error getting growth model name for '{species}': {e}, using fallback naming")
-            return species.replace(" - ", "_").replace(" ", "_").replace("/", "_")
+        # Convert species name to a safe folder name by replacing problematic characters
+        safe_name = (
+            species.replace(" - ", "_")
+            .replace(" ", "_")
+            .replace("/", "_")
+            .replace("\\", "_")
+        )
+
+        # Remove any other problematic characters
+        safe_name = "".join(c for c in safe_name if c.isalnum() or c in "_-")
+
+        # Ensure it doesn't start with a dot or special character
+        if safe_name.startswith("."):
+            safe_name = safe_name[1:]
+
+        logger.debug(
+            f"Generated growth model name '{safe_name}' for species '{species}'"
+        )
+        return safe_name
 
     def calculate_dbh_at_height(self, tree, target_height: float = 1.3) -> float:
         """
@@ -399,10 +349,19 @@ class SpeciesGrowthAnalyzer:
         )
 
         for seed in seed_progress:
-            # Create grove with species preset using growpy
+            # Create grove directly using Grove core instead of using growpy wrapper
             try:
-                grove = create_grove(species=species)
+                grove = gc.Grove()
+                grove.clear_trees()
                 grove.set_random_seed(seed)
+
+                # Apply species preset directly
+                if not self.apply_species_preset(grove, species):
+                    logger.error(
+                        f"Failed to apply species preset for {species} with seed {seed}"
+                    )
+                    continue
+
             except Exception as e:
                 logger.error(f"Failed to create grove with species {species}: {e}")
                 continue
@@ -1068,6 +1027,100 @@ class SpeciesGrowthAnalyzer:
             f"Saved {saved_count} species models to individual subfolders in: {self.output_dir}"
         )
 
+    def update_lookup_table_with_new_models(self):
+        """Update the tree asset lookup table with new growth model names based on analyzed species."""
+        try:
+            # Path to the lookup table
+            lookup_table_path = self.assets_dir.parent / "tree_asset_lookup.csv"
+
+            if not lookup_table_path.exists():
+                logger.warning(
+                    f"Lookup table not found at {lookup_table_path}, skipping update"
+                )
+                return
+
+            # Read the current lookup table
+            df = pd.read_csv(lookup_table_path)
+
+            # Create a mapping of preset names to new growth model names
+            updated_count = 0
+            for species in self.analysis_metadata.keys():
+                preset_name = f"{species}.seed.json"
+                new_growth_model_name = self.get_growth_model_name_for_species(species)
+
+                # Find rows with matching preset name
+                mask = df["Preset"] == preset_name
+                if mask.any():
+                    # Update the Growth Model column for matching rows
+                    df.loc[mask, "Growth Model"] = new_growth_model_name
+                    updated_count += 1
+                    logger.debug(
+                        f"Updated lookup table: {preset_name} -> {new_growth_model_name}"
+                    )
+                else:
+                    logger.debug(
+                        f"No matching preset found in lookup table for: {preset_name}"
+                    )
+
+            # Save the updated lookup table
+            if updated_count > 0:
+                # Create a backup of the original file
+                backup_path = lookup_table_path.with_suffix(".csv.backup")
+                if not backup_path.exists():
+                    df_original = pd.read_csv(lookup_table_path)
+                    df_original.to_csv(backup_path, index=False)
+                    logger.info(
+                        f"Created backup of original lookup table: {backup_path}"
+                    )
+
+                # Save the updated table
+                df.to_csv(lookup_table_path, index=False)
+                logger.info(
+                    f"Updated lookup table with {updated_count} new growth model names"
+                )
+                logger.info(f"Updated lookup table saved to: {lookup_table_path}")
+            else:
+                logger.warning("No updates were made to the lookup table")
+
+        except Exception as e:
+            logger.error(f"Failed to update lookup table: {e}")
+
+    def generate_lookup_table_summary(self):
+        """Generate a summary of the species analyzed and their growth model names."""
+        try:
+            summary_path = self.output_dir / "species_analysis_summary.csv"
+
+            # Create summary data
+            summary_data = []
+            for species in self.analysis_metadata.keys():
+                metadata = self.analysis_metadata[species]
+                growth_model_name = self.get_growth_model_name_for_species(species)
+
+                summary_data.append(
+                    {
+                        "Species": species,
+                        "Preset_File": f"{species}.seed.json",
+                        "Growth_Model_Name": growth_model_name,
+                        "Final_Height": metadata.get("final_height", 0.0),
+                        "Max_Height": metadata.get("max_height", 0.0),
+                        "Final_DBH": metadata.get("final_dbh", 0.0),
+                        "Max_DBH": metadata.get("max_dbh", 0.0),
+                        "Growth_Rate": metadata.get("growth_rate", 0.0),
+                        "Cycles_Analyzed": metadata.get("cycles", 0),
+                        "Seeds_Tested": len(metadata.get("seeds_tested", [])),
+                    }
+                )
+
+            # Create DataFrame and save
+            summary_df = pd.DataFrame(summary_data)
+            summary_df.to_csv(summary_path, index=False)
+
+            logger.info(f"Generated species analysis summary: {summary_path}")
+            logger.info(f"Summary contains {len(summary_data)} analyzed species")
+
+        except Exception as e:
+            logger.error(f"Failed to generate lookup table summary: {e}")
+
 
 def main():
     """Main function for command line usage."""
@@ -1106,7 +1159,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         help="Directory containing prepared GrowPy assets (default: data/assets)",
     )
     parser.add_argument(
-        "--cycles", type=int, default=25, help="Number of growth cycles for analysis"
+        "--cycles", type=int, default=50, help="Number of growth cycles for analysis"
     )
     parser.add_argument(
         "--seeds",
@@ -1143,8 +1196,8 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
         # Keep matplotlib logging suppressed even in verbose mode
-        logging.getLogger('matplotlib').setLevel(logging.WARNING)
-        logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
+        logging.getLogger("matplotlib").setLevel(logging.WARNING)
+        logging.getLogger("matplotlib.font_manager").setLevel(logging.WARNING)
 
     # Determine parallel processing settings
     use_parallel = args.parallel and not args.no_parallel
@@ -1187,41 +1240,35 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
             logger.info(f"Available species: {', '.join(available_species[:10])}...")
             sys.exit(1)
 
-        try:
-            # Generate height and DBH curves
-            height_curve, dbh_curve, metadata = (
-                analyzer.generate_height_curve_for_species(args.species)
-            )
 
-            # Create growth model
-            growth_model = analyzer.create_growth_model_for_species(
-                args.species, height_curve
-            )
+        # Generate height and DBH curves
+        height_curve, dbh_curve, metadata = (
+            analyzer.generate_height_curve_for_species(args.species)
+        )
 
-            # Store results
-            analyzer.height_curves[args.species] = height_curve
-            analyzer.dbh_curves[args.species] = dbh_curve
-            analyzer.growth_models[args.species] = growth_model
-            analyzer.analysis_metadata[args.species] = metadata
+        # Create growth model
+        growth_model = analyzer.create_growth_model_for_species(
+            args.species, height_curve
+        )
 
-            # Save individual species results
-            species_dir = analyzer.save_species_results(args.species)
+        # Store results
+        analyzer.height_curves[args.species] = height_curve
+        analyzer.dbh_curves[args.species] = dbh_curve
+        analyzer.growth_models[args.species] = growth_model
+        analyzer.analysis_metadata[args.species] = metadata
 
-            logger.info(f"Final height: {metadata['final_height']:.2f}")
-            logger.info(f"Growth rate: {metadata['growth_rate']:.3f} units/cycle")
-            logger.info(f"Max height: {metadata['max_height']:.2f}")
-            logger.info(f"Final DBH: {metadata['final_dbh']:.3f}")
-            logger.info(f"Max DBH: {metadata['max_dbh']:.3f}")
+        # Save individual species results
+        species_dir = analyzer.save_species_results(args.species)
 
-            # Save results
-            analyzer.save_growth_models()
+        logger.info(f"Final height: {metadata['final_height']:.2f}")
+        logger.info(f"Growth rate: {metadata['growth_rate']:.3f} units/cycle")
+        logger.info(f"Max height: {metadata['max_height']:.2f}")
+        logger.info(f"Final DBH: {metadata['final_dbh']:.3f}")
+        logger.info(f"Max DBH: {metadata['max_dbh']:.3f}")
 
-            logger.info(f"Success: Generated growth model for {args.species}")
-            logger.info(f"Results saved to: {species_dir}")
+        # Save results
+        analyzer.save_growth_models()
 
-        except Exception as e:
-            logger.error(f"Failed to analyze {args.species}: {e}")
-            sys.exit(1)
     else:
         # Analyze all species
         logger.info("Analyzing all available species...")
@@ -1231,26 +1278,6 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
         # Save results
         analyzer.save_growth_models()
-
-        successful = sum(1 for success in results.values() if success)
-        total = len(results)
-
-        logger.info(f"Analysis completed: {successful}/{total} species successful")
-
-        if successful > 0:
-            logger.info(
-                f"Models saved to species-specific subfolders in: {analyzer.output_dir}"
-            )
-        else:
-            logger.error("No species were successfully analyzed")
-            sys.exit(1)
-            species_dir = analyzer.save_species_results(args.species)
-
-            tqdm.write(f"Final height: {metadata['final_height']:.2f}")
-            tqdm.write(f"Growth rate: {metadata['growth_rate']:.3f} units/cycle")
-            tqdm.write(f"Max height: {metadata['max_height']:.2f}")
-            tqdm.write(f"Final DBH: {metadata['final_dbh']:.3f}")
-            tqdm.write(f"Max DBH: {metadata['max_dbh']:.3f}")
 
 
 if __name__ == "__main__":
