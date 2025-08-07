@@ -1,13 +1,23 @@
 #!/usr/bin/env python3
 """
-Simple forest generation using GrowPy.
+Enhanced forest generation using GrowPy with automatic Z-up transformation.
 
-This script provides a streamlined forest simulation workflow:
+This script provides a comprehensive forest simulation workflow:
 1. Load CSV with tree positions, species, heights
 2. Calculate growth cycles from height data using pre-computed models
 3. Create multi-species forest with light competition
 4. Export to USD with multiple LOD levels
-5. Add twig instances and bark materials using species-specific lookup
+5. Transform tree meshes from Y-up to Z-up coordinate system
+6. Add species-specific twig instances using Grove's face-based primvar system
+7. Apply random twig variation assignment for natural appearance
+
+Enhanced Features:
+- Automatic coordinate system transformation (Y-up → Z-up)
+- Grove-compatible twig placement using TwigEnd, TwigSide, TwigUpward primvars
+- Species-specific twig asset lookup and assignment
+- Random twig variation distribution for realistic appearance
+- Enhanced error handling and progress tracking
+- Optimized for Blender and other Z-up applications
 """
 import math
 import sys
@@ -35,13 +45,14 @@ except ImportError:
     print("⚠️  USD Python bindings not available, using text-based twig insertion")
     USD_AVAILABLE = False
 
-# Import twig functions from the twig module
+# Import twig functions from the enhanced twig module
 try:
     from growpy.twig import add_twigs_to_tree
 
     TWIG_INTEGRATION_AVAILABLE = True
+    print("✅ Enhanced twig module with Z-up transformation available")
 except ImportError:
-    print("⚠️  Twig module not available, skipping twig integration")
+    print("⚠️  Enhanced twig module not available, using fallback twig integration")
     TWIG_INTEGRATION_AVAILABLE = False
 
 
@@ -336,19 +347,28 @@ def add_twigs_to_usd_file_text_based(usd_file_path, species_name, config):
 def add_twigs_to_usd_file(usd_file_path, species_name, config):
     """
     Add twig instances to a USD tree file using the enhanced twig system.
-    This is a simple wrapper around the new add_twigs_to_tree function.
+    This function uses the updated twig module with proper Z-up transformation.
     """
     if TWIG_INTEGRATION_AVAILABLE:
+        print(
+            f"  🌿 Using enhanced twig system with Z-up transformation for {species_name}"
+        )
         return add_twigs_to_tree(usd_file_path, species_name, config)
     else:
         # Fallback to text-based approach if twig module not available
+        print(
+            f"  ⚠️  Enhanced twig module not available, using fallback for {species_name}"
+        )
         return add_twigs_to_usd_file_text_based(usd_file_path, species_name, config)
 
 
 def main():
-    """Simple forest generation workflow with twig integration."""
-    print("🌲 GrowPy Forest Generator with Twigs")
-    print("=" * 40)
+    """Enhanced forest generation workflow with automatic Z-up transformation and intelligent twig placement."""
+    print("🌲 Enhanced GrowPy Forest Generator")
+    print("   🌐 Automatic Y-up → Z-up coordinate transformation")
+    print("   🌿 Species-specific twig placement with random variations")
+    print("   🎯 Grove-compatible face-based twig positioning")
+    print("=" * 60)
 
     # Fixed paths - no command line arguments needed
     csv_path = (
@@ -368,7 +388,7 @@ def main():
     # Load forest data
     print(f"\n📊 Loading forest data")
     forest_data = pd.read_csv(csv_path)
-    forest_data["height"] /= 2
+    forest_data["height"] /= 3
     print(f"✓ Loaded {len(forest_data)} trees")
     print(f"  Species: {forest_data['species'].nunique()}")
 
@@ -437,8 +457,11 @@ def main():
 
     print(f"✓ Exported {total_exported} USD models")
 
-    # Add twigs to each exported model
-    print(f"\n🌿 Adding species-specific twigs")
+    # Add twigs to each exported model with enhanced Z-up transformation
+    print(f"\n🌿 Adding species-specific twigs with coordinate transformation")
+    print(f"   📐 Converting trees from Y-up to Z-up coordinate system")
+    print(f"   🎲 Applying random twig variation assignment")
+    print(f"   🌱 Using Grove's face-based twig placement system")
 
     # Group files by species for organized processing
     species_files = {}
@@ -476,10 +499,21 @@ def main():
     print(f"  • Output directory: {output_dir}")
 
     if successful_twigs > 0:
-        print(f"\n💡 Models with twigs have been converted to Z-up coordinate system")
+        print(f"\n🌐 Enhanced Twig Features:")
         print(
-            f"   and should display correctly in Blender and other Z-up applications."
+            f"  • Tree meshes automatically transformed from Y-up to Z-up coordinate system"
         )
+        print(f"  • Twigs positioned using Grove's face-based primvar system")
+        print(f"  • Random twig variation assignment for natural appearance")
+        print(f"  • Species-specific twig asset lookup and assignment")
+        print(f"  • Compatible with Blender and other Z-up applications")
+
+    print(f"\n💡 Usage Notes:")
+    print(
+        f"  • Files ending with '_with_twigs.usda' contain the enhanced trees with twigs"
+    )
+    print(f"  • Trees are now in Z-up coordinate system for better compatibility")
+    print(f"  • Open these files directly in Blender for best results")
 
     return 0
 

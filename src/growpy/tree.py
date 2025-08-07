@@ -41,18 +41,18 @@ def save_tree_to_usd(model, output_path: Path) -> None:
     """Save tree model to USD file."""
     if gc is None:
         raise ImportError("Grove core not available")
-    model.set_up_axis("Z")  # Ensure Z-up for USD compatibility
-    model.set_winding_order("CLOCKWISE")
-    model.triangulate()
+    # model.set_up_axis("Z")  # Ensure Z-up for USD compatibility
+    # model.set_winding_order("CLOCKWISE")
+    # model.triangulate()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     usd_string = gc.io.model_to_usda_string(model)
 
     with open(output_path, "w") as f:
         f.write(usd_string)
-        
-    obj_string = gc.io.model_to_obj_string(model)
-    with open(output_path.with_suffix(".obj"), "w") as f:
-        f.write(obj_string)
+
+    # obj_string = gc.io.model_to_obj_string(model)
+    # with open(output_path.with_suffix(".obj"), "w") as f:
+    #     f.write(obj_string)
 
 
 def build_lod_models(grove, lod_configs: Dict[str, Dict[str, Any]]) -> Dict[str, List]:
