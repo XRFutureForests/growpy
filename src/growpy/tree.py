@@ -49,6 +49,10 @@ def save_tree_to_usd(model, output_path: Path) -> None:
 
     with open(output_path, "w") as f:
         f.write(usd_string)
+        
+    obj_string = gc.io.model_to_obj_string(model)
+    with open(output_path.with_suffix(".obj"), "w") as f:
+        f.write(obj_string)
 
 
 def build_lod_models(grove, lod_configs: Dict[str, Dict[str, Any]]) -> Dict[str, List]:
