@@ -170,6 +170,85 @@ class GrowPyConfig:
             config.write(f)
 
     @classmethod
+    def _find_species_match(cls, input_name: str, df: pd.DataFrame) -> Optional[str]:
+        """
+        Find the best matching species name from the lookup table using case-insensitive
+        and fuzzy matching.
+
+        Args:
+            input_name: The input species name to match
+            df: The species lookup DataFrame
+
+        Returns:
+            The matched Common Name from the lookup table, or None if no match found
+        """
+        if df.empty:
+            return None
+
+        # Convert input to lowercase for comparison
+        input_lower = input_name.lower().strip()
+
+        # Get all common names from the lookup table
+        common_names = df["Common Name"].str.lower().str.strip()
+
+        # 1. Try exact match (case-insensitive)
+        exact_match = df[common_names == input_lower]
+        if not exact_match.empty:
+            return exact_match.iloc[0]["Common Name"]
+
+        # 2. Try partial match - input contains any word from species name
+        for idx, species_name in enumerate(df["Common Name"]):
+            species_words = species_name.lower().split()
+            input_words = input_lower.split()
+
+            # Check if any word from input matches any word from species name
+            if any(input_word in species_words for input_word in input_words):
+                return species_name
+
+        # 3. Try reverse partial match - species name contains any word from input
+        for idx, species_name in enumerate(df["Common Name"]):
+            species_lower = species_name.lower()
+            input_words = input_lower.split()
+
+            # Check if any word from input is contained in the species name
+            if any(word in species_lower for word in input_words):
+                return species_name
+
+        # 4. Special mappings for common abbreviations/variations
+        species_mappings = {
+            "beech": "European beech",
+            "oak": "European oak",
+            "fir": "Silver fir",
+            "silver fir": "Silver fir",
+            "douglas fir": "Silver fir",  # Fallback - adjust if you have Douglas fir in lookup
+            "spruce": "Norway spruce",
+            "pine": "Scots pine",
+            "scots pine": "Scots pine",
+            "birch": "Silver birch",
+            "maple": "Field maple",
+            "ash": "Common ash",
+            "willow": "Willow",
+            "poplar": "Grey poplar",
+            "linden": "Small-leaved linden",
+            "cherry": "Wild cherry",
+            "chestnut": "Sweet chestnut",
+            "hornbeam": "Hornbeam",
+            "hazel": "Hazel",
+            "elm": "Elm",
+            "yew": "Yew",
+        }
+
+        # Check if input matches any of our mappings
+        if input_lower in species_mappings:
+            mapped_name = species_mappings[input_lower]
+            # Verify the mapped name actually exists in our lookup table
+            mapped_match = df[df["Common Name"].str.lower() == mapped_name.lower()]
+            if not mapped_match.empty:
+                return mapped_match.iloc[0]["Common Name"]
+
+        return None
+
+    @classmethod
     def load_species_lookup(cls, csv_path: Optional[Path] = None) -> pd.DataFrame:
         """
         Load the species lookup table from CSV file using pandas.
@@ -229,7 +308,15 @@ class GrowPyConfig:
             Path to the growth model directory or None if species not found or no growth model available.
         """
         df = cls.load_species_lookup()
-        growth_model = df.loc[df["Common Name"] == common_name, "Growth Model"].values[
+
+        # Use fuzzy matching to find the species
+        matched_name = cls._find_species_match(common_name, df)
+        if matched_name is None:
+            raise ValueError(
+                f"Species '{common_name}' not found in lookup table. Available species: {list(df['Common Name'])}"
+            )
+
+        growth_model = df.loc[df["Common Name"] == matched_name, "Growth Model"].values[
             0
         ]
 
@@ -251,7 +338,13 @@ class GrowPyConfig:
             Path to the bark texture file or None if species not found.
         """
         df = cls.load_species_lookup()
-        bark_texture = df.loc[df["Common Name"] == common_name, "Bark Texture"].values[
+
+        # Use fuzzy matching to find the species
+        matched_name = cls._find_species_match(common_name, df)
+        if matched_name is None:
+            return None
+
+        bark_texture = df.loc[df["Common Name"] == matched_name, "Bark Texture"].values[
             0
         ]
         assets_dir = cls.get_assets_directory()
@@ -274,8 +367,13 @@ class GrowPyConfig:
         if df.empty:
             return None
 
+        # Use fuzzy matching to find the species
+        matched_name = cls._find_species_match(common_name, df)
+        if matched_name is None:
+            return None
+
         # Find the row for this species
-        species_row = df[df["Common Name"] == common_name]
+        species_row = df[df["Common Name"] == matched_name]
 
         if species_row.empty:
             return None
@@ -345,8 +443,121 @@ class GrowPyConfig:
             return None
 
         assets_dir = cls.get_assets_directory()
-        twig_dir = assets_dir / "twigs" / f"{twig_name}Twig"
+        twig_dir = assets_dir / "twigs" / twig_name
         return twig_dir
+
+    @classmethod
+    def get_available_twig_usd_files(cls, common_name: str) -> List[Path]:
+        """
+        Get all available USD twig files for a given species.
+
+        Args:
+            common_name: The common name of the species.
+
+        Returns:
+            List of Path objects to USD twig files, or empty list if none found.
+        """
+        twig_dir = cls.get_twig_directory_path(common_name)
+        if not twig_dir or not twig_dir.exists():
+            return []
+
+        # Find all .usda files in the twig directory
+        usd_files = list(twig_dir.glob("*.usda"))
+        return sorted(usd_files)
+
+    @classmethod
+    def get_twig_files_by_type(cls, common_name: str) -> Dict[str, List[Path]]:
+        """
+        Get twig USD files organized by type (apical, lateral, end, side, etc.).
+
+        Args:
+            common_name: The common name of the species.
+
+        Returns:
+            Dictionary with twig types as keys and lists of Path objects as values.
+        """
+        usd_files = cls.get_available_twig_usd_files(common_name)
+        if not usd_files:
+            return {}
+
+        twig_types = {
+            "apical": [],
+            "lateral": [],
+            "end": [],
+            "side": [],
+            "main": [],
+            "variation": [],
+            "other": [],
+        }
+
+        for file_path in usd_files:
+            filename = file_path.stem.lower()
+
+            # Categorize by filename patterns
+            if "apical" in filename:
+                twig_types["apical"].append(file_path)
+            elif "lateral" in filename:
+                twig_types["lateral"].append(file_path)
+            elif "end" in filename:
+                twig_types["end"].append(file_path)
+            elif "side" in filename:
+                twig_types["side"].append(file_path)
+            elif "variation" in filename or "var" in filename:
+                twig_types["variation"].append(file_path)
+            elif (
+                filename.count("_") == 1
+            ):  # Simple pattern like "TwigName_TwigName.usda"
+                twig_types["main"].append(file_path)
+            else:
+                twig_types["other"].append(file_path)
+
+        # Remove empty categories
+        return {k: v for k, v in twig_types.items() if v}
+
+    @classmethod
+    def get_best_twig_file_for_type(
+        cls, common_name: str, twig_type: str = "auto"
+    ) -> Optional[Path]:
+        """
+        Get the best twig USD file for a specific twig type.
+
+        Args:
+            common_name: The common name of the species.
+            twig_type: Type of twig ('apical', 'lateral', 'end', 'side', 'main', 'auto')
+                      'auto' will select the best available type automatically.
+
+        Returns:
+            Path to the best matching twig file, or None if none found.
+        """
+        twig_files_by_type = cls.get_twig_files_by_type(common_name)
+        if not twig_files_by_type:
+            return None
+
+        if twig_type == "auto":
+            # Priority order for automatic selection
+            priority_order = [
+                "main",
+                "apical",
+                "lateral",
+                "end",
+                "side",
+                "variation",
+                "other",
+            ]
+            for preferred_type in priority_order:
+                if (
+                    preferred_type in twig_files_by_type
+                    and twig_files_by_type[preferred_type]
+                ):
+                    return twig_files_by_type[preferred_type][
+                        0
+                    ]  # Return first file of this type
+            return None
+        else:
+            # Return first file of the requested type
+            if twig_type in twig_files_by_type and twig_files_by_type[twig_type]:
+                return twig_files_by_type[twig_type][0]
+            return None
 
     @classmethod
     def get_twig_usd_directory_path(cls, common_name: str) -> Optional[Path]:
@@ -458,8 +669,13 @@ class GrowPyConfig:
         if df.empty:
             return None
 
+        # Use fuzzy matching to find the species
+        matched_name = cls._find_species_match(common_name, df)
+        if matched_name is None:
+            return None
+
         # Find the row for this species
-        species_row = df[df["Common Name"] == common_name]
+        species_row = df[df["Common Name"] == matched_name]
 
         if species_row.empty:
             return None
@@ -494,7 +710,15 @@ class GrowPyConfig:
             Path to the preset file or None if species not found.
         """
         df = cls.load_species_lookup()
-        preset_name = df.loc[df["Common Name"] == common_name, "Preset"].values[0]
+
+        # Use fuzzy matching to find the species
+        matched_name = cls._find_species_match(common_name, df)
+        if matched_name is None:
+            raise ValueError(
+                f"Species '{common_name}' not found in lookup table. Available species: {list(df['Common Name'])}"
+            )
+
+        preset_name = df.loc[df["Common Name"] == matched_name, "Preset"].values[0]
         assets_dir = cls.get_assets_directory()
         preset_path = assets_dir / "presets" / preset_name
         return preset_path
@@ -545,24 +769,24 @@ class GrowPyConfig:
                 "build_blend": False,  # Disable blending (major reduction)
                 "build_end_cap": False,  # No end caps
             },
-            "LOD4_VeryLow": {
-                "resolution": 6,  # Minimal base resolution
-                "resolution_reduce": 0.95,  # Very aggressive reduction
-                "texture_repeat": 1,  # Single UV repeat
-                "build_cutoff_age": 3,  # Skip last 3 years of growth
-                "build_cutoff_thickness": 0.03,  # Skip more thin branches
-                "build_blend": False,  # No blending
-                "build_end_cap": False,  # No end caps
-            },
-            "LOD5_Minimal": {
-                "resolution": 4,  # Absolute minimum (triangular base)
-                "resolution_reduce": 0.98,  # Maximum reduction rate
-                "texture_repeat": 1,
-                "build_cutoff_age": 4,  # Skip last 4 years of growth
-                "build_cutoff_thickness": 0.05,  # Aggressive thickness cutoff
-                "build_blend": False,  # No blending
-                "build_end_cap": False,  # No end caps
-            },
+            # "LOD4_VeryLow": {
+            #     "resolution": 6,  # Minimal base resolution
+            #     "resolution_reduce": 0.95,  # Very aggressive reduction
+            #     "texture_repeat": 1,  # Single UV repeat
+            #     "build_cutoff_age": 3,  # Skip last 3 years of growth
+            #     "build_cutoff_thickness": 0.03,  # Skip more thin branches
+            #     "build_blend": False,  # No blending
+            #     "build_end_cap": False,  # No end caps
+            # },
+            # "LOD5_Minimal": {
+            #     "resolution": 4,  # Absolute minimum (triangular base)
+            #     "resolution_reduce": 0.98,  # Maximum reduction rate
+            #     "texture_repeat": 1,
+            #     "build_cutoff_age": 4,  # Skip last 4 years of growth
+            #     "build_cutoff_thickness": 0.05,  # Aggressive thickness cutoff
+            #     "build_blend": False,  # No blending
+            #     "build_end_cap": False,  # No end caps
+            # },
         }
 
     def get_lod_configs(self) -> Dict[str, Dict[str, Any]]:
