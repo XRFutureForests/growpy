@@ -15,13 +15,14 @@ import math
 import random
 import sys
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
 # Try to import USD components, fallback gracefully if not available
 try:
     from pxr import Gf, Usd, UsdGeom, Vt
+
     USD_AVAILABLE = True
 except ImportError:
     USD_AVAILABLE = False
@@ -36,75 +37,86 @@ except ImportError:
         print("⚠️  Could not import GrowPyConfig, twig assignment will be limited")
 
 
-def select_random_twig_from_group(twig_files: List[Path], instance_index: int = 0, seed: Optional[int] = None) -> Path:
+def select_random_twig_from_group(
+    twig_files: List[Path], instance_index: int = 0, seed: Optional[int] = None
+) -> Path:
     """
     Randomly select a twig file from a group of variations.
-    
+
     Args:
         twig_files: List of twig file paths in the same group (e.g., all lateral twigs)
         instance_index: Index of the twig instance (for consistent seeding)
         seed: Optional random seed for reproducible results
-        
+
     Returns:
         Path: Randomly selected twig file
     """
     if not twig_files:
         raise ValueError("Cannot select from empty twig file list")
-    
+
     if len(twig_files) == 1:
         return twig_files[0]
-    
+
     # Create a deterministic but varied selection based on instance index
     if seed is not None:
         local_random = random.Random(seed + instance_index)
     else:
         local_random = random.Random(hash(str(twig_files[0])) + instance_index)
-    
+
     return local_random.choice(twig_files)
 
 
-def assign_twig_variations_randomly(twig_instances_by_type: Dict[str, List[Dict]], twig_files_by_type: Dict[str, List[Path]], 
-                                   species_name: str, random_seed: Optional[int] = None) -> Dict[str, Dict]:
+def assign_twig_variations_randomly(
+    twig_instances_by_type: Dict[str, List[Dict]],
+    twig_files_by_type: Dict[str, List[Path]],
+    species_name: str,
+    random_seed: Optional[int] = None,
+) -> Dict[str, Dict]:
     """
     Assign specific twig variation files to twig instances randomly within their type groups.
-    
+
     Args:
         twig_instances_by_type: Dictionary of twig types -> list of instance data
         twig_files_by_type: Dictionary of twig types -> list of available twig files
         species_name: Name of the species (for logging)
         random_seed: Optional seed for reproducible randomization
-        
+
     Returns:
         Dict of twig_file_path -> {"file": Path, "instances": List, "type": str}
     """
     if random_seed is not None:
         random.seed(random_seed)
-    
+
     twig_assignments = {}
     variation_stats = {}
-    
+
     for twig_type, instances in twig_instances_by_type.items():
         if not instances:
             continue
-        
+
         # Get available files for this type
         available_files = twig_files_by_type.get(twig_type, [])
         if not available_files:
             # Try fallback types
             fallback_types = {
                 "end": ["apical", "main"],
-                "side": ["lateral", "main"], 
+                "side": ["lateral", "main"],
                 "upward": ["apical", "main"],
                 "apical": ["end", "main"],
-                "lateral": ["side", "main"]
+                "lateral": ["side", "main"],
             }
-            
+
             for fallback_type in fallback_types.get(twig_type, ["main"]):
-                if fallback_type in twig_files_by_type and twig_files_by_type[fallback_type]:
+                if (
+                    fallback_type in twig_files_by_type
+                    and twig_files_by_type[fallback_type]
+                ):
                     available_files = twig_files_by_type[fallback_type]
-                    print(f"      Using {fallback_type} twigs as fallback for {twig_type}")
+                    print(
+                        f"      Using {fallback_type} twigs as fallback for {twig_type}"
+                    )
                     break
-        
+
         if not available_files:
             # Last resort: use any available twig
             all_files = []
@@ -113,56 +125,180 @@ def assign_twig_variations_randomly(twig_instances_by_type: Dict[str, List[Dict]
             if all_files:
                 available_files = [all_files[0]]  # Just use the first available
                 print(f"      Using fallback twig for {twig_type}")
-        
+
         if not available_files:
             print(f"      ⚠️  No twig files available for {twig_type}")
             continue
-        
+
         # Track variation usage for statistics
         variation_stats[twig_type] = {}
-        
+
         # Randomly assign twig variations to instances
         for i, instance in enumerate(instances):
-            selected_twig = select_random_twig_from_group(available_files, i, random_seed)
-            
+            selected_twig = select_random_twig_from_group(
+                available_files, i, random_seed
+            )
+
             # Track variation usage
             variation_name = selected_twig.stem
             if variation_name not in variation_stats[twig_type]:
                 variation_stats[twig_type][variation_name] = 0
             variation_stats[twig_type][variation_name] += 1
-            
+
             # Group instances by their assigned twig file
             file_key = str(selected_twig)
             if file_key not in twig_assignments:
                 # Extract reference name from twig file
                 file_stem = selected_twig.stem
-                if '_' in file_stem:
-                    twig_reference_name = file_stem.split('_', 1)[1]
+                if "_" in file_stem:
+                    twig_reference_name = file_stem.split("_", 1)[1]
                 else:
                     twig_reference_name = file_stem
-                
+
                 twig_assignments[file_key] = {
                     "file": selected_twig,
                     "reference_name": twig_reference_name,
                     "instances": [],
-                    "type": twig_type
+                    "type": twig_type,
                 }
-            
+
             twig_assignments[file_key]["instances"].append(instance)
-    
+
     # Log variation statistics
     if variation_stats:
         print(f"      🎲 Twig variation distribution for {species_name}:")
         for twig_type, variations in variation_stats.items():
             if variations:
                 total_instances = sum(variations.values())
-                print(f"         {twig_type.capitalize()} ({total_instances} instances):")
+                print(
+                    f"         {twig_type.capitalize()} ({total_instances} instances):"
+                )
                 for variation, count in sorted(variations.items()):
                     percentage = (count / total_instances) * 100
-                    short_name = variation.split('_')[-1] if '_' in variation else variation
+                    short_name = (
+                        variation.split("_")[-1] if "_" in variation else variation
+                    )
                     print(f"           • {short_name}: {count} ({percentage:.1f}%)")
-    
+
     return twig_assignments
+
+
+def quaternion_from_x_to_normal(normal):
+    """Calculate quaternion to rotate from +X axis (1,0,0) to surface normal direction.
+
+    This version maintains consistent "up" orientation to prevent unwanted roll.
+    - Twig default direction: +X axis (1, 0, 0)
+    - Twig default up: +Z axis (0, 0, 1)
+    - Target direction: surface normal (outward from tree surface)
+    - Target up: constrained to prevent roll
+
+    Args:
+        normal: tuple (x, y, z) representing the surface normal (outward from surface)
+
+    Returns:
+        tuple: (w, x, y, z) quaternion to rotate from +X to normal direction with constrained up
+    """
+    import math
+
+    import numpy as np
+
+    # Default twig orientation
+    default_forward = np.array([1.0, 0.0, 0.0])  # +X axis (forward direction)
+    default_up = np.array([0.0, 0.0, 1.0])  # +Z axis (up direction)
+
+    # Target forward direction (surface normal)
+    target_forward = np.array(normal)
+    target_forward = target_forward / np.linalg.norm(target_forward)
+
+    # Calculate target up direction to prevent roll
+    # We want to keep the up direction as close to +Z as possible
+    world_up = np.array([0.0, 0.0, 1.0])
+
+    # If target forward is too close to world up, use a different reference
+    if abs(np.dot(target_forward, world_up)) > 0.99:
+        # Use +Y as reference when target is nearly vertical
+        world_up = np.array([0.0, 1.0, 0.0])
+
+    # Calculate right vector (perpendicular to both target forward and world up)
+    target_right = np.cross(world_up, target_forward)
+    target_right = target_right / np.linalg.norm(target_right)
+
+    # Calculate actual up vector (perpendicular to forward and right)
+    target_up = np.cross(target_forward, target_right)
+    target_up = target_up / np.linalg.norm(target_up)
+
+    # Create rotation matrix from default to target orientation
+    # Default: forward=+X, up=+Z, right=+Y
+    # Target:  forward=target_forward, up=target_up, right=target_right
+
+    # Default orientation matrix (columns are basis vectors)
+    default_matrix = np.column_stack(
+        [default_forward, np.array([0.0, 1.0, 0.0]), default_up]
+    )
+
+    # Target orientation matrix
+    target_matrix = np.column_stack([target_forward, target_right, target_up])
+
+    # Rotation matrix from default to target
+    rotation_matrix = target_matrix @ default_matrix.T
+
+    # Convert rotation matrix to quaternion
+    # Using Shepperd's method for numerical stability
+    trace = rotation_matrix[0, 0] + rotation_matrix[1, 1] + rotation_matrix[2, 2]
+
+    if trace > 0:
+        s = math.sqrt(trace + 1.0) * 2  # s = 4 * qw
+        qw = 0.25 * s
+        qx = (rotation_matrix[2, 1] - rotation_matrix[1, 2]) / s
+        qy = (rotation_matrix[0, 2] - rotation_matrix[2, 0]) / s
+        qz = (rotation_matrix[1, 0] - rotation_matrix[0, 1]) / s
+    elif (
+        rotation_matrix[0, 0] > rotation_matrix[1, 1]
+        and rotation_matrix[0, 0] > rotation_matrix[2, 2]
+    ):
+        s = (
+            math.sqrt(
+                1.0
+                + rotation_matrix[0, 0]
+                - rotation_matrix[1, 1]
+                - rotation_matrix[2, 2]
+            )
+            * 2
+        )  # s = 4 * qx
+        qw = (rotation_matrix[2, 1] - rotation_matrix[1, 2]) / s
+        qx = 0.25 * s
+        qy = (rotation_matrix[0, 1] + rotation_matrix[1, 0]) / s
+        qz = (rotation_matrix[0, 2] + rotation_matrix[2, 0]) / s
+    elif rotation_matrix[1, 1] > rotation_matrix[2, 2]:
+        s = (
+            math.sqrt(
+                1.0
+                + rotation_matrix[1, 1]
+                - rotation_matrix[0, 0]
+                - rotation_matrix[2, 2]
+            )
+            * 2
+        )  # s = 4 * qy
+        qw = (rotation_matrix[0, 2] - rotation_matrix[2, 0]) / s
+        qx = (rotation_matrix[0, 1] + rotation_matrix[1, 0]) / s
+        qy = 0.25 * s
+        qz = (rotation_matrix[1, 2] + rotation_matrix[2, 1]) / s
+    else:
+        s = (
+            math.sqrt(
+                1.0
+                + rotation_matrix[2, 2]
+                - rotation_matrix[0, 0]
+                - rotation_matrix[1, 1]
+            )
+            * 2
+        )  # s = 4 * qz
+        qw = (rotation_matrix[1, 0] - rotation_matrix[0, 1]) / s
+        qx = (rotation_matrix[0, 2] + rotation_matrix[2, 0]) / s
+        qy = (rotation_matrix[1, 2] + rotation_matrix[2, 1]) / s
+        qz = 0.25 * s
+
+    return (qw, qx, qy, qz)
 
 
 def calculate_face_center(points, face):
@@ -228,7 +364,7 @@ def create_y_to_z_transform_matrix():
     """
     if not USD_AVAILABLE:
         raise ImportError("USD Python bindings required for matrix operations")
-    
+
     # Rotation matrix for -90 degrees around X-axis
     # [1,  0,  0, 0]
     # [0,  0,  1, 0]
@@ -254,7 +390,7 @@ def transform_mesh_to_z_up(stage, tree_prim_path="/Tree/Tree"):
     """
     if not USD_AVAILABLE:
         raise ImportError("USD Python bindings required for mesh transformation")
-    
+
     # Get the tree mesh prim
     tree_prim = stage.GetPrimAtPath(tree_prim_path)
     if not tree_prim:
@@ -319,7 +455,7 @@ def create_transformed_tree_stage(
     """
     if not USD_AVAILABLE:
         raise ImportError("USD Python bindings required for stage operations")
-    
+
     # Create new stage
     new_stage = Usd.Stage.CreateNew(output_path)
 
@@ -454,24 +590,59 @@ def calculate_face_normal(points, face):
     return normal
 
 
-def calculate_grove_twig_orientation(normal):
-    """Calculate twig orientation following Grove's conventions.
+def calculate_grove_twig_orientation(
+    normal, reverse_normal=False, debug=False, method="grove_plus_x"
+):
+    """Calculate twig orientation following Grove's conventions with USD adjustments.
 
     Grove twig system conventions:
-    - Twigs are modeled pointing along the positive X-axis (1, 0, 0)
+    - Twigs are modeled pointing along the positive X-axis (1, 0, 0) in Blender
     - Origin (pivot) is at the attachment point (0, 0, 0)
     - Need to rotate from X-axis to the surface normal direction
 
     Args:
         normal: tuple (x, y, z) representing the surface normal (outward from surface)
+        reverse_normal: bool, if True reverse the normal direction (for inward-pointing normals)
+        debug: bool, if True print debug information
+        method: str, which orientation method to use:
+            - "grove_plus_x": Original Grove +X approach
+            - "grove_minus_z": Use -Z as default (for Z-up systems)
+            - "grove_3dsmax": Apply 3ds Max rotation convention (X:-90, Y:-90, Z:0)
 
     Returns:
-        tuple: (w, x, y, z) quaternion to orient twig from X-axis to normal direction
+        tuple: (w, x, y, z) quaternion to orient twig from default direction to normal direction
     """
+    import math
+
+    import numpy as np
+
     nx, ny, nz = normal
 
-    # Grove twig default direction is along positive X-axis
-    default_direction = np.array([1.0, 0.0, 0.0])
+    # Option to reverse normal if it's pointing inward
+    if reverse_normal:
+        nx, ny, nz = -nx, -ny, -nz
+
+    if debug:
+        print(f"Normal: ({nx:.3f}, {ny:.3f}, {nz:.3f}), Method: {method}")
+
+    # Choose default direction based on method
+    if method == "grove_plus_x":
+        # Original Grove convention: twigs point along +X axis
+        default_direction = np.array([1.0, 0.0, 0.0])
+    elif method == "grove_minus_z":
+        # Alternative for Z-up coordinate systems
+        default_direction = np.array([0.0, 0.0, -1.0])
+    elif method == "grove_3dsmax":
+        # Apply Grove's 3ds Max rotation: X:-90, Y:-90, Z:0
+        # This transforms +X axis: (1,0,0) -> ?
+        # First apply X:-90 (rotation around X by -90 degrees): (1,0,0) stays (1,0,0)
+        # Then apply Y:-90 (rotation around Y by -90 degrees): (1,0,0) -> (0,0,-1)
+        # Then apply Z:0 (no rotation around Z): (0,0,-1) stays (0,0,-1)
+        default_direction = np.array([0.0, 0.0, -1.0])
+    else:
+        # Default to Grove standard
+        default_direction = np.array([1.0, 0.0, 0.0])
+
     target_direction = np.array([nx, ny, nz])
 
     # Normalize both vectors
@@ -630,8 +801,9 @@ def quaternion_from_direction(normal):
     Returns:
         tuple: (w, x, y, z) quaternion components in USD format
     """
-    # Use Grove's twig orientation calculation
-    return calculate_grove_twig_orientation(normal)
+    # Use the opposite normal direction (flip the normal)
+    opposite_normal = (-normal[0], -normal[1], -normal[2])
+    return quaternion_from_x_to_normal(opposite_normal)
 
 
 def write_usd_pointinstancer(
@@ -807,22 +979,24 @@ def test_rotations():
     print("   when the vector is already pointing along the X-axis.")
 
 
-def add_twigs_to_tree(usd_file_path: Path, species_name: str, config: Optional['GrowPyConfig'] = None) -> bool:
+def add_twigs_to_tree(
+    usd_file_path: Path, species_name: str, config: Optional["GrowPyConfig"] = None
+) -> bool:
     """
     High-level function to add twigs to a USD tree file.
-    
+
     This function handles the complete twig assignment workflow:
     1. Use config system to find appropriate twig assets for the species
     2. Try USD-based approach if available, otherwise use text-based approach
     3. Handle Grove's twig primvars (TwigEnd, TwigSide, TwigUpward) if present
     4. Transform coordinate systems as needed
     5. Create output file with twig instances
-    
+
     Args:
         usd_file_path: Path to the USD tree file
         species_name: Name of the tree species for twig lookup
         config: GrowPyConfig instance (will create one if not provided)
-        
+
     Returns:
         bool: True if twigs were successfully added, False otherwise
     """
@@ -830,45 +1004,54 @@ def add_twigs_to_tree(usd_file_path: Path, species_name: str, config: Optional['
         # Initialize config if not provided
         if config is None:
             config = GrowPyConfig()
-        
+
         # Get twig information for this species
         twig_name = config.get_twig_for_species(species_name)
         if not twig_name:
             print(f"  ⚠️  No twig available for species: {species_name}")
             return False
-            
+
         # Get available twig files organized by type
         twig_files_by_type = config.get_twig_files_by_type(species_name)
         if not twig_files_by_type:
             print(f"  ⚠️  No twig USD files found for {species_name}")
             return False
-            
+
         print(f"  🌿 Adding {twig_name} twigs to {usd_file_path.name}")
         print(f"      Available twig types: {list(twig_files_by_type.keys())}")
-        
+
         # Try USD-based approach first if available
         if USD_AVAILABLE:
             try:
-                return add_twigs_to_tree_usd_based(usd_file_path, species_name, config, twig_files_by_type)
+                return add_twigs_to_tree_usd_based(
+                    usd_file_path, species_name, config, twig_files_by_type
+                )
             except Exception as e:
                 print(f"  ⚠️  USD-based approach failed: {e}")
                 print("  🔄 Falling back to text-based approach...")
-        
+
         # Use text-based approach as fallback
-        return add_twigs_to_tree_text_based(usd_file_path, species_name, config, twig_files_by_type)
-        
+        return add_twigs_to_tree_text_based(
+            usd_file_path, species_name, config, twig_files_by_type
+        )
+
     except Exception as e:
         print(f"  ❌ Error adding twigs to {usd_file_path}: {e}")
         return False
 
 
-def add_twigs_to_tree_usd_based(usd_file_path: Path, species_name: str, config: 'GrowPyConfig', twig_files_by_type: Dict[str, List[Path]]) -> bool:
+def add_twigs_to_tree_usd_based(
+    usd_file_path: Path,
+    species_name: str,
+    config: "GrowPyConfig",
+    twig_files_by_type: Dict[str, List[Path]],
+) -> bool:
     """
     Add twigs using USD Python API - reads Grove's twig primvars and places twigs accordingly.
     """
     if not USD_AVAILABLE:
         raise ImportError("USD Python bindings not available")
-    
+
     # Open the original USD stage
     original_stage = Usd.Stage.Open(str(usd_file_path))
     if not original_stage:
@@ -879,8 +1062,10 @@ def add_twigs_to_tree_usd_based(usd_file_path: Path, species_name: str, config: 
     print(f"      Original upAxis: {original_up_axis}")
 
     # Transform the mesh data to Z-up coordinate system if needed
-    points_z_up, face_vertex_counts, face_vertex_indices, twig_attributes = transform_mesh_to_z_up(original_stage, "/Tree/Tree")
-    
+    points_z_up, face_vertex_counts, face_vertex_indices, twig_attributes = (
+        transform_mesh_to_z_up(original_stage, "/Tree/Tree")
+    )
+
     # Convert to face lists for processing
     face_vertex_indices_np = np.array(face_vertex_indices)
     face_vertex_counts_np = np.array(face_vertex_counts)
@@ -899,7 +1084,9 @@ def add_twigs_to_tree_usd_based(usd_file_path: Path, species_name: str, config: 
     if not any([twig_end, twig_side, twig_upward]):
         print("      ⚠️  No Grove twig primvars found. Adding sample twigs...")
         twig_end = [1 if i % 15 == 0 else 0 for i in range(len(faces_list))]
-        twig_side = [1 if i % 8 == 0 and i % 15 != 0 else 0 for i in range(len(faces_list))]
+        twig_side = [
+            1 if i % 8 == 0 and i % 15 != 0 else 0 for i in range(len(faces_list))
+        ]
         twig_upward = []
 
     # Collect twig data by type
@@ -929,20 +1116,23 @@ def add_twigs_to_tree_usd_based(usd_file_path: Path, species_name: str, config: 
                 face_center[2] + normal[2] * base_offset,
             )
 
-            # Calculate orientation quaternion using Grove's conventions
-            quaternion = calculate_grove_twig_orientation(normal)
-            
-            twig_instances_by_type[twig_type].append({
-                "position": position,
-                "orientation": quaternion,
-                "face_index": i
-            })
+            # Calculate rotation from +X axis (1,0,0) to OPPOSITE surface normal direction
+            # Flip the normal since it might be pointing inward instead of outward
+            opposite_normal = (-normal[0], -normal[1], -normal[2])
+            quaternion = quaternion_from_x_to_normal(opposite_normal)
+
+            twig_instances_by_type[twig_type].append(
+                {"position": position, "orientation": quaternion, "face_index": i}
+            )
 
     # Now assign specific twig files to each type based on available files
     # Use random variation assignment for multiple files per type
     twig_assignments = assign_twig_variations_randomly(
-        twig_instances_by_type, twig_files_by_type, species_name, 
-        random_seed=hash(str(usd_file_path)) % 10000  # Deterministic but file-specific seed
+        twig_instances_by_type,
+        twig_files_by_type,
+        species_name,
+        random_seed=hash(str(usd_file_path))
+        % 10000,  # Deterministic but file-specific seed
     )
 
     if not twig_assignments:
@@ -950,36 +1140,59 @@ def add_twigs_to_tree_usd_based(usd_file_path: Path, species_name: str, config: 
         return False
 
     # Create transformed tree file
-    output_file = str(usd_file_path).replace('.usda', '_with_twigs.usda')
-    transformed_stage = create_transformed_tree_stage(original_stage, output_file, "/Tree", points_z_up)
-    
+    output_file = str(usd_file_path).replace(".usda", "_with_twigs.usda")
+    transformed_stage = create_transformed_tree_stage(
+        original_stage, output_file, "/Tree", points_z_up
+    )
+
     # Add twig PointInstancers to the transformed stage
     total_instances = 0
-    for file_key, assignment in twig_assignments.items():
+    success_count = 0
+
+    for i, (file_key, assignment) in enumerate(twig_assignments.items()):
         twig_file = assignment["file"]
         instances = assignment["instances"]
         twig_type = assignment["type"]
         twig_reference_name = assignment["reference_name"]
-        
-        # Calculate relative path
+
+        # Calculate relative path and ensure it's a proper path string
         try:
             twig_relative_path = twig_file.relative_to(usd_file_path.parent)
         except ValueError:
             twig_relative_path = twig_file
-        
+
         # Create PointInstancer in the USD stage
         positions = [inst["position"] for inst in instances]
         orientations = [inst["orientation"] for inst in instances]
-        
-        write_usd_pointinstancer_to_stage(
-            transformed_stage, positions, orientations, twig_relative_path, 
-            twig_reference_name, f"{twig_type}_{file_key.split('/')[-1].split('.')[0]}"
-        )
-        
-        total_instances += len(instances)
+
+        # Create a unique, valid USD name for the twig type
+        safe_twig_name = f"{twig_type}_{i:02d}"
+
+        try:
+            success = write_usd_pointinstancer_to_stage(
+                transformed_stage,
+                positions,
+                orientations,
+                str(twig_relative_path),
+                twig_reference_name,
+                safe_twig_name,
+            )
+
+            if success:
+                success_count += 1
+                total_instances += len(instances)
+            else:
+                print(f"      ⚠️  Failed to add {twig_type} twig instances")
+
+        except Exception as e:
+            print(f"      ⚠️  Error adding {twig_type} twig instances: {e}")
+
+    if success_count == 0:
+        print(f"      ❌ No twig instances could be added via USD API")
+        return False
 
     transformed_stage.Save()
-    
+
     # Get twig name for logging
     twig_name = config.get_twig_for_species(species_name) or "generic"
     print(f"      ✅ Added {total_instances} {twig_name} twigs using USD API")
@@ -987,25 +1200,72 @@ def add_twigs_to_tree_usd_based(usd_file_path: Path, species_name: str, config: 
     return True
 
 
-def add_twigs_to_tree_text_based(usd_file_path: Path, species_name: str, config: 'GrowPyConfig', twig_files_by_type: Dict[str, List[Path]]) -> bool:
+def add_twigs_to_tree_text_based(
+    usd_file_path: Path,
+    species_name: str,
+    config: "GrowPyConfig",
+    twig_files_by_type: Dict[str, List[Path]],
+) -> bool:
     """
     Add twigs using text-based USD manipulation with random variation assignment.
+    Also handles tree mesh coordinate transformation to Z-up.
     """
     print(f"      Using text-based twig placement for {species_name}")
-    
+
     # Read the USD file content
-    with open(usd_file_path, 'r', encoding='utf-8') as f:
+    with open(usd_file_path, "r", encoding="utf-8") as f:
         content = f.read()
-    
+
+    # Check if we need to transform to Z-up
+    needs_transformation = 'upAxis = "Y"' in content
+
+    if needs_transformation:
+        print(f"      Converting tree from Y-up to Z-up coordinate system...")
+
+        # Change the upAxis metadata
+        content = content.replace('upAxis = "Y"', 'upAxis = "Z"')
+
+        # If USD is available, try to transform the mesh coordinates
+        if USD_AVAILABLE:
+            try:
+                # Open the original stage and get transformed mesh data
+                original_stage = Usd.Stage.Open(str(usd_file_path))
+                if original_stage:
+                    points_z_up, _, _, _ = transform_mesh_to_z_up(
+                        original_stage, "/Tree/Tree"
+                    )
+
+                    # Convert transformed points back to USD text format
+                    points_text = ", ".join(
+                        [f"({p[0]:.4f}, {p[1]:.4f}, {p[2]:.4f})" for p in points_z_up]
+                    )
+
+                    # Find and replace the points array in the text
+                    import re
+
+                    points_pattern = r"point3f\[\] points = \[([^\]]+)\]"
+                    content = re.sub(
+                        points_pattern, f"point3f[] points = [{points_text}]", content
+                    )
+                    print(
+                        f"      ✅ Transformed {len(points_z_up)} mesh vertices to Z-up"
+                    )
+                else:
+                    print(
+                        f"      ⚠️  Could not open USD stage for coordinate transformation"
+                    )
+            except Exception as e:
+                print(f"      ⚠️  Could not transform mesh coordinates: {e}")
+
     # Generate intelligent twig instances based on available types
     twig_instances_by_type = {
         "end": [],
         "side": [],
         "apical": [],
         "lateral": [],
-        "main": []
+        "main": [],
     }
-    
+
     # Define strategic twig placement patterns with more variety
     placement_strategies = {
         "end": [
@@ -1039,25 +1299,36 @@ def add_twigs_to_tree_text_based(usd_file_path: Path, species_name: str, config:
             {"position": (0.3, 0.4, 2.8), "desc": "main_1"},
             {"position": (-0.4, 0.5, 2.6), "desc": "main_2"},
             {"position": (0.6, -0.3, 2.9), "desc": "main_3"},
-        ]
+        ],
     }
-    
+
+    # If we transformed to Z-up, adjust twig positions accordingly (they're already in Z-up space)
+    if needs_transformation:
+        # The placement strategies are already in Z-up coordinates (z is vertical)
+        # So no transformation needed for the twig positions
+        pass
+
     # Create instance data for each placement strategy
     for strategy_type, placements in placement_strategies.items():
         # Only create instances if we have twig files for this type
         if strategy_type in twig_files_by_type and twig_files_by_type[strategy_type]:
             for i, placement in enumerate(placements):
-                twig_instances_by_type[strategy_type].append({
-                    "position": placement["position"],
-                    "orientation": (1.0, 0.0, 0.0, 0.0),  # Identity quaternion
-                    "description": placement["desc"],
-                    "instance_index": i
-                })
-    
+                twig_instances_by_type[strategy_type].append(
+                    {
+                        "position": placement["position"],
+                        "orientation": (1.0, 0.0, 0.0, 0.0),  # Identity quaternion
+                        "description": placement["desc"],
+                        "instance_index": i,
+                    }
+                )
+
     # Use random variation assignment
     twig_assignments = assign_twig_variations_randomly(
-        twig_instances_by_type, twig_files_by_type, species_name,
-        random_seed=hash(str(usd_file_path)) % 10000  # Deterministic but file-specific seed
+        twig_instances_by_type,
+        twig_files_by_type,
+        species_name,
+        random_seed=hash(str(usd_file_path))
+        % 10000,  # Deterministic but file-specific seed
     )
 
     if not twig_assignments:
@@ -1066,7 +1337,7 @@ def add_twigs_to_tree_text_based(usd_file_path: Path, species_name: str, config:
 
     # Generate USD content for each twig variation
     twig_content = []
-    twig_content.append('')
+    twig_content.append("")
 
     for i, (file_key, assignment) in enumerate(twig_assignments.items()):
         twig_file = assignment["file"]
@@ -1085,138 +1356,262 @@ def add_twigs_to_tree_text_based(usd_file_path: Path, species_name: str, config:
 
         # Add prototype reference
         twig_content.append(f'    def "{prototype_name}" (')
-        twig_content.append(f'        references = @{twig_relative_path}@</root/{twig_reference_name}>')
-        twig_content.append('    )')
-        twig_content.append('    {')
-        twig_content.append('    }')
-        twig_content.append('')
+        twig_content.append(
+            f"        references = @{twig_relative_path}@</root/{twig_reference_name}>"
+        )
+        twig_content.append("    )")
+        twig_content.append("    {")
+        twig_content.append("    }")
+        twig_content.append("")
 
         # Add PointInstancer
         twig_content.append(f'    def PointInstancer "{instancer_name}"')
-        twig_content.append('    {')
-        twig_content.append(f'        rel prototypes = </Tree/{prototype_name}>')
-        twig_content.append(f'        int[] protoIndices = [{", ".join(["0"] * len(instances))}]')
-        twig_content.append(f'        int64[] ids = [{", ".join([str(j) for j in range(len(instances))])}]')
-        twig_content.append('')
+        twig_content.append("    {")
+        twig_content.append(f"        rel prototypes = </Tree/{prototype_name}>")
+        twig_content.append(
+            f'        int[] protoIndices = [{", ".join(["0"] * len(instances))}]'
+        )
+        twig_content.append(
+            f'        int64[] ids = [{", ".join([str(j) for j in range(len(instances))])}]'
+        )
+        twig_content.append("")
 
         # Add positions
-        positions_str = ", ".join([f"({inst['position'][0]:.4f}, {inst['position'][1]:.4f}, {inst['position'][2]:.4f})" for inst in instances])
-        twig_content.append(f'        point3f[] positions = [{positions_str}]')
-        twig_content.append('')
+        positions_str = ", ".join(
+            [
+                f"({inst['position'][0]:.4f}, {inst['position'][1]:.4f}, {inst['position'][2]:.4f})"
+                for inst in instances
+            ]
+        )
+        twig_content.append(f"        point3f[] positions = [{positions_str}]")
+        twig_content.append("")
 
         # Add orientations
-        orientations_str = ", ".join([f"({inst['orientation'][0]:.6f}, {inst['orientation'][1]:.6f}, {inst['orientation'][2]:.6f}, {inst['orientation'][3]:.6f})" for inst in instances])
-        twig_content.append(f'        quath[] orientations = [{orientations_str}]')
-        twig_content.append('')
+        orientations_str = ", ".join(
+            [
+                f"({inst['orientation'][0]:.6f}, {inst['orientation'][1]:.6f}, {inst['orientation'][2]:.6f}, {inst['orientation'][3]:.6f})"
+                for inst in instances
+            ]
+        )
+        twig_content.append(f"        quath[] orientations = [{orientations_str}]")
+        twig_content.append("")
 
         # Add uniform scale
-        twig_content.append('        float3[] scales = [(1, 1, 1)]')
-        twig_content.append('    }')
-        twig_content.append('')
+        twig_content.append("        float3[] scales = [(1, 1, 1)]")
+        twig_content.append("    }")
+        twig_content.append("")
 
     # Join twig content
-    twig_usd_text = '\n'.join(twig_content)
+    twig_usd_text = "\n".join(twig_content)
 
     # Find insertion point (before the last closing brace)
-    last_brace = content.rfind('}')
+    last_brace = content.rfind("}")
     if last_brace == -1:
         print("      ❌ Could not find closing brace in USD file")
         return False
 
     # Insert the twig content
-    new_content = content[:last_brace] + '\n' + twig_usd_text + '\n' + content[last_brace:]
+    new_content = (
+        content[:last_brace] + "\n" + twig_usd_text + "\n" + content[last_brace:]
+    )
 
     # Create output filename with twigs
-    output_file = str(usd_file_path).replace('.usda', '_with_twigs.usda')
+    output_file = str(usd_file_path).replace(".usda", "_with_twigs.usda")
 
     # Write the modified content
-    with open(output_file, 'w', encoding='utf-8') as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         f.write(new_content)
 
-    total_instances = sum(len(assignment["instances"]) for assignment in twig_assignments.values())
-    
+    total_instances = sum(
+        len(assignment["instances"]) for assignment in twig_assignments.values()
+    )
+
     # Get twig name for logging
     twig_name = config.get_twig_for_species(species_name) or "generic"
-    print(f"      ✅ Added {total_instances} {twig_name} twigs ({len(twig_assignments)} variations)")
+    coordinate_info = " (Z-up transformed)" if needs_transformation else ""
+    print(
+        f"      ✅ Added {total_instances} {twig_name} twigs ({len(twig_assignments)} variations){coordinate_info}"
+    )
     print(f"         Output: {Path(output_file).name}")
     return True
 
 
-def write_usd_pointinstancer_to_stage(stage, positions, orientations, twig_file_path, twig_xform_name, twig_type):
+def write_usd_pointinstancer_to_stage(
+    stage, positions, orientations, twig_file_path, twig_xform_name, twig_type
+):
     """Write USD PointInstancer directly to a USD stage."""
     if not USD_AVAILABLE:
         raise ImportError("USD Python bindings required for stage operations")
-        
+
     tree_prim = stage.GetPrimAtPath("/Tree")
     if not tree_prim:
         raise ValueError("Tree prim not found in stage")
 
-    # Create prototype
-    prototype_name = f"TwigPrototype_{twig_type}"
-    prototype_path = f"/Tree/{prototype_name}"
-    prototype_prim = UsdGeom.Xform.Define(stage, prototype_path)
-    prototype_prim.GetPrim().GetReferences().AddReference(str(twig_file_path), f"/root/{twig_xform_name}")
+    # Create prototype with safe USD name
+    safe_prototype_name = f"TwigPrototype_{twig_type}".replace("-", "_").replace(
+        " ", "_"
+    )
+    prototype_path = f"/Tree/{safe_prototype_name}"
 
-    # Create PointInstancer
-    instancer_name = f"TwigInstances_{twig_type}"
-    instancer_path = f"/Tree/{instancer_name}"
-    point_instancer = UsdGeom.PointInstancer.Define(stage, instancer_path)
+    try:
+        prototype_prim = UsdGeom.Xform.Define(stage, prototype_path)
+        prototype_prim.GetPrim().GetReferences().AddReference(
+            str(twig_file_path), f"/root/{twig_xform_name}"
+        )
+    except Exception as e:
+        print(
+            f"      ⚠️  Warning: Could not create prototype {safe_prototype_name}: {e}"
+        )
+        return False
 
-    # Set up the instancer
-    point_instancer.CreatePrototypesRel().SetTargets([prototype_path])
-    point_instancer.CreateProtoIndicesAttr().Set([0] * len(positions))
-    point_instancer.CreateIdsAttr().Set(list(range(len(positions))))
+    # Create PointInstancer with safe USD name
+    safe_instancer_name = f"TwigInstances_{twig_type}".replace("-", "_").replace(
+        " ", "_"
+    )
+    instancer_path = f"/Tree/{safe_instancer_name}"
 
-    # Convert positions and orientations to USD format
-    usd_positions = [Gf.Vec3f(p[0], p[1], p[2]) for p in positions]
-    usd_orientations = [Gf.Quath(q[0], q[1], q[2], q[3]) for q in orientations]
+    try:
+        point_instancer = UsdGeom.PointInstancer.Define(stage, instancer_path)
 
-    point_instancer.CreatePositionsAttr().Set(usd_positions)
-    point_instancer.CreateOrientationsAttr().Set(usd_orientations)
-    point_instancer.CreateScalesAttr().Set([Gf.Vec3f(1, 1, 1)])
+        # Set up the instancer
+        point_instancer.CreatePrototypesRel().SetTargets([prototype_path])
+        point_instancer.CreateProtoIndicesAttr().Set([0] * len(positions))
+        point_instancer.CreateIdsAttr().Set(list(range(len(positions))))
+
+        # Convert positions and orientations to USD format
+        usd_positions = [Gf.Vec3f(p[0], p[1], p[2]) for p in positions]
+        usd_orientations = [Gf.Quath(q[0], q[1], q[2], q[3]) for q in orientations]
+
+        point_instancer.CreatePositionsAttr().Set(usd_positions)
+        point_instancer.CreateOrientationsAttr().Set(usd_orientations)
+        point_instancer.CreateScalesAttr().Set([Gf.Vec3f(1, 1, 1)])
+
+        return True
+
+    except Exception as e:
+        print(
+            f"      ⚠️  Warning: Could not create point instancer {safe_instancer_name}: {e}"
+        )
+        return False
+
+
+def test_twig_orientations():
+    """Test different approaches to twig orientation to debug the rotation issues."""
+    print("Testing twig orientations...")
+
+    # Test normals that should point outward from a tree (roughly horizontal)
+    test_normals = [
+        (1.0, 0.0, 0.0),  # East
+        (0.0, 1.0, 0.0),  # North
+        (-1.0, 0.0, 0.0),  # West
+        (0.0, -1.0, 0.0),  # South
+        (0.7, 0.7, 0.0),  # Northeast
+        (0.0, 0.0, 1.0),  # Up (should be rare for tree sides)
+        (0.0, 0.0, -1.0),  # Down (should be rare for tree sides)
+    ]
+
+    methods = ["grove_plus_x", "grove_minus_z", "grove_3dsmax"]
+
+    for method in methods:
+        print(f"\n=== Testing method: {method} ===")
+        for i, normal in enumerate(test_normals):
+            quat = calculate_grove_twig_orientation(
+                normal, reverse_normal=False, debug=True, method=method
+            )
+            print(f"  Normal {i+1} {normal} -> Quaternion: {quat}")
+
+    print(f"\n=== Testing with reversed normals (grove_plus_x) ===")
+    for i, normal in enumerate(test_normals):
+        quat = calculate_grove_twig_orientation(
+            normal, reverse_normal=True, debug=True, method="grove_plus_x"
+        )
+        print(f"  Normal {i+1} {normal} -> Quaternion: {quat}")
+
+
+def add_test_orientation_options():
+    """Add test functions to help debug twig orientations."""
+    # This function exists to ensure the test function is available
+    pass
 
 
 def main():
     """Main function to process Grove USD and add twigs with coordinate transformation."""
-    # Configuration - using the SilverFir file that we know exists
-    usda_file = (
+    # Configuration - process all trees in the output directory
+    output_dir = (
         Path(__file__).parent.parent.parent
         / "data"
         / "output"
         / "mini_tree_inventory_32632"
-        / "SilverFir_LOD3_Low_004.usda"
     )
-    
-    print(f"🌲 Processing tree file: {usda_file}")
+
+    print(f"🌲 Processing all trees in directory: {output_dir}")
     print(f"📐 Using enhanced twig assignment system...")
 
-    if not usda_file.exists():
-        print(f"❌ Error: Tree file not found: {usda_file}")
+    if not output_dir.exists():
+        print(f"❌ Error: Output directory not found: {output_dir}")
         return
 
-    # Test the new high-level twig assignment function
+    # Find all USD tree files (excluding already processed ones with twigs)
+    tree_files = []
+    for usda_file in output_dir.glob("*.usda"):
+        if not usda_file.name.endswith("_with_twigs.usda"):
+            tree_files.append(usda_file)
+
+    if not tree_files:
+        print(f"⚠️  No tree files found in {output_dir}")
+        return
+
+    print(f"🌳 Found {len(tree_files)} tree files to process:")
+    for tree_file in tree_files:
+        print(f"   • {tree_file.name}")
+
+    # Initialize config once for all trees
     try:
         config = GrowPyConfig()
-        success = add_twigs_to_tree(usda_file, "Silver fir", config)
-        
-        if success:
-            print(f"� Successfully added twigs to tree using enhanced system!")
-        else:
-            print(f"⚠️  Twig assignment completed with warnings")
-            
     except Exception as e:
-        print(f"❌ Error during twig assignment: {e}")
-        
-        # Fallback to old approach if available
-        if USD_AVAILABLE:
-            print("� Trying fallback USD approach...")
-            try:
-                # Old main function logic as fallback
-                main_fallback(usda_file)
-            except Exception as fallback_error:
-                print(f"❌ Fallback also failed: {fallback_error}")
-        else:
-            print("💡 Consider installing USD Python bindings for enhanced functionality")
+        print(f"❌ Error initializing GrowPyConfig: {e}")
+        return
+
+    # Process each tree file
+    success_count = 0
+    total_files = len(tree_files)
+
+    for i, usda_file in enumerate(tree_files, 1):
+        print(f"\n🌲 Processing tree {i}/{total_files}: {usda_file.name}")
+
+        # Extract species name from filename (assume Silver fir for these files)
+        species_name = "Silver fir"
+        if "SilverFir" in usda_file.name:
+            species_name = "Silver fir"
+        # Add more species detection logic here if needed
+
+        try:
+            success = add_twigs_to_tree(usda_file, species_name, config)
+
+            if success:
+                success_count += 1
+                print(f"   ✅ Successfully added twigs to {usda_file.name}")
+            else:
+                print(
+                    f"   ⚠️  Twig assignment completed with warnings for {usda_file.name}"
+                )
+
+        except Exception as e:
+            print(f"   ❌ Error processing {usda_file.name}: {e}")
+
+    # Summary
+    print(f"\n🎉 Processing complete!")
+    print(f"   ✅ Successfully processed: {success_count}/{total_files} trees")
+    if success_count < total_files:
+        print(
+            f"   ⚠️  Failed or had warnings: {total_files - success_count}/{total_files} trees"
+        )
+
+    print(f"\n📁 Output files are located in: {output_dir}")
+    print(f"   Look for files ending with '_with_twigs.usda'")
+    print(
+        f"💡 You can now open these files in Blender or other USD-compatible applications"
+    )
 
 
 def main_fallback(usda_file):
@@ -1224,7 +1619,7 @@ def main_fallback(usda_file):
     if not USD_AVAILABLE:
         print("❌ USD Python bindings required for fallback approach")
         return
-        
+
     twig_file_path = "../../assets/twigs/PacificSilverFirTwig/PacificSilverFirTwig_PacificSilverFirTwig.usda"
     twig_xform_name = "PacificSilverFirTwig"
 
@@ -1340,8 +1735,10 @@ def main_fallback(usda_file):
             )
             all_positions.append(position)
 
-            # Calculate orientation quaternion using Grove's conventions
-            quaternion = calculate_grove_twig_orientation(normal)
+            # Calculate rotation from +X axis (1,0,0) to OPPOSITE surface normal direction
+            # Flip the normal since it might be pointing inward instead of outward
+            opposite_normal = (-normal[0], -normal[1], -normal[2])
+            quaternion = quaternion_from_x_to_normal(opposite_normal)
             all_orientations.append(quaternion)
 
     print(f"\n🌲 Twig placement summary:")
@@ -1401,6 +1798,8 @@ def main_fallback(usda_file):
 
 
 if __name__ == "__main__":
+    import sys
+
     print("🔧 Fixed quaternion rotation system")
     print("Individual rotations:")
     print("- Y rotation: yaw (horizontal turning)")
@@ -1408,8 +1807,16 @@ if __name__ == "__main__":
     print("- X rotation: roll (around pointing direction)")
     print()
 
-    # Test the fixed implementation
-    # test_rotations()
+    # Check for test argument
+    if len(sys.argv) > 1 and sys.argv[1] == "test":
+        # Test different orientation approaches
+        test_twig_orientations()
+    else:
+        # Test the fixed implementation
+        # test_rotations()
 
-    # Run the main twig processing with fixed rotations
-    main()
+        # Run the main twig processing with fixed rotations
+        main()
+        main()
+        main()
+        main()
