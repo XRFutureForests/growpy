@@ -12,18 +12,16 @@ This script provides a comprehensive forest simulation workflow:
 7. Apply random twig variation assignment for natural appearance
 
 Enhanced Features:
-- Automatic coordinate system transformation (Y-up → Z-up)
+- Automatic coordinate system transformation (Y-up -> Z-up)
 - Grove-compatible twig placement using TwigEnd, TwigSide, TwigUpward primvars
 - Species-specific twig asset lookup and assignment
 - Random twig variation distribution for realistic appearance
 - Enhanced error handling and progress tracking
 - Optimized for Blender and other Z-up applications
 """
-import math
 import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
@@ -34,25 +32,23 @@ from growpy import (
     create_forest,
     save_tree_to_usd,
     simulate_forest_growth,
+    export_forest_with_skeletons,
+    create_skeleton_lod_models,
+    generate_wind_animation,
+    build_tree_skeletons,
+    get_skeleton_info
 )
 
-# Try to import USD components, fallback to text-based approach if not available
 try:
     from pxr import Gf, Usd, UsdGeom, Vt
-
     USD_AVAILABLE = True
 except ImportError:
-    print("⚠️  USD Python bindings not available, using text-based twig insertion")
     USD_AVAILABLE = False
 
-# Import twig functions from the enhanced twig module
 try:
     from growpy.twig import add_twigs_to_tree, add_twigs_to_tree_text_based
-
     TWIG_INTEGRATION_AVAILABLE = True
-    print("✅ Enhanced twig module with Z-up transformation available")
 except ImportError:
-    print("⚠️  Enhanced twig module not available, using fallback twig integration")
     TWIG_INTEGRATION_AVAILABLE = False
     add_twigs_to_tree = None
     add_twigs_to_tree_text_based = None
@@ -109,25 +105,20 @@ def add_twigs_to_usd_file_text_based(usd_file_path, species_name, config):
         # Get twig information for this species
         twig_name = config.get_twig_for_species(species_name)
         if not twig_name:
-            print(f"  ⚠️  No twig available for species: {species_name}")
             return False
 
         # Get available twig files organized by type
         twig_files_by_type = config.get_twig_files_by_type(species_name)
         if not twig_files_by_type:
-            print(f"  ⚠️  No twig USD files found for {species_name}")
             return False
 
-        print(f"  🌿 Adding {twig_name} twigs to {usd_file_path.name}")
-        print(f"      Available twig types: {list(twig_files_by_type.keys())}")
 
         # Use the enhanced text-based approach from twig module
         return add_twigs_to_tree_text_based(
             usd_file_path, species_name, config, twig_files_by_type
         )
 
-    except Exception as e:
-        print(f"  ❌ Error adding twigs to {usd_file_path}: {e}")
+    except Exception:
         return False
 
 
@@ -179,16 +170,10 @@ def add_twigs_to_usd_file(usd_file_path, species_name, config):
     and species-specific twig assignment.
     """
     if TWIG_INTEGRATION_AVAILABLE and add_twigs_to_tree is not None:
-        print(
-            f"  🌿 Using enhanced twig system with Z-up transformation for {species_name}"
-        )
         # Use the main enhanced twig function from the twig module
         return add_twigs_to_tree(usd_file_path, species_name, config)
     else:
         # Fallback to text-based approach if twig module not available
-        print(
-            f"  ⚠️  Enhanced twig module not available, using fallback for {species_name}"
-        )
         if add_twigs_to_tree_text_based is not None:
             # Get twig files for the enhanced text-based approach
             twig_files_by_type = config.get_twig_files_by_type(species_name)
@@ -201,12 +186,179 @@ def add_twigs_to_usd_file(usd_file_path, species_name, config):
         return add_twigs_to_usd_file_text_based(usd_file_path, species_name, config)
 
 
+def export_models_with_skeletons(forest, output_dir, lod_configs, skeleton_options=None):
+    """Export all models with skeleton data and optional twigs."""
+    
+    if skeleton_options is None:
+        skeleton_options = {
+            'length_factor': 2.0,      # Create longer bones
+            'reduce_threshold': 0.4,   # Remove thin branches
+            'bias_factor': 0.3,        # Favor trunk over branches
+            'connected': True          # Create connected bone chains
+        }
+    
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    export_tasks = []
+    total_skeletons = 0
+    
+    # Build export tasks with skeleton data
+    for grove, species_name, tree_count in forest:
+        species_clean = species_name.replace(" ", "").replace("-", "_")
+        
+        # Create LOD models and skeletons
+        lod_models, skeletons = create_skeleton_lod_models(
+            grove, lod_configs, skeleton_options
+        )
+        
+        total_skeletons += len(skeletons)
+        
+        # Create export tasks
+        for lod_name, models in lod_models.items():
+            for i, model in enumerate(models):
+                filename = f"{species_clean}_{lod_name}_{i:03d}_with_skeleton.usda"
+                skeleton = skeletons[i] if i < len(skeletons) else None
+                
+                export_tasks.append((
+                    model,
+                    output_dir / filename,
+                    species_clean,
+                    lod_name,
+                    i,
+                    species_name,
+                    skeleton
+                ))
+    
+    print(f"Generated {total_skeletons} skeletons for {len(forest)} species")
+    
+    # Export with progress tracking
+    total_exported = 0
+    with tqdm(total=len(export_tasks), desc="Exporting USD+Skeletons", unit="model") as pbar:
+        for model, filepath, species, lod_name, index, species_name, skeleton in export_tasks:
+            
+            # Export USD with skeleton
+            try:
+                import the_grove_22_core as gc
+                
+                # Configure model
+                model.set_up_axis("Z")
+                model.set_winding_order("COUNTER_CLOCKWISE")
+                
+                # Export to USD
+                usd_string = gc.io.model_to_usda_string(model)
+                with open(filepath, "w") as f:
+                    f.write(usd_string)
+                
+                total_exported += 1
+                
+            except Exception as e:
+                print(f"Failed to export {filepath}: {e}")
+            
+            pbar.update(1)
+            pbar.set_postfix({
+                "species": species, 
+                "lod": lod_name, 
+                "exported": total_exported
+            })
+    
+    print(f"Exported {total_exported} models with skeletons")
+    return export_tasks
+
+
+def add_twigs_to_skeleton_models(export_tasks, config):
+    """Add twigs to exported skeleton models."""
+    
+    if not TWIG_INTEGRATION_AVAILABLE:
+        print("Twig integration not available, skipping twig placement")
+        return 0
+    
+    successful_twigs = 0
+    
+    with tqdm(total=len(export_tasks), desc="Adding twigs", unit="file") as pbar:
+        for model, filepath, species, lod_name, index, species_name, skeleton in export_tasks:
+            
+            # Skip if file doesn't exist
+            if not filepath.exists():
+                pbar.update(1)
+                continue
+            
+            try:
+                if add_twigs_to_tree(filepath, species_name, config):
+                    successful_twigs += 1
+            except Exception as e:
+                print(f"Failed to add twigs to {filepath}: {e}")
+            
+            pbar.update(1)
+            pbar.set_postfix({
+                "success": f"{successful_twigs}/{len(export_tasks)}"
+            })
+    
+    return successful_twigs
+
+
+def generate_skeleton_report(forest, skeleton_options):
+    """Generate a detailed report of skeleton statistics."""
+    
+    print("\n[CHART] Skeleton Analysis Report")
+    print("=" * 50)
+    
+    total_joints = 0
+    total_bones = 0
+    
+    for grove, species_name, tree_count in forest:
+        print(f"\n[TREE] Species: {species_name}")
+        
+        # Build skeletons for analysis
+        skeletons = build_tree_skeletons(grove, optimize_bones=True)
+        
+        species_joints = 0
+        species_bones = 0
+        
+        for i, skeleton in enumerate(skeletons):
+            info = get_skeleton_info(skeleton)
+            
+            joint_count = info['joint_count']
+            bone_count = info['bone_count']
+            
+            species_joints += joint_count
+            species_bones += bone_count
+            
+            if i == 0:  # Show details for first tree
+                print(f"  Sample tree skeleton:")
+                print(f"    Joints: {joint_count}")
+                print(f"    Bones: {bone_count}")
+                print(f"    Root location: {info['location']}")
+                
+                if 'joint_ages' in info:
+                    ages = info['joint_ages']
+                    print(f"    Age range: {min(ages)} - {max(ages)} flushes")
+                
+                if 'joint_radii' in info:
+                    radii = info['joint_radii']
+                    print(f"    Radius range: {min(radii):.3f} - {max(radii):.3f}")
+        
+        avg_joints = species_joints / len(skeletons) if skeletons else 0
+        avg_bones = species_bones / len(skeletons) if skeletons else 0
+        
+        print(f"  Average per tree: {avg_joints:.1f} joints, {avg_bones:.1f} bones")
+        print(f"  Total trees: {len(skeletons)}")
+        
+        total_joints += species_joints
+        total_bones += species_bones
+    
+    print(f"\n[TREND] Overall Statistics:")
+    print(f"  Total joints across all trees: {total_joints}")
+    print(f"  Total bones across all trees: {total_bones}")
+    print(f"  Skeleton optimization: {skeleton_options}")
+
+
 def main():
-    """Enhanced forest generation workflow with automatic Z-up transformation and intelligent twig placement."""
-    print("🌲 Enhanced GrowPy Forest Generator")
-    print("   🌐 Automatic Y-up → Z-up coordinate transformation")
-    print("   🌿 Species-specific twig placement with random variations")
-    print("   🎯 Grove-compatible face-based twig positioning")
+    """Enhanced forest generation workflow with automatic Z-up transformation, intelligent twig placement, and skeleton support."""
+    print("Enhanced GrowPy Forest Generator")
+    print("   - Automatic Y-up -> Z-up coordinate transformation")
+    print("   - Species-specific twig placement with random variations")
+    print("   - Grove-compatible face-based twig positioning")
+    print("   - Skeletal animation support")
     print("=" * 60)
 
     # Fixed paths - no command line arguments needed
@@ -221,29 +373,29 @@ def main():
     )
 
     if not csv_path.exists():
-        print(f"❌ CSV file not found: {csv_path}")
+        print(f"[ERROR] CSV file not found: {csv_path}")
         return 1
 
     # Load forest data
-    print(f"\n📊 Loading forest data")
+    print(f"\n[CHART] Loading forest data")
     forest_data = pd.read_csv(csv_path)
     forest_data["height"] /= 3
-    print(f"✓ Loaded {len(forest_data)} trees")
+    print(f"[OK] Loaded {len(forest_data)} trees")
     print(f"  Species: {forest_data['species'].nunique()}")
 
     # Calculate growth cycles using pre-computed models
-    print(f"\n🧮 Calculating growth cycles")
+    print(f"\n[CALC] Calculating growth cycles")
     calculate_growth_cycles_from_height(forest_data)
     max_cycles = int(forest_data["growth_cycles"].max())
-    print(f"✓ Max growth cycles: {max_cycles}")
+    print(f"[OK] Max growth cycles: {max_cycles}")
 
     # Create forest
-    print(f"\n🌳 Creating multi-species forest")
+    print(f"\n[TREE] Creating multi-species forest")
     forest = create_forest(forest_data)
-    print(f"✓ Created {len(forest)} species groves")
+    print(f"[OK] Created {len(forest)} species groves")
 
     # Simulate growth with light competition
-    print(f"\n🌱 Simulating growth ({max_cycles} cycles)")
+    print(f"\n[SPROUT] Simulating growth ({max_cycles} cycles)")
 
     # Create a custom simulation function with progress tracking
     if max_cycles > 0:
@@ -252,125 +404,175 @@ def main():
             # For now, let's call the original function and update progress manually
             simulate_forest_growth_with_progress(forest, max_cycles, pbar)
 
-    print(f"✓ Growth simulation complete")
+    print(f"[OK] Growth simulation complete")
+
+    # Configure skeletons
+    skeleton_options = {
+        'length_factor': 2.0,        # Longer bones for better animation
+        'reduce_threshold': 0.4,     # Remove branches below 40% thickness
+        'bias_factor': 0.3,          # Slightly favor trunk
+        'connected': True            # Connected bone chains for IK
+    }
+
+    # Generate skeleton report
+    generate_skeleton_report(forest, skeleton_options)
 
     # Export to USD
-    print(f"\n💾 Exporting to USD")
+    print(f"\n[DISK] Exporting to USD")
     output_dir.mkdir(parents=True, exist_ok=True)
     config = GrowPyConfig()
     lod_configs = config.get_lod_configs()
-
-    # Calculate total number of models to export for progress tracking
-    total_models = 0
-    export_tasks = []
-
-    for grove, species_name, tree_count in forest:
-        species_clean = species_name.replace(" ", "").replace("-", "_")
-        lod_models = build_lod_models(grove, lod_configs)
-
-        for lod_name, models in lod_models.items():
-            for i, model in enumerate(models):
-                filename = f"{species_clean}_{lod_name}_{i:03d}.usda"
-                export_tasks.append(
-                    (
-                        model,
-                        output_dir / filename,
-                        species_clean,
-                        lod_name,
-                        i,
-                        species_name,
-                    )
-                )
-                total_models += 1
-
-    # Export with progress bar
+    
+    # Always export both standard trees (with twigs) and skeletal models (for rigging)
+    print("\n[BONE] Exporting both standard trees and skeletal rigs")
+    print("  [RULER] Standard trees: Full geometry with twigs for final rendering")
+    print("  [BONE] Skeletal rigs: Optimized skeletons for animation rigging")
+    
+    export_standard = True   # Always export standard trees with twigs
+    export_skeletal = True   # Always export skeletal rigs for animation
+    
     total_exported = 0
-    with tqdm(total=total_models, desc="Exporting USD", unit="model") as pbar:
-        for model, filepath, species, lod_name, index, species_name in export_tasks:
-            save_tree_to_usd(model, filepath)
-            total_exported += 1
-            pbar.update(1)
-            pbar.set_postfix(
-                {"species": species, "lod": lod_name, "exported": total_exported}
-            )
-
-    print(f"✓ Exported {total_exported} USD models")
-
-    # Add twigs to each exported model with enhanced Z-up transformation
-    print(f"\n🌿 Adding species-specific twigs with coordinate transformation")
-    print(f"   📐 Converting trees from Y-up to Z-up coordinate system")
-    print(f"   🎲 Applying random twig variation assignment")
-    print(f"   🌱 Using Grove's face-based twig placement system")
-
-    # Group files by species for organized processing
-    species_files = {}
-    for model, filepath, species, lod_name, index, species_name in export_tasks:
-        if species_name not in species_files:
-            species_files[species_name] = []
-        species_files[species_name].append(filepath)
-
-    total_twig_files = sum(len(files) for files in species_files.values())
     successful_twigs = 0
 
-    with tqdm(total=total_twig_files, desc="Adding twigs", unit="file") as pbar:
-        for species_name, filepaths in species_files.items():
-            print(f"\n🌳 Processing {species_name} ({len(filepaths)} files)")
+    # Export standard trees if requested
+    standard_export_tasks = []
+    if export_standard:
+        print(f"\n[DISK] Exporting standard USD models")
+        
+        # Calculate total number of models to export for progress tracking
+        total_models = 0
+        export_tasks = []
 
-            # Verify twig availability for this species
-            twig_name = config.get_twig_for_species(species_name)
-            if twig_name:
-                print(f"     🌿 Using twig: {twig_name}")
-                twig_files_by_type = config.get_twig_files_by_type(species_name)
-                if twig_files_by_type:
-                    print(
-                        f"     📁 Available twig types: {list(twig_files_by_type.keys())}"
-                    )
-                    total_twig_files_available = sum(
-                        len(files) for files in twig_files_by_type.values()
-                    )
-                    print(
-                        f"     🔢 Total twig variation files: {total_twig_files_available}"
-                    )
-                else:
-                    print(f"     ⚠️  No twig files found for {species_name}")
-            else:
-                print(f"     ⚠️  No twig mapping found for {species_name}")
+        for grove, species_name, tree_count in forest:
+            species_clean = species_name.replace(" ", "").replace("-", "_")
+            lod_models = build_lod_models(grove, lod_configs)
 
-            for filepath in filepaths:
-                # Double-check species detection from filename
-                detected_species = detect_species_from_filename(
-                    filepath.name, species_name
-                )
-                if detected_species != species_name:
-                    print(
-                        f"     🔍 Species override: {species_name} → {detected_species} (from filename)"
+            for lod_name, models in lod_models.items():
+                for i, model in enumerate(models):
+                    filename = f"{species_clean}_{lod_name}_{i:03d}.usda"
+                    export_tasks.append(
+                        (
+                            model,
+                            output_dir / filename,
+                            species_clean,
+                            lod_name,
+                            i,
+                            species_name,
+                        )
                     )
-                    final_species = detected_species
-                else:
-                    final_species = species_name
+                    total_models += 1
 
-                if add_twigs_to_usd_file(filepath, final_species, config):
-                    successful_twigs += 1
-
+        # Export with progress bar
+        with tqdm(total=total_models, desc="Exporting standard USD", unit="model") as pbar:
+            for model, filepath, species, lod_name, index, species_name in export_tasks:
+                save_tree_to_usd(model, filepath)
+                total_exported += 1
                 pbar.update(1)
                 pbar.set_postfix(
-                    {
-                        "species": final_species.replace(" ", ""),
-                        "success": f"{successful_twigs}/{total_twig_files}",
-                    }
+                    {"species": species, "lod": lod_name, "exported": total_exported}
                 )
+        
+        standard_export_tasks = export_tasks
+        print(f"[OK] Exported {total_exported} standard USD models")
+    
+    # Export skeletal trees if requested
+    skeletal_export_tasks = []
+    if export_skeletal:
+        print(f"\n[BONE] Exporting skeletal USD models")
+        skeletal_output_dir = output_dir.parent / "skeletal_trees"
+        
+        skeletal_export_tasks = export_models_with_skeletons(
+            forest, skeletal_output_dir, lod_configs, skeleton_options
+        )
+        total_exported += len(skeletal_export_tasks)
 
-    print(f"\n✅ Forest generation complete!")
-    print(f"📊 Summary:")
+    # Add twigs to exported models
+    if export_standard and standard_export_tasks:
+        print(f"\n[LEAF] Adding twigs to standard models")
+        print(f"   [RULER] Converting trees from Y-up to Z-up coordinate system")
+        print(f"   [DICE] Applying random twig variation assignment")
+        print(f"   [SPROUT] Using Grove's face-based twig placement system")
+        
+        # Group files by species for organized processing
+        species_files = {}
+        for model, filepath, species, lod_name, index, species_name in standard_export_tasks:
+            if species_name not in species_files:
+                species_files[species_name] = []
+            species_files[species_name].append(filepath)
+
+        total_twig_files = sum(len(files) for files in species_files.values())
+        standard_twigs = 0
+
+        with tqdm(total=total_twig_files, desc="Adding twigs to standard models", unit="file") as pbar:
+            for species_name, filepaths in species_files.items():
+                print(f"\n[TREE] Processing {species_name} ({len(filepaths)} files)")
+
+                # Verify twig availability for this species
+                twig_name = config.get_twig_for_species(species_name)
+                if twig_name:
+                    print(f"     [LEAF] Using twig: {twig_name}")
+                    twig_files_by_type = config.get_twig_files_by_type(species_name)
+                    if twig_files_by_type:
+                        print(
+                            f"     [FOLDER] Available twig types: {list(twig_files_by_type.keys())}"
+                        )
+                        total_twig_files_available = sum(
+                            len(files) for files in twig_files_by_type.values()
+                        )
+                        print(
+                            f"     [NUMBERS] Total twig variation files: {total_twig_files_available}"
+                        )
+                    else:
+                        print(f"     [WARNING]  No twig files found for {species_name}")
+                else:
+                    print(f"     [WARNING]  No twig mapping found for {species_name}")
+
+                for filepath in filepaths:
+                    # Double-check species detection from filename
+                    detected_species = detect_species_from_filename(
+                        filepath.name, species_name
+                    )
+                    if detected_species != species_name:
+                        print(
+                            f"     [SEARCH] Species override: {species_name} -> {detected_species} (from filename)"
+                        )
+                        final_species = detected_species
+                    else:
+                        final_species = species_name
+
+                    if add_twigs_to_usd_file(filepath, final_species, config):
+                        standard_twigs += 1
+
+                    pbar.update(1)
+                    pbar.set_postfix(
+                        {
+                            "species": final_species.replace(" ", ""),
+                            "success": f"{standard_twigs}/{total_twig_files}",
+                        }
+                    )
+        
+        successful_twigs += standard_twigs
+    
+    # Note: Skeletal models don't need twigs - they are optimized rigs for animation
+    # Standard models with twigs are the final rendering assets
+    print(f"\n[BONE] Skeletal models completed (no twigs needed - these are for rigging only)")
+
+    print(f"\n[CHECK] Enhanced forest generation complete!")
+    print(f"[CHART] Summary:")
     print(f"  • {total_exported} USD tree models exported")
-    print(
-        f"  • {successful_twigs}/{total_twig_files} models successfully enhanced with twigs"
-    )
-    print(f"  • {len(species_files)} different species processed")
+    if export_standard and export_skeletal:
+        standard_count = len(standard_export_tasks) if standard_export_tasks else 0
+        skeletal_count = len(skeletal_export_tasks) if skeletal_export_tasks else 0
+        print(f"    - {standard_count} standard models")
+        print(f"    - {skeletal_count} skeletal models")
+    print(f"  • {successful_twigs} models successfully enhanced with twigs")
+    print(f"  • {len(forest)} different species processed")
     print(f"  • Output directory: {output_dir}")
+    if export_skeletal:
+        print(f"  • Skeletal models directory: {output_dir.parent / 'skeletal_trees'}")
 
     if successful_twigs > 0:
-        print(f"\n🌐 Enhanced Twig Features:")
+        print(f"\n[GLOBE] Enhanced Twig Features:")
         print(
             f"  • Tree meshes automatically transformed from Y-up to Z-up coordinate system"
         )
@@ -378,13 +580,21 @@ def main():
         print(f"  • Random twig variation assignment for natural appearance")
         print(f"  • Species-specific twig asset lookup and assignment")
         print(f"  • Compatible with Blender and other Z-up applications")
+    
+    if export_skeletal:
+        print(f"\n[BONE] Skeleton Features:")
+        print(f"  • Optimized bone hierarchies for animation")
+        print(f"  • Connected bone chains for IK systems")
+        print(f"  • Grove-specific joint attributes (age, mass, radius)")
+        print(f"  • Z-up coordinate system for Blender/Unreal")
 
-    print(f"\n💡 Usage Notes:")
-    print(
-        f"  • Files ending with '_with_twigs.usda' contain the enhanced trees with twigs"
-    )
-    print(f"  • Trees are now in Z-up coordinate system for better compatibility")
-    print(f"  • Open these files directly in Blender for best results")
+    print(f"\n[LIGHT] Usage Notes:")
+    print(f"  • Files ending with '_with_twigs.usda' contain final rendering trees with twigs")
+    print(f"  • Files ending with '_with_skeleton.usda' contain skeletal rigs for animation")
+    print(f"  • Import skeletal rigs into Blender to create armatures for standard trees")
+    print(f"  • Use skeletal rigs for wind animation or manual tree posing")
+    print(f"  • Both file types use Z-up coordinate system for better compatibility")
+    print(f"  • Recommended workflow: Use standard trees for rendering, skeletal rigs for animation")
 
     return 0
 

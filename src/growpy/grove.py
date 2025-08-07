@@ -7,7 +7,6 @@ from typing import Optional, Tuple
 try:
     import the_grove_22_core as gc
 except ImportError:
-    print("Warning: the_grove_22_core not available")
     gc = None
 
 from .config import get_config
