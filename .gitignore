@@ -1,6 +1,7 @@
 # Data files
 /data/output/
 /data/assets/
+/data/sandbox/
 
 # Conda environment
 /.conda
