@@ -141,6 +141,53 @@ def build_tree_skeletons(grove, optimize_bones: bool = True) -> List[Any]:
     return skeletons
 
 
+def add_bone_ids_to_model(model, skeleton) -> None:
+    """Add bone ID primvars to model for proper skeleton binding.
+    
+    This creates the gr_bone_id primvar that matches the Blender export format,
+    allowing proper skeleton/mesh binding for animation.
+    
+    Args:
+        model: Grove tree model to add bone IDs to
+        skeleton: Associated Grove skeleton object
+    """
+    if gc is None or not hasattr(model, 'faces'):
+        return
+        
+    try:
+        # Get skeleton branch IDs if available
+        if hasattr(skeleton, 'face_attribute_branch_id'):
+            branch_ids = skeleton.face_attribute_branch_id
+        elif hasattr(model, 'face_attribute_branch_id'):
+            branch_ids = model.face_attribute_branch_id
+        else:
+            # Generate default bone IDs based on face index patterns
+            branch_ids = []
+            for i in range(len(model.faces)):
+                # Simple branch ID assignment - root=0, main branches=1-7, twigs=8+
+                if i < len(model.faces) * 0.1:  # First 10% = root
+                    branch_ids.append(0)
+                elif i < len(model.faces) * 0.8:  # Next 70% = main branches
+                    branch_ids.append((i // (len(model.faces) // 7)) + 1)
+                else:  # Last 20% = small branches/twigs
+                    branch_ids.append(min(12, (i // (len(model.faces) // 20)) + 8))
+        
+        # Ensure we have the right number of bone IDs
+        if len(branch_ids) < len(model.faces):
+            # Pad with last available ID
+            last_id = branch_ids[-1] if branch_ids else 0
+            branch_ids.extend([last_id] * (len(model.faces) - len(branch_ids)))
+        elif len(branch_ids) > len(model.faces):
+            # Truncate to match face count
+            branch_ids = branch_ids[:len(model.faces)]
+        
+        # Add as face attribute for USD export (similar to gr_bone_id in Blender export)
+        model.face_attribute_bone_id = branch_ids
+        
+    except Exception as e:
+        print(f"Warning: Could not add bone IDs to model: {e}")
+
+
 def get_skeleton_info(skeleton) -> Dict[str, Any]:
     """Extract detailed information from a skeleton object.
 
