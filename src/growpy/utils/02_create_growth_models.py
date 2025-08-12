@@ -62,12 +62,12 @@ def process_single_species_parallel(args_tuple):
     It takes a tuple of arguments to work around multiprocessing limitations.
 
     Args:
-        args_tuple: Tuple of (species, assets_dir, height_model_flushes, num_seeds)
+        args_tuple: Tuple of (species, assets_dir, height_model_flushes, num_seeds, height_growth_threshold, max_cycles_without_growth, timeout_seconds)
 
     Returns:
         Tuple of (species, success, results_dict, error_message)
     """
-    species, assets_dir, height_model_flushes, num_seeds = args_tuple
+    species, assets_dir, height_model_flushes, num_seeds, height_growth_threshold, max_cycles_without_growth, timeout_seconds = args_tuple
 
     try:
         # Set up logging for this process
@@ -87,7 +87,10 @@ def process_single_species_parallel(args_tuple):
         from growpy import GrowPyConfig
 
         # Create a temporary analyzer instance for this species
-        analyzer = SpeciesGrowthAnalyzer(assets_dir, height_model_flushes, num_seeds)
+        analyzer = SpeciesGrowthAnalyzer(
+            assets_dir, height_model_flushes, num_seeds, 
+            height_growth_threshold, max_cycles_without_growth, timeout_seconds
+        )
 
         # Generate height and DBH curves
         height_curve, dbh_curve, metadata = analyzer.generate_height_curve_for_species(
@@ -116,7 +119,13 @@ class SpeciesGrowthAnalyzer:
     """Analyzes growth patterns for Grove species and creates prediction models."""
 
     def __init__(
-        self, assets_dir: Path, height_model_flushes: int = 75, num_seeds: int = 3
+        self, 
+        assets_dir: Path, 
+        height_model_flushes: int = 75, 
+        num_seeds: int = 3,
+        height_growth_threshold: float = 0.01,
+        max_cycles_without_growth: int = 10,
+        timeout_seconds: int = 60
     ):
         """
         Initialize the growth analyzer.
@@ -125,6 +134,9 @@ class SpeciesGrowthAnalyzer:
             assets_dir: Directory containing prepared GrowPy assets
             height_model_flushes: Number of growth cycles for height curve generation
             num_seeds: Number of different random seeds to average for robust curves
+            height_growth_threshold: Minimum height increase to consider as growth
+            max_cycles_without_growth: Number of cycles without growth before stopping
+            timeout_seconds: Maximum time in seconds for growth simulation per seed
         """
         self.assets_dir = Path(assets_dir)
         self.presets_dir = self.assets_dir / "presets"
@@ -140,6 +152,11 @@ class SpeciesGrowthAnalyzer:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.height_model_flushes = height_model_flushes
         self.num_seeds = num_seeds
+        
+        # Height monitoring configuration
+        self.height_growth_threshold = height_growth_threshold
+        self.max_cycles_without_growth = max_cycles_without_growth
+        self.timeout_seconds = timeout_seconds
 
         # Results storage
         self.height_curves = {}  # species -> list of heights per cycle
@@ -376,13 +393,23 @@ class SpeciesGrowthAnalyzer:
             max_height_achieved = 0.0
             max_dbh_achieved = 0.0
 
-            # Growth simulation
+            # Growth simulation with height monitoring and timeout
+            cycles_without_growth = 0
+            simulation_start_time = time.time()
+            
             for cycle in range(self.height_model_flushes):
                 grove.simulate(1)
+
+                # Check for timeout
+                elapsed_time = time.time() - simulation_start_time
+                if elapsed_time > self.timeout_seconds:
+                    logger.warning(f"Species {species}, seed {seed}: Simulation timeout after {elapsed_time:.1f} seconds at cycle {cycle + 1}. Exiting growth simulation.")
+                    break
 
                 # Get tree height by finding the highest point in the entire tree structure
                 current_height = 0.0
                 current_dbh = 0.0
+                previous_max_height = max_height_achieved
 
                 if grove.trees and len(grove.trees) > 0:
                     tree = grove.trees[0]
@@ -435,8 +462,26 @@ class SpeciesGrowthAnalyzer:
                     heights_this_seed.append(max_height_achieved)
                     dbh_this_seed.append(max_dbh_achieved)
 
+                # Monitor height growth and exit early if growth stops
+                height_increase = max_height_achieved - previous_max_height
+                
+                if height_increase < self.height_growth_threshold:
+                    cycles_without_growth += 1
+                    if cycle > 5:  # Only start monitoring after some initial cycles
+                        logger.debug(f"Species {species}, seed {seed}, cycle {cycle}: No significant height growth ({height_increase:.4f}), cycles without growth: {cycles_without_growth}")
+                else:
+                    cycles_without_growth = 0  # Reset counter when growth is detected
+                    logger.debug(f"Species {species}, seed {seed}, cycle {cycle}: Height increased by {height_increase:.4f}")
+
+                # Exit loop if no growth for several consecutive cycles
+                if cycles_without_growth >= self.max_cycles_without_growth and cycle > 10:
+                    logger.info(f"Species {species}, seed {seed}: Height growth stopped after {cycle + 1} cycles (max height: {max_height_achieved:.3f}). Exiting growth simulation early.")
+                    break
+
             all_height_curves.append(heights_this_seed)
             all_dbh_curves.append(dbh_this_seed)
+            actual_cycles = len(heights_this_seed)
+            final_elapsed_time = time.time() - simulation_start_time
             seed_metadata.append(
                 {
                     "seed": seed,
@@ -444,6 +489,11 @@ class SpeciesGrowthAnalyzer:
                     "max_height": max_height_achieved,
                     "final_dbh": dbh_this_seed[-1] if dbh_this_seed else 0.0,
                     "max_dbh": max_dbh_achieved,
+                    "actual_cycles": actual_cycles,
+                    "early_termination": actual_cycles < self.height_model_flushes,
+                    "cycles_without_growth": cycles_without_growth,
+                    "simulation_time": final_elapsed_time,
+                    "timeout_occurred": final_elapsed_time > self.timeout_seconds,
                 }
             )
 
@@ -458,7 +508,11 @@ class SpeciesGrowthAnalyzer:
         # Calculate maximum height and DBH at each cycle (best case across all seeds)
         max_heights = []
         max_dbhs = []
-        for cycle in range(self.height_model_flushes):
+        
+        # Find the maximum number of cycles across all seeds
+        max_cycles_achieved = max(len(curve) for curve in all_height_curves) if all_height_curves else 0
+        
+        for cycle in range(max_cycles_achieved):
             cycle_heights = [
                 curve[cycle] for curve in all_height_curves if cycle < len(curve)
             ]
@@ -476,9 +530,20 @@ class SpeciesGrowthAnalyzer:
             else:
                 max_dbhs.append(0.0)
 
+        # Count early terminations and timeouts
+        early_terminations = sum(1 for meta in seed_metadata if meta.get("early_termination", False))
+        timeouts = sum(1 for meta in seed_metadata if meta.get("timeout_occurred", False))
+        avg_actual_cycles = sum(meta.get("actual_cycles", 0) for meta in seed_metadata) / len(seed_metadata) if seed_metadata else 0
+        avg_simulation_time = sum(meta.get("simulation_time", 0) for meta in seed_metadata) / len(seed_metadata) if seed_metadata else 0
+
         metadata = {
             "species": species,
-            "cycles": self.height_model_flushes,
+            "planned_cycles": self.height_model_flushes,
+            "actual_max_cycles": max_cycles_achieved,
+            "avg_actual_cycles": avg_actual_cycles,
+            "avg_simulation_time": avg_simulation_time,
+            "early_terminations": early_terminations,
+            "timeouts": timeouts,
             "num_seeds": len(all_height_curves),
             "seeds_tested": [m["seed"] for m in seed_metadata],
             "final_height": max_heights[-1] if max_heights else 0.0,
@@ -486,17 +551,17 @@ class SpeciesGrowthAnalyzer:
             "final_dbh": max_dbhs[-1] if max_dbhs else 0.0,
             "max_dbh": max(max_dbhs) if max_dbhs else 0.0,
             "growth_rate": (
-                max(max_heights) / self.height_model_flushes if max_heights else 0.0
+                max(max_heights) / max_cycles_achieved if max_heights and max_cycles_achieved > 0 else 0.0
             ),
             "dbh_growth_rate": (
-                max(max_dbhs) / self.height_model_flushes if max_dbhs else 0.0
+                max(max_dbhs) / max_cycles_achieved if max_dbhs and max_cycles_achieved > 0 else 0.0
             ),
             "height_curve": max_heights,
             "dbh_curve": max_dbhs,
             "individual_height_curves": all_height_curves,  # Store individual seed curves
             "individual_dbh_curves": all_dbh_curves,  # Store individual seed curves
             "seed_results": seed_metadata,
-            "note": "Height and DBH curves use maximum values per cycle across multiple seeds to eliminate tree death effects",
+            "note": "Height and DBH curves use maximum values per cycle across multiple seeds. Growth simulation may terminate early when height stops increasing for multiple consecutive cycles or timeout (60s) is reached.",
         }
 
         return max_heights, max_dbhs, metadata
@@ -676,7 +741,11 @@ class SpeciesGrowthAnalyzer:
         )
 
         # Add analysis metadata as footer
-        footer_text = f"Analysis: {metadata['num_seeds']} seeds, {metadata['cycles']} cycles | Seeds tested: {', '.join(map(str, metadata['seeds_tested']))}"
+        footer_text = f"Analysis: {metadata['num_seeds']} seeds, {metadata['actual_max_cycles']} max cycles (avg: {metadata['avg_actual_cycles']:.1f}) | Avg time: {metadata['avg_simulation_time']:.1f}s | Seeds tested: {', '.join([str(s) for s in metadata['seeds_tested']])}"
+        if metadata['early_terminations'] > 0:
+            footer_text += f" | Early terminations: {metadata['early_terminations']}/{metadata['num_seeds']}"
+        if metadata['timeouts'] > 0:
+            footer_text += f" | Timeouts: {metadata['timeouts']}/{metadata['num_seeds']}"
         fig.text(0.5, 0.02, footer_text, ha="center", fontsize=9, style="italic")
 
         plt.tight_layout()
@@ -902,7 +971,8 @@ class SpeciesGrowthAnalyzer:
 
         # Prepare arguments for parallel processing
         process_args = [
-            (species, self.assets_dir, self.height_model_flushes, self.num_seeds)
+            (species, self.assets_dir, self.height_model_flushes, self.num_seeds, 
+             self.height_growth_threshold, self.max_cycles_without_growth, self.timeout_seconds)
             for species in species_list
         ]
 
@@ -973,7 +1043,8 @@ class SpeciesGrowthAnalyzer:
                     {
                         "species": species,
                         "height_curve": self.height_curves[species],
-                        "cycles": len(self.height_curves[species]),
+                        "actual_cycles": len(self.height_curves[species]),
+                        "metadata": self.analysis_metadata.get(species, {}),
                     },
                     f,
                     indent=2,
@@ -987,7 +1058,8 @@ class SpeciesGrowthAnalyzer:
                     {
                         "species": species,
                         "dbh_curve": self.dbh_curves[species],
-                        "cycles": len(self.dbh_curves[species]),
+                        "actual_cycles": len(self.dbh_curves[species]),
+                        "metadata": self.analysis_metadata.get(species, {}),
                     },
                     f,
                     indent=2,
@@ -1106,7 +1178,12 @@ class SpeciesGrowthAnalyzer:
                         "Final_DBH": metadata.get("final_dbh", 0.0),
                         "Max_DBH": metadata.get("max_dbh", 0.0),
                         "Growth_Rate": metadata.get("growth_rate", 0.0),
-                        "Cycles_Analyzed": metadata.get("cycles", 0),
+                        "Planned_Cycles": metadata.get("planned_cycles", 0),
+                        "Actual_Max_Cycles": metadata.get("actual_max_cycles", 0),
+                        "Avg_Actual_Cycles": metadata.get("avg_actual_cycles", 0.0),
+                        "Avg_Simulation_Time": metadata.get("avg_simulation_time", 0.0),
+                        "Early_Terminations": metadata.get("early_terminations", 0),
+                        "Timeouts": metadata.get("timeouts", 0),
                         "Seeds_Tested": len(metadata.get("seeds_tested", [])),
                     }
                 )
@@ -1125,12 +1202,15 @@ class SpeciesGrowthAnalyzer:
 def main():
     """Main function for command line usage."""
     parser = argparse.ArgumentParser(
-        description="Generate growth models for Grove species from prepared assets",
+        description="Generate growth models for Grove species from prepared assets. Features intelligent height monitoring to detect when tree growth plateaus and automatically stop simulation early to save time. Also includes timeout protection to prevent infinite loops.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    # Analyze all species with default assets directory (parallel processing)
+    # Analyze all species with default settings (parallel processing, height monitoring, 60s timeout)
     python src/growpy/utils/species_growth_analysis.py
+    
+    # Analyze all species with custom height monitoring and timeout parameters
+    python src/growpy/utils/species_growth_analysis.py --height-threshold 0.005 --max-cycles-without-growth 15 --timeout 120
     
     # Analyze all species with custom assets directory (parallel processing)
     python src/growpy/utils/species_growth_analysis.py --assets_dir data/assets
@@ -1141,8 +1221,15 @@ Examples:
     # Analyze all species with custom number of workers
     python src/growpy/utils/species_growth_analysis.py --workers 4
     
-    # Analyze specific species
-    python src/growpy/utils/species_growth_analysis.py --species "Fagaceae - European oak"
+    # Analyze specific species with detailed height monitoring
+    python src/growpy/utils/species_growth_analysis.py --species "Fagaceae - European oak" --verbose
+    
+Height Monitoring & Timeout Protection:
+    The script automatically monitors tree height growth and stops simulation early when:
+    - Height increase per cycle falls below --height-threshold (default: 0.01 units)
+    - No significant growth occurs for --max-cycles-without-growth consecutive cycles (default: 10)
+    - Simulation time exceeds --timeout seconds per seed (default: 60)
+    - This prevents wasting computation time on trees that have reached their growth plateau or are stuck
     
 Note: Run prepare_assets.py first to copy species presets from Grove installation.
       Parallel processing significantly speeds up analysis when processing multiple species.
@@ -1159,13 +1246,31 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         help="Directory containing prepared GrowPy assets (default: data/assets)",
     )
     parser.add_argument(
-        "--cycles", type=int, default=50, help="Number of growth cycles for analysis"
+        "--cycles", type=int, default=125, help="Number of growth cycles for analysis"
     )
     parser.add_argument(
         "--seeds",
         type=int,
         default=3,
         help="Number of random seeds to average for robust curves",
+    )
+    parser.add_argument(
+        "--height-threshold",
+        type=float,
+        default=0.05,
+        help="Minimum height increase to consider as growth (default: 0.05)",
+    )
+    parser.add_argument(
+        "--max-cycles-without-growth",
+        type=int,
+        default=3,
+        help="Number of cycles without growth before stopping (default: 3)",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=60,
+        help="Maximum time in seconds for growth simulation per seed (default: 60)",
     )
     parser.add_argument(
         "--species",
@@ -1206,6 +1311,11 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
     logger.info("Grove Species Growth Analysis")
     logger.info("=" * 40)
     logger.info(f"Assets directory: {args.assets_dir}")
+    logger.info(f"Growth cycles: {args.cycles}")
+    logger.info(f"Random seeds: {args.seeds}")
+    logger.info(f"Height threshold: {args.height_threshold}")
+    logger.info(f"Max cycles without growth: {args.max_cycles_without_growth}")
+    logger.info(f"Timeout: {args.timeout} seconds")
     logger.info(f"Parallel processing: {'Enabled' if use_parallel else 'Disabled'}")
     if use_parallel and max_workers:
         logger.info(f"Max workers: {max_workers}")
@@ -1228,7 +1338,14 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         sys.exit(1)
 
     # Create analyzer
-    analyzer = SpeciesGrowthAnalyzer(args.assets_dir, args.cycles, args.seeds)
+    analyzer = SpeciesGrowthAnalyzer(
+        args.assets_dir, 
+        args.cycles, 
+        args.seeds,
+        args.height_threshold,
+        args.max_cycles_without_growth,
+        args.timeout
+    )
 
     if args.species:
         # Analyze single species
@@ -1265,6 +1382,17 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         logger.info(f"Max height: {metadata['max_height']:.2f}")
         logger.info(f"Final DBH: {metadata['final_dbh']:.3f}")
         logger.info(f"Max DBH: {metadata['max_dbh']:.3f}")
+        logger.info(f"Planned cycles: {metadata['planned_cycles']}, Actual max cycles: {metadata['actual_max_cycles']}")
+        logger.info(f"Average actual cycles: {metadata['avg_actual_cycles']:.1f}")
+        logger.info(f"Average simulation time: {metadata['avg_simulation_time']:.1f} seconds")
+        if metadata['early_terminations'] > 0:
+            logger.info(f"Early terminations: {metadata['early_terminations']}/{metadata['num_seeds']} seeds")
+        else:
+            logger.info("No early terminations occurred")
+        if metadata['timeouts'] > 0:
+            logger.warning(f"Timeouts occurred: {metadata['timeouts']}/{metadata['num_seeds']} seeds")
+        else:
+            logger.info("No timeouts occurred")
 
         # Save results
         analyzer.save_growth_models()

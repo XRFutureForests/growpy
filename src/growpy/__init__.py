@@ -99,6 +99,33 @@ except ImportError:
     extract_twig_data_from_grove_model = None
     create_grove_compatible_twig_usd = None
 
+# Import root system generation
+try:
+    from .roots import (
+        RootArchitecture,
+        create_root_system,
+        get_species_root_type,
+        get_species_root_examples,
+        print_root_architecture_guide,
+        build_root_models,
+        save_root_system_to_usd,
+        create_combined_tree_with_roots,
+        add_roots_to_forest,
+    )
+
+    GROVE_ROOTS_AVAILABLE = True
+except ImportError:
+    GROVE_ROOTS_AVAILABLE = False
+    RootArchitecture = None
+    create_root_system = None
+    get_species_root_type = None
+    get_species_root_examples = None
+    print_root_architecture_guide = None
+    build_root_models = None
+    save_root_system_to_usd = None
+    create_combined_tree_with_roots = None
+    add_roots_to_forest = None
+
 __all__ = [
     # Core configuration
     "GrowPyConfig",
@@ -130,4 +157,15 @@ __all__ = [
     "extract_twig_data_from_grove_model",
     "create_grove_compatible_twig_usd",
     "GROVE_TWIG_AVAILABLE",
+    # Root system generation (if available)
+    "RootArchitecture",
+    "create_root_system",
+    "get_species_root_type",
+    "get_species_root_examples",
+    "print_root_architecture_guide",
+    "build_root_models",
+    "save_root_system_to_usd",
+    "create_combined_tree_with_roots",
+    "add_roots_to_forest",
+    "GROVE_ROOTS_AVAILABLE",
 ]
