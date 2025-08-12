@@ -69,6 +69,7 @@ from .config import GrowPyConfig, get_config, set_global_config
 from .forest import create_forest, create_forest_with_attributes, simulate_forest_growth
 from .grove import add_tree_to_grove, create_grove
 from .tree import (
+    add_bone_ids_to_model,
     apply_species_texture_settings,
     build_grove_with_all_attributes,
     build_lod_models,
@@ -111,6 +112,7 @@ __all__ = [
     "create_grove",
     "add_tree_to_grove",
     # Tree model building and export
+    "add_bone_ids_to_model",
     "calculate_growth_cycles_from_height",
     "build_lod_models",
     "build_tree_skeletons",

@@ -27,16 +27,20 @@ from tqdm import tqdm
 
 from growpy import (
     GrowPyConfig,
+    add_bone_ids_to_model,
+    apply_species_texture_settings,
     build_lod_models,
     calculate_growth_cycles_from_height,
     create_forest,
     save_tree_to_usd,
+    save_tree_with_skeleton,
     simulate_forest_growth,
     export_forest_with_skeletons,
     create_skeleton_lod_models,
     generate_wind_animation,
     build_tree_skeletons,
-    get_skeleton_info
+    get_skeleton_info,
+    get_model_attributes
 )
 
 try:
@@ -187,7 +191,7 @@ def add_twigs_to_usd_file(usd_file_path, species_name, config):
 
 
 def export_models_with_skeletons(forest, output_dir, lod_configs, skeleton_options=None):
-    """Export all models with skeleton data and optional twigs."""
+    """Export all models with skeleton data using enhanced growpy functions."""
     
     if skeleton_options is None:
         skeleton_options = {
@@ -202,11 +206,11 @@ def export_models_with_skeletons(forest, output_dir, lod_configs, skeleton_optio
     export_tasks = []
     total_skeletons = 0
     
-    # Build export tasks with skeleton data
+    # Build export tasks with enhanced skeleton data
     for grove, species_name, tree_count in forest:
         species_clean = species_name.replace(" ", "").replace("-", "_")
         
-        # Create LOD models and skeletons
+        # Create LOD models and skeletons using enhanced functions
         lod_models, skeletons = create_skeleton_lod_models(
             grove, lod_configs, skeleton_options
         )
@@ -231,24 +235,23 @@ def export_models_with_skeletons(forest, output_dir, lod_configs, skeleton_optio
     
     print(f"Generated {total_skeletons} skeletons for {len(forest)} species")
     
-    # Export with progress tracking
+    # Export with progress tracking using enhanced functions
     total_exported = 0
+    config = GrowPyConfig()
+    
     with tqdm(total=len(export_tasks), desc="Exporting USD+Skeletons", unit="model") as pbar:
         for model, filepath, species, lod_name, index, species_name, skeleton in export_tasks:
             
-            # Export USD with skeleton
             try:
-                import the_grove_22_core as gc
+                # Apply species-specific material and texture settings
+                apply_species_texture_settings(model, species_name, config)
                 
-                # Configure model
-                model.set_up_axis("Z")
-                model.set_winding_order("COUNTER_CLOCKWISE")
+                # Add bone IDs for proper skeleton binding (like Blender export)
+                if skeleton:
+                    add_bone_ids_to_model(model, skeleton)
                 
-                # Export to USD
-                usd_string = gc.io.model_to_usda_string(model)
-                with open(filepath, "w") as f:
-                    f.write(usd_string)
-                
+                # Export with skeleton using enhanced function
+                save_tree_with_skeleton(model, skeleton, filepath, texture_aspect_ratio=1.2)
                 total_exported += 1
                 
             except Exception as e:
@@ -261,7 +264,7 @@ def export_models_with_skeletons(forest, output_dir, lod_configs, skeleton_optio
                 "exported": total_exported
             })
     
-    print(f"Exported {total_exported} models with skeletons")
+    print(f"Exported {total_exported} models with skeletons and enhanced features")
     return export_tasks
 
 
@@ -297,19 +300,27 @@ def add_twigs_to_skeleton_models(export_tasks, config):
 
 
 def generate_skeleton_report(forest, skeleton_options):
-    """Generate a detailed report of skeleton statistics."""
+    """Generate a detailed report of skeleton statistics and Grove model attributes."""
     
-    print("\n[CHART] Skeleton Analysis Report")
-    print("=" * 50)
+    print("\n[CHART] Enhanced Grove Model Analysis Report")
+    print("=" * 60)
     
     total_joints = 0
     total_bones = 0
+    total_attributes = 0
     
     for grove, species_name, tree_count in forest:
         print(f"\n[TREE] Species: {species_name}")
         
         # Build skeletons for analysis
         skeletons = build_tree_skeletons(grove, optimize_bones=True)
+        
+        # Build a sample model to analyze attributes
+        try:
+            sample_models = build_lod_models(grove, {"sample": {"resolution": 16, "build_end_cap": True}})
+            sample_model = sample_models["sample"][0] if sample_models["sample"] else None
+        except:
+            sample_model = None
         
         species_joints = 0
         species_bones = 0
@@ -337,6 +348,24 @@ def generate_skeleton_report(forest, skeleton_options):
                     radii = info['joint_radii']
                     print(f"    Radius range: {min(radii):.3f} - {max(radii):.3f}")
         
+        # Show Grove model attributes
+        if sample_model:
+            print(f"  Grove model attributes:")
+            attrs = get_model_attributes(sample_model)
+            
+            geom = attrs['geometry']
+            print(f"    Geometry: {geom['point_count']} points, {geom['face_count']} faces")
+            
+            point_attrs = attrs['point_attributes']
+            face_attrs = attrs['face_attributes']
+            attr_count = len(point_attrs) + len(face_attrs)
+            total_attributes += attr_count
+            
+            if point_attrs:
+                print(f"    Point attributes ({len(point_attrs)}): {list(point_attrs.keys())}")
+            if face_attrs:
+                print(f"    Face attributes ({len(face_attrs)}): {list(face_attrs.keys())}")
+        
         avg_joints = species_joints / len(skeletons) if skeletons else 0
         avg_bones = species_bones / len(skeletons) if skeletons else 0
         
@@ -346,20 +375,25 @@ def generate_skeleton_report(forest, skeleton_options):
         total_joints += species_joints
         total_bones += species_bones
     
-    print(f"\n[TREND] Overall Statistics:")
+    print(f"\n[TREND] Overall Enhanced Statistics:")
     print(f"  Total joints across all trees: {total_joints}")
     print(f"  Total bones across all trees: {total_bones}")
+    print(f"  Total Grove attributes processed: {total_attributes}")
+    print(f"  Enhanced skeleton features: bone IDs, material mapping, UV correction")
     print(f"  Skeleton optimization: {skeleton_options}")
 
 
 def main():
-    """Enhanced forest generation workflow with automatic Z-up transformation, intelligent twig placement, and skeleton support."""
-    print("Enhanced GrowPy Forest Generator")
+    """Enhanced forest generation workflow using proper Grove API with full feature support."""
+    print("Enhanced GrowPy Forest Generator with Grove API Integration")
+    print("   - Proper Grove model building with comprehensive parameters")
+    print("   - Enhanced skeleton export with bone IDs (matches Blender format)")
+    print("   - Species-specific material and texture mapping")
+    print("   - Working twig placement with Grove face-based system")
+    print("   - Wind animation generation for dynamic trees")
     print("   - Automatic Y-up -> Z-up coordinate transformation")
-    print("   - Species-specific twig placement with random variations")
-    print("   - Grove-compatible face-based twig positioning")
-    print("   - Skeletal animation support")
-    print("=" * 60)
+    print("   - Multi-LOD export with full Grove attribute preservation")
+    print("=" * 70)
 
     # Fixed paths - no command line arguments needed
     csv_path = (
@@ -379,7 +413,7 @@ def main():
     # Load forest data
     print(f"\n[CHART] Loading forest data")
     forest_data = pd.read_csv(csv_path)
-    forest_data["height"] /= 3
+    forest_data["height"] /= 4
     print(f"[OK] Loaded {len(forest_data)} trees")
     print(f"  Species: {forest_data['species'].nunique()}")
 
@@ -462,10 +496,14 @@ def main():
                     )
                     total_models += 1
 
-        # Export with progress bar
+        # Export with progress bar using enhanced features
         with tqdm(total=total_models, desc="Exporting standard USD", unit="model") as pbar:
             for model, filepath, species, lod_name, index, species_name in export_tasks:
-                save_tree_to_usd(model, filepath)
+                # Apply species-specific material and texture settings
+                apply_species_texture_settings(model, species_name, config)
+                
+                # Export using enhanced function
+                save_tree_to_usd(model, filepath, texture_aspect_ratio=1.2)
                 total_exported += 1
                 pbar.update(1)
                 pbar.set_postfix(
@@ -557,6 +595,48 @@ def main():
     # Standard models with twigs are the final rendering assets
     print(f"\n[BONE] Skeletal models completed (no twigs needed - these are for rigging only)")
 
+    # Generate wind animation if skeletal models were created
+    wind_animation_success = False
+    if export_skeletal and skeletal_export_tasks:
+        print(f"\n[WIND] Generating wind animation for skeletal trees...")
+        try:
+            animation_dir = output_dir.parent / "wind_animation"
+            animation_dir.mkdir(parents=True, exist_ok=True)
+            
+            animation_count = 0
+            for grove, species_name, tree_count in forest:
+                try:
+                    # Generate wind animation frames
+                    wind_shapes = generate_wind_animation(
+                        grove, 
+                        wind_vector=(1.0, 0.2, 0.0),  # Gentle horizontal wind
+                        frame_count=24,  # Animation frames
+                        turbulence=0.8   # Moderate wind strength
+                    )
+                    
+                    if wind_shapes:
+                        species_clean = species_name.replace(" ", "").replace("-", "_")
+                        for frame_idx, wind_shape in enumerate(wind_shapes):
+                            anim_filename = f"{species_clean}_wind_frame_{frame_idx:03d}.usda"
+                            anim_filepath = animation_dir / anim_filename
+                            
+                            # Apply material settings and export
+                            apply_species_texture_settings(wind_shape, species_name, config)
+                            save_tree_to_usd(wind_shape, anim_filepath, texture_aspect_ratio=1.2)
+                            animation_count += 1
+                        
+                        print(f"     ✅ Generated {len(wind_shapes)} wind frames for {species_name}")
+                    
+                except Exception as e:
+                    print(f"     ⚠️ Wind animation failed for {species_name}: {e}")
+            
+            if animation_count > 0:
+                wind_animation_success = True
+                print(f"[OK] Generated {animation_count} total wind animation frames")
+            
+        except Exception as e:
+            print(f"     ⚠️ Wind animation generation failed: {e}")
+
     print(f"\n[CHECK] Enhanced forest generation complete!")
     print(f"[CHART] Summary:")
     print(f"  • {total_exported} USD tree models exported")
@@ -567,9 +647,12 @@ def main():
         print(f"    - {skeletal_count} skeletal models")
     print(f"  • {successful_twigs} models successfully enhanced with twigs")
     print(f"  • {len(forest)} different species processed")
+    print(f"  • Wind animation: {'✅ Generated' if wind_animation_success else '❌ Not generated'}")
     print(f"  • Output directory: {output_dir}")
     if export_skeletal:
         print(f"  • Skeletal models directory: {output_dir.parent / 'skeletal_trees'}")
+    if wind_animation_success:
+        print(f"  • Wind animation directory: {output_dir.parent / 'wind_animation'}")
 
     if successful_twigs > 0:
         print(f"\n[GLOBE] Enhanced Twig Features:")
@@ -582,19 +665,23 @@ def main():
         print(f"  • Compatible with Blender and other Z-up applications")
     
     if export_skeletal:
-        print(f"\n[BONE] Skeleton Features:")
+        print(f"\n[BONE] Enhanced Skeleton Features:")
         print(f"  • Optimized bone hierarchies for animation")
+        print(f"  • Bone IDs (gr_bone_id primvar) compatible with Blender export format")
         print(f"  • Connected bone chains for IK systems")
         print(f"  • Grove-specific joint attributes (age, mass, radius)")
-        print(f"  • Z-up coordinate system for Blender/Unreal")
+        print(f"  • Species-specific material and texture mapping")
+        print(f"  • Z-up coordinate system for Blender/Unreal compatibility")
 
-    print(f"\n[LIGHT] Usage Notes:")
-    print(f"  • Files ending with '_with_twigs.usda' contain final rendering trees with twigs")
-    print(f"  • Files ending with '_with_skeleton.usda' contain skeletal rigs for animation")
-    print(f"  • Import skeletal rigs into Blender to create armatures for standard trees")
-    print(f"  • Use skeletal rigs for wind animation or manual tree posing")
-    print(f"  • Both file types use Z-up coordinate system for better compatibility")
-    print(f"  • Recommended workflow: Use standard trees for rendering, skeletal rigs for animation")
+    print(f"\n[LIGHT] Enhanced Usage Notes:")
+    print(f"  • Files ending with '_with_twigs.usda' contain final rendering trees")
+    print(f"  • Files ending with '_with_skeleton.usda' contain rigged models for animation")
+    print(f"  • Wind animation frames in 'wind_animation' directory for dynamic effects")
+    print(f"  • All exports include proper Grove attributes and material settings")
+    print(f"  • Skeleton exports include bone IDs matching Blender format")
+    print(f"  • Working twig placement preserves Grove's face-based system")
+    print(f"  • Z-up coordinate system ensures compatibility with major 3D software")
+    print(f"  • Enhanced workflow: Standard trees for rendering, skeletal for animation")
 
     return 0
 
