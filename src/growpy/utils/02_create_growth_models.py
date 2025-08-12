@@ -1251,7 +1251,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
     parser.add_argument(
         "--seeds",
         type=int,
-        default=3,
+        default=1,
         help="Number of random seeds to average for robust curves",
     )
     parser.add_argument(
@@ -1269,8 +1269,8 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
     parser.add_argument(
         "--timeout",
         type=int,
-        default=60,
-        help="Maximum time in seconds for growth simulation per seed (default: 60)",
+        default=300,
+        help="Maximum time in seconds for growth simulation per seed (default: 300)",
     )
     parser.add_argument(
         "--species",
@@ -1292,7 +1292,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
     parser.add_argument(
         "--workers",
         type=int,
-        default=None,
+        default=3,
         help="Number of parallel workers (default: CPU count - 1)",
     )
 
