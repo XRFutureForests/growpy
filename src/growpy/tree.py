@@ -69,6 +69,97 @@ def save_tree_to_usd(
         f.write(usd_string)
 
 
+def can_species_have_twigs(species_name: str, config) -> bool:
+    """Check if a species has twig assets available.
+
+    Args:
+        species_name: Name of the tree species
+        config: GrowPyConfig instance for twig lookup
+
+    Returns:
+        bool: True if twigs are available for this species, False otherwise
+    """
+    try:
+        twig_name = config.get_twig_for_species(species_name)
+        if twig_name:
+            twig_files_by_type = config.get_twig_files_by_type(species_name)
+            return bool(twig_files_by_type)
+    except Exception:
+        pass
+    return False
+
+
+def save_tree_to_usd_with_twigs(
+    model,
+    output_path: Path,
+    species_name: str,
+    config,
+    base_dir: Path,
+    twigs_dir: Path,
+    include_skeleton: bool = True,
+    texture_aspect_ratio: float = 1.0,
+) -> Path:
+    """Save tree model to USD file, placing in correct directory based on twig capability.
+
+    This function saves base models directly to base/ and enhanced models with 
+    twigs directly to twigs/, eliminating the need for intermediate file moves.
+
+    Args:
+        model: Grove tree model to export
+        output_path: Base path for the USD file (filename will be preserved)
+        species_name: Name of the tree species for twig lookup
+        config: GrowPyConfig instance for twig assets
+        base_dir: Directory for models without twigs (base models)
+        twigs_dir: Directory for models with twigs (enhanced models)
+        include_skeleton: Whether to include skeleton data in the USD export
+        texture_aspect_ratio: Aspect ratio for bark texture UV correction
+
+    Returns:
+        Path: Actual path where the file was saved (either in twigs/ or base/)
+    """
+    if gc is None:
+        raise ImportError("Grove core not available")
+
+    # Configure model for optimal USD export
+    model.set_up_axis("Z")  # Z-up for Blender/Unreal compatibility
+    model.set_winding_order("COUNTER_CLOCKWISE")
+
+    # Apply UV aspect ratio correction for bark textures
+    if texture_aspect_ratio != 1.0:
+        model.apply_uv_aspect_ratio(texture_aspect_ratio)
+
+    filename = output_path.name
+    
+    # Always save base model to base directory
+    base_path = base_dir / filename
+    base_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    usd_string = gc.io.model_to_usda_string(model)
+    with open(base_path, "w") as f:
+        f.write(usd_string)
+    
+    # Try to create enhanced version with twigs if species supports them
+    try:
+        from .twig import add_twigs_to_tree
+        
+        if can_species_have_twigs(species_name, config):
+            # Create enhanced version directly in twigs directory from base file
+            enhanced_filename = filename.replace(".usda", "_with_twigs.usda")
+            enhanced_path = twigs_dir / enhanced_filename
+            enhanced_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Try to add twigs using the base file as input, saving directly to twigs
+            if add_twigs_to_tree(base_path, species_name, config, output_path=enhanced_path):
+                # Successfully created enhanced version
+                return enhanced_path
+    except Exception:
+        # If twig addition fails, that's okay - we still have the base model
+        pass
+    
+    # Return base model path (base model always exists in base/)
+    return base_path
+
+
 def build_lod_models(
     grove, lod_configs: Dict[str, Dict[str, Any]], texture_aspect_ratio: float = 1.0
 ) -> Dict[str, List]:

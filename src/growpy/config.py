@@ -733,15 +733,15 @@ class GrowPyConfig:
             Dict containing all LOD configurations from highest to lowest detail
         """
         return {
-            "LOD0_Ultra": {
-                "resolution": 24,  # Very high base resolution
-                "resolution_reduce": 0.7,  # Slower reduction = more detail kept
-                "texture_repeat": 3,
-                "build_cutoff_age": 0,  # No age cutoff
-                "build_cutoff_thickness": 0.0,  # No thickness cutoff
-                "build_blend": True,  # Keep smooth transitions
-                "build_end_cap": True,  # Keep end caps
-            },
+            # "LOD0_Ultra": {
+            #     "resolution": 24,  # Very high base resolution
+            #     "resolution_reduce": 0.7,  # Slower reduction = more detail kept
+            #     "texture_repeat": 3,
+            #     "build_cutoff_age": 0,  # No age cutoff
+            #     "build_cutoff_thickness": 0.0,  # No thickness cutoff
+            #     "build_blend": True,  # Keep smooth transitions
+            #     "build_end_cap": True,  # Keep end caps
+            # },
             "LOD1_High": {
                 "resolution": 16,  # Default high resolution
                 "resolution_reduce": 0.8,  # Default reduction rate
