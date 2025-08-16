@@ -3,15 +3,7 @@
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import pandas as pd
-
-# Platform-specific Grove core import with fallback
-try:
-    import the_grove_22_core as gc
-except ImportError:
-    print("Warning: the_grove_22_core not available")
-    gc = None
-
+from .common import gc, ensure_grove_available, pd
 from .config import get_config
 
 
@@ -51,8 +43,7 @@ def save_tree_to_usd(
         include_skeleton: Whether to include skeleton data in the USD export
         texture_aspect_ratio: Aspect ratio for bark texture UV correction
     """
-    if gc is None:
-        raise ImportError("Grove core not available")
+    ensure_grove_available()
 
     # Configure model for optimal USD export
     model.set_up_axis("Z")  # Z-up for Blender/Unreal compatibility
@@ -117,8 +108,7 @@ def save_tree_to_usd_with_twigs(
     Returns:
         Path: Actual path where the file was saved (either in twigs/ or base/)
     """
-    if gc is None:
-        raise ImportError("Grove core not available")
+    ensure_grove_available()
 
     # Configure model for optimal USD export
     model.set_up_axis("Z")  # Z-up for Blender/Unreal compatibility
@@ -173,8 +163,7 @@ def build_lod_models(
     Returns:
         Dictionary mapping LOD names to lists of models
     """
-    if gc is None:
-        raise ImportError("Grove core not available")
+    ensure_grove_available()
 
     lod_models = {}
     for lod_name, config in lod_configs.items():
@@ -216,8 +205,7 @@ def build_tree_skeletons(grove, optimize_bones: bool = True) -> List[Any]:
     Returns:
         List of skeleton objects with points, poly_lines, and attributes
     """
-    if gc is None:
-        raise ImportError("Grove core not available")
+    ensure_grove_available()
 
     if optimize_bones:
         # Use basic skeleton generation for now
@@ -323,8 +311,7 @@ def save_tree_with_skeleton(
         output_path: Path for the USD file
         texture_aspect_ratio: Aspect ratio for bark texture UV correction
     """
-    if gc is None:
-        raise ImportError("Grove core not available")
+    ensure_grove_available()
 
     # Configure model for USD export with proper material setup
     model.set_up_axis("Z")
@@ -360,8 +347,7 @@ def create_skeleton_lod_models(
     Returns:
         Tuple of (lod_models_dict, skeletons_list)
     """
-    if gc is None:
-        raise ImportError("Grove core not available")
+    ensure_grove_available()
 
     # Set default skeleton options
     if skeleton_options is None:
@@ -423,8 +409,7 @@ def export_forest_with_skeletons(
     Returns:
         Dictionary with export statistics
     """
-    if gc is None:
-        raise ImportError("Grove core not available")
+    ensure_grove_available()
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -474,8 +459,7 @@ def generate_wind_animation(
     Returns:
         List of wind shape models for animation
     """
-    if gc is None:
-        raise ImportError("Grove core not available")
+    ensure_grove_available()
 
     # Convert wind vector to Grove Vector object
     wind_vec = gc.Vector(wind_vector[0], wind_vector[1], wind_vector[2])
@@ -620,8 +604,7 @@ def build_grove_with_all_attributes(
     Returns:
         List of fully-featured Grove models with all attributes
     """
-    if gc is None:
-        raise ImportError("Grove core not available")
+    ensure_grove_available()
 
     if build_params is None:
         # Comprehensive build parameters based on Grove documentation
