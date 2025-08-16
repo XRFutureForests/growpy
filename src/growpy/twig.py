@@ -900,7 +900,10 @@ def apply_quaternion_to_vector(quat, vector):
 
 
 def add_twigs_to_tree(
-    usd_file_path: Path, species_name: str, config: Optional["GrowPyConfig"] = None
+    usd_file_path: Path, 
+    species_name: str, 
+    config: Optional["GrowPyConfig"] = None,
+    output_path: Optional[Path] = None
 ) -> bool:
     """
     High-level function to add twigs to a USD tree file.
@@ -916,6 +919,7 @@ def add_twigs_to_tree(
         usd_file_path: Path to the USD tree file
         species_name: Name of the tree species for twig lookup
         config: GrowPyConfig instance (will create one if not provided)
+        output_path: Optional custom output path for the enhanced file
 
     Returns:
         bool: True if twigs were successfully added, False otherwise
@@ -944,7 +948,7 @@ def add_twigs_to_tree(
         if USD_AVAILABLE:
             try:
                 return add_twigs_to_tree_usd_based(
-                    usd_file_path, species_name, config, twig_files_by_type
+                    usd_file_path, species_name, config, twig_files_by_type, output_path
                 )
             except Exception as e:
                 print(f"  ⚠️  USD-based approach failed: {e}")
@@ -952,7 +956,7 @@ def add_twigs_to_tree(
 
         # Use text-based approach as fallback
         return add_twigs_to_tree_text_based(
-            usd_file_path, species_name, config, twig_files_by_type
+            usd_file_path, species_name, config, twig_files_by_type, output_path
         )
 
     except Exception as e:
@@ -965,6 +969,7 @@ def add_twigs_to_tree_usd_based(
     species_name: str,
     config: "GrowPyConfig",
     twig_files_by_type: Dict[str, List[Path]],
+    output_path: Optional[Path] = None,
 ) -> bool:
     """
     Add twigs using USD Python API - reads Grove's twig primvars and places twigs accordingly.
@@ -1060,7 +1065,10 @@ def add_twigs_to_tree_usd_based(
         return False
 
     # Create transformed tree file
-    output_file = str(usd_file_path).replace(".usda", "_with_twigs.usda")
+    if output_path:
+        output_file = str(output_path)
+    else:
+        output_file = str(usd_file_path).replace(".usda", "_with_twigs.usda")
     transformed_stage = create_transformed_tree_stage(
         original_stage, output_file, "/Tree", points_z_up
     )
@@ -1125,6 +1133,7 @@ def add_twigs_to_tree_text_based(
     species_name: str,
     config: "GrowPyConfig",
     twig_files_by_type: Dict[str, List[Path]],
+    output_path: Optional[Path] = None,
 ) -> bool:
     """
     Add twigs using text-based USD manipulation with random variation assignment.
@@ -1336,7 +1345,10 @@ def add_twigs_to_tree_text_based(
     )
 
     # Create output filename with twigs
-    output_file = str(usd_file_path).replace(".usda", "_with_twigs.usda")
+    if output_path:
+        output_file = str(output_path)
+    else:
+        output_file = str(usd_file_path).replace(".usda", "_with_twigs.usda")
 
     # Write the modified content
     with open(output_file, "w", encoding="utf-8") as f:
