@@ -2,14 +2,7 @@
 
 from typing import List, Tuple
 
-import pandas as pd
-
-# Platform-specific Grove core import with fallback
-try:
-    import the_grove_22_core as gc
-except ImportError:
-    gc = None
-
+from .common import gc, ensure_grove_available, pd
 from .grove import add_tree_to_grove, create_grove
 
 
@@ -37,8 +30,7 @@ def simulate_forest_growth(forest: List[Tuple], cycles: int) -> None:
         forest: List of (grove, species_name, tree_count) tuples
         cycles: Number of growth cycles to simulate
     """
-    if gc is None:
-        raise ImportError("Grove core not available")
+    ensure_grove_available()
 
     groves = [grove for grove, _, _ in forest]
 
