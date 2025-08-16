@@ -13,29 +13,16 @@ This module provides comprehensive twig placement functions that integrate
 with Grove's sophisticated face-based primvar system for realistic twig distribution.
 """
 
-import math
 import random
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import numpy as np
-
-# Try to import USD components, fallback gracefully if not available
-try:
-    from pxr import Gf, Usd, UsdGeom, Vt
-
-    USD_AVAILABLE = True
-except ImportError:
-    USD_AVAILABLE = False
-
-# Import Grove core for face attribute access
-try:
-    import the_grove_22_core as gc
-
-    GROVE_AVAILABLE = True
-except ImportError:
-    gc = None
-    GROVE_AVAILABLE = False
+from .common import (
+    math, np, gc, 
+    USD_AVAILABLE, GROVE_CORE_AVAILABLE as GROVE_AVAILABLE,
+    Gf, Usd, UsdGeom, UsdShade, Vt, Sdf,
+    ensure_grove_available, ensure_usd_available
+)
 
 # Import config for twig lookup
 try:
@@ -187,9 +174,6 @@ def quaternion_from_x_to_normal(normal):
     Returns:
         tuple: (w, x, y, z) quaternion to rotate from +X to normal direction with constrained up
     """
-    import math
-
-    import numpy as np
 
     # Default twig orientation
     default_forward = np.array([1.0, 0.0, 0.0])  # +X axis (forward direction)
@@ -442,8 +426,7 @@ def create_transformed_tree_stage(
     Returns:
         Usd.Stage: New stage with Z-up tree (if USD available)
     """
-    if not USD_AVAILABLE:
-        raise ImportError("USD Python bindings required for stage operations")
+    ensure_usd_available()
 
     # Create new stage
     new_stage = Usd.Stage.CreateNew(output_path)
@@ -601,9 +584,6 @@ def calculate_grove_twig_orientation(
     Returns:
         tuple: (w, x, y, z) quaternion to orient twig from default direction to normal direction
     """
-    import math
-
-    import numpy as np
 
     nx, ny, nz = normal
 
@@ -869,6 +849,481 @@ def write_usd_pointinstancer(
     print(f"✅ Twig data successfully written to {output_file}")
 
 
+def create_bark_material(stage, material_path="/Materials/BarkMaterial", texture_path=None):
+    """Create a USD bark material with PBR properties.
+    
+    Args:
+        stage: USD stage to create material in
+        material_path: Path for the material in USD stage
+        texture_path: Optional path to bark texture image
+        
+    Returns:
+        UsdShade.Material: Created material prim
+    """
+    ensure_usd_available()
+    
+    # Create material
+    material = UsdShade.Material.Define(stage, material_path)
+    
+    # Create preview surface shader
+    preview_surface = UsdShade.Shader.Define(stage, f"{material_path}/PreviewSurface")
+    preview_surface.CreateIdAttr("UsdPreviewSurface")
+    
+    # Set basic bark material properties
+    preview_surface.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set((0.6, 0.4, 0.2))
+    preview_surface.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.9)
+    preview_surface.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
+    preview_surface.CreateInput("specular", Sdf.ValueTypeNames.Float).Set(0.3)
+    
+    # Create UV reader for texture coordinates
+    uv_reader = UsdShade.Shader.Define(stage, f"{material_path}/PrimvarReader")
+    uv_reader.CreateIdAttr("UsdPrimvarReader_float2")
+    uv_reader.CreateInput("varname", Sdf.ValueTypeNames.Token).Set("st")
+    
+    # Add texture if provided
+    if texture_path:
+        # Diffuse texture
+        diffuse_texture = UsdShade.Shader.Define(stage, f"{material_path}/DiffuseTexture")
+        diffuse_texture.CreateIdAttr("UsdUVTexture")
+        diffuse_texture.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(texture_path)
+        diffuse_texture.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set("sRGB")
+        
+        # Connect UV coordinates to texture
+        diffuse_texture.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
+            uv_reader.CreateOutput("result", Sdf.ValueTypeNames.Float2)
+        )
+        
+        # Connect texture to material
+        preview_surface.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(
+            diffuse_texture.CreateOutput("rgb", Sdf.ValueTypeNames.Color3f)
+        )
+        
+        # Try to find and add normal map
+        normal_texture_path = texture_path.replace("_diffuse", "_normal").replace("_albedo", "_normal")
+        if normal_texture_path != texture_path:
+            normal_texture = UsdShade.Shader.Define(stage, f"{material_path}/NormalTexture")
+            normal_texture.CreateIdAttr("UsdUVTexture")
+            normal_texture.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(normal_texture_path)
+            normal_texture.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set("raw")
+            
+            # Connect UV coordinates to normal texture
+            normal_texture.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
+                uv_reader.CreateOutput("result", Sdf.ValueTypeNames.Float2)
+            )
+            
+            # Connect normal texture to material
+            preview_surface.CreateInput("normal", Sdf.ValueTypeNames.Normal3f).ConnectToSource(
+                normal_texture.CreateOutput("rgb", Sdf.ValueTypeNames.Normal3f)
+            )
+    
+    # Connect surface shader to material
+    material.CreateSurfaceOutput().ConnectToSource(
+        preview_surface.CreateOutput("surface", Sdf.ValueTypeNames.Token)
+    )
+    
+    return material
+
+
+def create_twig_material(stage, material_path="/Materials/TwigMaterial", texture_path=None, is_leaves=True):
+    """Create a USD twig/leaf material with appropriate properties.
+    
+    Args:
+        stage: USD stage to create material in
+        material_path: Path for the material in USD stage  
+        texture_path: Optional path to twig/leaf texture image
+        is_leaves: Whether this material is for leaves (vs woody twigs)
+        
+    Returns:
+        UsdShade.Material: Created material prim
+    """
+    ensure_usd_available()
+    
+    # Create material
+    material = UsdShade.Material.Define(stage, material_path)
+    
+    # Create preview surface shader
+    preview_surface = UsdShade.Shader.Define(stage, f"{material_path}/PreviewSurface")
+    preview_surface.CreateIdAttr("UsdPreviewSurface")
+    
+    if is_leaves:
+        # Leaf material properties
+        preview_surface.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set((0.2, 0.6, 0.15))
+        preview_surface.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.7)
+        preview_surface.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
+        preview_surface.CreateInput("specular", Sdf.ValueTypeNames.Float).Set(0.4)
+        preview_surface.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(0.9)
+        preview_surface.CreateInput("opacityThreshold", Sdf.ValueTypeNames.Float).Set(0.1)
+    else:
+        # Woody twig material properties
+        preview_surface.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set((0.4, 0.3, 0.15))
+        preview_surface.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.8)
+        preview_surface.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
+        preview_surface.CreateInput("specular", Sdf.ValueTypeNames.Float).Set(0.2)
+    
+    # Create UV reader for texture coordinates
+    uv_reader = UsdShade.Shader.Define(stage, f"{material_path}/PrimvarReader")
+    uv_reader.CreateIdAttr("UsdPrimvarReader_float2")
+    uv_reader.CreateInput("varname", Sdf.ValueTypeNames.Token).Set("st")
+    
+    # Add texture if provided
+    if texture_path:
+        # Diffuse texture
+        diffuse_texture = UsdShade.Shader.Define(stage, f"{material_path}/DiffuseTexture")
+        diffuse_texture.CreateIdAttr("UsdUVTexture")
+        diffuse_texture.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(texture_path)
+        diffuse_texture.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set("sRGB")
+        
+        # Connect UV coordinates to texture
+        diffuse_texture.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
+            uv_reader.CreateOutput("result", Sdf.ValueTypeNames.Float2)
+        )
+        
+        # Connect texture to material diffuse color
+        preview_surface.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(
+            diffuse_texture.CreateOutput("rgb", Sdf.ValueTypeNames.Color3f)
+        )
+        
+        # For leaves, also use texture alpha for opacity
+        if is_leaves:
+            preview_surface.CreateInput("opacity", Sdf.ValueTypeNames.Float).ConnectToSource(
+                diffuse_texture.CreateOutput("a", Sdf.ValueTypeNames.Float)
+            )
+    
+    # Connect surface shader to material
+    material.CreateSurfaceOutput().ConnectToSource(
+        preview_surface.CreateOutput("surface", Sdf.ValueTypeNames.Token)
+    )
+    
+    return material
+
+
+def assign_material_to_prim(prim, material_path):
+    """Assign a material to a USD prim.
+    
+    Args:
+        prim: USD prim to assign material to
+        material_path: Path to the material in the stage
+    """
+    ensure_usd_available()
+    
+    # Create material binding API
+    material_api = UsdShade.MaterialBindingAPI.Apply(prim)
+    material_api.Bind(UsdShade.Material(prim.GetStage().GetPrimAtPath(material_path)))
+
+
+def ensure_uv_coordinates_on_prim(prim):
+    """Ensure UV coordinates exist on a mesh prim.
+    
+    Args:
+        prim: USD mesh prim to add UV coordinates to
+    """
+    ensure_usd_available()
+    
+    mesh = UsdGeom.Mesh(prim)
+    primvars_api = UsdGeom.PrimvarsAPI(prim)
+    
+    # Check if st (UV) primvar already exists
+    st_primvar = primvars_api.GetPrimvar("st")
+    if not st_primvar:
+        # Create basic UV coordinates for simple cases
+        # This is a fallback - ideally UVs should come from the source mesh
+        face_vertex_counts = mesh.GetFaceVertexCountsAttr().Get()
+        total_vertices = sum(face_vertex_counts) if face_vertex_counts else 0
+        
+        if total_vertices > 0:
+            # Create simple planar UV mapping as fallback
+            uvs = []
+            for i in range(total_vertices):
+                u = (i % 4) / 3.0  # Simple pattern
+                v = (i // 4) / 3.0
+                uvs.extend([u, v])
+            
+            # Create st primvar
+            st_primvar = primvars_api.CreatePrimvar("st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.faceVarying)
+            st_primvar.Set(uvs)
+
+
+def create_tree_materials(stage, species_name, config):
+    """Create standard materials for tree and twigs based on species.
+    
+    Args:
+        stage: USD stage to create materials in
+        species_name: Name of species for texture lookup
+        config: GrowPy config for texture paths
+    """
+    ensure_usd_available()
+    
+    # Find texture paths based on species and config
+    bark_texture_path = None
+    leaf_texture_path = None
+    
+    try:
+        # Try to find appropriate textures from config or common paths
+        if config and hasattr(config, 'get_texture_for_species'):
+            bark_texture_path = config.get_texture_for_species(species_name, "bark")
+            leaf_texture_path = config.get_texture_for_species(species_name, "leaf")
+        
+        # Fallback to common texture naming patterns
+        if not bark_texture_path:
+            species_clean = species_name.lower().replace(" ", "_")
+            bark_texture_path = f"./textures/{species_clean}_bark.jpg"
+            
+        if not leaf_texture_path:
+            species_clean = species_name.lower().replace(" ", "_")
+            leaf_texture_path = f"./textures/{species_clean}_leaf.jpg"
+            
+    except Exception as e:
+        print(f"      Warning: Could not determine texture paths for {species_name}: {e}")
+        bark_texture_path = "./textures/bark_default.jpg"
+        leaf_texture_path = "./textures/leaf_default.jpg"
+    
+    # Create bark material for tree trunk
+    try:
+        bark_material = create_bark_material(
+            stage, 
+            "/Materials/BarkMaterial", 
+            bark_texture_path
+        )
+        print(f"      ✅ Created bark material with texture: {bark_texture_path}")
+    except Exception as e:
+        print(f"      ⚠️  Warning: Could not create bark material: {e}")
+    
+    # Create leaf material for twigs
+    try:
+        leaf_material = create_twig_material(
+            stage, 
+            "/Materials/LeafMaterial", 
+            leaf_texture_path, 
+            is_leaves=True
+        )
+        print(f"      ✅ Created leaf material with texture: {leaf_texture_path}")
+    except Exception as e:
+        print(f"      ⚠️  Warning: Could not create leaf material: {e}")
+    
+    # Create woody twig material for dead/bare twigs
+    try:
+        woody_material = create_twig_material(
+            stage, 
+            "/Materials/WoodyTwigMaterial", 
+            bark_texture_path, 
+            is_leaves=False
+        )
+        print(f"      ✅ Created woody twig material")
+    except Exception as e:
+        print(f"      ⚠️  Warning: Could not create woody twig material: {e}")
+    
+    # Assign bark material to tree mesh if it exists
+    try:
+        tree_mesh_prim = stage.GetPrimAtPath("/Tree/Tree")
+        if tree_mesh_prim:
+            ensure_uv_coordinates_on_prim(tree_mesh_prim)
+            assign_material_to_prim(tree_mesh_prim, "/Materials/BarkMaterial")
+            print(f"      ✅ Assigned bark material to tree mesh")
+    except Exception as e:
+        print(f"      ⚠️  Warning: Could not assign bark material to tree: {e}")
+
+
+def generate_materials_text(species_name, config):
+    """Generate USD text content for materials based on species.
+    
+    Args:
+        species_name: Name of species for texture lookup
+        config: GrowPy config for texture paths
+        
+    Returns:
+        List of strings representing USD material definitions
+    """
+    # Find texture paths based on species and config
+    bark_texture_path = None
+    leaf_texture_path = None
+    
+    try:
+        # Try to find appropriate textures from config or common paths
+        if config and hasattr(config, 'get_texture_for_species'):
+            bark_texture_path = config.get_texture_for_species(species_name, "bark")
+            leaf_texture_path = config.get_texture_for_species(species_name, "leaf")
+        
+        # Fallback to common texture naming patterns
+        if not bark_texture_path:
+            species_clean = species_name.lower().replace(" ", "_")
+            bark_texture_path = f"./textures/{species_clean}_bark.jpg"
+            
+        if not leaf_texture_path:
+            species_clean = species_name.lower().replace(" ", "_")
+            leaf_texture_path = f"./textures/{species_clean}_leaf.jpg"
+            
+    except Exception as e:
+        print(f"      Warning: Could not determine texture paths for {species_name}: {e}")
+        bark_texture_path = "./textures/bark_default.jpg"
+        leaf_texture_path = "./textures/leaf_default.jpg"
+    
+    materials = []
+    
+    # Add materials scope
+    materials.append('    def Scope "Materials"')
+    materials.append('    {')
+    
+    # Bark material for tree trunk
+    materials.append('        def Material "BarkMaterial"')
+    materials.append('        {')
+    materials.append('            token outputs:surface.connect = </Tree/Materials/BarkMaterial/PreviewSurface.outputs:surface>')
+    materials.append('')
+    materials.append('            def Shader "PreviewSurface"')
+    materials.append('            {')
+    materials.append('                uniform token info:id = "UsdPreviewSurface"')
+    materials.append('                color3f inputs:diffuseColor = (0.6, 0.4, 0.2)')
+    materials.append('                float inputs:roughness = 0.9')
+    materials.append('                float inputs:metallic = 0.0')
+    materials.append('                float inputs:specular = 0.3')
+    
+    if bark_texture_path:
+        materials.append('                color3f inputs:diffuseColor.connect = </Tree/Materials/BarkMaterial/DiffuseTexture.outputs:rgb>')
+        materials.append('                normal3f inputs:normal.connect = </Tree/Materials/BarkMaterial/NormalTexture.outputs:rgb>')
+    
+    materials.append('            }')
+    
+    if bark_texture_path:
+        materials.append('')
+        materials.append('            def Shader "DiffuseTexture"')
+        materials.append('            {')
+        materials.append('                uniform token info:id = "UsdUVTexture"')
+        materials.append(f'                asset inputs:file = @{bark_texture_path}@')
+        materials.append('                token inputs:sourceColorSpace = "sRGB"')
+        materials.append('                float2 inputs:st.connect = </Tree/Materials/BarkMaterial/PrimvarReader.outputs:result>')
+        materials.append('            }')
+        
+        # Try to add normal map
+        normal_texture_path = bark_texture_path.replace("_diffuse", "_normal").replace("_albedo", "_normal")
+        if normal_texture_path != bark_texture_path:
+            materials.append('')
+            materials.append('            def Shader "NormalTexture"')
+            materials.append('            {')
+            materials.append('                uniform token info:id = "UsdUVTexture"')
+            materials.append(f'                asset inputs:file = @{normal_texture_path}@')
+            materials.append('                token inputs:sourceColorSpace = "raw"')
+            materials.append('                float2 inputs:st.connect = </Tree/Materials/BarkMaterial/PrimvarReader.outputs:result>')
+            materials.append('            }')
+        
+        materials.append('')
+        materials.append('            def Shader "PrimvarReader"')
+        materials.append('            {')
+        materials.append('                uniform token info:id = "UsdPrimvarReader_float2"')
+        materials.append('                token inputs:varname = "st"')
+        materials.append('            }')
+    
+    materials.append('        }')
+    materials.append('')
+    
+    # Leaf material for living twigs
+    materials.append('        def Material "LeafMaterial"')
+    materials.append('        {')
+    materials.append('            token outputs:surface.connect = </Tree/Materials/LeafMaterial/PreviewSurface.outputs:surface>')
+    materials.append('')
+    materials.append('            def Shader "PreviewSurface"')
+    materials.append('            {')
+    materials.append('                uniform token info:id = "UsdPreviewSurface"')
+    materials.append('                color3f inputs:diffuseColor = (0.2, 0.6, 0.15)')
+    materials.append('                float inputs:roughness = 0.7')
+    materials.append('                float inputs:metallic = 0.0')
+    materials.append('                float inputs:specular = 0.4')
+    materials.append('                float inputs:opacity = 0.9')
+    materials.append('                float inputs:opacityThreshold = 0.1')
+    
+    if leaf_texture_path:
+        materials.append('                color3f inputs:diffuseColor.connect = </Tree/Materials/LeafMaterial/DiffuseTexture.outputs:rgb>')
+        materials.append('                float inputs:opacity.connect = </Tree/Materials/LeafMaterial/DiffuseTexture.outputs:a>')
+    
+    materials.append('            }')
+    
+    if leaf_texture_path:
+        materials.append('')
+        materials.append('            def Shader "DiffuseTexture"')
+        materials.append('            {')
+        materials.append('                uniform token info:id = "UsdUVTexture"')
+        materials.append(f'                asset inputs:file = @{leaf_texture_path}@')
+        materials.append('                token inputs:sourceColorSpace = "sRGB"')
+        materials.append('                float2 inputs:st.connect = </Tree/Materials/LeafMaterial/PrimvarReader.outputs:result>')
+        materials.append('            }')
+        
+        materials.append('')
+        materials.append('            def Shader "PrimvarReader"')
+        materials.append('            {')
+        materials.append('                uniform token info:id = "UsdPrimvarReader_float2"')
+        materials.append('                token inputs:varname = "st"')
+        materials.append('            }')
+    
+    materials.append('        }')
+    materials.append('')
+    
+    # Woody twig material for dead twigs
+    materials.append('        def Material "WoodyTwigMaterial"')
+    materials.append('        {')
+    materials.append('            token outputs:surface.connect = </Tree/Materials/WoodyTwigMaterial/PreviewSurface.outputs:surface>')
+    materials.append('')
+    materials.append('            def Shader "PreviewSurface"')
+    materials.append('            {')
+    materials.append('                uniform token info:id = "UsdPreviewSurface"')
+    materials.append('                color3f inputs:diffuseColor = (0.4, 0.3, 0.15)')
+    materials.append('                float inputs:roughness = 0.8')
+    materials.append('                float inputs:metallic = 0.0')
+    materials.append('                float inputs:specular = 0.2')
+    
+    if bark_texture_path:
+        materials.append('                color3f inputs:diffuseColor.connect = </Tree/Materials/WoodyTwigMaterial/DiffuseTexture.outputs:rgb>')
+    
+    materials.append('            }')
+    
+    if bark_texture_path:
+        materials.append('')
+        materials.append('            def Shader "DiffuseTexture"')
+        materials.append('            {')
+        materials.append('                uniform token info:id = "UsdUVTexture"')
+        materials.append(f'                asset inputs:file = @{bark_texture_path}@')
+        materials.append('                token inputs:sourceColorSpace = "sRGB"')
+        materials.append('                float2 inputs:st.connect = </Tree/Materials/WoodyTwigMaterial/PrimvarReader.outputs:result>')
+        materials.append('            }')
+        
+        materials.append('')
+        materials.append('            def Shader "PrimvarReader"')
+        materials.append('            {')
+        materials.append('                uniform token info:id = "UsdPrimvarReader_float2"')
+        materials.append('                token inputs:varname = "st"')
+        materials.append('            }')
+    
+    materials.append('        }')
+    materials.append('    }')  # Close Materials scope
+    
+    return materials
+
+
+def assign_material_to_tree_mesh_text(content, material_path="/Tree/Materials/BarkMaterial"):
+    """Add material assignment to tree mesh in USD text content.
+    
+    Args:
+        content: USD file content as string
+        material_path: Path to the material to assign
+        
+    Returns:
+        Modified USD content with material assignment
+    """
+    # Find the tree mesh definition and add material binding
+    import re
+    
+    # Pattern to find the tree mesh
+    mesh_pattern = r'(def Mesh "Tree"\s*\{)'
+    
+    def add_material_binding(match):
+        mesh_def = match.group(1)
+        # Add material binding API and assignment
+        binding = f'{mesh_def}\n        rel material:binding = <{material_path}>'
+        return binding
+    
+    # Replace the mesh definition with material binding
+    modified_content = re.sub(mesh_pattern, add_material_binding, content)
+    
+    return modified_content
+
+
 def apply_quaternion_to_vector(quat, vector):
     """Apply a quaternion rotation to a 3D vector.
 
@@ -1073,6 +1528,9 @@ def add_twigs_to_tree_usd_based(
         original_stage, output_file, "/Tree", points_z_up
     )
 
+    # Create materials for tree and twigs
+    create_tree_materials(transformed_stage, species_name, config)
+
     # Add twig PointInstancers to the transformed stage
     total_instances = 0
     success_count = 0
@@ -1264,9 +1722,17 @@ def add_twigs_to_tree_text_based(
         print(f"      ⚠️  No twig instances could be created for {species_name}")
         return False
 
+    # Generate materials section first
+    materials_content = generate_materials_text(species_name, config)
+    
     # Generate USD content for each twig variation
     twig_content = []
     twig_content.append("")
+    
+    # Add materials section
+    if materials_content:
+        twig_content.extend(materials_content)
+        twig_content.append("")
 
     for i, (file_key, assignment) in enumerate(twig_assignments.items()):
         twig_file = assignment["file"]
@@ -1293,9 +1759,18 @@ def add_twigs_to_tree_text_based(
         twig_content.append("    }")
         twig_content.append("")
 
-        # Add PointInstancer
+        # Add PointInstancer with material assignment
         twig_content.append(f'    def PointInstancer "{instancer_name}"')
         twig_content.append("    {")
+        
+        # Assign appropriate material based on twig type
+        if "dead" in twig_type.lower():
+            # Dead twigs get woody material
+            twig_content.append("        rel material:binding = </Tree/Materials/WoodyTwigMaterial>")
+        else:
+            # Living twigs get leaf material
+            twig_content.append("        rel material:binding = </Tree/Materials/LeafMaterial>")
+        
         twig_content.append(f"        rel prototypes = </Tree/{prototype_name}>")
         twig_content.append(
             f'        int[] protoIndices = [{", ".join(["0"] * len(instances))}]'
@@ -1343,6 +1818,9 @@ def add_twigs_to_tree_text_based(
     new_content = (
         content[:last_brace] + "\n" + twig_usd_text + "\n" + content[last_brace:]
     )
+    
+    # Apply material assignment to tree mesh
+    new_content = assign_material_to_tree_mesh_text(new_content)
 
     # Create output filename with twigs
     if output_path:
@@ -1364,6 +1842,10 @@ def add_twigs_to_tree_text_based(
     print(
         f"      ✅ Added {total_instances} {twig_name} twigs ({len(twig_assignments)} variations){coordinate_info}"
     )
+    print(f"      ✅ Added materials and textures for {species_name}")
+    print(f"         - Bark material with texture support")
+    print(f"         - Leaf material with alpha transparency")
+    print(f"         - Woody twig material for dead branches")
     print(f"         Output: {Path(output_file).name}")
     return True
 
@@ -1372,8 +1854,7 @@ def write_usd_pointinstancer_to_stage(
     stage, positions, orientations, twig_file_path, twig_xform_name, twig_type
 ):
     """Write USD PointInstancer directly to a USD stage."""
-    if not USD_AVAILABLE:
-        raise ImportError("USD Python bindings required for stage operations")
+    ensure_usd_available()
 
     tree_prim = stage.GetPrimAtPath("/Tree")
     if not tree_prim:
@@ -1417,6 +1898,29 @@ def write_usd_pointinstancer_to_stage(
         point_instancer.CreatePositionsAttr().Set(usd_positions)
         point_instancer.CreateOrientationsAttr().Set(usd_orientations)
         point_instancer.CreateScalesAttr().Set([Gf.Vec3f(1, 1, 1)])
+
+        # Assign appropriate material based on twig type
+        try:
+            if "dead" in twig_type.lower():
+                # Dead twigs get woody material
+                assign_material_to_prim(point_instancer.GetPrim(), "/Materials/WoodyTwigMaterial")
+                print(f"      ✅ Assigned woody material to {twig_type} twigs")
+            else:
+                # Living twigs get leaf material
+                assign_material_to_prim(point_instancer.GetPrim(), "/Materials/LeafMaterial") 
+                print(f"      ✅ Assigned leaf material to {twig_type} twigs")
+                
+        except Exception as e:
+            print(f"      ⚠️  Warning: Could not assign material to {twig_type} twigs: {e}")
+
+        # Ensure UV coordinates exist on the prototype
+        try:
+            prototype_mesh_children = [child for child in prototype_prim.GetPrim().GetChildren() 
+                                     if child.GetTypeName() == 'Mesh']
+            for mesh_prim in prototype_mesh_children:
+                ensure_uv_coordinates_on_prim(mesh_prim)
+        except Exception as e:
+            print(f"      ⚠️  Warning: Could not ensure UVs on prototype {safe_prototype_name}: {e}")
 
         return True
 
