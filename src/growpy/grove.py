@@ -1,21 +1,14 @@
 """Minimal grove operations for forest simulation."""
 
-from pathlib import Path
 from typing import Optional, Tuple
 
-# Platform-specific Grove core import with fallback
-try:
-    import the_grove_22_core as gc
-except ImportError:
-    gc = None
-
+from .common import gc, ensure_grove_available
 from .config import get_config
 
 
 def create_grove(species: Optional[str] = None):
     """Create a new Grove with optional species preset."""
-    if gc is None:
-        raise ImportError("Grove core not available")
+    ensure_grove_available()
 
     config = get_config()
     grove = gc.Grove()
