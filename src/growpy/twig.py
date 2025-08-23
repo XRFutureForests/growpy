@@ -351,6 +351,60 @@ def create_y_to_z_transform_matrix():
     return transform
 
 
+def extract_and_convert_transformation(original_stage, tree_prim_path="/Tree"):
+    """Extract transformation matrix from original stage and convert to Z-up.
+    
+    Args:
+        original_stage: USD stage with original transformation (Y-up)
+        tree_prim_path: Path to the tree prim with transformation
+        
+    Returns:
+        Converted transformation matrix for Z-up, or None if no transformation found
+    """
+    ensure_usd_available()
+    
+    tree_prim = original_stage.GetPrimAtPath(tree_prim_path)
+    if not tree_prim:
+        return None
+        
+    # Check if this prim has a transform
+    xformable = UsdGeom.Xformable(tree_prim)
+    if not xformable:
+        return None
+        
+    # Get the transformation matrix
+    local_transform = xformable.GetLocalTransformation()
+    if local_transform == Gf.Matrix4d(1.0):  # Identity matrix
+        return None
+        
+    # Extract components from the 4x4 matrix
+    # local_transform is a Gf.Matrix4d with components accessible as local_transform[row][col]
+    original_matrix = [
+        [local_transform[i][j] for j in range(4)] 
+        for i in range(4)
+    ]
+    
+    # Convert Y-up transformation to Z-up
+    # Original: ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (X, Y, Z, 1))
+    # Z-up:     ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (X, Z, 0, 1))
+    # where Y becomes Z and Z becomes 0 (since we only want position, not elevation change)
+    
+    converted_matrix = [
+        [1, 0, 0, 0],  # X axis unchanged
+        [0, 1, 0, 0],  # Y axis unchanged  
+        [0, 0, 1, 0],  # Z axis unchanged
+        [
+            original_matrix[3][0],  # X translation unchanged
+            original_matrix[3][2],  # Z translation becomes Y translation (Z-up)
+            0.0,                    # Z translation becomes 0 (per user request)
+            1                       # W unchanged
+        ]
+    ]
+    
+    # Convert to tuple format for USD
+    return tuple(tuple(row) for row in converted_matrix)
+
+
 def transform_mesh_to_z_up(stage, tree_prim_path="/Tree/Tree"):
     """Transform the tree mesh from Y-up to Z-up coordinate system.
 
@@ -444,9 +498,13 @@ def create_transformed_tree_stage(
     # Create new tree xform in new stage
     new_tree_xform = UsdGeom.Xform.Define(new_stage, tree_prim_path)
 
-    # NO transformation matrix at all - the coordinates are already in Z-up space
-    # We want the identity transform (no transformation)
-    # This is the default behavior, so we don't need to add any transform ops
+    # Extract and convert the transformation from Y-up to Z-up
+    converted_transform = extract_and_convert_transformation(original_stage, tree_prim_path)
+    if converted_transform:
+        print(f"      Converting position transformation from Y-up to Z-up")
+        # Apply the converted transformation matrix
+        transform_op = new_tree_xform.AddTransformOp()
+        transform_op.Set(Gf.Matrix4d(*converted_transform))
 
     # Copy the tree mesh manually
     tree_mesh_path = tree_prim_path + "/Tree"
@@ -849,13 +907,13 @@ def write_usd_pointinstancer(
     print(f"✅ Twig data successfully written to {output_file}")
 
 
-def create_bark_material(stage, material_path="/Materials/BarkMaterial", texture_path=None):
-    """Create a USD bark material with PBR properties.
+def create_bark_material(stage, material_path="/Materials/BarkMaterial", color=(0.6, 0.4, 0.2)):
+    """Create a simple USD bark material with color-based properties.
     
     Args:
         stage: USD stage to create material in
         material_path: Path for the material in USD stage
-        texture_path: Optional path to bark texture image
+        color: RGB color tuple for bark material
         
     Returns:
         UsdShade.Material: Created material prim
@@ -869,52 +927,11 @@ def create_bark_material(stage, material_path="/Materials/BarkMaterial", texture
     preview_surface = UsdShade.Shader.Define(stage, f"{material_path}/PreviewSurface")
     preview_surface.CreateIdAttr("UsdPreviewSurface")
     
-    # Set basic bark material properties
-    preview_surface.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set((0.6, 0.4, 0.2))
+    # Set bark material properties with simple color
+    preview_surface.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(color)
     preview_surface.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.9)
     preview_surface.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
     preview_surface.CreateInput("specular", Sdf.ValueTypeNames.Float).Set(0.3)
-    
-    # Create UV reader for texture coordinates
-    uv_reader = UsdShade.Shader.Define(stage, f"{material_path}/PrimvarReader")
-    uv_reader.CreateIdAttr("UsdPrimvarReader_float2")
-    uv_reader.CreateInput("varname", Sdf.ValueTypeNames.Token).Set("st")
-    
-    # Add texture if provided
-    if texture_path:
-        # Diffuse texture
-        diffuse_texture = UsdShade.Shader.Define(stage, f"{material_path}/DiffuseTexture")
-        diffuse_texture.CreateIdAttr("UsdUVTexture")
-        diffuse_texture.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(texture_path)
-        diffuse_texture.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set("sRGB")
-        
-        # Connect UV coordinates to texture
-        diffuse_texture.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
-            uv_reader.CreateOutput("result", Sdf.ValueTypeNames.Float2)
-        )
-        
-        # Connect texture to material
-        preview_surface.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(
-            diffuse_texture.CreateOutput("rgb", Sdf.ValueTypeNames.Color3f)
-        )
-        
-        # Try to find and add normal map
-        normal_texture_path = texture_path.replace("_diffuse", "_normal").replace("_albedo", "_normal")
-        if normal_texture_path != texture_path:
-            normal_texture = UsdShade.Shader.Define(stage, f"{material_path}/NormalTexture")
-            normal_texture.CreateIdAttr("UsdUVTexture")
-            normal_texture.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(normal_texture_path)
-            normal_texture.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set("raw")
-            
-            # Connect UV coordinates to normal texture
-            normal_texture.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
-                uv_reader.CreateOutput("result", Sdf.ValueTypeNames.Float2)
-            )
-            
-            # Connect normal texture to material
-            preview_surface.CreateInput("normal", Sdf.ValueTypeNames.Normal3f).ConnectToSource(
-                normal_texture.CreateOutput("rgb", Sdf.ValueTypeNames.Normal3f)
-            )
     
     # Connect surface shader to material
     material.CreateSurfaceOutput().ConnectToSource(
@@ -924,13 +941,13 @@ def create_bark_material(stage, material_path="/Materials/BarkMaterial", texture
     return material
 
 
-def create_twig_material(stage, material_path="/Materials/TwigMaterial", texture_path=None, is_leaves=True):
-    """Create a USD twig/leaf material with appropriate properties.
+def create_twig_material(stage, material_path="/Materials/TwigMaterial", color=None, is_leaves=True):
+    """Create a simple USD twig/leaf material with color-based properties.
     
     Args:
         stage: USD stage to create material in
         material_path: Path for the material in USD stage  
-        texture_path: Optional path to twig/leaf texture image
+        color: Optional RGB color tuple, defaults based on is_leaves
         is_leaves: Whether this material is for leaves (vs woody twigs)
         
     Returns:
@@ -945,9 +962,18 @@ def create_twig_material(stage, material_path="/Materials/TwigMaterial", texture
     preview_surface = UsdShade.Shader.Define(stage, f"{material_path}/PreviewSurface")
     preview_surface.CreateIdAttr("UsdPreviewSurface")
     
+    # Set default colors if not provided
+    if color is None:
+        if is_leaves:
+            color = (0.2, 0.6, 0.15)  # Green for leaves
+        else:
+            color = (0.4, 0.3, 0.15)  # Brown for woody twigs
+    
+    # Set material properties with simple color
+    preview_surface.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(color)
+    
     if is_leaves:
         # Leaf material properties
-        preview_surface.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set((0.2, 0.6, 0.15))
         preview_surface.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.7)
         preview_surface.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
         preview_surface.CreateInput("specular", Sdf.ValueTypeNames.Float).Set(0.4)
@@ -955,39 +981,9 @@ def create_twig_material(stage, material_path="/Materials/TwigMaterial", texture
         preview_surface.CreateInput("opacityThreshold", Sdf.ValueTypeNames.Float).Set(0.1)
     else:
         # Woody twig material properties
-        preview_surface.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set((0.4, 0.3, 0.15))
         preview_surface.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.8)
         preview_surface.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
         preview_surface.CreateInput("specular", Sdf.ValueTypeNames.Float).Set(0.2)
-    
-    # Create UV reader for texture coordinates
-    uv_reader = UsdShade.Shader.Define(stage, f"{material_path}/PrimvarReader")
-    uv_reader.CreateIdAttr("UsdPrimvarReader_float2")
-    uv_reader.CreateInput("varname", Sdf.ValueTypeNames.Token).Set("st")
-    
-    # Add texture if provided
-    if texture_path:
-        # Diffuse texture
-        diffuse_texture = UsdShade.Shader.Define(stage, f"{material_path}/DiffuseTexture")
-        diffuse_texture.CreateIdAttr("UsdUVTexture")
-        diffuse_texture.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(texture_path)
-        diffuse_texture.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set("sRGB")
-        
-        # Connect UV coordinates to texture
-        diffuse_texture.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
-            uv_reader.CreateOutput("result", Sdf.ValueTypeNames.Float2)
-        )
-        
-        # Connect texture to material diffuse color
-        preview_surface.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(
-            diffuse_texture.CreateOutput("rgb", Sdf.ValueTypeNames.Color3f)
-        )
-        
-        # For leaves, also use texture alpha for opacity
-        if is_leaves:
-            preview_surface.CreateInput("opacity", Sdf.ValueTypeNames.Float).ConnectToSource(
-                diffuse_texture.CreateOutput("a", Sdf.ValueTypeNames.Float)
-            )
     
     # Connect surface shader to material
     material.CreateSurfaceOutput().ConnectToSource(
@@ -1011,104 +1007,50 @@ def assign_material_to_prim(prim, material_path):
     material_api.Bind(UsdShade.Material(prim.GetStage().GetPrimAtPath(material_path)))
 
 
-def ensure_uv_coordinates_on_prim(prim):
-    """Ensure UV coordinates exist on a mesh prim.
-    
-    Args:
-        prim: USD mesh prim to add UV coordinates to
-    """
-    ensure_usd_available()
-    
-    mesh = UsdGeom.Mesh(prim)
-    primvars_api = UsdGeom.PrimvarsAPI(prim)
-    
-    # Check if st (UV) primvar already exists
-    st_primvar = primvars_api.GetPrimvar("st")
-    if not st_primvar:
-        # Create basic UV coordinates for simple cases
-        # This is a fallback - ideally UVs should come from the source mesh
-        face_vertex_counts = mesh.GetFaceVertexCountsAttr().Get()
-        total_vertices = sum(face_vertex_counts) if face_vertex_counts else 0
-        
-        if total_vertices > 0:
-            # Create simple planar UV mapping as fallback
-            uvs = []
-            for i in range(total_vertices):
-                u = (i % 4) / 3.0  # Simple pattern
-                v = (i // 4) / 3.0
-                uvs.extend([u, v])
-            
-            # Create st primvar
-            st_primvar = primvars_api.CreatePrimvar("st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.faceVarying)
-            st_primvar.Set(uvs)
 
 
-def create_tree_materials(stage, species_name, config):
-    """Create standard materials for tree and twigs based on species.
+def create_tree_materials(stage, species_name, config=None):
+    """Create simple color-based materials for tree and twigs.
     
     Args:
         stage: USD stage to create materials in
-        species_name: Name of species for texture lookup
-        config: GrowPy config for texture paths
+        species_name: Name of species (currently unused but kept for compatibility)
+        config: GrowPy config (unused but kept for compatibility)
     """
     ensure_usd_available()
     
-    # Find texture paths based on species and config
-    bark_texture_path = None
-    leaf_texture_path = None
-    
-    try:
-        # Try to find appropriate textures from config or common paths
-        if config and hasattr(config, 'get_texture_for_species'):
-            bark_texture_path = config.get_texture_for_species(species_name, "bark")
-            leaf_texture_path = config.get_texture_for_species(species_name, "leaf")
-        
-        # Fallback to common texture naming patterns
-        if not bark_texture_path:
-            species_clean = species_name.lower().replace(" ", "_")
-            bark_texture_path = f"./textures/{species_clean}_bark.jpg"
-            
-        if not leaf_texture_path:
-            species_clean = species_name.lower().replace(" ", "_")
-            leaf_texture_path = f"./textures/{species_clean}_leaf.jpg"
-            
-    except Exception as e:
-        print(f"      Warning: Could not determine texture paths for {species_name}: {e}")
-        bark_texture_path = "./textures/bark_default.jpg"
-        leaf_texture_path = "./textures/leaf_default.jpg"
-    
-    # Create bark material for tree trunk
+    # Create bark material for tree trunk with brown color
     try:
         bark_material = create_bark_material(
             stage, 
             "/Materials/BarkMaterial", 
-            bark_texture_path
+            color=(0.6, 0.4, 0.2)  # Brown bark color
         )
-        print(f"      ✅ Created bark material with texture: {bark_texture_path}")
+        print(f"      ✅ Created bark material with brown color")
     except Exception as e:
         print(f"      ⚠️  Warning: Could not create bark material: {e}")
     
-    # Create leaf material for twigs
+    # Create leaf material for twigs with green color
     try:
         leaf_material = create_twig_material(
             stage, 
             "/Materials/LeafMaterial", 
-            leaf_texture_path, 
+            color=(0.2, 0.6, 0.15),  # Green leaf color
             is_leaves=True
         )
-        print(f"      ✅ Created leaf material with texture: {leaf_texture_path}")
+        print(f"      ✅ Created leaf material with green color")
     except Exception as e:
         print(f"      ⚠️  Warning: Could not create leaf material: {e}")
     
-    # Create woody twig material for dead/bare twigs
+    # Create woody twig material for dead/bare twigs with darker brown color
     try:
         woody_material = create_twig_material(
             stage, 
             "/Materials/WoodyTwigMaterial", 
-            bark_texture_path, 
+            color=(0.4, 0.3, 0.15),  # Darker brown for woody twigs
             is_leaves=False
         )
-        print(f"      ✅ Created woody twig material")
+        print(f"      ✅ Created woody twig material with brown color")
     except Exception as e:
         print(f"      ⚠️  Warning: Could not create woody twig material: {e}")
     
@@ -1116,7 +1058,6 @@ def create_tree_materials(stage, species_name, config):
     try:
         tree_mesh_prim = stage.GetPrimAtPath("/Tree/Tree")
         if tree_mesh_prim:
-            ensure_uv_coordinates_on_prim(tree_mesh_prim)
             assign_material_to_prim(tree_mesh_prim, "/Materials/BarkMaterial")
             print(f"      ✅ Assigned bark material to tree mesh")
     except Exception as e:
@@ -1399,18 +1340,12 @@ def add_twigs_to_tree(
         print(f"  🌿 Adding {twig_name} twigs to {usd_file_path.name}")
         print(f"      Available twig types: {list(twig_files_by_type.keys())}")
 
-        # Try USD-based approach first if available
-        if USD_AVAILABLE:
-            try:
-                return add_twigs_to_tree_usd_based(
-                    usd_file_path, species_name, config, twig_files_by_type, output_path
-                )
-            except Exception as e:
-                print(f"  ⚠️  USD-based approach failed: {e}")
-                print("  🔄 Falling back to text-based approach...")
-
-        # Use text-based approach as fallback
-        return add_twigs_to_tree_text_based(
+        # Use USD-based approach (primary and only method)
+        if not USD_AVAILABLE:
+            print(f"  ⚠️  USD Python bindings not available - cannot add twigs")
+            return False
+            
+        return add_twigs_to_tree_usd_based(
             usd_file_path, species_name, config, twig_files_by_type, output_path
         )
 
@@ -1593,261 +1528,9 @@ def add_twigs_to_tree_text_based(
     twig_files_by_type: Dict[str, List[Path]],
     output_path: Optional[Path] = None,
 ) -> bool:
-    """
-    Add twigs using text-based USD manipulation with random variation assignment.
-    Also handles tree mesh coordinate transformation to Z-up.
-    """
-    print(f"      Using text-based twig placement for {species_name}")
-
-    # Read the USD file content
-    with open(usd_file_path, "r", encoding="utf-8") as f:
-        content = f.read()
-
-    # Check if we need to transform to Z-up
-    needs_transformation = 'upAxis = "Y"' in content
-
-    if needs_transformation:
-        print(f"      Converting tree from Y-up to Z-up coordinate system...")
-
-        # Change the upAxis metadata
-        content = content.replace('upAxis = "Y"', 'upAxis = "Z"')
-
-        # If USD is available, try to transform the mesh coordinates
-        if USD_AVAILABLE:
-            try:
-                # Open the original stage and get transformed mesh data
-                original_stage = Usd.Stage.Open(str(usd_file_path))
-                if original_stage:
-                    points_z_up, _, _, _ = transform_mesh_to_z_up(
-                        original_stage, "/Tree/Tree"
-                    )
-
-                    # Convert transformed points back to USD text format
-                    points_text = ", ".join(
-                        [f"({p[0]:.4f}, {p[1]:.4f}, {p[2]:.4f})" for p in points_z_up]
-                    )
-
-                    # Find and replace the points array in the text
-                    import re
-
-                    points_pattern = r"point3f\[\] points = \[([^\]]+)\]"
-                    content = re.sub(
-                        points_pattern, f"point3f[] points = [{points_text}]", content
-                    )
-                    print(
-                        f"      ✅ Transformed {len(points_z_up)} mesh vertices to Z-up"
-                    )
-                else:
-                    print(
-                        f"      ⚠️  Could not open USD stage for coordinate transformation"
-                    )
-            except Exception as e:
-                print(f"      ⚠️  Could not transform mesh coordinates: {e}")
-
-    # Generate intelligent twig instances based on available types
-    twig_instances_by_type = {
-        "end": [],
-        "side": [],
-        "apical": [],
-        "lateral": [],
-        "main": [],
-    }
-
-    # Define strategic twig placement patterns with more variety
-    placement_strategies = {
-        "end": [
-            {"position": (0.1, 0.2, 3.5), "desc": "top_apical_1"},
-            {"position": (-0.2, 0.3, 3.2), "desc": "top_apical_2"},
-            {"position": (0.3, -0.1, 3.8), "desc": "crown_tip"},
-            {"position": (0.15, -0.25, 3.6), "desc": "top_apical_3"},
-        ],
-        "side": [
-            {"position": (0.8, 0.5, 2.0), "desc": "mid_lateral_1"},
-            {"position": (-0.6, 0.7, 1.8), "desc": "mid_lateral_2"},
-            {"position": (0.4, -0.8, 2.3), "desc": "mid_lateral_3"},
-            {"position": (-0.7, -0.3, 1.5), "desc": "lower_lateral_1"},
-            {"position": (0.9, 0.1, 2.5), "desc": "upper_lateral"},
-            {"position": (-0.5, 0.9, 2.1), "desc": "mid_lateral_4"},
-            {"position": (0.6, -0.4, 1.7), "desc": "lower_lateral_2"},
-        ],
-        "apical": [
-            {"position": (0.05, 0.15, 3.9), "desc": "apex_main"},
-            {"position": (-0.1, 0.1, 3.7), "desc": "apex_side_1"},
-            {"position": (0.2, -0.05, 3.8), "desc": "apex_side_2"},
-        ],
-        "lateral": [
-            {"position": (1.0, 0.3, 2.2), "desc": "branch_lateral_1"},
-            {"position": (-0.8, 0.6, 1.9), "desc": "branch_lateral_2"},
-            {"position": (0.7, -0.7, 2.0), "desc": "branch_lateral_3"},
-            {"position": (-0.9, -0.2, 1.6), "desc": "branch_lateral_4"},
-            {"position": (0.5, 0.8, 2.4), "desc": "branch_lateral_5"},
-        ],
-        "main": [
-            {"position": (0.3, 0.4, 2.8), "desc": "main_1"},
-            {"position": (-0.4, 0.5, 2.6), "desc": "main_2"},
-            {"position": (0.6, -0.3, 2.9), "desc": "main_3"},
-        ],
-    }
-
-    # If we transformed to Z-up, adjust twig positions accordingly (they're already in Z-up space)
-    if needs_transformation:
-        # The placement strategies are already in Z-up coordinates (z is vertical)
-        # So no transformation needed for the twig positions
-        pass
-
-    # Create instance data for each placement strategy
-    for strategy_type, placements in placement_strategies.items():
-        # Only create instances if we have twig files for this type
-        if strategy_type in twig_files_by_type and twig_files_by_type[strategy_type]:
-            for i, placement in enumerate(placements):
-                twig_instances_by_type[strategy_type].append(
-                    {
-                        "position": placement["position"],
-                        "orientation": (1.0, 0.0, 0.0, 0.0),  # Identity quaternion
-                        "description": placement["desc"],
-                        "instance_index": i,
-                    }
-                )
-
-    # Use random variation assignment
-    twig_assignments = assign_twig_variations_randomly(
-        twig_instances_by_type,
-        twig_files_by_type,
-        species_name,
-        random_seed=hash(str(usd_file_path))
-        % 10000,  # Deterministic but file-specific seed
-    )
-
-    if not twig_assignments:
-        print(f"      ⚠️  No twig instances could be created for {species_name}")
-        return False
-
-    # Generate materials section first
-    materials_content = generate_materials_text(species_name, config)
-    
-    # Generate USD content for each twig variation
-    twig_content = []
-    twig_content.append("")
-    
-    # Add materials section
-    if materials_content:
-        twig_content.extend(materials_content)
-        twig_content.append("")
-
-    for i, (file_key, assignment) in enumerate(twig_assignments.items()):
-        twig_file = assignment["file"]
-        twig_reference_name = assignment["reference_name"]
-        instances = assignment["instances"]
-        twig_type = assignment["type"]
-
-        prototype_name = f"TwigPrototype_{twig_type}_{i}"
-        instancer_name = f"TwigInstances_{twig_type}_{i}"
-
-        # Calculate relative path
-        try:
-            twig_relative_path = twig_file.relative_to(usd_file_path.parent)
-        except ValueError:
-            twig_relative_path = twig_file
-
-        # Add prototype reference
-        twig_content.append(f'    def "{prototype_name}" (')
-        twig_content.append(
-            f"        references = @{twig_relative_path}@</root/{twig_reference_name}>"
-        )
-        twig_content.append("    )")
-        twig_content.append("    {")
-        twig_content.append("    }")
-        twig_content.append("")
-
-        # Add PointInstancer with material assignment
-        twig_content.append(f'    def PointInstancer "{instancer_name}"')
-        twig_content.append("    {")
-        
-        # Assign appropriate material based on twig type
-        if "dead" in twig_type.lower():
-            # Dead twigs get woody material
-            twig_content.append("        rel material:binding = </Tree/Materials/WoodyTwigMaterial>")
-        else:
-            # Living twigs get leaf material
-            twig_content.append("        rel material:binding = </Tree/Materials/LeafMaterial>")
-        
-        twig_content.append(f"        rel prototypes = </Tree/{prototype_name}>")
-        twig_content.append(
-            f'        int[] protoIndices = [{", ".join(["0"] * len(instances))}]'
-        )
-        twig_content.append(
-            f'        int64[] ids = [{", ".join([str(j) for j in range(len(instances))])}]'
-        )
-        twig_content.append("")
-
-        # Add positions
-        positions_str = ", ".join(
-            [
-                f"({inst['position'][0]:.4f}, {inst['position'][1]:.4f}, {inst['position'][2]:.4f})"
-                for inst in instances
-            ]
-        )
-        twig_content.append(f"        point3f[] positions = [{positions_str}]")
-        twig_content.append("")
-
-        # Add orientations
-        orientations_str = ", ".join(
-            [
-                f"({inst['orientation'][0]:.6f}, {inst['orientation'][1]:.6f}, {inst['orientation'][2]:.6f}, {inst['orientation'][3]:.6f})"
-                for inst in instances
-            ]
-        )
-        twig_content.append(f"        quath[] orientations = [{orientations_str}]")
-        twig_content.append("")
-
-        # Add uniform scale
-        twig_content.append("        float3[] scales = [(1, 1, 1)]")
-        twig_content.append("    }")
-        twig_content.append("")
-
-    # Join twig content
-    twig_usd_text = "\n".join(twig_content)
-
-    # Find insertion point (before the last closing brace)
-    last_brace = content.rfind("}")
-    if last_brace == -1:
-        print("      ❌ Could not find closing brace in USD file")
-        return False
-
-    # Insert the twig content
-    new_content = (
-        content[:last_brace] + "\n" + twig_usd_text + "\n" + content[last_brace:]
-    )
-    
-    # Apply material assignment to tree mesh
-    new_content = assign_material_to_tree_mesh_text(new_content)
-
-    # Create output filename with twigs
-    if output_path:
-        output_file = str(output_path)
-    else:
-        output_file = str(usd_file_path).replace(".usda", "_with_twigs.usda")
-
-    # Write the modified content
-    with open(output_file, "w", encoding="utf-8") as f:
-        f.write(new_content)
-
-    total_instances = sum(
-        len(assignment["instances"]) for assignment in twig_assignments.values()
-    )
-
-    # Get twig name for logging
-    twig_name = config.get_twig_for_species(species_name) or "generic"
-    coordinate_info = " (Z-up transformed)" if needs_transformation else ""
-    print(
-        f"      ✅ Added {total_instances} {twig_name} twigs ({len(twig_assignments)} variations){coordinate_info}"
-    )
-    print(f"      ✅ Added materials and textures for {species_name}")
-    print(f"         - Bark material with texture support")
-    print(f"         - Leaf material with alpha transparency")
-    print(f"         - Woody twig material for dead branches")
-    print(f"         Output: {Path(output_file).name}")
-    return True
+    """Text-based approach removed - USD-based approach is now the primary method."""
+    print(f"      Text-based approach no longer supported for {species_name}")
+    return False
 
 
 def write_usd_pointinstancer_to_stage(
@@ -1914,13 +1597,8 @@ def write_usd_pointinstancer_to_stage(
             print(f"      ⚠️  Warning: Could not assign material to {twig_type} twigs: {e}")
 
         # Ensure UV coordinates exist on the prototype
-        try:
-            prototype_mesh_children = [child for child in prototype_prim.GetPrim().GetChildren() 
-                                     if child.GetTypeName() == 'Mesh']
-            for mesh_prim in prototype_mesh_children:
-                ensure_uv_coordinates_on_prim(mesh_prim)
-        except Exception as e:
-            print(f"      ⚠️  Warning: Could not ensure UVs on prototype {safe_prototype_name}: {e}")
+        # UV coordinates are no longer needed since we use simple color materials
+        # Meshes will be rendered with their existing geometry
 
         return True
 
