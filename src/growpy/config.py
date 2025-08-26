@@ -809,3 +809,104 @@ class GrowPyConfig:
                 filtered_configs[lod_level] = all_configs[lod_level]
 
         return filtered_configs
+
+    @classmethod
+    def get_species_colors(cls, common_name: str) -> Optional[Dict[str, tuple]]:
+        """
+        Get bark and leaf colors for a given species.
+
+        Args:
+            common_name: The common name of the species.
+
+        Returns:
+            Dictionary with 'bark_color' and 'leaf_color' as RGB tuples, or None if species not found.
+        """
+        df = cls.load_species_lookup()
+
+        if df.empty:
+            return None
+
+        # Use fuzzy matching to find the species
+        matched_name = cls._find_species_match(common_name, df)
+        if matched_name is None:
+            return None
+
+        # Find the row for this species
+        species_row = df[df["Common Name"] == matched_name]
+
+        if species_row.empty:
+            return None
+
+        row = species_row.iloc[0]
+        
+        # Check if color columns exist and have valid data
+        bark_color = None
+        leaf_color = None
+        
+        # Extract bark color if available
+        if all(col in row.index for col in ['Bark Color R', 'Bark Color G', 'Bark Color B']):
+            try:
+                r = float(row['Bark Color R']) if pd.notna(row['Bark Color R']) else 0.6
+                g = float(row['Bark Color G']) if pd.notna(row['Bark Color G']) else 0.4
+                b = float(row['Bark Color B']) if pd.notna(row['Bark Color B']) else 0.2
+                bark_color = (r, g, b)
+            except (ValueError, TypeError):
+                bark_color = (0.6, 0.4, 0.2)  # Default brown bark
+        else:
+            bark_color = (0.6, 0.4, 0.2)  # Default brown bark
+        
+        # Extract leaf color if available  
+        if all(col in row.index for col in ['Leaf Color R', 'Leaf Color G', 'Leaf Color B']):
+            try:
+                r = float(row['Leaf Color R']) if pd.notna(row['Leaf Color R']) else 0.2
+                g = float(row['Leaf Color G']) if pd.notna(row['Leaf Color G']) else 0.6
+                b = float(row['Leaf Color B']) if pd.notna(row['Leaf Color B']) else 0.15
+                leaf_color = (r, g, b)
+            except (ValueError, TypeError):
+                leaf_color = (0.2, 0.6, 0.15)  # Default green leaf
+        else:
+            leaf_color = (0.2, 0.6, 0.15)  # Default green leaf
+
+        return {
+            'bark_color': bark_color,
+            'leaf_color': leaf_color
+        }
+
+    @classmethod
+    def get_species_data(cls, common_name: str) -> Optional[dict]:
+        """
+        Get all species data for a given species as a dictionary, including colors.
+
+        Args:
+            common_name: The common name of the species.
+
+        Returns:
+            Dictionary with all species data including colors, or None if species not found.
+        """
+        df = cls.load_species_lookup()
+
+        if df.empty:
+            return None
+
+        # Use fuzzy matching to find the species
+        matched_name = cls._find_species_match(common_name, df)
+        if matched_name is None:
+            return None
+
+        # Find the row for this species
+        species_row = df[df["Common Name"] == matched_name]
+
+        if species_row.empty:
+            return None
+
+        row = species_row.iloc[0]
+        
+        # Convert row to dictionary
+        species_dict = row.to_dict()
+        
+        # Add processed color information
+        colors = cls.get_species_colors(common_name)
+        if colors:
+            species_dict.update(colors)
+            
+        return species_dict
