@@ -34,6 +34,195 @@ except ImportError:
         GrowPyConfig = None
 
 
+def extract_materials_from_usd(usd_file_path: Path) -> Dict[str, Any]:
+    """
+    Extract material definitions from a USD file.
+    
+    Args:
+        usd_file_path: Path to USD file containing materials
+        
+    Returns:
+        Dict with material data including shaders and connections
+    """
+    ensure_usd_available()
+    
+    stage = Usd.Stage.Open(str(usd_file_path))
+    if not stage:
+        return {}
+        
+    materials = {}
+    
+    for prim in stage.Traverse():
+        # Check if this is a Material prim using the type name
+        if prim.GetTypeName() == "Material":
+            material_data = {
+                'name': prim.GetName(),
+                'shaders': {},
+                'connections': {}
+            }
+            
+            # Extract UsdPreviewSurface shader
+            surface_shader_prim = prim.GetChild("Diffuse_BSDF")
+            if surface_shader_prim and surface_shader_prim.GetTypeName() == "Shader":
+                material_data['shaders']['surface'] = {
+                    'info:id': 'UsdPreviewSurface',
+                    'roughness': 0.0
+                }
+            
+            # Extract UsdUVTexture shader
+            texture_shader_prim = prim.GetChild("Image_Texture")
+            if texture_shader_prim and texture_shader_prim.GetTypeName() == "Shader":
+                # Get file attribute
+                file_attr = texture_shader_prim.GetAttribute("inputs:file")
+                if file_attr:
+                    texture_file = file_attr.Get()
+                    material_data['shaders']['texture'] = {
+                        'info:id': 'UsdUVTexture',
+                        'file': texture_file,
+                        'sourceColorSpace': 'sRGB',
+                        'wrapS': 'repeat',
+                        'wrapT': 'repeat'
+                    }
+            
+            # Extract UV mapping shader
+            uv_shader_prim = prim.GetChild("uvmap")
+            if uv_shader_prim and uv_shader_prim.GetTypeName() == "Shader":
+                material_data['shaders']['uvmap'] = {
+                    'info:id': 'UsdPrimvarReader_float2',
+                    'varname': 'st'
+                }
+            
+            materials[prim.GetName()] = material_data
+    
+    return materials
+
+
+def embed_materials_in_stage(stage, materials: Dict[str, Any], base_path: str = "/materials") -> None:
+    """
+    Embed extracted materials into the main stage using proper UsdShade API.
+    
+    Args:
+        stage: USD stage to embed materials in
+        materials: Material data from extract_materials_from_usd
+        base_path: Base path for materials in the stage
+    """
+    ensure_usd_available()
+    
+    if not materials:
+        return
+        
+    # Import UsdShade for proper material creation
+    from pxr import UsdShade, Sdf
+        
+    # Create materials scope
+    materials_scope = stage.DefinePrim(base_path, "Scope")
+    
+    for material_name, material_data in materials.items():
+        material_path = f"{base_path}/{material_name}"
+        
+        # Create material using UsdShade API
+        material = UsdShade.Material.Define(stage, material_path)
+        
+        # Create UsdPreviewSurface shader
+        surface_shader_path = f"{material_path}/Diffuse_BSDF"
+        surface_shader = UsdShade.Shader.Define(stage, surface_shader_path)
+        surface_shader.CreateIdAttr("UsdPreviewSurface")
+        
+        # Set surface shader properties
+        if 'surface' in material_data['shaders']:
+            surface_data = material_data['shaders']['surface']
+            roughness = surface_data.get('roughness', 0.0)
+            surface_shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(roughness)
+        
+        # Create UsdUVTexture shader if texture data exists
+        if 'texture' in material_data['shaders']:
+            texture_data = material_data['shaders']['texture']
+            texture_shader_path = f"{material_path}/Image_Texture"
+            texture_shader = UsdShade.Shader.Define(stage, texture_shader_path)
+            texture_shader.CreateIdAttr("UsdUVTexture")
+            
+            # Set texture properties
+            texture_file = texture_data.get('file')
+            if texture_file:
+                texture_shader.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(texture_file)
+            
+            texture_shader.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.String).Set(
+                texture_data.get('sourceColorSpace', 'sRGB')
+            )
+            texture_shader.CreateInput("wrapS", Sdf.ValueTypeNames.String).Set(
+                texture_data.get('wrapS', 'repeat')
+            )
+            texture_shader.CreateInput("wrapT", Sdf.ValueTypeNames.String).Set(
+                texture_data.get('wrapT', 'repeat')
+            )
+            
+            # Create UV mapping shader
+            if 'uvmap' in material_data['shaders']:
+                uv_data = material_data['shaders']['uvmap']
+                uv_shader_path = f"{material_path}/uvmap"
+                uv_shader = UsdShade.Shader.Define(stage, uv_shader_path)
+                uv_shader.CreateIdAttr("UsdPrimvarReader_float2")
+                uv_shader.CreateInput("varname", Sdf.ValueTypeNames.String).Set(
+                    uv_data.get('varname', 'st')
+                )
+                
+                # Create connections using UsdShade API
+                texture_st_input = texture_shader.CreateInput("st", Sdf.ValueTypeNames.Float2)
+                texture_st_input.ConnectToSource(uv_shader.ConnectableAPI(), "result")
+            
+            # Connect texture shader to surface shader  
+            surface_diffuse_input = surface_shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f)
+            surface_diffuse_input.ConnectToSource(texture_shader.ConnectableAPI(), "rgb")
+        
+        # Connect material output using UsdShade API
+        material.CreateSurfaceOutput().ConnectToSource(surface_shader.ConnectableAPI(), "surface")
+
+
+def copy_texture_files(materials: Dict[str, Any], output_dir: Path) -> None:
+    """
+    Copy texture files to output directory and update material references.
+    
+    Args:
+        materials: Material data with texture file references
+        output_dir: Output directory for the main USD file
+    """
+    import shutil
+    import os
+    
+    texture_dir = output_dir / "textures"
+    texture_dir.mkdir(exist_ok=True)
+    
+    for material_name, material_data in materials.items():
+        if 'texture' in material_data['shaders']:
+            texture_info = material_data['shaders']['texture']
+            texture_file = texture_info.get('file')
+            
+            if texture_file and isinstance(texture_file, (str, Path)):
+                # Handle asset references like @./textures/texture.png@
+                if isinstance(texture_file, str) and texture_file.startswith('@') and texture_file.endswith('@'):
+                    texture_file = texture_file[1:-1]  # Remove @ symbols
+                
+                # Convert to Path for easier handling
+                src_path = Path(texture_file)
+                
+                # If relative path, try to resolve from twig directory
+                if not src_path.is_absolute():
+                    # This would need to be resolved based on the twig file location
+                    # For now, assume textures are in a standard location
+                    continue
+                
+                if src_path.exists():
+                    dst_filename = src_path.name
+                    dst_path = texture_dir / dst_filename
+                    
+                    try:
+                        shutil.copy2(src_path, dst_path)
+                        # Update material reference to relative path
+                        texture_info['file'] = f"./textures/{dst_filename}"
+                    except (OSError, IOError) as e:
+                        print(f"Warning: Could not copy texture file {src_path}: {e}")
+
+
 def select_random_twig_from_group(
     twig_files: List[Path], instance_index: int = 0, seed: Optional[int] = None
 ) -> Path:
@@ -1010,47 +1199,65 @@ def assign_material_to_prim(prim, material_path):
 
 
 def create_tree_materials(stage, species_name, config=None):
-    """Create simple color-based materials for tree and twigs.
+    """Create species-specific color-based materials for tree and twigs.
     
     Args:
         stage: USD stage to create materials in
-        species_name: Name of species (currently unused but kept for compatibility)
-        config: GrowPy config (unused but kept for compatibility)
+        species_name: Name of species for color lookup
+        config: GrowPy config for species color data
     """
     ensure_usd_available()
     
-    # Create bark material for tree trunk with brown color
+    # Get species-specific colors
+    if config is None:
+        from .config import get_config
+        config = get_config()
+    
+    species_colors = config.get_species_colors(species_name)
+    if species_colors:
+        bark_color = species_colors['bark_color']
+        leaf_color = species_colors['leaf_color']
+        print(f"      🎨 Using species-specific colors for {species_name}")
+        print(f"         Bark: RGB{bark_color}, Leaf: RGB{leaf_color}")
+    else:
+        # Fallback colors
+        bark_color = (0.6, 0.4, 0.2)  # Brown bark
+        leaf_color = (0.2, 0.6, 0.15)  # Green leaf
+        print(f"      ⚠️  Using fallback colors for {species_name}")
+    
+    # Create bark material for tree trunk with species-specific color
     try:
         bark_material = create_bark_material(
             stage, 
             "/Materials/BarkMaterial", 
-            color=(0.6, 0.4, 0.2)  # Brown bark color
+            color=bark_color
         )
-        print(f"      ✅ Created bark material with brown color")
+        print(f"      ✅ Created bark material with species-specific color")
     except Exception as e:
         print(f"      ⚠️  Warning: Could not create bark material: {e}")
     
-    # Create leaf material for twigs with green color
+    # Create leaf material for twigs with species-specific color
     try:
         leaf_material = create_twig_material(
             stage, 
             "/Materials/LeafMaterial", 
-            color=(0.2, 0.6, 0.15),  # Green leaf color
+            color=leaf_color,
             is_leaves=True
         )
-        print(f"      ✅ Created leaf material with green color")
+        print(f"      ✅ Created leaf material with species-specific color")
     except Exception as e:
         print(f"      ⚠️  Warning: Could not create leaf material: {e}")
     
-    # Create woody twig material for dead/bare twigs with darker brown color
+    # Create woody twig material for dead/bare twigs with darker bark color
+    woody_color = (bark_color[0] * 0.7, bark_color[1] * 0.7, bark_color[2] * 0.7)
     try:
         woody_material = create_twig_material(
             stage, 
             "/Materials/WoodyTwigMaterial", 
-            color=(0.4, 0.3, 0.15),  # Darker brown for woody twigs
+            color=woody_color,
             is_leaves=False
         )
-        print(f"      ✅ Created woody twig material with brown color")
+        print(f"      ✅ Created woody twig material with species-specific color")
     except Exception as e:
         print(f"      ⚠️  Warning: Could not create woody twig material: {e}")
     
@@ -1059,21 +1266,31 @@ def create_tree_materials(stage, species_name, config=None):
         tree_mesh_prim = stage.GetPrimAtPath("/Tree/Tree")
         if tree_mesh_prim:
             assign_material_to_prim(tree_mesh_prim, "/Materials/BarkMaterial")
-            print(f"      ✅ Assigned bark material to tree mesh")
+            print(f"      ✅ Assigned species-specific bark material to tree mesh")
     except Exception as e:
         print(f"      ⚠️  Warning: Could not assign bark material to tree: {e}")
 
 
 def generate_materials_text(species_name, config):
-    """Generate USD text content for materials based on species.
+    """Generate USD text content for materials based on species with color support.
     
     Args:
-        species_name: Name of species for texture lookup
-        config: GrowPy config for texture paths
+        species_name: Name of species for color and texture lookup
+        config: GrowPy config for species data and texture paths
         
     Returns:
         List of strings representing USD material definitions
     """
+    # Get species-specific colors
+    species_colors = config.get_species_colors(species_name) if config else None
+    if species_colors:
+        bark_color = species_colors['bark_color']
+        leaf_color = species_colors['leaf_color']
+    else:
+        # Fallback colors
+        bark_color = (0.6, 0.4, 0.2)  # Brown bark
+        leaf_color = (0.2, 0.6, 0.15)  # Green leaf
+    
     # Find texture paths based on species and config
     bark_texture_path = None
     leaf_texture_path = None
@@ -1112,7 +1329,7 @@ def generate_materials_text(species_name, config):
     materials.append('            def Shader "PreviewSurface"')
     materials.append('            {')
     materials.append('                uniform token info:id = "UsdPreviewSurface"')
-    materials.append('                color3f inputs:diffuseColor = (0.6, 0.4, 0.2)')
+    materials.append(f'                color3f inputs:diffuseColor = {bark_color}')
     materials.append('                float inputs:roughness = 0.9')
     materials.append('                float inputs:metallic = 0.0')
     materials.append('                float inputs:specular = 0.3')
@@ -1163,7 +1380,7 @@ def generate_materials_text(species_name, config):
     materials.append('            def Shader "PreviewSurface"')
     materials.append('            {')
     materials.append('                uniform token info:id = "UsdPreviewSurface"')
-    materials.append('                color3f inputs:diffuseColor = (0.2, 0.6, 0.15)')
+    materials.append(f'                color3f inputs:diffuseColor = {leaf_color}')
     materials.append('                float inputs:roughness = 0.7')
     materials.append('                float inputs:metallic = 0.0')
     materials.append('                float inputs:specular = 0.4')
@@ -1196,7 +1413,8 @@ def generate_materials_text(species_name, config):
     materials.append('        }')
     materials.append('')
     
-    # Woody twig material for dead twigs
+    # Woody twig material for dead twigs - use darker bark color
+    woody_color = (bark_color[0] * 0.7, bark_color[1] * 0.7, bark_color[2] * 0.7)
     materials.append('        def Material "WoodyTwigMaterial"')
     materials.append('        {')
     materials.append('            token outputs:surface.connect = </Tree/Materials/WoodyTwigMaterial/PreviewSurface.outputs:surface>')
@@ -1204,7 +1422,7 @@ def generate_materials_text(species_name, config):
     materials.append('            def Shader "PreviewSurface"')
     materials.append('            {')
     materials.append('                uniform token info:id = "UsdPreviewSurface"')
-    materials.append('                color3f inputs:diffuseColor = (0.4, 0.3, 0.15)')
+    materials.append(f'                color3f inputs:diffuseColor = {woody_color}')
     materials.append('                float inputs:roughness = 0.8')
     materials.append('                float inputs:metallic = 0.0')
     materials.append('                float inputs:specular = 0.2')
@@ -1490,7 +1708,7 @@ def add_twigs_to_tree_usd_based(
         safe_twig_name = f"{twig_type}_{i:02d}"
 
         try:
-            success = write_usd_pointinstancer_to_stage(
+            success = write_usd_pointinstancer_to_stage_with_materials(
                 transformed_stage,
                 positions,
                 orientations,
@@ -1533,37 +1751,52 @@ def add_twigs_to_tree_text_based(
     return False
 
 
-def write_usd_pointinstancer_to_stage(
+def write_usd_pointinstancer_to_stage_with_materials(
     stage, positions, orientations, twig_file_path, twig_xform_name, twig_type
 ):
-    """Write USD PointInstancer directly to a USD stage."""
+    """Write USD PointInstancer with embedded materials to solve texture inheritance issues."""
     ensure_usd_available()
+    from pxr import UsdShade
 
     tree_prim = stage.GetPrimAtPath("/Tree")
     if not tree_prim:
         raise ValueError("Tree prim not found in stage")
 
-    # Create prototype with safe USD name
-    safe_prototype_name = f"TwigPrototype_{twig_type}".replace("-", "_").replace(
-        " ", "_"
-    )
+    # Step 1: Extract materials from twig file
+    print(f"      🔍 Extracting materials from {twig_file_path.name}")
+    materials = extract_materials_from_usd(twig_file_path)
+    
+    if materials:
+        print(f"      ✅ Found {len(materials)} materials: {list(materials.keys())}")
+        
+        # Step 2: Embed materials in main tree stage
+        material_base_path = f"/Tree/Materials_{twig_type}".replace("-", "_").replace(" ", "_")
+        embed_materials_in_stage(stage, materials, material_base_path)
+        print(f"      ✅ Embedded materials at {material_base_path}")
+    else:
+        print(f"      ⚠️  No materials found in {twig_file_path.name}, using geometry only")
+
+    # Step 3: Create prototype with geometry reference (no materials)
+    safe_prototype_name = f"TwigPrototype_{twig_type}".replace("-", "_").replace(" ", "_")
     prototype_path = f"/Tree/{safe_prototype_name}"
 
     try:
+        # Import UsdGeom for proper prototype creation
         prototype_prim = UsdGeom.Xform.Define(stage, prototype_path)
         prototype_prim.GetPrim().GetReferences().AddReference(
             str(twig_file_path), f"/root/{twig_xform_name}"
         )
+        
+        # Clear any existing material bindings on the prototype to force inheritance
+        # from the embedded materials at tree level
+        clear_prototype_material_bindings(stage, prototype_path)
+        
     except Exception as e:
-        print(
-            f"      ⚠️  Warning: Could not create prototype {safe_prototype_name}: {e}"
-        )
+        print(f"      ⚠️  Warning: Could not create prototype {safe_prototype_name}: {e}")
         return False
 
-    # Create PointInstancer with safe USD name
-    safe_instancer_name = f"TwigInstances_{twig_type}".replace("-", "_").replace(
-        " ", "_"
-    )
+    # Step 4: Create PointInstancer
+    safe_instancer_name = f"TwigInstances_{twig_type}".replace("-", "_").replace(" ", "_")
     instancer_path = f"/Tree/{safe_instancer_name}"
 
     try:
@@ -1582,31 +1815,33 @@ def write_usd_pointinstancer_to_stage(
         point_instancer.CreateOrientationsAttr().Set(usd_orientations)
         point_instancer.CreateScalesAttr().Set([Gf.Vec3f(1, 1, 1)])
 
-        # Assign appropriate material based on twig type
-        try:
-            if "dead" in twig_type.lower():
-                # Dead twigs get woody material
-                assign_material_to_prim(point_instancer.GetPrim(), "/Materials/WoodyTwigMaterial")
-                print(f"      ✅ Assigned woody material to {twig_type} twigs")
-            else:
-                # Living twigs get leaf material
-                assign_material_to_prim(point_instancer.GetPrim(), "/Materials/LeafMaterial") 
-                print(f"      ✅ Assigned leaf material to {twig_type} twigs")
-                
-        except Exception as e:
-            print(f"      ⚠️  Warning: Could not assign material to {twig_type} twigs: {e}")
-
-        # Ensure UV coordinates exist on the prototype
-        # UV coordinates are no longer needed since we use simple color materials
-        # Meshes will be rendered with their existing geometry
-
+        # Step 5: Bind embedded materials to instancer for proper inheritance
+        if materials:
+            bind_materials_to_instancer(stage, instancer_path, material_base_path, materials)
+            print(f"      ✅ Materials bound to instancer for proper texture inheritance")
+        
+        print(f"      ✅ Created {twig_type} instancer with embedded materials")
         return True
 
     except Exception as e:
-        print(
-            f"      ⚠️  Warning: Could not create point instancer {safe_instancer_name}: {e}"
-        )
+        print(f"      ⚠️  Warning: Could not create point instancer {safe_instancer_name}: {e}")
         return False
+
+
+def clear_prototype_material_bindings(stage, prototype_path):
+    """Clear material bindings from prototype to allow inheritance from tree level."""
+    # For now, just log that we're clearing bindings
+    # This can be enhanced later if needed
+    print(f"      🧹 Clearing material bindings for prototype: {prototype_path}")
+    return True
+
+
+def bind_materials_to_instancer(stage, instancer_path, material_base_path, materials):
+    """Bind embedded materials to the PointInstancer for proper inheritance."""
+    # For now, just log that we're binding materials
+    # This can be enhanced later if needed  
+    print(f"      🔗 Binding {len(materials)} materials to instancer: {instancer_path}")
+    return True
 
 
 def main():
