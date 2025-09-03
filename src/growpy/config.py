@@ -326,30 +326,6 @@ class GrowPyConfig:
 
         return base_path / growth_model
 
-    @classmethod
-    def get_bark_texture_path(cls, common_name: str) -> Optional[Path]:
-        """
-        Get the full path to the bark texture file for a given species.
-
-        Args:
-            common_name: The common name of the species.
-
-        Returns:
-            Path to the bark texture file or None if species not found.
-        """
-        df = cls.load_species_lookup()
-
-        # Use fuzzy matching to find the species
-        matched_name = cls._find_species_match(common_name, df)
-        if matched_name is None:
-            return None
-
-        bark_texture = df.loc[df["Common Name"] == matched_name, "Bark Texture"].values[
-            0
-        ]
-        assets_dir = cls.get_assets_directory()
-        texture_path = assets_dir / "textures" / bark_texture
-        return texture_path
 
     @classmethod
     def get_twig_for_species(cls, common_name: str) -> Optional[str]:
@@ -811,15 +787,29 @@ class GrowPyConfig:
         return filtered_configs
 
     @classmethod
+    def hex_to_rgb(cls, hex_color: str) -> tuple:
+        """Convert hex color string to RGB tuple (0.0-1.0 range)."""
+        if not hex_color or not hex_color.startswith('#') or len(hex_color) != 7:
+            return (0.5, 0.5, 0.5)  # Default gray
+        
+        try:
+            r = int(hex_color[1:3], 16) / 255.0
+            g = int(hex_color[3:5], 16) / 255.0  
+            b = int(hex_color[5:7], 16) / 255.0
+            return (r, g, b)
+        except (ValueError, TypeError):
+            return (0.5, 0.5, 0.5)  # Default gray
+
+    @classmethod
     def get_species_colors(cls, common_name: str) -> Optional[Dict[str, tuple]]:
         """
-        Get bark and leaf colors for a given species.
+        Get branch and leaf colors for a given species from hex color columns.
 
         Args:
             common_name: The common name of the species.
 
         Returns:
-            Dictionary with 'bark_color' and 'leaf_color' as RGB tuples, or None if species not found.
+            Dictionary with 'branch_color' and 'leaf_color' as RGB tuples, or None if species not found.
         """
         df = cls.load_species_lookup()
 
@@ -839,36 +829,16 @@ class GrowPyConfig:
 
         row = species_row.iloc[0]
         
-        # Check if color columns exist and have valid data
-        bark_color = None
-        leaf_color = None
+        # Extract branch color from hex
+        branch_hex = row.get('Branch Color', '#99664c')  # Default brown
+        branch_color = cls.hex_to_rgb(branch_hex)
         
-        # Extract bark color if available
-        if all(col in row.index for col in ['Bark Color R', 'Bark Color G', 'Bark Color B']):
-            try:
-                r = float(row['Bark Color R']) if pd.notna(row['Bark Color R']) else 0.6
-                g = float(row['Bark Color G']) if pd.notna(row['Bark Color G']) else 0.4
-                b = float(row['Bark Color B']) if pd.notna(row['Bark Color B']) else 0.2
-                bark_color = (r, g, b)
-            except (ValueError, TypeError):
-                bark_color = (0.6, 0.4, 0.2)  # Default brown bark
-        else:
-            bark_color = (0.6, 0.4, 0.2)  # Default brown bark
-        
-        # Extract leaf color if available  
-        if all(col in row.index for col in ['Leaf Color R', 'Leaf Color G', 'Leaf Color B']):
-            try:
-                r = float(row['Leaf Color R']) if pd.notna(row['Leaf Color R']) else 0.2
-                g = float(row['Leaf Color G']) if pd.notna(row['Leaf Color G']) else 0.6
-                b = float(row['Leaf Color B']) if pd.notna(row['Leaf Color B']) else 0.15
-                leaf_color = (r, g, b)
-            except (ValueError, TypeError):
-                leaf_color = (0.2, 0.6, 0.15)  # Default green leaf
-        else:
-            leaf_color = (0.2, 0.6, 0.15)  # Default green leaf
+        # Extract leaf color from hex  
+        leaf_hex = row.get('Leaf Color', '#4c9933')  # Default green
+        leaf_color = cls.hex_to_rgb(leaf_hex)
 
         return {
-            'bark_color': bark_color,
+            'branch_color': branch_color,
             'leaf_color': leaf_color
         }
 

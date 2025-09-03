@@ -257,31 +257,23 @@ def apply_species_color_settings(
 
     # Apply species-specific colors for bark and branches
     try:
-        species_data = config.get_species_data(species_name)
-        if species_data:
-            # Apply bark color if specified
-            if "bark_color" in species_data:
-                bark_color = species_data["bark_color"]
-                if hasattr(model, 'set_bark_color'):
-                    model.set_bark_color(*bark_color)
+        colors = config.get_species_colors(species_name)
+        if colors:
+            # Apply branch color if available
+            branch_color = colors.get("branch_color")
+            if branch_color and hasattr(model, 'set_branch_color'):
+                model.set_branch_color(*branch_color)
             
-            # Apply branch color if specified  
-            if "branch_color" in species_data:
-                branch_color = species_data["branch_color"]
-                if hasattr(model, 'set_branch_color'):
-                    model.set_branch_color(*branch_color)
-                    
-            # Apply leaf color if specified
-            if "leaf_color" in species_data:
-                leaf_color = species_data["leaf_color"]
-                if hasattr(model, 'set_leaf_color'):
-                    model.set_leaf_color(*leaf_color)
+            # Apply leaf color if available
+            leaf_color = colors.get("leaf_color")
+            if leaf_color and hasattr(model, 'set_leaf_color'):
+                model.set_leaf_color(*leaf_color)
     except Exception:
-        # Fallback to default colors - natural wood brown for bark
-        if hasattr(model, 'set_bark_color'):
-            model.set_bark_color(0.4, 0.3, 0.2)  # Brown bark
+        # Fallback to default colors - natural wood brown for branches
         if hasattr(model, 'set_branch_color'):
-            model.set_branch_color(0.3, 0.2, 0.1)  # Darker brown branches
+            model.set_branch_color(0.4, 0.3, 0.2)  # Brown branches
+        if hasattr(model, 'set_leaf_color'):
+            model.set_leaf_color(0.2, 0.5, 0.15)  # Green leaves
 
 
 def build_grove_with_all_attributes(

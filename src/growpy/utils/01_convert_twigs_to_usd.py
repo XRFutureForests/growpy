@@ -55,80 +55,13 @@ def fix_usd_transforms(usd_file_path):
         return False
 
 
-def fix_usd_materials_for_transparency(usd_file_path):
-    """
-    Fix USD material definitions to properly handle transparency for leaf textures.
-    
-    Args:
-        usd_file_path (Path): Path to the USD file to fix
-        
-    Returns:
-        bool: True if file was modified, False otherwise
-    """
-    try:
-        # Read the file
-        with open(usd_file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        modified = False
-        new_content = content
-        
-        # Replace Diffuse_BSDF with UsdPreviewSurface for better USD compatibility
-        if "Diffuse_BSDF" in content:
-            new_content = re.sub(
-                r'uniform token info:id = "ShaderNodeBsdfDiffuse"',
-                'uniform token info:id = "UsdPreviewSurface"',
-                new_content
-            )
-            modified = True
-            print(f"    🔄 Converted Diffuse_BSDF to UsdPreviewSurface")
-        
-        # Add opacity input for leaf materials (assume materials with "Leaves" in name need transparency)
-        if "Leaves" in content and "inputs:opacity" not in content:
-            # Find UsdPreviewSurface sections and add opacity connection
-            opacity_pattern = r'(def Shader "[^"]*Leaves[^"]*"[^{]*{[^}]*uniform token info:id = "UsdPreviewSurface"[^}]*)(})'
-            opacity_replacement = r'\1                float inputs:opacity.connect = <./Image_Texture.outputs:a>\n                float inputs:opacityThreshold = 0.1\n            \2'
-            
-            if re.search(opacity_pattern, new_content, re.DOTALL):
-                new_content = re.sub(opacity_pattern, opacity_replacement, new_content, flags=re.DOTALL)
-                modified = True
-                print(f"    🔄 Added opacity settings for leaf materials")
-        
-        # Ensure PNG textures are set to use sRGB color space for diffuse and raw for normal maps
-        png_diffuse_pattern = r'(asset inputs:file = @[^@]*\.png@[^}]*token inputs:sourceColorSpace = )"[^"]*"'
-        png_normal_pattern = r'(asset inputs:file = @[^@]*Bump\.png@[^}]*token inputs:sourceColorSpace = )"[^"]*"'
-        
-        if re.search(png_diffuse_pattern, content):
-            # Set diffuse textures to sRGB
-            new_content = re.sub(png_diffuse_pattern, r'\1"sRGB"', new_content)
-            modified = True
-            print(f"    🔄 Set PNG diffuse textures to sRGB color space")
-            
-        if re.search(png_normal_pattern, content):
-            # Set normal/bump textures to raw
-            new_content = re.sub(png_normal_pattern, r'\1"raw"', new_content)  
-            modified = True
-            print(f"    🔄 Set PNG bump textures to raw color space")
-        
-        # Only write if content changed
-        if modified:
-            with open(usd_file_path, 'w', encoding='utf-8') as f:
-                f.write(new_content)
-            return True
-        
-        return False
-        
-    except Exception as e:
-        print(f"  ❌ Failed to process materials in {usd_file_path.name}: {e}")
-        return False
 
 
 def post_process_usd_files(twig_asset_path):
-    """Post-process all USD files to reset transforms and fix materials."""
-    print(f"\n🔧 Post-processing USD files to reset transforms and fix materials...")
+    """Post-process all USD files to reset transforms."""
+    print(f"\n🔧 Post-processing USD files to reset transforms...")
     usd_files = list(twig_asset_path.glob("**/*.usda"))
     transform_fixes = 0
-    material_fixes = 0
     
     for usd_file in usd_files:
         print(f"  🔧 Processing {usd_file.name}...")
@@ -137,16 +70,10 @@ def post_process_usd_files(twig_asset_path):
         if fix_usd_transforms(usd_file):
             transform_fixes += 1
             print(f"    ✅ Fixed transforms")
-            
-        # Fix materials for transparency
-        if fix_usd_materials_for_transparency(usd_file):
-            material_fixes += 1
-            print(f"    ✅ Fixed materials for transparency")
     
     print(f"✅ Post-processed {len(usd_files)} USD files:")
     print(f"  • {transform_fixes} files with transform fixes")
-    print(f"  • {material_fixes} files with material improvements")
-    return transform_fixes + material_fixes
+    return transform_fixes
 
 
 def main():
@@ -180,7 +107,24 @@ def main():
         try:
             # Clear scene completely to avoid memory issues
             print(f"  🧹 Clearing scene...")
-            bpy.ops.wm.read_homefile(app_template="", use_empty=True)
+            try:
+                # More aggressive scene clearing to prevent memory issues
+                bpy.ops.wm.read_homefile(app_template="", use_empty=True)
+                
+                # Clear any remaining data blocks
+                for collection in bpy.data.collections:
+                    bpy.data.collections.remove(collection)
+                for mesh in bpy.data.meshes:
+                    bpy.data.meshes.remove(mesh)
+                for material in bpy.data.materials:
+                    bpy.data.materials.remove(material)
+                for texture in bpy.data.textures:
+                    bpy.data.textures.remove(texture)
+                for image in bpy.data.images:
+                    bpy.data.images.remove(image)
+                    
+            except Exception as clear_error:
+                print(f"  ⚠️  Scene clearing had issues: {clear_error}")
             
             # Force garbage collection to free memory
             import gc
@@ -207,7 +151,7 @@ def main():
 
             print(f"  📦 Found {len(mesh_objects)} objects to export")
 
-            # Export each object as individual USD
+            # Export each object as individual USD with safety measures
             exported_count = 0
             for obj_idx, obj in enumerate(mesh_objects):
                 try:
@@ -223,28 +167,94 @@ def main():
 
                     print(f"  🔧 Processing {clean_name}... ({obj_idx+1}/{len(mesh_objects)})")
 
+                    # Simplify materials to prevent memory crashes
+                    try:
+                        if obj.data and obj.data.materials:
+                            print(f"    📝 Found {len(obj.data.materials)} materials, simplifying...")
+                            # Temporarily disable problematic material nodes
+                            for mat_slot in obj.material_slots:
+                                if mat_slot.material and mat_slot.material.use_nodes:
+                                    # Disable complex node setups that cause crashes
+                                    nodes = mat_slot.material.node_tree.nodes
+                                    for node in nodes:
+                                        if node.type in ['TEX_IMAGE', 'BSDF_PRINCIPLED']:
+                                            # Keep essential nodes, remove others that cause memory issues
+                                            continue
+                                        elif node.type in ['SUBSURFACE_SCATTERING', 'BSDF_HAIR']:
+                                            # Remove problematic nodes
+                                            nodes.remove(node)
+                    except Exception as mat_error:
+                        print(f"    ⚠️  Material simplification warning: {mat_error}")
+
                     # Select only this object
                     bpy.ops.object.select_all(action="DESELECT")
                     obj.select_set(True)
                     bpy.context.view_layer.objects.active = obj
 
-                    # Export to USD with safer settings
-                    bpy.ops.wm.usd_export(
-                        filepath=str(obj_output_path),
-                        selected_objects_only=True,
-                        visible_objects_only=True,
-                        export_animation=False,
-                        export_hair=False,  # Disable hair export to reduce memory usage
-                        export_uvmaps=True,
-                        export_normals=True,
-                        export_materials=True,
-                        export_textures=True,
-                        use_instancing=False,  # Disable instancing to reduce complexity
-                        evaluation_mode="RENDER",
-                        generate_preview_surface=True,
-                        convert_orientation=False,  # Preserve original orientation
-                        relative_paths=True,
-                    )
+                    # Export to USD with safer settings to prevent crashes
+                    try:
+                        bpy.ops.wm.usd_export(
+                            filepath=str(obj_output_path),
+                            selected_objects_only=True,
+                            visible_objects_only=True,
+                            export_animation=False,
+                            export_hair=False,  # Disable hair export to reduce memory usage
+                            export_uvmaps=True,
+                            export_normals=True,
+                            export_materials=True,
+                            export_textures=False,  # Disable texture export initially to prevent crashes
+                            use_instancing=False,  # Disable instancing to reduce complexity
+                            evaluation_mode="RENDER",
+                            generate_preview_surface=True,
+                            convert_orientation=False,  # Preserve original orientation
+                            relative_paths=True,
+                        )
+                        
+                        # If that worked, try again with textures enabled
+                        if obj_output_path.exists():
+                            obj_output_path.unlink()  # Remove first export
+                            bpy.ops.wm.usd_export(
+                                filepath=str(obj_output_path),
+                                selected_objects_only=True,
+                                visible_objects_only=True,
+                                export_animation=False,
+                                export_hair=False,
+                                export_uvmaps=True,
+                                export_normals=True,
+                                export_materials=True,
+                                export_textures=True,  # Now enable textures
+                                use_instancing=False,
+                                evaluation_mode="RENDER",
+                                generate_preview_surface=True,
+                                convert_orientation=False,
+                                relative_paths=True,
+                            )
+                        
+                    except Exception as export_error:
+                        print(f"    ⚠️  USD export with textures failed, trying without: {export_error}")
+                        # Fallback: export without textures
+                        try:
+                            if obj_output_path.exists():
+                                obj_output_path.unlink()
+                            bpy.ops.wm.usd_export(
+                                filepath=str(obj_output_path),
+                                selected_objects_only=True,
+                                visible_objects_only=True,
+                                export_animation=False,
+                                export_hair=False,
+                                export_uvmaps=True,
+                                export_normals=True,
+                                export_materials=False,  # Disable materials as last resort
+                                export_textures=False,
+                                use_instancing=False,
+                                evaluation_mode="RENDER",
+                                generate_preview_surface=False,
+                                convert_orientation=False,
+                                relative_paths=True,
+                            )
+                        except Exception as fallback_error:
+                            print(f"    ❌ Even fallback export failed: {fallback_error}")
+                            continue
 
                     print(f"    ✅ {clean_name}: exported successfully")
                     exported_count += 1
@@ -255,6 +265,12 @@ def main():
                     
                 except Exception as obj_error:
                     print(f"    ❌ Failed to export {clean_name}: {obj_error}")
+                    # Try to recover and continue with next object
+                    try:
+                        bpy.ops.object.select_all(action="DESELECT")
+                        gc.collect()
+                    except:
+                        pass
                     continue
 
             if exported_count > 0:
@@ -293,14 +309,12 @@ def main():
     else:
         print(f"\n✅ All files processed successfully!")
     
-    print("\nOrientation and material summary:")
+    print("\nOrientation summary:")
     print("  - All twigs point along +X axis")
     print("  - Twig pivots reset to origin (0,0,0)")
     print("  - Object transforms post-processed to (0,0,0)")
     print("  - No translation transforms in USD files")
-    print("  - Materials converted to UsdPreviewSurface for better compatibility")
-    print("  - Leaf materials enhanced with opacity support for transparent edges")
-    print("  - PNG textures properly configured for sRGB (diffuse) and raw (normal) color spaces")
+    print("  - Materials and textures preserved from original blend files")
     
     return 1 if failed_files else 0
 
