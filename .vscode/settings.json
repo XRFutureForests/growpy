@@ -1,4 +1,5 @@
 {
+    "python.defaultInterpreterPath": "$HOME/miniforge3/envs/the-grove/bin/python",
     "python.analysis.extraPaths": [
         "${workspaceFolder}/src",
         "${workspaceFolder}/src/the_grove_22/modules"

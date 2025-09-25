@@ -155,7 +155,7 @@ def main():
         Path(__file__).parent.parent.parent.parent
         / "data"
         / "input"
-        / "illustration_gis.csv"
+        / "test.csv"
     )
     output_dir = (
         Path(__file__).parent.parent.parent.parent / "data" / "output" / csv_path.stem
@@ -168,7 +168,7 @@ def main():
     # Load forest data
     print(f"\n[CHART] Loading forest data")
     forest_data = pd.read_csv(csv_path)
-    forest_data["height"] /= 4
+    # forest_data["height"] /= 4
     forest_data["x"] *=2
     forest_data["y"] *=2
     print(f"[OK] Loaded {len(forest_data)} trees")
