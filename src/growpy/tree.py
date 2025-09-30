@@ -1,6 +1,5 @@
-"""Tree model functions for forest generation with color support."""
+"""Simplified tree model functions for forest generation."""
 
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .common import gc, ensure_grove_available, pd
@@ -27,151 +26,6 @@ def calculate_growth_cycles_from_height(forest_data: pd.DataFrame) -> None:
 
     max_cycles = forest_data["growth_cycles"].max()
     forest_data["delay"] = max_cycles - forest_data["growth_cycles"]
-
-
-def save_tree_to_usd(
-    model,
-    output_path: Path,
-) -> None:
-    """Save tree model to USD file with proper color setup.
-
-    Args:
-        model: Grove tree model to export
-        output_path: Path for the USD file
-    """
-    ensure_grove_available()
-
-    # Configure model for optimal USD export
-    model.set_up_axis("Z")  # Z-up for Blender/Unreal compatibility
-    model.set_winding_order("COUNTER_CLOCKWISE")
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    usd_string = gc.io.model_to_usda_string(model)
-
-    with open(output_path, "w") as f:
-        f.write(usd_string)
-
-
-def can_species_have_twigs(species_name: str, config) -> bool:
-    """Check if a species has twig assets available.
-
-    Args:
-        species_name: Name of the tree species
-        config: GrowPyConfig instance for twig lookup
-
-    Returns:
-        bool: True if twigs are available for this species, False otherwise
-    """
-    try:
-        twig_name = config.get_twig_for_species(species_name)
-        if twig_name:
-            twig_files_by_type = config.get_twig_files_by_type(species_name)
-            return bool(twig_files_by_type)
-    except Exception:
-        pass
-    return False
-
-
-def save_tree_to_usd_with_twigs(
-    model,
-    output_path: Path,
-    species_name: str,
-    config,
-    base_dir: Path,
-    twigs_dir: Path,
-) -> Path:
-    """Save tree model to USD file, placing in correct directory based on twig capability.
-
-    This function saves base models directly to base/ and enhanced models with 
-    twigs directly to twigs/, eliminating the need for intermediate file moves.
-
-    Args:
-        model: Grove tree model to export
-        output_path: Base path for the USD file (filename will be preserved)
-        species_name: Name of the tree species for twig lookup
-        config: GrowPyConfig instance for twig assets
-        base_dir: Directory for models without twigs (base models)
-        twigs_dir: Directory for models with twigs (enhanced models)
-
-    Returns:
-        Path: Actual path where the file was saved (either in twigs/ or base/)
-    """
-    ensure_grove_available()
-
-    # Configure model for optimal USD export
-    model.set_up_axis("Z")  # Z-up for Blender/Unreal compatibility
-    model.set_winding_order("COUNTER_CLOCKWISE")
-
-    filename = output_path.name
-    
-    # Always save base model to base directory
-    base_path = base_dir / filename
-    base_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    usd_string = gc.io.model_to_usda_string(model)
-    with open(base_path, "w") as f:
-        f.write(usd_string)
-    
-    # Try to create enhanced version with twigs if species supports them
-    try:
-        from .twig import add_twigs_to_tree
-        
-        if can_species_have_twigs(species_name, config):
-            # Create enhanced version directly in twigs directory from base file
-            enhanced_filename = filename.replace(".usda", "_with_twigs.usda")
-            enhanced_path = twigs_dir / enhanced_filename
-            enhanced_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Try to add twigs using the base file as input, saving directly to twigs
-            if add_twigs_to_tree(base_path, species_name, config, enhanced_path):
-                return enhanced_path
-            
-    except ImportError:
-        pass
-    except Exception:
-        pass
-    
-    # Return base model path (base model always exists in base/)
-    return base_path
-
-
-def build_lod_models(
-    grove, lod_configs: Dict[str, Dict[str, Any]]
-) -> Dict[str, List]:
-    """Build multiple LOD variants of grove models with proper Grove API parameters.
-
-    Args:
-        grove: Grove instance to build models from
-        lod_configs: Configuration for each LOD level
-
-    Returns:
-        Dictionary mapping LOD names to lists of models
-    """
-    ensure_grove_available()
-
-    lod_models = {}
-    for lod_name, config in lod_configs.items():
-        # Build comprehensive Grove model parameters based on documentation
-        build_options = {
-            "resolution": config.get("resolution", 16),  # Cross-section sides (4-24)
-            "build_end_cap": config.get("build_end_cap", True),  # Cap branch ends
-            "build_cutoff_thickness": config.get("build_cutoff_thickness", 0.0),
-            "build_cutoff_age": config.get("build_cutoff_age", 0),
-            "build_blend": config.get("build_blend", True),
-            "resolution_reduce": config.get("resolution_reduce", 0.8),
-        }
-
-        # Build models with comprehensive parameters
-        models = grove.build_models(build_options)
-
-        # Configure each model for proper export
-        for model in models:
-            model.set_up_axis("Z")  # Z-up for Blender/Unreal compatibility
-            model.set_winding_order("COUNTER_CLOCKWISE")
-
-        lod_models[lod_name] = models
-
-    return lod_models
 
 
 def get_model_attributes(model) -> Dict[str, Any]:
@@ -310,3 +164,7 @@ def build_grove_with_all_attributes(
         model.set_winding_order("COUNTER_CLOCKWISE")
 
     return models
+
+def build_skeletons(grove) -> Any:
+    skeletons = grove.build_skeletons()
+    return skeletons
