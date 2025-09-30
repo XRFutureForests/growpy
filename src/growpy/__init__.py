@@ -1,8 +1,16 @@
 """
-GrowPy - Grove API Integration for The Grove 2.2
+GrowPy - Simplified Grove API Integration for The Grove 2.2
 
-Grove API integration for creating forests with base model creation, twig placement,
-and color integration for natural-looking tree models.
+Clean Grove API integration for forest creation and FBX export:
+- Forest/Grove/Tree/Twig hierarchy maintained
+- Single high-quality LOD (no complexity)
+- FBX export with mesh + skeleton + textures
+- Blender-based twig processing using bpy module
+
+Main utilities:
+- utils/export_twigs.py: FBX-optimized twig export with texture mapping
+- utils/export_trees.py: Grove tree export functionality
+- utils/generate_forest.py: Forest generation utilities
 
 See individual module documentation for detailed usage examples.
 """
@@ -13,28 +21,24 @@ from .grove import add_tree_to_grove, create_grove
 from .tree import (
     apply_species_color_settings,
     build_grove_with_all_attributes,
-    build_lod_models,
-    calculate_growth_cycles_from_height,
-    can_species_have_twigs,
+    build_skeletons,
     get_model_attributes,
-    save_tree_to_usd,
-    save_tree_to_usd_with_twigs,
+    calculate_growth_cycles_from_height,
 )
 
-# Import Grove twig integration if available
+# Import export functionality
 try:
-    from .twig import (
-        add_twigs_to_grove_model,
-        create_grove_compatible_twig_usd,
-        extract_twig_data_from_grove_model,
+    from .export import (
+        export_tree_as_fbx,
+        export_twigs_from_blend,
+        batch_export_tree_fbx,
     )
-
-    GROVE_TWIG_AVAILABLE = True
+    EXPORT_AVAILABLE = True
 except ImportError:
-    GROVE_TWIG_AVAILABLE = False
-    add_twigs_to_grove_model = None
-    extract_twig_data_from_grove_model = None
-    create_grove_compatible_twig_usd = None
+    EXPORT_AVAILABLE = False
+    export_tree_as_fbx = None
+    export_twigs_from_blend = None
+    batch_export_tree_fbx = None
 
 
 __all__ = [
@@ -44,23 +48,20 @@ __all__ = [
     "set_global_config",
     # Forest creation and simulation
     "create_forest",
-    "create_forest_with_attributes", 
+    "create_forest_with_attributes",
     "simulate_forest_growth",
     # Grove operations
     "create_grove",
     "add_tree_to_grove",
-    # Tree model building and export
-    "calculate_growth_cycles_from_height",
-    "build_lod_models",
+    # Tree model building
     "build_grove_with_all_attributes",
-    "can_species_have_twigs",
+    "build_skeletons",
     "get_model_attributes",
-    "save_tree_to_usd",
-    "save_tree_to_usd_with_twigs",
     "apply_species_color_settings",
-    # Grove twig integration (if available)
-    "add_twigs_to_grove_model",
-    "extract_twig_data_from_grove_model",
-    "create_grove_compatible_twig_usd",
-    "GROVE_TWIG_AVAILABLE",
+    "calculate_growth_cycles_from_height",
+    # Export functionality (if available)
+    "export_tree_as_fbx",
+    "export_twigs_from_blend",
+    "batch_export_tree_fbx",
+    "EXPORT_AVAILABLE",
 ]
