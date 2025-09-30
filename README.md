@@ -1,229 +1,100 @@
-# The Grove Repository - Logic Tier Tree Asset Generation
+# The Grove - Simplified Tree Generation
 
-> **Multi-Repository Architecture**: Logic Tier - Tree Asset Generation Service  
-> **University**: University of Freiburg, Department of Forest Sciences  
-> **Status**: Core Implementation Phase | **Priority**: Twig Orientation Fixes (Due Aug 15)
+Clean, simplified tree generation system using The Grove 2.2 with FBX export workflow.
 
-This repository implements the **Tree Asset Generation Service** within the Logic Tier of the XR Future Forests Lab multi-repository architecture, generating realistic 3D tree models for VR forest visualization.
-
-## **Repository Role in XR Future Forests Lab**
-
-### **🌲 Logic Tier - Tree Asset Generation Service**
-
-- **The Grove 22**: Procedural tree generation using forest science data
-- **Species Modeling**: Realistic tree characteristics based on database species
-- **USD Export**: Universal Scene Description format for VR integration
-- **Growth Simulation**: Age-based tree development and morphology
-
-### **🔗 Multi-Repository Architecture**
-
-- **📋 [Planning Hub](../xr-future-forests-lab)**: Central coordination and architecture documentation
-- **🗄️ [Digital Twin](../digital-twin)**: Data Tier - provides Tree API for species and measurement data
-- **☁️ [Potree Docker](../potree-docker)**: Logic Tier - Point Cloud Processing (coordinate validation)
-
-## **Project Integration**
-
-### **Input Sources (Data Tier)**
-
-- **Tree Database**: PostgreSQL tree measurements and species data via Tree API
-- **CSV Format**: Tree positions, species, heights, DBH measurements from Digital Twin
-- **Species Mapping**: Database species names mapped to Grove presets via lookup table
-
-### **Processing (Logic Tier)**
-
-- **The Grove Core**: Procedural tree generation engine with Python integration
-- **Growth Modeling**: Age calculations and realistic development cycles
-- **Species Accuracy**: Scientifically accurate tree characteristics per European species
-- **LOD Generation**: Multiple levels of detail for VR performance optimization
-
-### **Output (Presentation Tier)**
-
-- **USD Files**: Universal Scene Description format for Unity/Unreal integration
-- **Point Instancing**: Optimized twig and leaf rendering for VR performance
-- **Multi-LOD**: Distance-based detail switching for immersive experiences
-- **VR Integration**: Delivered to Paul Lakos Unity VR forest system
-
-## **Current Implementation Status**
-
-### ✅ **Completed Foundation**
-
-- **Core Pipeline**: Functional tree generation from CSV input (`debug_grove_core.py`)
-- **Species Mapping**: Complete lookup table with 15+ European forest species
-- **Grove Integration**: Python wrapper around The Grove core (`src/growpy/`)
-- **LOD System**: Multiple detail levels for VR performance optimization
-- **Basic USD Export**: Tree models exported in Universal Scene Description format
-- **Twig Integration**: Point-instanced small branches and leaves implementation
-
-### 🔧 **Current Priority (HIGH - Due Aug 15)**
-
-- **Twig Orientation Fixes**: Point-instanced twigs not facing correct direction in USD export
-- **Technical Challenge**: USD point instancer orientation matrix calculation
-- **Impact**: Critical for visual realism in VR forest visualization
-- **Blocker**: Affects integration with Paul's Unity VR system
-
-### 📋 **Planned Enhancements**
-
-- **Database API Integration**: Direct connection to Digital Twin PostgreSQL database
-- **Growth Model Improvements**: More sophisticated age/height relationships
-- **Performance Optimization**: Batch processing for large forest plots (500+ trees)
-- **Quality Assurance**: Automated validation of generated tree models
-
-## **Technical Stack**
-
-### **Core Technologies**
-
-- **The Grove 22**: Blender addon and core Python library for procedural tree generation
-- **Python 3.11+**: Main development language with scientific computing libraries
-- **USD (Universal Scene Description)**: 3D scene format for VR application integration
-- **scikit-learn**: Species classification and data analysis
-- **NumPy/Pandas**: Mathematical operations and data processing
-
-### **File Structure**
+## Project Structure
 
 ```
-src/growpy/                           # Custom Grove integration modules
-data/
-  ├── tree_asset_lookup.csv          # Species to Grove preset mapping
-  ├── input/small_demo.csv           # Test data format example
-  └── output/                        # Generated USD tree files
-docs/                               # The Grove core API documentation
-debug_grove_core.py                 # Main testing and development script
-environment.yml                    # Python environment dependencies
+the-grove/
+├── src/growpy/                 # Core Python package
+│   ├── __init__.py            # Main package interface
+│   ├── config.py              # Configuration management
+│   ├── forest.py              # Forest-level operations
+│   ├── grove.py               # Grove-level operations
+│   ├── tree.py                # Tree model functions
+│   ├── export.py              # FBX export functionality
+│   ├── common.py              # Shared utilities
+│   ├── README.md              # Package documentation
+│   └── utils/                 # Utility scripts
+│       ├── export_trees.py    # Export all species as FBX
+│       ├── export_twigs.py    # Export twigs from blend files
+│       ├── generate_forest.py # Generate forest from CSV
+│       ├── prepare_assets.py  # Asset preparation
+│       └── create_growth_models.py # Growth model creation
+├── docs/                      # Documentation
+├── CLAUDE.md                  # Project instructions
+└── README.md                  # This file
 ```
 
-## **Grove Core Integration Workflow**
+## Core Philosophy
 
-### **Tree Generation Process**
+**Simplified & Clean**: Removed complex USD workflows, multiple LOD variants, and positioning hacks in favor of straightforward FBX export using Grove's native mesh + skeleton output.
 
-1. **Input Processing**: Parse CSV with tree positions, species, height/DBH measurements
-2. **Species Mapping**: Map database species names to Grove presets via lookup table
-3. **Age Calculation**: Derive tree age from height using species-specific growth curves
-4. **Grove Generation**: Use The Grove to create realistic tree geometry and structure
-5. **LOD Creation**: Generate multiple detail levels for VR performance optimization
-6. **USD Export**: Export as Universal Scene Description for Unity/Unreal integration
+**Four-Layer Hierarchy**: Forest → Grove → Tree → Twig structure maintained for logical organization.
 
-### **Species Support (15+ European Species)**
+**Single High-Quality Output**: One high-resolution model per species instead of multiple LOD variants.
 
-- **Fagus sylvatica** (European Beech) - Deciduous broad-leaved
-- **Quercus robur** (English Oak) - Deciduous broad-leaved with distinctive branching
-- **Pinus sylvestris** (Scots Pine) - Coniferous with characteristic crown shape
-- **Abies alba** (Silver Fir) - Coniferous with regular branching pattern
-- **Picea abies** (Norway Spruce) - Coniferous with drooping branches
-- **Betula pendula** (Silver Birch) - Deciduous with distinctive bark
-- And 10+ additional Central European forest species
+## Quick Usage
 
-### **Growth Modeling Features**
-
-- **Age Calculation**: Height-to-age conversion using species-specific growth curves
-- **DBH Integration**: Diameter at breast height influences trunk thickness and taper
-- **Realistic Proportions**: Crown size and shape based on species characteristics
-- **Seasonal Variation**: Support for different growth phases and maturity levels
-
-## **Development Environment**
-
-### **Setup Requirements**
-
+### Export All Tree Species
 ```bash
-# Install Conda environment
-conda env create -f environment.yml
-conda activate the-grove
-
-# Install The Grove 22 (Blender addon)
-# Download and install The Grove from official source
-
-# Test basic functionality
-python debug_grove_core.py
+python src/growpy/utils/export_trees.py
 ```
 
-### **Key Environment Variables**
+### Export Twigs from Blend Files
+```bash
+python src/growpy/utils/export_twigs.py
+```
 
-- `GROVE_PATH`: Path to The Grove installation directory
-- `USD_PATH`: Path to USD library installation
-- `OUTPUT_PATH`: Default output directory for generated tree assets
+### Generate Forest from CSV
+```bash
+python src/growpy/utils/generate_forest.py forest_data.csv
+```
 
-## **Integration with Multi-Repository Architecture**
+### Programmatic Usage
+```python
+from growpy import create_grove, export_tree_as_fbx
 
-### **Digital Twin Repository (Data Tier)**
+# Create and export a single tree
+grove = create_grove("oak")
+grove.add_new_tree(gc.Vector(0, 0, 0), gc.Vector(0, 0, 1), 0)
+grove.simulate(flushes=10)
+export_tree_as_fbx(grove, Path("oak.fbx"), "oak", include_skeleton=True)
+```
 
-- **Tree API**: Species data, measurements, growth parameters
-- **Spatial Data**: Tree positions and plot boundaries in shared coordinate system
-- **Species Database**: Scientific names mapped to Grove generation presets
-- **Measurement Validation**: Height, DBH, crown dimensions for accuracy
+## Requirements
 
-### **Potree Docker Repository (Logic Tier)**
+- **The Grove 2.2** Python API
+- **bpy module**: `conda install -c conda-forge bpy`
+- **pandas**: For CSV forest data
+- **tqdm**: Progress bars
 
-- **Point Cloud Context**: LiDAR data for tree detection validation
-- **Spatial Coordination**: Shared coordinate systems and spatial reference
-- **Detection Results**: Tree positions from point cloud analysis
-- **Quality Assessment**: Compare generated models with LiDAR scans
+## What's Different
 
-### **External VR Integration (Presentation Tier)**
+### ✅ Added
+- Clean FBX export with mesh + skeleton + textures
+- Simplified utility scripts with clear names
+- Single high-quality output per species
+- Direct Blender integration for twigs
 
-- **Paul Lakos Unity VR**: Primary consumer of generated tree assets
-- **USD Standard**: Universal interchange format for VR applications
-- **Performance Requirements**: VR-optimized geometry and texture resolution
-- **Real-time Loading**: Efficient asset streaming for immersive experiences
+### ❌ Removed
+- Complex USD/USDA export system
+- Multiple LOD variants (LOD0, LOD1, LOD2)
+- Positioning and texture workarounds
+- Try/except approaches everywhere
+- Numbered script prefixes (00_, 01_, etc.)
 
-## **Critical Technical Issues**
+## Output
 
-### **🔥 Twig Orientation Problem (HIGH PRIORITY)**
+All exports generate FBX files compatible with:
+- **Blender** (native)
+- **Unreal Engine**
+- **Unity**
+- **Maya/3ds Max**
+- Other FBX-compatible applications
 
-- **Issue**: Point-instanced twigs not oriented correctly in USD export
-- **Impact**: Affects visual realism and scientific accuracy in VR forest
-- **Technical Details**: USD point instancer orientation matrix calculation
-- **Files Affected**: USD export functions in `src/growpy/` modules
-- **Deadline**: August 15, 2025 - Required for VR integration milestone
+Trees include mesh geometry, skeleton/armature, and basic materials. Twigs are exported as individual FBX assets ready for instancing.
 
-### **Database Integration (MEDIUM PRIORITY)**
+## Migration Notes
 
-- **Current State**: CSV file input via `data/input/small_demo.csv`
-- **Target State**: Direct PostgreSQL connection to Digital Twin database
-- **Benefits**: Real-time tree data updates, automated processing, data consistency
-- **API Integration**: Tree API endpoints for species and measurement data
-
-### **Performance Optimization (LOW PRIORITY)**
-
-- **Challenge**: Large forest plots with 500-1000+ trees
-- **Solutions**: Batch processing, intelligent LOD optimization, result caching
-- **Target Metrics**: <5 minutes generation time for 500-tree forest plot
-
-## **Testing and Validation**
-
-### **Development Workflow**
-
-1. **Test with Demo Data**: Use `data/input/small_demo.csv` for development testing
-2. **Run Generation Script**: Execute `debug_grove_core.py` for rapid iteration
-3. **Validate USD Output**: Check generated files in `data/output/` directory
-4. **VR Integration Test**: Coordinate with Paul for Unity import validation
-
-### **Quality Assurance Criteria**
-
-- **Species Accuracy**: Tree characteristics match real species morphology
-- **Scale Validation**: Generated dimensions correspond to input measurements
-- **Visual Quality**: Realistic appearance suitable for scientific VR applications
-- **Performance Metrics**: Generation time and file size optimization
-
-## **Documentation and Resources**
-
-### **The Grove Core Documentation**
-
-- `docs/the_grove_core.md` - Main API reference and usage patterns
-- `docs/the_grove_core.Grove.md` - Grove class methods and properties
-- `docs/the_grove_core.Model.md` - Tree model system and customization
-- `docs/tldr.md` - Quick reference guide for common operations
-
-### **Workflow and Integration**
-
-- `docs/growpy/TWIG_WORKFLOW.md` - Twig integration process documentation
-- `TWIG_ORIENTATION_FIXES.md` - Current orientation issue analysis
-- `LINEAR_WORKSPACE_GUIDE.md` - Project management and team coordination
-
-## **Project Status (August 2025)**
-
-- **✅ Foundation**: Complete - Core pipeline operational and tested
-- **🔧 Twig Orientation**: High Priority - Technical blocker for VR integration
-- **📋 Database Integration**: Planned - API connection to Digital Twin repository
-- **📋 Performance**: Future - Batch processing for large forest visualizations
-- **📋 Documentation**: Ongoing - Usage guides and integration documentation
-
-This repository bridges forest science data with immersive VR experiences, enabling unprecedented forest visualization and research capabilities through realistic, scientifically accurate tree asset generation.
+This is a simplified version of the original complex system. The old USD-based workflow has been replaced with a cleaner FBX approach that eliminates positioning issues and texture problems while maintaining the core Forest/Grove/Tree/Twig hierarchy.
