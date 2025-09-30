@@ -13,6 +13,11 @@ __pycache__/
 *$py.class
 *.so
 
+# Python egg-info
+*.egg-info/
+*.egg-info
+*.egg
+
 # Virtual environments
 .env
 .venv
