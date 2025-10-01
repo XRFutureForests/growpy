@@ -18,7 +18,7 @@ This file references the main AI instructions for consistency across all AI assi
 - **Formatting**: Use Black formatter (88 char line length)
 - **Comments**: Minimal comments, let code be self-documenting
 - **Control Flow**: Avoid complex if/else chains, prefer early returns
-- **Error Handling**: Simple, meaningful error messages
+- **Error Handling**: Simple, meaningful error messages; avoid try/except constructs
 - **Main Module**: Always name the main entry point file `main.py` (not package name) for clear project entry point
 - **Import Organization**: Group imports in order: standard library, third-party, local imports
 - **Type Hints**: Use type hints for function parameters and return values when beneficial
@@ -38,19 +38,19 @@ This file references the main AI instructions for consistency across all AI assi
 
 ## Project Structure
 
-- **Template Compliance**: This project follows a strict template structure - NEVER deviate from it
+- **Template Compliance**: This project follows a strict template structure - try not to deviate from it
 - **Standard Folders**: `.docker/`, `data/`, `src/`, `docs/`, `.config/`, `.vscode/`, `.github/`, `.devcontainer/`, `.specify/`
 - **Source Code**: Package-style structure in `src/project_name/`
 - **Main Entry Point**: Always use `main.py` as the primary entry point file (not package name) for clear project navigation
 - **Dependencies**: Keep minimal, prefer standard libraries
 - **Environment**: Project-specific conda environment named after project folder
 - **Python Packaging**: When creating installable packages, pyproject.toml can be placed in `src/package_name/` OR project root
-- **Environment Priority**: ALWAYS use conda/mamba - never pip venv, virtualenv, poetry, or other Python environment tools
+- **Environment Priority**: ALWAYS use conda/mamba - never pip venv, virtualenv, poetry, or other Python environment tools if possible
 - **Configuration Files**: Use `.editorconfig` for cross-editor consistency
 - **License**: Include appropriate LICENSE file when creating packages or open-source projects
 - **Secrets Management**: Use `.env` files for environment variables (never commit .env to git), provide `.env.example` templates
 - **CRITICAL - Folder Adherence**: STRICTLY maintain the defined template folder structure:
-  - `data/` - All data files (raw/, input/, output/) - excluded from version control
+  - `data/` - All data files (input/, output/) - excluded from version control
   - `docs/` - Project documentation and specifications
   - `src/` - Source code in package structure (`src/project_name/`)
   - `.docker/` - **ALL** Docker-related files (Dockerfile, docker-compose.yml, scripts) - NEVER in project root
