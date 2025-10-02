@@ -1,142 +1,289 @@
 # The Grove - Simplified Tree Generation
 
-Clean, simplified tree generation system using The Grove 2.2 with FBX export workflow.
+Clean, simplified tree generation system using The Grove 2.2 optimized for **Unreal Engine 5 PCG workflows**.
 
 📖 **[Complete Documentation](docs/growpy/)** - All GrowPy documentation
 📚 **[User Guide](docs/growpy/USER_GUIDE.md)** - Comprehensive step-by-step guide
+🎮 **[Unreal PCG Workflow](docs/growpy/UNREAL_PCG_WORKFLOW.md)** - **NEW!** Complete procedural forest guide
+🌿 **[Procedural Twig Placement](docs/growpy/UNREAL_TWIG_PLACEMENT.md)** - **NEW!** Use twig attributes in Unreal
 ⚡ **[Quick Start](GROWPY_GUIDE.md)** - Quick reference (redirects to full docs)
+
+## Quick Start
+
+### Installation
+
+1. Install conda environment:
+
+```bash
+conda env create -f environment.yml
+conda activate the-grove
+```
+
+2. Install package in development mode:
+
+```bash
+pip install -e .
+```
+
+### Two Main Workflows
+
+#### Option A: Forest from CSV Input
+
+Generate a complete forest based on real tree inventory data:
+
+```bash
+# Run complete pipeline (prepare assets, convert twigs, create models)
+python src/growpy/cli/run_pipeline.py
+
+# Generate forest from CSV
+python src/growpy/cli/generate_forest.py data/input/forest_inventory.csv
+```
+
+**CSV Format Required**: `x`, `y`, `species`, `height` columns (optional: `z`)
+
+**Output**: `data/output/forest/` with trees, twigs, textures, metadata
+
+#### Option B: Species Library (1-3 Trees per Species)
+
+Create a library with template trees for each species:
+
+```bash
+# Run complete pipeline
+python src/growpy/cli/run_pipeline.py
+
+# Generate species library with 3 variations
+python src/growpy/cli/generate_species_library.py --variations 3
+```
+
+**Output**: `data/output/species_library/` with tree variations, twigs, textures, metadata
+
+### Import to Unreal Engine
+
+1. Copy entire output folder to Unreal Content Browser
+2. Trees and twigs are organized by species
+3. Assemble using PCG, Foliage Tool, or manual placement
+4. Enable Nanite for optimized rendering
+
+**No twig placement needed** - trees and twigs export as separate assets for Unreal-side assembly
 
 ## Project Structure
 
 ```
 the-grove/
-├── src/growpy/                      # Core Python package
-│   ├── __init__.py                 # Main package interface
-│   ├── config/                     # Configuration management
-│   │   └── settings.py            # GrowPyConfig class
-│   ├── core/                       # Core simulation
-│   │   ├── forest.py              # Forest-level operations
-│   │   ├── grove.py               # Grove-level operations
-│   │   └── tree.py                # Tree model functions
-│   ├── io/                         # Import/Export
-│   │   └── blender_export.py      # FBX export functionality
-│   ├── utils/                      # Utilities
-│   │   └── dependencies.py        # Dependency management
-│   └── cli/                        # Command-line scripts
-│       ├── run_pipeline.py        # Main pipeline runner
-│       ├── prepare_assets.py      # Asset preparation
-│       ├── export_twigs.py        # Twig FBX export
-│       ├── create_growth_models.py # Growth model creation
-│       ├── generate_forest.py     # Forest from CSV
-│       └── export_trees.py        # Individual tree export
-├── data/                           # Data directory
-│   └── assets/                    # Assets from Grove
-│       ├── presets/               # Species presets
-│       ├── textures/              # Tree textures
-│       ├── twigs/                 # Twig files
-│       └── growth_models/         # Generated models
-├── GROWPY_GUIDE.md                # Complete documentation
-└── README.md                      # This file
+├── src/
+│   ├── growpy/                    # Main Python package
+│   │   ├── cli/                   # Command-line scripts
+│   │   │   ├── run_pipeline.py           # Complete pipeline runner
+│   │   │   ├── prepare_assets.py         # Copy Grove 2.2 assets
+│   │   │   ├── convert_twigs.py          # Convert twigs to FBX
+│   │   │   ├── create_growth_models.py   # Generate height models
+│   │   │   ├── generate_forest.py        # Forest from CSV
+│   │   │   └── generate_species_library.py  # Species templates
+│   │   ├── config/                # Configuration management
+│   │   ├── core/                  # Forest/Grove/Tree simulation
+│   │   ├── io/                    # FBX export functionality
+│   │   └── utils/                 # Utilities
+│   └── the_grove_22/              # Grove 2.2 Python API
+├── data/
+│   ├── assets/                    # Copied from Grove 2.2
+│   │   ├── presets/              # Species .seed.json files
+│   │   ├── textures/             # Bark and leaf textures
+│   │   ├── twigs/                # Original .blend twig files
+│   │   └── growth_models/        # Generated prediction models
+│   ├── input/                     # Your CSV files
+│   └── output/                    # Generated forests/libraries
+├── docs/growpy/                   # Complete documentation
+└── environment.yml                # Conda environment definition
 ```
 
-## Core Philosophy
+## Core Pipeline Steps
 
-**Simplified & Clean**: Removed complex USD workflows, multiple LOD variants, and positioning hacks in favor of straightforward FBX export using Grove's native mesh + skeleton output.
+The `run_pipeline.py` script executes:
 
-**Four-Layer Hierarchy**: Forest → Grove → Tree → Twig structure maintained for logical organization.
+1. **Prepare Assets** - Copy presets, textures, and twigs from Grove 2.2
+2. **Convert Twigs** - Export .blend files to FBX format
+3. **Create Growth Models** - Generate height prediction models for all species
 
-**Single High-Quality Output**: One high-resolution model per species instead of multiple LOD variants.
+Then choose:
 
-## Quick Start
+- **Forest Generation** - Multi-species forest from CSV data
+- **Species Library** - Template trees for each configured species
 
-### Run Complete Pipeline
+## CLI Scripts Reference
+
+### Pipeline Runner
 
 ```bash
-# Run the full pipeline (prepare, export twigs, create models)
+# Run complete pipeline with defaults
 python src/growpy/cli/run_pipeline.py
+
+# Run specific steps
+python src/growpy/cli/run_pipeline.py --steps prepare,twigs,models
+
+# Skip steps
+python src/growpy/cli/run_pipeline.py --skip-prepare
 ```
 
-### Run Individual Steps
+### Individual Steps
 
 ```bash
-# Step 1: Prepare assets from The Grove 2.2
+# Step 1: Prepare assets
 python src/growpy/cli/prepare_assets.py
 
-# Step 2: Export twigs to FBX
-python src/growpy/cli/export_twigs.py data/assets/twigs
+# Step 2: Convert twigs
+python src/growpy/cli/convert_twigs.py data/assets/twigs
 
-# Step 3: Create growth models (with smart early termination)
-python src/growpy/cli/create_growth_models.py
+# Step 3: Create growth models
+python src/growpy/cli/create_growth_models.py --cycles 125 --seeds 1
 
-# Step 4: Generate forest from CSV
-python src/growpy/cli/generate_forest.py forest_data.csv
+# Step 4a: Generate forest
+python src/growpy/cli/generate_forest.py data/input/forest.csv
 
-# Step 5: Export individual tree species
-python src/growpy/cli/export_trees.py
+# Step 4b: Generate species library
+python src/growpy/cli/generate_species_library.py --variations 3
 ```
 
-### Programmatic Usage
+## Output Structure
 
-```python
-from growpy import create_grove, export_tree_as_fbx
-from growpy.utils.dependencies import gc
+Each workflow creates organized output folders ready for Unreal import:
 
-# Create and export a single tree
-grove = create_grove("European beech")
-grove.add_new_tree(gc.Vector(0, 0, 0), gc.Vector(0, 0, 1), 0)
-grove.simulate(flushes=10)
-export_tree_as_fbx(grove, "beech.fbx", "European beech", include_skeleton=True)
 ```
-
-### See Full Documentation
-
-📖 **[GROWPY_GUIDE.md](GROWPY_GUIDE.md)** - Complete guide with:
-- Detailed CLI reference for all scripts
-- CSV format specifications
-- Growth model configuration
-- Advanced usage examples
-- Troubleshooting guide
+output/
+└── forest/  (or species_library/)
+    ├── SpeciesName_001.fbx       # Tree model with skeleton
+    ├── SpeciesName_002.fbx       # Variation (if multiple)
+    ├── twigs/
+    │   ├── SpeciesName_Twig_Long.fbx
+    │   └── SpeciesName_Twig_Short.fbx
+    ├── textures/
+    │   ├── bark_diffuse.png
+    │   └── leaf_diffuse.png
+    └── metadata.json             # Species metadata
+```
 
 ## Requirements
 
-- **The Grove 2.2** Python API (installed at `src/the_grove_22`)
-- **Python 3.8+** with conda environment
-- **Required packages**: `conda install -c conda-forge bpy pandas numpy scikit-learn matplotlib tqdm`
+- **The Grove 2.2** - Commercial tree modeling software with Python API
+- **Python 3.8+** - Via conda/mamba environment
+- **bpy module** - Blender Python API (install via `conda install -c conda-forge bpy`)
+
+### Key Dependencies
+
+```bash
+conda install -c conda-forge bpy pandas numpy scikit-learn matplotlib tqdm
+```
+
+## Configuration
+
+Species configuration is managed in `src/growpy/config/tree_asset_lookup.csv`:
+
+```csv
+species,seed_path,texture_path,twig_path
+European beech,EuropeanBeech.seed.json,European_Beech,EuropeanBeechTwig
+Norway spruce,NorwaySpruce.seed.json,Norway_Spruce,NorwaySpruceTwig
+```
+
+## Documentation
+
+- **[docs/growpy/](docs/growpy/)** - Complete GrowPy documentation
+- **[docs/growpy/USER_GUIDE.md](docs/growpy/USER_GUIDE.md)** - Comprehensive usage guide
+- **[docs/growpy/UNREAL_IMPORT_GUIDE.md](docs/growpy/UNREAL_IMPORT_GUIDE.md)** - Unreal Engine import instructions
+- **[docs/the_grove/](docs/the_grove/)** - Grove 2.2 API documentation
 
 ## Key Features
 
-### ✅ What's Included
-- **Complete FBX Pipeline** - Trees and twigs with mesh, skeleton, materials, and textures
-- **Smart Growth Models** - Automatic early termination when growth plateaus
-- **Light Competition** - Multi-species forest simulation with realistic shading
-- **Flexible CLI** - Full argparse support with extensive options
-- **Main Pipeline Script** - Run entire workflow with one command
-- **Comprehensive Documentation** - Step-by-step guide with examples
+### Forest/Grove/Tree/Twig Hierarchy
 
-### ✅ Smart Iteration (New!)
-Growth model creation now features intelligent early termination:
-- Monitors height increase per cycle
-- Stops when growth plateaus (configurable threshold)
-- Timeout protection to prevent infinite loops
-- Saves computation time while maintaining accuracy
+- **Forest**: Multi-species with light competition simulation
+- **Grove**: Species-specific tree collection with shared growth models
+- **Tree**: Individual instances with mesh + skeleton
+- **Twig**: Reusable assets exported as FBX
 
-### ❌ Removed
-- Complex USD/USDA export system
-- Multiple LOD variants (LOD0, LOD1, LOD2)
-- Positioning and texture workarounds
-- Try/except approaches everywhere
+### Smart Growth Models
 
-## Output
+- Automatic early termination when growth plateaus
+- Configurable height threshold and cycle limits
+- Timeout protection for reliable batch processing
 
-All exports generate FBX files compatible with:
-- **Blender** (native)
-- **Unreal Engine**
-- **Unity**
-- **Maya/3ds Max**
-- Other FBX-compatible applications
+### FBX Export
 
-Trees include mesh geometry, skeleton/armature, and basic materials. Twigs are exported as individual FBX assets ready for instancing.
+- Native Grove 2.2 mesh and skeleton output
+- Material and texture assignments
+- Compatible with Blender, Unreal, Unity, Maya
 
-## Migration Notes
+### Unreal Engine Optimized
 
-This is a simplified version of the original complex system. The old USD-based workflow has been replaced with a cleaner FBX approach that eliminates positioning issues and texture problems while maintaining the core Forest/Grove/Tree/Twig hierarchy.
+- Nanite-ready mesh topology
+- Skeletal mesh support for wind animation
+- Organized folder structure for Content Browser
+- Separation of trees and twigs for procedural assembly
+
+## Programmatic Usage
+
+```python
+from growpy import create_grove, export_tree_as_fbx, get_config
+from growpy.utils.dependencies import gc
+
+# Get configuration
+config = get_config()
+
+# Create grove for species
+grove = create_grove("European beech")
+
+# Add tree at origin
+grove.add_new_tree(gc.Vector(0, 0, 0), gc.Vector(0, 0, 1), 0)
+
+# Simulate growth
+grove.simulate(flushes=10)
+
+# Export with skeleton
+export_tree_as_fbx(grove, "beech.fbx", "European beech", include_skeleton=True)
+```
+
+## Troubleshooting
+
+### Grove API Import Issues
+
+Ensure `PYTHONPATH` includes both `./src` and `./src/the_grove_22/modules`:
+
+```bash
+# Windows PowerShell
+$env:PYTHONPATH=".\src;.\src\the_grove_22\modules"
+
+# Linux/Mac
+export PYTHONPATH="./src:./src/the_grove_22/modules"
+```
+
+### bpy Module Not Found
+
+Install via conda-forge:
+
+```bash
+conda install -c conda-forge bpy
+```
+
+### Missing Assets
+
+Run prepare_assets.py to copy assets from Grove 2.2:
+
+```bash
+python src/growpy/cli/prepare_assets.py
+```
+
+## License
+
+This project uses The Grove 2.2, a commercial product. Ensure you have proper licensing for The Grove 2.2 before use.
+
+## Contributing
+
+This project follows a template-based structure. Key guidelines:
+
+- Python files use snake_case
+- All scripts in `src/growpy/cli/` directory
+- Configuration in `src/growpy/config/`
+- Documentation in `docs/growpy/`
+- Use conda/mamba for environment management (never pip venv)
+
+---
+
+**Simplified. Clean. Ready for Unreal Engine.**

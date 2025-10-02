@@ -1,8 +1,15 @@
 """Tree model functions for forest generation."""
 
 from typing import Any, Dict, List, Optional
+import pandas as pd
 
-from ..utils import gc, ensure_grove_available, pd
+try:
+    import the_grove_22_core as gc
+    GROVE_CORE_AVAILABLE = True
+except ImportError:
+    gc = None
+    GROVE_CORE_AVAILABLE = False
+
 from ..config import get_config
 
 
@@ -142,7 +149,8 @@ def build_grove_with_all_attributes(
     Returns:
         List of fully-featured Grove models with all attributes
     """
-    ensure_grove_available()
+    if not GROVE_CORE_AVAILABLE:
+        raise ImportError("Grove core (the_grove_22_core) not available")
 
     if build_params is None:
         # Comprehensive build parameters based on Grove documentation

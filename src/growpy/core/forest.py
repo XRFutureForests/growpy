@@ -1,10 +1,16 @@
 """Forest simulation functions with Grove API integration."""
 
 from typing import List, Tuple
-
+import pandas as pd
 from tqdm import tqdm
 
-from ..utils import gc, ensure_grove_available, pd
+try:
+    import the_grove_22_core as gc
+    GROVE_CORE_AVAILABLE = True
+except ImportError:
+    gc = None
+    GROVE_CORE_AVAILABLE = False
+
 from .grove import add_tree_to_grove, create_grove
 
 
@@ -41,7 +47,8 @@ def simulate_forest_growth(forest: List[Tuple], cycles: int) -> None:
         forest: List of (grove, species_name, tree_count) tuples
         cycles: Number of growth cycles to simulate
     """
-    ensure_grove_available()
+    if not GROVE_CORE_AVAILABLE:
+        raise ImportError("Grove core (the_grove_22_core) not available")
 
     groves = [grove for grove, _, _ in forest]
 
