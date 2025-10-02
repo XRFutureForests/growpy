@@ -1,20 +1,40 @@
 """Export for Grove tree models optimized for Unreal Engine 5 Nanite."""
 
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-# Try to import bpy at module level
-# Note: bpy must be imported BEFORE other modules in some contexts due to DLL dependencies
+# Import bpy BEFORE any other Grove-related modules to avoid DLL conflicts
 try:
     import bpy
+
     BPY_AVAILABLE = True
-except (ImportError, OSError):
+except (ImportError, OSError) as e:
     # bpy not available or DLL load failed - this is expected when not using Blender Python
     bpy = None
     BPY_AVAILABLE = False
 
-from ..utils import ensure_grove_available, gc
+# Import after bpy check to avoid potential conflicts
 from ..config import get_config
+
+# Lazy import of gc to avoid conflicts with bpy
+_gc = None
+_gc_available = None
+
+
+def _get_gc():
+    """Lazy import of grove core."""
+    global _gc, _gc_available
+    if _gc is None and _gc_available is None:
+        try:
+            import the_grove_22_core as grove_core
+
+            _gc = grove_core
+            _gc_available = True
+        except ImportError:
+            _gc = None
+            _gc_available = False
+    return _gc
 
 
 def _check_bpy_available():
@@ -22,162 +42,211 @@ def _check_bpy_available():
     return BPY_AVAILABLE
 
 
-def export_tree_as_fbx(
-    grove,
-    output_path: Path,
-    species_name: str,
-    include_skeleton: bool = True,
-    export_skeleton_separately: bool = False
-) -> bool:
-    """Export Grove tree model as FBX with mesh, skeleton, and materials.
+def ensure_grove_available():
+    """Ensure Grove core is available."""
+    gc = _get_gc()
+    if gc is None:
+        raise ImportError("Grove core (the_grove_22_core) not available")
+
+
+def add_nanite_attributes_to_usd(usd_path: Path, is_foliage: bool = False) -> bool:
+    """Add Nanite-specific USD attributes to exported USD file.
 
     Args:
-        grove: Grove instance with simulated trees
-        output_path: Path for the FBX file
-        species_name: Tree species name for material naming
-        include_skeleton: Whether to include skeleton in export
-        export_skeleton_separately: Export skeleton as separate FBX file
+        usd_path: Path to USD file
+        is_foliage: Whether this is foliage (twigs/leaves) requiring Preserve Area
 
     Returns:
         bool: Success status
     """
-    if not _check_bpy_available():
-        print("bpy module not available - cannot export FBX")
-        return False
-
-    ensure_grove_available()
-
     try:
-        # Clear existing scene
-        bpy.ops.object.select_all(action='SELECT')
-        bpy.ops.object.delete(use_global=False)
+        from pxr import Sdf, Usd, UsdGeom
 
-        # Build high-quality tree model
-        models = grove.build_models({
-            "resolution": 16,  # High resolution
-            "build_end_cap": True,
-            "build_cutoff_thickness": 0.0,
-            "build_blend": True,
-            "resolution_reduce": 0.8
-        })
-
-        if not models:
-            print("No models generated from grove")
+        # Open USD stage
+        stage = Usd.Stage.Open(str(usd_path))
+        if not stage:
+            print(f"Failed to open USD stage: {usd_path}")
             return False
 
-        model = models[0]  # Take first tree
+        # Add Nanite attributes to all meshes
+        for prim in stage.Traverse():
+            if prim.IsA(UsdGeom.Mesh):
+                # Enable Nanite
+                prim.CreateAttribute("unrealNanite", Sdf.ValueTypeNames.Token).Set(
+                    "enable"
+                )
 
-        # Create mesh from Grove model
-        mesh_name = f"{species_name}_tree_mesh"
-        mesh = bpy.data.meshes.new(mesh_name)
+                # For foliage, enable Preserve Area to prevent thinning at distance
+                if is_foliage:
+                    prim.CreateAttribute(
+                        "unrealNanitePreserveArea", Sdf.ValueTypeNames.Bool
+                    ).Set(True)
 
-        # Get geometry data
-        points = model.get_points_flat()
-        faces = [[int(i) for i in face] for face in model.faces]
-        uvs = model.get_uvs_flat() if hasattr(model, 'get_uvs_flat') else []
-
-        # Convert points to vertices
-        vertices = [(points[i], points[i+1], points[i+2]) for i in range(0, len(points), 3)]
-
-        # Create mesh
-        mesh.from_pydata(vertices, [], faces)
-        mesh.update()
-
-        # Add UVs if available
-        if uvs and len(uvs) >= len(faces) * 6:  # At least 2 UV coords per triangle
-            mesh.uv_layers.new(name="UVMap")
-            uv_layer = mesh.uv_layers.active.data
-            for poly in mesh.polygons:
-                for loop_index in poly.loop_indices:
-                    uv_index = loop_index * 2
-                    if uv_index + 1 < len(uvs):
-                        uv_layer[loop_index].uv = (uvs[uv_index], uvs[uv_index + 1])
-
-        # Create object
-        obj = bpy.data.objects.new(mesh_name, mesh)
-        bpy.context.collection.objects.link(obj)
-        bpy.context.view_layer.objects.active = obj
-        obj.select_set(True)
-
-        # Build skeleton
-        armature_obj = None
-        if include_skeleton or export_skeleton_separately:
-            skeletons = grove.build_skeletons()
-            if skeletons:
-                armature_obj = _add_skeleton_to_object(obj, skeletons[0], species_name)
-
-        # Add simple material
-        _add_simple_material(obj, species_name)
-
-        # Export skeleton separately if requested
-        if export_skeleton_separately and armature_obj:
-            skeleton_path = output_path.parent / f"{output_path.stem}_skeleton.fbx"
-            bpy.ops.object.select_all(action='DESELECT')
-            armature_obj.select_set(True)
-            bpy.context.view_layer.objects.active = armature_obj
-
-            bpy.ops.export_scene.fbx(
-                filepath=str(skeleton_path),
-                check_existing=True,
-                use_selection=True,
-                use_active_collection=False,
-                global_scale=1.0,
-                apply_unit_scale=True,
-                apply_scale_options='FBX_SCALE_NONE',
-                use_space_transform=True,
-                bake_space_transform=False,
-                object_types={'ARMATURE'},
-                use_mesh_modifiers=False,
-                add_leaf_bones=False,
-                primary_bone_axis='Y',
-                secondary_bone_axis='X',
-                use_armature_deform_only=False,
-                armature_nodetype='NULL',
-                bake_anim=False
-            )
-
-        # Export mesh (with or without skeleton)
-        bpy.ops.object.select_all(action='DESELECT')
-        obj.select_set(True)
-        if include_skeleton and armature_obj and not export_skeleton_separately:
-            armature_obj.select_set(True)
-        bpy.context.view_layer.objects.active = obj
-
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        object_types = {'MESH', 'ARMATURE'} if (include_skeleton and not export_skeleton_separately) else {'MESH'}
-
-        # Use FBX 2020.2 for UE5 compatibility
-        bpy.ops.export_scene.fbx(
-            filepath=str(output_path),
-            check_existing=True,
-            use_selection=True,
-            use_active_collection=False,
-            global_scale=1.0,
-            apply_unit_scale=True,
-            apply_scale_options='FBX_SCALE_NONE',
-            use_space_transform=True,
-            bake_space_transform=False,
-            object_types=object_types,
-            use_mesh_modifiers=True,
-            use_mesh_modifiers_render=True,
-            mesh_smooth_type='FACE',  # Face smoothing for better Nanite compatibility
-            use_subsurf=False,
-            use_mesh_edges=False,
-            use_tspace=True,  # Enable tangent space for proper normal maps in UE
-            use_custom_props=False,
-            add_leaf_bones=False,
-            primary_bone_axis='Y',
-            secondary_bone_axis='X',
-            use_armature_deform_only=False,
-            armature_nodetype='NULL',
-            bake_anim=False
-        )
-
+        # Save changes
+        stage.GetRootLayer().Save()
         return True
 
-    except Exception as e:
-        print(f"Failed to export tree FBX: {e}")
+    except ImportError:
+        print("USD Python (pxr) not available. Nanite attributes not added.")
+        print("Install with: pip install usd-core")
         return False
+    except Exception as e:
+        print(f"Failed to add Nanite attributes to USD: {e}")
+        return False
+
+
+def validate_mesh_for_nanite(mesh: Any) -> Dict[str, Any]:
+    """Validate mesh for Unreal Engine Nanite compatibility.
+
+    Checks mesh topology, UV continuity, and other Nanite requirements.
+
+    Args:
+        mesh: Blender mesh object
+
+    Returns:
+        Dict with validation results:
+            - compatible: bool (overall compatibility)
+            - warnings: List[str] (potential issues)
+            - stats: Dict (mesh statistics)
+    """
+    validation = {"compatible": True, "warnings": [], "stats": {}}
+
+    try:
+        # Triangle count check (<1M recommended for optimal performance)
+        triangle_count = len(mesh.polygons)
+        validation["stats"]["triangle_count"] = triangle_count
+
+        if triangle_count > 1000000:
+            validation["warnings"].append(
+                f"High triangle count ({triangle_count:,}). "
+                "Consider <1M triangles for optimal Nanite performance."
+            )
+
+        # Check for quads vs triangles
+        quad_count = sum(1 for poly in mesh.polygons if len(poly.vertices) == 4)
+        tri_count = triangle_count - quad_count
+        validation["stats"]["quad_count"] = quad_count
+        validation["stats"]["tri_count"] = tri_count
+
+        # UV continuity check - count UV seams
+        if mesh.uv_layers:
+            uv_seam_count = sum(1 for edge in mesh.edges if edge.use_seam)
+            validation["stats"]["uv_seams"] = uv_seam_count
+            validation["stats"]["uv_layers"] = len(mesh.uv_layers)
+
+            if uv_seam_count > triangle_count * 0.3:
+                validation["warnings"].append(
+                    f"High UV seam count ({uv_seam_count}). "
+                    "UV discontinuities increase vertex count in Nanite."
+                )
+        else:
+            validation["warnings"].append(
+                "No UV maps found. UVs recommended for texturing."
+            )
+
+        # Topology check - look for degenerate triangles (very thin/long)
+        import mathutils
+
+        thin_triangle_count = 0
+        for poly in mesh.polygons:
+            if len(poly.vertices) >= 3:
+                verts = [mesh.vertices[v].co for v in poly.vertices[:3]]
+                # Calculate aspect ratio using edge lengths
+                edges = [
+                    (verts[1] - verts[0]).length,
+                    (verts[2] - verts[1]).length,
+                    (verts[0] - verts[2]).length,
+                ]
+                if min(edges) > 0:
+                    aspect_ratio = max(edges) / min(edges)
+                    if aspect_ratio > 10:  # Very thin triangle
+                        thin_triangle_count += 1
+
+        validation["stats"]["thin_triangles"] = thin_triangle_count
+        if thin_triangle_count > triangle_count * 0.1:
+            validation["warnings"].append(
+                f"Many thin triangles detected ({thin_triangle_count}). "
+                "May impact Nanite clustering efficiency."
+            )
+
+        # Check vertex count
+        validation["stats"]["vertex_count"] = len(mesh.vertices)
+
+        # Materials check
+        validation["stats"]["material_count"] = len(mesh.materials)
+        if len(mesh.materials) == 0:
+            validation["warnings"].append("No materials assigned.")
+
+    except Exception as e:
+        validation["compatible"] = False
+        validation["warnings"].append(f"Validation error: {e}")
+
+    return validation
+
+
+def get_quality_preset(preset_name: str) -> Dict[str, Any]:
+    """Get predefined quality preset for tree model building.
+
+    Args:
+        preset_name: One of 'ultra', 'high', 'medium', 'low', 'performance'
+
+    Returns:
+        Dictionary with build quality parameters
+    """
+    presets = {
+        "ultra": {
+            "resolution": 32,
+            "resolution_reduce": 0.75,
+            "texture_repeat": 4,
+            "build_cutoff_age": 0,
+            "build_cutoff_thickness": 0.0,
+            "build_blend": True,
+            "build_end_cap": True,
+        },
+        "high": {
+            "resolution": 24,
+            "resolution_reduce": 0.8,
+            "texture_repeat": 3,
+            "build_cutoff_age": 0,
+            "build_cutoff_thickness": 0.0,
+            "build_blend": True,
+            "build_end_cap": True,
+        },
+        "medium": {
+            "resolution": 16,
+            "resolution_reduce": 0.8,
+            "texture_repeat": 3,
+            "build_cutoff_age": 0,
+            "build_cutoff_thickness": 0.005,
+            "build_blend": True,
+            "build_end_cap": True,
+        },
+        "low": {
+            "resolution": 12,
+            "resolution_reduce": 0.85,
+            "texture_repeat": 2,
+            "build_cutoff_age": 1,
+            "build_cutoff_thickness": 0.01,
+            "build_blend": True,
+            "build_end_cap": False,
+        },
+        "performance": {
+            "resolution": 8,
+            "resolution_reduce": 0.9,
+            "texture_repeat": 2,
+            "build_cutoff_age": 2,
+            "build_cutoff_thickness": 0.02,
+            "build_blend": False,
+            "build_end_cap": False,
+        },
+    }
+
+    if preset_name not in presets:
+        raise ValueError(
+            f"Unknown quality preset: {preset_name}. Choose from: {list(presets.keys())}"
+        )
+
+    return presets[preset_name]
 
 
 def export_tree_as_usd(
@@ -185,7 +254,14 @@ def export_tree_as_usd(
     output_path: Path,
     species_name: str,
     include_skeleton: bool = True,
-    export_skeleton_separately: bool = False
+    export_skeleton_separately: bool = False,
+    resolution: int = 32,
+    resolution_reduce: float = 0.8,
+    texture_repeat: int = 3,
+    build_cutoff_age: int = 0,
+    build_cutoff_thickness: float = 0.0,
+    build_blend: bool = True,
+    build_end_cap: bool = True,
 ) -> bool:
     """Export Grove tree model as USD for Unreal Engine 5 Nanite.
 
@@ -195,6 +271,15 @@ def export_tree_as_usd(
         species_name: Tree species name for material naming
         include_skeleton: Whether to include skeleton in export
         export_skeleton_separately: Export skeleton as separate USD file
+        resolution: Number of vertices around branch circumference (4-32, default: 32)
+                   Higher = smoother branches. 16=moderate, 24=high, 32=very high quality
+        resolution_reduce: How quickly to reduce resolution on thinner branches (0.0-1.0, default: 0.8)
+                          Lower = maintains detail longer, Higher = reduces faster
+        texture_repeat: Texture repetitions around trunk circumference (default: 3)
+        build_cutoff_age: Skip building branches younger than this age (default: 0)
+        build_cutoff_thickness: Skip branches thinner than this diameter (default: 0.0)
+        build_blend: Add smooth geometry at branch joints (default: True)
+        build_end_cap: Close off branch ends with geometry (default: True)
 
     Returns:
         bool: Success status
@@ -204,20 +289,25 @@ def export_tree_as_usd(
         return False
 
     ensure_grove_available()
+    config = get_config()
 
     try:
         # Clear existing scene
-        bpy.ops.object.select_all(action='SELECT')
+        bpy.ops.object.select_all(action="SELECT")
         bpy.ops.object.delete(use_global=False)
 
-        # Build high-quality tree model
-        models = grove.build_models({
-            "resolution": 16,
-            "build_end_cap": True,
-            "build_cutoff_thickness": 0.0,
-            "build_blend": True,
-            "resolution_reduce": 0.8
-        })
+        # Build tree model with configurable quality settings
+        models = grove.build_models(
+            {
+                "resolution": resolution,
+                "resolution_reduce": resolution_reduce,
+                "texture_repeat": texture_repeat,
+                "build_cutoff_age": build_cutoff_age,
+                "build_cutoff_thickness": build_cutoff_thickness,
+                "build_blend": build_blend,
+                "build_end_cap": build_end_cap,
+            }
+        )
 
         if not models:
             print("No models generated from grove")
@@ -231,9 +321,11 @@ def export_tree_as_usd(
 
         points = model.get_points_flat()
         faces = [[int(i) for i in face] for face in model.faces]
-        uvs = model.get_uvs_flat() if hasattr(model, 'get_uvs_flat') else []
+        uvs = model.get_uvs_flat() if hasattr(model, "get_uvs_flat") else []
 
-        vertices = [(points[i], points[i+1], points[i+2]) for i in range(0, len(points), 3)]
+        vertices = [
+            (points[i], points[i + 1], points[i + 2]) for i in range(0, len(points), 3)
+        ]
 
         mesh.from_pydata(vertices, [], faces)
         mesh.update()
@@ -247,10 +339,17 @@ def export_tree_as_usd(
                     if uv_index + 1 < len(uvs):
                         uv_layer[loop_index].uv = (uvs[uv_index], uvs[uv_index + 1])
 
+        _add_grove_attributes_to_mesh(mesh, model)
+
         obj = bpy.data.objects.new(mesh_name, mesh)
         bpy.context.collection.objects.link(obj)
         bpy.context.view_layer.objects.active = obj
         obj.select_set(True)
+
+        # Apply triangulation for Nanite (requires consistent topology)
+        triangulate_modifier = obj.modifiers.new(name="Triangulate", type="TRIANGULATE")
+        triangulate_modifier.quad_method = "BEAUTY"
+        triangulate_modifier.ngon_method = "BEAUTY"
 
         # Build skeleton
         armature_obj = None
@@ -259,28 +358,46 @@ def export_tree_as_usd(
             if skeletons:
                 armature_obj = _add_skeleton_to_object(obj, skeletons[0], species_name)
 
-        # Add material
-        _add_simple_material(obj, species_name)
+        # Add material with textures
+        _add_material_with_textures(obj, species_name, config)
+
+        # Validate mesh for Nanite (after materials are assigned)
+        validation = validate_mesh_for_nanite(mesh)
+        if validation["warnings"]:
+            print(f"Nanite validation warnings for {species_name}:")
+            for warning in validation["warnings"]:
+                print(f"  - {warning}")
+        print(
+            f"Mesh stats: {validation['stats']['triangle_count']:,} tris, "
+            f"{validation['stats']['vertex_count']:,} verts"
+        )
 
         # Export skeleton separately if requested
         if export_skeleton_separately and armature_obj:
-            skeleton_path = output_path.parent / f"{output_path.stem}_skeleton{output_path.suffix}"
-            bpy.ops.object.select_all(action='DESELECT')
+            skeleton_path = (
+                output_path.parent / f"{output_path.stem}_skeleton{output_path.suffix}"
+            )
+            bpy.ops.object.select_all(action="DESELECT")
             armature_obj.select_set(True)
             bpy.context.view_layer.objects.active = armature_obj
 
-            bpy.ops.wm.usd_export(
-                filepath=str(skeleton_path),
-                selected_objects_only=True,
-                export_animation=False,
-                export_armatures=True,
-                export_shapekeys=False,
-                use_instancing=False,
-                evaluation_mode='RENDER'
-            )
+            skeleton_params = {
+                "filepath": str(skeleton_path),
+                "selected_objects_only": True,
+                "export_animation": False,
+                "export_armatures": True,
+                "export_shapekeys": False,
+                "use_instancing": False,
+                "evaluation_mode": "RENDER",
+            }
+
+            try:
+                bpy.ops.wm.usd_export(**skeleton_params, export_custom_properties=True)
+            except TypeError:
+                bpy.ops.wm.usd_export(**skeleton_params)
 
         # Export mesh (with or without skeleton)
-        bpy.ops.object.select_all(action='DESELECT')
+        bpy.ops.object.select_all(action="DESELECT")
         obj.select_set(True)
         if include_skeleton and armature_obj and not export_skeleton_separately:
             armature_obj.select_set(True)
@@ -288,21 +405,33 @@ def export_tree_as_usd(
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # USD export optimized for Nanite
-        bpy.ops.wm.usd_export(
-            filepath=str(output_path),
-            selected_objects_only=True,
-            export_animation=False,
-            export_armatures=(include_skeleton and not export_skeleton_separately),
-            export_shapekeys=False,
-            use_instancing=False,
-            evaluation_mode='RENDER',
-            generate_preview_surface=True,
-            export_materials=True,
-            export_uvmaps=True,
-            export_normals=True
-        )
+        # USD export optimized for Nanite with all Grove attributes
+        # Try to export with attributes if supported (Blender 3.6+)
+        export_params = {
+            "filepath": str(output_path),
+            "selected_objects_only": True,
+            "export_animation": False,
+            "export_armatures": (include_skeleton and not export_skeleton_separately),
+            "export_shapekeys": False,
+            "use_instancing": False,
+            "evaluation_mode": "RENDER",
+            "generate_preview_surface": True,
+            "export_materials": True,
+            "export_uvmaps": True,
+            "export_normals": True,
+        }
 
+        # Add export_attributes if supported (Blender 3.6+)
+        try:
+            bpy.ops.wm.usd_export(**export_params, export_custom_properties=True)
+        except TypeError:
+            # Fallback for older Blender versions without attribute export
+            bpy.ops.wm.usd_export(**export_params)
+
+        # Add Nanite attributes to USD file
+        add_nanite_attributes_to_usd(output_path, is_foliage=False)
+
+        print(f"✓ Exported USD with Nanite compatibility for {species_name}")
         return True
 
     except Exception as e:
@@ -314,7 +443,7 @@ def create_nanite_assembly_usd(
     tree_mesh_path: Path,
     twig_mesh_paths: List[Path],
     output_assembly_path: Path,
-    species_name: str
+    species_name: str,
 ) -> bool:
     """Create a USD Assembly file for Unreal Engine 5.7 Nanite Assemblies.
 
@@ -331,7 +460,7 @@ def create_nanite_assembly_usd(
         bool: Success status
     """
     try:
-        from pxr import Usd, UsdGeom, Sdf, Gf
+        from pxr import Gf, Sdf, Usd, UsdGeom
 
         # Create new stage
         stage = Usd.Stage.CreateNew(str(output_assembly_path))
@@ -342,7 +471,9 @@ def create_nanite_assembly_usd(
 
         # Add Unreal Nanite Assembly metadata
         root_prim.SetMetadata("apiSchemas", ["NaniteAssemblyRootAPI"])
-        root_prim.CreateAttribute("unreal:naniteAssembly:meshType", Sdf.ValueTypeNames.Token).Set("staticMesh")
+        root_prim.CreateAttribute(
+            "unreal:naniteAssembly:meshType", Sdf.ValueTypeNames.Token
+        ).Set("staticMesh")
 
         # Reference main tree mesh (trunk/branches)
         trunk_prim = stage.DefinePrim(f"/{species_name}_Assembly/Trunk", "Xform")
@@ -355,8 +486,7 @@ def create_nanite_assembly_usd(
 
             for idx, twig_path in enumerate(twig_mesh_paths):
                 twig_prim = stage.DefinePrim(
-                    f"/{species_name}_Assembly/Twigs/Twig_{idx}",
-                    "Xform"
+                    f"/{species_name}_Assembly/Twigs/Twig_{idx}", "Xform"
                 )
                 twig_prim.GetReferences().AddReference(str(twig_path.resolve()))
                 twig_prim.SetMetadata("apiSchemas", ["NaniteAssemblyExternalRefAPI"])
@@ -387,16 +517,20 @@ def _add_skeleton_to_object(obj: Any, skeleton: Any, species_name: str) -> Any:
 
         # Enter edit mode to add bones
         bpy.context.view_layer.objects.active = armature_obj
-        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.object.mode_set(mode="EDIT")
 
         # Add bones from skeleton data
         points = skeleton.points
         poly_lines = skeleton.poly_lines
 
+        # Map point indices to bones for branch connections
+        point_to_bone = {}
+
         for i, poly_line in enumerate(poly_lines):
             if len(poly_line) < 2:
                 continue
 
+            previous_bone = None
             for j in range(len(poly_line) - 1):
                 bone_name = f"bone_{i}_{j}"
                 bone = armature.edit_bones.new(bone_name)
@@ -408,10 +542,22 @@ def _add_skeleton_to_object(obj: Any, skeleton: Any, species_name: str) -> Any:
                     bone.head = points[start_idx]
                     bone.tail = points[end_idx]
 
-        bpy.ops.object.mode_set(mode='OBJECT')
+                # Set parent: either previous bone in chain or parent branch bone
+                if j == 0 and start_idx in point_to_bone:
+                    # First bone of branch - connect to parent branch at shared point
+                    bone.parent = point_to_bone[start_idx]
+                elif previous_bone is not None:
+                    # Continue chain within same branch
+                    bone.parent = previous_bone
+
+                # Track this bone's endpoint for potential child branches
+                point_to_bone[end_idx] = bone
+                previous_bone = bone
+
+        bpy.ops.object.mode_set(mode="OBJECT")
 
         # Add armature modifier for proper deformation (don't use parent relationship for FBX export)
-        modifier = obj.modifiers.new(name="Armature", type='ARMATURE')
+        modifier = obj.modifiers.new(name="Armature", type="ARMATURE")
         modifier.object = armature_obj
         modifier.use_vertex_groups = True
 
@@ -425,47 +571,331 @@ def _add_skeleton_to_object(obj: Any, skeleton: Any, species_name: str) -> Any:
         return None
 
 
-def _add_simple_material(obj: Any, species_name: str) -> None:
-    """Add simple material to tree object."""
+def _add_grove_attributes_to_mesh(mesh: Any, model: Any) -> None:
+    """Add Grove model attributes to Blender mesh as custom properties.
+
+    This preserves all the information from the Grove, including twig placements,
+    branch indices, and various tree attributes that can be used in Unreal Engine.
+    """
+    try:
+        # Face (polygon) attributes - these are critical for twig placements
+        if hasattr(model, "face_attribute_twig_long"):
+            face_layer = mesh.attributes.new(
+                name="twig_long", type="BOOLEAN", domain="FACE"
+            )
+            for i, val in enumerate(model.face_attribute_twig_long):
+                face_layer.data[i].value = val
+
+        if hasattr(model, "face_attribute_twig_short"):
+            face_layer = mesh.attributes.new(
+                name="twig_short", type="BOOLEAN", domain="FACE"
+            )
+            for i, val in enumerate(model.face_attribute_twig_short):
+                face_layer.data[i].value = val
+
+        if hasattr(model, "face_attribute_twig_upward"):
+            face_layer = mesh.attributes.new(
+                name="twig_upward", type="BOOLEAN", domain="FACE"
+            )
+            for i, val in enumerate(model.face_attribute_twig_upward):
+                face_layer.data[i].value = val
+
+        if hasattr(model, "face_attribute_twig_dead"):
+            face_layer = mesh.attributes.new(
+                name="twig_dead", type="BOOLEAN", domain="FACE"
+            )
+            for i, val in enumerate(model.face_attribute_twig_dead):
+                face_layer.data[i].value = val
+
+        if hasattr(model, "face_attribute_dead"):
+            face_layer = mesh.attributes.new(
+                name="branch_dead", type="BOOLEAN", domain="FACE"
+            )
+            for i, val in enumerate(model.face_attribute_dead):
+                face_layer.data[i].value = val
+
+        if hasattr(model, "face_attribute_branch_index"):
+            face_layer = mesh.attributes.new(
+                name="branch_index", type="INT", domain="FACE"
+            )
+            for i, val in enumerate(model.face_attribute_branch_index):
+                face_layer.data[i].value = val
+
+        if hasattr(model, "face_attribute_branch_index_parent"):
+            face_layer = mesh.attributes.new(
+                name="branch_index_parent", type="INT", domain="FACE"
+            )
+            for i, val in enumerate(model.face_attribute_branch_index_parent):
+                face_layer.data[i].value = val
+
+        if hasattr(model, "face_attribute_end"):
+            face_layer = mesh.attributes.new(
+                name="branch_end", type="BOOLEAN", domain="FACE"
+            )
+            for i, val in enumerate(model.face_attribute_end):
+                face_layer.data[i].value = val
+
+        if hasattr(model, "face_attribute_tree_index"):
+            face_layer = mesh.attributes.new(
+                name="tree_index", type="INT", domain="FACE"
+            )
+            for i, val in enumerate(model.face_attribute_tree_index):
+                face_layer.data[i].value = val
+
+        # Point (vertex) attributes
+        if hasattr(model, "point_attribute_age"):
+            point_layer = mesh.attributes.new(name="age", type="INT", domain="POINT")
+            for i, val in enumerate(model.point_attribute_age):
+                point_layer.data[i].value = val
+
+        if hasattr(model, "point_attribute_thickness"):
+            point_layer = mesh.attributes.new(
+                name="thickness", type="FLOAT", domain="POINT"
+            )
+            for i, val in enumerate(model.point_attribute_thickness):
+                point_layer.data[i].value = val
+
+        if hasattr(model, "point_attribute_mass"):
+            point_layer = mesh.attributes.new(name="mass", type="FLOAT", domain="POINT")
+            for i, val in enumerate(model.point_attribute_mass):
+                point_layer.data[i].value = val
+
+        if hasattr(model, "point_attribute_shade"):
+            point_layer = mesh.attributes.new(
+                name="shade", type="FLOAT", domain="POINT"
+            )
+            for i, val in enumerate(model.point_attribute_shade):
+                point_layer.data[i].value = val
+
+        if hasattr(model, "point_attribute_vigor"):
+            point_layer = mesh.attributes.new(
+                name="vigor", type="FLOAT", domain="POINT"
+            )
+            for i, val in enumerate(model.point_attribute_vigor):
+                point_layer.data[i].value = val
+
+        if hasattr(model, "point_attribute_photosynthesis"):
+            point_layer = mesh.attributes.new(
+                name="photosynthesis", type="FLOAT", domain="POINT"
+            )
+            for i, val in enumerate(model.point_attribute_photosynthesis):
+                point_layer.data[i].value = val
+
+        if hasattr(model, "point_attribute_pitch"):
+            point_layer = mesh.attributes.new(
+                name="pitch", type="FLOAT", domain="POINT"
+            )
+            for i, val in enumerate(model.point_attribute_pitch):
+                point_layer.data[i].value = val
+
+    except Exception as e:
+        print(f"Warning: Failed to add some Grove attributes to mesh: {e}")
+
+
+def _find_bark_texture(
+    species_name: str, config: Optional[Any] = None
+) -> Optional[Dict[str, Path]]:
+    """Find bark texture files for a species from assets folder.
+
+    Args:
+        species_name: Common name of species (e.g., "European beech")
+        config: GrowPy configuration
+
+    Returns:
+        Dict with 'diffuse' and 'normal' texture paths, or None if not found
+    """
+    if config is None:
+        config = get_config()
+
+    # Get project root
+    project_root = Path(__file__).parent.parent.parent.parent
+    texture_dir = project_root / "data" / "assets" / "textures"
+
+    if not texture_dir.exists():
+        return None
+
+    textures = {}
+
+    # Try to get texture from lookup table first
+    try:
+        from ..config import GrowPyConfig
+
+        species_data = GrowPyConfig.get_species_data(species_name)
+        if species_data and "Bark Texture" in species_data:
+            bark_texture_name = species_data.get("Bark Texture")
+            if bark_texture_name and str(bark_texture_name) not in ["", "nan"]:
+                diffuse_path = texture_dir / bark_texture_name
+                if diffuse_path.exists():
+                    textures["diffuse"] = diffuse_path
+
+                    # Look for corresponding normal map
+                    normal_name = diffuse_path.stem + "Normal" + diffuse_path.suffix
+                    normal_path = diffuse_path.parent / normal_name
+                    if normal_path.exists():
+                        textures["normal"] = normal_path
+                    else:
+                        # Try alternative normal naming (e.g., Birch70_normal.jpg)
+                        normal_name_alt = (
+                            diffuse_path.stem + "_normal" + diffuse_path.suffix
+                        )
+                        normal_path_alt = diffuse_path.parent / normal_name_alt
+                        if normal_path_alt.exists():
+                            textures["normal"] = normal_path_alt
+
+                    return textures
+    except Exception:
+        pass
+
+    # Fallback: use original pattern matching
+    # Clean species name for matching
+    species_clean = species_name.lower().replace(" ", "").replace("-", "")
+
+    # Common texture name patterns to try
+    texture_patterns = [
+        species_name.replace(" ", ""),  # "EuropeanBeech"
+        species_name.split()[-1],  # "Beech"
+        species_name.split()[0],  # "European"
+    ]
+
+    for pattern in texture_patterns:
+        pattern_clean = pattern.replace(" ", "").lower()
+
+        # Look for diffuse texture
+        for tex_file in texture_dir.glob(f"*{pattern}*.jpg"):
+            if "normal" not in tex_file.name.lower():
+                textures["diffuse"] = tex_file
+
+                # Look for corresponding normal map
+                normal_name = tex_file.stem + "Normal" + tex_file.suffix
+                normal_path = tex_file.parent / normal_name
+                if normal_path.exists():
+                    textures["normal"] = normal_path
+                break
+
+        if textures:
+            break
+
+    return textures if textures else None
+
+
+def _add_material_with_textures(
+    obj: Any, species_name: str, config: Optional[Any] = None
+) -> None:
+    """Add material with bark textures to tree object.
+
+    Args:
+        obj: Blender object
+        species_name: Name of species for texture lookup
+        config: GrowPy configuration
+    """
     try:
         material = bpy.data.materials.new(name=f"{species_name}_bark")
         material.use_nodes = True
         nodes = material.node_tree.nodes
-        
+
         # Clear default nodes
         nodes.clear()
-        
+
         # Add basic nodes
-        output_node = nodes.new(type='ShaderNodeOutputMaterial')
-        bsdf_node = nodes.new(type='ShaderNodeBsdfPrincipled')
-        
-        # Set brown bark color
-        bsdf_node.inputs['Base Color'].default_value = (0.4, 0.3, 0.2, 1.0)
-        bsdf_node.inputs['Roughness'].default_value = 0.8
-        
-        # Link nodes
+        output_node = nodes.new(type="ShaderNodeOutputMaterial")
+        output_node.location = (400, 0)
+
+        bsdf_node = nodes.new(type="ShaderNodeBsdfPrincipled")
+        bsdf_node.location = (0, 0)
+
+        # Find textures
+        textures = _find_bark_texture(species_name, config)
+
+        if textures:
+            # Add diffuse texture
+            if "diffuse" in textures:
+                tex_image = bpy.data.images.load(str(textures["diffuse"]))
+                tex_node = nodes.new(type="ShaderNodeTexImage")
+                tex_node.image = tex_image
+                tex_node.location = (-400, 200)
+                tex_node.label = "Bark Diffuse"
+
+                # Connect to base color
+                links = material.node_tree.links
+                links.new(tex_node.outputs["Color"], bsdf_node.inputs["Base Color"])
+
+            # Add normal map
+            if "normal" in textures:
+                normal_image = bpy.data.images.load(str(textures["normal"]))
+                normal_tex_node = nodes.new(type="ShaderNodeTexImage")
+                normal_tex_node.image = normal_image
+                normal_tex_node.location = (-400, -200)
+                normal_tex_node.label = "Bark Normal"
+                normal_tex_node.image.colorspace_settings.name = "Non-Color"
+
+                # Add normal map node
+                normal_map_node = nodes.new(type="ShaderNodeNormalMap")
+                normal_map_node.location = (-100, -200)
+
+                links = material.node_tree.links
+                links.new(
+                    normal_tex_node.outputs["Color"], normal_map_node.inputs["Color"]
+                )
+                links.new(normal_map_node.outputs["Normal"], bsdf_node.inputs["Normal"])
+        else:
+            # Fallback to simple brown color
+            bsdf_node.inputs["Base Color"].default_value = (0.4, 0.3, 0.2, 1.0)
+
+        # Set material properties for bark
+        bsdf_node.inputs["Roughness"].default_value = 0.8
+        bsdf_node.inputs["Metallic"].default_value = 0.0
+
+        # Link to output
         links = material.node_tree.links
-        links.new(bsdf_node.outputs['BSDF'], output_node.inputs['Surface'])
-        
+        links.new(bsdf_node.outputs["BSDF"], output_node.inputs["Surface"])
+
         # Assign to object
         obj.data.materials.append(material)
-        
+
+    except Exception as e:
+        print(f"Failed to add material with textures: {e}")
+        # Fallback to simple material
+        _add_simple_material(obj, species_name)
+
+
+def _add_simple_material(obj: Any, species_name: str) -> None:
+    """Add simple material to tree object (fallback)."""
+    try:
+        material = bpy.data.materials.new(name=f"{species_name}_bark")
+        material.use_nodes = True
+        nodes = material.node_tree.nodes
+
+        # Clear default nodes
+        nodes.clear()
+
+        # Add basic nodes
+        output_node = nodes.new(type="ShaderNodeOutputMaterial")
+        bsdf_node = nodes.new(type="ShaderNodeBsdfPrincipled")
+
+        # Set brown bark color
+        bsdf_node.inputs["Base Color"].default_value = (0.4, 0.3, 0.2, 1.0)
+        bsdf_node.inputs["Roughness"].default_value = 0.8
+
+        # Link nodes
+        links = material.node_tree.links
+        links.new(bsdf_node.outputs["BSDF"], output_node.inputs["Surface"])
+
+        # Assign to object
+        obj.data.materials.append(material)
+
     except Exception as e:
         print(f"Failed to add material: {e}")
 
 
-def export_twigs_from_blend(
-    blend_file_path: Path,
-    output_dir: Path
-) -> List[Path]:
-    """Export all twig objects from a Blend file as individual FBX files.
-    
+def export_twigs_from_blend(blend_file_path: Path, output_dir: Path) -> List[Path]:
+    """Export all twig objects from a Blend file as individual USD files.
+
     Args:
         blend_file_path: Path to the .blend file containing twigs
-        output_dir: Directory to save individual twig FBX files
-        
+        output_dir: Directory to save individual twig USD files
+
     Returns:
-        List[Path]: Paths to exported FBX files
+        List[Path]: Paths to exported USD files
     """
     if not _check_bpy_available():
         print("bpy module not available - cannot export twigs")
@@ -485,135 +915,230 @@ def export_twigs_from_blend(
         bpy.ops.wm.open_mainfile(filepath=str(blend_file_path))
 
         # Find all mesh objects
-        mesh_objects = [obj for obj in bpy.context.scene.objects
-                       if obj.type == 'MESH' and obj.data]
+        mesh_objects = [
+            obj for obj in bpy.context.scene.objects if obj.type == "MESH" and obj.data
+        ]
 
         if not mesh_objects:
             return []
 
         output_dir.mkdir(parents=True, exist_ok=True)
-        
+
         for obj in mesh_objects:
             try:
                 # Clear selection and select only this object
-                bpy.ops.object.select_all(action='DESELECT')
+                bpy.ops.object.select_all(action="DESELECT")
                 obj.select_set(True)
                 bpy.context.view_layer.objects.active = obj
 
                 # Clean object name for filename
-                clean_name = "".join(c for c in obj.name if c.isalnum() or c in (' ', '-', '_')).strip()
-                clean_name = clean_name.replace(' ', '_')
+                clean_name = "".join(
+                    c for c in obj.name if c.isalnum() or c in (" ", "-", "_")
+                ).strip()
+                clean_name = clean_name.replace(" ", "_")
                 if not clean_name:
                     clean_name = f"twig_{len(exported_files)}"
 
-                fbx_path = output_dir / f"{clean_name}.fbx"
-                
-                # Try advanced export first, fallback to simple if it fails
-                try:
-                    # Export with materials and textures
-                    bpy.ops.export_scene.fbx(
-                        filepath=str(fbx_path),
-                        check_existing=True,
-                        use_selection=True,
-                        use_active_collection=False,
-                        global_scale=1.0,
-                        apply_unit_scale=True,
-                        apply_scale_options='FBX_SCALE_NONE',
-                        use_space_transform=True,
-                        bake_space_transform=False,
-                        object_types={'MESH'},
-                        use_mesh_modifiers=True,
-                        use_mesh_modifiers_render=True,
-                        mesh_smooth_type='FACE',
-                        use_subsurf=False,
-                        use_mesh_edges=False,
-                        use_tspace=True,
-                        use_custom_props=False,
-                        path_mode='COPY',  # Copy textures to output directory
-                        embed_textures=False,  # Don't embed to avoid issues
-                        bake_anim=False
-                    )
-                except Exception as export_error:
-                    print(f"Advanced export failed for {obj.name}, trying simple export: {export_error}")
-                    # Fallback to minimal export settings
-                    bpy.ops.export_scene.fbx(
-                        filepath=str(fbx_path),
-                        use_selection=True,
-                        object_types={'MESH'},
-                        global_scale=1.0
-                    )
+                usd_path = output_dir / f"{clean_name}.usda"
 
-                exported_files.append(fbx_path)
+                # Export as USD with all attributes
+                twig_params = {
+                    "filepath": str(usd_path),
+                    "selected_objects_only": True,
+                    "export_animation": False,
+                    "export_armatures": False,
+                    "export_shapekeys": False,
+                    "use_instancing": False,
+                    "evaluation_mode": "RENDER",
+                    "generate_preview_surface": True,
+                    "export_materials": True,
+                    "export_uvmaps": True,
+                    "export_normals": True,
+                }
+
+                try:
+                    bpy.ops.wm.usd_export(**twig_params, export_custom_properties=True)
+                except TypeError:
+                    bpy.ops.wm.usd_export(**twig_params)
+
+                exported_files.append(usd_path)
 
             except Exception as e:
                 continue
-                
+
     except Exception as e:
         print(f"Failed to process blend file {blend_file_path}: {e}")
-        
+
     return exported_files
 
 
-def batch_export_tree_fbx(
-    forest_data: Any,
-    output_dir: Path,
-    config: Optional[Any] = None
-) -> List[Path]:
-    """Export multiple trees from forest data as individual FBX files.
+def _export_fbx_internal(
+    grove: Any,
+    output_path: Path,
+    species_name: str,
+    include_skeleton: bool = True,
+    include_twig_attributes: bool = True,
+    config: Optional[Any] = None,
+) -> bool:
+    """Export tree as FBX with textures, skeleton, and twig attributes.
 
     Args:
-        forest_data: Forest simulation data with species and positions
-        output_dir: Directory to save tree FBX files
+        grove: Grove object containing tree
+        output_path: Output FBX file path
+        species_name: Name of species for materials
+        include_skeleton: Include armature/skeleton
+        include_twig_attributes: Preserve twig placement attributes
         config: GrowPy configuration
 
     Returns:
-        List[Path]: Paths to exported FBX files
+        bool: Success status
     """
-    if config is None:
-        config = get_config()
+    if not _check_bpy_available():
+        print("bpy module not available - cannot export FBX")
+        return False
 
-    exported_files = []
-    output_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        # Clear scene
+        bpy.ops.wm.read_factory_settings(use_empty=True)
 
-    # Get unique species
-    species_list = forest_data['species'].unique() if hasattr(forest_data, 'unique') else set(forest_data.get('species', []))
+        # Build Grove model first
+        from ..core.tree import build_grove_with_all_attributes
 
-    for species in species_list:
-        try:
-            from ..core.grove import create_grove
-            from ..core.tree import build_grove_with_all_attributes
+        build_params = {
+            "resolution": 16,
+            "resolution_reduce": 0.8,
+            "build_cutoff_age": 0,
+            "build_cutoff_thickness": 0.0,
+            "build_blend": True,
+            "build_end_cap": True,
+        }
+        models = build_grove_with_all_attributes(grove, build_params)
 
-            # Create grove for this species
-            grove = create_grove(species)
+        if not models:
+            print(f"No models generated for {species_name}")
+            return False
 
-            # Add a single tree for this species (can be extended for multiple trees)
-            grove.add_new_tree(
-                gc.Vector(0, 0, 0),  # Center position
-                gc.Vector(0, 0, 1),  # Up direction
-                0  # No delay
-            )
+        model = models[0]
 
-            # Simulate growth
-            grove.simulate(flushes=10)  # Reasonable growth
+        # Extract mesh data from Grove model
+        points = model.get_points_flat()
+        faces = [[int(i) for i in face] for face in model.faces]
+        uvs = model.get_uvs_flat() if hasattr(model, "get_uvs_flat") else []
+        vertices = [
+            (points[i], points[i + 1], points[i + 2]) for i in range(0, len(points), 3)
+        ]
 
-            # Export as FBX
-            species_clean = "".join(c for c in species if c.isalnum() or c in (' ', '-', '_')).strip().replace(' ', '_')
-            fbx_path = output_dir / f"{species_clean}_tree.fbx"
+        # Create Blender mesh
+        mesh = bpy.data.meshes.new(f"{species_name}_mesh")
+        mesh.from_pydata(vertices, [], faces)
+        mesh.update()
 
-            if export_tree_as_fbx(grove, fbx_path, species, include_skeleton=True, export_skeleton_separately=False):
-                exported_files.append(fbx_path)
+        # Add UVs if available
+        if uvs and len(uvs) >= len(faces) * 6:
+            mesh.uv_layers.new(name="UVMap")
+            uv_layer = mesh.uv_layers.active.data
+            for poly in mesh.polygons:
+                for loop_index in poly.loop_indices:
+                    uv_index = loop_index * 2
+                    if uv_index + 1 < len(uvs):
+                        uv_layer[loop_index].uv = (uvs[uv_index], uvs[uv_index + 1])
 
-        except Exception as e:
-            print(f"Failed to export {species}: {e}")
-            continue
+        # Add Grove attributes to mesh (including twig attributes)
+        if include_twig_attributes:
+            _add_grove_attributes_to_mesh(mesh, model)
 
-    return exported_files
+        # Create object
+        obj = bpy.data.objects.new(f"{species_name}_tree", mesh)
+        bpy.context.collection.objects.link(obj)
+        bpy.context.view_layer.objects.active = obj
+        obj.select_set(True)
+
+        # Build skeleton
+        armature_obj = None
+        if include_skeleton:
+            skeletons = grove.build_skeletons()
+            if skeletons:
+                armature_obj = _add_skeleton_to_object(obj, skeletons[0], species_name)
+
+        # Add material with textures
+        _add_material_with_textures(obj, species_name, config)
+
+        # Add Nanite metadata as custom properties
+        obj["nanite_compatible"] = True
+        obj["nanite_preserve_area"] = False  # False for trees (branches/trunk)
+        obj["unreal_nanite"] = "enable"
+
+        # Apply triangulation for consistent topology (Nanite requirement)
+        triangulate_mod = obj.modifiers.new(
+            name="Triangulate_Nanite", type="TRIANGULATE"
+        )
+        triangulate_mod.quad_method = "BEAUTY"
+        triangulate_mod.ngon_method = "BEAUTY"
+
+        # Validate mesh for Nanite
+        mesh_data = obj.data
+        validation = validate_mesh_for_nanite(mesh_data)
+        if validation["warnings"]:
+            print(f"Nanite validation warnings for {species_name}:")
+            for warning in validation["warnings"]:
+                print(f"  - {warning}")
+
+        # Prepare for export
+        bpy.ops.object.select_all(action="DESELECT")
+        obj.select_set(True)
+        if include_skeleton and armature_obj:
+            armature_obj.select_set(True)
+        bpy.context.view_layer.objects.active = obj
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # FBX Export with optimal settings for Unreal Nanite
+        bpy.ops.export_scene.fbx(
+            filepath=str(output_path),
+            use_selection=True,
+            object_types={"MESH", "ARMATURE"} if include_skeleton else {"MESH"},
+            mesh_smooth_type="FACE",  # Single smoothing group (Nanite requirement)
+            use_mesh_modifiers=True,  # Apply triangulation modifier
+            use_mesh_edges=False,  # No edge data (cleaner for Nanite)
+            use_tspace=True,  # Tangent space for normal maps
+            use_custom_props=True,  # Export Nanite metadata + twig attributes
+            add_leaf_bones=False,
+            primary_bone_axis="Y",
+            secondary_bone_axis="X",
+            armature_nodetype="NULL",
+            bake_anim=False,
+            path_mode="COPY",  # Copy textures
+            embed_textures=True,  # Embed in FBX
+            batch_mode="OFF",
+            use_batch_own_dir=False,
+            axis_forward="-Z",
+            axis_up="Y",
+        )
+
+        print(
+            f"✓ Exported FBX with textures and {'skeleton + ' if include_skeleton else ''}{'twig attributes' if include_twig_attributes else ''}"
+        )
+        return True
+
+    except Exception as e:
+        print(f"Failed to export tree FBX: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return False
 
 
 def batch_export_tree_usd(
     forest_data: Any,
     output_dir: Path,
-    config: Optional[Any] = None
+    config: Optional[Any] = None,
+    resolution: int = 32,
+    resolution_reduce: float = 0.8,
+    texture_repeat: int = 3,
+    build_cutoff_age: int = 0,
+    build_cutoff_thickness: float = 0.0,
+    build_blend: bool = True,
+    build_end_cap: bool = True,
 ) -> List[Path]:
     """Export multiple trees from forest data as individual USD files.
 
@@ -621,6 +1146,13 @@ def batch_export_tree_usd(
         forest_data: Forest simulation data with species and positions
         output_dir: Directory to save USD files
         config: GrowPy configuration
+        resolution: Number of vertices around branch circumference (4-32, default: 32)
+        resolution_reduce: How quickly to reduce resolution on thinner branches (0.0-1.0)
+        texture_repeat: Texture repetitions around trunk circumference
+        build_cutoff_age: Skip building branches younger than this age
+        build_cutoff_thickness: Skip branches thinner than this diameter
+        build_blend: Add smooth geometry at branch joints
+        build_end_cap: Close off branch ends with geometry
 
     Returns:
         List[Path]: Paths to exported USD files
@@ -632,7 +1164,11 @@ def batch_export_tree_usd(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Get unique species
-    species_list = forest_data['species'].unique() if hasattr(forest_data, 'unique') else set(forest_data.get('species', []))
+    species_list = (
+        forest_data["species"].unique()
+        if hasattr(forest_data, "unique")
+        else set(forest_data.get("species", []))
+    )
 
     for species in species_list:
         try:
@@ -643,20 +1179,34 @@ def batch_export_tree_usd(
             grove = create_grove(species)
 
             # Add a single tree for this species
-            grove.add_new_tree(
-                gc.Vector(0, 0, 0),
-                gc.Vector(0, 0, 1),
-                0
-            )
+            gc = _get_gc()
+            grove.add_new_tree(gc.Vector(0, 0, 0), gc.Vector(0, 0, 1), 0)
 
             # Simulate growth
             grove.simulate(flushes=10)
 
             # Export as USD
-            species_clean = "".join(c for c in species if c.isalnum() or c in (' ', '-', '_')).strip().replace(' ', '_')
+            species_clean = (
+                "".join(c for c in species if c.isalnum() or c in (" ", "-", "_"))
+                .strip()
+                .replace(" ", "_")
+            )
             usd_path = output_dir / f"{species_clean}_tree.usda"
 
-            if export_tree_as_usd(grove, usd_path, species, include_skeleton=True, export_skeleton_separately=False):
+            if export_tree_as_usd(
+                grove,
+                usd_path,
+                species,
+                include_skeleton=True,
+                export_skeleton_separately=False,
+                resolution=resolution,
+                resolution_reduce=resolution_reduce,
+                texture_repeat=texture_repeat,
+                build_cutoff_age=build_cutoff_age,
+                build_cutoff_thickness=build_cutoff_thickness,
+                build_blend=build_blend,
+                build_end_cap=build_end_cap,
+            ):
                 exported_files.append(usd_path)
 
         except Exception as e:
@@ -670,67 +1220,92 @@ def batch_export_trees_for_unreal(
     forest_data: Any,
     output_dir: Path,
     config: Optional[Any] = None,
-    export_fbx: bool = True,
-    export_usd: bool = True,
-    num_variations: int = 3
+    num_variations: int = 3,
+    resolution: int = 32,
+    resolution_reduce: float = 0.8,
+    texture_repeat: int = 3,
+    build_cutoff_age: int = 0,
+    build_cutoff_thickness: float = 0.0,
+    build_blend: bool = True,
+    build_end_cap: bool = True,
+    bundle_twigs: bool = True,
+    export_formats: List[str] = ["fbx", "usda"],
 ) -> Dict[str, List[Path]]:
-    """Export trees with all assets needed for Unreal Engine vegetation plugin.
+    """Export trees as FBX/USD for Unreal Engine Nanite with PCG metadata.
 
     Creates multiple variations of each species for procedural variation in Unreal's
-    PCG (Procedural Content Generation) and Foliage systems.
+    PCG (Procedural Content Generation) and Foliage systems. Includes twig bundling
+    and comprehensive metadata for optimal Unreal workflow.
 
     Args:
         forest_data: Forest simulation data with species and positions
         output_dir: Base directory for exports
         config: GrowPy configuration
-        export_fbx: Export FBX files
-        export_usd: Export USD files
         num_variations: Number of variations per species for procedural diversity
+        resolution: Number of vertices around branch circumference (4-32, default: 32)
+        resolution_reduce: How quickly to reduce resolution on thinner branches (0.0-1.0)
+        texture_repeat: Texture repetitions around trunk circumference
+        build_cutoff_age: Skip building branches younger than this age
+        build_cutoff_thickness: Skip branches thinner than this diameter
+        build_blend: Add smooth geometry at branch joints
+        build_end_cap: Close off branch ends with geometry
+        bundle_twigs: Copy relevant twig files to output folder
+        export_formats: Export formats ('fbx', 'usd', 'usda')
 
     Returns:
-        Dict with 'fbx', 'usd', and 'metadata' file paths
+        Dict with 'usd', 'fbx', 'metadata', and 'twigs' file paths
     """
     if config is None:
         config = get_config()
 
     import json
 
-    results = {
-        'fbx': [],
-        'usd': [],
-        'metadata': []
-    }
+    from .unreal_metadata import create_metadata_from_growth_data
+
+    results = {"usd": [], "fbx": [], "metadata": [], "twigs": []}
 
     # Create output directories
-    fbx_dir = output_dir / "FBX"
-    usd_dir = output_dir / "USD"
+    usd_dir = (
+        output_dir / "USD"
+        if "usd" in export_formats or "usda" in export_formats
+        else None
+    )
+    fbx_dir = output_dir / "FBX" if "fbx" in export_formats else None
     metadata_dir = output_dir / "Metadata"
 
-    if export_fbx:
-        fbx_dir.mkdir(parents=True, exist_ok=True)
-    if export_usd:
+    if usd_dir:
         usd_dir.mkdir(parents=True, exist_ok=True)
+    if fbx_dir:
+        fbx_dir.mkdir(parents=True, exist_ok=True)
     metadata_dir.mkdir(parents=True, exist_ok=True)
 
     # Get unique species
-    species_list = forest_data['species'].unique() if hasattr(forest_data, 'unique') else set(forest_data.get('species', []))
+    species_list = (
+        forest_data["species"].unique()
+        if hasattr(forest_data, "unique")
+        else set(forest_data.get("species", []))
+    )
 
     for species in species_list:
         try:
             from ..core.grove import create_grove
 
-            species_clean = "".join(c for c in species if c.isalnum() or c in (' ', '-', '_')).strip().replace(' ', '_')
+            species_clean = (
+                "".join(c for c in species if c.isalnum() or c in (" ", "-", "_"))
+                .strip()
+                .replace(" ", "_")
+            )
             species_metadata = {
-                'species': species,
-                'variations': [],
-                'recommended_settings': {
-                    'min_spacing': 3.0,
-                    'max_spacing': 8.0,
-                    'scale_min': 0.8,
-                    'scale_max': 1.2,
-                    'rotation_random': True,
-                    'align_to_normal': True
-                }
+                "species": species,
+                "variations": [],
+                "recommended_settings": {
+                    "min_spacing": 3.0,
+                    "max_spacing": 8.0,
+                    "scale_min": 0.8,
+                    "scale_max": 1.2,
+                    "rotation_random": True,
+                    "align_to_normal": True,
+                },
             }
 
             # Create variations with different random seeds and parameters
@@ -738,82 +1313,178 @@ def batch_export_trees_for_unreal(
                 grove = create_grove(species)
 
                 # Apply variation parameters to grove settings
-                # Vary: lean angle, branch density, thickness variation
-                if hasattr(grove, 'tree'):
+                if hasattr(grove, "tree"):
                     tree = grove.tree
 
-                    # Variation 0: Standard tree
-                    # Variation 1: Leaning tree with thinner branches
-                    # Variation 2: Upright tree with thicker branches
-                    # etc.
-
                     if variation_idx == 1:
-                        # Slightly leaning, more branches
-                        if hasattr(tree, 'lean'):
+                        if hasattr(tree, "lean"):
                             tree.lean = 0.15
-                        if hasattr(tree, 'branch_density'):
+                        if hasattr(tree, "branch_density"):
                             tree.branch_density *= 1.2
-                        if hasattr(tree, 'thickness_variation'):
+                        if hasattr(tree, "thickness_variation"):
                             tree.thickness_variation = 0.9
                     elif variation_idx == 2:
-                        # More upright, thicker trunk
-                        if hasattr(tree, 'lean'):
+                        if hasattr(tree, "lean"):
                             tree.lean = 0.05
-                        if hasattr(tree, 'thickness_variation'):
+                        if hasattr(tree, "thickness_variation"):
                             tree.thickness_variation = 1.1
 
-                # Add tree with unique random seed (based on variation)
+                # Add tree with unique random seed
                 import random
-                random.seed(42 + variation_idx * 100)  # Deterministic but varied
 
-                grove.add_new_tree(
-                    gc.Vector(0, 0, 0),
-                    gc.Vector(0, 0, 1),
-                    0
-                )
+                random.seed(42 + variation_idx * 100)
+
+                gc = _get_gc()
+                grove.add_new_tree(gc.Vector(0, 0, 0), gc.Vector(0, 0, 1), 0)
 
                 # Simulate with slight variation in growth stages
-                flush_count = 10 + (variation_idx % 3)  # Vary between 10-12 flushes
+                flush_count = 10 + (variation_idx % 3)
                 grove.simulate(flushes=flush_count)
 
                 variation_name = f"{species_clean}_var{variation_idx + 1}"
 
-                # Export FBX
-                if export_fbx:
-                    fbx_path = fbx_dir / f"{variation_name}.fbx"
-                    if export_tree_as_fbx(grove, fbx_path, species, include_skeleton=True, export_skeleton_separately=False):
-                        results['fbx'].append(fbx_path)
+                # Document variation characteristics
+                variation_type = "standard"
+                if variation_idx == 1:
+                    variation_type = "leaning_dense"
+                elif variation_idx == 2:
+                    variation_type = "upright_thick"
 
-                        # Document variation characteristics
-                        variation_type = "standard"
-                        if variation_idx == 1:
-                            variation_type = "leaning_dense"
-                        elif variation_idx == 2:
-                            variation_type = "upright_thick"
+                variation_info = {
+                    "name": variation_name,
+                    "variation_index": variation_idx,
+                    "variation_type": variation_type,
+                    "growth_flushes": flush_count,
+                    "files": {},
+                }
 
-                        species_metadata['variations'].append({
-                            'name': variation_name,
-                            'fbx': str(fbx_path.relative_to(output_dir)),
-                            'variation_index': variation_idx,
-                            'variation_type': variation_type,
-                            'growth_flushes': flush_count
-                        })
-
-                # Export USD
-                if export_usd:
+                # Export USD if requested
+                if usd_dir:
                     usd_path = usd_dir / f"{variation_name}.usda"
-                    if export_tree_as_usd(grove, usd_path, species, include_skeleton=True, export_skeleton_separately=False):
-                        results['usd'].append(usd_path)
-                        if species_metadata['variations']:
-                            species_metadata['variations'][-1]['usd'] = str(usd_path.relative_to(output_dir))
+                    if export_tree_as_usd(
+                        grove,
+                        usd_path,
+                        species,
+                        include_skeleton=True,
+                        export_skeleton_separately=False,
+                        resolution=resolution,
+                        resolution_reduce=resolution_reduce,
+                        texture_repeat=texture_repeat,
+                        build_cutoff_age=build_cutoff_age,
+                        build_cutoff_thickness=build_cutoff_thickness,
+                        build_blend=build_blend,
+                        build_end_cap=build_end_cap,
+                    ):
+                        results["usd"].append(usd_path)
+                        variation_info["files"]["usd"] = str(
+                            usd_path.relative_to(output_dir)
+                        )
+
+                # Export FBX if requested
+                if fbx_dir:
+                    fbx_path = fbx_dir / f"{variation_name}.fbx"
+                    try:
+                        from ..core.tree import (
+                            build_grove_with_all_attributes,
+                            build_skeletons,
+                        )
+
+                        # Build mesh and skeleton
+                        build_params = {
+                            "resolution": resolution,
+                            "resolution_reduce": resolution_reduce,
+                            "build_cutoff_age": build_cutoff_age,
+                            "build_cutoff_thickness": build_cutoff_thickness,
+                            "build_blend": build_blend,
+                            "build_end_cap": build_end_cap,
+                        }
+                        build_grove_with_all_attributes(grove, build_params)
+                        build_skeletons(grove)
+
+                        if _check_bpy_available():
+                            if _export_fbx_internal(
+                                grove,
+                                fbx_path,
+                                species,
+                                include_skeleton=True,
+                                include_twig_attributes=True,
+                                config=config,
+                            ):
+                                results["fbx"].append(fbx_path)
+                                variation_info["files"]["fbx"] = str(
+                                    fbx_path.relative_to(output_dir)
+                                )
+                    except Exception as e:
+                        print(f"FBX export failed for {variation_name}: {e}")
+
+                species_metadata["variations"].append(variation_info)
+
+            # Create PCG metadata from growth data
+            # Estimate tree dimensions (this is a placeholder - ideally get from grove stats)
+            height_range = (15.0, 25.0)  # meters, typical for mature tree
+            crown_radius_range = (4.0, 7.0)  # meters
+
+            # Create comprehensive PCG metadata
+            pcg_metadata = create_metadata_from_growth_data(
+                species_name=species,
+                height_range=height_range,
+                crown_radius_range=crown_radius_range,
+                growth_rate="medium",
+                twig_files=[],  # Will be populated if twigs bundled
+                variation_count=num_variations,
+            )
+
+            # Bundle twigs if requested
+            if bundle_twigs:
+                print(f"  Bundling twigs for {species}...")
+                twig_results = bundle_twigs_for_species(
+                    species,
+                    output_dir / species_clean,
+                    formats=export_formats,
+                    config=config,
+                )
+                results["twigs"].extend(twig_results["twig_files"])
+
+                # Update PCG metadata with twig files
+                if twig_results["manifest"]:
+                    import json as json_lib
+
+                    with open(twig_results["manifest"], "r") as f:
+                        twig_manifest = json_lib.load(f)
+                    pcg_metadata.twig_files = [
+                        f
+                        for files in twig_manifest["twig_types"].values()
+                        for f in files
+                    ]
+
+            # Combine basic metadata with PCG metadata
+            combined_metadata = {
+                **species_metadata,
+                "pcg": pcg_metadata.to_dict(),
+                "unreal_settings": {
+                    "nanite": {
+                        "enabled": True,
+                        "preserve_area": True,
+                        "fallback_percent_triangles": 100,
+                    },
+                    "foliage_type": pcg_metadata.foliage_type,
+                    "materials": {
+                        "wpo_disable_distance": pcg_metadata.wpo_disable_distance,
+                        "two_sided": False,
+                        "blend_mode": "Opaque",
+                    },
+                },
+            }
 
             # Save species metadata
             metadata_path = metadata_dir / f"{species_clean}_metadata.json"
-            with open(metadata_path, 'w') as f:
-                json.dump(species_metadata, f, indent=2)
-            results['metadata'].append(metadata_path)
+            with open(metadata_path, "w") as f:
+                json.dump(combined_metadata, f, indent=2)
+            results["metadata"].append(metadata_path)
 
             print(f"Exported {species}: {num_variations} variations")
+            if bundle_twigs and pcg_metadata.twig_files:
+                print(f"  Bundled {len(pcg_metadata.twig_files)} twig files")
 
         except Exception as e:
             print(f"Failed to export {species}: {e}")
@@ -821,28 +1492,108 @@ def batch_export_trees_for_unreal(
 
     # Create master metadata file for Unreal import
     master_metadata = {
-        'format_version': '1.0',
-        'export_type': 'vegetation_assets',
-        'species_count': len(species_list),
-        'variations_per_species': num_variations,
-        'species': [
+        "format_version": "1.0",
+        "export_type": "vegetation_assets",
+        "species_count": len(species_list),
+        "variations_per_species": num_variations,
+        "species": [
             {
-                'name': sp,
-                'metadata_file': f"Metadata/{sp.replace(' ', '_')}_metadata.json"
+                "name": sp,
+                "metadata_file": f"Metadata/{sp.replace(' ', '_')}_metadata.json",
             }
             for sp in species_list
         ],
-        'unreal_import_notes': {
-            'fbx_import': 'Import FBX files as Static Meshes with collision',
-            'usd_import': 'Import USD files for Nanite-enabled assets (UE 5.7+)',
-            'foliage_setup': 'Create Foliage Type assets for each variation',
-            'pcg_setup': 'Use metadata for PCG scatter point attributes'
-        }
+        "unreal_import_notes": {
+            "usd_import": "Import USD files for Nanite-enabled assets (UE 5.7+)",
+            "foliage_setup": "Create Foliage Type assets for each variation",
+            "pcg_setup": "Use metadata for PCG scatter point attributes",
+        },
     }
 
     master_path = output_dir / "import_metadata.json"
-    with open(master_path, 'w') as f:
+    with open(master_path, "w") as f:
         json.dump(master_metadata, f, indent=2)
-    results['metadata'].append(master_path)
+    results["metadata"].append(master_path)
+
+    return results
+
+
+def bundle_twigs_for_species(
+    species_name: str,
+    output_dir: Path,
+    formats: List[str] = ["fbx", "usda"],
+    config: Optional[Any] = None,
+) -> Dict[str, List[Path]]:
+    """Bundle twig files for a species to output directory.
+
+    Copies relevant twig meshes (FBX/USD) to species output folder
+    for easier asset management in Unreal Engine.
+
+    Args:
+        species_name: Name of tree species
+        output_dir: Output directory for this species
+        formats: Export formats to copy ('fbx', 'usd', 'usda')
+        config: GrowPy configuration
+
+    Returns:
+        Dict with 'twig_files' and 'manifest' paths
+    """
+    if config is None:
+        config = get_config()
+
+    import shutil
+
+    results = {"twig_files": [], "manifest": None}
+
+    try:
+        # Get twig files for this species
+        twig_dir = output_dir / "twigs"
+        twig_dir.mkdir(parents=True, exist_ok=True)
+
+        # Get available twig USD files from Grove assets
+        from ..config import GrowPyConfig
+
+        twig_files_by_type = GrowPyConfig.get_twig_files_by_type(species_name)
+
+        twig_manifest = {"species": species_name, "twig_types": {}, "total_twigs": 0}
+
+        # Copy twig files for each requested format
+        for twig_type, twig_paths in twig_files_by_type.items():
+            twig_manifest["twig_types"][twig_type] = []
+
+            for twig_path in twig_paths:
+                for fmt in formats:
+                    # Find twig file with requested format
+                    source_file = None
+
+                    if fmt == "fbx":
+                        # Look for FBX version
+                        fbx_file = twig_path.with_suffix(".fbx")
+                        if fbx_file.exists():
+                            source_file = fbx_file
+                    elif fmt in ["usd", "usda"]:
+                        # Use USD version
+                        usd_file = twig_path.with_suffix(f".{fmt}")
+                        if usd_file.exists():
+                            source_file = usd_file
+                        elif twig_path.suffix == f".{fmt}":
+                            source_file = twig_path
+
+                    if source_file and source_file.exists():
+                        dest_file = twig_dir / source_file.name
+                        shutil.copy2(source_file, dest_file)
+                        results["twig_files"].append(dest_file)
+                        twig_manifest["twig_types"][twig_type].append(dest_file.name)
+                        twig_manifest["total_twigs"] += 1
+
+        # Save twig manifest
+        if twig_manifest["total_twigs"] > 0:
+            manifest_path = twig_dir / "twig_manifest.json"
+            with open(manifest_path, "w") as f:
+                json.dump(twig_manifest, f, indent=2)
+            results["manifest"] = manifest_path
+
+    except Exception as e:
+        print(f"Failed to bundle twigs for {species_name}: {e}")
 
     return results

@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(python:*)",
+      "Bash(mamba env update:*)",
+      "Bash(conda env update:*)",
+      "Bash(conda search:*)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []
