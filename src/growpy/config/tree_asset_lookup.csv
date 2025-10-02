@@ -1,57 +1,57 @@
-Common Name,Scientific Name,Preset,Twig,Growth Model,Branch Color,Leaf Color
-European beech,Fagus sylvatica,Fagaceae - Beech.seed.json,EuropeanBeechTwig,Fagaceae_Beech,#b2a599,#4c9933
-Norway spruce,Picea abies,Pinaceae - Fir.seed.json,PacificSilverFirTwig,Pinaceae_Fir,#664c3f,#265919
-Scots pine,Pinus sylvestris,Pinaceae - Scots pine.seed.json,ScotsPineTwig,Pinaceae_Scots_pine,#99664c,#336626
-Silver fir,Abies alba,Pinaceae - Fir.seed.json,PacificSilverFirTwig,Pinaceae_Fir,#72594c,#26661e
-Grand fir,Abies grandis,Pinaceae - Grand fir.seed.json,PacificSilverFirTwig,Pinaceae_Grand_fir,#7f6659,#2d6b23
-European oak,Quercus robur,Fagaceae - European oak.seed.json,EuropeanOakTwig,Fagaceae_European_oak,#594c3f,#3f8c26
-Red oak,Quercus rubra,Fagaceae - Red oak.seed.json,RedOakTwig,Fagaceae_Red_oak,#66594c,#4c9933
-White oak,Quercus alba,Fagaceae - White oak.seed.json,EuropeanOakTwig,Fagaceae_White_oak,#998c7f,#47932d
-Sweet chestnut,Castanea sativa,Fagaceae - Sweet chestnut.seed.json,—,Fagaceae_Sweet_chestnut,#66594c,#4ca53f
-Common ash,Fraxinus excelsior,Oleaceae - Ash.seed.json,OneLeavedAshTwig,Oleaceae_Ash,#7f7266,#59b24c
-Narrow-leaved ash,Fraxinus angustifolia,Oleaceae - Narrow-leaved ash.seed.json,OneLeavedAshTwig,Oleaceae_Narrow-leaved_ash,#726659,#51ad47
-One-leaved ash,Fraxinus excelsior 'Diversifolia',Oleaceae - One-leaved ash.seed.json,OneLeavedAshTwig,Oleaceae_One-leaved_ash,#7f7266,#54af49
-Downy birch,Betula pubescens,Betulaceae - Downy birch.seed.json,PaperBirchTwig,Betulaceae_Downy_birch,#e5e5d8,#66bf59
-Silver birch,Betula pendula,Betulaceae - Silver birch.seed.json,PaperBirchTwig,Betulaceae_Silver_birch,#f2f2e5,#6bc660
-Paper birch,Betula papyrifera,Betulaceae - Paper birch.seed.json,PaperBirchTwig,Betulaceae_Paper_birch,#eaeae0,#60b751
-Black alder,Alnus glutinosa,Betulaceae - Alder.seed.json,BlackAlderTwig,Betulaceae_Alder,#4c3f33,#59a53f
-Hornbeam,Carpinus betulus,Betulaceae - Hornbeam.seed.json,HazelTwig,Betulaceae_Hornbeam,#8c7f72,#4c9938
-Hazel,Corylus avellana,Betulaceae - Hazel.seed.json,HazelTwig,Betulaceae_Hazel,#7f7266,#51a547
-Field maple,Acer campestre,Sapindaceae - Field maple.seed.json,FieldMapleTwig,Sapindaceae_Field_maple,#726659,#3f8c2d
-Sycamore maple,Acer pseudoplatanus,Sapindaceae - Maple.seed.json,SycamoreMapleFallTwig,Sapindaceae_Maple,#7f7266,#479338
-Japanese maple,Acer palmatum,Sapindaceae - Japanese maple.seed.json,JapeneseMapleAtropurpureumTwig,Sapindaceae_Japanese_maple,#66594c,#993326
-Horse chestnut,Aesculus hippocastanum,Sapindaceae - Horse chestnut.seed.json,—,Sapindaceae_Horse_chestnut,#8c7f72,#59b24c
-Small-leaved linden,Tilia cordata,Malvaceae - Linden.seed.json,SmallLeavedLindenTwig,Malvaceae_Linden,#7f7266,#60b751
-Wild cherry,Prunus avium,Rosaceae - Wild cherry.seed.json,JapaneseCherryTwig,Rosaceae_Wild_cherry,#66594c,#4ca53f
-Japanese cherry,Prunus serrulata,Rosaceae - Japanese cherry.seed.json,JapaneseCherryTwig,Rosaceae_Japanese_cherry,#594c3f,#51ad47
-Rowan / Mountain ash,Sorbus aucuparia,Rosaceae - Hawthorn.seed.json,OakLeafMountainAshTwig,Rosaceae_Hawthorn,#7f7266,#4c9938
-Wild apple,Malus sylvestris,Rosaceae - Wild apple.seed.json,WildAppleTwig,Rosaceae_Wild_apple,#726659,#59b24c
-Willow,Salix alba,Salicaceae - Willow.seed.json,WhiteWillowTwig,Salicaceae_Willow,#998c7f,#72cc66
-Weeping willow,Salix babylonica,Salicaceae - Weeping willow.seed.json,WhiteWillowTwig,Salicaceae_Weeping_willow,#93877a,#6bc660
-Grey poplar,Populus x canescens,Salicaceae - Grey poplar.seed.json,GreyPoplarTwig,Salicaceae_Grey_poplar,#b2a599,#66bf59
-Italian poplar,Populus x canadensis,Salicaceae - Italian poplar.seed.json,GreyPoplarTwig,Salicaceae_Italian_poplar,#66594c,#60b751
-Aspen,Populus tremula,Salicaceae - Aspen.seed.json,AspenTwig,Salicaceae_Aspen,#bfb2a5,#66bf59
-Elm,Ulmus minor,Ulmaceae - Elm.seed.json,FieldElmTwig,Ulmaceae_Elm,#7f7266,#4c9938
-Yew,Taxus baccata,Taxaceae - Yew.seed.json,—,Taxaceae_Yew,#99664c,#194c14
-Austrian pine,Pinus nigra,Pinaceae - Austrian pine.seed.json,ScotsPineTwig,Pinaceae_Austrian_pine,#4c3f33,#2d591e
-Lodgepole pine,Pinus contorta,Pinaceae - Lodgepole pine.seed.json,ScotsPineTwig,Pinaceae_Lodgepole_pine,#8c664c,#336026
-Longleaf pine,Pinus palustris,Pinaceae - Longleaf pine.seed.json,ScotsPineTwig,Pinaceae_Longleaf_pine,#997259,#38662d
-Monterey pine,Pinus radiata,Pinaceae - Monterey pine.seed.json,ScotsPineTwig,Pinaceae_Monterey_pine,#7f664c,#336626
-Ponderosa pine,Pinus ponderosa,Pinaceae - Ponderosa pine.seed.json,ScotsPineTwig,Pinaceae_Ponderosa_pine,#a57f59,#3f7233
-Stone pine,Pinus pinea,Pinaceae - Stone pine.seed.json,ScotsPineTwig,Pinaceae_Stone_pine,#7f664c,#336626
-Western hemlock,Tsuga heterophylla,Pinaceae - Western hemlock.seed.json,PacificSilverFirTwig,Pinaceae_Western_hemlock,#7f6659,#265919
-Western redcedar,Thuja plicata,Cupressaceae - Western redcedar.seed.json,WesternRedCedarTwig,Cupressaceae_Western_redcedar,#99664c,#1e4c14
-Swamp cypress,Taxodium distichum,Cupressaceae - Swamp cypress.seed.json,—,Cupressaceae_Swamp_cypress,#7f664c,#4c9933
-Hackberry,Celtis occidentalis,Canabaceae - Hackberry.seed.json,HackberryTwig,Canabaceae_Hackberry,#7f7266,#51a53f
-Honey locust,Gleditsia triacanthos,Fabaceae - Honey locust.seed.json,HoneyLocustTwig,Fabaceae_Honey_locust,#66594c,#66bf59
-Robinia,Robinia pseudoacacia,Fabaceae - Robinia.seed.json,RobiniaTwig,Fabaceae_Robinia,#726659,#59b24c
-Umbrella acacia,Robinia umbraculifera,Fabaceae - Umbrella acacia.seed.json,RobiniaTwig,Fabaceae_Umbrella_acacia,#726659,#59b24c
-Ginkgo biloba,Ginkgo biloba,Ginkgoaceae - Ginkgo biloba.seed.json,GinkgoBilobaTwig,Ginkgoaceae_Ginkgo_biloba,#7f7266,#cccc33
-Walnut,Juglans regia,Juglandaceae - Walnut.seed.json,WalnutTwig,Juglandaceae_Walnut,#726659,#59b24c
-Wingnut,Pterocarya fraxinifolia,Juglandaceae - Wingnut.seed.json,WalnutTwig,Juglandaceae_Wingnut,#66594c,#60b751
-Avocado,Persea americana,Lauraceae - Avocado.seed.json,—,Lauraceae_Avocado,#66594c,#337f26
-Magnolia,Magnolia x soulangeana,Magnoliaceae - Magnolia.seed.json,SaucerMagnoliaSummerTwig,Magnoliaceae_Magnolia,#7f7266,#66bf59
-Blue gum,Eucalyptus globulus,Myrtaceae - Blue gum.seed.json,BlueGumTwig,Myrtaceae_Blue_gum,#d8ccbf,#4c9933
-Manna gum,Eucalyptus viminalis,Myrtaceae - Manna gum.seed.json,MannaGumTwig,Myrtaceae_Manna_gum,#ccbfb2,#47932d
-Black tupelo,Nyssa sylvatica,Nyssaceae - Black tupelo.seed.json,—,Nyssaceae_Black_tupelo,#4c3f33,#4c9938
-London plane tree,Platanus x acerifolia,Platanaceae - London plane tree.seed.json,—,Platanaceae_London_plane_tree,#998c7f,#59b24c
+Common Name,Scientific Name,Preset,Twig,Growth Model,Branch Color,Leaf Color,Aliases,Bark Texture
+European beech,Fagus sylvatica,Fagaceae - Beech.seed.json,EuropeanBeechTwig,Fagaceae_Beech,#b2a599,#4c9933,"Beech,Common beech",Beech60.jpg
+Norway spruce,Picea abies,Pinaceae - Fir.seed.json,PacificSilverFirTwig,Pinaceae_Fir,#664c3f,#265919,Spruce,Fir70.jpg
+Scots pine,Pinus sylvestris,Pinaceae - Scots pine.seed.json,ScotsPineTwig,Pinaceae_Scots_pine,#99664c,#336626,"Pine,Scotch pine",Fir70.jpg
+Silver fir,Abies alba,Pinaceae - Fir.seed.json,PacificSilverFirTwig,Pinaceae_Fir,#72594c,#26661e,Fir,Fir70.jpg
+Grand fir,Abies grandis,Pinaceae - Grand fir.seed.json,PacificSilverFirTwig,Pinaceae_Grand_fir,#7f6659,#2d6b23,,Fir70.jpg
+European oak,Quercus robur,Fagaceae - European oak.seed.json,EuropeanOakTwig,Fagaceae_European_oak,#594c3f,#3f8c26,"Oak,Common oak,Pedunculate oak",NorthernRedOak60.jpg
+Red oak,Quercus rubra,Fagaceae - Red oak.seed.json,RedOakTwig,Fagaceae_Red_oak,#66594c,#4c9933,Northern red oak,NorthernRedOak60.jpg
+White oak,Quercus alba,Fagaceae - White oak.seed.json,EuropeanOakTwig,Fagaceae_White_oak,#998c7f,#47932d,,NorthernRedOak60.jpg
+Sweet chestnut,Castanea sativa,Fagaceae - Sweet chestnut.seed.json,—,Fagaceae_Sweet_chestnut,#66594c,#4ca53f,,SweetChestnut40.jpg
+Common ash,Fraxinus excelsior,Oleaceae - Ash.seed.json,OneLeavedAshTwig,Oleaceae_Ash,#7f7266,#59b24c,"Ash,European ash",Ash70.jpg
+Narrow-leaved ash,Fraxinus angustifolia,Oleaceae - Narrow-leaved ash.seed.json,OneLeavedAshTwig,Oleaceae_Narrow-leaved_ash,#726659,#51ad47,,Ash25.jpg
+One-leaved ash,Fraxinus excelsior 'Diversifolia',Oleaceae - One-leaved ash.seed.json,OneLeavedAshTwig,Oleaceae_One-leaved_ash,#7f7266,#54af49,,Ash70.jpg
+Downy birch,Betula pubescens,Betulaceae - Downy birch.seed.json,PaperBirchTwig,Betulaceae_Downy_birch,#e5e5d8,#66bf59,,Birch70.jpg
+Silver birch,Betula pendula,Betulaceae - Silver birch.seed.json,PaperBirchTwig,Betulaceae_Silver_birch,#f2f2e5,#6bc660,"Birch,White birch",Birch70.jpg
+Paper birch,Betula papyrifera,Betulaceae - Paper birch.seed.json,PaperBirchTwig,Betulaceae_Paper_birch,#eaeae0,#60b751,,Birch70.jpg
+Black alder,Alnus glutinosa,Betulaceae - Alder.seed.json,BlackAlderTwig,Betulaceae_Alder,#4c3f33,#59a53f,,BlackAlder35.jpg
+Hornbeam,Carpinus betulus,Betulaceae - Hornbeam.seed.json,HazelTwig,Betulaceae_Hornbeam,#8c7f72,#4c9938,,Beech60.jpg
+Hazel,Corylus avellana,Betulaceae - Hazel.seed.json,HazelTwig,Betulaceae_Hazel,#7f7266,#51a547,,Beech60.jpg
+Field maple,Acer campestre,Sapindaceae - Field maple.seed.json,FieldMapleTwig,Sapindaceae_Field_maple,#726659,#3f8c2d,Maple,MapleC65.jpg
+Sycamore maple,Acer pseudoplatanus,Sapindaceae - Maple.seed.json,SycamoreMapleFallTwig,Sapindaceae_Maple,#7f7266,#479338,"Maple,Sycamore",MapleA60.jpg
+Japanese maple,Acer palmatum,Sapindaceae - Japanese maple.seed.json,JapeneseMapleAtropurpureumTwig,Sapindaceae_Japanese_maple,#66594c,#993326,,MapleD40.jpg
+Horse chestnut,Aesculus hippocastanum,Sapindaceae - Horse chestnut.seed.json,—,Sapindaceae_Horse_chestnut,#8c7f72,#59b24c,,HorseChestnut55.jpg
+Small-leaved linden,Tilia cordata,Malvaceae - Linden.seed.json,SmallLeavedLindenTwig,Malvaceae_Linden,#7f7266,#60b751,,LargeLeavedLinden60.jpg
+Wild cherry,Prunus avium,Rosaceae - Wild cherry.seed.json,JapaneseCherryTwig,Rosaceae_Wild_cherry,#66594c,#4ca53f,,SweetChestnut40.jpg
+Japanese cherry,Prunus serrulata,Rosaceae - Japanese cherry.seed.json,JapaneseCherryTwig,Rosaceae_Japanese_cherry,#594c3f,#51ad47,,SweetChestnut40.jpg
+Rowan / Mountain ash,Sorbus aucuparia,Rosaceae - Hawthorn.seed.json,OakLeafMountainAshTwig,Rosaceae_Hawthorn,#7f7266,#4c9938,,OakLeafMountainAsh40.jpg
+Wild apple,Malus sylvestris,Rosaceae - Wild apple.seed.json,WildAppleTwig,Rosaceae_Wild_apple,#726659,#59b24c,,MapleB60.jpg
+Willow,Salix alba,Salicaceae - Willow.seed.json,WhiteWillowTwig,Salicaceae_Willow,#998c7f,#72cc66,White willow,Willow.jpg
+Weeping willow,Salix babylonica,Salicaceae - Weeping willow.seed.json,WhiteWillowTwig,Salicaceae_Weeping_willow,#93877a,#6bc660,,Willow.jpg
+Grey poplar,Populus x canescens,Salicaceae - Grey poplar.seed.json,GreyPoplarTwig,Salicaceae_Grey_poplar,#b2a599,#66bf59,"Poplar,Gray poplar",GreyPoplar75.jpg
+Italian poplar,Populus x canadensis,Salicaceae - Italian poplar.seed.json,GreyPoplarTwig,Salicaceae_Italian_poplar,#66594c,#60b751,Poplar,BlackPoplar65.jpg
+Aspen,Populus tremula,Salicaceae - Aspen.seed.json,AspenTwig,Salicaceae_Aspen,#bfb2a5,#66bf59,,Poplar16.jpg
+Elm,Ulmus minor,Ulmaceae - Elm.seed.json,FieldElmTwig,Ulmaceae_Elm,#7f7266,#4c9938,,Ash70.jpg
+Yew,Taxus baccata,Taxaceae - Yew.seed.json,—,Taxaceae_Yew,#99664c,#194c14,,Fir70.jpg
+Austrian pine,Pinus nigra,Pinaceae - Austrian pine.seed.json,ScotsPineTwig,Pinaceae_Austrian_pine,#4c3f33,#2d591e,,Fir70.jpg
+Lodgepole pine,Pinus contorta,Pinaceae - Lodgepole pine.seed.json,ScotsPineTwig,Pinaceae_Lodgepole_pine,#8c664c,#336026,,Fir70.jpg
+Longleaf pine,Pinus palustris,Pinaceae - Longleaf pine.seed.json,ScotsPineTwig,Pinaceae_Longleaf_pine,#997259,#38662d,,Fir70.jpg
+Monterey pine,Pinus radiata,Pinaceae - Monterey pine.seed.json,ScotsPineTwig,Pinaceae_Monterey_pine,#7f664c,#336626,,Fir70.jpg
+Ponderosa pine,Pinus ponderosa,Pinaceae - Ponderosa pine.seed.json,ScotsPineTwig,Pinaceae_Ponderosa_pine,#a57f59,#3f7233,,Fir70.jpg
+Stone pine,Pinus pinea,Pinaceae - Stone pine.seed.json,ScotsPineTwig,Pinaceae_Stone_pine,#7f664c,#336626,,Fir70.jpg
+Western hemlock,Tsuga heterophylla,Pinaceae - Western hemlock.seed.json,PacificSilverFirTwig,Pinaceae_Western_hemlock,#7f6659,#265919,,Fir70.jpg
+Western redcedar,Thuja plicata,Cupressaceae - Western redcedar.seed.json,WesternRedCedarTwig,Cupressaceae_Western_redcedar,#99664c,#1e4c14,,BaldCypress80.jpg
+Swamp cypress,Taxodium distichum,Cupressaceae - Swamp cypress.seed.json,—,Cupressaceae_Swamp_cypress,#7f664c,#4c9933,,BaldCypress80.jpg
+Hackberry,Celtis occidentalis,Canabaceae - Hackberry.seed.json,HackberryTwig,Canabaceae_Hackberry,#7f7266,#51a53f,,Ash70.jpg
+Honey locust,Gleditsia triacanthos,Fabaceae - Honey locust.seed.json,HoneyLocustTwig,Fabaceae_Honey_locust,#66594c,#66bf59,,Ash25.jpg
+Robinia,Robinia pseudoacacia,Fabaceae - Robinia.seed.json,RobiniaTwig,Fabaceae_Robinia,#726659,#59b24c,,Ash70.jpg
+Umbrella acacia,Robinia umbraculifera,Fabaceae - Umbrella acacia.seed.json,RobiniaTwig,Fabaceae_Umbrella_acacia,#726659,#59b24c,,Ash70.jpg
+Ginkgo biloba,Ginkgo biloba,Ginkgoaceae - Ginkgo biloba.seed.json,GinkgoBilobaTwig,Ginkgoaceae_Ginkgo_biloba,#7f7266,#cccc33,,Katsura20.jpg
+Walnut,Juglans regia,Juglandaceae - Walnut.seed.json,WalnutTwig,Juglandaceae_Walnut,#726659,#59b24c,,Ash70.jpg
+Wingnut,Pterocarya fraxinifolia,Juglandaceae - Wingnut.seed.json,WalnutTwig,Juglandaceae_Wingnut,#66594c,#60b751,,Ash70.jpg
+Avocado,Persea americana,Lauraceae - Avocado.seed.json,—,Lauraceae_Avocado,#66594c,#337f26,,Beech60.jpg
+Magnolia,Magnolia x soulangeana,Magnoliaceae - Magnolia.seed.json,SaucerMagnoliaSummerTwig,Magnoliaceae_Magnolia,#7f7266,#66bf59,,SaucerMagnolia10.jpg
+Blue gum,Eucalyptus globulus,Myrtaceae - Blue gum.seed.json,BlueGumTwig,Myrtaceae_Blue_gum,#d8ccbf,#4c9933,,SpottedGum50.jpg
+Manna gum,Eucalyptus viminalis,Myrtaceae - Manna gum.seed.json,MannaGumTwig,Myrtaceae_Manna_gum,#ccbfb2,#47932d,,RedGum70.jpg
+Black tupelo,Nyssa sylvatica,Nyssaceae - Black tupelo.seed.json,—,Nyssaceae_Black_tupelo,#4c3f33,#4c9938,,Ash70.jpg
+London plane tree,Platanus x acerifolia,Platanaceae - London plane tree.seed.json,—,Platanaceae_London_plane_tree,#998c7f,#59b24c,,PlaneTree21.jpg

@@ -35,17 +35,24 @@ Each variation also uses a different random seed, ensuring unique branch pattern
 
 ## Export Formats
 
-### FBX (Legacy)
+All exports are **Nanite-compatible** with proper validation and metadata. See [NANITE_COMPATIBILITY.md](./NANITE_COMPATIBILITY.md) for complete details.
+
+### FBX (Universal Compatibility)
 - `output/unreal_assets/FBX/*.fbx`
-- For traditional Static Mesh import
-- Includes skeleton for potential animation
+- ✓ Nanite-compatible (enable on import)
+- ✓ Embedded textures and materials
+- ✓ Skeleton for potential animation
+- ✓ Twig attributes preserved
+- ✓ Single smoothing group + triangulation
 - Compatible with all UE versions
 
-### USD (Nanite)
+### USD (Nanite Native)
 - `output/unreal_assets/USD/*.usda`
-- For Nanite-enabled assets (UE 5.7+)
-- Better for high-polygon tree meshes
-- Supports Nanite Assemblies for optimal performance
+- ✓ Native Nanite support (automatic)
+- ✓ `unrealNanite` and `unrealNanitePreserveArea` attributes
+- ✓ Better for high-polygon tree meshes
+- ✓ Supports Nanite Assemblies for optimal performance
+- Recommended for UE 5.7+ projects
 
 ## Importing to Unreal Engine
 

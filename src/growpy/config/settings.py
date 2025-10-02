@@ -137,7 +137,17 @@ class GrowPyConfig:
         if not exact_match.empty:
             return exact_match.iloc[0]["Common Name"]
 
-        # 2. Try partial match - input contains any word from species name
+        # 2. Try aliases if the column exists
+        if "Aliases" in df.columns:
+            for idx, row in df.iterrows():
+                aliases_str = row.get("Aliases", "")
+                if pd.notna(aliases_str) and aliases_str.strip():
+                    # Split aliases by comma and check each one
+                    aliases = [a.strip().lower() for a in str(aliases_str).split(",")]
+                    if input_lower in aliases:
+                        return row["Common Name"]
+
+        # 3. Try partial match - input contains any word from species name
         for idx, species_name in enumerate(df["Common Name"]):
             species_words = species_name.lower().split()
             input_words = input_lower.split()
@@ -146,7 +156,7 @@ class GrowPyConfig:
             if any(input_word in species_words for input_word in input_words):
                 return species_name
 
-        # 3. Try reverse partial match - species name contains any word from input
+        # 4. Try reverse partial match - species name contains any word from input
         for idx, species_name in enumerate(df["Common Name"]):
             species_lower = species_name.lower()
             input_words = input_lower.split()
@@ -155,7 +165,7 @@ class GrowPyConfig:
             if any(word in species_lower for word in input_words):
                 return species_name
 
-        # 4. Special mappings for common abbreviations/variations
+        # 5. Special mappings for common abbreviations/variations (fallback)
         species_mappings = {
             "beech": "European beech",
             "oak": "European oak",
@@ -236,6 +246,16 @@ class GrowPyConfig:
         """
         return cls.get_data_directory() / "assets"
 
+    @property
+    def twigs_path(self) -> Path:
+        """
+        Get the base twigs directory path.
+
+        Returns:
+            Path to the twigs directory (data/assets/twigs).
+        """
+        return self.get_assets_directory() / "twigs"
+
     @classmethod
     def get_growth_model_path(cls, common_name: str) -> Path:
         """
@@ -265,7 +285,6 @@ class GrowPyConfig:
         base_path = assets_dir / "growth_models"
 
         return base_path / growth_model
-
 
     @classmethod
     def get_twig_for_species(cls, common_name: str) -> Optional[str]:
@@ -705,12 +724,12 @@ class GrowPyConfig:
     @classmethod
     def hex_to_rgb(cls, hex_color: str) -> tuple:
         """Convert hex color string to RGB tuple (0.0-1.0 range)."""
-        if not hex_color or not hex_color.startswith('#') or len(hex_color) != 7:
+        if not hex_color or not hex_color.startswith("#") or len(hex_color) != 7:
             return (0.5, 0.5, 0.5)  # Default gray
-        
+
         try:
             r = int(hex_color[1:3], 16) / 255.0
-            g = int(hex_color[3:5], 16) / 255.0  
+            g = int(hex_color[3:5], 16) / 255.0
             b = int(hex_color[5:7], 16) / 255.0
             return (r, g, b)
         except (ValueError, TypeError):
@@ -744,19 +763,70 @@ class GrowPyConfig:
             return None
 
         row = species_row.iloc[0]
-        
+
         # Extract branch color from hex
-        branch_hex = row.get('Branch Color', '#99664c')  # Default brown
+        branch_hex = row.get("Branch Color", "#99664c")  # Default brown
         branch_color = cls.hex_to_rgb(branch_hex)
-        
-        # Extract leaf color from hex  
-        leaf_hex = row.get('Leaf Color', '#4c9933')  # Default green
+
+        # Extract leaf color from hex
+        leaf_hex = row.get("Leaf Color", "#4c9933")  # Default green
         leaf_color = cls.hex_to_rgb(leaf_hex)
 
-        return {
-            'branch_color': branch_color,
-            'leaf_color': leaf_color
-        }
+        return {"branch_color": branch_color, "leaf_color": leaf_color}
+
+    @classmethod
+    def get_bark_texture(cls, common_name: str) -> Optional[str]:
+        """
+        Get the bark texture filename for a given species.
+
+        Args:
+            common_name: The common name of the species.
+
+        Returns:
+            Bark texture filename (e.g., 'Beech60.jpg') or None if species not found.
+        """
+        df = cls.load_species_lookup()
+
+        if df.empty or "Bark Texture" not in df.columns:
+            return None
+
+        # Use fuzzy matching to find the species
+        matched_name = cls._find_species_match(common_name, df)
+        if matched_name is None:
+            return None
+
+        # Find the row for this species
+        species_row = df[df["Common Name"] == matched_name]
+
+        if species_row.empty:
+            return None
+
+        bark_texture = species_row.iloc[0].get("Bark Texture")
+        return (
+            str(bark_texture)
+            if pd.notna(bark_texture) and str(bark_texture) != ""
+            else None
+        )
+
+    @classmethod
+    def get_bark_texture_path(cls, common_name: str) -> Optional[Path]:
+        """
+        Get the full path to the bark texture file for a given species.
+
+        Args:
+            common_name: The common name of the species.
+
+        Returns:
+            Path to the bark texture file or None if species not found or no texture available.
+        """
+        bark_texture = cls.get_bark_texture(common_name)
+        if not bark_texture:
+            return None
+
+        assets_dir = cls.get_assets_directory()
+        texture_path = assets_dir / "textures" / bark_texture
+
+        return texture_path if texture_path.exists() else None
 
     @classmethod
     def get_species_data(cls, common_name: str) -> Optional[dict]:
@@ -786,13 +856,13 @@ class GrowPyConfig:
             return None
 
         row = species_row.iloc[0]
-        
+
         # Convert row to dictionary
         species_dict = row.to_dict()
-        
+
         # Add processed color information
         colors = cls.get_species_colors(common_name)
         if colors:
             species_dict.update(colors)
-            
+
         return species_dict
