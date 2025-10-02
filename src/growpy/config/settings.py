@@ -401,10 +401,10 @@ class GrowPyConfig:
 
         # Find FBX files (with mount points - preferred)
         fbx_files = list(twig_dir.glob("*.fbx"))
-        
+
         # Find USD files (fallback)
         usd_files = list(twig_dir.glob("*.usda"))
-        
+
         # Prefer FBX if available, otherwise use USD
         if fbx_files:
             return sorted(fbx_files)
@@ -431,12 +431,12 @@ class GrowPyConfig:
             return {}
 
         twig_types = {
-            "apical": [],    # Maps to twig_long (terminal/end twigs)
-            "lateral": [],   # Maps to twig_short (side branches)
-            "upward": [],    # Maps to twig_upward
-            "dead": [],      # Maps to twig_dead
-            "end": [],       # Legacy alias for apical
-            "side": [],      # Legacy alias for lateral
+            "apical": [],  # Maps to twig_long (terminal/end twigs)
+            "lateral": [],  # Maps to twig_short (side branches)
+            "upward": [],  # Maps to twig_upward
+            "dead": [],  # Maps to twig_dead
+            "end": [],  # Legacy alias for apical
+            "side": [],  # Legacy alias for lateral
             "main": [],
             "variation": [],
             "other": [],
