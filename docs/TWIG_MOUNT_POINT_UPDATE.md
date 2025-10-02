@@ -19,6 +19,7 @@ Each twig now exports with the following hierarchy:
 ```
 
 **Example**:
+
 ```
 europeanbeech_var_a_mount (Empty)
   └─ BeechTwigA (Mesh)
@@ -37,6 +38,7 @@ The converter adds these steps during export:
 ### FBX Export Configuration
 
 Updated export settings:
+
 ```python
 bpy.ops.export_scene.fbx(
     object_types={'MESH', 'EMPTY'},  # Now includes EMPTY for mount point
@@ -71,6 +73,7 @@ SpawnTwigInstance(TwigAsset, FinalTransform);
 ### Nanite Compatibility
 
 Mount points are compatible with Unreal's Nanite virtualized geometry:
+
 - Empty objects don't add geometry overhead
 - Hierarchy preserved in FBX import
 - Transform data maintained for instancing
@@ -78,12 +81,14 @@ Mount points are compatible with Unreal's Nanite virtualized geometry:
 ## File Structure Changes
 
 ### Before Mount Point Update
+
 ```
 europeanbeech_var_a.fbx
   └─ BeechTwigA (Mesh at arbitrary position)
 ```
 
 ### After Mount Point Update
+
 ```
 europeanbeech_var_a.fbx
   ├─ europeanbeech_var_a_mount (Empty at 0,0,0)
@@ -93,6 +98,7 @@ europeanbeech_var_a.fbx
 ## Verification
 
 ### File Size Check
+
 Textures remain properly embedded (no size change from mount point addition):
 
 ```powershell
@@ -101,6 +107,7 @@ Get-ChildItem "data/assets/twigs/EuropeanBeechTwig/*.fbx" |
 ```
 
 **Expected Output**:
+
 - Mount point adds negligible file size (< 1KB)
 - Textures still embedded (~8-13 MB per twig)
 - Total file size: **8.7-8.8 MB** (same as before)
@@ -108,6 +115,7 @@ Get-ChildItem "data/assets/twigs/EuropeanBeechTwig/*.fbx" |
 ### Visual Verification in Unreal
 
 Import an FBX twig into Unreal and check:
+
 1. **Root Node**: Should be named `<twig>_mount`
 2. **Position**: Mount point at (0, 0, 0)
 3. **Hierarchy**: Mesh is child of mount point
@@ -116,6 +124,7 @@ Import an FBX twig into Unreal and check:
 ### Blender Verification
 
 Open an FBX in Blender to inspect:
+
 ```python
 import bpy
 # After importing FBX
@@ -143,6 +152,7 @@ python src/growpy/cli/convert_twigs.py data/assets/twigs --formats fbx
 ### Re-export Required
 
 Existing twigs without mount points need to be re-converted:
+
 - Previous exports (before Oct 2, 2025) lack mount points
 - Re-run conversion on all twig directories
 - Verify mount point creation in log output: "Created mount point at origin"
@@ -150,6 +160,7 @@ Existing twigs without mount points need to be re-converted:
 ### Backward Compatibility
 
 If using twigs without mount points:
+
 - Unreal will import mesh only (no hierarchy)
 - PCG placement will use mesh pivot (may be off-center)
 - **Recommendation**: Re-convert all twigs for consistency
