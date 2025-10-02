@@ -303,6 +303,18 @@ def process_twig_file(blend_file, output_dir, formats, species_name):
             obj.location = (0, 0, 0)
             bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
             
+            # Create mount point (empty at origin for Unreal PCG attachment)
+            mount_point = bpy.data.objects.new(f"{standardized_name}_mount", None)
+            mount_point.location = (0, 0, 0)
+            mount_point.empty_display_type = 'SPHERE'
+            mount_point.empty_display_size = 0.01
+            bpy.context.collection.objects.link(mount_point)
+            
+            # Parent mesh to mount point for proper hierarchy
+            obj.parent = mount_point
+            
+            print(f"    -> Created mount point at origin")
+            
             # Find and setup materials with textures
             material_setup_success = setup_materials_with_textures(
                 obj, blend_dir, species_name, output_dir
@@ -312,6 +324,12 @@ def process_twig_file(blend_file, output_dir, formats, species_name):
                 print(f"    -> Materials: {len(obj.data.materials)} with textures")
             else:
                 print(f"    -> Materials: {len(obj.data.materials)} (fallback)")
+            
+            # Select mount point and mesh for export (hierarchical export)
+            bpy.ops.object.select_all(action='DESELECT')
+            mount_point.select_set(True)
+            obj.select_set(True)
+            bpy.context.view_layer.objects.active = mount_point
             
             # Export in requested formats
             for fmt in formats:
@@ -341,7 +359,7 @@ def process_twig_file(blend_file, output_dir, formats, species_name):
                     bpy.ops.export_scene.fbx(
                         filepath=str(export_path),
                         use_selection=True,
-                        object_types={'MESH', 'ARMATURE'},
+                        object_types={'MESH', 'EMPTY'},  # Include EMPTY for mount point
                         mesh_smooth_type='FACE',
                         use_mesh_modifiers=True,
                         use_mesh_edges=False,
