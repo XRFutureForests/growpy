@@ -1,5 +1,11 @@
 """GrowPy - Grove API Integration for Unreal Engine 5 Nanite"""
 
+# Pre-import bpy if available to avoid DLL conflicts with the_grove_22_core
+try:
+    import bpy as _bpy_preload
+except (ImportError, OSError):
+    _bpy_preload = None
+
 # Import from new structure
 from .config import GrowPyConfig, get_config, set_global_config
 from .core import (
@@ -15,10 +21,8 @@ from .core import (
     calculate_growth_cycles_from_height,
 )
 from .io import (
-    export_tree_as_fbx,
     export_tree_as_usd,
     export_twigs_from_blend,
-    batch_export_tree_fbx,
     batch_export_tree_usd,
     batch_export_trees_for_unreal,
     create_nanite_assembly_usd,
@@ -44,10 +48,8 @@ __all__ = [
     "apply_species_color_settings",
     "calculate_growth_cycles_from_height",
     # Export functionality (if available)
-    "export_tree_as_fbx",
     "export_tree_as_usd",
     "export_twigs_from_blend",
-    "batch_export_tree_fbx",
     "batch_export_tree_usd",
     "batch_export_trees_for_unreal",
     "create_nanite_assembly_usd",

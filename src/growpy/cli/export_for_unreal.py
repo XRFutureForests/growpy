@@ -36,8 +36,7 @@ CSV Format:
     Optional columns: z (defaults to 0)
 
 Exports:
-    - FBX files (for legacy import)
-    - USD files (for Nanite Assemblies in UE 5.7+)
+    - USD files (for Nanite in UE 5.7+)
     - JSON metadata (for PCG and Foliage setup)
 
 Examples:
@@ -46,9 +45,6 @@ Examples:
 
     # Export with 5 variations
     python export_for_unreal.py forest_data.csv --variations 5
-
-    # Export USD only
-    python export_for_unreal.py forest_data.csv --usd-only
         """
     )
 
@@ -62,24 +58,14 @@ Examples:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("output/unreal_vegetation"),
-        help="Directory to save exported assets (default: output/unreal_vegetation)"
+        default=Path("data/output/unreal_vegetation"),
+        help="Directory to save exported assets (default: data/output/unreal_vegetation)"
     )
     parser.add_argument(
         "--variations",
         type=int,
         default=3,
         help="Number of variations per species (default: 3)"
-    )
-    parser.add_argument(
-        "--fbx-only",
-        action="store_true",
-        help="Export only FBX files"
-    )
-    parser.add_argument(
-        "--usd-only",
-        action="store_true",
-        help="Export only USD files"
     )
 
     args = parser.parse_args()
@@ -133,12 +119,8 @@ Examples:
             print(f"   Required columns: {required_columns}")
             return
 
-        # Determine export formats
-        export_fbx = not args.usd_only
-        export_usd = not args.fbx_only
-
         print(f"\nExporting {len(forest_data['species'].unique())} species with {args.variations} variations each")
-        print(f"Formats: {'FBX' if export_fbx else ''}{' + ' if export_fbx and export_usd else ''}{'USD' if export_usd else ''}")
+        print(f"Format: USD")
         print(f"Output: {args.output_dir}\n")
 
         config = get_config()
@@ -146,8 +128,6 @@ Examples:
             forest_data,
             args.output_dir,
             config,
-            export_fbx=export_fbx,
-            export_usd=export_usd,
             num_variations=args.variations
         )
 
@@ -155,10 +135,7 @@ Examples:
         print(f"\n{'='*60}")
         print("Export Complete!")
         print(f"{'='*60}")
-        if results['fbx']:
-            print(f"FBX files: {len(results['fbx'])}")
-        if results['usd']:
-            print(f"USD files: {len(results['usd'])}")
+        print(f"USD files: {len(results['usd'])}")
         print(f"Metadata files: {len(results['metadata'])}")
         print(f"\nOutput directory: {args.output_dir}")
         print(f"\nImport instructions saved to: {args.output_dir / 'import_metadata.json'}")

@@ -2,13 +2,20 @@
 
 from typing import Optional, Tuple
 
-from ..utils import gc, ensure_grove_available
+try:
+    import the_grove_22_core as gc
+    GROVE_CORE_AVAILABLE = True
+except ImportError:
+    gc = None
+    GROVE_CORE_AVAILABLE = False
+
 from ..config import get_config
 
 
 def create_grove(species: Optional[str] = None):
     """Create a new Grove with optional species preset."""
-    ensure_grove_available()
+    if not GROVE_CORE_AVAILABLE:
+        raise ImportError("Grove core (the_grove_22_core) not available")
 
     config = get_config()
     grove = gc.Grove()

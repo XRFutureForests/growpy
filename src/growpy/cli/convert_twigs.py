@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
 """
-Main twig export utility for converting Grove .blend files to FBX with optimized materials.
+Convert Grove twig .blend files to FBX and/or USD format with optimized materials.
 
-This script processes twig blend files and exports them as FBX files with:
+This script processes twig blend files and exports them with:
 - Proper texture mapping (diffuse, alpha, normal, translucent)
-- FBX-compatible Principled BSDF materials
+- USD-compatible Principled BSDF materials
+- FBX export with embedded textures (better material fidelity)
+- Unreal Engine 5 Nanite support
 - Automatic texture discovery and classification
 - Objects centered at origin (0,0,0)
 - Support for varied texture naming conventions
 
 Usage:
-    python export_twigs.py <twig_directory>
-    python export_twigs.py <single_blend_file>
+    python convert_twigs.py <twig_directory> [--formats fbx usd usda]
+    python convert_twigs.py <single_blend_file> [--formats fbx]
 
 Examples:
-    python export_twigs.py data/assets/twigs
-    python export_twigs.py data/assets/twigs/EuropeanBeechTwig/EuropeanBeechSummerTwig.blend
+    python convert_twigs.py data/assets/twigs                    # FBX + USDA (default)
+    python convert_twigs.py data/assets/twigs --formats fbx      # FBX only
+    python convert_twigs.py data/assets/twigs/EuropeanBeechTwig/EuropeanBeechSummerTwig.blend
 """
 
 import subprocess
@@ -27,11 +30,12 @@ from tqdm import tqdm
 
 
 def create_single_file_processor():
-    """Create a Python script optimized for FBX export."""
+    """Create a Python script optimized for USD export."""
     script_content = '''#!/usr/bin/env python3
 import sys
 import shutil
 from pathlib import Path
+from typing import List
 
 def center_object_at_origin(obj):
     """Move object to origin (0,0,0)."""
@@ -56,7 +60,7 @@ def find_available_textures(blend_dir):
     return textures
 
 def classify_texture_type(filename):
-    """Classify texture type for FBX optimization."""
+    """Classify texture type for USD optimization."""
     name_lower = filename.lower()
 
     # Handle specific patterns
@@ -123,8 +127,8 @@ def find_best_textures_for_material(material_name, available_textures):
 
     return texture_map
 
-def create_fbx_optimized_material(material_name, available_textures, output_dir):
-    """Create FBX-optimized Principled BSDF material."""
+def create_usd_optimized_material(material_name, available_textures, output_dir):
+    """Create USD-optimized Principled BSDF material."""
     import bpy
 
     # Find textures for this material
@@ -134,18 +138,18 @@ def create_fbx_optimized_material(material_name, available_textures, output_dir)
         print(f"    No textures found for {material_name}")
         return None
 
-    print(f"    Creating FBX-optimized material for {material_name}")
+    print(f"    Creating USD-optimized material for {material_name}")
     for tex_type, texture in texture_map.items():
         print(f"      {tex_type}: {texture.name}")
 
     # Create new material
-    new_mat = bpy.data.materials.new(name=f"{material_name}_FBX")
+    new_mat = bpy.data.materials.new(name=f"{material_name}_USD")
     new_mat.use_nodes = True
 
     # Clear default nodes
     new_mat.node_tree.nodes.clear()
 
-    # Create minimal node setup for FBX compatibility
+    # Create minimal node setup for USD compatibility
     output_node = new_mat.node_tree.nodes.new(type='ShaderNodeOutputMaterial')
     output_node.location = (400, 0)
 
@@ -176,46 +180,43 @@ def create_fbx_optimized_material(material_name, available_textures, output_dir)
             tex_node.location = (-300, y_offset)
             tex_node.label = tex_type.title()
 
-            # Connect based on type with FBX-friendly approach
+            # Connect based on type with USD-friendly approach
             if tex_type in ['diffuse', 'diffuse_top']:
                 links.new(tex_node.outputs['Color'], principled_node.inputs['Base Color'])
                 print(f"        Connected {tex_type} to Base Color")
 
             elif tex_type == 'alpha':
-                # For alpha, also connect to Base Color alpha for FBX compatibility
                 links.new(tex_node.outputs['Alpha'], principled_node.inputs['Alpha'])
                 new_mat.blend_method = 'BLEND'
                 new_mat.show_transparent_back = False
-                print(f"        Connected {tex_type} to Alpha (FBX compatible)")
+                print(f"        Connected {tex_type} to Alpha")
 
             elif tex_type == 'normal':
-                # Use normal map node for proper FBX export
                 normal_node = new_mat.node_tree.nodes.new(type='ShaderNodeNormalMap')
                 normal_node.location = (-100, y_offset - 100)
                 links.new(tex_node.outputs['Color'], normal_node.inputs['Color'])
                 links.new(normal_node.outputs['Normal'], principled_node.inputs['Normal'])
-                print(f"        Connected {tex_type} via Normal Map (FBX compatible)")
+                print(f"        Connected {tex_type} via Normal Map")
 
             elif tex_type == 'translucent':
-                # For FBX, use subsurface instead of transmission
                 if 'Subsurface Weight' in principled_node.inputs:
                     links.new(tex_node.outputs['Color'], principled_node.inputs['Subsurface Weight'])
                     principled_node.inputs['Subsurface Weight'].default_value = 0.1
-                    print(f"        Connected {tex_type} to Subsurface (FBX compatible)")
+                    print(f"        Connected {tex_type} to Subsurface")
                 elif 'Subsurface' in principled_node.inputs:
                     links.new(tex_node.outputs['Color'], principled_node.inputs['Subsurface'])
                     principled_node.inputs['Subsurface'].default_value = 0.1
-                    print(f"        Connected {tex_type} to Subsurface (FBX compatible)")
+                    print(f"        Connected {tex_type} to Subsurface")
 
             y_offset -= 300
 
         except Exception as e:
             print(f"        Failed to process {tex_type}: {e}")
 
-    # Set FBX-friendly default values
+    # Set USD-friendly default values
     principled_node.inputs['Roughness'].default_value = 0.7
 
-    # Set specular appropriately for FBX
+    # Set specular appropriately
     if 'Specular IOR Level' in principled_node.inputs:
         principled_node.inputs['Specular IOR Level'].default_value = 0.5
     elif 'Specular' in principled_node.inputs:
@@ -224,11 +225,59 @@ def create_fbx_optimized_material(material_name, available_textures, output_dir)
     # Set metallic to 0 for natural materials
     principled_node.inputs['Metallic'].default_value = 0.0
 
-    print(f"    Created FBX-optimized material: {new_mat.name}")
+    print(f"    Created USD-optimized material: {new_mat.name}")
     return new_mat
 
-def export_single_blend_file(blend_path, output_dir):
-    """Process blend file with FBX optimization."""
+def create_attachment_socket(obj):
+    """Create an attachment socket/bone at the base of the twig.
+
+    The Grove models twigs along the X-axis with the base at origin.
+    This creates a single-bone armature at the origin to serve as
+    the attachment point for Unreal Engine sockets.
+
+    Args:
+        obj: Blender mesh object
+
+    Returns:
+        Armature object or None
+    """
+    try:
+        import bpy
+
+        # Create armature
+        armature = bpy.data.armatures.new(f"{obj.name}_Armature")
+        armature_obj = bpy.data.objects.new(f"{obj.name}_Rig", armature)
+        bpy.context.collection.objects.link(armature_obj)
+
+        # Set armature as active and enter edit mode
+        bpy.context.view_layer.objects.active = armature_obj
+        bpy.ops.object.mode_set(mode='EDIT')
+
+        # Create single bone at origin pointing along X-axis (twig growth direction)
+        bone = armature.edit_bones.new("Socket_Attach")
+        bone.head = (0.0, 0.0, 0.0)  # Base at origin
+        bone.tail = (0.05, 0.0, 0.0)  # Short bone along X-axis (5cm)
+
+        # Exit edit mode
+        bpy.ops.object.mode_set(mode='OBJECT')
+
+        # Parent mesh to armature (without deformation)
+        obj.parent = armature_obj
+        obj.parent_type = 'OBJECT'  # Object parenting, not bone
+
+        # Reset mesh location relative to armature
+        obj.matrix_parent_inverse = armature_obj.matrix_world.inverted()
+
+        print(f"  Created attachment socket 'Socket_Attach' at origin")
+        return armature_obj
+
+    except Exception as e:
+        print(f"  Warning: Failed to create attachment socket: {e}")
+        return None
+
+
+def export_single_blend_file(blend_path, output_dir, formats: List[str]):
+    """Process blend file with USD optimization."""
     try:
         import bpy
     except ImportError as e:
@@ -264,21 +313,36 @@ def export_single_blend_file(blend_path, output_dir):
                 # Center object
                 center_object_at_origin(obj)
 
-                # Replace materials with FBX-optimized versions
+                # Replace materials with optimized versions
                 for i, slot in enumerate(obj.material_slots):
                     if slot.material:
                         print(f"  Processing material {i}: {slot.material.name}")
-                        fbx_material = create_fbx_optimized_material(
+                        usd_material = create_usd_optimized_material(
                             slot.material.name,
                             available_textures,
                             output_dir
                         )
-                        if fbx_material:
-                            slot.material = fbx_material
+                        if usd_material:
+                            slot.material = usd_material
 
-                # Export with FBX-optimized settings
+                # Create attachment socket/bone at origin
+                armature_obj = create_attachment_socket(obj)
+
+                # Add Nanite metadata as custom properties (for foliage/twigs)
+                obj["nanite_compatible"] = True
+                obj["nanite_preserve_area"] = True  # TRUE for foliage (prevents thinning)
+                obj["unreal_nanite"] = "enable"
+
+                # Apply triangulation for Nanite consistency
+                triangulate_mod = obj.modifiers.new(name="Triangulate_Nanite", type='TRIANGULATE')
+                triangulate_mod.quad_method = 'BEAUTY'
+                triangulate_mod.ngon_method = 'BEAUTY'
+
+                # Select objects for export (mesh + armature if created)
                 bpy.ops.object.select_all(action='DESELECT')
                 obj.select_set(True)
+                if armature_obj:
+                    armature_obj.select_set(True)
                 bpy.context.view_layer.objects.active = obj
 
                 clean_name = "".join(c for c in obj.name if c.isalnum() or c in (' ', '-', '_')).strip()
@@ -286,25 +350,63 @@ def export_single_blend_file(blend_path, output_dir):
                 if not clean_name:
                     clean_name = f"twig_{exported_count}"
 
-                fbx_path = output_dir / f"{clean_name}.fbx"
+                # Export to requested formats
+                for fmt in formats:
+                    if fmt in ['usd', 'usda']:
+                        # Export USD
+                        usd_format = fmt
+                        usd_path = output_dir / f"{clean_name}.{usd_format}"
+                        print(f"  Exporting USD: {usd_path.name}")
+                        bpy.ops.wm.usd_export(
+                            filepath=str(usd_path),
+                            selected_objects_only=True,
+                            export_materials=True,
+                            export_textures=True,
+                            export_normals=True,
+                            export_uvmaps=True,
+                            export_mesh_colors=True,
+                            export_armatures=True,  # Include attachment socket
+                            use_instancing=False,
+                            evaluation_mode='RENDER',
+                            generate_preview_surface=True
+                        )
 
-                print(f"  Exporting to: {fbx_path.name}")
-                bpy.ops.export_scene.fbx(
-                    filepath=str(fbx_path),
-                    use_selection=True,
-                    object_types={'MESH'},
-                    global_scale=1.0,
-                    path_mode='COPY',  # Copy textures for better compatibility
-                    embed_textures=False,
-                    use_mesh_modifiers=True,
-                    mesh_smooth_type='FACE',
-                    use_tspace=True,
-                    # FBX-specific optimizations
-                    use_custom_props=False,
-                    bake_space_transform=True
-                )
+                        # Add Nanite USD attributes (for foliage - Preserve Area enabled)
+                        try:
+                            from growpy.io.blender_export import add_nanite_attributes_to_usd
+                            add_nanite_attributes_to_usd(usd_path, is_foliage=True)
+                            print(f"  [OK] Exported Nanite-compatible USD: {clean_name}.{usd_format}")
+                        except Exception as e:
+                            print(f"  [WARN] Could not add Nanite attributes: {e}")
+                            print(f"  [OK] Exported USD (without Nanite metadata): {clean_name}.{usd_format}")
 
-                print(f"[OK] Exported: {clean_name}.fbx")
+                    elif fmt == 'fbx':
+                        # Export FBX with Nanite optimization + attachment socket
+                        fbx_path = output_dir / f"{clean_name}.fbx"
+                        print(f"  Exporting FBX (Nanite-compatible): {fbx_path.name}")
+                        bpy.ops.export_scene.fbx(
+                            filepath=str(fbx_path),
+                            use_selection=True,
+                            object_types={'MESH', 'ARMATURE'},  # Include armature/socket
+                            mesh_smooth_type='FACE',  # Single smoothing group (Nanite req)
+                            use_mesh_modifiers=True,  # Apply triangulation
+                            use_mesh_edges=False,  # Cleaner for Nanite
+                            use_tspace=True,  # Tangent space for normals
+                            use_custom_props=True,  # Export Nanite metadata
+                            add_leaf_bones=False,
+                            primary_bone_axis='Y',
+                            secondary_bone_axis='X',
+                            armature_nodetype='NULL',
+                            bake_anim=False,
+                            path_mode='COPY',
+                            embed_textures=True,
+                            batch_mode='OFF',
+                            use_batch_own_dir=False,
+                            axis_forward='-Z',
+                            axis_up='Y'
+                        )
+                        print(f"  [OK] Exported Nanite-compatible FBX: {clean_name}.fbx")
+
                 exported_count += 1
 
             except Exception as e:
@@ -318,20 +420,21 @@ def export_single_blend_file(blend_path, output_dir):
         return False
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Usage: script.py <blend_file> <output_dir>")
+    if len(sys.argv) < 3:
+        print("Usage: script.py <blend_file> <output_dir> [formats...]")
         sys.exit(1)
 
     blend_path = Path(sys.argv[1])
     output_dir = Path(sys.argv[2])
+    formats = sys.argv[3:] if len(sys.argv) > 3 else ['fbx']
 
-    success = export_single_blend_file(blend_path, output_dir)
+    success = export_single_blend_file(blend_path, output_dir, formats)
     sys.exit(0 if success else 1)
 '''
     return script_content
 
 
-def process_blend_file_subprocess(blend_file: Path) -> bool:
+def process_blend_file_subprocess(blend_file: Path, formats: list) -> bool:
     """Process a single blend file in a separate subprocess."""
     with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
         f.write(create_single_file_processor())
@@ -339,12 +442,14 @@ def process_blend_file_subprocess(blend_file: Path) -> bool:
 
     try:
         output_dir = blend_file.parent
-        result = subprocess.run([
+        cmd = [
             sys.executable,
             str(script_path),
             str(blend_file),
             str(output_dir)
-        ], capture_output=True, text=True, timeout=120)
+        ] + formats
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 
         if result.stdout:
             print(result.stdout.strip())
@@ -368,15 +473,24 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Export Grove twig .blend files to FBX format with materials and textures",
+        description="Convert Grove twig .blend files to FBX and/or USD format with optimized materials",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    # Process all twigs in default directory
-    python export_twigs.py data/assets/twigs
+    # Process all twigs to FBX and USDA (default)
+    python convert_twigs.py data/assets/twigs
 
-    # Process a single blend file
-    python export_twigs.py data/assets/twigs/EuropeanBeechTwig/EuropeanBeechSummerTwig.blend
+    # Process to FBX only
+    python convert_twigs.py data/assets/twigs --formats fbx
+
+    # Process to USD binary format
+    python convert_twigs.py data/assets/twigs --formats usd
+
+    # Process to all formats
+    python convert_twigs.py data/assets/twigs --formats fbx usd usda
+
+    # Process single file
+    python convert_twigs.py data/assets/twigs/EuropeanBeechTwig/EuropeanBeechSummerTwig.blend
         """
     )
 
@@ -393,6 +507,13 @@ Examples:
         default=None,
         help="Alternative way to specify twigs directory"
     )
+    parser.add_argument(
+        "--formats",
+        nargs='+',
+        choices=['fbx', 'usd', 'usda'],
+        default=['fbx', 'usda'],
+        help="Export formats (default: fbx usda)"
+    )
 
     args = parser.parse_args()
 
@@ -408,13 +529,16 @@ Examples:
 
     if not target_path.exists():
         print(f"[ERROR] Path not found: {target_path}")
-        print("Usage: python export_twigs.py <twig_directory_or_blend_file>")
+        print("Usage: python convert_twigs.py <twig_directory_or_blend_file>")
         return
+
+    formats_str = ', '.join(args.formats)
+    print(f"Export formats: {formats_str}")
 
     if target_path.is_file() and target_path.suffix == '.blend':
         # Process single file
         print(f"Processing single file: {target_path.name}")
-        if process_blend_file_subprocess(target_path):
+        if process_blend_file_subprocess(target_path, args.formats):
             print("Successfully processed")
         else:
             print("Failed to process")
@@ -427,20 +551,20 @@ Examples:
         return
 
     print(f"Found {len(blend_files)} .blend files to process")
-    print("Creating FBX-optimized materials with proper texture mapping...")
+    print("Converting twigs with optimized materials and textures...")
 
     successful = 0
     failed = 0
 
-    for blend_file in tqdm(blend_files, desc="Processing blend files"):
+    for blend_file in tqdm(blend_files, desc="Converting blend files"):
         print(f"\\nProcessing: {blend_file.name}")
 
-        if process_blend_file_subprocess(blend_file):
+        if process_blend_file_subprocess(blend_file, args.formats):
             successful += 1
         else:
             failed += 1
 
-    print(f"\\nExport complete:")
+    print(f"\\nConversion complete:")
     print(f"   Successful: {successful}")
     print(f"   Failed: {failed}")
 

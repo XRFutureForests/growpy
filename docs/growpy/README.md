@@ -1,43 +1,54 @@
 # GrowPy Documentation
 
-Complete documentation for the GrowPy pipeline - a simplified tree generation system using The Grove 2.2 with FBX export workflow.
+Complete documentation for the GrowPy pipeline - simplified tree generation for Unreal Engine using The Grove 2.2 with FBX export workflow.
+
+## Quick Start
+
+📚 **[Getting Started Guide](../GETTING_STARTED.md)** ⭐ **START HERE!**
+
+- Quick setup and installation
+- Two main workflows (Forest vs Library)
+- Common commands
+- Troubleshooting
 
 ## Documentation Index
 
-### Main Documentation
-- **[User Guide](USER_GUIDE.md)** ⭐ **START HERE!**
-  - Complete step-by-step guide
-  - Installation and requirements
-  - Quick start examples
-  - All pipeline steps (1-5)
-  - Complete CLI reference
+### User Documentation
+
+- **[User Guide](USER_GUIDE.md)** - Comprehensive reference
+  - Complete CLI reference for all scripts
   - CSV format specifications
+  - Growth model configuration
   - Advanced usage examples
-  - Troubleshooting guide
+  - Detailed troubleshooting
+
+- **[Unreal Import Guide](UNREAL_IMPORT_GUIDE.md)** - Unreal Engine workflow
+  - Import trees and twigs
+  - PCG setup
+  - Foliage Tool usage
+  - Material setup
+  - Nanite configuration
 
 ### Configuration
-- **[Configuration Guide](CONFIGURATION.md)** - Package configuration system
+
+- **[Configuration Guide](CONFIGURATION.md)** - Package configuration
   - `GrowPyConfig` class
   - Species lookup table format
   - Asset path resolution
-  - Growth model access
-  - Color settings
   - Adding new species
 
 - **[Config Override](CONFIG_OVERRIDE.md)** - Project-level overrides
   - Override hierarchy
   - Custom species configurations
-  - Migration from data/
 
 ### Technical Documentation
+
 - **[Module Overview](MODULE_OVERVIEW.md)** - Code structure
   - Package organization
   - Module descriptions
-  - Key features
   - Programmatic usage
 
 - **[Grove Integration](GROVE_INTEGRATION.md)** - Grove API integration
-  - API improvements
   - Integration patterns
   - Best practices
 
@@ -46,28 +57,35 @@ Complete documentation for the GrowPy pipeline - a simplified tree generation sy
   - Texture mapping
   - FBX export details
 
-## Quick Links
+## Common Commands
 
-### Most Common Tasks
+### Workflow A: Forest from CSV
 
-**Run Complete Pipeline:**
 ```bash
+# Complete pipeline + forest generation
 python src/growpy/cli/run_pipeline.py
+python src/growpy/cli/generate_forest.py data/input/forest.csv
 ```
 
-**Generate Forest from CSV:**
+### Workflow B: Species Library
+
 ```bash
-python src/growpy/cli/generate_forest.py forest_data.csv
+# Complete pipeline + species library
+python src/growpy/cli/run_pipeline.py
+python src/growpy/cli/generate_species_library.py --variations 3
 ```
 
-**Create Growth Models:**
+### Individual Pipeline Steps
+
 ```bash
+# Step 1: Prepare assets
+python src/growpy/cli/prepare_assets.py
+
+# Step 2: Convert twigs
+python src/growpy/cli/convert_twigs.py data/assets/twigs
+
+# Step 3: Create growth models
 python src/growpy/cli/create_growth_models.py
-```
-
-**Export Twigs:**
-```bash
-python src/growpy/cli/export_twigs.py data/assets/twigs
 ```
 
 ## Project Structure
@@ -93,29 +111,29 @@ the-grove/
 
 ## Key Features
 
-✅ **Complete FBX Pipeline** - Trees and twigs with mesh, skeleton, materials, and textures
-✅ **Smart Growth Models** - Automatic early termination when growth plateaus
-✅ **Light Competition** - Multi-species forest simulation with realistic shading
-✅ **Flexible CLI** - Full argparse support with extensive options
-✅ **Main Pipeline Script** - Run entire workflow with one command
-✅ **Comprehensive Documentation** - Step-by-step guides with examples
+- **Complete FBX Pipeline** - Trees and twigs with mesh, skeleton, materials, and textures
+- **Smart Growth Models** - Automatic early termination when growth plateaus
+- **Light Competition** - Multi-species forest simulation with realistic shading
+- **Forest/Grove/Tree/Twig Hierarchy** - Logical organization maintained
+- **Unreal Engine Optimized** - Nanite-ready, skeletal mesh support, organized folders
 
 ## Requirements
 
-- **The Grove 2.2** Python API (installed at `src/the_grove_22`)
-- **Python 3.8+** with conda environment
-- **Required packages**: `conda install -c conda-forge bpy pandas numpy scikit-learn matplotlib tqdm`
+- **The Grove 2.2** - Commercial tree modeling software with Python API
+- **Python 3.8+** - Via conda/mamba environment
+- **bpy module** - Blender Python API (`conda install -c conda-forge bpy`)
 
 ## Getting Help
 
-1. Check the [User Guide](USER_GUIDE.md) for detailed instructions
-2. Review the [Troubleshooting](TROUBLESHOOTING.md) guide
-3. Check script help: `python script.py --help`
-4. Review The Grove 2.2 documentation for advanced features
+1. Start with **[Getting Started Guide](../GETTING_STARTED.md)**
+2. Check **[User Guide](USER_GUIDE.md)** for detailed CLI reference
+3. See **[Unreal Import Guide](UNREAL_IMPORT_GUIDE.md)** for Unreal workflow
+4. Run script help: `python script.py --help`
 
 ## Contributing
 
 When adding new features or documentation:
+
 1. Update relevant docs in `docs/growpy/`
 2. Keep the User Guide as the main entry point
 3. Link between related documentation
