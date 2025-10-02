@@ -384,26 +384,41 @@ class GrowPyConfig:
     @classmethod
     def get_available_twig_usd_files(cls, common_name: str) -> List[Path]:
         """
-        Get all available USD twig files for a given species.
+        Get all available twig files (FBX/USD) for a given species.
+
+        Now supports both FBX (with mount points) and USD formats.
+        FBX files are prioritized if both formats exist.
 
         Args:
             common_name: The common name of the species.
 
         Returns:
-            List of Path objects to USD twig files, or empty list if none found.
+            List of Path objects to twig files, or empty list if none found.
         """
         twig_dir = cls.get_twig_directory_path(common_name)
         if not twig_dir or not twig_dir.exists():
             return []
 
-        # Find all .usda files in the twig directory
+        # Find FBX files (with mount points - preferred)
+        fbx_files = list(twig_dir.glob("*.fbx"))
+        
+        # Find USD files (fallback)
         usd_files = list(twig_dir.glob("*.usda"))
-        return sorted(usd_files)
+        
+        # Prefer FBX if available, otherwise use USD
+        if fbx_files:
+            return sorted(fbx_files)
+        else:
+            return sorted(usd_files)
 
     @classmethod
     def get_twig_files_by_type(cls, common_name: str) -> Dict[str, List[Path]]:
         """
-        Get twig USD files organized by type (apical, lateral, end, side, etc.).
+        Get twig FBX/USD files organized by type (apical, lateral, upward, dead, etc.).
+
+        Supports both old naming conventions and new standardized names:
+        - Old: BeechApicalTwig, OakLateralTwig
+        - New: europeanbeech_apical, europeanoak_lateral_var_a
 
         Args:
             common_name: The common name of the species.
@@ -416,10 +431,12 @@ class GrowPyConfig:
             return {}
 
         twig_types = {
-            "apical": [],
-            "lateral": [],
-            "end": [],
-            "side": [],
+            "apical": [],    # Maps to twig_long (terminal/end twigs)
+            "lateral": [],   # Maps to twig_short (side branches)
+            "upward": [],    # Maps to twig_upward
+            "dead": [],      # Maps to twig_dead
+            "end": [],       # Legacy alias for apical
+            "side": [],      # Legacy alias for lateral
             "main": [],
             "variation": [],
             "other": [],
@@ -428,16 +445,22 @@ class GrowPyConfig:
         for file_path in usd_files:
             filename = file_path.stem.lower()
 
-            # Categorize by filename patterns
-            if "apical" in filename:
+            # Categorize by filename patterns (supports both old and new naming)
+            # New standardized naming: species_type or species_type_var_x
+            if "_apical" in filename or "apical" in filename:
                 twig_types["apical"].append(file_path)
-            elif "lateral" in filename:
+            elif "_lateral" in filename or "lateral" in filename:
                 twig_types["lateral"].append(file_path)
-            elif "end" in filename:
+            elif "_upward" in filename or "upward" in filename:
+                twig_types["upward"].append(file_path)
+            elif "_dead" in filename or "dead" in filename:
+                twig_types["dead"].append(file_path)
+            # Legacy patterns for backward compatibility
+            elif "end" in filename or "long" in filename:
                 twig_types["end"].append(file_path)
-            elif "side" in filename:
+            elif "side" in filename or "short" in filename:
                 twig_types["side"].append(file_path)
-            elif "variation" in filename or "var" in filename:
+            elif "variation" in filename or "var_" in filename:
                 twig_types["variation"].append(file_path)
             elif (
                 filename.count("_") == 1
