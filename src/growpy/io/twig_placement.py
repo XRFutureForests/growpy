@@ -233,6 +233,40 @@ def rotation_matrix_to_quaternion(
         return (1.0, 0.0, 0.0, 0.0)  # Identity quaternion
 
 
+def convert_y_up_to_z_up(
+    pos: Tuple[float, float, float], scale: float = 1.0
+) -> Tuple[float, float, float]:
+    """Convert Y-up (Grove/OpenGL) coordinates to Z-up (Blender/USD standard).
+
+    Grove exports USD in Y-up coordinate system. This function rotates to Z-up
+    for proper orientation in Blender and Unreal Engine.
+
+    Args:
+        pos: Position in Y-up coordinates (x, y, z)
+        scale: Scale factor to apply (default: 1.0 for no scaling)
+
+    Returns:
+        Position in Z-up coordinates (x, y, z)
+    """
+    # Rotate -90 degrees around X-axis: (x, y, z) -> (x, -z, y)
+    return (pos[0] * scale, -pos[2] * scale, pos[1] * scale)
+
+
+def convert_y_up_normal_to_z_up(
+    normal: Tuple[float, float, float],
+) -> Tuple[float, float, float]:
+    """Convert Y-up normal vector to Z-up orientation.
+
+    Args:
+        normal: Normal in Y-up coordinates (x, y, z)
+
+    Returns:
+        Normal in Z-up coordinates (x, y, z)
+    """
+    # Rotate -90 degrees around X-axis: (x, y, z) -> (x, -z, y)
+    return (normal[0], -normal[2], normal[1])
+
+
 def convert_blender_to_ue_coords(
     pos: Tuple[float, float, float],
 ) -> Tuple[float, float, float]:
@@ -485,12 +519,19 @@ def extract_twig_placements_from_usd(
                             else:
                                 normal = [0.0, 0.0, 1.0]
 
+                            # Convert from Y-up (Grove) to Z-up (Blender/USD standard)
+                            # Grove's USD export is in Y-up but we need Z-up for proper orientation
+                            # Note: Don't scale positions here (scale=1.0) because they're already
+                            # extracted from the scaled tree mesh vertices
+                            center = convert_y_up_to_z_up(tuple(center), scale=1.0)
+                            normal = convert_y_up_normal_to_z_up(tuple(normal))
+
                             # Create rotation matrix
-                            rot_matrix = normal_to_rotation_matrix(tuple(normal))
+                            rot_matrix = normal_to_rotation_matrix(normal)
 
                             placement_data = {
-                                "position": tuple(center),
-                                "normal": tuple(normal),
+                                "position": center,
+                                "normal": normal,
                                 "rotation_matrix": rot_matrix,
                                 "face_index": face_idx,
                             }
