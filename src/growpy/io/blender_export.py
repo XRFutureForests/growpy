@@ -1467,19 +1467,18 @@ def batch_export_trees_for_unreal(
 
     results = {"usd": [], "fbx": [], "metadata": [], "twigs": []}
 
-    # Create output directories
-    usd_dir = (
-        output_dir / "USD"
-        if "usd" in export_formats or "usda" in export_formats
-        else None
-    )
-    fbx_dir = output_dir / "FBX" if "fbx" in export_formats else None
-    metadata_dir = output_dir / "Metadata"
+    # Create clearer output directory structure:
+    # output_dir/
+    #   ├── Species1/
+    #   │   ├── FBX/
+    #   │   ├── USD/
+    #   │   └── twigs/
+    #   └── Species2/
+    #       ├── FBX/
+    #       ├── USD/
+    #       └── twigs/
 
-    if usd_dir:
-        usd_dir.mkdir(parents=True, exist_ok=True)
-    if fbx_dir:
-        fbx_dir.mkdir(parents=True, exist_ok=True)
+    metadata_dir = output_dir / "Metadata"
     metadata_dir.mkdir(parents=True, exist_ok=True)
 
     # Get unique species and their growth cycles from forest data
@@ -1498,6 +1497,23 @@ def batch_export_trees_for_unreal(
                 .strip()
                 .replace(" ", "_")
             )
+
+            # Create species-specific directories
+            species_dir = output_dir / species_clean
+            species_dir.mkdir(parents=True, exist_ok=True)
+
+            usd_dir = (
+                species_dir / "USD"
+                if "usd" in export_formats or "usda" in export_formats
+                else None
+            )
+            fbx_dir = species_dir / "FBX" if "fbx" in export_formats else None
+
+            if usd_dir:
+                usd_dir.mkdir(parents=True, exist_ok=True)
+            if fbx_dir:
+                fbx_dir.mkdir(parents=True, exist_ok=True)
+
             species_metadata = {
                 "species": species,
                 "variations": [],
@@ -1768,10 +1784,10 @@ def batch_export_trees_for_unreal(
 
             # Bundle twigs if requested
             if bundle_twigs:
-                print(f"  Bundling twigs for {species}...")
+                print(f"\n  Bundling twigs for {species}...")
                 twig_results = bundle_twigs_for_species(
                     species,
-                    output_dir / species_clean,
+                    species_dir,  # Use species-specific directory
                     formats=export_formats,
                     config=config,
                 )
@@ -2032,9 +2048,9 @@ def get_twig_usd_map_for_species(
     # Map Grove attribute names to twig file types
     # Grove uses: twig_long, twig_short, twig_upward, twig_dead
     type_mapping = {
-        "twig_long": ["apical", "long", "end", "terminal"],
-        "twig_short": ["lateral", "short", "side"],
-        "twig_upward": ["upward", "up"],
+        "twig_long": ["apical", "long", "end", "terminal", "var_a", "var_c"],
+        "twig_short": ["lateral", "short", "side", "var_b", "var_d"],
+        "twig_upward": ["upward", "up", "var_e"],
         "twig_dead": ["dead", "fall", "winter"],
     }
 
@@ -2063,6 +2079,28 @@ def get_twig_usd_map_for_species(
                     break
 
     # Add fallback mappings for missing twig types
+    # If no matches found and twig files exist, use first available for each type
+    if not twig_usd_map and twig_files_by_type:
+        print(f"    Using generic twig mapping (no keyword matches found)")
+        # Get all available twig files
+        all_twigs = []
+        for twig_paths in twig_files_by_type.values():
+            all_twigs.extend(twig_paths)
+
+        if all_twigs:
+            # Use first few twigs for different types
+            for i, grove_type in enumerate(
+                ["twig_long", "twig_short", "twig_upward", "twig_dead"]
+            ):
+                if i < len(all_twigs):
+                    twig_file = all_twigs[i]
+                    for ext in [".usda", ".usd"]:
+                        usd_file = twig_file.with_suffix(ext)
+                        if usd_file.exists():
+                            twig_usd_map[grove_type] = usd_file
+                            print(f"    Assigned {grove_type}: {usd_file.name}")
+                            break
+
     # If twig_upward not found, use twig_short (upward twigs are similar to lateral)
     if "twig_upward" not in twig_usd_map and "twig_short" in twig_usd_map:
         twig_usd_map["twig_upward"] = twig_usd_map["twig_short"]
@@ -2116,29 +2154,53 @@ def bundle_twigs_for_species(
             return results
 
         twig_manifest = {"species": species_name, "twig_types": {}, "total_twigs": 0}
+        copied_textures = set()  # Track copied textures to avoid duplicates
 
-        # Copy each twig file in the map
+        # Copy each twig file in the map for ALL requested formats
         for twig_type, source_file in twig_usd_map.items():
             if not source_file.exists():
                 continue
 
             twig_manifest["twig_types"][twig_type] = []
 
-            # Copy the file
-            dest_file = twig_dir / source_file.name
-            shutil.copy2(source_file, dest_file)
-            results["twig_files"].append(dest_file)
-            twig_manifest["twig_types"][twig_type].append(dest_file.name)
-            twig_manifest["total_twigs"] += 1
+            # Get the base path without extension
+            source_base = source_file.parent / source_file.stem
 
-            # Also copy textures if they exist
+            # Copy all requested formats
+            for fmt in formats:
+                # Determine file extension based on format
+                if fmt == "usd":
+                    extensions = [".usd", ".usda"]  # Try both
+                elif fmt == "usda":
+                    extensions = [".usda", ".usd"]  # Try both
+                elif fmt == "fbx":
+                    extensions = [".fbx"]
+                else:
+                    continue
+
+                # Try to find file with any of the extensions
+                for ext in extensions:
+                    fmt_source_file = source_base.with_suffix(ext)
+                    if fmt_source_file.exists():
+                        # Copy the file
+                        dest_file = twig_dir / fmt_source_file.name
+                        shutil.copy2(fmt_source_file, dest_file)
+                        results["twig_files"].append(dest_file)
+                        twig_manifest["twig_types"][twig_type].append(dest_file.name)
+                        twig_manifest["total_twigs"] += 1
+                        print(f"    Copied twig {twig_type}: {dest_file.name}")
+                        break  # Found file, no need to try other extensions
+
+            # Copy textures if they exist (only once per species)
             texture_dir = source_file.parent / "textures"
-            if texture_dir.exists():
+            if texture_dir.exists() and str(texture_dir) not in copied_textures:
                 dest_texture_dir = twig_dir / "textures"
                 dest_texture_dir.mkdir(exist_ok=True)
                 for texture_file in texture_dir.glob("*"):
                     if texture_file.is_file():
                         shutil.copy2(texture_file, dest_texture_dir / texture_file.name)
+                copied_textures.add(str(texture_dir))
+                print(f"    Copied textures from {texture_dir.name}")
 
         # Save twig manifest
         if twig_manifest["total_twigs"] > 0:
@@ -2146,10 +2208,13 @@ def bundle_twigs_for_species(
             with open(manifest_path, "w") as f:
                 json.dump(twig_manifest, f, indent=2)
             results["manifest"] = manifest_path
+            print(
+                f"  ✓ Bundled {twig_manifest['total_twigs']} twig files for {species_name}"
+            )
+        else:
+            print(f"  ⚠ No twig files copied for {species_name}")
 
     except Exception as e:
         print(f"Failed to bundle twigs for {species_name}: {e}")
-
-    return results
 
     return results
