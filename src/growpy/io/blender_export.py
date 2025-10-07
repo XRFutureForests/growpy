@@ -1230,6 +1230,9 @@ def batch_export_trees_for_unreal(
     build_end_cap: bool = True,
     bundle_twigs: bool = True,
     export_formats: List[str] = ["fbx", "usda"],
+    use_native_usd_export: bool = True,
+    include_twigs_in_usd: bool = True,
+    create_nanite_assembly: bool = True,
 ) -> Dict[str, List[Path]]:
     """Export trees as FBX/USD for Unreal Engine Nanite with PCG metadata.
 
@@ -1251,6 +1254,9 @@ def batch_export_trees_for_unreal(
         build_end_cap: Close off branch ends with geometry
         bundle_twigs: Copy relevant twig files to output folder
         export_formats: Export formats ('fbx', 'usd', 'usda')
+        use_native_usd_export: Use Grove's native USD export (recommended, includes all attributes)
+        include_twigs_in_usd: Include twigs as point instances in USD files
+        create_nanite_assembly: Create Nanite Assembly USD for Unreal Engine (default: True)
 
     Returns:
         Dict with 'usd', 'fbx', 'metadata', and 'twigs' file paths
@@ -1361,20 +1367,52 @@ def batch_export_trees_for_unreal(
                 # Export USD if requested
                 if usd_dir:
                     usd_path = usd_dir / f"{variation_name}.usda"
-                    if export_tree_as_usd(
-                        grove,
-                        usd_path,
-                        species,
-                        include_skeleton=True,
-                        export_skeleton_separately=False,
-                        resolution=resolution,
-                        resolution_reduce=resolution_reduce,
-                        texture_repeat=texture_repeat,
-                        build_cutoff_age=build_cutoff_age,
-                        build_cutoff_thickness=build_cutoff_thickness,
-                        build_blend=build_blend,
-                        build_end_cap=build_end_cap,
-                    ):
+
+                    # Get twig USD paths if including twigs
+                    twig_usd_map = None
+                    if include_twigs_in_usd:
+                        twig_usd_map = get_twig_usd_map_for_species(species, config)
+                        if not twig_usd_map:
+                            print(f"  Warning: No twig USD files found for {species}")
+
+                    export_success = False
+                    if use_native_usd_export:
+                        # Use Grove's native USD export with twigs
+                        export_success = export_grove_tree_as_usda_native(
+                            grove,
+                            usd_path,
+                            species,
+                            twig_usd_paths=twig_usd_map,
+                            include_twigs=include_twigs_in_usd,
+                            use_point_instancer=True,
+                            convert_to_ue=True,
+                            create_nanite_assembly=create_nanite_assembly,
+                            resolution=resolution,
+                            resolution_reduce=resolution_reduce,
+                            texture_repeat=texture_repeat,
+                            build_cutoff_age=build_cutoff_age,
+                            build_cutoff_thickness=build_cutoff_thickness,
+                            build_blend=build_blend,
+                            build_end_cap=build_end_cap,
+                        )
+                    else:
+                        # Use Blender-based USD export (legacy)
+                        export_success = export_tree_as_usd(
+                            grove,
+                            usd_path,
+                            species,
+                            include_skeleton=True,
+                            export_skeleton_separately=False,
+                            resolution=resolution,
+                            resolution_reduce=resolution_reduce,
+                            texture_repeat=texture_repeat,
+                            build_cutoff_age=build_cutoff_age,
+                            build_cutoff_thickness=build_cutoff_thickness,
+                            build_blend=build_blend,
+                            build_end_cap=build_end_cap,
+                        )
+
+                    if export_success:
                         results["usd"].append(usd_path)
                         variation_info["files"]["usd"] = str(
                             usd_path.relative_to(output_dir)
@@ -1516,6 +1554,207 @@ def batch_export_trees_for_unreal(
     results["metadata"].append(master_path)
 
     return results
+
+
+def export_grove_tree_as_usda_native(
+    grove: Any,
+    output_path: Path,
+    species_name: str,
+    twig_usd_paths: Optional[Dict[str, Path]] = None,
+    include_twigs: bool = True,
+    use_point_instancer: bool = True,
+    convert_to_ue: bool = True,
+    create_nanite_assembly: bool = True,
+    resolution: int = 32,
+    resolution_reduce: float = 0.8,
+    texture_repeat: int = 3,
+    build_cutoff_age: int = 0,
+    build_cutoff_thickness: float = 0.0,
+    build_blend: bool = True,
+    build_end_cap: bool = True,
+) -> bool:
+    """Export Grove tree using native USD export with optional twig point instances.
+
+    This function uses The Grove's native model_to_usda_string() for the base tree
+    export, then adds twigs as point instances following the Grove's twig placement
+    attributes. Optionally creates a Nanite Assembly USD for Unreal Engine.
+
+    Creates two USD files:
+    - Standard USD with twigs (compatible with all DCC apps)
+    - Nanite Assembly USD (optimized for Unreal Engine 5.7+)
+
+    Args:
+        grove: Grove instance with simulated trees
+        output_path: Path for output USDA file
+        species_name: Tree species name
+        twig_usd_paths: Dict mapping twig types to USD file paths
+                       {'twig_long': Path, 'twig_short': Path, etc.}
+        include_twigs: Whether to add twigs as point instances
+        use_point_instancer: Use USD PointInstancer (recommended for Unreal/Nanite)
+        convert_to_ue: Convert coordinates from Blender to Unreal Engine
+        create_nanite_assembly: Also create Nanite Assembly USD for Unreal (default: True)
+        resolution: Number of vertices around branch circumference (4-32, default: 32)
+        resolution_reduce: How quickly to reduce resolution on thinner branches (0.0-1.0)
+        texture_repeat: Texture repetitions around trunk circumference
+        build_cutoff_age: Skip building branches younger than this age
+        build_cutoff_thickness: Skip branches thinner than this diameter
+        build_blend: Add smooth geometry at branch joints
+        build_end_cap: Close off branch ends with geometry
+
+    Returns:
+        bool: Success status
+    """
+    ensure_grove_available()
+    gc = _get_gc()
+
+    try:
+        print(f"Exporting {species_name} as USDA...")
+
+        # Build tree model with Grove
+        models = grove.build_models(
+            {
+                "resolution": resolution,
+                "resolution_reduce": resolution_reduce,
+                "texture_repeat": texture_repeat,
+                "build_cutoff_age": build_cutoff_age,
+                "build_cutoff_thickness": build_cutoff_thickness,
+                "build_blend": build_blend,
+                "build_end_cap": build_end_cap,
+            }
+        )
+
+        if not models:
+            print("No models generated from grove")
+            return False
+
+        model = models[0]
+
+        # Export using Grove's native USD export
+        usda_string = gc.io.model_to_usda_string(model)
+
+        # Save to temporary file first (we'll enhance it with twigs)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_tree_path = (
+            output_path.parent / f"{output_path.stem}_tree_only{output_path.suffix}"
+        )
+
+        with open(temp_tree_path, "w") as f:
+            f.write(usda_string)
+
+        print(f"  ✓ Exported base tree USD: {temp_tree_path.name}")
+
+        # Add twigs if requested
+        if include_twigs and twig_usd_paths:
+            from .twig_placement import export_twig_placements_to_usd
+
+            print(f"  Adding twigs as point instances...")
+
+            success = export_twig_placements_to_usd(
+                tree_usd_path=temp_tree_path,
+                twig_usd_paths=twig_usd_paths,
+                output_path=output_path,
+                tree_mesh=None,
+                extract_from_usd=True,  # Extract placements from USD
+                use_point_instancer=use_point_instancer,
+                convert_to_ue=convert_to_ue,
+            )
+
+            if success:
+                print(f"  ✓ Created complete USDA with twigs: {output_path.name}")
+                # Keep the tree-only file for reference
+                print(f"  ✓ Tree-only USD saved as: {temp_tree_path.name}")
+            else:
+                print(f"  Warning: Failed to add twigs, using tree-only export")
+                # Copy tree-only to final output
+                import shutil
+
+                shutil.copy2(temp_tree_path, output_path)
+        else:
+            # No twigs requested, just use the tree-only export
+            import shutil
+
+            shutil.copy2(temp_tree_path, output_path)
+            print(f"  ✓ Exported tree USD: {output_path.name}")
+
+        # Create Nanite Assembly USD for Unreal if requested
+        if create_nanite_assembly:
+            from .unreal_nanite_assembly import create_nanite_assembly_usd
+
+            nanite_path = (
+                output_path.parent
+                / f"{output_path.stem}_NaniteAssembly{output_path.suffix}"
+            )
+
+            print(f"\n  Creating Unreal Nanite Assembly...")
+            nanite_success = create_nanite_assembly_usd(
+                tree_usd_path=temp_tree_path if not include_twigs else output_path,
+                output_path=nanite_path,
+                species_name=species_name,
+                twig_usd_paths=twig_usd_paths if include_twigs else None,
+                use_skeletal_mesh=False,
+            )
+
+            if nanite_success:
+                print(f"  ✓ Nanite Assembly USD: {nanite_path.name}")
+                print(f"    Import this file in Unreal Engine 5.7+")
+
+        return True
+
+    except Exception as e:
+        print(f"Failed to export Grove tree as USDA: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return False
+
+
+def get_twig_usd_map_for_species(
+    species_name: str,
+    config: Optional[Any] = None,
+) -> Dict[str, Path]:
+    """Get mapping of twig types to USD file paths for a species.
+
+    Args:
+        species_name: Name of tree species
+        config: GrowPy configuration
+
+    Returns:
+        Dict mapping twig types to USD file paths:
+        {'twig_long': Path, 'twig_short': Path, ...}
+    """
+    if config is None:
+        config = get_config()
+
+    from ..config import GrowPyConfig
+
+    twig_files_by_type = GrowPyConfig.get_twig_files_by_type(species_name)
+    twig_usd_map = {}
+
+    # Map Grove attribute names to twig file types
+    # Grove uses: twig_long, twig_short, twig_upward, twig_dead
+    type_mapping = {
+        "twig_long": ["apical", "long", "end", "terminal"],
+        "twig_short": ["lateral", "short", "side"],
+        "twig_upward": ["upward", "up"],
+        "twig_dead": ["dead", "fall", "winter"],
+    }
+
+    for grove_type, keywords in type_mapping.items():
+        # Find first matching twig file
+        for twig_type, twig_paths in twig_files_by_type.items():
+            if any(kw in twig_type.lower() for kw in keywords):
+                if twig_paths:
+                    # Get first twig file and convert to USD path if needed
+                    twig_file = twig_paths[0]
+                    # Try USDA first, then USD, then FBX
+                    for ext in [".usda", ".usd", ".fbx"]:
+                        usd_file = twig_file.with_suffix(ext)
+                        if usd_file.exists():
+                            twig_usd_map[grove_type] = usd_file
+                            break
+                    break
+
+    return twig_usd_map
 
 
 def bundle_twigs_for_species(
