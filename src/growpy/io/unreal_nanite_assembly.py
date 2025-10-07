@@ -19,13 +19,18 @@ def create_nanite_assembly_usd(
     twig_usd_paths: Optional[Dict[str, Path]] = None,
     use_skeletal_mesh: bool = False,
     skeleton_path: Optional[Path] = None,
+    tree_fbx_path: Optional[Path] = None,
+    twig_fbx_paths: Optional[Dict[str, Path]] = None,
 ) -> bool:
     """Create a Nanite Assembly USD file for Unreal Engine import.
 
     This creates a USD Assembly following Unreal's schema with proper API schemas:
     - NaniteAssemblyRootAPI on the root Xform
-    - NaniteAssemblyExternalRefAPI on child meshes
+    - NaniteAssemblyExternalRefAPI on child meshes (references USD or FBX)
     - PointInstancer for twig instances
+
+    When FBX paths are provided, creates a skeletal mesh assembly that references
+    FBX files instead of USD files for better animation support in Unreal.
 
     Args:
         tree_usd_path: Path to base tree USD file (from Grove export)
@@ -34,6 +39,8 @@ def create_nanite_assembly_usd(
         twig_usd_paths: Optional dict mapping twig types to USD paths
         use_skeletal_mesh: Whether to use skeletal mesh type
         skeleton_path: Path to skeleton USD (if using skeletal mesh)
+        tree_fbx_path: Optional path to tree FBX file (skeletal mesh)
+        twig_fbx_paths: Optional dict mapping twig types to FBX paths
 
     Returns:
         bool: Success status
@@ -76,12 +83,17 @@ def create_nanite_assembly_usd(
         tree_api_schemas.prependedItems = ["NaniteAssemblyExternalRefAPI"]
         tree_prim.SetMetadata("apiSchemas", tree_api_schemas)
 
-        # Reference the tree USD
-        tree_prim.GetReferences().AddReference(str(tree_usd_path.resolve()))
+        # Reference the tree mesh (FBX for skeletal, USD for static)
+        if use_skeletal_mesh and tree_fbx_path and tree_fbx_path.exists():
+            tree_prim.GetReferences().AddReference(str(tree_fbx_path.resolve()))
+            tree_ref_name = tree_fbx_path.name
+        else:
+            tree_prim.GetReferences().AddReference(str(tree_usd_path.resolve()))
+            tree_ref_name = tree_usd_path.name
 
         print(f"  ✓ Created Nanite Assembly root: {assembly_name}")
         print(f"    Mesh type: {mesh_type}")
-        print(f"    Tree reference: {tree_usd_path.name}")
+        print(f"    Tree reference: {tree_ref_name}")
 
         # Add twigs if provided
         if twig_usd_paths:
@@ -105,8 +117,14 @@ def create_nanite_assembly_usd(
                 for idx, (twig_type, twig_path) in enumerate(
                     sorted(twig_usd_paths.items())
                 ):
-                    if not twig_path.exists():
-                        print(f"    Warning: Twig USD not found: {twig_path}")
+                    # Use FBX path if available (for skeletal mesh), otherwise USD
+                    if use_skeletal_mesh and twig_fbx_paths and twig_type in twig_fbx_paths:
+                        twig_ref_path = twig_fbx_paths[twig_type]
+                    else:
+                        twig_ref_path = twig_path
+
+                    if not twig_ref_path.exists():
+                        print(f"    Warning: Twig mesh not found: {twig_ref_path}")
                         continue
 
                     twig_type_to_proto_idx[twig_type] = idx
@@ -125,8 +143,8 @@ def create_nanite_assembly_usd(
                     # Make instanceable for memory efficiency
                     proto_prim.SetInstanceable(True)
 
-                    # Reference twig mesh
-                    proto_prim.GetReferences().AddReference(str(twig_path.resolve()))
+                    # Reference twig mesh (FBX or USD)
+                    proto_prim.GetReferences().AddReference(str(twig_ref_path.resolve()))
 
                     prototype_paths.append(Sdf.Path(proto_prim.GetPath()))
 
