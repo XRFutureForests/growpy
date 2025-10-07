@@ -272,14 +272,21 @@ def convert_blender_to_ue_coords(
 ) -> Tuple[float, float, float]:
     """Convert Blender (Z-up, RH) coordinates to Unreal Engine (Z-up, LH).
 
+    Both Blender and UE use Z-up, but different handedness:
+    - Blender: Right-handed (X right, Y forward, Z up)
+    - Unreal: Left-handed (X forward, Y right, Z up)
+
+    Conversion: Swap X and Y, negate Y for handedness
+    Blender (X, Y, Z) -> UE (Y, -X, Z)
+
     Args:
         pos: Position in Blender coordinates (x, y, z)
 
     Returns:
         Position in UE coordinates (x, y, z)
     """
-    # Swap Y and Z, then negate Y for handedness conversion
-    return (pos[0], pos[2], -pos[1])
+    # Swap X and Y, negate new Y for left-handed system
+    return (pos[1], -pos[0], pos[2])
 
 
 def convert_blender_normal_to_ue(
@@ -287,13 +294,16 @@ def convert_blender_normal_to_ue(
 ) -> Tuple[float, float, float]:
     """Convert Blender normal to Unreal Engine orientation.
 
+    Same coordinate conversion as positions:
+    Blender (X, Y, Z) -> UE (Y, -X, Z)
+
     Args:
         normal: Normal in Blender coordinates (x, y, z)
 
     Returns:
         Normal in UE coordinates (x, y, z)
     """
-    return (normal[0], normal[2], -normal[1])
+    return (normal[1], -normal[0], normal[2])
 
 
 def extract_twig_placements_from_mesh(
@@ -622,6 +632,12 @@ def export_twig_placements_to_usd(
             "enable"
         )
 
+        # NOTE: Do NOT convert tree coordinates here - the tree_only USD is already
+        # in Blender Z-up coordinates, and we want the assembly to maintain the same
+        # coordinate system. UE will import Z-up correctly.
+        # The convert_to_ue flag is only used for twig instance positions/orientations
+        # when they're being placed programmatically.
+
         if use_point_instancer:
             # Use UsdGeomPointInstancer for memory-efficient instancing
             return _export_with_point_instancer(
@@ -708,13 +724,15 @@ def _export_with_point_instancer(
             pos = placement["position"]
             rot_matrix = placement["rotation_matrix"]
 
-            # Convert coordinates if needed
-            if convert_to_ue:
-                pos = convert_blender_to_ue_coords(pos)
-                # Convert rotation matrix by converting normal
-                normal = placement["normal"]
-                ue_normal = convert_blender_normal_to_ue(normal)
-                rot_matrix = normal_to_rotation_matrix(ue_normal)
+            # NOTE: Coordinate conversion NOT needed here!
+            # The placements are already extracted from the tree USD which has been
+            # converted from Grove's Y-up to Z-up. The twigs should match the tree's
+            # coordinate system exactly. Both tree and twigs are in Z-up Blender coords.
+            # UE will import Z-up correctly without additional conversion.
+            #
+            # If convert_to_ue flag is True, it's likely for a different export path
+            # (direct Blender export), not for USD-extracted placements.
+            pass  # Keep original position and rotation
 
             # Convert rotation matrix to quaternion
             quat = rotation_matrix_to_quaternion(rot_matrix)
@@ -794,12 +812,8 @@ def _export_with_xforms(
             pos = placement["position"]
             rot_matrix = placement["rotation_matrix"]
 
-            # Convert coordinates if needed
-            if convert_to_ue:
-                pos = convert_blender_to_ue_coords(pos)
-                normal = placement["normal"]
-                ue_normal = convert_blender_normal_to_ue(normal)
-                rot_matrix = normal_to_rotation_matrix(ue_normal)
+            # NOTE: Coordinate conversion NOT needed - see note in _export_with_point_instancer
+            # Placements from USD extraction are already in the same coordinate system as the tree
 
             # Set translation
             xform.AddTranslateOp().Set(Gf.Vec3d(pos[0], pos[1], pos[2]))
