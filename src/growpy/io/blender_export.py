@@ -428,6 +428,9 @@ def export_tree_as_usd(
             # Fallback for older Blender versions without attribute export
             bpy.ops.wm.usd_export(**export_params)
 
+        # Write Blender mesh attributes as USD primvars (critical for twig placement)
+        _add_blender_attributes_as_usd_primvars(output_path, obj)
+
         # Add Nanite attributes to USD file
         add_nanite_attributes_to_usd(output_path, is_foliage=False)
 
@@ -690,6 +693,176 @@ def _add_grove_attributes_to_mesh(mesh: Any, model: Any) -> None:
 
     except Exception as e:
         print(f"Warning: Failed to add some Grove attributes to mesh: {e}")
+
+
+def _add_grove_face_attributes_to_usd(usd_path: Path, model: Any) -> None:
+    """Add Grove face attributes (twig placements) to USD file as primvars.
+
+    Grove's native USD export doesn't include twig face attributes which are
+    critical for twig placement. This function adds them manually.
+
+    Args:
+        usd_path: Path to USD file to modify
+        model: Grove model with face attributes
+    """
+    try:
+        from pxr import Sdf, Usd, UsdGeom
+
+        stage = Usd.Stage.Open(str(usd_path))
+        if not stage:
+            print(f"Warning: Could not open USD stage at {usd_path}")
+            return
+
+        # Find mesh prim
+        for prim in stage.Traverse():
+            if not prim.IsA(UsdGeom.Mesh):
+                continue
+
+            mesh_usd = UsdGeom.Mesh(prim)
+            primvars_api = UsdGeom.PrimvarsAPI(mesh_usd)
+
+            # Add twig face attributes with uniform interpolation (per-face)
+            twig_attrs = [
+                ("twig_long", "face_attribute_twig_long"),
+                ("twig_short", "face_attribute_twig_short"),
+                ("twig_upward", "face_attribute_twig_upward"),
+                ("twig_dead", "face_attribute_twig_dead"),
+            ]
+
+            twig_counts = {}
+            for attr_name, model_attr in twig_attrs:
+                if hasattr(model, model_attr):
+                    values = getattr(model, model_attr)
+                    if values:
+                        # Convert Grove's Rust Vec<bool> to Python list
+                        # Use list() to force conversion from Rust collection
+                        try:
+                            bool_values = list(values)
+                        except Exception:
+                            # Fallback if list() doesn't work
+                            bool_values = [bool(values[i]) for i in range(len(values))]
+
+                        primvar = primvars_api.CreatePrimvar(
+                            attr_name,
+                            Sdf.ValueTypeNames.BoolArray,
+                            UsdGeom.Tokens.uniform,
+                        )
+                        primvar.Set(bool_values)
+                        true_count = sum(1 for v in bool_values if v)
+                        twig_counts[attr_name] = true_count
+
+            if twig_counts:
+                print(f"  ✓ Added twig face attributes to USD:")
+                for attr, count in twig_counts.items():
+                    print(f"    - {attr}: {count} faces")
+            else:
+                print(f"  Warning: No twig attributes found in Grove model")
+
+        stage.Save()
+
+    except Exception as e:
+        print(f"Warning: Failed to add Grove face attributes to USD: {e}")
+        import traceback
+
+        traceback.print_exc()
+
+
+def _add_blender_attributes_as_usd_primvars(usd_path: Path, mesh_obj: Any) -> None:
+    """Write Blender mesh attributes as USD primvars after export.
+
+    Blender's USD exporter doesn't export custom mesh attributes as primvars,
+    so we manually write them using the USD Python API.
+
+    Args:
+        usd_path: Path to USD file to modify
+        mesh_obj: Blender mesh object with custom attributes
+    """
+    try:
+        from pxr import Sdf, Usd, UsdGeom
+
+        stage = Usd.Stage.Open(str(usd_path))
+        if not stage:
+            print(f"Warning: Could not open USD stage at {usd_path}")
+            return
+
+        # Find the mesh prim (typically at /Tree/Tree or similar)
+        for prim in stage.Traverse():
+            if not prim.IsA(UsdGeom.Mesh):
+                continue
+
+            mesh_usd = UsdGeom.Mesh(prim)
+            primvars_api = UsdGeom.PrimvarsAPI(mesh_usd)
+            mesh_data = mesh_obj.data
+
+            # Twig attributes (FACE domain - most critical for twig placement)
+            twig_attrs = [
+                ("twig_long", Sdf.ValueTypeNames.Bool),
+                ("twig_short", Sdf.ValueTypeNames.Bool),
+                ("twig_upward", Sdf.ValueTypeNames.Bool),
+                ("twig_dead", Sdf.ValueTypeNames.Bool),
+            ]
+
+            for attr_name, value_type in twig_attrs:
+                if attr_name in mesh_data.attributes:
+                    attr = mesh_data.attributes[attr_name]
+                    # Get values from Blender attribute
+                    values = [attr.data[i].value for i in range(len(attr.data))]
+
+                    # Create USD primvar with uniform interpolation (per-face)
+                    primvar = primvars_api.CreatePrimvar(
+                        attr_name, value_type, UsdGeom.Tokens.uniform
+                    )
+                    primvar.Set(values)
+                    print(
+                        f"  Added primvar {attr_name}: {sum(values)} true out of {len(values)} faces"
+                    )
+
+            # Other face attributes
+            face_attrs = [
+                ("branch_dead", Sdf.ValueTypeNames.Bool),
+                ("branch_index", Sdf.ValueTypeNames.Int),
+                ("branch_index_parent", Sdf.ValueTypeNames.Int),
+                ("branch_end", Sdf.ValueTypeNames.Bool),
+                ("tree_index", Sdf.ValueTypeNames.Int),
+            ]
+
+            for attr_name, value_type in face_attrs:
+                if attr_name in mesh_data.attributes:
+                    attr = mesh_data.attributes[attr_name]
+                    values = [attr.data[i].value for i in range(len(attr.data))]
+                    primvar = primvars_api.CreatePrimvar(
+                        attr_name, value_type, UsdGeom.Tokens.uniform
+                    )
+                    primvar.Set(values)
+
+            # Point (vertex) attributes
+            point_attrs = [
+                ("age", Sdf.ValueTypeNames.Int),
+                ("thickness", Sdf.ValueTypeNames.Float),
+                ("mass", Sdf.ValueTypeNames.Float),
+                ("shade", Sdf.ValueTypeNames.Float),
+                ("vigor", Sdf.ValueTypeNames.Float),
+                ("photosynthesis", Sdf.ValueTypeNames.Float),
+                ("pitch", Sdf.ValueTypeNames.Float),
+            ]
+
+            for attr_name, value_type in point_attrs:
+                if attr_name in mesh_data.attributes:
+                    attr = mesh_data.attributes[attr_name]
+                    values = [attr.data[i].value for i in range(len(attr.data))]
+                    primvar = primvars_api.CreatePrimvar(
+                        attr_name, value_type, UsdGeom.Tokens.vertex
+                    )
+                    primvar.Set(values)
+
+        stage.Save()
+        print(f"✓ Added Blender attributes as USD primvars to {usd_path.name}")
+
+    except Exception as e:
+        print(f"Warning: Failed to add primvars to USD file: {e}")
+        import traceback
+
+        traceback.print_exc()
 
 
 def _find_bark_texture(
@@ -1285,7 +1458,7 @@ def batch_export_trees_for_unreal(
         fbx_dir.mkdir(parents=True, exist_ok=True)
     metadata_dir.mkdir(parents=True, exist_ok=True)
 
-    # Get unique species
+    # Get unique species and their growth cycles from forest data
     species_list = (
         forest_data["species"].unique()
         if hasattr(forest_data, "unique")
@@ -1313,6 +1486,18 @@ def batch_export_trees_for_unreal(
                     "align_to_normal": True,
                 },
             }
+
+            # Get average growth cycles for this species from forest data
+            # Use the mean growth cycles for trees of this species
+            species_trees = forest_data[forest_data["species"] == species]
+            if "growth_cycles" in species_trees.columns:
+                avg_cycles = int(species_trees["growth_cycles"].mean())
+            else:
+                # Fallback to default if growth_cycles not calculated
+                avg_cycles = 10
+                print(
+                    f"Warning: No growth_cycles found for {species}, using default {avg_cycles}"
+                )
 
             # Create variations with different random seeds and parameters
             for variation_idx in range(num_variations):
@@ -1343,8 +1528,10 @@ def batch_export_trees_for_unreal(
                 gc = _get_gc()
                 grove.add_new_tree(gc.Vector(0, 0, 0), gc.Vector(0, 0, 1), 0)
 
-                # Simulate with slight variation in growth stages
-                flush_count = 10 + (variation_idx % 3)
+                # Simulate using growth cycles calculated from tree height
+                # Add slight variation (±1 flush) to create diversity within species
+                flush_count = avg_cycles + (variation_idx % 3) - 1
+                flush_count = max(1, flush_count)  # Ensure at least 1 flush
                 grove.simulate(flushes=flush_count)
 
                 variation_name = f"{species_clean}_var{variation_idx + 1}"
@@ -1643,6 +1830,10 @@ def export_grove_tree_as_usda_native(
 
         print(f"  ✓ Exported base tree USD: {temp_tree_path.name}")
 
+        # CRITICAL: Add twig face attributes from Grove model to USD
+        # Grove's native USD export doesn't include custom face attributes
+        _add_grove_face_attributes_to_usd(temp_tree_path, model)
+
         # Add twigs if requested
         if include_twigs and twig_usd_paths:
             from .twig_placement import export_twig_placements_to_usd
@@ -1744,15 +1935,35 @@ def get_twig_usd_map_for_species(
         for twig_type, twig_paths in twig_files_by_type.items():
             if any(kw in twig_type.lower() for kw in keywords):
                 if twig_paths:
-                    # Get first twig file and convert to USD path if needed
+                    # Get first twig file and look for USD version (prefer USD over FBX)
                     twig_file = twig_paths[0]
-                    # Try USDA first, then USD, then FBX
-                    for ext in [".usda", ".usd", ".fbx"]:
+                    # Prioritize USDA/USD over FBX for better compatibility
+                    for ext in [".usda", ".usd"]:
                         usd_file = twig_file.with_suffix(ext)
                         if usd_file.exists():
                             twig_usd_map[grove_type] = usd_file
+                            print(f"    Found {grove_type}: {usd_file.name}")
                             break
+                    if grove_type not in twig_usd_map:
+                        # Fallback to FBX if no USD found
+                        fbx_file = twig_file.with_suffix(".fbx")
+                        if fbx_file.exists():
+                            twig_usd_map[grove_type] = fbx_file
+                            print(
+                                f"    Found {grove_type}: {fbx_file.name} (FBX fallback)"
+                            )
                     break
+
+    # Add fallback mappings for missing twig types
+    # If twig_upward not found, use twig_short (upward twigs are similar to lateral)
+    if "twig_upward" not in twig_usd_map and "twig_short" in twig_usd_map:
+        twig_usd_map["twig_upward"] = twig_usd_map["twig_short"]
+        print(f"    Using twig_short for twig_upward (no upward-specific twig)")
+
+    # If twig_dead not found, use twig_short (dead twigs similar to lateral)
+    if "twig_dead" not in twig_usd_map and "twig_short" in twig_usd_map:
+        twig_usd_map["twig_dead"] = twig_usd_map["twig_short"]
+        print(f"    Using twig_short for twig_dead (no dead-specific twig)")
 
     return twig_usd_map
 
@@ -1789,41 +2000,37 @@ def bundle_twigs_for_species(
         twig_dir = output_dir / "twigs"
         twig_dir.mkdir(parents=True, exist_ok=True)
 
-        # Get available twig USD files from Grove assets
-        from ..config import GrowPyConfig
+        # Get available twig USD map (already resolved to actual files)
+        twig_usd_map = get_twig_usd_map_for_species(species_name, config)
 
-        twig_files_by_type = GrowPyConfig.get_twig_files_by_type(species_name)
+        if not twig_usd_map:
+            print(f"  No twig files found for {species_name}")
+            return results
 
         twig_manifest = {"species": species_name, "twig_types": {}, "total_twigs": 0}
 
-        # Copy twig files for each requested format
-        for twig_type, twig_paths in twig_files_by_type.items():
+        # Copy each twig file in the map
+        for twig_type, source_file in twig_usd_map.items():
+            if not source_file.exists():
+                continue
+
             twig_manifest["twig_types"][twig_type] = []
 
-            for twig_path in twig_paths:
-                for fmt in formats:
-                    # Find twig file with requested format
-                    source_file = None
+            # Copy the file
+            dest_file = twig_dir / source_file.name
+            shutil.copy2(source_file, dest_file)
+            results["twig_files"].append(dest_file)
+            twig_manifest["twig_types"][twig_type].append(dest_file.name)
+            twig_manifest["total_twigs"] += 1
 
-                    if fmt == "fbx":
-                        # Look for FBX version
-                        fbx_file = twig_path.with_suffix(".fbx")
-                        if fbx_file.exists():
-                            source_file = fbx_file
-                    elif fmt in ["usd", "usda"]:
-                        # Use USD version
-                        usd_file = twig_path.with_suffix(f".{fmt}")
-                        if usd_file.exists():
-                            source_file = usd_file
-                        elif twig_path.suffix == f".{fmt}":
-                            source_file = twig_path
-
-                    if source_file and source_file.exists():
-                        dest_file = twig_dir / source_file.name
-                        shutil.copy2(source_file, dest_file)
-                        results["twig_files"].append(dest_file)
-                        twig_manifest["twig_types"][twig_type].append(dest_file.name)
-                        twig_manifest["total_twigs"] += 1
+            # Also copy textures if they exist
+            texture_dir = source_file.parent / "textures"
+            if texture_dir.exists():
+                dest_texture_dir = twig_dir / "textures"
+                dest_texture_dir.mkdir(exist_ok=True)
+                for texture_file in texture_dir.glob("*"):
+                    if texture_file.is_file():
+                        shutil.copy2(texture_file, dest_texture_dir / texture_file.name)
 
         # Save twig manifest
         if twig_manifest["total_twigs"] > 0:
