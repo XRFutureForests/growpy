@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Generate species library - export template trees for each configured species.
 
+This script exports trees in multiple formats (FBX, USD) with optional twig instances.
+Uses Grove's native USD export for preserving all attributes, and includes twig
+placement as PointInstancer prims.
+
 Usage:
-    python generate_species_library.py
+    python generate_species_library.py --formats fbx usda --include-twigs
 """
 
 from pathlib import Path
+
 from tqdm import tqdm
 
 try:
@@ -13,19 +18,11 @@ try:
 except ImportError:
     gc = None
 
-from growpy import (
-    GrowPyConfig,
-    get_config,
-    create_grove,
-    export_tree_as_usd,
-    EXPORT_AVAILABLE,
-)
+from growpy import EXPORT_AVAILABLE, GrowPyConfig, create_grove, get_config
 
 
 def place_twigs_on_species_library(
-    tree_usd_files: list,
-    twigs_dir: Path,
-    output_dir: Path
+    tree_usd_files: list, twigs_dir: Path, output_dir: Path
 ) -> None:
     """Place twigs on exported species library USD files.
 
@@ -35,6 +32,7 @@ def place_twigs_on_species_library(
         output_dir: Output directory for tree+twig assemblies
     """
     import bpy
+
     from growpy.io.twig_placement import export_twig_placements_to_usd
 
     twigs_output = output_dir / "with_twigs"
@@ -69,7 +67,7 @@ def place_twigs_on_species_library(
 
             tree_obj = None
             for obj in bpy.context.scene.objects:
-                if obj.type == 'MESH':
+                if obj.type == "MESH":
                     tree_obj = obj
                     break
 
@@ -81,14 +79,14 @@ def place_twigs_on_species_library(
             twig_usd_map = {}
             for twig_file in twig_files:
                 name_lower = twig_file.stem.lower()
-                if 'end' in name_lower or 'long' in name_lower:
-                    twig_usd_map['twig_long'] = twig_file
-                elif 'side' in name_lower or 'short' in name_lower:
-                    twig_usd_map['twig_short'] = twig_file
+                if "end" in name_lower or "long" in name_lower:
+                    twig_usd_map["twig_long"] = twig_file
+                elif "side" in name_lower or "short" in name_lower:
+                    twig_usd_map["twig_short"] = twig_file
                 else:
                     # Use generic twig for all types
-                    twig_usd_map['twig_long'] = twig_file
-                    twig_usd_map['twig_short'] = twig_file
+                    twig_usd_map["twig_long"] = twig_file
+                    twig_usd_map["twig_short"] = twig_file
                     break
 
             if not twig_usd_map:
@@ -97,7 +95,9 @@ def place_twigs_on_species_library(
 
             # Export assembly with twigs
             output_file = twigs_output / f"{species_name}_with_twigs.usda"
-            if export_twig_placements_to_usd(tree_file, twig_usd_map, output_file, tree_obj):
+            if export_twig_placements_to_usd(
+                tree_file, twig_usd_map, output_file, tree_obj
+            ):
                 print(f"    Created: {output_file.name}")
 
         except Exception as e:
@@ -109,23 +109,28 @@ def export_all_species(
     config: GrowPyConfig,
     output_dir: Path,
     growth_flushes: int = 10,
-    formats: list = ['usda'],
-    place_twigs: bool = False,
-    twigs_dir: Path = None
+    formats: list = ["usda"],
+    include_twigs: bool = False,
+    resolution: int = 24,
+    create_nanite_assembly: bool = True,
 ) -> None:
-    """Export all configured species as template trees in USD format.
+    """Export all configured species as template trees in multiple formats.
 
     Args:
         config: GrowPy configuration with species settings
         output_dir: Directory to save export files
         growth_flushes: Number of growth cycles to simulate
-        formats: List of export formats ('usd', 'usda')
-        place_twigs: Whether to place twig instances on trees (default: False)
-        twigs_dir: Directory containing twig files (default: config.twigs_path)
+        formats: List of export formats ('fbx', 'usd', 'usda')
+        include_twigs: Whether to include twig instances (USD only)
+        resolution: Branch resolution (4-32, higher = more detailed)
+        create_nanite_assembly: Create Nanite Assembly USD for Unreal Engine (default: True)
     """
-    if not EXPORT_AVAILABLE:
-        print("Export not available - bpy module required")
-        return
+    if not EXPORT_AVAILABLE and "fbx" in formats:
+        print("FBX export not available - bpy module required")
+        formats = [f for f in formats if f in ["usd", "usda"]]
+        if not formats:
+            print("No valid export formats available")
+            return
 
     output_dir.mkdir(parents=True, exist_ok=True)
     species_list = config.get_all_species()
@@ -134,9 +139,24 @@ def export_all_species(
         print("No species found in configuration")
         return
 
+    # Create format-specific directories
+    fbx_dir = output_dir / "FBX" if "fbx" in formats else None
+    usd_dir = output_dir / "USD" if any(f in formats for f in ["usd", "usda"]) else None
+
+    if fbx_dir:
+        fbx_dir.mkdir(parents=True, exist_ok=True)
+    if usd_dir:
+        usd_dir.mkdir(parents=True, exist_ok=True)
+
     exported_count = 0
     failed_count = 0
-    exported_files = []
+    export_results = {"fbx": [], "usd": [], "failed": []}
+
+    print(f"\nExporting {len(species_list)} species")
+    print(f"Formats: {', '.join(formats)}")
+    print(f"Resolution: {resolution}")
+    print(f"Include twigs: {include_twigs}")
+    print(f"Growth flushes: {growth_flushes}\n")
 
     for species in tqdm(species_list, desc="Exporting species"):
         try:
@@ -147,56 +167,109 @@ def export_all_species(
             grove.add_new_tree(
                 gc.Vector(0, 0, 0),  # Origin
                 gc.Vector(0, 0, 1),  # Up direction
-                0  # No delay
+                0,  # No delay
             )
 
             # Simulate realistic growth
             grove.simulate(flushes=growth_flushes)
 
             # Clean species name for filename
-            species_clean = "".join(c for c in species if c.isalnum() or c in (' ', '-', '_')).strip().replace(' ', '_')
+            species_clean = (
+                "".join(c for c in species if c.isalnum() or c in (" ", "-", "_"))
+                .strip()
+                .replace(" ", "_")
+            )
             if not species_clean:
                 species_clean = f"species_{exported_count}"
 
-            # Export in requested formats
             format_success = False
 
-            usd_ext = 'usda' if 'usda' in formats else 'usd'
-            usd_path = output_dir / f"{species_clean}.{usd_ext}"
-            if export_tree_as_usd(grove, usd_path, species, include_skeleton=True):
-                format_success = True
-                exported_files.append(usd_path)
+            # Export USD formats (with optional twigs)
+            if usd_dir:
+                from growpy.io.blender_export import (
+                    export_grove_tree_as_usda_native,
+                    get_twig_usd_map_for_species,
+                )
+
+                usd_ext = "usda" if "usda" in formats else "usd"
+                usd_path = usd_dir / f"{species_clean}.{usd_ext}"
+
+                # Get twig USD paths if including twigs
+                twig_usd_map = None
+                if include_twigs:
+                    twig_usd_map = get_twig_usd_map_for_species(species, config)
+
+                # Export using native USD export with twigs
+                if export_grove_tree_as_usda_native(
+                    grove=grove,
+                    output_path=usd_path,
+                    species_name=species,
+                    twig_usd_paths=twig_usd_map,
+                    include_twigs=include_twigs and twig_usd_map is not None,
+                    use_point_instancer=True,
+                    convert_to_ue=True,
+                    create_nanite_assembly=create_nanite_assembly,
+                    resolution=resolution,
+                    resolution_reduce=0.8,
+                    texture_repeat=3,
+                    build_cutoff_age=0,
+                    build_cutoff_thickness=0.0,
+                    build_blend=True,
+                    build_end_cap=True,
+                ):
+                    format_success = True
+                    export_results["usd"].append(usd_path)
+
+            # Export FBX format
+            if fbx_dir and EXPORT_AVAILABLE:
+                from growpy.io.blender_export import _export_fbx_internal
+
+                fbx_path = fbx_dir / f"{species_clean}.fbx"
+
+                if _export_fbx_internal(
+                    grove=grove,
+                    output_path=fbx_path,
+                    species_name=species,
+                    include_skeleton=True,
+                    include_twig_attributes=True,
+                    config=config,
+                ):
+                    format_success = True
+                    export_results["fbx"].append(fbx_path)
 
             if format_success:
                 exported_count += 1
             else:
                 failed_count += 1
+                export_results["failed"].append(species)
 
-        except Exception:
+        except Exception as e:
+            print(f"\nFailed to export {species}: {e}")
             failed_count += 1
+            export_results["failed"].append(species)
             continue
 
-    print(f"Export complete: {exported_count} successful, {failed_count} failed")
+    # Print summary
+    print(f"\n{'='*60}")
+    print("Export Complete")
+    print(f"{'='*60}")
+    print(f"Successful: {exported_count}")
+    print(f"Failed: {failed_count}")
 
-    # Place twigs if requested
-    if place_twigs and exported_files:
-        try:
-            import bpy
+    if export_results["usd"]:
+        print(f"\nUSD files: {len(export_results['usd'])}")
+        print(f"  Location: {usd_dir}")
 
-            # Use provided twigs directory or config default
-            if twigs_dir is None:
-                twigs_dir = Path(config.twigs_path) if hasattr(config, 'twigs_path') else None
+    if export_results["fbx"]:
+        print(f"\nFBX files: {len(export_results['fbx'])}")
+        print(f"  Location: {fbx_dir}")
 
-            if twigs_dir and twigs_dir.exists():
-                print(f"\nPlacing twigs from: {twigs_dir}")
-                place_twigs_on_species_library(exported_files, twigs_dir, output_dir)
-            else:
-                print(f"Warning: Twigs directory not found: {twigs_dir}")
-                print("Skipping twig placement")
-        except ImportError:
-            print("Warning: bpy not available, skipping twig placement")
-        except Exception as e:
-            print(f"Warning: Twig placement failed: {e}")
+    if export_results["failed"]:
+        print(f"\nFailed species ({len(export_results['failed'])}):")
+        for species in export_results["failed"]:
+            print(f"  - {species}")
+
+    print()
 
 
 def main():
@@ -208,65 +281,90 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    # Export all species with default settings (10 flushes, USDA)
+    # Export all species as USDA with default settings
     python generate_species_library.py
 
-    # Export with custom growth flushes
-    python generate_species_library.py --flushes 15
+    # Export as both FBX and USDA with twigs
+    python generate_species_library.py --formats fbx usda --include-twigs
 
-    # Export to USD binary format
-    python generate_species_library.py --formats usd
+    # Export high quality with custom growth
+    python generate_species_library.py --resolution 32 --flushes 15
 
-    # Export with custom output directory
-    python generate_species_library.py --output-dir data/output/species
-        """
+    # Export to custom directory
+    python generate_species_library.py --output-dir data/output/species --formats fbx usda
+
+    # Export with twigs as point instances (USD only)
+    python generate_species_library.py --formats usda --include-twigs
+        """,
     )
 
     parser.add_argument(
         "--flushes",
         type=int,
         default=10,
-        help="Number of growth flushes to simulate (default: 10)"
+        help="Number of growth flushes to simulate (default: 10)",
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path("data/output/species_library"),
-        help="Directory to save species library (default: data/output/species_library)"
+        help="Directory to save species library (default: data/output/species_library)",
     )
     parser.add_argument(
         "--formats",
-        nargs='+',
-        choices=['usd', 'usda'],
-        default=['usda'],
-        help="Export formats (default: usda)"
+        nargs="+",
+        choices=["fbx", "usd", "usda"],
+        default=["usda"],
+        help="Export formats (default: usda). Can specify multiple: --formats fbx usda",
     )
     parser.add_argument(
-        "--place-twigs",
-        action='store_true',
-        help="Place twig instances on exported trees (requires twigs directory)"
+        "--include-twigs",
+        action="store_true",
+        help="Include twig instances in USD exports (uses PointInstancer for memory efficiency)",
     )
     parser.add_argument(
-        "--twigs-dir",
-        type=Path,
-        default=None,
-        help="Directory containing twig files (default: from config)"
+        "--resolution",
+        type=int,
+        default=24,
+        choices=range(4, 33),
+        metavar="4-32",
+        help="Branch resolution - vertices around circumference (default: 24, higher=more detail)",
+    )
+    parser.add_argument(
+        "--create-nanite-assembly",
+        action="store_true",
+        default=True,
+        help="Create Nanite Assembly USD files for Unreal Engine 5.7+ (default: True)",
+    )
+    parser.add_argument(
+        "--no-nanite-assembly",
+        dest="create_nanite_assembly",
+        action="store_false",
+        help="Skip Nanite Assembly USD creation",
     )
 
     args = parser.parse_args()
 
+    print(f"\n{'='*60}")
+    print("Grove Species Library Generator")
+    print(f"{'='*60}")
+
     try:
         config = get_config()
         export_all_species(
-            config,
-            args.output_dir,
-            args.flushes,
-            args.formats,
-            args.place_twigs,
-            args.twigs_dir
+            config=config,
+            output_dir=args.output_dir,
+            growth_flushes=args.flushes,
+            formats=args.formats,
+            include_twigs=args.include_twigs,
+            resolution=args.resolution,
+            create_nanite_assembly=args.create_nanite_assembly,
         )
     except Exception as e:
-        print(f"Export failed: {e}")
+        print(f"\n✗ Export failed: {e}")
+        import traceback
+
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
