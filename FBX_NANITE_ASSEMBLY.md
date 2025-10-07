@@ -12,6 +12,7 @@ This allows you to choose between static meshes (USD) for better performance or 
 ## Why Two Assemblies?
 
 ### Static Mesh Assembly (USD-based)
+
 - **Purpose**: High-performance static foliage
 - **Format**: References `.usda` files
 - **Mesh Type**: `staticMesh`
@@ -23,6 +24,7 @@ This allows you to choose between static meshes (USD) for better performance or 
   - Optimized for static scenes
 
 ### Skeletal Mesh Assembly (FBX-based)
+
 - **Purpose**: Animated/deformable trees
 - **Format**: References `.fbx` files
 - **Mesh Type**: `skeletalMesh`
@@ -59,6 +61,7 @@ forest/
 ## Nanite Assembly Structure
 
 ### Static Mesh Assembly
+
 ```usd
 #usda 1.0
 def Xform "Beech_NaniteAssembly" (
@@ -80,6 +83,7 @@ def Xform "Beech_NaniteAssembly" (
 ```
 
 ### Skeletal Mesh Assembly
+
 ```usd
 #usda 1.0
 def Xform "Beech_NaniteAssembly" (
@@ -162,6 +166,7 @@ Twig instances are positioned at branch attachment points using face attributes 
 ### Coordinate System
 
 Both assemblies use **Z-up** coordinates (Unreal/Blender standard):
+
 - Tree geometry transformed from Grove's Y-up to Z-up
 - Twig positions converted during extraction
 - All references use absolute paths (resolved at export time)
@@ -169,6 +174,7 @@ Both assemblies use **Z-up** coordinates (Unreal/Blender standard):
 ## Performance Comparison
 
 ### Static Mesh Assembly
+
 ```
 ✓ 100% Nanite compression
 ✓ Instanced rendering
@@ -178,6 +184,7 @@ Both assemblies use **Z-up** coordinates (Unreal/Blender standard):
 ```
 
 ### Skeletal Mesh Assembly
+
 ```
 ✓ Nanite support maintained
 ✓ Animation-ready bones
@@ -189,18 +196,21 @@ Both assemblies use **Z-up** coordinates (Unreal/Blender standard):
 ## Workflow Recommendations
 
 ### Large Forests (1000+ trees)
+
 - Use Static Mesh Assembly
 - Import once, instance thousands of times
 - Let Nanite handle detail level
 - Paint with Foliage Tool
 
 ### Hero Trees (< 10 trees)
+
 - Use Skeletal Mesh Assembly
 - Add wind animation blueprint
 - Configure Control Rig
 - Manual placement for best visual impact
 
 ### Mixed Approach
+
 - Background: Static Mesh Assembly (90% of trees)
 - Foreground: Skeletal Mesh Assembly (10% of trees)
 - Transition distance: 50-100m from player
@@ -208,15 +218,19 @@ Both assemblies use **Z-up** coordinates (Unreal/Blender standard):
 ## Troubleshooting
 
 ### Issue: FBX references not found
+
 **Solution**: Ensure FBX files are in the correct relative path (`../FBX/` from USD directory)
 
 ### Issue: Skeleton not importing
+
 **Solution**: Use Skeletal Assembly (`*_Skeletal.usda`), not Static Assembly
 
 ### Issue: Twigs not appearing
+
 **Solution**: Check that twig USD/FBX files exist in `data/assets/twigs/`
 
 ### Issue: Assembly not recognized as Nanite
+
 **Solution**: Verify Unreal Engine 5.7+ is being used (earlier versions don't support Nanite Assemblies)
 
 ## Related Documentation
