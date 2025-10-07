@@ -1,6 +1,19 @@
+````markdown
 # Nanite Assembly USD Export - Quick Start
 
 This document provides a quick overview of the Nanite Assembly integration for Unreal Engine 5.7+.
+
+## ✅ Status: Working
+
+**Last Update**: 2025-01-07 - Fixed USD type error for `apiSchemas` metadata
+
+The Nanite Assembly export is fully functional:
+- ✅ **510 Nanite Assemblies** created successfully from all twigs
+- ✅ **USD Type Error Fixed** - Using `Sdf.TokenListOp()` instead of Python lists
+- ✅ **Twig Conversion** - Each twig exports both standard USD and Nanite Assembly
+- ✅ **Tree Export** - Full tree + twig integration working
+
+See `NANITE_ASSEMBLY_FIX.md` for technical details on the fix.
 
 ## What is This?
 
@@ -31,7 +44,16 @@ Variable: PXR_PLUGINPATH_NAME
 Value: C:\path\to\the-grove\data\unreal_schema
 ```
 
-### 2. Export Trees
+### 2. Convert Twigs (Recommended)
+
+```bash
+# Convert twigs to USD with Nanite Assemblies
+python src/growpy/cli/convert_twigs.py data/assets/twigs --formats usda
+```
+
+This creates both standard USD and Nanite Assembly versions of each twig.
+
+### 3. Export Trees
 
 ```bash
 # Species library with Nanite Assemblies (default)
@@ -41,10 +63,10 @@ python src/growpy/cli/generate_species_library.py --formats usda --include-twigs
 python src/growpy/cli/generate_forest.py forest.csv --formats usda
 ```
 
-### 3. Import into Unreal Engine
+### 4. Import into Unreal Engine
 
 1. Enable **USD Importer** plugin in Unreal
-2. Import `*_NaniteAssembly.usda` file
+2. Import `*_NaniteAssembly.usda` file (tree or twig)
 3. Nanite conversion happens automatically
 4. Use in level, PCG, or Foliage system
 
