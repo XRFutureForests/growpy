@@ -384,10 +384,10 @@ class GrowPyConfig:
     @classmethod
     def get_available_twig_usd_files(cls, common_name: str) -> List[Path]:
         """
-        Get all available twig files (FBX/USD) for a given species.
+        Get all available twig files (USD/FBX) for a given species.
 
-        Now supports both FBX (with mount points) and USD formats.
-        FBX files are prioritized if both formats exist.
+        Now supports both USD (preferred for Nanite) and FBX formats.
+        USD files are prioritized if both formats exist.
 
         Args:
             common_name: The common name of the species.
@@ -399,17 +399,17 @@ class GrowPyConfig:
         if not twig_dir or not twig_dir.exists():
             return []
 
-        # Find FBX files (with mount points - preferred)
+        # Find USD files (preferred for Unreal Nanite)
+        usd_files = list(twig_dir.glob("*.usda")) + list(twig_dir.glob("*.usd"))
+
+        # Find FBX files (fallback if no USD)
         fbx_files = list(twig_dir.glob("*.fbx"))
 
-        # Find USD files (fallback)
-        usd_files = list(twig_dir.glob("*.usda"))
-
-        # Prefer FBX if available, otherwise use USD
-        if fbx_files:
-            return sorted(fbx_files)
-        else:
+        # Prefer USD if available (better for Nanite), otherwise use FBX
+        if usd_files:
             return sorted(usd_files)
+        else:
+            return sorted(fbx_files)
 
     @classmethod
     def get_twig_files_by_type(cls, common_name: str) -> Dict[str, List[Path]]:
@@ -445,11 +445,18 @@ class GrowPyConfig:
         for file_path in usd_files:
             filename = file_path.stem.lower()
 
+            # Also check for USD files in parent directory (alongside .blend files)
+            if not file_path.exists() and file_path.suffix in [".usda", ".usd"]:
+                # Try finding in parent directory
+                parent_usd = file_path.parent.parent / file_path.name
+                if parent_usd.exists():
+                    file_path = parent_usd
+
             # Categorize by filename patterns (supports both old and new naming)
             # New standardized naming: species_type or species_type_var_x
-            if "_apical" in filename or "apical" in filename:
+            if "apical" in filename or "end" in filename or "long" in filename:
                 twig_types["apical"].append(file_path)
-            elif "_lateral" in filename or "lateral" in filename:
+            elif "lateral" in filename or "side" in filename or "short" in filename:
                 twig_types["lateral"].append(file_path)
             elif "_upward" in filename or "upward" in filename:
                 twig_types["upward"].append(file_path)
