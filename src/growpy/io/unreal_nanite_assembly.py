@@ -51,6 +51,10 @@ def create_nanite_assembly_usd(
         # Create new stage
         stage = Usd.Stage.CreateNew(str(output_path))
 
+        # Set stage metadata to match tree USD (Z-up, meters)
+        UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
+
         # Root Xform with NaniteAssemblyRootAPI
         assembly_name = f"{species_name.replace(' ', '_')}_NaniteAssembly"
         root_prim = stage.DefinePrim(f"/{assembly_name}", "Xform")

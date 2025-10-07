@@ -619,6 +619,10 @@ def export_twig_placements_to_usd(
         # Create USD stage
         stage = Usd.Stage.CreateNew(str(output_path))
 
+        # Set stage metadata to match tree-only USD (Z-up, meters)
+        UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
+
         # Create root
         root_prim = stage.DefinePrim("/TreeAssembly", "Xform")
         stage.SetDefaultPrim(root_prim)
