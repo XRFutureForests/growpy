@@ -529,12 +529,17 @@ def extract_twig_placements_from_usd(
                             else:
                                 normal = [0.0, 0.0, 1.0]
 
-                            # Convert from Y-up (Grove) to Z-up (Blender/USD standard)
-                            # Grove's USD export is in Y-up but we need Z-up for proper orientation
-                            # Note: Don't scale positions here (scale=1.0) because they're already
-                            # extracted from the scaled tree mesh vertices
-                            center = convert_y_up_to_z_up(tuple(center), scale=1.0)
-                            normal = convert_y_up_normal_to_z_up(tuple(normal))
+                            # IMPORTANT: Negate the normal to point outward from the tree surface
+                            # The mesh winding order produces inward-facing normals, but twigs
+                            # need to point outward away from the branch surface
+                            normal = [-n for n in normal]
+
+                            # NOTE: No coordinate conversion needed!
+                            # The tree USD file is already exported in Z-up coordinates (upAxis = "Z"),
+                            # so the vertex positions and normals are already in the correct coordinate
+                            # system. The twigs should be placed using these coordinates directly.
+                            center = tuple(center)
+                            normal = tuple(normal)
 
                             # Create rotation matrix
                             rot_matrix = normal_to_rotation_matrix(normal)
