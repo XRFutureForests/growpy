@@ -681,6 +681,10 @@ def create_twig_nanite_assembly(
         # Create new stage
         stage = Usd.Stage.CreateNew(str(nanite_path))
 
+        # Set stage metadata to match twig USD (Z-up, meters)
+        UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
+
         # Root Xform with NaniteAssemblyRootAPI
         assembly_name = f"{twig_name.replace(' ', '_')}_NaniteAssembly"
         root_prim = stage.DefinePrim(f"/{assembly_name}", "Xform")
