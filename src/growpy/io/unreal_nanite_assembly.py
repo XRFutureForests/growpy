@@ -49,10 +49,10 @@ def create_nanite_assembly_usd(
         root_prim = stage.DefinePrim(f"/{assembly_name}", "Xform")
         stage.SetDefaultPrim(root_prim)
 
-        # Apply NaniteAssemblyRootAPI
-        root_prim.SetMetadata(
-            "apiSchemas", ["NaniteAssemblyRootAPI"]
-        )
+        # Apply NaniteAssemblyRootAPI using TokenListOp
+        api_schemas = Sdf.TokenListOp()
+        api_schemas.prependedItems = ["NaniteAssemblyRootAPI"]
+        root_prim.SetMetadata("apiSchemas", api_schemas)
 
         # Set mesh type
         mesh_type = "skeletalMesh" if use_skeletal_mesh else "staticMesh"
@@ -62,17 +62,19 @@ def create_nanite_assembly_usd(
 
         # If skeletal mesh, set skeleton reference
         if use_skeletal_mesh and skeleton_path:
-            skeleton_rel = root_prim.CreateRelationship("unreal:naniteAssembly:skeleton")
+            skeleton_rel = root_prim.CreateRelationship(
+                "unreal:naniteAssembly:skeleton"
+            )
             # Skeleton must be a descendant prim
             skeleton_rel.AddTarget(f"/{assembly_name}/Skeleton")
 
         # Tree mesh as ExternalRef
         tree_prim = stage.DefinePrim(f"/{assembly_name}/TreeMesh", "Xform")
 
-        # Apply NaniteAssemblyExternalRefAPI
-        tree_prim.SetMetadata(
-            "apiSchemas", ["NaniteAssemblyExternalRefAPI"]
-        )
+        # Apply NaniteAssemblyExternalRefAPI using TokenListOp
+        tree_api_schemas = Sdf.TokenListOp()
+        tree_api_schemas.prependedItems = ["NaniteAssemblyExternalRefAPI"]
+        tree_prim.SetMetadata("apiSchemas", tree_api_schemas)
 
         # Reference the tree USD
         tree_prim.GetReferences().AddReference(str(tree_usd_path.resolve()))
@@ -115,10 +117,10 @@ def create_nanite_assembly_usd(
                         f"/{assembly_name}/TwigPrototypes/{proto_name}", "Xform"
                     )
 
-                    # Apply ExternalRefAPI to prototype
-                    proto_prim.SetMetadata(
-                        "apiSchemas", ["NaniteAssemblyExternalRefAPI"]
-                    )
+                    # Apply ExternalRefAPI to prototype using TokenListOp
+                    proto_api_schemas = Sdf.TokenListOp()
+                    proto_api_schemas.prependedItems = ["NaniteAssemblyExternalRefAPI"]
+                    proto_prim.SetMetadata("apiSchemas", proto_api_schemas)
 
                     # Make instanceable for memory efficiency
                     proto_prim.SetInstanceable(True)
@@ -145,17 +147,20 @@ def create_nanite_assembly_usd(
                     all_proto_indices = []
 
                     for twig_type, placement_list in placements.items():
-                        if not placement_list or twig_type not in twig_type_to_proto_idx:
+                        if (
+                            not placement_list
+                            or twig_type not in twig_type_to_proto_idx
+                        ):
                             continue
 
                         proto_idx = twig_type_to_proto_idx[twig_type]
 
                         for placement in placement_list:
                             from .twig_placement import (
-                                rotation_matrix_to_quaternion,
-                                convert_blender_to_ue_coords,
                                 convert_blender_normal_to_ue,
+                                convert_blender_to_ue_coords,
                                 normal_to_rotation_matrix,
+                                rotation_matrix_to_quaternion,
                             )
 
                             pos = placement["position"]
@@ -172,7 +177,9 @@ def create_nanite_assembly_usd(
                             quat = rotation_matrix_to_quaternion(rot_matrix)
 
                             # Add to arrays
-                            all_positions.append(Gf.Vec3f(ue_pos[0], ue_pos[1], ue_pos[2]))
+                            all_positions.append(
+                                Gf.Vec3f(ue_pos[0], ue_pos[1], ue_pos[2])
+                            )
                             all_orientations.append(
                                 Gf.Quath(quat[0], quat[1], quat[2], quat[3])
                             )

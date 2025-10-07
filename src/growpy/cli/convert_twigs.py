@@ -657,10 +657,81 @@ if __name__ == "__main__":
 '''
 
 
+def create_twig_nanite_assembly(
+    twig_usd_path: Path,
+    twig_name: str,
+    species_name: str,
+) -> bool:
+    """Create a Nanite Assembly USD for a single twig following Unreal schema.
+
+    Args:
+        twig_usd_path: Path to standard twig USD file
+        twig_name: Standardized twig name (e.g., "beech_apical")
+        species_name: Species name
+
+    Returns:
+        bool: Success status
+    """
+    try:
+        from pxr import Sdf, Usd, UsdGeom
+
+        # Create Nanite Assembly file path
+        nanite_path = twig_usd_path.parent / f"{twig_name}_NaniteAssembly.usda"
+
+        # Create new stage
+        stage = Usd.Stage.CreateNew(str(nanite_path))
+
+        # Root Xform with NaniteAssemblyRootAPI
+        assembly_name = f"{twig_name.replace(' ', '_')}_NaniteAssembly"
+        root_prim = stage.DefinePrim(f"/{assembly_name}", "Xform")
+        stage.SetDefaultPrim(root_prim)
+
+        # Apply NaniteAssemblyRootAPI using TokenListOp
+        api_schemas = Sdf.TokenListOp()
+        api_schemas.prependedItems = ["NaniteAssemblyRootAPI"]
+        root_prim.SetMetadata("apiSchemas", api_schemas)
+
+        # Set mesh type to staticMesh
+        root_prim.CreateAttribute(
+            "unreal:naniteAssembly:meshType", Sdf.ValueTypeNames.Token, custom=False
+        ).Set("staticMesh")
+
+        # Twig mesh as ExternalRef
+        twig_prim = stage.DefinePrim(f"/{assembly_name}/TwigMesh", "Xform")
+
+        # Apply NaniteAssemblyExternalRefAPI using TokenListOp
+        twig_api_schemas = Sdf.TokenListOp()
+        twig_api_schemas.prependedItems = ["NaniteAssemblyExternalRefAPI"]
+        twig_prim.SetMetadata("apiSchemas", twig_api_schemas)
+
+        # Reference the standard twig USD (relative path)
+        twig_prim.GetReferences().AddReference(f"./{twig_usd_path.name}")
+
+        # Save stage
+        stage.GetRootLayer().Save()
+
+        return True
+
+    except ImportError:
+        # USD Python not available - skip Nanite Assembly creation
+        return False
+    except Exception as e:
+        print(f"      Warning: Could not create Nanite Assembly: {e}")
+        return False
+
+
 def process_twig_directory(
-    twig_dir: Path, formats: List[str] = ["fbx", "usda"]
+    twig_dir: Path,
+    formats: List[str] = ["fbx", "usda"],
+    create_nanite_assemblies: bool = True,
 ) -> Dict[str, List[Path]]:
-    """Process all twig blend files in a directory."""
+    """Process all twig blend files in a directory.
+
+    Args:
+        twig_dir: Directory containing .blend twig files
+        formats: Export formats to create
+        create_nanite_assemblies: Create Nanite Assembly USD for each twig
+    """
 
     blend_files = list(twig_dir.rglob("*.blend"))
 
@@ -670,6 +741,8 @@ def process_twig_directory(
 
     print(f"\nFound {len(blend_files)} .blend file(s)")
     print(f"Export formats: {', '.join(formats)}")
+    if create_nanite_assemblies and ("usd" in formats or "usda" in formats):
+        print(f"Nanite Assemblies: Enabled")
     print(f"{'='*60}\n")
 
     # Create temporary processor script
@@ -710,11 +783,39 @@ def process_twig_directory(
 
                 if result.returncode == 0:
                     # Find exported files
+                    exported_usd_files = []
                     for fmt in formats:
                         exported = list(output_dir.glob(f"*.{fmt}"))
                         if species_name not in results:
                             results[species_name] = []
                         results[species_name].extend(exported)
+
+                        # Track USD files for Nanite Assembly creation
+                        if fmt in ["usd", "usda"]:
+                            exported_usd_files.extend(exported)
+
+                    # Create Nanite Assembly versions
+                    if create_nanite_assemblies and exported_usd_files:
+                        print(f"\n  Creating Nanite Assemblies...")
+                        for usd_file in exported_usd_files:
+                            # Skip if it's already a Nanite Assembly or manifest
+                            if (
+                                "_NaniteAssembly" in usd_file.name
+                                or usd_file.suffix == ".json"
+                            ):
+                                continue
+
+                            twig_name = usd_file.stem
+                            if create_twig_nanite_assembly(
+                                usd_file, twig_name, species_name
+                            ):
+                                nanite_file = (
+                                    usd_file.parent / f"{twig_name}_NaniteAssembly.usda"
+                                )
+                                if nanite_file.exists():
+                                    print(f"    ✓ {nanite_file.name}")
+                                    results[species_name].append(nanite_file)
+
                 else:
                     print(f"\n[ERROR] Processing {blend_file.name}")
                     if result.stderr:
@@ -737,7 +838,26 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Convert Grove twig files with robust texture handling and standardized naming"
+        description="Convert Grove twig files with robust texture handling and standardized naming",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+    # Convert all twigs with Nanite Assemblies (default)
+    python convert_twigs.py data/assets/twigs --formats usda
+    
+    # Convert with both FBX and Nanite Assembly USD
+    python convert_twigs.py data/assets/twigs --formats fbx usda
+    
+    # Convert without Nanite Assemblies
+    python convert_twigs.py data/assets/twigs --formats usda --no-nanite-assembly
+    
+    # Convert specific species
+    python convert_twigs.py data/assets/twigs/Betulaceae_Downy_birch --formats usda
+
+Output per twig:
+    - standard_name.usda                   # Standard USD (DCC compatible)
+    - standard_name_NaniteAssembly.usda   # Nanite Assembly (Unreal optimized)
+        """,
     )
     parser.add_argument(
         "path", type=Path, help="Path to twig directory or single .blend file"
@@ -749,6 +869,19 @@ def main():
         default=["fbx", "usda"],
         help="Export formats (default: fbx usda)",
     )
+    parser.add_argument(
+        "--create-nanite-assembly",
+        dest="create_nanite_assembly",
+        action="store_true",
+        default=True,
+        help="Create Nanite Assembly USD for each twig (default: True)",
+    )
+    parser.add_argument(
+        "--no-nanite-assembly",
+        dest="create_nanite_assembly",
+        action="store_false",
+        help="Skip Nanite Assembly USD creation",
+    )
 
     args = parser.parse_args()
 
@@ -759,10 +892,14 @@ def main():
     if args.path.is_file() and args.path.suffix == ".blend":
         # Single file
         print(f"Processing single file: {args.path.name}")
-        results = process_twig_directory(args.path.parent, args.formats)
+        results = process_twig_directory(
+            args.path.parent, args.formats, args.create_nanite_assembly
+        )
     elif args.path.is_dir():
         # Directory
-        results = process_twig_directory(args.path, args.formats)
+        results = process_twig_directory(
+            args.path, args.formats, args.create_nanite_assembly
+        )
     else:
         print(f"Error: Invalid path (must be .blend file or directory)")
         return 1
@@ -775,6 +912,17 @@ def main():
     total_files = sum(len(files) for files in results.values())
     print(f"\nTotal exported: {total_files} files")
     print(f"Species processed: {len(results)}")
+
+    # Count Nanite Assemblies
+    if args.create_nanite_assembly:
+        nanite_count = sum(
+            1
+            for files in results.values()
+            for f in files
+            if "_NaniteAssembly" in f.name
+        )
+        if nanite_count > 0:
+            print(f"Nanite Assemblies created: {nanite_count}")
 
     return 0
 
