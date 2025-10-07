@@ -1,0 +1,371 @@
+#usda 1.0
+(
+    """ This file describes the Unreal Engine's custom USD schemas.
+    """
+    subLayers = [
+        @usd/schema.usda@
+    ]
+)
+
+over "GLOBAL" (
+    customData = {
+        string libraryName       = "unreal"
+        string libraryPrefix     = "unreal"
+        bool skipCodeGeneration  = true
+    }
+) {
+}
+
+class "CollapsingAPI" (
+    inherits = </APISchemaBase>
+    customData = {
+        token apiSchemaType = "singleApply"
+    }
+)
+{
+    uniform token unreal:collapsing = "default" (
+        allowedTokens = ["allow", "default", "never"]
+        doc = """ Explicit control of how to handle collapsing for this prim.
+
+        'allow' means we wil will always attempt to collapse this prim (and try collapsing its subtree) regardless of the prim's kind.
+        'default' will allow collapsing (and try collapsing the prim's subtree) only if the kind is listed on 'Kinds to collapse', and if 'Use prim kinds for collapsing' is enabled.
+        'never' will prevent this prim from being collapsed into a parent and from trying to collapse its subtree, regardless of its kind.
+        """
+    )
+}
+
+class "SubdivisionAPI" (
+    inherits = </APISchemaBase>
+    customData = {
+        token apiSchemaType = "singleApply"
+    }
+)
+{
+    uniform int unreal:subdivisionLevel = 0 (
+        doc = """ Explicit control of how to handle subdivision for this prim.
+
+        When specified, it will subdivide the mesh generated from this prim the desired number of times (0 means 'no subdivision').
+        This overrides the global subdivision level specified on the importer or pipeline settings.
+        It is not necessary to provide a non-zero global subdivision level to enable subdivision for a single prim: This schema will suffice.
+        The subdivision scheme to use for the prim is still dictated by UsdGeomMesh's subdivisionScheme attribute.
+        """
+    )
+}
+
+class "LiveLinkAPI" (
+    inherits = </APISchemaBase>
+    customData = {
+        token apiSchemaType = "singleApply"
+    }
+)
+{
+    string unreal:liveLink:animBlueprintPath = "/USDImporter/Blueprint/DefaultLiveLinkAnimBP.DefaultLiveLinkAnimBP" (
+        doc = "Content path to the AnimationBlueprint asset to use for skeletal mesh components"
+    )
+
+    bool unreal:liveLink:enabled = true (
+        doc = "Whether to enable the Live Link connection or not"
+    )
+
+    string unreal:liveLink:subjectName = "" (
+        doc = "Live Link subject name to use"
+    )
+}
+
+class "ControlRigAPI" (
+    inherits = </APISchemaBase>
+    customData = {
+        token apiSchemaType = "singleApply"
+        token[] apiSchemaCanOnlyApplyTo = ["SkelRoot", "Skeleton"]
+    }
+)
+{
+    string unreal:controlRig:controlRigPath = "" (
+        doc = "Content path to the ControlRig asset to use for skeletal mesh components"
+    )
+
+    bool unreal:controlRig:reduceKeys = false (
+        doc = "Removes unnecessary generated Control Rig keys based on unreal:controlRig:reductionTolerance"
+    )
+
+    float unreal:controlRig:reductionTolerance = 0.001 (
+        doc = "How far apart generated Control Rig keys have to be to not be pruned, if unreal:controlRig:reduceKeys is true"
+    )
+
+    bool unreal:controlRig:useFKControlRig = false (
+        doc = "If true, will use a generated FKControlRig asset for rigging. If false, will use the Control Rig Blueprint given at unreal:controlRigPath instead"
+    )
+}
+
+class "GroomAPI" (
+    inherits = </APISchemaBase>
+    customData = {
+        token apiSchemaType = "singleApply"
+        token[] apiSchemaCanOnlyApplyTo = ["Curves", "Xform"]
+    }
+)
+{
+}
+
+class "GroomBindingAPI" (
+    inherits = </APISchemaBase>
+    customData = {
+        token apiSchemaType = "singleApply"
+
+        token[] apiSchemaCanOnlyApplyTo = ["Mesh", "SkelRoot"]
+    }
+)
+{
+    rel unreal:groomBinding:groom (
+        customData = {
+            string apiName = "groom"
+        }
+        doc = """The groom to bind to this prim."""
+    )
+
+    rel unreal:groomBinding:referenceMesh (
+        customData = {
+            string apiName = "referenceMesh"
+        }
+        doc = """Reference mesh on which the groom was edited."""
+    )
+}
+
+class "SparseVolumeTextureAPI" (
+    inherits = </APISchemaBase>
+    customData = {
+        token apiSchemaType = "singleApply"
+        token[] apiSchemaCanOnlyApplyTo = ["Volume", "OpenVDBAsset"]
+    }
+    doc = """This API schema can be applied to both Volume and OpenVDBAsset prims, and lets users control
+    how the generated Sparse Volume Texture (SVT) asset and the volumetric material are configured.
+
+    In general terms, the 'Volume' prim will be converted into a single HeterogeneousVolume actor in Unreal, and
+    will receive a single volume domain material instance that it can render Sparse Volume Textures with. There is
+    a default reference material (that can be set to a different material asset on the Unreal project settings),
+    but users can specify a material asset to use as reference for this Volume prim alone by just using regular
+    UnrealMaterial bindings, like the below:
+
+    \\code
+    def Volume 'VolumePrim' (
+        apiSchemas = ['SparseVolumeTextureAPI', 'MaterialBindingAPI']
+    )
+    {
+        ...
+
+        rel material:binding = <UnrealMaterial>
+
+        def Material 'UnrealMaterial'
+        {
+            token outputs:unreal:surface.connect = <UnrealShader.outputs:out>
+            def Shader 'UnrealShader'
+            {
+                uniform token info:implementationSource = 'sourceAsset'
+                uniform asset info:unreal:sourceAsset = @/Game/MySVTMaterial.MySVTMaterial@
+                token outputs:out
+            }
+        }
+
+        ...
+    }
+    \\endcode
+
+    This schema can then be used to describe how to assign the generated SVT assets as material instance parameters of the
+    volumetric material used. That is optional however, as the importer will try assigning the generated SVT assets
+    to available material parameters in alphabetical order, which could be sufficient for most use cases.
+
+    Each referenced VDB file referenced by the volume prim will be converted into a single SVT asset. Even if multiple
+    OpenVDBAsset prims refer to the same VDB file, the importer will try reading all the required grids from the
+    file, but still generate a single SVT asset.
+
+    By default, all fields from the VDB file will be read, and organized on the SVT asset channels according to some
+    heuristics dictated by the SVT asset importer. This same schema can be used to describe how to manually assign
+    the grids to specific SVT attribute channels, however.
+    """
+)
+{
+    token[] unreal:SVT:mappedFields (
+        doc = """Which fields of the Volume prim to assign as material parameters on the volumetric material.
+
+        This is meant to be used with unreal:SVT:mappedMaterialParameters, so that something like the below
+        means we will assign the SVT generated for the OpenVDBAssets pointed at by 'field:density' and
+        'field:velocity' onto the material parameter 'SVTParam0':
+
+        \\code
+        def Volume 'VolumePrim' (
+            apiSchemas = ['SparseVolumeTextureAPI']
+        )
+        {
+            rel field:density = <ExplosionDensity>
+            rel field:velocity = <ExplosionVelocity>
+            rel field:temperature = <FireTemperature>
+
+            token[] unreal:SVT:mappedFields = [
+                'density', 'velocity', 'temperature', 'velocity'
+            ]
+            token[] unreal:SVT:mappedMaterialParameters = [
+                'SVTParam0', 'SVTParam0', 'SVTParam1', 'SVTParam2'
+            ]
+
+            ...
+        }
+        \\endcode
+
+        In this case 'field:density' and 'field:velocity' point at different fields of the same VDB file. A single
+        SVT asset will be generated for each .vdb file, which explains how we're assigning these two 'fields' to
+        a single material parameter: The two fields will be contained on the same SVT asset.
+
+        The above also describes how the SVT generated for 'field:temperature' will be assigned to the material
+        parameter 'SVTParam1', and finally describes how to assign the same SVT generated for 'field:velocity'
+        also to a second material parameter 'SVTParam2'.
+        """
+    )
+
+    token[] unreal:SVT:mappedMaterialParameters (
+        doc = "Which of the volumetric material's parameters to assign each corresponding entry of mappedFields to. Check the documentation for the 'unreal:SVT:mappedFields' attribute above for more details."
+    )
+
+    token unreal:SVT:attributesADataType (
+        allowedTokens = ["unorm8", "float16", "float32"]
+        doc = "The data type to use for the AttributesA channels of the Sparse Volume Texture that is generated for this OpenVDBAsset prim."
+    )
+
+    token unreal:SVT:attributesBDataType (
+        allowedTokens = ["unorm8", "float16", "float32"]
+        doc = "The data type to use for the AttributesB channels of the Sparse Volume Texture that is generated for this OpenVDBAsset prim."
+    )
+
+    token[] unreal:SVT:mappedGridComponents (
+        allowedTokens = ["X", "Y", "Z", "W", "R", "G", "B", "A"]
+        doc = """This along with the 'unreal:SVT:mappedAttributeChannels' attribute specify how to map the components of the
+        grid to the Sparse Volume Texture channels.
+
+        This attribute describes which components of the grid to map. Note these values must be compatible with the
+        total number of components of the selected grid (i.e. having a value ['X', 'Y', 'Z'] for a grid that only has a single
+        component in the VDB file constitutes an authoring error).
+
+        On the snippet below, for example, note how the selected fieldName points to a float3 field named
+        'velocity', and by setting those attributes we describe how to map the 'X' component of 'velocity' to both the
+        'AttributesA.R' and 'AttributesA.G' channels, and the 'Y' component of velocity to the 'AttributesB.R' channel.
+
+        \\code
+        def OpenVDBAsset 'ExplosionVelocity' (
+            apiSchemas = ['SparseVolumeTextureAPI']
+        )
+        {
+            asset filePath = @./explosion.vdb@
+            token fieldName = 'velocity'
+
+            token[] unreal:SVT:mappedGridComponents = [
+                'X',
+                'X',
+                'Y',
+            ]
+
+            token[] unreal:SVT:mappedAttributeChannels = [
+                'AttributesA.R',
+                'AttributesA.G',
+                'AttributesB.R',
+            ]
+        }
+        \\endcode
+        """
+    )
+
+    token[] unreal:SVT:mappedAttributeChannels (
+        allowedTokens = [
+            "AttributesA.R", "AttributesA.G", "AttributesA.B", "AttributesA.A",
+            "AttributesB.R", "AttributesB.G", "AttributesB.B", "AttributesB.A"
+        ]
+        doc = """This along with the 'unreal:SVT:mappedGridComponents' attribute specify how to map the components of the
+        grid to the Sparse Volume Texture channels.
+
+        This attribute describes which Sparse Volume Texture channels to map each corresponding entry of
+        'unreal:SVT:mappedGridComponents' onto. Check the documentation of 'unreal:SVT:mappedGridComponents' for more details.
+        """
+    )
+}
+
+class "LodSubtreeAPI" (
+    inherits = </APISchemaBase>
+    customData = {
+        token apiSchemaType = "singleApply"
+        token[] apiSchemaCanOnlyApplyTo = ["Scope", "Xform"]
+    }
+	doc = """This API schema enables the direct children of a Scope or Xform to be interpreted as a set of LODs."""
+)
+{
+    rel unreal:lodSubtree:levels (
+        doc = """Relationship to one or more prims, each prim and its subtree representing a level. The target
+        levels must be direct children and specified from high detail to low.
+        """
+    )
+}
+
+class "NaniteAssemblyRootAPI" (
+    inherits = </APISchemaBase>
+    customData = {
+        token apiSchemaType = "singleApply"
+        token[] apiSchemaCanOnlyApplyTo = ["Xform"]
+    }
+)
+{
+    uniform token unreal:naniteAssembly:meshType = "staticMesh" (
+        customData = {
+            string apiName = "meshType"
+        }
+        allowedTokens = [ "staticMesh", "skeletalMesh" ]
+        doc = """Specifies the type of Nanite Assembly this prim represents. Valid values are:
+        * "staticMesh" - This is the root of a static mesh Nanite assembly.
+        * "skeletalMesh" - This is the root of a skeletal mesh Nanite assembly.
+        """
+    )
+
+    rel unreal:naniteAssembly:skeleton (
+        customData = {
+            string apiName = "skeleton"
+        }
+        doc = """The skeleton to consider as the base of this Nanite assembly root (Valid for meshType=skeletalMesh only, and must be a descendant prim)."""
+    )
+}
+
+class "NaniteAssemblyExternalRefAPI" (
+    inherits = </APISchemaBase>
+    customData = {
+        token apiSchemaType = "singleApply"
+        token[] apiSchemaCanOnlyApplyTo = ["Xform"]
+    }
+)
+{
+    uniform token unreal:naniteAssembly:meshAssetPath = "" (
+        customData = {
+            string apiName = "meshAssetPath"
+        }
+        doc = """Package path of either a static mesh or skeletal mesh asset to be embedded as a part of the Nanite assembly (ex: /Game/Assets/Meshes/MyMeshAsset.MyMeshAsset)"""
+    )
+}
+
+class "NaniteAssemblySkelBindingAPI" (
+    inherits = </APISchemaBase>
+    customData = {
+        token apiSchemaType = "singleApply"
+        token[] apiSchemaCanOnlyApplyTo = ["Xform", "Mesh", "SkelRoot", "PointInstancer"]
+    }
+)
+{
+    uniform token[] primvars:unreal:naniteAssembly:bindJoints (
+        customData = {
+            string apiName = "bindJoints"
+        }
+        doc = """The names or paths of the joints in the skeleton of the nearest ancestor skeletal mesh Nanite assembly root to bind this prim to. When applied to a 
+        PointInstancer a uniform number of joints per instance must be supplied and described via the primvars elementSize metadata. """
+    )
+
+    uniform float[] primvars:unreal:naniteAssembly:bindJointWeights (   
+        customData = {
+            string apiName = "bindJointWeights"
+        }
+        doc = """Optional weights of the joints specified in 'bindJoints' in the closest ancestor Nanite assembly root's skeleton to bind this prim to.
+        If unspecified, all joints speficied in *bindJoints* will be awarded equal weighting (skelMesh assemblies only)."""
+    )
+}

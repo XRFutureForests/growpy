@@ -148,6 +148,7 @@ def generate_forest_exports(
     resolution: int = None,
     place_twigs: bool = False,
     twigs_dir: Path = None,
+    create_nanite_assembly: bool = True,
 ) -> None:
     """Generate forest from CSV data and export in specified formats.
 
@@ -160,6 +161,7 @@ def generate_forest_exports(
         resolution: Override resolution from quality preset (4-32, optional)
         place_twigs: Whether to place twig instances on trees (default: False)
         twigs_dir: Directory containing twig files (default: config.twigs_path)
+        create_nanite_assembly: Create Nanite Assembly USD for Unreal Engine (default: True)
     """
     if not EXPORT_AVAILABLE:
         print("ERROR: Export not available - bpy module required")
@@ -230,6 +232,7 @@ def generate_forest_exports(
                 build_cutoff_thickness=quality_params["build_cutoff_thickness"],
                 build_blend=quality_params["build_blend"],
                 build_end_cap=quality_params["build_end_cap"],
+                create_nanite_assembly=create_nanite_assembly,
             )
             if export_results:
                 total_exported = sum(len(files) for files in export_results.values())
@@ -346,6 +349,18 @@ Examples:
         default=None,
         help="Directory containing twig files (default: from config)",
     )
+    parser.add_argument(
+        "--create-nanite-assembly",
+        action="store_true",
+        default=True,
+        help="Create Nanite Assembly USD files for Unreal Engine 5.7+ (default: True)",
+    )
+    parser.add_argument(
+        "--no-nanite-assembly",
+        dest="create_nanite_assembly",
+        action="store_false",
+        help="Skip Nanite Assembly USD creation",
+    )
 
     args = parser.parse_args()
 
@@ -384,6 +399,7 @@ Examples:
             args.resolution,
             args.place_twigs,
             args.twigs_dir,
+            args.create_nanite_assembly,
         )
 
     except Exception as e:
