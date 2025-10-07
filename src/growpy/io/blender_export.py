@@ -1663,50 +1663,88 @@ def batch_export_trees_for_unreal(
                                 variation_info["files"]["fbx"] = str(
                                     fbx_path.relative_to(output_dir)
                                 )
-                                
+
                                 # Create FBX-based skeletal mesh Nanite Assembly
-                                if create_nanite_assembly and usd_dir and "usd" in variation_info["files"]:
-                                    from .unreal_nanite_assembly import create_nanite_assembly_usd
-                                    
-                                    fbx_nanite_path = usd_dir / f"{variation_name}_NaniteAssembly_Skeletal.usda"
+                                if (
+                                    create_nanite_assembly
+                                    and usd_dir
+                                    and "usd" in variation_info["files"]
+                                ):
+                                    from .unreal_nanite_assembly import (
+                                        create_nanite_assembly_usd,
+                                    )
+
+                                    fbx_nanite_path = (
+                                        usd_dir
+                                        / f"{variation_name}_NaniteAssembly_Skeletal.usda"
+                                    )
                                     tree_usd_ref = usd_dir / f"{variation_name}.usda"
-                                    
+
                                     # Get twig FBX paths
                                     twig_fbx_map = None
                                     if include_twigs_in_usd and twig_usd_map:
                                         from ..config import GrowPyConfig
-                                        twig_files_by_type = GrowPyConfig.get_twig_files_by_type(species)
+
+                                        twig_files_by_type = (
+                                            GrowPyConfig.get_twig_files_by_type(species)
+                                        )
                                         twig_fbx_map = {}
-                                        
+
                                         for twig_type in twig_usd_map.keys():
                                             # Find matching FBX file
-                                            for file_type, paths in twig_files_by_type.items():
-                                                if any(kw in file_type.lower() for kw in 
-                                                      ["apical", "lateral", "long", "short", "upward", "dead"]):
+                                            for (
+                                                file_type,
+                                                paths,
+                                            ) in twig_files_by_type.items():
+                                                if any(
+                                                    kw in file_type.lower()
+                                                    for kw in [
+                                                        "apical",
+                                                        "lateral",
+                                                        "long",
+                                                        "short",
+                                                        "upward",
+                                                        "dead",
+                                                    ]
+                                                ):
                                                     for path in paths:
-                                                        fbx_path_candidate = path.with_suffix(".fbx")
+                                                        fbx_path_candidate = (
+                                                            path.with_suffix(".fbx")
+                                                        )
                                                         if fbx_path_candidate.exists():
-                                                            twig_fbx_map[twig_type] = fbx_path_candidate
+                                                            twig_fbx_map[twig_type] = (
+                                                                fbx_path_candidate
+                                                            )
                                                             break
                                                     if twig_type in twig_fbx_map:
                                                         break
-                                    
-                                    print(f"\n  Creating Unreal Nanite Assembly (FBX/Skeletal)...")
+
+                                    print(
+                                        f"\n  Creating Unreal Nanite Assembly (FBX/Skeletal)..."
+                                    )
                                     fbx_nanite_success = create_nanite_assembly_usd(
                                         tree_usd_path=tree_usd_ref,
                                         output_path=fbx_nanite_path,
                                         species_name=species,
-                                        twig_usd_paths=twig_usd_map if include_twigs_in_usd else None,
+                                        twig_usd_paths=(
+                                            twig_usd_map
+                                            if include_twigs_in_usd
+                                            else None
+                                        ),
                                         use_skeletal_mesh=True,
                                         tree_fbx_path=fbx_path,
                                         twig_fbx_paths=twig_fbx_map,
                                     )
-                                    
+
                                     if fbx_nanite_success:
-                                        print(f"  ✓ Skeletal Nanite Assembly: {fbx_nanite_path.name}")
-                                        print(f"    Import this file for animated trees (skeletal mesh)")
-                                        variation_info["files"]["nanite_skeletal"] = str(
-                                            fbx_nanite_path.relative_to(output_dir)
+                                        print(
+                                            f"  ✓ Skeletal Nanite Assembly: {fbx_nanite_path.name}"
+                                        )
+                                        print(
+                                            f"    Import this file for animated trees (skeletal mesh)"
+                                        )
+                                        variation_info["files"]["nanite_skeletal"] = (
+                                            str(fbx_nanite_path.relative_to(output_dir))
                                         )
                     except Exception as e:
                         print(f"FBX export failed for {variation_name}: {e}")
@@ -2111,5 +2149,7 @@ def bundle_twigs_for_species(
 
     except Exception as e:
         print(f"Failed to bundle twigs for {species_name}: {e}")
+
+    return results
 
     return results

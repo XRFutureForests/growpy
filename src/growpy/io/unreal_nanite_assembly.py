@@ -118,7 +118,11 @@ def create_nanite_assembly_usd(
                     sorted(twig_usd_paths.items())
                 ):
                     # Use FBX path if available (for skeletal mesh), otherwise USD
-                    if use_skeletal_mesh and twig_fbx_paths and twig_type in twig_fbx_paths:
+                    if (
+                        use_skeletal_mesh
+                        and twig_fbx_paths
+                        and twig_type in twig_fbx_paths
+                    ):
                         twig_ref_path = twig_fbx_paths[twig_type]
                     else:
                         twig_ref_path = twig_path
@@ -144,7 +148,9 @@ def create_nanite_assembly_usd(
                     proto_prim.SetInstanceable(True)
 
                     # Reference twig mesh (FBX or USD)
-                    proto_prim.GetReferences().AddReference(str(twig_ref_path.resolve()))
+                    proto_prim.GetReferences().AddReference(
+                        str(twig_ref_path.resolve())
+                    )
 
                     prototype_paths.append(Sdf.Path(proto_prim.GetPath()))
 
