@@ -441,7 +441,9 @@ def extract_twig_placements_from_usd(
             # Look for twig attributes
             for twig_type in ["twig_long", "twig_short", "twig_upward", "twig_dead"]:
                 # Try to get primvar (USD attribute)
-                primvar = mesh.GetPrimvar(twig_type)
+                # GetPrimvarsAPI() is on UsdGeomImageable (parent of Mesh)
+                primvars_api = UsdGeom.PrimvarsAPI(mesh)
+                primvar = primvars_api.GetPrimvar(twig_type)
                 if not primvar or not primvar.HasValue():
                     continue
 
