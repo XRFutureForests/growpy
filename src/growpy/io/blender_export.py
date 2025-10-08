@@ -2253,8 +2253,11 @@ def batch_export_trees_for_unreal(
                     # Get twig USD paths if including twigs
                     twig_usd_map = None
                     if include_twigs_in_usd:
-                        # Get regular USD twig files (never Nanite Assembly for twig references)
-                        twig_usd_map = get_twig_usd_map_for_species(species, config)
+                        # Get static USD twig files (never Nanite Assembly for twig references)
+                        # CRITICAL: Use prefer_skeletal=False to ensure static twigs for static assemblies
+                        twig_usd_map = get_twig_usd_map_for_species(
+                            species, config, prefer_skeletal=False
+                        )
                         if not twig_usd_map:
                             print(f"  Warning: No twig USD files found for {species}")
 
@@ -2670,7 +2673,7 @@ def export_grove_tree_as_usda_native(
             # Use tree-only USD (without twigs) and add twigs explicitly in assembly
             # This ensures proper Nanite Assembly structure for Unreal
             nanite_success = create_nanite_assembly_usd(
-                tree_usd_path=skeletal_tree_path,  # Tree mesh with materials, no twigs
+                tree_usd_path=temp_tree_path,  # Static tree mesh (no skeleton), no twigs
                 output_path=nanite_path,
                 species_name=species_name,
                 twig_usd_paths=twig_usd_paths if include_twigs else None,
@@ -2721,7 +2724,7 @@ def export_grove_tree_as_usda_native(
 
                         print(f"\n  Creating Skeletal Nanite Assembly...")
                         skeletal_nanite_success = create_nanite_assembly_usd(
-                            tree_usd_path=skeletal_assembly_path,
+                            tree_usd_path=skeletal_tree_path,  # Skeletal tree-only (no twigs)
                             output_path=skeletal_nanite_path,
                             species_name=species_name,
                             twig_usd_paths=skeletal_twig_paths,
@@ -2837,24 +2840,51 @@ def get_twig_usd_map_for_species(
                             print(f"    Found {grove_type}: {usd_file.name}")
                             break
 
-                    if grove_type not in twig_usd_map:
-                        # Fallback to FBX if no USD found
-                        fbx_file = twig_file.with_suffix(".fbx")
-                        if fbx_file.exists():
-                            twig_usd_map[grove_type] = fbx_file
-                            print(
-                                f"    Found {grove_type}: {fbx_file.name} (FBX fallback)"
-                            )
-                    break
+                    # CRITICAL: If we found a match (either USD or skeletal variant),
+                    # break out of twig_type loop to prevent other matches from overwriting
+                    if grove_type in twig_usd_map:
+                        break
+
+                    # Fallback to FBX if no USD found
+                    fbx_file = twig_file.with_suffix(".fbx")
+                    if fbx_file.exists():
+                        twig_usd_map[grove_type] = fbx_file
+                        print(f"    Found {grove_type}: {fbx_file.name} (FBX fallback)")
+                        break
 
     # Add fallback mappings for missing twig types
     # If no matches found and twig files exist, use first available for each type
     if not twig_usd_map and twig_files_by_type:
         print(f"    Using generic twig mapping (no keyword matches found)")
-        # Get all available twig files
+        # Get all available twig files, filtering by skeletal preference
         all_twigs = []
         for twig_paths in twig_files_by_type.values():
-            all_twigs.extend(twig_paths)
+            for twig_path in twig_paths:
+                # Check if this twig matches skeletal preference
+                for ext in [".usda", ".usd"]:
+                    usd_file = twig_path.with_suffix(ext)
+                    if not usd_file.exists() or "_NaniteAssembly" in usd_file.name:
+                        continue
+
+                    is_skeletal = "_skeletal" in usd_file.stem
+
+                    # Apply skeletal filtering
+                    if prefer_skeletal and not is_skeletal:
+                        # Looking for skeletal variant
+                        skeletal_file = (
+                            usd_file.parent
+                            / f"{usd_file.stem}_skeletal{usd_file.suffix}"
+                        )
+                        if skeletal_file.exists():
+                            all_twigs.append(skeletal_file)
+                            break
+                    elif not prefer_skeletal and is_skeletal:
+                        # Skip skeletal files when looking for static
+                        continue
+                    else:
+                        # Match found
+                        all_twigs.append(usd_file)
+                        break
 
         if all_twigs:
             # Use first few twigs for different types
@@ -2862,14 +2892,8 @@ def get_twig_usd_map_for_species(
                 ["twig_long", "twig_short", "twig_upward", "twig_dead"]
             ):
                 if i < len(all_twigs):
-                    twig_file = all_twigs[i]
-                    for ext in [".usda", ".usd"]:
-                        usd_file = twig_file.with_suffix(ext)
-                        # CRITICAL: Skip Nanite Assembly files for twigs
-                        if "_NaniteAssembly" not in usd_file.name and usd_file.exists():
-                            twig_usd_map[grove_type] = usd_file
-                            print(f"    Assigned {grove_type}: {usd_file.name}")
-                            break
+                    twig_usd_map[grove_type] = all_twigs[i]
+                    print(f"    Assigned {grove_type}: {all_twigs[i].name}")
 
     # If twig_upward not found, use twig_short (upward twigs are similar to lateral)
     if "twig_upward" not in twig_usd_map and "twig_short" in twig_usd_map:
