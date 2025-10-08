@@ -13,7 +13,7 @@ Twig Type Mapping:
     Grove Attributes -> Standard Names
     - twig_long / twig_end / Apical -> apical (terminal/end twigs)
     - twig_short / twig_side / Lateral -> lateral (side branches)
-    - twig_upward -> upward (upward-facing twigs)
+    - twig_upward -> upward (upward-facing twigs
     - twig_dead / Dead -> dead (dead/winter twigs)
     - A/B/C/Var -> variation_a/b/c (variants within type)
 
