@@ -1,7 +1,12 @@
-"""Internal utilities for GrowPy.
+"""Utilities for GrowPy.
 
-This module is kept for backward compatibility but is essentially empty.
-All imports have been moved to their respective modules.
+This module provides species growth analysis and plotting utilities.
 """
 
-__all__ = []
+from .species_growth_analysis import SpeciesGrowthAnalyzer
+from .growth_plotting import plot_growth_curves
+
+__all__ = [
+    "SpeciesGrowthAnalyzer",
+    "plot_growth_curves",
+]
