@@ -2667,13 +2667,10 @@ def export_grove_tree_as_usda_native(
             )
 
             print(f"\n  Creating Unreal Nanite Assembly (USD/Static)...")
-            # CRITICAL: Use skeletal_tree_path (with materials) instead of temp_tree_path
-            # This ensures Nanite Assembly has materials and textures
-            tree_ref_for_assembly = (
-                skeletal_tree_path if not include_twigs else output_path
-            )
+            # Use tree-only USD (without twigs) and add twigs explicitly in assembly
+            # This ensures proper Nanite Assembly structure for Unreal
             nanite_success = create_nanite_assembly_usd(
-                tree_usd_path=tree_ref_for_assembly,
+                tree_usd_path=skeletal_tree_path,  # Tree mesh with materials, no twigs
                 output_path=nanite_path,
                 species_name=species_name,
                 twig_usd_paths=twig_usd_paths if include_twigs else None,

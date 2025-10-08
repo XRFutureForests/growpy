@@ -151,6 +151,11 @@ def create_nanite_assembly_usd(
                     # Make instanceable for memory efficiency
                     proto_prim.SetInstanceable(True)
 
+                    # Hide prototypes - they should only be visible when instanced
+                    proto_prim.CreateAttribute(
+                        "visibility", Sdf.ValueTypeNames.Token
+                    ).Set("invisible")
+
                     # Reference twig mesh (FBX or USD)
                     proto_prim.GetReferences().AddReference(
                         str(twig_ref_path.resolve())
@@ -185,8 +190,6 @@ def create_nanite_assembly_usd(
 
                         for placement in placement_list:
                             from .twig_placement import (
-                                convert_blender_normal_to_ue,
-                                convert_blender_to_ue_coords,
                                 normal_to_rotation_matrix,
                                 rotation_matrix_to_quaternion,
                             )
@@ -194,20 +197,18 @@ def create_nanite_assembly_usd(
                             pos = placement["position"]
                             normal = placement["normal"]
 
-                            # Convert to Unreal Engine coordinates
-                            ue_pos = convert_blender_to_ue_coords(pos)
-                            ue_normal = convert_blender_normal_to_ue(normal)
+                            # Keep positions in Blender coordinates to match tree mesh
+                            # Both tree and twigs use Blender Z-up coordinate system
+                            # No coordinate conversion needed here
 
-                            # Create rotation matrix from UE normal
-                            rot_matrix = normal_to_rotation_matrix(ue_normal)
+                            # Create rotation matrix from normal
+                            rot_matrix = normal_to_rotation_matrix(normal)
 
                             # Convert to quaternion
                             quat = rotation_matrix_to_quaternion(rot_matrix)
 
                             # Add to arrays
-                            all_positions.append(
-                                Gf.Vec3f(ue_pos[0], ue_pos[1], ue_pos[2])
-                            )
+                            all_positions.append(Gf.Vec3f(pos[0], pos[1], pos[2]))
                             all_orientations.append(
                                 Gf.Quath(quat[0], quat[1], quat[2], quat[3])
                             )
