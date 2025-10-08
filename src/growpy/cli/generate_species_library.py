@@ -191,7 +191,9 @@ def export_all_species(
                     grove.simulate(flushes=flush_count)
 
                     # Construct filename with flush count and variant number
-                    filename_base = f"{species_clean}_f{flush_count:02d}_var{variant_num}"
+                    filename_base = (
+                        f"{species_clean}_f{flush_count:02d}_var{variant_num}"
+                    )
 
                     format_success = False
 
@@ -208,7 +210,9 @@ def export_all_species(
                         # Get twig USD paths if including twigs
                         twig_usd_map = None
                         if include_twigs:
-                            twig_usd_map = get_twig_usd_map_for_species(species, config, prefer_skeletal=False)
+                            twig_usd_map = get_twig_usd_map_for_species(
+                                species, config, prefer_skeletal=False
+                            )
 
                         # Export using native USD export with twigs
                         if export_grove_tree_as_usda_native(
@@ -252,12 +256,18 @@ def export_all_species(
                         exported_count += 1
                     else:
                         failed_count += 1
-                        export_results["failed"].append(f"{species} (f{flush_count}_var{variant_num})")
+                        export_results["failed"].append(
+                            f"{species} (f{flush_count}_var{variant_num})"
+                        )
 
                 except Exception as e:
-                    print(f"\nFailed to export {species} f{flush_count}_var{variant_num}: {e}")
+                    print(
+                        f"\nFailed to export {species} f{flush_count}_var{variant_num}: {e}"
+                    )
                     failed_count += 1
-                    export_results["failed"].append(f"{species} (f{flush_count}_var{variant_num})")
+                    export_results["failed"].append(
+                        f"{species} (f{flush_count}_var{variant_num})"
+                    )
                     continue
 
     # Print summary
