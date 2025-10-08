@@ -918,12 +918,141 @@ def _add_blender_attributes_as_usd_primvars(usd_path: Path, mesh_obj: Any) -> No
         traceback.print_exc()
 
 
+def _add_materials_to_usd(
+    usd_path: Path,
+    grove: Any,
+    species_name: str,
+    config: Optional[Any] = None,
+) -> Optional[dict]:
+    """Add bark texture materials to USD file (without skeleton).
+
+    This adds only materials/textures to a static mesh USD file.
+    Use this for the base tree_only.usda (static mesh).
+    Use _add_skeleton_and_materials_to_usd for skeletal mesh versions.
+
+    Args:
+        usd_path: Path to USD file to enhance
+        grove: Grove instance (unused but kept for consistency)
+        species_name: Species name for texture lookup
+        config: GrowPy configuration
+
+    Returns:
+        Optional[dict]: Texture paths dict if found, None otherwise
+    """
+    try:
+        from pxr import Sdf, Usd, UsdGeom, UsdShade
+
+        # Open existing stage
+        stage = Usd.Stage.Open(str(usd_path))
+        if not stage:
+            print(f"  Warning: Could not open USD stage at {usd_path}")
+            return None
+
+        # Find the tree mesh prim
+        tree_mesh_prim = None
+        for prim in stage.Traverse():
+            if prim.IsA(UsdGeom.Mesh):
+                tree_mesh_prim = prim
+                break
+
+        if not tree_mesh_prim:
+            print(f"  Warning: No mesh found in USD file")
+            return None
+
+        # Add bark texture material
+        print(f"  Adding bark texture material...")
+        textures = _find_bark_texture(species_name, config)
+
+        if textures:
+            # Create material at mesh parent level
+            material_path = (
+                tree_mesh_prim.GetPath().GetParentPath().AppendChild("BarkMaterial")
+            )
+            material = UsdShade.Material.Define(stage, material_path)
+
+            # Create shader
+            shader = UsdShade.Shader.Define(stage, material_path.AppendChild("Shader"))
+            shader.CreateIdAttr("UsdPreviewSurface")
+
+            # Diffuse texture
+            if "diffuse" in textures:
+                diffuse_tex_path = material_path.AppendChild("DiffuseTexture")
+                diffuse_tex = UsdShade.Shader.Define(stage, diffuse_tex_path)
+                diffuse_tex.CreateIdAttr("UsdUVTexture")
+                # Use relative path from USD file location to textures subdirectory
+                relative_path = f"./textures/{textures['diffuse'].name}"
+                diffuse_tex.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
+                    relative_path
+                )
+                diffuse_tex.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+
+                # Connect to shader
+                shader.CreateInput(
+                    "diffuseColor", Sdf.ValueTypeNames.Color3f
+                ).ConnectToSource(
+                    diffuse_tex.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+                )
+                print(f"    ✓ Added diffuse texture: {textures['diffuse'].name}")
+
+            # Normal map
+            if "normal" in textures:
+                normal_tex_path = material_path.AppendChild("NormalTexture")
+                normal_tex = UsdShade.Shader.Define(stage, normal_tex_path)
+                normal_tex.CreateIdAttr("UsdUVTexture")
+                # Use relative path from USD file location to textures subdirectory
+                relative_path = f"./textures/{textures['normal'].name}"
+                normal_tex.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
+                    relative_path
+                )
+                normal_tex.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+
+                # Connect to shader
+                shader.CreateInput(
+                    "normal", Sdf.ValueTypeNames.Normal3f
+                ).ConnectToSource(
+                    normal_tex.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+                )
+                print(f"    ✓ Added normal map: {textures['normal'].name}")
+
+            # Set material properties for bark
+            shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.8)
+            shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
+
+            # Create surface output
+            shader.CreateOutput("surface", Sdf.ValueTypeNames.Token)
+            material.CreateSurfaceOutput().ConnectToSource(
+                shader.CreateOutput("surface", Sdf.ValueTypeNames.Token)
+            )
+
+            # Bind material to mesh
+            binding_api = UsdShade.MaterialBindingAPI.Apply(tree_mesh_prim)
+            binding_api.Bind(material)
+
+            print(f"    ✓ Bound material to mesh")
+        else:
+            print(f"    ℹ️  No bark textures found for {species_name}")
+
+        # Save changes
+        stage.Save()
+        return textures
+
+    except ImportError:
+        print("  ERROR: USD Python (pxr) not available")
+        return None
+    except Exception as e:
+        print(f"  Failed to add materials to USD: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return None
+
+
 def _add_skeleton_and_materials_to_usd(
     usd_path: Path,
     grove: Any,
     species_name: str,
     config: Optional[Any] = None,
-) -> bool:
+) -> Optional[dict]:
     """Add skeleton and materials to Grove's native USD export.
 
     Enhances Grove's basic USD export with:
@@ -943,7 +1072,7 @@ def _add_skeleton_and_materials_to_usd(
         config: GrowPy configuration
 
     Returns:
-        bool: Success status
+        Optional[dict]: Texture paths dict if found, None otherwise
     """
     try:
         from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade, UsdSkel, Vt
@@ -952,7 +1081,7 @@ def _add_skeleton_and_materials_to_usd(
         stage = Usd.Stage.Open(str(usd_path))
         if not stage:
             print(f"  Warning: Could not open USD stage at {usd_path}")
-            return False
+            return None
 
         # Find the tree mesh prim and its parent Xform
         tree_mesh_prim = None
@@ -965,7 +1094,7 @@ def _add_skeleton_and_materials_to_usd(
 
         if not tree_mesh_prim or not tree_xform_prim:
             print(f"  Warning: No mesh or parent xform found in USD file")
-            return False
+            return None
 
         mesh = UsdGeom.Mesh(tree_mesh_prim)
 
@@ -1128,8 +1257,10 @@ def _add_skeleton_and_materials_to_usd(
                 diffuse_tex_path = material_path.AppendChild("DiffuseTexture")
                 diffuse_tex = UsdShade.Shader.Define(stage, diffuse_tex_path)
                 diffuse_tex.CreateIdAttr("UsdUVTexture")
+                # Use relative path from USD file location to textures subdirectory
+                relative_path = f"./textures/{textures['diffuse'].name}"
                 diffuse_tex.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
-                    str(textures["diffuse"].resolve())
+                    relative_path
                 )
                 diffuse_tex.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
 
@@ -1146,8 +1277,10 @@ def _add_skeleton_and_materials_to_usd(
                 normal_tex_path = material_path.AppendChild("NormalTexture")
                 normal_tex = UsdShade.Shader.Define(stage, normal_tex_path)
                 normal_tex.CreateIdAttr("UsdUVTexture")
+                # Use relative path from USD file location to textures subdirectory
+                relative_path = f"./textures/{textures['normal'].name}"
                 normal_tex.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
-                    str(textures["normal"].resolve())
+                    relative_path
                 )
                 normal_tex.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
 
@@ -1179,17 +1312,17 @@ def _add_skeleton_and_materials_to_usd(
 
         # Save changes
         stage.Save()
-        return True
+        return textures
 
     except ImportError:
         print("  ERROR: USD Python (pxr) not available")
-        return False
+        return None
     except Exception as e:
         print(f"  Failed to add skeleton/materials to USD: {e}")
         import traceback
 
         traceback.print_exc()
-        return False
+        return None
 
 
 def _find_bark_texture(
@@ -2285,6 +2418,20 @@ def export_grove_tree_as_usda_native(
         # Grove's native USD export doesn't include custom face attributes
         _add_grove_face_attributes_to_usd(temp_tree_path, model)
 
+        # Add materials to base tree (static mesh version)
+        # This adds bark textures without skeleton
+        base_textures = _add_materials_to_usd(
+            temp_tree_path, grove, species_name, config
+        )
+
+        # Copy bark textures to output directory (for static mesh)
+        if base_textures:
+            copy_bark_textures_for_species(
+                species_name,
+                temp_tree_path.parent.parent,  # Go up to species dir
+                base_textures,
+            )
+
         # Create skeletal version with skeleton and materials
         # This is the version referenced by assembly files and used for skeletal mesh import
         skeletal_tree_path = temp_tree_path
@@ -2300,9 +2447,18 @@ def export_grove_tree_as_usda_native(
             shutil.copy2(temp_tree_path, skeletal_tree_path)
 
             # Add skeleton and materials to skeletal version
-            _add_skeleton_and_materials_to_usd(
+            textures = _add_skeleton_and_materials_to_usd(
                 skeletal_tree_path, grove, species_name, config
             )
+
+            # Copy bark textures to output directory
+            if textures:
+                copy_bark_textures_for_species(
+                    species_name,
+                    skeletal_tree_path.parent.parent,  # Go up to species dir
+                    textures,
+                )
+
             print(f"  ✓ Skeletal tree USD: {skeletal_tree_path.name}")
             print(f"    (Import as skeletal mesh in Unreal, like FBX)")
 
@@ -2498,6 +2654,52 @@ def get_twig_usd_map_for_species(
         print(f"    Using twig_short for twig_dead (no dead-specific twig)")
 
     return twig_usd_map
+
+
+def copy_bark_textures_for_species(
+    species_name: str,
+    species_output_dir: Path,
+    textures: Optional[Dict[str, Path]],
+) -> List[Path]:
+    """Copy bark texture files to species output directory.
+
+    Similar to twig texture bundling, copies bark textures (diffuse + normal)
+    to output/USD/textures/ for easier asset management in Unreal Engine.
+
+    Args:
+        species_name: Name of tree species
+        species_output_dir: Output directory for this species
+        textures: Dict with 'diffuse' and 'normal' texture paths
+
+    Returns:
+        List of copied texture file paths
+    """
+    import shutil
+
+    copied_files = []
+
+    if not textures:
+        return copied_files
+
+    # Create textures subdirectory in USD folder
+    texture_dir = species_output_dir / "USD" / "textures"
+    texture_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy diffuse texture
+    if "diffuse" in textures and textures["diffuse"].exists():
+        dest_path = texture_dir / textures["diffuse"].name
+        shutil.copy2(textures["diffuse"], dest_path)
+        copied_files.append(dest_path)
+        print(f"  ✓ Copied diffuse texture: {textures['diffuse'].name}")
+
+    # Copy normal map
+    if "normal" in textures and textures["normal"].exists():
+        dest_path = texture_dir / textures["normal"].name
+        shutil.copy2(textures["normal"], dest_path)
+        copied_files.append(dest_path)
+        print(f"  ✓ Copied normal map: {textures['normal'].name}")
+
+    return copied_files
 
 
 def bundle_twigs_for_species(
