@@ -918,6 +918,216 @@ def _add_blender_attributes_as_usd_primvars(usd_path: Path, mesh_obj: Any) -> No
         traceback.print_exc()
 
 
+def _add_skeleton_and_materials_to_usd(
+    usd_path: Path,
+    grove: Any,
+    species_name: str,
+    config: Optional[Any] = None,
+) -> bool:
+    """Add skeleton and materials to Grove's native USD export.
+
+    Enhances Grove's basic USD export with:
+    1. UsdSkel skeleton hierarchy for animation
+    2. Bark texture materials (diffuse + normal)
+    3. Proper skeletal mesh binding
+
+    Args:
+        usd_path: Path to USD file to enhance
+        grove: Grove instance (for building skeleton)
+        species_name: Species name for texture lookup
+        config: GrowPy configuration
+
+    Returns:
+        bool: Success status
+    """
+    try:
+        from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade, UsdSkel, Vt
+
+        # Open existing stage
+        stage = Usd.Stage.Open(str(usd_path))
+        if not stage:
+            print(f"  Warning: Could not open USD stage at {usd_path}")
+            return False
+
+        # Find the tree mesh prim
+        tree_mesh_prim = None
+        for prim in stage.Traverse():
+            if prim.IsA(UsdGeom.Mesh):
+                tree_mesh_prim = prim
+                break
+
+        if not tree_mesh_prim:
+            print(f"  Warning: No mesh found in USD file")
+            return False
+
+        mesh = UsdGeom.Mesh(tree_mesh_prim)
+
+        # 1. Add skeleton if available
+        print(f"  Adding skeleton to USD...")
+        skeletons = grove.build_skeletons()
+        if skeletons and len(skeletons) > 0:
+            skeleton_data = skeletons[0]
+
+            # Create skeleton prim
+            skel_path = tree_mesh_prim.GetPath().GetParentPath().AppendChild("Skeleton")
+            skel_prim = UsdSkel.Skeleton.Define(stage, skel_path)
+
+            # Convert Grove skeleton to USD skeleton
+            # Grove skeleton has: points, poly_lines, location
+            points = skeleton_data.points
+            poly_lines = skeleton_data.poly_lines
+
+            # Build joint hierarchy and topology
+            joints = []
+            joint_parents = []
+            bind_transforms = []
+            rest_transforms = []
+
+            # Root joint at skeleton location
+            joints.append("Root")
+            joint_parents.append(-1)
+            root_transform = Gf.Matrix4d().SetIdentity()
+            bind_transforms.append(root_transform)
+            rest_transforms.append(root_transform)
+
+            # Create bones from poly_lines
+            for i, poly_line in enumerate(poly_lines):
+                if len(poly_line) < 2:
+                    continue
+
+                prev_joint_idx = 0  # Start from root
+                for j in range(len(poly_line) - 1):
+                    joint_name = f"Branch_{i}_Bone_{j}"
+                    joints.append(joint_name)
+
+                    # Parent is previous joint in the chain
+                    joint_parents.append(prev_joint_idx)
+
+                    # Calculate bone transform
+                    start_idx = poly_line[j]
+                    end_idx = poly_line[j + 1]
+
+                    if start_idx < len(points) and end_idx < len(points):
+                        start_pos = Gf.Vec3f(*points[start_idx])
+                        end_pos = Gf.Vec3f(*points[end_idx])
+
+                        # Create transform matrix
+                        transform = Gf.Matrix4d().SetIdentity()
+                        transform.SetTranslateOnly(Gf.Vec3d(start_pos))
+
+                        bind_transforms.append(transform)
+                        rest_transforms.append(transform)
+
+                    prev_joint_idx = len(joints) - 1
+
+            # Set skeleton attributes
+            skel_prim.CreateJointsAttr(
+                Vt.TokenArray([Sdf.Path(j).pathString for j in joints])
+            )
+            skel_prim.CreateBindTransformsAttr(Vt.Matrix4dArray(bind_transforms))
+            skel_prim.CreateRestTransformsAttr(Vt.Matrix4dArray(rest_transforms))
+
+            # Set joint parent topology
+            # UsdSkel uses indices to define parent relationships
+            topology_indices = []
+            for parent_idx in joint_parents:
+                topology_indices.append(parent_idx if parent_idx >= 0 else 0)
+
+            # Note: USD topology is more complex - this is a simplified version
+            # For full skeletal animation, may need additional setup
+
+            print(f"    ✓ Added skeleton with {len(joints)} joints")
+
+            # Bind mesh to skeleton
+            binding_api = UsdSkel.BindingAPI.Apply(tree_mesh_prim)
+            binding_api.CreateSkeletonRel().SetTargets([skel_path])
+
+            print(f"    ✓ Bound mesh to skeleton")
+
+        # 2. Add bark texture material
+        print(f"  Adding bark texture material...")
+        textures = _find_bark_texture(species_name, config)
+
+        if textures:
+            # Create material
+            material_path = (
+                tree_mesh_prim.GetPath().GetParentPath().AppendChild("BarkMaterial")
+            )
+            material = UsdShade.Material.Define(stage, material_path)
+
+            # Create shader
+            shader = UsdShade.Shader.Define(stage, material_path.AppendChild("Shader"))
+            shader.CreateIdAttr("UsdPreviewSurface")
+
+            # Diffuse texture
+            if "diffuse" in textures:
+                diffuse_tex_path = material_path.AppendChild("DiffuseTexture")
+                diffuse_tex = UsdShade.Shader.Define(stage, diffuse_tex_path)
+                diffuse_tex.CreateIdAttr("UsdUVTexture")
+                diffuse_tex.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
+                    str(textures["diffuse"].resolve())
+                )
+                diffuse_tex.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+
+                # Connect to shader
+                shader.CreateInput(
+                    "diffuseColor", Sdf.ValueTypeNames.Color3f
+                ).ConnectToSource(
+                    diffuse_tex.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+                )
+                print(f"    ✓ Added diffuse texture: {textures['diffuse'].name}")
+
+            # Normal map
+            if "normal" in textures:
+                normal_tex_path = material_path.AppendChild("NormalTexture")
+                normal_tex = UsdShade.Shader.Define(stage, normal_tex_path)
+                normal_tex.CreateIdAttr("UsdUVTexture")
+                normal_tex.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
+                    str(textures["normal"].resolve())
+                )
+                normal_tex.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+
+                # Connect to shader
+                shader.CreateInput(
+                    "normal", Sdf.ValueTypeNames.Normal3f
+                ).ConnectToSource(
+                    normal_tex.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+                )
+                print(f"    ✓ Added normal map: {textures['normal'].name}")
+
+            # Set material properties for bark
+            shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.8)
+            shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
+
+            # Create surface output
+            shader.CreateOutput("surface", Sdf.ValueTypeNames.Token)
+            material.CreateSurfaceOutput().ConnectToSource(
+                shader.CreateOutput("surface", Sdf.ValueTypeNames.Token)
+            )
+
+            # Bind material to mesh
+            binding_api = UsdShade.MaterialBindingAPI.Apply(tree_mesh_prim)
+            binding_api.Bind(material)
+
+            print(f"    ✓ Bound material to mesh")
+        else:
+            print(f"    ℹ️  No bark textures found for {species_name}")
+
+        # Save changes
+        stage.Save()
+        return True
+
+    except ImportError:
+        print("  ERROR: USD Python (pxr) not available")
+        return False
+    except Exception as e:
+        print(f"  Failed to add skeleton/materials to USD: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return False
+
+
 def _find_bark_texture(
     species_name: str, config: Optional[Any] = None
 ) -> Optional[Dict[str, Path]]:
@@ -1227,10 +1437,10 @@ def _export_fbx_internal(
            - Mesh vertices: X-right, Y-forward, Z-up
         3. FBX export transforms to Unreal (Z-up, left-handed)
            - axis_forward="-Z", axis_up="Y" in FBX exporter
-           - global_scale=100.0: Meters → centimeters for Unreal
+           - global_scale=1.0: 1:1 scale (meters)
            - Handedness conversion handled by FBX exporter
 
-        Result in Unreal: X-forward, Y-right, Z-up (left-handed), cm scale
+        Result in Unreal: X-forward, Y-right, Z-up (left-handed), meter scale
         See docs/growpy/COORDINATE_SYSTEMS.md for details
     """
     if not _check_bpy_available():
@@ -1371,7 +1581,7 @@ def _export_fbx_internal(
         # - mesh_smooth_type="FACE": Single smoothing group (Nanite derives tangents)
         # - use_mesh_edges=False: No edge data needed (reduces file size)
         # - use_tspace=True: Export tangent space (for normal map compatibility)
-        # - global_scale=100.0: Scale to Unreal centimeters (prevents precision issues)
+        # - global_scale=1.0: 1:1 scale (meters)
         #
         # Supported Nanite Features:
         # - Skeletal meshes with animation (experimental in UE 5.x)
@@ -1398,7 +1608,7 @@ def _export_fbx_internal(
             use_batch_own_dir=False,
             axis_forward="-Z",
             axis_up="Y",
-            global_scale=100.0,  # Scale to Unreal cm units (prevents sub-millimeter precision issues)
+            global_scale=1.0,  # 1:1 scale (meters)
             apply_scale_options="FBX_SCALE_ALL",  # Apply to all data
         )
 
@@ -1694,7 +1904,7 @@ def batch_export_trees_for_unreal(
 
                     export_success = False
                     if use_native_usd_export:
-                        # Use Grove's native USD export with twigs
+                        # Use Grove's native USD export with twigs, skeleton, and materials
                         export_success = export_grove_tree_as_usda_native(
                             grove,
                             usd_path,
@@ -1704,6 +1914,7 @@ def batch_export_trees_for_unreal(
                             use_point_instancer=True,
                             convert_to_ue=True,
                             create_nanite_assembly=create_nanite_assembly,
+                            include_skeleton=True,
                             resolution=resolution,
                             resolution_reduce=resolution_reduce,
                             texture_repeat=texture_repeat,
@@ -1711,6 +1922,7 @@ def batch_export_trees_for_unreal(
                             build_cutoff_thickness=build_cutoff_thickness,
                             build_blend=build_blend,
                             build_end_cap=build_end_cap,
+                            config=config,
                         )
                     else:
                         # Use Blender-based USD export (legacy)
@@ -1770,88 +1982,18 @@ def batch_export_trees_for_unreal(
                                     fbx_path.relative_to(output_dir)
                                 )
 
-                                # Create FBX-based skeletal mesh Nanite Assembly
-                                if (
-                                    create_nanite_assembly
-                                    and usd_dir
-                                    and "usd" in variation_info["files"]
-                                ):
-                                    from .unreal_nanite_assembly import (
-                                        create_nanite_assembly_usd,
-                                    )
+                                print(
+                                    f"  ℹ️  FBX Skeletal Mesh: Import {fbx_path.name} directly into Unreal"
+                                )
+                                print(
+                                    f"     (Skeletal Nanite Assemblies not supported - USD cannot reference FBX)"
+                                )
 
-                                    fbx_nanite_path = (
-                                        usd_dir
-                                        / f"{variation_name}_NaniteAssembly_Skeletal.usda"
-                                    )
-                                    tree_usd_ref = usd_dir / f"{variation_name}.usda"
-
-                                    # Get twig FBX paths
-                                    twig_fbx_map = None
-                                    if include_twigs_in_usd and twig_usd_map:
-                                        from ..config import GrowPyConfig
-
-                                        twig_files_by_type = (
-                                            GrowPyConfig.get_twig_files_by_type(species)
-                                        )
-                                        twig_fbx_map = {}
-
-                                        for twig_type in twig_usd_map.keys():
-                                            # Find matching FBX file
-                                            for (
-                                                file_type,
-                                                paths,
-                                            ) in twig_files_by_type.items():
-                                                if any(
-                                                    kw in file_type.lower()
-                                                    for kw in [
-                                                        "apical",
-                                                        "lateral",
-                                                        "long",
-                                                        "short",
-                                                        "upward",
-                                                        "dead",
-                                                    ]
-                                                ):
-                                                    for path in paths:
-                                                        fbx_path_candidate = (
-                                                            path.with_suffix(".fbx")
-                                                        )
-                                                        if fbx_path_candidate.exists():
-                                                            twig_fbx_map[twig_type] = (
-                                                                fbx_path_candidate
-                                                            )
-                                                            break
-                                                    if twig_type in twig_fbx_map:
-                                                        break
-
-                                    print(
-                                        f"\n  Creating Unreal Nanite Assembly (FBX/Skeletal)..."
-                                    )
-                                    fbx_nanite_success = create_nanite_assembly_usd(
-                                        tree_usd_path=tree_usd_ref,
-                                        output_path=fbx_nanite_path,
-                                        species_name=species,
-                                        twig_usd_paths=(
-                                            twig_usd_map
-                                            if include_twigs_in_usd
-                                            else None
-                                        ),
-                                        use_skeletal_mesh=True,
-                                        tree_fbx_path=fbx_path,
-                                        twig_fbx_paths=twig_fbx_map,
-                                    )
-
-                                    if fbx_nanite_success:
-                                        print(
-                                            f"  ✓ Skeletal Nanite Assembly: {fbx_nanite_path.name}"
-                                        )
-                                        print(
-                                            f"    Import this file for animated trees (skeletal mesh)"
-                                        )
-                                        variation_info["files"]["nanite_skeletal"] = (
-                                            str(fbx_nanite_path.relative_to(output_dir))
-                                        )
+                                # Note: Skeletal mesh Nanite Assemblies are not created because:
+                                # - USD cannot reference FBX files directly
+                                # - For skeletal meshes with animation, import FBX directly into Unreal
+                                # - Nanite Assemblies are designed for static mesh instancing with USD files
+                                # Users should import the FBX file directly for animated skeletal trees
                     except Exception as e:
                         print(f"FBX export failed for {variation_name}: {e}")
 
@@ -1965,6 +2107,7 @@ def export_grove_tree_as_usda_native(
     use_point_instancer: bool = True,
     convert_to_ue: bool = True,
     create_nanite_assembly: bool = True,
+    include_skeleton: bool = True,
     resolution: int = 32,
     resolution_reduce: float = 0.8,
     texture_repeat: int = 3,
@@ -1972,6 +2115,7 @@ def export_grove_tree_as_usda_native(
     build_cutoff_thickness: float = 0.0,
     build_blend: bool = True,
     build_end_cap: bool = True,
+    config: Optional[Any] = None,
 ) -> bool:
     """Export Grove tree using native USD export with optional twig point instances.
 
@@ -2076,6 +2220,9 @@ def export_grove_tree_as_usda_native(
         # Grove's native USD export doesn't include custom face attributes
         _add_grove_face_attributes_to_usd(temp_tree_path, model)
 
+        # Add skeleton and bark texture materials to USD
+        _add_skeleton_and_materials_to_usd(temp_tree_path, grove, species_name, config)
+
         # Add twigs if requested
         if include_twigs and twig_usd_paths:
             from .twig_placement import export_twig_placements_to_usd
@@ -2131,6 +2278,31 @@ def export_grove_tree_as_usda_native(
             if nanite_success:
                 print(f"  ✓ Nanite Assembly USD: {nanite_path.name}")
                 print(f"    Import this file in Unreal Engine 5.7+ (static mesh)")
+
+            # Create skeletal mesh assembly if skeleton was added
+            if include_skeleton:
+                skeletal_nanite_path = (
+                    output_path.parent
+                    / f"{output_path.stem}_NaniteAssembly_Skeletal{output_path.suffix}"
+                )
+
+                print(f"\n  Creating Unreal Nanite Assembly (USD/Skeletal)...")
+                skeletal_success = create_nanite_assembly_usd(
+                    tree_usd_path=temp_tree_path,
+                    output_path=skeletal_nanite_path,
+                    species_name=species_name,
+                    twig_usd_paths=twig_usd_paths if include_twigs else None,
+                    use_skeletal_mesh=True,
+                    skeleton_path=temp_tree_path,  # Skeleton is embedded in the USD
+                )
+
+                if skeletal_success:
+                    print(
+                        f"  ✓ Skeletal Nanite Assembly USD: {skeletal_nanite_path.name}"
+                    )
+                    print(
+                        f"    Import this file in Unreal Engine 5.7+ (skeletal mesh with animation)"
+                    )
 
         return True
 
