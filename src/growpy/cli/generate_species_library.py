@@ -108,7 +108,8 @@ def place_twigs_on_species_library(
 def export_all_species(
     config: GrowPyConfig,
     output_dir: Path,
-    growth_flushes: int = 10,
+    growth_flushes: list = [10],
+    variants_per_species: int = 1,
     formats: list = ["usda"],
     include_twigs: bool = False,
     resolution: int = 24,
@@ -119,7 +120,8 @@ def export_all_species(
     Args:
         config: GrowPy configuration with species settings
         output_dir: Directory to save export files
-        growth_flushes: Number of growth cycles to simulate
+        growth_flushes: List of growth flush counts to export (e.g., [10, 25, 50, 75])
+        variants_per_species: Number of variants to generate per species per flush count
         formats: List of export formats ('fbx', 'usd', 'usda')
         include_twigs: Whether to include twig instances (USD only)
         resolution: Branch resolution (4-32, higher = more detailed)
@@ -152,102 +154,111 @@ def export_all_species(
     failed_count = 0
     export_results = {"fbx": [], "usd": [], "failed": []}
 
+    total_combinations = len(species_list) * len(growth_flushes) * variants_per_species
+
     print(f"\nExporting {len(species_list)} species")
     print(f"Formats: {', '.join(formats)}")
     print(f"Resolution: {resolution}")
     print(f"Include twigs: {include_twigs}")
-    print(f"Growth flushes: {growth_flushes}\n")
+    print(f"Growth flushes: {growth_flushes}")
+    print(f"Variants per species: {variants_per_species}")
+    print(f"Total trees to export: {total_combinations}\n")
 
     for species in tqdm(species_list, desc="Exporting species"):
-        try:
-            # Create grove for this species
-            grove = create_grove(species)
+        # Clean species name for filename
+        species_clean = (
+            "".join(c for c in species if c.isalnum() or c in (" ", "-", "_"))
+            .strip()
+            .replace(" ", "_")
+        )
+        if not species_clean:
+            species_clean = f"species_{exported_count}"
 
-            # Add single tree at origin
-            grove.add_new_tree(
-                gc.Vector(0, 0, 0),  # Origin
-                gc.Vector(0, 0, 1),  # Up direction
-                0,  # No delay
-            )
+        for flush_count in growth_flushes:
+            for variant_num in range(1, variants_per_species + 1):
+                try:
+                    # Create grove for this species
+                    grove = create_grove(species)
 
-            # Simulate realistic growth
-            grove.simulate(flushes=growth_flushes)
+                    # Add single tree at origin
+                    grove.add_new_tree(
+                        gc.Vector(0, 0, 0),  # Origin
+                        gc.Vector(0, 0, 1),  # Up direction
+                        0,  # No delay
+                    )
 
-            # Clean species name for filename
-            species_clean = (
-                "".join(c for c in species if c.isalnum() or c in (" ", "-", "_"))
-                .strip()
-                .replace(" ", "_")
-            )
-            if not species_clean:
-                species_clean = f"species_{exported_count}"
+                    # Simulate realistic growth
+                    grove.simulate(flushes=flush_count)
 
-            format_success = False
+                    # Construct filename with flush count and variant number
+                    filename_base = f"{species_clean}_f{flush_count:02d}_var{variant_num}"
 
-            # Export USD formats (with optional twigs)
-            if usd_dir:
-                from growpy.io.blender_export import (
-                    export_grove_tree_as_usda_native,
-                    get_twig_usd_map_for_species,
-                )
+                    format_success = False
 
-                usd_ext = "usda" if "usda" in formats else "usd"
-                usd_path = usd_dir / f"{species_clean}.{usd_ext}"
+                    # Export USD formats (with optional twigs)
+                    if usd_dir:
+                        from growpy.io.blender_export import (
+                            export_grove_tree_as_usda_native,
+                            get_twig_usd_map_for_species,
+                        )
 
-                # Get twig USD paths if including twigs
-                twig_usd_map = None
-                if include_twigs:
-                    twig_usd_map = get_twig_usd_map_for_species(species, config)
+                        usd_ext = "usda" if "usda" in formats else "usd"
+                        usd_path = usd_dir / f"{filename_base}.{usd_ext}"
 
-                # Export using native USD export with twigs
-                if export_grove_tree_as_usda_native(
-                    grove=grove,
-                    output_path=usd_path,
-                    species_name=species,
-                    twig_usd_paths=twig_usd_map,
-                    include_twigs=include_twigs and twig_usd_map is not None,
-                    use_point_instancer=True,
-                    convert_to_ue=True,
-                    create_nanite_assembly=create_nanite_assembly,
-                    resolution=resolution,
-                    resolution_reduce=0.8,
-                    texture_repeat=3,
-                    build_cutoff_age=0,
-                    build_cutoff_thickness=0.0,
-                    build_blend=True,
-                    build_end_cap=True,
-                ):
-                    format_success = True
-                    export_results["usd"].append(usd_path)
+                        # Get twig USD paths if including twigs
+                        twig_usd_map = None
+                        if include_twigs:
+                            twig_usd_map = get_twig_usd_map_for_species(species, config, prefer_skeletal=False)
 
-            # Export FBX format
-            if fbx_dir and EXPORT_AVAILABLE:
-                from growpy.io.blender_export import _export_fbx_internal
+                        # Export using native USD export with twigs
+                        if export_grove_tree_as_usda_native(
+                            grove=grove,
+                            output_path=usd_path,
+                            species_name=species,
+                            twig_usd_paths=twig_usd_map,
+                            include_twigs=include_twigs and twig_usd_map is not None,
+                            use_point_instancer=True,
+                            convert_to_ue=True,
+                            create_nanite_assembly=create_nanite_assembly,
+                            resolution=resolution,
+                            resolution_reduce=0.8,
+                            texture_repeat=3,
+                            build_cutoff_age=0,
+                            build_cutoff_thickness=0.0,
+                            build_blend=True,
+                            build_end_cap=True,
+                        ):
+                            format_success = True
+                            export_results["usd"].append(usd_path)
 
-                fbx_path = fbx_dir / f"{species_clean}.fbx"
+                    # Export FBX format
+                    if fbx_dir and EXPORT_AVAILABLE:
+                        from growpy.io.blender_export import _export_fbx_internal
 
-                if _export_fbx_internal(
-                    grove=grove,
-                    output_path=fbx_path,
-                    species_name=species,
-                    include_skeleton=True,
-                    include_twig_attributes=True,
-                    config=config,
-                ):
-                    format_success = True
-                    export_results["fbx"].append(fbx_path)
+                        fbx_path = fbx_dir / f"{filename_base}.fbx"
 
-            if format_success:
-                exported_count += 1
-            else:
-                failed_count += 1
-                export_results["failed"].append(species)
+                        if _export_fbx_internal(
+                            grove=grove,
+                            output_path=fbx_path,
+                            species_name=species,
+                            include_skeleton=True,
+                            include_twig_attributes=True,
+                            config=config,
+                        ):
+                            format_success = True
+                            export_results["fbx"].append(fbx_path)
 
-        except Exception as e:
-            print(f"\nFailed to export {species}: {e}")
-            failed_count += 1
-            export_results["failed"].append(species)
-            continue
+                    if format_success:
+                        exported_count += 1
+                    else:
+                        failed_count += 1
+                        export_results["failed"].append(f"{species} (f{flush_count}_var{variant_num})")
+
+                except Exception as e:
+                    print(f"\nFailed to export {species} f{flush_count}_var{variant_num}: {e}")
+                    failed_count += 1
+                    export_results["failed"].append(f"{species} (f{flush_count}_var{variant_num})")
+                    continue
 
     # Print summary
     print(f"\n{'='*60}")
@@ -284,25 +295,35 @@ Examples:
     # Export all species as USDA with default settings
     python generate_species_library.py
 
+    # Export 2 variants of each species for multiple flush counts
+    python generate_species_library.py --flushes 10 25 50 75 --variants 2
+
     # Export as both FBX and USDA with twigs
     python generate_species_library.py --formats fbx usda --include-twigs
 
     # Export high quality with custom growth
-    python generate_species_library.py --resolution 32 --flushes 15
+    python generate_species_library.py --resolution 32 --flushes 15 20 25
 
     # Export to custom directory
     python generate_species_library.py --output-dir data/output/species --formats fbx usda
 
     # Export with twigs as point instances (USD only)
-    python generate_species_library.py --formats usda --include-twigs
+    python generate_species_library.py --formats usda --include-twigs --variants 3
         """,
     )
 
     parser.add_argument(
         "--flushes",
         type=int,
-        default=10,
-        help="Number of growth flushes to simulate (default: 10)",
+        nargs="+",
+        default=[10],
+        help="Growth flush counts to simulate (default: 10). Can specify multiple: --flushes 10 25 50 75",
+    )
+    parser.add_argument(
+        "--variants",
+        type=int,
+        default=1,
+        help="Number of variants to generate per species per flush count (default: 1)",
     )
     parser.add_argument(
         "--output-dir",
@@ -355,6 +376,7 @@ Examples:
             config=config,
             output_dir=args.output_dir,
             growth_flushes=args.flushes,
+            variants_per_species=args.variants,
             formats=args.formats,
             include_twigs=args.include_twigs,
             resolution=args.resolution,
