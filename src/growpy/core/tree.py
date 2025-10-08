@@ -14,7 +14,23 @@ from ..config import get_config
 
 
 def calculate_growth_cycles_from_height(forest_data: pd.DataFrame) -> None:
-    """Calculate growth cycles using pre-computed growth models."""
+    """Calculate growth cycles and delays from tree heights using pre-computed growth models.
+
+    For each tree in the forest data, this function:
+    1. Loads the species-specific growth model
+    2. Predicts required growth cycles from target height
+    3. Calculates growth delay to synchronize all trees (tallest trees start first)
+
+    Modifies the forest_data DataFrame in-place by adding two columns:
+    - 'growth_cycles': Number of cycles needed to reach target height
+    - 'delay': Growth delay offset for synchronized growth
+
+    Args:
+        forest_data: DataFrame with 'species' and 'height' columns
+
+    Raises:
+        FileNotFoundError: If growth model not found for a species
+    """
     import pickle
 
     config = get_config()
@@ -174,5 +190,16 @@ def build_grove_with_all_attributes(
     return models
 
 def build_skeletons(grove) -> Any:
+    """Build skeletal armatures for all trees in the grove.
+
+    Creates skeletal animation armatures that can be used for wind animation
+    or other procedural tree movement in game engines.
+
+    Args:
+        grove: Grove instance containing trees to build skeletons for
+
+    Returns:
+        List of skeleton objects, one per tree in the grove
+    """
     skeletons = grove.build_skeletons()
     return skeletons

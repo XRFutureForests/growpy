@@ -17,9 +17,15 @@ from .grove import add_tree_to_grove, create_grove
 def create_forest(forest_data: pd.DataFrame) -> List[Tuple]:
     """Create groves for each species in forest data.
 
+    Groups trees by species and creates a separate Grove instance for each species.
+    Trees are placed at specified coordinates with optional growth delays.
+
     Args:
         forest_data: DataFrame with required columns: x, y, species.
                      Optional columns: z (defaults to 0), height, delay
+
+    Returns:
+        List of tuples: (grove_instance, species_name, tree_count)
     """
     forest = []
 
@@ -41,11 +47,18 @@ def create_forest(forest_data: pd.DataFrame) -> List[Tuple]:
 
 
 def simulate_forest_growth(forest: List[Tuple], cycles: int) -> None:
-    """Simulate forest growth with light competition using proper Grove API.
+    """Simulate forest growth with inter-species light competition.
+
+    Simulates realistic forest growth where trees compete for light across
+    species boundaries. Uses Grove's shade geometry system to calculate
+    light occlusion from neighboring trees.
 
     Args:
-        forest: List of (grove, species_name, tree_count) tuples
+        forest: List of (grove, species_name, tree_count) tuples from create_forest()
         cycles: Number of growth cycles to simulate
+
+    Raises:
+        ImportError: If Grove core (the_grove_22_core) is not available
     """
     if not GROVE_CORE_AVAILABLE:
         raise ImportError("Grove core (the_grove_22_core) not available")
@@ -77,12 +90,16 @@ def simulate_forest_growth(forest: List[Tuple], cycles: int) -> None:
 def create_forest_with_attributes(forest_data: pd.DataFrame) -> List[Tuple]:
     """Create groves for each species with enhanced attribute tracking.
 
+    Similar to create_forest() but includes additional metadata tracking for
+    analysis and debugging purposes.
+
     Args:
         forest_data: DataFrame with required columns: x, y, species.
                      Optional columns: z (defaults to 0), height, delay
 
     Returns:
-        List of (grove, species_name, tree_count, attributes) tuples
+        List of tuples: (grove_instance, species_name, tree_count, attributes_dict)
+        where attributes_dict contains: tree_count, avg_height, positions, delays
     """
     forest = []
 
