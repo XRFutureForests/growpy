@@ -974,6 +974,13 @@ def _add_materials_to_usd(
             shader = UsdShade.Shader.Define(stage, material_path.AppendChild("Shader"))
             shader.CreateIdAttr("UsdPreviewSurface")
 
+            # Create UV reader for texture coordinates
+            uv_reader_path = material_path.AppendChild("UVReader")
+            uv_reader = UsdShade.Shader.Define(stage, uv_reader_path)
+            uv_reader.CreateIdAttr("UsdPrimvarReader_float2")
+            uv_reader.CreateInput("varname", Sdf.ValueTypeNames.String).Set("st")
+            uv_reader.CreateOutput("result", Sdf.ValueTypeNames.Float2)
+
             # Diffuse texture
             if "diffuse" in textures:
                 diffuse_tex_path = material_path.AppendChild("DiffuseTexture")
@@ -983,6 +990,12 @@ def _add_materials_to_usd(
                 relative_path = f"./textures/{textures['diffuse'].name}"
                 diffuse_tex.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
                     relative_path
+                )
+                # Connect UV coordinates
+                diffuse_tex.CreateInput(
+                    "st", Sdf.ValueTypeNames.Float2
+                ).ConnectToSource(
+                    uv_reader.CreateOutput("result", Sdf.ValueTypeNames.Float2)
                 )
                 diffuse_tex.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
 
@@ -1003,6 +1016,10 @@ def _add_materials_to_usd(
                 relative_path = f"./textures/{textures['normal'].name}"
                 normal_tex.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
                     relative_path
+                )
+                # Connect UV coordinates
+                normal_tex.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
+                    uv_reader.CreateOutput("result", Sdf.ValueTypeNames.Float2)
                 )
                 normal_tex.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
 
@@ -1252,6 +1269,13 @@ def _add_skeleton_and_materials_to_usd(
             shader = UsdShade.Shader.Define(stage, material_path.AppendChild("Shader"))
             shader.CreateIdAttr("UsdPreviewSurface")
 
+            # Create UV reader for texture coordinates
+            uv_reader_path = material_path.AppendChild("UVReader")
+            uv_reader = UsdShade.Shader.Define(stage, uv_reader_path)
+            uv_reader.CreateIdAttr("UsdPrimvarReader_float2")
+            uv_reader.CreateInput("varname", Sdf.ValueTypeNames.String).Set("st")
+            uv_reader.CreateOutput("result", Sdf.ValueTypeNames.Float2)
+
             # Diffuse texture
             if "diffuse" in textures:
                 diffuse_tex_path = material_path.AppendChild("DiffuseTexture")
@@ -1261,6 +1285,12 @@ def _add_skeleton_and_materials_to_usd(
                 relative_path = f"./textures/{textures['diffuse'].name}"
                 diffuse_tex.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
                     relative_path
+                )
+                # Connect UV coordinates
+                diffuse_tex.CreateInput(
+                    "st", Sdf.ValueTypeNames.Float2
+                ).ConnectToSource(
+                    uv_reader.CreateOutput("result", Sdf.ValueTypeNames.Float2)
                 )
                 diffuse_tex.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
 
@@ -1281,6 +1311,10 @@ def _add_skeleton_and_materials_to_usd(
                 relative_path = f"./textures/{textures['normal'].name}"
                 normal_tex.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
                     relative_path
+                )
+                # Connect UV coordinates
+                normal_tex.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
+                    uv_reader.CreateOutput("result", Sdf.ValueTypeNames.Float2)
                 )
                 normal_tex.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
 
@@ -1323,6 +1357,121 @@ def _add_skeleton_and_materials_to_usd(
 
         traceback.print_exc()
         return None
+
+
+def _add_skeleton_to_twig_usd(usd_path: Path) -> bool:
+    """Add a simple single-bone skeleton to a twig USD file.
+
+    This makes the twig compatible with skeletal mesh Nanite Assemblies in Unreal.
+    Creates a single bone at origin with the mesh bound to it.
+
+    Args:
+        usd_path: Path to twig USD file to modify
+
+    Returns:
+        bool: Success status
+    """
+    try:
+        from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel, Vt
+
+        # Open existing stage
+        stage = Usd.Stage.Open(str(usd_path))
+        if not stage:
+            return False
+
+        # Find the mesh prim
+        mesh_prim = None
+        for prim in stage.Traverse():
+            if prim.IsA(UsdGeom.Mesh):
+                mesh_prim = prim
+                break
+
+        if not mesh_prim:
+            return False
+
+        # Get mesh and parent
+        mesh = UsdGeom.Mesh(mesh_prim)
+        original_mesh_path = mesh_prim.GetPath()
+        parent_path = original_mesh_path.GetParentPath()
+
+        # Create SkelRoot at parent level
+        skel_root_path = parent_path.AppendChild("SkelRoot")
+        skel_root_prim = UsdSkel.Root.Define(stage, skel_root_path)
+
+        # Create simple skeleton with single bone at origin
+        skel_path = skel_root_path.AppendChild("Skeleton")
+        skel_prim = UsdSkel.Skeleton.Define(stage, skel_path)
+
+        # Define single joint at origin
+        joints = ["Root"]
+        skel_prim.CreateJointsAttr(joints)
+
+        # Bind transforms (identity matrix at origin)
+        bind_transforms = [Gf.Matrix4d().SetIdentity()]
+        skel_prim.CreateBindTransformsAttr(bind_transforms)
+
+        # Rest transforms (same as bind)
+        skel_prim.CreateRestTransformsAttr(bind_transforms)
+
+        # Create new mesh prim inside SkelRoot
+        new_mesh_path = skel_root_path.AppendChild(original_mesh_path.name)
+        new_mesh_prim = stage.DefinePrim(new_mesh_path, "Mesh")
+
+        # Copy all mesh attributes
+        for attr in mesh_prim.GetAttributes():
+            value = attr.Get()
+            if value is not None:
+                new_mesh_prim.CreateAttribute(attr.GetName(), attr.GetTypeName()).Set(
+                    value
+                )
+
+        # Apply skeletal binding
+        skel_binding_api = UsdSkel.BindingAPI.Apply(new_mesh_prim)
+        skel_binding_api.CreateSkeletonRel().SetTargets([skel_path])
+
+        # Get vertex count
+        mesh_points = mesh.GetPointsAttr().Get()
+        num_verts = len(mesh_points) if mesh_points else 0
+
+        if num_verts > 0:
+            # Bind all vertices to the single root joint with full weight
+            joint_indices = Vt.IntArray([0] * num_verts)
+            joint_weights = Vt.FloatArray([1.0] * num_verts)
+
+            skel_binding_api.CreateJointIndicesPrimvar(False, 1).Set(joint_indices)
+            skel_binding_api.CreateJointWeightsPrimvar(False, 1).Set(joint_weights)
+
+        # Copy material binding if it exists
+        from pxr import UsdShade
+
+        old_mat_api = UsdShade.MaterialBindingAPI(mesh_prim)
+        mat_binding = old_mat_api.GetDirectBinding()
+        if mat_binding:
+            new_mat_api = UsdShade.MaterialBindingAPI.Apply(new_mesh_prim)
+            new_mat_api.Bind(mat_binding.GetMaterial())
+
+        # Remove original mesh
+        stage.RemovePrim(original_mesh_path)
+
+        # Set root as default prim (NOT SkelRoot!) so materials are accessible
+        # This ensures materials in /root/_materials are visible when Unreal imports
+        root_prim = stage.GetPrimAtPath("/root")
+        if root_prim:
+            print(
+                f"    -> Setting default prim to 'root' (was: {stage.GetDefaultPrim().GetPath() if stage.GetDefaultPrim() else 'none'})"
+            )
+            stage.SetDefaultPrim(root_prim)
+            print(f"    -> New default prim: {stage.GetDefaultPrim().GetPath()}")
+        else:
+            print(f"    -> WARNING: Could not find /root prim!")
+
+        # Save
+        stage.Save()
+        return True
+
+    except Exception as e:
+        print(f"  Warning: Could not add skeleton to twig {usd_path.name}: {e}")
+        return False
 
 
 def _find_bark_texture(
@@ -1595,6 +1744,15 @@ def export_twigs_from_blend(blend_file_path: Path, output_dir: Path) -> List[Pat
                     bpy.ops.wm.usd_export(**twig_params)
 
                 exported_files.append(usd_path)
+
+                # Create skeletal variant by adding single-bone skeleton
+                skeletal_path = output_dir / f"{clean_name}_skeletal.usda"
+                import shutil
+
+                shutil.copy2(usd_path, skeletal_path)
+
+                if _add_skeleton_to_twig_usd(skeletal_path):
+                    exported_files.append(skeletal_path)
 
             except Exception as e:
                 continue
@@ -2229,11 +2387,8 @@ def batch_export_trees_for_unreal(
 
                     with open(twig_results["manifest"], "r") as f:
                         twig_manifest = json_lib.load(f)
-                    pcg_metadata.twig_files = [
-                        f
-                        for files in twig_manifest["twig_types"].values()
-                        for f in files
-                    ]
+                    # twig_manifest now has "twig_files" list instead of "twig_types" dict
+                    pcg_metadata.twig_files = twig_manifest.get("twig_files", [])
 
             # Combine basic metadata with PCG metadata
             combined_metadata = {
@@ -2529,19 +2684,72 @@ def export_grove_tree_as_usda_native(
                 print(f"  ✓ Nanite Assembly USD: {nanite_path.name}")
                 print(f"    Import this file in Unreal Engine 5.7+ (static mesh)")
 
-            # Note: Skeletal Nanite Assemblies are not created because:
-            # - USD sublayer/variant references for skeleton-only prims are complex
-            # - Current Unreal Nanite Assembly importer expects simpler structure
-            # - Referencing the full tree USD creates duplicate geometry (Nanite crash)
-            #
-            # For skeletal meshes with animation:
-            # - Import the base USD file directly (e.g., Oak_var1.usda)
-            # - It contains the skeleton embedded with proper binding
-            # - Unreal will import as skeletal mesh with animation support
-            if include_skeleton:
+            # Create skeletal mesh assembly and Nanite Assembly if skeleton is enabled
+            if include_skeleton and include_twigs and twig_usd_paths:
+                print(f"\n  Creating Skeletal Mesh Assembly...")
+
+                # Get skeletal twig paths using the same lookup function with prefer_skeletal=True
+                skeletal_twig_paths = get_twig_usd_map_for_species(
+                    species_name, config, prefer_skeletal=True
+                )
+
+                if skeletal_twig_paths:
+                    # Create skeletal assembly file (tree + skeletal twigs)
+                    skeletal_assembly_path = (
+                        output_path.parent
+                        / f"{output_path.stem}_skeletal{output_path.suffix}"
+                    )
+
+                    from .twig_placement import export_twig_placements_to_usd
+
+                    skeletal_success = export_twig_placements_to_usd(
+                        tree_usd_path=skeletal_tree_path,
+                        twig_usd_paths=skeletal_twig_paths,
+                        output_path=skeletal_assembly_path,
+                        tree_mesh=None,
+                        extract_from_usd=True,
+                        use_point_instancer=use_point_instancer,
+                        convert_to_ue=convert_to_ue,
+                    )
+
+                    if skeletal_success:
+                        print(f"  ✓ Skeletal Assembly: {skeletal_assembly_path.name}")
+                        print(f"    (Skeletal tree + skeletal twigs)")
+
+                        # Create skeletal Nanite Assembly
+                        skeletal_nanite_path = (
+                            output_path.parent
+                            / f"{output_path.stem}_NaniteAssembly_skeletal{output_path.suffix}"
+                        )
+
+                        print(f"\n  Creating Skeletal Nanite Assembly...")
+                        skeletal_nanite_success = create_nanite_assembly_usd(
+                            tree_usd_path=skeletal_assembly_path,
+                            output_path=skeletal_nanite_path,
+                            species_name=species_name,
+                            twig_usd_paths=skeletal_twig_paths,
+                            use_skeletal_mesh=True,
+                        )
+
+                        if skeletal_nanite_success:
+                            print(
+                                f"  ✓ Skeletal Nanite Assembly: {skeletal_nanite_path.name}"
+                            )
+                            print(
+                                f"    Import this file in Unreal Engine 5.7+ (skeletal mesh)"
+                            )
+                    else:
+                        print(f"  Warning: Failed to create skeletal assembly")
+                else:
+                    print(
+                        f"  ℹ️  No skeletal twigs found - skeletal assembly not created"
+                    )
+            elif include_skeleton:
                 print(f"\n  ℹ️  For skeletal mesh with animation:")
-                print(f"     Import {output_path.name} directly (skeleton embedded)")
-                print(f"     Skeletal Nanite Assembly not created (Unreal limitation)")
+                print(
+                    f"     Import {skeletal_tree_path.name} directly (skeleton embedded)"
+                )
+                print(f"     (No twigs - skeletal assembly not applicable)")
 
         return True
 
@@ -2557,6 +2765,7 @@ def get_twig_usd_map_for_species(
     species_name: str,
     config: Optional[Any] = None,
     prefer_nanite_assembly: bool = False,
+    prefer_skeletal: bool = False,
 ) -> Dict[str, Path]:
     """Get mapping of twig types to USD file paths for a species.
 
@@ -2568,6 +2777,7 @@ def get_twig_usd_map_for_species(
         species_name: Name of tree species
         config: GrowPy configuration
         prefer_nanite_assembly: DEPRECATED - always False, kept for compatibility
+        prefer_skeletal: If True, prefer skeletal twig variants (_skeletal.usda)
 
     Returns:
         Dict mapping twig types to USD file paths:
@@ -2603,8 +2813,29 @@ def get_twig_usd_map_for_species(
                     # Using Nanite Assembly twigs causes Unreal Engine import crashes
                     for ext in [".usda", ".usd"]:
                         usd_file = twig_file.with_suffix(ext)
+
                         # Skip Nanite Assembly files completely
-                        if "_NaniteAssembly" not in usd_file.name and usd_file.exists():
+                        if "_NaniteAssembly" in usd_file.name:
+                            continue
+
+                        # Filter based on skeletal preference
+                        is_skeletal = "_skeletal" in usd_file.stem
+                        if prefer_skeletal and not is_skeletal:
+                            # Looking for skeletal, this is static - check for skeletal variant
+                            skeletal_file = (
+                                usd_file.parent
+                                / f"{usd_file.stem}_skeletal{usd_file.suffix}"
+                            )
+                            if skeletal_file.exists():
+                                twig_usd_map[grove_type] = skeletal_file
+                                print(f"    Found {grove_type}: {skeletal_file.name}")
+                                break
+                            continue
+                        elif not prefer_skeletal and is_skeletal:
+                            # Looking for static, this is skeletal - skip it
+                            continue
+
+                        if usd_file.exists():
                             twig_usd_map[grove_type] = usd_file
                             print(f"    Found {grove_type}: {usd_file.name}")
                             break
@@ -2734,27 +2965,32 @@ def bundle_twigs_for_species(
         twig_dir = output_dir / "twigs"
         twig_dir.mkdir(parents=True, exist_ok=True)
 
-        # Get available twig USD map (already resolved to actual files)
-        twig_usd_map = get_twig_usd_map_for_species(species_name, config)
+        # Get available twig files for this species (all variations)
+        from ..config import GrowPyConfig
 
-        if not twig_usd_map:
+        twig_files_by_type = GrowPyConfig.get_twig_files_by_type(species_name)
+
+        if not twig_files_by_type:
             print(f"  No twig files found for {species_name}")
             return results
 
-        twig_manifest = {"species": species_name, "twig_types": {}, "total_twigs": 0}
+        twig_manifest = {"species": species_name, "twig_files": [], "total_twigs": 0}
         copied_textures = set()  # Track copied textures to avoid duplicates
 
-        # Copy each twig file in the map for ALL requested formats
-        for twig_type, source_file in twig_usd_map.items():
+        # Collect all unique twig files (avoid duplicates)
+        all_twig_files = set()
+        for twig_paths in twig_files_by_type.values():
+            all_twig_files.update(twig_paths)
+
+        # Copy ALL twig files for this species in requested formats
+        for source_file in sorted(all_twig_files):
             if not source_file.exists():
                 continue
-
-            twig_manifest["twig_types"][twig_type] = []
 
             # Get the base path without extension
             source_base = source_file.parent / source_file.stem
 
-            # Copy all requested formats
+            # Copy all requested formats (both static and skeletal variants)
             for fmt in formats:
                 # Determine file extension based on format
                 if fmt == "usd":
@@ -2774,20 +3010,38 @@ def bundle_twigs_for_species(
                         dest_file = twig_dir / fmt_source_file.name
                         shutil.copy2(fmt_source_file, dest_file)
                         results["twig_files"].append(dest_file)
-                        twig_manifest["twig_types"][twig_type].append(dest_file.name)
+                        twig_manifest["twig_files"].append(dest_file.name)
                         twig_manifest["total_twigs"] += 1
-                        print(f"    Copied twig {twig_type}: {dest_file.name}")
+                        print(f"    Copied twig: {dest_file.name}")
                         break  # Found file, no need to try other extensions
 
-            # Copy textures if they exist (only once per species)
-            texture_dir = source_file.parent / "textures"
-            if texture_dir.exists() and str(texture_dir) not in copied_textures:
+                    # Also check for skeletal variant
+                    skeletal_file = (
+                        source_base.parent / f"{source_base.stem}_skeletal{ext}"
+                    )
+                    if (
+                        skeletal_file.exists()
+                        and not (twig_dir / skeletal_file.name).exists()
+                    ):
+                        # Copy skeletal variant
+                        dest_file = twig_dir / skeletal_file.name
+                        shutil.copy2(skeletal_file, dest_file)
+                        results["twig_files"].append(dest_file)
+                        twig_manifest["twig_files"].append(dest_file.name)
+                        twig_manifest["total_twigs"] += 1
+                        print(f"    Copied twig: {dest_file.name}")
+
+        # Copy textures if they exist (only once per species)
+        if all_twig_files:
+            # Get texture directory from first twig file
+            first_twig = next(iter(all_twig_files))
+            texture_dir = first_twig.parent / "textures"
+            if texture_dir.exists():
                 dest_texture_dir = twig_dir / "textures"
                 dest_texture_dir.mkdir(exist_ok=True)
                 for texture_file in texture_dir.glob("*"):
                     if texture_file.is_file():
                         shutil.copy2(texture_file, dest_texture_dir / texture_file.name)
-                copied_textures.add(str(texture_dir))
                 print(f"    Copied textures from {texture_dir.name}")
 
         # Save twig manifest
