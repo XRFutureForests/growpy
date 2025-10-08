@@ -24,6 +24,9 @@ if sys.platform == "win32":
             if pxr_path not in os.environ.get("PATH", ""):
                 os.environ["PATH"] = pxr_path + os.pathsep + os.environ.get("PATH", "")
 
+GROWTH_CYCLE_LIMIT = 75
+HEIGHT_SCALE = 2
+
 # IMPORTANT: Import bpy after USD path setup
 try:
     import bpy
@@ -177,7 +180,7 @@ def generate_forest_exports(
     try:
         forest_data = pd.read_csv(csv_path)
         required_columns = ["x", "y", "species", "height"]
-
+        forest_data["height"] /= HEIGHT_SCALE
         # Check required columns
         missing_cols = [
             col for col in required_columns if col not in forest_data.columns
