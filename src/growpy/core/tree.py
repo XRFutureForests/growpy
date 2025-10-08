@@ -42,7 +42,8 @@ def calculate_growth_cycles_from_height(forest_data: pd.DataFrame) -> None:
 
         growth_model_path = config.get_growth_model_path(species)
         model_path = growth_model_path / "growth_model.pkl"
-        model = pickle.load(open(model_path, "rb"))
+        with open(model_path, "rb") as f:
+            model = pickle.load(f)
         growth_cycles = int(model.predict([[height]])[0])
 
         forest_data.at[i, "growth_cycles"] = growth_cycles
