@@ -98,7 +98,16 @@ def add_nanite_attributes_to_usd(usd_path: Path, is_foliage: bool = False) -> bo
 def validate_mesh_for_nanite(mesh: Any) -> Dict[str, Any]:
     """Validate mesh for Unreal Engine Nanite compatibility.
 
-    Checks mesh topology, UV continuity, and other Nanite requirements.
+    Based on official UE Nanite documentation:
+    https://dev.epicgames.com/documentation/en-us/unreal-engine/nanite-virtualized-geometry-in-unreal-engine
+
+    Key Requirements:
+    - Triangles only (no quads/ngons) - handled by Grove's model.triangulate()
+    - Vertex-to-triangle ratio should be <2:1 (shared vertices, not faceted)
+    - Supports multiple UVs and vertex colors
+    - Materials must be Opaque or Masked blend modes
+    - No degenerate geometry (zero-area faces)
+    - Tangents are derived implicitly (not stored)
 
     Args:
         mesh: Blender mesh object
@@ -112,15 +121,31 @@ def validate_mesh_for_nanite(mesh: Any) -> Dict[str, Any]:
     validation = {"compatible": True, "warnings": [], "stats": {}}
 
     try:
-        # Triangle count check (<1M recommended for optimal performance)
+        # Triangle count check
+        # Nanite handles millions of triangles, but check for reasonable counts
         triangle_count = len(mesh.polygons)
         validation["stats"]["triangle_count"] = triangle_count
+        vertex_count = len(mesh.vertices)
+        validation["stats"]["vertex_count"] = vertex_count
 
-        if triangle_count > 1000000:
-            validation["warnings"].append(
-                f"High triangle count ({triangle_count:,}). "
-                "Consider <1M triangles for optimal Nanite performance."
-            )
+        # Vertex-to-triangle ratio check (should be <2:1 for optimal performance)
+        # Ratio >2:1 indicates faceted normals or poor vertex sharing
+        if vertex_count > 0 and triangle_count > 0:
+            vertex_ratio = vertex_count / triangle_count
+            validation["stats"]["vertex_to_triangle_ratio"] = vertex_ratio
+
+            if vertex_ratio > 2.0:
+                validation["warnings"].append(
+                    f"High vertex-to-triangle ratio ({vertex_ratio:.2f}:1). "
+                    "Ratio >2:1 suggests faceted normals or poor vertex sharing. "
+                    "Ideal ratio is <1:1 for shared vertices."
+                )
+            elif vertex_ratio > 2.5:
+                validation["warnings"].append(
+                    f"Very high vertex-to-triangle ratio ({vertex_ratio:.2f}:1). "
+                    "Ratio approaching 3:1 means mesh is completely faceted. "
+                    "This significantly increases data size and rendering cost."
+                )
 
         # Check for quads vs triangles
         quad_count = sum(1 for poly in mesh.polygons if len(poly.vertices) == 4)
@@ -1193,6 +1218,20 @@ def _export_fbx_internal(
 
     Returns:
         bool: Success status
+
+    Coordinate System Handling:
+        Grove → Blender → Unreal Engine transformation pipeline:
+
+        1. Grove builds model (internal coordinate system)
+        2. Blender creates mesh from Grove model (Blender Z-up, right-handed)
+           - Mesh vertices: X-right, Y-forward, Z-up
+        3. FBX export transforms to Unreal (Z-up, left-handed)
+           - axis_forward="-Z", axis_up="Y" in FBX exporter
+           - global_scale=100.0: Meters → centimeters for Unreal
+           - Handedness conversion handled by FBX exporter
+
+        Result in Unreal: X-forward, Y-right, Z-up (left-handed), cm scale
+        See docs/growpy/COORDINATE_SYSTEMS.md for details
     """
     if not _check_bpy_available():
         print("bpy module not available - cannot export FBX")
@@ -1220,6 +1259,10 @@ def _export_fbx_internal(
             return False
 
         model = models[0]
+
+        # Triangulate using Grove's native function (more reliable than Blender modifier)
+        # This ensures the mesh consists purely of triangles before export
+        model.triangulate()
 
         # Extract mesh data from Grove model
         points = model.get_points_flat()
@@ -1266,15 +1309,39 @@ def _export_fbx_internal(
 
         # Add Nanite metadata as custom properties
         obj["nanite_compatible"] = True
-        obj["nanite_preserve_area"] = False  # False for trees (branches/trunk)
+        # Preserve Area: FALSE for tree trunks/branches (solid continuous surfaces)
+        # Should only be TRUE for foliage cards (leaves, grass blades) to prevent thinning
+        # See: https://dev.epicgames.com/documentation (Foliage Using Nanite section)
+        obj["nanite_preserve_area"] = False
         obj["unreal_nanite"] = "enable"
 
-        # Apply triangulation for consistent topology (Nanite requirement)
-        triangulate_mod = obj.modifiers.new(
-            name="Triangulate_Nanite", type="TRIANGULATE"
-        )
-        triangulate_mod.quad_method = "BEAUTY"
-        triangulate_mod.ngon_method = "BEAUTY"
+        # Clean mesh geometry to prevent Nanite hierarchy build errors
+        # Critical for avoiding ParentLODError assertion in Nanite encoder
+        #
+        # Nanite Requirements (from official docs):
+        # 1. All triangles (no quads/ngons) - handled by Grove's model.triangulate()
+        # 2. No degenerate geometry (zero-area faces, duplicate vertices)
+        # 3. No loose vertices/edges that don't form faces
+        # 4. Good vertex sharing (ratio <2:1) for optimal compression
+        # 5. Smooth normals where possible (faceted normals increase data size)
+        #
+        # Cleanup operations:
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_all(action="SELECT")
+
+        # Remove problematic geometry
+        bpy.ops.mesh.delete_loose()  # Remove disconnected vertices/edges
+        bpy.ops.mesh.remove_doubles(
+            threshold=0.0001
+        )  # Merge duplicate vertices (0.1mm)
+        bpy.ops.mesh.dissolve_degenerate(threshold=0.0001)  # Remove zero-area faces
+
+        bpy.ops.object.mode_set(mode="OBJECT")
+
+        # Note: Triangulation already done by Grove's model.triangulate() before mesh creation
+        # This ensures pure triangle topology as required by Nanite
+        # Tangents are derived implicitly by Nanite (not stored in mesh data)
 
         # Validate mesh for Nanite
         mesh_data = obj.data
@@ -1293,13 +1360,30 @@ def _export_fbx_internal(
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # FBX Export with optimal settings for Unreal Nanite
+        # Print mesh stats before export for debugging
+        print(
+            f"  Mesh stats: {len(mesh_data.vertices)} verts, {len(mesh_data.polygons)} faces"
+        )
+
+        # FBX Export optimized for Unreal Engine Nanite
+        #
+        # Nanite-Specific Settings:
+        # - mesh_smooth_type="FACE": Single smoothing group (Nanite derives tangents)
+        # - use_mesh_edges=False: No edge data needed (reduces file size)
+        # - use_tspace=True: Export tangent space (for normal map compatibility)
+        # - global_scale=100.0: Scale to Unreal centimeters (prevents precision issues)
+        #
+        # Supported Nanite Features:
+        # - Skeletal meshes with animation (experimental in UE 5.x)
+        # - Multiple UVs and vertex colors
+        # - Opaque and Masked materials only
+        # - Custom properties for metadata
         bpy.ops.export_scene.fbx(
             filepath=str(output_path),
             use_selection=True,
             object_types={"MESH", "ARMATURE"} if include_skeleton else {"MESH"},
-            mesh_smooth_type="FACE",  # Single smoothing group (Nanite requirement)
-            use_mesh_modifiers=True,  # Apply triangulation modifier
+            mesh_smooth_type="FACE",  # Single smoothing group
+            use_mesh_modifiers=True,  # Apply modifiers (already triangulated)
             use_mesh_edges=False,  # No edge data (cleaner for Nanite)
             use_tspace=True,  # Tangent space for normal maps
             use_custom_props=True,  # Export Nanite metadata + twig attributes
@@ -1314,6 +1398,8 @@ def _export_fbx_internal(
             use_batch_own_dir=False,
             axis_forward="-Z",
             axis_up="Y",
+            global_scale=100.0,  # Scale to Unreal cm units (prevents sub-millimeter precision issues)
+            apply_scale_options="FBX_SCALE_ALL",  # Apply to all data
         )
 
         print(
@@ -1917,6 +2003,30 @@ def export_grove_tree_as_usda_native(
 
     Returns:
         bool: Success status
+
+    Coordinate System Handling:
+        Grove → USD transformation pipeline:
+
+        1. Grove exports model via model_to_usda_string()
+           - Documented to export in Y-up coordinate system
+           - Vertex coordinates: (x, y, z) where Y is vertical
+
+        2. We wrap Grove's USD in Z-up stage
+           - Stage metadata: UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
+           - Stage scale: UsdGeom.SetStageMetersPerUnit(stage, 1.0)
+           - Face attributes converted: Y-up → Z-up via _add_grove_face_attributes_to_usd()
+
+        3. Twigs added with convert_to_ue flag
+           - If True: Blender Z-up → Unreal Z-up (handedness conversion)
+           - Transformation: (x, y, z) → (y, -x, z)
+
+        4. Unreal import
+           - Reads Z-up USD correctly
+           - Scale: Meters (USD) handled automatically
+           - Handedness: Left-handed (if convert_to_ue=True)
+
+        Note: The Grove model vertices may already be in Z-up despite Y-up metadata.
+        This needs validation - see docs/growpy/COORDINATE_SYSTEMS.md
     """
     ensure_grove_available()
     gc = _get_gc()
@@ -1942,6 +2052,11 @@ def export_grove_tree_as_usda_native(
             return False
 
         model = models[0]
+
+        # Triangulate using Grove's native function for consistent topology
+        # This ensures compatibility with Nanite and other triangle-only pipelines
+        # Note: Triangulation preserves coordinate system (no transformation here)
+        model.triangulate()
 
         # Export using Grove's native USD export
         usda_string = gc.io.model_to_usda_string(model)

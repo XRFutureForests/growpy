@@ -276,8 +276,12 @@ def convert_blender_to_ue_coords(
     - Blender: Right-handed (X right, Y forward, Z up)
     - Unreal: Left-handed (X forward, Y right, Z up)
 
-    Conversion: Swap X and Y, negate Y for handedness
-    Blender (X, Y, Z) -> UE (Y, -X, Z)
+    Conversion: Swap X and Y, negate Y for handedness change
+    Blender (X, Y, Z) → UE (Y, -X, Z)
+
+    This is ONLY applied when convert_to_ue=True flag is set.
+    The base tree USD remains in Blender Z-up coordinates (right-handed).
+    See docs/growpy/COORDINATE_SYSTEMS.md for full transformation pipeline.
 
     Args:
         pos: Position in Blender coordinates (x, y, z)
