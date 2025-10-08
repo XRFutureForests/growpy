@@ -258,6 +258,105 @@ import shutil
 from pathlib import Path
 import json
 
+def _add_skeleton_to_twig_usd(usd_path):
+    """Add a simple single-bone skeleton to a twig USD file.
+    
+    This makes the twig compatible with skeletal mesh Nanite Assemblies in Unreal.
+    Creates a single bone at origin with the mesh bound to it.
+    """
+    try:
+        from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel, UsdShade, Vt
+        
+        # Open existing stage
+        stage = Usd.Stage.Open(str(usd_path))
+        if not stage:
+            return False
+            
+        # Find the mesh prim
+        mesh_prim = None
+        for prim in stage.Traverse():
+            if prim.IsA(UsdGeom.Mesh):
+                mesh_prim = prim
+                break
+                
+        if not mesh_prim:
+            return False
+            
+        # Get mesh and parent
+        mesh = UsdGeom.Mesh(mesh_prim)
+        original_mesh_path = mesh_prim.GetPath()
+        parent_path = original_mesh_path.GetParentPath()
+        
+        # Create SkelRoot at parent level
+        skel_root_path = parent_path.AppendChild("SkelRoot")
+        skel_root_prim = UsdSkel.Root.Define(stage, skel_root_path)
+        
+        # Create simple skeleton with single bone at origin
+        skel_path = skel_root_path.AppendChild("Skeleton")
+        skel_prim = UsdSkel.Skeleton.Define(stage, skel_path)
+        
+        # Define single joint at origin
+        joints = ["Root"]
+        skel_prim.CreateJointsAttr(joints)
+        
+        # Bind transforms (identity matrix at origin)
+        bind_transforms = [Gf.Matrix4d().SetIdentity()]
+        skel_prim.CreateBindTransformsAttr(bind_transforms)
+        
+        # Rest transforms (same as bind)
+        skel_prim.CreateRestTransformsAttr(bind_transforms)
+        
+        # Create new mesh prim inside SkelRoot
+        new_mesh_path = skel_root_path.AppendChild(original_mesh_path.name)
+        new_mesh_prim = stage.DefinePrim(new_mesh_path, "Mesh")
+        
+        # Copy all mesh attributes
+        for attr in mesh_prim.GetAttributes():
+            value = attr.Get()
+            if value is not None:
+                new_mesh_prim.CreateAttribute(attr.GetName(), attr.GetTypeName()).Set(value)
+                
+        # Apply skeletal binding
+        skel_binding_api = UsdSkel.BindingAPI.Apply(new_mesh_prim)
+        skel_binding_api.CreateSkeletonRel().SetTargets([skel_path])
+        
+        # Get vertex count
+        mesh_points = mesh.GetPointsAttr().Get()
+        num_verts = len(mesh_points) if mesh_points else 0
+        
+        if num_verts > 0:
+            # Bind all vertices to the single root joint with full weight
+            joint_indices = Vt.IntArray([0] * num_verts)
+            joint_weights = Vt.FloatArray([1.0] * num_verts)
+            
+            skel_binding_api.CreateJointIndicesPrimvar(False, 1).Set(joint_indices)
+            skel_binding_api.CreateJointWeightsPrimvar(False, 1).Set(joint_weights)
+        
+        # Copy material binding if it exists
+        old_mat_api = UsdShade.MaterialBindingAPI(mesh_prim)
+        mat_binding = old_mat_api.GetDirectBinding()
+        if mat_binding:
+            new_mat_api = UsdShade.MaterialBindingAPI.Apply(new_mesh_prim)
+            new_mat_api.Bind(mat_binding.GetMaterial())
+        
+        # Remove original mesh
+        stage.RemovePrim(original_mesh_path)
+        
+        # Set root as default prim (NOT SkelRoot!) so materials are accessible
+        # This ensures materials in /root/_materials are visible when Unreal imports
+        root_prim = stage.GetPrimAtPath("/root")
+        if root_prim:
+            stage.SetDefaultPrim(root_prim)
+        
+        # Save
+        stage.Save()
+        return True
+        
+    except Exception as e:
+        print(f"  Warning: Could not add skeleton to twig {Path(usd_path).name}: {e}")
+        return False
+
+
 def process_twig_file(blend_file, output_dir, formats, species_name):
     """Process a single twig blend file."""
     import bpy
@@ -351,6 +450,18 @@ def process_twig_file(blend_file, output_dir, formats, species_name):
                     )
                     
                     exported_files.append(export_path)
+                    
+                    # Create skeletal variant with single-bone skeleton
+                    skeletal_path = output_dir / f"{standardized_name}_skeletal.{fmt}"
+                    print(f"    -> Creating skeletal variant: {skeletal_path.name}")
+                    
+                    shutil.copy2(export_path, skeletal_path)
+                    
+                    if _add_skeleton_to_twig_usd(skeletal_path):
+                        exported_files.append(skeletal_path)
+                        print(f"    -> [OK] Skeletal twig created (single-bone skeleton at origin)")
+                    else:
+                        print(f"    -> [WARN] Could not create skeletal variant")
                     
                 elif fmt == 'fbx':
                     export_path = output_dir / f"{standardized_name}.fbx"
