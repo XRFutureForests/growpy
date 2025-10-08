@@ -927,9 +927,14 @@ def _add_skeleton_and_materials_to_usd(
     """Add skeleton and materials to Grove's native USD export.
 
     Enhances Grove's basic USD export with:
-    1. UsdSkel skeleton hierarchy for animation
+    1. UsdSkel skeleton hierarchy for animation (wrapped in SkelRoot for UE5.7)
     2. Bark texture materials (diffuse + normal)
     3. Proper skeletal mesh binding
+
+    Creates proper UsdSkel structure for Unreal Engine 5.7:
+    - SkelRoot (container with SkelBindingAPI)
+      - Skeleton (joint hierarchy)
+      - Mesh (skinned geometry with joint influences)
 
     Args:
         usd_path: Path to USD file to enhance
@@ -949,27 +954,41 @@ def _add_skeleton_and_materials_to_usd(
             print(f"  Warning: Could not open USD stage at {usd_path}")
             return False
 
-        # Find the tree mesh prim
+        # Find the tree mesh prim and its parent Xform
         tree_mesh_prim = None
+        tree_xform_prim = None
         for prim in stage.Traverse():
             if prim.IsA(UsdGeom.Mesh):
                 tree_mesh_prim = prim
+                tree_xform_prim = stage.GetPrimAtPath(prim.GetPath().GetParentPath())
                 break
 
-        if not tree_mesh_prim:
-            print(f"  Warning: No mesh found in USD file")
+        if not tree_mesh_prim or not tree_xform_prim:
+            print(f"  Warning: No mesh or parent xform found in USD file")
             return False
 
         mesh = UsdGeom.Mesh(tree_mesh_prim)
 
-        # 1. Add skeleton if available
-        print(f"  Adding skeleton to USD...")
+        # Get original mesh path and parent path
+        original_mesh_path = tree_mesh_prim.GetPath()
+        original_xform_path = tree_xform_prim.GetPath()
+
+        # 1. Add skeleton if available - wrapped in SkelRoot for UE5.7
+        print(f"  Adding skeleton to USD (UE5.7 SkelRoot structure)...")
         skeletons = grove.build_skeletons()
         if skeletons and len(skeletons) > 0:
             skeleton_data = skeletons[0]
 
-            # Create skeleton prim
-            skel_path = tree_mesh_prim.GetPath().GetParentPath().AppendChild("Skeleton")
+            # Create SkelRoot as parent container (required for UE5.7)
+            # SkelRoot wraps both the Skeleton and the skinned Mesh
+            skel_root_path = original_xform_path.AppendChild("SkelRoot")
+            skel_root_prim = UsdSkel.Root.Define(stage, skel_root_path)
+
+            # Apply SkelBindingAPI to the SkelRoot (UE5.7 requirement)
+            skel_binding_api = UsdSkel.BindingAPI.Apply(skel_root_prim.GetPrim())
+
+            # Create skeleton prim inside SkelRoot
+            skel_path = skel_root_path.AppendChild("Skeleton")
             skel_prim = UsdSkel.Skeleton.Define(stage, skel_path)
 
             # Convert Grove skeleton to USD skeleton
@@ -1027,22 +1046,67 @@ def _add_skeleton_and_materials_to_usd(
             skel_prim.CreateBindTransformsAttr(Vt.Matrix4dArray(bind_transforms))
             skel_prim.CreateRestTransformsAttr(Vt.Matrix4dArray(rest_transforms))
 
-            # Set joint parent topology
-            # UsdSkel uses indices to define parent relationships
-            topology_indices = []
-            for parent_idx in joint_parents:
-                topology_indices.append(parent_idx if parent_idx >= 0 else 0)
+            print(f"    ✓ Created SkelRoot with skeleton ({len(joints)} joints)")
 
-            # Note: USD topology is more complex - this is a simplified version
-            # For full skeletal animation, may need additional setup
+            # Move mesh inside SkelRoot and bind to skeleton
+            # This creates the proper hierarchy: SkelRoot/Skeleton + SkelRoot/Mesh
+            mesh_in_skel_path = skel_root_path.AppendChild("Mesh")
 
-            print(f"    ✓ Added skeleton with {len(joints)} joints")
+            # Copy mesh to new location inside SkelRoot
+            Sdf.CopySpec(
+                stage.GetRootLayer(),
+                original_mesh_path,
+                stage.GetRootLayer(),
+                mesh_in_skel_path,
+            )
 
-            # Bind mesh to skeleton
-            binding_api = UsdSkel.BindingAPI.Apply(tree_mesh_prim)
-            binding_api.CreateSkeletonRel().SetTargets([skel_path])
+            # Get the moved mesh prim
+            tree_mesh_prim = stage.GetPrimAtPath(mesh_in_skel_path)
+            mesh = UsdGeom.Mesh(tree_mesh_prim)
 
-            print(f"    ✓ Bound mesh to skeleton")
+            # Bind moved mesh to skeleton
+            mesh_binding_api = UsdSkel.BindingAPI.Apply(tree_mesh_prim)
+            mesh_binding_api.CreateSkeletonRel().SetTargets([skel_path])
+
+            # Add joint influences (uniform weights for now - all vertices influenced by root)
+            # In production, would calculate per-vertex weights based on proximity to bones
+            num_vertices = len(mesh.GetPointsAttr().Get())
+            joint_indices = [[0] for _ in range(num_vertices)]  # All bound to root
+            joint_weights = [[1.0] for _ in range(num_vertices)]  # Full weight to root
+
+            # Flatten for USD (element size = 1)
+            joint_indices_flat = [
+                idx for vertex_indices in joint_indices for idx in vertex_indices
+            ]
+            joint_weights_flat = [
+                w for vertex_weights in joint_weights for w in vertex_weights
+            ]
+
+            primvar_api = UsdGeom.PrimvarsAPI(tree_mesh_prim)
+            joint_indices_primvar = primvar_api.CreatePrimvar(
+                "skel:jointIndices", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.vertex
+            )
+            joint_indices_primvar.Set(joint_indices_flat)
+            joint_indices_primvar.SetElementSize(1)
+
+            joint_weights_primvar = primvar_api.CreatePrimvar(
+                "skel:jointWeights",
+                Sdf.ValueTypeNames.FloatArray,
+                UsdGeom.Tokens.vertex,
+            )
+            joint_weights_primvar.Set(joint_weights_flat)
+            joint_weights_primvar.SetElementSize(1)
+
+            # Remove original mesh outside SkelRoot (now duplicated inside)
+            stage.RemovePrim(original_mesh_path)
+
+            # Make SkelRoot the new default prim instead of the old Tree xform
+            # This ensures proper import in Unreal
+            stage.SetDefaultPrim(skel_root_prim.GetPrim())
+
+            print(f"    ✓ Bound mesh to skeleton with joint influences")
+            print(f"    ✓ Hierarchy: SkelRoot > [Skeleton + Mesh]")
+            print(f"    ✓ Set SkelRoot as default prim for import")
 
         # 2. Add bark texture material
         print(f"  Adding bark texture material...")
@@ -1898,6 +1962,7 @@ def batch_export_trees_for_unreal(
                     # Get twig USD paths if including twigs
                     twig_usd_map = None
                     if include_twigs_in_usd:
+                        # Get regular USD twig files (never Nanite Assembly for twig references)
                         twig_usd_map = get_twig_usd_map_for_species(species, config)
                         if not twig_usd_map:
                             print(f"  Warning: No twig USD files found for {species}")
@@ -2220,8 +2285,32 @@ def export_grove_tree_as_usda_native(
         # Grove's native USD export doesn't include custom face attributes
         _add_grove_face_attributes_to_usd(temp_tree_path, model)
 
-        # Add skeleton and bark texture materials to USD
-        _add_skeleton_and_materials_to_usd(temp_tree_path, grove, species_name, config)
+        # Create skeletal version with skeleton and materials
+        # This is the version referenced by assembly files and used for skeletal mesh import
+        skeletal_tree_path = temp_tree_path
+        if include_skeleton:
+            # Create separate skeletal file
+            skeletal_tree_path = (
+                output_path.parent
+                / f"{output_path.stem}_tree_only_skeletal{output_path.suffix}"
+            )
+
+            import shutil
+
+            shutil.copy2(temp_tree_path, skeletal_tree_path)
+
+            # Add skeleton and materials to skeletal version
+            _add_skeleton_and_materials_to_usd(
+                skeletal_tree_path, grove, species_name, config
+            )
+            print(f"  ✓ Skeletal tree USD: {skeletal_tree_path.name}")
+            print(f"    (Import as skeletal mesh in Unreal, like FBX)")
+
+            # Keep temp_tree_path as static mesh only (no skeleton)
+            # This is used for static Nanite Assembly
+        else:
+            # If no skeleton requested, use temp_tree_path for everything
+            skeletal_tree_path = temp_tree_path
 
         # Add twigs if requested
         if include_twigs and twig_usd_paths:
@@ -2267,8 +2356,13 @@ def export_grove_tree_as_usda_native(
             )
 
             print(f"\n  Creating Unreal Nanite Assembly (USD/Static)...")
+            # CRITICAL: Use skeletal_tree_path (with materials) instead of temp_tree_path
+            # This ensures Nanite Assembly has materials and textures
+            tree_ref_for_assembly = (
+                skeletal_tree_path if not include_twigs else output_path
+            )
             nanite_success = create_nanite_assembly_usd(
-                tree_usd_path=temp_tree_path if not include_twigs else output_path,
+                tree_usd_path=tree_ref_for_assembly,
                 output_path=nanite_path,
                 species_name=species_name,
                 twig_usd_paths=twig_usd_paths if include_twigs else None,
@@ -2279,30 +2373,19 @@ def export_grove_tree_as_usda_native(
                 print(f"  ✓ Nanite Assembly USD: {nanite_path.name}")
                 print(f"    Import this file in Unreal Engine 5.7+ (static mesh)")
 
-            # Create skeletal mesh assembly if skeleton was added
+            # Note: Skeletal Nanite Assemblies are not created because:
+            # - USD sublayer/variant references for skeleton-only prims are complex
+            # - Current Unreal Nanite Assembly importer expects simpler structure
+            # - Referencing the full tree USD creates duplicate geometry (Nanite crash)
+            #
+            # For skeletal meshes with animation:
+            # - Import the base USD file directly (e.g., Oak_var1.usda)
+            # - It contains the skeleton embedded with proper binding
+            # - Unreal will import as skeletal mesh with animation support
             if include_skeleton:
-                skeletal_nanite_path = (
-                    output_path.parent
-                    / f"{output_path.stem}_NaniteAssembly_Skeletal{output_path.suffix}"
-                )
-
-                print(f"\n  Creating Unreal Nanite Assembly (USD/Skeletal)...")
-                skeletal_success = create_nanite_assembly_usd(
-                    tree_usd_path=temp_tree_path,
-                    output_path=skeletal_nanite_path,
-                    species_name=species_name,
-                    twig_usd_paths=twig_usd_paths if include_twigs else None,
-                    use_skeletal_mesh=True,
-                    skeleton_path=temp_tree_path,  # Skeleton is embedded in the USD
-                )
-
-                if skeletal_success:
-                    print(
-                        f"  ✓ Skeletal Nanite Assembly USD: {skeletal_nanite_path.name}"
-                    )
-                    print(
-                        f"    Import this file in Unreal Engine 5.7+ (skeletal mesh with animation)"
-                    )
+                print(f"\n  ℹ️  For skeletal mesh with animation:")
+                print(f"     Import {output_path.name} directly (skeleton embedded)")
+                print(f"     Skeletal Nanite Assembly not created (Unreal limitation)")
 
         return True
 
@@ -2317,12 +2400,18 @@ def export_grove_tree_as_usda_native(
 def get_twig_usd_map_for_species(
     species_name: str,
     config: Optional[Any] = None,
+    prefer_nanite_assembly: bool = False,
 ) -> Dict[str, Path]:
     """Get mapping of twig types to USD file paths for a species.
+
+    NOTE: Twig references should NEVER use Nanite Assembly USD files.
+    Nanite Assembly is only for the top-level tree assembly, not individual twigs.
+    Using Nanite Assembly twigs causes Unreal Engine import crashes.
 
     Args:
         species_name: Name of tree species
         config: GrowPy configuration
+        prefer_nanite_assembly: DEPRECATED - always False, kept for compatibility
 
     Returns:
         Dict mapping twig types to USD file paths:
@@ -2352,13 +2441,18 @@ def get_twig_usd_map_for_species(
                 if twig_paths:
                     # Get first twig file and look for USD version (prefer USD over FBX)
                     twig_file = twig_paths[0]
-                    # Prioritize USDA/USD over FBX for better compatibility
+
+                    # CRITICAL: ALWAYS use regular USD files for twigs, NEVER Nanite Assembly
+                    # Nanite Assembly is only for top-level tree assembly
+                    # Using Nanite Assembly twigs causes Unreal Engine import crashes
                     for ext in [".usda", ".usd"]:
                         usd_file = twig_file.with_suffix(ext)
-                        if usd_file.exists():
+                        # Skip Nanite Assembly files completely
+                        if "_NaniteAssembly" not in usd_file.name and usd_file.exists():
                             twig_usd_map[grove_type] = usd_file
                             print(f"    Found {grove_type}: {usd_file.name}")
                             break
+
                     if grove_type not in twig_usd_map:
                         # Fallback to FBX if no USD found
                         fbx_file = twig_file.with_suffix(".fbx")
@@ -2387,7 +2481,8 @@ def get_twig_usd_map_for_species(
                     twig_file = all_twigs[i]
                     for ext in [".usda", ".usd"]:
                         usd_file = twig_file.with_suffix(ext)
-                        if usd_file.exists():
+                        # CRITICAL: Skip Nanite Assembly files for twigs
+                        if "_NaniteAssembly" not in usd_file.name and usd_file.exists():
                             twig_usd_map[grove_type] = usd_file
                             print(f"    Assigned {grove_type}: {usd_file.name}")
                             break
