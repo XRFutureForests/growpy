@@ -258,9 +258,60 @@ import shutil
 from pathlib import Path
 import json
 
+def _add_skeleton_to_twig_fbx(obj):
+    """Add a simple single-bone skeleton to a twig for FBX export.
+
+    Creates a single bone armature at origin for skeletal mesh export.
+    All vertices are bound to this single bone.
+
+    Args:
+        obj: Blender mesh object to add skeleton to
+
+    Returns:
+        Armature object
+    """
+    import bpy
+
+    try:
+        # Create armature
+        armature = bpy.data.armatures.new("TwigArmature")
+        armature_obj = bpy.data.objects.new("TwigSkeleton", armature)
+        bpy.context.collection.objects.link(armature_obj)
+
+        # Position at origin
+        armature_obj.location = (0, 0, 0)
+
+        # Enter edit mode to add bone
+        bpy.context.view_layer.objects.active = armature_obj
+        bpy.ops.object.mode_set(mode='EDIT')
+
+        # Create single bone at origin pointing up
+        bone = armature.edit_bones.new("Root")
+        bone.head = (0, 0, 0)
+        bone.tail = (0, 0, 0.1)  # 10cm up
+
+        bpy.ops.object.mode_set(mode='OBJECT')
+
+        # Add armature modifier to mesh
+        modifier = obj.modifiers.new(name="Armature", type='ARMATURE')
+        modifier.object = armature_obj
+        modifier.use_vertex_groups = True
+
+        # Create vertex group for all vertices
+        vgroup = obj.vertex_groups.new(name="Root")
+        vertex_indices = [v.index for v in obj.data.vertices]
+        vgroup.add(vertex_indices, 1.0, 'REPLACE')  # Full weight
+
+        return armature_obj
+
+    except Exception as e:
+        print(f"  Warning: Could not add skeleton to twig: {e}")
+        return None
+
+
 def _add_skeleton_to_twig_usd(usd_path):
     """Add a simple single-bone skeleton to a twig USD file.
-    
+
     This makes the twig compatible with skeletal mesh Nanite Assemblies in Unreal.
     Creates a single bone at origin with the mesh bound to it.
     """
@@ -464,9 +515,10 @@ def process_twig_file(blend_file, output_dir, formats, species_name):
                         print(f"    -> [WARN] Could not create skeletal variant")
                     
                 elif fmt == 'fbx':
+                    # Export static FBX
                     export_path = output_dir / f"{standardized_name}.fbx"
                     print(f"    -> Exporting FBX: {export_path.name}")
-                    
+
                     bpy.ops.export_scene.fbx(
                         filepath=str(export_path),
                         use_selection=True,
@@ -485,8 +537,57 @@ def process_twig_file(blend_file, output_dir, formats, species_name):
                         axis_forward='-Z',
                         axis_up='Y'
                     )
-                    
+
                     exported_files.append(export_path)
+
+                    # Create skeletal FBX variant
+                    skeletal_export_path = output_dir / f"{standardized_name}_skeletal.fbx"
+                    print(f"    -> Creating skeletal variant: {skeletal_export_path.name}")
+
+                    # Add skeleton to mesh
+                    armature_obj = _add_skeleton_to_twig_fbx(obj)
+
+                    if armature_obj:
+                        # Select both mesh and armature for export
+                        bpy.ops.object.select_all(action='DESELECT')
+                        mount_point.select_set(True)
+                        obj.select_set(True)
+                        armature_obj.select_set(True)
+                        bpy.context.view_layer.objects.active = mount_point
+
+                        # Export with skeleton
+                        bpy.ops.export_scene.fbx(
+                            filepath=str(skeletal_export_path),
+                            use_selection=True,
+                            object_types={'MESH', 'EMPTY', 'ARMATURE'},
+                            mesh_smooth_type='FACE',
+                            use_mesh_modifiers=True,
+                            use_mesh_edges=False,
+                            use_tspace=True,
+                            use_custom_props=True,
+                            add_leaf_bones=False,
+                            primary_bone_axis='Y',
+                            secondary_bone_axis='X',
+                            path_mode='COPY',
+                            embed_textures=True,
+                            batch_mode='OFF',
+                            axis_forward='-Z',
+                            axis_up='Y'
+                        )
+
+                        exported_files.append(skeletal_export_path)
+                        print(f"    -> [OK] Skeletal FBX created (single-bone skeleton at origin)")
+
+                        # Clean up armature for next iteration
+                        bpy.data.objects.remove(armature_obj, do_unlink=True)
+
+                        # Remove modifier and vertex group from mesh
+                        if "Armature" in [m.name for m in obj.modifiers]:
+                            obj.modifiers.remove(obj.modifiers["Armature"])
+                        if "Root" in obj.vertex_groups:
+                            obj.vertex_groups.remove(obj.vertex_groups["Root"])
+                    else:
+                        print(f"    -> [WARN] Could not create skeletal FBX variant")
             
             # Store metadata
             texture_manifest[standardized_name] = {
