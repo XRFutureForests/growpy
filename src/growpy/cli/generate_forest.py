@@ -24,8 +24,8 @@ if sys.platform == "win32":
             if pxr_path not in os.environ.get("PATH", ""):
                 os.environ["PATH"] = pxr_path + os.pathsep + os.environ.get("PATH", "")
 
-GROWTH_CYCLE_LIMIT = 75
-HEIGHT_SCALE = 2
+GROWTH_CYCLE_LIMIT = 10
+HEIGHT_SCALE = 4
 
 # IMPORTANT: Import bpy after USD path setup
 try:
@@ -46,7 +46,6 @@ from growpy import (
     get_config,
     simulate_forest_growth,
 )
-from growpy.io import batch_export_trees_for_unreal
 from growpy.io.blender_export import get_quality_preset
 
 
@@ -142,6 +141,105 @@ def place_twigs_on_exported_trees(
             continue
 
 
+def export_individual_trees(
+    forest_data: pd.DataFrame,
+    output_dir: Path,
+    config: GrowPyConfig,
+    quality_params: dict,
+    formats: list,
+    create_nanite_assembly: bool,
+) -> list:
+    """Export each tree individually as separate USD/FBX files.
+
+    Args:
+        forest_data: DataFrame with tree data including species, growth_cycles
+        output_dir: Directory to save export files
+        config: GrowPy configuration
+        quality_params: Quality parameters dict
+        formats: List of export formats
+        create_nanite_assembly: Create Nanite Assembly USD
+
+    Returns:
+        List of exported USD file paths
+    """
+    import gc as _gc_module
+
+    from growpy.core.grove import create_grove
+    from growpy.io.blender_export import (
+        _get_gc,
+        export_grove_tree_as_usda_native,
+        get_twig_usd_map_for_species,
+    )
+
+    exported_files = []
+
+    for idx, row in tqdm(
+        forest_data.iterrows(),
+        total=len(forest_data),
+        desc="Exporting trees"
+    ):
+        species = row["species"]
+        growth_cycles = int(row.get("growth_cycles", 10))
+
+        species_clean = (
+            "".join(c for c in species if c.isalnum() or c in (" ", "-", "_"))
+            .strip()
+            .replace(" ", "_")
+        )
+
+        species_dir = output_dir / species_clean
+        usd_dir = species_dir / "USD"
+        usd_dir.mkdir(parents=True, exist_ok=True)
+
+        tree_name = f"{species_clean}_tree_{idx:04d}"
+
+        try:
+            grove = create_grove(species)
+            gc = _get_gc()
+
+            grove.add_new_tree(gc.Vector(0, 0, 0), gc.Vector(0, 0, 1), 0)
+            grove.simulate(flushes=growth_cycles)
+
+            if "usd" in formats or "usda" in formats:
+                usd_path = usd_dir / f"{tree_name}.usda"
+
+                twig_usd_map = get_twig_usd_map_for_species(
+                    species, config, prefer_skeletal=False
+                )
+
+                export_success = export_grove_tree_as_usda_native(
+                    grove,
+                    usd_path,
+                    species,
+                    twig_usd_paths=twig_usd_map,
+                    include_twigs=True,
+                    use_point_instancer=True,
+                    convert_to_ue=True,
+                    create_nanite_assembly=create_nanite_assembly,
+                    include_skeleton=True,
+                    resolution=quality_params["resolution"],
+                    resolution_reduce=quality_params["resolution_reduce"],
+                    texture_repeat=quality_params["texture_repeat"],
+                    build_cutoff_age=quality_params["build_cutoff_age"],
+                    build_cutoff_thickness=quality_params["build_cutoff_thickness"],
+                    build_blend=quality_params["build_blend"],
+                    build_end_cap=quality_params["build_end_cap"],
+                    config=config,
+                )
+
+                if export_success:
+                    exported_files.append(usd_path)
+
+            del grove
+            _gc_module.collect()
+
+        except Exception as e:
+            print(f"Failed to export tree {idx} ({species}): {e}")
+            continue
+
+    return exported_files
+
+
 def generate_forest_exports(
     csv_path: Path,
     output_dir: Path,
@@ -180,7 +278,7 @@ def generate_forest_exports(
     try:
         forest_data = pd.read_csv(csv_path)
         required_columns = ["x", "y", "species", "height"]
-        forest_data["height"] /= HEIGHT_SCALE
+
         # Check required columns
         missing_cols = [
             col for col in required_columns if col not in forest_data.columns
@@ -205,6 +303,17 @@ def generate_forest_exports(
         forest_data["growth_cycles"] = 10
         forest_data["delay"] = 0
 
+    # Scale growth cycles if max exceeds GROWTH_CYCLE_LIMIT
+    max_growth_cycles = forest_data["growth_cycles"].max()
+    if max_growth_cycles > GROWTH_CYCLE_LIMIT:
+        scale_factor = GROWTH_CYCLE_LIMIT / max_growth_cycles
+        forest_data["growth_cycles"] = (forest_data["growth_cycles"] * scale_factor).astype(int)
+        forest_data["growth_cycles"] = forest_data["growth_cycles"].clip(lower=1)
+        print(f"Scaled growth cycles: max {max_growth_cycles} -> {GROWTH_CYCLE_LIMIT}")
+    else:
+        # Apply height scale only if not scaling growth cycles
+        forest_data["height"] /= HEIGHT_SCALE
+
     try:
         forest = create_forest(forest_data)
         max_cycles = forest_data["growth_cycles"].max()
@@ -222,28 +331,41 @@ def generate_forest_exports(
 
     if any(fmt in formats for fmt in ["fbx", "usd", "usda"]):
         try:
-            export_results = batch_export_trees_for_unreal(
+            print(f"\nExporting {len(forest_data)} individual trees...")
+            exported_files = export_individual_trees(
                 forest_data,
                 output_dir,
                 config,
-                num_variations=1,
-                export_formats=formats,
-                resolution=quality_params["resolution"],
-                resolution_reduce=quality_params["resolution_reduce"],
-                texture_repeat=quality_params["texture_repeat"],
-                build_cutoff_age=quality_params["build_cutoff_age"],
-                build_cutoff_thickness=quality_params["build_cutoff_thickness"],
-                build_blend=quality_params["build_blend"],
-                build_end_cap=quality_params["build_end_cap"],
-                create_nanite_assembly=create_nanite_assembly,
+                quality_params,
+                formats,
+                create_nanite_assembly,
             )
-            if export_results:
-                total_exported = sum(len(files) for files in export_results.values())
+
+            if exported_files:
                 format_str = ", ".join(formats)
                 print(
-                    f"Exported {total_exported} tree files ({format_str}) with '{quality}' quality"
+                    f"Exported {len(exported_files)} tree files ({format_str}) with '{quality}' quality"
                 )
-                exported_files = export_results.get("usd", [])
+
+                # Bundle twig files for each unique species
+                from growpy.io.blender_export import bundle_twigs_for_species
+
+                unique_species = forest_data["species"].unique()
+                print(f"\nBundling twig files for {len(unique_species)} species...")
+                for species in unique_species:
+                    species_clean = (
+                        "".join(c for c in species if c.isalnum() or c in (" ", "-", "_"))
+                        .strip()
+                        .replace(" ", "_")
+                    )
+                    species_dir = output_dir / species_clean
+
+                    bundle_twigs_for_species(
+                        species_name=species,
+                        output_dir=species_dir,
+                        formats=["usda"] if "usda" in formats or "usd" in formats else [],
+                        config=config,
+                    )
 
                 # Place twigs if requested
                 if place_twigs and bpy is not None:
@@ -270,7 +392,7 @@ def generate_forest_exports(
                     except Exception as e:
                         print(f"Warning: Twig placement failed: {e}")
         except Exception as e:
-            print(f"USD export failed: {e}")
+            print(f"Export failed: {e}")
 
 
 def main():
