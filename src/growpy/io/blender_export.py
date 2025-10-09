@@ -233,7 +233,7 @@ def get_quality_preset(preset_name: str) -> Dict[str, Any]:
             "resolution_reduce": 0.8,
             "texture_repeat": 3,
             "build_cutoff_age": 0,
-            "build_cutoff_thickness": 0.0,
+            "build_cutoff_thickness": 0.001,
             "build_blend": True,
             "build_end_cap": True,
         },
