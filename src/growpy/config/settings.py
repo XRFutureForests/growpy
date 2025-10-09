@@ -300,11 +300,14 @@ class GrowPyConfig:
         df = cls.load_species_lookup()
 
         if df.empty:
+            print(f"    WARNING: Species lookup table is empty")
             return None
 
         # Use fuzzy matching to find the species
         matched_name = cls._find_species_match(common_name, df)
         if matched_name is None:
+            print(f"    WARNING: Species '{common_name}' not found in lookup table")
+            print(f"    Available species (first 5): {', '.join(df['Common Name'].head(5).tolist())}...")
             return None
 
         # Find the row for this species
@@ -314,9 +317,12 @@ class GrowPyConfig:
             return None
 
         twig = species_row.iloc[0]["Twig"]
-        return (
-            str(twig) if pd.notna(twig) and str(twig) not in ["—", "", "nan"] else None
-        )
+
+        if pd.isna(twig) or str(twig) in ["—", "", "nan"]:
+            print(f"    INFO: Species '{matched_name}' has no twig configured in lookup table")
+            return None
+
+        return str(twig)
 
     @classmethod
     def get_twig_prototype_path(cls, common_name: str) -> Optional[Path]:
@@ -336,7 +342,7 @@ class GrowPyConfig:
         # New distributed structure: each twig has its own USD directory
         prototype_name = twig_name + "_prototype.usda"
         assets_dir = cls.get_assets_directory()
-        twig_dir = assets_dir / "twigs" / f"{twig_name}Twig"
+        twig_dir = assets_dir / "twigs" / twig_name
         prototype_path = twig_dir / "usd" / "prototypes" / prototype_name
         return prototype_path
 
@@ -358,7 +364,7 @@ class GrowPyConfig:
         # New distributed structure: each twig has its own USD directory
         material_name = twig_name + "_material.usda"
         assets_dir = cls.get_assets_directory()
-        twig_dir = assets_dir / "twigs" / f"{twig_name}Twig"
+        twig_dir = assets_dir / "twigs" / twig_name
         material_path = twig_dir / "usd" / "materials" / material_name
         return material_path
 
