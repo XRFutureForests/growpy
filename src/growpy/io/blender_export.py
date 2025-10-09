@@ -381,7 +381,9 @@ def export_tree_as_usd(
         if include_skeleton or export_skeleton_separately:
             skeletons = grove.build_skeletons()
             if skeletons:
-                armature_obj = _add_skeleton_to_object(obj, skeletons[0], species_name)
+                armature_obj = _add_skeleton_to_object(
+                    obj, skeletons[0], species_name, model
+                )
 
         # Add material with textures
         _add_material_with_textures(obj, species_name, config)
@@ -535,8 +537,162 @@ def create_nanite_assembly_usd(
         return False
 
 
-def _add_skeleton_to_object(obj: Any, skeleton: Any, species_name: str) -> Any:
-    """Add skeleton/armature to the tree object.
+def _calculate_vertex_weights(
+    model: Any,
+    skeleton: Any,
+    vertices: List[Tuple[float, float, float]],
+    faces: List[List[int]],
+) -> Tuple[List[List[int]], List[List[float]]]:
+    """Calculate proper vertex weights for skeletal animation.
+
+    Maps each vertex to the appropriate bone(s) based on:
+    1. Which branch the vertex's faces belong to (face_attribute_branch_id)
+    2. Proximity to joints in that branch's bone chain
+    3. Smooth falloff for natural deformation
+
+    Args:
+        model: Grove model with face_attribute_branch_id
+        skeleton: Grove skeleton with poly_lines and points
+        vertices: List of vertex positions [(x,y,z), ...]
+        faces: List of face vertex indices [[v1,v2,v3], ...]
+
+    Returns:
+        (joint_indices, joint_weights) where:
+        - joint_indices[vertex_idx] = [bone_idx1, bone_idx2, ...]
+        - joint_weights[vertex_idx] = [weight1, weight2, ...]
+    """
+    import numpy as np
+
+    num_vertices = len(vertices)
+    num_branches = len(skeleton.poly_lines)
+
+    # Initialize: all vertices start with root bone
+    vertex_to_joints = [[0] for _ in range(num_vertices)]
+    vertex_to_weights = [[1.0] for _ in range(num_vertices)]
+
+    # Build face-to-vertices mapping
+    vertex_faces = [[] for _ in range(num_vertices)]
+    for face_idx, face in enumerate(faces):
+        for vert_idx in face:
+            if vert_idx < num_vertices:
+                vertex_faces[vert_idx].append(face_idx)
+
+    # Get branch IDs from model (1-indexed from Grove)
+    if not hasattr(model, "face_attribute_branch_id"):
+        print("  Warning: Model has no branch_id attribute, using root-only weights")
+        return vertex_to_joints, vertex_to_weights
+
+    branch_ids = model.face_attribute_branch_id
+
+    # Build branch-to-joints mapping from poly_lines
+    # poly_lines[i] gives joint indices for branch i
+    # Each consecutive pair of joints forms a bone
+    # We need to calculate the global joint index as bones are added sequentially:
+    # - Root joint = 0
+    # - Branch 0: joints 1, 2, 3, ... (len(poly_line[0]) - 1 bones)
+    # - Branch 1: joints N+1, N+2, ... (len(poly_line[1]) - 1 bones)
+    branch_to_bones = {}
+    global_joint_idx = 1  # Start after root (index 0)
+
+    for branch_idx, poly_line in enumerate(skeleton.poly_lines):
+        bones = []
+        for j in range(len(poly_line) - 1):
+            # Each bone connects two consecutive joints in the poly_line
+            # The global joint index increments for each bone
+            bones.append((global_joint_idx, poly_line[j], poly_line[j + 1]))
+            global_joint_idx += 1
+        branch_to_bones[branch_idx] = bones
+
+    # Calculate vertex weights based on branch membership and proximity
+    for vert_idx, vert_pos in enumerate(vertices):
+        # Get branches this vertex belongs to (via its faces)
+        vertex_branch_ids = set()
+        for face_idx in vertex_faces[vert_idx]:
+            if face_idx < len(branch_ids):
+                branch_id = branch_ids[face_idx]
+                if 1 <= branch_id <= num_branches:  # Grove uses 1-indexed
+                    vertex_branch_ids.add(branch_id - 1)  # Convert to 0-indexed
+
+        if not vertex_branch_ids:
+            continue  # Keep root-only weight
+
+        # Get all bones from this vertex's branches
+        vertex_bones = []
+        for branch_idx in vertex_branch_ids:
+            if branch_idx in branch_to_bones:
+                vertex_bones.extend(branch_to_bones[branch_idx])
+
+        if not vertex_bones:
+            continue
+
+        # Calculate distances to each bone
+        vert_array = np.array(vert_pos)
+        bone_distances = []
+
+        for bone_idx, joint_start_idx, joint_end_idx in vertex_bones:
+            # Get joint positions
+            if joint_start_idx >= len(skeleton.points) or joint_end_idx >= len(
+                skeleton.points
+            ):
+                continue
+
+            joint_start = np.array(skeleton.points[joint_start_idx])
+            joint_end = np.array(skeleton.points[joint_end_idx])
+
+            # Calculate distance from vertex to bone segment
+            bone_vec = joint_end - joint_start
+            bone_length_sq = np.dot(bone_vec, bone_vec)
+
+            if bone_length_sq < 1e-6:  # Degenerate bone
+                distance = np.linalg.norm(vert_array - joint_start)
+            else:
+                # Project vertex onto bone line segment
+                t = max(
+                    0,
+                    min(1, np.dot(vert_array - joint_start, bone_vec) / bone_length_sq),
+                )
+                closest_point = joint_start + t * bone_vec
+                distance = np.linalg.norm(vert_array - closest_point)
+
+            bone_distances.append((bone_idx, distance))
+
+        # Sort by distance (closest first)
+        bone_distances.sort(key=lambda x: x[1])
+
+        # Take up to 4 closest bones (common limit for skeletal animation)
+        max_influences = 4
+        influences = bone_distances[:max_influences]
+
+        if not influences:
+            continue
+
+        # Calculate weights using inverse distance
+        # Add small epsilon to avoid division by zero
+        epsilon = 0.001
+        inv_distances = [1.0 / (dist + epsilon) for _, dist in influences]
+        total_inv_dist = sum(inv_distances)
+
+        # Normalize weights
+        joint_indices = [bone_idx for bone_idx, _ in influences]
+        weights = [inv_dist / total_inv_dist for inv_dist in inv_distances]
+
+        # Assign to vertex
+        vertex_to_joints[vert_idx] = joint_indices
+        vertex_to_weights[vert_idx] = weights
+
+    return vertex_to_joints, vertex_to_weights
+
+
+def _add_skeleton_to_object(
+    obj: Any, skeleton: Any, species_name: str, model: Optional[Any] = None
+) -> Any:
+    """Add skeleton/armature to the tree object with proper vertex weights.
+
+    Args:
+        obj: Blender mesh object
+        skeleton: Grove skeleton data
+        species_name: Name of the tree species
+        model: Grove model with face/vertex data (required for weights)
 
     Returns:
         The armature object created
@@ -557,15 +713,24 @@ def _add_skeleton_to_object(obj: Any, skeleton: Any, species_name: str) -> Any:
 
         # Map point indices to bones for branch connections
         point_to_bone = {}
+        bone_names = []
 
+        # Create root bone at index 0 (required for weight calculation alignment)
+        root_bone = armature.edit_bones.new("Root")
+        root_bone.head = (0, 0, 0)
+        root_bone.tail = (0, 0, 0.1)  # Small offset for valid bone
+        bone_names.append("Root")
+
+        # Create branch bones starting at index 1
         for i, poly_line in enumerate(poly_lines):
             if len(poly_line) < 2:
                 continue
 
-            previous_bone = None
+            previous_bone = root_bone  # First bone in branch parents to root
             for j in range(len(poly_line) - 1):
                 bone_name = f"bone_{i}_{j}"
                 bone = armature.edit_bones.new(bone_name)
+                bone_names.append(bone_name)
 
                 start_idx = poly_line[j]
                 end_idx = poly_line[j + 1]
@@ -588,13 +753,36 @@ def _add_skeleton_to_object(obj: Any, skeleton: Any, species_name: str) -> Any:
 
         bpy.ops.object.mode_set(mode="OBJECT")
 
-        # Add armature modifier for proper deformation (don't use parent relationship for FBX export)
+        # Add armature modifier for proper deformation
         modifier = obj.modifiers.new(name="Armature", type="ARMATURE")
         modifier.object = armature_obj
         modifier.use_vertex_groups = True
 
-        # Create vertex groups for automatic weights (optional - can be improved)
-        # For now, we just ensure the armature relationship is via modifier only
+        # Calculate and apply vertex weights if model is available
+        if model is not None:
+            vertices = [(v.co.x, v.co.y, v.co.z) for v in obj.data.vertices]
+            faces = [[v for v in poly.vertices] for poly in obj.data.polygons]
+
+            vertex_to_joints, vertex_to_weights = _calculate_vertex_weights(
+                model, skeleton, vertices, faces
+            )
+
+            # Create vertex groups and assign weights
+            for bone_name in bone_names:
+                obj.vertex_groups.new(name=bone_name)
+
+            for vert_idx, (joint_indices, weights) in enumerate(
+                zip(vertex_to_joints, vertex_to_weights)
+            ):
+                for joint_idx, weight in zip(joint_indices, weights):
+                    if joint_idx < len(bone_names) and weight > 0.0:
+                        bone_name = bone_names[joint_idx]
+                        vgroup = obj.vertex_groups[bone_name]
+                        vgroup.add([vert_idx], weight, "REPLACE")
+
+            print(f"    ✓ Applied weights for {len(vertices)} vertices to FBX skeleton")
+        else:
+            print("    ⚠ No model provided - skeleton has no vertex weights")
 
         return armature_obj
 
@@ -1069,6 +1257,7 @@ def _add_skeleton_and_materials_to_usd(
     grove: Any,
     species_name: str,
     config: Optional[Any] = None,
+    model: Optional[Any] = None,
 ) -> Optional[dict]:
     """Add skeleton and materials to Grove's native USD export.
 
@@ -1155,6 +1344,10 @@ def _add_skeleton_and_materials_to_usd(
             bind_transforms.append(root_transform)
             rest_transforms.append(root_transform)
 
+            # Track joint positions for calculating relative transforms
+            joint_positions = {}
+            joint_positions[0] = Gf.Vec3d(0, 0, 0)  # Root at origin
+
             # Create bones from poly_lines
             for i, poly_line in enumerate(poly_lines):
                 if len(poly_line) < 2:
@@ -1164,26 +1357,36 @@ def _add_skeleton_and_materials_to_usd(
                 for j in range(len(poly_line) - 1):
                     joint_name = f"Branch_{i}_Bone_{j}"
                     joints.append(joint_name)
+                    current_joint_idx = len(joints) - 1
 
                     # Parent is previous joint in the chain
                     joint_parents.append(prev_joint_idx)
 
-                    # Calculate bone transform
+                    # Calculate bone transform RELATIVE to parent
                     start_idx = poly_line[j]
                     end_idx = poly_line[j + 1]
 
                     if start_idx < len(points) and end_idx < len(points):
-                        start_pos = Gf.Vec3f(*points[start_idx])
-                        end_pos = Gf.Vec3f(*points[end_idx])
+                        start_pos = Gf.Vec3d(*points[start_idx])
+                        end_pos = Gf.Vec3d(*points[end_idx])
 
-                        # Create transform matrix
+                        # Get parent position
+                        parent_pos = joint_positions[prev_joint_idx]
+
+                        # Calculate relative offset from parent to this bone's start
+                        relative_offset = start_pos - parent_pos
+
+                        # Create transform matrix with relative translation
                         transform = Gf.Matrix4d().SetIdentity()
-                        transform.SetTranslateOnly(Gf.Vec3d(start_pos))
+                        transform.SetTranslateOnly(relative_offset)
 
                         bind_transforms.append(transform)
                         rest_transforms.append(transform)
 
-                    prev_joint_idx = len(joints) - 1
+                        # Store this joint's position for child bones
+                        joint_positions[current_joint_idx] = start_pos
+
+                    prev_joint_idx = current_joint_idx
 
             # Set skeleton attributes
             skel_prim.CreateJointsAttr(
@@ -1214,26 +1417,53 @@ def _add_skeleton_and_materials_to_usd(
             mesh_binding_api = UsdSkel.BindingAPI.Apply(tree_mesh_prim)
             mesh_binding_api.CreateSkeletonRel().SetTargets([skel_path])
 
-            # Add joint influences (uniform weights for now - all vertices influenced by root)
-            # In production, would calculate per-vertex weights based on proximity to bones
-            num_vertices = len(mesh.GetPointsAttr().Get())
-            joint_indices = [[0] for _ in range(num_vertices)]  # All bound to root
-            joint_weights = [[1.0] for _ in range(num_vertices)]  # Full weight to root
+            # Calculate proper vertex weights based on branch assignment and proximity
+            print(f"    Calculating vertex weights for {species_name}...")
 
-            # Flatten for USD (element size = 1)
-            joint_indices_flat = [
-                idx for vertex_indices in joint_indices for idx in vertex_indices
-            ]
-            joint_weights_flat = [
-                w for vertex_weights in joint_weights for w in vertex_weights
-            ]
+            # Get mesh data
+            points_attr = mesh.GetPointsAttr().Get()
+            num_vertices = len(points_attr)
+            vertices = [(p[0], p[1], p[2]) for p in points_attr]
+
+            # Get face data from USD
+            face_vertex_counts = mesh.GetFaceVertexCountsAttr().Get()
+            face_vertex_indices = mesh.GetFaceVertexIndicesAttr().Get()
+
+            # Reconstruct faces
+            faces = []
+            idx = 0
+            for count in face_vertex_counts:
+                face = [face_vertex_indices[idx + i] for i in range(count)]
+                faces.append(face)
+                idx += count
+
+            # Calculate weights if model is available
+            if model is not None:
+                joint_indices, joint_weights = _calculate_vertex_weights(
+                    model, skeleton_data, vertices, faces
+                )
+                print(f"    ✓ Calculated weights for {num_vertices} vertices")
+            else:
+                # Fallback to root-only weights
+                joint_indices = [[0] for _ in range(num_vertices)]
+                joint_weights = [[1.0] for _ in range(num_vertices)]
+                print(f"    Warning: No model provided, using root-only weights")
+
+            # Flatten for USD (variable element size for multiple influences)
+            max_influences = max(len(indices) for indices in joint_indices)
+            joint_indices_flat = []
+            joint_weights_flat = []
+
+            for vert_indices, vert_weights in zip(joint_indices, joint_weights):
+                joint_indices_flat.extend(vert_indices)
+                joint_weights_flat.extend(vert_weights)
 
             primvar_api = UsdGeom.PrimvarsAPI(tree_mesh_prim)
             joint_indices_primvar = primvar_api.CreatePrimvar(
                 "skel:jointIndices", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.vertex
             )
             joint_indices_primvar.Set(joint_indices_flat)
-            joint_indices_primvar.SetElementSize(1)
+            joint_indices_primvar.SetElementSize(max_influences)
 
             joint_weights_primvar = primvar_api.CreatePrimvar(
                 "skel:jointWeights",
@@ -1241,7 +1471,7 @@ def _add_skeleton_and_materials_to_usd(
                 UsdGeom.Tokens.vertex,
             )
             joint_weights_primvar.Set(joint_weights_flat)
-            joint_weights_primvar.SetElementSize(1)
+            joint_weights_primvar.SetElementSize(max_influences)
 
             # Remove original mesh outside SkelRoot (now duplicated inside)
             stage.RemovePrim(original_mesh_path)
@@ -1867,7 +2097,9 @@ def _export_fbx_internal(
         if include_skeleton:
             skeletons = grove.build_skeletons()
             if skeletons:
-                armature_obj = _add_skeleton_to_object(obj, skeletons[0], species_name)
+                armature_obj = _add_skeleton_to_object(
+                    obj, skeletons[0], species_name, model
+                )
 
         # Add material with textures
         _add_material_with_textures(obj, species_name, config)
@@ -2606,7 +2838,7 @@ def export_grove_tree_as_usda_native(
 
             # Add skeleton and materials to skeletal version
             textures = _add_skeleton_and_materials_to_usd(
-                skeletal_tree_path, grove, species_name, config
+                skeletal_tree_path, grove, species_name, config, model
             )
 
             # Copy bark textures to output directory

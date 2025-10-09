@@ -166,6 +166,7 @@ def export_individual_trees(
 
     from growpy.core.grove import create_grove
     from growpy.io.blender_export import (
+        _export_fbx_internal,
         _get_gc,
         export_grove_tree_as_usda_native,
         get_twig_usd_map_for_species,
@@ -189,7 +190,12 @@ def export_individual_trees(
 
         species_dir = output_dir / species_clean
         usd_dir = species_dir / "USD"
-        usd_dir.mkdir(parents=True, exist_ok=True)
+        fbx_dir = species_dir / "FBX"
+
+        if "usd" in formats or "usda" in formats:
+            usd_dir.mkdir(parents=True, exist_ok=True)
+        if "fbx" in formats:
+            fbx_dir.mkdir(parents=True, exist_ok=True)
 
         tree_name = f"{species_clean}_tree_{idx:04d}"
 
@@ -229,6 +235,21 @@ def export_individual_trees(
 
                 if export_success:
                     exported_files.append(usd_path)
+
+            if "fbx" in formats:
+                fbx_path = fbx_dir / f"{tree_name}.fbx"
+
+                export_success = _export_fbx_internal(
+                    grove,
+                    fbx_path,
+                    species,
+                    include_skeleton=True,
+                    include_twig_attributes=True,
+                    config=config,
+                )
+
+                if export_success:
+                    exported_files.append(fbx_path)
 
             del grove
             _gc_module.collect()
@@ -360,10 +381,16 @@ def generate_forest_exports(
                     )
                     species_dir = output_dir / species_clean
 
+                    twig_formats = []
+                    if "usda" in formats or "usd" in formats:
+                        twig_formats.append("usda")
+                    if "fbx" in formats:
+                        twig_formats.append("fbx")
+
                     bundle_twigs_for_species(
                         species_name=species,
                         output_dir=species_dir,
-                        formats=["usda"] if "usda" in formats or "usd" in formats else [],
+                        formats=twig_formats,
                         config=config,
                     )
 
