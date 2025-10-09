@@ -2788,7 +2788,16 @@ def get_twig_usd_map_for_species(
 
     from ..config import GrowPyConfig
 
+    print(f"  Looking for twigs for species: {species_name}")
     twig_files_by_type = GrowPyConfig.get_twig_files_by_type(species_name)
+
+    if not twig_files_by_type:
+        print(f"  WARNING: No twig files found for species '{species_name}'")
+        print(f"  This could mean:")
+        print(f"    1. Species name doesn't match lookup table entries")
+        print(f"    2. Species has no twig configured in lookup table")
+        print(f"    3. Twig files don't exist in the twigs directory")
+
     twig_usd_map = {}
 
     # Map Grove attribute names to twig file types
@@ -2904,6 +2913,13 @@ def get_twig_usd_map_for_species(
     if "twig_dead" not in twig_usd_map and "twig_short" in twig_usd_map:
         twig_usd_map["twig_dead"] = twig_usd_map["twig_short"]
         print(f"    Using twig_short for twig_dead (no dead-specific twig)")
+
+    # Summary
+    if twig_usd_map:
+        print(f"  SUCCESS: Found {len(twig_usd_map)} twig type(s) for '{species_name}'")
+    else:
+        print(f"  ERROR: No twig mapping could be created for '{species_name}'")
+        print(f"  Trees will be exported WITHOUT twigs")
 
     return twig_usd_map
 
