@@ -237,19 +237,35 @@ def export_individual_trees(
                     exported_files.append(usd_path)
 
             if "fbx" in formats:
-                fbx_path = fbx_dir / f"{tree_name}.fbx"
+                # Export static FBX (no skeleton)
+                fbx_static_path = fbx_dir / f"{tree_name}.fbx"
 
-                export_success = _export_fbx_internal(
+                export_success_static = _export_fbx_internal(
                     grove,
-                    fbx_path,
+                    fbx_static_path,
+                    species,
+                    include_skeleton=False,
+                    include_twig_attributes=True,
+                    config=config,
+                )
+
+                if export_success_static:
+                    exported_files.append(fbx_static_path)
+
+                # Export skeletal FBX (with skeleton)
+                fbx_skeletal_path = fbx_dir / f"{tree_name}_skeletal.fbx"
+
+                export_success_skeletal = _export_fbx_internal(
+                    grove,
+                    fbx_skeletal_path,
                     species,
                     include_skeleton=True,
                     include_twig_attributes=True,
                     config=config,
                 )
 
-                if export_success:
-                    exported_files.append(fbx_path)
+                if export_success_skeletal:
+                    exported_files.append(fbx_skeletal_path)
 
             del grove
             _gc_module.collect()
