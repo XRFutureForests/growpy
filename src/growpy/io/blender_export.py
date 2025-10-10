@@ -833,7 +833,7 @@ def _add_skeleton_to_object(
         obj: Blender mesh object
         skeleton: Grove skeleton data
         species_name: Name of the tree species
-        grove: Grove instance for weight calculation  
+        grove: Grove instance for weight calculation
         model: Grove model with face/vertex data (required for weights)
 
     Returns:
@@ -1596,7 +1596,9 @@ def _add_skeleton_and_materials_to_usd(
             # Identity transforms = no animation, use bind pose from skeleton
             num_joints = len(joints)
             identity_translations = Vt.Vec3fArray([Gf.Vec3f(0, 0, 0)] * num_joints)
-            identity_rotations = Vt.QuatfArray([Gf.Quatf(1, 0, 0, 0)] * num_joints)  # w, x, y, z
+            identity_rotations = Vt.QuatfArray(
+                [Gf.Quatf(1, 0, 0, 0)] * num_joints
+            )  # w, x, y, z
             identity_scales = Vt.Vec3hArray([Gf.Vec3h(1, 1, 1)] * num_joints)
 
             anim_prim.CreateTranslationsAttr(identity_translations)
@@ -1607,7 +1609,9 @@ def _add_skeleton_and_materials_to_usd(
             skel_binding_api = UsdSkel.BindingAPI.Apply(skel_root_prim.GetPrim())
             skel_binding_api.CreateAnimationSourceRel().SetTargets([anim_path])
 
-            print(f"    ✓ Created SkelAnimation ({num_joints} joints, bind pose for UE skeletal mesh recognition)")
+            print(
+                f"    ✓ Created SkelAnimation ({num_joints} joints, bind pose for UE skeletal mesh recognition)"
+            )
 
             # Move mesh inside SkelRoot and bind to skeleton
             # This creates the proper hierarchy: SkelRoot/Skeleton + SkelRoot/Mesh
@@ -1877,7 +1881,9 @@ def _add_skeleton_to_twig_usd(usd_path: Path) -> bool:
         # Set identity transforms for single bone (matching number of joints)
         # USD requires these arrays to have proper dimensions
         anim_prim.CreateTranslationsAttr(Vt.Vec3fArray([Gf.Vec3f(0, 0, 0)]))
-        anim_prim.CreateRotationsAttr(Vt.QuatfArray([Gf.Quatf(1, 0, 0, 0)]))  # w, x, y, z (identity quaternion)
+        anim_prim.CreateRotationsAttr(
+            Vt.QuatfArray([Gf.Quatf(1, 0, 0, 0)])
+        )  # w, x, y, z (identity quaternion)
         anim_prim.CreateScalesAttr(Vt.Vec3hArray([Gf.Vec3h(1, 1, 1)]))
 
         # Bind animation to skeleton
