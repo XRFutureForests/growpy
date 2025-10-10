@@ -726,7 +726,7 @@ def _add_skeleton_to_object(
             if len(poly_line) < 2:
                 continue
 
-            previous_bone = root_bone  # First bone in branch parents to root
+            previous_bone = None  # Will be set based on connection logic
             for j in range(len(poly_line) - 1):
                 bone_name = f"bone_{i}_{j}"
                 bone = armature.edit_bones.new(bone_name)
@@ -739,12 +739,17 @@ def _add_skeleton_to_object(
                     bone.head = points[start_idx]
                     bone.tail = points[end_idx]
 
-                # Set parent: either previous bone in chain or parent branch bone
-                if j == 0 and start_idx in point_to_bone:
-                    # First bone of branch - connect to parent branch at shared point
-                    bone.parent = point_to_bone[start_idx]
-                elif previous_bone is not None:
-                    # Continue chain within same branch
+                # Set parent bone
+                if j == 0:
+                    # First bone in branch
+                    if start_idx in point_to_bone:
+                        # Connect to parent branch at shared point
+                        bone.parent = point_to_bone[start_idx]
+                    else:
+                        # No parent branch connection, parent to root
+                        bone.parent = root_bone
+                else:
+                    # Subsequent bones in chain parent to previous bone
                     bone.parent = previous_bone
 
                 # Track this bone's endpoint for potential child branches
@@ -1348,16 +1353,46 @@ def _add_skeleton_and_materials_to_usd(
             joint_positions = {}
             joint_positions[0] = Gf.Vec3d(0, 0, 0)  # Root at origin
 
-            # Create bones from poly_lines
+            # Track bone connections across branches
+            point_to_joint = {}
+            joint_path_names = {}  # Maps joint index to hierarchical path name
+
+            # Create bones from poly_lines with hierarchical naming
             for i, poly_line in enumerate(poly_lines):
                 if len(poly_line) < 2:
                     continue
 
-                prev_joint_idx = 0  # Start from root
+                prev_joint_idx = None  # Will be determined based on connection
+                parent_path = None  # Parent joint's hierarchical path
+
                 for j in range(len(poly_line) - 1):
-                    joint_name = f"Branch_{i}_Bone_{j}"
+                    current_joint_idx = len(joints)
+
+                    # Determine parent joint and build hierarchical path
+                    if j == 0:
+                        # First bone in branch
+                        start_idx = poly_line[j]
+                        if start_idx in point_to_joint:
+                            # Connect to parent branch at shared point
+                            prev_joint_idx = point_to_joint[start_idx]
+                            parent_path = joint_path_names[prev_joint_idx]
+                            # Child of parent branch bone
+                            joint_name = f"{parent_path}/Branch_{i}_Bone_{j}"
+                        else:
+                            # No parent branch connection, parent to root
+                            prev_joint_idx = 0
+                            parent_path = "Root"
+                            # Direct child of root
+                            joint_name = f"Root/Branch_{i}_Bone_{j}"
+                    else:
+                        # Subsequent bone in same branch - child of previous bone
+                        joint_name = f"{parent_path}/Branch_{i}_Bone_{j}"
+
                     joints.append(joint_name)
-                    current_joint_idx = len(joints) - 1
+                    joint_path_names[current_joint_idx] = joint_name
+                    parent_path = (
+                        joint_name  # This becomes parent for next bone in chain
+                    )
 
                     # Parent is previous joint in the chain
                     joint_parents.append(prev_joint_idx)
@@ -1365,6 +1400,9 @@ def _add_skeleton_and_materials_to_usd(
                     # Calculate bone transform RELATIVE to parent
                     start_idx = poly_line[j]
                     end_idx = poly_line[j + 1]
+
+                    # Track this joint at its end point for branch connections
+                    point_to_joint[end_idx] = current_joint_idx
 
                     if start_idx < len(points) and end_idx < len(points):
                         start_pos = Gf.Vec3d(*points[start_idx])
@@ -1389,6 +1427,7 @@ def _add_skeleton_and_materials_to_usd(
                     prev_joint_idx = current_joint_idx
 
             # Set skeleton attributes
+            # Joint hierarchy is encoded in the joint names themselves (paths)
             skel_prim.CreateJointsAttr(
                 Vt.TokenArray([Sdf.Path(j).pathString for j in joints])
             )
