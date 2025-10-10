@@ -340,9 +340,6 @@ def export_tree_as_usd(
 
         model = models[0]
 
-        # Store grove reference for optimized weight calculation
-        model._grove_instance = grove
-
         # Configure model for optimal export compatibility
         try:
             # Set up-axis to Z for Blender/Unreal compatibility
@@ -409,7 +406,7 @@ def export_tree_as_usd(
             if skeletons:
                 # Note: Don't store grove reference on skeleton - it's a Rust object
                 armature_obj = _add_skeleton_to_object(
-                    obj, skeletons[0], species_name, model
+                    obj, skeletons[0], species_name, grove, model
                 )
 
         # Add material with textures
@@ -461,10 +458,12 @@ def export_tree_as_usd(
 
         # USD export optimized for Nanite with all Grove attributes
         # Try to export with attributes if supported (Blender 3.6+)
+        # CRITICAL: export_animation=True required for skeletal meshes even with bind pose
+        # Without it, Blender won't create SkelAnimation prim that Unreal needs
         export_params = {
             "filepath": str(output_path),
             "selected_objects_only": True,
-            "export_animation": False,
+            "export_animation": (include_skeleton and not export_skeleton_separately),
             "export_armatures": (include_skeleton and not export_skeleton_separately),
             "export_shapekeys": False,
             "use_instancing": False,
@@ -583,6 +582,7 @@ def _calculate_vertex_weights(
     skeleton: Any,
     vertices: List[Tuple[float, float, float]],
     faces: List[List[int]],
+    grove: Any = None,
 ) -> Tuple[List[List[int]], List[List[float]]]:
     """Calculate proper vertex weights for skeletal animation.
 
@@ -598,6 +598,7 @@ def _calculate_vertex_weights(
         skeleton: Grove skeleton with poly_lines and points
         vertices: List of vertex positions [(x,y,z), ...]
         faces: List of face vertex indices [[v1,v2,v3], ...]
+        grove: Grove instance for bone tagging (optional)
 
     Returns:
         (joint_indices, joint_weights) where:
@@ -605,8 +606,6 @@ def _calculate_vertex_weights(
         - joint_weights[vertex_idx] = [weight1, weight2, ...]
     """
     import numpy as np
-
-    from growpy.utils.dependencies import gc
 
     num_vertices = len(vertices)
 
@@ -616,11 +615,6 @@ def _calculate_vertex_weights(
 
     # Try to use Grove's optimized bone tagging system first
     try:
-        # Check if we have a grove instance available (from model's parent)
-        grove = getattr(model, "_grove_instance", None)
-        if grove is None:
-            # Try to get grove from skeleton if available
-            grove = getattr(skeleton, "_grove_instance", None)
 
         if grove is not None and hasattr(grove, "tag_bone_id"):
             print("  Using Grove's optimized bone tagging system...")
@@ -831,7 +825,7 @@ def _calculate_vertex_weights(
 
 
 def _add_skeleton_to_object(
-    obj: Any, skeleton: Any, species_name: str, model: Optional[Any] = None
+    obj: Any, skeleton: Any, species_name: str, grove: Any, model: Optional[Any] = None
 ) -> Any:
     """Add skeleton/armature to the tree object with proper vertex weights.
 
@@ -839,6 +833,7 @@ def _add_skeleton_to_object(
         obj: Blender mesh object
         skeleton: Grove skeleton data
         species_name: Name of the tree species
+        grove: Grove instance for weight calculation  
         model: Grove model with face/vertex data (required for weights)
 
     Returns:
@@ -906,6 +901,7 @@ def _add_skeleton_to_object(
         bpy.ops.object.mode_set(mode="OBJECT")
 
         # Add armature modifier for proper deformation
+        # NOTE: Do NOT parent mesh to armature - modifier-only binding works for FBX export
         modifier = obj.modifiers.new(name="Armature", type="ARMATURE")
         modifier.object = armature_obj
         modifier.use_vertex_groups = True
@@ -916,7 +912,7 @@ def _add_skeleton_to_object(
             faces = [[v for v in poly.vertices] for poly in obj.data.polygons]
 
             vertex_to_joints, vertex_to_weights = _calculate_vertex_weights(
-                model, skeleton, vertices, faces
+                model, skeleton, vertices, faces, grove
             )
 
             # Create vertex groups and assign weights
@@ -1473,7 +1469,8 @@ def _add_skeleton_and_materials_to_usd(
             skel_root_prim = UsdSkel.Root.Define(stage, skel_root_path)
 
             # Apply SkelBindingAPI to the SkelRoot (UE5.7 requirement)
-            skel_binding_api = UsdSkel.BindingAPI.Apply(skel_root_prim.GetPrim())
+            # This is CRITICAL for Unreal to recognize this as a skeletal mesh
+            skel_root_binding_api = UsdSkel.BindingAPI.Apply(skel_root_prim.GetPrim())
 
             # Create skeleton prim inside SkelRoot
             skel_path = skel_root_path.AppendChild("Skeleton")
@@ -1584,6 +1581,34 @@ def _add_skeleton_and_materials_to_usd(
 
             print(f"    ✓ Created SkelRoot with skeleton ({len(joints)} joints)")
 
+            # Create SkelAnimation for bind pose (CRITICAL for Unreal skeletal mesh recognition)
+            # Even without animation, Unreal needs this to recognize as skeletal mesh
+            anim_path = skel_root_path.AppendChild("Animation")
+            anim_prim = UsdSkel.Animation.Define(stage, anim_path)
+
+            # Set animation joints (same as skeleton)
+            anim_prim.CreateJointsAttr(
+                Vt.TokenArray([Sdf.Path(j).pathString for j in joints])
+            )
+
+            # Set bind pose transforms (identity for each joint)
+            # USD requires these arrays to match the number of joints
+            # Identity transforms = no animation, use bind pose from skeleton
+            num_joints = len(joints)
+            identity_translations = Vt.Vec3fArray([Gf.Vec3f(0, 0, 0)] * num_joints)
+            identity_rotations = Vt.QuatfArray([Gf.Quatf(1, 0, 0, 0)] * num_joints)  # w, x, y, z
+            identity_scales = Vt.Vec3hArray([Gf.Vec3h(1, 1, 1)] * num_joints)
+
+            anim_prim.CreateTranslationsAttr(identity_translations)
+            anim_prim.CreateRotationsAttr(identity_rotations)
+            anim_prim.CreateScalesAttr(identity_scales)
+
+            # Bind animation to skeleton
+            skel_binding_api = UsdSkel.BindingAPI.Apply(skel_root_prim.GetPrim())
+            skel_binding_api.CreateAnimationSourceRel().SetTargets([anim_path])
+
+            print(f"    ✓ Created SkelAnimation ({num_joints} joints, bind pose for UE skeletal mesh recognition)")
+
             # Move mesh inside SkelRoot and bind to skeleton
             # This creates the proper hierarchy: SkelRoot/Skeleton + SkelRoot/Mesh
             mesh_in_skel_path = skel_root_path.AppendChild("Mesh")
@@ -1636,40 +1661,51 @@ def _add_skeleton_and_materials_to_usd(
                 joint_weights = [[1.0] for _ in range(num_vertices)]
                 print(f"    Warning: No model provided, using root-only weights")
 
-            # Flatten for USD (variable element size for multiple influences)
+            # Use proper UsdSkel API for joint influences (critical for UE5 recognition)
+            # CreateJointIndicesPrimvar and CreateJointWeightsPrimvar handle the
+            # primvar setup correctly for skeletal mesh import
             max_influences = max(len(indices) for indices in joint_indices)
+
+            # Flatten to single array with padding
             joint_indices_flat = []
             joint_weights_flat = []
 
             for vert_indices, vert_weights in zip(joint_indices, joint_weights):
-                joint_indices_flat.extend(vert_indices)
-                joint_weights_flat.extend(vert_weights)
+                # Pad to max_influences with zeros
+                padded_indices = list(vert_indices) + [0] * (
+                    max_influences - len(vert_indices)
+                )
+                padded_weights = list(vert_weights) + [0.0] * (
+                    max_influences - len(vert_weights)
+                )
+                joint_indices_flat.extend(padded_indices[:max_influences])
+                joint_weights_flat.extend(padded_weights[:max_influences])
 
-            primvar_api = UsdGeom.PrimvarsAPI(tree_mesh_prim)
-            joint_indices_primvar = primvar_api.CreatePrimvar(
-                "skel:jointIndices", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.vertex
+            # Use UsdSkel.BindingAPI methods (proper way to set skeletal weights)
+            mesh_binding_api.CreateJointIndicesPrimvar(False, max_influences).Set(
+                Vt.IntArray(joint_indices_flat)
             )
-            joint_indices_primvar.Set(joint_indices_flat)
-            joint_indices_primvar.SetElementSize(max_influences)
-
-            joint_weights_primvar = primvar_api.CreatePrimvar(
-                "skel:jointWeights",
-                Sdf.ValueTypeNames.FloatArray,
-                UsdGeom.Tokens.vertex,
+            mesh_binding_api.CreateJointWeightsPrimvar(False, max_influences).Set(
+                Vt.FloatArray(joint_weights_flat)
             )
-            joint_weights_primvar.Set(joint_weights_flat)
-            joint_weights_primvar.SetElementSize(max_influences)
 
             # Remove original mesh outside SkelRoot (now duplicated inside)
             stage.RemovePrim(original_mesh_path)
 
-            # Make SkelRoot the new default prim instead of the old Tree xform
-            # This ensures proper import in Unreal
-            stage.SetDefaultPrim(skel_root_prim.GetPrim())
+            # CRITICAL: Keep /root (or tree parent) as default prim, NOT SkelRoot
+            # This ensures materials in /root/_materials remain accessible in Unreal
+            # Setting SkelRoot as default causes materials to be hidden
+            root_prim = stage.GetPrimAtPath(
+                "/" + original_xform_path.pathString.split("/")[1]
+            )
+            if root_prim:
+                stage.SetDefaultPrim(root_prim)
+                print(
+                    f"    ✓ Set default prim to {root_prim.GetPath()} (preserves material access)"
+                )
 
             print(f"    ✓ Bound mesh to skeleton with joint influences")
             print(f"    ✓ Hierarchy: SkelRoot > [Skeleton + Mesh]")
-            print(f"    ✓ Set SkelRoot as default prim for import")
 
         # 2. Add bark texture material
         print(f"  Adding bark texture material...")
@@ -1829,6 +1865,26 @@ def _add_skeleton_to_twig_usd(usd_path: Path) -> bool:
 
         # Rest transforms (same as bind)
         skel_prim.CreateRestTransformsAttr(bind_transforms)
+
+        # Create SkelAnimation for bind pose (CRITICAL for Unreal skeletal mesh recognition)
+        # Even single-bone skeletons need this for UE to recognize as skeletal mesh
+        anim_path = skel_root_path.AppendChild("Animation")
+        anim_prim = UsdSkel.Animation.Define(stage, anim_path)
+
+        # Set animation joints (single joint)
+        anim_prim.CreateJointsAttr(joints)
+
+        # Set identity transforms for single bone (matching number of joints)
+        # USD requires these arrays to have proper dimensions
+        anim_prim.CreateTranslationsAttr(Vt.Vec3fArray([Gf.Vec3f(0, 0, 0)]))
+        anim_prim.CreateRotationsAttr(Vt.QuatfArray([Gf.Quatf(1, 0, 0, 0)]))  # w, x, y, z (identity quaternion)
+        anim_prim.CreateScalesAttr(Vt.Vec3hArray([Gf.Vec3h(1, 1, 1)]))
+
+        # Bind animation to skeleton
+        skel_root_binding_api = UsdSkel.BindingAPI.Apply(skel_root_prim.GetPrim())
+        skel_root_binding_api.CreateAnimationSourceRel().SetTargets([anim_path])
+
+        print(f"    -> Added SkelAnimation (identity bind pose) to twig")
 
         # Create new mesh prim inside SkelRoot
         new_mesh_path = skel_root_path.AppendChild(original_mesh_path.name)
@@ -2352,7 +2408,7 @@ def _export_fbx_internal(
             skeletons = grove.build_skeletons()
             if skeletons:
                 armature_obj = _add_skeleton_to_object(
-                    obj, skeletons[0], species_name, model
+                    obj, skeletons[0], species_name, grove, model
                 )
 
         # Add material with textures
@@ -2424,6 +2480,15 @@ def _export_fbx_internal(
         # - use_tspace=True: Export tangent space (for normal map compatibility)
         # - global_scale=1.0: 1:1 scale (meters)
         #
+        # Skeletal Mesh Settings (CRITICAL for Unreal recognition):
+        # - bake_anim=True: REQUIRED for UE to recognize as skeletal mesh
+        # - bake_anim_use_all_bones=True: Ensure all bones have deformation data
+        # - bake_anim_use_nla_strips=False: Export bind pose only (no NLA strips)
+        # - bake_anim_step=1.0: Single frame (bind pose)
+        # - bake_anim_simplify_factor=0.0: No simplification (preserve exact deformation)
+        #
+        # Without bake_anim=True, Unreal imports as static mesh even with armature!
+        #
         # Supported Nanite Features:
         # - Skeletal meshes with animation (experimental in UE 5.x)
         # - Multiple UVs and vertex colors
@@ -2442,7 +2507,13 @@ def _export_fbx_internal(
             primary_bone_axis="Y",
             secondary_bone_axis="X",
             armature_nodetype="NULL",
-            bake_anim=False,
+            # CRITICAL: bake_anim=True required for skeletal mesh recognition in Unreal
+            # Even for static bind pose, UE needs animation data to detect skeletal mesh
+            bake_anim=True,
+            bake_anim_use_all_bones=True,  # Include all bones in bake
+            bake_anim_use_nla_strips=False,  # No NLA (just bind pose)
+            bake_anim_step=1.0,  # Single frame
+            bake_anim_simplify_factor=0.0,  # No simplification
             path_mode="COPY",  # Copy textures
             embed_textures=True,  # Embed in FBX
             batch_mode="OFF",
@@ -3077,34 +3148,42 @@ def export_grove_tree_as_usda_native(
             )
 
         # Create skeletal version with skeleton and materials
-        # This is the version referenced by assembly files and used for skeletal mesh import
+        # Use Blender's native USD exporter (like working commit 4cea271)
+        # This automatically creates proper UsdSkel that Unreal recognizes
         skeletal_tree_path = temp_tree_path
         if include_skeleton:
-            # Create separate skeletal file
+            # Create separate skeletal file using Blender's USD exporter
+            # This is the WORKING approach from commit 4cea271
             skeletal_tree_path = (
                 output_path.parent
                 / f"{output_path.stem}_tree_only_skeletal{output_path.suffix}"
             )
 
-            import shutil
+            print(f"  Creating skeletal tree USD using Blender's native exporter...")
 
-            shutil.copy2(temp_tree_path, skeletal_tree_path)
-
-            # Add skeleton and materials to skeletal version
-            textures = _add_skeleton_and_materials_to_usd(
-                skeletal_tree_path, grove, species_name, config, model
+            # Use export_tree_as_usd which calls Blender's USD exporter with export_armatures=True
+            # This automatically handles UsdSkel correctly (proven to work in commit 4cea271)
+            skeletal_success = export_tree_as_usd(
+                grove,
+                skeletal_tree_path,
+                species_name,
+                include_skeleton=True,
+                export_skeleton_separately=False,
+                resolution=resolution,
+                resolution_reduce=resolution_reduce,
+                texture_repeat=texture_repeat,
+                build_cutoff_age=build_cutoff_age,
+                build_cutoff_thickness=build_cutoff_thickness,
+                build_blend=build_blend,
+                build_end_cap=build_end_cap,
             )
 
-            # Copy bark textures to output directory
-            if textures:
-                copy_bark_textures_for_species(
-                    species_name,
-                    skeletal_tree_path.parent.parent,  # Go up to species dir
-                    textures,
-                )
-
-            print(f"  ✓ Skeletal tree USD: {skeletal_tree_path.name}")
-            print(f"    (Import as skeletal mesh in Unreal, like FBX)")
+            if skeletal_success:
+                print(f"  ✓ Skeletal tree USD: {skeletal_tree_path.name}")
+                print(f"    (Import as skeletal mesh in Unreal, like FBX)")
+            else:
+                print(f"  ⚠ Failed to create skeletal tree USD")
+                skeletal_tree_path = temp_tree_path
 
             # Keep temp_tree_path as static mesh only (no skeleton)
             # This is used for static Nanite Assembly
