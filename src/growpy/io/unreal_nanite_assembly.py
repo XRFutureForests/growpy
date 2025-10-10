@@ -51,6 +51,20 @@ def create_nanite_assembly_usd(
         # Create new stage
         stage = Usd.Stage.CreateNew(str(output_path))
 
+        # Reference Unreal schema for Nanite Assembly API schemas
+        # This ensures proper schema definitions for Unreal Engine import
+        schema_path = (
+            Path(__file__).parent.parent.parent
+            / "data"
+            / "unreal_schema"
+            / "generatedSchema.usda"
+        )
+        if schema_path.exists():
+            stage.GetRootLayer().subLayerPaths.append(str(schema_path.resolve()))
+        else:
+            print(f"  Warning: Unreal schema not found at {schema_path}")
+            print(f"  Nanite Assembly may not import correctly in Unreal Engine")
+
         # Set stage metadata to match tree USD (Z-up, meters)
         UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
         UsdGeom.SetStageMetersPerUnit(stage, 1.0)
