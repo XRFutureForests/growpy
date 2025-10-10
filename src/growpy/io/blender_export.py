@@ -353,21 +353,9 @@ def export_tree_as_usd(
             model.set_winding_order("COUNTER_CLOCKWISE")
             print("  Set counter-clockwise winding order")
         except Exception as e:
-            print(f"  Warning: Could not configure model orientation: {e}")
-
-        # Configure model for optimal export compatibility
-        try:
-            # Set up-axis to Z for Blender/Unreal compatibility
-            model.set_up_axis("Z")
-            print("  Set FBX model up-axis to Z")
-
-            # Set counter-clockwise winding for standard compatibility
-            model.set_winding_order("COUNTER_CLOCKWISE")
-            print("  Set FBX counter-clockwise winding order")
-        except Exception as e:
-            print(f"  Warning: Could not configure FBX model orientation: {e}")
-
-        # Apply UV aspect ratio correction for proper texture scaling
+            print(
+                f"  Warning: Could not configure model orientation: {e}"
+            )  # Apply UV aspect ratio correction for proper texture scaling
         try:
             if config and hasattr(config, "texture_aspect_ratio"):
                 aspect_ratio = config.texture_aspect_ratio
@@ -419,8 +407,7 @@ def export_tree_as_usd(
         if include_skeleton or export_skeleton_separately:
             skeletons = grove.build_skeletons()
             if skeletons:
-                # Store grove reference for optimized weight calculation
-                skeletons[0]._grove_instance = grove
+                # Note: Don't store grove reference on skeleton - it's a Rust object
                 armature_obj = _add_skeleton_to_object(
                     obj, skeletons[0], species_name, model
                 )
@@ -534,6 +521,20 @@ def create_nanite_assembly_usd(
 
         # Create new stage
         stage = Usd.Stage.CreateNew(str(output_assembly_path))
+
+        # Reference Unreal schema for Nanite Assembly API schemas
+        # This ensures proper schema definitions for Unreal Engine import
+        schema_path = (
+            Path(__file__).parent.parent.parent
+            / "data"
+            / "unreal_schema"
+            / "generatedSchema.usda"
+        )
+        if schema_path.exists():
+            stage.GetRootLayer().subLayerPaths.append(str(schema_path.resolve()))
+        else:
+            print(f"  Warning: Unreal schema not found at {schema_path}")
+            print(f"  Nanite Assembly may not import correctly in Unreal Engine")
 
         # Set stage metadata (Z-up, meters)
         UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
@@ -1464,8 +1465,7 @@ def _add_skeleton_and_materials_to_usd(
         skeletons = grove.build_skeletons()
         if skeletons and len(skeletons) > 0:
             skeleton_data = skeletons[0]
-            # Store grove reference for optimized weight calculation
-            skeleton_data._grove_instance = grove
+            # Note: Don't store grove reference on skeleton - it's a Rust object
 
             # Create SkelRoot as parent container (required for UE5.7)
             # SkelRoot wraps both the Skeleton and the skinned Mesh
@@ -2265,13 +2265,18 @@ def _export_fbx_internal(
 
         # Get UV coordinates with better error handling
         uvs = []
+        directions = []  # Initialize directions variable
         try:
             if hasattr(model, "get_uvs_flat"):
                 uvs = model.get_uvs_flat()
                 print(f"  Extracted {len(uvs)//2} UV coordinates for FBX")
+            if hasattr(model, "get_directions_flat"):
+                directions = model.get_directions_flat()
+                print(f"  Extracted {len(directions)//3} face directions for FBX")
         except Exception as e:
-            print(f"  Warning: Could not extract UVs: {e}")
+            print(f"  Warning: Could not extract data from Grove model: {e}")
             uvs = []
+            directions = []
         vertices = [
             (points[i], points[i + 1], points[i + 2]) for i in range(0, len(points), 3)
         ]
@@ -2280,6 +2285,20 @@ def _export_fbx_internal(
         mesh = bpy.data.meshes.new(f"{species_name}_mesh")
         mesh.from_pydata(vertices, [], faces)
         mesh.update()
+
+        # Add UVs with proper validation
+        if uvs and len(uvs) >= len(faces) * 6:  # Validate sufficient UV data
+            mesh.uv_layers.new(name="UVMap")
+            uv_layer = mesh.uv_layers.active.data
+            try:
+                for poly in mesh.polygons:
+                    for loop_index in poly.loop_indices:
+                        uv_index = loop_index * 2
+                        if uv_index + 1 < len(uvs):
+                            uv_layer[loop_index].uv = (uvs[uv_index], uvs[uv_index + 1])
+                print(f"  ✓ Applied Grove UV coordinates to FBX mesh")
+            except Exception as e:
+                print(f"  Warning: Failed to apply UV coordinates to FBX: {e}")
 
         # Add UVs with proper validation
         if uvs and len(uvs) >= len(faces) * 6:  # Validate sufficient UV data
