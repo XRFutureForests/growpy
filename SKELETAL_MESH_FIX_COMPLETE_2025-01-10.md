@@ -15,11 +15,13 @@ The issue stemmed from multiple problems in the skeletal mesh export pipeline:
 ## Technical Background
 
 **Unreal Engine Skeletal Mesh Requirements:**
+
 - **FBX**: Requires baked animation curves (even for static bind pose) to recognize as skeletal mesh
 - **USD**: Requires SkelAnimation prim with joint transforms to recognize as skeletal mesh
 - Both formats need these structures even if the mesh doesn't actually animate
 
 **Grove Model Rust Integration:**
+
 - Grove Model is a Rust object from the_grove_22_core library
 - Python cannot set arbitrary attributes on Rust objects
 - Must pass Rust objects as function parameters instead of storing as attributes
@@ -29,11 +31,13 @@ The issue stemmed from multiple problems in the skeletal mesh export pipeline:
 ### 1. FBX Animation Baking (blender_export.py)
 
 **Line ~2520** - Changed from:
+
 ```python
 bake_anim=False
 ```
 
 To:
+
 ```python
 bake_anim=True,
 bake_anim_use_all_bones=True,
@@ -47,11 +51,13 @@ This bakes a single-frame bind pose animation, ensuring Unreal recognizes the sk
 ### 2. USD Animation Export (blender_export.py)
 
 **Line ~469** - Changed from:
+
 ```python
 export_animation=False
 ```
 
 To:
+
 ```python
 export_animation=(include_skeleton and not export_skeleton_separately)
 ```
@@ -63,14 +69,17 @@ This conditionally enables animation export when skeleton is included, creating 
 Refactored to pass grove as function parameter instead of storing on model:
 
 **Removed assignments:**
+
 - Line ~344: `model._grove_instance = grove`
 - Line ~2310: `model._grove_instance = grove`
 
 **Updated function signatures:**
+
 - Line ~838: Added `grove: Any` parameter to `_add_skeleton_to_object()`
 - Line ~597: Added `grove: Any = None` parameter to `_calculate_vertex_weights()`
 
 **Updated function calls:**
+
 - Line ~2419: Pass grove to FBX skeleton: `_add_skeleton_to_object(obj, skeletons[0], species_name, grove, model)`
 - Line ~407: Pass grove to USD skeleton: `_add_skeleton_to_object(obj, skeletons[0], species_name, grove, model)`
 - Line ~927: Pass grove to weight calculation: `_calculate_vertex_weights(model, skeleton, vertices, faces, grove=grove)`
@@ -78,12 +87,15 @@ Refactored to pass grove as function parameter instead of storing on model:
 ### 4. Twig Export Fixes (convert_twigs.py)
 
 **Line ~285** - Dynamic bone length calculation:
+
 ```python
 bone_length = max(0.05, min(0.5, extent_z * 0.5))
 ```
+
 Prevents bone connection errors by ensuring proper bone dimensions.
 
 **Line ~570** - FBX animation baking:
+
 ```python
 bake_anim=True,
 bake_anim_use_all_bones=True,
@@ -91,6 +103,7 @@ bake_anim_use_all_bones=True,
 ```
 
 **Line ~355** - USD SkelAnimation:
+
 ```python
 skel_anim = UsdSkel.Animation.Define(stage, skel_anim_path)
 # ... set transforms
@@ -101,6 +114,7 @@ skel_anim = UsdSkel.Animation.Define(stage, skel_anim_path)
 ### Export Test: skeletal_test_final
 
 **Command:**
+
 ```bash
 /Users/maximiliansperlich/miniforge3/envs/the-grove/bin/python ./src/growpy/cli/generate_forest.py ./data/input/test.csv --output-dir ./data/output/skeletal_test_final --quality high --formats fbx usda
 ```
@@ -108,6 +122,7 @@ skel_anim = UsdSkel.Animation.Define(stage, skel_anim_path)
 **Results:**
 
 #### Beech Tree (100,664 vertices, 92,359 triangles)
+
 - ✓ `Beech_tree_0000.fbx` - Static FBX (no skeleton)
 - ✓ `Beech_tree_0000_skeletal.fbx` - **Skeletal FBX with animation data**
 - ✓ `Beech_tree_0000_tree_only.usda` - Static USD (no skeleton)
@@ -118,6 +133,7 @@ skel_anim = UsdSkel.Animation.Define(stage, skel_anim_path)
 - ✓ `Beech_tree_0000_NaniteAssembly_skeletal.usda` - Skeletal Nanite Assembly
 
 #### Oak Tree (54,467 vertices, 50,045 triangles)
+
 - ✓ `Oak_tree_0001.fbx` - Static FBX
 - ✓ `Oak_tree_0001_skeletal.fbx` - **Skeletal FBX with animation data**
 - ✓ `Oak_tree_0001_tree_only.usda` - Static USD
@@ -125,6 +141,7 @@ skel_anim = UsdSkel.Animation.Define(stage, skel_anim_path)
 - ✓ All USD assemblies and Nanite files generated
 
 **Export Times:**
+
 - Beech FBX static: 0.28s
 - Beech FBX skeletal: 4.30s
 - Beech USD skeletal: 865ms
@@ -139,11 +156,13 @@ skel_anim = UsdSkel.Animation.Define(stage, skel_anim_path)
 ### Skeletal Mesh Recognition
 
 **FBX Skeletal Meshes:**
+
 - `{tree_name}_skeletal.fbx` should now import as skeletal mesh in Unreal
 - Contains armature with baked bind pose animation
 - Vertex weights calculated using Grove's physics-based bone tagging
 
 **USD Skeletal Meshes:**
+
 - `{tree_name}_tree_only_skeletal.usda` should now import as skeletal mesh in Unreal
 - Contains SkelRoot, Skeleton, SkelAnimation, and BindingAPI
 - Uses UsdSkel schema required by Unreal
@@ -151,21 +170,25 @@ skel_anim = UsdSkel.Animation.Define(stage, skel_anim_path)
 ### Twig Import
 
 **USD Skeletal Twigs:**
+
 - Should import as skeletal meshes
 - **Textures should now be visible** (existing relative path implementation)
 - Located in species `twigs/` directory
 
 **FBX Skeletal Twigs:**
+
 - Should import without bone connection errors
 - Dynamic bone length (50% of mesh extent) prevents alignment issues
 
 ### Nanite Assembly
 
 **Static Nanite Assembly:**
+
 - `{tree_name}_NaniteAssembly.usda` - Import as static mesh for Nanite rendering
 - References `{tree_name}_tree_only.usda` + static twigs
 
 **Skeletal Nanite Assembly:**
+
 - `{tree_name}_NaniteAssembly_skeletal.usda` - Import as skeletal mesh for Nanite rendering
 - References `{tree_name}_tree_only_skeletal.usda` + skeletal twigs
 
@@ -222,6 +245,7 @@ skel_anim = UsdSkel.Animation.Define(stage, skel_anim_path)
 ### FBX Export Configuration
 
 The FBX exporter now uses these critical settings for skeletal meshes:
+
 ```python
 bpy.ops.export_scene.fbx(
     bake_anim=True,                    # Enable animation baking
@@ -239,6 +263,7 @@ bpy.ops.export_scene.fbx(
 ### USD Export Configuration
 
 The USD exporter now creates proper UsdSkel structure:
+
 ```python
 # SkelRoot (container)
 skel_root = UsdSkel.Root.Define(stage, root_path)
@@ -262,6 +287,7 @@ binding.CreateSkeletonRel().SetTargets([skel_path])
 ### Vertex Weight Calculation
 
 The Grove-based physics weight calculation:
+
 ```python
 def _calculate_vertex_weights(
     model, skeleton, vertices, faces, grove=None
