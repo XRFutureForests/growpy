@@ -281,21 +281,14 @@ def _add_skeleton_to_twig_fbx(obj):
         # Position at origin
         armature_obj.location = (0, 0, 0)
 
-        # Calculate bone length from mesh bounds (prevents bone connection errors)
-        # Use mesh extents to ensure bone is proportional to twig size
-        mesh_bounds = [obj.dimensions[i] for i in range(3)]
-        max_extent = max(mesh_bounds)
-        # Bone length: 50% of max mesh extent, minimum 0.05m, maximum 0.5m
-        bone_length = max(0.05, min(0.5, max_extent * 0.5))
-        
         # Enter edit mode to add bone
         bpy.context.view_layer.objects.active = armature_obj
         bpy.ops.object.mode_set(mode='EDIT')
 
-        # Create single bone at origin with proper length
+        # Create single bone at origin pointing up
         bone = armature.edit_bones.new("Root")
         bone.head = (0, 0, 0)
-        bone.tail = (0, 0, bone_length)  # Proportional to mesh size
+        bone.tail = (0, 0, 0.1)  # 10cm up
 
         bpy.ops.object.mode_set(mode='OBJECT')
 
@@ -363,24 +356,6 @@ def _add_skeleton_to_twig_usd(usd_path):
         
         # Rest transforms (same as bind)
         skel_prim.CreateRestTransformsAttr(bind_transforms)
-        
-        # CRITICAL: Create SkelAnimation for bind pose (required for Unreal skeletal mesh recognition)
-        # Even single-bone skeletons need this for UE to recognize as skeletal mesh
-        anim_path = skel_root_path.AppendChild("Animation")
-        anim_prim = UsdSkel.Animation.Define(stage, anim_path)
-        
-        # Set animation joints (single joint)
-        anim_prim.CreateJointsAttr(joints)
-        
-        # Set identity transforms for single bone (matching number of joints)
-        # USD requires these arrays to have proper dimensions
-        anim_prim.CreateTranslationsAttr(Vt.Vec3fArray([Gf.Vec3f(0, 0, 0)]))
-        anim_prim.CreateRotationsAttr(Vt.QuatfArray([Gf.Quatf(1, 0, 0, 0)]))  # w, x, y, z (identity quaternion)
-        anim_prim.CreateScalesAttr(Vt.Vec3hArray([Gf.Vec3h(1, 1, 1)]))
-        
-        # Bind animation to skeleton
-        skel_root_binding_api = UsdSkel.BindingAPI.Apply(skel_root_prim.GetPrim())
-        skel_root_binding_api.CreateAnimationSourceRel().SetTargets([anim_path])
         
         # Create new mesh prim inside SkelRoot
         new_mesh_path = skel_root_path.AppendChild(original_mesh_path.name)
@@ -583,7 +558,7 @@ def process_twig_file(blend_file, output_dir, formats, species_name):
                         bpy.context.view_layer.objects.active = mount_point
 
                         # Export with skeleton
-                        # CRITICAL: bake_anim=True required for Unreal skeletal mesh recognition
+                        # CRITICAL: Include animation data for Unreal skeletal mesh recognition
                         bpy.ops.export_scene.fbx(
                             filepath=str(skeletal_export_path),
                             use_selection=True,
@@ -596,10 +571,10 @@ def process_twig_file(blend_file, output_dir, formats, species_name):
                             add_leaf_bones=False,
                             primary_bone_axis='Y',
                             secondary_bone_axis='X',
-                            # CRITICAL for skeletal mesh recognition in Unreal (must be True!):
-                            bake_anim=True,  # Required for skeletal mesh detection
-                            bake_anim_use_all_bones=True,  # Include all bones
-                            bake_anim_use_nla_strips=False,  # No NLA, just bind pose
+                            # CRITICAL for skeletal mesh recognition in Unreal:
+                            bake_anim=True,  # Include deformation data even for bind pose
+                            bake_anim_use_all_bones=True,  # Ensure all bones have data
+                            bake_anim_use_nla_strips=False,  # Bind pose only
                             bake_anim_step=1.0,  # Single frame
                             bake_anim_simplify_factor=0.0,  # No simplification
                             path_mode='COPY',
