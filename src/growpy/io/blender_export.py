@@ -357,8 +357,9 @@ def export_tree_as_usd(
             if config and hasattr(config, "texture_aspect_ratio"):
                 aspect_ratio = config.texture_aspect_ratio
             else:
-                # Default aspect ratio for bark textures (typically taller than wide)
-                aspect_ratio = 2.0
+                # Increased from 2.0 to 4.0 to make textures larger (less repetitive)
+                # Higher value = larger texture scale = less repetition
+                aspect_ratio = 4.0
 
             model.apply_uv_aspect_ratio(aspect_ratio)
             print(f"  Applied UV aspect ratio: {aspect_ratio}")
@@ -381,11 +382,24 @@ def export_tree_as_usd(
         if uvs and len(uvs) >= len(faces) * 6:
             mesh.uv_layers.new(name="UVMap")
             uv_layer = mesh.uv_layers.active.data
+            # Apply UVs with aspect ratio scaling for proper texture size
+            # Grove applies UV aspect ratio to model, but Blender USD export resets it
+            # So we need to manually scale UVs in Blender to preserve the ratio
+            # CRITICAL: Use the aspect_ratio variable that was set above (4.0 default)
+            try:
+                uv_scale_y = aspect_ratio  # Use the aspect_ratio set earlier
+            except NameError:
+                uv_scale_y = 4.0  # Fallback if not set
+
+            print(f"  Applying UV V-coordinate scaling: {uv_scale_y}x")
             for poly in mesh.polygons:
                 for loop_index in poly.loop_indices:
                     uv_index = loop_index * 2
                     if uv_index + 1 < len(uvs):
-                        uv_layer[loop_index].uv = (uvs[uv_index], uvs[uv_index + 1])
+                        # Scale V coordinate by aspect ratio to match texture size
+                        u = uvs[uv_index]
+                        v = uvs[uv_index + 1] * uv_scale_y
+                        uv_layer[loop_index].uv = (u, v)
 
         _add_grove_attributes_to_mesh(mesh, model)
 
@@ -524,7 +538,7 @@ def create_nanite_assembly_usd(
         # Reference Unreal schema for Nanite Assembly API schemas
         # This ensures proper schema definitions for Unreal Engine import
         schema_path = (
-            Path(__file__).parent.parent.parent
+            Path(__file__).parent.parent.parent.parent
             / "data"
             / "unreal_schema"
             / "generatedSchema.usda"
@@ -900,8 +914,12 @@ def _add_skeleton_to_object(
 
         bpy.ops.object.mode_set(mode="OBJECT")
 
+        # Parent mesh to armature for proper FBX skeletal mesh export
+        # This is CRITICAL for Unreal to recognize as skeletal mesh
+        obj.parent = armature_obj
+        obj.parent_type = "OBJECT"
+
         # Add armature modifier for proper deformation
-        # NOTE: Do NOT parent mesh to armature - modifier-only binding works for FBX export
         modifier = obj.modifiers.new(name="Armature", type="ARMATURE")
         modifier.object = armature_obj
         modifier.use_vertex_groups = True
@@ -2224,14 +2242,22 @@ def export_twigs_from_blend(blend_file_path: Path, output_dir: Path) -> List[Pat
 
                 exported_files.append(usd_path)
 
-                # Create skeletal variant by adding single-bone skeleton
-                skeletal_path = output_dir / f"{clean_name}_skeletal.usda"
-                import shutil
+                # OPTIMIZATION: Skeletal twigs are NOT needed for Nanite Assemblies
+                # Reason: Static twig geometry + PointInstancer NaniteAssemblySkelBindingAPI
+                #         is the correct approach for skeletal assemblies
+                #
+                # Keeping skeletal twig conversion disabled to:
+                # - Reduce export time (no skeleton conversion step)
+                # - Save disk space (fewer USD files)
+                # - Avoid confusion (static twigs work for all assemblies)
+                #
+                # If skeletal twigs are needed for other workflows, uncomment below:
 
-                shutil.copy2(usd_path, skeletal_path)
-
-                if _add_skeleton_to_twig_usd(skeletal_path):
-                    exported_files.append(skeletal_path)
+                # skeletal_path = output_dir / f"{clean_name}_skeletal.usda"
+                # import shutil
+                # shutil.copy2(usd_path, skeletal_path)
+                # if _add_skeleton_to_twig_usd(skeletal_path):
+                #     exported_files.append(skeletal_path)
 
             except Exception as e:
                 continue
@@ -2317,8 +2343,9 @@ def _export_fbx_internal(
             if config and hasattr(config, "texture_aspect_ratio"):
                 aspect_ratio = config.texture_aspect_ratio
             else:
-                # Default aspect ratio for bark textures (typically taller than wide)
-                aspect_ratio = 2.0
+                # Increased from 2.0 to 4.0 to make textures larger (less repetitive)
+                # Higher value = larger texture scale = less repetition
+                aspect_ratio = 4.0
 
             model.apply_uv_aspect_ratio(aspect_ratio)
             print(f"  Applied UV aspect ratio: {aspect_ratio}")
@@ -2348,19 +2375,11 @@ def _export_fbx_internal(
         mesh.from_pydata(vertices, [], faces)
         mesh.update()
 
-        # Add UVs with proper validation
-        if uvs and len(uvs) >= len(faces) * 6:  # Validate sufficient UV data
-            mesh.uv_layers.new(name="UVMap")
-            uv_layer = mesh.uv_layers.active.data
-            try:
-                for poly in mesh.polygons:
-                    for loop_index in poly.loop_indices:
-                        uv_index = loop_index * 2
-                        if uv_index + 1 < len(uvs):
-                            uv_layer[loop_index].uv = (uvs[uv_index], uvs[uv_index + 1])
-                print(f"  ✓ Applied Grove UV coordinates to FBX mesh")
-            except Exception as e:
-                print(f"  Warning: Failed to apply UV coordinates to FBX: {e}")
+        # Enable smooth shading for better appearance in Unreal
+        # This prevents hard edges and triangular-looking geometry
+        for poly in mesh.polygons:
+            poly.use_smooth = True
+        mesh.update()
 
         # Add UVs with proper validation
         if uvs and len(uvs) >= len(faces) * 6:  # Validate sufficient UV data
@@ -2416,6 +2435,16 @@ def _export_fbx_internal(
                 armature_obj = _add_skeleton_to_object(
                     obj, skeletons[0], species_name, grove, model
                 )
+
+                # Set armature to rest position for clean FBX export
+                if armature_obj and armature_obj.pose:
+                    bpy.context.view_layer.objects.active = armature_obj
+                    bpy.ops.object.mode_set(mode="POSE")
+                    bpy.ops.pose.select_all(action="SELECT")
+                    bpy.ops.pose.loc_clear()
+                    bpy.ops.pose.rot_clear()
+                    bpy.ops.pose.scale_clear()
+                    bpy.ops.object.mode_set(mode="OBJECT")
 
         # Add material with textures
         _add_material_with_textures(obj, species_name, config)
@@ -2505,7 +2534,7 @@ def _export_fbx_internal(
             use_selection=True,
             object_types={"MESH", "ARMATURE"} if include_skeleton else {"MESH"},
             mesh_smooth_type="FACE",  # Single smoothing group
-            use_mesh_modifiers=True,  # Apply modifiers (already triangulated)
+            use_mesh_modifiers=False,  # Don't apply modifiers - preserve armature deformation
             use_mesh_edges=False,  # No edge data (cleaner for Nanite)
             use_tspace=True,  # Tangent space for normal maps
             use_custom_props=True,  # Export Nanite metadata + twig attributes
@@ -2513,13 +2542,16 @@ def _export_fbx_internal(
             primary_bone_axis="Y",
             secondary_bone_axis="X",
             armature_nodetype="NULL",
-            # CRITICAL: bake_anim=True required for skeletal mesh recognition in Unreal
-            # Even for static bind pose, UE needs animation data to detect skeletal mesh
-            bake_anim=True,
-            bake_anim_use_all_bones=True,  # Include all bones in bake
-            bake_anim_use_nla_strips=False,  # No NLA (just bind pose)
-            bake_anim_step=1.0,  # Single frame
-            bake_anim_simplify_factor=0.0,  # No simplification
+            # Export only deform bones (skip control bones)
+            use_armature_deform_only=include_skeleton,
+            # Bake animation: Use minimal single-frame export for bind pose
+            bake_anim=include_skeleton,
+            bake_anim_use_all_bones=False,  # Only deform bones
+            bake_anim_use_nla_strips=False,  # No NLA
+            bake_anim_use_all_actions=False,  # No actions
+            bake_anim_force_startend_keying=False,  # No forced keyframes
+            bake_anim_step=1.0,
+            bake_anim_simplify_factor=1.0,  # Simplify to single frame
             path_mode="COPY",  # Copy textures
             embed_textures=True,  # Embed in FBX
             batch_mode="OFF",
@@ -3153,45 +3185,39 @@ def export_grove_tree_as_usda_native(
                 base_textures,
             )
 
-        # Create skeletal version with skeleton and materials
-        # Use Blender's native USD exporter (like working commit 4cea271)
-        # This automatically creates proper UsdSkel that Unreal recognizes
+        # Create skeletal version with skeleton and materials using native Grove USD export
         skeletal_tree_path = temp_tree_path
         if include_skeleton:
-            # Create separate skeletal file using Blender's USD exporter
-            # This is the WORKING approach from commit 4cea271
+            import shutil
+
             skeletal_tree_path = (
                 output_path.parent
                 / f"{output_path.stem}_tree_only_skeletal{output_path.suffix}"
             )
 
-            print(f"  Creating skeletal tree USD using Blender's native exporter...")
+            print(f"  Creating skeletal tree USD with native Grove exporter...")
 
-            # Use export_tree_as_usd which calls Blender's USD exporter with export_armatures=True
-            # This automatically handles UsdSkel correctly (proven to work in commit 4cea271)
-            skeletal_success = export_tree_as_usd(
-                grove,
-                skeletal_tree_path,
-                species_name,
-                include_skeleton=True,
-                export_skeleton_separately=False,
-                resolution=resolution,
-                resolution_reduce=resolution_reduce,
-                texture_repeat=texture_repeat,
-                build_cutoff_age=build_cutoff_age,
-                build_cutoff_thickness=build_cutoff_thickness,
-                build_blend=build_blend,
-                build_end_cap=build_end_cap,
+            # CRITICAL: Copy temp_tree_path to skeletal path FIRST
+            # This preserves temp_tree_path as static (no skeleton)
+            shutil.copy2(temp_tree_path, skeletal_tree_path)
+
+            # Add skeleton and materials to the SKELETAL copy only
+            skeleton_added = _add_skeleton_and_materials_to_usd(
+                usd_path=skeletal_tree_path,
+                grove=grove,
+                species_name=species_name,
+                config=config,
+                model=model,
             )
 
-            if skeletal_success:
+            if skeleton_added:
                 print(f"  ✓ Skeletal tree USD: {skeletal_tree_path.name}")
-                print(f"    (Import as skeletal mesh in Unreal, like FBX)")
+                print(f"    (Skeletal mesh with embedded UsdSkel)")
             else:
-                print(f"  ⚠ Failed to create skeletal tree USD")
+                print(f"  ⚠ Failed to add skeleton to tree USD")
                 skeletal_tree_path = temp_tree_path
 
-            # Keep temp_tree_path as static mesh only (no skeleton)
+            # temp_tree_path remains static mesh only (no skeleton)
             # This is used for static Nanite Assembly
         else:
             # If no skeleton requested, use temp_tree_path for everything
@@ -3241,13 +3267,23 @@ def export_grove_tree_as_usda_native(
             )
 
             print(f"\n  Creating Unreal Nanite Assembly (USD/Static)...")
-            # Use tree-only USD (without twigs) and add twigs explicitly in assembly
-            # This ensures proper Nanite Assembly structure for Unreal
+            # CRITICAL: Static assembly must use static (non-skeletal) tree USD
+            # temp_tree_path is the static tree mesh (no skeleton)
+            # twig_usd_paths with prefer_skeletal=False ensures static twigs
+            # Get static twig paths explicitly
+            static_twig_paths = (
+                get_twig_usd_map_for_species(
+                    species_name, config, prefer_skeletal=False
+                )
+                if include_twigs
+                else None
+            )
+
             nanite_success = create_nanite_assembly_usd(
-                tree_usd_path=temp_tree_path,  # Static tree mesh (no skeleton), no twigs
+                tree_usd_path=temp_tree_path,  # Static tree mesh (no skeleton)
                 output_path=nanite_path,
                 species_name=species_name,
-                twig_usd_paths=twig_usd_paths if include_twigs else None,
+                twig_usd_paths=static_twig_paths,  # Static twigs only
                 use_skeletal_mesh=False,
             )
 
@@ -3294,12 +3330,20 @@ def export_grove_tree_as_usda_native(
                         )
 
                         print(f"\n  Creating Skeletal Nanite Assembly...")
+                        # CRITICAL: Skeletal Nanite Assembly uses:
+                        # - Skeletal tree USD (has skeleton for animation)
+                        # - STATIC twig meshes (skeleton binding via PointInstancer, not individual twig skeletons)
+                        # - Twig placements from static tree (has face attributes)
+                        #
+                        # Reason: PointInstancer binding conflicts with individual twig skeletons
+                        #         Use static twigs, bind them to tree skeleton via NaniteAssemblySkelBindingAPI
                         skeletal_nanite_success = create_nanite_assembly_usd(
-                            tree_usd_path=skeletal_tree_path,  # Skeletal tree-only (no twigs)
+                            tree_usd_path=skeletal_tree_path,  # Skeletal tree with skeleton
                             output_path=skeletal_nanite_path,
                             species_name=species_name,
-                            twig_usd_paths=skeletal_twig_paths,
+                            twig_usd_paths=static_twig_paths,  # Use STATIC twigs (all 4 variants)
                             use_skeletal_mesh=True,
+                            twig_placement_source_usd=temp_tree_path,  # Extract placements from static tree
                         )
 
                         if skeletal_nanite_success:
@@ -3330,6 +3374,73 @@ def export_grove_tree_as_usda_native(
 
         traceback.print_exc()
         return False
+
+
+def get_twig_fbx_map_for_species(
+    species_name: str,
+    config: Optional[Any] = None,
+    prefer_skeletal: bool = False,
+) -> Dict[str, Path]:
+    """Get mapping of twig types to FBX file paths for a species.
+
+    This is used for skeletal Nanite Assemblies that need FBX references.
+
+    Args:
+        species_name: Name of tree species
+        config: GrowPy configuration
+        prefer_skeletal: If True, prefer skeletal twig variants (_skeletal.fbx)
+
+    Returns:
+        Dict mapping twig types to FBX file paths:
+        {'twig_long': Path, 'twig_short': Path, ...}
+    """
+    if config is None:
+        config = get_config()
+
+    from ..config import GrowPyConfig
+
+    twig_files_by_type = GrowPyConfig.get_twig_files_by_type(species_name)
+
+    if not twig_files_by_type:
+        return {}
+
+    twig_fbx_map = {}
+
+    type_mapping = {
+        "twig_long": ["apical", "long", "end", "terminal", "var_a", "var_c"],
+        "twig_short": ["lateral", "short", "side", "var_b", "var_d"],
+        "twig_upward": ["upward", "up", "var_e"],
+        "twig_dead": ["dead", "fall", "winter"],
+    }
+
+    for grove_type, keywords in type_mapping.items():
+        for twig_type, twig_paths in twig_files_by_type.items():
+            if any(kw in twig_type.lower() for kw in keywords):
+                if twig_paths:
+                    twig_file = twig_paths[0]
+
+                    # Look for FBX version
+                    fbx_file = twig_file.with_suffix(".fbx")
+
+                    # Filter based on skeletal preference
+                    is_skeletal = "_skeletal" in fbx_file.stem
+                    if prefer_skeletal and not is_skeletal:
+                        skeletal_file = (
+                            fbx_file.parent
+                            / f"{fbx_file.stem}_skeletal{fbx_file.suffix}"
+                        )
+                        if skeletal_file.exists():
+                            twig_fbx_map[grove_type] = skeletal_file
+                            break
+                        continue
+                    elif not prefer_skeletal and is_skeletal:
+                        continue
+
+                    if fbx_file.exists():
+                        twig_fbx_map[grove_type] = fbx_file
+                        break
+
+    return twig_fbx_map
 
 
 def get_twig_usd_map_for_species(
