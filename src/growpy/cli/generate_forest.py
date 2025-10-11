@@ -175,9 +175,7 @@ def export_individual_trees(
     exported_files = []
 
     for idx, row in tqdm(
-        forest_data.iterrows(),
-        total=len(forest_data),
-        desc="Exporting trees"
+        forest_data.iterrows(), total=len(forest_data), desc="Exporting trees"
     ):
         species = row["species"]
         growth_cycles = int(row.get("growth_cycles", 10))
@@ -344,7 +342,9 @@ def generate_forest_exports(
     max_growth_cycles = forest_data["growth_cycles"].max()
     if max_growth_cycles > GROWTH_CYCLE_LIMIT:
         scale_factor = GROWTH_CYCLE_LIMIT / max_growth_cycles
-        forest_data["growth_cycles"] = (forest_data["growth_cycles"] * scale_factor).astype(int)
+        forest_data["growth_cycles"] = (
+            forest_data["growth_cycles"] * scale_factor
+        ).astype(int)
         forest_data["growth_cycles"] = forest_data["growth_cycles"].clip(lower=1)
         print(f"Scaled growth cycles: max {max_growth_cycles} -> {GROWTH_CYCLE_LIMIT}")
     else:
@@ -368,6 +368,33 @@ def generate_forest_exports(
 
     if any(fmt in formats for fmt in ["fbx", "usd", "usda"]):
         try:
+            # Bundle twig files BEFORE export so Nanite Assembly can reference them
+            from growpy.io.blender_export import bundle_twigs_for_species
+
+            unique_species = forest_data["species"].unique()
+            print(f"\nBundling twig files for {len(unique_species)} species...")
+
+            twig_formats = []
+            if "usda" in formats or "usd" in formats:
+                twig_formats.append("usda")
+            if "fbx" in formats:
+                twig_formats.append("fbx")
+
+            for species in unique_species:
+                species_clean = (
+                    "".join(c for c in species if c.isalnum() or c in (" ", "-", "_"))
+                    .strip()
+                    .replace(" ", "_")
+                )
+                species_dir = output_dir / species_clean
+
+                bundle_twigs_for_species(
+                    species_name=species,
+                    output_dir=species_dir,
+                    formats=twig_formats,
+                    config=config,
+                )
+
             print(f"\nExporting {len(forest_data)} individual trees...")
             exported_files = export_individual_trees(
                 forest_data,
@@ -383,32 +410,6 @@ def generate_forest_exports(
                 print(
                     f"Exported {len(exported_files)} tree files ({format_str}) with '{quality}' quality"
                 )
-
-                # Bundle twig files for each unique species
-                from growpy.io.blender_export import bundle_twigs_for_species
-
-                unique_species = forest_data["species"].unique()
-                print(f"\nBundling twig files for {len(unique_species)} species...")
-                for species in unique_species:
-                    species_clean = (
-                        "".join(c for c in species if c.isalnum() or c in (" ", "-", "_"))
-                        .strip()
-                        .replace(" ", "_")
-                    )
-                    species_dir = output_dir / species_clean
-
-                    twig_formats = []
-                    if "usda" in formats or "usd" in formats:
-                        twig_formats.append("usda")
-                    if "fbx" in formats:
-                        twig_formats.append("fbx")
-
-                    bundle_twigs_for_species(
-                        species_name=species,
-                        output_dir=species_dir,
-                        formats=twig_formats,
-                        config=config,
-                    )
 
                 # Place twigs if requested
                 if place_twigs and bpy is not None:
