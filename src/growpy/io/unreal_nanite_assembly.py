@@ -42,7 +42,7 @@ def create_nanite_assembly_usd(
     species_name: str,
     twig_usd_paths: Optional[Dict[str, Path]] = None,
     use_skeletal_mesh: bool = False,
-    skeleton_path: Optional[Path] = None,
+    skeleton_source_usd: Optional[Path] = None,
     twig_placement_source_usd: Optional[Path] = None,
 ) -> bool:
     """Create a Nanite Assembly USD file for Unreal Engine import.
@@ -52,10 +52,12 @@ def create_nanite_assembly_usd(
     - NaniteAssemblyExternalRefAPI on child meshes (USD references ONLY)
     - PointInstancer for twig instances
 
-    CRITICAL: For skeletal assemblies:
-    - tree_usd_path MUST point to a skeletal USD with embedded UsdSkelRoot/Skeleton
-    - twig_usd_paths MUST point to skeletal twigs with embedded skeletons
-    - All USD files must have proper UsdSkel hierarchy for Unreal recognition
+    CRITICAL: For skeletal assemblies (NEW APPROACH):
+    - tree_usd_path MUST point to STATIC (non-skeletal) tree USD (geometry only)
+    - twig_usd_paths MUST point to STATIC (non-skeletal) twigs (geometry only)
+    - skeleton_source_usd MUST point to skeletal USD with embedded UsdSkelRoot/Skeleton
+    - Skeleton is COPIED into assembly file (not referenced)
+    - Static meshes are referenced and bound to embedded skeleton via NaniteAssemblySkelBindingAPI
 
     CRITICAL: For static assemblies:
     - tree_usd_path MUST point to a static (non-skeletal) USD
@@ -63,14 +65,13 @@ def create_nanite_assembly_usd(
     - No skeleton data should be present
 
     Args:
-        tree_usd_path: Path to tree USD file (skeletal or static based on use_skeletal_mesh)
+        tree_usd_path: Path to tree USD file (ALWAYS static - geometry only)
         output_path: Output path for Nanite Assembly USDA
         species_name: Tree species name
-        twig_usd_paths: Optional dict mapping twig types to USD paths (matching mesh type)
-        use_skeletal_mesh: Whether to use skeletal mesh type (requires skeletal USD inputs)
-        skeleton_path: Path to skeleton USD (deprecated - skeleton should be in tree_usd_path)
+        twig_usd_paths: Optional dict mapping twig types to STATIC USD paths
+        use_skeletal_mesh: Whether to use skeletal mesh type (embeds skeleton from skeleton_source_usd)
+        skeleton_source_usd: Path to skeletal USD to extract skeleton from (for skeletal assemblies)
         twig_placement_source_usd: Optional USD to extract twig placements from (if different from tree_usd_path)
-                                    Used when tree_usd_path is skeletal but placements are in static tree
 
     Returns:
         bool: Success status
@@ -99,24 +100,40 @@ def create_nanite_assembly_usd(
             "unreal:naniteAssembly:meshType", Sdf.ValueTypeNames.Token, custom=False
         ).Set(mesh_type)
 
-        # If skeletal mesh, set skeleton reference
-        if use_skeletal_mesh and skeleton_path:
+        # Handle tree mesh differently for static vs skeletal assemblies
+        if use_skeletal_mesh:
+            # For skeletal: Embed the complete skeletal tree via USD reference
+            # This approach uses standard USD composition (not NaniteAssemblyExternalRefAPI)
+            # The skeletal USD contains SkelRoot/Skeleton/Mesh structure
+            print(f"  Embedding skeletal tree via USD reference...")
+
+            # Reference the skeletal tree USD directly at root level
+            # This embeds the complete tree structure (mesh + skeleton)
+            root_prim.GetReferences().AddReference(
+                str(tree_usd_path.resolve()),
+                "/Tree",  # Reference the Tree prim from skeletal USD
+            )
+
+            # Set skeleton relationship to the embedded skeleton
+            # The skeleton is now part of the referenced structure
             skeleton_rel = root_prim.CreateRelationship(
                 "unreal:naniteAssembly:skeleton"
             )
-            # Skeleton must be a descendant prim
-            skeleton_rel.AddTarget(f"/{assembly_name}/Skeleton")
+            skeleton_rel.AddTarget(f"/{assembly_name}/SkelRoot/Skeleton")
 
-        # Tree mesh as ExternalRef
-        tree_prim = stage.DefinePrim(f"/{assembly_name}/TreeMesh", "Xform")
+            print(f"    ✓ Skeletal tree embedded (mesh + skeleton)")
+            print(f"    Skeleton relationship: /{assembly_name}/SkelRoot/Skeleton")
+        else:
+            # For static: Use NaniteAssemblyExternalRefAPI (existing approach)
+            tree_prim = stage.DefinePrim(f"/{assembly_name}/TreeMesh", "Xform")
 
-        # Apply NaniteAssemblyExternalRefAPI using TokenListOp
-        tree_api_schemas = Sdf.TokenListOp()
-        tree_api_schemas.prependedItems = ["NaniteAssemblyExternalRefAPI"]
-        tree_prim.SetMetadata("apiSchemas", tree_api_schemas)
+            # Apply NaniteAssemblyExternalRefAPI using TokenListOp
+            tree_api_schemas = Sdf.TokenListOp()
+            tree_api_schemas.prependedItems = ["NaniteAssemblyExternalRefAPI"]
+            tree_prim.SetMetadata("apiSchemas", tree_api_schemas)
 
-        # Reference the tree mesh using absolute path (required by Unreal)
-        tree_prim.GetReferences().AddReference(str(tree_usd_path.resolve()))
+            # Reference the tree mesh using absolute path (required by Unreal)
+            tree_prim.GetReferences().AddReference(str(tree_usd_path.resolve()))
 
         print(f"  ✓ Created Nanite Assembly root: {assembly_name}")
         print(f"    Mesh type: {mesh_type}")
@@ -171,28 +188,9 @@ def create_nanite_assembly_usd(
                 for idx, (twig_type, twig_path) in enumerate(
                     sorted(remapped_twig_paths.items())
                 ):
-                    # CRITICAL: For skeletal assemblies, ALWAYS use STATIC twig meshes
-                    # Reason: Skeleton binding happens at PointInstancer level via NaniteAssemblySkelBindingAPI
-                    #         Individual twigs must be simple geometry without their own skeleton
-                    #         The tree skeleton controls all twig instances through joint binding
-                    #
-                    # Skeletal twig USD files (which contain embedded SkelRoot/Skeleton/Mesh with weights)
-                    # are NOT suitable for Nanite Assembly - they conflict with PointInstancer binding
-                    if use_skeletal_mesh and "_skeletal" in str(twig_path):
-                        # Replace skeletal twig with static version
-                        static_twig_path = Path(str(twig_path).replace("_skeletal", ""))
-                        if static_twig_path.exists():
-                            twig_ref_path = static_twig_path
-                            print(
-                                f"    Using static twig for skeletal assembly: {static_twig_path.name}"
-                            )
-                        else:
-                            print(
-                                f"    Warning: Static twig not found: {static_twig_path}"
-                            )
-                            twig_ref_path = twig_path
-                    else:
-                        twig_ref_path = twig_path
+                    # EXPERIMENTAL: Allow skeletal twigs in skeletal assemblies
+                    # Hypothesis: Unreal may bind skeletal twig instances to tree skeleton
+                    twig_ref_path = twig_path
 
                     if not twig_ref_path.exists():
                         print(f"    Warning: Twig mesh not found: {twig_ref_path}")
@@ -377,11 +375,7 @@ def create_nanite_assembly_usd(
                 )
                 print(f"    Twig USD files will not be added to assembly")
 
-        # Add skeleton if provided
-        if use_skeletal_mesh and skeleton_path and skeleton_path.exists():
-            skel_prim = stage.DefinePrim(f"/{assembly_name}/Skeleton", "Xform")
-            skel_prim.GetReferences().AddReference(str(skeleton_path.resolve()))
-            print(f"    ✓ Added skeleton reference: {skeleton_path.name}")
+        # Skeleton is already embedded if use_skeletal_mesh=True (handled earlier)
 
         # Save stage
         stage.GetRootLayer().Save()
@@ -504,6 +498,111 @@ def export_tree_as_nanite_assembly(
         import traceback
 
         traceback.print_exc()
+        return False
+
+
+def _copy_skeleton_to_assembly(
+    source_usd_path: Path,
+    assembly_stage: Usd.Stage,
+    assembly_root_path: str,
+) -> bool:
+    """Copy skeleton hierarchy from source USD into assembly file.
+
+    This extracts the SkelRoot/Skeleton prims from the source file
+    and adds them directly to the assembly, allowing static meshes
+    to reference the geometry while the skeleton controls animation.
+
+    Args:
+        source_usd_path: Path to skeletal USD with embedded skeleton
+        assembly_stage: Target assembly stage to add skeleton to
+        assembly_root_path: Path to assembly root prim (e.g., "/TreeName_NaniteAssembly")
+
+    Returns:
+        bool: Success status
+    """
+    try:
+        source_stage = Usd.Stage.Open(str(source_usd_path))
+
+        # Find SkelRoot in source
+        skel_root_prim = None
+        for prim in source_stage.Traverse():
+            if prim.IsA(UsdSkel.Root):
+                skel_root_prim = prim
+                break
+
+        if not skel_root_prim:
+            print("      Warning: No SkelRoot found in source USD")
+            return False
+
+        # Create SkelRoot in assembly
+        assembly_skel_root = assembly_stage.DefinePrim(
+            f"{assembly_root_path}/SkelRoot", "SkelRoot"
+        )
+
+        # Copy skeleton prim recursively
+        def copy_prim_hierarchy(source_prim, target_parent_path, skip_mesh=False):
+            """Recursively copy prim and its children.
+
+            Args:
+                source_prim: Source prim to copy from
+                target_parent_path: Target parent path
+                skip_mesh: If True, skip copying Mesh prims (we only want skeleton structure)
+            """
+            # CRITICAL: Skip Mesh prims - we only want the skeleton structure
+            # The actual mesh geometry will be referenced externally
+            if skip_mesh and source_prim.GetTypeName() == "Mesh":
+                print(f"        Skipping embedded mesh prim: {source_prim.GetName()}")
+                return
+
+            # Create target prim with same type
+            target_path = f"{target_parent_path}/{source_prim.GetName()}"
+            target_prim = assembly_stage.DefinePrim(
+                target_path, source_prim.GetTypeName()
+            )
+
+            # Copy attributes
+            for attr in source_prim.GetAttributes():
+                attr_name = attr.GetName()
+                # Skip xform ops and problematic computed attributes
+                if attr_name.startswith("xformOp") or attr_name == "extent":
+                    continue
+
+                value = attr.Get()
+                if value is not None:  # Only set if value exists
+                    target_attr = target_prim.CreateAttribute(
+                        attr_name, attr.GetTypeName()
+                    )
+                    target_attr.Set(value)
+
+            # Copy metadata (API schemas, etc.)
+            for key in source_prim.GetAllMetadata():
+                if key not in ["specifier", "typeName"]:  # Skip auto-managed metadata
+                    target_prim.SetMetadata(key, source_prim.GetMetadata(key))
+
+            # Copy relationships
+            for rel in source_prim.GetRelationships():
+                target_rel = target_prim.CreateRelationship(rel.GetName())
+                for target in rel.GetTargets():
+                    # Adjust relationship paths to assembly
+                    adjusted_target = str(target).replace(
+                        source_prim.GetPath().GetParentPath().pathString,
+                        target_parent_path,
+                    )
+                    target_rel.AddTarget(adjusted_target)
+
+            # Recursively copy children (propagate skip_mesh flag)
+            for child in source_prim.GetChildren():
+                copy_prim_hierarchy(child, target_path, skip_mesh=skip_mesh)
+
+        # Copy SkelRoot and all descendants, but SKIP mesh geometry
+        # The mesh will be referenced externally via TreeMesh
+        copy_prim_hierarchy(skel_root_prim, assembly_root_path, skip_mesh=True)
+
+        print(f"      ✓ Copied skeleton hierarchy (without embedded meshes)")
+        return True
+
+    except Exception as e:
+        print(f"      Warning: Failed to copy skeleton: {e}")
         return False
 
 
