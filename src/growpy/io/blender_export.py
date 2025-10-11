@@ -1418,6 +1418,234 @@ def _add_materials_to_usd(
         return None
 
 
+def _add_skeleton_only_to_usd(
+    usd_path: Path,
+    grove: Any,
+    species_name: str,
+    model: Optional[Any] = None,
+) -> bool:
+    """Add ONLY skeleton to USD file (materials should already be present).
+
+    This is used when creating skeletal tree from static tree that already has materials.
+    Avoids duplicate material addition and file corruption.
+
+    Args:
+        usd_path: Path to USD file (should already have materials)
+        grove: Grove instance for skeleton
+        species_name: Species name
+        model: Optional model for weight calculation
+
+    Returns:
+        bool: True if skeleton added successfully
+    """
+    from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel, Vt
+
+    try:
+        stage = Usd.Stage.Open(str(usd_path))
+        if not stage:
+            return False
+
+        # Find tree mesh and parent
+        tree_mesh_prim = None
+        tree_xform_prim = None
+        for prim in stage.Traverse():
+            if prim.IsA(UsdGeom.Mesh):
+                tree_mesh_prim = prim
+                tree_xform_prim = stage.GetPrimAtPath(prim.GetPath().GetParentPath())
+                break
+
+        if not tree_mesh_prim or not tree_xform_prim:
+            return False
+
+        mesh = UsdGeom.Mesh(tree_mesh_prim)
+        original_mesh_path = tree_mesh_prim.GetPath()
+        original_xform_path = tree_xform_prim.GetPath()
+
+        # Build skeleton
+        print(f"  Adding skeleton to USD (UE5.7 SkelRoot structure)...")
+        skeletons = grove.build_skeletons()
+        if not skeletons or len(skeletons) == 0:
+            print(f"    Warning: No skeleton data available")
+            return False
+
+        skeleton_data = skeletons[0]
+
+        # Create SkelRoot
+        skel_root_path = original_xform_path.AppendChild("SkelRoot")
+        skel_root_prim = UsdSkel.Root.Define(stage, skel_root_path)
+        skel_root_binding_api = UsdSkel.BindingAPI.Apply(skel_root_prim.GetPrim())
+
+        # Create skeleton
+        skel_path = skel_root_path.AppendChild("Skeleton")
+        skel_prim = UsdSkel.Skeleton.Define(stage, skel_path)
+
+        # Build joint hierarchy (same logic as _add_skeleton_and_materials_to_usd)
+        points = skeleton_data.points
+        poly_lines = skeleton_data.poly_lines
+
+        joints = []
+        joint_parents = []
+        bind_transforms = []
+        rest_transforms = []
+
+        joints.append("Root")
+        joint_parents.append(-1)
+        root_transform = Gf.Matrix4d().SetIdentity()
+        bind_transforms.append(root_transform)
+        rest_transforms.append(root_transform)
+
+        joint_positions = {}
+        joint_positions[0] = Gf.Vec3d(0, 0, 0)
+        point_to_joint = {}
+
+        for line in poly_lines:
+            parent_joint_idx = 0
+            for i, point_idx in enumerate(line):
+                if point_idx not in point_to_joint:
+                    joint_name = f"Joint_{point_idx}"
+                    joint_idx = len(joints)
+                    joints.append(joint_name)
+                    joint_parents.append(parent_joint_idx)
+
+                    point_pos = points[point_idx]
+                    parent_pos = joint_positions[parent_joint_idx]
+                    relative_pos = Gf.Vec3d(
+                        point_pos[0] - parent_pos[0],
+                        point_pos[1] - parent_pos[1],
+                        point_pos[2] - parent_pos[2],
+                    )
+
+                    local_transform = Gf.Matrix4d().SetIdentity()
+                    local_transform.SetTranslateOnly(relative_pos)
+                    bind_transforms.append(local_transform)
+                    rest_transforms.append(local_transform)
+
+                    joint_positions[joint_idx] = Gf.Vec3d(
+                        point_pos[0], point_pos[1], point_pos[2]
+                    )
+                    point_to_joint[point_idx] = joint_idx
+
+                    parent_joint_idx = joint_idx
+                else:
+                    parent_joint_idx = point_to_joint[point_idx]
+
+        # Set skeleton attributes
+        skel_prim.CreateJointsAttr().Set(Vt.TokenArray(joints))
+        skel_prim.CreateBindTransformsAttr().Set(Vt.Matrix4dArray(bind_transforms))
+        skel_prim.CreateRestTransformsAttr().Set(Vt.Matrix4dArray(rest_transforms))
+
+        # Create SkelAnimation
+        anim_path = skel_root_path.AppendChild("Animation")
+        anim = UsdSkel.Animation.Define(stage, anim_path)
+        anim.CreateJointsAttr().Set(Vt.TokenArray(joints))
+        anim.CreateTranslationsAttr().Set(
+            Vt.Vec3fArray([Gf.Vec3f(0, 0, 0)] * len(joints))
+        )
+        anim.CreateRotationsAttr().Set(
+            Vt.QuatfArray([Gf.Quatf(1, 0, 0, 0)] * len(joints))
+        )
+        anim.CreateScalesAttr().Set(Vt.Vec3hArray([Gf.Vec3h(1, 1, 1)] * len(joints)))
+
+        skel_prim.GetPrim().GetRelationship("skel:animationSource").SetTargets(
+            [anim_path]
+        )
+
+        print(f"    ✓ Created SkelRoot with skeleton ({len(joints)} joints)")
+        print(
+            f"    ✓ Created SkelAnimation ({len(joints)} joints, bind pose for UE skeletal mesh recognition)"
+        )
+
+        # Move mesh under SkelRoot
+        new_mesh_path = skel_root_path.AppendChild("Mesh")
+        mesh_prim_copy = stage.OverridePrim(new_mesh_path)
+        Sdf.CopySpec(
+            stage.GetRootLayer(),
+            original_mesh_path,
+            stage.GetRootLayer(),
+            new_mesh_path,
+        )
+
+        tree_mesh_prim = stage.GetPrimAtPath(new_mesh_path)
+        mesh = UsdGeom.Mesh(tree_mesh_prim)
+
+        # Bind mesh to skeleton
+        mesh_binding_api = UsdSkel.BindingAPI.Apply(tree_mesh_prim)
+        mesh_binding_api.CreateSkeletonRel().SetTargets([skel_path])
+
+        # Calculate vertex weights
+        print(f"  Calculating vertex weights for {species_name}...")
+
+        points_attr = mesh.GetPointsAttr().Get()
+        num_vertices = len(points_attr)
+        vertices = [(p[0], p[1], p[2]) for p in points_attr]
+
+        face_vertex_counts = mesh.GetFaceVertexCountsAttr().Get()
+        face_vertex_indices = mesh.GetFaceVertexIndicesAttr().Get()
+
+        faces = []
+        idx = 0
+        for count in face_vertex_counts:
+            face = [face_vertex_indices[idx + i] for i in range(count)]
+            faces.append(face)
+            idx += count
+
+        if model is not None:
+            joint_indices, joint_weights = _calculate_vertex_weights(
+                model, skeleton_data, vertices, faces
+            )
+            print(f"    ✓ Calculated weights for {num_vertices} vertices")
+        else:
+            joint_indices = [[0] for _ in range(num_vertices)]
+            joint_weights = [[1.0] for _ in range(num_vertices)]
+
+        max_influences = max(len(indices) for indices in joint_indices)
+
+        joint_indices_flat = []
+        joint_weights_flat = []
+        for vert_indices, vert_weights in zip(joint_indices, joint_weights):
+            padded_indices = list(vert_indices) + [0] * (
+                max_influences - len(vert_indices)
+            )
+            padded_weights = list(vert_weights) + [0.0] * (
+                max_influences - len(vert_weights)
+            )
+            joint_indices_flat.extend(padded_indices[:max_influences])
+            joint_weights_flat.extend(padded_weights[:max_influences])
+
+        mesh_binding_api.CreateJointIndicesPrimvar(False, max_influences).Set(
+            Vt.IntArray(joint_indices_flat)
+        )
+        mesh_binding_api.CreateJointWeightsPrimvar(False, max_influences).Set(
+            Vt.FloatArray(joint_weights_flat)
+        )
+
+        # Remove original mesh
+        stage.RemovePrim(original_mesh_path)
+
+        # Keep root as default prim
+        root_prim = stage.GetPrimAtPath(
+            "/" + original_xform_path.pathString.split("/")[1]
+        )
+        if root_prim:
+            stage.SetDefaultPrim(root_prim)
+            print(
+                f"    ✓ Set default prim to {root_prim.GetPath()} (preserves material access)"
+            )
+
+        print(f"    ✓ Bound mesh to skeleton with joint influences")
+        print(f"    ✓ Hierarchy: SkelRoot > [Skeleton + Mesh]")
+
+        stage.Save()
+        return True
+
+    except Exception as e:
+        print(f"    Error adding skeleton: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return False
+
+
 def _add_skeleton_and_materials_to_usd(
     usd_path: Path,
     grove: Any,
@@ -3185,7 +3413,7 @@ def export_grove_tree_as_usda_native(
                 base_textures,
             )
 
-        # Create skeletal version with skeleton and materials using native Grove USD export
+        # Create skeletal version with skeleton ONLY (materials already added)
         skeletal_tree_path = temp_tree_path
         if include_skeleton:
             import shutil
@@ -3199,14 +3427,14 @@ def export_grove_tree_as_usda_native(
 
             # CRITICAL: Copy temp_tree_path to skeletal path FIRST
             # This preserves temp_tree_path as static (no skeleton)
+            # Materials are already in temp_tree_path, so they get copied too
             shutil.copy2(temp_tree_path, skeletal_tree_path)
 
-            # Add skeleton and materials to the SKELETAL copy only
-            skeleton_added = _add_skeleton_and_materials_to_usd(
+            # Add ONLY skeleton to the SKELETAL copy (materials already present from copy)
+            skeleton_added = _add_skeleton_only_to_usd(
                 usd_path=skeletal_tree_path,
                 grove=grove,
                 species_name=species_name,
-                config=config,
                 model=model,
             )
 
@@ -3330,19 +3558,21 @@ def export_grove_tree_as_usda_native(
                         )
 
                         print(f"\n  Creating Skeletal Nanite Assembly...")
-                        # CRITICAL: Skeletal Nanite Assembly uses:
-                        # - Skeletal tree USD (has skeleton for animation)
-                        # - STATIC twig meshes (skeleton binding via PointInstancer, not individual twig skeletons)
-                        # - Twig placements from static tree (has face attributes)
+                        # Skeletal Nanite Assembly uses root-level USD reference per Unreal schema:
+                        # - Reference skeletal_tree_path (geometry + skeleton) at assembly root
+                        # - STATIC twig meshes (geometry only) referenced via PointInstancer
+                        # - Skeleton relationship points to </AssemblyName/SkelRoot/Skeleton>
+                        # - Static twigs bound to skeleton via NaniteAssemblySkelBindingAPI
                         #
-                        # Reason: PointInstancer binding conflicts with individual twig skeletons
-                        #         Use static twigs, bind them to tree skeleton via NaniteAssemblySkelBindingAPI
+                        # After USD composition, skeleton path must exist in composed hierarchy
+                        # This means we MUST reference the skeletal tree file, not static tree
                         skeletal_nanite_success = create_nanite_assembly_usd(
-                            tree_usd_path=skeletal_tree_path,  # Skeletal tree with skeleton
+                            tree_usd_path=skeletal_tree_path,  # SKELETAL tree (geometry + skeleton)
                             output_path=skeletal_nanite_path,
                             species_name=species_name,
-                            twig_usd_paths=static_twig_paths,  # Use STATIC twigs (all 4 variants)
+                            twig_usd_paths=static_twig_paths,  # STATIC twigs (geometry only)
                             use_skeletal_mesh=True,
+                            skeleton_source_usd=skeletal_tree_path,  # Extract skeleton from here
                             twig_placement_source_usd=temp_tree_path,  # Extract placements from static tree
                         )
 

@@ -6,6 +6,7 @@
 ## Problems Identified
 
 ### 1. Schema Sublayer Causing Crashes
+
 **Root Cause:** Current code was adding `generatedSchema.usda` as a sublayer to Nanite Assembly files.
 
 **Discovery:** Commit 4cea271 (working version) did NOT reference the schema file at all - it just applied API schemas directly using `TokenListOp`.
@@ -24,9 +25,11 @@ if schema_path.exists():
 ---
 
 ### 2. Static Tree Files Had Skeletons
+
 **Root Cause:** In `blender_export.py`, the skeleton was added to `temp_tree_path` (line 3200), which was supposed to remain static-only.
 
 **Bug Flow:**
+
 ```python
 # OLD LOGIC (WRONG):
 1. Create temp_tree_path (static tree)
@@ -36,6 +39,7 @@ if schema_path.exists():
 ```
 
 **Fix:** Changed order in `blender_export.py` (lines 3188-3218):
+
 ```python
 # NEW LOGIC (CORRECT):
 1. Create temp_tree_path (static tree)
@@ -45,10 +49,12 @@ if schema_path.exists():
 ```
 
 **Result:**
+
 - `tree_only.usda` → NO skeleton (pure static mesh)
 - `tree_only_skeletal.usda` → HAS skeleton (skeletal mesh)
 
 **Verification:**
+
 ```bash
 grep -c "SkelRoot" tree_only.usda          # Returns 0 (no skeleton)
 grep -c "SkelRoot" tree_only_skeletal.usda # Returns 9 (has skeleton)
@@ -57,9 +63,11 @@ grep -c "SkelRoot" tree_only_skeletal.usda # Returns 9 (has skeleton)
 ---
 
 ### 3. Skeletal Nanite Assembly Only Loaded 2 Twigs
+
 **Root Cause:** Code was using `skeletal_twig_paths` (only 2 twigs with skeletal variants) instead of `static_twig_paths` (all 4 twig types).
 
 **Why This Happened:**
+
 ```python
 # OLD LOGIC (WRONG):
 skeletal_twig_paths = get_twig_usd_map_for_species(
@@ -74,12 +82,14 @@ create_nanite_assembly_usd(
 ```
 
 **The Confusion:**
+
 - Skeletal Nanite Assembly uses skeletal TREE (for animation)
 - But it should use STATIC twigs (not skeletal twigs)
 - Reason: PointInstancer binding conflicts with individual twig skeletons
 - Twigs are bound to tree skeleton via `NaniteAssemblySkelBindingAPI`, not via their own skeletons
 
 **Fix:** Changed `blender_export.py` (lines 3333-3345) to use `static_twig_paths`:
+
 ```python
 # NEW LOGIC (CORRECT):
 skeletal_nanite_success = create_nanite_assembly_usd(
@@ -97,11 +107,13 @@ skeletal_nanite_success = create_nanite_assembly_usd(
 ## Summary of Changes
 
 ### File: `src/growpy/io/unreal_nanite_assembly.py`
+
 **Change:** Removed schema sublayer reference (lines 82-96)  
 **Reason:** Schema file as sublayer was causing Unreal crashes  
 **Impact:** Nanite Assembly files now load correctly in Unreal
 
 ### File: `src/growpy/io/blender_export.py`
+
 **Change 1:** Reordered skeleton addition (lines 3188-3218)  
 **Reason:** Preserve static tree without skeleton contamination  
 **Impact:** Clear separation between static and skeletal tree files
@@ -114,7 +126,8 @@ skeletal_nanite_success = create_nanite_assembly_usd(
 
 ## File Output Structure
 
-### Generated Files (per tree):
+### Generated Files (per tree)
+
 ```
 Oak/
 ├── USD/
@@ -129,7 +142,8 @@ Oak/
     └── europeanoak_lateral_skeletal.usda          # Skeletal twig (unused in Nanite)
 ```
 
-### Usage in Unreal:
+### Usage in Unreal
+
 - **Static Mesh Import:** `Oak_tree_0001_NaniteAssembly.usda`
   - References: Static tree + All 4 static twigs
   - No skeleton, no animation
@@ -143,18 +157,21 @@ Oak/
 
 ## Testing Results
 
-### Before Fix:
+### Before Fix
+
 - ❌ Static tree had skeleton (wrong)
 - ❌ Skeletal assembly only had 2 twigs (incomplete)
 - ❌ Nanite Assembly crashed Unreal (schema issue)
 
-### After Fix:
+### After Fix
+
 - ✅ Static tree has NO skeleton
 - ✅ Skeletal tree has skeleton
 - ✅ Both assemblies have all 4 twig types
 - ✅ Nanite Assembly loads in Unreal without crashing
 
-### Verification Commands:
+### Verification Commands
+
 ```bash
 # Check static tree has no skeleton
 grep -c "SkelRoot" Oak_tree_0001_tree_only.usda
