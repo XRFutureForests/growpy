@@ -408,12 +408,23 @@ def _add_skeleton_to_twig_usd(usd_path):
             skel_binding_api.CreateJointIndicesPrimvar(False, 1).Set(joint_indices)
             skel_binding_api.CreateJointWeightsPrimvar(False, 1).Set(joint_weights)
         
-        # Copy material binding if it exists
+        # Copy ALL material bindings (direct, collection, and inherited)
+        # This ensures textures are properly mapped in Unreal
         old_mat_api = UsdShade.MaterialBindingAPI(mesh_prim)
+        
+        # Try direct binding first
         mat_binding = old_mat_api.GetDirectBinding()
-        if mat_binding:
+        if mat_binding and mat_binding.GetMaterial():
             new_mat_api = UsdShade.MaterialBindingAPI.Apply(new_mesh_prim)
             new_mat_api.Bind(mat_binding.GetMaterial())
+        else:
+            # Try collection binding
+            for purpose in [UsdShade.Tokens.allPurpose, UsdShade.Tokens.preview, UsdShade.Tokens.full]:
+                collection_binding = old_mat_api.GetCollectionBinding(purpose)
+                if collection_binding:
+                    new_mat_api = UsdShade.MaterialBindingAPI.Apply(new_mesh_prim)
+                    new_mat_api.Bind(collection_binding.GetMaterial(), purpose)
+                    break
         
         # Remove original mesh
         stage.RemovePrim(original_mesh_path)
