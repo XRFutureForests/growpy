@@ -2,13 +2,14 @@
 
 try:
     from .blender_export import (
-        export_tree_as_usd,
-        export_twigs_from_blend,
         batch_export_tree_usd,
         batch_export_trees_for_unreal,
         create_nanite_assembly_usd,
+        export_tree_as_usd,
+        export_twigs_from_blend,
         get_quality_preset,
     )
+
     EXPORT_AVAILABLE = True
 except ImportError:
     EXPORT_AVAILABLE = False
@@ -21,13 +22,14 @@ except ImportError:
 
 try:
     from .twig_placement import (
-        extract_twig_placements_from_mesh,
-        place_twigs_in_blender,
-        export_twig_placements_to_usd,
         create_geometry_nodes_twig_instancer,
+        export_twig_placements_to_usd,
+        extract_twig_placements_from_mesh,
         get_face_center_and_normal,
-        normal_to_rotation_matrix
+        normal_to_rotation_matrix,
+        place_twigs_in_blender,
     )
+
     TWIG_PLACEMENT_AVAILABLE = True
 except ImportError:
     TWIG_PLACEMENT_AVAILABLE = False
@@ -41,12 +43,21 @@ except ImportError:
 # Unreal metadata (always available, no bpy dependency)
 from .unreal_metadata import (
     UnrealPCGMetadata,
-    create_metadata_from_growth_data,
-    create_forest_metadata,
-    load_metadata,
-    calculate_spacing_from_crown_radius,
     calculate_density_from_spacing,
+    calculate_spacing_from_crown_radius,
+    create_forest_metadata,
+    create_metadata_from_growth_data,
+    load_metadata,
 )
+
+# Unreal Nanite Assembly validation (requires USD)
+try:
+    from .unreal_nanite_assembly import validate_nanite_assembly
+
+    NANITE_VALIDATION_AVAILABLE = True
+except ImportError:
+    NANITE_VALIDATION_AVAILABLE = False
+    validate_nanite_assembly = None
 
 __all__ = [
     "export_tree_as_usd",
@@ -69,4 +80,6 @@ __all__ = [
     "load_metadata",
     "calculate_spacing_from_crown_radius",
     "calculate_density_from_spacing",
+    "validate_nanite_assembly",
+    "NANITE_VALIDATION_AVAILABLE",
 ]

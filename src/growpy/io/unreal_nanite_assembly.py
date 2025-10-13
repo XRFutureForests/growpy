@@ -94,46 +94,47 @@ def create_nanite_assembly_usd(
         api_schemas.prependedItems = ["NaniteAssemblyRootAPI"]
         root_prim.SetMetadata("apiSchemas", api_schemas)
 
-        # Set mesh type
+        # Set mesh type - CRITICAL: Must use uniform variability
         mesh_type = "skeletalMesh" if use_skeletal_mesh else "staticMesh"
         root_prim.CreateAttribute(
-            "unreal:naniteAssembly:meshType", Sdf.ValueTypeNames.Token, custom=False
+            "unreal:naniteAssembly:meshType",
+            Sdf.ValueTypeNames.Token,
+            custom=False,
+            variability=Sdf.VariabilityUniform,
         ).Set(mesh_type)
 
-        # Handle tree mesh differently for static vs skeletal assemblies
+        # Handle tree mesh - BOTH static and skeletal use TreeMesh wrapper
+        # This ensures consistent structure and correct skeleton path resolution
+        tree_prim = stage.DefinePrim(f"/{assembly_name}/TreeMesh", "Xform")
+
+        # Apply NaniteAssemblyExternalRefAPI using TokenListOp
+        tree_api_schemas = Sdf.TokenListOp()
+        tree_api_schemas.prependedItems = ["NaniteAssemblyExternalRefAPI"]
+        tree_prim.SetMetadata("apiSchemas", tree_api_schemas)
+
+        # Reference the tree mesh using absolute path (required by Unreal)
+        tree_prim.GetReferences().AddReference(
+            str(tree_usd_path.resolve()),
+            "/Tree",  # Reference the Tree prim from source USD
+        )
+
         if use_skeletal_mesh:
-            # For skeletal: Embed the complete skeletal tree via USD reference
-            # This approach uses standard USD composition (not NaniteAssemblyExternalRefAPI)
-            # The skeletal USD contains SkelRoot/Skeleton/Mesh structure
-            print(f"  Embedding skeletal tree via USD reference...")
+            # For skeletal: Set skeleton relationship to embedded skeleton
+            # Path is /{assembly}/TreeMesh/SkelRoot/Skeleton (from /Tree/SkelRoot/Skeleton in source)
+            print(f"  Adding skeletal tree with embedded skeleton...")
 
-            # Reference the skeletal tree USD directly at root level
-            # This embeds the complete tree structure (mesh + skeleton)
-            root_prim.GetReferences().AddReference(
-                str(tree_usd_path.resolve()),
-                "/Tree",  # Reference the Tree prim from skeletal USD
-            )
-
-            # Set skeleton relationship to the embedded skeleton
-            # The skeleton is now part of the referenced structure
             skeleton_rel = root_prim.CreateRelationship(
-                "unreal:naniteAssembly:skeleton"
+                "unreal:naniteAssembly:skeleton",
+                custom=True,
             )
-            skeleton_rel.AddTarget(f"/{assembly_name}/SkelRoot/Skeleton")
+            skeleton_rel.AddTarget(f"/{assembly_name}/TreeMesh/SkelRoot/Skeleton")
 
-            print(f"    ✓ Skeletal tree embedded (mesh + skeleton)")
-            print(f"    Skeleton relationship: /{assembly_name}/SkelRoot/Skeleton")
+            print(f"    ✓ Skeletal tree embedded via TreeMesh (mesh + skeleton)")
+            print(
+                f"    Skeleton relationship: /{assembly_name}/TreeMesh/SkelRoot/Skeleton"
+            )
         else:
-            # For static: Use NaniteAssemblyExternalRefAPI (existing approach)
-            tree_prim = stage.DefinePrim(f"/{assembly_name}/TreeMesh", "Xform")
-
-            # Apply NaniteAssemblyExternalRefAPI using TokenListOp
-            tree_api_schemas = Sdf.TokenListOp()
-            tree_api_schemas.prependedItems = ["NaniteAssemblyExternalRefAPI"]
-            tree_prim.SetMetadata("apiSchemas", tree_api_schemas)
-
-            # Reference the tree mesh using absolute path (required by Unreal)
-            tree_prim.GetReferences().AddReference(str(tree_usd_path.resolve()))
+            print(f"  Adding static tree mesh...")
 
         print(f"  ✓ Created Nanite Assembly root: {assembly_name}")
         print(f"    Mesh type: {mesh_type}")
@@ -214,7 +215,9 @@ def create_nanite_assembly_usd(
 
                     # Hide prototypes - they should only be visible when instanced
                     proto_prim.CreateAttribute(
-                        "visibility", Sdf.ValueTypeNames.Token
+                        "visibility",
+                        Sdf.ValueTypeNames.Token,
+                        custom=False,
                     ).Set("invisible")
 
                     # Reference twig mesh using absolute path (required by Unreal)
@@ -339,28 +342,29 @@ def create_nanite_assembly_usd(
                                 bind_weights.append(1.0)
 
                         # Create primvars for joint binding
-                        # elementSize=1 means one joint per instance
-                        instancer_prim.CreateAttribute(
+                        # CRITICAL: Use uniform variability and proper interpolation
+                        bind_joints_attr = instancer_prim.CreateAttribute(
                             "primvars:unreal:naniteAssembly:bindJoints",
                             Sdf.ValueTypeNames.TokenArray,
                             custom=False,
                             variability=Sdf.VariabilityUniform,
-                        ).Set(bind_joints)
+                        )
+                        bind_joints_attr.Set(bind_joints)
 
+                        # elementSize=1 means one joint per instance
                         instancer_prim.CreateAttribute(
                             "primvars:unreal:naniteAssembly:bindJoints:elementSize",
                             Sdf.ValueTypeNames.Int,
                             custom=False,
-                        ).Set(
-                            1
-                        )  # One joint per instance
+                        ).Set(1)
 
-                        instancer_prim.CreateAttribute(
+                        bind_weights_attr = instancer_prim.CreateAttribute(
                             "primvars:unreal:naniteAssembly:bindJointWeights",
                             Sdf.ValueTypeNames.FloatArray,
                             custom=False,
                             variability=Sdf.VariabilityUniform,
-                        ).Set(bind_weights)
+                        )
+                        bind_weights_attr.Set(bind_weights)
 
                         print(
                             f"    ✓ Bound {len(all_positions)} twigs to skeleton (root joint)"
@@ -686,3 +690,158 @@ def _find_nearest_joint(
             nearest_joint = joint_name
 
     return (nearest_joint, nearest_distance)
+
+
+def validate_nanite_assembly(usd_path: Path) -> Dict[str, Any]:
+    """Validate a Nanite Assembly USD file for Unreal Engine compatibility.
+
+    Checks for:
+    - Proper NaniteAssemblyRootAPI application
+    - Correct meshType attribute (staticMesh or skeletalMesh)
+    - Skeleton relationship (for skeletal meshes)
+    - Proper prototype structure with NaniteAssemblyExternalRefAPI
+    - Skeletal binding on PointInstancer (for skeletal meshes)
+
+    Args:
+        usd_path: Path to the USD file to validate
+
+    Returns:
+        Dictionary with validation results:
+        {
+            "valid": bool,
+            "mesh_type": str,
+            "errors": List[str],
+            "warnings": List[str],
+            "details": Dict[str, Any]
+        }
+    """
+    result = {
+        "valid": True,
+        "mesh_type": None,
+        "errors": [],
+        "warnings": [],
+        "details": {},
+    }
+
+    try:
+        stage = Usd.Stage.Open(str(usd_path))
+        default_prim = stage.GetDefaultPrim()
+
+        if not default_prim:
+            result["errors"].append("No default prim set")
+            result["valid"] = False
+            return result
+
+        # Check for NaniteAssemblyRootAPI
+        api_schemas = default_prim.GetMetadata("apiSchemas")
+        if not api_schemas or "NaniteAssemblyRootAPI" not in api_schemas:
+            result["errors"].append("NaniteAssemblyRootAPI not applied to default prim")
+            result["valid"] = False
+
+        # Check meshType attribute
+        mesh_type_attr = default_prim.GetAttribute("unreal:naniteAssembly:meshType")
+        if not mesh_type_attr:
+            result["errors"].append("Missing unreal:naniteAssembly:meshType attribute")
+            result["valid"] = False
+        else:
+            mesh_type = mesh_type_attr.Get()
+            result["mesh_type"] = mesh_type
+            result["details"]["mesh_type"] = mesh_type
+
+            if mesh_type not in ["staticMesh", "skeletalMesh"]:
+                result["errors"].append(
+                    f"Invalid meshType: {mesh_type} (must be 'staticMesh' or 'skeletalMesh')"
+                )
+                result["valid"] = False
+
+            # Validate skeleton relationship for skeletal meshes
+            if mesh_type == "skeletalMesh":
+                skeleton_rel = default_prim.GetRelationship(
+                    "unreal:naniteAssembly:skeleton"
+                )
+                if not skeleton_rel:
+                    result["errors"].append(
+                        "Missing unreal:naniteAssembly:skeleton relationship for skeletalMesh"
+                    )
+                    result["valid"] = False
+                else:
+                    targets = skeleton_rel.GetTargets()
+                    if not targets:
+                        result["errors"].append("Skeleton relationship has no targets")
+                        result["valid"] = False
+                    else:
+                        result["details"]["skeleton_target"] = str(targets[0])
+
+        # Check for prototypes with NaniteAssemblyExternalRefAPI
+        prototypes_found = 0
+        for prim in stage.Traverse():
+            api_schemas = prim.GetMetadata("apiSchemas")
+            if api_schemas and "NaniteAssemblyExternalRefAPI" in api_schemas:
+                prototypes_found += 1
+
+                # Check if it's instanceable
+                if not prim.IsInstanceable():
+                    result["warnings"].append(
+                        f"Prototype {prim.GetPath()} is not marked as instanceable"
+                    )
+
+        result["details"]["prototype_count"] = prototypes_found
+        if prototypes_found == 0:
+            result["warnings"].append(
+                "No prototypes with NaniteAssemblyExternalRefAPI found"
+            )
+
+        # Check for PointInstancer with skeletal binding
+        for prim in stage.Traverse():
+            if prim.GetTypeName() == "PointInstancer":
+                result["details"]["has_point_instancer"] = True
+
+                if result["mesh_type"] == "skeletalMesh":
+                    # Check for skeletal binding API
+                    api_schemas = prim.GetMetadata("apiSchemas")
+                    if (
+                        not api_schemas
+                        or "NaniteAssemblySkelBindingAPI" not in api_schemas
+                    ):
+                        result["warnings"].append(
+                            "PointInstancer missing NaniteAssemblySkelBindingAPI for skeletal mesh"
+                        )
+
+                    # Check for binding primvars
+                    bind_joints = prim.GetAttribute(
+                        "primvars:unreal:naniteAssembly:bindJoints"
+                    )
+                    bind_weights = prim.GetAttribute(
+                        "primvars:unreal:naniteAssembly:bindJointWeights"
+                    )
+
+                    if not bind_joints:
+                        result["warnings"].append(
+                            "Missing primvars:unreal:naniteAssembly:bindJoints"
+                        )
+                    if not bind_weights:
+                        result["warnings"].append(
+                            "Missing primvars:unreal:naniteAssembly:bindJointWeights"
+                        )
+
+        print(f"\n{'✓' if result['valid'] else '✗'} Validation: {usd_path.name}")
+        print(f"  Mesh Type: {result['mesh_type']}")
+        if result["details"].get("skeleton_target"):
+            print(f"  Skeleton: {result['details']['skeleton_target']}")
+        print(f"  Prototypes: {result['details'].get('prototype_count', 0)}")
+
+        if result["errors"]:
+            print("  Errors:")
+            for error in result["errors"]:
+                print(f"    - {error}")
+
+        if result["warnings"]:
+            print("  Warnings:")
+            for warning in result["warnings"]:
+                print(f"    - {warning}")
+
+    except Exception as e:
+        result["errors"].append(f"Validation failed: {e}")
+        result["valid"] = False
+
+    return result
