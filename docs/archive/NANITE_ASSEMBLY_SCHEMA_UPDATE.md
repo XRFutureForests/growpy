@@ -83,12 +83,15 @@ Created comprehensive validation utility to verify Nanite Assembly compliance:
 
 **Usage:**
 
-```bash
-# Validate single file
-python src/growpy/cli/validate_nanite_assembly.py tree_assembly.usda
+> **Note:** The CLI tool has been removed. Use the Python function instead:
 
-# Validate directory
-python src/growpy/cli/validate_nanite_assembly.py output/USD/
+```python
+from growpy.io import validate_nanite_assembly
+from pathlib import Path
+
+result = validate_nanite_assembly(Path("tree_assembly.usda"))
+if result["valid"]:
+    print(f"✓ Valid {result['mesh_type']} assembly")
 ```
 
 ### 5. Comprehensive Documentation
@@ -137,10 +140,9 @@ Created detailed documentation covering:
    - Exported validation function
    - Added NANITE_VALIDATION_AVAILABLE flag
 
-3. **`src/growpy/cli/validate_nanite_assembly.py`** (NEW)
-   - CLI tool for validation
-   - Batch validation support
-   - Detailed reporting
+3. ~~**`src/growpy/cli/validate_nanite_assembly.py`**~~ (REMOVED)
+   - Validation now available via Python function only
+   - Use `validate_nanite_assembly()` from `growpy.io`
 
 4. **`docs/growpy/unreal-nanite-assembly.md`** (NEW)
    - Complete documentation
@@ -151,26 +153,22 @@ Created detailed documentation covering:
 
 ### Validation Tests
 
-1. **Static Mesh Assembly:**
+> **Note:** CLI tool has been removed. Use the Python function:
 
-   ```bash
-   python src/growpy/cli/validate_nanite_assembly.py \
-       data/output/embedded_skeleton_test222/Beech/USD/Beech_tree_0000_NaniteAssembly_static.usda
-   ```
+```python
+from growpy.io import validate_nanite_assembly
+from pathlib import Path
 
-2. **Skeletal Mesh Assembly:**
+# Validate static mesh assembly
+result = validate_nanite_assembly(
+    Path("data/output/embedded_skeleton_test222/Beech/USD/Beech_tree_0000_NaniteAssembly_static.usda")
+)
 
-   ```bash
-   python src/growpy/cli/validate_nanite_assembly.py \
-       data/output/embedded_skeleton_test222/Beech/USD/Beech_tree_0000_NaniteAssembly_skeletal.usda
-   ```
-
-3. **Batch Validation:**
-
-   ```bash
-   python src/growpy/cli/validate_nanite_assembly.py \
-       data/output/embedded_skeleton_test222/
-   ```
+# Validate skeletal mesh assembly
+result = validate_nanite_assembly(
+    Path("data/output/embedded_skeleton_test222/Beech/USD/Beech_tree_0000_NaniteAssembly_skeletal.usda")
+)
+```
 
 ### Unreal Engine Import Tests
 

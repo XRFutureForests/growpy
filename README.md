@@ -25,9 +25,7 @@ conda activate the-grove
 pip install -e .
 ```
 
-### Two Main Workflows
-
-#### Option A: Forest from CSV Input
+### Forest Generation Workflow
 
 Generate a complete forest based on real tree inventory data:
 
@@ -42,20 +40,6 @@ python src/growpy/cli/generate_forest.py data/input/forest_inventory.csv
 **CSV Format Required**: `x`, `y`, `species`, `height` columns (optional: `z`)
 
 **Output**: `data/output/forest/` with trees, twigs, textures, metadata
-
-#### Option B: Species Library (1-3 Trees per Species)
-
-Create a library with template trees for each species:
-
-```bash
-# Run complete pipeline
-python src/growpy/cli/run_pipeline.py
-
-# Generate species library with 3 variations
-python src/growpy/cli/generate_species_library.py --variations 3
-```
-
-**Output**: `data/output/species_library/` with tree variations, twigs, textures, metadata
 
 ### Import to Unreal Engine
 
@@ -77,8 +61,7 @@ the-grove/
 │   │   │   ├── prepare_assets.py         # Copy Grove 2.2 assets
 │   │   │   ├── convert_twigs.py          # Convert twigs to FBX
 │   │   │   ├── create_growth_models.py   # Generate height models
-│   │   │   ├── generate_forest.py        # Forest from CSV
-│   │   │   └── generate_species_library.py  # Species templates
+│   │   │   └── generate_forest.py        # Forest from CSV
 │   │   ├── config/                # Configuration management
 │   │   ├── core/                  # Forest/Grove/Tree simulation
 │   │   ├── io/                    # FBX export functionality
@@ -104,10 +87,9 @@ The `run_pipeline.py` script executes:
 2. **Convert Twigs** - Export .blend files to FBX format
 3. **Create Growth Models** - Generate height prediction models for all species
 
-Then choose:
+Then:
 
 - **Forest Generation** - Multi-species forest from CSV data
-- **Species Library** - Template trees for each configured species
 
 ## CLI Scripts Reference
 
@@ -136,22 +118,19 @@ python src/growpy/cli/convert_twigs.py data/assets/twigs
 # Step 3: Create growth models
 python src/growpy/cli/create_growth_models.py --cycles 125 --seeds 1
 
-# Step 4a: Generate forest
+# Step 4: Generate forest
 python src/growpy/cli/generate_forest.py data/input/forest.csv
-
-# Step 4b: Generate species library
-python src/growpy/cli/generate_species_library.py --variations 3
 ```
 
 ## Output Structure
 
-Each workflow creates organized output folders ready for Unreal import:
+Forest generation creates organized output folders ready for Unreal import:
 
 ```
 output/
-└── forest/  (or species_library/)
+└── forest/
     ├── SpeciesName_001.fbx       # Tree model with skeleton
-    ├── SpeciesName_002.fbx       # Variation (if multiple)
+    ├── SpeciesName_002.fbx       # Multiple trees per species
     ├── twigs/
     │   ├── SpeciesName_Twig_Long.fbx
     │   └── SpeciesName_Twig_Short.fbx

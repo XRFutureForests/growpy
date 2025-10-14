@@ -23,11 +23,9 @@ Fixed critical schema compliance issues in Nanite Assembly USD export that preve
 
 ### New Features
 
-1. **Validation Tool** (`src/growpy/cli/validate_nanite_assembly.py`)
-   - Validates USD files for Nanite Assembly compliance
-   - Checks all required schema elements
-   - Batch validation support for directories
-   - Detailed error and warning reporting
+1. ~~**Validation CLI Tool**~~ (REMOVED - `src/growpy/cli/validate_nanite_assembly.py`)
+   - CLI tool has been removed
+   - Validation now available via Python function only
 
 2. **Validation Function** (`validate_nanite_assembly()`)
    - Programmatic validation of USD files
@@ -45,7 +43,7 @@ Fixed critical schema compliance issues in Nanite Assembly USD export that preve
 
 - `src/growpy/io/unreal_nanite_assembly.py` - Core fixes and validation
 - `src/growpy/io/__init__.py` - Export validation function
-- `src/growpy/cli/validate_nanite_assembly.py` - NEW validation CLI
+- ~~`src/growpy/cli/validate_nanite_assembly.py`~~ - REMOVED (use Python function instead)
 - `docs/growpy/unreal-nanite-assembly.md` - NEW comprehensive docs
 - `docs/archive/NANITE_ASSEMBLY_SCHEMA_UPDATE.md` - NEW technical summary
 
@@ -85,12 +83,16 @@ root_prim.CreateAttribute(
 
 ### Validation
 
-```bash
-# Validate single assembly
-python src/growpy/cli/validate_nanite_assembly.py tree_assembly.usda
+> **Note:** CLI tool has been removed. Use the Python function:
 
-# Validate all assemblies in directory
-python src/growpy/cli/validate_nanite_assembly.py data/output/
+```python
+from growpy.io import validate_nanite_assembly
+from pathlib import Path
+
+# Validate single assembly
+result = validate_nanite_assembly(Path("tree_assembly.usda"))
+if result["valid"]:
+    print(f"✓ Valid {result['mesh_type']} assembly")
 ```
 
 ### Unreal Engine Import
