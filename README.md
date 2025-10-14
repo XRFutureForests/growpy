@@ -187,6 +187,7 @@ Norway spruce,NorwaySpruce.seed.json,Norway_Spruce,NorwaySpruceTwig
 
 - **[docs/growpy/](docs/growpy/)** - Complete GrowPy documentation
 - **[docs/growpy/USER_GUIDE.md](docs/growpy/USER_GUIDE.md)** - Comprehensive usage guide
+- **[docs/PERFORMANCE_OPTIMIZATION.md](docs/PERFORMANCE_OPTIMIZATION.md)** - Multiprocessing and memory management
 - **[docs/growpy/UNREAL_IMPORT_GUIDE.md](docs/growpy/UNREAL_IMPORT_GUIDE.md)** - Unreal Engine import instructions
 - **[docs/the_grove/](docs/the_grove/)** - Grove 2.2 API documentation
 
