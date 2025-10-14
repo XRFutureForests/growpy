@@ -1,4 +1,36 @@
-"""Import/Export functionality for GrowPy."""
+"""
+Import/Export functionality for GrowPy.
+
+FBX and USD export with skeleton support, twig placement, and Nanite Assembly.
+
+Key Functions:
+    export_tree_as_usd()              Export single tree to USD
+    batch_export_trees_for_unreal()   Export multiple trees for UE5
+    create_nanite_assembly_usd()      Create Nanite Assembly USD
+    export_twigs_from_blend()         Convert .blend twigs to FBX/USD
+    get_quality_preset()              Get quality settings
+
+Quality Presets:
+    ultra:       32 vertices, maximum detail
+    high:        24 vertices, high detail
+    medium:      16 vertices, balanced
+    low:         12 vertices, reduced detail
+    performance: 8 vertices, minimal detail
+
+Example:
+    from growpy.io import export_tree_as_usd, get_quality_preset
+    from growpy import create_grove
+
+    grove = create_grove("Quaking Aspen")
+    grove.simulate(flushes=10)
+
+    quality = get_quality_preset("high")
+    export_tree_as_usd(grove, "tree.usda", **quality)
+
+Note:
+    Export requires bpy module: conda install -c conda-forge bpy
+    Check EXPORT_AVAILABLE flag before using export functions.
+"""
 
 try:
     from .blender_export import (

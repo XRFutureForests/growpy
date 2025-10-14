@@ -1,12 +1,25 @@
 #!/usr/bin/env python3
-"""Generate species library - export template trees for each configured species.
+"""
+Generate species library with template trees.
 
-This script exports trees in multiple formats (FBX, USD) with optional twig instances.
-Uses Grove's native USD export for preserving all attributes, and includes twig
-placement as PointInstancer prims.
+Export template trees for all configured species in multiple formats.
+
+Quick Start:
+    python generate_species_library.py --variations 3
+
+Common Flags:
+    --variations INT           Number of variants per species (default: 1)
+    --growth-flushes INT...    Growth stages to export (default: 10)
+    --formats {fbx,usd,usda}  Export formats (default: usda)
+    --resolution INT          Branch vertices 4-32 (default: 24)
+    --include-twigs           Include twig instances (USD only)
+    --output-dir PATH         Output directory
+
+Full Documentation:
+    See docs/guides/cli-reference.md for complete flag reference and examples
 
 Usage:
-    python generate_species_library.py --formats fbx usda --include-twigs
+    python generate_species_library.py [options]
 """
 
 from pathlib import Path

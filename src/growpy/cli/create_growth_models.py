@@ -1,15 +1,28 @@
 #!/usr/bin/env python3
-"""CLI for creating growth models for Grove species.
+"""
+Create growth models for Grove species.
 
-This script generates height curves and age prediction models for Grove species presets
-from the prepared GrowPy assets directory.
+Generates height curves and age prediction models with intelligent early termination.
 
-Run prepare_assets.py first to copy species presets from Grove installation.
+Quick Start:
+    python create_growth_models.py
+
+Common Flags:
+    --species TEXT           Analyze specific species (default: all)
+    --cycles INT            Maximum growth cycles (default: 125)
+    --height-threshold FLOAT Minimum growth to continue (default: 0.05)
+    --timeout INT           Max simulation time per seed (default: 300s)
+    --workers INT           Parallel workers (default: 3)
+    --no-parallel           Disable parallel processing
+
+Full Documentation:
+    See docs/guides/cli-reference.md for complete flag reference and examples
+
+Note:
+    Run prepare_assets.py first to copy species presets from Grove installation.
 
 Usage:
-    python create_growth_models.py
-    python create_growth_models.py --assets-dir data/assets
-    python create_growth_models.py --species "Fagaceae - European oak" --cycles 25
+    python create_growth_models.py [options]
 """
 
 import argparse
@@ -200,7 +213,9 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         )
 
         # Create growth model
-        growth_model = analyzer.create_growth_model_for_species(args.species, height_curve)
+        growth_model = analyzer.create_growth_model_for_species(
+            args.species, height_curve
+        )
 
         # Store results
         analyzer.height_curves[args.species] = height_curve
@@ -221,7 +236,9 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
             f"Actual max cycles: {metadata['actual_max_cycles']}"
         )
         logger.info(f"Average actual cycles: {metadata['avg_actual_cycles']:.1f}")
-        logger.info(f"Average simulation time: {metadata['avg_simulation_time']:.1f} seconds")
+        logger.info(
+            f"Average simulation time: {metadata['avg_simulation_time']:.1f} seconds"
+        )
 
         if metadata["early_terminations"] > 0:
             logger.info(
@@ -243,7 +260,9 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
     else:
         # Analyze all species
         logger.info("Analyzing all available species...")
-        results = analyzer.analyze_all_species(parallel=use_parallel, max_workers=max_workers)
+        results = analyzer.analyze_all_species(
+            parallel=use_parallel, max_workers=max_workers
+        )
 
         # Save results
         analyzer.save_growth_models()
