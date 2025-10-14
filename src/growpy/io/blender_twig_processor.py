@@ -526,6 +526,18 @@ def process_twig_file(blend_file, output_dir, formats, species_name):
             obj.location = (0, 0, 0)
             bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 
+            # Triangulate mesh to avoid tangent space export warnings
+            # This ensures all polygons are triangles before export
+            print(f"    -> Triangulating mesh...")
+            bpy.context.view_layer.objects.active = obj
+            bpy.ops.object.mode_set(mode="EDIT")
+            bpy.ops.mesh.select_all(action="SELECT")
+            bpy.ops.mesh.quads_convert_to_tris(
+                quad_method="BEAUTY", ngon_method="BEAUTY"
+            )
+            bpy.ops.object.mode_set(mode="OBJECT")
+            print(f"    -> Triangulation complete")
+
             # Create mount point (empty at origin for Unreal PCG attachment)
             mount_point = bpy.data.objects.new(f"{standardized_name}_mount", None)
             mount_point.location = (0, 0, 0)
