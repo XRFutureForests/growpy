@@ -6,7 +6,9 @@
       "Bash(mamba env update:*)",
       "Bash(conda env update:*)",
       "Bash(conda search:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(rm:*)",
+      "Bash(mamba run:*)"
     ],
     "deny": [],
     "ask": []

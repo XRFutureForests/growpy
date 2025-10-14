@@ -36,11 +36,9 @@ This copies:
 - Textures (bark, leaves)
 - Twig models (.blend files)
 
-## Choose Your Workflow
+## Forest Generation Workflow
 
-### Workflow A: Forest from CSV
-
-**Use case**: You have real tree inventory data (GPS coordinates, species, heights)
+**Use case**: You have real tree inventory data (GPS coordinates, species, heights) or want to generate diverse forests
 
 ```bash
 # Step 1: Run pipeline (prepare, convert twigs, create models)
@@ -60,19 +58,7 @@ x,y,species,height
 
 **Output**: `data/output/forest/` with organized tree and twig FBX files
 
-### Workflow B: Species Library
-
-**Use case**: You want template trees for each species to use in Unreal
-
-```bash
-# Step 1: Run pipeline
-python src/growpy/cli/run_pipeline.py
-
-# Step 2: Generate library with variations
-python src/growpy/cli/generate_species_library.py --variations 3
-```
-
-**Output**: `data/output/species_library/` with 1-3 variations per species
+**Tip**: You can create diverse species libraries by preparing a CSV with multiple trees per species at varied heights
 
 ## Pipeline Details
 
@@ -84,13 +70,13 @@ The `run_pipeline.py` script automatically executes:
 
 ## Output Structure
 
-Both workflows create organized folders:
+Forest generation creates organized folders:
 
 ```
 output/
-└── [forest or species_library]/
+└── forest/
     ├── SpeciesName_001.fbx           # Tree with skeleton
-    ├── SpeciesName_002.fbx           # Variation (if multiple)
+    ├── SpeciesName_002.fbx           # Multiple trees per species
     ├── twigs/
     │   ├── SpeciesName_Twig_Long.fbx
     │   └── SpeciesName_Twig_Short.fbx
@@ -134,9 +120,6 @@ python src/growpy/cli/run_pipeline.py
 
 # Forest from CSV
 python src/growpy/cli/generate_forest.py data/input/forest.csv
-
-# Species library with 5 variations
-python src/growpy/cli/generate_species_library.py --variations 5
 
 # Skip asset preparation
 python src/growpy/cli/run_pipeline.py --skip-prepare
