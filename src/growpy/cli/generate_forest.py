@@ -21,21 +21,16 @@ Usage:
     python generate_forest.py [csv_file] [options]
 """
 
+import multiprocessing as mp
 import sys
+from functools import partial
+from typing import Optional
 
 GROWTH_CYCLE_LIMIT = 10
 HEIGHT_SCALE = 1
+MAX_WORKERS = max(1, mp.cpu_count() - 1)  # Leave one core for system
 
-# Import bpy and expose bundled USD/pxr modules (Blender 4.4+)
-# This avoids DLL conflicts between pip-installed USD and Blender's bundled USD
-try:
-    import bpy
-
-    # Expose Blender's bundled VFX libraries (pxr, MaterialX, OpenImageIO, etc.)
-    bpy.utils.expose_bundled_modules()
-except (ImportError, OSError) as e:
-    print(f"Warning: Could not import bpy or expose bundled modules: {e}")
-    bpy = None
+# Note: bpy is imported in worker processes during export to avoid import issues
 
 from pathlib import Path
 
@@ -145,33 +140,21 @@ def place_twigs_on_exported_trees(
             continue
 
 
-def export_individual_trees(
-    forest_data: pd.DataFrame,
-    output_dir: Path,
-    config: GrowPyConfig,
-    quality_params: dict,
-    formats: list,
-    create_nanite_assembly: bool,
-) -> list:
-    """Export each tree individually as separate USD/FBX files.
+def _export_single_tree_from_forest(args: tuple) -> list:
+    """Worker function for parallel tree export from already-simulated forest.
 
-    Uses bpy.utils.expose_bundled_modules() to access Blender's bundled USD (pxr)
-    which is compatible with bpy, avoiding DLL conflicts. This allows single-process
-    export with skeleton support.
+    This exports a single tree from a grove that was already simulated with light competition.
+    Each tree is exported by creating a temporary single-tree grove with the same growth parameters.
 
     Args:
-        forest_data: DataFrame with tree data including species, growth_cycles
-        output_dir: Directory to save export files
-        config: GrowPy configuration
-        quality_params: Quality parameters dict
-        formats: List of export formats
-        create_nanite_assembly: Create Nanite Assembly USD
+        args: Tuple of (idx, row_dict, output_dir, quality_params, formats, create_nanite_assembly, cleanup_mesh)
 
     Returns:
-        List of exported USD file paths
+        List of exported file paths
     """
     import gc as _gc_module
 
+    from growpy import get_config
     from growpy.core.grove import create_grove
     from growpy.io.blender_export import (
         _export_fbx_internal,
@@ -180,107 +163,200 @@ def export_individual_trees(
         get_twig_usd_map_for_species,
     )
 
-    exported_files = []
+    (
+        idx,
+        row_dict,
+        output_dir,
+        quality_params,
+        formats,
+        create_nanite_assembly,
+        cleanup_mesh,
+    ) = args
 
-    print(f"\nExporting {len(forest_data)} trees...")
-    for idx, row in tqdm(
-        forest_data.iterrows(), total=len(forest_data), desc="Exporting trees"
-    ):
-        species = row["species"]
-        growth_cycles = int(row.get("growth_cycles", 10))
+    # Get config in worker process
+    config = get_config()
 
-        species_clean = (
-            "".join(c for c in species if c.isalnum() or c in (" ", "-", "_"))
-            .strip()
-            .replace(" ", "_")
-        )
+    species = row_dict["species"]
+    growth_cycles = int(row_dict.get("growth_cycles", 10))
 
-        species_dir = output_dir / species_clean
-        usd_dir = species_dir / "USD"
-        fbx_dir = species_dir / "FBX"
+    species_clean = (
+        "".join(c for c in species if c.isalnum() or c in (" ", "-", "_"))
+        .strip()
+        .replace(" ", "_")
+    )
+
+    species_dir = output_dir / species_clean
+    usd_dir = species_dir / "USD"
+    fbx_dir = species_dir / "FBX"
+
+    if "usd" in formats or "usda" in formats:
+        usd_dir.mkdir(parents=True, exist_ok=True)
+    if "fbx" in formats:
+        fbx_dir.mkdir(parents=True, exist_ok=True)
+
+    tree_name = f"{species_clean}_tree_{idx:04d}"
+    exported = []
+
+    try:
+        # Create single-tree grove with same growth parameters
+        # NOTE: This tree won't have the light competition effects from the original forest simulation
+        # but it will have the same growth cycle progression
+        grove = create_grove(species)
+        gc = _get_gc()
+
+        grove.add_new_tree(gc.Vector(0, 0, 0), gc.Vector(0, 0, 1), 0)
+        grove.simulate(flushes=growth_cycles)
 
         if "usd" in formats or "usda" in formats:
-            usd_dir.mkdir(parents=True, exist_ok=True)
+            usd_path = usd_dir / f"{tree_name}.usda"
+
+            twig_usd_map = get_twig_usd_map_for_species(
+                species, config, prefer_skeletal=False
+            )
+
+            export_success = export_grove_tree_as_usda_native(
+                grove,
+                usd_path,
+                species,
+                twig_usd_paths=twig_usd_map,
+                include_twigs=True,
+                use_point_instancer=True,
+                convert_to_ue=True,
+                create_nanite_assembly=create_nanite_assembly,
+                include_skeleton=True,
+                resolution=quality_params["resolution"],
+                resolution_reduce=quality_params["resolution_reduce"],
+                texture_repeat=quality_params["texture_repeat"],
+                build_cutoff_age=quality_params["build_cutoff_age"],
+                build_cutoff_thickness=quality_params["build_cutoff_thickness"],
+                build_blend=quality_params["build_blend"],
+                build_end_cap=quality_params["build_end_cap"],
+                config=config,
+            )
+
+            if export_success:
+                exported.append(str(usd_path))
+
         if "fbx" in formats:
-            fbx_dir.mkdir(parents=True, exist_ok=True)
+            fbx_static_path = fbx_dir / f"{tree_name}.fbx"
 
-        tree_name = f"{species_clean}_tree_{idx:04d}"
+            export_success_static = _export_fbx_internal(
+                grove,
+                fbx_static_path,
+                species,
+                include_skeleton=False,
+                include_twig_attributes=True,
+                cleanup_mesh=cleanup_mesh,
+                config=config,
+            )
 
-        try:
-            grove = create_grove(species)
-            gc = _get_gc()
+            if export_success_static:
+                exported.append(str(fbx_static_path))
 
-            grove.add_new_tree(gc.Vector(0, 0, 0), gc.Vector(0, 0, 1), 0)
-            grove.simulate(flushes=growth_cycles)
+            fbx_skeletal_path = fbx_dir / f"{tree_name}_skeletal.fbx"
 
-            if "usd" in formats or "usda" in formats:
-                usd_path = usd_dir / f"{tree_name}.usda"
+            export_success_skeletal = _export_fbx_internal(
+                grove,
+                fbx_skeletal_path,
+                species,
+                include_skeleton=True,
+                include_twig_attributes=True,
+                cleanup_mesh=cleanup_mesh,
+                config=config,
+            )
 
-                twig_usd_map = get_twig_usd_map_for_species(
-                    species, config, prefer_skeletal=False
+            if export_success_skeletal:
+                exported.append(str(fbx_skeletal_path))
+
+        del grove
+        _gc_module.collect()
+
+    except Exception as e:
+        print(f"Failed to export tree {idx} ({species}): {e}")
+
+    return exported
+
+
+def export_individual_trees(
+    forest_data: pd.DataFrame,
+    output_dir: Path,
+    config: GrowPyConfig,
+    quality_params: dict,
+    formats: list,
+    create_nanite_assembly: bool,
+    cleanup_mesh: bool = False,
+    use_multiprocessing: bool = True,
+    max_workers: Optional[int] = None,
+) -> list:
+    """Export each tree individually as separate USD/FBX files.
+
+    Each tree is re-simulated independently for export (does not preserve inter-species
+    light competition from forest simulation, but maintains same growth cycle progression).
+
+    Args:
+        forest_data: DataFrame with tree data including species, growth_cycles
+        output_dir: Directory to save export files
+        config: GrowPy configuration
+        quality_params: Quality parameters dict
+        formats: List of export formats
+        create_nanite_assembly: Create Nanite Assembly USD
+        cleanup_mesh: Perform mesh cleanup operations (slow for large meshes)
+        use_multiprocessing: Enable parallel export (default: True)
+        max_workers: Number of parallel workers (default: CPU count - 1)
+
+    Returns:
+        List of exported file paths
+    """
+    exported_files = []
+
+    # Set defaults
+    if max_workers is None:
+        max_workers = MAX_WORKERS
+
+    # Convert DataFrame rows to dicts for multiprocessing
+    tree_tasks = []
+    for idx, row in forest_data.iterrows():
+        row_dict = row.to_dict()
+        tree_tasks.append(
+            (
+                idx,
+                row_dict,
+                output_dir,
+                quality_params,
+                formats,
+                create_nanite_assembly,
+                cleanup_mesh,
+            )
+        )
+
+    total_trees = len(tree_tasks)
+    print(f"\nExporting {total_trees} trees...")
+
+    if use_multiprocessing and total_trees > 1:
+        print(f"Using multiprocessing with {max_workers} workers")
+
+        # Use multiprocessing pool for parallel export
+        with mp.Pool(processes=max_workers) as pool:
+            results = list(
+                tqdm(
+                    pool.imap(_export_single_tree_from_forest, tree_tasks),
+                    total=total_trees,
+                    desc="Exporting trees",
                 )
+            )
 
-                # Export with skeleton using Blender's bundled pxr
-                export_success = export_grove_tree_as_usda_native(
-                    grove,
-                    usd_path,
-                    species,
-                    twig_usd_paths=twig_usd_map,
-                    include_twigs=True,
-                    use_point_instancer=True,
-                    convert_to_ue=True,
-                    create_nanite_assembly=create_nanite_assembly,
-                    include_skeleton=True,  # Now works with bundled pxr
-                    resolution=quality_params["resolution"],
-                    resolution_reduce=quality_params["resolution_reduce"],
-                    texture_repeat=quality_params["texture_repeat"],
-                    build_cutoff_age=quality_params["build_cutoff_age"],
-                    build_cutoff_thickness=quality_params["build_cutoff_thickness"],
-                    build_blend=quality_params["build_blend"],
-                    build_end_cap=quality_params["build_end_cap"],
-                    config=config,
-                )
+        # Collect exported files
+        for result in results:
+            if result:
+                exported_files.extend([Path(p) for p in result])
 
-                if export_success:
-                    exported_files.append(usd_path)
-
-            if "fbx" in formats:
-                # Export static FBX (no skeleton)
-                fbx_static_path = fbx_dir / f"{tree_name}.fbx"
-
-                export_success_static = _export_fbx_internal(
-                    grove,
-                    fbx_static_path,
-                    species,
-                    include_skeleton=False,
-                    include_twig_attributes=True,
-                    config=config,
-                )
-
-                if export_success_static:
-                    exported_files.append(fbx_static_path)
-
-                # Export skeletal FBX (with skeleton)
-                fbx_skeletal_path = fbx_dir / f"{tree_name}_skeletal.fbx"
-
-                export_success_skeletal = _export_fbx_internal(
-                    grove,
-                    fbx_skeletal_path,
-                    species,
-                    include_skeleton=True,
-                    include_twig_attributes=True,
-                    config=config,
-                )
-
-                if export_success_skeletal:
-                    exported_files.append(fbx_skeletal_path)
-
-            del grove
-            _gc_module.collect()
-
-        except Exception as e:
-            print(f"Failed to export tree {idx} ({species}): {e}")
-            continue
+    else:
+        # Fallback to sequential processing
+        print("Using sequential processing (multiprocessing disabled or single tree)")
+        for task in tqdm(tree_tasks, desc="Exporting trees"):
+            result = _export_single_tree_from_forest(task)
+            if result:
+                exported_files.extend([Path(p) for p in result])
 
     return exported_files
 
@@ -291,12 +367,15 @@ def generate_forest_exports(
     config: GrowPyConfig,
     formats: list = ["fbx"],
     quality: str = "high",
-    resolution: int = None,
+    resolution: Optional[int] = None,
     place_twigs: bool = False,
-    twigs_dir: Path = None,
+    twigs_dir: Optional[Path] = None,
     create_nanite_assembly: bool = True,
-    growth_cycle_limit: int = None,
-    height_scale: float = None,
+    growth_cycle_limit: Optional[int] = None,
+    height_scale: Optional[float] = None,
+    cleanup_mesh: bool = False,
+    use_multiprocessing: bool = True,
+    max_workers: Optional[int] = None,
 ) -> None:
     """Generate forest from CSV data and export in specified formats.
 
@@ -312,6 +391,9 @@ def generate_forest_exports(
         create_nanite_assembly: Create Nanite Assembly USD for Unreal Engine (default: True)
         growth_cycle_limit: Maximum growth cycles per tree (default: GROWTH_CYCLE_LIMIT)
         height_scale: Scale factor for tree heights (default: HEIGHT_SCALE)
+        cleanup_mesh: Perform mesh cleanup operations (slow for large meshes) (default: False)
+        use_multiprocessing: Enable parallel export processing (default: True)
+        max_workers: Number of parallel workers (default: CPU count - 1)
     """
     # Use defaults if not specified
     if growth_cycle_limit is None:
@@ -423,6 +505,9 @@ def generate_forest_exports(
                 quality_params,
                 formats,
                 create_nanite_assembly,
+                cleanup_mesh=cleanup_mesh,
+                use_multiprocessing=use_multiprocessing,
+                max_workers=max_workers,
             )
 
             if exported_files:
@@ -432,7 +517,7 @@ def generate_forest_exports(
                 )
 
                 # Place twigs if requested
-                if place_twigs and bpy is not None:
+                if place_twigs:
                     try:
                         from growpy.io.twig_placement import (
                             export_twig_placements_to_usd,
@@ -562,6 +647,25 @@ Examples:
         default=HEIGHT_SCALE,
         help=f"Scale factor for tree heights (default: {HEIGHT_SCALE})",
     )
+    parser.add_argument(
+        "--cleanup-mesh",
+        action="store_true",
+        default=False,
+        help="Perform mesh cleanup operations (slow for large meshes, improves Nanite compatibility)",
+    )
+    parser.add_argument(
+        "--no-multiprocessing",
+        dest="use_multiprocessing",
+        action="store_false",
+        default=True,
+        help="Disable parallel processing (use sequential export)",
+    )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=None,
+        help=f"Number of parallel workers (default: {MAX_WORKERS} = CPU count - 1)",
+    )
 
     args = parser.parse_args()
 
@@ -603,6 +707,9 @@ Examples:
             args.create_nanite_assembly,
             args.growth_cycle_limit,
             args.height_scale,
+            args.cleanup_mesh,
+            args.use_multiprocessing,
+            args.max_workers,
         )
 
     except Exception as e:
