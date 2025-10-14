@@ -350,21 +350,9 @@ def export_tree_as_usd(
             model.set_winding_order("COUNTER_CLOCKWISE")
             print("  Set counter-clockwise winding order")
         except Exception as e:
-            print(
-                f"  Warning: Could not configure model orientation: {e}"
-            )  # Apply UV aspect ratio correction for proper texture scaling
-        try:
-            if config and hasattr(config, "texture_aspect_ratio"):
-                aspect_ratio = config.texture_aspect_ratio
-            else:
-                # Increased from 2.0 to 4.0 to make textures larger (less repetitive)
-                # Higher value = larger texture scale = less repetition
-                aspect_ratio = 4.0
+            print(f"  Warning: Could not configure model orientation: {e}")
 
-            model.apply_uv_aspect_ratio(aspect_ratio)
-            print(f"  Applied UV aspect ratio: {aspect_ratio}")
-        except Exception as e:
-            print(f"  Warning: Could not apply UV aspect ratio: {e}")  # Create mesh
+        # Create mesh
         mesh_name = f"{species_name}_tree_mesh"
         mesh = bpy.data.meshes.new(mesh_name)
 
@@ -382,23 +370,13 @@ def export_tree_as_usd(
         if uvs and len(uvs) >= len(faces) * 6:
             mesh.uv_layers.new(name="UVMap")
             uv_layer = mesh.uv_layers.active.data
-            # Apply UVs with aspect ratio scaling for proper texture size
-            # Grove applies UV aspect ratio to model, but Blender USD export resets it
-            # So we need to manually scale UVs in Blender to preserve the ratio
-            # CRITICAL: Use the aspect_ratio variable that was set above (4.0 default)
-            try:
-                uv_scale_y = aspect_ratio  # Use the aspect_ratio set earlier
-            except NameError:
-                uv_scale_y = 4.0  # Fallback if not set
-
-            print(f"  Applying UV V-coordinate scaling: {uv_scale_y}x")
+            # Apply UVs as provided by Grove without modification
             for poly in mesh.polygons:
                 for loop_index in poly.loop_indices:
                     uv_index = loop_index * 2
                     if uv_index + 1 < len(uvs):
-                        # Scale V coordinate by aspect ratio to match texture size
                         u = uvs[uv_index]
-                        v = uvs[uv_index + 1] * uv_scale_y
+                        v = uvs[uv_index + 1]
                         uv_layer[loop_index].uv = (u, v)
 
         _add_grove_attributes_to_mesh(mesh, model)
@@ -598,244 +576,69 @@ def _calculate_vertex_weights(
     faces: List[List[int]],
     grove: Any = None,
 ) -> Tuple[List[List[int]], List[List[float]]]:
-    """Calculate proper vertex weights for skeletal animation.
+    """Calculate proper vertex weights for skeletal animation using Grove's bone IDs.
 
-    Uses Grove's physics data in multiple optimization tiers:
-    1. Grove's tag_bone_id() - Direct bone assignment (fastest, highest quality)
-    2. Mass-based - Uses point_attribute_mass for physics-based assignment
-    3. Thickness/Vigor - Combines structural attributes for intelligent weighting
-    4. Light-based - Uses photosynthesis and shade for outer/inner bone assignment
-    5. Branch-based - Simple fallback using face_attribute_branch_id
+    Uses Grove's tag_bone_id() system for direct bone assignment - the fastest
+    and most accurate method. All fallback methods have been removed.
 
     Args:
-        model: Grove model with physics attributes
+        model: Grove model with bone_id attribute
         skeleton: Grove skeleton with poly_lines and points
         vertices: List of vertex positions [(x,y,z), ...]
         faces: List of face vertex indices [[v1,v2,v3], ...]
-        grove: Grove instance for bone tagging (optional)
+        grove: Grove instance for bone tagging (required)
 
     Returns:
         (joint_indices, joint_weights) where:
         - joint_indices[vertex_idx] = [bone_idx1, bone_idx2, ...]
         - joint_weights[vertex_idx] = [weight1, weight2, ...]
     """
-    import numpy as np
-
     num_vertices = len(vertices)
 
     # Initialize: all vertices start with root bone
     vertex_to_joints = [[0] for _ in range(num_vertices)]
     vertex_to_weights = [[1.0] for _ in range(num_vertices)]
 
-    # Try to use Grove's optimized bone tagging system first
-    try:
-
-        if grove is not None and hasattr(grove, "tag_bone_id"):
-            print("  Using Grove's optimized bone tagging system...")
-
-            # Use Grove's bone tagging with reasonable parameters
-            # length=1.0 (longer bones), reduce=0.5 (moderate reduction),
-            # bias=0.5 (balanced), connected=True
-            bones = grove.tag_bone_id(1.0, 0.25, 0.5, True)
-
-            if bones and hasattr(model, "point_attribute_bone_id"):
-                bone_ids = model.point_attribute_bone_id
-
-                if len(bone_ids) == num_vertices:
-                    # Direct vertex-to-bone mapping from Grove
-                    for vert_idx, bone_id in enumerate(bone_ids):
-                        if bone_id >= 0 and bone_id < len(bones):
-                            vertex_to_joints[vert_idx] = [bone_id]
-                            vertex_to_weights[vert_idx] = [1.0]
-
-                    print(
-                        f"  ✓ Fast bone assignment for {num_vertices} vertices using Grove tagging"
-                    )
-                    return vertex_to_joints, vertex_to_weights
-
-    except Exception as e:
-        print(f"  Grove bone tagging unavailable ({e}), using fallback method...")
-
-    # Alternative optimization: Use Grove's mass data for weight distribution
-    try:
-        if hasattr(model, "point_attribute_mass") and hasattr(
-            skeleton, "point_attribute_mass"
-        ):
-            print("  Using Grove's mass data for optimized weight calculation...")
-
-            model_masses = model.point_attribute_mass
-            skeleton_masses = skeleton.point_attribute_mass
-
-            if len(model_masses) == num_vertices and skeleton_masses:
-                # Use mass data to determine dominant bones
-                # Higher mass vertices should be influenced by trunk/main branches (lower bone indices)
-                mass_array = np.array(model_masses)
-                max_mass = np.max(mass_array) if len(mass_array) > 0 else 1.0
-
-                for vert_idx, mass in enumerate(model_masses):
-                    if mass > 0:
-                        # Normalize mass (0-1)
-                        normalized_mass = mass / max_mass
-
-                        # Higher mass = lower bone index (closer to trunk)
-                        # Map normalized mass to bone range (0 to num_skeleton_bones)
-                        num_skeleton_bones = len(skeleton_masses)
-                        if num_skeleton_bones > 1:
-                            # Invert mass so high mass = low bone index
-                            bone_idx = int(
-                                (1.0 - normalized_mass) * (num_skeleton_bones - 1)
-                            )
-                            bone_idx = max(0, min(bone_idx, num_skeleton_bones - 1))
-
-                            vertex_to_joints[vert_idx] = [bone_idx]
-                            vertex_to_weights[vert_idx] = [1.0]
-
-                print(f"  ✓ Mass-based bone assignment for {num_vertices} vertices")
-                return vertex_to_joints, vertex_to_weights
-
-    except Exception as e:
-        print(f"  Mass-based optimization failed ({e}), using branch method...")
-
-    # Additional optimization: Use Grove's thickness data for structural weighting
-    try:
-        if hasattr(model, "point_attribute_thickness") and hasattr(
-            model, "point_attribute_vigor"
-        ):
-            print(
-                "  Using Grove's thickness and vigor data for structural weight calculation..."
-            )
-
-            thickness_data = model.point_attribute_thickness
-            vigor_data = model.point_attribute_vigor
-
-            if len(thickness_data) == num_vertices and len(vigor_data) == num_vertices:
-                # Combine thickness and vigor for intelligent bone assignment
-                # Thicker, more vigorous vertices should be influenced by main structural bones
-                thickness_array = np.array(thickness_data)
-                vigor_array = np.array(vigor_data)
-
-                # Normalize both arrays
-                max_thickness = (
-                    np.max(thickness_array) if len(thickness_array) > 0 else 1.0
-                )
-                max_vigor = np.max(vigor_array) if len(vigor_array) > 0 else 1.0
-
-                normalized_thickness = thickness_array / max_thickness
-                normalized_vigor = vigor_array / max_vigor
-
-                # Combine thickness (70%) and vigor (30%) for structural importance
-                structural_weight = 0.7 * normalized_thickness + 0.3 * normalized_vigor
-
-                num_skeleton_bones = len(skeleton.poly_lines)
-                if num_skeleton_bones > 1:
-                    for vert_idx, weight in enumerate(structural_weight):
-                        # Higher structural weight = lower bone index (main branches)
-                        bone_idx = int((1.0 - weight) * (num_skeleton_bones - 1))
-                        bone_idx = max(0, min(bone_idx, num_skeleton_bones - 1))
-
-                        vertex_to_joints[vert_idx] = [bone_idx]
-                        vertex_to_weights[vert_idx] = [1.0]
-
-                print(
-                    f"  ✓ Thickness/vigor-based bone assignment for {num_vertices} vertices"
-                )
-                return vertex_to_joints, vertex_to_weights
-
-    except Exception as e:
-        print(f"  Thickness/vigor optimization failed ({e}), using branch method...")
-
-    # Additional optimization: Use Grove's photosynthesis and shade data
-    try:
-        if hasattr(model, "point_attribute_photosynthesis") and hasattr(
-            model, "point_attribute_shade"
-        ):
-            print(
-                "  Using Grove's photosynthesis and shade data for light-based weight calculation..."
-            )
-
-            photosynthesis_data = model.point_attribute_photosynthesis
-            shade_data = model.point_attribute_shade
-
-            if (
-                len(photosynthesis_data) == num_vertices
-                and len(shade_data) == num_vertices
-            ):
-                # Use light exposure for bone assignment - higher light exposure = outer bones
-                photosynthesis_array = np.array(photosynthesis_data)
-                shade_array = np.array(shade_data)
-
-                # Normalize photosynthesis (higher = more light)
-                max_photosynthesis = (
-                    np.max(photosynthesis_array)
-                    if len(photosynthesis_array) > 0
-                    else 1.0
-                )
-                normalized_photosynthesis = photosynthesis_array / max_photosynthesis
-
-                # Invert shade (lower shade = more light)
-                light_exposure = normalized_photosynthesis * (1.0 - shade_array)
-
-                num_skeleton_bones = len(skeleton.poly_lines)
-                if num_skeleton_bones > 1:
-                    for vert_idx, exposure in enumerate(light_exposure):
-                        # Higher light exposure = higher bone index (outer branches)
-                        bone_idx = int(exposure * (num_skeleton_bones - 1))
-                        bone_idx = max(0, min(bone_idx, num_skeleton_bones - 1))
-
-                        vertex_to_joints[vert_idx] = [bone_idx]
-                        vertex_to_weights[vert_idx] = [1.0]
-
-                print(f"  ✓ Light-based bone assignment for {num_vertices} vertices")
-                return vertex_to_joints, vertex_to_weights
-
-    except Exception as e:
-        print(f"  Light-based optimization failed ({e}), using branch method...")
-
-    # Fallback: Use simplified branch-based assignment (much faster than distance calc)
-    if not hasattr(model, "face_attribute_branch_id"):
-        print("  Warning: Model has no branch_id attribute, using root-only weights")
+    # Use Grove's optimized bone tagging system
+    if grove is None or not hasattr(grove, "tag_bone_id"):
+        print("  Warning: Grove bone tagging not available, using root-only weights")
         return vertex_to_joints, vertex_to_weights
 
-    branch_ids = model.face_attribute_branch_id
-    num_branches = len(skeleton.poly_lines)
+    try:
+        print("  Using Grove's bone tagging system...")
 
-    # Build simple branch-to-bone mapping (first bone of each branch)
-    branch_to_first_bone = {}
-    global_joint_idx = 1  # Start after root (index 0)
+        # Use Grove's bone tagging with reasonable parameters
+        # length=1.0 (longer bones), reduce=0.25 (moderate reduction),
+        # bias=0.5 (balanced), connected=True
+        bones = grove.tag_bone_id(1.0, 0.25, 0.5, True)
 
-    for branch_idx, poly_line in enumerate(skeleton.poly_lines):
-        if len(poly_line) > 1:
-            branch_to_first_bone[branch_idx] = global_joint_idx
-            global_joint_idx += len(poly_line) - 1  # Skip to next branch's first bone
+        if not bones or not hasattr(model, "point_attribute_bone_id"):
+            print("  Warning: Grove bone tagging failed, using root-only weights")
+            return vertex_to_joints, vertex_to_weights
 
-    # Build face-to-vertices mapping for branch assignment
-    vertex_faces = [[] for _ in range(num_vertices)]
-    for face_idx, face in enumerate(faces):
-        for vert_idx in face:
-            if vert_idx < num_vertices:
-                vertex_faces[vert_idx].append(face_idx)
+        bone_ids = model.point_attribute_bone_id
 
-    # Assign vertices to bones based on their primary branch
-    for vert_idx in range(num_vertices):
-        # Find the most common branch among this vertex's faces
-        branch_counts = {}
-        for face_idx in vertex_faces[vert_idx]:
-            if face_idx < len(branch_ids):
-                branch_id = branch_ids[face_idx]
-                if 1 <= branch_id <= num_branches:  # Grove uses 1-indexed
-                    branch_idx = branch_id - 1  # Convert to 0-indexed
-                    branch_counts[branch_idx] = branch_counts.get(branch_idx, 0) + 1
+        if len(bone_ids) != num_vertices:
+            print(
+                f"  Warning: Bone ID count mismatch ({len(bone_ids)} vs {num_vertices}), using root-only weights"
+            )
+            return vertex_to_joints, vertex_to_weights
 
-        if branch_counts:
-            # Use the branch that appears most frequently in this vertex's faces
-            primary_branch = max(branch_counts, key=branch_counts.get)
-            if primary_branch in branch_to_first_bone:
-                bone_idx = branch_to_first_bone[primary_branch]
-                vertex_to_joints[vert_idx] = [bone_idx]
+        # Direct vertex-to-bone mapping from Grove
+        for vert_idx, bone_id in enumerate(bone_ids):
+            if bone_id >= 0 and bone_id < len(bones):
+                vertex_to_joints[vert_idx] = [bone_id]
                 vertex_to_weights[vert_idx] = [1.0]
 
-    print(f"  ✓ Branch-based bone assignment for {num_vertices} vertices")
-    return vertex_to_joints, vertex_to_weights
+        print(
+            f"  ✓ Grove bone assignment complete: {num_vertices} vertices, {len(bones)} bones"
+        )
+        return vertex_to_joints, vertex_to_weights
+
+    except Exception as e:
+        print(f"  Error in Grove bone tagging: {e}")
+        print("  Using root-only weights as fallback")
+        return vertex_to_joints, vertex_to_weights
 
 
 def _add_skeleton_to_object(
@@ -2502,6 +2305,7 @@ def _export_fbx_internal(
     species_name: str,
     include_skeleton: bool = True,
     include_twig_attributes: bool = True,
+    cleanup_mesh: bool = False,
     config: Optional[Any] = None,
 ) -> bool:
     """Export tree as FBX with textures, skeleton, and twig attributes.
@@ -2512,6 +2316,7 @@ def _export_fbx_internal(
         species_name: Name of species for materials
         include_skeleton: Include armature/skeleton
         include_twig_attributes: Preserve twig placement attributes
+        cleanup_mesh: Perform mesh cleanup operations (slow for large meshes)
         config: GrowPy configuration
 
     Returns:
@@ -2565,20 +2370,6 @@ def _export_fbx_internal(
         # Extract mesh data from Grove model
         points = model.get_points_flat()
         faces = [[int(i) for i in face] for face in model.faces]
-
-        # Apply UV aspect ratio correction for proper texture scaling
-        try:
-            if config and hasattr(config, "texture_aspect_ratio"):
-                aspect_ratio = config.texture_aspect_ratio
-            else:
-                # Increased from 2.0 to 4.0 to make textures larger (less repetitive)
-                # Higher value = larger texture scale = less repetition
-                aspect_ratio = 4.0
-
-            model.apply_uv_aspect_ratio(aspect_ratio)
-            print(f"  Applied UV aspect ratio: {aspect_ratio}")
-        except Exception as e:
-            print(f"  Warning: Could not apply UV aspect ratio: {e}")
 
         # Get UV coordinates with better error handling
         uvs = []
@@ -2647,9 +2438,11 @@ def _export_fbx_internal(
 
         # Add Grove attributes to mesh (including twig attributes)
         if include_twig_attributes:
+            print("  📋 Adding Grove attributes...")
             _add_grove_attributes_to_mesh(mesh, model)
 
         # Create object
+        print("  🏗️  Creating Blender object...")
         obj = bpy.data.objects.new(f"{species_name}_tree", mesh)
         bpy.context.collection.objects.link(obj)
         bpy.context.view_layer.objects.active = obj
@@ -2658,6 +2451,7 @@ def _export_fbx_internal(
         # Build skeleton
         armature_obj = None
         if include_skeleton:
+            print("  🦴 Building skeleton...")
             skeletons = grove.build_skeletons()
             if skeletons:
                 armature_obj = _add_skeleton_to_object(
@@ -2675,6 +2469,7 @@ def _export_fbx_internal(
                     bpy.ops.object.mode_set(mode="OBJECT")
 
         # Add material with textures
+        print("  🎨 Adding material and textures...")
         _add_material_with_textures(obj, species_name, config)
 
         # Add Nanite metadata as custom properties
@@ -2685,35 +2480,47 @@ def _export_fbx_internal(
         obj["nanite_preserve_area"] = False
         obj["unreal_nanite"] = "enable"
 
-        # Clean mesh geometry to prevent Nanite hierarchy build errors
-        # Critical for avoiding ParentLODError assertion in Nanite encoder
-        #
-        # Nanite Requirements (from official docs):
-        # 1. All triangles (no quads/ngons) - handled by Grove's model.triangulate()
-        # 2. No degenerate geometry (zero-area faces, duplicate vertices)
-        # 3. No loose vertices/edges that don't form faces
-        # 4. Good vertex sharing (ratio <2:1) for optimal compression
-        # 5. Smooth normals where possible (faceted normals increase data size)
-        #
-        # Cleanup operations:
-        bpy.context.view_layer.objects.active = obj
-        bpy.ops.object.mode_set(mode="EDIT")
-        bpy.ops.mesh.select_all(action="SELECT")
+        # Optional mesh cleanup (slow for large meshes)
+        if cleanup_mesh:
+            print(
+                "  🧹 Cleaning up mesh geometry (this may take a while for large meshes)..."
+            )
+            # Clean mesh geometry to prevent Nanite hierarchy build errors
+            # Critical for avoiding ParentLODError assertion in Nanite encoder
+            #
+            # Nanite Requirements (from official docs):
+            # 1. All triangles (no quads/ngons) - handled by Grove's model.triangulate()
+            # 2. No degenerate geometry (zero-area faces, duplicate vertices)
+            # 3. No loose vertices/edges that don't form faces
+            # 4. Good vertex sharing (ratio <2:1) for optimal compression
+            # 5. Smooth normals where possible (faceted normals increase data size)
+            #
+            # Cleanup operations:
+            bpy.context.view_layer.objects.active = obj
+            bpy.ops.object.mode_set(mode="EDIT")
+            bpy.ops.mesh.select_all(action="SELECT")
 
-        # Remove problematic geometry
-        bpy.ops.mesh.delete_loose()  # Remove disconnected vertices/edges
-        bpy.ops.mesh.remove_doubles(
-            threshold=0.0001
-        )  # Merge duplicate vertices (0.1mm)
-        bpy.ops.mesh.dissolve_degenerate(threshold=0.0001)  # Remove zero-area faces
+            # Remove problematic geometry
+            print("    Removing loose geometry...")
+            bpy.ops.mesh.delete_loose()  # Remove disconnected vertices/edges
+            print("    Merging duplicate vertices...")
+            bpy.ops.mesh.remove_doubles(
+                threshold=0.0001
+            )  # Merge duplicate vertices (0.1mm)
+            print("    Dissolving degenerate faces...")
+            bpy.ops.mesh.dissolve_degenerate(threshold=0.0001)  # Remove zero-area faces
 
-        bpy.ops.object.mode_set(mode="OBJECT")
+            bpy.ops.object.mode_set(mode="OBJECT")
+            print("  ✓ Mesh cleanup completed")
+        else:
+            print("  ⏩ Skipping mesh cleanup (use --cleanup-mesh to enable)")
 
         # Note: Triangulation already done by Grove's model.triangulate() before mesh creation
         # This ensures pure triangle topology as required by Nanite
         # Tangents are derived implicitly by Nanite (not stored in mesh data)
 
         # Validate mesh for Nanite
+        print("  🔍 Validating mesh for Nanite...")
         mesh_data = obj.data
         validation = validate_mesh_for_nanite(mesh_data)
         if validation["warnings"]:
@@ -2732,9 +2539,10 @@ def _export_fbx_internal(
 
         # Print mesh stats before export for debugging
         print(
-            f"  Mesh stats: {len(mesh_data.vertices)} verts, {len(mesh_data.polygons)} faces"
+            f"  📊 Mesh stats: {len(mesh_data.vertices)} verts, {len(mesh_data.polygons)} faces"
         )
 
+        print(f"FBX export starting... '{output_path}'")
         # FBX Export optimized for Unreal Engine Nanite
         #
         # Nanite-Specific Settings:
