@@ -1,36 +1,40 @@
 #!/usr/bin/env python3
 """
-Forest generation with FBX export.
+Forest generation with FBX/USD export.
+
+Generates multi-species forests from CSV data with configurable quality settings.
+
+Quick Start:
+    python generate_forest.py forest.csv --quality high --growth-cycle-limit 15
+
+Common Flags:
+    --quality {ultra,high,medium,low,performance}  Quality preset (default: ultra)
+    --growth-cycle-limit INT                       Max growth cycles (default: 10)
+    --height-scale FLOAT                           Tree height scale (default: 1.0)
+    --formats {fbx,usd,usda}                      Export formats (default: fbx)
+    --output-dir PATH                              Output directory
+
+Full Documentation:
+    See docs/guides/cli-reference.md for complete flag reference and examples
 
 Usage:
-    python generate_forest.py [csv_file]
+    python generate_forest.py [csv_file] [options]
 """
 
-# CRITICAL: Setup USD PATH first before any other imports (especially bpy)
-# This must happen BEFORE Blender DLLs are loaded to avoid conflicts
-import os
-import site
 import sys
 
-if sys.platform == "win32":
-    # Add USD DLLs to PATH before importing bpy
-    site_packages_dirs = site.getsitepackages()
-    if hasattr(site, "getusersitepackages"):
-        site_packages_dirs.append(site.getusersitepackages())
-
-    for sp in site_packages_dirs:
-        pxr_path = os.path.join(sp, "pxr")
-        if os.path.exists(pxr_path):
-            if pxr_path not in os.environ.get("PATH", ""):
-                os.environ["PATH"] = pxr_path + os.pathsep + os.environ.get("PATH", "")
-
 GROWTH_CYCLE_LIMIT = 10
-HEIGHT_SCALE = 4
+HEIGHT_SCALE = 1
 
-# IMPORTANT: Import bpy after USD path setup
+# Import bpy and expose bundled USD/pxr modules (Blender 4.4+)
+# This avoids DLL conflicts between pip-installed USD and Blender's bundled USD
 try:
     import bpy
-except (ImportError, OSError):
+
+    # Expose Blender's bundled VFX libraries (pxr, MaterialX, OpenImageIO, etc.)
+    bpy.utils.expose_bundled_modules()
+except (ImportError, OSError) as e:
+    print(f"Warning: Could not import bpy or expose bundled modules: {e}")
     bpy = None
 
 from pathlib import Path
@@ -151,6 +155,10 @@ def export_individual_trees(
 ) -> list:
     """Export each tree individually as separate USD/FBX files.
 
+    Uses bpy.utils.expose_bundled_modules() to access Blender's bundled USD (pxr)
+    which is compatible with bpy, avoiding DLL conflicts. This allows single-process
+    export with skeleton support.
+
     Args:
         forest_data: DataFrame with tree data including species, growth_cycles
         output_dir: Directory to save export files
@@ -174,6 +182,7 @@ def export_individual_trees(
 
     exported_files = []
 
+    print(f"\nExporting {len(forest_data)} trees...")
     for idx, row in tqdm(
         forest_data.iterrows(), total=len(forest_data), desc="Exporting trees"
     ):
@@ -211,6 +220,7 @@ def export_individual_trees(
                     species, config, prefer_skeletal=False
                 )
 
+                # Export with skeleton using Blender's bundled pxr
                 export_success = export_grove_tree_as_usda_native(
                     grove,
                     usd_path,
@@ -220,7 +230,7 @@ def export_individual_trees(
                     use_point_instancer=True,
                     convert_to_ue=True,
                     create_nanite_assembly=create_nanite_assembly,
-                    include_skeleton=True,
+                    include_skeleton=True,  # Now works with bundled pxr
                     resolution=quality_params["resolution"],
                     resolution_reduce=quality_params["resolution_reduce"],
                     texture_repeat=quality_params["texture_repeat"],
@@ -285,6 +295,8 @@ def generate_forest_exports(
     place_twigs: bool = False,
     twigs_dir: Path = None,
     create_nanite_assembly: bool = True,
+    growth_cycle_limit: int = None,
+    height_scale: float = None,
 ) -> None:
     """Generate forest from CSV data and export in specified formats.
 
@@ -298,7 +310,15 @@ def generate_forest_exports(
         place_twigs: Whether to place twig instances on trees (default: False)
         twigs_dir: Directory containing twig files (default: config.twigs_path)
         create_nanite_assembly: Create Nanite Assembly USD for Unreal Engine (default: True)
+        growth_cycle_limit: Maximum growth cycles per tree (default: GROWTH_CYCLE_LIMIT)
+        height_scale: Scale factor for tree heights (default: HEIGHT_SCALE)
     """
+    # Use defaults if not specified
+    if growth_cycle_limit is None:
+        growth_cycle_limit = GROWTH_CYCLE_LIMIT
+    if height_scale is None:
+        height_scale = HEIGHT_SCALE
+
     if not EXPORT_AVAILABLE:
         print("ERROR: Export not available - bpy module required")
         return
@@ -338,18 +358,18 @@ def generate_forest_exports(
         forest_data["growth_cycles"] = 10
         forest_data["delay"] = 0
 
-    # Scale growth cycles if max exceeds GROWTH_CYCLE_LIMIT
+    # Scale growth cycles if max exceeds growth_cycle_limit
     max_growth_cycles = forest_data["growth_cycles"].max()
-    if max_growth_cycles > GROWTH_CYCLE_LIMIT:
-        scale_factor = GROWTH_CYCLE_LIMIT / max_growth_cycles
+    if max_growth_cycles > growth_cycle_limit:
+        scale_factor = growth_cycle_limit / max_growth_cycles
         forest_data["growth_cycles"] = (
             forest_data["growth_cycles"] * scale_factor
         ).astype(int)
         forest_data["growth_cycles"] = forest_data["growth_cycles"].clip(lower=1)
-        print(f"Scaled growth cycles: max {max_growth_cycles} -> {GROWTH_CYCLE_LIMIT}")
+        print(f"Scaled growth cycles: max {max_growth_cycles} -> {growth_cycle_limit}")
     else:
         # Apply height scale only if not scaling growth cycles
-        forest_data["height"] /= HEIGHT_SCALE
+        forest_data["height"] /= height_scale
 
     try:
         forest = create_forest(forest_data)
@@ -530,6 +550,18 @@ Examples:
         action="store_false",
         help="Skip Nanite Assembly USD creation",
     )
+    parser.add_argument(
+        "--growth-cycle-limit",
+        type=int,
+        default=GROWTH_CYCLE_LIMIT,
+        help=f"Maximum growth cycles per tree (default: {GROWTH_CYCLE_LIMIT}). Trees exceeding this will be scaled down proportionally",
+    )
+    parser.add_argument(
+        "--height-scale",
+        type=float,
+        default=HEIGHT_SCALE,
+        help=f"Scale factor for tree heights (default: {HEIGHT_SCALE})",
+    )
 
     args = parser.parse_args()
 
@@ -569,6 +601,8 @@ Examples:
             args.place_twigs,
             args.twigs_dir,
             args.create_nanite_assembly,
+            args.growth_cycle_limit,
+            args.height_scale,
         )
 
     except Exception as e:

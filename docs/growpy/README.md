@@ -6,28 +6,29 @@ Complete documentation for the GrowPy pipeline - simplified tree generation for 
 
 📚 **[Getting Started Guide](../GETTING_STARTED.md)** ⭐ **START HERE!**
 
-- Quick setup and installation
-- Two main workflows (Forest vs Library)
-- Common commands
-- Troubleshooting
+New to GrowPy? Start here for quick setup and first steps.
 
 ## Documentation Index
 
-### User Documentation
+### Essential Guides
 
-- **[User Guide](USER_GUIDE.md)** - Comprehensive reference
-  - Complete CLI reference for all scripts
-  - CSV format specifications
-  - Growth model configuration
-  - Advanced usage examples
-  - Detailed troubleshooting
+- **[CLI Reference](../guides/cli-reference.md)** 🔧 **COMMAND REFERENCE**
+  - Complete flag documentation for all CLI scripts
+  - Usage examples and workflows
+  - Quality presets reference
+  - Troubleshooting common issues
 
-- **[Unreal Import Guide](UNREAL_IMPORT_GUIDE.md)** - Unreal Engine workflow
-  - Import trees and twigs
-  - PCG setup
+- **[Getting Started](../GETTING_STARTED.md)** 🚀 **QUICK SETUP**
+  - Installation and environment setup
+  - Two main workflows (Forest vs Library)
+  - Common commands
+  - First forest generation
+
+- **[Unreal Import Guide](UNREAL_IMPORT_GUIDE.md)** 🎮 **UNREAL ENGINE**
+  - Import trees and twigs to UE5
+  - PCG (Procedural Content Generation) setup
   - Foliage Tool usage
-  - Material setup
-  - Nanite configuration
+  - Material setup and Nanite configuration
 
 ### Configuration
 

@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 """
-Simple Grove asset preparation for GrowPy.
+Prepare Grove 2.2 assets for GrowPy.
 
-This script copies assets from The Grove 2.2 installation to GrowPy assets folder:
-- Species presets (.json files)
-- Texture files
-- Twig .blend files and textures
+Copies species presets, textures, and twig files from The Grove 2.2 installation.
+
+Quick Start:
+    python prepare_assets.py
+
+Common Flags:
+    --grove-dir PATH    Source directory (default: src/the_grove_22)
+    --assets-dir PATH   Target directory (default: data/assets)
+
+Full Documentation:
+    See docs/guides/cli-reference.md for complete flag reference and examples
 
 Usage:
-    python prepare_assets.py
-    python prepare_assets.py --grove-dir /path/to/grove --assets-dir /path/to/assets
+    python prepare_assets.py [options]
 """
 import argparse
 import shutil
@@ -29,7 +35,7 @@ Examples:
 
     # Specify custom paths
     python prepare_assets.py --grove-dir /path/to/grove --assets-dir /path/to/assets
-        """
+        """,
     )
 
     # Default paths
@@ -41,13 +47,13 @@ Examples:
         "--grove-dir",
         type=Path,
         default=default_grove,
-        help=f"Path to The Grove 2.2 directory (default: {default_grove})"
+        help=f"Path to The Grove 2.2 directory (default: {default_grove})",
     )
     parser.add_argument(
         "--assets-dir",
         type=Path,
         default=default_assets,
-        help=f"Path to assets output directory (default: {default_assets})"
+        help=f"Path to assets output directory (default: {default_assets})",
     )
 
     args = parser.parse_args()
