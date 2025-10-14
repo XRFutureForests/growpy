@@ -1,25 +1,27 @@
 #!/usr/bin/env python3
 """
-Enhanced twig converter with robust texture handling and standardized naming.
+Convert Grove twig .blend files to FBX/USD with textures.
 
-This improved version:
-1. Detects and uses ALL available texture types (diffuse, alpha, normal, translucent, etc.)
-2. Standardizes twig naming to match Grove tree attributes (apical/lateral/dead)
-3. Handles varied texture naming conventions intelligently
-4. Embeds textures properly in FBX exports
-5. Creates comprehensive material setups for Unreal Engine
+Robust texture handling with standardized naming for Grove tree attributes.
 
-Twig Type Mapping:
-    Grove Attributes -> Standard Names
-    - twig_long / twig_end / Apical -> apical (terminal/end twigs)
-    - twig_short / twig_side / Lateral -> lateral (side branches)
-    - twig_upward -> upward (upward-facing twigs
-    - twig_dead / Dead -> dead (dead/winter twigs)
-    - A/B/C/Var -> variation_a/b/c (variants within type)
+Quick Start:
+    python convert_twigs.py data/assets/twigs
+
+Common Flags:
+    --formats {fbx,usd,usda}  Export formats (default: fbx usda)
+    --output-dir PATH         Output directory (default: same as input)
+
+Twig Types:
+    apical/long/end -> twig_long attribute (terminal twigs)
+    lateral/short/side -> twig_short attribute (side branches)
+    upward -> twig_upward attribute (upward-facing twigs)
+    dead/fall/winter -> twig_dead attribute (dead twigs)
+
+Full Documentation:
+    See docs/guides/cli-reference.md for complete flag reference and examples
 
 Usage:
-    python convert_twigs_v2.py <twig_directory> [--formats fbx usd usda]
-    python convert_twigs_v2.py <single_blend_file> [--formats fbx usd]
+    python convert_twigs.py <path> [options]
 """
 
 import json
