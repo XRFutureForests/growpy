@@ -4,13 +4,12 @@ Quick reference for all GrowPy command-line tools and their flags.
 
 ## Overview
 
-The GrowPy pipeline consists of five main scripts:
+The GrowPy pipeline consists of four main scripts:
 
 1. `prepare_assets.py` - Copy assets from The Grove 2.2
-2. `export_twigs.py` - Convert .blend twigs to FBX/USD
+2. `convert_twigs.py` - Convert .blend twigs to FBX/USD
 3. `create_growth_models.py` - Generate height prediction models
 4. `generate_forest.py` - Multi-species forest simulation and export
-5. `export_trees.py` - Export individual species trees
 
 ## Complete Pipeline
 
@@ -137,47 +136,6 @@ python src/growpy/cli/generate_forest.py forest_data.csv \
 
 # Scale tree heights down by 50%
 python src/growpy/cli/generate_forest.py forest_data.csv --height-scale 0.5
-```
-
-## 5. generate_species_library.py
-
-Generate species library with template trees for all configured species.
-
-```bash
-python src/growpy/cli/generate_species_library.py [options]
-```
-
-### Core Options
-
-- `--output-dir PATH` - Output directory (default: data/output/species_library)
-- `--formats {fbx,usd,usda}` - Export formats (default: usda)
-- `--variations INT` - Number of variants per species (default: 1)
-
-### Quality Settings
-
-- `--resolution INT` - Branch vertices 4-32 (default: 24)
-- `--growth-flushes INT...` - Growth stages to export (default: 10)
-
-### Advanced Options
-
-- `--include-twigs` - Include twig instances (USD only)
-- `--create-nanite-assembly` - Create Nanite Assembly USD (default: True)
-- `--no-nanite-assembly` - Skip Nanite Assembly creation
-
-### Examples
-
-```bash
-# Generate library with 3 variations per species
-python src/growpy/cli/generate_species_library.py --variations 3
-
-# Multiple growth stages
-python src/growpy/cli/generate_species_library.py --growth-flushes 10 25 50
-
-# High resolution with twigs
-python src/growpy/cli/generate_species_library.py --resolution 32 --include-twigs
-
-# Export all formats
-python src/growpy/cli/generate_species_library.py --formats fbx usd usda
 ```
 
 ## Quality Presets Reference

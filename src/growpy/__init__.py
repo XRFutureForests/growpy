@@ -30,7 +30,6 @@ CLI Tools:
     convert_twigs.py           - Convert .blend twigs to FBX/USD
     create_growth_models.py    - Generate species growth models
     generate_forest.py         - Full forest generation pipeline
-    generate_species_library.py - Export template trees
 
 Documentation:
     See docs/growpy/README.md for complete documentation

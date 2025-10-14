@@ -575,6 +575,10 @@ def _calculate_vertex_weights(
     vertices: List[Tuple[float, float, float]],
     faces: List[List[int]],
     grove: Any = None,
+    skeleton_length: float = 1.0,
+    skeleton_reduce: float = 0.25,
+    skeleton_bias: float = 0.5,
+    skeleton_connected: bool = True,
 ) -> Tuple[List[List[int]], List[List[float]]]:
     """Calculate proper vertex weights for skeletal animation using Grove's bone IDs.
 
@@ -587,6 +591,10 @@ def _calculate_vertex_weights(
         vertices: List of vertex positions [(x,y,z), ...]
         faces: List of face vertex indices [[v1,v2,v3], ...]
         grove: Grove instance for bone tagging (required)
+        skeleton_length: Bone length multiplier (default: 1.0, higher=longer bones)
+        skeleton_reduce: Bone reduction factor (default: 0.25, higher=fewer bones)
+        skeleton_bias: Weight bias (default: 0.5, range 0-1)
+        skeleton_connected: Whether bones are connected (default: True)
 
     Returns:
         (joint_indices, joint_weights) where:
@@ -605,12 +613,24 @@ def _calculate_vertex_weights(
         return vertex_to_joints, vertex_to_weights
 
     try:
-        print("  Using Grove's bone tagging system...")
+        import time
 
-        # Use Grove's bone tagging with reasonable parameters
-        # length=1.0 (longer bones), reduce=0.25 (moderate reduction),
-        # bias=0.5 (balanced), connected=True
-        bones = grove.tag_bone_id(1.0, 0.25, 0.5, True)
+        print("  Using Grove's bone tagging system...")
+        print(
+            f"    Skeleton params: length={skeleton_length}, reduce={skeleton_reduce}, bias={skeleton_bias}, connected={skeleton_connected}"
+        )
+
+        # Use Grove's bone tagging with configurable parameters
+        # length: Bone length multiplier (higher = longer/merged bones)
+        # reduce: Bone reduction factor (higher = fewer bones)
+        # bias: Weight bias (0-1 range)
+        # connected: Whether bones are connected
+        t0 = time.time()
+        bones = grove.tag_bone_id(
+            skeleton_length, skeleton_reduce, skeleton_bias, skeleton_connected
+        )
+        t1 = time.time()
+        print(f"      ⏱️  grove.tag_bone_id(): {t1-t0:.2f}s")
 
         if not bones or not hasattr(model, "point_attribute_bone_id"):
             print("  Warning: Grove bone tagging failed, using root-only weights")
@@ -642,9 +662,20 @@ def _calculate_vertex_weights(
 
 
 def _add_skeleton_to_object(
-    obj: Any, skeleton: Any, species_name: str, grove: Any, model: Optional[Any] = None
+    obj: Any,
+    skeleton: Any,
+    species_name: str,
+    grove: Any,
+    model: Optional[Any] = None,
+    skeleton_length: float = 1.0,
+    skeleton_reduce: float = 0.25,
+    skeleton_bias: float = 0.5,
+    skeleton_connected: bool = True,
 ) -> Any:
     """Add skeleton/armature to the tree object with proper vertex weights.
+
+    Uses Grove's tag_bone_id() to identify which bones are actually needed,
+    then creates only those bones to avoid creating 30K+ unnecessary bones.
 
     Args:
         obj: Blender mesh object
@@ -652,11 +683,45 @@ def _add_skeleton_to_object(
         species_name: Name of the tree species
         grove: Grove instance for weight calculation
         model: Grove model with face/vertex data (required for weights)
+        skeleton_length: Bone length multiplier (default: 1.0, higher=longer bones)
+        skeleton_reduce: Bone reduction factor (default: 0.25, higher=fewer bones)
+        skeleton_bias: Weight bias (default: 0.5, range 0-1)
+        skeleton_connected: Whether bones are connected (default: True)
 
     Returns:
         The armature object created
     """
+    import time
+
     try:
+        # First, determine which bones are actually used by Grove's tagging system
+        # This avoids creating 30K+ bones when only ~32 are needed
+        vertices = [(v.co.x, v.co.y, v.co.z) for v in obj.data.vertices]
+        faces = [[v for v in poly.vertices] for poly in obj.data.polygons]
+
+        t_weight_start = time.time()
+        vertex_to_joints, vertex_to_weights = _calculate_vertex_weights(
+            model,
+            skeleton,
+            vertices,
+            faces,
+            grove,
+            skeleton_length,
+            skeleton_reduce,
+            skeleton_bias,
+            skeleton_connected,
+        )
+        t_weight_calc = time.time()
+        print(f"      ⏱️  Weight calculation: {t_weight_calc-t_weight_start:.2f}s")
+
+        # Find unique bones that are actually used
+        used_bone_indices = set()
+        for joint_indices in vertex_to_joints:
+            used_bone_indices.update(joint_indices)
+
+        num_bones_needed = len(used_bone_indices)
+        print(f"      ℹ️  Creating {num_bones_needed} bones (from Grove's tag_bone_id)")
+
         # Create armature
         armature = bpy.data.armatures.new(f"{species_name}_armature")
         armature_obj = bpy.data.objects.new(f"{species_name}_skeleton", armature)
@@ -666,59 +731,76 @@ def _add_skeleton_to_object(
         bpy.context.view_layer.objects.active = armature_obj
         bpy.ops.object.mode_set(mode="EDIT")
 
-        # Add bones from skeleton data
+        # Get skeleton data
         points = skeleton.points
         poly_lines = skeleton.poly_lines
 
-        # Map point indices to bones for branch connections
-        point_to_bone = {}
+        # Create ONLY the bones that are actually used
         bone_names = []
+        bones_map = {}  # bone_index -> bone object
+        point_to_bone = {}  # point_index -> bone (for hierarchy)
 
-        # Create root bone at index 0 (required for weight calculation alignment)
+        # Create root bone at index 0
         root_bone = armature.edit_bones.new("Root")
         root_bone.head = (0, 0, 0)
         root_bone.tail = (0, 0, 0.1)  # Small offset for valid bone
         bone_names.append("Root")
+        bones_map[0] = root_bone
 
-        # Create branch bones starting at index 1
-        for i, poly_line in enumerate(poly_lines):
+        # Build mapping from bone index to poly_line segments
+        # Grove's tag_bone_id returns indices that map to bones in skeleton
+        bone_index = 1  # Start at 1 (Root is 0)
+        for poly_line in poly_lines:
             if len(poly_line) < 2:
                 continue
 
-            previous_bone = None  # Will be set based on connection logic
+            previous_bone = None
             for j in range(len(poly_line) - 1):
-                bone_name = f"bone_{i}_{j}"
-                bone = armature.edit_bones.new(bone_name)
-                bone_names.append(bone_name)
-
                 start_idx = poly_line[j]
                 end_idx = poly_line[j + 1]
 
-                if start_idx < len(points) and end_idx < len(points):
-                    bone.head = points[start_idx]
-                    bone.tail = points[end_idx]
+                if bone_index in used_bone_indices:
+                    # This bone is actually used - create it
+                    bone_name = f"bone_{bone_index}"
+                    bone = armature.edit_bones.new(bone_name)
+                    bone_names.append(bone_name)
+                    bones_map[bone_index] = bone
 
-                # Set parent bone
-                if j == 0:
-                    # First bone in branch
-                    if start_idx in point_to_bone:
-                        # Connect to parent branch at shared point
-                        bone.parent = point_to_bone[start_idx]
+                    if start_idx < len(points) and end_idx < len(points):
+                        bone.head = points[start_idx]
+                        bone.tail = points[end_idx]
+
+                    # Set parent bone to maintain hierarchy
+                    if j == 0:
+                        # First bone in branch - check if it connects to another branch
+                        if start_idx in point_to_bone:
+                            bone.parent = point_to_bone[start_idx]
+                        else:
+                            bone.parent = root_bone
                     else:
-                        # No parent branch connection, parent to root
-                        bone.parent = root_bone
-                else:
-                    # Subsequent bones in chain parent to previous bone
-                    bone.parent = previous_bone
+                        # Subsequent bones parent to previous bone in chain
+                        if previous_bone is not None:
+                            bone.parent = previous_bone
+                        else:
+                            bone.parent = root_bone
 
-                # Track this bone's endpoint for potential child branches
-                point_to_bone[end_idx] = bone
-                previous_bone = bone
+                    # Track this bone's endpoint for child branches
+                    point_to_bone[end_idx] = bone
+                    previous_bone = bone
+                else:
+                    # Bone not used, but still need to track if it would connect branches
+                    if j == 0 and start_idx in point_to_bone:
+                        previous_bone = point_to_bone[start_idx]
+                    else:
+                        previous_bone = None
+
+                bone_index += 1
 
         bpy.ops.object.mode_set(mode="OBJECT")
+        t_bones = time.time()
+        print(f"      ⏱️  Bone creation: {t_bones-t_weight_calc:.2f}s ({len(bone_names)} bones)")
 
         # Parent mesh to armature for proper FBX skeletal mesh export
-        # This is CRITICAL for Unreal to recognize as skeletal mesh
         obj.parent = armature_obj
         obj.parent_type = "OBJECT"
 
@@ -727,31 +809,25 @@ def _add_skeleton_to_object(
         modifier.object = armature_obj
         modifier.use_vertex_groups = True
 
-        # Calculate and apply vertex weights if model is available
-        if model is not None:
-            vertices = [(v.co.x, v.co.y, v.co.z) for v in obj.data.vertices]
-            faces = [[v for v in poly.vertices] for poly in obj.data.polygons]
+        # Create vertex groups and assign weights
+        for bone_name in bone_names:
+            obj.vertex_groups.new(name=bone_name)
 
-            vertex_to_joints, vertex_to_weights = _calculate_vertex_weights(
-                model, skeleton, vertices, faces, grove
-            )
+        t_assign_start = time.time()
+        for vert_idx, (joint_indices, weights) in enumerate(
+            zip(vertex_to_joints, vertex_to_weights)
+        ):
+            for joint_idx, weight in zip(joint_indices, weights):
+                if joint_idx < len(bone_names) and weight > 0.0:
+                    bone_name = bone_names[joint_idx]
+                    vgroup = obj.vertex_groups[bone_name]
+                    vgroup.add([vert_idx], weight, "REPLACE")
+        t_assign_end = time.time()
+        print(
+            f"      ⏱️  Weight assignment: {t_assign_end-t_assign_start:.2f}s ({len(vertices)} vertices)"
+        )
 
-            # Create vertex groups and assign weights
-            for bone_name in bone_names:
-                obj.vertex_groups.new(name=bone_name)
-
-            for vert_idx, (joint_indices, weights) in enumerate(
-                zip(vertex_to_joints, vertex_to_weights)
-            ):
-                for joint_idx, weight in zip(joint_indices, weights):
-                    if joint_idx < len(bone_names) and weight > 0.0:
-                        bone_name = bone_names[joint_idx]
-                        vgroup = obj.vertex_groups[bone_name]
-                        vgroup.add([vert_idx], weight, "REPLACE")
-
-            print(f"    ✓ Applied weights for {len(vertices)} vertices to FBX skeleton")
-        else:
-            print("    ⚠ No model provided - skeleton has no vertex weights")
+        print(f"    ✓ Applied weights for {len(vertices)} vertices to FBX skeleton")
 
         return armature_obj
 
@@ -2307,6 +2383,10 @@ def _export_fbx_internal(
     include_twig_attributes: bool = True,
     cleanup_mesh: bool = False,
     config: Optional[Any] = None,
+    skeleton_length: float = 1.0,
+    skeleton_reduce: float = 0.25,
+    skeleton_bias: float = 0.5,
+    skeleton_connected: bool = True,
 ) -> bool:
     """Export tree as FBX with textures, skeleton, and twig attributes.
 
@@ -2336,8 +2416,12 @@ def _export_fbx_internal(
         Result in Unreal: X-forward, Y-right, Z-up (left-handed), meter scale
         See docs/growpy/COORDINATE_SYSTEMS.md for details
     """
-    if not _check_bpy_available():
-        print("bpy module not available - cannot export FBX")
+    # Import bpy in worker process for multiprocessing compatibility
+    # This ensures bpy is available in each worker process on Windows
+    try:
+        import bpy
+    except (ImportError, OSError) as e:
+        print(f"bpy module not available in worker process - cannot export FBX: {e}")
         return False
 
     try:
@@ -2451,12 +2535,30 @@ def _export_fbx_internal(
         # Build skeleton
         armature_obj = None
         if include_skeleton:
+            import time
+
             print("  🦴 Building skeleton...")
+            t0 = time.time()
             skeletons = grove.build_skeletons()
+            t1 = time.time()
+            print(f"    ⏱️  Grove skeleton generation: {t1-t0:.2f}s")
+
             if skeletons:
+                t2 = time.time()
                 armature_obj = _add_skeleton_to_object(
-                    obj, skeletons[0], species_name, grove, model
+                    obj,
+                    skeletons[0],
+                    species_name,
+                    grove,
+                    model,
+                    skeleton_length,
+                    skeleton_reduce,
+                    skeleton_bias,
+                    skeleton_connected,
                 )
+                t3 = time.time()
+                print(f"    ⏱️  Blender skeleton setup: {t3-t2:.2f}s")
+                print(f"    ⏱️  Total skeleton time: {t3-t0:.2f}s")
 
                 # Set armature to rest position for clean FBX export
                 if armature_obj and armature_obj.pose:

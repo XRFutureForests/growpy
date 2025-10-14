@@ -1,7 +1,7 @@
 # SUMMARY: USD Skeleton Export Solution
 
-**Date:** 2025-10-14  
-**Status:** ✅ IMPLEMENTED - Grove JSON Serialization + Subprocess
+**Date:** 2025-10-14
+**Status:** ⚠️ SUPERSEDED - See DLL_CONFLICT_RESOLVED.md for current solution using bundled USD
 
 ## The Problem
 
@@ -38,9 +38,11 @@ Phase 2: Tree Export (Main Process - With bpy)
 ### Key Files
 
 - `src/growpy/cli/generate_forest.py` - Main script with two-phase export
-- `src/growpy/cli/export_skeleton_only.py` - Subprocess skeleton exporter
+- ~~`src/growpy/cli/export_skeleton_only.py`~~ - REMOVED (no longer needed with bundled USD)
 - `docs/USD_BPY_DLL_CONFLICT_SOLUTION.md` - Full documentation
 - `docs/archive/USD_SKELETON_DLL_FIX.md` - Technical details
+
+**Note:** This document describes a subprocess-based solution that has been superseded by using Blender's bundled USD modules. See [DLL_CONFLICT_RESOLVED.md](DLL_CONFLICT_RESOLVED.md) for the current implementation.
 
 ### Output Structure
 

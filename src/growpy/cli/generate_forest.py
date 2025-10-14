@@ -14,6 +14,10 @@ Common Flags:
     --formats {fbx,usd,usda}                      Export formats (default: fbx)
     --output-dir PATH                              Output directory
 
+Performance Notes:
+    - FBX export: Sequential processing only (bpy module limitation)
+    - USD export: Supports parallel processing with multiprocessing
+
 Full Documentation:
     See docs/guides/cli-reference.md for complete flag reference and examples
 
@@ -248,6 +252,10 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 include_twig_attributes=True,
                 cleanup_mesh=cleanup_mesh,
                 config=config,
+                skeleton_length=quality_params.get("skeleton_length", 1.0),
+                skeleton_reduce=quality_params.get("skeleton_reduce", 0.25),
+                skeleton_bias=quality_params.get("skeleton_bias", 0.5),
+                skeleton_connected=quality_params.get("skeleton_connected", True),
             )
 
             if export_success_static:
@@ -263,6 +271,10 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 include_twig_attributes=True,
                 cleanup_mesh=cleanup_mesh,
                 config=config,
+                skeleton_length=quality_params.get("skeleton_length", 1.0),
+                skeleton_reduce=quality_params.get("skeleton_reduce", 0.25),
+                skeleton_bias=quality_params.get("skeleton_bias", 0.5),
+                skeleton_connected=quality_params.get("skeleton_connected", True),
             )
 
             if export_success_skeletal:
@@ -332,6 +344,13 @@ def export_individual_trees(
     total_trees = len(tree_tasks)
     print(f"\nExporting {total_trees} trees...")
 
+    # FBX export requires bpy which cannot be used in multiprocessing workers
+    # Force sequential processing for FBX exports
+    if "fbx" in formats:
+        if use_multiprocessing:
+            print("Note: Multiprocessing disabled for FBX export (bpy module limitation)")
+        use_multiprocessing = False
+
     if use_multiprocessing and total_trees > 1:
         print(f"Using multiprocessing with {max_workers} workers")
 
@@ -352,7 +371,10 @@ def export_individual_trees(
 
     else:
         # Fallback to sequential processing
-        print("Using sequential processing (multiprocessing disabled or single tree)")
+        if total_trees == 1:
+            print("Using sequential processing (single tree)")
+        else:
+            print("Using sequential processing (multiprocessing disabled)")
         for task in tqdm(tree_tasks, desc="Exporting trees"):
             result = _export_single_tree_from_forest(task)
             if result:
@@ -376,6 +398,10 @@ def generate_forest_exports(
     cleanup_mesh: bool = False,
     use_multiprocessing: bool = True,
     max_workers: Optional[int] = None,
+    skeleton_length: float = 1.0,
+    skeleton_reduce: float = 0.25,
+    skeleton_bias: float = 0.5,
+    skeleton_connected: bool = True,
 ) -> None:
     """Generate forest from CSV data and export in specified formats.
 
@@ -394,6 +420,10 @@ def generate_forest_exports(
         cleanup_mesh: Perform mesh cleanup operations (slow for large meshes) (default: False)
         use_multiprocessing: Enable parallel export processing (default: True)
         max_workers: Number of parallel workers (default: CPU count - 1)
+        skeleton_length: Bone length multiplier (default: 1.0)
+        skeleton_reduce: Bone reduction factor (default: 0.25)
+        skeleton_bias: Weight bias (default: 0.5)
+        skeleton_connected: Connected bone hierarchy (default: True)
     """
     # Use defaults if not specified
     if growth_cycle_limit is None:
@@ -467,6 +497,12 @@ def generate_forest_exports(
     quality_params = get_quality_preset(quality)
     if resolution is not None:
         quality_params["resolution"] = resolution
+
+    # Add skeleton parameters to quality_params
+    quality_params["skeleton_length"] = skeleton_length
+    quality_params["skeleton_reduce"] = skeleton_reduce
+    quality_params["skeleton_bias"] = skeleton_bias
+    quality_params["skeleton_connected"] = skeleton_connected
 
     if any(fmt in formats for fmt in ["fbx", "usd", "usda"]):
         try:
@@ -658,13 +694,38 @@ Examples:
         dest="use_multiprocessing",
         action="store_false",
         default=True,
-        help="Disable parallel processing (use sequential export)",
+        help="Disable parallel processing (use sequential export). Note: FBX export is always sequential due to bpy module limitations",
     )
     parser.add_argument(
         "--max-workers",
         type=int,
         default=None,
         help=f"Number of parallel workers (default: {MAX_WORKERS} = CPU count - 1)",
+    )
+    parser.add_argument(
+        "--skeleton-length",
+        type=float,
+        default=1.0,
+        help="Skeleton bone length multiplier (default: 1.0). Higher values create longer/merged bones",
+    )
+    parser.add_argument(
+        "--skeleton-reduce",
+        type=float,
+        default=0.25,
+        help="Skeleton bone reduction factor (default: 0.25). Higher values create fewer bones (range: 0.0-1.0)",
+    )
+    parser.add_argument(
+        "--skeleton-bias",
+        type=float,
+        default=0.5,
+        help="Skeleton weight bias (default: 0.5, range: 0.0-1.0)",
+    )
+    parser.add_argument(
+        "--skeleton-disconnected",
+        dest="skeleton_connected",
+        action="store_false",
+        default=True,
+        help="Create disconnected bones instead of connected hierarchy (default: connected)",
     )
 
     args = parser.parse_args()
@@ -710,6 +771,10 @@ Examples:
             args.cleanup_mesh,
             args.use_multiprocessing,
             args.max_workers,
+            args.skeleton_length,
+            args.skeleton_reduce,
+            args.skeleton_bias,
+            args.skeleton_connected,
         )
 
     except Exception as e:

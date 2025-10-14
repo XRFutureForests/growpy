@@ -86,15 +86,9 @@ else:
         print(f"  - {error}")
 ```
 
-## CLI Commands
+## Validation Example
 
-```bash
-# Validate single file
-python src/growpy/cli/validate_nanite_assembly.py assembly.usda
-
-# Validate directory
-python src/growpy/cli/validate_nanite_assembly.py output/USD/
-```
+The `validate_nanite_assembly()` function provides programmatic validation of assembly files. See the Python code example above for usage.
 
 ## Checklist
 

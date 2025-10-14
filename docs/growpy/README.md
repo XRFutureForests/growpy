@@ -60,20 +60,12 @@ New to GrowPy? Start here for quick setup and first steps.
 
 ## Common Commands
 
-### Workflow A: Forest from CSV
+### Forest Generation Workflow
 
 ```bash
 # Complete pipeline + forest generation
 python src/growpy/cli/run_pipeline.py
 python src/growpy/cli/generate_forest.py data/input/forest.csv
-```
-
-### Workflow B: Species Library
-
-```bash
-# Complete pipeline + species library
-python src/growpy/cli/run_pipeline.py
-python src/growpy/cli/generate_species_library.py --variations 3
 ```
 
 ### Individual Pipeline Steps
