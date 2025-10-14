@@ -181,14 +181,17 @@ success = create_nanite_assembly_usd(
 
 Validate your Nanite Assembly files before importing to Unreal:
 
-```bash
-python src/growpy/cli/validate_nanite_assembly.py output/TreeName_NaniteAssembly.usda
-```
+```python
+from growpy.io import validate_nanite_assembly
+from pathlib import Path
 
-Or validate an entire directory:
-
-```bash
-python src/growpy/cli/validate_nanite_assembly.py output/USD/
+result = validate_nanite_assembly(Path("output/TreeName_NaniteAssembly.usda"))
+if result["valid"]:
+    print(f"✓ Valid {result['mesh_type']} assembly")
+else:
+    print("✗ Validation failed:")
+    for error in result["errors"]:
+        print(f"  - {error}")
 ```
 
 The validator checks:
@@ -249,7 +252,7 @@ uniform token unrealNanite = "disable"  # Disable Nanite
 
 **Solutions:**
 
-1. Validate with `validate_nanite_assembly.py`
+1. Validate using the `validate_nanite_assembly()` function
 2. Check `meshType` is "staticMesh" with uniform variability
 3. Ensure prototypes use USD references (not FBX)
 4. Verify NaniteAssemblyRootAPI is applied
