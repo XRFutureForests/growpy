@@ -1302,6 +1302,10 @@ def _add_skeleton_only_to_usd(
     grove: Any,
     species_name: str,
     model: Optional[Any] = None,
+    skeleton_length: float = 1.0,
+    skeleton_reduce: float = 0.1,
+    skeleton_bias: float = 0.5,
+    skeleton_connected: bool = True,
 ) -> bool:
     """Add ONLY skeleton to USD file (materials should already be present).
 
@@ -1313,6 +1317,10 @@ def _add_skeleton_only_to_usd(
         grove: Grove instance for skeleton
         species_name: Species name
         model: Optional model for weight calculation
+        skeleton_length: Bone length multiplier (default: 1.0)
+        skeleton_reduce: Bone reduction factor (default: 0.1, higher=fewer bones)
+        skeleton_bias: Weight bias (default: 0.5, range 0-1)
+        skeleton_connected: Connected bone hierarchy (default: True)
 
     Returns:
         bool: True if skeleton added successfully
@@ -1349,6 +1357,28 @@ def _add_skeleton_only_to_usd(
 
         skeleton_data = skeletons[0]
 
+        # Use Grove's bone tagging to determine which bones are needed (reduces 87K+ points to ~100-500 bones)
+        print(f"    Tagging bones with params: length={skeleton_length}, reduce={skeleton_reduce}, bias={skeleton_bias}, connected={skeleton_connected}")
+
+        used_bone_indices = None
+        if model is not None and hasattr(grove, "tag_bone_id"):
+            try:
+                bones = grove.tag_bone_id(
+                    skeleton_length, skeleton_reduce, skeleton_bias, skeleton_connected
+                )
+
+                if bones and hasattr(model, "point_attribute_bone_id"):
+                    bone_ids = model.point_attribute_bone_id
+                    used_bone_indices = set(bone_ids)
+                    print(f"    ✓ Bone reduction: {len(bones)} bones needed (from {len(skeleton_data.points)} skeleton points)")
+                else:
+                    print("    Warning: Grove bone tagging returned no bones or bone_id attribute missing")
+            except Exception as e:
+                print(f"    Warning: Bone tagging failed ({e}), creating all joints")
+
+        if used_bone_indices is None:
+            print(f"    Creating all {len(skeleton_data.points)} joints (no bone reduction)")
+
         # Create SkelRoot
         skel_root_path = original_xform_path.AppendChild("SkelRoot")
         skel_root_prim = UsdSkel.Root.Define(stage, skel_root_path)
@@ -1358,7 +1388,7 @@ def _add_skeleton_only_to_usd(
         skel_path = skel_root_path.AppendChild("Skeleton")
         skel_prim = UsdSkel.Skeleton.Define(stage, skel_path)
 
-        # Build joint hierarchy (same logic as _add_skeleton_and_materials_to_usd)
+        # Build joint hierarchy using Grove's bone tagging for reduction
         points = skeleton_data.points
         poly_lines = skeleton_data.poly_lines
 
@@ -1376,37 +1406,77 @@ def _add_skeleton_only_to_usd(
         joint_positions = {}
         joint_positions[0] = Gf.Vec3d(0, 0, 0)
         point_to_joint = {}
+        bones_map = {0: 0}  # bone_index -> joint_index mapping
 
+        # Create joints only for used bones (or all if no reduction)
+        bone_index = 1
         for line in poly_lines:
+            if len(line) < 2:
+                continue
+
             parent_joint_idx = 0
-            for i, point_idx in enumerate(line):
-                if point_idx not in point_to_joint:
-                    joint_name = f"Joint_{point_idx}"
+            previous_bone = None
+
+            for j in range(len(line) - 1):
+                start_idx = line[j]
+                end_idx = line[j + 1]
+
+                # Check if this bone should be created
+                should_create = (used_bone_indices is None) or (bone_index in used_bone_indices)
+
+                if should_create:
+                    joint_name = f"bone_{bone_index}"
                     joint_idx = len(joints)
                     joints.append(joint_name)
-                    joint_parents.append(parent_joint_idx)
+                    bones_map[bone_index] = joint_idx
 
-                    point_pos = points[point_idx]
-                    parent_pos = joint_positions[parent_joint_idx]
-                    relative_pos = Gf.Vec3d(
-                        point_pos[0] - parent_pos[0],
-                        point_pos[1] - parent_pos[1],
-                        point_pos[2] - parent_pos[2],
-                    )
+                    if start_idx < len(points) and end_idx < len(points):
+                        start_pos = points[start_idx]
+                        end_pos = points[end_idx]
 
-                    local_transform = Gf.Matrix4d().SetIdentity()
-                    local_transform.SetTranslateOnly(relative_pos)
-                    bind_transforms.append(local_transform)
-                    rest_transforms.append(local_transform)
+                        # Determine parent
+                        if j == 0:
+                            # First bone in branch
+                            if start_idx in point_to_joint:
+                                parent_joint_idx = point_to_joint[start_idx]
+                            else:
+                                parent_joint_idx = 0  # Root
+                        else:
+                            # Subsequent bones
+                            if previous_bone is not None and previous_bone in bones_map:
+                                parent_joint_idx = bones_map[previous_bone]
+                            else:
+                                parent_joint_idx = 0
 
-                    joint_positions[joint_idx] = Gf.Vec3d(
-                        point_pos[0], point_pos[1], point_pos[2]
-                    )
-                    point_to_joint[point_idx] = joint_idx
+                        joint_parents.append(parent_joint_idx)
 
-                    parent_joint_idx = joint_idx
+                        # Calculate transform relative to parent
+                        parent_pos = joint_positions.get(parent_joint_idx, Gf.Vec3d(0, 0, 0))
+                        relative_pos = Gf.Vec3d(
+                            start_pos[0] - parent_pos[0],
+                            start_pos[1] - parent_pos[1],
+                            start_pos[2] - parent_pos[2],
+                        )
+
+                        local_transform = Gf.Matrix4d().SetIdentity()
+                        local_transform.SetTranslateOnly(relative_pos)
+                        bind_transforms.append(local_transform)
+                        rest_transforms.append(local_transform)
+
+                        # Track position for this joint
+                        joint_positions[joint_idx] = Gf.Vec3d(
+                            start_pos[0], start_pos[1], start_pos[2]
+                        )
+                        point_to_joint[end_idx] = joint_idx
+                        previous_bone = bone_index
                 else:
-                    parent_joint_idx = point_to_joint[point_idx]
+                    # Bone not used, but track for hierarchy
+                    if j == 0 and start_idx in point_to_joint:
+                        previous_bone = bone_index
+                    else:
+                        previous_bone = None
+
+                bone_index += 1
 
         # Set skeleton attributes
         skel_prim.CreateJointsAttr().Set(Vt.TokenArray(joints))
@@ -1470,7 +1540,8 @@ def _add_skeleton_only_to_usd(
 
         if model is not None:
             joint_indices, joint_weights = _calculate_vertex_weights(
-                model, skeleton_data, vertices, faces
+                model, skeleton_data, vertices, faces, grove,
+                skeleton_length, skeleton_reduce, skeleton_bias, skeleton_connected
             )
             print(f"    ✓ Calculated weights for {num_vertices} vertices")
         else:
@@ -3204,6 +3275,10 @@ def export_grove_tree_as_usda_native(
     build_cutoff_thickness: float = 0.0,
     build_blend: bool = True,
     build_end_cap: bool = True,
+    skeleton_length: float = 1.0,
+    skeleton_reduce: float = 0.1,
+    skeleton_bias: float = 0.5,
+    skeleton_connected: bool = True,
     config: Optional[Any] = None,
 ) -> bool:
     """Export Grove tree using native USD export with optional twig point instances.
@@ -3233,6 +3308,10 @@ def export_grove_tree_as_usda_native(
         build_cutoff_thickness: Skip branches thinner than this diameter
         build_blend: Add smooth geometry at branch joints
         build_end_cap: Close off branch ends with geometry
+        skeleton_length: Bone length multiplier (default: 1.0)
+        skeleton_reduce: Bone reduction factor (default: 0.1, higher=fewer bones)
+        skeleton_bias: Weight bias (default: 0.5, range 0-1)
+        skeleton_connected: Connected bone hierarchy (default: True)
 
     Returns:
         bool: Success status
@@ -3346,6 +3425,10 @@ def export_grove_tree_as_usda_native(
                 grove=grove,
                 species_name=species_name,
                 model=model,
+                skeleton_length=skeleton_length,
+                skeleton_reduce=skeleton_reduce,
+                skeleton_bias=skeleton_bias,
+                skeleton_connected=skeleton_connected,
             )
 
             if skeleton_added:

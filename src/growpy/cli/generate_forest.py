@@ -235,6 +235,10 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 build_cutoff_thickness=quality_params["build_cutoff_thickness"],
                 build_blend=quality_params["build_blend"],
                 build_end_cap=quality_params["build_end_cap"],
+                skeleton_length=quality_params.get("skeleton_length", 1.0),
+                skeleton_reduce=quality_params.get("skeleton_reduce", 0.1),
+                skeleton_bias=quality_params.get("skeleton_bias", 0.5),
+                skeleton_connected=quality_params.get("skeleton_connected", True),
                 config=config,
             )
 
@@ -399,7 +403,7 @@ def generate_forest_exports(
     use_multiprocessing: bool = True,
     max_workers: Optional[int] = None,
     skeleton_length: float = 1.0,
-    skeleton_reduce: float = 0.25,
+    skeleton_reduce: float = 0.1,
     skeleton_bias: float = 0.5,
     skeleton_connected: bool = True,
 ) -> None:
@@ -711,8 +715,8 @@ Examples:
     parser.add_argument(
         "--skeleton-reduce",
         type=float,
-        default=0.25,
-        help="Skeleton bone reduction factor (default: 0.25). Higher values create fewer bones (range: 0.0-1.0)",
+        default=0.1,
+        help="Skeleton bone reduction factor (default: 0.1). Higher values create fewer bones (range: 0.0-1.0)",
     )
     parser.add_argument(
         "--skeleton-bias",

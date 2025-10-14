@@ -8,7 +8,8 @@
       "Bash(conda search:*)",
       "WebSearch",
       "Bash(rm:*)",
-      "Bash(mamba run:*)"
+      "Bash(mamba run:*)",
+      "Bash(python3:*)"
     ],
     "deny": [],
     "ask": []
