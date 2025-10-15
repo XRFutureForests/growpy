@@ -8,6 +8,20 @@ including mesh processing, material setup, and export to FBX/USD formats.
 
 CRITICAL: This module runs in Blender's Python environment, not the main conda env.
 It must be self-contained and not import from growpy package (import cycles).
+
+FBX Export Limitations:
+    - FBX does not fully support Blender's material blend modes (HASHED, CLIP)
+    - Two-sided rendering settings may not export correctly to FBX
+    - Alpha transparency requires manual material setup in Unreal Engine:
+        * Set material blend mode to "Masked" or "Translucent"
+        * Enable "Two Sided" in material properties
+        * Connect alpha/opacity texture to material opacity mask
+    - USD/USDA export is recommended for best results with transparency
+
+Texture Handling:
+    - When both top and bottom diffuse textures exist, top texture is prioritized
+    - This is a simplification - proper two-sided foliage would require advanced
+      material setups that don't export well to FBX
 """
 
 import json
@@ -385,7 +399,26 @@ def setup_materials_with_textures(obj, blend_dir, species_name, output_dir):
             if tex_type not in texture_map:
                 texture_map[tex_type] = tex
 
+        # If both diffuse_top and diffuse_bottom exist, prioritize top
+        if "diffuse_top" in texture_map and "diffuse_bottom" in texture_map:
+            # Use only top texture
+            texture_map["diffuse"] = texture_map["diffuse_top"]
+            del texture_map["diffuse_bottom"]
+            print(f"      Note: Using top texture only (both top/bottom found)")
+        elif "diffuse_top" in texture_map:
+            # Rename diffuse_top to diffuse for standard connection
+            texture_map["diffuse"] = texture_map["diffuse_top"]
+            del texture_map["diffuse_top"]
+        elif "diffuse_bottom" in texture_map:
+            # Use bottom if that's all we have
+            texture_map["diffuse"] = texture_map["diffuse_bottom"]
+            del texture_map["diffuse_bottom"]
+
         print(f"      Material '{mat_name}': {list(texture_map.keys())}")
+
+        # Debug: Show texture file names
+        for tex_type, tex_path in texture_map.items():
+            print(f"        - {tex_type}: {tex_path.name}")
 
         # Add texture nodes
         y_offset = 300
@@ -408,17 +441,38 @@ def setup_materials_with_textures(obj, blend_dir, species_name, output_dir):
                 tex_node.label = tex_type.title()
 
                 # Connect based on type
-                if "diffuse" in tex_type:
+                if tex_type == "diffuse":
                     links.new(tex_node.outputs["Color"], bsdf.inputs["Base Color"])
-                    if "diffuse_top" in tex_type:
-                        tex_node.label = "Diffuse Top"
 
                 elif tex_type == "alpha":
+                    # Alpha masks: use Non-Color for proper grayscale interpretation
                     tex_node.image.colorspace_settings.name = "Non-Color"
-                    links.new(tex_node.outputs["Color"], bsdf.inputs["Alpha"])
+
+                    # Check if alpha needs inversion by examining filename
+                    # Some alpha masks use white=transparent, others use black=transparent
+                    needs_invert = any(
+                        keyword in tex_path.stem.lower()
+                        for keyword in ["mask", "cutout"]
+                    )
+
+                    if needs_invert:
+                        # Invert the alpha (white becomes transparent)
+                        invert_node = nodes.new("ShaderNodeInvert")
+                        invert_node.location = (-200, y_offset)
+                        links.new(tex_node.outputs["Color"], invert_node.inputs["Color"])
+                        links.new(invert_node.outputs["Color"], bsdf.inputs["Alpha"])
+                    else:
+                        # Direct connection (white=opaque, black=transparent)
+                        links.new(tex_node.outputs["Color"], bsdf.inputs["Alpha"])
+
+                    # Use CLIP mode for clean alpha cutout (works well in USD)
+                    # This prevents the "layer" effect you're seeing
                     material.blend_method = "CLIP"
+                    material.alpha_threshold = 0.5  # Hard cutoff for clean edges
+                    material.show_transparent_back = True
                     if hasattr(material, "shadow_method"):
                         material.shadow_method = "CLIP"
+                    material.use_backface_culling = False
 
                 elif tex_type == "normal":
                     tex_node.image.colorspace_settings.name = "Non-Color"
@@ -470,6 +524,12 @@ def setup_materials_with_textures(obj, blend_dir, species_name, output_dir):
             bsdf.inputs["Specular IOR"].default_value = 0.5
         if "roughness" not in texture_map:
             bsdf.inputs["Roughness"].default_value = 0.7
+
+        # CRITICAL: Enable two-sided rendering for leaf/twig materials
+        # This ensures visibility from both sides (especially important for FBX)
+        material.use_backface_culling = False
+        # Set custom property for FBX export (Unreal recognizes this)
+        material["TwoSided"] = True
 
         obj.data.materials.append(material)
         materials_created += 1
@@ -538,6 +598,32 @@ def process_twig_file(blend_file, output_dir, formats, species_name):
             bpy.ops.object.mode_set(mode="OBJECT")
             print(f"    -> Triangulation complete")
 
+            # Note: UV coordinate fixes removed - they were breaking alpha channel
+            # The texture orientation issue may be in the original texture files
+            # or the way they're mapped in the original .blend files
+
+            # Enable two-sided mesh rendering with smooth shading
+            # This ensures FBX exports with proper backface visibility
+            print(f"    -> Configuring mesh for two-sided rendering...")
+            bpy.context.view_layer.objects.active = obj
+            bpy.ops.object.mode_set(mode="EDIT")
+            bpy.ops.mesh.select_all(action="SELECT")
+            # Recalculate normals to ensure they're consistent
+            bpy.ops.mesh.normals_make_consistent(inside=False)
+            bpy.ops.object.mode_set(mode="OBJECT")
+
+            # Note: use_auto_smooth removed in Blender 4.1+
+            if hasattr(obj.data, "use_auto_smooth"):
+                obj.data.use_auto_smooth = False
+            for poly in obj.data.polygons:
+                poly.use_smooth = True
+
+            # Add custom properties for FBX export (Unreal reads these)
+            obj["TwoSided"] = 1
+            obj["DoubleSided"] = True
+            obj.data["TwoSided"] = 1
+            print(f"    -> Two-sided rendering configured")
+
             # Create mount point (empty at origin for Unreal PCG attachment)
             mount_point = bpy.data.objects.new(f"{standardized_name}_mount", None)
             mount_point.location = (0, 0, 0)
@@ -591,20 +677,6 @@ def process_twig_file(blend_file, output_dir, formats, species_name):
 
                     exported_files.append(export_path)
 
-                    # Create skeletal variant with single-bone skeleton
-                    skeletal_path = output_dir / f"{standardized_name}_skeletal.{fmt}"
-                    print(f"    -> Creating skeletal variant: {skeletal_path.name}")
-
-                    shutil.copy2(export_path, skeletal_path)
-
-                    if _add_skeleton_to_twig_usd(skeletal_path):
-                        exported_files.append(skeletal_path)
-                        print(
-                            f"    -> [OK] Skeletal twig created (single-bone skeleton at origin)"
-                        )
-                    else:
-                        print(f"    -> [WARN] Could not create skeletal variant")
-
                 elif fmt == "fbx":
                     # Export static FBX
                     export_path = output_dir / f"{standardized_name}.fbx"
@@ -632,68 +704,6 @@ def process_twig_file(blend_file, output_dir, formats, species_name):
                     )
 
                     exported_files.append(export_path)
-
-                    # Create skeletal FBX variant
-                    skeletal_export_path = (
-                        output_dir / f"{standardized_name}_skeletal.fbx"
-                    )
-                    print(
-                        f"    -> Creating skeletal variant: {skeletal_export_path.name}"
-                    )
-
-                    # Add skeleton to mesh
-                    armature_obj = _add_skeleton_to_twig_fbx(obj)
-
-                    if armature_obj:
-                        # Select both mesh and armature for export
-                        bpy.ops.object.select_all(action="DESELECT")
-                        mount_point.select_set(True)
-                        obj.select_set(True)
-                        armature_obj.select_set(True)
-                        bpy.context.view_layer.objects.active = mount_point
-
-                        # Export with skeleton
-                        bpy.ops.export_scene.fbx(
-                            filepath=str(skeletal_export_path),
-                            use_selection=True,
-                            object_types={"MESH", "EMPTY", "ARMATURE"},
-                            mesh_smooth_type="FACE",
-                            use_mesh_modifiers=True,
-                            use_mesh_edges=False,
-                            use_tspace=True,
-                            use_custom_props=True,
-                            add_leaf_bones=False,
-                            primary_bone_axis="Y",
-                            secondary_bone_axis="X",
-                            bake_anim=True,
-                            bake_anim_use_all_bones=True,
-                            bake_anim_use_nla_strips=False,
-                            bake_anim_step=1.0,
-                            bake_anim_simplify_factor=0.0,
-                            path_mode="COPY",
-                            embed_textures=True,
-                            batch_mode="OFF",
-                            axis_forward="-Z",
-                            axis_up="Y",
-                            global_scale=1.0,
-                            apply_scale_options="FBX_SCALE_ALL",
-                        )
-
-                        exported_files.append(skeletal_export_path)
-                        print(
-                            f"    -> [OK] Skeletal FBX created (single-bone skeleton at origin)"
-                        )
-
-                        # Clean up armature for next iteration
-                        bpy.data.objects.remove(armature_obj, do_unlink=True)
-
-                        # Remove modifier and vertex group from mesh
-                        if "Armature" in [m.name for m in obj.modifiers]:
-                            obj.modifiers.remove(obj.modifiers["Armature"])
-                        if "Root" in obj.vertex_groups:
-                            obj.vertex_groups.remove(obj.vertex_groups["Root"])
-                    else:
-                        print(f"    -> [WARN] Could not create skeletal FBX variant")
 
             # Store metadata
             texture_manifest[standardized_name] = {
