@@ -9,7 +9,8 @@
       "WebSearch",
       "Bash(rm:*)",
       "Bash(mamba run:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(conda run -n the-grove python -m growpy.cli.generate_forest:*)"
     ],
     "deny": [],
     "ask": []

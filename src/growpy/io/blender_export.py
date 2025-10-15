@@ -8,6 +8,10 @@ from typing import Any, Dict, List, Optional, Tuple
 try:
     import bpy
 
+    # Expose Blender's bundled VFX libraries (USD/pxr, MaterialX, etc.)
+    # This allows importing pxr without DLL conflicts (Blender 4.4+)
+    bpy.utils.expose_bundled_modules()
+
     BPY_AVAILABLE = True
 except (ImportError, OSError) as e:
     # bpy not available or DLL load failed - this is expected when not using Blender Python
@@ -1358,23 +1362,32 @@ def _add_skeleton_only_to_usd(
         skeleton_data = skeletons[0]
 
         # Use Grove's bone tagging to determine which bones are needed (reduces 87K+ points to ~100-500 bones)
-        print(f"    Tagging bones with params: length={skeleton_length}, reduce={skeleton_reduce}, bias={skeleton_bias}, connected={skeleton_connected}")
+        # NOTE: tag_bone_id() should have been called BEFORE building the model
+        # If model has bone_id attribute, use it for bone reduction
+        # Otherwise, create all joints (no reduction)
 
         used_bone_indices = None
-        if model is not None and hasattr(grove, "tag_bone_id"):
-            try:
-                bones = grove.tag_bone_id(
-                    skeleton_length, skeleton_reduce, skeleton_bias, skeleton_connected
-                )
-
-                if bones and hasattr(model, "point_attribute_bone_id"):
-                    bone_ids = model.point_attribute_bone_id
-                    used_bone_indices = set(bone_ids)
-                    print(f"    ✓ Bone reduction: {len(bones)} bones needed (from {len(skeleton_data.points)} skeleton points)")
-                else:
-                    print("    Warning: Grove bone tagging returned no bones or bone_id attribute missing")
-            except Exception as e:
-                print(f"    Warning: Bone tagging failed ({e}), creating all joints")
+        if model is not None and hasattr(model, "point_attribute_bone_id"):
+            bone_ids = model.point_attribute_bone_id
+            used_bone_indices = set(bone_ids)
+            print(f"    ✓ Using bone IDs from model: {len(used_bone_indices)} unique bones")
+        else:
+            # Fallback: Try to tag bones now (but this won't work if model was already built)
+            if model is not None and hasattr(grove, "tag_bone_id"):
+                print(f"    Warning: Model missing bone_id attribute - attempting to tag bones now")
+                print(f"    (This may not work correctly - bones should be tagged BEFORE building model)")
+                try:
+                    bones = grove.tag_bone_id(
+                        skeleton_length, skeleton_reduce, skeleton_bias, skeleton_connected
+                    )
+                    if bones and hasattr(model, "point_attribute_bone_id"):
+                        bone_ids = model.point_attribute_bone_id
+                        used_bone_indices = set(bone_ids)
+                        print(f"    ✓ Bone reduction: {len(bones)} bones needed (from {len(skeleton_data.points)} skeleton points)")
+                    else:
+                        print("    Warning: Grove bone tagging returned no bones or bone_id attribute missing")
+                except Exception as e:
+                    print(f"    Warning: Bone tagging failed ({e}), creating all joints")
 
         if used_bone_indices is None:
             print(f"    Creating all {len(skeleton_data.points)} joints (no bone reduction)")
@@ -1470,11 +1483,17 @@ def _add_skeleton_only_to_usd(
                         point_to_joint[end_idx] = joint_idx
                         previous_bone = bone_index
                 else:
-                    # Bone not used, but track for hierarchy
+                    # Bone not used - don't update previous_bone tracking
+                    # Keep previous_bone pointing to the last CREATED bone
+                    # Only update if this is first bone in branch and connects to existing joint
                     if j == 0 and start_idx in point_to_joint:
-                        previous_bone = bone_index
-                    else:
-                        previous_bone = None
+                        # Find the bone_index that created this joint
+                        connecting_joint_idx = point_to_joint[start_idx]
+                        # Search bones_map to find which bone_index created this joint
+                        for bidx, jidx in bones_map.items():
+                            if jidx == connecting_joint_idx:
+                                previous_bone = bidx
+                                break
 
                 bone_index += 1
 
@@ -2499,7 +2518,23 @@ def _export_fbx_internal(
         # Clear scene
         bpy.ops.wm.read_factory_settings(use_empty=True)
 
-        # Build Grove model first
+        # Tag bones BEFORE building models if skeleton is needed
+        # This ensures bone IDs are included in the model
+        if include_skeleton and hasattr(grove, "tag_bone_id"):
+            print(f"  Tagging bones (length={skeleton_length}, reduce={skeleton_reduce}, bias={skeleton_bias}, connected={skeleton_connected})...")
+            try:
+                bones = grove.tag_bone_id(
+                    skeleton_length, skeleton_reduce, skeleton_bias, skeleton_connected
+                )
+                if bones:
+                    print(f"    ✓ Tagged {len(bones)} bones for skeleton")
+                else:
+                    print("    Warning: Bone tagging returned no bones")
+            except Exception as e:
+                print(f"    Warning: Bone tagging failed: {e}")
+
+        # Build Grove model
+        # If bone tagging was done above, the model will include bone_id attributes
         from ..core.tree import build_grove_with_all_attributes
 
         build_params = {
@@ -3346,7 +3381,23 @@ def export_grove_tree_as_usda_native(
     try:
         print(f"Exporting {species_name} as USDA...")
 
+        # Tag bones BEFORE building models so bone IDs are included in model
+        # This is critical for skeleton export to work correctly
+        if include_skeleton and hasattr(grove, "tag_bone_id"):
+            print(f"  Tagging bones (length={skeleton_length}, reduce={skeleton_reduce}, bias={skeleton_bias}, connected={skeleton_connected})...")
+            try:
+                bones = grove.tag_bone_id(
+                    skeleton_length, skeleton_reduce, skeleton_bias, skeleton_connected
+                )
+                if bones:
+                    print(f"    ✓ Tagged {len(bones)} bones for skeleton")
+                else:
+                    print("    Warning: Bone tagging returned no bones")
+            except Exception as e:
+                print(f"    Warning: Bone tagging failed: {e}")
+
         # Build tree model with Grove
+        # If bone tagging was done above, the model will include bone_id attributes
         models = grove.build_models(
             {
                 "resolution": resolution,

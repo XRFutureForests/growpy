@@ -352,7 +352,9 @@ def export_individual_trees(
     # Force sequential processing for FBX exports
     if "fbx" in formats:
         if use_multiprocessing:
-            print("Note: Multiprocessing disabled for FBX export (bpy module limitation)")
+            print(
+                "Note: Multiprocessing disabled for FBX export (bpy module limitation)"
+            )
         use_multiprocessing = False
 
     if use_multiprocessing and total_trees > 1:
@@ -715,8 +717,8 @@ Examples:
     parser.add_argument(
         "--skeleton-reduce",
         type=float,
-        default=0.1,
-        help="Skeleton bone reduction factor (default: 0.1). Higher values create fewer bones (range: 0.0-1.0)",
+        default=0.01,
+        help="Skeleton bone reduction factor (default: 0.01). Higher values create fewer bones (range: 0.0-1.0)",
     )
     parser.add_argument(
         "--skeleton-bias",
