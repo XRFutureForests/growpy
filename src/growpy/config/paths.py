@@ -1,10 +1,11 @@
 """Asset path resolution for GrowPy."""
 
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Dict, List, Optional
+
 import pandas as pd
 
-from .species import load_species_lookup, find_species_match
+from .species import find_species_match, load_species_lookup
 
 
 def get_data_directory() -> Path:
@@ -39,9 +40,7 @@ def get_preset_path(common_name: str) -> Path:
     df = load_species_lookup()
     matched_name = find_species_match(common_name)
     if matched_name is None:
-        raise ValueError(
-            f"Species '{common_name}' not found in lookup table"
-        )
+        raise ValueError(f"Species '{common_name}' not found in lookup table")
 
     preset_name = df.loc[df["Common Name"] == matched_name, "Preset"].values[0]
     assets_dir = get_assets_directory()
@@ -299,10 +298,14 @@ def get_best_twig_file_for_type(
             "other",
         ]
         for preferred_type in priority_order:
-            if preferred_type in twig_files_by_type and twig_files_by_type[preferred_type]:
+            if (
+                preferred_type in twig_files_by_type
+                and twig_files_by_type[preferred_type]
+            ):
                 return twig_files_by_type[preferred_type][0]
         return None
     else:
         if twig_type in twig_files_by_type and twig_files_by_type[twig_type]:
             return twig_files_by_type[twig_type][0]
+        return None
         return None
