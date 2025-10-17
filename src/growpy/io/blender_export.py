@@ -1358,6 +1358,24 @@ def _add_skeleton_only_to_usd(
 
         # Build skeleton
         print(f"  Adding skeleton to USD (UE5.7 SkelRoot structure)...")
+
+        # CRITICAL: Use grove.tag_bone_id() to get actual bone segments with head/tail positions
+        # This is THE CORRECT WAY per Blender addon reference implementation
+        # tag_bone_id() returns: [(bone_idx, parent_idx, head_Vector, tail_Vector, radius), ...]
+        # Unlike skeleton.points/poly_lines which only give connectivity, this gives actual bone geometry
+        bones_info = grove.tag_bone_id(
+            skeleton_length, skeleton_reduce, skeleton_bias, skeleton_connected
+        )
+
+        if not bones_info or len(bones_info) == 0:
+            print(f"    Warning: No bone data from tag_bone_id()")
+            return False
+
+        print(
+            f"    [OK] Grove returned {len(bones_info)} bones with head/tail positions"
+        )
+
+        # Still need skeletons for metadata, but we'll use bones_info for geometry
         skeletons = grove.build_skeletons()
         if not skeletons or len(skeletons) == 0:
             print(f"    Warning: No skeleton data available")
@@ -1502,6 +1520,8 @@ def _add_skeleton_only_to_usd(
                         joint_parents.append(parent_joint_idx)
 
                         # Calculate transform relative to parent
+                        # For the first bone in a branch (j == 0), parent is either Root or another bone
+                        # For subsequent bones (j > 0), parent is the previous bone in the chain
                         parent_pos = joint_positions.get(
                             parent_joint_idx, Gf.Vec3d(0, 0, 0)
                         )
@@ -1512,9 +1532,9 @@ def _add_skeleton_only_to_usd(
                         bind_transforms.append(local_transform)
                         rest_transforms.append(local_transform)
 
-                        # Track position for this joint (use START position to match calculation above)
-                        # This ensures next bone's parent_pos matches this bone's start_pos
-                        joint_positions[joint_idx] = start_pos
+                        # CRITICAL: Track END position so next bone in chain starts where this one ends
+                        # This creates connected bone chains instead of all bones starting from parent
+                        joint_positions[joint_idx] = end_pos
                         point_to_joint[end_idx] = joint_idx
                         previous_bone = bone_index
                         parent_joint_idx = (
@@ -3141,7 +3161,10 @@ def export_grove_tree_as_usda_native(
             shutil.copy2(temp_tree_path, skeletal_tree_path)
 
             # Add ONLY skeleton to the SKELETAL copy (materials already present from copy)
-            skeleton_added = _add_skeleton_only_to_usd(
+            # Use new bone-based implementation which correctly uses Grove's tag_bone_id()
+            from .skeleton_from_bones import add_skeleton_from_grove_bones
+
+            skeleton_added = add_skeleton_from_grove_bones(
                 usd_path=skeletal_tree_path,
                 grove=grove,
                 species_name=species_name,
