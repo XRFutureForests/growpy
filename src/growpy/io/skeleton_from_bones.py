@@ -147,11 +147,38 @@ def add_skeleton_from_grove_bones(
             parent_tail = joint_tail_positions.get(parent_joint_idx, Gf.Vec3d(0, 0, 0))
             relative_pos = head_pos - parent_tail
 
-            # Create bind transform
-            local_transform = Gf.Matrix4d().SetIdentity()
-            local_transform.SetTranslateOnly(relative_pos)
-            bind_transforms.append(local_transform)
-            rest_transforms.append(local_transform)
+            # Calculate bone direction (from head to tail)
+            bone_vector = tail_pos - head_pos
+            bone_length = bone_vector.GetLength()
+            
+            if bone_length > 0.0001:  # Avoid division by zero
+                bone_dir = bone_vector / bone_length
+                
+                # Default bone direction in USD is +Y (up)
+                default_dir = Gf.Vec3d(0, 1, 0)
+                
+                # Calculate rotation to align default direction with bone direction
+                rotation = Gf.Rotation()
+                rotation.SetRotateInto(default_dir, bone_dir)
+                rotation_matrix = Gf.Matrix3d(rotation.GetQuat())
+                
+                # Create transform with both translation and rotation
+                local_transform = Gf.Matrix4d().SetIdentity()
+                local_transform.SetTranslateOnly(relative_pos)
+                
+                # Apply rotation to the transform
+                transform_with_rotation = Gf.Matrix4d().SetIdentity()
+                transform_with_rotation.SetRotate(rotation_matrix)
+                transform_with_rotation.SetTranslateOnly(relative_pos)
+                
+                bind_transforms.append(transform_with_rotation)
+                rest_transforms.append(transform_with_rotation)
+            else:
+                # Zero-length bone, use identity
+                local_transform = Gf.Matrix4d().SetIdentity()
+                local_transform.SetTranslateOnly(relative_pos)
+                bind_transforms.append(local_transform)
+                rest_transforms.append(local_transform)
 
             # Store tail position for child bones
             joint_tail_positions[joint_idx] = tail_pos
