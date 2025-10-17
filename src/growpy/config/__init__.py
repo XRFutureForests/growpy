@@ -1,47 +1,62 @@
-"""
-Configuration management for GrowPy.
+"""Configuration management for GrowPy.
 
-Species lookup, asset path resolution, and project configuration.
-
-Key Classes:
-    GrowPyConfig  Main configuration class with species lookup
-
-Key Functions:
-    get_config()              Get or create global config
-    set_global_config()       Set custom global config
-
-Configuration Sources:
-    1. tree_asset_lookup.csv  Maps species to Grove presets
-    2. environment.yml        Sets PYTHONPATH for Grove API
-    3. Optional config/       Project-specific overrides
-
-Example:
-    from growpy import get_config
-
-    config = get_config()
-
-    # Get all species
-    species_list = config.get_all_species()
-
-    # Get species preset path
-    preset = config.get_species_preset("Quaking Aspen")
-
-    # Get asset paths
-    twigs_path = config.twigs_path
-    textures_path = config.textures_path
-
-Asset Paths:
-    config.presets_path       Species .seed.json files
-    config.textures_path      Bark and leaf textures
-    config.twigs_path         Twig .blend files
-    config.growth_models_path Generated prediction models
+Provides species lookup, asset path resolution, and project configuration.
 """
 
-from .settings import GrowPyConfig, get_config, get_global_config, set_global_config
+from .core import GrowPyConfig, get_config, get_global_config, set_global_config
+from .species import (
+    load_species_lookup,
+    find_species_match,
+    get_available_species,
+    get_species_colors,
+    get_bark_texture,
+    get_species_data,
+)
+from .paths import (
+    get_data_directory,
+    get_assets_directory,
+    get_preset_path,
+    get_growth_model_path,
+    get_bark_texture_path,
+    get_twig_directory_path,
+    get_twig_usd_directory_path,
+    get_twig_textures_path,
+    get_twig_prototype_path,
+    get_twig_material_path,
+    get_available_twig_usd_files,
+    get_twig_files_by_type,
+    get_best_twig_file_for_type,
+)
+from .quality import get_all_lod_configs, get_lod_configs
 
 __all__ = [
+    # Core config
     "GrowPyConfig",
     "get_config",
     "get_global_config",
     "set_global_config",
+    # Species
+    "load_species_lookup",
+    "find_species_match",
+    "get_available_species",
+    "get_species_colors",
+    "get_bark_texture",
+    "get_species_data",
+    # Paths
+    "get_data_directory",
+    "get_assets_directory",
+    "get_preset_path",
+    "get_growth_model_path",
+    "get_bark_texture_path",
+    "get_twig_directory_path",
+    "get_twig_usd_directory_path",
+    "get_twig_textures_path",
+    "get_twig_prototype_path",
+    "get_twig_material_path",
+    "get_available_twig_usd_files",
+    "get_twig_files_by_type",
+    "get_best_twig_file_for_type",
+    # Quality
+    "get_all_lod_configs",
+    "get_lod_configs",
 ]

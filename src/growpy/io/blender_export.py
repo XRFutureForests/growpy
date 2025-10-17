@@ -483,7 +483,7 @@ def export_tree_as_usd(
         # Add Nanite attributes to USD file
         add_nanite_attributes_to_usd(output_path, is_foliage=False)
 
-        print(f"✓ Exported USD with Nanite compatibility for {species_name}")
+        print(f"[OK] Exported USD with Nanite compatibility for {species_name}")
         return True
 
     except Exception as e:
@@ -655,7 +655,7 @@ def _calculate_vertex_weights(
                 vertex_to_weights[vert_idx] = [1.0]
 
         print(
-            f"  ✓ Grove bone assignment complete: {num_vertices} vertices, {len(bones)} bones"
+            f"  [OK] Grove bone assignment complete: {num_vertices} vertices, {len(bones)} bones"
         )
         return vertex_to_joints, vertex_to_weights
 
@@ -802,7 +802,9 @@ def _add_skeleton_to_object(
 
         bpy.ops.object.mode_set(mode="OBJECT")
         t_bones = time.time()
-        print(f"      ⏱️  Bone creation: {t_bones-t_weight_calc:.2f}s ({len(bone_names)} bones)")
+        print(
+            f"      ⏱️  Bone creation: {t_bones-t_weight_calc:.2f}s ({len(bone_names)} bones)"
+        )
 
         # Parent mesh to armature for proper FBX skeletal mesh export
         obj.parent = armature_obj
@@ -831,7 +833,7 @@ def _add_skeleton_to_object(
             f"      ⏱️  Weight assignment: {t_assign_end-t_assign_start:.2f}s ({len(vertices)} vertices)"
         )
 
-        print(f"    ✓ Applied weights for {len(vertices)} vertices to FBX skeleton")
+        print(f"    [OK] Applied weights for {len(vertices)} vertices to FBX skeleton")
 
         return armature_obj
 
@@ -1042,7 +1044,7 @@ def _add_grove_face_attributes_to_usd(usd_path: Path, model: Any) -> None:
                         twig_counts[attr_name] = true_count
 
             if twig_counts:
-                print(f"  ✓ Added twig face attributes to USD:")
+                print(f"  [OK] Added twig face attributes to USD:")
                 for attr, count in twig_counts.items():
                     print(f"    - {attr}: {count} faces")
             else:
@@ -1146,7 +1148,7 @@ def _add_blender_attributes_as_usd_primvars(usd_path: Path, mesh_obj: Any) -> No
                     primvar.Set(values)
 
         stage.Save()
-        print(f"✓ Added Blender attributes as USD primvars to {usd_path.name}")
+        print(f"[OK] Added Blender attributes as USD primvars to {usd_path.name}")
 
     except Exception as e:
         print(f"Warning: Failed to add primvars to USD file: {e}")
@@ -1242,7 +1244,7 @@ def _add_materials_to_usd(
                 ).ConnectToSource(
                     diffuse_tex.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
                 )
-                print(f"    ✓ Added diffuse texture: {textures['diffuse'].name}")
+                print(f"    [OK] Added diffuse texture: {textures['diffuse'].name}")
 
             # Normal map
             if "normal" in textures:
@@ -1266,7 +1268,7 @@ def _add_materials_to_usd(
                 ).ConnectToSource(
                     normal_tex.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
                 )
-                print(f"    ✓ Added normal map: {textures['normal'].name}")
+                print(f"    [OK] Added normal map: {textures['normal'].name}")
 
             # Set material properties for bark
             shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.8)
@@ -1282,7 +1284,7 @@ def _add_materials_to_usd(
             binding_api = UsdShade.MaterialBindingAPI.Apply(tree_mesh_prim)
             binding_api.Bind(material)
 
-            print(f"    ✓ Bound material to mesh")
+            print(f"    [OK] Bound material to mesh")
         else:
             print(f"    ℹ️  No bark textures found for {species_name}")
 
@@ -1370,27 +1372,44 @@ def _add_skeleton_only_to_usd(
         if model is not None and hasattr(model, "point_attribute_bone_id"):
             bone_ids = model.point_attribute_bone_id
             used_bone_indices = set(bone_ids)
-            print(f"    ✓ Using bone IDs from model: {len(used_bone_indices)} unique bones")
+            print(
+                f"    [OK] Using bone IDs from model: {len(used_bone_indices)} unique bones"
+            )
         else:
             # Fallback: Try to tag bones now (but this won't work if model was already built)
             if model is not None and hasattr(grove, "tag_bone_id"):
-                print(f"    Warning: Model missing bone_id attribute - attempting to tag bones now")
-                print(f"    (This may not work correctly - bones should be tagged BEFORE building model)")
+                print(
+                    f"    Warning: Model missing bone_id attribute - attempting to tag bones now"
+                )
+                print(
+                    f"    (This may not work correctly - bones should be tagged BEFORE building model)"
+                )
                 try:
                     bones = grove.tag_bone_id(
-                        skeleton_length, skeleton_reduce, skeleton_bias, skeleton_connected
+                        skeleton_length,
+                        skeleton_reduce,
+                        skeleton_bias,
+                        skeleton_connected,
                     )
                     if bones and hasattr(model, "point_attribute_bone_id"):
                         bone_ids = model.point_attribute_bone_id
                         used_bone_indices = set(bone_ids)
-                        print(f"    ✓ Bone reduction: {len(bones)} bones needed (from {len(skeleton_data.points)} skeleton points)")
+                        print(
+                            f"    [OK] Bone reduction: {len(bones)} bones needed (from {len(skeleton_data.points)} skeleton points)"
+                        )
                     else:
-                        print("    Warning: Grove bone tagging returned no bones or bone_id attribute missing")
+                        print(
+                            "    Warning: Grove bone tagging returned no bones or bone_id attribute missing"
+                        )
                 except Exception as e:
-                    print(f"    Warning: Bone tagging failed ({e}), creating all joints")
+                    print(
+                        f"    Warning: Bone tagging failed ({e}), creating all joints"
+                    )
 
         if used_bone_indices is None:
-            print(f"    Creating all {len(skeleton_data.points)} joints (no bone reduction)")
+            print(
+                f"    Creating all {len(skeleton_data.points)} joints (no bone reduction)"
+            )
 
         # Create SkelRoot
         skel_root_path = original_xform_path.AppendChild("SkelRoot")
@@ -1435,7 +1454,9 @@ def _add_skeleton_only_to_usd(
                 end_idx = line[j + 1]
 
                 # Check if this bone should be created
-                should_create = (used_bone_indices is None) or (bone_index in used_bone_indices)
+                should_create = (used_bone_indices is None) or (
+                    bone_index in used_bone_indices
+                )
 
                 if should_create:
                     joint_name = f"bone_{bone_index}"
@@ -1464,7 +1485,9 @@ def _add_skeleton_only_to_usd(
                         joint_parents.append(parent_joint_idx)
 
                         # Calculate transform relative to parent
-                        parent_pos = joint_positions.get(parent_joint_idx, Gf.Vec3d(0, 0, 0))
+                        parent_pos = joint_positions.get(
+                            parent_joint_idx, Gf.Vec3d(0, 0, 0)
+                        )
                         relative_pos = Gf.Vec3d(
                             start_pos[0] - parent_pos[0],
                             start_pos[1] - parent_pos[1],
@@ -1518,9 +1541,9 @@ def _add_skeleton_only_to_usd(
             [anim_path]
         )
 
-        print(f"    ✓ Created SkelRoot with skeleton ({len(joints)} joints)")
+        print(f"    [OK] Created SkelRoot with skeleton ({len(joints)} joints)")
         print(
-            f"    ✓ Created SkelAnimation ({len(joints)} joints, bind pose for UE skeletal mesh recognition)"
+            f"    [OK] Created SkelAnimation ({len(joints)} joints, bind pose for UE skeletal mesh recognition)"
         )
 
         # Move mesh under SkelRoot
@@ -1559,10 +1582,17 @@ def _add_skeleton_only_to_usd(
 
         if model is not None:
             joint_indices, joint_weights = _calculate_vertex_weights(
-                model, skeleton_data, vertices, faces, grove,
-                skeleton_length, skeleton_reduce, skeleton_bias, skeleton_connected
+                model,
+                skeleton_data,
+                vertices,
+                faces,
+                grove,
+                skeleton_length,
+                skeleton_reduce,
+                skeleton_bias,
+                skeleton_connected,
             )
-            print(f"    ✓ Calculated weights for {num_vertices} vertices")
+            print(f"    [OK] Calculated weights for {num_vertices} vertices")
         else:
             joint_indices = [[0] for _ in range(num_vertices)]
             joint_weights = [[1.0] for _ in range(num_vertices)]
@@ -1598,11 +1628,11 @@ def _add_skeleton_only_to_usd(
         if root_prim:
             stage.SetDefaultPrim(root_prim)
             print(
-                f"    ✓ Set default prim to {root_prim.GetPath()} (preserves material access)"
+                f"    [OK] Set default prim to {root_prim.GetPath()} (preserves material access)"
             )
 
-        print(f"    ✓ Bound mesh to skeleton with joint influences")
-        print(f"    ✓ Hierarchy: SkelRoot > [Skeleton + Mesh]")
+        print(f"    [OK] Bound mesh to skeleton with joint influences")
+        print(f"    [OK] Hierarchy: SkelRoot > [Skeleton + Mesh]")
 
         stage.Save()
         return True
@@ -1794,7 +1824,7 @@ def _add_skeleton_and_materials_to_usd(
             skel_prim.CreateBindTransformsAttr(Vt.Matrix4dArray(bind_transforms))
             skel_prim.CreateRestTransformsAttr(Vt.Matrix4dArray(rest_transforms))
 
-            print(f"    ✓ Created SkelRoot with skeleton ({len(joints)} joints)")
+            print(f"    [OK] Created SkelRoot with skeleton ({len(joints)} joints)")
 
             # Create SkelAnimation for bind pose (CRITICAL for Unreal skeletal mesh recognition)
             # Even without animation, Unreal needs this to recognize as skeletal mesh
@@ -1825,7 +1855,7 @@ def _add_skeleton_and_materials_to_usd(
             skel_binding_api.CreateAnimationSourceRel().SetTargets([anim_path])
 
             print(
-                f"    ✓ Created SkelAnimation ({num_joints} joints, bind pose for UE skeletal mesh recognition)"
+                f"    [OK] Created SkelAnimation ({num_joints} joints, bind pose for UE skeletal mesh recognition)"
             )
 
             # Move mesh inside SkelRoot and bind to skeleton
@@ -1873,7 +1903,7 @@ def _add_skeleton_and_materials_to_usd(
                 joint_indices, joint_weights = _calculate_vertex_weights(
                     model, skeleton_data, vertices, faces
                 )
-                print(f"    ✓ Calculated weights for {num_vertices} vertices")
+                print(f"    [OK] Calculated weights for {num_vertices} vertices")
             else:
                 # Fallback to root-only weights
                 joint_indices = [[0] for _ in range(num_vertices)]
@@ -1920,11 +1950,11 @@ def _add_skeleton_and_materials_to_usd(
             if root_prim:
                 stage.SetDefaultPrim(root_prim)
                 print(
-                    f"    ✓ Set default prim to {root_prim.GetPath()} (preserves material access)"
+                    f"    [OK] Set default prim to {root_prim.GetPath()} (preserves material access)"
                 )
 
-            print(f"    ✓ Bound mesh to skeleton with joint influences")
-            print(f"    ✓ Hierarchy: SkelRoot > [Skeleton + Mesh]")
+            print(f"    [OK] Bound mesh to skeleton with joint influences")
+            print(f"    [OK] Hierarchy: SkelRoot > [Skeleton + Mesh]")
 
         # 2. Add bark texture material
         print(f"  Adding bark texture material...")
@@ -1972,7 +2002,7 @@ def _add_skeleton_and_materials_to_usd(
                 ).ConnectToSource(
                     diffuse_tex.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
                 )
-                print(f"    ✓ Added diffuse texture: {textures['diffuse'].name}")
+                print(f"    [OK] Added diffuse texture: {textures['diffuse'].name}")
 
             # Normal map
             if "normal" in textures:
@@ -1996,7 +2026,7 @@ def _add_skeleton_and_materials_to_usd(
                 ).ConnectToSource(
                     normal_tex.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
                 )
-                print(f"    ✓ Added normal map: {textures['normal'].name}")
+                print(f"    [OK] Added normal map: {textures['normal'].name}")
 
             # Set material properties for bark
             shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.8)
@@ -2012,7 +2042,7 @@ def _add_skeleton_and_materials_to_usd(
             binding_api = UsdShade.MaterialBindingAPI.Apply(tree_mesh_prim)
             binding_api.Bind(material)
 
-            print(f"    ✓ Bound material to mesh")
+            print(f"    [OK] Bound material to mesh")
         else:
             print(f"    ℹ️  No bark textures found for {species_name}")
 
@@ -2521,13 +2551,15 @@ def _export_fbx_internal(
         # Tag bones BEFORE building models if skeleton is needed
         # This ensures bone IDs are included in the model
         if include_skeleton and hasattr(grove, "tag_bone_id"):
-            print(f"  Tagging bones (length={skeleton_length}, reduce={skeleton_reduce}, bias={skeleton_bias}, connected={skeleton_connected})...")
+            print(
+                f"  Tagging bones (length={skeleton_length}, reduce={skeleton_reduce}, bias={skeleton_bias}, connected={skeleton_connected})..."
+            )
             try:
                 bones = grove.tag_bone_id(
                     skeleton_length, skeleton_reduce, skeleton_bias, skeleton_connected
                 )
                 if bones:
-                    print(f"    ✓ Tagged {len(bones)} bones for skeleton")
+                    print(f"    [OK] Tagged {len(bones)} bones for skeleton")
                 else:
                     print("    Warning: Bone tagging returned no bones")
             except Exception as e:
@@ -2600,7 +2632,7 @@ def _export_fbx_internal(
                         uv_index = loop_index * 2
                         if uv_index + 1 < len(uvs):
                             uv_layer[loop_index].uv = (uvs[uv_index], uvs[uv_index + 1])
-                print(f"  ✓ Applied Grove UV coordinates to FBX mesh")
+                print(f"  [OK] Applied Grove UV coordinates to FBX mesh")
             except Exception as e:
                 print(f"  Warning: Failed to apply UV coordinates to FBX: {e}")
         else:
@@ -2622,7 +2654,7 @@ def _export_fbx_internal(
                             b = (directions[direction_index + 2] + 1.0) * 0.5
                             color_layer.data[loop_index].color = (r, g, b, 1.0)
                             direction_index += 3
-                print(f"  ✓ Applied Grove face directions to FBX vertex colors")
+                print(f"  [OK] Applied Grove face directions to FBX vertex colors")
             except Exception as e:
                 print(f"  Warning: Failed to apply FBX face directions: {e}")
 
@@ -2719,7 +2751,7 @@ def _export_fbx_internal(
             bpy.ops.mesh.dissolve_degenerate(threshold=0.0001)  # Remove zero-area faces
 
             bpy.ops.object.mode_set(mode="OBJECT")
-            print("  ✓ Mesh cleanup completed")
+            print("  [OK] Mesh cleanup completed")
         else:
             print("  ⏩ Skipping mesh cleanup (use --cleanup-mesh to enable)")
 
@@ -2807,7 +2839,7 @@ def _export_fbx_internal(
         )
 
         print(
-            f"✓ Exported FBX with textures and {'skeleton + ' if include_skeleton else ''}{'twig attributes' if include_twig_attributes else ''}"
+            f"[OK] Exported FBX with textures and {'skeleton + ' if include_skeleton else ''}{'twig attributes' if include_twig_attributes else ''}"
         )
         return True
 
@@ -3384,13 +3416,15 @@ def export_grove_tree_as_usda_native(
         # Tag bones BEFORE building models so bone IDs are included in model
         # This is critical for skeleton export to work correctly
         if include_skeleton and hasattr(grove, "tag_bone_id"):
-            print(f"  Tagging bones (length={skeleton_length}, reduce={skeleton_reduce}, bias={skeleton_bias}, connected={skeleton_connected})...")
+            print(
+                f"  Tagging bones (length={skeleton_length}, reduce={skeleton_reduce}, bias={skeleton_bias}, connected={skeleton_connected})..."
+            )
             try:
                 bones = grove.tag_bone_id(
                     skeleton_length, skeleton_reduce, skeleton_bias, skeleton_connected
                 )
                 if bones:
-                    print(f"    ✓ Tagged {len(bones)} bones for skeleton")
+                    print(f"    [OK] Tagged {len(bones)} bones for skeleton")
                 else:
                     print("    Warning: Bone tagging returned no bones")
             except Exception as e:
@@ -3433,7 +3467,7 @@ def export_grove_tree_as_usda_native(
         with open(temp_tree_path, "w") as f:
             f.write(usda_string)
 
-        print(f"  ✓ Exported base tree USD: {temp_tree_path.name}")
+        print(f"  [OK] Exported base tree USD: {temp_tree_path.name}")
 
         # CRITICAL: Add twig face attributes from Grove model to USD
         # Grove's native USD export doesn't include custom face attributes
@@ -3483,7 +3517,7 @@ def export_grove_tree_as_usda_native(
             )
 
             if skeleton_added:
-                print(f"  ✓ Skeletal tree USD: {skeletal_tree_path.name}")
+                print(f"  [OK] Skeletal tree USD: {skeletal_tree_path.name}")
                 print(f"    (Skeletal mesh with embedded UsdSkel)")
             else:
                 print(f"  ⚠ Failed to add skeleton to tree USD")
@@ -3512,9 +3546,9 @@ def export_grove_tree_as_usda_native(
             )
 
             if success:
-                print(f"  ✓ Created complete USDA with twigs: {output_path.name}")
+                print(f"  [OK] Created complete USDA with twigs: {output_path.name}")
                 # Keep the tree-only file for reference
-                print(f"  ✓ Tree-only USD saved as: {temp_tree_path.name}")
+                print(f"  [OK] Tree-only USD saved as: {temp_tree_path.name}")
             else:
                 print(f"  Warning: Failed to add twigs, using tree-only export")
                 # Copy tree-only to final output
@@ -3526,7 +3560,7 @@ def export_grove_tree_as_usda_native(
             import shutil
 
             shutil.copy2(temp_tree_path, output_path)
-            print(f"  ✓ Exported tree USD: {output_path.name}")
+            print(f"  [OK] Exported tree USD: {output_path.name}")
 
         # Create Nanite Assembly USD for Unreal if requested
         if create_nanite_assembly:
@@ -3560,7 +3594,7 @@ def export_grove_tree_as_usda_native(
             )
 
             if nanite_success:
-                print(f"  ✓ Nanite Assembly USD: {nanite_path.name}")
+                print(f"  [OK] Nanite Assembly USD: {nanite_path.name}")
                 print(f"    Import this file in Unreal Engine 5.7+ (static mesh)")
 
             # Create skeletal mesh assembly and Nanite Assembly if skeleton is enabled
@@ -3592,7 +3626,9 @@ def export_grove_tree_as_usda_native(
                     )
 
                     if skeletal_success:
-                        print(f"  ✓ Skeletal Assembly: {skeletal_assembly_path.name}")
+                        print(
+                            f"  [OK] Skeletal Assembly: {skeletal_assembly_path.name}"
+                        )
                         print(f"    (Skeletal tree + skeletal twigs)")
 
                         # Create skeletal Nanite Assembly
@@ -3622,7 +3658,7 @@ def export_grove_tree_as_usda_native(
 
                         if skeletal_nanite_success:
                             print(
-                                f"  ✓ Skeletal Nanite Assembly: {skeletal_nanite_path.name}"
+                                f"  [OK] Skeletal Nanite Assembly: {skeletal_nanite_path.name}"
                             )
                             print(
                                 f"    Import this file in Unreal Engine 5.7+ (skeletal mesh)"
@@ -3914,14 +3950,14 @@ def copy_bark_textures_for_species(
         dest_path = texture_dir / textures["diffuse"].name
         shutil.copy2(textures["diffuse"], dest_path)
         copied_files.append(dest_path)
-        print(f"  ✓ Copied diffuse texture: {textures['diffuse'].name}")
+        print(f"  [OK] Copied diffuse texture: {textures['diffuse'].name}")
 
     # Copy normal map
     if "normal" in textures and textures["normal"].exists():
         dest_path = texture_dir / textures["normal"].name
         shutil.copy2(textures["normal"], dest_path)
         copied_files.append(dest_path)
-        print(f"  ✓ Copied normal map: {textures['normal'].name}")
+        print(f"  [OK] Copied normal map: {textures['normal'].name}")
 
     return copied_files
 
@@ -4044,7 +4080,7 @@ def bundle_twigs_for_species(
                 json.dump(twig_manifest, f, indent=2)
             results["manifest"] = manifest_path
             print(
-                f"  ✓ Bundled {twig_manifest['total_twigs']} twig files for {species_name}"
+                f"  [OK] Bundled {twig_manifest['total_twigs']} twig files for {species_name}"
             )
         else:
             print(f"  ⚠ No twig files copied for {species_name}")

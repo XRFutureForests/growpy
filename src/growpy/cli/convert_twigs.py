@@ -2,16 +2,16 @@
 """
 Convert Grove twig .blend files to FBX/USD with textures.
 
-This is a pure Blender-to-format conversion that produces identical static/skeletal
-mesh assets in Unreal Engine regardless of export format (FBX/USD). No Grove
-functions are required - only Blender Python API (bpy).
+This is a pure Blender-to-format conversion that produces static mesh assets
+in Unreal Engine in both FBX and USD formats. No Grove functions are required -
+only Blender Python API (bpy).
 
 Key Features:
     - Identical material/texture mapping for both FBX and USD
     - Textures copied to output directory with relative path references
-    - Single-bone skeletal variants for Nanite Assembly compatibility
     - Coordinate system: Z-up (Blender right-handed to Unreal left-handed)
     - Standardized naming convention for twig types
+    - Static mesh only (skeletal twig variants deprecated)
 
 Quick Start:
     python convert_twigs.py data/assets/twigs
@@ -21,9 +21,7 @@ Common Flags:
 
 Output per twig:
     - standard_name.fbx           # Static mesh FBX
-    - standard_name_skeletal.fbx  # Skeletal mesh FBX (single bone at origin)
     - standard_name.usda          # Static mesh USD
-    - standard_name_skeletal.usda # Skeletal mesh USD (single bone at origin)
     - textures/*                  # All textures copied to output directory
     - twig_manifest.json          # Metadata about exported twigs
 
@@ -39,6 +37,10 @@ Coordinate Systems:
     - Unreal: Z-up, left-handed (X-forward, Y-right, Z-up)
     - FBX export handles handedness conversion automatically
     - USD preserves Z-up, handedness handled on Unreal import
+
+Note:
+    Tree skeletons (for main trees) remain supported for animation and wind effects.
+    Only twig skeletons have been deprecated as they are not needed for static foliage.
 
 Full Documentation:
     See docs/guides/cli-reference.md for complete flag reference and examples
