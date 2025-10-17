@@ -157,7 +157,6 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     from growpy import get_config
     from growpy.core.grove import create_grove
     from growpy.io.blender_export import (
-        _export_fbx_internal,
         _get_gc,
         export_grove_tree_as_usda_native,
         get_twig_usd_map_for_species,
@@ -204,7 +203,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         grove.simulate(flushes=growth_cycles)
 
         if "usd" in formats or "usda" in formats:
-            usd_path = usd_dir / f"{tree_name}.usda\"
+            usd_path = usd_dir / f"{tree_name}.usda"
 
             twig_usd_map = get_twig_usd_map_for_species(
                 species, config, prefer_skeletal=False

@@ -59,12 +59,12 @@ the-grove/
 │   │   ├── cli/                   # Command-line scripts
 │   │   │   ├── run_pipeline.py           # Complete pipeline runner
 │   │   │   ├── prepare_assets.py         # Copy Grove 2.2 assets
-│   │   │   ├── convert_twigs.py          # Convert twigs to FBX
+│   │   │   ├── convert_twigs.py          # Convert twigs to USD
 │   │   │   ├── create_growth_models.py   # Generate height models
 │   │   │   └── generate_forest.py        # Forest from CSV
 │   │   ├── config/                # Configuration management
 │   │   ├── core/                  # Forest/Grove/Tree simulation
-│   │   ├── io/                    # FBX export functionality
+│   │   ├── io/                    # USD export functionality
 │   │   └── utils/                 # Utilities
 │   └── the_grove_22/              # Grove 2.2 Python API
 ├── data/

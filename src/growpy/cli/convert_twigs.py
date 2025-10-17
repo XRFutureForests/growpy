@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Convert Grove twig .blend files to FBX/USD with textures.
+Convert Grove twig .blend files to USD with textures.
 
 This is a pure Blender-to-format conversion that produces static mesh assets
-in Unreal Engine in both FBX and USD formats. No Grove functions are required -
+in Unreal Engine in USD format. No Grove functions are required -
 only Blender Python API (bpy).
 
 Key Features:
-    - Identical material/texture mapping for both FBX and USD
+    - Material/texture mapping optimized for USD
     - Textures copied to output directory with relative path references
     - Coordinate system: Z-up (Blender right-handed to Unreal left-handed)
     - Standardized naming convention for twig types
@@ -17,10 +17,9 @@ Quick Start:
     python convert_twigs.py data/assets/twigs
 
 Common Flags:
-    --formats {fbx,usd,usda}  Export formats (default: fbx usda)
+    --formats {usd,usda}  Export formats (default: usda)
 
 Output per twig:
-    - standard_name.fbx           # Static mesh FBX
     - standard_name.usda          # Static mesh USD
     - textures/*                  # All textures copied to output directory
     - twig_manifest.json          # Metadata about exported twigs
@@ -35,7 +34,6 @@ Coordinate Systems:
     - Both Blender and Unreal use Z-up coordinate systems
     - Blender: Z-up, right-handed (X-right, Y-forward, Z-up)
     - Unreal: Z-up, left-handed (X-forward, Y-right, Z-up)
-    - FBX export handles handedness conversion automatically
     - USD preserves Z-up, handedness handled on Unreal import
 
 Note:
@@ -296,7 +294,7 @@ def get_processor_script_path() -> Path:
 
 def process_twig_directory(
     twig_dir: Path,
-    formats: List[str] = ["fbx", "usda"],
+    formats: List[str] = ["usda"],
 ) -> Dict[str, List[Path]]:
     """Process all twig blend files in a directory.
 
@@ -376,8 +374,8 @@ Examples:
     # Convert all twigs to USD
     python convert_twigs.py data/assets/twigs --formats usda
     
-    # Convert with both FBX and USD
-    python convert_twigs.py data/assets/twigs --formats fbx usda
+    # Convert with both USD formats
+    python convert_twigs.py data/assets/twigs --formats usd usda
     
     # Convert specific species
     python convert_twigs.py data/assets/twigs/Betulaceae_Downy_birch --formats usda
@@ -392,9 +390,9 @@ Output per twig:
     parser.add_argument(
         "--formats",
         nargs="+",
-        choices=["fbx", "usd", "usda"],
-        default=["fbx", "usda"],
-        help="Export formats (default: fbx usda)",
+        choices=["usd", "usda"],
+        default=["usda"],
+        help="Export formats (default: usda)",
     )
 
     args = parser.parse_args()
