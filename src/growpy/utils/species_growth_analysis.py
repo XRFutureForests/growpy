@@ -26,7 +26,6 @@ sys.path.insert(0, str(src_path / "the_grove_22" / "modules"))
 
 import the_grove_22_core as gc
 
-from ..config import GrowPyConfig
 from .growth_plotting import plot_growth_curves
 
 # Set up logging
@@ -160,7 +159,9 @@ class SpeciesGrowthAnalyzer:
             properties = gc.io.properties_from_json_string(preset_json)
             grove.set_properties(properties)
 
-            logger.debug(f"Applied preset for species: {species} from file: {preset_file}")
+            logger.debug(
+                f"Applied preset for species: {species} from file: {preset_file}"
+            )
             return True
 
         except Exception as e:
@@ -184,7 +185,9 @@ class SpeciesGrowthAnalyzer:
                 if species_name:
                     species_list.append(species_name)
 
-            logger.info(f"Found {len(species_list)} species presets in assets directory")
+            logger.info(
+                f"Found {len(species_list)} species presets in assets directory"
+            )
             return sorted(species_list)
 
         except Exception as e:
@@ -211,7 +214,9 @@ class SpeciesGrowthAnalyzer:
         if safe_name.startswith("."):
             safe_name = safe_name[1:]
 
-        logger.debug(f"Generated growth model name '{safe_name}' for species '{species}'")
+        logger.debug(
+            f"Generated growth model name '{safe_name}' for species '{species}'"
+        )
         return safe_name
 
     def calculate_dbh_at_height(self, tree, target_height: float = 1.3) -> float:
@@ -350,9 +355,14 @@ class SpeciesGrowthAnalyzer:
                                 if hasattr(node, "pos") and node.pos.z > local_max:
                                     local_max = node.pos.z
 
-                                if hasattr(node, "side_branches") and node.side_branches:
+                                if (
+                                    hasattr(node, "side_branches")
+                                    and node.side_branches
+                                ):
                                     for side_branch in node.side_branches:
-                                        side_max = find_max_height_in_branch(side_branch)
+                                        side_max = find_max_height_in_branch(
+                                            side_branch
+                                        )
                                         if side_max > local_max:
                                             local_max = side_max
                         return local_max
@@ -384,7 +394,10 @@ class SpeciesGrowthAnalyzer:
                 else:
                     cycles_without_growth = 0
 
-                if cycles_without_growth >= self.max_cycles_without_growth and cycle > 10:
+                if (
+                    cycles_without_growth >= self.max_cycles_without_growth
+                    and cycle > 10
+                ):
                     logger.info(
                         f"Species {species}, seed {seed}: Height growth stopped after "
                         f"{cycle + 1} cycles (max height: {max_height_achieved:.3f})"
@@ -426,7 +439,9 @@ class SpeciesGrowthAnalyzer:
             cycle_heights = [
                 curve[cycle] for curve in all_height_curves if cycle < len(curve)
             ]
-            cycle_dbhs = [curve[cycle] for curve in all_dbh_curves if cycle < len(curve)]
+            cycle_dbhs = [
+                curve[cycle] for curve in all_dbh_curves if cycle < len(curve)
+            ]
 
             max_heights.append(max(cycle_heights) if cycle_heights else 0.0)
             max_dbhs.append(max(cycle_dbhs) if cycle_dbhs else 0.0)
@@ -434,14 +449,18 @@ class SpeciesGrowthAnalyzer:
         early_terminations = sum(
             1 for meta in seed_metadata if meta.get("early_termination", False)
         )
-        timeouts = sum(1 for meta in seed_metadata if meta.get("timeout_occurred", False))
+        timeouts = sum(
+            1 for meta in seed_metadata if meta.get("timeout_occurred", False)
+        )
         avg_actual_cycles = (
-            sum(meta.get("actual_cycles", 0) for meta in seed_metadata) / len(seed_metadata)
+            sum(meta.get("actual_cycles", 0) for meta in seed_metadata)
+            / len(seed_metadata)
             if seed_metadata
             else 0
         )
         avg_simulation_time = (
-            sum(meta.get("simulation_time", 0) for meta in seed_metadata) / len(seed_metadata)
+            sum(meta.get("simulation_time", 0) for meta in seed_metadata)
+            / len(seed_metadata)
             if seed_metadata
             else 0
         )
@@ -598,7 +617,9 @@ class SpeciesGrowthAnalyzer:
         if max_workers is None:
             max_workers = max(1, mp.cpu_count() - 1)
 
-        logger.info(f"Using {max_workers} parallel workers for {len(species_list)} species")
+        logger.info(
+            f"Using {max_workers} parallel workers for {len(species_list)} species"
+        )
 
         process_args = [
             (
@@ -620,7 +641,9 @@ class SpeciesGrowthAnalyzer:
             }
 
             progress = tqdm(
-                total=len(species_list), desc="Analyzing species (parallel)", unit="species"
+                total=len(species_list),
+                desc="Analyzing species (parallel)",
+                unit="species",
             )
 
             for future in as_completed(future_to_species):
@@ -650,7 +673,9 @@ class SpeciesGrowthAnalyzer:
             progress.close()
 
         successful = sum(1 for success in results.values() if success)
-        tqdm.write(f"\nParallel analysis complete: {successful}/{len(species_list)} species")
+        tqdm.write(
+            f"\nParallel analysis complete: {successful}/{len(species_list)} species"
+        )
 
         return results
 
@@ -723,7 +748,9 @@ class SpeciesGrowthAnalyzer:
         tqdm.write("Saving individual species results...")
         saved_count = 0
 
-        for species in tqdm(self.analysis_metadata.keys(), desc="Saving species", leave=False):
+        for species in tqdm(
+            self.analysis_metadata.keys(), desc="Saving species", leave=False
+        ):
             self.save_species_results(species)
             saved_count += 1
 
@@ -733,7 +760,9 @@ class SpeciesGrowthAnalyzer:
         """Update tree asset lookup table with new growth model names."""
         try:
             current_file = Path(__file__)
-            package_config = current_file.parent.parent / "config" / "tree_asset_lookup.csv"
+            package_config = (
+                current_file.parent.parent / "config" / "tree_asset_lookup.csv"
+            )
             project_root = self.assets_dir.parent
             project_config = project_root.parent / "config" / "tree_asset_lookup.csv"
             data_path = project_root / "tree_asset_lookup.csv"
@@ -770,7 +799,9 @@ class SpeciesGrowthAnalyzer:
                     logger.info(f"Created backup: {backup_path}")
 
                 df.to_csv(lookup_table_path, index=False)
-                logger.info(f"Updated lookup table with {updated_count} new growth model names")
+                logger.info(
+                    f"Updated lookup table with {updated_count} new growth model names"
+                )
             else:
                 logger.warning("No updates were made to the lookup table")
 
