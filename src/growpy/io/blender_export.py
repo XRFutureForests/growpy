@@ -1484,7 +1484,9 @@ def _add_skeleton_only_to_usd(
                     joints.append(joint_name)
                     bones_map[bone_index] = joint_idx
                     joint_path_names[joint_idx] = joint_name
-                    parent_path = joint_name  # This becomes parent for next bone in chain
+                    parent_path = (
+                        joint_name  # This becomes parent for next bone in chain
+                    )
 
                     if start_idx < len(points) and end_idx < len(points):
                         start_pos = points[start_idx]
@@ -1514,7 +1516,9 @@ def _add_skeleton_only_to_usd(
                         )
                         point_to_joint[end_idx] = joint_idx
                         previous_bone = bone_index
-                        parent_joint_idx = joint_idx  # Next bone in chain will be child of this one
+                        parent_joint_idx = (
+                            joint_idx  # Next bone in chain will be child of this one
+                        )
                 else:
                     # Bone not used - don't update previous_bone tracking
                     # Keep previous_bone pointing to the last CREATED bone
