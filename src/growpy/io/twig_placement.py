@@ -465,6 +465,18 @@ def extract_twig_placements_from_usd(
     from pxr import Usd, UsdGeom
 
     placements = {"twig_long": [], "twig_short": [], "twig_upward": [], "twig_dead": []}
+    
+    # Grove exports twig primvars with PascalCase names - mapping:
+    # TwigEnd -> twig_long (end of branch twigs)
+    # TwigSide -> twig_short (side twigs)
+    # TwigUpward -> twig_upward (upward twigs)
+    # TwigDead -> twig_dead (dead twigs)
+    twig_name_map = {
+        "twig_long": "TwigEnd",
+        "twig_short": "TwigSide", 
+        "twig_upward": "TwigUpward",
+        "twig_dead": "TwigDead"
+    }
 
     try:
         # Open USD stage
@@ -486,12 +498,21 @@ def extract_twig_placements_from_usd(
             face_vertex_counts = mesh.GetFaceVertexCountsAttr().Get()
             face_vertex_indices = mesh.GetFaceVertexIndicesAttr().Get()
 
-            # Look for twig attributes
+            # Look for twig attributes using Grove's PascalCase naming
             for twig_type in ["twig_long", "twig_short", "twig_upward", "twig_dead"]:
-                # Try to get primvar (USD attribute)
-                # GetPrimvarsAPI() is on UsdGeomImageable (parent of Mesh)
+                # Get primvar using Grove's PascalCase naming
                 primvars_api = UsdGeom.PrimvarsAPI(mesh)
-                primvar = primvars_api.GetPrimvar(twig_type)
+                grove_name = twig_name_map[twig_type]
+                primvar = primvars_api.GetPrimvar(grove_name)
+                
+                # Fallback: Try legacy snake_case name for backward compatibility
+                if not primvar or not primvar.HasValue():
+                    primvar = primvars_api.GetPrimvar(twig_type)
+                
+                # Fallback: Try gr_ prefix (Blender USD exporter adds this)
+                if not primvar or not primvar.HasValue():
+                    primvar = primvars_api.GetPrimvar(f"gr_{twig_type}")
+                
                 if not primvar or not primvar.HasValue():
                     continue
 

@@ -966,17 +966,31 @@ def _add_grove_attributes_to_mesh(mesh: Any, model: Any) -> None:
 
 
 def _add_grove_face_attributes_to_usd(usd_path: Path, model: Any) -> None:
-    """Add Grove face attributes (twig placements) to USD file as primvars.
+    """DEPRECATED: This function is no longer needed.
 
-    Grove's native USD export doesn't include twig face attributes which are
-    critical for twig placement. This function adds them manually.
-
-    Also converts the USD from Y-up (Grove's export) to Z-up (Blender/UE standard).
-
+    Grove's native USD export (gc.io.model_to_usda_string) already includes:
+    1. Twig face attributes as PascalCase primvars (TwigDead, TwigUpward, TwigSide, TwigEnd)
+    2. Z-up coordinate system (no Y-up conversion needed)
+    
+    This function was created when Grove exported Y-up USD without twig attributes,
+    but recent versions now export complete Z-up USD natively.
+    
+    Kept for backward compatibility but should not be called in new code.
+    
     Args:
         usd_path: Path to USD file to modify
         model: Grove model with face attributes
     """
+    import warnings
+    warnings.warn(
+        "_add_grove_face_attributes_to_usd is deprecated - Grove now exports "
+        "complete Z-up USD with twig primvars natively",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    return  # Early return - function is no-op now
+    
+    # Original implementation kept below for reference but never executed
     try:
         from pxr import Gf, Sdf, Usd, UsdGeom
 
@@ -3125,9 +3139,9 @@ def export_grove_tree_as_usda_native(
 
         print(f"  [OK] Exported base tree USD: {temp_tree_path.name}")
 
-        # CRITICAL: Add twig face attributes from Grove model to USD
-        # Grove's native USD export doesn't include custom face attributes
-        _add_grove_face_attributes_to_usd(temp_tree_path, model)
+        # NOTE: Grove's native USD export already includes twig face attributes
+        # as PascalCase primvars (TwigDead, TwigUpward, TwigSide, TwigEnd)
+        # No need to add duplicate snake_case versions
 
         # Add materials to base tree (static mesh version)
         # This adds bark textures without skeleton
