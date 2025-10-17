@@ -120,9 +120,10 @@ def add_skeleton_from_grove_bones(
         joint_tail_positions = {0: Gf.Vec3d(0, 0, 0)}  # Track tail positions
 
         # Process each bone
-        for bone in bones_info:
-            bone_idx = bone[0]
-            parent_bone_idx = bone[1]
+        # Grove returns list of tuples: (bone_id, parent_id, head_Vector, tail_Vector, radius)
+        for i, bone in enumerate(bones_info):
+            bone_idx = i  # Use enumeration index as bone ID
+            parent_bone_idx = int(bone[1]) if bone[1] >= 0 else -1  # bone[1] is parent
             head_vec = bone[2]  # Grove Vector
             tail_vec = bone[3]  # Grove Vector
             radius = bone[4]
