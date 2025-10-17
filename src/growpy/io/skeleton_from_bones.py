@@ -117,7 +117,14 @@ def add_skeleton_from_grove_bones(
 
         # Map bone indices to joint indices for parent lookup
         bone_to_joint = {-1: 0}  # -1 (root bone) maps to joint 0 (Root)
-        joint_tail_positions = {0: Gf.Vec3d(0, 0, 0)}  # Track tail positions
+
+        # Track world-space positions for calculating relatives
+        # Root joint (index 0) is at origin with zero length
+        world_head_positions = {0: Gf.Vec3d(0, 0, 0)}
+        world_tail_positions = {0: Gf.Vec3d(0, 0, 0)}
+
+        # Track hierarchical joint names for USD topology
+        joint_path_names = {0: "Root"}  # Maps joint index to hierarchical path
 
         # Process each bone
         # Grove returns list of tuples: (bone_id, parent_id, head_Vector, tail_Vector, radius)
@@ -128,49 +135,51 @@ def add_skeleton_from_grove_bones(
             tail_vec = bone[3]  # Grove Vector
             radius = bone[4]
 
-            # Convert Grove Vector to tuple
-            head_pos = Gf.Vec3d(*head_vec.as_tuple())
-            tail_pos = Gf.Vec3d(*tail_vec.as_tuple())
+            # Convert Grove Vector to tuple (world space positions from Grove)
+            world_head = Gf.Vec3d(*head_vec.as_tuple())
+            world_tail = Gf.Vec3d(*tail_vec.as_tuple())
 
-            # Create joint
-            joint_name = f"bone_{bone_idx}"
-            joint_idx = len(joints)
-            joints.append(joint_name)
-            bone_to_joint[bone_idx] = joint_idx
-
-            # Find parent joint
+            # Find parent joint index
             parent_joint_idx = bone_to_joint.get(parent_bone_idx, 0)
             joint_parents.append(parent_joint_idx)
 
-            # Calculate transform relative to parent's TAIL position
-            # (bones connect head-to-tail in a chain)
-            parent_tail = joint_tail_positions.get(parent_joint_idx, Gf.Vec3d(0, 0, 0))
-            relative_pos = head_pos - parent_tail
+            # Create joint with hierarchical name to encode topology
+            # USD uses "/" separators in joint names to define parent-child relationships
+            parent_path = joint_path_names.get(parent_joint_idx, "Root")
+            joint_name = f"{parent_path}/bone_{bone_idx}"
+            joint_idx = len(joints)
+            joints.append(joint_name)
+            bone_to_joint[bone_idx] = joint_idx
+            joint_path_names[joint_idx] = joint_name
+
+            # Get parent's HEAD position in world space (where this bone should connect)
+            # For the first bone, parent is root at origin
+            # For subsequent bones, they connect to parent's HEAD (not tail)
+            parent_head = world_head_positions.get(parent_joint_idx, Gf.Vec3d(0, 0, 0))
+
+            # Calculate position relative to parent's head
+            relative_pos = world_head - parent_head
 
             # Calculate bone direction (from head to tail)
-            bone_vector = tail_pos - head_pos
+            bone_vector = world_tail - world_head
             bone_length = bone_vector.GetLength()
-            
+
             if bone_length > 0.0001:  # Avoid division by zero
                 bone_dir = bone_vector / bone_length
-                
+
                 # Default bone direction in USD is +Y (up)
                 default_dir = Gf.Vec3d(0, 1, 0)
-                
+
                 # Calculate rotation to align default direction with bone direction
                 rotation = Gf.Rotation()
                 rotation.SetRotateInto(default_dir, bone_dir)
                 rotation_matrix = Gf.Matrix3d(rotation.GetQuat())
-                
+
                 # Create transform with both translation and rotation
-                local_transform = Gf.Matrix4d().SetIdentity()
-                local_transform.SetTranslateOnly(relative_pos)
-                
-                # Apply rotation to the transform
                 transform_with_rotation = Gf.Matrix4d().SetIdentity()
                 transform_with_rotation.SetRotate(rotation_matrix)
                 transform_with_rotation.SetTranslateOnly(relative_pos)
-                
+
                 bind_transforms.append(transform_with_rotation)
                 rest_transforms.append(transform_with_rotation)
             else:
@@ -180,8 +189,9 @@ def add_skeleton_from_grove_bones(
                 bind_transforms.append(local_transform)
                 rest_transforms.append(local_transform)
 
-            # Store tail position for child bones
-            joint_tail_positions[joint_idx] = tail_pos
+            # Store positions for child bones (children connect to this bone's head)
+            world_head_positions[joint_idx] = world_head
+            world_tail_positions[joint_idx] = world_tail
 
         print(f"    [OK] Created {len(joints)} joints from {len(bones_info)} bones")
 
