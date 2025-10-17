@@ -1421,7 +1421,7 @@ def _add_skeleton_only_to_usd(
         # Create skeleton
         skel_path = skel_root_path.AppendChild("Skeleton")
         skel_prim = UsdSkel.Skeleton.Define(stage, skel_path)
-        
+
         # Apply Unreal Engine schemas for Control Rig support
         # ControlRigAPI enables Control Rig integration in Unreal Engine
         skel_api_schemas = Sdf.TokenListOp()
@@ -1766,7 +1766,7 @@ def _add_skeleton_and_materials_to_usd(
             # Create skeleton prim inside SkelRoot
             skel_path = skel_root_path.AppendChild("Skeleton")
             skel_prim = UsdSkel.Skeleton.Define(stage, skel_path)
-            
+
             # Apply Unreal Engine schemas for Control Rig support
             # ControlRigAPI enables Control Rig integration in Unreal Engine
             skel_api_schemas = Sdf.TokenListOp()
