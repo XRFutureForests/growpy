@@ -2542,362 +2542,6 @@ def export_twigs_from_blend(blend_file_path: Path, output_dir: Path) -> List[Pat
     return exported_files
 
 
-def _export_fbx_internal(
-    grove: Any,
-    output_path: Path,
-    species_name: str,
-    include_skeleton: bool = True,
-    include_twig_attributes: bool = True,
-    cleanup_mesh: bool = False,
-    config: Optional[Any] = None,
-    skeleton_length: float = 1.0,
-    skeleton_reduce: float = 0.25,
-    skeleton_bias: float = 0.5,
-    skeleton_connected: bool = True,
-) -> bool:
-    """Export tree as FBX with textures, skeleton, and twig attributes.
-
-    Args:
-        grove: Grove object containing tree
-        output_path: Output FBX file path
-        species_name: Name of species for materials
-        include_skeleton: Include armature/skeleton
-        include_twig_attributes: Preserve twig placement attributes
-        cleanup_mesh: Perform mesh cleanup operations (slow for large meshes)
-        config: GrowPy configuration
-
-    Returns:
-        bool: Success status
-
-    Coordinate System Handling:
-        Grove → Blender → Unreal Engine transformation pipeline:
-
-        1. Grove builds model (internal coordinate system)
-        2. Blender creates mesh from Grove model (Blender Z-up, right-handed)
-           - Mesh vertices: X-right, Y-forward, Z-up
-        3. FBX export transforms to Unreal (Z-up, left-handed)
-           - axis_forward="-Z", axis_up="Y" in FBX exporter
-           - global_scale=1.0: 1:1 scale (meters)
-           - Handedness conversion handled by FBX exporter
-
-        Result in Unreal: X-forward, Y-right, Z-up (left-handed), meter scale
-        See docs/growpy/COORDINATE_SYSTEMS.md for details
-    """
-    # Import bpy in worker process for multiprocessing compatibility
-    # This ensures bpy is available in each worker process on Windows
-    try:
-        import bpy
-    except (ImportError, OSError) as e:
-        print(f"bpy module not available in worker process - cannot export FBX: {e}")
-        return False
-
-    try:
-        # Clear scene
-        bpy.ops.wm.read_factory_settings(use_empty=True)
-
-        # Tag bones BEFORE building models if skeleton is needed
-        # This ensures bone IDs are included in the model
-        if include_skeleton and hasattr(grove, "tag_bone_id"):
-            print(
-                f"  Tagging bones (length={skeleton_length}, reduce={skeleton_reduce}, bias={skeleton_bias}, connected={skeleton_connected})..."
-            )
-            try:
-                bones = grove.tag_bone_id(
-                    skeleton_length, skeleton_reduce, skeleton_bias, skeleton_connected
-                )
-                if bones:
-                    print(f"    [OK] Tagged {len(bones)} bones for skeleton")
-                else:
-                    print("    Warning: Bone tagging returned no bones")
-            except Exception as e:
-                print(f"    Warning: Bone tagging failed: {e}")
-
-        # Build Grove model
-        # If bone tagging was done above, the model will include bone_id attributes
-        from ..core.tree import build_grove_with_all_attributes
-
-        build_params = {
-            "resolution": 16,
-            "resolution_reduce": 0.8,
-            "build_cutoff_age": 0,
-            "build_cutoff_thickness": 0.0,
-            "build_blend": True,
-            "build_end_cap": True,
-        }
-        models = build_grove_with_all_attributes(grove, build_params)
-
-        if not models:
-            print(f"No models generated for {species_name}")
-            return False
-
-        model = models[0]
-
-        # Triangulate using Grove's native function (more reliable than Blender modifier)
-        # This ensures the mesh consists purely of triangles before export
-        model.triangulate()
-
-        # Extract mesh data from Grove model
-        points = model.get_points_flat()
-        faces = [[int(i) for i in face] for face in model.faces]
-
-        # Get UV coordinates with better error handling
-        uvs = []
-        directions = []  # Initialize directions variable
-        try:
-            if hasattr(model, "get_uvs_flat"):
-                uvs = model.get_uvs_flat()
-                print(f"  Extracted {len(uvs)//2} UV coordinates for FBX")
-            if hasattr(model, "get_directions_flat"):
-                directions = model.get_directions_flat()
-                print(f"  Extracted {len(directions)//3} face directions for FBX")
-        except Exception as e:
-            print(f"  Warning: Could not extract data from Grove model: {e}")
-            uvs = []
-            directions = []
-        vertices = [
-            (points[i], points[i + 1], points[i + 2]) for i in range(0, len(points), 3)
-        ]
-
-        # Create Blender mesh
-        mesh = bpy.data.meshes.new(f"{species_name}_mesh")
-        mesh.from_pydata(vertices, [], faces)
-        mesh.update()
-
-        # Enable smooth shading for better appearance in Unreal
-        # This prevents hard edges and triangular-looking geometry
-        for poly in mesh.polygons:
-            poly.use_smooth = True
-        mesh.update()
-
-        # Add UVs with proper validation
-        if uvs and len(uvs) >= len(faces) * 6:  # Validate sufficient UV data
-            mesh.uv_layers.new(name="UVMap")
-            uv_layer = mesh.uv_layers.active.data
-            try:
-                for poly in mesh.polygons:
-                    for loop_index in poly.loop_indices:
-                        uv_index = loop_index * 2
-                        if uv_index + 1 < len(uvs):
-                            uv_layer[loop_index].uv = (uvs[uv_index], uvs[uv_index + 1])
-                print(f"  [OK] Applied Grove UV coordinates to FBX mesh")
-            except Exception as e:
-                print(f"  Warning: Failed to apply UV coordinates to FBX: {e}")
-        else:
-            print(
-                f"  Warning: Insufficient UV data for FBX - expected {len(faces) * 6}, got {len(uvs)}"
-            )
-
-        # Add face direction vectors as vertex colors for FBX
-        if directions and len(directions) >= len(faces) * 9:
-            try:
-                color_layer = mesh.vertex_colors.new(name="FaceDirections")
-                direction_index = 0
-                for poly in mesh.polygons:
-                    for loop_index in poly.loop_indices:
-                        if direction_index + 2 < len(directions):
-                            # Normalize direction vector to color range
-                            r = (directions[direction_index] + 1.0) * 0.5
-                            g = (directions[direction_index + 1] + 1.0) * 0.5
-                            b = (directions[direction_index + 2] + 1.0) * 0.5
-                            color_layer.data[loop_index].color = (r, g, b, 1.0)
-                            direction_index += 3
-                print(f"  [OK] Applied Grove face directions to FBX vertex colors")
-            except Exception as e:
-                print(f"  Warning: Failed to apply FBX face directions: {e}")
-
-        # Add Grove attributes to mesh (including twig attributes)
-        if include_twig_attributes:
-            print("  📋 Adding Grove attributes...")
-            _add_grove_attributes_to_mesh(mesh, model)
-
-        # Create object
-        print("  [BUILD]  Creating Blender object...")
-        obj = bpy.data.objects.new(f"{species_name}_tree", mesh)
-        bpy.context.collection.objects.link(obj)
-        bpy.context.view_layer.objects.active = obj
-        obj.select_set(True)
-
-        # Build skeleton
-        armature_obj = None
-        if include_skeleton:
-            import time
-
-            print("  🦴 Building skeleton...")
-            t0 = time.time()
-            skeletons = grove.build_skeletons()
-            t1 = time.time()
-            print(f"    [TIME]  Grove skeleton generation: {t1-t0:.2f}s")
-
-            if skeletons:
-                t2 = time.time()
-                armature_obj = _add_skeleton_to_object(
-                    obj,
-                    skeletons[0],
-                    species_name,
-                    grove,
-                    model,
-                    skeleton_length,
-                    skeleton_reduce,
-                    skeleton_bias,
-                    skeleton_connected,
-                )
-                t3 = time.time()
-                print(f"    [TIME]  Blender skeleton setup: {t3-t2:.2f}s")
-                print(f"    [TIME]  Total skeleton time: {t3-t0:.2f}s")
-
-                # Set armature to rest position for clean FBX export
-                if armature_obj and armature_obj.pose:
-                    bpy.context.view_layer.objects.active = armature_obj
-                    bpy.ops.object.mode_set(mode="POSE")
-                    bpy.ops.pose.select_all(action="SELECT")
-                    bpy.ops.pose.loc_clear()
-                    bpy.ops.pose.rot_clear()
-                    bpy.ops.pose.scale_clear()
-                    bpy.ops.object.mode_set(mode="OBJECT")
-
-        # Add material with textures
-        print("  🎨 Adding material and textures...")
-        _add_material_with_textures(obj, species_name, config)
-
-        # Add Nanite metadata as custom properties
-        obj["nanite_compatible"] = True
-        # Preserve Area: FALSE for tree trunks/branches (solid continuous surfaces)
-        # Should only be TRUE for foliage cards (leaves, grass blades) to prevent thinning
-        # See: https://dev.epicgames.com/documentation (Foliage Using Nanite section)
-        obj["nanite_preserve_area"] = False
-        obj["unreal_nanite"] = "enable"
-
-        # Optional mesh cleanup (slow for large meshes)
-        if cleanup_mesh:
-            print(
-                "  🧹 Cleaning up mesh geometry (this may take a while for large meshes)..."
-            )
-            # Clean mesh geometry to prevent Nanite hierarchy build errors
-            # Critical for avoiding ParentLODError assertion in Nanite encoder
-            #
-            # Nanite Requirements (from official docs):
-            # 1. All triangles (no quads/ngons) - handled by Grove's model.triangulate()
-            # 2. No degenerate geometry (zero-area faces, duplicate vertices)
-            # 3. No loose vertices/edges that don't form faces
-            # 4. Good vertex sharing (ratio <2:1) for optimal compression
-            # 5. Smooth normals where possible (faceted normals increase data size)
-            #
-            # Cleanup operations:
-            bpy.context.view_layer.objects.active = obj
-            bpy.ops.object.mode_set(mode="EDIT")
-            bpy.ops.mesh.select_all(action="SELECT")
-
-            # Remove problematic geometry
-            print("    Removing loose geometry...")
-            bpy.ops.mesh.delete_loose()  # Remove disconnected vertices/edges
-            print("    Merging duplicate vertices...")
-            bpy.ops.mesh.remove_doubles(
-                threshold=0.0001
-            )  # Merge duplicate vertices (0.1mm)
-            print("    Dissolving degenerate faces...")
-            bpy.ops.mesh.dissolve_degenerate(threshold=0.0001)  # Remove zero-area faces
-
-            bpy.ops.object.mode_set(mode="OBJECT")
-            print("  [OK] Mesh cleanup completed")
-        else:
-            print("  ⏩ Skipping mesh cleanup (use --cleanup-mesh to enable)")
-
-        # Note: Triangulation already done by Grove's model.triangulate() before mesh creation
-        # This ensures pure triangle topology as required by Nanite
-        # Tangents are derived implicitly by Nanite (not stored in mesh data)
-
-        # Validate mesh for Nanite
-        print("  [CHECK] Validating mesh for Nanite...")
-        mesh_data = obj.data
-        validation = validate_mesh_for_nanite(mesh_data)
-        if validation["warnings"]:
-            print(f"Nanite validation warnings for {species_name}:")
-            for warning in validation["warnings"]:
-                print(f"  - {warning}")
-
-        # Prepare for export
-        bpy.ops.object.select_all(action="DESELECT")
-        obj.select_set(True)
-        if include_skeleton and armature_obj:
-            armature_obj.select_set(True)
-        bpy.context.view_layer.objects.active = obj
-
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Print mesh stats before export for debugging
-        print(
-            f"  [STATS] Mesh stats: {len(mesh_data.vertices)} verts, {len(mesh_data.polygons)} faces"
-        )
-
-        print(f"FBX export starting... '{output_path}'")
-        # FBX Export optimized for Unreal Engine Nanite
-        #
-        # Nanite-Specific Settings:
-        # - mesh_smooth_type="FACE": Single smoothing group (Nanite derives tangents)
-        # - use_mesh_edges=False: No edge data needed (reduces file size)
-        # - use_tspace=True: Export tangent space (for normal map compatibility)
-        # - global_scale=1.0: 1:1 scale (meters)
-        #
-        # Skeletal Mesh Settings (CRITICAL for Unreal recognition):
-        # - bake_anim=True: REQUIRED for UE to recognize as skeletal mesh
-        # - bake_anim_use_all_bones=True: Ensure all bones have deformation data
-        # - bake_anim_use_nla_strips=False: Export bind pose only (no NLA strips)
-        # - bake_anim_step=1.0: Single frame (bind pose)
-        # - bake_anim_simplify_factor=0.0: No simplification (preserve exact deformation)
-        #
-        # Without bake_anim=True, Unreal imports as static mesh even with armature!
-        #
-        # Supported Nanite Features:
-        # - Skeletal meshes with animation (experimental in UE 5.x)
-        # - Multiple UVs and vertex colors
-        # - Opaque and Masked materials only
-        # - Custom properties for metadata
-        bpy.ops.export_scene.fbx(
-            filepath=str(output_path),
-            use_selection=True,
-            object_types={"MESH", "ARMATURE"} if include_skeleton else {"MESH"},
-            mesh_smooth_type="FACE",  # Single smoothing group
-            use_mesh_modifiers=False,  # Don't apply modifiers - preserve armature deformation
-            use_mesh_edges=False,  # No edge data (cleaner for Nanite)
-            use_tspace=True,  # Tangent space for normal maps
-            use_custom_props=True,  # Export Nanite metadata + twig attributes
-            add_leaf_bones=False,
-            primary_bone_axis="Y",
-            secondary_bone_axis="X",
-            armature_nodetype="NULL",
-            # Export only deform bones (skip control bones)
-            use_armature_deform_only=include_skeleton,
-            # Bake animation: Use minimal single-frame export for bind pose
-            bake_anim=include_skeleton,
-            bake_anim_use_all_bones=False,  # Only deform bones
-            bake_anim_use_nla_strips=False,  # No NLA
-            bake_anim_use_all_actions=False,  # No actions
-            bake_anim_force_startend_keying=False,  # No forced keyframes
-            bake_anim_step=1.0,
-            bake_anim_simplify_factor=1.0,  # Simplify to single frame
-            path_mode="COPY",  # Copy textures
-            embed_textures=True,  # Embed in FBX
-            batch_mode="OFF",
-            use_batch_own_dir=False,
-            axis_forward="-Z",
-            axis_up="Y",
-            global_scale=1.0,  # 1:1 scale (meters)
-            apply_scale_options="FBX_SCALE_ALL",  # Apply to all data
-        )
-
-        print(
-            f"[OK] Exported FBX with textures and {'skeleton + ' if include_skeleton else ''}{'twig attributes' if include_twig_attributes else ''}"
-        )
-        return True
-
-    except Exception as e:
-        print(f"Failed to export tree FBX: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return False
-
-
 def batch_export_tree_usd(
     forest_data: Any,
     output_dir: Path,
@@ -2999,12 +2643,12 @@ def batch_export_trees_for_unreal(
     build_blend: bool = True,
     build_end_cap: bool = True,
     bundle_twigs: bool = True,
-    export_formats: List[str] = ["fbx", "usda"],
+    export_formats: List[str] = ["usda"],
     use_native_usd_export: bool = True,
     include_twigs_in_usd: bool = True,
     create_nanite_assembly: bool = True,
 ) -> Dict[str, List[Path]]:
-    """Export trees as FBX/USD for Unreal Engine Nanite with PCG metadata.
+    """Export trees as USD for Unreal Engine Nanite with PCG metadata.
 
     Creates multiple variations of each species for procedural variation in Unreal's
     PCG (Procedural Content Generation) and Foliage systems. Includes twig bundling
@@ -3023,13 +2667,13 @@ def batch_export_trees_for_unreal(
         build_blend: Add smooth geometry at branch joints
         build_end_cap: Close off branch ends with geometry
         bundle_twigs: Copy relevant twig files to output folder
-        export_formats: Export formats ('fbx', 'usd', 'usda')
+        export_formats: Export formats ('usd', 'usda')
         use_native_usd_export: Use Grove's native USD export (recommended, includes all attributes)
         include_twigs_in_usd: Include twigs as point instances in USD files
         create_nanite_assembly: Create Nanite Assembly USD for Unreal Engine (default: True)
 
     Returns:
-        Dict with 'usd', 'fbx', 'metadata', and 'twigs' file paths
+        Dict with 'usd', 'metadata', and 'twigs' file paths
     """
     if config is None:
         config = get_config()
@@ -3038,16 +2682,14 @@ def batch_export_trees_for_unreal(
 
     from .unreal_metadata import create_metadata_from_growth_data
 
-    results = {"usd": [], "fbx": [], "metadata": [], "twigs": []}
+    results = {"usd": [], "metadata": [], "twigs": []}
 
     # Create clearer output directory structure:
     # output_dir/
     #   ├── Species1/
-    #   │   ├── FBX/
     #   │   ├── USD/
     #   │   └── twigs/
     #   └── Species2/
-    #       ├── FBX/
     #       ├── USD/
     #       └── twigs/
 
@@ -3080,12 +2722,9 @@ def batch_export_trees_for_unreal(
                 if "usd" in export_formats or "usda" in export_formats
                 else None
             )
-            fbx_dir = species_dir / "FBX" if "fbx" in export_formats else None
 
             if usd_dir:
                 usd_dir.mkdir(parents=True, exist_ok=True)
-            if fbx_dir:
-                fbx_dir.mkdir(parents=True, exist_ok=True)
 
             species_metadata = {
                 "species": species,
@@ -3223,56 +2862,6 @@ def batch_export_trees_for_unreal(
                         variation_info["files"]["usd"] = str(
                             usd_path.relative_to(output_dir)
                         )
-
-                # Export FBX if requested
-                if fbx_dir:
-                    fbx_path = fbx_dir / f"{variation_name}.fbx"
-                    try:
-                        from ..core.tree import (
-                            build_grove_with_all_attributes,
-                            build_skeletons,
-                        )
-
-                        # Build mesh and skeleton
-                        build_params = {
-                            "resolution": resolution,
-                            "resolution_reduce": resolution_reduce,
-                            "build_cutoff_age": build_cutoff_age,
-                            "build_cutoff_thickness": build_cutoff_thickness,
-                            "build_blend": build_blend,
-                            "build_end_cap": build_end_cap,
-                        }
-                        build_grove_with_all_attributes(grove, build_params)
-                        build_skeletons(grove)
-
-                        if _check_bpy_available():
-                            if _export_fbx_internal(
-                                grove,
-                                fbx_path,
-                                species,
-                                include_skeleton=True,
-                                include_twig_attributes=True,
-                                config=config,
-                            ):
-                                results["fbx"].append(fbx_path)
-                                variation_info["files"]["fbx"] = str(
-                                    fbx_path.relative_to(output_dir)
-                                )
-
-                                print(
-                                    f"  [INFO]  FBX Skeletal Mesh: Import {fbx_path.name} directly into Unreal"
-                                )
-                                print(
-                                    f"     (Skeletal Nanite Assemblies not supported - USD cannot reference FBX)"
-                                )
-
-                                # Note: Skeletal mesh Nanite Assemblies are not created because:
-                                # - USD cannot reference FBX files directly
-                                # - For skeletal meshes with animation, import FBX directly into Unreal
-                                # - Nanite Assemblies are designed for static mesh instancing with USD files
-                                # Users should import the FBX file directly for animated skeletal trees
-                    except Exception as e:
-                        print(f"FBX export failed for {variation_name}: {e}")
 
                 species_metadata["variations"].append(variation_info)
 
@@ -3733,73 +3322,6 @@ def export_grove_tree_as_usda_native(
         return False
 
 
-def get_twig_fbx_map_for_species(
-    species_name: str,
-    config: Optional[Any] = None,
-    prefer_skeletal: bool = False,
-) -> Dict[str, Path]:
-    """Get mapping of twig types to FBX file paths for a species.
-
-    This is used for skeletal Nanite Assemblies that need FBX references.
-
-    Args:
-        species_name: Name of tree species
-        config: GrowPy configuration
-        prefer_skeletal: If True, prefer skeletal twig variants (_skeletal.fbx)
-
-    Returns:
-        Dict mapping twig types to FBX file paths:
-        {'twig_long': Path, 'twig_short': Path, ...}
-    """
-    if config is None:
-        config = get_config()
-
-    from ..config import get_twig_files_by_type
-
-    twig_files_by_type = get_twig_files_by_type(species_name)
-
-    if not twig_files_by_type:
-        return {}
-
-    twig_fbx_map = {}
-
-    type_mapping = {
-        "twig_long": ["apical", "long", "end", "terminal", "var_a", "var_c"],
-        "twig_short": ["lateral", "short", "side", "var_b", "var_d"],
-        "twig_upward": ["upward", "up", "var_e"],
-        "twig_dead": ["dead", "fall", "winter"],
-    }
-
-    for grove_type, keywords in type_mapping.items():
-        for twig_type, twig_paths in twig_files_by_type.items():
-            if any(kw in twig_type.lower() for kw in keywords):
-                if twig_paths:
-                    twig_file = twig_paths[0]
-
-                    # Look for FBX version
-                    fbx_file = twig_file.with_suffix(".fbx")
-
-                    # Filter based on skeletal preference
-                    is_skeletal = "_skeletal" in fbx_file.stem
-                    if prefer_skeletal and not is_skeletal:
-                        skeletal_file = (
-                            fbx_file.parent
-                            / f"{fbx_file.stem}_skeletal{fbx_file.suffix}"
-                        )
-                        if skeletal_file.exists():
-                            twig_fbx_map[grove_type] = skeletal_file
-                            break
-                        continue
-                    elif not prefer_skeletal and is_skeletal:
-                        continue
-
-                    if fbx_file.exists():
-                        twig_fbx_map[grove_type] = fbx_file
-                        break
-
-    return twig_fbx_map
-
-
 def get_twig_usd_map_for_species(
     species_name: str,
     config: Optional[Any] = None,
@@ -4012,18 +3534,18 @@ def copy_bark_textures_for_species(
 def bundle_twigs_for_species(
     species_name: str,
     output_dir: Path,
-    formats: List[str] = ["fbx", "usda"],
+    formats: List[str] = ["usda"],
     config: Optional[Any] = None,
 ) -> Dict[str, List[Path]]:
     """Bundle twig files for a species to output directory.
 
-    Copies relevant twig meshes (FBX/USD) to species output folder
+    Copies relevant twig meshes (USD) to species output folder
     for easier asset management in Unreal Engine.
 
     Args:
         species_name: Name of tree species
         output_dir: Output directory for this species
-        formats: Export formats to copy ('fbx', 'usd', 'usda')
+        formats: Export formats to copy ('usd', 'usda')
         config: GrowPy configuration
 
     Returns:
@@ -4073,8 +3595,6 @@ def bundle_twigs_for_species(
                     extensions = [".usd", ".usda"]  # Try both
                 elif fmt == "usda":
                     extensions = [".usda", ".usd"]  # Try both
-                elif fmt == "fbx":
-                    extensions = [".fbx"]
                 else:
                     continue
 
