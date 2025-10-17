@@ -62,7 +62,7 @@ Examples:
     print("=" * 30)
 
     if not args.grove_dir.exists():
-        print(f"❌ Grove directory not found: {args.grove_dir}")
+        print(f"[FAIL] Grove directory not found: {args.grove_dir}")
         return 1
 
     print(f"📂 Source: {args.grove_dir}")
@@ -79,15 +79,15 @@ Examples:
         dst_folder = args.assets_dir / folder
 
         if src_folder.exists():
-            print(f"\n📁 Copying {folder}...")
+            print(f"\n[FOLDER] Copying {folder}...")
             if dst_folder.exists():
                 shutil.rmtree(dst_folder)
             shutil.copytree(src_folder, dst_folder)
-            print(f"✅ Copied {folder}")
+            print(f"[OK] Copied {folder}")
         else:
-            print(f"⚠️ {folder} not found in Grove directory")
+            print(f"[WARN] {folder} not found in Grove directory")
 
-    print(f"\n🎉 Asset preparation complete!")
+    print(f"\n[DONE] Asset preparation complete!")
     return 0
 
 
