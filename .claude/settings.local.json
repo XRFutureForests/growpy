@@ -10,7 +10,15 @@
       "Bash(rm:*)",
       "Bash(mamba run:*)",
       "Bash(python3:*)",
-      "Bash(conda run -n the-grove python -m growpy.cli.generate_forest:*)"
+      "Bash(conda run -n the-grove python -m growpy.cli.generate_forest:*)",
+      "Bash(where:*)",
+      "Bash(conda run:*)",
+      "Bash(/c/Users/Maximilian Sperlich/AppData/Local/Microsoft/WindowsApps/python3:*)",
+      "Read(//c/ProgramData/miniforge3/Scripts//**)",
+      "Bash(/c/ProgramData/miniforge3/Scripts/conda.exe --version)",
+      "Bash(/c/ProgramData/miniforge3/Scripts/conda.exe run:*)",
+      "Bash(awk:*)",
+      "Bash(sed:*)"
     ],
     "deny": [],
     "ask": []

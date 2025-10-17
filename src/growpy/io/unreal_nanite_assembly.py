@@ -129,14 +129,14 @@ def create_nanite_assembly_usd(
             )
             skeleton_rel.AddTarget(f"/{assembly_name}/TreeMesh/SkelRoot/Skeleton")
 
-            print(f"    ✓ Skeletal tree embedded via TreeMesh (mesh + skeleton)")
+            print(f"    [OK] Skeletal tree embedded via TreeMesh (mesh + skeleton)")
             print(
                 f"    Skeleton relationship: /{assembly_name}/TreeMesh/SkelRoot/Skeleton"
             )
         else:
             print(f"  Adding static tree mesh...")
 
-        print(f"  ✓ Created Nanite Assembly root: {assembly_name}")
+        print(f"  [OK] Created Nanite Assembly root: {assembly_name}")
         print(f"    Mesh type: {mesh_type}")
         print(f"    Tree reference: {tree_usd_path.resolve()}")
 
@@ -367,11 +367,11 @@ def create_nanite_assembly_usd(
                         bind_weights_attr.Set(bind_weights)
 
                         print(
-                            f"    ✓ Bound {len(all_positions)} twigs to skeleton (root joint)"
+                            f"    [OK] Bound {len(all_positions)} twigs to skeleton (root joint)"
                         )
 
                     print(
-                        f"    ✓ Added {len(all_positions)} twig instances ({len(prototype_paths)} types)"
+                        f"    [OK] Added {len(all_positions)} twig instances ({len(prototype_paths)} types)"
                     )
             else:
                 print(
@@ -383,7 +383,7 @@ def create_nanite_assembly_usd(
 
         # Save stage
         stage.GetRootLayer().Save()
-        print(f"  ✓ Saved Nanite Assembly: {output_path.name}")
+        print(f"  [OK] Saved Nanite Assembly: {output_path.name}")
 
         return True
 
@@ -478,7 +478,7 @@ def export_tree_as_nanite_assembly(
         with open(temp_tree_path, "w") as f:
             f.write(usda_string)
 
-        print(f"  ✓ Exported base tree: {temp_tree_path.name}")
+        print(f"  [OK] Exported base tree: {temp_tree_path.name}")
 
         # Create Nanite Assembly USD
         success = create_nanite_assembly_usd(
@@ -490,7 +490,7 @@ def export_tree_as_nanite_assembly(
         )
 
         if success:
-            print(f"\n✓ Complete: {output_path.name}")
+            print(f"\n[OK] Complete: {output_path.name}")
             print(f"  Import in Unreal Engine with USD importer")
             print(f"  Schema: NaniteAssemblyRootAPI")
             print(f"  Mesh type: {'skeletal' if use_skeletal_mesh else 'static'}")
@@ -602,7 +602,7 @@ def _copy_skeleton_to_assembly(
         # The mesh will be referenced externally via TreeMesh
         copy_prim_hierarchy(skel_root_prim, assembly_root_path, skip_mesh=True)
 
-        print(f"      ✓ Copied skeleton hierarchy (without embedded meshes)")
+        print(f"      [OK] Copied skeleton hierarchy (without embedded meshes)")
         return True
 
     except Exception as e:
@@ -824,7 +824,7 @@ def validate_nanite_assembly(usd_path: Path) -> Dict[str, Any]:
                             "Missing primvars:unreal:naniteAssembly:bindJointWeights"
                         )
 
-        print(f"\n{'✓' if result['valid'] else '✗'} Validation: {usd_path.name}")
+        print(f"\n{'[OK]' if result['valid'] else '[X]'} Validation: {usd_path.name}")
         print(f"  Mesh Type: {result['mesh_type']}")
         if result["details"].get("skeleton_target"):
             print(f"  Skeleton: {result['details']['skeleton_target']}")
