@@ -724,7 +724,9 @@ def _add_skeleton_to_object(
             used_bone_indices.update(joint_indices)
 
         num_bones_needed = len(used_bone_indices)
-        print(f"      [INFO]  Creating {num_bones_needed} bones (from Grove's tag_bone_id)")
+        print(
+            f"      [INFO]  Creating {num_bones_needed} bones (from Grove's tag_bone_id)"
+        )
 
         # Create armature
         armature = bpy.data.armatures.new(f"{species_name}_armature")
@@ -1439,6 +1441,8 @@ def _add_skeleton_only_to_usd(
         joint_positions[0] = Gf.Vec3d(0, 0, 0)
         point_to_joint = {}
         bones_map = {0: 0}  # bone_index -> joint_index mapping
+        joint_path_names = {}  # Maps joint index to hierarchical path name
+        joint_path_names[0] = "Root"
 
         # Create joints only for used bones (or all if no reduction)
         bone_index = 1
@@ -1448,6 +1452,7 @@ def _add_skeleton_only_to_usd(
 
             parent_joint_idx = 0
             previous_bone = None
+            parent_path = "Root"
 
             for j in range(len(line) - 1):
                 start_idx = line[j]
@@ -1459,29 +1464,33 @@ def _add_skeleton_only_to_usd(
                 )
 
                 if should_create:
-                    joint_name = f"bone_{bone_index}"
+                    # Use hierarchical joint names that encode parent-child relationships
+                    if j == 0:
+                        # First bone in branch
+                        if start_idx in point_to_joint:
+                            # Child of parent branch bone
+                            parent_joint_idx = point_to_joint[start_idx]
+                            parent_path = joint_path_names[parent_joint_idx]
+                        else:
+                            # Root-level branch
+                            parent_joint_idx = 0
+                            parent_path = "Root"
+                        joint_name = f"{parent_path}/bone_{bone_index}"
+                    else:
+                        # Subsequent bone in same branch - child of previous bone
+                        joint_name = f"{parent_path}/bone_{bone_index}"
+
                     joint_idx = len(joints)
                     joints.append(joint_name)
                     bones_map[bone_index] = joint_idx
+                    joint_path_names[joint_idx] = joint_name
+                    parent_path = joint_name  # This becomes parent for next bone in chain
 
                     if start_idx < len(points) and end_idx < len(points):
                         start_pos = points[start_idx]
                         end_pos = points[end_idx]
 
-                        # Determine parent
-                        if j == 0:
-                            # First bone in branch
-                            if start_idx in point_to_joint:
-                                parent_joint_idx = point_to_joint[start_idx]
-                            else:
-                                parent_joint_idx = 0  # Root
-                        else:
-                            # Subsequent bones
-                            if previous_bone is not None and previous_bone in bones_map:
-                                parent_joint_idx = bones_map[previous_bone]
-                            else:
-                                parent_joint_idx = 0
-
+                        # Parent already determined above when building hierarchical name
                         joint_parents.append(parent_joint_idx)
 
                         # Calculate transform relative to parent
@@ -1499,12 +1508,13 @@ def _add_skeleton_only_to_usd(
                         bind_transforms.append(local_transform)
                         rest_transforms.append(local_transform)
 
-                        # Track position for this joint
+                        # Track position for this joint (use END position for proper chaining)
                         joint_positions[joint_idx] = Gf.Vec3d(
-                            start_pos[0], start_pos[1], start_pos[2]
+                            end_pos[0], end_pos[1], end_pos[2]
                         )
                         point_to_joint[end_idx] = joint_idx
                         previous_bone = bone_index
+                        parent_joint_idx = joint_idx  # Next bone in chain will be child of this one
                 else:
                     # Bone not used - don't update previous_bone tracking
                     # Keep previous_bone pointing to the last CREATED bone
@@ -1512,6 +1522,8 @@ def _add_skeleton_only_to_usd(
                     if j == 0 and start_idx in point_to_joint:
                         # Find the bone_index that created this joint
                         connecting_joint_idx = point_to_joint[start_idx]
+                        parent_path = joint_path_names[connecting_joint_idx]
+                        parent_joint_idx = connecting_joint_idx
                         # Search bones_map to find which bone_index created this joint
                         for bidx, jidx in bones_map.items():
                             if jidx == connecting_joint_idx:
@@ -1651,6 +1663,10 @@ def _add_skeleton_and_materials_to_usd(
     species_name: str,
     config: Optional[Any] = None,
     model: Optional[Any] = None,
+    skeleton_length: float = 1.0,
+    skeleton_reduce: float = 0.25,
+    skeleton_bias: float = 0.5,
+    skeleton_connected: bool = True,
 ) -> Optional[dict]:
     """Add skeleton and materials to Grove's native USD export.
 
@@ -1669,6 +1685,11 @@ def _add_skeleton_and_materials_to_usd(
         grove: Grove instance (for building skeleton)
         species_name: Species name for texture lookup
         config: GrowPy configuration
+        model: Grove model (for bone tagging info)
+        skeleton_length: Bone length multiplier (default: 1.0)
+        skeleton_reduce: Bone reduction factor (default: 0.25, higher=fewer bones)
+        skeleton_bias: Weight bias (default: 0.5, range 0-1)
+        skeleton_connected: Whether bones are connected (default: True)
 
     Returns:
         Optional[dict]: Texture paths dict if found, None otherwise
@@ -1703,6 +1724,21 @@ def _add_skeleton_and_materials_to_usd(
 
         # 1. Add skeleton if available - wrapped in SkelRoot for UE5.7
         print(f"  Adding skeleton to USD (UE5.7 SkelRoot structure)...")
+        print(
+            f"    Skeleton params: length={skeleton_length}, reduce={skeleton_reduce}, bias={skeleton_bias}, connected={skeleton_connected}"
+        )
+
+        # CRITICAL: Call tag_bone_id() BEFORE build_skeletons() to configure bone generation
+        # This step tags the tree structure with bone IDs using the specified parameters
+        # NOTE: If model was already built with bone tagging, this won't affect the existing model
+        # but will ensure the skeleton matches the bone structure
+        if hasattr(grove, "tag_bone_id"):
+            print(f"    Configuring skeleton with tag_bone_id()...")
+            bones_info = grove.tag_bone_id(
+                skeleton_length, skeleton_reduce, skeleton_bias, skeleton_connected
+            )
+            print(f"    [OK] Tagged {len(bones_info) if bones_info else 0} bones")
+
         skeletons = grove.build_skeletons()
         if skeletons and len(skeletons) > 0:
             skeleton_data = skeletons[0]
