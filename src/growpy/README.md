@@ -81,9 +81,11 @@ python src/growpy/cli/generate_forest.py forest_data.csv --formats usda
 ## Requirements
 
 - **bpy module**: For Blender operations and FBX/USD export
+
   ```bash
   conda install -c conda-forge bpy
   ```
+
 - **Grove API**: The Grove 2.2 Python bindings
 - **pandas**: For CSV forest data processing
 - **Unreal Engine 5.0+**: For Nanite foliage (5.7+ for Nanite Assemblies)
