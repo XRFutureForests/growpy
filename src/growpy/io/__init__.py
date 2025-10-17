@@ -1,13 +1,13 @@
 """
 Import/Export functionality for GrowPy.
 
-FBX and USD export with skeleton support, twig placement, and Nanite Assembly.
+USD export with skeleton support, twig placement, and Nanite Assembly.
 
 Key Functions:
     export_tree_as_usd()              Export single tree to USD
     batch_export_trees_for_unreal()   Export multiple trees for UE5
     create_nanite_assembly_usd()      Create Nanite Assembly USD
-    export_twigs_from_blend()         Convert .blend twigs to FBX/USD
+    export_twigs_from_blend()         Convert .blend twigs to USD
     get_quality_preset()              Get quality settings
 
 Quality Presets:
