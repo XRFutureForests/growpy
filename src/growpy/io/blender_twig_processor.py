@@ -4,24 +4,15 @@ Blender twig processor module - runs inside Blender Python environment.
 
 This module is designed to be executed as a standalone script by Blender's Python
 interpreter. It handles all Blender-specific operations for twig conversion,
-including mesh processing, material setup, and export to FBX/USD formats.
+including mesh processing, material setup, and export to USD formats.
 
 CRITICAL: This module runs in Blender's Python environment, not the main conda env.
 It must be self-contained and not import from growpy package (import cycles).
 
-FBX Export Limitations:
-    - FBX does not fully support Blender's material blend modes (HASHED, CLIP)
-    - Two-sided rendering settings may not export correctly to FBX
-    - Alpha transparency requires manual material setup in Unreal Engine:
-        * Set material blend mode to "Masked" or "Translucent"
-        * Enable "Two Sided" in material properties
-        * Connect alpha/opacity texture to material opacity mask
-    - USD/USDA export is recommended for best results with transparency
-
 Texture Handling:
     - When both top and bottom diffuse textures exist, top texture is prioritized
     - This is a simplification - proper two-sided foliage would require advanced
-      material setups that don't export well to FBX
+      material setups
 """
 
 import json
@@ -325,9 +316,8 @@ def setup_materials_with_textures(obj, blend_dir, species_name, output_dir):
             bsdf.inputs["Roughness"].default_value = 0.7
 
         # CRITICAL: Enable two-sided rendering for leaf/twig materials
-        # This ensures visibility from both sides (especially important for FBX)
+        # This ensures visibility from both sides
         material.use_backface_culling = False
-        # Set custom property for FBX export (Unreal recognizes this)
         material["TwoSided"] = True
 
         obj.data.materials.append(material)
@@ -402,7 +392,6 @@ def process_twig_file(blend_file, output_dir, formats, species_name):
             # or the way they're mapped in the original .blend files
 
             # Enable two-sided mesh rendering with smooth shading
-            # This ensures FBX exports with proper backface visibility
             print(f"    -> Configuring mesh for two-sided rendering...")
             bpy.context.view_layer.objects.active = obj
             bpy.ops.object.mode_set(mode="EDIT")
@@ -417,7 +406,7 @@ def process_twig_file(blend_file, output_dir, formats, species_name):
             for poly in obj.data.polygons:
                 poly.use_smooth = True
 
-            # Add custom properties for FBX export (Unreal reads these)
+            # Add custom properties for Unreal export
             obj["TwoSided"] = 1
             obj["DoubleSided"] = True
             obj.data["TwoSided"] = 1
@@ -472,34 +461,6 @@ def process_twig_file(blend_file, output_dir, formats, species_name):
                         generate_preview_surface=True,
                         relative_paths=True,
                         export_hair=False,
-                    )
-
-                    exported_files.append(export_path)
-
-                elif fmt == "fbx":
-                    # Export static FBX
-                    export_path = output_dir / f"{standardized_name}.fbx"
-                    print(f"    -> Exporting FBX: {export_path.name}")
-
-                    bpy.ops.export_scene.fbx(
-                        filepath=str(export_path),
-                        use_selection=True,
-                        object_types={"MESH", "EMPTY"},
-                        mesh_smooth_type="FACE",
-                        use_mesh_modifiers=True,
-                        use_mesh_edges=False,
-                        use_tspace=True,
-                        use_custom_props=True,
-                        add_leaf_bones=False,
-                        primary_bone_axis="Y",
-                        secondary_bone_axis="X",
-                        path_mode="COPY",
-                        embed_textures=True,
-                        batch_mode="OFF",
-                        axis_forward="-Z",
-                        axis_up="Y",
-                        global_scale=1.0,
-                        apply_scale_options="FBX_SCALE_ALL",
                     )
 
                     exported_files.append(export_path)

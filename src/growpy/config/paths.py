@@ -201,7 +201,7 @@ def get_twig_material_path(common_name: str) -> Optional[Path]:
 
 
 def get_available_twig_usd_files(common_name: str) -> List[Path]:
-    """Get all available twig files (USD/FBX) for a given species.
+    """Get all available twig USD files for a given species.
 
     Args:
         common_name: Species common name
@@ -214,16 +214,11 @@ def get_available_twig_usd_files(common_name: str) -> List[Path]:
         return []
 
     usd_files = list(twig_dir.glob("*.usda")) + list(twig_dir.glob("*.usd"))
-    fbx_files = list(twig_dir.glob("*.fbx"))
-
-    if usd_files:
-        return sorted(usd_files)
-    else:
-        return sorted(fbx_files)
+    return sorted(usd_files)
 
 
 def get_twig_files_by_type(common_name: str) -> Dict[str, List[Path]]:
-    """Get twig FBX/USD files organized by type.
+    """Get twig USD files organized by type.
 
     Args:
         common_name: Species common name

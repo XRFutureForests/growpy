@@ -2,7 +2,7 @@
 GrowPy - Grove API Integration for Unreal Engine 5 Nanite.
 
 A Python package for generating procedural forests using The Grove 2.2 API
-and exporting to FBX/USD formats optimized for Unreal Engine 5 Nanite.
+and exporting to USD/USDA formats optimized for Unreal Engine 5 Nanite.
 
 Quick Start:
     from growpy import create_forest, simulate_forest_growth, get_config
@@ -15,7 +15,7 @@ Quick Start:
 
 Key Features:
     - Multi-species forest simulation with light competition
-    - FBX/USD export with skeleton support for wind animation
+    - USD/USDA export with skeleton support for wind animation
     - Nanite Assembly USD for Unreal Engine 5.7+
     - Growth models for automatic height-to-age conversion
     - Twig instancing with PointInstancer prims
@@ -27,7 +27,7 @@ Main Components:
 
 CLI Tools:
     prepare_assets.py          - Copy assets from Grove 2.2
-    convert_twigs.py           - Convert .blend twigs to FBX/USD
+    convert_twigs.py           - Convert .blend twigs to USD
     create_growth_models.py    - Generate species growth models
     generate_forest.py         - Full forest generation pipeline
 

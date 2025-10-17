@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Forest generation with FBX/USD export.
+Forest generation with USD export.
 
 Generates multi-species forests from CSV data with configurable quality settings.
 
@@ -11,12 +11,8 @@ Common Flags:
     --quality {ultra,high,medium,low,performance}  Quality preset (default: ultra)
     --growth-cycle-limit INT                       Max growth cycles (default: 10)
     --height-scale FLOAT                           Tree height scale (default: 1.0)
-    --formats {fbx,usd,usda}                      Export formats (default: fbx)
+    --formats {usd,usda}                          Export formats (default: usda)
     --output-dir PATH                              Output directory
-
-Performance Notes:
-    - FBX export: Sequential processing only (bpy module limitation)
-    - USD export: Supports parallel processing with multiprocessing
 
 Full Documentation:
     See docs/guides/cli-reference.md for complete flag reference and examples
@@ -191,12 +187,8 @@ def _export_single_tree_from_forest(args: tuple) -> list:
 
     species_dir = output_dir / species_clean
     usd_dir = species_dir / "USD"
-    fbx_dir = species_dir / "FBX"
-
     if "usd" in formats or "usda" in formats:
         usd_dir.mkdir(parents=True, exist_ok=True)
-    if "fbx" in formats:
-        fbx_dir.mkdir(parents=True, exist_ok=True)
 
     tree_name = f"{species_clean}_tree_{idx:04d}"
     exported = []
@@ -212,7 +204,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         grove.simulate(flushes=growth_cycles)
 
         if "usd" in formats or "usda" in formats:
-            usd_path = usd_dir / f"{tree_name}.usda"
+            usd_path = usd_dir / f"{tree_name}.usda\"
 
             twig_usd_map = get_twig_usd_map_for_species(
                 species, config, prefer_skeletal=False
@@ -245,45 +237,6 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             if export_success:
                 exported.append(str(usd_path))
 
-        if "fbx" in formats:
-            fbx_static_path = fbx_dir / f"{tree_name}.fbx"
-
-            export_success_static = _export_fbx_internal(
-                grove,
-                fbx_static_path,
-                species,
-                include_skeleton=False,
-                include_twig_attributes=True,
-                cleanup_mesh=cleanup_mesh,
-                config=config,
-                skeleton_length=quality_params.get("skeleton_length", 1.0),
-                skeleton_reduce=quality_params.get("skeleton_reduce", 0.25),
-                skeleton_bias=quality_params.get("skeleton_bias", 0.5),
-                skeleton_connected=quality_params.get("skeleton_connected", True),
-            )
-
-            if export_success_static:
-                exported.append(str(fbx_static_path))
-
-            fbx_skeletal_path = fbx_dir / f"{tree_name}_skeletal.fbx"
-
-            export_success_skeletal = _export_fbx_internal(
-                grove,
-                fbx_skeletal_path,
-                species,
-                include_skeleton=True,
-                include_twig_attributes=True,
-                cleanup_mesh=cleanup_mesh,
-                config=config,
-                skeleton_length=quality_params.get("skeleton_length", 1.0),
-                skeleton_reduce=quality_params.get("skeleton_reduce", 0.25),
-                skeleton_bias=quality_params.get("skeleton_bias", 0.5),
-                skeleton_connected=quality_params.get("skeleton_connected", True),
-            )
-
-            if export_success_skeletal:
-                exported.append(str(fbx_skeletal_path))
-
         del grove
         _gc_module.collect()
 
@@ -304,7 +257,7 @@ def export_individual_trees(
     use_multiprocessing: bool = True,
     max_workers: Optional[int] = None,
 ) -> list:
-    """Export each tree individually as separate USD/FBX files.
+    """Export each tree individually as separate USD files.
 
     Each tree is re-simulated independently for export (does not preserve inter-species
     light competition from forest simulation, but maintains same growth cycle progression).
@@ -348,15 +301,6 @@ def export_individual_trees(
     total_trees = len(tree_tasks)
     print(f"\nExporting {total_trees} trees...")
 
-    # FBX export requires bpy which cannot be used in multiprocessing workers
-    # Force sequential processing for FBX exports
-    if "fbx" in formats:
-        if use_multiprocessing:
-            print(
-                "Note: Multiprocessing disabled for FBX export (bpy module limitation)"
-            )
-        use_multiprocessing = False
-
     if use_multiprocessing and total_trees > 1:
         print(f"Using multiprocessing with {max_workers} workers")
 
@@ -393,7 +337,7 @@ def generate_forest_exports(
     csv_path: Path,
     output_dir: Path,
     config: GrowPyConfig,
-    formats: list = ["fbx"],
+    formats: list = ["usda"],
     quality: str = "high",
     resolution: Optional[int] = None,
     place_twigs: bool = False,
@@ -415,7 +359,7 @@ def generate_forest_exports(
         csv_path: Path to CSV file with forest data
         output_dir: Directory to save export files
         config: GrowPy configuration
-        formats: List of export formats ('fbx', 'usd', 'usda')
+        formats: List of export formats ('usd', 'usda')
         quality: Quality preset name ('ultra', 'high', 'medium', 'low', 'performance')
         resolution: Override resolution from quality preset (4-32, optional)
         place_twigs: Whether to place twig instances on trees (default: False)
@@ -510,7 +454,7 @@ def generate_forest_exports(
     quality_params["skeleton_bias"] = skeleton_bias
     quality_params["skeleton_connected"] = skeleton_connected
 
-    if any(fmt in formats for fmt in ["fbx", "usd", "usda"]):
+    if any(fmt in formats for fmt in ["usd", "usda"]):
         try:
             # Bundle twig files BEFORE export so Nanite Assembly can reference them
             from growpy.io.blender_export import bundle_twigs_for_species
@@ -521,8 +465,6 @@ def generate_forest_exports(
             twig_formats = []
             if "usda" in formats or "usd" in formats:
                 twig_formats.append("usda")
-            if "fbx" in formats:
-                twig_formats.append("fbx")
 
             for species in unique_species:
                 species_clean = (
@@ -635,9 +577,9 @@ Examples:
     parser.add_argument(
         "--formats",
         nargs="+",
-        choices=["fbx", "usd", "usda"],
-        default=["fbx"],
-        help="Export formats (default: fbx)",
+        choices=["usd", "usda"],
+        default=["usda"],
+        help="Export formats (default: usda)",
     )
     parser.add_argument(
         "--quality",
@@ -700,7 +642,7 @@ Examples:
         dest="use_multiprocessing",
         action="store_false",
         default=True,
-        help="Disable parallel processing (use sequential export). Note: FBX export is always sequential due to bpy module limitations",
+        help="Disable parallel processing (use sequential export)",
     )
     parser.add_argument(
         "--max-workers",
