@@ -634,7 +634,7 @@ def _calculate_vertex_weights(
             skeleton_length, skeleton_reduce, skeleton_bias, skeleton_connected
         )
         t1 = time.time()
-        print(f"      ⏱️  grove.tag_bone_id(): {t1-t0:.2f}s")
+        print(f"      [TIME]  grove.tag_bone_id(): {t1-t0:.2f}s")
 
         if not bones or not hasattr(model, "point_attribute_bone_id"):
             print("  Warning: Grove bone tagging failed, using root-only weights")
@@ -716,7 +716,7 @@ def _add_skeleton_to_object(
             skeleton_connected,
         )
         t_weight_calc = time.time()
-        print(f"      ⏱️  Weight calculation: {t_weight_calc-t_weight_start:.2f}s")
+        print(f"      [TIME]  Weight calculation: {t_weight_calc-t_weight_start:.2f}s")
 
         # Find unique bones that are actually used
         used_bone_indices = set()
@@ -724,7 +724,7 @@ def _add_skeleton_to_object(
             used_bone_indices.update(joint_indices)
 
         num_bones_needed = len(used_bone_indices)
-        print(f"      ℹ️  Creating {num_bones_needed} bones (from Grove's tag_bone_id)")
+        print(f"      [INFO]  Creating {num_bones_needed} bones (from Grove's tag_bone_id)")
 
         # Create armature
         armature = bpy.data.armatures.new(f"{species_name}_armature")
@@ -803,7 +803,7 @@ def _add_skeleton_to_object(
         bpy.ops.object.mode_set(mode="OBJECT")
         t_bones = time.time()
         print(
-            f"      ⏱️  Bone creation: {t_bones-t_weight_calc:.2f}s ({len(bone_names)} bones)"
+            f"      [TIME]  Bone creation: {t_bones-t_weight_calc:.2f}s ({len(bone_names)} bones)"
         )
 
         # Parent mesh to armature for proper FBX skeletal mesh export
@@ -830,7 +830,7 @@ def _add_skeleton_to_object(
                     vgroup.add([vert_idx], weight, "REPLACE")
         t_assign_end = time.time()
         print(
-            f"      ⏱️  Weight assignment: {t_assign_end-t_assign_start:.2f}s ({len(vertices)} vertices)"
+            f"      [TIME]  Weight assignment: {t_assign_end-t_assign_start:.2f}s ({len(vertices)} vertices)"
         )
 
         print(f"    [OK] Applied weights for {len(vertices)} vertices to FBX skeleton")
@@ -1286,7 +1286,7 @@ def _add_materials_to_usd(
 
             print(f"    [OK] Bound material to mesh")
         else:
-            print(f"    ℹ️  No bark textures found for {species_name}")
+            print(f"    [INFO]  No bark textures found for {species_name}")
 
         # Save changes
         stage.Save()
@@ -2044,7 +2044,7 @@ def _add_skeleton_and_materials_to_usd(
 
             print(f"    [OK] Bound material to mesh")
         else:
-            print(f"    ℹ️  No bark textures found for {species_name}")
+            print(f"    [INFO]  No bark textures found for {species_name}")
 
         # Save changes
         stage.Save()
@@ -2664,7 +2664,7 @@ def _export_fbx_internal(
             _add_grove_attributes_to_mesh(mesh, model)
 
         # Create object
-        print("  🏗️  Creating Blender object...")
+        print("  [BUILD]  Creating Blender object...")
         obj = bpy.data.objects.new(f"{species_name}_tree", mesh)
         bpy.context.collection.objects.link(obj)
         bpy.context.view_layer.objects.active = obj
@@ -2679,7 +2679,7 @@ def _export_fbx_internal(
             t0 = time.time()
             skeletons = grove.build_skeletons()
             t1 = time.time()
-            print(f"    ⏱️  Grove skeleton generation: {t1-t0:.2f}s")
+            print(f"    [TIME]  Grove skeleton generation: {t1-t0:.2f}s")
 
             if skeletons:
                 t2 = time.time()
@@ -2695,8 +2695,8 @@ def _export_fbx_internal(
                     skeleton_connected,
                 )
                 t3 = time.time()
-                print(f"    ⏱️  Blender skeleton setup: {t3-t2:.2f}s")
-                print(f"    ⏱️  Total skeleton time: {t3-t0:.2f}s")
+                print(f"    [TIME]  Blender skeleton setup: {t3-t2:.2f}s")
+                print(f"    [TIME]  Total skeleton time: {t3-t0:.2f}s")
 
                 # Set armature to rest position for clean FBX export
                 if armature_obj and armature_obj.pose:
@@ -2760,7 +2760,7 @@ def _export_fbx_internal(
         # Tangents are derived implicitly by Nanite (not stored in mesh data)
 
         # Validate mesh for Nanite
-        print("  🔍 Validating mesh for Nanite...")
+        print("  [CHECK] Validating mesh for Nanite...")
         mesh_data = obj.data
         validation = validate_mesh_for_nanite(mesh_data)
         if validation["warnings"]:
@@ -2779,7 +2779,7 @@ def _export_fbx_internal(
 
         # Print mesh stats before export for debugging
         print(
-            f"  📊 Mesh stats: {len(mesh_data.vertices)} verts, {len(mesh_data.polygons)} faces"
+            f"  [STATS] Mesh stats: {len(mesh_data.vertices)} verts, {len(mesh_data.polygons)} faces"
         )
 
         print(f"FBX export starting... '{output_path}'")
@@ -3213,7 +3213,7 @@ def batch_export_trees_for_unreal(
                                 )
 
                                 print(
-                                    f"  ℹ️  FBX Skeletal Mesh: Import {fbx_path.name} directly into Unreal"
+                                    f"  [INFO]  FBX Skeletal Mesh: Import {fbx_path.name} directly into Unreal"
                                 )
                                 print(
                                     f"     (Skeletal Nanite Assemblies not supported - USD cannot reference FBX)"
@@ -3667,10 +3667,10 @@ def export_grove_tree_as_usda_native(
                         print(f"  Warning: Failed to create skeletal assembly")
                 else:
                     print(
-                        f"  ℹ️  No skeletal twigs found - skeletal assembly not created"
+                        f"  [INFO]  No skeletal twigs found - skeletal assembly not created"
                     )
             elif include_skeleton:
-                print(f"\n  ℹ️  For skeletal mesh with animation:")
+                print(f"\n  [INFO]  For skeletal mesh with animation:")
                 print(
                     f"     Import {skeletal_tree_path.name} directly (skeleton embedded)"
                 )
