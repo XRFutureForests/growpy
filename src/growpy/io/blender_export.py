@@ -1495,8 +1495,8 @@ def _add_skeleton_only_to_usd(
                     )
 
                     if start_idx < len(points) and end_idx < len(points):
-                        start_pos = points[start_idx]
-                        end_pos = points[end_idx]
+                        start_pos = Gf.Vec3d(*points[start_idx])
+                        end_pos = Gf.Vec3d(*points[end_idx])
 
                         # Parent already determined above when building hierarchical name
                         joint_parents.append(parent_joint_idx)
@@ -1505,21 +1505,16 @@ def _add_skeleton_only_to_usd(
                         parent_pos = joint_positions.get(
                             parent_joint_idx, Gf.Vec3d(0, 0, 0)
                         )
-                        relative_pos = Gf.Vec3d(
-                            start_pos[0] - parent_pos[0],
-                            start_pos[1] - parent_pos[1],
-                            start_pos[2] - parent_pos[2],
-                        )
+                        relative_pos = start_pos - parent_pos
 
                         local_transform = Gf.Matrix4d().SetIdentity()
                         local_transform.SetTranslateOnly(relative_pos)
                         bind_transforms.append(local_transform)
                         rest_transforms.append(local_transform)
 
-                        # Track position for this joint (use END position for proper chaining)
-                        joint_positions[joint_idx] = Gf.Vec3d(
-                            end_pos[0], end_pos[1], end_pos[2]
-                        )
+                        # Track position for this joint (use START position to match calculation above)
+                        # This ensures next bone's parent_pos matches this bone's start_pos
+                        joint_positions[joint_idx] = start_pos
                         point_to_joint[end_idx] = joint_idx
                         previous_bone = bone_index
                         parent_joint_idx = (
@@ -2276,9 +2271,9 @@ def _find_bark_texture(
 
     # Try to get texture from lookup table first
     try:
-        from ..config import GrowPyConfig
+        from ..config import get_species_data
 
-        species_data = GrowPyConfig.get_species_data(species_name)
+        species_data = get_species_data(species_name)
         if species_data and "Bark Texture" in species_data:
             bark_texture_name = species_data.get("Bark Texture")
             if bark_texture_name and str(bark_texture_name) not in ["", "nan"]:
@@ -3759,9 +3754,9 @@ def get_twig_fbx_map_for_species(
     if config is None:
         config = get_config()
 
-    from ..config import GrowPyConfig
+    from ..config import get_twig_files_by_type
 
-    twig_files_by_type = GrowPyConfig.get_twig_files_by_type(species_name)
+    twig_files_by_type = get_twig_files_by_type(species_name)
 
     if not twig_files_by_type:
         return {}
@@ -3830,10 +3825,10 @@ def get_twig_usd_map_for_species(
     if config is None:
         config = get_config()
 
-    from ..config import GrowPyConfig
+    from ..config import get_twig_files_by_type
 
     print(f"  Looking for twigs for species: {species_name}")
-    twig_files_by_type = GrowPyConfig.get_twig_files_by_type(species_name)
+    twig_files_by_type = get_twig_files_by_type(species_name)
 
     if not twig_files_by_type:
         print(f"  WARNING: No twig files found for species '{species_name}'")
@@ -4047,9 +4042,9 @@ def bundle_twigs_for_species(
         twig_dir.mkdir(parents=True, exist_ok=True)
 
         # Get available twig files for this species (all variations)
-        from ..config import GrowPyConfig
+        from ..config import get_twig_files_by_type
 
-        twig_files_by_type = GrowPyConfig.get_twig_files_by_type(species_name)
+        twig_files_by_type = get_twig_files_by_type(species_name)
 
         if not twig_files_by_type:
             print(f"  No twig files found for {species_name}")
