@@ -1174,6 +1174,50 @@ def _add_blender_attributes_as_usd_primvars(usd_path: Path, mesh_obj: Any) -> No
         traceback.print_exc()
 
 
+def _convert_mesh_yup_to_zup(usd_path: Path) -> bool:
+    """Convert mesh vertices from Y-up (Grove) to Z-up (Unreal).
+
+    Grove exports meshes in Y-up coordinates but Unreal uses Z-up.
+    Conversion: (x, y, z)_grove → (x, -z, y)_usd
+    - Grove Y (vertical) → USD Z (vertical)
+    - Grove Z (forward) → USD -Y (forward)
+
+    Args:
+        usd_path: Path to USD file with Y-up mesh
+
+    Returns:
+        bool: True if conversion succeeded
+    """
+    try:
+        from pxr import Gf, Usd, UsdGeom
+
+        stage = Usd.Stage.Open(str(usd_path))
+        if not stage:
+            return False
+
+        # Set stage to Z-up
+        UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
+
+        # Find and convert mesh vertices
+        for prim in stage.Traverse():
+            if prim.IsA(UsdGeom.Mesh):
+                mesh = UsdGeom.Mesh(prim)
+                points_attr = mesh.GetPointsAttr()
+                points = points_attr.Get()
+
+                if points:
+                    # Convert Y-up to Z-up: (x, y, z) → (x, -z, y)
+                    converted_points = [Gf.Vec3f(p[0], -p[2], p[1]) for p in points]
+                    points_attr.Set(converted_points)
+
+        stage.Save()
+        return True
+
+    except Exception as e:
+        print(f"  Warning: Could not convert mesh to Z-up: {e}")
+        return False
+
+
 def _add_materials_to_usd(
     usd_path: Path,
     grove: Any,
@@ -3139,6 +3183,11 @@ def export_grove_tree_as_usda_native(
             f.write(usda_string)
 
         print(f"  [OK] Exported base tree USD: {temp_tree_path.name}")
+
+        # Convert mesh from Y-up to Z-up to match Unreal and twigs
+        # Grove's model_to_usda_string() exports Y-up geometry
+        if not _convert_mesh_yup_to_zup(temp_tree_path):
+            print(f"  Warning: Mesh coordinate conversion failed")
 
         # NOTE: Grove's native USD export already includes twig face attributes
         # as PascalCase primvars (TwigDead, TwigUpward, TwigSide, TwigEnd)
