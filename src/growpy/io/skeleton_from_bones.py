@@ -57,6 +57,11 @@ def add_skeleton_from_grove_bones(
             print(f"    Error: Could not open USD file: {usd_path}")
             return False
 
+        # Stage should already be Z-up from mesh conversion
+        # Just verify it's set correctly
+        if UsdGeom.GetStageUpAxis(stage) != UsdGeom.Tokens.z:
+            UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
+
         # Find tree mesh and parent transform
         tree_mesh_prim = None
         tree_xform_prim = None
@@ -87,6 +92,12 @@ def add_skeleton_from_grove_bones(
         print(
             f"    [OK] Grove returned {len(bones_info)} bones with head/tail positions"
         )
+
+        # Debug: Print first bone info
+        if len(bones_info) > 0:
+            first_bone = bones_info[0]
+            print(f"    [DEBUG] First bone head: {first_bone[2].as_tuple()}")
+            print(f"    [DEBUG] First bone tail: {first_bone[3].as_tuple()}")
 
         # Create SkelRoot
         skel_root_path = original_xform_path.AppendChild("SkelRoot")
@@ -135,9 +146,11 @@ def add_skeleton_from_grove_bones(
             tail_vec = bone[3]  # Grove Vector
             radius = bone[4]
 
-            # Convert Grove Vector to tuple (world space positions from Grove)
-            world_head = Gf.Vec3d(*head_vec.as_tuple())
-            world_tail = Gf.Vec3d(*tail_vec.as_tuple())
+            # TEMP: No conversion - check what Grove actually returns
+            head_tuple = head_vec.as_tuple()
+            tail_tuple = tail_vec.as_tuple()
+            world_head = Gf.Vec3d(head_tuple[0], head_tuple[1], head_tuple[2])
+            world_tail = Gf.Vec3d(tail_tuple[0], tail_tuple[1], tail_tuple[2])
 
             # Find parent joint index
             parent_joint_idx = bone_to_joint.get(parent_bone_idx, 0)
@@ -152,13 +165,13 @@ def add_skeleton_from_grove_bones(
             bone_to_joint[bone_idx] = joint_idx
             joint_path_names[joint_idx] = joint_name
 
-            # Get parent's HEAD position in world space (where this bone should connect)
-            # For the first bone, parent is root at origin
-            # For subsequent bones, they connect to parent's HEAD (not tail)
-            parent_head = world_head_positions.get(parent_joint_idx, Gf.Vec3d(0, 0, 0))
+            # Get parent's position (where the parent bone starts)
+            # For root, this is origin. For others, it's the parent bone's head position
+            parent_pos = world_head_positions.get(parent_joint_idx, Gf.Vec3d(0, 0, 0))
 
-            # Calculate position relative to parent's head
-            relative_pos = world_head - parent_head
+            # Calculate position relative to parent's position
+            # This is the offset from where parent bone starts to where this bone starts
+            relative_pos = world_head - parent_pos
 
             # Calculate bone direction (from head to tail)
             bone_vector = world_tail - world_head
@@ -167,8 +180,8 @@ def add_skeleton_from_grove_bones(
             if bone_length > 0.0001:  # Avoid division by zero
                 bone_dir = bone_vector / bone_length
 
-                # Default bone direction in USD is +Y (up)
-                default_dir = Gf.Vec3d(0, 1, 0)
+                # Default bone direction is +Z (Z-up vertical)
+                default_dir = Gf.Vec3d(0, 0, 1)
 
                 # Calculate rotation to align default direction with bone direction
                 rotation = Gf.Rotation()
@@ -189,7 +202,9 @@ def add_skeleton_from_grove_bones(
                 bind_transforms.append(local_transform)
                 rest_transforms.append(local_transform)
 
-            # Store positions for child bones (children connect to this bone's head)
+            # Store positions for child bones
+            # Store this bone's HEAD (start) position, not tail
+            # Children will calculate their offset from this position
             world_head_positions[joint_idx] = world_head
             world_tail_positions[joint_idx] = world_tail
 
