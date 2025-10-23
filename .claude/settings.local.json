@@ -18,7 +18,9 @@
       "Bash(/c/ProgramData/miniforge3/Scripts/conda.exe --version)",
       "Bash(/c/ProgramData/miniforge3/Scripts/conda.exe run:*)",
       "Bash(awk:*)",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
