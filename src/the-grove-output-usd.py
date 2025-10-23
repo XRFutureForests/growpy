@@ -262,8 +262,10 @@ def export_tree_mesh_to_usd(
 ):
     """Export skeletal tree mesh to USD.
 
-    Creates a skeletal mesh file with embedded skeleton that will be referenced
-    by the Nanite Assembly. The mesh is bound to the skeleton.
+    Creates a properly structured skeletal mesh with:
+    - SkelRoot containing the skeleton
+    - Mesh bound to skeleton via SkelBindingAPI
+    - All Grove attributes preserved as primvars
     """
 
     print(f"\nExporting skeletal tree mesh to USD: {output_path}")
@@ -272,16 +274,20 @@ def export_tree_mesh_to_usd(
     UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
     UsdGeom.SetStageMetersPerUnit(stage, 0.01)
 
-    # Create SkelRoot
-    UsdSkel.Root.Define(stage, "/Tree/SkelRoot")
+    # Create root transform
+    root_prim = stage.DefinePrim("/Tree", "Xform")
 
-    # Create skeleton
+    # Create SkelRoot for skeleton hierarchy
+    skel_root_prim = UsdSkel.Root.Define(stage, "/Tree/SkelRoot")
+
+    # Create skeleton under SkelRoot
     skeleton, bone_names = create_usd_skeleton_from_bones(
         stage, "/Tree/SkelRoot/Skeleton", bones
     )
 
-    # Create mesh under SkelRoot
-    mesh = UsdGeom.Mesh.Define(stage, "/Tree/SkelRoot/Mesh")
+    # Create mesh as sibling to SkelRoot (not child)
+    # This allows the mesh to be bound to skeleton without being under it
+    mesh = UsdGeom.Mesh.Define(stage, "/Tree/Mesh")
     mesh_prim = mesh.GetPrim()
 
     # Set mesh topology
@@ -349,29 +355,38 @@ def export_tree_mesh_to_usd(
             "primvars:grove:twig_short", Sdf.ValueTypeNames.IntArray
         ).Set(Vt.IntArray(face_twig_short))
 
-    # Bind mesh to skeleton using SkelBindingAPI
+    # Apply SkelBindingAPI to establish binding
     skel_binding_api = UsdSkel.BindingAPI.Apply(mesh_prim)
     skel_binding_api.CreateSkeletonRel().AddTarget(skeleton.GetPrim().GetPath())
 
-    # Add joint weights for all vertices (bind all to first bone with weight 1.0)
-    # This is a simple binding - all vertices are influenced by the root bone
-    vertex_count = len(points)
-    bind_joints = Vt.TokenArray([bone_names[0]] * vertex_count)
-    bind_weights = Vt.FloatArray([1.0] * vertex_count)
+    # Set geometry bind transform (identity matrix)
+    geom_bind_xform = Gf.Matrix4d(1.0)
+    skel_binding_api.CreateGeomBindTransformAttr().Set(geom_bind_xform)
 
-    mesh_prim.CreateAttribute(
+    # Create joint influences per vertex
+    vertex_count = len(points)
+
+    # Bind all vertices to bone 0 (root) with full weight
+    # This is uniform binding - all mesh deforms together with root
+    joint_indices = Vt.IntArray([0] * vertex_count)
+    joint_weights = Vt.FloatArray([1.0] * vertex_count)
+
+    # Store as primvars for skeleton deformation
+    indices_attr = mesh_prim.CreateAttribute(
         "primvars:skel:jointIndices",
         Sdf.ValueTypeNames.IntArray,
-    ).Set(Vt.IntArray([0] * vertex_count))
+    )
+    indices_attr.Set(joint_indices)
 
-    mesh_prim.CreateAttribute(
+    weights_attr = mesh_prim.CreateAttribute(
         "primvars:skel:jointWeights",
         Sdf.ValueTypeNames.FloatArray,
-    ).Set(bind_weights)
+    )
+    weights_attr.Set(joint_weights)
 
     stage.GetRootLayer().Save()
     print(f"  Created skeletal mesh: {len(points)} points, {len(faces)} faces")
-    print(f"  Bound to {len(bone_names)} skeleton joints")
+    print(f"  Bound to skeleton at {skeleton.GetPrim().GetPath()}")
     print(f"  Saved: {output_path}")
 
     return stage
