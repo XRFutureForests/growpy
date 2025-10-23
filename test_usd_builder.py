@@ -16,7 +16,7 @@ from growpy.io import build_tree_usd
 # Input parameters matching the-grove-output-complete.py
 random_seed = 42
 preset_path = Path("data/assets/presets/Fagaceae - Beech.seed.json")
-position = (1, 2, 0)
+position = (0, 0, 0)
 direction = (0, 0, 1)
 delay = 0
 flushes = 5
