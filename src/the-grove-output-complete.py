@@ -104,13 +104,23 @@ uv_islands_flat = tree_model.get_uv_islands_flat()  # UV island data
 # %% EXTRACT FACE ATTRIBUTES
 
 # Tree and branch identification
+# Note: face_attribute_tree_index only exists when using Grove.build_as_one_model()
+# for multi-tree groves, not for individual trees from build_models()
 face_tree_index = (
     tree_model.face_attribute_tree_index
-)  # Tree ID (for multi-tree groves)
-face_branch_index = tree_model.face_attribute_branch_index  # Branch ID
+    if hasattr(tree_model, "face_attribute_tree_index")
+    else None
+)
+face_branch_index = (
+    tree_model.face_attribute_branch_index
+    if hasattr(tree_model, "face_attribute_branch_index")
+    else None
+)
 face_branch_index_parent = (
     tree_model.face_attribute_branch_index_parent
-)  # Parent branch ID
+    if hasattr(tree_model, "face_attribute_branch_index_parent")
+    else None
+)
 
 # Twig placement attributes (for twig duplication)
 face_twig_long = tree_model.face_attribute_twig_long  # Long twig placement triangles
@@ -167,4 +177,5 @@ skeleton_point_radius = skeleton.point_attribute_radius  # Branch radius
 
 # Generate USD string representation
 usda_string = gc.io.model_to_usda_string(tree_model)
-usda_string = gc.io.model_to_usda_string(tree_model)
+
+# %%
