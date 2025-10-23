@@ -31,7 +31,7 @@ import multiprocessing as mp
 import sys
 from pathlib import Path
 
-from growpy.utils.species_growth_analysis import SpeciesGrowthAnalyzer
+from growpy.utils.analysis import SpeciesGrowthAnalyzer
 
 # Set up logging
 logging.basicConfig(

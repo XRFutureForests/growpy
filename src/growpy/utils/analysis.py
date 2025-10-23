@@ -26,7 +26,7 @@ sys.path.insert(0, str(src_path / "the_grove_22" / "modules"))
 
 import the_grove_22_core as gc
 
-from .growth_plotting import plot_growth_curves
+from .plotting import plot_growth_curves
 
 # Set up logging
 logger = logging.getLogger(__name__)

@@ -1,12 +1,20 @@
 """Utilities for GrowPy.
 
-This module provides species growth analysis, plotting, and common utilities.
+Provides file operations, string utilities, growth analysis, and plotting.
 """
 
-from .species_growth_analysis import SpeciesGrowthAnalyzer
-from .growth_plotting import plot_growth_curves
 from .strings import sanitize_species_name, sanitize_filename
 from .paths import ensure_dir, ensure_parent_dir
+
+try:
+    from .analysis import SpeciesGrowthAnalyzer
+except ImportError:
+    SpeciesGrowthAnalyzer = None
+
+try:
+    from .plotting import plot_growth_curves
+except ImportError:
+    plot_growth_curves = None
 
 __all__ = [
     "SpeciesGrowthAnalyzer",
