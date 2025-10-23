@@ -285,9 +285,9 @@ def export_tree_mesh_to_usd(
         stage, "/Tree/SkelRoot/Skeleton", bones
     )
 
-    # Create mesh as sibling to SkelRoot (not child)
-    # This allows the mesh to be bound to skeleton without being under it
-    mesh = UsdGeom.Mesh.Define(stage, "/Tree/Mesh")
+    # Create mesh as child of SkelRoot
+    # This is the standard UsdSkel pattern where mesh lives under the SkelRoot
+    mesh = UsdGeom.Mesh.Define(stage, "/Tree/SkelRoot/Mesh")
     mesh_prim = mesh.GetPrim()
 
     # Set mesh topology
