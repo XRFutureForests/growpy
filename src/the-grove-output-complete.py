@@ -48,7 +48,7 @@ skeleton_reduce = (
     0.4  # Reduce bones below thickness threshold (default: 0.4, range: 0.0-1.0)
 )
 skeleton_bias = 0.5  # Bias towards parent or child bones (default: 0.5, range: 0.0-1.0)
-skeleton_connected = True  # Whether bones are connected in hierarchy (default: False)
+skeleton_connected = False  # Whether bones are connected in hierarchy (default: False)
 
 # Smoothing parameters
 enable_smooth = True  # Apply smoothing to reduce sharp branch angles (default: False)
