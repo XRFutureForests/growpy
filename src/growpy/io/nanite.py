@@ -1,6 +1,49 @@
-"""Nanite mesh validation."""
+"""Nanite support for Unreal Engine 5 meshes.
 
+Provides Nanite attribute assignment and mesh validation for compatibility.
+"""
+
+from pathlib import Path
 from typing import Any, Dict
+
+
+def add_nanite_attributes_to_usd(usd_path: Path, is_foliage: bool = False) -> bool:
+    """Add Nanite-specific USD attributes to exported USD file.
+
+    Args:
+        usd_path: Path to USD file
+        is_foliage: Whether this is foliage requiring Preserve Area
+
+    Returns:
+        Success status
+    """
+    try:
+        from pxr import Sdf, Usd, UsdGeom
+
+        stage = Usd.Stage.Open(str(usd_path))
+        if not stage:
+            return False
+
+        for prim in stage.Traverse():
+            if prim.IsA(UsdGeom.Mesh):
+                prim.CreateAttribute("unrealNanite", Sdf.ValueTypeNames.Token).Set(
+                    "enable"
+                )
+                if is_foliage:
+                    prim.CreateAttribute(
+                        "unrealNanitePreserveArea", Sdf.ValueTypeNames.Bool
+                    ).Set(True)
+
+        stage.GetRootLayer().Save()
+        return True
+
+    except ImportError:
+        print("USD Python (pxr) not available. Nanite attributes not added.")
+        print("Install with: pip install usd-core")
+        return False
+    except Exception as e:
+        print(f"Failed to add Nanite attributes to USD: {e}")
+        return False
 
 
 def validate_mesh_for_nanite(mesh: Any) -> Dict[str, Any]:
@@ -43,6 +86,7 @@ def validate_mesh_for_nanite(mesh: Any) -> Dict[str, Any]:
         validation["warnings"].append("No UV maps found")
 
     import mathutils
+
     thin_triangle_count = 0
     for poly in mesh.polygons:
         if len(poly.vertices) >= 3:
