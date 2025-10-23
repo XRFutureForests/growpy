@@ -468,15 +468,16 @@ def export_tree_as_nanite_assembly(
 
         model = models[0]
 
-        # Export tree using Grove's native USD export
-        usda_string = gc.io.model_to_usda_string(model)
+        # Export tree using direct Grove API geometry (no coordinate transformation)
+        from .usd_builder import build_tree_usd
 
-        # Save tree to temporary file
         output_path.parent.mkdir(parents=True, exist_ok=True)
         temp_tree_path = output_path.parent / f"{output_path.stem}_tree.usda"
 
-        with open(temp_tree_path, "w") as f:
-            f.write(usda_string)
+        # Build USD directly from Grove API data
+        if not build_tree_usd(model, temp_tree_path, up_axis="Z", triangulated=False):
+            print(f"  Error: Failed to build tree USD")
+            return False
 
         print(f"  [OK] Exported base tree: {temp_tree_path.name}")
 

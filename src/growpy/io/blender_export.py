@@ -1175,18 +1175,23 @@ def _add_blender_attributes_as_usd_primvars(usd_path: Path, mesh_obj: Any) -> No
 
 
 def _convert_mesh_yup_to_zup(usd_path: Path) -> bool:
-    """Convert mesh vertices from Y-up (Grove) to Z-up (Unreal).
+    """DEPRECATED: Convert mesh vertices from Y-up (Grove) to Z-up (Unreal).
 
-    Grove exports meshes in Y-up coordinates but Unreal uses Z-up.
-    Conversion: (x, y, z)_grove → (x, -z, y)_usd
-    - Grove Y (vertical) → USD Z (vertical)
-    - Grove Z (forward) → USD -Y (forward)
+    This function is no longer needed when using usd_builder.build_tree_usd(),
+    which accesses Grove API geometry directly in the correct coordinate system.
+
+    Historical note: This was needed when using gc.io.model_to_usda_string()
+    which exported in Y-up coordinates requiring transformation:
+    (x, y, z)_grove → (x, -z, y)_usd
 
     Args:
         usd_path: Path to USD file with Y-up mesh
 
     Returns:
         bool: True if conversion succeeded
+
+    Deprecated:
+        Use usd_builder.build_tree_usd() instead of gc.io.model_to_usda_string()
     """
     try:
         from pxr import Gf, Usd, UsdGeom
@@ -3167,40 +3172,38 @@ def export_grove_tree_as_usda_native(
 
         # Triangulate using Grove's native function for consistent topology
         # This ensures compatibility with Nanite and other triangle-only pipelines
-        # Note: Triangulation preserves coordinate system (no transformation here)
         model.triangulate()
 
-        # Export using Grove's native USD export
-        usda_string = gc.io.model_to_usda_string(model)
+        # Export using direct Grove API geometry (no coordinate transformation needed)
+        from .usd_builder import build_tree_usd
 
-        # Save to temporary file first (we'll enhance it with twigs)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         temp_tree_path = (
             output_path.parent / f"{output_path.stem}_tree_only{output_path.suffix}"
         )
 
-        with open(temp_tree_path, "w") as f:
-            f.write(usda_string)
+        # Build USD directly from Grove API data
+        if not build_tree_usd(model, temp_tree_path, up_axis="Z", triangulated=True):
+            print(f"  Error: Failed to build tree USD")
+            return False
 
         print(f"  [OK] Exported base tree USD: {temp_tree_path.name}")
 
-        # Convert mesh from Y-up to Z-up to match Unreal and twigs
-        # Grove's model_to_usda_string() exports Y-up geometry
-        if not _convert_mesh_yup_to_zup(temp_tree_path):
-            print(f"  Warning: Mesh coordinate conversion failed")
+        # No coordinate transformation needed - Grove API provides correct coordinates
 
         # NOTE: Grove's native USD export already includes twig face attributes
         # as PascalCase primvars (TwigDead, TwigUpward, TwigSide, TwigEnd)
         # No need to add duplicate snake_case versions
+        # NOTE: Grove API face attributes are already added as primvars by usd_builder
+        # using PascalCase naming (TwigDead, TwigUpward, TwigLong, TwigShort)
 
         # Add materials to base tree (static mesh version)
-        # This adds bark textures without skeleton
-        base_textures = _add_materials_to_usd(
-            temp_tree_path, grove, species_name, config
-        )
-
-        # Copy bark textures to output directory (for static mesh)
+        # Find bark textures
+        base_textures = _find_bark_texture(species_name, config)
         if base_textures:
+            from .usd_builder import add_materials_to_usd
+
+            add_materials_to_usd(temp_tree_path, species_name, base_textures)
             copy_bark_textures_for_species(
                 species_name,
                 temp_tree_path.parent.parent,  # Go up to species dir
@@ -3225,14 +3228,12 @@ def export_grove_tree_as_usda_native(
             shutil.copy2(temp_tree_path, skeletal_tree_path)
 
             # Add ONLY skeleton to the SKELETAL copy (materials already present from copy)
-            # Use new bone-based implementation which correctly uses Grove's tag_bone_id()
-            from .skeleton_from_bones import add_skeleton_from_grove_bones
+            # Use usd_builder which correctly uses Grove's tag_bone_id() API
+            from .usd_builder import add_skeleton_to_usd
 
-            skeleton_added = add_skeleton_from_grove_bones(
+            skeleton_added = add_skeleton_to_usd(
                 usd_path=skeletal_tree_path,
                 grove=grove,
-                species_name=species_name,
-                model=model,
                 skeleton_length=skeleton_length,
                 skeleton_reduce=skeleton_reduce,
                 skeleton_bias=skeleton_bias,
