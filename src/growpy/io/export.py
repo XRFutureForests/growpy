@@ -1,6 +1,6 @@
-"""Quality presets for tree model building."""
+"""Export quality presets and configuration for tree model building."""
 
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 def get_quality_preset(preset_name: str) -> Dict[str, Any]:
@@ -11,6 +11,13 @@ def get_quality_preset(preset_name: str) -> Dict[str, Any]:
 
     Returns:
         Dictionary with build quality parameters
+
+    Quality Presets:
+        ultra:       32 vertices, maximum detail
+        high:        24 vertices, high detail
+        medium:      16 vertices, balanced
+        low:         12 vertices, reduced detail
+        performance: 8 vertices, minimal detail
     """
     presets = {
         "ultra": {
