@@ -9,7 +9,7 @@ except ImportError:
     pass  # Not running in Blender, use system pxr
 
 import the_grove_22_core as gc
-from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel, Vt
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel, UsdShade, Vt
 
 # Generates tree USD skeletal mesh files for Unreal Engine 5.7+
 # Creates a single .usda file containing:
@@ -66,6 +66,8 @@ def create_usd_skeleton_from_bones(stage, skel_path, bones):
     """Create UsdSkel skeleton from Grove bones with proper hierarchy.
 
     Bones are tuples: (is_root, bone_idx, head, tail, radius, mass, connected, parent_idx)
+    Creates hierarchical joint names using "/" separators for parent-child relationships.
+    Uses sequential bone numbering (bone_0, bone_1, bone_2, ...) in depth-first order.
     """
     skeleton = UsdSkel.Skeleton.Define(stage, skel_path)
 
@@ -78,13 +80,50 @@ def create_usd_skeleton_from_bones(stage, skel_path, bones):
     # Sort bones by index for consistent ordering
     sorted_bones = sorted(bones, key=lambda b: b[1])
 
-    # First pass: create name mapping
+    # First pass: create index mapping
     for list_idx, bone_data in enumerate(sorted_bones):
-        bone_idx = bone_data[1]  # Extract bone_idx from tuple
-        bone_names.append(f"bone_{bone_idx:03d}")
+        bone_idx = bone_data[1]
         bone_idx_to_list_idx[bone_idx] = list_idx
 
-    # Second pass: build transforms and topology
+    # Second pass: build hierarchical names based on list position and parent hierarchy
+    # Map bone indices to their list positions for parent lookups
+    list_idx_by_bone_idx = {}
+    for list_idx, bone_data in enumerate(sorted_bones):
+        list_idx_by_bone_idx[bone_data[1]] = list_idx
+
+    def get_bone_path(list_idx, bone_data):
+        """Build hierarchical name for a bone using its parent relationship."""
+        parent_idx = bone_data[7]
+
+        if parent_idx < 0:
+            # Root bone
+            return "Root"
+
+        # Find parent in the list
+        if parent_idx not in list_idx_by_bone_idx:
+            # Parent not found, treat as root child
+            return "Root/bone_0"
+
+        parent_list_idx = list_idx_by_bone_idx[parent_idx]
+        parent_bone_data = sorted_bones[parent_list_idx]
+
+        # Get parent name and append this bone's name
+        parent_name = get_bone_path(parent_list_idx, parent_bone_data)
+
+        # Count how many siblings (same parent) come before this bone in the list
+        sibling_count = 0
+        for other_idx, other_bone in enumerate(sorted_bones):
+            if other_bone[7] == parent_idx and other_idx < list_idx:
+                sibling_count += 1
+
+        return f"{parent_name}/bone_{sibling_count}"
+
+    # Build bone_names for all bones in sorted order
+    for list_idx, bone_data in enumerate(sorted_bones):
+        bone_name = get_bone_path(list_idx, bone_data)
+        bone_names.append(bone_name)
+
+    # Third pass: build transforms and topology
     for list_idx, bone_data in enumerate(sorted_bones):
         bone_idx = bone_data[1]  # bone_idx
         head = bone_data[2]      # head position
@@ -285,16 +324,53 @@ def export_tree_mesh_to_usd(
 
     # Create SkelRoot for skeleton hierarchy
     skel_root_prim = UsdSkel.Root.Define(stage, "/Tree/SkelRoot")
+    skel_root = skel_root_prim.GetPrim()
+    skel_root.SetMetadata("apiSchemas", Sdf.TokenListOp.CreateExplicit(
+        ["SkelBindingAPI"]
+    ))
 
     # Create skeleton under SkelRoot
     skeleton, bone_names = create_usd_skeleton_from_bones(
         stage, "/Tree/SkelRoot/Skeleton", bones
     )
 
+    # Apply ControlRigAPI to skeleton using schema name
+    skeleton_prim = skeleton.GetPrim()
+    skeleton_prim.SetMetadata("apiSchemas", Sdf.TokenListOp.CreateExplicit(
+        ["ControlRigAPI"]
+    ))
+
+    # Create animation prim (neutral/identity animation)
+    anim_prim = stage.DefinePrim("/Tree/SkelRoot/Animation", "SkelAnimation")
+    anim_prim.CreateAttribute("joints", Sdf.ValueTypeNames.TokenArray).Set(
+        Vt.TokenArray(bone_names)
+    )
+    # All identity rotations
+    anim_prim.CreateAttribute("rotations", Sdf.ValueTypeNames.QuatfArray).Set(
+        Vt.QuatfArray([Gf.Quatf(1, 0, 0, 0)] * len(bone_names))
+    )
+    # All uniform scale
+    anim_prim.CreateAttribute("scales", Sdf.ValueTypeNames.Half3Array).Set(
+        Vt.Vec3hArray([Gf.Vec3h(1, 1, 1)] * len(bone_names))
+    )
+    # All zero translation
+    anim_prim.CreateAttribute("translations", Sdf.ValueTypeNames.Float3Array).Set(
+        Vt.Vec3fArray([Gf.Vec3f(0, 0, 0)] * len(bone_names))
+    )
+
+    # Link skeleton to animation
+    skeleton.GetPrim().CreateAttribute(
+        "skel:animationSource", Sdf.ValueTypeNames.Asset
+    ).Set(Sdf.AssetPath("/Tree/SkelRoot/Animation"))
+
     # Create mesh as child of SkelRoot
     # This is the standard UsdSkel pattern where mesh lives under the SkelRoot
-    mesh = UsdGeom.Mesh.Define(stage, "/Tree/SkelRoot/Mesh")
+    mesh = UsdGeom.Mesh.Define(stage, "/Tree/SkelRoot/Tree")
     mesh_prim = mesh.GetPrim()
+
+    # Apply both MaterialBindingAPI and SkelBindingAPI to mesh
+    mesh_prim.ApplyAPI(UsdShade.MaterialBindingAPI)
+    mesh_prim.ApplyAPI(UsdSkel.BindingAPI)
 
     # Set mesh topology
     face_vertex_counts = [len(face) for face in faces]
