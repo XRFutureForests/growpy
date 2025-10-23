@@ -20,7 +20,8 @@
       "Bash(awk:*)",
       "Bash(sed:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(/Users/maximiliansperlich/miniforge3/envs/the-grove/bin/python:*)"
     ],
     "deny": [],
     "ask": []
