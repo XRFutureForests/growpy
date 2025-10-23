@@ -21,7 +21,9 @@
       "Bash(sed:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(/Users/maximiliansperlich/miniforge3/envs/the-grove/bin/python:*)"
+      "Bash(/Users/maximiliansperlich/miniforge3/envs/the-grove/bin/python:*)",
+      "Bash(timeout 30 python:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
