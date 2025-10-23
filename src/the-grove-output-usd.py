@@ -62,10 +62,11 @@ species_name = "Beech"
 
 # %% HELPER FUNCTIONS
 
-def create_usd_skeleton_from_bones(stage, skel_path, bones):
+def create_usd_skeleton_from_bones(stage, skel_path, bones, scale_factor=100.0):
     """Create UsdSkel skeleton from Grove bones with proper hierarchy.
 
     Bones are tuples: (is_root, bone_idx, head, tail, radius, mass, connected, parent_idx)
+    scale_factor: Convert Grove cm to USD meters (default 100.0)
     """
     skeleton = UsdSkel.Skeleton.Define(stage, skel_path)
 
@@ -97,9 +98,10 @@ def create_usd_skeleton_from_bones(stage, skel_path, bones):
         else:
             topology.append(-1)
 
-        # Extract positions (Vector objects have .x, .y, .z)
-        head_pos = Gf.Vec3d(head.x, head.y, head.z)
-        tail_pos = Gf.Vec3d(tail.x, tail.y, tail.z)
+        # Extract positions and scale from Grove cm to USD meters
+        # Vector objects have .x, .y, .z
+        head_pos = Gf.Vec3d(head.x * scale_factor, head.y * scale_factor, head.z * scale_factor)
+        tail_pos = Gf.Vec3d(tail.x * scale_factor, tail.y * scale_factor, tail.z * scale_factor)
 
         # Bone direction
         bone_dir = tail_pos - head_pos
@@ -280,9 +282,13 @@ def export_tree_mesh_to_usd(
     # Create SkelRoot for skeleton hierarchy
     skel_root_prim = UsdSkel.Root.Define(stage, "/Tree/SkelRoot")
 
+    # Scale factor from Grove centimeters to USD meters (0.01 metersPerUnit)
+    # Grove coordinates are in centimeters, so scale by 100 to convert to meters
+    scale_factor = 100.0
+
     # Create skeleton under SkelRoot
     skeleton, bone_names = create_usd_skeleton_from_bones(
-        stage, "/Tree/SkelRoot/Skeleton", bones
+        stage, "/Tree/SkelRoot/Skeleton", bones, scale_factor=scale_factor
     )
 
     # Create mesh as child of SkelRoot
@@ -297,7 +303,7 @@ def export_tree_mesh_to_usd(
         face_vertex_indices.extend(face)
 
     mesh.CreatePointsAttr().Set(
-        Vt.Vec3fArray([Gf.Vec3f(p.x, p.y, p.z) for p in points])
+        Vt.Vec3fArray([Gf.Vec3f(p.x * scale_factor, p.y * scale_factor, p.z * scale_factor) for p in points])
     )
     mesh.CreateFaceVertexCountsAttr().Set(Vt.IntArray(face_vertex_counts))
     mesh.CreateFaceVertexIndicesAttr().Set(Vt.IntArray(face_vertex_indices))
