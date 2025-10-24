@@ -3253,38 +3253,9 @@ def export_grove_tree_as_usda_native(
             # If no skeleton requested, use temp_tree_path for everything
             skeletal_tree_path = temp_tree_path
 
-        # Add twigs if requested
-        if include_twigs and twig_usd_paths:
-            from .twig_placement import export_twig_placements_to_usd
-
-            print(f"  Adding twigs as point instances...")
-
-            success = export_twig_placements_to_usd(
-                tree_usd_path=temp_tree_path,
-                twig_usd_paths=twig_usd_paths,
-                output_path=output_path,
-                tree_mesh=None,
-                extract_from_usd=True,  # Extract placements from USD
-                use_point_instancer=use_point_instancer,
-                convert_to_ue=convert_to_ue,
-            )
-
-            if success:
-                print(f"  [OK] Created complete USDA with twigs: {output_path.name}")
-                # Keep the tree-only file for reference
-                print(f"  [OK] Tree-only USD saved as: {temp_tree_path.name}")
-            else:
-                print(f"  Warning: Failed to add twigs, using tree-only export")
-                # Copy tree-only to final output
-                import shutil
-
-                shutil.copy2(temp_tree_path, output_path)
-        else:
-            # No twigs requested, just use the tree-only export
-            import shutil
-
-            shutil.copy2(temp_tree_path, output_path)
-            print(f"  [OK] Exported tree USD: {output_path.name}")
+        # Skip creating standard assembly files - only create Nanite Assembly
+        # Standard assembly files (with point instanced twigs) are not needed for Nanite workflow
+        print(f"  [OK] Tree-only USD saved as: {temp_tree_path.name}")
 
         # Create Nanite Assembly USD for Unreal if requested
         if create_nanite_assembly:
@@ -3321,78 +3292,37 @@ def export_grove_tree_as_usda_native(
                 print(f"  [OK] Nanite Assembly USD: {nanite_path.name}")
                 print(f"    Import this file in Unreal Engine 5.7+ (static mesh)")
 
-            # Create skeletal mesh assembly and Nanite Assembly if skeleton is enabled
+            # Create skeletal Nanite Assembly if skeleton is enabled
             if include_skeleton and include_twigs and twig_usd_paths:
-                print(f"\n  Creating Skeletal Mesh Assembly...")
+                print(f"\n  Creating Skeletal Nanite Assembly...")
 
-                # Get skeletal twig paths using the same lookup function with prefer_skeletal=True
-                skeletal_twig_paths = get_twig_usd_map_for_species(
-                    species_name, config, prefer_skeletal=True
+                # Skeletal Nanite Assembly references:
+                # - skeletal_tree_path (*_tree_only_skeletal.usda) - geometry + skeleton
+                # - static_twig_paths - STATIC twigs (geometry only)
+                # The skeleton from skeletal_tree_path is referenced and static twigs are bound to it
+                skeletal_nanite_path = (
+                    output_path.parent
+                    / f"{output_path.stem}_NaniteAssembly_skeletal{output_path.suffix}"
                 )
 
-                if skeletal_twig_paths:
-                    # Create skeletal assembly file (tree + skeletal twigs)
-                    skeletal_assembly_path = (
-                        output_path.parent
-                        / f"{output_path.stem}_skeletal{output_path.suffix}"
-                    )
+                skeletal_nanite_success = create_nanite_assembly_usd(
+                    tree_usd_path=skeletal_tree_path,  # SKELETAL tree (geometry + skeleton)
+                    output_path=skeletal_nanite_path,
+                    species_name=species_name,
+                    twig_usd_paths=static_twig_paths,  # STATIC twigs (geometry only)
+                    use_skeletal_mesh=True,
+                    skeleton_source_usd=skeletal_tree_path,  # Extract skeleton from here
+                    twig_placement_source_usd=temp_tree_path,  # Extract placements from static tree
+                )
 
-                    from .twig_placement import export_twig_placements_to_usd
-
-                    skeletal_success = export_twig_placements_to_usd(
-                        tree_usd_path=skeletal_tree_path,
-                        twig_usd_paths=skeletal_twig_paths,
-                        output_path=skeletal_assembly_path,
-                        tree_mesh=None,
-                        extract_from_usd=True,
-                        use_point_instancer=use_point_instancer,
-                        convert_to_ue=convert_to_ue,
-                    )
-
-                    if skeletal_success:
-                        print(
-                            f"  [OK] Skeletal Assembly: {skeletal_assembly_path.name}"
-                        )
-                        print(f"    (Skeletal tree + skeletal twigs)")
-
-                        # Create skeletal Nanite Assembly
-                        skeletal_nanite_path = (
-                            output_path.parent
-                            / f"{output_path.stem}_NaniteAssembly_skeletal{output_path.suffix}"
-                        )
-
-                        print(f"\n  Creating Skeletal Nanite Assembly...")
-                        # Skeletal Nanite Assembly uses root-level USD reference per Unreal schema:
-                        # - Reference skeletal_tree_path (geometry + skeleton) at assembly root
-                        # - STATIC twig meshes (geometry only) referenced via PointInstancer
-                        # - Skeleton relationship points to </AssemblyName/SkelRoot/Skeleton>
-                        # - Static twigs bound to skeleton via NaniteAssemblySkelBindingAPI
-                        #
-                        # After USD composition, skeleton path must exist in composed hierarchy
-                        # This means we MUST reference the skeletal tree file, not static tree
-                        skeletal_nanite_success = create_nanite_assembly_usd(
-                            tree_usd_path=skeletal_tree_path,  # SKELETAL tree (geometry + skeleton)
-                            output_path=skeletal_nanite_path,
-                            species_name=species_name,
-                            twig_usd_paths=static_twig_paths,  # STATIC twigs (geometry only)
-                            use_skeletal_mesh=True,
-                            skeleton_source_usd=skeletal_tree_path,  # Extract skeleton from here
-                            twig_placement_source_usd=temp_tree_path,  # Extract placements from static tree
-                        )
-
-                        if skeletal_nanite_success:
-                            print(
-                                f"  [OK] Skeletal Nanite Assembly: {skeletal_nanite_path.name}"
-                            )
-                            print(
-                                f"    Import this file in Unreal Engine 5.7+ (skeletal mesh)"
-                            )
-                    else:
-                        print(f"  Warning: Failed to create skeletal assembly")
-                else:
+                if skeletal_nanite_success:
                     print(
-                        f"  [INFO]  No skeletal twigs found - skeletal assembly not created"
+                        f"  [OK] Skeletal Nanite Assembly: {skeletal_nanite_path.name}"
                     )
+                    print(
+                        f"    References: {skeletal_tree_path.name} (tree + skeleton) + static twigs"
+                    )
+                    print(f"    Import this file in Unreal Engine 5.7+ (skeletal mesh)")
             elif include_skeleton:
                 print(f"\n  [INFO]  For skeletal mesh with animation:")
                 print(
@@ -3598,8 +3528,8 @@ def copy_bark_textures_for_species(
     if not textures:
         return copied_files
 
-    # Create textures subdirectory in USD folder
-    texture_dir = species_output_dir / "USD" / "textures"
+    # Create textures subdirectory in species folder
+    texture_dir = species_output_dir / "textures"
     texture_dir.mkdir(parents=True, exist_ok=True)
 
     # Copy diffuse texture
@@ -3647,8 +3577,8 @@ def bundle_twigs_for_species(
     results = {"twig_files": [], "manifest": None}
 
     try:
-        # Get twig files for this species
-        twig_dir = output_dir / "twigs"
+        # Get twig files for this species - place directly in species folder
+        twig_dir = output_dir
         twig_dir.mkdir(parents=True, exist_ok=True)
 
         # Get available twig files for this species (all variations)

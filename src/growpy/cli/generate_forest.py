@@ -185,9 +185,8 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     )
 
     species_dir = output_dir / species_clean
-    usd_dir = species_dir / "USD"
     if "usd" in formats or "usda" in formats:
-        usd_dir.mkdir(parents=True, exist_ok=True)
+        species_dir.mkdir(parents=True, exist_ok=True)
 
     tree_name = f"{species_clean}_tree_{idx:04d}"
     exported = []
@@ -203,7 +202,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         grove.simulate(flushes=growth_cycles)
 
         if "usd" in formats or "usda" in formats:
-            usd_path = usd_dir / f"{tree_name}.usda"
+            usd_path = species_dir / f"{tree_name}.usda"
 
             twig_usd_map = get_twig_usd_map_for_species(
                 species, config, prefer_skeletal=False

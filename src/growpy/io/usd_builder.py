@@ -656,6 +656,145 @@ def _build_usdskel_from_bones(
     return skel
 
 
+def add_twig_skeleton_to_usd(
+    usd_path: Path,
+    pivot_point: Tuple[float, float, float] = (0, 0, 0),
+) -> bool:
+    """Add simple skeleton to twig USD with single root joint at pivot.
+
+    Creates a minimal skeleton structure for twigs with just a root joint
+    positioned at the twig's pivot point (attachment point). This enables
+    twig animation and wind effects in Unreal Engine.
+
+    Args:
+        usd_path: Path to existing USD file with twig mesh
+        pivot_point: World position of root joint (pivot/attachment point)
+
+    Returns:
+        bool: True if skeleton was added successfully
+
+    Example:
+        >>> build_tree_usd(model, Path("twig.usda"))
+        >>> add_twig_skeleton_to_usd(Path("twig.usda"), pivot_point=(0, 0, 0))
+    """
+    if not USD_AVAILABLE:
+        print("Error: USD Python module not available")
+        return False
+
+    try:
+        from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel, Vt
+
+        # Open existing stage
+        stage = Usd.Stage.Open(str(usd_path))
+        if not stage:
+            print(f"Error: Could not open USD stage at {usd_path}")
+            return False
+
+        # Find mesh prim
+        mesh_prim = None
+        for prim in stage.Traverse():
+            if prim.IsA(UsdGeom.Mesh):
+                mesh_prim = prim
+                break
+
+        if not mesh_prim:
+            print(f"Warning: No mesh found in USD file {usd_path.name}")
+            print(f"  This file may be corrupted or incomplete from Blender export")
+            print(f"  File size: {usd_path.stat().st_size} bytes")
+            return False
+
+        # Verify mesh has points
+        mesh = UsdGeom.Mesh(mesh_prim)
+        points = mesh.GetPointsAttr().Get()
+        if not points or len(points) == 0:
+            print(f"Warning: Mesh in {usd_path.name} has no vertices")
+            print(f"  This indicates a failed or incomplete Blender export")
+            return False
+
+        # Create skeleton root
+        root_path = Sdf.Path("/Twig")
+        skel_root = UsdSkel.Root.Define(stage, root_path)
+
+        # Apply Unreal skeletal mesh schema
+        skel_root_prim = stage.GetPrimAtPath(root_path)
+        skel_root_prim.SetMetadata(
+            "apiSchemas",
+            Sdf.TokenListOp.Create(prependedItems=["UnrealNaniteAssemblyRootAPI"]),
+        )
+        skel_root_prim.CreateAttribute(
+            "unreal:naniteAssembly:meshType", Sdf.ValueTypeNames.Token
+        ).Set("skeletalMesh")
+
+        # Create skeleton with single root joint
+        skel_path = root_path.AppendChild("TwigSkel")
+        skel = UsdSkel.Skeleton.Define(stage, skel_path)
+
+        # Set skeleton relationship for Unreal
+        skel_root_prim.CreateRelationship("unreal:naniteAssembly:skeleton").SetTargets(
+            [skel_path]
+        )
+
+        # Create single root joint at pivot point
+        joint_tokens = ["root"]
+        world_pos = Gf.Vec3d(pivot_point[0], pivot_point[1], pivot_point[2])
+
+        # Bind transform (world space)
+        bind_transform = Gf.Matrix4d(1.0)
+        bind_transform.SetTranslateOnly(world_pos)
+
+        # Rest transform (local space, same as bind since no parent)
+        rest_transform = Gf.Matrix4d(1.0)
+        rest_transform.SetTranslateOnly(world_pos)
+
+        # Set skeleton attributes
+        skel.CreateJointsAttr(joint_tokens)
+        skel.CreateBindTransformsAttr(Vt.Matrix4dArray([bind_transform]))
+        skel.CreateRestTransformsAttr(Vt.Matrix4dArray([rest_transform]))
+
+        # Re-parent mesh under SkelRoot
+        new_mesh_path = root_path.AppendChild("TwigMesh")
+        old_mesh_path = mesh_prim.GetPath()
+
+        # Copy mesh to new location
+        Sdf.CopySpec(
+            stage.GetRootLayer(), old_mesh_path, stage.GetRootLayer(), new_mesh_path
+        )
+
+        # Remove old mesh
+        stage.RemovePrim(old_mesh_path)
+
+        # Get the new mesh prim
+        mesh_prim = stage.GetPrimAtPath(new_mesh_path)
+        mesh = UsdGeom.Mesh(mesh_prim)
+
+        # Bind mesh to skeleton
+        binding_api = UsdSkel.BindingAPI.Apply(mesh_prim)
+        binding_api.CreateSkeletonRel().SetTargets([skel_path])
+
+        # Set skinning data - all vertices bound to root joint
+        points = mesh.GetPointsAttr().Get()
+        num_points = len(points)
+
+        # All vertices use joint 0 (root) with full weight
+        joint_indices = [0] * num_points
+        joint_weights = [1.0] * num_points
+
+        # Set skinning attributes
+        binding_api.CreateJointIndicesPrimvar(False, 1).Set(joint_indices)
+        binding_api.CreateJointWeightsPrimvar(False, 1).Set(joint_weights)
+
+        # Save stage
+        stage.Save()
+        return True
+
+    except Exception as e:
+        print(f"Error adding twig skeleton to USD: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return False
+
+
 def add_materials_to_usd(
     usd_path: Path,
     species_name: str,

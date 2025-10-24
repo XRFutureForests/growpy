@@ -5,16 +5,14 @@ channels:
 dependencies:
   - python=3.11
   - pip
-  - numpy=1.*
+  - numpy
   - pandas
   - matplotlib
   - scikit-learn
   - tqdm
-  
-  # Blender Python API bundles compatible USD (pxr) since Blender 4.4+
-  # Access via bpy.utils.expose_bundled_modules() - no separate USD package needed
+  - ipykernel
   - pip:
-    - bpy>=4.5  # Blender Python API with bundled USD, MaterialX, OpenImageIO, etc.
+    - bpy  # Blender Python API with bundled USD, MaterialX, OpenImageIO, etc.
 
 variables:
   PYTHONPATH: ./src:./src/the_grove_22/modules
