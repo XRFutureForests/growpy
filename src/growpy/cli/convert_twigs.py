@@ -14,13 +14,18 @@ Key Features:
     - Static mesh only (skeletal twig variants deprecated)
 
 Quick Start:
+    # Single-step conversion with automatic skeleton addition
     python convert_twigs.py data/assets/twigs
+
+    # Both static and skeletal variants exported in one pass
+    # Skeletons added using Blender's bundled USD (bpy.utils.expose_bundled_modules)
 
 Common Flags:
     --formats {usd,usda}  Export formats (default: usda)
 
 Output per twig:
-    - standard_name.usda          # Static mesh USD
+    - standard_name.usda          # Static mesh USD (no skeleton)
+    - standard_name_skel.usda     # Skeletal mesh USD (skeleton added in step 2)
     - textures/*                  # All textures copied to output directory
     - twig_manifest.json          # Metadata about exported twigs
 
@@ -311,6 +316,8 @@ def process_twig_directory(
 
     print(f"\nFound {len(blend_files)} .blend file(s)")
     print(f"Export formats: {', '.join(formats)}")
+    print(f"Using: Python + bpy module (with bundled USD)")
+    print(f"Python executable: {sys.executable}")
     print(f"{'='*60}\n")
 
     # Get path to the Blender processor module
@@ -324,7 +331,7 @@ def process_twig_directory(
             species_name = blend_file.parent.name.replace("Twig", "").replace("_", " ")
             output_dir = blend_file.parent
 
-            # Run processor script with Python (which has bpy module)
+            # Run processor script with conda Python (has bpy pip package + bundled USD)
             cmd = [
                 sys.executable,
                 str(processor_script),
@@ -381,7 +388,8 @@ Examples:
     python convert_twigs.py data/assets/twigs/Betulaceae_Downy_birch --formats usda
 
 Output per twig:
-    - standard_name.usda                   # Standard USD (static mesh)
+    - standard_name.usda                   # Static mesh USD (no skeleton)
+    - standard_name_skel.usda              # Skeletal mesh USD (root joint at pivot)
         """,
     )
     parser.add_argument(
@@ -420,6 +428,20 @@ Output per twig:
     total_files = sum(len(files) for files in results.values())
     print(f"\nTotal exported: {total_files} files")
     print(f"Species processed: {len(results)}")
+
+    # Check for any files that might need manual skeleton addition
+    skel_files = []
+    for species, files in results.items():
+        skel_files.extend([f for f in files if "_skel" in f.stem])
+
+    if skel_files:
+        print(f"\nSkeletal variants: {len(skel_files)} files")
+        print(
+            "  (Skeletons added automatically during export via Blender's bundled USD)"
+        )
+        print(
+            f"  If any failed, run: python src/growpy/cli/add_twig_skeletons.py {args.path}"
+        )
 
     return 0
 
