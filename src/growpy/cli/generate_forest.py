@@ -204,8 +204,10 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         if "usd" in formats or "usda" in formats:
             usd_path = species_dir / f"{tree_name}.usda"
 
+            # For skeletal assemblies, use skeletal twigs; for static, use static twigs
+            prefer_skeletal_twigs = create_nanite_assembly
             twig_usd_map = get_twig_usd_map_for_species(
-                species, config, prefer_skeletal=False
+                species, config, prefer_skeletal=prefer_skeletal_twigs
             )
 
             export_success = export_grove_tree_as_usda_native(

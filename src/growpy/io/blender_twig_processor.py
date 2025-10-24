@@ -147,6 +147,73 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0)):
         binding_api.CreateJointIndicesPrimvar(False, 1).Set(joint_indices)
         binding_api.CreateJointWeightsPrimvar(False, 1).Set(joint_weights)
 
+        # Copy materials from /root/_materials/ to /Twig/_materials/ so they're accessible when referenced
+        from pxr import UsdShade
+
+        materials_prim = stage.GetPrimAtPath("/root/_materials")
+        if materials_prim and materials_prim.IsValid():
+            new_materials_path = root_path.AppendChild("_materials")
+            materials_scope = stage.DefinePrim(new_materials_path, "Scope")
+
+            # Copy all material definitions
+            for child in materials_prim.GetChildren():
+                new_mat_path = new_materials_path.AppendChild(child.GetName())
+                # Use CopySpec to copy entire material hierarchy
+                Sdf.CopySpec(
+                    stage.GetRootLayer(),
+                    child.GetPath(),
+                    stage.GetRootLayer(),
+                    new_mat_path,
+                )
+
+                # Update material binding paths in shader network
+                def update_material_paths(prim_path):
+                    prim = stage.GetPrimAtPath(prim_path)
+                    if not prim:
+                        return
+                    # Update all relationships that reference old material paths
+                    for rel in prim.GetRelationships():
+                        targets = rel.GetTargets()
+                        if targets:
+                            new_targets = []
+                            for target in targets:
+                                target_str = str(target)
+                                if "/root/_materials/" in target_str:
+                                    new_target_str = target_str.replace(
+                                        "/root/_materials/",
+                                        str(new_materials_path) + "/",
+                                    )
+                                    new_targets.append(Sdf.Path(new_target_str))
+                                else:
+                                    new_targets.append(target)
+                            rel.SetTargets(new_targets)
+                    # Recursively update children
+                    for child_prim in prim.GetChildren():
+                        update_material_paths(child_prim.GetPath())
+
+                update_material_paths(new_mat_path)
+
+            # Update mesh material binding to point to new location
+            mat_binding_api = UsdShade.MaterialBindingAPI(mesh_prim)
+            mat_binding = mat_binding_api.GetDirectBinding()
+            if mat_binding:
+                mat_path = mat_binding.GetMaterialPath()
+                if mat_path and "/root/_materials/" in str(mat_path):
+                    new_mat_path_str = str(mat_path).replace(
+                        "/root/_materials/", str(new_materials_path) + "/"
+                    )
+                    new_mat_path = Sdf.Path(new_mat_path_str)
+                    mat_prim = stage.GetPrimAtPath(new_mat_path)
+                    if mat_prim and mat_prim.IsValid():
+                        UsdShade.MaterialBindingAPI.Apply(mesh_prim).Bind(
+                            UsdShade.Material(mat_prim)
+                        )
+
+        # Set Twig as default prim so it's the primary reference target
+        twig_prim = stage.GetPrimAtPath("/Twig")
+        if twig_prim and twig_prim.IsValid():
+            stage.SetDefaultPrim(twig_prim)
+
         # Save stage
         stage.Save()
         return True
