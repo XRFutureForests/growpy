@@ -162,10 +162,10 @@ def create_nanite_assembly_usd(
 
             if placements and any(placements.values()):
                 # Remap twig paths from source assets to output directory copies
-                # Twigs are bundled/copied to output/Species/twigs/ directory
+                # Twigs are bundled/copied to output/Species/ directory
                 # Nanite Assembly must reference these copies for Unreal import to work
                 output_dir = output_path.parent
-                species_twigs_dir = output_dir.parent / "twigs"
+                species_twigs_dir = output_dir
 
                 remapped_twig_paths = {}
                 for twig_type, source_twig_path in twig_usd_paths.items():

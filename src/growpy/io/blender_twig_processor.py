@@ -6,8 +6,8 @@ This module is designed to be executed as a standalone script by Blender's Pytho
 interpreter. It handles all Blender-specific operations for twig conversion,
 including mesh processing, material setup, and export to USD formats.
 
-CRITICAL: This module runs in Blender's Python environment, not the main conda env.
-It must be self-contained and not import from growpy package (import cycles).
+Uses Blender's bundled USD (pxr) module via bpy.utils.expose_bundled_modules()
+to add skeletons directly during export - no post-processing needed!
 
 Texture Handling:
     - When both top and bottom diffuse textures exist, top texture is prioritized
@@ -19,6 +19,141 @@ import json
 import shutil
 import sys
 from pathlib import Path
+
+# Expose Blender's bundled USD module (Blender 4.4+)
+try:
+    import bpy
+
+    if hasattr(bpy.utils, "expose_bundled_modules"):
+        bpy.utils.expose_bundled_modules()
+        from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel, Vt
+
+        USD_AVAILABLE = True
+    else:
+        print("Warning: bpy.utils.expose_bundled_modules() not available")
+        print("  Blender 4.4+ required for bundled USD support")
+        USD_AVAILABLE = False
+except ImportError as e:
+    print(f"Warning: Could not import USD from Blender: {e}")
+    USD_AVAILABLE = False
+
+
+def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0)):
+    """Add skeleton to USD file using Blender's bundled pxr module.
+
+    Args:
+        usd_path: Path to USD file
+        pivot_point: Root joint position (default: origin)
+
+    Returns:
+        bool: True if skeleton added successfully
+    """
+    if not USD_AVAILABLE:
+        return False
+
+    try:
+        # Open existing stage
+        stage = Usd.Stage.Open(str(usd_path))
+        if not stage:
+            print(f"      [WARN] Could not open USD stage: {usd_path.name}")
+            return False
+
+        # Find mesh prim
+        mesh_prim = None
+        for prim in stage.Traverse():
+            if prim.IsA(UsdGeom.Mesh):
+                mesh_prim = prim
+                break
+
+        if not mesh_prim:
+            print(f"      [WARN] No mesh found in: {usd_path.name}")
+            return False
+
+        # Verify mesh has vertices
+        mesh = UsdGeom.Mesh(mesh_prim)
+        points = mesh.GetPointsAttr().Get()
+        if not points or len(points) == 0:
+            print(f"      [WARN] Mesh has no vertices: {usd_path.name}")
+            return False
+
+        # Create skeleton root
+        root_path = Sdf.Path("/Twig")
+        skel_root = UsdSkel.Root.Define(stage, root_path)
+
+        # Apply Unreal skeletal mesh schema
+        skel_root_prim = stage.GetPrimAtPath(root_path)
+        skel_root_prim.SetMetadata(
+            "apiSchemas",
+            Sdf.TokenListOp.Create(prependedItems=["UnrealNaniteAssemblyRootAPI"]),
+        )
+        skel_root_prim.CreateAttribute(
+            "unreal:naniteAssembly:meshType", Sdf.ValueTypeNames.Token
+        ).Set("skeletalMesh")
+
+        # Create skeleton with single root joint
+        skel_path = root_path.AppendChild("TwigSkel")
+        skel = UsdSkel.Skeleton.Define(stage, skel_path)
+
+        # Set skeleton relationship for Unreal
+        skel_root_prim.CreateRelationship("unreal:naniteAssembly:skeleton").SetTargets(
+            [skel_path]
+        )
+
+        # Create single root joint at pivot point
+        joint_tokens = ["root"]
+        world_pos = Gf.Vec3d(pivot_point[0], pivot_point[1], pivot_point[2])
+
+        # Bind transform (world space)
+        bind_transform = Gf.Matrix4d(1.0)
+        bind_transform.SetTranslateOnly(world_pos)
+
+        # Rest transform (local space, same as bind since no parent)
+        rest_transform = Gf.Matrix4d(1.0)
+        rest_transform.SetTranslateOnly(world_pos)
+
+        # Set skeleton attributes
+        skel.CreateJointsAttr(joint_tokens)
+        skel.CreateBindTransformsAttr(Vt.Matrix4dArray([bind_transform]))
+        skel.CreateRestTransformsAttr(Vt.Matrix4dArray([rest_transform]))
+
+        # Re-parent mesh under SkelRoot
+        new_mesh_path = root_path.AppendChild("TwigMesh")
+        old_mesh_path = mesh_prim.GetPath()
+
+        # Copy mesh to new location
+        Sdf.CopySpec(
+            stage.GetRootLayer(), old_mesh_path, stage.GetRootLayer(), new_mesh_path
+        )
+
+        # Remove old mesh
+        stage.RemovePrim(old_mesh_path)
+
+        # Get the new mesh prim
+        mesh_prim = stage.GetPrimAtPath(new_mesh_path)
+        mesh = UsdGeom.Mesh(mesh_prim)
+
+        # Bind mesh to skeleton
+        binding_api = UsdSkel.BindingAPI.Apply(mesh_prim)
+        binding_api.CreateSkeletonRel().SetTargets([skel_path])
+
+        # Set skinning data - all vertices bound to root joint
+        num_points = len(points)
+
+        # All vertices use joint 0 (root) with full weight
+        joint_indices = [0] * num_points
+        joint_weights = [1.0] * num_points
+
+        # Set skinning attributes
+        binding_api.CreateJointIndicesPrimvar(False, 1).Set(joint_indices)
+        binding_api.CreateJointWeightsPrimvar(False, 1).Set(joint_weights)
+
+        # Save stage
+        stage.Save()
+        return True
+
+    except Exception as e:
+        print(f"      [ERROR] Adding skeleton: {e}")
+        return False
 
 
 def standardize_twig_name(original_name, species_name):
@@ -445,8 +580,9 @@ def process_twig_file(blend_file, output_dir, formats, species_name):
             # Export in requested formats
             for fmt in formats:
                 if fmt in ["usd", "usda"]:
+                    # Export static mesh variant
                     export_path = output_dir / f"{standardized_name}.{fmt}"
-                    print(f"    -> Exporting USD: {export_path.name}")
+                    print(f"    -> Exporting static USD: {export_path.name}")
 
                     bpy.ops.wm.usd_export(
                         filepath=str(export_path),
@@ -464,6 +600,38 @@ def process_twig_file(blend_file, output_dir, formats, species_name):
                     )
 
                     exported_files.append(export_path)
+
+                    # Export skeletal mesh variant
+                    skel_export_path = output_dir / f"{standardized_name}_skel.{fmt}"
+                    print(f"    -> Exporting skeletal USD: {skel_export_path.name}")
+
+                    bpy.ops.wm.usd_export(
+                        filepath=str(skel_export_path),
+                        selected_objects_only=True,
+                        export_materials=True,
+                        export_textures=True,
+                        export_uvmaps=True,
+                        export_normals=True,
+                        export_mesh_colors=True,
+                        use_instancing=False,
+                        evaluation_mode="RENDER",
+                        generate_preview_surface=True,
+                        relative_paths=True,
+                        export_hair=False,
+                    )
+
+                    exported_files.append(skel_export_path)
+
+                    # Add skeleton directly using Blender's bundled USD
+                    print(f"    -> Adding skeleton to: {skel_export_path.name}")
+                    if add_skeleton_to_usd_file(
+                        skel_export_path, pivot_point=(0.0, 0.0, 0.0)
+                    ):
+                        print(f"    -> [OK] Skeleton added successfully")
+                    else:
+                        print(
+                            f"    -> [WARN] Skeleton addition failed (will need manual step)"
+                        )
 
             # Store metadata
             texture_manifest[standardized_name] = {
@@ -495,6 +663,7 @@ def process_twig_file(blend_file, output_dir, formats, species_name):
 
 
 if __name__ == "__main__":
+    # Direct Python execution - standard argument parsing
     blend_file = Path(sys.argv[1])
     output_dir = Path(sys.argv[2])
     formats = sys.argv[3].split(",")
