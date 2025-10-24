@@ -12,15 +12,28 @@ Key benefits:
 - More control over USD structure
 """
 
+from __future__ import annotations
+
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
+# Try to use Blender's bundled USD first (recommended for bpy environments)
 try:
+    import bpy
+
+    if hasattr(bpy.utils, "expose_bundled_modules"):
+        bpy.utils.expose_bundled_modules()
     from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel
 
     USD_AVAILABLE = True
 except ImportError:
-    USD_AVAILABLE = False
+    # Fall back to system-installed USD if bpy not available
+    try:
+        from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel
+
+        USD_AVAILABLE = True
+    except ImportError:
+        USD_AVAILABLE = False
 
 
 def build_tree_usd(
@@ -175,17 +188,17 @@ def _add_grove_face_attributes(mesh: UsdGeom.Mesh, model: Any) -> None:
         primvar.Set(model.face_attribute_end)
 
     # Branch identification
-    if hasattr(model, "face_attribute_branch_index"):
+    if hasattr(model, "face_attribute_branch_id"):
         primvar = primvars_api.CreatePrimvar(
             "BranchIndex", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.uniform
         )
-        primvar.Set(model.face_attribute_branch_index)
+        primvar.Set(model.face_attribute_branch_id)
 
-    if hasattr(model, "face_attribute_branch_index_parent"):
+    if hasattr(model, "face_attribute_branch_id_parent"):
         primvar = primvars_api.CreatePrimvar(
             "BranchIndexParent", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.uniform
         )
-        primvar.Set(model.face_attribute_branch_index_parent)
+        primvar.Set(model.face_attribute_branch_id_parent)
 
     if hasattr(model, "face_attribute_branch_index_parent"):
         primvar = primvars_api.CreatePrimvar(
@@ -254,36 +267,34 @@ def _add_grove_point_attributes(mesh: UsdGeom.Mesh, model: Any) -> None:
 def add_skeleton_to_usd(
     usd_path: Path,
     grove: Any,
+    tree_model: Any = None,
     skeleton_length: float = 2.0,
     skeleton_reduce: float = 0.4,
     skeleton_bias: float = 0.5,
     skeleton_connected: bool = True,
 ) -> bool:
-    """Add skeleton to existing USD file using Grove's tag_bone_id API.
+    """Add skeleton to existing USD file using Grove's full skeleton polylines.
 
-    This function uses Grove's advanced skeleton bone tagging system to create
-    a UsdSkel skeleton. The bones are generated using the same parameters as
-    Grove's native Blender export.
+    This function uses the complete skeleton polyline data from Grove's skeleton
+    builder to create a UsdSkel skeleton with proper bone chains for correct
+    orientation in Unreal Engine.
 
     Args:
         usd_path: Path to existing USD file with tree mesh
-        grove: Grove instance with simulated tree
-        skeleton_length: Length threshold for bone creation
-        skeleton_reduce: Reduction factor for thin branches
-        skeleton_bias: Bias towards parent or child bones
-        skeleton_connected: Whether bones are connected in hierarchy
+        grove: Grove instance with simulated tree (used to build skeleton)
+        tree_model: Tree model (unused, kept for compatibility)
+        skeleton_length: Length threshold (unused, we use full skeleton)
+        skeleton_reduce: Reduction factor (unused, we use full skeleton)
+        skeleton_bias: Bias setting (unused, we use full skeleton)
+        skeleton_connected: Connection setting (unused, we use full skeleton)
 
     Returns:
         bool: True if skeleton was added successfully
 
     Example:
+        >>> model = grove.build_model(0, build_options)
         >>> build_tree_usd(model, Path("tree.usda"))
-        >>> add_skeleton_to_usd(
-        ...     Path("tree.usda"),
-        ...     grove,
-        ...     skeleton_length=2.0,
-        ...     skeleton_reduce=0.4
-        ... )
+        >>> add_skeleton_to_usd(Path("tree.usda"), grove)
     """
     if not USD_AVAILABLE:
         print("Error: USD Python module not available")
@@ -298,7 +309,7 @@ def add_skeleton_to_usd(
             print(f"Error: Could not open USD stage at {usd_path}")
             return False
 
-        # Build skeleton from grove
+        # Build skeleton from grove (gets full polyline data)
         skeletons = grove.build_skeletons()
         if not skeletons:
             print("Error: No skeletons generated from grove")
@@ -306,20 +317,8 @@ def add_skeleton_to_usd(
 
         skeleton = skeletons[0]
 
-        # Tag bones with custom parameters (matches Blender operator)
-        bones = grove.tag_bone_id(
-            skeleton_length,
-            skeleton_reduce**2,  # Square the reduce value
-            skeleton_bias,
-            skeleton_connected,
-        )
-
-        if not bones:
-            print("Error: No bones generated from skeleton")
-            return False
-
-        # Create UsdSkel skeleton structure
-        _build_usdskel_from_bones(stage, skeleton, bones)
+        # Create UsdSkel skeleton structure from full polylines
+        _build_usdskel_from_bones(stage, skeleton, None)  # bones parameter now unused
 
         # Save stage
         stage.Save()
@@ -338,12 +337,15 @@ def _build_usdskel_from_bones(
     skeleton: Any,
     bones: List[Tuple],
 ) -> None:
-    """Build UsdSkel skeleton from Grove bones.
+    """Build UsdSkel skeleton from Grove skeleton polylines.
+
+    Uses full skeleton polyline data for proper bone orientation instead of
+    just the simplified bone list. This gives Unreal better bone direction info.
 
     Args:
         stage: USD stage to add skeleton to
-        skeleton: Grove skeleton object
-        bones: List of bone tuples from grove.tag_bone_id()
+        skeleton: Grove skeleton object with points and poly_lines
+        bones: List of bone tuples from grove.tag_bone_id() (used for branch IDs)
     """
     from pxr import Gf, Sdf, UsdGeom, UsdSkel, Vt
 
@@ -380,102 +382,126 @@ def _build_usdskel_from_bones(
         [skel_path]
     )
 
-    # Build joint hierarchy with proper parent-child relationships
+    # Build joint hierarchy from skeleton polylines (not just bones)
+    # This gives proper bone direction by using all skeleton vertices
     joint_tokens = []
     bind_transforms = []
     rest_transforms = []
 
-    # Create joint hierarchy map and calculate local transforms
-    bone_to_joint_path = {}  # bone_idx -> full joint path
-    bone_positions = {}  # bone_idx -> world position (for calculating local offsets)
+    # Get skeleton data
+    skeleton_points = skeleton.points  # All skeleton vertices
+    skeleton_polylines = skeleton.poly_lines  # [[idx1, idx2, ...], ...] connectivity
 
-    # Get root bone offset to align skeleton with mesh at origin
-    root_offset = Gf.Vec3d(0, 0, 0)
-    if len(bones) > 0:
-        root_bone = bones[0]
-        root_start = root_bone[2]  # start_point
-        root_offset = Gf.Vec3d(root_start.x, root_start.y, root_start.z)
-
-    #  # Bone format: (is_root, bone_id, start_point, end_point, radius1, radius2, connected, parent_branch_id)
-    # Note: bone_id is actually the branch ID, parent_bone_idx is actually parent branch ID
-
-    # First pass: map branch_id -> list of bone indices in that branch
-    branch_to_bones = {}
-    for bone_idx, bone in enumerate(bones):
-        branch_id = bone[1]  # Field 1 is branch_id
-        if branch_id not in branch_to_bones:
-            branch_to_bones[branch_id] = []
-        branch_to_bones[branch_id].append(bone_idx)
-
-    # Second pass: build joint paths
-    for bone_idx, bone in enumerate(bones):
-        (
-            is_root,
-            branch_id,  # This is the branch ID this bone belongs to
-            start_point,
-            end_point,
-            radius1,
-            radius2,
-            connected,
-            parent_branch_id,  # This is the parent BRANCH ID, not parent bone index
-        ) = bone
-
-        # Build hierarchical joint path
-        joint_name = f"joint_{bone_idx}"
-
-        if is_root:
-            # Root bone - no parent
-            joint_path = joint_name
-            parent_for_hierarchy = None
-        elif connected and bone_idx > 0:
-            # Connected bone - parent is previous bone in sequence
-            parent_for_hierarchy = bone_idx - 1
-            parent_path = bone_to_joint_path.get(parent_for_hierarchy, "")
-            if parent_path:
-                joint_path = f"{parent_path}/{joint_name}"
-            else:
-                joint_path = joint_name
+    # Convert skeleton points to tuples if they're Vector objects
+    # Handle both tuple and Vector formats
+    def to_tuple(point):
+        if isinstance(point, tuple):
+            return point
+        elif hasattr(point, "x"):
+            return (point.x, point.y, point.z)
         else:
-            # New branch starting - attach to last bone of parent branch
-            if parent_branch_id in branch_to_bones:
-                # Find last bone in parent branch
-                parent_branch_bones = branch_to_bones[parent_branch_id]
-                parent_for_hierarchy = parent_branch_bones[-1]
-                parent_path = bone_to_joint_path.get(parent_for_hierarchy, "")
-                if parent_path:
-                    joint_path = f"{parent_path}/{joint_name}"
-                else:
+            return tuple(point)
+
+    skeleton_points = [to_tuple(p) for p in skeleton_points]
+
+    # DEBUG: Print polyline structure
+    print(f"DEBUG: Skeleton has {len(skeleton_polylines)} polylines")
+    for i, poly in enumerate(skeleton_polylines):
+        print(f"DEBUG: Polyline {i}: {len(poly)} points = {list(poly)}")
+
+    # Build hierarchical joints from polylines
+    # Each polyline is a bone chain, points in polyline become joints
+    bone_positions = {}  # point_idx -> world position
+    point_to_joint_path = {}  # point_idx -> joint path string
+    point_to_joint_index = {}  # point_idx -> joint array index (for skinning)
+
+    # First pass: find where each branch connects to previous branches
+    branch_connection_points = (
+        {}
+    )  # polyline_idx -> (parent_polyline_idx, parent_point_idx)
+
+    for polyline_idx in range(1, len(skeleton_polylines)):
+        # Find closest point on previous polylines to this branch's first point
+        branch_start = skeleton_polylines[polyline_idx][0]
+        branch_start_pos = skeleton_points[branch_start]
+
+        min_dist = float("inf")
+        connect_polyline = 0
+        connect_point = 0
+
+        # Check all previous polylines
+        for prev_polyline_idx in range(polyline_idx):
+            for point_idx in skeleton_polylines[prev_polyline_idx]:
+                point_pos = skeleton_points[point_idx]
+                dist = (
+                    sum((branch_start_pos[i] - point_pos[i]) ** 2 for i in range(3))
+                    ** 0.5
+                )
+                if dist < min_dist:
+                    min_dist = dist
+                    connect_polyline = prev_polyline_idx
+                    connect_point = point_idx
+
+        branch_connection_points[polyline_idx] = (connect_polyline, connect_point)
+
+    joint_counter = 0
+    for polyline_idx, polyline in enumerate(skeleton_polylines):
+        # Each polyline is a chain of connected points
+        prev_joint_path = None
+
+        # For branch polylines, skip first point (already created by parent)
+        start_idx = 1 if polyline_idx > 0 else 0
+
+        for i, point_idx in enumerate(polyline[start_idx:], start=start_idx):
+            point = skeleton_points[point_idx]
+            world_pos = Gf.Vec3d(point[0], point[1], point[2])
+
+            # Create joint name
+            joint_name = f"joint_{joint_counter}"
+
+            # Track mapping from skeleton point to joint index
+            point_to_joint_index[point_idx] = joint_counter
+            joint_counter += 1
+
+            # Build hierarchical path
+            if i == start_idx:
+                # First point in this polyline chain (after skip)
+                if polyline_idx == 0:
+                    # Root of first polyline
                     joint_path = joint_name
+                else:
+                    # Branch polyline - connect to the shared point's joint
+                    shared_point_idx = polyline[0]  # First point (shared with parent)
+                    parent_joint_path = point_to_joint_path[shared_point_idx]
+                    joint_path = f"{parent_joint_path}/{joint_name}"
             else:
-                # Fallback - attach to root
-                parent_for_hierarchy = 0
-                parent_path = bone_to_joint_path.get(0, "")
-                if parent_path:
-                    joint_path = f"{parent_path}/{joint_name}"
-                else:
-                    joint_path = joint_name
+                # Connected to previous point in same polyline
+                joint_path = f"{prev_joint_path}/{joint_name}"
 
-        bone_to_joint_path[bone_idx] = joint_path
-        joint_tokens.append(joint_path)
+            point_to_joint_path[point_idx] = joint_path
+            joint_tokens.append(joint_path)
+            bone_positions[point_idx] = world_pos
 
-        # Store world position for this bone (offset by root to align with mesh at origin)
-        world_pos = Gf.Vec3d(start_point.x, start_point.y, start_point.z) - root_offset
-        bone_positions[bone_idx] = world_pos
+            # Create WORLD SPACE bindTransform
+            bind_transform = Gf.Matrix4d(1.0)
+            bind_transform.SetTranslateOnly(world_pos)
+            bind_transforms.append(bind_transform)
 
-        # Calculate LOCAL transform (relative to parent)
-        if parent_for_hierarchy is None:
-            # Root bone is now at origin since we subtracted root_offset
-            local_pos = world_pos
-        else:
-            # Child bone: position relative to parent
-            parent_pos = bone_positions.get(parent_for_hierarchy, Gf.Vec3d(0, 0, 0))
-            local_pos = world_pos - parent_pos
+            # Create LOCAL SPACE restTransform
+            if i == 0:
+                # First point - local = world (no parent in this polyline)
+                local_pos = world_pos
+            else:
+                # Relative to previous point in polyline
+                prev_point_idx = polyline[i - 1]
+                parent_pos = bone_positions.get(prev_point_idx, Gf.Vec3d(0, 0, 0))
+                local_pos = world_pos - parent_pos
 
-        transform = Gf.Matrix4d(1.0)
-        transform.SetTranslateOnly(local_pos)
+            rest_transform = Gf.Matrix4d(1.0)
+            rest_transform.SetTranslateOnly(local_pos)
+            rest_transforms.append(rest_transform)
 
-        bind_transforms.append(transform)
-        rest_transforms.append(transform)
+            prev_joint_path = joint_path
 
     # Set skeleton attributes
     skel.CreateJointsAttr(joint_tokens)
@@ -516,26 +542,94 @@ def _build_usdskel_from_bones(
     joint_weights = []
 
     if branch_index_primvar and branch_index_primvar.HasValue():
-        # Get per-face branch indices
+        # Get per-face branch indices from skeleton
         branch_indices = branch_index_primvar.Get()
         face_vertex_counts = mesh.GetFaceVertexCountsAttr().Get()
         face_vertex_indices = mesh.GetFaceVertexIndicesAttr().Get()
 
-        # Map each vertex to its bone based on which face(s) it belongs to
+        # Build mapping from branch_id to list of skeleton point indices in that branch
+        branch_to_points = {}
+        for polyline_idx, polyline in enumerate(skeleton_polylines):
+            # Grove branch_id is 1-indexed
+            branch_id = polyline_idx + 1
+            branch_to_points[branch_id] = polyline
+
+        print(f"DEBUG: point_to_joint_index has {len(point_to_joint_index)} entries")
+        print(f"DEBUG: branch_to_points has {len(branch_to_points)} branches")
+        print(
+            f"DEBUG: First few mappings: {dict(list(point_to_joint_index.items())[:5])}"
+        )
+
+        # Map each vertex to closest joint in its branch
+        # Strategy: For each face, find the skeleton polyline segment it's closest to,
+        # then use the joint at the START of that segment
         vertex_to_joint = {}  # vertex_idx -> (joint_idx, weight)
 
         face_idx = 0
         vert_offset = 0
         for face_vert_count in face_vertex_counts:
-            branch_idx = branch_indices[face_idx]
-            # Map branch index to bone index (branch_id maps to bone)
-            bone_idx = min(branch_idx, len(bones) - 1)  # Clamp to valid bone
+            if face_idx < len(branch_indices):
+                branch_id = branch_indices[face_idx]
 
-            # Assign this bone to all vertices of this face
-            for i in range(face_vert_count):
-                vertex_idx = face_vertex_indices[vert_offset + i]
-                # Simple assignment: vertex fully weighted to its branch's bone
-                vertex_to_joint[vertex_idx] = (bone_idx, 1.0)
+                # Get skeleton points for this branch
+                if branch_id in branch_to_points:
+                    branch_points = branch_to_points[branch_id]
+
+                    # Calculate face center from its vertices
+                    face_center = Gf.Vec3d(0, 0, 0)
+                    face_verts = []
+                    for i in range(face_vert_count):
+                        vertex_idx = face_vertex_indices[vert_offset + i]
+                        face_verts.append(vertex_idx)
+                        v_pos = points[vertex_idx]
+                        face_center += Gf.Vec3d(v_pos[0], v_pos[1], v_pos[2])
+                    face_center /= face_vert_count
+
+                    # Find closest polyline segment (pair of consecutive skeleton points)
+                    min_dist = float("inf")
+                    closest_segment_start_idx = branch_points[0]
+
+                    for i in range(len(branch_points) - 1):
+                        start_pt_idx = branch_points[i]
+                        end_pt_idx = branch_points[i + 1]
+
+                        start_pos = skeleton_points[start_pt_idx]
+                        end_pos = skeleton_points[end_pt_idx]
+
+                        start_vec = Gf.Vec3d(start_pos[0], start_pos[1], start_pos[2])
+                        end_vec = Gf.Vec3d(end_pos[0], end_pos[1], end_pos[2])
+
+                        # Find closest point on segment to face_center
+                        segment = end_vec - start_vec
+                        to_face = face_center - start_vec
+
+                        # Project to_face onto segment
+                        segment_len_sq = segment * segment  # dot product with itself
+                        if segment_len_sq > 0:
+                            t = max(0.0, min(1.0, (to_face * segment) / segment_len_sq))
+                        else:
+                            t = 0.0
+
+                        closest_on_segment = start_vec + segment * t
+                        dist_vec = face_center - closest_on_segment
+                        dist = (dist_vec * dist_vec) ** 0.5
+
+                        if dist < min_dist:
+                            min_dist = dist
+                            # Use the START point of this segment as the controlling joint
+                            closest_segment_start_idx = start_pt_idx
+
+                    # Map this skeleton point index to joint index
+                    joint_idx = point_to_joint_index.get(closest_segment_start_idx, 0)
+
+                    # Assign this joint to all vertices of this face
+                    for vertex_idx in face_verts:
+                        vertex_to_joint[vertex_idx] = (joint_idx, 1.0)
+                else:
+                    # Branch not found, bind to root
+                    for i in range(face_vert_count):
+                        vertex_idx = face_vertex_indices[vert_offset + i]
+                        vertex_to_joint[vertex_idx] = (0, 1.0)
 
             vert_offset += face_vert_count
             face_idx += 1

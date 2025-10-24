@@ -25,7 +25,7 @@ direction = (0, 0, 1)  # Initial growth direction vector (default: (0, 0, 1))
 delay = 0  # Number of years to wait before growing (default: 0)
 
 # Simulation parameters
-flushes = 5  # Number of growth cycles to simulate (default: 1)
+flushes = 2  # Number of growth cycles to simulate (default: 1)
 
 # Build parameters for 3D mesh generation
 resolution = 16  # Number of points at tree base (default: 16, range: 3-32)
@@ -48,7 +48,7 @@ skeleton_reduce = (
     0.4  # Reduce bones below thickness threshold (default: 0.4, range: 0.0-1.0)
 )
 skeleton_bias = 0.5  # Bias towards parent or child bones (default: 0.5, range: 0.0-1.0)
-skeleton_connected = False  # Whether bones are connected in hierarchy (default: False)
+skeleton_connected = True  # Whether bones are connected in hierarchy (default: False)
 
 # Smoothing parameters
 enable_smooth = True  # Apply smoothing to reduce sharp branch angles (default: False)
