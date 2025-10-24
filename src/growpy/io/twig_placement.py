@@ -466,14 +466,14 @@ def extract_twig_placements_from_usd(
 
     placements = {"twig_long": [], "twig_short": [], "twig_upward": [], "twig_dead": []}
 
-    # Grove exports twig primvars with PascalCase names - mapping:
-    # TwigEnd -> twig_long (end of branch twigs)
-    # TwigSide -> twig_short (side twigs)
+    # USD builder creates twig primvars with these PascalCase names:
+    # TwigLong -> twig_long (long/end of branch twigs)
+    # TwigShort -> twig_short (short/side twigs)
     # TwigUpward -> twig_upward (upward twigs)
     # TwigDead -> twig_dead (dead twigs)
     twig_name_map = {
-        "twig_long": "TwigEnd",
-        "twig_short": "TwigSide",
+        "twig_long": "TwigLong",
+        "twig_short": "TwigShort",
         "twig_upward": "TwigUpward",
         "twig_dead": "TwigDead",
     }
