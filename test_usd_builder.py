@@ -7,6 +7,11 @@ is exported correctly without transformation issues.
 
 from pathlib import Path
 
+# Import bpy and expose bundled USD modules
+import bpy
+
+bpy.utils.expose_bundled_modules()
+
 # Import Grove API
 import the_grove_22_core as gc
 
@@ -19,7 +24,7 @@ preset_path = Path("data/assets/presets/Fagaceae - Beech.seed.json")
 position = (0, 0, 0)
 direction = (0, 0, 1)
 delay = 0
-flushes = 5
+flushes = 2
 
 # Build parameters
 resolution = 16
@@ -31,10 +36,10 @@ build_blend = True
 build_end_cap = True
 
 # Skeleton parameters
-skeleton_length = 2.0
-skeleton_reduce = 0.4
+skeleton_length = 0.05
+skeleton_reduce = 0.01
 skeleton_bias = 0.5
-skeleton_connected = True
+skeleton_connected = True  # Use connected bones for better animation hierarchy
 
 # Output paths
 output_dir = Path("data/output")
@@ -123,26 +128,17 @@ shutil.copy2(new_usd_path, skeletal_usd_path)
 
 skeleton_success = add_skeleton_to_usd(
     usd_path=skeletal_usd_path,
-    grove=grove,
-    skeleton_length=skeleton_length,
-    skeleton_reduce=skeleton_reduce,
-    skeleton_bias=skeleton_bias,
-    skeleton_connected=skeleton_connected,
+    grove=grove,  # Pass grove to build full skeleton
 )
 
 if skeleton_success:
     print(f"   ✓ Successfully added skeleton: {skeletal_usd_path}")
 
-    # Get bone count
+    # Get joint count from skeleton polylines
     skeletons = grove.build_skeletons()
     skeleton = skeletons[0]
-    bones = grove.tag_bone_id(
-        skeleton_length,
-        skeleton_reduce**2,
-        skeleton_bias,
-        skeleton_connected,
-    )
-    print(f"   - Bones created: {len(bones)}")
+    total_joints = sum(len(polyline) for polyline in skeleton.poly_lines)
+    print(f"   - Joints created: {total_joints}")
 else:
     print(f"   ✗ Failed to add skeleton")
 
@@ -204,5 +200,6 @@ print("  1. Import both USD files in Unreal Engine")
 print("  2. Verify geometry appears correctly (no flipped/rotated mesh)")
 print("  3. Verify skeleton bones are positioned correctly")
 print("  4. Compare with previous exports to ensure compatibility")
+print("=" * 60)
 print("=" * 60)
 print("=" * 60)
