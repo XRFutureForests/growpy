@@ -2225,11 +2225,88 @@ def _add_skeleton_to_twig_usd(usd_path: Path) -> bool:
         # Get mesh and parent
         mesh = UsdGeom.Mesh(mesh_prim)
         original_mesh_path = mesh_prim.GetPath()
-        parent_path = original_mesh_path.GetParentPath()
 
-        # Create SkelRoot at parent level
-        skel_root_path = parent_path.AppendChild("SkelRoot")
+        # Find materials scope
+        materials_prim = stage.GetPrimAtPath("/root/_materials")
+
+        # Create SkelRoot as top-level prim "Twig"
+        skel_root_path = Sdf.Path("/Twig")
         skel_root_prim = UsdSkel.Root.Define(stage, skel_root_path)
+
+        # Move/copy materials into SkelRoot so they're accessible when referenced
+        if materials_prim and materials_prim.IsValid():
+            new_materials_path = skel_root_path.AppendChild("_materials")
+            materials_scope = stage.DefinePrim(new_materials_path, "Scope")
+
+            # Copy all material definitions
+            for child in materials_prim.GetChildren():
+                new_mat_path = new_materials_path.AppendChild(child.GetName())
+                new_mat_prim = stage.DefinePrim(new_mat_path, child.GetTypeName())
+
+                # Copy all attributes and relationships
+                for attr in child.GetAttributes():
+                    value = attr.Get()
+                    if value is not None:
+                        new_mat_prim.CreateAttribute(
+                            attr.GetName(), attr.GetTypeName()
+                        ).Set(value)
+
+                # Copy relationships (outputs, connections)
+                for rel in child.GetRelationships():
+                    targets = rel.GetTargets()
+                    if targets:
+                        new_rel = new_mat_prim.CreateRelationship(rel.GetName())
+                        # Update material binding paths to new location
+                        new_targets = []
+                        for target in targets:
+                            # Convert old material paths to new paths
+                            target_str = str(target)
+                            if "/root/_materials/" in target_str:
+                                new_target_str = target_str.replace(
+                                    "/root/_materials/", str(new_materials_path) + "/"
+                                )
+                                new_targets.append(Sdf.Path(new_target_str))
+                            else:
+                                new_targets.append(target)
+                        new_rel.SetTargets(new_targets)
+
+                # Recursively copy shader children
+                def copy_shader_children(src_prim, dst_prim):
+                    for src_child in src_prim.GetChildren():
+                        dst_child_path = dst_prim.GetPath().AppendChild(
+                            src_child.GetName()
+                        )
+                        dst_child = stage.DefinePrim(
+                            dst_child_path, src_child.GetTypeName()
+                        )
+
+                        for attr in src_child.GetAttributes():
+                            value = attr.Get()
+                            if value is not None:
+                                dst_child.CreateAttribute(
+                                    attr.GetName(), attr.GetTypeName()
+                                ).Set(value)
+
+                        for rel in src_child.GetRelationships():
+                            targets = rel.GetTargets()
+                            if targets:
+                                new_rel = dst_child.CreateRelationship(rel.GetName())
+                                new_targets = []
+                                for target in targets:
+                                    target_str = str(target)
+                                    if "/root/_materials/" in target_str:
+                                        new_target_str = target_str.replace(
+                                            "/root/_materials/",
+                                            str(new_materials_path) + "/",
+                                        )
+                                        new_targets.append(Sdf.Path(new_target_str))
+                                    else:
+                                        new_targets.append(target)
+                                new_rel.SetTargets(new_targets)
+
+                        copy_shader_children(src_child, dst_child)
+
+                copy_shader_children(child, new_mat_prim)
 
         # Create simple skeleton with single bone at origin
         skel_path = skel_root_path.AppendChild("Skeleton")
@@ -2296,29 +2373,37 @@ def _add_skeleton_to_twig_usd(usd_path: Path) -> bool:
             skel_binding_api.CreateJointIndicesPrimvar(False, 1).Set(joint_indices)
             skel_binding_api.CreateJointWeightsPrimvar(False, 1).Set(joint_weights)
 
-        # Copy material binding if it exists
+        # Copy material binding with updated path
         from pxr import UsdShade
 
         old_mat_api = UsdShade.MaterialBindingAPI(mesh_prim)
         mat_binding = old_mat_api.GetDirectBinding()
         if mat_binding:
-            new_mat_api = UsdShade.MaterialBindingAPI.Apply(new_mesh_prim)
-            new_mat_api.Bind(mat_binding.GetMaterial())
+            mat_path = mat_binding.GetMaterialPath()
+            # Update material path from /root/_materials/... to /Twig/_materials/...
+            if mat_path and "/root/_materials/" in str(mat_path):
+                new_mat_path_str = str(mat_path).replace(
+                    "/root/_materials/", "/Twig/_materials/"
+                )
+                new_mat_path = Sdf.Path(new_mat_path_str)
+
+                new_mat_api = UsdShade.MaterialBindingAPI.Apply(new_mesh_prim)
+                mat_prim = stage.GetPrimAtPath(new_mat_path)
+                if mat_prim and mat_prim.IsValid():
+                    new_mat_api.Bind(UsdShade.Material(mat_prim))
 
         # Remove original mesh
         stage.RemovePrim(original_mesh_path)
 
-        # Set root as default prim (NOT SkelRoot!) so materials are accessible
-        # This ensures materials in /root/_materials are visible when Unreal imports
-        root_prim = stage.GetPrimAtPath("/root")
-        if root_prim:
+        # Set Twig as default prim so it's the primary reference target
+        twig_prim = stage.GetPrimAtPath("/Twig")
+        if twig_prim:
+            stage.SetDefaultPrim(twig_prim)
             print(
-                f"    -> Setting default prim to 'root' (was: {stage.GetDefaultPrim().GetPath() if stage.GetDefaultPrim() else 'none'})"
+                f"    -> Set defaultPrim to 'Twig' (SkelRoot with embedded materials)"
             )
-            stage.SetDefaultPrim(root_prim)
-            print(f"    -> New default prim: {stage.GetDefaultPrim().GetPath()}")
         else:
-            print(f"    -> WARNING: Could not find /root prim!")
+            print(f"    -> WARNING: Could not find /Twig prim!")
 
         # Save
         stage.Save()
@@ -2600,22 +2685,23 @@ def export_twigs_from_blend(blend_file_path: Path, output_dir: Path) -> List[Pat
 
                 exported_files.append(usd_path)
 
-                # OPTIMIZATION: Skeletal twigs are NOT needed for Nanite Assemblies
-                # Reason: Static twig geometry + PointInstancer NaniteAssemblySkelBindingAPI
-                #         is the correct approach for skeletal assemblies
+                # CRITICAL: Skeletal twigs ARE required for skeletal Nanite Assemblies
+                # Evidence from Unreal Engine 5.7 source code:
+                # 1. NaniteAssemblySkeletalMeshBuilder.AddAssemblyParts() requires USkeletalMesh*
+                # 2. USDNaniteAssemblyTranslator looks for UsdSkelSkeleton prims in prototypes
+                # 3. Static meshes cannot be added to skeletal assemblies
                 #
-                # Keeping skeletal twig conversion disabled to:
-                # - Reduce export time (no skeleton conversion step)
-                # - Save disk space (fewer USD files)
-                # - Avoid confusion (static twigs work for all assemblies)
+                # Therefore: Skeletal assemblies use skeletal tree + skeletal twigs
+                #            Static assemblies use static tree + static twigs
                 #
-                # If skeletal twigs are needed for other workflows, uncomment below:
+                # Create skeletal variant with proper UsdSkel skeleton structure:
+                skeletal_path = output_dir / f"{clean_name}_skel.usda"
+                import shutil
 
-                # skeletal_path = output_dir / f"{clean_name}_skeletal.usda"
-                # import shutil
-                # shutil.copy2(usd_path, skeletal_path)
-                # if _add_skeleton_to_twig_usd(skeletal_path):
-                #     exported_files.append(skeletal_path)
+                shutil.copy2(usd_path, skeletal_path)
+                if _add_skeleton_to_twig_usd(skeletal_path):
+                    exported_files.append(skeletal_path)
+                    print(f"    Created skeletal variant: {skeletal_path.name}")
 
             except Exception as e:
                 continue
@@ -3296,10 +3382,15 @@ def export_grove_tree_as_usda_native(
             if include_skeleton and include_twigs and twig_usd_paths:
                 print(f"\n  Creating Skeletal Nanite Assembly...")
 
+                # Get SKELETAL twig paths for skeletal assembly
+                skeletal_twig_paths = get_twig_usd_map_for_species(
+                    species_name, config, prefer_skeletal=True
+                )
+
                 # Skeletal Nanite Assembly references:
                 # - skeletal_tree_path (*_tree_only_skeletal.usda) - geometry + skeleton
-                # - static_twig_paths - STATIC twigs (geometry only)
-                # The skeleton from skeletal_tree_path is referenced and static twigs are bound to it
+                # - skeletal_twig_paths - SKELETAL twigs (geometry + skeleton)
+                # Both tree and twigs have skeletons for full skeletal mesh assembly
                 skeletal_nanite_path = (
                     output_path.parent
                     / f"{output_path.stem}_NaniteAssembly_skeletal{output_path.suffix}"
@@ -3309,7 +3400,7 @@ def export_grove_tree_as_usda_native(
                     tree_usd_path=skeletal_tree_path,  # SKELETAL tree (geometry + skeleton)
                     output_path=skeletal_nanite_path,
                     species_name=species_name,
-                    twig_usd_paths=static_twig_paths,  # STATIC twigs (geometry only)
+                    twig_usd_paths=skeletal_twig_paths,  # SKELETAL twigs (geometry + skeleton)
                     use_skeletal_mesh=True,
                     skeleton_source_usd=skeletal_tree_path,  # Extract skeleton from here
                     twig_placement_source_usd=temp_tree_path,  # Extract placements from static tree
@@ -3407,12 +3498,12 @@ def get_twig_usd_map_for_species(
                             continue
 
                         # Filter based on skeletal preference
-                        is_skeletal = "_skeletal" in usd_file.stem
+                        is_skeletal = "_skel" in usd_file.stem
                         if prefer_skeletal and not is_skeletal:
                             # Looking for skeletal, this is static - check for skeletal variant
                             skeletal_file = (
                                 usd_file.parent
-                                / f"{usd_file.stem}_skeletal{usd_file.suffix}"
+                                / f"{usd_file.stem}_skel{usd_file.suffix}"
                             )
                             if skeletal_file.exists():
                                 twig_usd_map[grove_type] = skeletal_file
@@ -3454,14 +3545,13 @@ def get_twig_usd_map_for_species(
                     if not usd_file.exists() or "_NaniteAssembly" in usd_file.name:
                         continue
 
-                    is_skeletal = "_skeletal" in usd_file.stem
+                    is_skeletal = "_skel" in usd_file.stem
 
                     # Apply skeletal filtering
                     if prefer_skeletal and not is_skeletal:
                         # Looking for skeletal variant
                         skeletal_file = (
-                            usd_file.parent
-                            / f"{usd_file.stem}_skeletal{usd_file.suffix}"
+                            usd_file.parent / f"{usd_file.stem}_skel{usd_file.suffix}"
                         )
                         if skeletal_file.exists():
                             all_twigs.append(skeletal_file)
