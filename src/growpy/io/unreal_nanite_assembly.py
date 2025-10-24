@@ -13,7 +13,7 @@ CRITICAL Requirements:
 2. Skeletal Mesh Assemblies:
    - Use meshType="skeletalMesh"
    - Reference skeletal tree USD with embedded UsdSkel
-   - Reference skeletal twig USD files with embedded UsdSkel
+   - Reference SKELETAL twig USD files with embedded UsdSkel
    - Set unreal:naniteAssembly:skeleton relationship to descendant skeleton
    - Requires proper UsdSkelRoot, Skeleton, and SkelAnimation prims
 
@@ -31,7 +31,7 @@ Based on:
 
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel
 
@@ -52,25 +52,23 @@ def create_nanite_assembly_usd(
     - NaniteAssemblyExternalRefAPI on child meshes (USD references ONLY)
     - PointInstancer for twig instances
 
-    CRITICAL: For skeletal assemblies (NEW APPROACH):
-    - tree_usd_path MUST point to STATIC (non-skeletal) tree USD (geometry only)
-    - twig_usd_paths MUST point to STATIC (non-skeletal) twigs (geometry only)
-    - skeleton_source_usd MUST point to skeletal USD with embedded UsdSkelRoot/Skeleton
-    - Skeleton is COPIED into assembly file (not referenced)
-    - Static meshes are referenced and bound to embedded skeleton via NaniteAssemblySkelBindingAPI
+    CRITICAL: For skeletal assemblies:
+    - tree_usd_path MUST point to SKELETAL tree USD with embedded UsdSkelRoot/Skeleton
+    - twig_usd_paths MUST point to SKELETAL twigs with embedded UsdSkel
+    - All skeletal meshes share or reference the same skeleton hierarchy
 
     CRITICAL: For static assemblies:
-    - tree_usd_path MUST point to a static (non-skeletal) USD
-    - twig_usd_paths MUST point to static (non-skeletal) twigs
+    - tree_usd_path MUST point to a static (non-skeletal) USD (geometry only)
+    - twig_usd_paths MUST point to STATIC twigs (geometry only)
     - No skeleton data should be present
 
     Args:
-        tree_usd_path: Path to tree USD file (ALWAYS static - geometry only)
+        tree_usd_path: Path to tree USD (skeletal for skeletal assemblies, static for static)
         output_path: Output path for Nanite Assembly USDA
         species_name: Tree species name
-        twig_usd_paths: Optional dict mapping twig types to STATIC USD paths
-        use_skeletal_mesh: Whether to use skeletal mesh type (embeds skeleton from skeleton_source_usd)
-        skeleton_source_usd: Path to skeletal USD to extract skeleton from (for skeletal assemblies)
+        twig_usd_paths: Optional dict mapping twig types to USD paths (skeletal or static matching assembly type)
+        use_skeletal_mesh: Whether to use skeletal mesh type
+        skeleton_source_usd: Deprecated - skeleton is now embedded in tree_usd_path
         twig_placement_source_usd: Optional USD to extract twig placements from (if different from tree_usd_path)
 
     Returns:
@@ -205,7 +203,8 @@ def create_nanite_assembly_usd(
                         f"/{assembly_name}/TwigPrototypes/{proto_name}", "Xform"
                     )
 
-                    # Apply ExternalRefAPI to prototype using TokenListOp
+                    # Apply NaniteAssemblyExternalRefAPI to prototype
+                    # The mesh type (skeletal vs static) is determined by the referenced asset itself
                     proto_api_schemas = Sdf.TokenListOp()
                     proto_api_schemas.prependedItems = ["NaniteAssemblyExternalRefAPI"]
                     proto_prim.SetMetadata("apiSchemas", proto_api_schemas)
@@ -221,6 +220,9 @@ def create_nanite_assembly_usd(
                     ).Set("invisible")
 
                     # Reference twig mesh using absolute path (required by Unreal)
+                    # Both static and skeletal twigs now have proper defaultPrim set
+                    # Static: defaultPrim="root" (Blender export)
+                    # Skeletal: defaultPrim="Twig" (SkelRoot with embedded materials)
                     proto_prim.GetReferences().AddReference(
                         str(twig_ref_path.resolve())
                     )
@@ -846,3 +848,76 @@ def validate_nanite_assembly(usd_path: Path) -> Dict[str, Any]:
         result["valid"] = False
 
     return result
+
+
+def _extract_skeleton_joints_from_usd(tree_usd_path: Path) -> Dict[str, Gf.Vec3d]:
+    """Extract skeleton joint names and positions from tree USD file.
+
+    Args:
+        tree_usd_path: Path to tree USD with skeleton
+
+    Returns:
+        Dict mapping joint names to their world positions
+    """
+    try:
+        from pxr import Usd, UsdSkel
+
+        stage = Usd.Stage.Open(str(tree_usd_path))
+        joints_map = {}
+
+        # Find skeleton prims
+        for prim in stage.Traverse():
+            if prim.IsA(UsdSkel.Skeleton):
+                skeleton = UsdSkel.Skeleton(prim)
+
+                # Get joint names and bind transforms
+                joints_attr = skeleton.GetJointsAttr()
+                bind_transforms_attr = skeleton.GetBindTransformsAttr()
+
+                if joints_attr and bind_transforms_attr:
+                    joint_names = joints_attr.Get()
+                    bind_transforms = bind_transforms_attr.Get()
+
+                    # Extract position from each transform matrix
+                    for i, (joint_name, transform) in enumerate(
+                        zip(joint_names, bind_transforms)
+                    ):
+                        # Get translation component from matrix
+                        position = transform.ExtractTranslation()
+                        joints_map[str(joint_name)] = position
+
+        return joints_map
+
+    except Exception as e:
+        print(f"      Warning: Could not extract skeleton joints: {e}")
+        return {}
+
+
+def _find_nearest_joint(
+    position: Gf.Vec3f, joints: Dict[str, Gf.Vec3d]
+) -> Tuple[str, float]:
+    """Find the nearest skeleton joint to a given position.
+
+    Args:
+        position: Twig position as Vec3f
+        joints: Dict of joint_name -> joint_position
+
+    Returns:
+        Tuple of (nearest_joint_name, distance)
+    """
+    if not joints:
+        return ("Root", float("inf"))
+
+    # Convert position to Vec3d for calculation
+    pos_d = Gf.Vec3d(position[0], position[1], position[2])
+
+    min_distance = float("inf")
+    nearest_joint = "Root"
+
+    for joint_name, joint_pos in joints.items():
+        distance = (joint_pos - pos_d).GetLength()
+        if distance < min_distance:
+            min_distance = distance
+            nearest_joint = joint_name
+
+    return (nearest_joint, min_distance)
