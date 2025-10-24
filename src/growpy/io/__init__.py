@@ -53,7 +53,12 @@ from .unreal_metadata import (
     create_metadata_from_growth_data,
     load_metadata,
 )
-from .usd_builder import add_materials_to_usd, add_skeleton_to_usd, build_tree_usd
+from .usd_builder import (
+    add_materials_to_usd,
+    add_skeleton_to_usd,
+    add_twig_skeleton_to_usd,
+    build_tree_usd,
+)
 
 # Blender-dependent exports
 try:
@@ -107,6 +112,7 @@ __all__ = [
     "get_quality_preset",
     "build_tree_usd",
     "add_skeleton_to_usd",
+    "add_twig_skeleton_to_usd",
     "add_materials_to_usd",
     "export_tree_as_usd",
     "batch_export_tree_usd",
