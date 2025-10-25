@@ -1,0 +1,145 @@
+#usda 1.0
+(
+    defaultPrim = "DemoAssembly"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "DemoAssembly" (
+    prepend apiSchemas = ["NaniteAssemblyRootAPI", "GeomModelAPI"]
+    kind = "assembly"
+)
+{
+    uniform token unreal:naniteAssembly:meshType = "skeletalMesh"
+    rel unreal:naniteAssembly:skeleton = </DemoAssembly/TreeMesh/TreeSkel>
+
+    def SkelRoot "TreeMesh"
+    {
+        def Skeleton "TreeSkel"
+        {
+            uniform matrix4d[] bindTransforms = [
+                ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) ),
+                ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 1, 1) ),
+                ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 2, 1) )
+            ]
+            uniform token[] joints = ["root", "joint_1", "joint_2"]
+            uniform matrix4d[] restTransforms = [
+                ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) ),
+                ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 1, 1) ),
+                ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 2, 1) )
+            ]
+        }
+
+        def Mesh "Trunk" (
+            prepend apiSchemas = ["SkelBindingAPI"]
+        )
+        {
+            uniform token primvars:part = "trunk"
+            uniform bool doubleSided = 1
+            int[] faceVertexCounts = [4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [
+                0, 1, 3, 2,
+                1, 4, 5, 3,
+                4, 6, 7, 5,
+                6, 8, 9, 7,
+                8, 10, 11, 9
+            ]
+            normal3f[] normals = [
+                (0, 0, -1), (0, 0, -1), (0, 0, -1), (0, 0, -1),
+                (0, 0, -1), (0, 0, -1), (0, 0, -1), (0, 0, -1),
+                (0, 0, -1), (0, 0, -1), (0, 0, -1), (0, 0, -1),
+                (0, 0, -1), (0, 0, -1), (0, 0, -1), (0, 0, -1),
+                (0, 0, -1), (0, 0, -1), (0, 0, -1), (0, 0, -1)
+            ] (
+                interpolation = "faceVarying"
+            )
+            point3f[] points = [
+                (-0.1, -0.1, 0), (0.1, -0.1, 0), (-0.1, 0.1, 0), (0.1, 0.1, 0),
+                (-0.1, -0.1, 1), (0.1, -0.1, 1), (-0.1, 0.1, 1), (0.1, 0.1, 1),
+                (-0.1, -0.1, 2), (0.1, -0.1, 2), (-0.1, 0.1, 2), (0.1, 0.1, 2)
+            ]
+            
+            rel skel:skeleton = </DemoAssembly/TreeMesh/TreeSkel>
+            int[] primvars:skel:jointIndices = [
+                0, 0, 0, 0,
+                0, 0, 0, 0,
+                1, 1, 1, 1,
+                1, 1, 1, 1,
+                2, 2, 2, 2
+            ] (
+                elementSize = 1
+                interpolation = "vertex"
+            )
+            float[] primvars:skel:jointWeights = [
+                1.0, 1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0, 1.0,
+                1.0, 1.0, 1.0, 1.0
+            ] (
+                elementSize = 1
+                interpolation = "vertex"
+            )
+        }
+    }
+
+    def Scope "TwigPrototypes"
+    {
+        def Xform "twig" (
+            instanceable = true
+        )
+        {
+            def SkelRoot "TwigSkelRoot"
+            {
+                def Skeleton "Skel"
+                {
+                    uniform matrix4d[] bindTransforms = [( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )]
+                    uniform token[] joints = ["root"]
+                    uniform matrix4d[] restTransforms = [( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )]
+                }
+
+                def Mesh "Leaf" (
+                    prepend apiSchemas = ["SkelBindingAPI"]
+                )
+                {
+                    uniform token primvars:part = "leaf"
+                    uniform bool doubleSided = 1
+                    int[] faceVertexCounts = [4]
+                    int[] faceVertexIndices = [0, 1, 2, 3]
+                    normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)] (
+                        interpolation = "faceVarying"
+                    )
+                    point3f[] points = [(-0.1, -0.1, 0), (0.1, -0.1, 0), (0.1, 0.1, 0), (-0.1, 0.1, 0)]
+                    
+                    rel skel:skeleton = </DemoAssembly/TwigPrototypes/twig/TwigSkelRoot/Skel>
+                    int[] primvars:skel:jointIndices = [0, 0, 0, 0] (
+                        elementSize = 1
+                        interpolation = "vertex"
+                    )
+                    float[] primvars:skel:jointWeights = [1.0, 1.0, 1.0, 1.0] (
+                        elementSize = 1
+                        interpolation = "vertex"
+                    )
+                }
+            }
+        }
+    }
+
+    def PointInstancer "TwigInstances" (
+        prepend apiSchemas = ["NaniteAssemblySkelBindingAPI"]
+    )
+    {
+        quath[] orientations = [(1, 0, 0, 0), (1, 0, 0, 0)]
+        point3f[] positions = [(0.5, 0.5, 1), (-0.5, 0.5, 1.5)]
+        uniform token[] primvars:unreal:naniteAssembly:bindJoints = ["joint_1", "joint_2"] (
+            elementSize = 1
+        )
+        uniform float[] primvars:unreal:naniteAssembly:bindJointWeights = [1, 1] (
+            elementSize = 1
+        )
+        int[] protoIndices = [0, 0]
+        rel prototypes = </DemoAssembly/TwigPrototypes/twig>
+        float3[] scales = [(1, 1, 1), (1, 1, 1)]
+    }
+}
+
