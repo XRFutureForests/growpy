@@ -87,10 +87,13 @@ def create_nanite_assembly_usd(
         root_prim = stage.DefinePrim(f"/{assembly_name}", "Xform")
         stage.SetDefaultPrim(root_prim)
 
-        # Apply NaniteAssemblyRootAPI using TokenListOp
+        # Apply NaniteAssemblyRootAPI and GeomModelAPI using TokenListOp
+        # Both schemas are required by Unreal Engine 5.7
         api_schemas = Sdf.TokenListOp()
-        api_schemas.prependedItems = ["NaniteAssemblyRootAPI"]
+        api_schemas.prependedItems = ["NaniteAssemblyRootAPI", "GeomModelAPI"]
         root_prim.SetMetadata("apiSchemas", api_schemas)
+        # Set kind metadata to 'assembly' as required by Unreal (not 'group')
+        root_prim.SetMetadata("kind", "assembly")
 
         # Set mesh type - CRITICAL: Must use uniform variability
         mesh_type = "skeletalMesh" if use_skeletal_mesh else "staticMesh"
@@ -101,36 +104,40 @@ def create_nanite_assembly_usd(
             variability=Sdf.VariabilityUniform,
         ).Set(mesh_type)
 
-        # Handle tree mesh - BOTH static and skeletal use TreeMesh wrapper
-        # This ensures consistent structure and correct skeleton path resolution
-        tree_prim = stage.DefinePrim(f"/{assembly_name}/TreeMesh", "Xform")
+        # Handle tree mesh - use SkelRoot for skeletal, Xform for static
+        # For skeletal: TreeMesh must be SkelRoot so Unreal can find it as ancestor of skeleton
+        # For static: TreeMesh is simple Xform wrapper
+        tree_prim_type = "SkelRoot" if use_skeletal_mesh else "Xform"
+        tree_prim = stage.DefinePrim(f"/{assembly_name}/TreeMesh", tree_prim_type)
 
-        # Apply NaniteAssemblyExternalRefAPI using TokenListOp
-        tree_api_schemas = Sdf.TokenListOp()
-        tree_api_schemas.prependedItems = ["NaniteAssemblyExternalRefAPI"]
-        tree_prim.SetMetadata("apiSchemas", tree_api_schemas)
-
-        # Reference the tree mesh using absolute path (required by Unreal)
-        tree_prim.GetReferences().AddReference(
-            str(tree_usd_path.resolve()),
-            "/Tree",  # Reference the Tree prim from source USD
-        )
+        # Reference the tree mesh (no API schemas needed - handled by reference)
+        if use_skeletal_mesh:
+            # For skeletal: Reference without prim path - use defaultPrim from source USD
+            # The skeletal tree USD has defaultPrim set to "Tree" (SkelRoot)
+            # USD will merge Tree's contents into TreeMesh, so TreeSkel becomes /TreeMesh/TreeSkel
+            # CRITICAL: Use relative path (same directory) for portability
+            tree_prim.GetReferences().AddReference(f"./{tree_usd_path.name}")
+        else:
+            # For static: Reference specific /Tree prim
+            # CRITICAL: Use relative path (same directory) for portability
+            tree_prim.GetReferences().AddReference(
+                f"./{tree_usd_path.name}",
+                "/Tree",
+            )
 
         if use_skeletal_mesh:
             # For skeletal: Set skeleton relationship to embedded skeleton
-            # Path is /{assembly}/TreeMesh/SkelRoot/Skeleton (from /Tree/SkelRoot/Skeleton in source)
+            # /Tree is now a SkelRoot with /Tree/TreeSkel skeleton
             print(f"  Adding skeletal tree with embedded skeleton...")
 
             skeleton_rel = root_prim.CreateRelationship(
                 "unreal:naniteAssembly:skeleton",
-                custom=True,
+                custom=False,
             )
-            skeleton_rel.AddTarget(f"/{assembly_name}/TreeMesh/SkelRoot/Skeleton")
+            skeleton_rel.AddTarget(f"/{assembly_name}/TreeMesh/TreeSkel")
 
             print(f"    [OK] Skeletal tree embedded via TreeMesh (mesh + skeleton)")
-            print(
-                f"    Skeleton relationship: /{assembly_name}/TreeMesh/SkelRoot/Skeleton"
-            )
+            print(f"    Skeleton relationship: /{assembly_name}/TreeMesh/TreeSkel")
         else:
             print(f"  Adding static tree mesh...")
 
@@ -187,9 +194,23 @@ def create_nanite_assembly_usd(
                 for idx, (twig_type, twig_path) in enumerate(
                     sorted(remapped_twig_paths.items())
                 ):
-                    # EXPERIMENTAL: Allow skeletal twigs in skeletal assemblies
-                    # Hypothesis: Unreal may bind skeletal twig instances to tree skeleton
+                    # VIDEO REQUIREMENT: Skeletal assemblies MUST use skeletal twigs
+                    # Each twig must have its own root bone for wind/animation
                     twig_ref_path = twig_path
+
+                    # Validate skeletal twigs for skeletal assemblies
+                    if use_skeletal_mesh:
+                        is_skeletal_twig = "_skel" in twig_ref_path.stem
+                        if not is_skeletal_twig:
+                            print(
+                                f"    WARNING: Using static twig '{twig_ref_path.name}' in skeletal assembly!"
+                            )
+                            print(
+                                f"      Skeletal assemblies require skeletal twigs (_skel.usda)"
+                            )
+                            print(
+                                f"      This may cause Unreal import to fail or twigs not to animate"
+                            )
 
                     if not twig_ref_path.exists():
                         print(f"    Warning: Twig mesh not found: {twig_ref_path}")
@@ -199,33 +220,25 @@ def create_nanite_assembly_usd(
 
                     # Create prototype with ExternalRef
                     proto_name = twig_type.replace("_", "")
+
+                    # Create prototype as Xform (always)
+                    # For skeletal twigs, Xform contains SkelRoot from the reference
                     proto_prim = stage.DefinePrim(
                         f"/{assembly_name}/TwigPrototypes/{proto_name}", "Xform"
                     )
 
-                    # Apply NaniteAssemblyExternalRefAPI to prototype
-                    # The mesh type (skeletal vs static) is determined by the referenced asset itself
-                    proto_api_schemas = Sdf.TokenListOp()
-                    proto_api_schemas.prependedItems = ["NaniteAssemblyExternalRefAPI"]
-                    proto_prim.SetMetadata("apiSchemas", proto_api_schemas)
+                    if use_skeletal_mesh:
+                        print(
+                            f"      Prototype {proto_name}: Xform → {twig_ref_path.stem} (skeletal twig)"
+                        )
+
+                    # Add USD reference using relative path for portability
+                    # CRITICAL: Use ./ prefix for same-directory references
+                    proto_prim.GetReferences().AddReference(f"./{twig_ref_path.name}")
 
                     # Make instanceable for memory efficiency
                     proto_prim.SetInstanceable(True)
 
-                    # Hide prototypes - they should only be visible when instanced
-                    proto_prim.CreateAttribute(
-                        "visibility",
-                        Sdf.ValueTypeNames.Token,
-                        custom=False,
-                    ).Set("invisible")
-
-                    # Reference twig mesh using absolute path (required by Unreal)
-                    # Both static and skeletal twigs now have proper defaultPrim set
-                    # Static: defaultPrim="root" (Blender export)
-                    # Skeletal: defaultPrim="Twig" (SkelRoot with embedded materials)
-                    proto_prim.GetReferences().AddReference(
-                        str(twig_ref_path.resolve())
-                    )
                     print(f"      Reference: {twig_ref_path.resolve()}")
 
                     prototype_paths.append(Sdf.Path(proto_prim.GetPath()))
@@ -322,17 +335,28 @@ def create_nanite_assembly_usd(
                             print(
                                 f"      Found {len(skeleton_joints)} skeleton joints in tree"
                             )
+                            # Show sample joint names for debugging
+                            sample_joints = list(skeleton_joints.keys())[:3]
+                            print(f"      Sample joints: {sample_joints}")
 
-                            # For each twig, find nearest joint
+                            # For each twig, find nearest joint by NAME (not path)
+                            # VIDEO REQUIREMENT: Joint names like 'root', 'joint_1', etc.
+                            # NOT full paths like '/Tree/TreeSkel/joint_1'
                             for twig_pos in all_positions:
                                 nearest_joint, distance = _find_nearest_joint(
                                     twig_pos, skeleton_joints
                                 )
-                                bind_joints.append(nearest_joint)
+                                # Extract just the joint name (last component)
+                                # e.g., "joint_0/joint_1/joint_50" -> "joint_50"
+                                joint_name = nearest_joint.split("/")[-1]
+                                bind_joints.append(joint_name)
                                 bind_weights.append(1.0)
 
                             print(
                                 f"      Bound {len(bind_joints)} twig instances to skeleton"
+                            )
+                            print(
+                                f"      Sample bindings: {bind_joints[:3]} (first 3 twigs)"
                             )
                         else:
                             # Fallback: bind all to root
@@ -340,37 +364,37 @@ def create_nanite_assembly_usd(
                                 f"      Warning: No skeleton joints found, binding to root"
                             )
                             for i in range(len(all_positions)):
-                                bind_joints.append("Root")
+                                bind_joints.append("root")
                                 bind_weights.append(1.0)
 
-                        # Create primvars for joint binding
-                        # CRITICAL: Use uniform variability and proper interpolation
-                        bind_joints_attr = instancer_prim.CreateAttribute(
-                            "primvars:unreal:naniteAssembly:bindJoints",
+                        # Create primvars for joint binding using PrimvarsAPI
+                        # VIDEO FORMAT: uniform interpolation with elementSize metadata
+                        primvars_api = UsdGeom.PrimvarsAPI(instancer_prim)
+
+                        # Create bindJoints primvar
+                        bind_joints_primvar = primvars_api.CreatePrimvar(
+                            "unreal:naniteAssembly:bindJoints",
                             Sdf.ValueTypeNames.TokenArray,
-                            custom=False,
-                            variability=Sdf.VariabilityUniform,
+                            UsdGeom.Tokens.uniform,
                         )
-                        bind_joints_attr.Set(bind_joints)
+                        bind_joints_primvar.Set(bind_joints)
+                        bind_joints_primvar.SetElementSize(1)
 
-                        # elementSize=1 means one joint per instance
-                        instancer_prim.CreateAttribute(
-                            "primvars:unreal:naniteAssembly:bindJoints:elementSize",
-                            Sdf.ValueTypeNames.Int,
-                            custom=False,
-                        ).Set(1)
-
-                        bind_weights_attr = instancer_prim.CreateAttribute(
-                            "primvars:unreal:naniteAssembly:bindJointWeights",
+                        # Create bindJointWeights primvar
+                        bind_weights_primvar = primvars_api.CreatePrimvar(
+                            "unreal:naniteAssembly:bindJointWeights",
                             Sdf.ValueTypeNames.FloatArray,
-                            custom=False,
-                            variability=Sdf.VariabilityUniform,
+                            UsdGeom.Tokens.uniform,
                         )
-                        bind_weights_attr.Set(bind_weights)
+                        bind_weights_primvar.Set(bind_weights)
+                        bind_weights_primvar.SetElementSize(1)
 
                         print(
-                            f"    [OK] Bound {len(all_positions)} twigs to skeleton (root joint)"
+                            f"    [OK] Bound {len(all_positions)} twig instances to skeleton joints"
                         )
+                        print(f"      bindJoints format: TokenArray (joint names)")
+                        print(f"      bindJointWeights format: FloatArray (all 1.0)")
+                        print(f"      elementSize: 1 (one joint per instance)")
 
                     print(
                         f"    [OK] Added {len(all_positions)} twig instances ({len(prototype_paths)} types)"
@@ -386,6 +410,17 @@ def create_nanite_assembly_usd(
         # Save stage
         stage.GetRootLayer().Save()
         print(f"  [OK] Saved Nanite Assembly: {output_path.name}")
+
+        # Validate the assembly structure (based on video requirements)
+        if use_skeletal_mesh:
+            print(f"\n  Validating skeletal Nanite Assembly...")
+            validation_result = validate_nanite_assembly(output_path)
+            if not validation_result["valid"]:
+                print(f"  [WARN] Assembly validation found issues - may fail in Unreal")
+                for error in validation_result["errors"]:
+                    print(f"    ERROR: {error}")
+            else:
+                print(f"  [OK] Assembly validation passed")
 
         return True
 

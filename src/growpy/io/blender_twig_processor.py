@@ -80,24 +80,13 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0)):
         root_path = Sdf.Path("/Twig")
         skel_root = UsdSkel.Root.Define(stage, root_path)
 
-        # Apply Unreal skeletal mesh schema
-        skel_root_prim = stage.GetPrimAtPath(root_path)
-        skel_root_prim.SetMetadata(
-            "apiSchemas",
-            Sdf.TokenListOp.Create(prependedItems=["UnrealNaniteAssemblyRootAPI"]),
-        )
-        skel_root_prim.CreateAttribute(
-            "unreal:naniteAssembly:meshType", Sdf.ValueTypeNames.Token
-        ).Set("skeletalMesh")
+        # NOTE: Do NOT apply UnrealNaniteAssemblyRootAPI here
+        # Twigs are referenced into Nanite Assemblies via PointInstancer.
+        # Only the assembly root should have NaniteAssemblyRootAPI.
 
         # Create skeleton with single root joint
         skel_path = root_path.AppendChild("TwigSkel")
         skel = UsdSkel.Skeleton.Define(stage, skel_path)
-
-        # Set skeleton relationship for Unreal
-        skel_root_prim.CreateRelationship("unreal:naniteAssembly:skeleton").SetTargets(
-            [skel_path]
-        )
 
         # Create single root joint at pivot point
         joint_tokens = ["root"]
@@ -208,6 +197,14 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0)):
                         UsdShade.MaterialBindingAPI.Apply(mesh_prim).Bind(
                             UsdShade.Material(mat_prim)
                         )
+
+        # CRITICAL: Remove the old /root prim that Blender created
+        # We've already copied everything we need (/TwigMesh and /_materials) to /Twig
+        # Leaving /root in the file confuses Unreal - it should only see /Twig (SkelRoot)
+        root_prim = stage.GetPrimAtPath("/root")
+        if root_prim and root_prim.IsValid():
+            stage.RemovePrim(root_prim.GetPath())
+            print(f"      [OK] Removed old /root prim (Blender export artifact)")
 
         # Set Twig as default prim so it's the primary reference target
         twig_prim = stage.GetPrimAtPath("/Twig")

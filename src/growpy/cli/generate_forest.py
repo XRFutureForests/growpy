@@ -18,7 +18,7 @@ Full Documentation:
     See docs/guides/cli-reference.md for complete flag reference and examples
 
 Usage:
-    python generate_forest.py [csv_file] [options]
+python ./src/growpy/cli/generate_forest.py data/input/test.csv --quality high --output-dir data/output/forest --growth-cycle-limit 5
 """
 
 import multiprocessing as mp

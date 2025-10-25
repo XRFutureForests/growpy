@@ -15,7 +15,7 @@ Key Features:
 
 Quick Start:
     # Single-step conversion with automatic skeleton addition
-    python convert_twigs.py data/assets/twigs
+    python ./src/growpy/cli/convert_twigs.py data/assets/twigs
 
     # Both static and skeletal variants exported in one pass
     # Skeletons added using Blender's bundled USD (bpy.utils.expose_bundled_modules)
