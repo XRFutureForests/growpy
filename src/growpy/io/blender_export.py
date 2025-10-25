@@ -1835,12 +1835,10 @@ def _add_skeleton_and_materials_to_usd(
 
             # Create SkelRoot as parent container (required for UE5.7)
             # SkelRoot wraps both the Skeleton and the skinned Mesh
+            # API schemas (NaniteAssemblyRootAPI, GeomModelAPI) are applied to the root Xform
+            # in unreal_nanite_assembly.py - they should NOT be on SkelRoot
             skel_root_path = original_xform_path.AppendChild("SkelRoot")
             skel_root_prim = UsdSkel.Root.Define(stage, skel_root_path)
-
-            # Apply SkelBindingAPI to the SkelRoot (UE5.7 requirement)
-            # This is CRITICAL for Unreal to recognize this as a skeletal mesh
-            skel_root_binding_api = UsdSkel.BindingAPI.Apply(skel_root_prim.GetPrim())
 
             # Create skeleton prim inside SkelRoot
             skel_path = skel_root_path.AppendChild("Skeleton")

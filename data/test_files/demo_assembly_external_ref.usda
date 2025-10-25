@@ -1,0 +1,52 @@
+#usda 1.0
+(
+    defaultPrim = "DemoAssemblyExternal"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "DemoAssemblyExternal" (
+    prepend apiSchemas = ["NaniteAssemblyRootAPI", "GeomModelAPI"]
+    kind = "assembly"
+)
+{
+    uniform token unreal:naniteAssembly:meshType = "skeletalMesh"
+    rel unreal:naniteAssembly:skeleton = </DemoAssemblyExternal/TreeMesh/TreeSkel>
+
+    def SkelRoot "TreeMesh" (
+        prepend references = @./demo_tree_skel.usda@</Tree>
+    )
+    {
+    }
+
+    def Scope "TwigPrototypes"
+    {
+        def Xform "twig" (
+            instanceable = true
+        )
+        {
+            def SkelRoot "TwigSkelRoot" (
+                prepend references = @./demo_twig_skel.usda@</Twig>
+            )
+            {
+            }
+        }
+    }
+
+    def PointInstancer "TwigInstances" (
+        prepend apiSchemas = ["NaniteAssemblySkelBindingAPI"]
+    )
+    {
+        quath[] orientations = [(1, 0, 0, 0), (1, 0, 0, 0)]
+        point3f[] positions = [(0.5, 0.5, 1), (-0.5, 0.5, 1.5)]
+        uniform token[] primvars:unreal:naniteAssembly:bindJoints = ["joint_1", "joint_2"] (
+            elementSize = 1
+        )
+        uniform float[] primvars:unreal:naniteAssembly:bindJointWeights = [1, 1] (
+            elementSize = 1
+        )
+        int[] protoIndices = [0, 0]
+        rel prototypes = </DemoAssemblyExternal/TwigPrototypes/twig>
+        float3[] scales = [(1, 1, 1), (1, 1, 1)]
+    }
+}

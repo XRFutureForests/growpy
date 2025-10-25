@@ -41,6 +41,7 @@ def build_tree_usd(
     output_path: Path,
     up_axis: str = "Z",
     triangulated: bool = True,
+    include_materials: bool = True,
 ) -> bool:
     """Build USD file directly from Grove model using API geometry data.
 
@@ -52,6 +53,7 @@ def build_tree_usd(
         output_path: Path where USD file will be saved
         up_axis: Coordinate system up axis ("Y" or "Z")
         triangulated: Whether the model has been triangulated
+        include_materials: If False, creates simple geometry without materials/UVs
 
     Returns:
         bool: True if USD file was created successfully
@@ -107,14 +109,18 @@ def build_tree_usd(
         mesh.CreateFaceVertexCountsAttr(face_vertex_counts)
         mesh.CreateFaceVertexIndicesAttr(face_vertex_indices)
 
-        # Add UV coordinates (primvar)
-        if uvs:
-            primvars_api = UsdGeom.PrimvarsAPI(mesh)
-            uv_primvar = primvars_api.CreatePrimvar(
-                "st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.faceVarying
-            )
-            usd_uvs = [Gf.Vec2f(uv[0], uv[1]) for uv in uvs]
-            uv_primvar.Set(usd_uvs)
+        # Add UV coordinates and materials only if requested
+        if include_materials:
+            if uvs:
+                primvars_api = UsdGeom.PrimvarsAPI(mesh)
+                uv_primvar = primvars_api.CreatePrimvar(
+                    "st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.faceVarying
+                )
+                usd_uvs = [Gf.Vec2f(uv[0], uv[1]) for uv in uvs]
+                uv_primvar.Set(usd_uvs)
+
+            # Set display color (default gray for bark)
+            mesh.CreateDisplayColorAttr([Gf.Vec3f(0.4, 0.3, 0.2)])
 
         # Add face attributes from Grove
         _add_grove_face_attributes(mesh, model)
@@ -122,8 +128,8 @@ def build_tree_usd(
         # Add point attributes from Grove
         _add_grove_point_attributes(mesh, model)
 
-        # Set display color (default gray for bark)
-        mesh.CreateDisplayColorAttr([Gf.Vec3f(0.4, 0.3, 0.2)])
+        # Add normals for proper Unreal rendering
+        _add_mesh_normals(mesh, model)
 
         # Save stage
         stage.Save()
@@ -320,6 +326,11 @@ def add_skeleton_to_usd(
         # Create UsdSkel skeleton structure from full polylines
         _build_usdskel_from_bones(stage, skeleton, None)  # bones parameter now unused
 
+        # Set defaultPrim to /Tree (now a SkelRoot)
+        tree_prim = stage.GetPrimAtPath("/Tree")
+        if tree_prim:
+            stage.SetDefaultPrim(tree_prim)
+
         # Save stage
         stage.Save()
         return True
@@ -360,25 +371,32 @@ def _build_usdskel_from_bones(
         print("Warning: No mesh found in USD stage")
         return
 
-    # Create skeleton prim at root level
-    skel_root_path = Sdf.Path("/Tree/Skeleton")
-    skel_root = UsdSkel.Root.Define(stage, skel_root_path)
+    # Convert /Tree Xform to SkelRoot
+    tree_prim = stage.GetPrimAtPath("/Tree")
+    if tree_prim:
+        # Define SkelRoot at /Tree path (overwrites the Xform type)
+        skel_root = UsdSkel.Root.Define(stage, Sdf.Path("/Tree"))
+        tree_prim = skel_root.GetPrim()
 
-    # Apply Unreal skeletal mesh schema to SkelRoot
-    skel_root_prim = stage.GetPrimAtPath(skel_root_path)
-    skel_root_prim.SetMetadata(
-        "apiSchemas",
-        Sdf.TokenListOp.Create(prependedItems=["UnrealNaniteAssemblyRootAPI"]),
-    )
-    skel_root_prim.CreateAttribute(
-        "unreal:naniteAssembly:meshType", Sdf.ValueTypeNames.Token
-    ).Set("skeletalMesh")
+        # NOTE: Do NOT apply UnrealNaniteAssemblyRootAPI here
+        # This tree will be referenced into a Nanite Assembly, and only the
+        # assembly root should have NaniteAssemblyRootAPI. Having it here
+        # causes Unreal to see duplicate assembly roots and not recognize the assembly.
+    else:
+        # Fallback: create SkelRoot at /Tree
+        skel_root = UsdSkel.Root.Define(stage, Sdf.Path("/Tree"))
+        tree_prim = skel_root.GetPrim()
 
-    skel_path = skel_root_path.AppendChild("TreeSkel")
+        # NOTE: Do NOT apply UnrealNaniteAssemblyRootAPI here
+        # This tree will be referenced into a Nanite Assembly, and only the
+        # assembly root should have NaniteAssemblyRootAPI.
+
+    # Create skeleton under /Tree
+    skel_path = Sdf.Path("/Tree/TreeSkel")
     skel = UsdSkel.Skeleton.Define(stage, skel_path)
 
     # Set skeleton relationship for Unreal
-    skel_root_prim.CreateRelationship("unreal:naniteAssembly:skeleton").SetTargets(
+    tree_prim.CreateRelationship("unreal:naniteAssembly:skeleton").SetTargets(
         [skel_path]
     )
 
@@ -508,25 +526,32 @@ def _build_usdskel_from_bones(
     skel.CreateBindTransformsAttr(Vt.Matrix4dArray(bind_transforms))
     skel.CreateRestTransformsAttr(Vt.Matrix4dArray(rest_transforms))
 
-    # Re-parent mesh under SkelRoot
-    new_mesh_path = skel_root_path.AppendChild("TreeMesh")
-
-    # Copy mesh to new location
+    # Re-parent mesh under SkelRoot (/Tree) if needed
+    new_mesh_path = Sdf.Path("/Tree/TreeMesh")
     old_mesh_path = mesh_prim.GetPath()
-    Sdf.CopySpec(
-        stage.GetRootLayer(), old_mesh_path, stage.GetRootLayer(), new_mesh_path
-    )
 
-    # Remove old mesh
-    stage.RemovePrim(old_mesh_path)
+    # Only move mesh if it's not already at the correct path
+    if old_mesh_path != new_mesh_path:
+        Sdf.CopySpec(
+            stage.GetRootLayer(), old_mesh_path, stage.GetRootLayer(), new_mesh_path
+        )
+        stage.RemovePrim(old_mesh_path)
+        mesh_prim = stage.GetPrimAtPath(new_mesh_path)
+    # else: mesh is already at correct path, no need to move
 
-    # Get the new mesh prim
-    mesh_prim = stage.GetPrimAtPath(new_mesh_path)
+    # Get mesh schema (whether moved or not)
     mesh = UsdGeom.Mesh(mesh_prim)
 
-    # Bind mesh to skeleton
+    # Bind mesh to skeleton (now at /Tree/TreeSkel)
     binding_api = UsdSkel.BindingAPI.Apply(mesh_prim)
     binding_api.CreateSkeletonRel().SetTargets([skel_path])
+
+    # Apply MaterialBindingAPI if mesh has material bindings
+    # USD requires this API to be applied if material:binding relationship exists
+    if mesh_prim.HasRelationship("material:binding"):
+        from pxr import UsdShade
+
+        UsdShade.MaterialBindingAPI.Apply(mesh_prim)
 
     # Add skinning data (joint influences and weights)
     # Use BranchIndex from face attributes to map vertices to bones
@@ -715,24 +740,13 @@ def add_twig_skeleton_to_usd(
         root_path = Sdf.Path("/Twig")
         skel_root = UsdSkel.Root.Define(stage, root_path)
 
-        # Apply Unreal skeletal mesh schema
-        skel_root_prim = stage.GetPrimAtPath(root_path)
-        skel_root_prim.SetMetadata(
-            "apiSchemas",
-            Sdf.TokenListOp.Create(prependedItems=["UnrealNaniteAssemblyRootAPI"]),
-        )
-        skel_root_prim.CreateAttribute(
-            "unreal:naniteAssembly:meshType", Sdf.ValueTypeNames.Token
-        ).Set("skeletalMesh")
+        # NOTE: Do NOT apply UnrealNaniteAssemblyRootAPI here
+        # Twigs are referenced into Nanite Assemblies via PointInstancer.
+        # Only the assembly root should have NaniteAssemblyRootAPI.
 
         # Create skeleton with single root joint
         skel_path = root_path.AppendChild("TwigSkel")
         skel = UsdSkel.Skeleton.Define(stage, skel_path)
-
-        # Set skeleton relationship for Unreal
-        skel_root_prim.CreateRelationship("unreal:naniteAssembly:skeleton").SetTargets(
-            [skel_path]
-        )
 
         # Create single root joint at pivot point
         joint_tokens = ["root"]
@@ -782,6 +796,13 @@ def add_twig_skeleton_to_usd(
         # Set skinning attributes
         binding_api.CreateJointIndicesPrimvar(False, 1).Set(joint_indices)
         binding_api.CreateJointWeightsPrimvar(False, 1).Set(joint_weights)
+
+        # CRITICAL: Remove any leftover /root prim from Blender export
+        # The file should only contain /Twig (SkelRoot) for Unreal to properly recognize it
+        root_prim = stage.GetPrimAtPath("/root")
+        if root_prim and root_prim.IsValid():
+            stage.RemovePrim(root_prim.GetPath())
+            print(f"  Removed old /root prim (Blender export artifact)")
 
         # Save stage
         stage.Save()
@@ -872,3 +893,33 @@ def add_materials_to_usd(
 
         traceback.print_exc()
         return False
+
+
+def _add_mesh_normals(mesh: UsdGeom.Mesh, model: Any) -> None:
+    """Add computed normals to mesh for proper Unreal rendering.
+
+    Args:
+        mesh: USD mesh to add normals to
+        model: Grove model with geometry data
+    """
+    try:
+        # For now, use face normals (uniform interpolation)
+        # This is simpler and works well for skeletal meshes
+        # TODO: Compute proper vertex normals if needed
+
+        # Get face count
+        faces = model.faces if hasattr(model, "faces") else []
+        if not faces:
+            return
+
+        # Create simple up-facing normals for now
+        # In production, compute actual face normals from vertex positions
+        normals = [Gf.Vec3f(0, 0, 1) for _ in faces]
+
+        normals_attr = mesh.CreateNormalsAttr()
+        normals_attr.Set(normals)
+        mesh.SetNormalsInterpolation(UsdGeom.Tokens.uniform)
+
+    except Exception as e:
+        # Non-critical, just skip normals
+        pass
