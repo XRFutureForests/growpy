@@ -25,7 +25,7 @@ direction = (0, 0, 1)  # Initial growth direction vector (default: (0, 0, 1))
 delay = 0  # Number of years to wait before growing (default: 0)
 
 # Simulation parameters
-flushes = 2  # Number of growth cycles to simulate (default: 1)
+flushes = 1  # Number of growth cycles to simulate (default: 1)
 
 # Build parameters for 3D mesh generation
 resolution = 16  # Number of points at tree base (default: 16, range: 3-32)

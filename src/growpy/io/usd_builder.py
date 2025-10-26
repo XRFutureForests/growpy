@@ -42,6 +42,7 @@ def build_tree_usd(
     up_axis: str = "Z",
     triangulated: bool = True,
     include_materials: bool = True,
+    clean_export: bool = False,
 ) -> bool:
     """Build USD file directly from Grove model using API geometry data.
 
@@ -54,6 +55,7 @@ def build_tree_usd(
         up_axis: Coordinate system up axis ("Y" or "Z")
         triangulated: Whether the model has been triangulated
         include_materials: If False, creates simple geometry without materials/UVs
+        clean_export: If True, creates minimal USD without default attributes (demo mode)
 
     Returns:
         bool: True if USD file was created successfully
@@ -80,6 +82,10 @@ def build_tree_usd(
             stage, UsdGeom.Tokens.z if up_axis == "Z" else UsdGeom.Tokens.y
         )
         stage.SetMetadata("metersPerUnit", 1.0)
+
+        # Store clean_export mode for skeleton addition
+        if clean_export:
+            stage.SetMetadata("customLayerData", {"clean_export": True})
 
         # Define root xform
         root_path = Sdf.Path("/Tree")
@@ -462,10 +468,13 @@ def _build_usdskel_from_bones(
 
         branch_connection_points[polyline_idx] = (connect_polyline, connect_point)
 
+    # Build topology array for hierarchy (instead of hierarchical names)
+    joint_parents = []  # Parent joint index for each joint (-1 for root)
     joint_counter = 0
+
     for polyline_idx, polyline in enumerate(skeleton_polylines):
         # Each polyline is a chain of connected points
-        prev_joint_path = None
+        prev_joint_idx = None
 
         # For branch polylines, skip first point (already created by parent)
         start_idx = 1 if polyline_idx > 0 else 0
@@ -474,31 +483,32 @@ def _build_usdskel_from_bones(
             point = skeleton_points[point_idx]
             world_pos = Gf.Vec3d(point[0], point[1], point[2])
 
-            # Create joint name
+            # Create FLAT joint name (no hierarchy in name - use topology array instead)
             joint_name = f"joint_{joint_counter}"
 
-            # Track mapping from skeleton point to joint index
-            point_to_joint_index[point_idx] = joint_counter
-            joint_counter += 1
-
-            # Build hierarchical path
+            # Determine parent joint index for topology array
             if i == start_idx:
                 # First point in this polyline chain (after skip)
                 if polyline_idx == 0:
-                    # Root of first polyline
-                    joint_path = joint_name
+                    # Root of first polyline - no parent
+                    parent_idx = -1
                 else:
-                    # Branch polyline - connect to the shared point's joint
+                    # Branch polyline - parent is the shared point's joint
                     shared_point_idx = polyline[0]  # First point (shared with parent)
-                    parent_joint_path = point_to_joint_path[shared_point_idx]
-                    joint_path = f"{parent_joint_path}/{joint_name}"
+                    parent_idx = point_to_joint_index[shared_point_idx]
             else:
                 # Connected to previous point in same polyline
-                joint_path = f"{prev_joint_path}/{joint_name}"
+                parent_idx = prev_joint_idx
 
-            point_to_joint_path[point_idx] = joint_path
-            joint_tokens.append(joint_path)
+            # Track this joint
+            point_to_joint_index[point_idx] = joint_counter
+            point_to_joint_path[point_idx] = joint_name  # Now just flat name
+            joint_tokens.append(joint_name)
+            joint_parents.append(parent_idx)
             bone_positions[point_idx] = world_pos
+
+            prev_joint_idx = joint_counter
+            joint_counter += 1
 
             # Create WORLD SPACE bindTransform
             bind_transform = Gf.Matrix4d(1.0)
@@ -519,12 +529,18 @@ def _build_usdskel_from_bones(
             rest_transform.SetTranslateOnly(local_pos)
             rest_transforms.append(rest_transform)
 
-            prev_joint_path = joint_path
-
-    # Set skeleton attributes
+    # Set skeleton attributes with flat names + topology array
     skel.CreateJointsAttr(joint_tokens)
     skel.CreateBindTransformsAttr(Vt.Matrix4dArray(bind_transforms))
     skel.CreateRestTransformsAttr(Vt.Matrix4dArray(rest_transforms))
+
+    # CRITICAL: Add topology array to preserve hierarchy with flat joint names
+    # This is the USD-standard way to encode skeleton hierarchy
+    # Use GetPrim().CreateAttribute since CreateJointParentsAttr may not exist in older USD
+    joint_parents_attr = skel.GetPrim().CreateAttribute(
+        "jointParents", Sdf.ValueTypeNames.IntArray, custom=False
+    )
+    joint_parents_attr.Set(Vt.IntArray(joint_parents))
 
     # Re-parent mesh under SkelRoot (/Tree) if needed
     new_mesh_path = Sdf.Path("/Tree/TreeMesh")
@@ -542,9 +558,29 @@ def _build_usdskel_from_bones(
     # Get mesh schema (whether moved or not)
     mesh = UsdGeom.Mesh(mesh_prim)
 
+    # Check if clean export mode is enabled
+    clean_export = False
+    custom_data = stage.GetMetadata("customLayerData")
+    if custom_data and isinstance(custom_data, dict):
+        clean_export = custom_data.get("clean_export", False)
+
     # Bind mesh to skeleton (now at /Tree/TreeSkel)
-    binding_api = UsdSkel.BindingAPI.Apply(mesh_prim)
-    binding_api.CreateSkeletonRel().SetTargets([skel_path])
+    # For clean export, manually set apiSchemas to avoid auto-generated relationships
+    if clean_export:
+        # Manually add SkelBindingAPI to apiSchemas
+        api_schemas = mesh_prim.GetMetadata("apiSchemas") or Sdf.TokenListOp()
+        if not isinstance(api_schemas, Sdf.TokenListOp):
+            api_schemas = Sdf.TokenListOp()
+        api_schemas.prependedItems = ["SkelBindingAPI"]
+        mesh_prim.SetMetadata("apiSchemas", api_schemas)
+
+        # Create skeleton relationship without custom qualifier
+        skel_rel = mesh_prim.CreateRelationship("skel:skeleton", custom=False)
+        skel_rel.SetTargets([skel_path])
+    else:
+        # Standard mode: use BindingAPI.Apply
+        binding_api = UsdSkel.BindingAPI.Apply(mesh_prim)
+        binding_api.CreateSkeletonRel().SetTargets([skel_path])
 
     # Apply MaterialBindingAPI if mesh has material bindings
     # USD requires this API to be applied if material:binding relationship exists
@@ -675,8 +711,29 @@ def _build_usdskel_from_bones(
         joint_weights = [1.0] * num_points
 
     # Set skinning attributes with proper element size
-    binding_api.CreateJointIndicesPrimvar(False, 1).Set(joint_indices)
-    binding_api.CreateJointWeightsPrimvar(False, 1).Set(joint_weights)
+    if clean_export:
+        # Use PrimvarsAPI directly for clean export
+        primvars_api_skel = UsdGeom.PrimvarsAPI(mesh_prim)
+
+        joint_indices_primvar = primvars_api_skel.CreatePrimvar(
+            "skel:jointIndices",
+            Sdf.ValueTypeNames.IntArray,
+            UsdGeom.Tokens.vertex,
+        )
+        joint_indices_primvar.Set(joint_indices)
+        joint_indices_primvar.SetElementSize(1)
+
+        joint_weights_primvar = primvars_api_skel.CreatePrimvar(
+            "skel:jointWeights",
+            Sdf.ValueTypeNames.FloatArray,
+            UsdGeom.Tokens.vertex,
+        )
+        joint_weights_primvar.Set(joint_weights)
+        joint_weights_primvar.SetElementSize(1)
+    else:
+        # Standard mode: use BindingAPI (already created above)
+        binding_api.CreateJointIndicesPrimvar(False, 1).Set(joint_indices)
+        binding_api.CreateJointWeightsPrimvar(False, 1).Set(joint_weights)
 
     return skel
 
@@ -745,7 +802,8 @@ def add_twig_skeleton_to_usd(
         # Only the assembly root should have NaniteAssemblyRootAPI.
 
         # Create skeleton with single root joint
-        skel_path = root_path.AppendChild("TwigSkel")
+        # Use "Skel" naming to match Nanite Assembly requirements
+        skel_path = root_path.AppendChild("Skel")
         skel = UsdSkel.Skeleton.Define(stage, skel_path)
 
         # Create single root joint at pivot point
@@ -766,7 +824,8 @@ def add_twig_skeleton_to_usd(
         skel.CreateRestTransformsAttr(Vt.Matrix4dArray([rest_transform]))
 
         # Re-parent mesh under SkelRoot
-        new_mesh_path = root_path.AppendChild("TwigMesh")
+        # Use "Mesh" naming to match Nanite Assembly requirements
+        new_mesh_path = root_path.AppendChild("Mesh")
         old_mesh_path = mesh_prim.GetPath()
 
         # Copy mesh to new location
@@ -923,3 +982,230 @@ def _add_mesh_normals(mesh: UsdGeom.Mesh, model: Any) -> None:
     except Exception as e:
         # Non-critical, just skip normals
         pass
+
+
+def build_skeletal_nanite_assembly(
+    assembly_path: Path,
+    tree_skel_usd_path: Path,
+    twig_skel_usd_paths: Dict[str, Path],
+    twig_placements: List[Dict],
+    up_axis: str = "Z",
+) -> bool:
+    """Build skeletal Nanite Assembly USD with external references.
+
+    Creates a Nanite Assembly structure that references external skeletal tree
+    and twig USD files, with proper PointInstancer bindings for twigs.
+
+    Args:
+        assembly_path: Path for output assembly USD file
+        tree_skel_usd_path: Path to skeletal tree USD file
+        twig_skel_usd_paths: Dict mapping twig type to skeletal twig USD paths
+        twig_placements: List of twig placement dicts with position, orientation, joint, etc.
+        up_axis: Coordinate system up axis ("Y" or "Z")
+
+    Returns:
+        bool: True if assembly was created successfully
+
+    Example Structure:
+        /AssemblyRoot (Xform with NaniteAssemblyRootAPI)
+            /TreeMesh (SkelRoot, references external tree_skel.usda)
+            /TwigPrototypes (Scope)
+                /twig_long (Xform, instanceable)
+                    /TwigSkelRoot (SkelRoot, references external twig_skel.usda)
+                /twig_short (Xform, instanceable)
+                    /TwigSkelRoot (SkelRoot, references external twig_skel.usda)
+            /TwigInstances (PointInstancer with NaniteAssemblySkelBindingAPI)
+    """
+    if not USD_AVAILABLE:
+        print("Error: USD Python module not available")
+        return False
+
+    try:
+        from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel, Vt
+
+        # Create new stage
+        stage = Usd.Stage.CreateNew(str(assembly_path))
+
+        # Set stage metadata
+        UsdGeom.SetStageUpAxis(
+            stage, UsdGeom.Tokens.z if up_axis == "Z" else UsdGeom.Tokens.y
+        )
+        stage.SetMetadata("metersPerUnit", 1.0)
+
+        # Create assembly root name from file stem
+        assembly_name = assembly_path.stem
+        root_path = Sdf.Path(f"/{assembly_name}")
+
+        # Define assembly root (Xform with NaniteAssemblyRootAPI)
+        root_xform = UsdGeom.Xform.Define(stage, root_path)
+        root_prim = root_xform.GetPrim()
+
+        # Apply NaniteAssemblyRootAPI and GeomModelAPI using TokenListOp
+        # Both schemas are required by Unreal Engine 5.7
+        # CRITICAL: Use SetMetadata instead of ApplyAPI because Blender's bundled USD
+        # doesn't have Unreal schemas loaded
+        api_schemas = Sdf.TokenListOp()
+        api_schemas.prependedItems = ["NaniteAssemblyRootAPI", "GeomModelAPI"]
+        root_prim.SetMetadata("apiSchemas", api_schemas)
+
+        # Set kind metadata to 'assembly' as required by Unreal (not 'group')
+        root_prim.SetMetadata("kind", "assembly")
+
+        # Set mesh type to skeletalMesh - CRITICAL: Must use uniform variability
+        root_prim.CreateAttribute(
+            "unreal:naniteAssembly:meshType",
+            Sdf.ValueTypeNames.Token,
+            custom=False,
+            variability=Sdf.VariabilityUniform,
+        ).Set("skeletalMesh")
+
+        # Reference tree skeleton
+        tree_mesh_path = root_path.AppendChild("TreeMesh")
+        tree_skel_root = stage.DefinePrim(tree_mesh_path, "SkelRoot")
+
+        # Add reference to external tree skeleton USD
+        # Use relative path if in same directory
+        if tree_skel_usd_path.parent == assembly_path.parent:
+            tree_ref_path = f"./{tree_skel_usd_path.name}"
+        else:
+            tree_ref_path = str(tree_skel_usd_path.resolve())
+
+        tree_skel_root.GetReferences().AddReference(tree_ref_path, "/Tree")
+
+        # Set skeleton relationship to tree skeleton
+        skel_rel_path = tree_mesh_path.AppendChild("TreeSkel")
+        root_prim.CreateRelationship(
+            "unreal:naniteAssembly:skeleton", custom=False
+        ).SetTargets([skel_rel_path])
+
+        # Create TwigPrototypes scope
+        prototypes_path = root_path.AppendChild("TwigPrototypes")
+        prototypes_scope = UsdGeom.Scope.Define(stage, prototypes_path)
+
+        # Create twig prototype references (instanceable)
+        twig_prototype_paths = {}
+        for twig_type, twig_usd_path in twig_skel_usd_paths.items():
+            # Create xform for this twig type
+            twig_proto_path = prototypes_path.AppendChild(twig_type)
+            twig_proto_xform = UsdGeom.Xform.Define(stage, twig_proto_path)
+            twig_proto_prim = twig_proto_xform.GetPrim()
+
+            # Make instanceable
+            twig_proto_prim.SetInstanceable(True)
+
+            # Create SkelRoot under twig prototype
+            twig_skelroot_path = twig_proto_path.AppendChild("TwigSkelRoot")
+            twig_skelroot = stage.DefinePrim(twig_skelroot_path, "SkelRoot")
+
+            # Add reference to external twig skeleton USD
+            # CRITICAL: Always use relative paths for portability
+            # Check if twig is in same directory as assembly
+            if twig_usd_path.parent.resolve() == assembly_path.parent.resolve():
+                twig_ref_path = f"./{twig_usd_path.name}"
+            else:
+                # Twig not in same directory - this shouldn't happen for properly configured exports
+                # But fall back to relative path if possible
+                try:
+                    twig_ref_path = f"./{twig_usd_path.name}"
+                    print(
+                        f"        WARNING: Twig not in same dir as assembly, using ./{twig_usd_path.name}"
+                    )
+                except:
+                    twig_ref_path = str(twig_usd_path.resolve())
+                    print(
+                        f"        WARNING: Using absolute path for twig: {twig_ref_path}"
+                    )
+
+            twig_skelroot.GetReferences().AddReference(twig_ref_path, "/Twig")
+
+            twig_prototype_paths[twig_type] = twig_proto_path
+
+        # Create PointInstancer for twig instances
+        instancer_path = root_path.AppendChild("TwigInstances")
+        instancer = UsdGeom.PointInstancer.Define(stage, instancer_path)
+        instancer_prim = instancer.GetPrim()
+
+        # Apply NaniteAssemblySkelBindingAPI using TokenListOp
+        # CRITICAL: Use SetMetadata instead of ApplyAPI
+        skel_binding_schemas = Sdf.TokenListOp()
+        skel_binding_schemas.prependedItems = ["NaniteAssemblySkelBindingAPI"]
+        instancer_prim.SetMetadata("apiSchemas", skel_binding_schemas)
+
+        # Prepare instance data
+        positions = []
+        orientations = []
+        scales = []
+        proto_indices = []
+        bind_joints = []
+        bind_weights = []
+
+        # Build prototype index map
+        proto_list = list(twig_prototype_paths.values())
+
+        for placement in twig_placements:
+            twig_type = placement.get("twig_type", "twig_long")
+            position = placement.get("position", (0, 0, 0))
+            orientation = placement.get("orientation", (1, 0, 0, 0))  # (w, x, y, z)
+            scale = placement.get("scale", (1, 1, 1))
+            joint_name = placement.get("joint_name", "root")
+            weight = placement.get("weight", 1.0)
+
+            # Get prototype index
+            if twig_type in twig_prototype_paths:
+                proto_path = twig_prototype_paths[twig_type]
+                proto_idx = proto_list.index(proto_path)
+            else:
+                # Default to first prototype
+                proto_idx = 0
+
+            positions.append(Gf.Vec3f(*position))
+            orientations.append(Gf.Quath(*orientation))
+            scales.append(Gf.Vec3f(*scale))
+            proto_indices.append(proto_idx)
+            bind_joints.append(joint_name)
+            bind_weights.append(weight)
+
+        # Set instancer attributes
+        instancer.CreatePositionsAttr(positions)
+        instancer.CreateOrientationsAttr(orientations)
+        instancer.CreateScalesAttr(scales)
+        instancer.CreateProtoIndicesAttr(proto_indices)
+
+        # Set prototype relationships
+        instancer.CreatePrototypesRel().SetTargets(proto_list)
+
+        # Set bind joints and weights (NaniteAssemblySkelBindingAPI attributes)
+        # CRITICAL: Create as uniform attributes to match working example format
+        # Working: "uniform token[]" | Ours was: "token[] (interpolation=uniform)"
+
+        bind_joints_attr = instancer_prim.CreateAttribute(
+            "primvars:unreal:naniteAssembly:bindJoints",
+            Sdf.ValueTypeNames.TokenArray,
+            custom=False,
+            variability=Sdf.VariabilityUniform,
+        )
+        bind_joints_attr.Set(bind_joints)
+        bind_joints_attr.SetMetadata("elementSize", 1)
+
+        bind_weights_attr = instancer_prim.CreateAttribute(
+            "primvars:unreal:naniteAssembly:bindJointWeights",
+            Sdf.ValueTypeNames.FloatArray,
+            custom=False,
+            variability=Sdf.VariabilityUniform,
+        )
+        bind_weights_attr.Set(bind_weights)
+        bind_weights_attr.SetMetadata("elementSize", 1)
+
+        # Set default prim
+        stage.SetDefaultPrim(root_prim)
+
+        # Save stage
+        stage.Save()
+        return True
+
+    except Exception as e:
+        print(f"Error building skeletal Nanite assembly: {e}")
+        import traceback
+
+        traceback.print_exc()
+        return False
