@@ -618,6 +618,28 @@ def _build_usdskel_from_bones(
         print(f"DEBUG: point_to_joint_index has {len(point_to_joint_index)} entries")
         print(f"DEBUG: branch_to_points has {len(branch_to_points)} branches")
 
+        # Pre-compute cumulative geodesic distances along each branch polyline
+        # This ensures correct binding for downward-growing branches and variable segment lengths
+        branch_cumulative_distances = {}  # branch_id -> {point_idx: cumulative_distance}
+        
+        for branch_id, polyline in branch_to_points.items():
+            cumulative_dist = 0.0
+            point_distances = {polyline[0]: 0.0}
+            
+            for i in range(1, len(polyline)):
+                prev_idx = polyline[i - 1]
+                curr_idx = polyline[i]
+                
+                prev_pos = skeleton_points[prev_idx]
+                curr_pos = skeleton_points[curr_idx]
+                
+                # Compute Euclidean distance between consecutive points
+                segment_length = sum((curr_pos[j] - prev_pos[j]) ** 2 for j in range(3)) ** 0.5
+                cumulative_dist += segment_length
+                point_distances[curr_idx] = cumulative_dist
+            
+            branch_cumulative_distances[branch_id] = point_distances
+
         # Map each vertex INDIVIDUALLY to its closest skeleton segment
         # This ensures proper skinning even when vertices are shared between faces
         vertex_to_joint = {}  # vertex_idx -> (joint_idx, weight)
@@ -639,6 +661,7 @@ def _build_usdskel_from_bones(
             face_idx += 1
 
         # Second pass: bind each vertex to its closest joint within its branch
+        # Use geodesic distance along polyline for reliable binding (works with downward branches)
         for v_idx in range(num_points):
             v_pos = points[v_idx]
             vertex_pos = Gf.Vec3d(v_pos[0], v_pos[1], v_pos[2])
@@ -648,6 +671,7 @@ def _build_usdskel_from_bones(
 
             if branch_id in branch_to_points:
                 branch_points = branch_to_points[branch_id]
+                cumulative_distances = branch_cumulative_distances.get(branch_id, {})
 
                 # Find closest segment in this branch
                 min_dist = float("inf")
@@ -680,9 +704,21 @@ def _build_usdskel_from_bones(
 
                     if dist < min_dist:
                         min_dist = dist
-                        # Bind to START joint of segment if closer to start (t < 0.5)
-                        # or END joint if closer to end (t >= 0.5)
-                        if t < 0.5:
+                        
+                        # Use geodesic distance along polyline for reliable joint assignment
+                        # This works correctly even for downward-growing branches
+                        start_geodesic = cumulative_distances.get(start_pt_idx, 0.0)
+                        end_geodesic = cumulative_distances.get(end_pt_idx, 0.0)
+                        
+                        # Vertex's geodesic distance is interpolated by t
+                        vertex_geodesic = start_geodesic + t * (end_geodesic - start_geodesic)
+                        
+                        # Segment midpoint in geodesic space
+                        segment_midpoint_geodesic = (start_geodesic + end_geodesic) / 2.0
+                        
+                        # Bind to START joint if vertex is before geodesic midpoint
+                        # Bind to END joint if vertex is after geodesic midpoint
+                        if vertex_geodesic < segment_midpoint_geodesic:
                             closest_joint_idx = point_to_joint_index.get(start_pt_idx, 0)
                         else:
                             closest_joint_idx = point_to_joint_index.get(end_pt_idx, 0)
