@@ -2815,6 +2815,7 @@ def batch_export_trees_for_unreal(
     use_native_usd_export: bool = True,
     include_twigs_in_usd: bool = True,
     create_nanite_assembly: bool = True,
+    clean_export: bool = False,
 ) -> Dict[str, List[Path]]:
     """Export trees as USD for Unreal Engine Nanite with PCG metadata.
 
@@ -3006,6 +3007,7 @@ def batch_export_trees_for_unreal(
                             build_cutoff_thickness=build_cutoff_thickness,
                             build_blend=build_blend,
                             build_end_cap=build_end_cap,
+                            clean_export=clean_export,
                             config=config,
                         )
                     else:
@@ -3150,6 +3152,7 @@ def export_grove_tree_as_usda_native(
     skeleton_reduce: float = 0.1,
     skeleton_bias: float = 0.5,
     skeleton_connected: bool = True,
+    clean_export: bool = False,
     config: Optional[Any] = None,
 ) -> bool:
     """Export Grove tree using native USD export with optional twig point instances.
@@ -3267,7 +3270,14 @@ def export_grove_tree_as_usda_native(
         )
 
         # Build USD directly from Grove API data
-        if not build_tree_usd(model, temp_tree_path, up_axis="Z", triangulated=True):
+        if not build_tree_usd(
+            model,
+            temp_tree_path,
+            up_axis="Z",
+            triangulated=True,
+            include_materials=not clean_export,  # Clean export excludes materials
+            clean_export=clean_export,
+        ):
             print(f"  Error: Failed to build tree USD")
             return False
 
@@ -3282,17 +3292,18 @@ def export_grove_tree_as_usda_native(
         # using PascalCase naming (TwigDead, TwigUpward, TwigLong, TwigShort)
 
         # Add materials to base tree (static mesh version)
-        # Find bark textures
-        base_textures = _find_bark_texture(species_name, config)
-        if base_textures:
-            from .usd_builder import add_materials_to_usd
+        # Find bark textures (only if materials are requested)
+        if not clean_export:  # Only add materials when not in clean export mode
+            base_textures = _find_bark_texture(species_name, config)
+            if base_textures:
+                from .usd_builder import add_materials_to_usd
 
-            add_materials_to_usd(temp_tree_path, species_name, base_textures)
-            copy_bark_textures_for_species(
-                species_name,
-                temp_tree_path.parent.parent,  # Go up to species dir
-                base_textures,
-            )
+                add_materials_to_usd(temp_tree_path, species_name, base_textures)
+                copy_bark_textures_for_species(
+                    species_name,
+                    temp_tree_path.parent,  # Species dir (same as tree/twig files)
+                    base_textures,
+                )
 
         # Create skeletal version with skeleton ONLY (materials already added)
         skeletal_tree_path = temp_tree_path
@@ -3381,9 +3392,24 @@ def export_grove_tree_as_usda_native(
                 print(f"\n  Creating Skeletal Nanite Assembly...")
 
                 # Get SKELETAL twig paths for skeletal assembly
-                skeletal_twig_paths = get_twig_usd_map_for_species(
+                # CRITICAL: Use twigs from OUTPUT directory (already copied), not source assets
+                skeletal_twig_paths_src = get_twig_usd_map_for_species(
                     species_name, config, prefer_skeletal=True
                 )
+
+                # Remap to output directory copies (same directory as assembly)
+                output_dir = output_path.parent
+                skeletal_twig_paths = {}
+                for twig_type, source_path in skeletal_twig_paths_src.items():
+                    output_twig_path = output_dir / source_path.name
+                    if output_twig_path.exists():
+                        skeletal_twig_paths[twig_type] = output_twig_path
+                    else:
+                        # Fallback to source if not copied yet (shouldn't happen)
+                        print(
+                            f"    WARNING: Twig not found in output dir: {output_twig_path.name}"
+                        )
+                        skeletal_twig_paths[twig_type] = source_path
 
                 # Skeletal Nanite Assembly references:
                 # - skeletal_tree_path (*_tree_only_skeletal.usda) - geometry + skeleton
@@ -3394,14 +3420,73 @@ def export_grove_tree_as_usda_native(
                     / f"{output_path.stem}_NaniteAssembly_skeletal{output_path.suffix}"
                 )
 
-                skeletal_nanite_success = create_nanite_assembly_usd(
-                    tree_usd_path=skeletal_tree_path,  # SKELETAL tree (geometry + skeleton)
-                    output_path=skeletal_nanite_path,
-                    species_name=species_name,
-                    twig_usd_paths=skeletal_twig_paths,  # SKELETAL twigs (geometry + skeleton)
-                    use_skeletal_mesh=True,
-                    skeleton_source_usd=skeletal_tree_path,  # Extract skeleton from here
-                    twig_placement_source_usd=temp_tree_path,  # Extract placements from static tree
+                # Extract twig placements with joint binding information
+                from .twig_placement import extract_twig_placements_from_usd
+                from .usd_builder import build_skeletal_nanite_assembly
+
+                placement_source = temp_tree_path  # Extract placements from static tree
+                print(f"    Extracting placements from: {placement_source.name}")
+                placements_dict = extract_twig_placements_from_usd(placement_source)
+
+                # Convert placements to the format expected by build_skeletal_nanite_assembly
+                # Extract skeleton from skeletal tree to map twig positions to nearest joints
+                from .unreal_nanite_assembly import (
+                    _extract_skeleton_joints_from_usd,
+                    _find_nearest_joint,
+                )
+
+                skeleton_joints = _extract_skeleton_joints_from_usd(skeletal_tree_path)
+
+                twig_placements = []
+                for twig_type, placement_list in placements_dict.items():
+                    if not placement_list:
+                        continue
+
+                    for placement in placement_list:
+                        from .twig_placement import (
+                            normal_to_rotation_matrix,
+                            rotation_matrix_to_quaternion,
+                        )
+
+                        pos = placement["position"]
+                        normal = placement["normal"]
+
+                        # Create rotation matrix from normal
+                        rot_matrix = normal_to_rotation_matrix(normal)
+                        quat = rotation_matrix_to_quaternion(rot_matrix)
+
+                        # Find nearest joint
+                        if skeleton_joints:
+                            from pxr import Gf
+
+                            twig_pos_vec = Gf.Vec3f(pos[0], pos[1], pos[2])
+                            nearest_joint, _ = _find_nearest_joint(
+                                twig_pos_vec, skeleton_joints
+                            )
+                            joint_name = nearest_joint.split("/")[-1]
+                        else:
+                            joint_name = "root"
+
+                        twig_placements.append(
+                            {
+                                "twig_type": twig_type,
+                                "position": pos,
+                                "orientation": quat,  # (w, x, y, z)
+                                "scale": (1.0, 1.0, 1.0),
+                                "joint_name": joint_name,
+                                "weight": 1.0,
+                            }
+                        )
+
+                print(f"    Found {len(twig_placements)} twig instances to bind")
+
+                # Build skeletal assembly using new structure
+                skeletal_nanite_success = build_skeletal_nanite_assembly(
+                    assembly_path=skeletal_nanite_path,
+                    tree_skel_usd_path=skeletal_tree_path,
+                    twig_skel_usd_paths=skeletal_twig_paths,
+                    twig_placements=twig_placements,
+                    up_axis="Z",
                 )
 
                 if skeletal_nanite_success:
@@ -3409,7 +3494,7 @@ def export_grove_tree_as_usda_native(
                         f"  [OK] Skeletal Nanite Assembly: {skeletal_nanite_path.name}"
                     )
                     print(
-                        f"    References: {skeletal_tree_path.name} (tree + skeleton) + static twigs"
+                        f"    References: {skeletal_tree_path.name} (tree + skeleton) + skeletal twigs"
                     )
                     print(f"    Import this file in Unreal Engine 5.7+ (skeletal mesh)")
             elif include_skeleton:

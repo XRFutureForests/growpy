@@ -300,12 +300,14 @@ def get_processor_script_path() -> Path:
 def process_twig_directory(
     twig_dir: Path,
     formats: List[str] = ["usda"],
+    clean_export: bool = False,
 ) -> Dict[str, List[Path]]:
     """Process all twig blend files in a directory.
 
     Args:
         twig_dir: Directory containing .blend twig files
         formats: Export formats to create
+        clean_export: If True, creates minimal USD without default attributes (demo mode)
     """
 
     blend_files = list(twig_dir.rglob("*.blend"))
@@ -339,6 +341,7 @@ def process_twig_directory(
                 str(output_dir),
                 ",".join(formats),
                 species_name,
+                "--clean-export" if clean_export else "--no-clean-export",
             ]
 
             result = subprocess.run(
@@ -402,6 +405,12 @@ Output per twig:
         default=["usda"],
         help="Export formats (default: usda)",
     )
+    parser.add_argument(
+        "--clean-export",
+        action="store_true",
+        default=False,
+        help="Create minimal USD without materials/textures (demo mode, matches demo structure)",
+    )
 
     args = parser.parse_args()
 
@@ -412,10 +421,12 @@ Output per twig:
     if args.path.is_file() and args.path.suffix == ".blend":
         # Single file
         print(f"Processing single file: {args.path.name}")
-        results = process_twig_directory(args.path.parent, args.formats)
+        results = process_twig_directory(
+            args.path.parent, args.formats, args.clean_export
+        )
     elif args.path.is_dir():
         # Directory
-        results = process_twig_directory(args.path, args.formats)
+        results = process_twig_directory(args.path, args.formats, args.clean_export)
     else:
         print(f"Error: Invalid path (must be .blend file or directory)")
         return 1
