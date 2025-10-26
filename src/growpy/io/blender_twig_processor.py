@@ -38,12 +38,13 @@ except ImportError as e:
     USD_AVAILABLE = False
 
 
-def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0)):
+def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False):
     """Add skeleton to USD file using Blender's bundled pxr module.
 
     Args:
         usd_path: Path to USD file
         pivot_point: Root joint position (default: origin)
+        clean_export: If True, creates minimal USD without default attributes
 
     Returns:
         bool: True if skeleton added successfully
@@ -85,7 +86,8 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0)):
         # Only the assembly root should have NaniteAssemblyRootAPI.
 
         # Create skeleton with single root joint
-        skel_path = root_path.AppendChild("TwigSkel")
+        # Use "Skel" naming to match Nanite Assembly requirements
+        skel_path = root_path.AppendChild("Skel")
         skel = UsdSkel.Skeleton.Define(stage, skel_path)
 
         # Create single root joint at pivot point
@@ -106,7 +108,8 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0)):
         skel.CreateRestTransformsAttr(Vt.Matrix4dArray([rest_transform]))
 
         # Re-parent mesh under SkelRoot
-        new_mesh_path = root_path.AppendChild("TwigMesh")
+        # Use "Mesh" naming to match Nanite Assembly requirements
+        new_mesh_path = root_path.AppendChild("Mesh")
         old_mesh_path = mesh_prim.GetPath()
 
         # Copy mesh to new location
@@ -122,8 +125,22 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0)):
         mesh = UsdGeom.Mesh(mesh_prim)
 
         # Bind mesh to skeleton
-        binding_api = UsdSkel.BindingAPI.Apply(mesh_prim)
-        binding_api.CreateSkeletonRel().SetTargets([skel_path])
+        # For clean export, manually set apiSchemas; otherwise use BindingAPI.Apply
+        if clean_export:
+            # Manually add SkelBindingAPI to apiSchemas for clean export
+            api_schemas = mesh_prim.GetMetadata("apiSchemas") or Sdf.TokenListOp()
+            if not isinstance(api_schemas, Sdf.TokenListOp):
+                api_schemas = Sdf.TokenListOp()
+            api_schemas.prependedItems = ["SkelBindingAPI"]
+            mesh_prim.SetMetadata("apiSchemas", api_schemas)
+
+            # Create skeleton relationship without custom qualifier
+            skel_rel = mesh_prim.CreateRelationship("skel:skeleton", custom=False)
+            skel_rel.SetTargets([skel_path])
+        else:
+            # Standard mode with materials: use BindingAPI.Apply
+            binding_api = UsdSkel.BindingAPI.Apply(mesh_prim)
+            binding_api.CreateSkeletonRel().SetTargets([skel_path])
 
         # Set skinning data - all vertices bound to root joint
         num_points = len(points)
@@ -133,70 +150,92 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0)):
         joint_weights = [1.0] * num_points
 
         # Set skinning attributes
-        binding_api.CreateJointIndicesPrimvar(False, 1).Set(joint_indices)
-        binding_api.CreateJointWeightsPrimvar(False, 1).Set(joint_weights)
+        if clean_export:
+            # Use PrimvarsAPI directly for clean export
+            primvars_api = UsdGeom.PrimvarsAPI(mesh_prim)
 
-        # Copy materials from /root/_materials/ to /Twig/_materials/ so they're accessible when referenced
-        from pxr import UsdShade
+            joint_indices_primvar = primvars_api.CreatePrimvar(
+                "skel:jointIndices",
+                Sdf.ValueTypeNames.IntArray,
+                UsdGeom.Tokens.vertex,
+            )
+            joint_indices_primvar.Set(joint_indices)
+            joint_indices_primvar.SetElementSize(1)
 
-        materials_prim = stage.GetPrimAtPath("/root/_materials")
-        if materials_prim and materials_prim.IsValid():
-            new_materials_path = root_path.AppendChild("_materials")
-            materials_scope = stage.DefinePrim(new_materials_path, "Scope")
+            joint_weights_primvar = primvars_api.CreatePrimvar(
+                "skel:jointWeights",
+                Sdf.ValueTypeNames.FloatArray,
+                UsdGeom.Tokens.vertex,
+            )
+            joint_weights_primvar.Set(joint_weights)
+            joint_weights_primvar.SetElementSize(1)
+        else:
+            # Standard mode: use BindingAPI
+            binding_api.CreateJointIndicesPrimvar(False, 1).Set(joint_indices)
+            binding_api.CreateJointWeightsPrimvar(False, 1).Set(joint_weights)
 
-            # Copy all material definitions
-            for child in materials_prim.GetChildren():
-                new_mat_path = new_materials_path.AppendChild(child.GetName())
-                # Use CopySpec to copy entire material hierarchy
-                Sdf.CopySpec(
-                    stage.GetRootLayer(),
-                    child.GetPath(),
-                    stage.GetRootLayer(),
-                    new_mat_path,
-                )
+        # Copy materials from /root/_materials/ to /Twig/_materials/ (only if not clean export)
+        if not clean_export:
+            from pxr import UsdShade
 
-                # Update material binding paths in shader network
-                def update_material_paths(prim_path):
-                    prim = stage.GetPrimAtPath(prim_path)
-                    if not prim:
-                        return
-                    # Update all relationships that reference old material paths
-                    for rel in prim.GetRelationships():
-                        targets = rel.GetTargets()
-                        if targets:
-                            new_targets = []
-                            for target in targets:
-                                target_str = str(target)
-                                if "/root/_materials/" in target_str:
-                                    new_target_str = target_str.replace(
-                                        "/root/_materials/",
-                                        str(new_materials_path) + "/",
-                                    )
-                                    new_targets.append(Sdf.Path(new_target_str))
-                                else:
-                                    new_targets.append(target)
-                            rel.SetTargets(new_targets)
-                    # Recursively update children
-                    for child_prim in prim.GetChildren():
-                        update_material_paths(child_prim.GetPath())
+            materials_prim = stage.GetPrimAtPath("/root/_materials")
+            if materials_prim and materials_prim.IsValid():
+                new_materials_path = root_path.AppendChild("_materials")
+                materials_scope = stage.DefinePrim(new_materials_path, "Scope")
 
-                update_material_paths(new_mat_path)
-
-            # Update mesh material binding to point to new location
-            mat_binding_api = UsdShade.MaterialBindingAPI(mesh_prim)
-            mat_binding = mat_binding_api.GetDirectBinding()
-            if mat_binding:
-                mat_path = mat_binding.GetMaterialPath()
-                if mat_path and "/root/_materials/" in str(mat_path):
-                    new_mat_path_str = str(mat_path).replace(
-                        "/root/_materials/", str(new_materials_path) + "/"
+                # Copy all material definitions
+                for child in materials_prim.GetChildren():
+                    new_mat_path = new_materials_path.AppendChild(child.GetName())
+                    # Use CopySpec to copy entire material hierarchy
+                    Sdf.CopySpec(
+                        stage.GetRootLayer(),
+                        child.GetPath(),
+                        stage.GetRootLayer(),
+                        new_mat_path,
                     )
-                    new_mat_path = Sdf.Path(new_mat_path_str)
-                    mat_prim = stage.GetPrimAtPath(new_mat_path)
-                    if mat_prim and mat_prim.IsValid():
-                        UsdShade.MaterialBindingAPI.Apply(mesh_prim).Bind(
-                            UsdShade.Material(mat_prim)
+
+                    # Update material binding paths in shader network
+                    def update_material_paths(prim_path):
+                        prim = stage.GetPrimAtPath(prim_path)
+                        if not prim:
+                            return
+                        # Update all relationships that reference old material paths
+                        for rel in prim.GetRelationships():
+                            targets = rel.GetTargets()
+                            if targets:
+                                new_targets = []
+                                for target in targets:
+                                    target_str = str(target)
+                                    if "/root/_materials/" in target_str:
+                                        new_target_str = target_str.replace(
+                                            "/root/_materials/",
+                                            str(new_materials_path) + "/",
+                                        )
+                                        new_targets.append(Sdf.Path(new_target_str))
+                                    else:
+                                        new_targets.append(target)
+                                rel.SetTargets(new_targets)
+                        # Recursively update children
+                        for child_prim in prim.GetChildren():
+                            update_material_paths(child_prim.GetPath())
+
+                    update_material_paths(new_mat_path)
+
+                # Update mesh material binding to point to new location
+                mat_binding_api = UsdShade.MaterialBindingAPI(mesh_prim)
+                mat_binding = mat_binding_api.GetDirectBinding()
+                if mat_binding:
+                    mat_path = mat_binding.GetMaterialPath()
+                    if mat_path and "/root/_materials/" in str(mat_path):
+                        new_mat_path_str = str(mat_path).replace(
+                            "/root/_materials/", str(new_materials_path) + "/"
                         )
+                        new_mat_path = Sdf.Path(new_mat_path_str)
+                        mat_prim = stage.GetPrimAtPath(new_mat_path)
+                        if mat_prim and mat_prim.IsValid():
+                            UsdShade.MaterialBindingAPI.Apply(mesh_prim).Bind(
+                                UsdShade.Material(mat_prim)
+                            )
 
         # CRITICAL: Remove the old /root prim that Blender created
         # We've already copied everything we need (/TwigMesh and /_materials) to /Twig
@@ -525,8 +564,18 @@ def setup_materials_with_textures(obj, blend_dir, species_name, output_dir):
     return materials_created > 0
 
 
-def process_twig_file(blend_file, output_dir, formats, species_name):
-    """Process a single twig blend file."""
+def process_twig_file(
+    blend_file, output_dir, formats, species_name, clean_export=False
+):
+    """Process a single twig blend file.
+
+    Args:
+        blend_file: Path to .blend file
+        output_dir: Output directory for exported files
+        formats: List of export formats
+        species_name: Name of species
+        clean_export: If True, creates minimal USD without materials/textures (demo mode)
+    """
     import bpy
 
     print("")
@@ -651,8 +700,8 @@ def process_twig_file(blend_file, output_dir, formats, species_name):
                     bpy.ops.wm.usd_export(
                         filepath=str(export_path),
                         selected_objects_only=True,
-                        export_materials=True,
-                        export_textures=True,
+                        export_materials=not clean_export,
+                        export_textures=not clean_export,
                         export_uvmaps=True,
                         export_normals=True,
                         export_mesh_colors=True,
@@ -672,8 +721,8 @@ def process_twig_file(blend_file, output_dir, formats, species_name):
                     bpy.ops.wm.usd_export(
                         filepath=str(skel_export_path),
                         selected_objects_only=True,
-                        export_materials=True,
-                        export_textures=True,
+                        export_materials=not clean_export,
+                        export_textures=not clean_export,
                         export_uvmaps=True,
                         export_normals=True,
                         export_mesh_colors=True,
@@ -689,7 +738,9 @@ def process_twig_file(blend_file, output_dir, formats, species_name):
                     # Add skeleton directly using Blender's bundled USD
                     print(f"    -> Adding skeleton to: {skel_export_path.name}")
                     if add_skeleton_to_usd_file(
-                        skel_export_path, pivot_point=(0.0, 0.0, 0.0)
+                        skel_export_path,
+                        pivot_point=(0.0, 0.0, 0.0),
+                        clean_export=clean_export,
                     ):
                         print(f"    -> [OK] Skeleton added successfully")
                     else:
@@ -732,10 +783,13 @@ if __name__ == "__main__":
     output_dir = Path(sys.argv[2])
     formats = sys.argv[3].split(",")
     species_name = sys.argv[4]
+    clean_export = "--clean-export" in sys.argv[5:] if len(sys.argv) > 5 else False
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    exported = process_twig_file(blend_file, output_dir, formats, species_name)
+    exported = process_twig_file(
+        blend_file, output_dir, formats, species_name, clean_export
+    )
 
     print("")
     print(f"[OK] Processed {len(exported)} file(s)")
