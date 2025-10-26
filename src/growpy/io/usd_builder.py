@@ -536,11 +536,17 @@ def _build_usdskel_from_bones(
 
     # CRITICAL: Add topology array to preserve hierarchy with flat joint names
     # This is the USD-standard way to encode skeleton hierarchy
-    # Use GetPrim().CreateAttribute since CreateJointParentsAttr may not exist in older USD
-    joint_parents_attr = skel.GetPrim().CreateAttribute(
-        "jointParents", Sdf.ValueTypeNames.IntArray, custom=False
-    )
-    joint_parents_attr.Set(Vt.IntArray(joint_parents))
+    # UsdSkel uses "jointIndices" (not "jointParents") for the skeleton topology array
+    # Note: This is different from primvars:skel:jointIndices on the mesh (vertex-to-joint binding)
+    try:
+        # Try using official API first (newer USD versions)
+        skel.CreateJointIndicesAttr().Set(Vt.IntArray(joint_parents))
+    except AttributeError:
+        # Fallback for older USD versions
+        joint_indices_attr = skel.GetPrim().CreateAttribute(
+            "jointIndices", Sdf.ValueTypeNames.IntArray, custom=False, variability=Sdf.VariabilityUniform
+        )
+        joint_indices_attr.Set(Vt.IntArray(joint_parents))
 
     # Re-parent mesh under SkelRoot (/Tree) if needed
     new_mesh_path = Sdf.Path("/Tree/TreeMesh")
