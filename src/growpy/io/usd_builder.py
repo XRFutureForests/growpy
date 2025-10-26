@@ -617,83 +617,80 @@ def _build_usdskel_from_bones(
 
         print(f"DEBUG: point_to_joint_index has {len(point_to_joint_index)} entries")
         print(f"DEBUG: branch_to_points has {len(branch_to_points)} branches")
-        print(
-            f"DEBUG: First few mappings: {dict(list(point_to_joint_index.items())[:5])}"
-        )
 
-        # Map each vertex to closest joint in its branch
-        # Strategy: For each face, find the skeleton polyline segment it's closest to,
-        # then use the joint at the START of that segment
+        # Map each vertex INDIVIDUALLY to its closest skeleton segment
+        # This ensures proper skinning even when vertices are shared between faces
         vertex_to_joint = {}  # vertex_idx -> (joint_idx, weight)
+        vertex_branch_hints = {}  # vertex_idx -> branch_id (from connected faces)
 
+        # First pass: collect branch hints for each vertex
         face_idx = 0
         vert_offset = 0
         for face_vert_count in face_vertex_counts:
             if face_idx < len(branch_indices):
                 branch_id = branch_indices[face_idx]
-
-                # Get skeleton points for this branch
-                if branch_id in branch_to_points:
-                    branch_points = branch_to_points[branch_id]
-
-                    # Calculate face center from its vertices
-                    face_center = Gf.Vec3d(0, 0, 0)
-                    face_verts = []
-                    for i in range(face_vert_count):
-                        vertex_idx = face_vertex_indices[vert_offset + i]
-                        face_verts.append(vertex_idx)
-                        v_pos = points[vertex_idx]
-                        face_center += Gf.Vec3d(v_pos[0], v_pos[1], v_pos[2])
-                    face_center /= face_vert_count
-
-                    # Find closest polyline segment (pair of consecutive skeleton points)
-                    min_dist = float("inf")
-                    closest_segment_start_idx = branch_points[0]
-
-                    for i in range(len(branch_points) - 1):
-                        start_pt_idx = branch_points[i]
-                        end_pt_idx = branch_points[i + 1]
-
-                        start_pos = skeleton_points[start_pt_idx]
-                        end_pos = skeleton_points[end_pt_idx]
-
-                        start_vec = Gf.Vec3d(start_pos[0], start_pos[1], start_pos[2])
-                        end_vec = Gf.Vec3d(end_pos[0], end_pos[1], end_pos[2])
-
-                        # Find closest point on segment to face_center
-                        segment = end_vec - start_vec
-                        to_face = face_center - start_vec
-
-                        # Project to_face onto segment
-                        segment_len_sq = segment * segment  # dot product with itself
-                        if segment_len_sq > 0:
-                            t = max(0.0, min(1.0, (to_face * segment) / segment_len_sq))
-                        else:
-                            t = 0.0
-
-                        closest_on_segment = start_vec + segment * t
-                        dist_vec = face_center - closest_on_segment
-                        dist = (dist_vec * dist_vec) ** 0.5
-
-                        if dist < min_dist:
-                            min_dist = dist
-                            # Use the START point of this segment as the controlling joint
-                            closest_segment_start_idx = start_pt_idx
-
-                    # Map this skeleton point index to joint index
-                    joint_idx = point_to_joint_index.get(closest_segment_start_idx, 0)
-
-                    # Assign this joint to all vertices of this face
-                    for vertex_idx in face_verts:
-                        vertex_to_joint[vertex_idx] = (joint_idx, 1.0)
-                else:
-                    # Branch not found, bind to root
-                    for i in range(face_vert_count):
-                        vertex_idx = face_vertex_indices[vert_offset + i]
-                        vertex_to_joint[vertex_idx] = (0, 1.0)
-
+                # Mark all vertices in this face as belonging to this branch
+                for i in range(face_vert_count):
+                    vertex_idx = face_vertex_indices[vert_offset + i]
+                    # Use the first branch hint we find for each vertex
+                    if vertex_idx not in vertex_branch_hints:
+                        vertex_branch_hints[vertex_idx] = branch_id
             vert_offset += face_vert_count
             face_idx += 1
+
+        # Second pass: bind each vertex to its closest joint within its branch
+        for v_idx in range(num_points):
+            v_pos = points[v_idx]
+            vertex_pos = Gf.Vec3d(v_pos[0], v_pos[1], v_pos[2])
+
+            # Get branch hint for this vertex
+            branch_id = vertex_branch_hints.get(v_idx, 1)  # Default to branch 1 (trunk)
+
+            if branch_id in branch_to_points:
+                branch_points = branch_to_points[branch_id]
+
+                # Find closest segment in this branch
+                min_dist = float("inf")
+                closest_joint_idx = 0
+
+                for i in range(len(branch_points) - 1):
+                    start_pt_idx = branch_points[i]
+                    end_pt_idx = branch_points[i + 1]
+
+                    start_pos = skeleton_points[start_pt_idx]
+                    end_pos = skeleton_points[end_pt_idx]
+
+                    start_vec = Gf.Vec3d(start_pos[0], start_pos[1], start_pos[2])
+                    end_vec = Gf.Vec3d(end_pos[0], end_pos[1], end_pos[2])
+
+                    # Find closest point on segment to vertex
+                    segment = end_vec - start_vec
+                    to_vertex = vertex_pos - start_vec
+
+                    # Project to_vertex onto segment
+                    segment_len_sq = segment * segment
+                    if segment_len_sq > 0:
+                        t = max(0.0, min(1.0, (to_vertex * segment) / segment_len_sq))
+                    else:
+                        t = 0.0
+
+                    closest_on_segment = start_vec + segment * t
+                    dist_vec = vertex_pos - closest_on_segment
+                    dist = (dist_vec * dist_vec) ** 0.5
+
+                    if dist < min_dist:
+                        min_dist = dist
+                        # Bind to START joint of segment if closer to start (t < 0.5)
+                        # or END joint if closer to end (t >= 0.5)
+                        if t < 0.5:
+                            closest_joint_idx = point_to_joint_index.get(start_pt_idx, 0)
+                        else:
+                            closest_joint_idx = point_to_joint_index.get(end_pt_idx, 0)
+
+                vertex_to_joint[v_idx] = (closest_joint_idx, 1.0)
+            else:
+                # Branch not found, bind to root
+                vertex_to_joint[v_idx] = (0, 1.0)
 
         # Build final arrays (one entry per vertex)
         for v_idx in range(num_points):
