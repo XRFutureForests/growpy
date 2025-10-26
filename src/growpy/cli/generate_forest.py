@@ -26,7 +26,7 @@ import sys
 from functools import partial
 from typing import Optional
 
-GROWTH_CYCLE_LIMIT = 10
+GROWTH_CYCLE_LIMIT = 1
 HEIGHT_SCALE = 1
 MAX_WORKERS = max(1, mp.cpu_count() - 1)  # Leave one core for system
 
@@ -231,6 +231,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 skeleton_reduce=quality_params.get("skeleton_reduce", 0.25),
                 skeleton_bias=quality_params.get("skeleton_bias", 0.5),
                 skeleton_connected=quality_params.get("skeleton_connected", True),
+                clean_export=quality_params.get("clean_export", False),
                 config=config,
             )
 
@@ -301,34 +302,12 @@ def export_individual_trees(
     total_trees = len(tree_tasks)
     print(f"\nExporting {total_trees} trees...")
 
-    if use_multiprocessing and total_trees > 1:
-        print(f"Using multiprocessing with {max_workers} workers")
-
-        # Use multiprocessing pool for parallel export
-        with mp.Pool(processes=max_workers) as pool:
-            results = list(
-                tqdm(
-                    pool.imap(_export_single_tree_from_forest, tree_tasks),
-                    total=total_trees,
-                    desc="Exporting trees",
-                )
-            )
-
-        # Collect exported files
-        for result in results:
-            if result:
-                exported_files.extend([Path(p) for p in result])
-
-    else:
-        # Fallback to sequential processing
-        if total_trees == 1:
-            print("Using sequential processing (single tree)")
-        else:
-            print("Using sequential processing (multiprocessing disabled)")
-        for task in tqdm(tree_tasks, desc="Exporting trees"):
-            result = _export_single_tree_from_forest(task)
-            if result:
-                exported_files.extend([Path(p) for p in result])
+    # Always use sequential processing (bpy/USD not compatible with multiprocessing)
+    print("Using sequential processing")
+    for task in tqdm(tree_tasks, desc="Exporting trees"):
+        result = _export_single_tree_from_forest(task)
+        if result:
+            exported_files.extend([Path(p) for p in result])
 
     return exported_files
 
@@ -352,6 +331,7 @@ def generate_forest_exports(
     skeleton_reduce: float = 0.25,
     skeleton_bias: float = 0.5,
     skeleton_connected: bool = True,
+    clean_export: bool = False,
 ) -> None:
     """Generate forest from CSV data and export in specified formats.
 
@@ -374,6 +354,7 @@ def generate_forest_exports(
         skeleton_reduce: Bone reduction factor (default: 0.25)
         skeleton_bias: Weight bias (default: 0.5)
         skeleton_connected: Connected bone hierarchy (default: True)
+        clean_export: If True, creates minimal USD without materials/textures (demo mode)
     """
     # Use defaults if not specified
     if growth_cycle_limit is None:
@@ -453,6 +434,7 @@ def generate_forest_exports(
     quality_params["skeleton_reduce"] = skeleton_reduce
     quality_params["skeleton_bias"] = skeleton_bias
     quality_params["skeleton_connected"] = skeleton_connected
+    quality_params["clean_export"] = clean_export
 
     if any(fmt in formats for fmt in ["usd", "usda"]):
         try:
@@ -675,6 +657,12 @@ Examples:
         default=True,
         help="Create disconnected bones instead of connected hierarchy (default: connected)",
     )
+    parser.add_argument(
+        "--clean-export",
+        action="store_true",
+        default=False,
+        help="Create minimal USD without materials/textures (demo mode, matches demo structure)",
+    )
 
     args = parser.parse_args()
 
@@ -723,6 +711,7 @@ Examples:
             args.skeleton_reduce,
             args.skeleton_bias,
             args.skeleton_connected,
+            args.clean_export,
         )
 
     except Exception as e:
