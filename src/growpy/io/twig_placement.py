@@ -466,6 +466,9 @@ def extract_twig_placements_from_usd(
 
     placements = {"twig_long": [], "twig_short": [], "twig_upward": [], "twig_dead": []}
 
+    # Counters for generating twig keys that match skeleton metadata
+    twig_counters = {"twig_long": 0, "twig_short": 0, "twig_upward": 0, "twig_dead": 0}
+
     # USD builder creates twig primvars with these PascalCase names:
     # TwigLong -> twig_long (long/end of branch twigs)
     # TwigShort -> twig_short (short/side twigs)
@@ -569,11 +572,16 @@ def extract_twig_placements_from_usd(
                             # Create rotation matrix
                             rot_matrix = normal_to_rotation_matrix(normal)
 
+                            # Generate twig key that matches skeleton metadata
+                            twig_key = f"{twig_type}_{twig_counters[twig_type]}"
+                            twig_counters[twig_type] += 1
+
                             placement_data = {
                                 "position": center,
                                 "normal": normal,
                                 "rotation_matrix": rot_matrix,
                                 "face_index": face_idx,
+                                "twig_key": twig_key,
                             }
 
                             placements[twig_type].append(placement_data)
