@@ -37,18 +37,16 @@ def Xform "DemoAssemblyExternal" (
         prepend apiSchemas = ["NaniteAssemblySkelBindingAPI"]
     )
     {
-        quath[] orientations = [(1, 0, 0, 0), (1, 0, 0, 0), (0.966, 0, 0.259, 0)]
-        point3f[] positions = [(0.05, 0.05, 1.5), (-0.025, 0.065, 2.5), (0.425, 0, 1.3)]
-        uniform token[] primvars:unreal:naniteAssembly:bindJoints = ["root/joint_1", "root/joint_1/joint_2", "root/joint_1/branch_1/branch_tip"] (
-            elementSize = 1
+        quath[] orientations = [(1, 0, 0, 0), (1, 0, 0, 0), (1, 0, 0, 0)]
+        point3f[] positions = [(0.1, 0.05, 1.5), (-0.05, 0.087, 2.5), (0.45, 0, 1.3)]
+        uniform token[] primvars:unreal:naniteAssembly:bindJoints = ["root/joint_1/twig_1", "root/joint_1/joint_2/twig_2", "root/joint_1/branch_1/branch_tip/twig_3"] (
             interpolation = "uniform"
         )
         uniform float[] primvars:unreal:naniteAssembly:bindJointWeights = [1, 1, 1] (
-            elementSize = 1
             interpolation = "uniform"
         )
         int[] protoIndices = [0, 0, 0]
         rel prototypes = </DemoAssemblyExternal/TwigPrototypes/twig>
-        float3[] scales = [(1, 1, 1), (1, 1, 1), (0.8, 0.8, 0.8)]
+        float3[] scales = [(1, 1, 1), (1, 1, 1), (1, 1, 1)]
     }
 }
