@@ -9,8 +9,8 @@ ImportError: DLL load failed while importing _tf: The specified procedure could 
 ```
 
 This happens because both packages have incompatible TBB (Intel Threading Building Blocks) dependencies.
-
-## Solution: bpy.utils.expose_bundled_modules()
+: bpy.utils.expose_bundled_modules()
+## Solution
 
 **Starting from Blender 4.4**, the pip-installed `bpy` package includes a bundled, compatible version of USD/pxr. You can expose it using:
 

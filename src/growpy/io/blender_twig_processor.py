@@ -107,7 +107,21 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
         skel.CreateBindTransformsAttr(Vt.Matrix4dArray([bind_transform]))
         skel.CreateRestTransformsAttr(Vt.Matrix4dArray([rest_transform]))
 
-        # Re-parent mesh under SkelRoot
+        # CRITICAL: Add jointIndices topology array for proper Unreal Engine skeleton parsing
+        # For a single-bone skeleton, [-1] indicates the root joint has no parent
+        # Without this attribute, Unreal cannot properly interpret the skeleton hierarchy
+        try:
+            # Try using official API first (newer USD versions)
+            skel.CreateJointIndicesAttr().Set(Vt.IntArray([-1]))
+        except AttributeError:
+            # Fallback for older USD versions (like Blender's bundled USD)
+            joint_indices_attr = skel.GetPrim().CreateAttribute(
+                "jointIndices",
+                Sdf.ValueTypeNames.IntArray,
+                custom=False,
+                variability=Sdf.VariabilityUniform,
+            )
+            joint_indices_attr.Set(Vt.IntArray([-1]))  # Re-parent mesh under SkelRoot
         # Use "Mesh" naming to match Nanite Assembly requirements
         new_mesh_path = root_path.AppendChild("Mesh")
         old_mesh_path = mesh_prim.GetPath()
