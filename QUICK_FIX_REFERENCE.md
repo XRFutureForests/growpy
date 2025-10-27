@@ -12,11 +12,13 @@ Changed skeleton topology attribute name from `jointParents` to `jointIndices`.
 ## Why It Failed
 
 UsdSkel specification requires:
+
 ```usda
 uniform int[] jointIndices = [-1, 0, 1, 2, 3, ...]  # Parent index for each joint
 ```
 
 We were using:
+
 ```usda
 int[] jointParents = [-1, 0, 1, 2, 3, ...]  # Custom attribute (ignored by Unreal)
 ```
@@ -41,12 +43,14 @@ python src/verify_skel_simple.py your_skeletal.usda
 ## Expected Results
 
 ### Before Fix
+
 - All bones appear as siblings of root
 - No parent-child connections
 - Rotating bone only moves that bone
 - Mesh doesn't deform properly
 
 ### After Fix
+
 - Proper tree hierarchy: root → trunk → branches
 - Parent-child connections visible
 - Rotating parent moves all children
@@ -99,9 +103,11 @@ grep "uniform int\[\] jointIndices" \
 ### If Still Not Working in Unreal
 
 1. **Verify USD has fix**:
+
    ```bash
    grep "jointParents\|jointIndices" your_skeletal.usda
    ```
+
    - Should show: `uniform int[] jointIndices`
    - Should NOT show: `jointParents`
 
@@ -114,13 +120,15 @@ grep "uniform int\[\] jointIndices" \
 ### If Verification Script Fails
 
 Common issues:
+
 - File path wrong
-- Not using skeletal file (*_skeletal.usda, not *_tree_only.usda)
+- Not using skeletal file (*_skeletal.usda, not*_tree_only.usda)
 - Old file generated before fix
 
 ### If Mesh Doesn't Deform
 
 This is different from hierarchy issue. Check:
+
 - Vertex binding (primvars:skel:jointIndices on mesh)
 - Joint weights (primvars:skel:jointWeights)
 - Geodesic distance algorithm working (commit ea1c956)
@@ -128,6 +136,7 @@ This is different from hierarchy issue. Check:
 ## Contact
 
 If issues persist after applying this fix, provide:
+
 1. Screenshot of Unreal's skeleton hierarchy view
 2. Output of `python src/verify_skel_simple.py your_file.usda`
 3. Any console errors from Unreal Engine

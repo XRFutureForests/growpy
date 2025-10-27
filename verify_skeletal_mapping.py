@@ -3,8 +3,9 @@
 Verify skeletal mapping quality by analyzing vertex-to-joint assignments.
 """
 
-from pxr import Usd, UsdSkel, UsdGeom, Sdf
 import sys
+
+from pxr import Sdf, Usd, UsdGeom, UsdSkel
 
 
 def verify_skeletal_mapping(usd_file):
@@ -53,7 +54,9 @@ def verify_skeletal_mapping(usd_file):
 
     for i, joint in enumerate(joints):
         bind_pos = bind_transforms[i].ExtractTranslation()
-        print(f"  {joint}: position = ({bind_pos[0]:.4f}, {bind_pos[1]:.4f}, {bind_pos[2]:.4f})")
+        print(
+            f"  {joint}: position = ({bind_pos[0]:.4f}, {bind_pos[1]:.4f}, {bind_pos[2]:.4f})"
+        )
 
     # Get joint indices and weights
     primvars_api = UsdGeom.PrimvarsAPI(mesh.GetPrim())
@@ -95,7 +98,9 @@ def verify_skeletal_mapping(usd_file):
 
     # Check 1: Are all vertices assigned?
     if len(joint_indices) != len(points):
-        print(f"  WARNING: Joint indices count ({len(joint_indices)}) != vertex count ({len(points)})")
+        print(
+            f"  WARNING: Joint indices count ({len(joint_indices)}) != vertex count ({len(points)})"
+        )
     else:
         print(f"  OK: All {len(points)} vertices have joint assignments")
 
@@ -125,14 +130,18 @@ def verify_skeletal_mapping(usd_file):
             prev_z_max = max([points[v][2] for v in prev_vertices])
 
             if min_z < prev_z_max:
-                print(f"    WARNING: {joints[joint_idx]} Z-range overlaps with {joints[joint_idx-1]}")
+                print(
+                    f"    WARNING: {joints[joint_idx]} Z-range overlaps with {joints[joint_idx-1]}"
+                )
                 consistent = False
 
     if consistent:
         print(f"    OK: Z-ordering is consistent (no overlaps)")
 
     print(f"\n=== Summary ===")
-    print(f"Skeletal binding appears {'CORRECT' if consistent and weight_issues == 0 else 'to have ISSUES'}")
+    print(
+        f"Skeletal binding appears {'CORRECT' if consistent and weight_issues == 0 else 'to have ISSUES'}"
+    )
 
     return True
 
@@ -143,4 +152,5 @@ if __name__ == "__main__":
         sys.exit(1)
 
     success = verify_skeletal_mapping(sys.argv[1])
+    sys.exit(0 if success else 1)
     sys.exit(0 if success else 1)

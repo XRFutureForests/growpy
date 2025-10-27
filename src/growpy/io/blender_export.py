@@ -3391,8 +3391,9 @@ def export_grove_tree_as_usda_native(
             if include_skeleton and include_twigs and twig_usd_paths:
                 print(f"\n  Creating Skeletal Nanite Assembly...")
 
-                # Get SKELETAL twig paths for skeletal assembly
-                # CRITICAL: Use twigs from OUTPUT directory (already copied), not source assets
+                # Get STATIC (non-skeletal) twig paths for skeletal assembly
+                # Both tree and twigs have skeletons for full skeletal mesh assembly
+                # Twigs need their own root joint skeleton to work in Unreal skeletal Nanite Assembly
                 skeletal_twig_paths_src = get_twig_usd_map_for_species(
                     species_name, config, prefer_skeletal=True
                 )
@@ -3413,8 +3414,8 @@ def export_grove_tree_as_usda_native(
 
                 # Skeletal Nanite Assembly references:
                 # - skeletal_tree_path (*_tree_only_skeletal.usda) - geometry + skeleton
-                # - skeletal_twig_paths - SKELETAL twigs (geometry + skeleton)
-                # Both tree and twigs have skeletons for full skeletal mesh assembly
+                # - skeletal_twig_paths - STATIC (non-skeletal) twigs
+                # Static twig meshes are positioned/oriented by bindJoints to follow skeleton
                 skeletal_nanite_path = (
                     output_path.parent
                     / f"{output_path.stem}_NaniteAssembly_skeletal{output_path.suffix}"
@@ -3463,7 +3464,9 @@ def export_grove_tree_as_usda_native(
                             nearest_joint, _ = _find_nearest_joint(
                                 twig_pos_vec, skeleton_joints
                             )
-                            joint_name = nearest_joint.split("/")[-1]
+                            # Use full hierarchical joint path to match skeleton structure
+                            # e.g., "joint_0/joint_1/joint_2/joint_4" not just "joint_4"
+                            joint_name = nearest_joint
                         else:
                             joint_name = "root"
 
