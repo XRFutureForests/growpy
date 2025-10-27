@@ -1,0 +1,42 @@
+#usda 1.0
+(
+    defaultPrim = "Twig"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def SkelRoot "Twig" (
+    prepend apiSchemas = ["SkelBindingAPI"]
+)
+{
+    def Skeleton "Skel"
+    {
+        uniform matrix4d[] bindTransforms = [( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )]
+        uniform token[] joints = ["root"]
+        uniform matrix4d[] restTransforms = [( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )]
+    }
+
+    rel skel:animationSource = </Twig/Skel>
+    rel skel:skeleton = </Twig/Skel>
+
+    def Mesh "Mesh" (
+        prepend apiSchemas = ["SkelBindingAPI"]
+    )
+    {
+        uniform token[] primvars:part = ["leaf"]
+        uniform bool doubleSided = 1
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-0.1, -0.1, 0), (0.1, -0.1, 0), (0.1, 0.1, 0), (-0.1, 0.1, 0)]
+        
+        rel skel:skeleton = </Twig/Skel>
+        int[] primvars:skel:jointIndices = [0, 0, 0, 0] (
+            elementSize = 1
+            interpolation = "vertex"
+        )
+        float[] primvars:skel:jointWeights = [1.0, 1.0, 1.0, 1.0] (
+            elementSize = 1
+            interpolation = "vertex"
+        )
+    }
+}

@@ -195,7 +195,7 @@ class SkeletonBuilder:
         skel = UsdSkel.Skeleton.Define(stage, skel_path)
 
         # Root joint at origin
-        joints = ["Root"]
+        joints = ["joint_0"]
         joint_parents = [-1]
         bind_transforms = [Gf.Matrix4d().SetIdentity()]
         rest_transforms = [Gf.Matrix4d().SetIdentity()]
@@ -205,7 +205,6 @@ class SkeletonBuilder:
 
         # Track joint positions for calculating relative transforms
         world_positions = {0: Gf.Vec3d(0, 0, 0)}
-        joint_path_names = {0: "Root"}
 
         # Process each bone
         # Grove tag_bone_id format (8 fields):
@@ -229,13 +228,11 @@ class SkeletonBuilder:
             parent_joint_idx = bone_to_joint.get(parent_bone_id, 0)
             joint_parents.append(parent_joint_idx)
 
-            # Create hierarchical joint name
-            parent_path = joint_path_names.get(parent_joint_idx, "Root")
-            joint_name = f"{parent_path}/bone_{bone_id}"
+            # Create FLAT joint name (no hierarchy in name - use topology array instead)
             joint_idx = len(joints)
+            joint_name = f"joint_{joint_idx}"
             joints.append(joint_name)
             bone_to_joint[bone_id] = joint_idx
-            joint_path_names[joint_idx] = joint_name
 
             # Calculate position relative to parent
             parent_pos = world_positions.get(parent_joint_idx, Gf.Vec3d(0, 0, 0))
@@ -269,10 +266,25 @@ class SkeletonBuilder:
             # Store position for child bones
             world_positions[joint_idx] = world_start
 
-        # Set skeleton attributes
+        # Set skeleton attributes with flat names
         skel.CreateJointsAttr(Vt.TokenArray(joints))
         skel.CreateBindTransformsAttr(Vt.Matrix4dArray(bind_transforms))
         skel.CreateRestTransformsAttr(Vt.Matrix4dArray(rest_transforms))
+
+        # Add topology array (jointIndices) to preserve hierarchy with flat joint names
+        # This is the USD-standard way to encode skeleton hierarchy
+        try:
+            # Try using official API first (newer USD versions)
+            skel.CreateJointIndicesAttr().Set(Vt.IntArray(joint_parents))
+        except AttributeError:
+            # Fallback for older USD versions
+            joint_indices_attr = skel.GetPrim().CreateAttribute(
+                "jointIndices",
+                Sdf.ValueTypeNames.IntArray,
+                custom=False,
+                variability=Sdf.VariabilityUniform,
+            )
+            joint_indices_attr.Set(Vt.IntArray(joint_parents))
 
         return joints, bind_transforms, rest_transforms, bone_to_joint
 

@@ -7,10 +7,12 @@
 ## Problem
 
 After implementing geodesic binding and flat joint names with topology array, user reported:
+
 - "The stem bones are not affecting the mesh properly"
 - "The branch bones are not connected to each other but all to the root"
 
 Investigation revealed skeleton had topology array with **wrong attribute name**:
+
 - Used: `int[] jointParents` (custom/non-standard)
 - Required: `uniform int[] jointIndices` (UsdSkel specification)
 
@@ -21,6 +23,7 @@ The code was creating a custom attribute `jointParents` to store the skeleton to
 ### Confusion Factor
 
 UsdSkel uses **two different attributes** both named with "jointIndices":
+
 1. **Skeleton topology**: `uniform int[] jointIndices` (on Skeleton prim) - defines parent-child hierarchy
 2. **Vertex binding**: `int[] primvars:skel:jointIndices` (on Mesh prim) - maps vertices to joints
 
@@ -34,6 +37,7 @@ Changed attribute name from `jointParents` to `jointIndices` with proper `unifor
 **Lines**: ~535-545
 
 ### Before (Wrong)
+
 ```python
 joint_parents_attr = skel.GetPrim().CreateAttribute(
     "jointParents", Sdf.ValueTypeNames.IntArray, custom=False
@@ -42,6 +46,7 @@ joint_parents_attr.Set(Vt.IntArray(joint_parents))
 ```
 
 ### After (Correct)
+
 ```python
 # UsdSkel uses "jointIndices" (not "jointParents") for skeleton topology
 # This is different from primvars:skel:jointIndices on mesh (vertex-to-joint binding)
@@ -69,6 +74,7 @@ except AttributeError:
 Generated test file: `data/output/joint_indices_fix_test/Western_redcedar/Western_redcedar_tree_0000_tree_only_skeletal.usda`
 
 Confirmed skeleton now has:
+
 ```usda
 def Skeleton "TreeSkel" {
     uniform matrix4d[] bindTransforms = [...]
@@ -79,6 +85,7 @@ def Skeleton "TreeSkel" {
 ```
 
 Hierarchy is correct:
+
 - joint_0: parent = -1 (root)
 - joint_1: parent = 0 (chain)
 - joint_4: parent = 3 (main trunk)
@@ -88,6 +95,7 @@ Hierarchy is correct:
 ## Expected Result
 
 In Unreal Engine 5.7+:
+
 - Stem bones should now affect mesh properly with hierarchical transforms
 - Branch bones should be connected to parent branches, not all to root
 - Skeletal animation should propagate through bone chains correctly
@@ -102,6 +110,7 @@ From USD documentation, the skeleton topology is defined by `uniform int[] joint
 **Important**: This is a **Skeleton attribute**, distinct from the mesh's `primvars:skel:jointIndices` which is for vertex skinning.
 
 Example:
+
 ```python
 # Skeleton topology (parent-child hierarchy)
 skeleton.CreateJointIndicesAttr().Set([-1, 0, 1, 2, 3])
@@ -135,6 +144,7 @@ While semantically clear, `jointParents` is not part of the UsdSkel schema. Unre
 ## Impact
 
 This completes the skeletal Nanite assembly implementation:
+
 1. ✓ Vertex-based binding (no shared-vertex conflicts)
 2. ✓ Geodesic distance algorithm (direction-agnostic)
 3. ✓ Flat joint names + topology array (Unreal compatible)

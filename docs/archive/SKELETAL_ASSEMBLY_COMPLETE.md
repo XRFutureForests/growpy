@@ -7,18 +7,21 @@
 ## Problem Timeline
 
 ### Original Issue (Commit 92f8155)
+
 - **Problem**: Face-based skeletal binding caused conflicts at shared vertices
 - **Symptom**: Wrong bone weights, vertices bound to incorrect joints
 - **Fix**: Switched to vertex-based binding with two-pass assignment algorithm
 - **Documentation**: `SKELETAL_MAPPING_FIX.md`
 
 ### Secondary Issue (Commit ea1c956)
+
 - **Problem**: Z-coordinate sorting unreliable for downward-growing branches
 - **Symptom**: Branches with negative Z-growth had incorrect joint assignments
 - **Fix**: Implemented geodesic distance along polylines (direction-agnostic)
 - **Documentation**: `GEODESIC_BINDING_FIX.md`
 
 ### Final Issue (Commit 351458f) ← THIS FIX
+
 - **Problem**: Wrong attribute name for skeleton topology
 - **Symptom**: "Branch bones not connected to each other but all to the root"
 - **Root Cause**: Using `jointParents` instead of UsdSkel standard `jointIndices`
@@ -32,21 +35,25 @@
 This was the source of confusion:
 
 1. **Skeleton Topology** (Skeleton prim):
+
    ```usda
    def Skeleton "TreeSkel" {
        uniform int[] jointIndices = [-1, 0, 1, 2, 3, ...]  # Parent index for each joint
    }
    ```
+
    - Defines parent-child hierarchy
    - Each element is the parent joint index (-1 for root)
    - MUST be `uniform` variability
 
 2. **Vertex Skinning** (Mesh prim):
+
    ```usda
    def Mesh "TreeMesh" {
        int[] primvars:skel:jointIndices = [0, 0, 1, 1, 2, 2, ...]  # Which joint each vertex uses
    }
    ```
+
    - Maps vertices to joints
    - Per-vertex or per-face interpolation
    - Different attribute, different purpose
@@ -54,6 +61,7 @@ This was the source of confusion:
 ### Why Our Code Failed
 
 We created a custom attribute `int[] jointParents` to store the hierarchy, but:
+
 - UsdSkel specification requires `uniform int[] jointIndices`
 - Unreal Engine and other USD consumers expect standard schema
 - Custom attributes are ignored, so hierarchy was lost
@@ -100,6 +108,7 @@ except AttributeError:
 ## Verification
 
 ### Before Fix
+
 ```bash
 $ python src/verify_skel_simple.py data/output/clean_geodesic_test/.../skeletal.usda
 
@@ -111,6 +120,7 @@ Errors:
 ```
 
 ### After Fix
+
 ```bash
 $ python src/verify_skel_simple.py data/output/joint_indices_fix_test/.../skeletal.usda
 
@@ -128,6 +138,7 @@ Information:
 ### Import Instructions
 
 1. **File to Import**:
+
    ```
    data/output/joint_indices_fix_test/Western_redcedar/
        Western_redcedar_tree_0000_NaniteAssembly_skeletal.usda
@@ -160,12 +171,14 @@ Information:
 ### Expected Behavior
 
 **Correct** (After Fix):
+
 - Rotating joint_4 → joints 5-9 move (upper trunk)
 - Rotating joint_4 → joints 10-15 move (branch 1)
 - Rotating joint_7 → joints 34-39 move (upper branches)
 - Each bone influences its mesh section, not everything
 
 **Wrong** (Before Fix):
+
 - Rotating any joint → only that joint moves
 - Mesh deforms incorrectly or not at all
 - All bones appear independent (no hierarchy)
@@ -204,15 +217,18 @@ Unreal Engine Import:
 ## Related Files
 
 ### Code
+
 - `src/growpy/io/usd_builder.py` - Main skeleton creation (lines 400-750)
 - `src/verify_skel_simple.py` - Verification script (no pxr dependency)
 
 ### Documentation
+
 - `docs/archive/SKELETAL_MAPPING_FIX.md` - Vertex-based binding
 - `docs/archive/GEODESIC_BINDING_FIX.md` - Geodesic distance algorithm
 - `docs/archive/JOINT_INDICES_FIX.md` - Attribute name fix (this document)
 
 ### Test Data
+
 - `data/output/clean_geodesic_test/` - Old files (uses jointParents) ✗
 - `data/output/joint_indices_fix_test/` - New files (uses jointIndices) ✓
 
@@ -274,6 +290,7 @@ The skeletal Nanite assembly issue was caused by using a non-standard attribute 
 4. Only Unreal Engine runtime revealed the problem (ignored non-standard attribute)
 
 The fix was simple (rename attribute), but finding the issue required understanding:
+
 - UsdSkel uses two different attributes both containing "jointIndices"
 - One is for skeleton topology, one is for vertex skinning
 - Only the skeleton topology was wrong
