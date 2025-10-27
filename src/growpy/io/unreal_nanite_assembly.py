@@ -218,20 +218,39 @@ def create_nanite_assembly_usd(
                         print(f"    Warning: Twig mesh not found: {twig_ref_path}")
                         continue
 
+                    # Copy twig file to output directory for relative references
+                    # This ensures the assembly can find its twigs using ./filename.usda
+                    import shutil
+
+                    output_twig_path = output_path.parent / twig_ref_path.name
+                    if not output_twig_path.exists():
+                        shutil.copy2(twig_ref_path, output_twig_path)
+                        print(f"      Copied twig to output: {output_twig_path.name}")
+
+                    # Also copy any referenced texture files (if they exist alongside the twig)
+                    twig_dir = twig_ref_path.parent
+                    for texture_ext in [".png", ".jpg", ".jpeg", ".exr"]:
+                        for texture_file in twig_dir.glob(f"*{texture_ext}"):
+                            output_texture = output_path.parent / texture_file.name
+                            if not output_texture.exists():
+                                shutil.copy2(texture_file, output_texture)
+
                     twig_type_to_proto_idx[twig_type] = idx
 
                     # Create prototype with ExternalRef
                     proto_name = twig_type.replace("_", "")
 
-                    # Create prototype as Xform (always)
-                    # For skeletal twigs, Xform contains SkelRoot from the reference
+                    # CRITICAL: Don't specify prim type - let it inherit from the reference!
+                    # For skeletal twigs, this allows the SkelRoot type to come through
+                    # For static twigs, this allows the Xform/Mesh type to come through
+                    # Specifying "Xform" breaks skeletal binding in Unreal!
                     proto_prim = stage.DefinePrim(
-                        f"/{assembly_name}/TwigPrototypes/{proto_name}", "Xform"
+                        f"/{assembly_name}/TwigPrototypes/{proto_name}"
                     )
 
                     if use_skeletal_mesh:
                         print(
-                            f"      Prototype {proto_name}: Xform → {twig_ref_path.stem} (skeletal twig)"
+                            f"      Prototype {proto_name}: {twig_ref_path.stem} (skeletal twig - type from reference)"
                         )
 
                     # Add USD reference using relative path for portability
@@ -303,8 +322,6 @@ def create_nanite_assembly_usd(
                     instancer.CreateScalesAttr().Set(all_scales)
                     instancer.CreateProtoIndicesAttr().Set(all_proto_indices)
 
-                    # CRITICAL: For skeletal assemblies, bind twigs to skeleton joints
-                    # This allows twigs to follow skeleton animation (wind, growth, etc.)
                     if use_skeletal_mesh:
                         print(f"    Binding twig instances to skeleton joints...")
 
@@ -315,91 +332,57 @@ def create_nanite_assembly_usd(
                         ]
                         instancer_prim.SetMetadata("apiSchemas", skel_binding_schemas)
 
-                        # STRATEGY: Add new skeleton joints at twig mount points
-                        # This gives exact placement - each twig gets its own joint
-                        # The joints will be children of the nearest tree branch joint
-                        #
-                        # Alternative simpler approach: Bind to nearest existing joint
-                        # This is faster but may cause slight displacement if bones are sparse
+                        # Get primvars API for creating custom attributes
+                        primvars_api = UsdGeom.PrimvarsAPI(instancer_prim)
 
-                        # For first implementation: bind to nearest existing joint
-                        # TODO: Enhance by adding dedicated twig mount point joints
-
-                        bind_joints = []
-                        bind_weights = []
-
-                        # Extract skeleton from tree USD
-                        skeleton_joints = _extract_skeleton_joints_from_usd(
+                        # Extract twig joint mapping from tree USD
+                        twig_joint_mapping = _extract_twig_joint_mapping_from_usd(
                             tree_usd_path
                         )
 
-                        if skeleton_joints:
-                            print(
-                                f"      Found {len(skeleton_joints)} skeleton joints in tree"
-                            )
-                            # Show sample joint names for debugging
-                            sample_joints = list(skeleton_joints.keys())[:3]
-                            print(f"      Sample joints: {sample_joints}")
+                        # Build bindJoints array - each twig instance binds to its mount bone
+                        bind_joints = []
+                        bind_weights = []
 
-                            # For each twig, find nearest joint by HIERARCHICAL PATH
-                            # WORKING FORMAT: Use full hierarchical joint paths
-                            # e.g., "joint_0/joint_1/joint_2/joint_50"
-                            for twig_pos in all_positions:
-                                nearest_joint, distance = _find_nearest_joint(
-                                    twig_pos, skeleton_joints
-                                )
-                                # Use the FULL hierarchical joint path (not just last component)
-                                # This matches the joint names in the skeleton definition
-                                bind_joints.append(nearest_joint)
-                                bind_weights.append(1.0)
+                        # Iterate through placements in same order as instance creation
+                        for twig_type, placement_list in placements.items():
+                            if (
+                                not placement_list
+                                or twig_type not in twig_type_to_proto_idx
+                            ):
+                                continue
 
-                            print(
-                                f"      Bound {len(bind_joints)} twig instances to skeleton"
-                            )
-                            print(
-                                f"      Sample bindings: {bind_joints[:3]} (first 3 twigs)"
-                            )
-                        else:
-                            # Fallback: bind all to root
-                            print(
-                                f"      Warning: No skeleton joints found, binding to root"
-                            )
-                            for i in range(len(all_positions)):
-                                bind_joints.append("root")
-                                bind_weights.append(1.0)
+                            for placement in placement_list:
+                                # Get twig key from placement
+                                twig_key = placement.get("twig_key")
+                                if twig_key and twig_key in twig_joint_mapping:
+                                    joint_path = twig_joint_mapping[twig_key]
+                                    bind_joints.append(joint_path)
+                                    bind_weights.append(1.0)
 
-                        # Create primvars for joint binding using PrimvarsAPI
-                        # VIDEO FORMAT: uniform interpolation with elementSize metadata
-                        primvars_api = UsdGeom.PrimvarsAPI(instancer_prim)
-
-                        # Create bindJoints primvar
+                        # Create bindJoints primvar (token array)
                         bind_joints_primvar = primvars_api.CreatePrimvar(
                             "unreal:naniteAssembly:bindJoints",
                             Sdf.ValueTypeNames.TokenArray,
-                            UsdGeom.Tokens.uniform,
+                            "constant",  # Uniform interpolation for all instances
                         )
                         bind_joints_primvar.Set(bind_joints)
-                        bind_joints_primvar.SetElementSize(1)
 
-                        # Create bindJointWeights primvar
+                        # Create bindJointWeights primvar (float array)
                         bind_weights_primvar = primvars_api.CreatePrimvar(
                             "unreal:naniteAssembly:bindJointWeights",
                             Sdf.ValueTypeNames.FloatArray,
-                            UsdGeom.Tokens.uniform,
+                            "constant",  # Uniform interpolation for all instances
                         )
                         bind_weights_primvar.Set(bind_weights)
-                        bind_weights_primvar.SetElementSize(1)
 
                         print(
-                            f"    [OK] Bound {len(all_positions)} twig instances to skeleton joints"
+                            f"    [OK] Bound {len(bind_joints)} twig instances to skeleton joints"
                         )
-                        print(f"      bindJoints format: TokenArray (joint names)")
-                        print(f"      bindJointWeights format: FloatArray (all 1.0)")
-                        print(f"      elementSize: 1 (one joint per instance)")
-
-                    print(
-                        f"    [OK] Added {len(all_positions)} twig instances ({len(prototype_paths)} types)"
-                    )
+                    else:
+                        print(
+                            f"    [OK] Added {len(all_positions)} twig instances ({len(prototype_paths)} types)"
+                        )
             else:
                 print(
                     f"    WARNING: No twig placements found or all placement lists empty"
@@ -921,6 +904,39 @@ def validate_nanite_assembly(usd_path: Path) -> Dict[str, Any]:
         result["valid"] = False
 
     return result
+
+
+def _extract_twig_joint_mapping_from_usd(tree_usd_path: Path) -> Dict[str, str]:
+    """Extract twig joint mapping from tree USD metadata.
+
+    The skeleton building process stores a mapping of twig placement indices
+    to dedicated twig mount bone names in the USD stage metadata.
+
+    Args:
+        tree_usd_path: Path to tree USD with skeleton
+
+    Returns:
+        Dict mapping twig keys (e.g., "twig_long_0") to joint paths (e.g., "root/joint_1/twig_0")
+    """
+    try:
+        from pxr import Usd
+
+        stage = Usd.Stage.Open(str(tree_usd_path))
+        if not stage:
+            return {}
+
+        # Extract twig joint mapping from customLayerData
+        custom_data = stage.GetMetadata("customLayerData")
+        if custom_data and isinstance(custom_data, dict):
+            twig_joint_names = custom_data.get("twig_joint_names", {})
+            if twig_joint_names:
+                return twig_joint_names
+
+        return {}
+
+    except Exception as e:
+        print(f"      Warning: Could not extract twig joint mapping: {e}")
+        return {}
 
 
 def _extract_skeleton_joints_from_usd(tree_usd_path: Path) -> Dict[str, Gf.Vec3d]:
