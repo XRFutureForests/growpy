@@ -25,7 +25,7 @@ direction = (0, 0, 1)  # Initial growth direction vector (default: (0, 0, 1))
 delay = 0  # Number of years to wait before growing (default: 0)
 
 # Simulation parameters
-flushes = 1  # Number of growth cycles to simulate (default: 1)
+flushes = 3  # Number of growth cycles to simulate (default: 1)
 
 # Build parameters for 3D mesh generation
 resolution = 16  # Number of points at tree base (default: 16, range: 3-32)
@@ -171,23 +171,15 @@ uv_islands_flat = tree_model.get_uv_islands_flat()  # UV island data
 # %% EXTRACT FACE ATTRIBUTES
 
 # Tree and branch identification
-# Note: face_attribute_tree_index only exists when using Grove.build_as_one_model()
+# Note: face_attribute_tree_id only exists when using Grove.build_as_one_model()
 # for multi-tree groves, not for individual trees from build_models()
-face_tree_index = (
-    tree_model.face_attribute_tree_index
-    if hasattr(tree_model, "face_attribute_tree_index")
+face_tree_id = (
+    tree_model.face_attribute_tree_id
+    if hasattr(tree_model, "face_attribute_tree_id")
     else None
 )
-face_branch_index = (
-    tree_model.face_attribute_branch_index
-    if hasattr(tree_model, "face_attribute_branch_index")
-    else None
-)
-face_branch_index_parent = (
-    tree_model.face_attribute_branch_index_parent
-    if hasattr(tree_model, "face_attribute_branch_index_parent")
-    else None
-)
+face_branch_id = tree_model.face_attribute_branch_id  # Branch ID for each face
+face_branch_id_parent = tree_model.face_attribute_branch_id_parent  # Parent branch ID
 
 # Twig placement attributes (for twig duplication)
 face_twig_long = tree_model.face_attribute_twig_long  # Long twig placement triangles
@@ -264,17 +256,15 @@ with open(output_dir / "directions_flat.txt", "w") as f:
 with open(output_dir / "face_attributes.txt", "w") as f:
     f.write("# Face Attributes\n\n")
 
-    if face_tree_index:
-        f.write("## Tree Index\n")
-        f.write(f"{face_tree_index}\n\n")
+    if face_tree_id:
+        f.write("## Tree ID\n")
+        f.write(f"{face_tree_id}\n\n")
 
-    if face_branch_index:
-        f.write("## Branch Index\n")
-        f.write(f"{face_branch_index}\n\n")
+    f.write("## Branch ID\n")
+    f.write(f"{face_branch_id}\n\n")
 
-    if face_branch_index_parent:
-        f.write("## Branch Parent Index\n")
-        f.write(f"{face_branch_index_parent}\n\n")
+    f.write("## Branch Parent ID\n")
+    f.write(f"{face_branch_id_parent}\n\n")
 
     f.write("## Twig Long\n")
     f.write(f"{face_twig_long}\n\n")
