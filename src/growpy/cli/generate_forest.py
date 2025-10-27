@@ -21,6 +21,16 @@ Usage:
 python ./src/growpy/cli/generate_forest.py data/input/test.csv --quality high --output-dir data/output/forest --growth-cycle-limit 5
 """
 
+# CRITICAL: Import bpy and expose bundled modules BEFORE any other imports
+# This ensures USD (pxr) is available for all subsequent imports
+try:
+    import bpy
+
+    if hasattr(bpy.utils, "expose_bundled_modules"):
+        bpy.utils.expose_bundled_modules()
+except ImportError:
+    pass  # bpy not available, will fall back to system USD if available
+
 import multiprocessing as mp
 import sys
 from functools import partial
@@ -29,8 +39,6 @@ from typing import Optional
 GROWTH_CYCLE_LIMIT = 1
 HEIGHT_SCALE = 1
 MAX_WORKERS = max(1, mp.cpu_count() - 1)  # Leave one core for system
-
-# Note: bpy is imported in worker processes during export to avoid import issues
 
 from pathlib import Path
 

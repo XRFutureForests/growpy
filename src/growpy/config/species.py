@@ -2,9 +2,9 @@
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional, List, Dict, Tuple
-import pandas as pd
+from typing import Dict, List, Optional, Tuple
 
+import pandas as pd
 
 _species_df: Optional[pd.DataFrame] = None
 
@@ -60,6 +60,16 @@ def find_species_match(input_name: str) -> Optional[str]:
     exact_match = df[common_names == input_lower]
     if not exact_match.empty:
         return exact_match.iloc[0]["Common Name"]
+
+    # Match against Preset column (format: "Family - Common Name.seed.json")
+    if "Preset" in df.columns:
+        for idx, row in df.iterrows():
+            preset = row.get("Preset", "")
+            if pd.notna(preset) and preset.strip():
+                # Remove .seed.json extension and compare
+                preset_base = str(preset).replace(".seed.json", "").lower().strip()
+                if input_lower == preset_base:
+                    return row["Common Name"]
 
     # Aliases
     if "Aliases" in df.columns:
@@ -146,7 +156,9 @@ def hex_to_rgb(hex_color: str) -> Tuple[float, float, float]:
     return (r, g, b)
 
 
-def get_species_colors(common_name: str) -> Optional[Dict[str, Tuple[float, float, float]]]:
+def get_species_colors(
+    common_name: str,
+) -> Optional[Dict[str, Tuple[float, float, float]]]:
     """Get branch and leaf colors for a given species.
 
     Args:
@@ -171,10 +183,7 @@ def get_species_colors(common_name: str) -> Optional[Dict[str, Tuple[float, floa
     branch_hex = row.get("Branch Color", "#99664c")
     leaf_hex = row.get("Leaf Color", "#4c9933")
 
-    return {
-        "branch_color": hex_to_rgb(branch_hex),
-        "leaf_color": hex_to_rgb(leaf_hex)
-    }
+    return {"branch_color": hex_to_rgb(branch_hex), "leaf_color": hex_to_rgb(leaf_hex)}
 
 
 def get_bark_texture(common_name: str) -> Optional[str]:

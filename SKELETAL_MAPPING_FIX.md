@@ -3,6 +3,7 @@
 ## Problem Identified
 
 The skeletal Nanite assemblies were importing into Unreal Engine 5.7+, but the bone weights were incorrectly mapped:
+
 - Some bones affected multiple mesh sections (including parts they shouldn't control)
 - Some bones had no visible effect on the mesh
 - Vertices shared between faces were being assigned conflicting joint bindings
@@ -43,6 +44,7 @@ Changed from face-based to **vertex-based** skeletal binding:
 **Lines**: 592-688 (skinning weight calculation section)
 
 **Before** (face-based):
+
 ```python
 # Calculate face center
 face_center = Gf.Vec3d(0, 0, 0)
@@ -55,6 +57,7 @@ face_center /= num_verts
 ```
 
 **After** (vertex-based):
+
 ```python
 # First pass: collect branch hints per vertex
 for face in faces:
@@ -81,9 +84,11 @@ for vertex_idx in all_vertices:
 ## Generated Files
 
 ### Test Output Location
+
 `data/output/skeletal_fix_test/Western_redcedar/`
 
 ### Key Files
+
 - `Western_redcedar_tree_0000_NaniteAssembly_skeletal.usda` - Main skeletal assembly
 - `Western_redcedar_tree_0000_tree_only_skeletal.usda` - Tree with corrected skeletal binding
 - `westernredcedar_apical_skel.usda` - Skeletal twig (long/apical)
@@ -92,6 +97,7 @@ for vertex_idx in all_vertices:
 ### Skeletal Structure
 
 The generated skeleton has:
+
 - 5 joints with flat names: `joint_0`, `joint_1`, `joint_2`, `joint_3`, `joint_4`
 - Topology array: `jointParents = [-1, 0, 1, 2, 3]` preserves hierarchy
 - Proper Z-ordering from root (bottom) to tip (top)

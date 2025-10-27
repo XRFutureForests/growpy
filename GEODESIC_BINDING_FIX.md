@@ -119,6 +119,7 @@ else:
 ## Testing
 
 ### Test Setup
+
 ```bash
 conda run -n the-grove python src/growpy/cli/generate_forest.py data/input/test.csv \
   --quality high \
@@ -132,11 +133,13 @@ conda run -n the-grove python src/growpy/cli/generate_forest.py data/input/test.
 **Generated File**: `data/output/geodesic_test/Western_redcedar/Western_redcedar_tree_0000_tree_only_skeletal.usda`
 
 **Skeleton Structure**:
+
 - 5 joints: `joint_0` through `joint_4`
 - Hierarchy: `[-1, 0, 1, 2, 3]` (linear chain)
 - Joint positions (Z): 0.0 → 1.0 → 1.1 → 1.2 → 1.3
 
 **Vertex Distribution**:
+
 - 172 total vertices
 - Joint 0: 72 vertices (base, largest radius)
 - Joint 1: 24 vertices (mid-section)

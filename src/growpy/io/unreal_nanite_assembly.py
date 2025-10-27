@@ -83,7 +83,9 @@ def create_nanite_assembly_usd(
         UsdGeom.SetStageMetersPerUnit(stage, 1.0)
 
         # Root Xform with NaniteAssemblyRootAPI
-        assembly_name = f"{species_name.replace(' ', '_')}_NaniteAssembly"
+        # Sanitize species name: replace spaces and hyphens with underscores for valid USD path
+        sanitized_name = species_name.replace(" ", "_").replace("-", "_")
+        assembly_name = f"{sanitized_name}_NaniteAssembly"
         root_prim = stage.DefinePrim(f"/{assembly_name}", "Xform")
         stage.SetDefaultPrim(root_prim)
 
@@ -339,17 +341,16 @@ def create_nanite_assembly_usd(
                             sample_joints = list(skeleton_joints.keys())[:3]
                             print(f"      Sample joints: {sample_joints}")
 
-                            # For each twig, find nearest joint by NAME (not path)
-                            # VIDEO REQUIREMENT: Joint names like 'root', 'joint_1', etc.
-                            # NOT full paths like '/Tree/TreeSkel/joint_1'
+                            # For each twig, find nearest joint by HIERARCHICAL PATH
+                            # WORKING FORMAT: Use full hierarchical joint paths
+                            # e.g., "joint_0/joint_1/joint_2/joint_50"
                             for twig_pos in all_positions:
                                 nearest_joint, distance = _find_nearest_joint(
                                     twig_pos, skeleton_joints
                                 )
-                                # Extract just the joint name (last component)
-                                # e.g., "joint_0/joint_1/joint_50" -> "joint_50"
-                                joint_name = nearest_joint.split("/")[-1]
-                                bind_joints.append(joint_name)
+                                # Use the FULL hierarchical joint path (not just last component)
+                                # This matches the joint names in the skeleton definition
+                                bind_joints.append(nearest_joint)
                                 bind_weights.append(1.0)
 
                             print(
@@ -517,6 +518,43 @@ def export_tree_as_nanite_assembly(
             return False
 
         print(f"  [OK] Exported base tree: {temp_tree_path.name}")
+
+        # Auto-lookup twigs if include_twigs=True and none provided
+        if include_twigs and twig_usd_paths is None:
+            try:
+                from .blender_export import get_twig_usd_map_for_species
+
+                print(f"  Looking up twigs for species: {species_name}")
+                twig_usd_paths = get_twig_usd_map_for_species(
+                    species_name, prefer_skeletal=use_skeletal_mesh
+                )
+                if twig_usd_paths:
+                    print(f"  Found {len(twig_usd_paths)} twig type(s)")
+                else:
+                    print(f"  Warning: No twig USD files found for '{species_name}'")
+            except Exception as e:
+                print(f"  Warning: Failed to lookup twigs: {e}")
+                twig_usd_paths = None
+
+        # Copy twig USD files to output directory for relative references
+        if twig_usd_paths:
+            import shutil
+
+            copied_count = 0
+            unique_twig_files = set()
+
+            for twig_type, twig_path in twig_usd_paths.items():
+                if twig_path.exists() and twig_path not in unique_twig_files:
+                    dest_path = output_path.parent / twig_path.name
+                    try:
+                        shutil.copy2(twig_path, dest_path)
+                        unique_twig_files.add(twig_path)
+                        copied_count += 1
+                    except Exception as e:
+                        print(f"  Warning: Failed to copy {twig_path.name}: {e}")
+
+            if copied_count > 0:
+                print(f"  Copied {copied_count} twig USD file(s) to output directory")
 
         # Create Nanite Assembly USD
         success = create_nanite_assembly_usd(

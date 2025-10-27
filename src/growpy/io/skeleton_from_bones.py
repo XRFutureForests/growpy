@@ -120,22 +120,19 @@ def add_skeleton_from_grove_bones(
         rest_transforms = []
 
         # Root joint
-        joints.append("Root")
+        joints.append("joint_0")
         joint_parents.append(-1)
         root_transform = Gf.Matrix4d().SetIdentity()
         bind_transforms.append(root_transform)
         rest_transforms.append(root_transform)
 
         # Map bone indices to joint indices for parent lookup
-        bone_to_joint = {-1: 0}  # -1 (root bone) maps to joint 0 (Root)
+        bone_to_joint = {-1: 0}  # -1 (root bone) maps to joint 0
 
         # Track world-space positions for calculating relatives
         # Root joint (index 0) is at origin with zero length
         world_head_positions = {0: Gf.Vec3d(0, 0, 0)}
         world_tail_positions = {0: Gf.Vec3d(0, 0, 0)}
-
-        # Track hierarchical joint names for USD topology
-        joint_path_names = {0: "Root"}  # Maps joint index to hierarchical path
 
         # Process each bone
         # Grove returns list of tuples: (bone_id, parent_id, head_Vector, tail_Vector, radius)
@@ -156,14 +153,11 @@ def add_skeleton_from_grove_bones(
             parent_joint_idx = bone_to_joint.get(parent_bone_idx, 0)
             joint_parents.append(parent_joint_idx)
 
-            # Create joint with hierarchical name to encode topology
-            # USD uses "/" separators in joint names to define parent-child relationships
-            parent_path = joint_path_names.get(parent_joint_idx, "Root")
-            joint_name = f"{parent_path}/bone_{bone_idx}"
+            # Create FLAT joint name (no hierarchy in name - use topology array instead)
             joint_idx = len(joints)
+            joint_name = f"joint_{joint_idx}"
             joints.append(joint_name)
             bone_to_joint[bone_idx] = joint_idx
-            joint_path_names[joint_idx] = joint_name
 
             # Get parent's position (where the parent bone starts)
             # For root, this is origin. For others, it's the parent bone's head position
@@ -210,10 +204,27 @@ def add_skeleton_from_grove_bones(
 
         print(f"    [OK] Created {len(joints)} joints from {len(bones_info)} bones")
 
-        # Set skeleton attributes
+        # Set skeleton attributes with flat names
         skel_prim.CreateJointsAttr().Set(Vt.TokenArray(joints))
         skel_prim.CreateBindTransformsAttr().Set(Vt.Matrix4dArray(bind_transforms))
         skel_prim.CreateRestTransformsAttr().Set(Vt.Matrix4dArray(rest_transforms))
+
+        # Add topology array (jointIndices) to preserve hierarchy with flat joint names
+        # This is the USD-standard way to encode skeleton hierarchy
+        try:
+            # Try using official API first (newer USD versions)
+            skel_prim.CreateJointIndicesAttr().Set(Vt.IntArray(joint_parents))
+        except AttributeError:
+            # Fallback for older USD versions
+            from pxr import Sdf
+
+            joint_indices_attr = skel_prim.GetPrim().CreateAttribute(
+                "jointIndices",
+                Sdf.ValueTypeNames.IntArray,
+                custom=False,
+                variability=Sdf.VariabilityUniform,
+            )
+            joint_indices_attr.Set(Vt.IntArray(joint_parents))
 
         # Create SkelAnimation
         anim_path = skel_root_path.AppendChild("Animation")

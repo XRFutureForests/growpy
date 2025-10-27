@@ -468,13 +468,12 @@ def _build_usdskel_from_bones(
 
         branch_connection_points[polyline_idx] = (connect_polyline, connect_point)
 
-    # Build topology array for hierarchy (instead of hierarchical names)
-    joint_parents = []  # Parent joint index for each joint (-1 for root)
+    # Build hierarchical joint names (working approach from commit 5eef351)
     joint_counter = 0
 
     for polyline_idx, polyline in enumerate(skeleton_polylines):
         # Each polyline is a chain of connected points
-        prev_joint_idx = None
+        prev_joint_path = None
 
         # For branch polylines, skip first point (already created by parent)
         start_idx = 1 if polyline_idx > 0 else 0
@@ -483,32 +482,33 @@ def _build_usdskel_from_bones(
             point = skeleton_points[point_idx]
             world_pos = Gf.Vec3d(point[0], point[1], point[2])
 
-            # Create FLAT joint name (no hierarchy in name - use topology array instead)
+            # Create joint name
             joint_name = f"joint_{joint_counter}"
 
-            # Determine parent joint index for topology array
+            # Track mapping from skeleton point to joint index
+            point_to_joint_index[point_idx] = joint_counter
+            joint_counter += 1
+
+            # Build hierarchical path (CRITICAL: This is the working approach!)
             if i == start_idx:
                 # First point in this polyline chain (after skip)
                 if polyline_idx == 0:
-                    # Root of first polyline - no parent
-                    parent_idx = -1
+                    # Root of first polyline
+                    joint_path = joint_name
                 else:
-                    # Branch polyline - parent is the shared point's joint
+                    # Branch polyline - connect to the shared point's joint
                     shared_point_idx = polyline[0]  # First point (shared with parent)
-                    parent_idx = point_to_joint_index[shared_point_idx]
+                    parent_joint_path = point_to_joint_path[shared_point_idx]
+                    joint_path = f"{parent_joint_path}/{joint_name}"
             else:
                 # Connected to previous point in same polyline
-                parent_idx = prev_joint_idx
+                joint_path = f"{prev_joint_path}/{joint_name}"
 
-            # Track this joint
-            point_to_joint_index[point_idx] = joint_counter
-            point_to_joint_path[point_idx] = joint_name  # Now just flat name
-            joint_tokens.append(joint_name)
-            joint_parents.append(parent_idx)
+            point_to_joint_path[point_idx] = joint_path
+            joint_tokens.append(joint_path)
             bone_positions[point_idx] = world_pos
 
-            prev_joint_idx = joint_counter
-            joint_counter += 1
+            prev_joint_path = joint_path
 
             # Create WORLD SPACE bindTransform
             bind_transform = Gf.Matrix4d(1.0)
@@ -529,24 +529,10 @@ def _build_usdskel_from_bones(
             rest_transform.SetTranslateOnly(local_pos)
             rest_transforms.append(rest_transform)
 
-    # Set skeleton attributes with flat names + topology array
+    # Set skeleton attributes (hierarchy encoded in joint paths - NO topology array)
     skel.CreateJointsAttr(joint_tokens)
     skel.CreateBindTransformsAttr(Vt.Matrix4dArray(bind_transforms))
     skel.CreateRestTransformsAttr(Vt.Matrix4dArray(rest_transforms))
-
-    # CRITICAL: Add topology array to preserve hierarchy with flat joint names
-    # This is the USD-standard way to encode skeleton hierarchy
-    # UsdSkel uses "jointIndices" (not "jointParents") for the skeleton topology array
-    # Note: This is different from primvars:skel:jointIndices on the mesh (vertex-to-joint binding)
-    try:
-        # Try using official API first (newer USD versions)
-        skel.CreateJointIndicesAttr().Set(Vt.IntArray(joint_parents))
-    except AttributeError:
-        # Fallback for older USD versions
-        joint_indices_attr = skel.GetPrim().CreateAttribute(
-            "jointIndices", Sdf.ValueTypeNames.IntArray, custom=False, variability=Sdf.VariabilityUniform
-        )
-        joint_indices_attr.Set(Vt.IntArray(joint_parents))
 
     # Re-parent mesh under SkelRoot (/Tree) if needed
     new_mesh_path = Sdf.Path("/Tree/TreeMesh")
@@ -626,24 +612,28 @@ def _build_usdskel_from_bones(
 
         # Pre-compute cumulative geodesic distances along each branch polyline
         # This ensures correct binding for downward-growing branches and variable segment lengths
-        branch_cumulative_distances = {}  # branch_id -> {point_idx: cumulative_distance}
-        
+        branch_cumulative_distances = (
+            {}
+        )  # branch_id -> {point_idx: cumulative_distance}
+
         for branch_id, polyline in branch_to_points.items():
             cumulative_dist = 0.0
             point_distances = {polyline[0]: 0.0}
-            
+
             for i in range(1, len(polyline)):
                 prev_idx = polyline[i - 1]
                 curr_idx = polyline[i]
-                
+
                 prev_pos = skeleton_points[prev_idx]
                 curr_pos = skeleton_points[curr_idx]
-                
+
                 # Compute Euclidean distance between consecutive points
-                segment_length = sum((curr_pos[j] - prev_pos[j]) ** 2 for j in range(3)) ** 0.5
+                segment_length = (
+                    sum((curr_pos[j] - prev_pos[j]) ** 2 for j in range(3)) ** 0.5
+                )
                 cumulative_dist += segment_length
                 point_distances[curr_idx] = cumulative_dist
-            
+
             branch_cumulative_distances[branch_id] = point_distances
 
         # Map each vertex INDIVIDUALLY to its closest skeleton segment
@@ -666,8 +656,10 @@ def _build_usdskel_from_bones(
             vert_offset += face_vert_count
             face_idx += 1
 
-        # Second pass: bind each vertex to its closest joint within its branch
-        # Use geodesic distance along polyline for reliable binding (works with downward branches)
+        # Second pass: bind each vertex to MULTIPLE joints for smooth deformation
+        # Use distance-based weight falloff to avoid rigid single-joint binding
+        vertex_to_joints = {}  # vertex_idx -> [(joint_idx, weight), ...]
+
         for v_idx in range(num_points):
             v_pos = points[v_idx]
             vertex_pos = Gf.Vec3d(v_pos[0], v_pos[1], v_pos[2])
@@ -679,9 +671,8 @@ def _build_usdskel_from_bones(
                 branch_points = branch_to_points[branch_id]
                 cumulative_distances = branch_cumulative_distances.get(branch_id, {})
 
-                # Find closest segment in this branch
-                min_dist = float("inf")
-                closest_joint_idx = 0
+                # Find closest segment and compute multi-joint influences
+                segment_influences = []  # [(joint_idx, distance, t), ...]
 
                 for i in range(len(branch_points) - 1):
                     start_pt_idx = branch_points[i]
@@ -708,44 +699,95 @@ def _build_usdskel_from_bones(
                     dist_vec = vertex_pos - closest_on_segment
                     dist = (dist_vec * dist_vec) ** 0.5
 
-                    if dist < min_dist:
-                        min_dist = dist
-                        
-                        # Use geodesic distance along polyline for reliable joint assignment
-                        # This works correctly even for downward-growing branches
-                        start_geodesic = cumulative_distances.get(start_pt_idx, 0.0)
-                        end_geodesic = cumulative_distances.get(end_pt_idx, 0.0)
-                        
-                        # Vertex's geodesic distance is interpolated by t
-                        vertex_geodesic = start_geodesic + t * (end_geodesic - start_geodesic)
-                        
-                        # Segment midpoint in geodesic space
-                        segment_midpoint_geodesic = (start_geodesic + end_geodesic) / 2.0
-                        
-                        # Bind to START joint if vertex is before geodesic midpoint
-                        # Bind to END joint if vertex is after geodesic midpoint
-                        if vertex_geodesic < segment_midpoint_geodesic:
-                            closest_joint_idx = point_to_joint_index.get(start_pt_idx, 0)
-                        else:
-                            closest_joint_idx = point_to_joint_index.get(end_pt_idx, 0)
+                    # Store both joints of this segment with their distance
+                    start_joint_idx = point_to_joint_index.get(start_pt_idx, 0)
+                    end_joint_idx = point_to_joint_index.get(end_pt_idx, 0)
 
-                vertex_to_joint[v_idx] = (closest_joint_idx, 1.0)
+                    segment_influences.append((start_joint_idx, dist, 1.0 - t))
+                    segment_influences.append((end_joint_idx, dist, t))
+
+                # Find the closest segment (minimum distance)
+                if segment_influences:
+                    min_dist = min(infl[1] for infl in segment_influences)
+
+                    # Keep only joints from the closest segment (2 joints)
+                    closest_segment_joints = [
+                        (joint_idx, t_param)
+                        for joint_idx, dist, t_param in segment_influences
+                        if dist <= min_dist + 1e-6
+                    ]
+
+                    # Compute weights based on t parameter (position along segment)
+                    # t_param: 0.0 = at start joint, 1.0 = at end joint
+                    joint_weights_map = {}
+                    for joint_idx, t_param in closest_segment_joints:
+                        # Weight decreases linearly from 1.0 to 0.0
+                        weight = t_param
+                        if joint_idx in joint_weights_map:
+                            joint_weights_map[joint_idx] = max(
+                                joint_weights_map[joint_idx], weight
+                            )
+                        else:
+                            joint_weights_map[joint_idx] = weight
+
+                    # Normalize weights to sum to 1.0
+                    total_weight = sum(joint_weights_map.values())
+                    if total_weight > 0:
+                        normalized_weights = [
+                            (joint_idx, weight / total_weight)
+                            for joint_idx, weight in joint_weights_map.items()
+                        ]
+                    else:
+                        # Fallback: equal weight to both joints
+                        normalized_weights = [
+                            (j, 0.5) for j, _ in closest_segment_joints[:2]
+                        ]
+
+                    # Sort by joint index for consistency
+                    normalized_weights.sort(key=lambda x: x[0])
+                    vertex_to_joints[v_idx] = normalized_weights
+                else:
+                    # No segments found, bind to root
+                    vertex_to_joints[v_idx] = [(0, 1.0)]
             else:
                 # Branch not found, bind to root
-                vertex_to_joint[v_idx] = (0, 1.0)
+                vertex_to_joints[v_idx] = [(0, 1.0)]
 
-        # Build final arrays (one entry per vertex)
+        # Build final arrays with multiple influences per vertex
+        # USD format: flat arrays where element_size indicates influences per vertex
+        max_influences = 2  # Use 2 joints per vertex for smooth deformation
+
         for v_idx in range(num_points):
-            if v_idx in vertex_to_joint:
-                joint_idx, weight = vertex_to_joint[v_idx]
-                joint_indices.append(joint_idx)
-                joint_weights.append(weight)
+            if v_idx in vertex_to_joints:
+                influences = vertex_to_joints[v_idx]
+
+                # Take top N influences (sorted by weight)
+                influences_sorted = sorted(influences, key=lambda x: x[1], reverse=True)
+                top_influences = influences_sorted[:max_influences]
+
+                # Normalize weights (in case we truncated)
+                total_weight = sum(w for _, w in top_influences)
+                if total_weight > 0:
+                    normalized = [(j, w / total_weight) for j, w in top_influences]
+                else:
+                    normalized = [(0, 1.0)]  # Fallback to root
+
+                # Pad to max_influences if needed
+                while len(normalized) < max_influences:
+                    normalized.append((0, 0.0))
+
+                # Append to flat arrays
+                for joint_idx, weight in normalized:
+                    joint_indices.append(joint_idx)
+                    joint_weights.append(weight)
             else:
-                # Unassigned vertices bound to root
-                joint_indices.append(0)
-                joint_weights.append(1.0)
+                # Unassigned vertices bound to root with padding
+                for _ in range(max_influences):
+                    joint_indices.append(0)
+                    joint_weights.append(1.0 if _ == 0 else 0.0)
     else:
         # Fallback: all vertices bound to root
+        max_influences = 1
         joint_indices = [0] * num_points
         joint_weights = [1.0] * num_points
 
@@ -760,7 +802,7 @@ def _build_usdskel_from_bones(
             UsdGeom.Tokens.vertex,
         )
         joint_indices_primvar.Set(joint_indices)
-        joint_indices_primvar.SetElementSize(1)
+        joint_indices_primvar.SetElementSize(max_influences)
 
         joint_weights_primvar = primvars_api_skel.CreatePrimvar(
             "skel:jointWeights",
@@ -768,11 +810,11 @@ def _build_usdskel_from_bones(
             UsdGeom.Tokens.vertex,
         )
         joint_weights_primvar.Set(joint_weights)
-        joint_weights_primvar.SetElementSize(1)
+        joint_weights_primvar.SetElementSize(max_influences)
     else:
         # Standard mode: use BindingAPI (already created above)
-        binding_api.CreateJointIndicesPrimvar(False, 1).Set(joint_indices)
-        binding_api.CreateJointWeightsPrimvar(False, 1).Set(joint_weights)
+        binding_api.CreateJointIndicesPrimvar(False, max_influences).Set(joint_indices)
+        binding_api.CreateJointWeightsPrimvar(False, max_influences).Set(joint_weights)
 
     return skel
 
@@ -1136,7 +1178,7 @@ def build_skeletal_nanite_assembly(
             twig_skelroot_path = twig_proto_path.AppendChild("TwigSkelRoot")
             twig_skelroot = stage.DefinePrim(twig_skelroot_path, "SkelRoot")
 
-            # Add reference to external twig skeleton USD
+            # Add reference to external twig USD (static or skeletal)
             # CRITICAL: Always use relative paths for portability
             # Check if twig is in same directory as assembly
             if twig_usd_path.parent.resolve() == assembly_path.parent.resolve():
@@ -1155,6 +1197,8 @@ def build_skeletal_nanite_assembly(
                         f"        WARNING: Using absolute path for twig: {twig_ref_path}"
                     )
 
+            # Reference skeletal twig with explicit /Twig prim path (demo format)
+            # Skeletal twigs have SkelRoot "Twig" with single root joint skeleton
             twig_skelroot.GetReferences().AddReference(twig_ref_path, "/Twig")
 
             twig_prototype_paths[twig_type] = twig_proto_path
