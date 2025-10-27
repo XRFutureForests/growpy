@@ -28,7 +28,11 @@
       "Bash(conda list:*)",
       "Read(//opt/miniconda3/envs/**)",
       "Bash(source:*)",
-      "Bash(conda activate:*)"
+      "Bash(conda activate:*)",
+      "Bash(/Applications/Blender.app/Contents/MacOS/Blender:*)",
+      "Bash(PYTHONPATH=/Users/maximiliansperlich/Developer/the-grove/src:$PYTHONPATH python:*)",
+      "Bash(conda env list:*)",
+      "Bash(exec $SHELL -l)"
     ],
     "deny": [],
     "ask": []

@@ -887,18 +887,18 @@ def _add_grove_attributes_to_mesh(mesh: Any, model: Any) -> None:
             for i, val in enumerate(model.face_attribute_dead):
                 face_layer.data[i].value = val
 
-        if hasattr(model, "face_attribute_branch_index"):
+        if hasattr(model, "face_attribute_branch_id"):
             face_layer = mesh.attributes.new(
-                name="branch_index", type="INT", domain="FACE"
+                name="branch_id", type="INT", domain="FACE"
             )
-            for i, val in enumerate(model.face_attribute_branch_index):
+            for i, val in enumerate(model.face_attribute_branch_id):
                 face_layer.data[i].value = val
 
-        if hasattr(model, "face_attribute_branch_index_parent"):
+        if hasattr(model, "face_attribute_branch_id_parent"):
             face_layer = mesh.attributes.new(
-                name="branch_index_parent", type="INT", domain="FACE"
+                name="branch_id_parent", type="INT", domain="FACE"
             )
-            for i, val in enumerate(model.face_attribute_branch_index_parent):
+            for i, val in enumerate(model.face_attribute_branch_id_parent):
                 face_layer.data[i].value = val
 
         if hasattr(model, "face_attribute_end"):

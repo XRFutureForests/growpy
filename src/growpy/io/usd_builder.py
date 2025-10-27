@@ -35,6 +35,17 @@ except ImportError:
     except ImportError:
         USD_AVAILABLE = False
 
+# Import Blender-based weight calculation
+try:
+    from growpy.io.blender_weights import (
+        blender_weights_to_dual_joint,
+        calculate_blender_weights,
+    )
+
+    BLENDER_WEIGHTS_AVAILABLE = True
+except ImportError:
+    BLENDER_WEIGHTS_AVAILABLE = False
+
 
 def build_tree_usd(
     model: Any,
@@ -125,8 +136,8 @@ def build_tree_usd(
                 usd_uvs = [Gf.Vec2f(uv[0], uv[1]) for uv in uvs]
                 uv_primvar.Set(usd_uvs)
 
-            # Set display color (default gray for bark)
-            mesh.CreateDisplayColorAttr([Gf.Vec3f(0.4, 0.3, 0.2)])
+            # Create proper USD materials with UsdPreviewSurface
+            _add_usd_materials(stage, mesh, model, str(mesh_path))
 
         # Add face attributes from Grove
         _add_grove_face_attributes(mesh, model)
@@ -212,11 +223,119 @@ def _add_grove_face_attributes(mesh: UsdGeom.Mesh, model: Any) -> None:
         )
         primvar.Set(model.face_attribute_branch_id_parent)
 
-    if hasattr(model, "face_attribute_branch_index_parent"):
-        primvar = primvars_api.CreatePrimvar(
-            "BranchIndexParent", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.uniform
+
+def _add_usd_materials(
+    stage: Usd.Stage, mesh_prim: UsdGeom.Mesh, model: Any, mesh_path: str
+) -> None:
+    """Create proper USD materials for Unreal Engine compatibility.
+
+    Creates UsdPreviewSurface materials bound to geometry subsets for:
+    - Green: Live twigs/leaves (TwigLong, TwigShort, TwigUpward)
+    - Brown: Dead twigs
+    - Brown: Tree bark/branches (stem)
+
+    Args:
+        stage: USD stage to create materials in
+        mesh_prim: USD mesh prim to bind materials to
+        model: Grove model with face attributes
+        mesh_path: Full USD path to the mesh prim
+    """
+    from pxr import UsdShade
+
+    # Get face count
+    num_faces = len(model.faces) if hasattr(model, "faces") else 0
+    if num_faces == 0:
+        return
+
+    # Define color palette
+    BARK_BROWN = Gf.Vec3f(0.45, 0.30, 0.20)
+    TWIG_GREEN = Gf.Vec3f(0.25, 0.50, 0.20)
+    DEAD_BROWN = Gf.Vec3f(0.35, 0.25, 0.15)
+
+    # Classify faces by material type
+    bark_faces = []
+    twig_faces = []
+    dead_faces = []
+
+    # Initialize all faces as bark
+    face_types = ["bark"] * num_faces
+
+    # Mark live twigs
+    if hasattr(model, "face_attribute_twig_long"):
+        for face_idx, is_twig in enumerate(model.face_attribute_twig_long):
+            if is_twig and face_idx < num_faces:
+                face_types[face_idx] = "twig"
+
+    if hasattr(model, "face_attribute_twig_short"):
+        for face_idx, is_twig in enumerate(model.face_attribute_twig_short):
+            if is_twig and face_idx < num_faces:
+                face_types[face_idx] = "twig"
+
+    if hasattr(model, "face_attribute_twig_upward"):
+        for face_idx, is_twig in enumerate(model.face_attribute_twig_upward):
+            if is_twig and face_idx < num_faces:
+                face_types[face_idx] = "twig"
+
+    # Mark dead (overrides twig)
+    if hasattr(model, "face_attribute_twig_dead"):
+        for face_idx, is_dead in enumerate(model.face_attribute_twig_dead):
+            if is_dead and face_idx < num_faces:
+                face_types[face_idx] = "dead"
+
+    if hasattr(model, "face_attribute_dead"):
+        for face_idx, is_dead in enumerate(model.face_attribute_dead):
+            if is_dead and face_idx < num_faces:
+                face_types[face_idx] = "dead"
+
+    # Group faces by type
+    for face_idx, face_type in enumerate(face_types):
+        if face_type == "bark":
+            bark_faces.append(face_idx)
+        elif face_type == "twig":
+            twig_faces.append(face_idx)
+        elif face_type == "dead":
+            dead_faces.append(face_idx)
+
+    # Create materials scope
+    materials_path = mesh_path + "/Materials"
+    UsdGeom.Scope.Define(stage, materials_path)
+
+    # Helper to create material with UsdPreviewSurface
+    def create_material(name: str, color: Gf.Vec3f) -> UsdShade.Material:
+        mat = UsdShade.Material.Define(stage, f"{materials_path}/{name}")
+        shader = UsdShade.Shader.Define(
+            stage, f"{materials_path}/{name}/PreviewSurface"
         )
-        primvar.Set(model.face_attribute_branch_index_parent)
+        shader.CreateIdAttr("UsdPreviewSurface")
+        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(color)
+        shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.7)
+        shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
+        mat.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+        return mat
+
+    # Create materials
+    bark_mat = create_material("BarkMaterial", BARK_BROWN)
+    twig_mat = create_material("TwigMaterial", TWIG_GREEN)
+    dead_mat = create_material("DeadMaterial", DEAD_BROWN)
+
+    # Create geometry subsets and bind materials
+    if bark_faces:
+        bark_subset = UsdGeom.Subset.Define(stage, mesh_path + "/BarkSubset")
+        bark_subset.CreateElementTypeAttr("face")
+        bark_subset.CreateIndicesAttr(bark_faces)
+        UsdShade.MaterialBindingAPI(bark_subset).Bind(bark_mat)
+
+    if twig_faces:
+        twig_subset = UsdGeom.Subset.Define(stage, mesh_path + "/TwigSubset")
+        twig_subset.CreateElementTypeAttr("face")
+        twig_subset.CreateIndicesAttr(twig_faces)
+        UsdShade.MaterialBindingAPI(twig_subset).Bind(twig_mat)
+
+    if dead_faces:
+        dead_subset = UsdGeom.Subset.Define(stage, mesh_path + "/DeadSubset")
+        dead_subset.CreateElementTypeAttr("face")
+        dead_subset.CreateIndicesAttr(dead_faces)
+        UsdShade.MaterialBindingAPI(dead_subset).Bind(dead_mat)
 
 
 def _add_grove_point_attributes(mesh: UsdGeom.Mesh, model: Any) -> None:
@@ -284,6 +403,7 @@ def add_skeleton_to_usd(
     skeleton_reduce: float = 0.4,
     skeleton_bias: float = 0.5,
     skeleton_connected: bool = True,
+    add_twig_bones: bool = True,
 ) -> bool:
     """Add skeleton to existing USD file using Grove's full skeleton polylines.
 
@@ -299,6 +419,7 @@ def add_skeleton_to_usd(
         skeleton_reduce: Reduction factor (unused, we use full skeleton)
         skeleton_bias: Bias setting (unused, we use full skeleton)
         skeleton_connected: Connection setting (unused, we use full skeleton)
+        add_twig_bones: If True, add twig mount bones to skeleton (default: True)
 
     Returns:
         bool: True if skeleton was added successfully
@@ -329,8 +450,26 @@ def add_skeleton_to_usd(
 
         skeleton = skeletons[0]
 
+        # Extract twig placements from mesh if add_twig_bones is enabled
+        twig_placements = None
+        if add_twig_bones:
+            from .twig_placement import extract_twig_placements_from_usd
+
+            print("  Extracting twig placements from mesh...")
+            twig_placements = extract_twig_placements_from_usd(usd_path)
+            if twig_placements and any(twig_placements.values()):
+                total_twigs = sum(
+                    len(placements) for placements in twig_placements.values()
+                )
+                print(
+                    f"  Found {total_twigs} twig placement(s) across {len(twig_placements)} type(s)"
+                )
+            else:
+                print("  No twig placements found, skipping twig bones")
+                twig_placements = None
+
         # Create UsdSkel skeleton structure from full polylines
-        _build_usdskel_from_bones(stage, skeleton, None)  # bones parameter now unused
+        _build_usdskel_from_bones(stage, skeleton, None, twig_placements)
 
         # Set defaultPrim to /Tree (now a SkelRoot)
         tree_prim = stage.GetPrimAtPath("/Tree")
@@ -353,16 +492,22 @@ def _build_usdskel_from_bones(
     stage: Usd.Stage,
     skeleton: Any,
     bones: List[Tuple],
+    twig_placements: Optional[Dict[str, List[Dict]]] = None,
 ) -> None:
     """Build UsdSkel skeleton from Grove skeleton polylines.
 
     Uses full skeleton polyline data for proper bone orientation instead of
     just the simplified bone list. This gives Unreal better bone direction info.
 
+    CRITICAL: When twig_placements is provided, adds dedicated twig mount bones
+    to the skeleton. These bones enable PointInstancer binding in Nanite Assemblies.
+
     Args:
         stage: USD stage to add skeleton to
         skeleton: Grove skeleton object with points and poly_lines
         bones: List of bone tuples from grove.tag_bone_id() (used for branch IDs)
+        twig_placements: Optional dict mapping twig type to list of placement dicts
+                         Each placement has 'position', 'normal', and other twig data
     """
     from pxr import Gf, Sdf, UsdGeom, UsdSkel, Vt
 
@@ -415,6 +560,44 @@ def _build_usdskel_from_bones(
     # Get skeleton data
     skeleton_points = skeleton.points  # All skeleton vertices
     skeleton_polylines = skeleton.poly_lines  # [[idx1, idx2, ...], ...] connectivity
+
+    # Get skeleton point radii (bone thickness)
+    skeleton_radii = []
+    if hasattr(skeleton, "point_attribute_radius"):
+        skeleton_radii = list(skeleton.point_attribute_radius)
+    elif hasattr(skeleton, "point_radius"):
+        skeleton_radii = list(skeleton.point_radius)
+    elif hasattr(skeleton, "radii"):
+        skeleton_radii = list(skeleton.radii)
+    elif hasattr(skeleton, "radius"):
+        skeleton_radii = list(skeleton.radius)
+    else:
+        # Fallback: assume uniform small radius
+        skeleton_radii = [0.002] * len(skeleton_points)
+
+    print(f"DEBUG: Skeleton has {len(skeleton_radii)} point radii")
+    if skeleton_radii:
+        print(
+            f"DEBUG: Radius range: {min(skeleton_radii):.4f} - {max(skeleton_radii):.4f}"
+        )
+
+    # Get skeleton point masses (for vertex-to-joint association)
+    skeleton_masses = []
+    if hasattr(skeleton, "point_attribute_mass"):
+        skeleton_masses = list(skeleton.point_attribute_mass)
+    elif hasattr(skeleton, "point_mass"):
+        skeleton_masses = list(skeleton.point_mass)
+    elif hasattr(skeleton, "masses"):
+        skeleton_masses = list(skeleton.masses)
+    elif hasattr(skeleton, "mass"):
+        skeleton_masses = list(skeleton.mass)
+
+    print(f"DEBUG: Skeleton has {len(skeleton_masses)} point masses")
+    if skeleton_masses:
+        print(
+            f"DEBUG: Mass range: {min(skeleton_masses):.4f} - {max(skeleton_masses):.4f}"
+        )
+        print(f"DEBUG: First 10 skeleton masses: {skeleton_masses[:10]}")
 
     # Convert skeleton points to tuples if they're Vector objects
     # Handle both tuple and Vector formats
@@ -529,6 +712,72 @@ def _build_usdskel_from_bones(
             rest_transform.SetTranslateOnly(local_pos)
             rest_transforms.append(rest_transform)
 
+    # Add twig mount bones to skeleton (CRITICAL for Nanite Assembly skeletal binding)
+    # These bones allow twigs to be bound to specific skeleton joints via PointInstancer
+    if twig_placements:
+        print(f"    Adding twig mount bones to skeleton...")
+        twig_counter = 0
+        twig_joint_names = (
+            {}
+        )  # Map twig placement index to joint name for assembly binding
+
+        for twig_type, placements in twig_placements.items():
+            for placement_idx, placement in enumerate(placements):
+                twig_pos = placement.get("position", (0, 0, 0))
+                twig_world_pos = Gf.Vec3d(twig_pos[0], twig_pos[1], twig_pos[2])
+
+                # Find nearest joint in existing skeleton
+                nearest_joint_path = None
+                nearest_distance = float("inf")
+
+                for i, joint_path in enumerate(joint_tokens):
+                    joint_bind_transform = bind_transforms[i]
+                    joint_pos = joint_bind_transform.ExtractTranslation()
+
+                    # Calculate distance
+                    delta = twig_world_pos - joint_pos
+                    distance = (delta[0] ** 2 + delta[1] ** 2 + delta[2] ** 2) ** 0.5
+
+                    if distance < nearest_distance:
+                        nearest_distance = distance
+                        nearest_joint_path = joint_path
+
+                if nearest_joint_path:
+                    # Create twig mount bone as child of nearest joint
+                    # Use hierarchical naming: parent_joint/twig_N
+                    twig_name = f"twig_{twig_counter}"
+                    twig_joint_path = f"{nearest_joint_path}/{twig_name}"
+
+                    # Store mapping for assembly binding (use full hierarchical path)
+                    twig_joint_names[f"{twig_type}_{placement_idx}"] = twig_joint_path
+
+                    # Get parent joint position
+                    parent_joint_idx = joint_tokens.index(nearest_joint_path)
+                    parent_pos = bind_transforms[parent_joint_idx].ExtractTranslation()
+
+                    # Calculate local offset from parent
+                    local_offset = twig_world_pos - parent_pos
+
+                    # Add twig bone to skeleton
+                    joint_tokens.append(twig_joint_path)
+
+                    # Bind transform (world space)
+                    twig_bind_transform = Gf.Matrix4d(1.0)
+                    twig_bind_transform.SetTranslateOnly(twig_world_pos)
+                    bind_transforms.append(twig_bind_transform)
+
+                    # Rest transform (local space, offset from parent)
+                    twig_rest_transform = Gf.Matrix4d(1.0)
+                    twig_rest_transform.SetTranslateOnly(local_offset)
+                    rest_transforms.append(twig_rest_transform)
+
+                    twig_counter += 1
+
+        print(f"    [OK] Added {twig_counter} twig mount bone(s) to skeleton")
+
+        # Store twig joint mapping in stage metadata for assembly binding
+        stage.SetMetadata("customLayerData", {"twig_joint_names": twig_joint_names})
+
     # Set skeleton attributes (hierarchy encoded in joint paths - NO topology array)
     skel.CreateJointsAttr(joint_tokens)
     skel.CreateBindTransformsAttr(Vt.Matrix4dArray(bind_transforms))
@@ -636,9 +885,10 @@ def _build_usdskel_from_bones(
 
             branch_cumulative_distances[branch_id] = point_distances
 
-        # Map each vertex INDIVIDUALLY to its closest skeleton segment
-        # This ensures proper skinning even when vertices are shared between faces
-        vertex_to_joint = {}  # vertex_idx -> (joint_idx, weight)
+        # SEGMENT-BASED VERTEX BINDING WITH TWIG BONE EXCLUSION
+        # Bind each vertex to the 2 joints of its closest skeleton segment
+        # CRITICAL: Exclude twig mount bones - they should NOT affect tree mesh vertices
+
         vertex_branch_hints = {}  # vertex_idx -> branch_id (from connected faces)
 
         # First pass: collect branch hints for each vertex
@@ -656,104 +906,346 @@ def _build_usdskel_from_bones(
             vert_offset += face_vert_count
             face_idx += 1
 
-        # Second pass: bind each vertex to MULTIPLE joints for smooth deformation
-        # Use distance-based weight falloff to avoid rigid single-joint binding
+        # Identify which joint indices are twig mount bones (exclude from tree mesh binding)
+        twig_joint_indices = set()
+        for joint_idx, joint_path in enumerate(joint_tokens):
+            # Twig mount bones have names ending with "twig_N"
+            if "/twig_" in joint_path:
+                twig_joint_indices.add(joint_idx)
+
+        print(
+            f"    Binding tree mesh vertices (excluding {len(twig_joint_indices)} twig mount bones)..."
+        )
+
+        # POLYLINE-BASED BINDING: Use BranchIndex + skeleton polylines for topology-aware binding
+        # Each face has a BranchIndex that corresponds to a skeleton polyline
+        # Vertices bind to the polyline segments based on their position along the branch
+
+        # Build mapping from polyline_idx to skeleton point indices
+        polyline_to_points = {}
+        for polyline_idx, polyline in enumerate(skeleton_polylines):
+            polyline_to_points[polyline_idx + 1] = (
+                polyline  # polylines are 1-indexed as branch IDs
+            )
+
+        print(
+            f"    Using polyline-based binding: {len(skeleton_polylines)} skeleton polylines"
+        )
+
+        # Build polyline-based segment lookup
+        # For each polyline, store all its segments with cumulative geodesic distances
+        polyline_segments = (
+            {}
+        )  # polyline_idx -> [(start_joint, end_joint, start_pos, end_pos, cumul_dist_start, cumul_dist_end), ...]
+
+        for polyline_idx, polyline in enumerate(skeleton_polylines):
+            branch_id = polyline_idx + 1
+            segments = []
+            cumul_dist = 0.0
+
+            for i in range(len(polyline) - 1):
+                start_pt_idx = polyline[i]
+                end_pt_idx = polyline[i + 1]
+
+                # Skip segments involving twig mount bones
+                start_joint_idx = point_to_joint_index.get(start_pt_idx, 0)
+                end_joint_idx = point_to_joint_index.get(end_pt_idx, 0)
+
+                if (
+                    start_joint_idx in twig_joint_indices
+                    or end_joint_idx in twig_joint_indices
+                ):
+                    continue
+
+                # Get positions
+                start_pos = Gf.Vec3d(*skeleton_points[start_pt_idx])
+                end_pos = Gf.Vec3d(*skeleton_points[end_pt_idx])
+
+                # Calculate segment length
+                segment_vec = end_pos - start_pos
+                segment_len = segment_vec.GetLength()
+
+                # Store segment with cumulative distance along polyline
+                dist_start = cumul_dist
+                cumul_dist += segment_len
+                dist_end = cumul_dist
+
+                segments.append(
+                    (
+                        start_joint_idx,
+                        end_joint_idx,
+                        start_pos,
+                        end_pos,
+                        dist_start,
+                        dist_end,
+                    )
+                )
+
+            if segments:
+                polyline_segments[branch_id] = segments
+
+        total_segments = sum(len(segs) for segs in polyline_segments.values())
+        print(
+            f"    Built {total_segments} polyline-based skeleton segments across {len(polyline_segments)} branches"
+        )
+
+        # Collect branch hints for each vertex from face BranchIndex
+        vertex_branch_hints = {}  # vertex_idx -> branch_id
+        face_idx = 0
+        vert_offset = 0
+        for face_vert_count in face_vertex_counts:
+            if face_idx < len(branch_indices):
+                branch_id = branch_indices[face_idx]
+                # Mark all vertices in this face as belonging to this branch
+                for i in range(face_vert_count):
+                    vertex_idx = face_vertex_indices[vert_offset + i]
+                    # Use the first branch hint we find for each vertex
+                    if vertex_idx not in vertex_branch_hints:
+                        vertex_branch_hints[vertex_idx] = branch_id
+            vert_offset += face_vert_count
+            face_idx += 1
+
+        # Bind each vertex to the nearest HIERARCHICAL parent-child joint pair
+        # This prevents stretching by ensuring vertices only bind to adjacent joints
         vertex_to_joints = {}  # vertex_idx -> [(joint_idx, weight), ...]
 
-        for v_idx in range(num_points):
-            v_pos = points[v_idx]
-            vertex_pos = Gf.Vec3d(v_pos[0], v_pos[1], v_pos[2])
+        # Build parent-child relationships from polylines
+        joint_parent = {}  # joint_idx -> parent_joint_idx
+        joint_children = {}  # joint_idx -> [child_joint_idx, ...]
 
-            # Get branch hint for this vertex
-            branch_id = vertex_branch_hints.get(v_idx, 1)  # Default to branch 1 (trunk)
+        for polyline_idx, polyline in enumerate(skeleton_polylines):
+            for i in range(len(polyline) - 1):
+                child_pt = polyline[i + 1]
+                parent_pt = polyline[i]
 
-            if branch_id in branch_to_points:
-                branch_points = branch_to_points[branch_id]
-                cumulative_distances = branch_cumulative_distances.get(branch_id, {})
+                if (
+                    child_pt in point_to_joint_index
+                    and parent_pt in point_to_joint_index
+                ):
+                    child_joint = point_to_joint_index[child_pt]
+                    parent_joint = point_to_joint_index[parent_pt]
 
-                # Find closest segment and compute multi-joint influences
-                segment_influences = []  # [(joint_idx, distance, t), ...]
+                    # Skip twig joints
+                    if (
+                        child_joint in twig_joint_indices
+                        or parent_joint in twig_joint_indices
+                    ):
+                        continue
 
-                for i in range(len(branch_points) - 1):
-                    start_pt_idx = branch_points[i]
-                    end_pt_idx = branch_points[i + 1]
+                    joint_parent[child_joint] = parent_joint
+                    if parent_joint not in joint_children:
+                        joint_children[parent_joint] = []
+                    joint_children[parent_joint].append(child_joint)
 
-                    start_pos = skeleton_points[start_pt_idx]
-                    end_pos = skeleton_points[end_pt_idx]
+        # Build list of valid parent-child bone segments with their positions
+        bone_segments = []  # [(parent_joint, child_joint, parent_pos, child_pos), ...]
+        for child_joint, parent_joint in joint_parent.items():
+            # Find skeleton point indices for these joints
+            parent_pt = None
+            child_pt = None
+            for pt_idx, j_idx in point_to_joint_index.items():
+                if j_idx == parent_joint:
+                    parent_pt = pt_idx
+                if j_idx == child_joint:
+                    child_pt = pt_idx
 
-                    start_vec = Gf.Vec3d(start_pos[0], start_pos[1], start_pos[2])
-                    end_vec = Gf.Vec3d(end_pos[0], end_pos[1], end_pos[2])
+            if parent_pt is not None and child_pt is not None:
+                parent_pos = Gf.Vec3d(*skeleton_points[parent_pt])
+                child_pos = Gf.Vec3d(*skeleton_points[child_pt])
+                bone_segments.append((parent_joint, child_joint, parent_pos, child_pos))
 
-                    # Find closest point on segment to vertex
-                    segment = end_vec - start_vec
-                    to_vertex = vertex_pos - start_vec
+        print(f"    Binding {num_points} vertices using Blender automatic weights...")
 
-                    # Project to_vertex onto segment
-                    segment_len_sq = segment * segment
-                    if segment_len_sq > 0:
-                        t = max(0.0, min(1.0, (to_vertex * segment) / segment_len_sq))
-                    else:
-                        t = 0.0
+        # Use Blender's automatic weight calculation if available
+        use_blender = BLENDER_WEIGHTS_AVAILABLE
+        if use_blender:
+            print("    Using Blender automatic weights (heat diffusion)")
 
-                    closest_on_segment = start_vec + segment * t
-                    dist_vec = vertex_pos - closest_on_segment
-                    dist = (dist_vec * dist_vec) ** 0.5
+            # Get mesh faces for topology
+            face_vertex_counts = mesh.GetFaceVertexCountsAttr().Get()
+            face_vertex_indices = mesh.GetFaceVertexIndicesAttr().Get()
 
-                    # Store both joints of this segment with their distance
-                    start_joint_idx = point_to_joint_index.get(start_pt_idx, 0)
-                    end_joint_idx = point_to_joint_index.get(end_pt_idx, 0)
+            # Convert to list of faces
+            faces = []
+            idx = 0
+            for count in face_vertex_counts:
+                face = list(face_vertex_indices[idx : idx + count])
+                faces.append(face)
+                idx += count
 
-                    segment_influences.append((start_joint_idx, dist, 1.0 - t))
-                    segment_influences.append((end_joint_idx, dist, t))
+            # Build skeleton hierarchy for Blender
+            skeleton_hierarchy = []
+            for child_joint, parent_joint in joint_parent.items():
+                # Find skeleton point indices for these joints
+                child_pt = None
+                parent_pt = None
+                for pt_idx, j_idx in point_to_joint_index.items():
+                    if j_idx == child_joint:
+                        child_pt = pt_idx
+                    if j_idx == parent_joint:
+                        parent_pt = pt_idx
 
-                # Find the closest segment (minimum distance)
-                if segment_influences:
-                    min_dist = min(infl[1] for infl in segment_influences)
+                if child_pt is not None and parent_pt is not None:
+                    skeleton_hierarchy.append((child_pt, parent_pt))
 
-                    # Keep only joints from the closest segment (2 joints)
-                    closest_segment_joints = [
-                        (joint_idx, t_param)
-                        for joint_idx, dist, t_param in segment_influences
-                        if dist <= min_dist + 1e-6
-                    ]
+            # Calculate weights using Blender
+            try:
+                blender_weights = calculate_blender_weights(
+                    vertices=points,
+                    faces=faces,
+                    skeleton_points=skeleton_points,
+                    skeleton_hierarchy=skeleton_hierarchy,
+                    point_to_joint=point_to_joint_index,
+                )
 
-                    # Compute weights based on t parameter (position along segment)
-                    # t_param: 0.0 = at start joint, 1.0 = at end joint
-                    joint_weights_map = {}
-                    for joint_idx, t_param in closest_segment_joints:
-                        # Weight decreases linearly from 1.0 to 0.0
-                        weight = t_param
-                        if joint_idx in joint_weights_map:
-                            joint_weights_map[joint_idx] = max(
-                                joint_weights_map[joint_idx], weight
-                            )
-                        else:
-                            joint_weights_map[joint_idx] = weight
+                # Convert to dual-joint format
+                vertex_to_joints = blender_weights_to_dual_joint(
+                    blender_weights=blender_weights,
+                    num_vertices=num_points,
+                )
 
-                    # Normalize weights to sum to 1.0
-                    total_weight = sum(joint_weights_map.values())
-                    if total_weight > 0:
-                        normalized_weights = [
-                            (joint_idx, weight / total_weight)
-                            for joint_idx, weight in joint_weights_map.items()
+                print(
+                    f"    Successfully calculated Blender weights for {len(vertex_to_joints)} vertices"
+                )
+
+            except Exception as e:
+                print(f"    WARNING: Blender weight calculation failed: {e}")
+                print("    Falling back to Mass-based method")
+                use_blender = False  # Disable for this run
+
+        # Fallback to Mass-based if Blender not available
+        if not use_blender:
+            print("    Using Mass-based weight calculation")
+
+            # Get mesh vertex masses from USD primvars
+            mesh_vertex_masses = []
+            primvars_api_mesh = UsdGeom.PrimvarsAPI(mesh_prim)
+            mass_primvar = primvars_api_mesh.GetPrimvar("Mass")
+            if mass_primvar.HasValue():
+                mesh_vertex_masses = list(mass_primvar.Get())
+
+            if mesh_vertex_masses and skeleton_masses:
+                print(
+                    f"    Using Mass attribute matching ({len(mesh_vertex_masses)} mesh vertices)"
+                )
+
+                # Build Mass -> skeleton point index mapping
+                mass_to_skeleton_point = {}
+                for skel_pt_idx, mass in enumerate(skeleton_masses):
+                    if mass not in mass_to_skeleton_point:
+                        mass_to_skeleton_point[mass] = []
+                    mass_to_skeleton_point[mass].append(skel_pt_idx)
+
+                # For each vertex, find its primary joint via Mass matching
+                for v_idx in range(num_points):
+                    if v_idx >= len(mesh_vertex_masses):
+                        vertex_to_joints[v_idx] = [(0, 1.0), (0, 0.0)]
+                        continue
+
+                    vertex_mass = mesh_vertex_masses[v_idx]
+                    matching_skeleton_points = mass_to_skeleton_point.get(
+                        vertex_mass, []
+                    )
+
+                    if not matching_skeleton_points:
+                        # Fallback to nearest skeleton point by position
+                        v_pos = points[v_idx]
+                        vertex_pos = Gf.Vec3d(v_pos[0], v_pos[1], v_pos[2])
+                        best_skel_pt = 0
+                        best_dist = float("inf")
+                        for skel_pt_idx in range(len(skeleton_points)):
+                            skel_pos = skeleton_points[skel_pt_idx]
+                            skel_vec = Gf.Vec3d(skel_pos[0], skel_pos[1], skel_pos[2])
+                            dist = (vertex_pos - skel_vec).GetLength()
+                            if dist < best_dist:
+                                best_dist = dist
+                                best_skel_pt = skel_pt_idx
+                        matching_skeleton_points = [best_skel_pt]
+
+                    # Use first matching skeleton point as primary
+                    primary_skel_pt = matching_skeleton_points[0]
+                    primary_joint = point_to_joint_index.get(primary_skel_pt, 0)
+
+                    # Skip if primary is a twig joint
+                    if primary_joint in twig_joint_indices:
+                        vertex_to_joints[v_idx] = [(0, 1.0), (0, 0.0)]
+                        continue
+
+                    # Find parent joint for secondary binding
+                    parent_joint = joint_parent.get(primary_joint, 0)
+
+                    # Simple dual-joint binding
+                    if (
+                        parent_joint != primary_joint
+                        and parent_joint not in twig_joint_indices
+                    ):
+                        # Use equal weights as simple fallback
+                        vertex_to_joints[v_idx] = [
+                            (min(parent_joint, primary_joint), 0.5),
+                            (max(parent_joint, primary_joint), 0.5),
                         ]
                     else:
-                        # Fallback: equal weight to both joints
-                        normalized_weights = [
-                            (j, 0.5) for j, _ in closest_segment_joints[:2]
+                        vertex_to_joints[v_idx] = [
+                            (primary_joint, 1.0),
+                            (primary_joint, 0.0),
                         ]
+        else:
+            # Fallback to spatial nearest-neighbor (old method)
+            print(
+                "    WARNING: No Mass attributes found, falling back to spatial binding"
+            )
 
-                    # Sort by joint index for consistency
-                    normalized_weights.sort(key=lambda x: x[0])
-                    vertex_to_joints[v_idx] = normalized_weights
+            for v_idx in range(num_points):
+                v_pos = points[v_idx]
+                vertex_pos = Gf.Vec3d(v_pos[0], v_pos[1], v_pos[2])
+
+                # Find the nearest bone segment (parent-child joint pair)
+                best_segment = None
+                best_distance = float("inf")
+                best_t = 0.0
+
+                for parent_joint, child_joint, parent_pos, child_pos in bone_segments:
+                    # Project vertex onto bone segment
+                    bone_vec = child_pos - parent_pos
+                    to_vertex = vertex_pos - parent_pos
+
+                    bone_len_sq = bone_vec * bone_vec
+                    if bone_len_sq > 0.0001:  # Avoid divide by zero
+                        t = (to_vertex * bone_vec) / bone_len_sq
+                        t_clamped = max(0.0, min(1.0, t))
+                    else:
+                        t_clamped = 0.0
+
+                    # Closest point on bone segment
+                    closest_point = parent_pos + bone_vec * t_clamped
+                    distance = (vertex_pos - closest_point).GetLength()
+
+                    if distance < best_distance:
+                        best_distance = distance
+                        best_segment = (parent_joint, child_joint)
+                        best_t = t_clamped
+
+                if best_segment:
+                    parent_joint, child_joint = best_segment
+
+                    # Weight based on position along bone
+                    parent_weight = 1.0 - best_t
+                    child_weight = best_t
+
+                    # Store in ascending joint index order
+                    if parent_joint < child_joint:
+                        vertex_to_joints[v_idx] = [
+                            (parent_joint, parent_weight),
+                            (child_joint, child_weight),
+                        ]
+                    else:
+                        vertex_to_joints[v_idx] = [
+                            (child_joint, child_weight),
+                            (parent_joint, parent_weight),
+                        ]
                 else:
-                    # No segments found, bind to root
-                    vertex_to_joints[v_idx] = [(0, 1.0)]
-            else:
-                # Branch not found, bind to root
-                vertex_to_joints[v_idx] = [(0, 1.0)]
+                    vertex_to_joints[v_idx] = [(0, 1.0), (0, 0.0)]
 
-        # Build final arrays with multiple influences per vertex
         # USD format: flat arrays where element_size indicates influences per vertex
         max_influences = 2  # Use 2 joints per vertex for smooth deformation
 
@@ -877,10 +1369,17 @@ def add_twig_skeleton_to_usd(
         # Create skeleton root
         root_path = Sdf.Path("/Twig")
         skel_root = UsdSkel.Root.Define(stage, root_path)
+        skel_root_prim = stage.GetPrimAtPath(root_path)
+
+        # Apply SkelBindingAPI to SkelRoot (required for proper binding)
+        UsdSkel.BindingAPI.Apply(skel_root_prim)
 
         # NOTE: Do NOT apply UnrealNaniteAssemblyRootAPI here
         # Twigs are referenced into Nanite Assemblies via PointInstancer.
         # Only the assembly root should have NaniteAssemblyRootAPI.
+        #
+        # NOTE: Do NOT set skel:skeleton or skel:animationSource on SkelRoot
+        # These relationships should ONLY exist on the Mesh prim to avoid confusion
 
         # Create skeleton with single root joint
         # Use "Skel" naming to match Nanite Assembly requirements
@@ -1219,8 +1718,6 @@ def build_skeletal_nanite_assembly(
         orientations = []
         scales = []
         proto_indices = []
-        bind_joints = []
-        bind_weights = []
 
         # Build prototype index map
         proto_list = list(twig_prototype_paths.values())
@@ -1230,8 +1727,6 @@ def build_skeletal_nanite_assembly(
             position = placement.get("position", (0, 0, 0))
             orientation = placement.get("orientation", (1, 0, 0, 0))  # (w, x, y, z)
             scale = placement.get("scale", (1, 1, 1))
-            joint_name = placement.get("joint_name", "root")
-            weight = placement.get("weight", 1.0)
 
             # Get prototype index
             if twig_type in twig_prototype_paths:
@@ -1245,8 +1740,6 @@ def build_skeletal_nanite_assembly(
             orientations.append(Gf.Quath(*orientation))
             scales.append(Gf.Vec3f(*scale))
             proto_indices.append(proto_idx)
-            bind_joints.append(joint_name)
-            bind_weights.append(weight)
 
         # Set instancer attributes
         instancer.CreatePositionsAttr(positions)
@@ -1257,27 +1750,20 @@ def build_skeletal_nanite_assembly(
         # Set prototype relationships
         instancer.CreatePrototypesRel().SetTargets(proto_list)
 
-        # Set bind joints and weights (NaniteAssemblySkelBindingAPI attributes)
-        # CRITICAL: Create as uniform attributes to match working example format
-        # Working: "uniform token[]" | Ours was: "token[] (interpolation=uniform)"
-
-        bind_joints_attr = instancer_prim.CreateAttribute(
-            "primvars:unreal:naniteAssembly:bindJoints",
-            Sdf.ValueTypeNames.TokenArray,
-            custom=False,
-            variability=Sdf.VariabilityUniform,
-        )
-        bind_joints_attr.Set(bind_joints)
-        bind_joints_attr.SetMetadata("elementSize", 1)
-
-        bind_weights_attr = instancer_prim.CreateAttribute(
-            "primvars:unreal:naniteAssembly:bindJointWeights",
-            Sdf.ValueTypeNames.FloatArray,
-            custom=False,
-            variability=Sdf.VariabilityUniform,
-        )
-        bind_weights_attr.Set(bind_weights)
-        bind_weights_attr.SetMetadata("elementSize", 1)
+        # NOTE: DO NOT set bindJoints/bindJointWeights on PointInstancer
+        #
+        # The instanced twigs already have their own skeletal binding defined in their
+        # referenced USD files. Setting bindJoints here causes Unreal to override the
+        # twig's internal skeleton with the tree skeleton paths, resulting in distorted
+        # deformations where the tree skeleton joints incorrectly drive twig mesh vertices.
+        #
+        # Correct behavior:
+        #   - PointInstancer handles placement (position/orientation/scale)
+        #   - Referenced twig USD files handle skeletal binding (skel:jointIndices/Weights)
+        #   - Tree skeleton twig mount bones position the instances via transforms
+        #
+        # This matches the behavior seen when viewing the tree skeleton alone (works)
+        # vs viewing the assembly (broken due to bindJoints override).
 
         # Set default prim
         stage.SetDefaultPrim(root_prim)
@@ -1289,6 +1775,9 @@ def build_skeletal_nanite_assembly(
     except Exception as e:
         print(f"Error building skeletal Nanite assembly: {e}")
         import traceback
+
+        traceback.print_exc()
+        return False
 
         traceback.print_exc()
         return False
