@@ -54,6 +54,10 @@ from growpy import (
     simulate_forest_growth,
 )
 from growpy.io.blender_export import get_quality_preset
+from growpy.io.usd_validation import (
+    print_validation_results,
+    validate_skeletal_structure,
+)
 
 
 def place_twigs_on_exported_trees(
@@ -489,6 +493,32 @@ def generate_forest_exports(
                 print(
                     f"Exported {len(exported_files)} tree files ({format_str}) with '{quality}' quality"
                 )
+
+                # Validate skeletal structure if creating Nanite assemblies
+                if create_nanite_assembly:
+                    print(f"\nValidating skeletal assemblies...")
+                    validation_errors = []
+                    for exported_file in exported_files:
+                        # Check if this is a skeletal assembly file
+                        if "_assembly" in exported_file.stem:
+                            # For assemblies, validate the tree skeleton it references
+                            tree_skel_file = exported_file.parent / exported_file.stem.replace(
+                                "_assembly", "_tree"
+                            ).replace(".", "") + ".usda"
+                            if tree_skel_file.exists():
+                                results = validate_skeletal_structure(tree_skel_file, verbose=False)
+                                if not results["valid"]:
+                                    validation_errors.append((tree_skel_file.name, results))
+                                    print(f"  [WARN] {tree_skel_file.name}: Validation issues found")
+                                else:
+                                    print(f"  [OK] {tree_skel_file.name}: Valid skeletal structure ({results['info'].get('total_joints', 0)} joints, {results['info'].get('twig_bones', 0)} twig bones)")
+
+                    if validation_errors:
+                        print(f"\n⚠️  Found {len(validation_errors)} file(s) with validation issues:")
+                        for file_name, results in validation_errors:
+                            print_validation_results(results, file_name)
+                    else:
+                        print(f"\n✓ All skeletal structures validated successfully")
 
                 # Place twigs if requested
                 if place_twigs:
