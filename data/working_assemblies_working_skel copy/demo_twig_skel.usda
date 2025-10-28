@@ -9,26 +9,27 @@ def SkelRoot "Twig" (
     prepend apiSchemas = ["SkelBindingAPI"]
 )
 {
-    def Skeleton "TwigSkel"
+    def Skeleton "Skel"
     {
         uniform matrix4d[] bindTransforms = [( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )]
         uniform token[] joints = ["root"]
         uniform matrix4d[] restTransforms = [( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )]
     }
 
-    rel skel:animationSource = </Twig/TwigSkel>
-    rel skel:skeleton = </Twig/TwigSkel>
+    rel skel:animationSource = </Twig/Skel>
+    rel skel:skeleton = </Twig/Skel>
 
     def Mesh "Mesh" (
         prepend apiSchemas = ["SkelBindingAPI"]
     )
     {
+        uniform token[] primvars:part = ["leaf"]
         uniform bool doubleSided = 1
         int[] faceVertexCounts = [3]
         int[] faceVertexIndices = [0, 1, 2]
-        point3f[] points = [(0, 0, 0), (0.25, -0.5, 0), (0.25, 0.25, 0)]
+        point3f[] points = [(0, 0, 0), (0.1, -0.1, 0), (0.1, 0.1, 0)]
         
-        rel skel:skeleton = </Twig/TwigSkel>
+        rel skel:skeleton = </Twig/Skel>
         int[] primvars:skel:jointIndices = [0, 0, 0] (
             elementSize = 1
             interpolation = "vertex"
