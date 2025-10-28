@@ -270,13 +270,15 @@ def test_simple_tree_with_twigs(output_dir: Path, csv_path: Path):
 
     print(f"   [OK] Exported tree mesh: {tree_usd_path.name}")
 
-    # Add skeleton with twig bones
-    print("\n5. Adding skeleton with twig mount bones...")
-    if not add_skeleton_to_usd(tree_usd_path, grove, add_twig_bones=True):
+    # Add skeleton WITHOUT dedicated twig bones
+    # Twigs will bind to nearest existing tree joints instead
+    print("\n5. Adding skeleton (without dedicated twig bones)...")
+    if not add_skeleton_to_usd(tree_usd_path, grove, add_twig_bones=False):
         print("   ERROR: Failed to add skeleton")
         return False
 
     print(f"   [OK] Added skeleton: {tree_usd_path.name}")
+    print(f"   NOTE: Twigs will bind to nearest tree joints (no dedicated twig bones)")
 
     # Validate tree structure
     print("\n6. Validating tree skeletal structure...")

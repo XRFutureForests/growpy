@@ -112,20 +112,13 @@ def create_nanite_assembly_usd(
         tree_prim_type = "SkelRoot" if use_skeletal_mesh else "Xform"
         tree_prim = stage.DefinePrim(f"/{assembly_name}/TreeMesh", tree_prim_type)
 
-        # Reference the tree mesh (no API schemas needed - handled by reference)
-        if use_skeletal_mesh:
-            # For skeletal: Reference without prim path - use defaultPrim from source USD
-            # The skeletal tree USD has defaultPrim set to "Tree" (SkelRoot)
-            # USD will merge Tree's contents into TreeMesh, so TreeSkel becomes /TreeMesh/TreeSkel
-            # CRITICAL: Use relative path (same directory) for portability
-            tree_prim.GetReferences().AddReference(f"./{tree_usd_path.name}")
-        else:
-            # For static: Reference specific /Tree prim
-            # CRITICAL: Use relative path (same directory) for portability
-            tree_prim.GetReferences().AddReference(
-                f"./{tree_usd_path.name}",
-                "/Tree",
-            )
+        # Reference the tree mesh
+        # CRITICAL: Always explicitly reference the /Tree prim path for consistency
+        # This ensures Unreal properly understands the skeleton structure
+        tree_prim.GetReferences().AddReference(
+            f"./{tree_usd_path.name}",
+            "/Tree",  # Explicit prim path (matches demo structure)
+        )
 
         if use_skeletal_mesh:
             # For skeletal: Set skeleton relationship to embedded skeleton
@@ -240,25 +233,36 @@ def create_nanite_assembly_usd(
                     # Create prototype with ExternalRef
                     proto_name = twig_type.replace("_", "")
 
-                    # CRITICAL: Don't specify prim type - let it inherit from the reference!
-                    # For skeletal twigs, this allows the SkelRoot type to come through
-                    # For static twigs, this allows the Xform/Mesh type to come through
-                    # Specifying "Xform" breaks skeletal binding in Unreal!
-                    proto_prim = stage.DefinePrim(
-                        f"/{assembly_name}/TwigPrototypes/{proto_name}"
-                    )
-
+                    # CRITICAL: For skeletal twigs, use Xform wrapper with SkelRoot child
+                    # This matches the demo structure and properly isolates the twig skeleton
+                    # from the tree skeleton, preventing cross-skeleton interference
                     if use_skeletal_mesh:
-                        print(
-                            f"      Prototype {proto_name}: {twig_ref_path.stem} (skeletal twig - type from reference)"
+                        # Create Xform wrapper (instanceable)
+                        proto_xform = UsdGeom.Xform.Define(
+                            stage, f"/{assembly_name}/TwigPrototypes/{proto_name}"
+                        )
+                        proto_prim = proto_xform.GetPrim()
+                        proto_prim.SetInstanceable(True)
+
+                        # Create SkelRoot child that references the twig USD
+                        skel_root_path = f"/{assembly_name}/TwigPrototypes/{proto_name}/TwigSkelRoot"
+                        skel_root_prim = stage.DefinePrim(skel_root_path, "SkelRoot")
+
+                        # Reference twig USD from SkelRoot child (not the wrapper)
+                        skel_root_prim.GetReferences().AddReference(
+                            f"./{twig_ref_path.name}", "/Twig"
                         )
 
-                    # Add USD reference using relative path for portability
-                    # CRITICAL: Use ./ prefix for same-directory references
-                    proto_prim.GetReferences().AddReference(f"./{twig_ref_path.name}")
-
-                    # Make instanceable for memory efficiency
-                    proto_prim.SetInstanceable(True)
+                        print(
+                            f"      Prototype {proto_name}: {twig_ref_path.stem} (skeletal, Xform+SkelRoot wrapper)"
+                        )
+                    else:
+                        # Static twigs: simpler structure
+                        proto_prim = stage.DefinePrim(
+                            f"/{assembly_name}/TwigPrototypes/{proto_name}"
+                        )
+                        proto_prim.GetReferences().AddReference(f"./{twig_ref_path.name}")
+                        proto_prim.SetInstanceable(True)
 
                     print(f"      Reference: {twig_ref_path.resolve()}")
 
@@ -323,9 +327,15 @@ def create_nanite_assembly_usd(
                     instancer.CreateProtoIndicesAttr().Set(all_proto_indices)
 
                     if use_skeletal_mesh:
-                        print(f"    Binding twig instances to skeleton joints...")
+                        # Apply NaniteAssemblySkelBindingAPI and set bindJoints for skeletal assembly
+                        #
+                        # CRITICAL: bindJoints controls INSTANCE PLACEMENT (not vertex deformation)
+                        # - Tree skeleton twig mount bones (e.g., "root/joint_1/twig_0") move instances
+                        # - Each twig's internal skeleton (e.g., "root") deforms its own mesh vertices
+                        # - NO cross-skeleton binding: tree skeleton doesn't deform twig vertices
+                        #
+                        # This is required for Unreal to recognize and import the skeletal assembly correctly.
 
-                        # Apply NaniteAssemblySkelBindingAPI to PointInstancer
                         skel_binding_schemas = Sdf.TokenListOp()
                         skel_binding_schemas.prependedItems = [
                             "NaniteAssemblySkelBindingAPI"
@@ -335,12 +345,11 @@ def create_nanite_assembly_usd(
                         # Get primvars API for creating custom attributes
                         primvars_api = UsdGeom.PrimvarsAPI(instancer_prim)
 
-                        # Extract twig joint mapping from tree USD
-                        twig_joint_mapping = _extract_twig_joint_mapping_from_usd(
-                            tree_usd_path
-                        )
+                        # Extract skeleton joints from tree USD (positions and paths)
+                        skeleton_joints = _extract_skeleton_joints_from_usd(tree_usd_path)
 
-                        # Build bindJoints array - each twig instance binds to its mount bone
+                        # Build bindJoints array - each twig instance binds to nearest tree joint
+                        # These control INSTANCE transforms, not vertex deformation
                         bind_joints = []
                         bind_weights = []
 
@@ -353,32 +362,42 @@ def create_nanite_assembly_usd(
                                 continue
 
                             for placement in placement_list:
-                                # Get twig key from placement
-                                twig_key = placement.get("twig_key")
-                                if twig_key and twig_key in twig_joint_mapping:
-                                    joint_path = twig_joint_mapping[twig_key]
-                                    bind_joints.append(joint_path)
+                                # Get twig position
+                                twig_pos = placement.get("position", (0, 0, 0))
+
+                                # Find nearest tree skeleton joint
+                                if skeleton_joints:
+                                    nearest_joint, distance = _find_nearest_joint(
+                                        Gf.Vec3f(twig_pos[0], twig_pos[1], twig_pos[2]),
+                                        skeleton_joints
+                                    )
+                                    bind_joints.append(nearest_joint)
+                                    bind_weights.append(1.0)
+                                else:
+                                    # Fallback to root if no skeleton joints found
+                                    bind_joints.append("joint_0")
                                     bind_weights.append(1.0)
 
-                        # Create bindJoints primvar (token array)
+                        # Create bindJoints primvar with uniform interpolation
                         bind_joints_primvar = primvars_api.CreatePrimvar(
                             "unreal:naniteAssembly:bindJoints",
                             Sdf.ValueTypeNames.TokenArray,
-                            "constant",  # Uniform interpolation for all instances
+                            "uniform",  # Uniform interpolation for all instances
                         )
                         bind_joints_primvar.Set(bind_joints)
 
-                        # Create bindJointWeights primvar (float array)
+                        # Create bindJointWeights primvar with uniform interpolation
                         bind_weights_primvar = primvars_api.CreatePrimvar(
                             "unreal:naniteAssembly:bindJointWeights",
                             Sdf.ValueTypeNames.FloatArray,
-                            "constant",  # Uniform interpolation for all instances
+                            "uniform",  # Uniform interpolation for all instances
                         )
                         bind_weights_primvar.Set(bind_weights)
 
                         print(
-                            f"    [OK] Bound {len(bind_joints)} twig instances to skeleton joints"
+                            f"    [OK] Bound {len(bind_joints)} twig instances to tree skeleton joints"
                         )
+                        print(f"    [OK] bindJoints controls instance placement (not vertex deformation)")
                     else:
                         print(
                             f"    [OK] Added {len(all_positions)} twig instances ({len(prototype_paths)} types)"
