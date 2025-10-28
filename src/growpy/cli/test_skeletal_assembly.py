@@ -6,7 +6,7 @@ This script generates a simple tree with twigs and validates that the exported
 structure matches the working demo format from data/working_assemblies_working_skel/.
 
 Usage:
-    python test_skeletal_assembly.py --output-dir data/output/test_assembly
+    python ./src/growpy/cli/test_skeletal_assembly.py --output-dir data/output/test_assembly
 
 Requirements:
     - Run in the-grove conda environment
@@ -42,7 +42,9 @@ if not USD_AVAILABLE:
     print("\nTo fix this, install USD in your conda environment:")
     print("  conda install -c conda-forge usd-core")
     print("\nOr run through Blender to use its bundled USD:")
-    print("  blender --background --python src/growpy/cli/test_skeletal_assembly.py -- --output-dir data/output/test_assembly")
+    print(
+        "  blender --background --python src/growpy/cli/test_skeletal_assembly.py -- --output-dir data/output/test_assembly"
+    )
     sys.exit(1)
 
 # Import Grove after USD
@@ -52,9 +54,9 @@ except ImportError:
     print("ERROR: Grove core (the_grove_22_core) not available")
     sys.exit(1)
 
-from growpy.io.usd_builder import build_tree_usd, add_skeleton_to_usd
-from growpy.io.unreal_nanite_assembly import create_nanite_assembly_usd
 from growpy.io.blender_export import get_twig_usd_map_for_species
+from growpy.io.unreal_nanite_assembly import create_nanite_assembly_usd
+from growpy.io.usd_builder import add_skeleton_to_usd, build_tree_usd
 
 
 def validate_skeletal_structure(usd_path: Path) -> dict:
@@ -200,6 +202,7 @@ def test_simple_tree_with_twigs(output_dir: Path, csv_path: Path):
     print(f"   CSV file: {csv_path}")
 
     import pandas as pd
+
     df = pd.read_csv(csv_path)
 
     if df.empty:
@@ -208,11 +211,11 @@ def test_simple_tree_with_twigs(output_dir: Path, csv_path: Path):
 
     # Get first tree from CSV
     tree_data = df.iloc[0]
-    species = tree_data['species']
-    target_height = tree_data['height']
-    position_x = tree_data['x']
-    position_y = tree_data['y']
-    position_z = tree_data.get('z', 0)  # z is optional
+    species = tree_data["species"]
+    target_height = tree_data["height"]
+    position_x = tree_data["x"]
+    position_y = tree_data["y"]
+    position_z = tree_data.get("z", 0)  # z is optional
 
     print(f"   Species: {species}")
     print(f"   Target height: {target_height}m")
@@ -260,6 +263,12 @@ def test_simple_tree_with_twigs(output_dir: Path, csv_path: Path):
         return False
 
     model = models[0]
+
+    # CRITICAL: Triangulate mesh before extracting attributes
+    # This ensures face counts match between geometry and attributes
+    print(f"   Triangulating mesh...")
+    model.triangulate()
+    print(f"   [OK] Mesh triangulated")
 
     # Export tree mesh to USD
     print("\n4. Exporting tree mesh to USD...")
@@ -317,7 +326,9 @@ def test_simple_tree_with_twigs(output_dir: Path, csv_path: Path):
         # Try both original and normalized species names
         twig_usd_paths = get_twig_usd_map_for_species(species, prefer_skeletal=True)
         if not twig_usd_paths:
-            twig_usd_paths = get_twig_usd_map_for_species(species_normalized, prefer_skeletal=True)
+            twig_usd_paths = get_twig_usd_map_for_species(
+                species_normalized, prefer_skeletal=True
+            )
         if twig_usd_paths:
             print(f"   Found {len(twig_usd_paths)} twig type(s) via species lookup")
             for twig_type, twig_path in twig_usd_paths.items():
@@ -402,7 +413,9 @@ def test_simple_tree_with_twigs(output_dir: Path, csv_path: Path):
         print(f"  - Nanite Assembly: {assembly_path}")
         print(f"\nCompare with working demo:")
         print(f"  - data/working_assemblies_working_skel/demo_tree_skel.usda")
-        print(f"  - data/working_assemblies_working_skel/demo_assembly_external_ref.usda")
+        print(
+            f"  - data/working_assemblies_working_skel/demo_assembly_external_ref.usda"
+        )
     else:
         print("FAILED: Pipeline test completed with errors")
         return False

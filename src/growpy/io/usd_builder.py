@@ -60,11 +60,17 @@ def build_tree_usd(
     This function extracts geometry data directly from the Grove model using
     the Python API and constructs a USD file without coordinate transformations.
 
+    CRITICAL: The model must be triangulated BEFORE calling this function:
+        model.triangulate()
+
+    This ensures that face counts match between geometry and face attributes,
+    preventing mismatches in twig placement and material assignment.
+
     Args:
-        model: Grove tree model from grove.build_models()
+        model: Grove tree model from grove.build_models() - MUST be triangulated first
         output_path: Path where USD file will be saved
         up_axis: Coordinate system up axis ("Y" or "Z")
-        triangulated: Whether the model has been triangulated
+        triangulated: Whether the model has been triangulated (should always be True)
         include_materials: If False, creates simple geometry without materials/UVs
         clean_export: If True, creates minimal USD without default attributes (demo mode)
 
@@ -77,7 +83,7 @@ def build_tree_usd(
         >>> grove.simulate(5)
         >>> models = grove.build_models({...})
         >>> model = models[0]
-        >>> model.triangulate()
+        >>> model.triangulate()  # CRITICAL: Must triangulate first
         >>> build_tree_usd(model, Path("tree.usda"), up_axis="Z")
     """
     if not USD_AVAILABLE:

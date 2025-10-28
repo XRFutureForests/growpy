@@ -125,6 +125,30 @@ def create_nanite_assembly_usd(
             # /Tree is now a SkelRoot with /Tree/TreeSkel skeleton
             print(f"  Adding skeletal tree with embedded skeleton...")
 
+            # CRITICAL FIX: Override skel:* relationships with empty targets
+            # USD references are compositional - we must explicitly override
+            # the tree's internal skeleton bindings to prevent double-transformation
+            # The Nanite Assembly's skeleton relationship is the ONLY binding that should apply
+
+            # Create empty skel:skeleton relationship (overrides referenced tree's binding)
+            tree_skel_rel = tree_prim.CreateRelationship("skel:skeleton", custom=False)
+            tree_skel_rel.ClearTargets(
+                removeSpec=True
+            )  # removeSpec=True to block composition
+
+            # Create empty skel:animationSource relationship (overrides referenced tree's binding)
+            tree_anim_rel = tree_prim.CreateRelationship(
+                "skel:animationSource", custom=False
+            )
+            tree_anim_rel.ClearTargets(
+                removeSpec=True
+            )  # removeSpec=True to block composition
+
+            print(
+                f"    [FIX] Overrode skel:* relationships with empty targets (prevents double-binding)"
+            )
+
+            # Now set the Nanite Assembly skeleton relationship (the ONLY binding)
             skeleton_rel = root_prim.CreateRelationship(
                 "unreal:naniteAssembly:skeleton",
                 custom=False,
@@ -245,7 +269,9 @@ def create_nanite_assembly_usd(
                         proto_prim.SetInstanceable(True)
 
                         # Create SkelRoot child that references the twig USD
-                        skel_root_path = f"/{assembly_name}/TwigPrototypes/{proto_name}/TwigSkelRoot"
+                        skel_root_path = (
+                            f"/{assembly_name}/TwigPrototypes/{proto_name}/TwigSkelRoot"
+                        )
                         skel_root_prim = stage.DefinePrim(skel_root_path, "SkelRoot")
 
                         # Reference twig USD from SkelRoot child (not the wrapper)
@@ -261,7 +287,9 @@ def create_nanite_assembly_usd(
                         proto_prim = stage.DefinePrim(
                             f"/{assembly_name}/TwigPrototypes/{proto_name}"
                         )
-                        proto_prim.GetReferences().AddReference(f"./{twig_ref_path.name}")
+                        proto_prim.GetReferences().AddReference(
+                            f"./{twig_ref_path.name}"
+                        )
                         proto_prim.SetInstanceable(True)
 
                     print(f"      Reference: {twig_ref_path.resolve()}")
@@ -346,7 +374,9 @@ def create_nanite_assembly_usd(
                         primvars_api = UsdGeom.PrimvarsAPI(instancer_prim)
 
                         # Extract skeleton joints from tree USD (positions and paths)
-                        skeleton_joints = _extract_skeleton_joints_from_usd(tree_usd_path)
+                        skeleton_joints = _extract_skeleton_joints_from_usd(
+                            tree_usd_path
+                        )
 
                         # Build bindJoints array - each twig instance binds to nearest tree joint
                         # These control INSTANCE transforms, not vertex deformation
@@ -369,7 +399,7 @@ def create_nanite_assembly_usd(
                                 if skeleton_joints:
                                     nearest_joint, distance = _find_nearest_joint(
                                         Gf.Vec3f(twig_pos[0], twig_pos[1], twig_pos[2]),
-                                        skeleton_joints
+                                        skeleton_joints,
                                     )
                                     bind_joints.append(nearest_joint)
                                     bind_weights.append(1.0)
@@ -378,26 +408,38 @@ def create_nanite_assembly_usd(
                                     bind_joints.append("joint_0")
                                     bind_weights.append(1.0)
 
-                        # Create bindJoints primvar with uniform interpolation
-                        bind_joints_primvar = primvars_api.CreatePrimvar(
-                            "unreal:naniteAssembly:bindJoints",
+                        # Create bindJoints primvar with uniform variability and interpolation
+                        bind_joints_attr = instancer_prim.CreateAttribute(
+                            "primvars:unreal:naniteAssembly:bindJoints",
                             Sdf.ValueTypeNames.TokenArray,
-                            "uniform",  # Uniform interpolation for all instances
+                            False,  # custom (not built-in)
+                            Sdf.VariabilityUniform,  # uniform variability
                         )
-                        bind_joints_primvar.Set(bind_joints)
+                        bind_joints_attr.Set(bind_joints)
 
-                        # Create bindJointWeights primvar with uniform interpolation
-                        bind_weights_primvar = primvars_api.CreatePrimvar(
-                            "unreal:naniteAssembly:bindJointWeights",
+                        # Set interpolation and elementSize metadata
+                        bind_joints_attr.SetMetadata("interpolation", "uniform")
+                        bind_joints_attr.SetMetadata("elementSize", 1)
+
+                        # Create bindJointWeights primvar with uniform variability and interpolation
+                        bind_weights_attr = instancer_prim.CreateAttribute(
+                            "primvars:unreal:naniteAssembly:bindJointWeights",
                             Sdf.ValueTypeNames.FloatArray,
-                            "uniform",  # Uniform interpolation for all instances
+                            False,  # custom (not built-in)
+                            Sdf.VariabilityUniform,  # uniform variability
                         )
-                        bind_weights_primvar.Set(bind_weights)
+                        bind_weights_attr.Set(bind_weights)
+
+                        # Set interpolation and elementSize metadata
+                        bind_weights_attr.SetMetadata("interpolation", "uniform")
+                        bind_weights_attr.SetMetadata("elementSize", 1)
 
                         print(
                             f"    [OK] Bound {len(bind_joints)} twig instances to tree skeleton joints"
                         )
-                        print(f"    [OK] bindJoints controls instance placement (not vertex deformation)")
+                        print(
+                            f"    [OK] bindJoints controls instance placement (not vertex deformation)"
+                        )
                     else:
                         print(
                             f"    [OK] Added {len(all_positions)} twig instances ({len(prototype_paths)} types)"
