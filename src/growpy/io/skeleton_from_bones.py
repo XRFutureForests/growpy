@@ -256,24 +256,26 @@ def add_skeleton_from_grove_bones(
                 else [1.0] * len(bone_ids)
             )
 
+            # CRITICAL: Use elementSize=2 to match reference USD format
+            # Each vertex needs 2 joint influences (pad with 0/0.0 if only one)
             for bone_id, weight in zip(bone_ids, weights):
                 joint_idx = bone_to_joint.get(bone_id, 0)
-                joint_indices_array.append(joint_idx)
-                joint_weights_array.append(weight)
+                joint_indices_array.extend([joint_idx, 0])  # Primary joint + padding
+                joint_weights_array.extend([weight, 0.0])  # Primary weight + padding
 
-            # Apply to mesh
+            # Apply to mesh with elementSize=2
             binding = UsdSkel.BindingAPI.Apply(mesh.GetPrim())
-            binding.CreateJointIndicesPrimvar(False, 1).Set(
+            binding.CreateJointIndicesPrimvar(False, 2).Set(
                 Vt.IntArray(joint_indices_array)
             )
-            binding.CreateJointWeightsPrimvar(False, 1).Set(
+            binding.CreateJointWeightsPrimvar(False, 2).Set(
                 Vt.FloatArray(joint_weights_array)
             )
             binding.CreateGeomBindTransformAttr().Set(Gf.Matrix4d().SetIdentity())
             binding.CreateSkeletonRel().SetTargets([skel_path])
 
             print(
-                f"    [OK] Added skinning weights for {len(joint_indices_array)} vertices"
+                f"    [OK] Added skinning weights for {len(joint_indices_array)//2} vertices with elementSize=2"
             )
 
         # Move mesh under SkelRoot

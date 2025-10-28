@@ -706,6 +706,7 @@ def _build_usdskel_from_bones(
             prev_joint_path = joint_path
 
             # Create WORLD SPACE bindTransform
+            # UsdSkel bindTransforms are the world transforms of joints at bind time
             bind_transform = Gf.Matrix4d(1.0)
             bind_transform.SetTranslateOnly(world_pos)
             bind_transforms.append(bind_transform)
@@ -774,6 +775,7 @@ def _build_usdskel_from_bones(
                     joint_tokens.append(twig_joint_path)
 
                     # Bind transform (world space)
+                    # UsdSkel bindTransforms are world transforms at bind time
                     twig_bind_transform = Gf.Matrix4d(1.0)
                     twig_bind_transform.SetTranslateOnly(twig_world_pos)
                     bind_transforms.append(twig_bind_transform)
@@ -1415,22 +1417,33 @@ def add_twig_skeleton_to_usd(
         skel.CreateBindTransformsAttr(Vt.Matrix4dArray([bind_transform]))
         skel.CreateRestTransformsAttr(Vt.Matrix4dArray([rest_transform]))
 
-        # Re-parent mesh under SkelRoot
-        # Use "Mesh" naming to match Nanite Assembly requirements
-        new_mesh_path = root_path.AppendChild("Mesh")
-        old_mesh_path = mesh_prim.GetPath()
+        # Verify mesh is at expected location (Blender already exports it at /Twig/Mesh)
+        expected_mesh_path = root_path.AppendChild("Mesh")
+        if mesh_prim.GetPath() != expected_mesh_path:
+            # If mesh is at wrong location, move it
+            old_mesh_path = mesh_prim.GetPath()
+            Sdf.CopySpec(
+                stage.GetRootLayer(),
+                old_mesh_path,
+                stage.GetRootLayer(),
+                expected_mesh_path,
+            )
+            stage.RemovePrim(old_mesh_path)
+            mesh_prim = stage.GetPrimAtPath(expected_mesh_path)
+            if not mesh_prim or not mesh_prim.IsValid():
+                print(f"Error: Failed to get mesh at {expected_mesh_path} after move")
+                return False
 
-        # Copy mesh to new location
-        Sdf.CopySpec(
-            stage.GetRootLayer(), old_mesh_path, stage.GetRootLayer(), new_mesh_path
-        )
-
-        # Remove old mesh
-        stage.RemovePrim(old_mesh_path)
-
-        # Get the new mesh prim
-        mesh_prim = stage.GetPrimAtPath(new_mesh_path)
         mesh = UsdGeom.Mesh(mesh_prim)
+
+        # Clear any existing Blender-generated skinning attributes BEFORE binding
+        # (they use elementSize=1, we need elementSize=2)
+        if mesh_prim.HasProperty("primvars:skel:jointIndices"):
+            mesh_prim.RemoveProperty("primvars:skel:jointIndices")
+            print(f"  Removed existing jointIndices primvar")
+        if mesh_prim.HasProperty("primvars:skel:jointWeights"):
+            mesh_prim.RemoveProperty("primvars:skel:jointWeights")
+            print(f"  Removed existing jointWeights primvar")
 
         # Bind mesh to skeleton
         binding_api = UsdSkel.BindingAPI.Apply(mesh_prim)
@@ -1441,12 +1454,39 @@ def add_twig_skeleton_to_usd(
         num_points = len(points)
 
         # All vertices use joint 0 (root) with full weight
-        joint_indices = [0] * num_points
-        joint_weights = [1.0] * num_points
+        # CRITICAL: Use elementSize=2 to match tree skeleton format
+        # Each vertex needs 2 joint influences (even if second is padded with 0/0.0)
+        joint_indices = []
+        joint_weights = []
+        for _ in range(num_points):
+            joint_indices.extend(
+                [0, 0]
+            )  # First joint is root (0), second is padding (0)
+            joint_weights.extend([1.0, 0.0])  # First weight is 1.0, second is 0.0
 
-        # Set skinning attributes
-        binding_api.CreateJointIndicesPrimvar(False, 1).Set(joint_indices)
-        binding_api.CreateJointWeightsPrimvar(False, 1).Set(joint_weights)
+        # Create primvars with elementSize=2 using the UsdGeom API
+        mesh_geom = UsdGeom.Mesh(mesh_prim)
+        primvarsAPI = UsdGeom.PrimvarsAPI(mesh_prim)
+
+        # Create joint indices primvar
+        joint_indices_primvar = primvarsAPI.CreatePrimvar(
+            "skel:jointIndices", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.vertex
+        )
+        joint_indices_primvar.Set(joint_indices)
+        joint_indices_primvar.SetElementSize(2)
+        print(
+            f"  Created jointIndices primvar with elementSize=2, array length={len(joint_indices)}"
+        )
+
+        # Create joint weights primvar
+        joint_weights_primvar = primvarsAPI.CreatePrimvar(
+            "skel:jointWeights", Sdf.ValueTypeNames.FloatArray, UsdGeom.Tokens.vertex
+        )
+        joint_weights_primvar.Set(joint_weights)
+        joint_weights_primvar.SetElementSize(2)
+        print(
+            f"  Created jointWeights primvar with elementSize=2, array length={len(joint_weights)}"
+        )
 
         # CRITICAL: Remove any leftover /root prim from Blender export
         # The file should only contain /Twig (SkelRoot) for Unreal to properly recognize it
@@ -1762,20 +1802,77 @@ def build_skeletal_nanite_assembly(
         # Set prototype relationships
         instancer.CreatePrototypesRel().SetTargets(proto_list)
 
-        # NOTE: DO NOT set bindJoints/bindJointWeights on PointInstancer
+        # CRITICAL: Set bindJoints/bindJointWeights on PointInstancer
         #
-        # The instanced twigs already have their own skeletal binding defined in their
-        # referenced USD files. Setting bindJoints here causes Unreal to override the
-        # twig's internal skeleton with the tree skeleton paths, resulting in distorted
-        # deformations where the tree skeleton joints incorrectly drive twig mesh vertices.
+        # bindJoints controls INSTANCE PLACEMENT (not vertex deformation):
+        # - Tree skeleton twig mount bones (e.g., "root/joint_1/twig_0") move instances
+        # - Each twig's internal skeleton (e.g., "root") deforms its own mesh vertices
+        # - NO cross-skeleton binding: tree skeleton doesn't deform twig vertices
         #
-        # Correct behavior:
-        #   - PointInstancer handles placement (position/orientation/scale)
-        #   - Referenced twig USD files handle skeletal binding (skel:jointIndices/Weights)
-        #   - Tree skeleton twig mount bones position the instances via transforms
-        #
-        # This matches the behavior seen when viewing the tree skeleton alone (works)
-        # vs viewing the assembly (broken due to bindJoints override).
+        # This is REQUIRED for Unreal to recognize and import the skeletal assembly correctly.
+
+        # Extract skeleton joints from tree USD (positions and paths)
+        from .unreal_nanite_assembly import (
+            _extract_skeleton_joints_from_usd,
+            _find_nearest_joint,
+        )
+
+        skeleton_joints = _extract_skeleton_joints_from_usd(tree_skel_usd_path)
+
+        # Build bindJoints array - each twig instance binds to nearest tree joint
+        # These control INSTANCE transforms, not vertex deformation
+        bind_joints = []
+        bind_weights = []
+
+        for placement in twig_placements:
+            # Get twig position
+            twig_pos = placement.get("position", (0, 0, 0))
+
+            # Find nearest tree skeleton joint
+            if skeleton_joints:
+                nearest_joint, distance = _find_nearest_joint(
+                    Gf.Vec3f(twig_pos[0], twig_pos[1], twig_pos[2]),
+                    skeleton_joints,
+                )
+                bind_joints.append(nearest_joint)
+                bind_weights.append(1.0)
+            else:
+                # Fallback to root if no skeleton joints found
+                bind_joints.append("joint_0")
+                bind_weights.append(1.0)
+
+        # Create bindJoints primvar with uniform variability and interpolation
+        bind_joints_attr = instancer_prim.CreateAttribute(
+            "primvars:unreal:naniteAssembly:bindJoints",
+            Sdf.ValueTypeNames.TokenArray,
+            False,  # custom (not built-in)
+            Sdf.VariabilityUniform,  # uniform variability
+        )
+        bind_joints_attr.Set(bind_joints)
+
+        # Set interpolation and elementSize metadata
+        bind_joints_attr.SetMetadata("interpolation", "uniform")
+        bind_joints_attr.SetMetadata("elementSize", 1)
+
+        # Create bindJointWeights primvar with uniform variability and interpolation
+        bind_weights_attr = instancer_prim.CreateAttribute(
+            "primvars:unreal:naniteAssembly:bindJointWeights",
+            Sdf.ValueTypeNames.FloatArray,
+            False,  # custom (not built-in)
+            Sdf.VariabilityUniform,  # uniform variability
+        )
+        bind_weights_attr.Set(bind_weights)
+
+        # Set interpolation and elementSize metadata
+        bind_weights_attr.SetMetadata("interpolation", "uniform")
+        bind_weights_attr.SetMetadata("elementSize", 1)
+
+        print(
+            f"    [OK] Bound {len(bind_joints)} twig instances to tree skeleton joints"
+        )
+        print(
+            f"    [OK] bindJoints controls instance placement (not vertex deformation)"
+        )
 
         # Set default prim
         stage.SetDefaultPrim(root_prim)

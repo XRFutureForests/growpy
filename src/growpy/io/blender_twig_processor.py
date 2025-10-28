@@ -81,6 +81,20 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
         root_path = Sdf.Path("/Twig")
         skel_root = UsdSkel.Root.Define(stage, root_path)
 
+        # CRITICAL: Add SkelBindingAPI to SkelRoot for proper Unreal Engine skeletal mesh interpretation
+        # Without this, Unreal cannot properly bind the skeleton to the mesh
+        if clean_export:
+            # Manually add SkelBindingAPI to apiSchemas for clean export
+            root_prim = skel_root.GetPrim()
+            api_schemas = root_prim.GetMetadata("apiSchemas") or Sdf.TokenListOp()
+            if not isinstance(api_schemas, Sdf.TokenListOp):
+                api_schemas = Sdf.TokenListOp()
+            api_schemas.prependedItems = ["SkelBindingAPI"]
+            root_prim.SetMetadata("apiSchemas", api_schemas)
+        else:
+            # Standard mode: use BindingAPI.Apply
+            UsdSkel.BindingAPI.Apply(skel_root.GetPrim())
+
         # NOTE: Do NOT apply UnrealNaniteAssemblyRootAPI here
         # Twigs are referenced into Nanite Assemblies via PointInstancer.
         # Only the assembly root should have NaniteAssemblyRootAPI.
@@ -159,9 +173,15 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
         # Set skinning data - all vertices bound to root joint
         num_points = len(points)
 
-        # All vertices use joint 0 (root) with full weight
-        joint_indices = [0] * num_points
-        joint_weights = [1.0] * num_points
+        # CRITICAL: Use elementSize=2 to match tree skeleton format
+        # Each vertex needs 2 joint influences (even if second is padded with 0/0.0)
+        joint_indices = []
+        joint_weights = []
+        for _ in range(num_points):
+            joint_indices.extend(
+                [0, 0]
+            )  # First joint is root (0), second is padding (0)
+            joint_weights.extend([1.0, 0.0])  # First weight is 1.0, second is 0.0
 
         # Set skinning attributes
         if clean_export:
@@ -174,7 +194,7 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
                 UsdGeom.Tokens.vertex,
             )
             joint_indices_primvar.Set(joint_indices)
-            joint_indices_primvar.SetElementSize(1)
+            joint_indices_primvar.SetElementSize(2)  # Changed from 1 to 2
 
             joint_weights_primvar = primvars_api.CreatePrimvar(
                 "skel:jointWeights",
@@ -182,11 +202,15 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
                 UsdGeom.Tokens.vertex,
             )
             joint_weights_primvar.Set(joint_weights)
-            joint_weights_primvar.SetElementSize(1)
+            joint_weights_primvar.SetElementSize(2)  # Changed from 1 to 2
         else:
             # Standard mode: use BindingAPI
-            binding_api.CreateJointIndicesPrimvar(False, 1).Set(joint_indices)
-            binding_api.CreateJointWeightsPrimvar(False, 1).Set(joint_weights)
+            binding_api.CreateJointIndicesPrimvar(False, 2).Set(
+                joint_indices
+            )  # Changed from 1 to 2
+            binding_api.CreateJointWeightsPrimvar(False, 2).Set(
+                joint_weights
+            )  # Changed from 1 to 2
 
         # Copy materials from /root/_materials/ to /Twig/_materials/ (only if not clean export)
         if not clean_export:

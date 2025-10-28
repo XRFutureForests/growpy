@@ -34,7 +34,8 @@
       "Bash(conda env list:*)",
       "Bash(exec $SHELL -l)",
       "Bash(PYTHONPATH=/Users/maximiliansperlich/Developer/the-grove/src:$PYTHONPATH /Applications/Blender.app/Contents/MacOS/Blender:*)",
-      "Bash(PYTHONPATH=/Users/maximiliansperlich/Developer/the-grove/src:$PYTHONPATH /opt/miniconda3/envs/the-grove/bin/python:*)"
+      "Bash(PYTHONPATH=/Users/maximiliansperlich/Developer/the-grove/src:$PYTHONPATH /opt/miniconda3/envs/the-grove/bin/python:*)",
+      "Bash(/opt/miniconda3/envs/the-grove/bin/python:*)"
     ],
     "deny": [],
     "ask": []
