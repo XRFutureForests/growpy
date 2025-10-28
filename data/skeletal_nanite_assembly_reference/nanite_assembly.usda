@@ -1,32 +1,32 @@
 #usda 1.0
 (
-    defaultPrim = "DemoAssemblyExternal"
+    defaultPrim = "Assembly"
     metersPerUnit = 1
     upAxis = "Z"
 )
 
-def Xform "DemoAssemblyExternal" (
+def Xform "Assembly" (
     prepend apiSchemas = ["NaniteAssemblyRootAPI", "GeomModelAPI"]
     kind = "assembly"
 )
 {
     uniform token unreal:naniteAssembly:meshType = "skeletalMesh"
-    rel unreal:naniteAssembly:skeleton = </DemoAssemblyExternal/TreeMesh/TreeSkel>
+    rel unreal:naniteAssembly:skeleton = </Assembly/TreeMesh/TreeSkel>
 
     def SkelRoot "TreeMesh" (
-        prepend references = @./demo_tree_skel.usda@</Tree>
+        prepend references = @./tree.usda@</Tree>
     )
     {
     }
 
     def Scope "TwigPrototypes"
     {
-        def Xform "twig" (
+        def Xform "TwigPrototype" (
             instanceable = true
         )
         {
             def SkelRoot "TwigSkelRoot" (
-                prepend references = @./demo_twig_skel.usda@</Twig>
+                prepend references = @./twig.usda@</Twig>
             )
             {
             }
@@ -39,14 +39,14 @@ def Xform "DemoAssemblyExternal" (
     {
         quath[] orientations = [(1, 0, 0, 0), (1, 0, 0, 0), (1, 0, 0, 0)]
         point3f[] positions = [(0.1, 0.05, 1.5), (-0.05, 0.087, 2.5), (0.45, 0, 1.3)]
-        uniform token[] primvars:unreal:naniteAssembly:bindJoints = ["root/joint_1/twig_1", "root/joint_1/joint_2/twig_2", "root/joint_1/branch_1/branch_tip/twig_3"] (
+        uniform token[] primvars:unreal:naniteAssembly:bindJoints = ["root/joint_1", "root/joint_1/joint_2", "root/joint_1/joint_4"] (
             interpolation = "uniform"
         )
         uniform float[] primvars:unreal:naniteAssembly:bindJointWeights = [1, 1, 1] (
             interpolation = "uniform"
         )
         int[] protoIndices = [0, 0, 0]
-        rel prototypes = </DemoAssemblyExternal/TwigPrototypes/twig>
+        rel prototypes = </Assembly/TwigPrototypes/TwigPrototype>
         float3[] scales = [(1, 1, 1), (1, 1, 1), (1, 1, 1)]
     }
 }

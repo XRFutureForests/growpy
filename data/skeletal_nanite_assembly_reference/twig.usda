@@ -9,33 +9,29 @@ def SkelRoot "Twig" (
     prepend apiSchemas = ["SkelBindingAPI"]
 )
 {
-    def Skeleton "Skel"
+    def Skeleton "TwigSkel"
     {
         uniform matrix4d[] bindTransforms = [( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )]
         uniform token[] joints = ["root"]
         uniform matrix4d[] restTransforms = [( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )]
     }
 
-    rel skel:animationSource = </Twig/Skel>
-    rel skel:skeleton = </Twig/Skel>
-
-    def Mesh "Mesh" (
+    def Mesh "TwigMesh" (
         prepend apiSchemas = ["SkelBindingAPI"]
     )
     {
-        uniform token[] primvars:part = ["leaf"]
         uniform bool doubleSided = 1
         int[] faceVertexCounts = [3]
         int[] faceVertexIndices = [0, 1, 2]
-        point3f[] points = [(0, 0, 0), (0.1, -0.1, 0), (0.1, 0.1, 0)]
+        point3f[] points = [(0, 0, 0), (0.2, -0.1, 0), (0.1, 0.1, 0)]
         
-        rel skel:skeleton = </Twig/Skel>
-        int[] primvars:skel:jointIndices = [0, 0, 0] (
-            elementSize = 1
+        rel skel:skeleton = <../TwigSkel>
+        int[] primvars:skel:jointIndices = [0, 0, 0, 0, 0, 0] (
+            elementSize = 2
             interpolation = "vertex"
         )
-        float[] primvars:skel:jointWeights = [1.0, 1.0, 1.0] (
-            elementSize = 1
+        float[] primvars:skel:jointWeights = [1.0, 0.0, 1.0, 0.0, 1.0, 0.0] (
+            elementSize = 2
             interpolation = "vertex"
         )
     }
