@@ -546,10 +546,16 @@ def _build_usdskel_from_bones(
     skel_path = Sdf.Path("/Tree/TreeSkel")
     skel = UsdSkel.Skeleton.Define(stage, skel_path)
 
-    # Set skeleton relationship for Unreal
-    tree_prim.CreateRelationship("unreal:naniteAssembly:skeleton").SetTargets(
-        [skel_path]
-    )
+    # Set skeleton relationships on SkelRoot (required by UsdSkel spec)
+    # These tell the SkelRoot where to find skeleton and animation data
+    binding_api = UsdSkel.BindingAPI.Apply(tree_prim)
+    binding_api.CreateSkeletonRel().SetTargets([skel_path])
+    binding_api.CreateAnimationSourceRel().SetTargets([skel_path])
+
+    # DO NOT set unreal:naniteAssembly:skeleton here!
+    # This Unreal-specific relationship should ONLY be in assembly files.
+    # Standalone tree USDs should only use standard USD skeleton relationships.
+    # Setting this here causes double-binding when tree is loaded in assembly context.
 
     # Build joint hierarchy from skeleton polylines (not just bones)
     # This gives proper bone direction by using all skeleton vertices
