@@ -84,8 +84,8 @@ def create_nanite_assembly_usd(
 
         # Root Xform with NaniteAssemblyRootAPI
         # Sanitize species name: replace spaces and hyphens with underscores for valid USD path
-        sanitized_name = species_name.replace(" ", "_").replace("-", "_")
-        assembly_name = f"{sanitized_name}_NaniteAssembly"
+        sanitized_name = species_name.replace(" ", "_").replace("-", "_").lower()
+        assembly_name = f"{sanitized_name}_nanite_assembly"
         root_prim = stage.DefinePrim(f"/{assembly_name}", "Xform")
         stage.SetDefaultPrim(root_prim)
 
@@ -107,22 +107,22 @@ def create_nanite_assembly_usd(
         ).Set(mesh_type)
 
         # Handle tree mesh - use SkelRoot for skeletal, Xform for static
-        # For skeletal: TreeMesh must be SkelRoot so Unreal can find it as ancestor of skeleton
-        # For static: TreeMesh is simple Xform wrapper
+        # For skeletal: tree_mesh must be SkelRoot so Unreal can find it as ancestor of skeleton
+        # For static: tree_mesh is simple Xform wrapper
         tree_prim_type = "SkelRoot" if use_skeletal_mesh else "Xform"
-        tree_prim = stage.DefinePrim(f"/{assembly_name}/TreeMesh", tree_prim_type)
+        tree_prim = stage.DefinePrim(f"/{assembly_name}/tree_mesh", tree_prim_type)
 
         # Reference the tree mesh
-        # CRITICAL: Always explicitly reference the /Tree prim path for consistency
+        # CRITICAL: Always explicitly reference the /tree prim path for consistency
         # This ensures Unreal properly understands the skeleton structure
         tree_prim.GetReferences().AddReference(
             f"./{tree_usd_path.name}",
-            "/Tree",  # Explicit prim path (matches demo structure)
+            "/tree",  # Explicit prim path (matches demo structure)
         )
 
         if use_skeletal_mesh:
             # For skeletal: Set skeleton relationship to embedded skeleton
-            # /Tree is now a SkelRoot with /Tree/TreeSkel skeleton
+            # /tree is now a SkelRoot with /tree/tree_skel skeleton
             print(f"  Adding skeletal tree with embedded skeleton...")
 
             # CRITICAL FIX: Override skel:* relationships with empty targets
@@ -153,10 +153,10 @@ def create_nanite_assembly_usd(
                 "unreal:naniteAssembly:skeleton",
                 custom=False,
             )
-            skeleton_rel.AddTarget(f"/{assembly_name}/TreeMesh/TreeSkel")
+            skeleton_rel.AddTarget(f"/{assembly_name}/tree_mesh/tree_skel")
 
-            print(f"    [OK] Skeletal tree embedded via TreeMesh (mesh + skeleton)")
-            print(f"    Skeleton relationship: /{assembly_name}/TreeMesh/TreeSkel")
+            print(f"    [OK] Skeletal tree embedded via tree_mesh (mesh + skeleton)")
+            print(f"    Skeleton relationship: /{assembly_name}/tree_mesh/tree_skel")
         else:
             print(f"  Adding static tree mesh...")
 
@@ -186,14 +186,15 @@ def create_nanite_assembly_usd(
 
             if placements and any(placements.values()):
                 # Remap twig paths from source assets to output directory copies
-                # Twigs are bundled/copied to output/Species/ directory
+                # Twigs already have "_twig" suffix from convert_twigs.py step
                 # Nanite Assembly must reference these copies for Unreal import to work
                 output_dir = output_path.parent
                 species_twigs_dir = output_dir
 
                 remapped_twig_paths = {}
                 for twig_type, source_twig_path in twig_usd_paths.items():
-                    # Check if twig was copied to output directory
+                    # Twig files already have _twig suffix from convert_twigs.py
+                    # Just look for the file by name in the output directory
                     output_twig_path = species_twigs_dir / source_twig_path.name
                     if output_twig_path.exists():
                         remapped_twig_paths[twig_type] = output_twig_path
@@ -219,13 +220,13 @@ def create_nanite_assembly_usd(
 
                     # Validate skeletal twigs for skeletal assemblies
                     if use_skeletal_mesh:
-                        is_skeletal_twig = "_skel" in twig_ref_path.stem
+                        is_skeletal_twig = "_skeletal" in twig_ref_path.stem
                         if not is_skeletal_twig:
                             print(
                                 f"    WARNING: Using static twig '{twig_ref_path.name}' in skeletal assembly!"
                             )
                             print(
-                                f"      Skeletal assemblies require skeletal twigs (_skel.usda)"
+                                f"      Skeletal assemblies require skeletal twigs (_skeletal.usda)"
                             )
                             print(
                                 f"      This may cause Unreal import to fail or twigs not to animate"
@@ -276,7 +277,7 @@ def create_nanite_assembly_usd(
 
                         # Reference twig USD from SkelRoot child (not the wrapper)
                         skel_root_prim.GetReferences().AddReference(
-                            f"./{twig_ref_path.name}", "/Twig"
+                            f"./{twig_ref_path.name}", "/twig"
                         )
 
                         print(
@@ -719,7 +720,7 @@ def _copy_skeleton_to_assembly(
                 copy_prim_hierarchy(child, target_path, skip_mesh=skip_mesh)
 
         # Copy SkelRoot and all descendants, but SKIP mesh geometry
-        # The mesh will be referenced externally via TreeMesh
+        # The mesh will be referenced externally via tree_mesh
         copy_prim_hierarchy(skel_root_prim, assembly_root_path, skip_mesh=True)
 
         print(f"      [OK] Copied skeleton hierarchy (without embedded meshes)")

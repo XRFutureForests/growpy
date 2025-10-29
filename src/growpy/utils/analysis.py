@@ -557,18 +557,25 @@ class SpeciesGrowthAnalyzer:
             return False
 
     def analyze_all_species(
-        self, parallel: bool = True, max_workers: Optional[int] = None
+        self, parallel: bool = True, max_workers: Optional[int] = None,
+        species_filter: Optional[list] = None
     ) -> Dict[str, bool]:
         """Analyze all available species (sequential or parallel).
 
         Args:
             parallel: Whether to use parallel processing (default: True)
             max_workers: Maximum number of parallel workers (default: CPU count - 1)
+            species_filter: Optional list of species to process (if None, processes all)
 
         Returns:
             Dictionary mapping species to success status
         """
         species_list = self.get_available_species()
+
+        # Filter species if requested
+        if species_filter:
+            species_list = [s for s in species_list if s in species_filter]
+
         results = {}
 
         if parallel:

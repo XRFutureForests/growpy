@@ -13,15 +13,20 @@ Key Features:
     - Standardized naming convention for twig types
     - Static mesh only (skeletal twig variants deprecated)
 
+Supports two CSV formats:
+  1. Forest placement CSV (x, y, species, height) - auto-extracts unique species
+  2. Asset lookup CSV (Common Name, Preset, Twig, Bark Texture) - direct asset reference
+
 Quick Start:
-    # Single-step conversion with automatic skeleton addition
-    python ./src/growpy/cli/convert_twigs.py data/assets/twigs
+    # Convert twigs for 5 species in data/input/test.csv (default)
+    python src/growpy/cli/convert_twigs.py data/assets/twigs
 
     # Both static and skeletal variants exported in one pass
     # Skeletons added using Blender's bundled USD (bpy.utils.expose_bundled_modules)
 
 Common Flags:
     --formats {usd,usda}  Export formats (default: usda)
+    --csv PATH            Species CSV filter (default: data/input/test.csv)
 
 Output per twig:
     - standard_name.usda          # Static mesh USD (no skeleton)
@@ -101,8 +106,14 @@ TEXTURE_MODIFIERS = {
 
 
 def standardize_twig_name(original_name: str, species_name: str) -> Tuple[str, Dict]:
-    """
-    Convert varied twig naming to standardized format.
+    """Convert Grove's CamelCase .blend filenames to snake_case USD output names.
+
+    Parses semantic meaning from Grove's .blend file naming (e.g., type, variation)
+    and combines with clean species name to produce standardized output names.
+
+    Args:
+        original_name: Original .blend filename (e.g., 'BeechApicalTwig.blend')
+        species_name: Clean species name from directory (e.g., 'beech')
 
     Returns:
         (standardized_name, metadata_dict)
@@ -306,6 +317,7 @@ def process_twig_directory(
     twig_dir: Path,
     formats: List[str] = ["usda"],
     clean_export: bool = False,
+    twig_filter: Optional[List[str]] = None,
 ) -> Dict[str, List[Path]]:
     """Process all twig blend files in a directory.
 
@@ -313,9 +325,35 @@ def process_twig_directory(
         twig_dir: Directory containing .blend twig files
         formats: Export formats to create
         clean_export: If True, creates minimal USD without default attributes (demo mode)
+        twig_filter: Optional list of twig directory names to process (snake_case)
+
     """
 
     blend_files = list(twig_dir.rglob("*.blend"))
+
+    # Filter blend files if twig_filter provided
+    if twig_filter:
+        # Convert filter to snake_case to match standardized directory names
+        twig_filter_snake = []
+        for twig in twig_filter:
+            # Check if CamelCase (contains uppercase) and convert
+            if any(c.isupper() for c in twig):
+                # Import camel_to_snake function from prepare_assets
+                import re
+
+                s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", twig)
+                s2 = re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1)
+                twig_filter_snake.append(s2.lower())
+            else:
+                twig_filter_snake.append(twig)
+
+        filtered_files = []
+        for blend_file in blend_files:
+            twig_dir_name = blend_file.parent.name
+            # Check both original filter and snake_case filter
+            if twig_dir_name in twig_filter or twig_dir_name in twig_filter_snake:
+                filtered_files.append(blend_file)
+        blend_files = filtered_files
 
     if not blend_files:
         print(f"No .blend files found in {twig_dir}")
@@ -334,8 +372,9 @@ def process_twig_directory(
 
     for blend_file in tqdm(blend_files, desc="Converting twigs"):
         try:
-            # Determine species name from directory
-            species_name = blend_file.parent.name.replace("Twig", "").replace("_", " ")
+            # Determine species name from directory (already in snake_case from prepare_assets)
+            # Example: aspen_twig -> aspen
+            species_name = blend_file.parent.name.replace("_twig", "").replace("_", " ")
             output_dir = blend_file.parent
 
             # Run processor script with conda Python (has bpy pip package + bundled USD)
@@ -365,11 +404,13 @@ def process_twig_directory(
                         results[species_name] = []
                     results[species_name].extend(exported)
 
-                # Validate skeletal twigs (files ending with _skel.usda)
-                skeletal_twigs = list(output_dir.glob("*_skel.usda"))
+                # Validate skeletal twigs (files ending with _skeletal.usda)
+                skeletal_twigs = list(output_dir.glob("*_skeletal.usda"))
                 if skeletal_twigs:
                     for skel_twig in skeletal_twigs:
-                        validation = validate_twig_skeletal_structure(skel_twig, verbose=False)
+                        validation = validate_twig_skeletal_structure(
+                            skel_twig, verbose=False
+                        )
                         if validation["valid"]:
                             print(f"  [OK] {skel_twig.name}: Valid skeletal structure")
                         else:
@@ -392,19 +433,29 @@ def process_twig_directory(
 def main():
     import argparse
 
+    # Get script directory for default paths
+    script_dir = Path(__file__).parent.parent.parent.parent
+    default_csv = script_dir / "data" / "input" / "test.csv"
+
     parser = argparse.ArgumentParser(
         description="Convert Grove twig files with robust texture handling and standardized naming",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    # Convert all twigs to USD
-    python convert_twigs.py data/assets/twigs --formats usda
-    
+    # Convert twigs for 5 species from forest placement CSV (auto-extracts from data/input/test.csv)
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --formats usda
+
     # Convert with both USD formats
-    python convert_twigs.py data/assets/twigs --formats usd usda
-    
-    # Convert specific species
-    python convert_twigs.py data/assets/twigs/Betulaceae_Downy_birch --formats usda
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --formats usd usda
+
+    # Convert specific species twig directory (no CSV filtering)
+    python src/growpy/cli/convert_twigs.py data/assets/twigs/european_beech_twig --formats usda --csv ""
+
+    # Convert ALL 57 available twigs using comprehensive lookup table
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --csv src/growpy/config/tree_asset_lookup.csv
+
+CSV Format Support:
+    Automatically handles forest placement CSV (x,y,species) or asset lookup CSV (Common Name,Twig)
 
 Output per twig:
     - standard_name.usda                   # Static mesh USD (no skeleton)
@@ -413,6 +464,12 @@ Output per twig:
     )
     parser.add_argument(
         "path", type=Path, help="Path to twig directory or single .blend file"
+    )
+    parser.add_argument(
+        "--csv",
+        type=Path,
+        default=default_csv,
+        help="Path to species CSV - only twigs for CSV species will be converted (default: data/input/test.csv)",
     )
     parser.add_argument(
         "--formats",
@@ -434,15 +491,114 @@ Output per twig:
         print(f"Error: Path not found: {args.path}")
         return 1
 
+    # Load CSV filter if provided
+    twig_filter = None
+    if args.csv and str(args.csv) != "":
+        if not args.csv.exists():
+            # If using default CSV and it doesn't exist, skip filtering with a warning
+            if args.csv == default_csv:
+                print(
+                    f"[WARN] Default CSV not found ({args.csv}), processing all twigs"
+                )
+            else:
+                print(f"Error: CSV file not found: {args.csv}")
+                return 1
+        else:
+            print(f"Loading twig filter from CSV: {args.csv}")
+            import pandas as pd
+
+            try:
+                df = pd.read_csv(args.csv)
+
+                # Check if this is a forest placement CSV (has "species" column)
+                if "species" in df.columns and "Twig" not in df.columns:
+                    print(
+                        f"[INFO] Detected forest placement CSV, extracting unique species..."
+                    )
+                    unique_species = df["species"].dropna().unique().tolist()
+                    print(
+                        f"[INFO] Found {len(unique_species)} unique species: {', '.join(unique_species)}"
+                    )
+
+                    # Load the asset lookup table
+                    asset_lookup_path = (
+                        script_dir
+                        / "src"
+                        / "growpy"
+                        / "config"
+                        / "tree_asset_lookup.csv"
+                    )
+                    if not asset_lookup_path.exists():
+                        print(
+                            f"[ERROR] Asset lookup table not found: {asset_lookup_path}"
+                        )
+                        return 1
+
+                    lookup_df = pd.read_csv(asset_lookup_path)
+
+                    # Filter lookup table by species names and extract twig names
+                    twig_filter = []
+                    for species in unique_species:
+                        # Try matching Common Name
+                        match = lookup_df[
+                            lookup_df["Common Name"].str.lower() == species.lower()
+                        ]
+
+                        # Try matching aliases if no direct match
+                        if match.empty and "Aliases" in lookup_df.columns:
+                            for _, row in lookup_df.iterrows():
+                                aliases = str(row.get("Aliases", "")).lower()
+                                if species.lower() in [
+                                    a.strip() for a in aliases.split(",")
+                                ]:
+                                    twig_name = str(row.get("Twig", ""))
+                                    if twig_name not in [
+                                        "—",
+                                        "",
+                                        "nan",
+                                    ] and not pd.isna(twig_name):
+                                        twig_filter.append(twig_name.strip())
+                                    break
+                        elif not match.empty:
+                            twig_name = str(match.iloc[0].get("Twig", ""))
+                            if twig_name not in ["—", "", "nan"] and not pd.isna(
+                                twig_name
+                            ):
+                                twig_filter.append(twig_name.strip())
+                        else:
+                            print(
+                                f"[WARN] Species '{species}' not found in asset lookup table"
+                            )
+
+                    twig_filter = list(set(twig_filter))  # Remove duplicates
+                    print(
+                        f"[INFO] Matched {len(twig_filter)} twig types from forest CSV"
+                    )
+                else:
+                    # Direct asset lookup CSV - get unique twig names
+                    twig_filter = []
+                    for twig_name in df["Twig"].dropna():
+                        if twig_name not in ["—", ""]:
+                            twig_filter.append(str(twig_name).strip())
+
+                    twig_filter = list(set(twig_filter))  # Remove duplicates
+                    print(f"Will process {len(twig_filter)} twig types from CSV")
+
+            except Exception as e:
+                print(f"Error reading CSV: {e}")
+                return 1
+
     if args.path.is_file() and args.path.suffix == ".blend":
         # Single file
         print(f"Processing single file: {args.path.name}")
         results = process_twig_directory(
-            args.path.parent, args.formats, args.clean_export
+            args.path.parent, args.formats, args.clean_export, twig_filter
         )
     elif args.path.is_dir():
         # Directory
-        results = process_twig_directory(args.path, args.formats, args.clean_export)
+        results = process_twig_directory(
+            args.path, args.formats, args.clean_export, twig_filter
+        )
     else:
         print(f"Error: Invalid path (must be .blend file or directory)")
         return 1
@@ -459,7 +615,7 @@ Output per twig:
     # Check for any files that might need manual skeleton addition
     skel_files = []
     for species, files in results.items():
-        skel_files.extend([f for f in files if "_skel" in f.stem])
+        skel_files.extend([f for f in files if "_skeletal" in f.stem])
 
     if skel_files:
         print(f"\nSkeletal variants: {len(skel_files)} files")
@@ -476,10 +632,16 @@ Output per twig:
                 validation_failures.append((skel_file, validation))
 
         if validation_failures:
-            print(f"  [WARN] {len(validation_failures)} skeletal file(s) have validation issues")
-            print(f"  Run manual fix: python src/growpy/cli/add_twig_skeletons.py {args.path}")
+            print(
+                f"  [WARN] {len(validation_failures)} skeletal file(s) have validation issues"
+            )
+            print(
+                f"  Run manual fix: python src/growpy/cli/add_twig_skeletons.py {args.path}"
+            )
         else:
-            print(f"  [OK] All {len(skel_files)} skeletal structures validated successfully")
+            print(
+                f"  [OK] All {len(skel_files)} skeletal structures validated successfully"
+            )
 
     return 0
 

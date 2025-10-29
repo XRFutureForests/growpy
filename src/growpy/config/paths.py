@@ -1,11 +1,26 @@
 """Asset path resolution for GrowPy."""
 
+import re
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import pandas as pd
 
 from .species import find_species_match, load_species_lookup
+
+
+def camel_to_snake(name: str) -> str:
+    """Convert CamelCase to snake_case.
+
+    Args:
+        name: CamelCase string
+
+    Returns:
+        snake_case string
+    """
+    s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
+    s2 = re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1)
+    return s2.lower()
 
 
 def get_data_directory() -> Path:
@@ -42,7 +57,15 @@ def get_preset_path(common_name: str) -> Path:
     if matched_name is None:
         raise ValueError(f"Species '{common_name}' not found in lookup table")
 
-    preset_name = df.loc[df["Common Name"] == matched_name, "Preset"].values[0]
+    # Use Standardized Name to match actual preset files (e.g., "european_beech.seed.json")
+    species_row = df.loc[df["Common Name"] == matched_name]
+    if "Standardized Name" in df.columns:
+        standardized_name = species_row["Standardized Name"].values[0]
+        preset_name = f"{standardized_name}.seed.json"
+    else:
+        # Fallback to Preset column if Standardized Name not available
+        preset_name = species_row["Preset"].values[0]
+
     assets_dir = get_assets_directory()
     return assets_dir / "presets" / preset_name
 
@@ -87,13 +110,18 @@ def get_bark_texture_path(common_name: str) -> Optional[Path]:
 
 
 def get_twig_for_species(common_name: str) -> Optional[str]:
-    """Get the twig name for a given species.
+    """Get the twig directory name for a given species.
 
     Args:
         common_name: Species common name
 
     Returns:
-        Twig name or None
+        Twig directory name (snake_case) or None
+
+    Note:
+        Converts CamelCase twig names from lookup table (e.g., "EuropeanBeechTwig")
+        to snake_case directory names (e.g., "european_beech_twig") to match
+        actual directory structure created by prepare_assets.py
     """
     df = load_species_lookup()
     if df.empty:
@@ -111,7 +139,9 @@ def get_twig_for_species(common_name: str) -> Optional[str]:
     if pd.isna(twig) or str(twig) in ["—", "", "nan"]:
         return None
 
-    return str(twig)
+    # Convert CamelCase to snake_case to match actual directory names
+    # e.g., "EuropeanBeechTwig" -> "european_beech_twig"
+    return camel_to_snake(str(twig))
 
 
 def get_twig_directory_path(common_name: str) -> Optional[Path]:

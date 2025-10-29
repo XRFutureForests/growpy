@@ -5,7 +5,11 @@ Forest generation with USD export.
 Generates multi-species forests from CSV data with configurable quality settings.
 
 Quick Start:
-    python generate_forest.py forest.csv --quality high --growth-cycle-limit 15
+    # Uses data/input/test.csv by default
+    python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 15
+
+    # Or specify a different CSV file
+    python src/growpy/cli/generate_forest.py my_forest.csv --quality high
 
 Common Flags:
     --quality {ultra,high,medium,low,performance}  Quality preset (default: ultra)
@@ -18,7 +22,7 @@ Full Documentation:
     See docs/guides/cli-reference.md for complete flag reference and examples
 
 Usage:
-python ./src/growpy/cli/generate_forest.py data/input/test.csv --quality high --output-dir data/output/forest --growth-cycle-limit 5
+    python src/growpy/cli/generate_forest.py [csv_file] --quality high --output-dir data/output/forest --growth-cycle-limit 5
 """
 
 # CRITICAL: Import bpy and expose bundled modules BEFORE any other imports
@@ -85,10 +89,10 @@ def place_twigs_on_exported_trees(
             # Find matching twig directory for this species
             species_name = tree_file.stem.replace("_tree", "")
 
-            # Look for twig directory matching species
-            twig_candidates = list(twigs_dir.glob(f"*{species_name}*Twig"))
+            # Look for twig directory matching species (snake_case naming)
+            twig_candidates = list(twigs_dir.glob(f"*{species_name}*_twig"))
             if not twig_candidates:
-                twig_candidates = list(twigs_dir.glob("*Twig"))
+                twig_candidates = list(twigs_dir.glob("*_twig"))
 
             if not twig_candidates:
                 print(f"  No twig found for {species_name}, skipping")
@@ -164,6 +168,15 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     Returns:
         List of exported file paths
     """
+    # CRITICAL: Import bpy and expose bundled modules in worker process
+    try:
+        import bpy
+
+        if hasattr(bpy.utils, "expose_bundled_modules"):
+            bpy.utils.expose_bundled_modules()
+    except ImportError:
+        pass
+
     import gc as _gc_module
 
     from growpy import get_config
@@ -194,6 +207,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         "".join(c for c in species if c.isalnum() or c in (" ", "-", "_"))
         .strip()
         .replace(" ", "_")
+        .lower()
     )
 
     species_dir = output_dir / species_clean
@@ -465,6 +479,7 @@ def generate_forest_exports(
                     "".join(c for c in species if c.isalnum() or c in (" ", "-", "_"))
                     .strip()
                     .replace(" ", "_")
+                    .lower()
                 )
                 species_dir = output_dir / species_clean
 
@@ -502,19 +517,33 @@ def generate_forest_exports(
                         # Check if this is a skeletal assembly file
                         if "_assembly" in exported_file.stem:
                             # For assemblies, validate the tree skeleton it references
-                            tree_skel_file = exported_file.parent / exported_file.stem.replace(
-                                "_assembly", "_tree"
-                            ).replace(".", "") + ".usda"
+                            tree_skel_file = (
+                                exported_file.parent
+                                / exported_file.stem.replace(
+                                    "_assembly", "_tree"
+                                ).replace(".", "")
+                                + ".usda"
+                            )
                             if tree_skel_file.exists():
-                                results = validate_skeletal_structure(tree_skel_file, verbose=False)
+                                results = validate_skeletal_structure(
+                                    tree_skel_file, verbose=False
+                                )
                                 if not results["valid"]:
-                                    validation_errors.append((tree_skel_file.name, results))
-                                    print(f"  [WARN] {tree_skel_file.name}: Validation issues found")
+                                    validation_errors.append(
+                                        (tree_skel_file.name, results)
+                                    )
+                                    print(
+                                        f"  [WARN] {tree_skel_file.name}: Validation issues found"
+                                    )
                                 else:
-                                    print(f"  [OK] {tree_skel_file.name}: Valid skeletal structure ({results['info'].get('total_joints', 0)} joints, {results['info'].get('twig_bones', 0)} twig bones)")
+                                    print(
+                                        f"  [OK] {tree_skel_file.name}: Valid skeletal structure ({results['info'].get('total_joints', 0)} joints, {results['info'].get('twig_bones', 0)} twig bones)"
+                                    )
 
                     if validation_errors:
-                        print(f"\n⚠️  Found {len(validation_errors)} file(s) with validation issues:")
+                        print(
+                            f"\n⚠️  Found {len(validation_errors)} file(s) with validation issues:"
+                        )
                         for file_name, results in validation_errors:
                             print_validation_results(results, file_name)
                     else:
@@ -552,6 +581,10 @@ def main():
     """Main forest generation function."""
     import argparse
 
+    # Get script directory for default paths
+    script_dir = Path(__file__).parent.parent.parent.parent
+    default_csv = script_dir / "data" / "input" / "test.csv"
+
     parser = argparse.ArgumentParser(
         description="Generate forest from CSV data and export trees in multiple formats",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -561,23 +594,23 @@ CSV Format:
     Optional columns: z (defaults to 0)
 
 Examples:
-    # Generate forest with default high quality
-    python generate_forest.py forest_data.csv
+    # Generate forest using default input CSV (data/input/test.csv) with ultra quality
+    python src/growpy/cli/generate_forest.py
 
     # Ultra quality for hero trees (32 vertices, max detail)
-    python generate_forest.py forest_data.csv --quality ultra
+    python src/growpy/cli/generate_forest.py --quality ultra
 
     # Medium quality for background trees (16 vertices)
-    python generate_forest.py forest_data.csv --quality medium
+    python src/growpy/cli/generate_forest.py --quality medium
 
     # Performance mode for distant trees (8 vertices, minimal detail)
-    python generate_forest.py forest_data.csv --quality performance
+    python src/growpy/cli/generate_forest.py --quality performance
 
     # Custom: high quality preset but with 32 vertices
-    python generate_forest.py forest_data.csv --quality high --resolution 32
+    python src/growpy/cli/generate_forest.py --quality high --resolution 32
 
-    # Specify output directory
-    python generate_forest.py forest_data.csv --output-dir data/output/my_forest --quality ultra
+    # Use a different CSV file with custom output directory
+    python src/growpy/cli/generate_forest.py my_forest.csv --output-dir data/output/my_forest --quality ultra --growth-cycle-limit 15
         """,
     )
 
@@ -585,8 +618,8 @@ Examples:
         "csv_file",
         type=Path,
         nargs="?",
-        default=None,
-        help="Path to CSV file with forest data (x, y, species, height)",
+        default=default_csv,
+        help="Path to CSV file with forest data (default: data/input/test.csv)",
     )
     parser.add_argument(
         "--output-dir",

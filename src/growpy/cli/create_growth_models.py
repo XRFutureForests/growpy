@@ -4,11 +4,16 @@ Create growth models for Grove species.
 
 Generates height curves and age prediction models with intelligent early termination.
 
+Supports two CSV formats:
+  1. Forest placement CSV (x, y, species, height) - auto-extracts unique species
+  2. Asset lookup CSV (Common Name, Preset, Twig, Bark Texture) - direct asset reference
+
 Quick Start:
-    python create_growth_models.py
+    python src/growpy/cli/create_growth_models.py
 
 Common Flags:
-    --species TEXT           Analyze specific species (default: all)
+    --species TEXT           Analyze specific species (default: all from CSV)
+    --csv PATH              Species CSV (default: data/input/test.csv)
     --cycles INT            Maximum growth cycles (default: 125)
     --height-threshold FLOAT Minimum growth to continue (default: 0.05)
     --timeout INT           Max simulation time per seed (default: 300s)
@@ -56,23 +61,29 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    # Analyze all species with default settings (parallel processing, height monitoring, 60s timeout)
-    python create_growth_models.py
+    # Analyze 5 species from forest placement CSV (auto-extracts from data/input/test.csv)
+    python src/growpy/cli/create_growth_models.py
 
-    # Analyze all species with custom height monitoring and timeout parameters
-    python create_growth_models.py --height-threshold 0.005 --max-cycles-without-growth 15 --timeout 120
+    # Analyze with custom height monitoring and timeout
+    python src/growpy/cli/create_growth_models.py --height-threshold 0.005 --max-cycles-without-growth 15 --timeout 120
 
-    # Analyze all species with custom assets directory (parallel processing)
-    python create_growth_models.py --assets-dir data/assets
+    # Analyze with custom assets directory
+    python src/growpy/cli/create_growth_models.py --assets-dir data/assets
 
-    # Analyze all species sequentially (no parallel processing)
-    python create_growth_models.py --no-parallel
+    # Analyze sequentially (no parallel processing)
+    python src/growpy/cli/create_growth_models.py --no-parallel
 
-    # Analyze all species with custom number of workers
-    python create_growth_models.py --workers 4
+    # Analyze with custom number of workers
+    python src/growpy/cli/create_growth_models.py --workers 4
 
-    # Analyze specific species with detailed height monitoring
-    python create_growth_models.py --species "Fagaceae - European oak" --verbose
+    # Analyze specific species with detailed logging
+    python src/growpy/cli/create_growth_models.py --species "European oak" --verbose
+
+    # Analyze ALL 57 available species using comprehensive lookup table
+    python src/growpy/cli/create_growth_models.py --csv src/growpy/config/tree_asset_lookup.csv
+
+CSV Format Support:
+    Automatically handles forest placement CSV (x,y,species) or asset lookup CSV (Common Name,Preset)
 
 Height Monitoring & Timeout Protection:
     The script automatically monitors tree height growth and stops simulation early when:
@@ -94,6 +105,12 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         type=Path,
         default=script_dir / "data" / "assets",
         help="Directory containing prepared GrowPy assets (default: data/assets)",
+    )
+    parser.add_argument(
+        "--csv",
+        type=Path,
+        default=script_dir / "data" / "input" / "test.csv",
+        help="Path to species CSV (default: data/input/test.csv)",
     )
     parser.add_argument(
         "--cycles", type=int, default=125, help="Number of growth cycles for analysis"
@@ -258,10 +275,111 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         analyzer.save_growth_models()
 
     else:
-        # Analyze all species
-        logger.info("Analyzing all available species...")
+        # Analyze species from CSV
+        logger.info("Analyzing species from CSV...")
+
+        # Load CSV to get species list
+        import pandas as pd
+
+        try:
+            df = pd.read_csv(args.csv)
+
+            # Check if this is a forest placement CSV (has "species" column)
+            if "species" in df.columns and "Common Name" not in df.columns:
+                logger.info(
+                    "Detected forest placement CSV, extracting unique species..."
+                )
+                unique_species = df["species"].dropna().unique().tolist()
+                logger.info(
+                    f"Found {len(unique_species)} unique species: {', '.join(unique_species)}"
+                )
+
+                # Load the asset lookup table to get standardized names
+                asset_lookup_path = (
+                    script_dir / "src" / "growpy" / "config" / "tree_asset_lookup.csv"
+                )
+                if not asset_lookup_path.exists():
+                    logger.error(f"Asset lookup table not found: {asset_lookup_path}")
+                    sys.exit(1)
+
+                lookup_df = pd.read_csv(asset_lookup_path)
+
+                # Map species names to standardized names
+                csv_species = []
+                for species in unique_species:
+                    # Try matching Common Name
+                    match = lookup_df[
+                        lookup_df["Common Name"].str.lower() == species.lower()
+                    ]
+
+                    # Try matching aliases if no direct match
+                    if match.empty and "Aliases" in lookup_df.columns:
+                        for _, row in lookup_df.iterrows():
+                            aliases = str(row.get("Aliases", "")).lower()
+                            if species.lower() in [
+                                a.strip() for a in aliases.split(",")
+                            ]:
+                                match = lookup_df[
+                                    lookup_df["Common Name"] == row["Common Name"]
+                                ]
+                                break
+
+                    if not match.empty:
+                        standardized = match.iloc[0].get("Standardized Name")
+                        if standardized:
+                            csv_species.append(standardized)
+                        else:
+                            logger.warning(f"No standardized name for '{species}'")
+                    else:
+                        logger.warning(
+                            f"Species '{species}' not found in asset lookup table"
+                        )
+
+                if not csv_species:
+                    logger.error(
+                        f"None of the species in {args.csv.name} were found in asset lookup table"
+                    )
+                    sys.exit(1)
+
+                logger.info(f"Standardized species names from CSV: {csv_species}")
+            else:
+                # Direct asset lookup CSV - use Standardized Name column
+                if "Standardized Name" in df.columns:
+                    csv_species = df["Standardized Name"].tolist()
+                else:
+                    # Fallback: standardize Common Name
+                    import re
+
+                    def standardize_name(name):
+                        name = re.sub(r"[^\w\s-]", "", name.lower())
+                        return re.sub(r"[-\s]+", "_", name).strip("_")
+
+                    csv_species = [
+                        standardize_name(s) for s in df["Common Name"].tolist()
+                    ]
+
+                logger.info(f"Found {len(csv_species)} species in CSV: {args.csv.name}")
+                logger.info(f"Standardized species names: {csv_species}")
+
+        except Exception as e:
+            logger.error(f"Error reading CSV: {e}")
+            sys.exit(1)
+
+        # Get available species and filter to CSV species only
+        available_species = analyzer.get_available_species()
+        species_to_process = [s for s in csv_species if s in available_species]
+
+        if not species_to_process:
+            logger.error("No matching species found between CSV and available presets")
+            sys.exit(1)
+
+        logger.info(f"Processing {len(species_to_process)} species (CSV-driven)")
+
+        # Analyze filtered species
         results = analyzer.analyze_all_species(
-            parallel=use_parallel, max_workers=max_workers
+            parallel=use_parallel,
+            max_workers=max_workers,
+            species_filter=species_to_process,
         )
 
         # Save results
