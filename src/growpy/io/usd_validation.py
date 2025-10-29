@@ -30,8 +30,8 @@ def validate_skeletal_structure(usd_path: Path, verbose: bool = False) -> dict:
     """Validate that USD file has correct skeletal structure.
 
     Checks for:
-    - SkelRoot at /Tree
-    - Skeleton at /Tree/TreeSkel
+    - SkelRoot at /tree
+    - Skeleton at /tree/tree_skel
     - Hierarchical joint names (root/joint_1/joint_2, etc.)
     - Twig mount bones (root/joint_X/twig_Y)
     - Multi-joint skinning (elementSize=2)
@@ -85,17 +85,17 @@ def validate_skeletal_structure(usd_path: Path, verbose: bool = False) -> dict:
             return results
 
         # Check for SkelRoot
-        skel_root_prim = stage.GetPrimAtPath("/Tree")
+        skel_root_prim = stage.GetPrimAtPath("/tree")
         if not skel_root_prim or not skel_root_prim.IsA(UsdSkel.Root):
             results["valid"] = False
-            results["errors"].append("No SkelRoot found at /Tree")
+            results["errors"].append("No SkelRoot found at /tree")
             return results
 
         # Check for Skeleton
-        skel_prim = stage.GetPrimAtPath("/Tree/TreeSkel")
+        skel_prim = stage.GetPrimAtPath("/tree/tree_skel")
         if not skel_prim or not skel_prim.IsA(UsdSkel.Skeleton):
             results["valid"] = False
-            results["errors"].append("No Skeleton found at /Tree/TreeSkel")
+            results["errors"].append("No Skeleton found at /tree/tree_skel")
             return results
 
         skeleton = UsdSkel.Skeleton(skel_prim)
@@ -129,7 +129,7 @@ def validate_skeletal_structure(usd_path: Path, verbose: bool = False) -> dict:
                 print(f"    - {twig_bone}")
 
         # Check for mesh with skinning
-        mesh_prim = stage.GetPrimAtPath("/Tree/TreeMesh")
+        mesh_prim = stage.GetPrimAtPath("/tree/tree_mesh")
         if mesh_prim and mesh_prim.IsA(UsdGeom.Mesh):
             mesh = UsdGeom.Mesh(mesh_prim)
 
@@ -149,7 +149,7 @@ def validate_skeletal_structure(usd_path: Path, verbose: bool = False) -> dict:
             else:
                 results["warnings"].append("No skel:jointIndices primvar found on mesh")
         else:
-            results["warnings"].append("No mesh found at /Tree/TreeMesh")
+            results["warnings"].append("No mesh found at /tree/tree_mesh")
 
         # Check bind and rest transforms
         bind_transforms_attr = skeleton.GetBindTransformsAttr()
@@ -222,14 +222,14 @@ def validate_twig_skeletal_structure(
             return results
 
         # Check for SkelRoot
-        skel_root_prim = stage.GetPrimAtPath("/Twig")
+        skel_root_prim = stage.GetPrimAtPath("/twig")
         if not skel_root_prim or not skel_root_prim.IsA(UsdSkel.Root):
             results["valid"] = False
             results["errors"].append("No SkelRoot found at /Twig")
             return results
 
         # Check for Skeleton
-        skel_prim = stage.GetPrimAtPath("/Twig/Skel")
+        skel_prim = stage.GetPrimAtPath("/twig/skel")
         if not skel_prim or not skel_prim.IsA(UsdSkel.Skeleton):
             results["valid"] = False
             results["errors"].append("No Skeleton found at /Twig/Skel")
@@ -248,7 +248,7 @@ def validate_twig_skeletal_structure(
         results["info"]["total_joints"] = len(joint_names)
 
         # Check for mesh with skinning
-        mesh_prim = stage.GetPrimAtPath("/Twig/Mesh")
+        mesh_prim = stage.GetPrimAtPath("/twig/mesh")
         if mesh_prim and mesh_prim.IsA(UsdGeom.Mesh):
             mesh = UsdGeom.Mesh(mesh_prim)
 
