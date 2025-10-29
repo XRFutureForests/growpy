@@ -1616,6 +1616,105 @@ def _add_mesh_normals(mesh: UsdGeom.Mesh, model: Any) -> None:
         pass
 
 
+def _extract_face_joint_mapping(tree_usd_path):
+    """
+    Extract mapping from face indices to their dominant joint indices.
+
+    Uses the mesh's existing skinning data (jointIndices and jointWeights primvars)
+    to determine which joint has the most influence on each face. This is more
+    accurate than spatial proximity search because it uses the actual skeletal
+    binding information.
+
+    Args:
+        tree_usd_path: Path to USD file containing skeletal tree mesh
+
+    Returns:
+        Dict mapping face_index (int) to joint_index (int), or empty dict if data unavailable
+    """
+    from pxr import Usd, UsdGeom, UsdSkel
+
+    try:
+        stage = Usd.Stage.Open(tree_usd_path)
+        if not stage:
+            return {}
+
+        # Find the tree mesh (typically named "tree_mesh" or similar)
+        mesh_prim = None
+        for prim in stage.Traverse():
+            if prim.IsA(UsdGeom.Mesh):
+                mesh_prim = prim
+                break
+
+        if not mesh_prim:
+            return {}
+
+        mesh = UsdGeom.Mesh(mesh_prim)
+
+        # Get face structure
+        face_vertex_counts = mesh.GetFaceVertexCountsAttr().Get()
+        face_vertex_indices = mesh.GetFaceVertexIndicesAttr().Get()
+
+        if not face_vertex_counts or not face_vertex_indices:
+            return {}
+
+        # Get skinning data primvars
+        joint_indices_primvar = UsdGeom.Primvar(
+            mesh_prim.GetAttribute("primvars:skel:jointIndices")
+        )
+        joint_weights_primvar = UsdGeom.Primvar(
+            mesh_prim.GetAttribute("primvars:skel:jointWeights")
+        )
+
+        if not joint_indices_primvar.HasValue() or not joint_weights_primvar.HasValue():
+            return {}
+
+        joint_indices = joint_indices_primvar.Get()
+        joint_weights = joint_weights_primvar.Get()
+        element_size = joint_indices_primvar.GetElementSize()
+
+        if not joint_indices or not joint_weights or not element_size:
+            return {}
+
+        # Build face-to-joint mapping
+        face_joint_map = {}
+        vertex_offset = 0
+
+        for face_idx, vertex_count in enumerate(face_vertex_counts):
+            if vertex_count == 0:
+                continue
+
+            # Get first vertex of this face
+            first_vertex_idx = face_vertex_indices[vertex_offset]
+
+            # Get joint influences for this vertex
+            # jointIndices and jointWeights are flattened arrays with elementSize influences per vertex
+            start_idx = first_vertex_idx * element_size
+            end_idx = start_idx + element_size
+
+            if end_idx <= len(joint_indices) and end_idx <= len(joint_weights):
+                vertex_joint_indices = joint_indices[start_idx:end_idx]
+                vertex_joint_weights = joint_weights[start_idx:end_idx]
+
+                # Find joint with highest weight (dominant joint)
+                max_weight = -1
+                dominant_joint_idx = 0
+
+                for ji, jw in zip(vertex_joint_indices, vertex_joint_weights):
+                    if jw > max_weight:
+                        max_weight = jw
+                        dominant_joint_idx = ji
+
+                face_joint_map[face_idx] = dominant_joint_idx
+
+            vertex_offset += vertex_count
+
+        return face_joint_map
+
+    except Exception as e:
+        print(f"Warning: Could not extract face-joint mapping: {e}")
+        return {}
+
+
 def build_skeletal_nanite_assembly(
     assembly_path: Path,
     tree_skel_usd_path: Path,
@@ -1811,33 +1910,36 @@ def build_skeletal_nanite_assembly(
         #
         # This is REQUIRED for Unreal to recognize and import the skeletal assembly correctly.
 
-        # Extract skeleton joints from tree USD (positions and paths)
-        from .unreal_nanite_assembly import (
-            _extract_skeleton_joints_from_usd,
-            _find_nearest_joint,
-        )
+        # Extract skeleton joints and joint mapping from tree USD
+        from .unreal_nanite_assembly import _extract_skeleton_joints_from_usd
 
         skeleton_joints = _extract_skeleton_joints_from_usd(tree_skel_usd_path)
+        joint_names = list(skeleton_joints.keys()) if skeleton_joints else []
 
-        # Build bindJoints array - each twig instance binds to nearest tree joint
+        # Extract face-to-joint mapping from tree mesh
+        face_joint_map = _extract_face_joint_mapping(tree_skel_usd_path)
+
+        # Build bindJoints array - each twig instance binds to the joint
+        # that influences the face where the twig is placed
         # These control INSTANCE transforms, not vertex deformation
         bind_joints = []
         bind_weights = []
 
         for placement in twig_placements:
-            # Get twig position
-            twig_pos = placement.get("position", (0, 0, 0))
+            face_idx = placement.get("face_index")
 
-            # Find nearest tree skeleton joint
-            if skeleton_joints:
-                nearest_joint, distance = _find_nearest_joint(
-                    Gf.Vec3f(twig_pos[0], twig_pos[1], twig_pos[2]),
-                    skeleton_joints,
-                )
-                bind_joints.append(nearest_joint)
-                bind_weights.append(1.0)
+            # Try to get joint from face mapping first (most accurate)
+            if face_idx is not None and face_joint_map and face_idx in face_joint_map:
+                joint_idx = face_joint_map[face_idx]
+                if 0 <= joint_idx < len(joint_names):
+                    bind_joints.append(joint_names[joint_idx])
+                    bind_weights.append(1.0)
+                else:
+                    # Fallback to root
+                    bind_joints.append("joint_0")
+                    bind_weights.append(1.0)
             else:
-                # Fallback to root if no skeleton joints found
+                # Fallback to root if no face mapping available
                 bind_joints.append("joint_0")
                 bind_weights.append(1.0)
 
