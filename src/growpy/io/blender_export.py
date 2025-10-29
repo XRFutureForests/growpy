@@ -3333,6 +3333,7 @@ def export_grove_tree_as_usda_native(
                 skeleton_reduce=skeleton_reduce,
                 skeleton_bias=skeleton_bias,
                 skeleton_connected=skeleton_connected,
+                add_twig_bones=False,  # CRITICAL: Twig bones should NOT be in tree skeleton
             )
 
             if skeleton_added:
