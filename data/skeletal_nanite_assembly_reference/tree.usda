@@ -9,8 +9,6 @@ def SkelRoot "Tree" (
     prepend apiSchemas = ["SkelBindingAPI"]
 )
 {
-    rel skel:skeleton = </Tree/TreeSkel>
-
     def Skeleton "TreeSkel"
     {
         uniform matrix4d[] bindTransforms = [

@@ -93,12 +93,6 @@ def add_skeleton_from_grove_bones(
             f"    [OK] Grove returned {len(bones_info)} bones with head/tail positions"
         )
 
-        # Debug: Print first bone info
-        if len(bones_info) > 0:
-            first_bone = bones_info[0]
-            print(f"    [DEBUG] First bone head: {first_bone[2].as_tuple()}")
-            print(f"    [DEBUG] First bone tail: {first_bone[3].as_tuple()}")
-
         # Create SkelRoot
         skel_root_path = original_xform_path.AppendChild("SkelRoot")
         skel_root_prim = UsdSkel.Root.Define(stage, skel_root_path)

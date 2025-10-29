@@ -35,7 +35,11 @@
       "Bash(exec $SHELL -l)",
       "Bash(PYTHONPATH=/Users/maximiliansperlich/Developer/the-grove/src:$PYTHONPATH /Applications/Blender.app/Contents/MacOS/Blender:*)",
       "Bash(PYTHONPATH=/Users/maximiliansperlich/Developer/the-grove/src:$PYTHONPATH /opt/miniconda3/envs/the-grove/bin/python:*)",
-      "Bash(/opt/miniconda3/envs/the-grove/bin/python:*)"
+      "Bash(/opt/miniconda3/envs/the-grove/bin/python:*)",
+      "Bash(if [ -d \"src/the_grove_22/twigs\" ])",
+      "Bash(then ls src/the_grove_22/twigs/)",
+      "Bash(else echo \"Grove twigs source not found\")",
+      "Bash(fi)"
     ],
     "deny": [],
     "ask": []

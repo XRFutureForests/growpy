@@ -16,7 +16,7 @@ random_seed = 42
 
 # Path to tree species preset (default: None)
 preset_path = Path(
-    "/Users/maximiliansperlich/Developer/the-grove/data/assets/presets/Fagaceae - Beech.seed.json"
+    "/Users/maximiliansperlich/Developer/the-grove/data/assets/presets/european_beech.seed.json"
 )
 
 # Tree planting parameters
@@ -43,9 +43,9 @@ build_blend = True  # Add smooth transitions between branches (default: True)
 build_end_cap = True  # Close off branch ends with geometry (default: True)
 
 # Skeleton parameters for physics simulation and rigging
-skeleton_length = 2.0  # Length threshold for bone creation (default: 2.0, range: 0.0-5.0, lower = more bones)
+skeleton_length = 0.0  # Length threshold for bone creation (default: 2.0, range: 0.0-5.0, lower = more bones)
 skeleton_reduce = (
-    0.4  # Reduce bones below thickness threshold (default: 0.4, range: 0.0-1.0)
+    0.0  # Reduce bones below thickness threshold (default: 0.4, range: 0.0-1.0)
 )
 skeleton_bias = 0.5  # Bias towards parent or child bones (default: 0.5, range: 0.0-1.0)
 skeleton_connected = True  # Whether bones are connected in hierarchy (default: False)
