@@ -662,11 +662,11 @@ def export_twig_placements_to_usd(
         UsdGeom.SetStageMetersPerUnit(stage, 1.0)
 
         # Create root
-        root_prim = stage.DefinePrim("/TreeAssembly", "Xform")
+        root_prim = stage.DefinePrim("/tree_assembly", "Xform")
         stage.SetDefaultPrim(root_prim)
 
         # Reference tree mesh with absolute path
-        tree_prim = stage.DefinePrim("/TreeAssembly/Tree", "Xform")
+        tree_prim = stage.DefinePrim("/tree_assembly/tree", "Xform")
         tree_prim.GetReferences().AddReference(str(tree_usd_path.resolve()))
 
         # Add Nanite support to tree
@@ -707,7 +707,7 @@ def _export_with_point_instancer(
     from pxr import Gf, Sdf, UsdGeom
 
     # Create prototypes group
-    prototypes_group = stage.DefinePrim("/TreeAssembly/Prototypes", "Scope")
+    prototypes_group = stage.DefinePrim("/tree_assembly/prototypes", "Scope")
 
     # Map twig types to prototype indices
     twig_type_to_proto_idx = {}
@@ -721,7 +721,7 @@ def _export_with_point_instancer(
         twig_type_to_proto_idx[twig_type] = idx
 
         # Create prototype prim (instanceable for memory efficiency)
-        proto_prim = stage.DefinePrim(f"/TreeAssembly/Prototypes/{twig_type}", "Xform")
+        proto_prim = stage.DefinePrim(f"/tree_assembly/prototypes/{twig_type}", "Xform")
         proto_prim.SetInstanceable(True)
 
         # Reference twig mesh
@@ -743,7 +743,7 @@ def _export_with_point_instancer(
         return False
 
     # Create PointInstancer
-    instancer_prim = stage.DefinePrim("/TreeAssembly/TwigInstances", "PointInstancer")
+    instancer_prim = stage.DefinePrim("/tree_assembly/twig_instances", "PointInstancer")
     instancer = UsdGeom.PointInstancer(instancer_prim)
 
     # Set prototypes relationship
@@ -815,7 +815,7 @@ def _export_with_xforms(
     from pxr import Gf, Sdf, UsdGeom
 
     # Create twigs group
-    twigs_group = stage.DefinePrim("/TreeAssembly/Twigs", "Xform")
+    twigs_group = stage.DefinePrim("/tree_assembly/twigs", "Xform")
 
     # Place each twig type
     total_placed = 0
@@ -829,12 +829,12 @@ def _export_with_xforms(
             continue
 
         # Create group for this twig type
-        type_group = stage.DefinePrim(f"/TreeAssembly/Twigs/{twig_type}", "Xform")
+        type_group = stage.DefinePrim(f"/tree_assembly/twigs/{twig_type}", "Xform")
 
         # Place instances
         for idx, placement in enumerate(placement_list):
             instance_prim = stage.DefinePrim(
-                f"/TreeAssembly/Twigs/{twig_type}/instance_{idx}", "Xform"
+                f"/tree_assembly/twigs/{twig_type}/instance_{idx}", "Xform"
             )
 
             # Reference twig mesh with absolute path

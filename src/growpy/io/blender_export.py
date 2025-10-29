@@ -965,117 +965,6 @@ def _add_grove_attributes_to_mesh(mesh: Any, model: Any) -> None:
         print(f"Warning: Failed to add some Grove attributes to mesh: {e}")
 
 
-def _add_grove_face_attributes_to_usd(usd_path: Path, model: Any) -> None:
-    """DEPRECATED: This function is no longer needed.
-
-    Grove's native USD export (gc.io.model_to_usda_string) already includes:
-    1. Twig face attributes as PascalCase primvars (TwigDead, TwigUpward, TwigSide, TwigEnd)
-    2. Z-up coordinate system (no Y-up conversion needed)
-
-    This function was created when Grove exported Y-up USD without twig attributes,
-    but recent versions now export complete Z-up USD natively.
-
-    Kept for backward compatibility but should not be called in new code.
-
-    Args:
-        usd_path: Path to USD file to modify
-        model: Grove model with face attributes
-    """
-    import warnings
-
-    warnings.warn(
-        "_add_grove_face_attributes_to_usd is deprecated - Grove now exports "
-        "complete Z-up USD with twig primvars natively",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return  # Early return - function is no-op now
-
-    # Original implementation kept below for reference but never executed
-    try:
-        from pxr import Gf, Sdf, Usd, UsdGeom
-
-        stage = Usd.Stage.Open(str(usd_path))
-        if not stage:
-            print(f"Warning: Could not open USD stage at {usd_path}")
-            return
-
-        # Convert stage from Y-up to Z-up
-        UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
-
-        # Find mesh prim
-        for prim in stage.Traverse():
-            if not prim.IsA(UsdGeom.Mesh):
-                continue
-
-            mesh_usd = UsdGeom.Mesh(prim)
-            primvars_api = UsdGeom.PrimvarsAPI(mesh_usd)
-
-            # Transform mesh geometry from Y-up to Z-up
-            # Get points and transform them
-            points_attr = mesh_usd.GetPointsAttr()
-            if points_attr:
-                points = points_attr.Get()
-                if points:
-                    # Convert each point: (x, y, z) -> (x, -z, y)
-                    transformed_points = [Gf.Vec3f(p[0], -p[2], p[1]) for p in points]
-                    points_attr.Set(transformed_points)
-
-            # Transform normals if they exist
-            normals_attr = mesh_usd.GetNormalsAttr()
-            if normals_attr and normals_attr.HasValue():
-                normals = normals_attr.Get()
-                if normals:
-                    # Convert normals: (x, y, z) -> (x, -z, y)
-                    transformed_normals = [Gf.Vec3f(n[0], -n[2], n[1]) for n in normals]
-                    normals_attr.Set(transformed_normals)
-
-            # Add twig face attributes with uniform interpolation (per-face)
-            twig_attrs = [
-                ("twig_long", "face_attribute_twig_long"),
-                ("twig_short", "face_attribute_twig_short"),
-                ("twig_upward", "face_attribute_twig_upward"),
-                ("twig_dead", "face_attribute_twig_dead"),
-            ]
-
-            twig_counts = {}
-            for attr_name, model_attr in twig_attrs:
-                if hasattr(model, model_attr):
-                    values = getattr(model, model_attr)
-                    if values:
-                        # Convert Grove's Rust Vec<bool> to Python list
-                        # Use list() to force conversion from Rust collection
-                        try:
-                            bool_values = list(values)
-                        except Exception:
-                            # Fallback if list() doesn't work
-                            bool_values = [bool(values[i]) for i in range(len(values))]
-
-                        primvar = primvars_api.CreatePrimvar(
-                            attr_name,
-                            Sdf.ValueTypeNames.BoolArray,
-                            UsdGeom.Tokens.uniform,
-                        )
-                        primvar.Set(bool_values)
-                        true_count = sum(1 for v in bool_values if v)
-                        twig_counts[attr_name] = true_count
-
-            if twig_counts:
-                print(f"  [OK] Added twig face attributes to USD:")
-                for attr, count in twig_counts.items():
-                    print(f"    - {attr}: {count} faces")
-            else:
-                print(f"  Warning: No twig attributes found in Grove model")
-
-        stage.Save()
-
-    except Exception as e:
-        print(f"Warning: Failed to add Grove face attributes to USD: {e}")
-        import traceback
-
-        traceback.print_exc()
-
-
 def _add_blender_attributes_as_usd_primvars(usd_path: Path, mesh_obj: Any) -> None:
     """Write Blender mesh attributes as USD primvars after export.
 
@@ -1172,55 +1061,6 @@ def _add_blender_attributes_as_usd_primvars(usd_path: Path, mesh_obj: Any) -> No
         import traceback
 
         traceback.print_exc()
-
-
-def _convert_mesh_yup_to_zup(usd_path: Path) -> bool:
-    """DEPRECATED: Convert mesh vertices from Y-up (Grove) to Z-up (Unreal).
-
-    This function is no longer needed when using usd_builder.build_tree_usd(),
-    which accesses Grove API geometry directly in the correct coordinate system.
-
-    Historical note: This was needed when using gc.io.model_to_usda_string()
-    which exported in Y-up coordinates requiring transformation:
-    (x, y, z)_grove → (x, -z, y)_usd
-
-    Args:
-        usd_path: Path to USD file with Y-up mesh
-
-    Returns:
-        bool: True if conversion succeeded
-
-    Deprecated:
-        Use usd_builder.build_tree_usd() instead of gc.io.model_to_usda_string()
-    """
-    try:
-        from pxr import Gf, Usd, UsdGeom
-
-        stage = Usd.Stage.Open(str(usd_path))
-        if not stage:
-            return False
-
-        # Set stage to Z-up
-        UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
-
-        # Find and convert mesh vertices
-        for prim in stage.Traverse():
-            if prim.IsA(UsdGeom.Mesh):
-                mesh = UsdGeom.Mesh(prim)
-                points_attr = mesh.GetPointsAttr()
-                points = points_attr.Get()
-
-                if points:
-                    # Convert Y-up to Z-up: (x, y, z) → (x, -z, y)
-                    converted_points = [Gf.Vec3f(p[0], -p[2], p[1]) for p in points]
-                    points_attr.Set(converted_points)
-
-        stage.Save()
-        return True
-
-    except Exception as e:
-        print(f"  Warning: Could not convert mesh to Z-up: {e}")
-        return False
 
 
 def _add_materials_to_usd(
@@ -1423,10 +1263,9 @@ def _add_skeleton_only_to_usd(
         # Build skeleton
         print(f"  Adding skeleton to USD (UE5.7 SkelRoot structure)...")
 
-        # CRITICAL: Use grove.tag_bone_id() to get actual bone segments with head/tail positions
-        # This is THE CORRECT WAY per Blender addon reference implementation
-        # tag_bone_id() returns: [(bone_idx, parent_idx, head_Vector, tail_Vector, radius), ...]
-        # Unlike skeleton.points/poly_lines which only give connectivity, this gives actual bone geometry
+        # CRITICAL ORDER: tag_bone_id() MUST be called BEFORE build_skeletons()
+        # Step 1: Tag bones to create bone ID mapping
+        print(f"    Step 1: Tagging bones with Grove's tag_bone_id()...")
         bones_info = grove.tag_bone_id(
             skeleton_length, skeleton_reduce, skeleton_bias, skeleton_connected
         )
@@ -1435,11 +1274,10 @@ def _add_skeleton_only_to_usd(
             print(f"    Warning: No bone data from tag_bone_id()")
             return False
 
-        print(
-            f"    [OK] Grove returned {len(bones_info)} bones with head/tail positions"
-        )
+        print(f"    [OK] Tagged {len(bones_info)} bones with head/tail positions")
 
-        # Still need skeletons for metadata, but we'll use bones_info for geometry
+        # Step 2: Build skeleton structure (uses bone IDs from step 1)
+        print(f"    Step 2: Building skeleton structure...")
         skeletons = grove.build_skeletons()
         if not skeletons or len(skeletons) == 0:
             print(f"    Warning: No skeleton data available")
@@ -1817,17 +1655,22 @@ def _add_skeleton_and_materials_to_usd(
             f"    Skeleton params: length={skeleton_length}, reduce={skeleton_reduce}, bias={skeleton_bias}, connected={skeleton_connected}"
         )
 
-        # CRITICAL: Call tag_bone_id() BEFORE build_skeletons() to configure bone generation
-        # This step tags the tree structure with bone IDs using the specified parameters
-        # NOTE: If model was already built with bone tagging, this won't affect the existing model
-        # but will ensure the skeleton matches the bone structure
+        # CRITICAL ORDER: tag_bone_id() MUST be called BEFORE build_skeletons()
+        # Step 1: Tag bones with Grove's parameters (creates bone ID mapping)
+        # Step 2: Build skeleton (uses bone tagging to create structure)
+        # This ensures the skeleton and bone weights are consistent
+        bones_info = None
         if hasattr(grove, "tag_bone_id"):
-            print(f"    Configuring skeleton with tag_bone_id()...")
+            print(f"    Step 1: Tagging bones with Grove's tag_bone_id()...")
             bones_info = grove.tag_bone_id(
                 skeleton_length, skeleton_reduce, skeleton_bias, skeleton_connected
             )
             print(f"    [OK] Tagged {len(bones_info) if bones_info else 0} bones")
+        else:
+            print(f"    Warning: Grove instance missing tag_bone_id() method")
 
+        # Step 2: Build skeleton structure (now has proper bone IDs)
+        print(f"    Step 2: Building skeleton structure...")
         skeletons = grove.build_skeletons()
         if skeletons and len(skeletons) > 0:
             skeleton_data = skeletons[0]
@@ -2227,8 +2070,8 @@ def _add_skeleton_to_twig_usd(usd_path: Path) -> bool:
         # Find materials scope
         materials_prim = stage.GetPrimAtPath("/root/_materials")
 
-        # Create SkelRoot as top-level prim "Twig"
-        skel_root_path = Sdf.Path("/Twig")
+        # Create SkelRoot as top-level prim "twig"
+        skel_root_path = Sdf.Path("/twig")
         skel_root_prim = UsdSkel.Root.Define(stage, skel_root_path)
 
         # Move/copy materials into SkelRoot so they're accessible when referenced
@@ -2378,10 +2221,10 @@ def _add_skeleton_to_twig_usd(usd_path: Path) -> bool:
         mat_binding = old_mat_api.GetDirectBinding()
         if mat_binding:
             mat_path = mat_binding.GetMaterialPath()
-            # Update material path from /root/_materials/... to /Twig/_materials/...
+            # Update material path from /root/_materials/... to /twig/_materials/...
             if mat_path and "/root/_materials/" in str(mat_path):
                 new_mat_path_str = str(mat_path).replace(
-                    "/root/_materials/", "/Twig/_materials/"
+                    "/root/_materials/", "/twig/_materials/"
                 )
                 new_mat_path = Sdf.Path(new_mat_path_str)
 
@@ -2393,15 +2236,15 @@ def _add_skeleton_to_twig_usd(usd_path: Path) -> bool:
         # Remove original mesh
         stage.RemovePrim(original_mesh_path)
 
-        # Set Twig as default prim so it's the primary reference target
-        twig_prim = stage.GetPrimAtPath("/Twig")
+        # Set twig as default prim so it's the primary reference target
+        twig_prim = stage.GetPrimAtPath("/twig")
         if twig_prim:
             stage.SetDefaultPrim(twig_prim)
             print(
-                f"    -> Set defaultPrim to 'Twig' (SkelRoot with embedded materials)"
+                f"    -> Set defaultPrim to 'twig' (SkelRoot with embedded materials)"
             )
         else:
-            print(f"    -> WARNING: Could not find /Twig prim!")
+            print(f"    -> WARNING: Could not find /twig prim!")
 
         # Save
         stage.Save()
@@ -3200,7 +3043,7 @@ def export_grove_tree_as_usda_native(
         2. We wrap Grove's USD in Z-up stage
            - Stage metadata: UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
            - Stage scale: UsdGeom.SetStageMetersPerUnit(stage, 1.0)
-           - Face attributes converted: Y-up → Z-up via _add_grove_face_attributes_to_usd()
+           - Grove API provides geometry in correct Z-up coordinates
 
         3. Twigs added with convert_to_ue flag
            - If True: Blender Z-up → Unreal Z-up (handedness conversion)
@@ -3220,11 +3063,12 @@ def export_grove_tree_as_usda_native(
     try:
         print(f"Exporting {species_name} as USDA...")
 
-        # Tag bones BEFORE building models so bone IDs are included in model
-        # This is critical for skeleton export to work correctly
+        # CRITICAL: Tag bones BEFORE building models
+        # This creates the bone ID mapping that will be baked into the model's point attributes
+        # The skeleton built later will match these bone IDs for consistent rigging
         if include_skeleton and hasattr(grove, "tag_bone_id"):
             print(
-                f"  Tagging bones (length={skeleton_length}, reduce={skeleton_reduce}, bias={skeleton_bias}, connected={skeleton_connected})..."
+                f"  Step 1: Tagging bones BEFORE model build (length={skeleton_length}, reduce={skeleton_reduce}, bias={skeleton_bias}, connected={skeleton_connected})..."
             )
             try:
                 bones = grove.tag_bone_id(
@@ -3360,7 +3204,7 @@ def export_grove_tree_as_usda_native(
             # Create USD-based static mesh assembly
             nanite_path = (
                 output_path.parent
-                / f"{output_path.stem}_NaniteAssembly{output_path.suffix}"
+                / f"{output_path.stem}_nanite_assembly{output_path.suffix}"
             )
 
             print(f"\n  Creating Unreal Nanite Assembly (USD/Static)...")
@@ -3419,7 +3263,7 @@ def export_grove_tree_as_usda_native(
                 # Static twig meshes are positioned/oriented by bindJoints to follow skeleton
                 skeletal_nanite_path = (
                     output_path.parent
-                    / f"{output_path.stem}_NaniteAssembly_skeletal{output_path.suffix}"
+                    / f"{output_path.stem}_nanite_assembly_skeletal{output_path.suffix}"
                 )
 
                 # Extract twig placements with joint binding information
@@ -3581,7 +3425,7 @@ def get_twig_usd_map_for_species(
                         usd_file = twig_file.with_suffix(ext)
 
                         # Skip Nanite Assembly files completely
-                        if "_NaniteAssembly" in usd_file.name:
+                        if "_nanite_assembly" in usd_file.name:
                             continue
 
                         # Filter based on skeletal preference
@@ -3629,7 +3473,7 @@ def get_twig_usd_map_for_species(
                 # Check if this twig matches skeletal preference
                 for ext in [".usda", ".usd"]:
                     usd_file = twig_path.with_suffix(ext)
-                    if not usd_file.exists() or "_NaniteAssembly" in usd_file.name:
+                    if not usd_file.exists() or "_nanite_assembly" in usd_file.name:
                         continue
 
                     is_skeletal = "_skel" in usd_file.stem
@@ -3775,7 +3619,11 @@ def bundle_twigs_for_species(
         for twig_paths in twig_files_by_type.values():
             all_twig_files.update(twig_paths)
 
-        # Copy ALL twig files for this species in requested formats
+        # Twigs are already correctly named with _twig suffix from convert_twigs.py
+        # Textures are already in textures/ subfolder from convert_twigs.py
+        # Just copy the files and their texture subdirectory as-is
+
+        # Copy twig USD files
         for source_file in sorted(all_twig_files):
             if not source_file.exists():
                 continue
@@ -3797,7 +3645,7 @@ def bundle_twigs_for_species(
                 for ext in extensions:
                     fmt_source_file = source_base.with_suffix(ext)
                     if fmt_source_file.exists():
-                        # Copy the file
+                        # Files already have _twig suffix from convert_twigs.py
                         dest_file = twig_dir / fmt_source_file.name
                         shutil.copy2(fmt_source_file, dest_file)
                         results["twig_files"].append(dest_file)
@@ -3806,41 +3654,43 @@ def bundle_twigs_for_species(
                         print(f"    Copied twig: {dest_file.name}")
                         break  # Found file, no need to try other extensions
 
-                    # Also check for skeletal variant
+                    # Also check for skeletal variant (using _skeletal suffix)
                     skeletal_file = (
                         source_base.parent / f"{source_base.stem}_skeletal{ext}"
                     )
-                    if (
-                        skeletal_file.exists()
-                        and not (twig_dir / skeletal_file.name).exists()
-                    ):
-                        # Copy skeletal variant
+                    if skeletal_file.exists():
                         dest_file = twig_dir / skeletal_file.name
-                        shutil.copy2(skeletal_file, dest_file)
-                        results["twig_files"].append(dest_file)
-                        twig_manifest["twig_files"].append(dest_file.name)
-                        twig_manifest["total_twigs"] += 1
-                        print(f"    Copied twig: {dest_file.name}")
+                        if not dest_file.exists():
+                            shutil.copy2(skeletal_file, dest_file)
+                            results["twig_files"].append(dest_file)
+                            twig_manifest["twig_files"].append(dest_file.name)
+                            twig_manifest["total_twigs"] += 1
+                            print(f"    Copied twig: {dest_file.name}")
 
-        # Copy textures if they exist (only once per species)
+        # Copy textures subdirectory if it exists
+        source_texture_dir = None
         if all_twig_files:
-            # Get texture directory from first twig file
             first_twig = next(iter(all_twig_files))
-            texture_dir = first_twig.parent / "textures"
-            if texture_dir.exists():
+            source_texture_dir = first_twig.parent / "textures"
+
+            if source_texture_dir.exists():
                 dest_texture_dir = twig_dir / "textures"
                 dest_texture_dir.mkdir(exist_ok=True)
-                for texture_file in texture_dir.glob("*"):
-                    if texture_file.is_file():
-                        shutil.copy2(texture_file, dest_texture_dir / texture_file.name)
-                print(f"    Copied textures from {texture_dir.name}")
 
-        # Save twig manifest
+                texture_count = 0
+                for texture_file in source_texture_dir.glob("*"):
+                    if texture_file.is_file():
+                        dest_tex = dest_texture_dir / texture_file.name
+                        if not dest_tex.exists():
+                            shutil.copy2(texture_file, dest_tex)
+                            texture_count += 1
+                            copied_textures.add(texture_file.name)
+
+                if texture_count > 0:
+                    print(f"    Copied {texture_count} twig textures to textures/")
+
+        # Don't save twig manifest - it's not needed in output
         if twig_manifest["total_twigs"] > 0:
-            manifest_path = twig_dir / "twig_manifest.json"
-            with open(manifest_path, "w") as f:
-                json.dump(twig_manifest, f, indent=2)
-            results["manifest"] = manifest_path
             print(
                 f"  [OK] Bundled {twig_manifest['total_twigs']} twig files for {species_name}"
             )

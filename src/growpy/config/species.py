@@ -187,13 +187,13 @@ def get_species_colors(
 
 
 def get_bark_texture(common_name: str) -> Optional[str]:
-    """Get the bark texture filename for a given species.
+    """Get the standardized bark texture filename for a given species.
 
     Args:
         common_name: Species common name
 
     Returns:
-        Bark texture filename or None
+        Standardized bark texture filename (e.g., "european_beech_bark.jpg") or None
     """
     df = load_species_lookup()
     if df.empty or "Bark Texture" not in df.columns:
@@ -207,12 +207,52 @@ def get_bark_texture(common_name: str) -> Optional[str]:
     if species_row.empty:
         return None
 
-    bark_texture = species_row.iloc[0].get("Bark Texture")
-    return (
-        str(bark_texture)
-        if pd.notna(bark_texture) and str(bark_texture) != ""
-        else None
-    )
+    bark_texture_original = species_row.iloc[0].get("Bark Texture")
+    if pd.isna(bark_texture_original) or str(bark_texture_original) == "":
+        return None
+
+    # Return standardized name: "Beech60.jpg" -> "european_beech_bark.jpg"
+    import re
+    from pathlib import Path
+
+    standardized_name = re.sub(r"[^\w\s-]", "", matched_name.lower())
+    standardized_name = re.sub(r"[-\s]+", "_", standardized_name).strip("_")
+
+    # Get file extension from original
+    file_ext = Path(str(bark_texture_original)).suffix
+
+    return f"{standardized_name}_bark{file_ext}"
+
+
+def get_standardized_name(common_name: str) -> Optional[str]:
+    """Get the standardized preset name for a species.
+
+    Args:
+        common_name: Species common name
+
+    Returns:
+        Standardized name (e.g., "european_beech") or None
+    """
+    df = load_species_lookup()
+    if df.empty:
+        return None
+
+    matched_name = find_species_match(common_name)
+    if matched_name is None:
+        return None
+
+    species_row = df[df["Common Name"] == matched_name]
+    if species_row.empty:
+        return None
+
+    if "Standardized Name" in df.columns:
+        return species_row.iloc[0].get("Standardized Name")
+
+    # Fallback: generate from Common Name
+    import re
+
+    name = re.sub(r"[^\w\s-]", "", matched_name.lower())
+    return re.sub(r"[-\s]+", "_", name).strip("_")
 
 
 def get_species_data(common_name: str) -> Optional[dict]:

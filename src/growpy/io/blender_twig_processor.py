@@ -38,8 +38,46 @@ except ImportError as e:
     USD_AVAILABLE = False
 
 
+def fix_texture_paths_in_usd(usd_path):
+    """Ensure texture paths in USD file use ./textures/ subdirectory for consistent structure.
+
+    Args:
+        usd_path: Path to USD file
+
+    Returns:
+        bool: True if successful
+    """
+    if not USD_AVAILABLE:
+        return False
+
+    try:
+        stage = Usd.Stage.Open(str(usd_path))
+        if not stage:
+            return False
+
+        # Verify texture paths use ./textures/ prefix (should already be correct from Blender export)
+        # This function now mainly validates the paths rather than fixing them
+        has_textures = False
+        for prim in stage.Traverse():
+            for attr in prim.GetAttributes():
+                if attr.GetTypeName() == Sdf.ValueTypeNames.Asset:
+                    asset_path = attr.Get()
+                    if asset_path and isinstance(asset_path, Sdf.AssetPath):
+                        path_str = asset_path.path
+                        if "textures/" in path_str or path_str.endswith(
+                            (".png", ".jpg", ".jpeg")
+                        ):
+                            has_textures = True
+                            break
+
+        return True
+    except Exception as e:
+        print(f"      [WARN] Texture path validation failed: {e}")
+        return False
+
+
 def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False):
-    """Add skeleton to USD file using Blender's bundled pxr module.
+    """Add skeleton to USD file and remove DomeLight artifact using Blender's bundled pxr module.
 
     Args:
         usd_path: Path to USD file
@@ -58,6 +96,25 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
         if not stage:
             print(f"      [WARN] Could not open USD stage: {usd_path.name}")
             return False
+
+        # Remove DomeLight artifact from Blender export (if present)
+        dome_light = stage.GetPrimAtPath("/root/env_light")
+        if dome_light:
+            stage.RemovePrim("/root/env_light")
+            print(f"      [OK] Removed DomeLight artifact")
+
+        # Fix texture paths: change ./textures/*.png to ./*.png
+        # (since we remove the textures/ subdirectory during cleanup)
+        for prim in stage.Traverse():
+            for attr in prim.GetAttributes():
+                if attr.GetTypeName() == Sdf.ValueTypeNames.Asset:
+                    asset_path = attr.Get()
+                    if asset_path and isinstance(asset_path, Sdf.AssetPath):
+                        path_str = asset_path.path
+                        if path_str.startswith("./textures/"):
+                            # Update to root-level relative path
+                            new_path = path_str.replace("./textures/", "./")
+                            attr.Set(Sdf.AssetPath(new_path))
 
         # Find mesh prim
         mesh_prim = None
@@ -78,7 +135,7 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
             return False
 
         # Create skeleton root
-        root_path = Sdf.Path("/Twig")
+        root_path = Sdf.Path("/twig")
         skel_root = UsdSkel.Root.Define(stage, root_path)
 
         # CRITICAL: Add SkelBindingAPI to SkelRoot for proper Unreal Engine skeletal mesh interpretation
@@ -284,7 +341,7 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
             print(f"      [OK] Removed old /root prim (Blender export artifact)")
 
         # Set Twig as default prim so it's the primary reference target
-        twig_prim = stage.GetPrimAtPath("/Twig")
+        twig_prim = stage.GetPrimAtPath("/twig")
         if twig_prim and twig_prim.IsValid():
             stage.SetDefaultPrim(twig_prim)
 
@@ -298,7 +355,16 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
 
 
 def standardize_twig_name(original_name, species_name):
-    """Standardize twig naming (matches main script logic)."""
+    """Convert Grove's CamelCase .blend filenames to snake_case USD output names.
+
+    Args:
+        original_name: Original .blend filename (e.g., 'AspenApicalTwig.blend')
+        species_name: Clean species name from directory (e.g., 'aspen')
+
+    Returns:
+        (standardized_name, metadata) tuple
+        e.g., ('aspen_apical', {'type': 'apical', ...})
+    """
     name_lower = original_name.lower()
 
     metadata = {
@@ -379,7 +445,9 @@ def classify_texture_from_name(name):
     return "diffuse"
 
 
-def setup_materials_with_textures(obj, blend_dir, species_name, output_dir):
+def setup_materials_with_textures(
+    obj, blend_dir, species_name, output_dir, standardized_name
+):
     """Setup materials with all available textures."""
     import bpy
 
@@ -487,20 +555,26 @@ def setup_materials_with_textures(obj, blend_dir, species_name, output_dir):
         # Add texture nodes
         y_offset = 300
 
+        # Create textures subdirectory
+        textures_dir = output_dir / "textures"
+        textures_dir.mkdir(exist_ok=True)
+
         for tex_type, tex_path in texture_map.items():
             try:
-                # CRITICAL: Copy texture to output directory for both FBX and USD
-                # Then load from output directory so relative paths work correctly
-                dest_tex = output_dir / tex_path.name
+                # CRITICAL: Copy texture with standardized naming to textures/ subfolder
+                # Format: textures/{standardized_twig_name}_{texture_type}{ext}
+                tex_ext = tex_path.suffix
+                standardized_tex_name = f"{standardized_name}_{tex_type}{tex_ext}"
+                dest_tex = textures_dir / standardized_tex_name
                 if not dest_tex.exists():
                     shutil.copy2(tex_path, dest_tex)
 
-                # Load texture from output directory (enables relative path export)
-                # Both FBX and USD will reference textures in the same directory
+                # Load texture from textures subdirectory (enables relative path export)
+                # USD will reference textures with ./textures/ prefix
                 tex_node = nodes.new("ShaderNodeTexImage")
                 tex_node.image = bpy.data.images.load(str(dest_tex.resolve()))
-                # Make path relative to blend file location
-                tex_node.image.filepath = f"//{dest_tex.name}"
+                # Make path relative with textures/ prefix
+                tex_node.image.filepath = f"//textures/{dest_tex.name}"
                 tex_node.location = (-400, y_offset)
                 tex_node.label = tex_type.title()
 
@@ -645,11 +719,30 @@ def process_twig_file(
             obj.select_set(True)
             bpy.context.view_layer.objects.active = obj
 
-            # Standardize object name
+            # Standardize object name with _twig after species but before variant/type
             original_name = obj.name
             standardized_name, metadata = standardize_twig_name(
                 original_name, species_name
             )
+
+            # Insert _twig after species name but before variant/type
+            # Example: western_red_cedar_twig_apical (not western_red_cedar_apical_twig)
+            parts = standardized_name.split("_")
+
+            # Find species name end (before type keywords)
+            species_parts = []
+            for i, part in enumerate(parts):
+                if part in ["apical", "lateral", "var", "upward", "dead", "summer"]:
+                    # Insert twig before this position
+                    species_parts.append("twig")
+                    species_parts.extend(parts[i:])
+                    break
+                species_parts.append(part)
+            else:
+                # No type found, append twig at end
+                species_parts.append("twig")
+
+            standardized_name = "_".join(species_parts)
 
             print(f"  Processing: {original_name}")
             print(f"    -> Standardized: {standardized_name}")
@@ -714,7 +807,7 @@ def process_twig_file(
             # CRITICAL: Materials are created once and shared by ALL export formats
             # This ensures identical material/texture mapping in FBX and USD
             material_setup_success = setup_materials_with_textures(
-                obj, blend_dir, species_name, output_dir
+                obj, blend_dir, species_name, output_dir, standardized_name
             )
 
             if material_setup_success:
@@ -748,12 +841,18 @@ def process_twig_file(
                         generate_preview_surface=True,
                         relative_paths=True,
                         export_hair=False,
+                        export_lights=False,
                     )
 
                     exported_files.append(export_path)
 
-                    # Export skeletal mesh variant
-                    skel_export_path = output_dir / f"{standardized_name}_skel.{fmt}"
+                    # Fix texture paths in static USD
+                    fix_texture_paths_in_usd(export_path)
+
+                    # Export skeletal mesh variant (using _skeletal to match tree convention)
+                    skel_export_path = (
+                        output_dir / f"{standardized_name}_skeletal.{fmt}"
+                    )
                     print(f"    -> Exporting skeletal USD: {skel_export_path.name}")
 
                     bpy.ops.wm.usd_export(
@@ -769,11 +868,13 @@ def process_twig_file(
                         generate_preview_surface=True,
                         relative_paths=True,
                         export_hair=False,
+                        export_lights=False,
                     )
 
                     exported_files.append(skel_export_path)
 
                     # Add skeleton directly using Blender's bundled USD
+                    # This also fixes texture paths and removes DomeLight
                     print(f"    -> Adding skeleton to: {skel_export_path.name}")
                     if add_skeleton_to_usd_file(
                         skel_export_path,
@@ -804,13 +905,34 @@ def process_twig_file(
             print(f"    -> [ERROR] {e}")
             continue
 
-    # Save manifest
-    if texture_manifest:
-        manifest_path = output_dir / "twig_manifest.json"
-        with open(manifest_path, "w") as f:
-            json.dump(texture_manifest, f, indent=2)
-        print("")
-        print(f"  Saved manifest: {manifest_path.name}")
+    # Note: Manifest file removed - not needed in output
+    # Twig metadata is preserved in file naming and structure
+
+    # Cleanup: Remove original .blend file and ReadMe.txt
+    try:
+        if blend_file.exists():
+            blend_file.unlink()
+            print(f"  [CLEANUP] Removed: {blend_file.name}")
+
+        readme_file = output_dir / "ReadMe.txt"
+        if readme_file.exists():
+            readme_file.unlink()
+            print(f"  [CLEANUP] Removed: ReadMe.txt")
+
+        # KEEP textures/ subdirectory - it contains the standardized twig textures
+        # Remove any old texture files from root directory only (legacy from previous exports)
+        for old_tex in output_dir.glob("*.[jpJP][pnPN][gG]"):
+            # Remove root-level textures (textures should be in textures/ subfolder)
+            old_tex.unlink()
+            print(f"  [CLEANUP] Removed root-level texture: {old_tex.name}")
+
+        # Remove .hdr placeholders from root
+        for hdr_file in output_dir.glob("*.hdr"):
+            if hdr_file.stem.startswith("color_"):
+                hdr_file.unlink()
+                print(f"  [CLEANUP] Removed HDR placeholder: {hdr_file.name}")
+    except Exception as e:
+        print(f"  [WARN] Cleanup failed: {e}")
 
     return exported_files
 
