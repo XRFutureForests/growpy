@@ -44,15 +44,6 @@ Note:
 """
 
 from .export import get_quality_preset
-from .nanite import add_nanite_attributes_to_usd, validate_mesh_for_nanite
-from .unreal_metadata import (
-    UnrealPCGMetadata,
-    calculate_density_from_spacing,
-    calculate_spacing_from_crown_radius,
-    create_forest_metadata,
-    create_metadata_from_growth_data,
-    load_metadata,
-)
 from .usd_builder import (
     add_materials_to_usd,
     add_skeleton_to_usd,
@@ -109,17 +100,20 @@ except ImportError:
     NANITE_VALIDATION_AVAILABLE = False
     validate_nanite_assembly = None
 __all__ = [
+    # Core exports
     "get_quality_preset",
     "build_tree_usd",
     "add_skeleton_to_usd",
     "add_twig_skeleton_to_usd",
     "add_materials_to_usd",
+    "EXPORT_AVAILABLE",
+    # Blender exports (if available)
     "export_tree_as_usd",
     "batch_export_tree_usd",
     "batch_export_trees_for_unreal",
     "create_nanite_assembly_usd",
     "export_twigs_from_blend",
-    "EXPORT_AVAILABLE",
+    # Twig placement (if available)
     "extract_twig_placements_from_mesh",
     "place_twigs_in_blender",
     "export_twig_placements_to_usd",
@@ -127,14 +121,7 @@ __all__ = [
     "get_face_center_and_normal",
     "normal_to_rotation_matrix",
     "TWIG_PLACEMENT_AVAILABLE",
-    "add_nanite_attributes_to_usd",
-    "validate_mesh_for_nanite",
-    "UnrealPCGMetadata",
-    "create_metadata_from_growth_data",
-    "create_forest_metadata",
-    "load_metadata",
-    "calculate_spacing_from_crown_radius",
-    "calculate_density_from_spacing",
+    # Nanite validation (if available)
     "validate_nanite_assembly",
     "NANITE_VALIDATION_AVAILABLE",
 ]

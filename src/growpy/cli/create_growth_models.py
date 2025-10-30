@@ -9,7 +9,7 @@ Supports two CSV formats:
   2. Asset lookup CSV (Common Name, Preset, Twig, Bark Texture) - direct asset reference
 
 Quick Start:
-    python src/growpy/cli/create_growth_models.py
+    python src/growpy/cli/create_growth_models.py --cycles 25
 
 Common Flags:
     --species TEXT           Analyze specific species (default: all from CSV)
