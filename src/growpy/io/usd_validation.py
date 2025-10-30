@@ -181,9 +181,7 @@ def validate_skeletal_structure(usd_path: Path, verbose: bool = False) -> dict:
     return results
 
 
-def validate_twig_skeletal_structure(
-    usd_path: Path, verbose: bool = False
-) -> dict:
+def validate_twig_skeletal_structure(usd_path: Path, verbose: bool = False) -> dict:
     """Validate that twig USD file has correct skeletal structure.
 
     Checks for:
@@ -221,15 +219,15 @@ def validate_twig_skeletal_structure(
             results["errors"].append(f"Could not open USD file: {usd_path}")
             return results
 
-        # Check for SkelRoot
-        skel_root_prim = stage.GetPrimAtPath("/twig")
+        # Check for SkelRoot (CamelCase naming convention)
+        skel_root_prim = stage.GetPrimAtPath("/Twig")
         if not skel_root_prim or not skel_root_prim.IsA(UsdSkel.Root):
             results["valid"] = False
             results["errors"].append("No SkelRoot found at /Twig")
             return results
 
         # Check for Skeleton
-        skel_prim = stage.GetPrimAtPath("/twig/skel")
+        skel_prim = stage.GetPrimAtPath("/Twig/Skel")
         if not skel_prim or not skel_prim.IsA(UsdSkel.Skeleton):
             results["valid"] = False
             results["errors"].append("No Skeleton found at /Twig/Skel")
@@ -247,8 +245,8 @@ def validate_twig_skeletal_structure(
         joint_names = joints_attr.Get()
         results["info"]["total_joints"] = len(joint_names)
 
-        # Check for mesh with skinning
-        mesh_prim = stage.GetPrimAtPath("/twig/mesh")
+        # Check for mesh with skinning (CamelCase naming convention)
+        mesh_prim = stage.GetPrimAtPath("/Twig/Mesh")
         if mesh_prim and mesh_prim.IsA(UsdGeom.Mesh):
             mesh = UsdGeom.Mesh(mesh_prim)
 
@@ -309,9 +307,7 @@ def print_validation_results(results: dict, file_name: str = "") -> None:
 
     if results["info"]:
         print(f"  Total joints: {results['info'].get('total_joints', 0)}")
-        print(
-            f"  Hierarchical joints: {results['info'].get('hierarchical_joints', 0)}"
-        )
+        print(f"  Hierarchical joints: {results['info'].get('hierarchical_joints', 0)}")
         print(f"  Twig mount bones: {results['info'].get('twig_bones', 0)}")
         print(
             f"  Skinning element size: {results['info'].get('skinning_element_size', 'N/A')}"

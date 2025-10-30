@@ -39,7 +39,7 @@ except ImportError as e:
 
 
 def fix_texture_paths_in_usd(usd_path):
-    """Ensure texture paths in USD file use ./textures/ subdirectory for consistent structure.
+    """Ensure texture paths in USD file use ./textures/ subdirectory and fix naming conventions.
 
     Args:
         usd_path: Path to USD file
@@ -55,25 +55,67 @@ def fix_texture_paths_in_usd(usd_path):
         if not stage:
             return False
 
-        # Verify texture paths use ./textures/ prefix (should already be correct from Blender export)
-        # This function now mainly validates the paths rather than fixing them
-        has_textures = False
+        # Fix texture paths to use ./textures/ prefix
         for prim in stage.Traverse():
             for attr in prim.GetAttributes():
                 if attr.GetTypeName() == Sdf.ValueTypeNames.Asset:
                     asset_path = attr.Get()
                     if asset_path and isinstance(asset_path, Sdf.AssetPath):
                         path_str = asset_path.path
-                        if "textures/" in path_str or path_str.endswith(
-                            (".png", ".jpg", ".jpeg")
+                        if path_str and path_str.endswith(
+                            (".png", ".jpg", ".jpeg", ".tiff", ".exr")
                         ):
-                            has_textures = True
-                            break
+                            # Ensure path starts with ./textures/
+                            if not path_str.startswith("./textures/"):
+                                filename = Path(path_str).name
+                                new_path = f"./textures/{filename}"
+                                attr.Set(Sdf.AssetPath(new_path))
 
+        stage.Save()
         return True
     except Exception as e:
-        print(f"      [WARN] Texture path validation failed: {e}")
+        print(f"      [WARN] Texture path fix failed: {e}")
         return False
+
+
+def rename_prim_recursive(stage, old_path, new_path):
+    """Rename a prim and update all references to it."""
+    layer = stage.GetRootLayer()
+    Sdf.CopySpec(layer, old_path, layer, new_path)
+    stage.RemovePrim(old_path)
+
+    # Update all references to the old path
+    for prim in stage.Traverse():
+        for rel in prim.GetRelationships():
+            targets = rel.GetTargets()
+            if targets:
+                new_targets = []
+                for target in targets:
+                    target_str = str(target)
+                    if str(old_path) in target_str:
+                        new_target_str = target_str.replace(
+                            str(old_path), str(new_path)
+                        )
+                        new_targets.append(Sdf.Path(new_target_str))
+                    else:
+                        new_targets.append(target)
+                if new_targets != list(targets):
+                    rel.SetTargets(new_targets)
+
+        for attr in prim.GetAttributes():
+            # Update connection paths
+            connections = attr.GetConnections()
+            if connections:
+                new_connections = []
+                for conn in connections:
+                    conn_str = str(conn)
+                    if str(old_path) in conn_str:
+                        new_conn_str = conn_str.replace(str(old_path), str(new_path))
+                        new_connections.append(Sdf.Path(new_conn_str))
+                    else:
+                        new_connections.append(conn)
+                if new_connections != list(connections):
+                    attr.SetConnections(new_connections)
 
 
 def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False):
@@ -103,17 +145,21 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
             stage.RemovePrim("/root/env_light")
             print(f"      [OK] Removed DomeLight artifact")
 
-        # Fix texture paths: change ./textures/*.png to ./*.png
-        # (since we remove the textures/ subdirectory during cleanup)
+        # Ensure texture paths use ./textures/ prefix
         for prim in stage.Traverse():
             for attr in prim.GetAttributes():
                 if attr.GetTypeName() == Sdf.ValueTypeNames.Asset:
                     asset_path = attr.Get()
                     if asset_path and isinstance(asset_path, Sdf.AssetPath):
                         path_str = asset_path.path
-                        if path_str.startswith("./textures/"):
-                            # Update to root-level relative path
-                            new_path = path_str.replace("./textures/", "./")
+                        if path_str and not path_str.startswith("./textures/"):
+                            # Add ./textures/ prefix if missing
+                            filename = (
+                                Path(path_str).name
+                                if path_str.startswith("./")
+                                else path_str
+                            )
+                            new_path = f"./textures/{filename}"
                             attr.Set(Sdf.AssetPath(new_path))
 
         # Find mesh prim
@@ -134,9 +180,11 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
             print(f"      [WARN] Mesh has no vertices: {usd_path.name}")
             return False
 
-        # Create skeleton root
-        root_path = Sdf.Path("/twig")
+        # Create skeleton root (CamelCase naming)
+        root_path = Sdf.Path("/Twig")
         skel_root = UsdSkel.Root.Define(stage, root_path)
+        # Explicitly set typeName for validation
+        skel_root.GetPrim().SetTypeName("SkelRoot")
 
         # CRITICAL: Add SkelBindingAPI to SkelRoot for proper Unreal Engine skeletal mesh interpretation
         # Without this, Unreal cannot properly bind the skeleton to the mesh
@@ -269,18 +317,24 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
                 joint_weights
             )  # Changed from 1 to 2
 
-        # Copy materials from /root/_materials/ to /Twig/_materials/ (only if not clean export)
+            # Copy materials from /root/_materials/ to /Twig/Materials/ (only if not clean export)
         if not clean_export:
             from pxr import UsdShade
 
             materials_prim = stage.GetPrimAtPath("/root/_materials")
             if materials_prim and materials_prim.IsValid():
-                new_materials_path = root_path.AppendChild("_materials")
+                new_materials_path = root_path.AppendChild("Materials")
                 materials_scope = stage.DefinePrim(new_materials_path, "Scope")
 
                 # Copy all material definitions
                 for child in materials_prim.GetChildren():
-                    new_mat_path = new_materials_path.AppendChild(child.GetName())
+                    # Clean material name (remove numeric suffixes)
+                    mat_name = child.GetName()
+                    clean_mat_name = (
+                        mat_name.split(".")[0] if "." in mat_name else mat_name
+                    )
+
+                    new_mat_path = new_materials_path.AppendChild(clean_mat_name)
                     # Use CopySpec to copy entire material hierarchy
                     Sdf.CopySpec(
                         stage.GetRootLayer(),
@@ -288,6 +342,50 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
                         stage.GetRootLayer(),
                         new_mat_path,
                     )
+
+                    # Rename shaders with semantic names
+                    mat_prim = stage.GetPrimAtPath(new_mat_path)
+                    if mat_prim:
+                        shader_renames = {}
+                        for shader_prim in list(mat_prim.GetChildren()):
+                            shader_name = shader_prim.GetName()
+                            new_shader_name = None
+
+                            # Check shader connections to determine type
+                            shader = UsdShade.Shader(shader_prim)
+                            file_input = shader.GetInput("file")
+                            if file_input:
+                                file_path = str(file_input.Get())
+                                if "alpha" in file_path:
+                                    new_shader_name = "AlphaTexture"
+                                elif "normal" in file_path:
+                                    new_shader_name = "NormalTexture"
+                                elif "translucent" in file_path:
+                                    new_shader_name = "TranslucentTexture"
+                                elif "diffuse" in file_path:
+                                    new_shader_name = "DiffuseTexture"
+
+                            # Fallback naming based on shader name patterns
+                            if not new_shader_name:
+                                if (
+                                    "Image_Texture_001" in shader_name
+                                    or shader_name == "Image_Texture_001"
+                                ):
+                                    new_shader_name = "DiffuseTexture"
+                                elif "Image_Texture_003" in shader_name:
+                                    new_shader_name = "NormalTexture"
+                                elif shader_name == "Image_Texture":
+                                    new_shader_name = "AlphaTexture"
+
+                            if new_shader_name and shader_name != new_shader_name:
+                                old_shader_path = shader_prim.GetPath()
+                                new_shader_path = mat_prim.GetPath().AppendChild(
+                                    new_shader_name
+                                )
+                                shader_renames[old_shader_path] = new_shader_path
+                                rename_prim_recursive(
+                                    stage, old_shader_path, new_shader_path
+                                )
 
                     # Update material binding paths in shader network
                     def update_material_paths(prim_path):
@@ -325,6 +423,13 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
                         new_mat_path_str = str(mat_path).replace(
                             "/root/_materials/", str(new_materials_path) + "/"
                         )
+                        # Also update for cleaned material name
+                        path_parts = new_mat_path_str.split("/")
+                        if path_parts:
+                            mat_name = path_parts[-1].split(".")[0]
+                            path_parts[-1] = mat_name
+                            new_mat_path_str = "/".join(path_parts)
+
                         new_mat_path = Sdf.Path(new_mat_path_str)
                         mat_prim = stage.GetPrimAtPath(new_mat_path)
                         if mat_prim and mat_prim.IsValid():
@@ -341,7 +446,7 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
             print(f"      [OK] Removed old /root prim (Blender export artifact)")
 
         # Set Twig as default prim so it's the primary reference target
-        twig_prim = stage.GetPrimAtPath("/twig")
+        twig_prim = stage.GetPrimAtPath("/Twig")
         if twig_prim and twig_prim.IsValid():
             stage.SetDefaultPrim(twig_prim)
 
@@ -446,9 +551,11 @@ def classify_texture_from_name(name):
 
 
 def setup_materials_with_textures(
-    obj, blend_dir, species_name, output_dir, standardized_name
+    obj, blend_dir, species_name, output_dir, standardized_name, metadata=None
 ):
     """Setup materials with all available textures."""
+    if metadata is None:
+        metadata = {"species": species_name}
     import bpy
 
     texture_extensions = [".png", ".jpg", ".jpeg", ".tiff", ".exr", ".bmp"]
@@ -508,7 +615,26 @@ def setup_materials_with_textures(
     materials_created = 0
 
     for mat_name, textures in material_groups.items():
-        material = bpy.data.materials.new(name=f"{species_name}_{mat_name}")
+        # Clean material name - remove any numeric suffixes (.001, .002, etc.)
+        clean_mat_name = mat_name.split(".")[0]
+
+        # Avoid duplication if clean_mat_name already contains species_name
+        species_lower = species_name.lower().replace(" ", "_")
+        clean_lower = clean_mat_name.lower().replace(" ", "_")
+
+        if species_lower in clean_lower:
+            # Material name already has species name, use as-is
+            final_mat_name = clean_mat_name
+        else:
+            # Add species prefix
+            final_mat_name = f"{species_name}_{clean_mat_name}"
+
+        # Check if material already exists and remove it to avoid .001 suffixes
+        existing_mat = bpy.data.materials.get(final_mat_name)
+        if existing_mat:
+            bpy.data.materials.remove(existing_mat)
+
+        material = bpy.data.materials.new(name=final_mat_name)
         material.use_nodes = True
         nodes = material.node_tree.nodes
         links = material.node_tree.links
@@ -562,9 +688,25 @@ def setup_materials_with_textures(
         for tex_type, tex_path in texture_map.items():
             try:
                 # CRITICAL: Copy texture with standardized naming to textures/ subfolder
-                # Format: textures/{standardized_twig_name}_{texture_type}{ext}
+                # Format: textures/{species_twig}_{texture_type}{ext}
+                # Remove variant suffixes (_var_a, _var_b, etc.) from texture names
                 tex_ext = tex_path.suffix
-                standardized_tex_name = f"{standardized_name}_{tex_type}{tex_ext}"
+                # Extract base species name (everything up to and including 'twig')
+                base_name_parts = []
+                found_twig = False
+                for part in standardized_name.split("_"):
+                    base_name_parts.append(part)
+                    if part == "twig":
+                        found_twig = True
+                        break
+
+                # If 'twig' not found, use species name from metadata
+                if not found_twig:
+                    base_name = metadata["species"].lower().replace(" ", "_") + "_twig"
+                else:
+                    base_name = "_".join(base_name_parts)
+
+                standardized_tex_name = f"{base_name}_{tex_type}{tex_ext}"
                 dest_tex = textures_dir / standardized_tex_name
                 if not dest_tex.exists():
                     shutil.copy2(tex_path, dest_tex)
@@ -576,6 +718,8 @@ def setup_materials_with_textures(
                 # Make path relative with textures/ prefix
                 tex_node.image.filepath = f"//textures/{dest_tex.name}"
                 tex_node.location = (-400, y_offset)
+                # Use semantic naming for shader nodes (e.g., DiffuseTexture, AlphaTexture)
+                tex_node.name = f"{tex_type.replace('_', '').title()}Texture"
                 tex_node.label = tex_type.title()
 
                 # Connect based on type
@@ -807,7 +951,7 @@ def process_twig_file(
             # CRITICAL: Materials are created once and shared by ALL export formats
             # This ensures identical material/texture mapping in FBX and USD
             material_setup_success = setup_materials_with_textures(
-                obj, blend_dir, species_name, output_dir, standardized_name
+                obj, blend_dir, species_name, output_dir, standardized_name, metadata
             )
 
             if material_setup_success:
@@ -908,7 +1052,7 @@ def process_twig_file(
     # Note: Manifest file removed - not needed in output
     # Twig metadata is preserved in file naming and structure
 
-    # Cleanup: Remove original .blend file and ReadMe.txt
+    # Cleanup: Remove original .blend file, ReadMe.txt, and source textures
     try:
         if blend_file.exists():
             blend_file.unlink()
@@ -919,7 +1063,30 @@ def process_twig_file(
             readme_file.unlink()
             print(f"  [CLEANUP] Removed: ReadMe.txt")
 
-        # KEEP textures/ subdirectory - it contains the standardized twig textures
+        # Remove original source texture files (now standardized copies exist in textures/)
+        # Original files use CamelCase or species-specific naming (e.g., BeechAlpha.jpg)
+        # Standardized files use snake_case with full standardized name (e.g., european_beech_twig_alpha.jpg)
+        textures_dir = output_dir / "textures"
+        if textures_dir.exists():
+            for tex_file in textures_dir.glob("*"):
+                if not tex_file.is_file():
+                    continue
+
+                # Keep only files matching standardized naming pattern
+                # Format: {species_name}_twig_{texture_type}.{ext}
+                # Remove files with CamelCase or non-standardized names
+                filename = tex_file.stem
+
+                # Check if this is a standardized name (contains species + _twig_)
+                species_lower = species_name.lower().replace(" ", "_")
+                is_standardized = (
+                    filename.startswith(species_lower) and "_twig_" in filename.lower()
+                )
+
+                if not is_standardized:
+                    tex_file.unlink()
+                    print(f"  [CLEANUP] Removed original texture: {tex_file.name}")
+
         # Remove any old texture files from root directory only (legacy from previous exports)
         for old_tex in output_dir.glob("*.[jpJP][pnPN][gG]"):
             # Remove root-level textures (textures should be in textures/ subfolder)

@@ -7,6 +7,7 @@ Successfully cleaned up unused code in the growpy package, reducing API surface 
 ## Metrics
 
 ### Before Cleanup
+
 - **Main API exports**: 19 functions
 - **Unused exports**: 12 functions (63%)
 - **Total modules**: 21 Python files
@@ -14,6 +15,7 @@ Successfully cleaned up unused code in the growpy package, reducing API surface 
 - **Modules with all functions unused**: 5
 
 ### After Cleanup
+
 - **Main API exports**: 7 functions (-63%)
 - **Unused exports**: 0 functions
 - **Total modules**: 16 Python files (-24%)
@@ -23,10 +25,12 @@ Successfully cleaned up unused code in the growpy package, reducing API surface 
 ## Deleted Files (5 modules)
 
 ### io/ (2 files)
+
 1. `unreal_metadata.py` - Forest metadata functions (unused by CLI)
 2. `nanite.py` - Duplicate Nanite validation (already in blender_export.py)
 
 ### config/ (3 files)
+
 1. `quality.py` - LOD configuration functions (unused)
 2. `species.py` - Species color/texture helpers (unused)
 3. `paths.py` - Path resolution functions (unused)
@@ -36,6 +40,7 @@ Successfully cleaned up unused code in the growpy package, reducing API surface 
 ### Main Package (`growpy.__init__.py`)
 
 **Kept (7 functions)**:
+
 ```python
 from growpy import (
     GrowPyConfig,           # Configuration class
@@ -49,6 +54,7 @@ from growpy import (
 ```
 
 **Removed (12 unused exports)**:
+
 - `add_tree_to_grove`
 - `apply_species_color_settings`
 - `batch_export_tree_usd`
@@ -64,12 +70,14 @@ from growpy import (
 
 ### Module APIs
 
-**config/__init__.py**: 28 → 2 exports
+**config/**init**.py**: 28 → 2 exports
+
 ```python
 from growpy.config import GrowPyConfig, get_config
 ```
 
-**core/__init__.py**: 9 → 4 exports
+**core/**init**.py**: 9 → 4 exports
+
 ```python
 from growpy.core import (
     create_grove,
@@ -79,11 +87,12 @@ from growpy.core import (
 )
 ```
 
-**io/__init__.py**: 28 → 20 exports (removed metadata/nanite references)
+**io/**init**.py**: 28 → 20 exports (removed metadata/nanite references)
 
 ## Remaining Unused Functions (41)
 
 These functions are still in the codebase but not used by CLI scripts. They may be used by:
+
 - Internal implementation details
 - Future features
 - Advanced user customization
@@ -92,10 +101,12 @@ These functions are still in the codebase but not used by CLI scripts. They may 
 ### By Module
 
 **core/** (4 unused):
+
 - `forest.py`: `create_forest_with_attributes()`
 - `tree.py`: `apply_species_color_settings()`, `build_grove_with_all_attributes()`, `get_model_attributes()`
 
 **io/** (18 unused):
+
 - `blender_export.py`: 7 functions (material helpers, validation)
 - `blender_twig_processor.py`: 6 functions (texture/skeleton helpers)
 - `skeleton_from_bones.py`: 1 function
@@ -103,6 +114,7 @@ These functions are still in the codebase but not used by CLI scripts. They may 
 - `usd_builder.py`: 3 functions
 
 **utils/** (6 unused):
+
 - `analysis.py`: 2 functions (lookup table helpers)
 - `paths.py`: 2 functions (`ensure_dir`, `ensure_parent_dir`)
 - `strings.py`: 2 functions (sanitization helpers)
@@ -110,12 +122,14 @@ These functions are still in the codebase but not used by CLI scripts. They may 
 ## Verification
 
 All CLI scripts verified working:
+
 - ✓ `prepare_assets.py` - Asset preparation
 - ✓ `convert_twigs.py` - Twig conversion
 - ✓ `create_growth_models.py` - Growth model generation
 - ✓ `generate_forest.py` - Forest generation
 
 ### Test Results
+
 ```bash
 # Main API imports
 ✓ All main imports working
@@ -136,7 +150,9 @@ All CLI scripts verified working:
 ## Recommendations for Future
 
 ### For Public API Users
+
 Use the 7 main exports from `growpy` package:
+
 ```python
 from growpy import (
     get_config,
@@ -147,7 +163,9 @@ from growpy import (
 ```
 
 ### For Advanced Users
+
 Import directly from submodules:
+
 ```python
 from growpy.io.blender_export import (
     get_quality_preset,
@@ -157,6 +175,7 @@ from growpy.utils.analysis import SpeciesGrowthAnalyzer
 ```
 
 ### For Contributors
+
 - Keep main API minimal (only functions used by CLI)
 - Make internal helpers private (prefix with `_`)
 - Delete unused code rather than keeping "just in case"
@@ -164,7 +183,7 @@ from growpy.utils.analysis import SpeciesGrowthAnalyzer
 
 ## Next Steps (Optional)
 
-1. **Mark internal functions as private**: Prefix unused functions with `_` 
+1. **Mark internal functions as private**: Prefix unused functions with `_`
 2. **Consolidate utilities**: Merge small utility modules
 3. **Add type hints**: Improve IDE support for public API
 4. **Update documentation**: Focus on the 7 main functions
