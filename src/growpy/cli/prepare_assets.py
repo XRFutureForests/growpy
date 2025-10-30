@@ -36,19 +36,26 @@ import pandas as pd
 
 
 def camel_to_snake(name: str) -> str:
-    """Convert CamelCase to snake_case.
+    """Convert CamelCase to snake_case with number separation.
 
     Args:
         name: CamelCase string
 
     Returns:
-        snake_case string
+        snake_case string with numbers separated by underscores
+
+    Examples:
+        "Beech60" -> "beech_60"
+        "BaldCypress80" -> "bald_cypress_80"
+        "NorthernRedOak60" -> "northern_red_oak_60"
     """
     # Insert underscore before uppercase letters
     s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
     # Insert underscore before uppercase letters followed by lowercase
     s2 = re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1)
-    return s2.lower()
+    # Insert underscore before numbers (after letters)
+    s3 = re.sub("([a-z])([0-9])", r"\1_\2", s2)
+    return s3.lower()
 
 
 def standardize_species_name(common_name: str) -> str:
@@ -330,22 +337,27 @@ CSV Format Support:
             stats["twigs_missing"] += 1
             print(f"  ✗ {twig_name_original} (not found)")
 
-    # Copy bark textures with standardized naming
+    # Copy bark textures with CamelCase -> snake_case conversion (preserves age numbers)
     print(f"\n[TEXTURES] Copying and standardizing bark textures...")
     src_textures = args.grove_dir / "textures"
     dst_textures = args.assets_dir / "textures"
 
     for _, row in df.iterrows():
         texture_file = row["Bark Texture"]
-        common_name = row["Common Name"]
         if pd.isna(texture_file) or not texture_file.strip():
             continue
 
         src_file = src_textures / texture_file
 
-        # Standardize texture name: "Beech60.jpg" -> "european_beech_bark.jpg"
-        standardized_name = standardize_species_name(common_name)
+        # Convert CamelCase to snake_case, preserving age numbers and adding _bark suffix
+        # Examples: "Beech60.jpg" -> "beech_60_bark.jpg"
+        #           "BaldCypress80.jpg" -> "bald_cypress_80_bark.jpg"
+        #           "NorthernRedOak60.jpg" -> "northern_red_oak_60_bark.jpg"
+        texture_stem = Path(texture_file).stem
         file_ext = Path(texture_file).suffix
+
+        # Convert to snake_case (handles numbers correctly)
+        standardized_name = camel_to_snake(texture_stem)
         dst_file = dst_textures / f"{standardized_name}_bark{file_ext}"
 
         if src_file.exists():
