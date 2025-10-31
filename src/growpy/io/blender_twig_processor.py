@@ -205,8 +205,8 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
         # Only the assembly root should have NaniteAssemblyRootAPI.
 
         # Create skeleton with single root joint
-        # Use "Skel" naming to match Nanite Assembly requirements
-        skel_path = root_path.AppendChild("Skel")
+        # Use "TwigSkel" naming to match Nanite Assembly requirements
+        skel_path = root_path.AppendChild("TwigSkel")
         skel = UsdSkel.Skeleton.Define(stage, skel_path)
 
         # Create single root joint at pivot point
@@ -241,8 +241,8 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
                 variability=Sdf.VariabilityUniform,
             )
             joint_indices_attr.Set(Vt.IntArray([-1]))  # Re-parent mesh under SkelRoot
-        # Use "Mesh" naming to match Nanite Assembly requirements
-        new_mesh_path = root_path.AppendChild("Mesh")
+        # Use "TwigMesh" naming to match Nanite Assembly requirements
+        new_mesh_path = root_path.AppendChild("TwigMesh")
         old_mesh_path = mesh_prim.GetPath()
 
         # Copy mesh to new location

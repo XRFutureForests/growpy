@@ -107,10 +107,10 @@ def create_nanite_assembly_usd(
         ).Set(mesh_type)
 
         # Handle tree mesh - use SkelRoot for skeletal, Xform for static
-        # For skeletal: tree_mesh must be SkelRoot so Unreal can find it as ancestor of skeleton
-        # For static: tree_mesh is simple Xform wrapper
+        # For skeletal: TreeMesh must be SkelRoot so Unreal can find it as ancestor of skeleton
+        # For static: TreeMesh is simple Xform wrapper
         tree_prim_type = "SkelRoot" if use_skeletal_mesh else "Xform"
-        tree_prim = stage.DefinePrim(f"/{assembly_name}/tree_mesh", tree_prim_type)
+        tree_prim = stage.DefinePrim(f"/{assembly_name}/TreeMesh", tree_prim_type)
 
         # Reference the tree mesh
         # CRITICAL: Always explicitly reference the /tree prim path for consistency
@@ -153,10 +153,10 @@ def create_nanite_assembly_usd(
                 "unreal:naniteAssembly:skeleton",
                 custom=False,
             )
-            skeleton_rel.AddTarget(f"/{assembly_name}/tree_mesh/tree_skel")
+            skeleton_rel.AddTarget(f"/{assembly_name}/TreeMesh/TreeSkel")
 
-            print(f"    [OK] Skeletal tree embedded via tree_mesh (mesh + skeleton)")
-            print(f"    Skeleton relationship: /{assembly_name}/tree_mesh/tree_skel")
+            print(f"    [OK] Skeletal tree embedded via TreeMesh (mesh + skeleton)")
+            print(f"    Skeleton relationship: /{assembly_name}/TreeMesh/TreeSkel")
         else:
             print(f"  Adding static tree mesh...")
 
