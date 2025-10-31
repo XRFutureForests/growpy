@@ -71,9 +71,8 @@ def place_twigs_on_exported_trees(
         output_dir: Output directory for tree+twig assemblies
     """
     # DEPRECATED: twig_placement.py removed - this functionality not yet refactored
-    print("Warning: place_twigs_on_exported_trees is deprecated and disabled")
     return
-    
+
     import bpy
 
     # from growpy.io.twig_placement import (
@@ -182,7 +181,8 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     import gc as _gc_module
 
     from growpy import get_config
-    from growpy.io.tree_export import export_tree, get_twig_usd_map_for_species
+    from growpy.io.assembly_export import export_tree_as_nanite_assembly
+    from growpy.io.tree_export import get_twig_usd_map_for_species
 
     (
         idx,
@@ -218,7 +218,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         # No re-simulation needed - much faster!
 
         if "usd" in formats or "usda" in formats:
-            usd_path = species_dir / f"{tree_name}.usda"
+            usd_path = species_dir / f"{tree_name}_nanite_assembly.usda"
 
             # For skeletal assemblies, use skeletal twigs; for static, use static twigs
             prefer_skeletal_twigs = create_nanite_assembly
@@ -226,15 +226,14 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 species, config, prefer_skeletal=prefer_skeletal_twigs
             )
 
-            export_success = export_tree(
-                grove,
-                usd_path,
-                species,
+            # Export as Nanite Assembly (includes twigs, skeleton, proper UE schema)
+            export_success = export_tree_as_nanite_assembly(
+                grove=grove,
+                output_path=usd_path,
+                species_name=species,
                 twig_usd_paths=twig_usd_map,
                 include_twigs=True,
-                use_point_instancer=True,
-                convert_to_ue=True,
-                create_nanite_assembly=create_nanite_assembly,
+                use_skeletal_mesh=create_nanite_assembly,
                 resolution=quality_params["resolution"],
                 resolution_reduce=quality_params["resolution_reduce"],
                 texture_repeat=quality_params["texture_repeat"],
@@ -242,12 +241,6 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 build_cutoff_thickness=quality_params["build_cutoff_thickness"],
                 build_blend=quality_params["build_blend"],
                 build_end_cap=quality_params["build_end_cap"],
-                skeleton_length=quality_params.get("skeleton_length", 1.0),
-                skeleton_reduce=quality_params.get("skeleton_reduce", 0.25),
-                skeleton_bias=quality_params.get("skeleton_bias", 0.5),
-                skeleton_connected=quality_params.get("skeleton_connected", True),
-                clean_export=quality_params.get("clean_export", False),
-                config=config,
             )
 
             if export_success:
@@ -256,7 +249,10 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         _gc_module.collect()
 
     except Exception as e:
-        print(f"Failed to export tree {idx} ({species}): {e}")
+        print(f"ERROR exporting tree {idx} ({species}): {e}")
+        import traceback
+
+        traceback.print_exc()
 
     return exported
 
@@ -329,12 +325,9 @@ def export_individual_trees(
         )
 
     total_trees = len(tree_tasks)
-    print(
-        f"\nExporting {total_trees} trees from simulated forest (no re-simulation)..."
-    )
+    print(f"\nExporting {total_trees} trees...")
 
     # Always use sequential processing (bpy/USD not compatible with multiprocessing)
-    print("Using sequential processing")
     for task in tqdm(tree_tasks, desc="Exporting trees"):
         result = _export_single_tree_from_forest(task)
         if result:
@@ -520,7 +513,9 @@ def generate_forest_exports(
                     print(f"\nValidating skeletal assemblies...")
                 # Place twigs if requested
                 if place_twigs:
-                    print("Warning: place_twigs functionality disabled (twig_placement.py deprecated)")
+                    print(
+                        "Warning: place_twigs functionality disabled (twig_placement.py deprecated)"
+                    )
                     # try:
                     #     from growpy.io.twig_placement import (
                     #         export_twig_placements_to_usd,

@@ -11,7 +11,7 @@ Key Features:
     - Textures copied to output directory with relative path references
     - Coordinate system: Z-up (Blender right-handed to Unreal left-handed)
     - Standardized naming convention for twig types
-    - Static mesh only (skeletal twig variants deprecated)
+    - Skeletal mesh export with single root joint for animation support
 
 Supports two CSV formats:
   1. Forest placement CSV (x, y, species, height) - auto-extracts unique species
@@ -21,18 +21,15 @@ Quick Start:
     # Convert twigs for 5 species in data/input/test.csv (default)
     python src/growpy/cli/convert_twigs.py data/assets/twigs
 
-    # Both static and skeletal variants exported in one pass
-    # Skeletons added using Blender's bundled USD (bpy.utils.expose_bundled_modules)
+    # Skeletal variants exported with skeleton added via Blender's bundled USD
 
 Common Flags:
     --formats {usd,usda}  Export formats (default: usda)
     --csv PATH            Species CSV filter (default: data/input/test.csv)
 
 Output per twig:
-    - standard_name.usda          # Static mesh USD (no skeleton)
-    - standard_name_skel.usda     # Skeletal mesh USD (skeleton added in step 2)
+    - standard_name_skeletal.usda # Skeletal mesh USD with single root joint
     - textures/*                  # All textures copied to output directory
-    - twig_manifest.json          # Metadata about exported twigs
 
 Twig Type Mapping:
     apical/long/end/terminal -> twig_long attribute (terminal twigs)
@@ -47,8 +44,8 @@ Coordinate Systems:
     - USD preserves Z-up, handedness handled on Unreal import
 
 Note:
-    Tree skeletons (for main trees) remain supported for animation and wind effects.
-    Only twig skeletons have been deprecated as they are not needed for static foliage.
+    Twig skeletons use a single root joint at the origin for Unreal PCG attachment.
+    This enables proper mount point handling in Nanite assemblies.
 
 Full Documentation:
     See docs/guides/cli-reference.md for complete flag reference and examples
@@ -57,11 +54,7 @@ Usage:
     python convert_twigs.py <path> [options]
 """
 
-import json
-import shutil
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -292,24 +285,6 @@ def find_textures_for_material(
     return texture_map
 
 
-def get_processor_script_path() -> Path:
-    """Get path to the Blender processor script module.
-
-    Returns:
-        Path to blender_twig_processor.py module
-    """
-    # Get path relative to this file
-    current_dir = Path(__file__).parent
-    processor_path = current_dir.parent / "io" / "blender_twig_processor.py"
-
-    if not processor_path.exists():
-        raise FileNotFoundError(
-            f"Blender processor script not found at {processor_path}"
-        )
-
-    return processor_path
-
-
 def process_twig_directory(
     twig_dir: Path,
     formats: List[str] = ["usda"],
@@ -356,14 +331,11 @@ def process_twig_directory(
         print(f"No .blend files found in {twig_dir}")
         return {}
 
-    print(f"\nFound {len(blend_files)} .blend file(s)")
-    print(f"Export formats: {', '.join(formats)}")
-    print(f"Using: Python + bpy module (with bundled USD)")
-    print(f"Python executable: {sys.executable}")
+    print(f"\nConverting {len(blend_files)} twig(s) to {', '.join(formats)}")
     print(f"{'='*60}\n")
 
-    # Get path to the Blender processor module
-    processor_script = get_processor_script_path()
+    # Import twig_export module directly
+    from growpy.io.twig_export import process_twig_file
 
     results = {}
 
@@ -374,49 +346,29 @@ def process_twig_directory(
             species_name = blend_file.parent.name.replace("_twig", "").replace("_", " ")
             output_dir = blend_file.parent
 
-            # Run processor script with conda Python (has bpy pip package + bundled USD)
-            cmd = [
-                sys.executable,
-                str(processor_script),
-                str(blend_file),
-                str(output_dir),
-                ",".join(formats),
-                species_name,
-                "--clean-export" if clean_export else "--no-clean-export",
-            ]
-
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=300  # 5 minute timeout
+            # Call process_twig_file directly
+            exported_files = process_twig_file(
+                blend_file=blend_file,
+                output_dir=output_dir,
+                formats=formats,
+                species_name=species_name,
+                clean_export=clean_export,
             )
 
-            # Show output
-            if result.stdout:
-                print(result.stdout)
+            # Collect results
+            if exported_files:
+                if species_name not in results:
+                    results[species_name] = []
+                results[species_name].extend(exported_files)
 
-            if result.returncode == 0:
-                # Find exported files
-                for fmt in formats:
-                    exported = list(output_dir.glob(f"*.{fmt}"))
-                    if species_name not in results:
-                        results[species_name] = []
-                    results[species_name].extend(exported)
-
-                # Validate skeletal twigs (files ending with _skeletal.usda)
-                skeletal_twigs = list(output_dir.glob("*_skeletal.usda"))
+                # Validate skeletal twigs
+                skeletal_twigs = [f for f in exported_files if "_skeletal" in f.stem]
                 if skeletal_twigs:
                     for skel_twig in skeletal_twigs:
-                        # Validation removed - no longer needed
                         print(f"  [OK] {skel_twig.name}: Skeletal twig exported")
 
-            else:
-                print(f"\n[ERROR] Processing {blend_file.name}")
-                if result.stderr:
-                    print(result.stderr[-1000:])  # Last 1000 chars
-
-        except subprocess.TimeoutExpired:
-            print(f"\n[ERROR] Timeout processing {blend_file.name} (>5 minutes)")
         except Exception as e:
-            print(f"\n[ERROR] Exception processing {blend_file.name}: {e}")
+            print(f"\n[ERROR] Processing {blend_file.name}: {e}")
 
     return results
 
@@ -449,8 +401,7 @@ CSV Format Support:
     Automatically handles forest placement CSV (x,y,species) or asset lookup CSV (Common Name,Twig)
 
 Output per twig:
-    - standard_name.usda                   # Static mesh USD (no skeleton)
-    - standard_name_skel.usda              # Skeletal mesh USD (root joint at pivot)
+    - standard_name_skeletal.usda          # Skeletal mesh USD (root joint at origin)
         """,
     )
     parser.add_argument(
