@@ -57,7 +57,7 @@ from .core import (
     create_grove,
     simulate_forest_growth,
 )
-from .io import EXPORT_AVAILABLE
+from .io import ASSEMBLY_AVAILABLE, TREE_EXPORT_AVAILABLE, TWIG_EXPORT_AVAILABLE
 
 __all__ = [
     # Core configuration
@@ -70,6 +70,8 @@ __all__ = [
     "create_grove",
     # Tree model building
     "calculate_growth_cycles_from_height",
-    # Export functionality (if available)
-    "EXPORT_AVAILABLE",
+    # Export availability flags
+    "TREE_EXPORT_AVAILABLE",
+    "TWIG_EXPORT_AVAILABLE",
+    "ASSEMBLY_AVAILABLE",
 ]
