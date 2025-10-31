@@ -98,7 +98,7 @@ def build_tree_usd(
         root_xform = UsdGeom.Xform.Define(stage, root_path)
 
         # Define mesh
-        mesh_path = root_path.AppendChild("tree_mesh")
+        mesh_path = root_path.AppendChild("TreeMesh")
         mesh = UsdGeom.Mesh.Define(stage, mesh_path)
 
         # Extract geometry data from Grove model
@@ -541,7 +541,7 @@ def _build_usdskel_from_bones(
         # assembly root should have NaniteAssemblyRootAPI.
 
     # Create skeleton under /tree
-    skel_path = Sdf.Path("/tree/tree_skel")
+    skel_path = Sdf.Path("/tree/TreeSkel")
     skel = UsdSkel.Skeleton.Define(stage, skel_path)
 
     # Set skeleton relationships on SkelRoot (required by UsdSkel spec)
@@ -782,7 +782,7 @@ def _build_usdskel_from_bones(
     skel.CreateRestTransformsAttr(Vt.Matrix4dArray(rest_transforms))
 
     # Re-parent mesh under SkelRoot (/tree) if needed
-    new_mesh_path = Sdf.Path("/tree/tree_mesh")
+    new_mesh_path = Sdf.Path("/tree/TreeMesh")
     old_mesh_path = mesh_prim.GetPath()
 
     # Only move mesh if it's not already at the correct path
@@ -1576,7 +1576,7 @@ def build_skeletal_nanite_assembly(
         ).Set("skeletalMesh")
 
         # Reference tree skeleton
-        tree_mesh_path = root_path.AppendChild("tree_mesh")
+        tree_mesh_path = root_path.AppendChild("TreeMesh")
         tree_skel_root = stage.DefinePrim(tree_mesh_path, "SkelRoot")
 
         # Add reference to external tree skeleton USD
@@ -1589,7 +1589,7 @@ def build_skeletal_nanite_assembly(
         tree_skel_root.GetReferences().AddReference(tree_ref_path, "/tree")
 
         # Set skeleton relationship to tree skeleton
-        skel_rel_path = tree_mesh_path.AppendChild("tree_skel")
+        skel_rel_path = tree_mesh_path.AppendChild("TreeSkel")
         root_prim.CreateRelationship(
             "unreal:naniteAssembly:skeleton", custom=False
         ).SetTargets([skel_rel_path])
@@ -1632,9 +1632,9 @@ def build_skeletal_nanite_assembly(
                         f"        WARNING: Using absolute path for twig: {twig_ref_path}"
                     )
 
-            # Reference skeletal twig with explicit /Twig prim path (demo format)
+            # Reference skeletal twig with explicit /Twig prim path (capital T)
             # Skeletal twigs have SkelRoot "Twig" with single root joint skeleton
-            twig_skelroot.GetReferences().AddReference(twig_ref_path, "/twig")
+            twig_skelroot.GetReferences().AddReference(twig_ref_path, "/Twig")
 
             twig_prototype_paths[twig_type] = twig_proto_path
 
