@@ -1,127 +1,76 @@
 """Import/Export functionality for GrowPy.
 
-USD export with skeleton support, twig placement, and Nanite Assembly.
+USD export with skeleton support, twig placement, and assembly creation.
 
 Key Functions:
-    export_tree_as_usd()              Export single tree to USD
-    batch_export_trees_for_unreal()   Export multiple trees for UE5
-    create_nanite_assembly_usd()      Create Nanite Assembly USD
-    build_tree_usd()                  Build USD directly from Grove API
-    extract_twig_placements_from_mesh() Extract twig placements from mesh
-    get_quality_preset()              Get quality settings
-
-Quality Presets:
-    ultra:       32 vertices, maximum detail
-    high:        24 vertices, high detail
-    medium:      16 vertices, balanced
-    low:         12 vertices, reduced detail
-    performance: 8 vertices, minimal detail
+    export_tree()           Export tree with skeleton to USD
+    build_tree_mesh()       Build USD mesh from Grove model
+    create_assembly()       Create assembly USD for Unreal
+    validate_assembly()     Validate assembly structure
 
 Example:
-    from growpy.io import export_tree_as_usd, get_quality_preset
-    from growpy import create_grove
-
-    grove = create_grove("Quaking Aspen")
-    grove.simulate(flushes=10)
+    from growpy.io import export_tree
+    from growpy.config import get_quality_preset
 
     quality = get_quality_preset("high")
-    export_tree_as_usd(grove, "tree.usda", **quality)
-
-USD Builder Example (Direct API):
-    from growpy.io import build_tree_usd
-    from the_grove_22_core import grove_core as gc
-
-    grove = gc.Grove()
-    grove.add_new_tree(...)
-    grove.simulate(flushes=10)
-    model = grove.build_models()[0]
-
-    build_tree_usd(model, "tree.usda", up_axis="Z")
+    export_tree(grove, "tree.usda", **quality)
 
 Note:
-    Blender export requires bpy module: conda install -c conda-forge bpy
-    Check EXPORT_AVAILABLE flag before using export functions.
+    Some functions require bpy: conda install -c conda-forge bpy
+    Check TREE_EXPORT_AVAILABLE flag before using.
 """
 
-from .export import get_quality_preset
-from .usd_builder import (
-    add_materials_to_usd,
-    add_skeleton_to_usd,
-    add_twig_skeleton_to_usd,
-    build_tree_usd,
-)
+from growpy.config import get_quality_preset
 
-# Blender-dependent exports
+# Tree export (requires bpy and USD)
 try:
-    from .blender_export import (
-        batch_export_tree_usd,
-        batch_export_trees_for_unreal,
-        create_nanite_assembly_usd,
-        export_tree_as_usd,
-        export_twigs_from_blend,
+    from .tree_export import (
+        add_skeleton_to_usd,
+        add_twig_skeleton_to_usd,
+        build_tree_mesh,
+        export_tree,
     )
 
-    EXPORT_AVAILABLE = True
+    TREE_EXPORT_AVAILABLE = True
 except ImportError:
-    EXPORT_AVAILABLE = False
-    export_tree_as_usd = None
-    batch_export_tree_usd = None
-    batch_export_trees_for_unreal = None
-    create_nanite_assembly_usd = None
+    TREE_EXPORT_AVAILABLE = False
+    export_tree = None
+    build_tree_mesh = None
+    add_skeleton_to_usd = None
+    add_twig_skeleton_to_usd = None
+
+# Twig export (requires bpy)
+try:
+    from .twig_export import export_twigs_from_blend
+
+    TWIG_EXPORT_AVAILABLE = True
+except ImportError:
+    TWIG_EXPORT_AVAILABLE = False
     export_twigs_from_blend = None
 
-# Twig functionality
+# Assembly creation and validation (requires USD)
 try:
-    from .twig_placement import (
-        create_geometry_nodes_twig_instancer,
-        export_twig_placements_to_usd,
-        extract_twig_placements_from_mesh,
-        get_face_center_and_normal,
-        normal_to_rotation_matrix,
-        place_twigs_in_blender,
-    )
+    from .assembly import create_assembly, validate_assembly
 
-    TWIG_PLACEMENT_AVAILABLE = True
+    ASSEMBLY_AVAILABLE = True
 except ImportError:
-    TWIG_PLACEMENT_AVAILABLE = False
-    extract_twig_placements_from_mesh = None
-    place_twigs_in_blender = None
-    export_twig_placements_to_usd = None
-    create_geometry_nodes_twig_instancer = None
-    get_face_center_and_normal = None
-    normal_to_rotation_matrix = None
-
-# Nanite Assembly
-try:
-    from .unreal_nanite_assembly import validate_nanite_assembly
-
-    NANITE_VALIDATION_AVAILABLE = True
-except ImportError:
-    NANITE_VALIDATION_AVAILABLE = False
-    validate_nanite_assembly = None
+    ASSEMBLY_AVAILABLE = False
+    create_assembly = None
+    validate_assembly = None
 __all__ = [
-    # Core exports
+    # Config
     "get_quality_preset",
-    "build_tree_usd",
+    # Tree export
+    "export_tree",
+    "build_tree_mesh",
     "add_skeleton_to_usd",
     "add_twig_skeleton_to_usd",
-    "add_materials_to_usd",
-    "EXPORT_AVAILABLE",
-    # Blender exports (if available)
-    "export_tree_as_usd",
-    "batch_export_tree_usd",
-    "batch_export_trees_for_unreal",
-    "create_nanite_assembly_usd",
+    "TREE_EXPORT_AVAILABLE",
+    # Twig export
     "export_twigs_from_blend",
-    # Twig placement (if available)
-    "extract_twig_placements_from_mesh",
-    "place_twigs_in_blender",
-    "export_twig_placements_to_usd",
-    "create_geometry_nodes_twig_instancer",
-    "get_face_center_and_normal",
-    "normal_to_rotation_matrix",
-    "TWIG_PLACEMENT_AVAILABLE",
-    # Nanite validation (if available)
-    "validate_nanite_assembly",
-    "NANITE_VALIDATION_AVAILABLE",
+    "TWIG_EXPORT_AVAILABLE",
+    # Assembly
+    "create_assembly",
+    "validate_assembly",
+    "ASSEMBLY_AVAILABLE",
 ]

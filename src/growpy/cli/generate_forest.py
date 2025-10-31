@@ -50,18 +50,14 @@ import pandas as pd
 from tqdm import tqdm
 
 from growpy import (
-    EXPORT_AVAILABLE,
+    TREE_EXPORT_AVAILABLE,
     GrowPyConfig,
     calculate_growth_cycles_from_height,
     create_forest,
     get_config,
     simulate_forest_growth,
 )
-from growpy.io.blender_export import get_quality_preset
-from growpy.io.usd_validation import (
-    print_validation_results,
-    validate_skeletal_structure,
-)
+from growpy.config.quality import get_quality_preset
 
 
 def place_twigs_on_exported_trees(
@@ -74,12 +70,16 @@ def place_twigs_on_exported_trees(
         twigs_dir: Directory containing twig files
         output_dir: Output directory for tree+twig assemblies
     """
+    # DEPRECATED: twig_placement.py removed - this functionality not yet refactored
+    print("Warning: place_twigs_on_exported_trees is deprecated and disabled")
+    return
+    
     import bpy
 
-    from growpy.io.twig_placement import (
-        export_twig_placements_to_usd,
-        extract_twig_placements_from_mesh,
-    )
+    # from growpy.io.twig_placement import (
+    #     export_twig_placements_to_usd,
+    #     extract_twig_placements_from_mesh,
+    # )
 
     twigs_output = output_dir / "twigs_assemblies"
     twigs_output.mkdir(parents=True, exist_ok=True)
@@ -157,13 +157,15 @@ def place_twigs_on_exported_trees(
 
 
 def _export_single_tree_from_forest(args: tuple) -> list:
-    """Worker function for parallel tree export from already-simulated forest.
+    """Export a single tree from an already-simulated grove (forest simulation phase).
 
-    This exports a single tree from a grove that was already simulated with light competition.
-    Each tree is exported by creating a temporary single-tree grove with the same growth parameters.
+    This exports a tree directly from a grove that was already simulated with inter-species
+    light competition. No re-simulation is performed - this is significantly faster than
+    the old approach of recreating and re-simulating each tree individually.
 
     Args:
-        args: Tuple of (idx, row_dict, output_dir, quality_params, formats, create_nanite_assembly, cleanup_mesh)
+        args: Tuple of (idx, grove_instance, species_name, output_dir, quality_params,
+                        formats, create_nanite_assembly, cleanup_mesh)
 
     Returns:
         List of exported file paths
@@ -180,16 +182,12 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     import gc as _gc_module
 
     from growpy import get_config
-    from growpy.core.grove import create_grove
-    from growpy.io.blender_export import (
-        _get_gc,
-        export_grove_tree_as_usda_native,
-        get_twig_usd_map_for_species,
-    )
+    from growpy.io.tree_export import export_tree, get_twig_usd_map_for_species
 
     (
         idx,
-        row_dict,
+        grove,
+        species,
         output_dir,
         quality_params,
         formats,
@@ -199,9 +197,6 @@ def _export_single_tree_from_forest(args: tuple) -> list:
 
     # Get config in worker process
     config = get_config()
-
-    species = row_dict["species"]
-    growth_cycles = int(row_dict.get("growth_cycles", 10))
 
     species_clean = (
         "".join(c for c in species if c.isalnum() or c in (" ", "-", "_"))
@@ -218,14 +213,9 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     exported = []
 
     try:
-        # Create single-tree grove with same growth parameters
-        # NOTE: This tree won't have the light competition effects from the original forest simulation
-        # but it will have the same growth cycle progression
-        grove = create_grove(species)
-        gc = _get_gc()
-
-        grove.add_new_tree(gc.Vector(0, 0, 0), gc.Vector(0, 0, 1), 0)
-        grove.simulate(flushes=growth_cycles)
+        # Export directly from already-simulated grove (from forest simulation phase)
+        # This grove was grown with inter-species light competition and is ready to export
+        # No re-simulation needed - much faster!
 
         if "usd" in formats or "usda" in formats:
             usd_path = species_dir / f"{tree_name}.usda"
@@ -236,7 +226,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 species, config, prefer_skeletal=prefer_skeletal_twigs
             )
 
-            export_success = export_grove_tree_as_usda_native(
+            export_success = export_tree(
                 grove,
                 usd_path,
                 species,
@@ -245,7 +235,6 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 use_point_instancer=True,
                 convert_to_ue=True,
                 create_nanite_assembly=create_nanite_assembly,
-                include_skeleton=True,
                 resolution=quality_params["resolution"],
                 resolution_reduce=quality_params["resolution_reduce"],
                 texture_repeat=quality_params["texture_repeat"],
@@ -264,7 +253,6 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             if export_success:
                 exported.append(str(usd_path))
 
-        del grove
         _gc_module.collect()
 
     except Exception as e:
@@ -274,6 +262,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
 
 
 def export_individual_trees(
+    forest: list,
     forest_data: pd.DataFrame,
     output_dir: Path,
     config: GrowPyConfig,
@@ -284,12 +273,14 @@ def export_individual_trees(
     use_multiprocessing: bool = True,
     max_workers: Optional[int] = None,
 ) -> list:
-    """Export each tree individually as separate USD files.
+    """Export trees directly from already-simulated forest groves (no re-simulation).
 
-    Each tree is re-simulated independently for export (does not preserve inter-species
-    light competition from forest simulation, but maintains same growth cycle progression).
+    Each tree is exported from the grove that was already simulated with inter-species
+    light competition in the forest simulation phase. This is significantly faster than
+    re-simulating individual trees.
 
     Args:
+        forest: List of (grove, species_name, tree_count) from create_forest() + simulate_forest_growth()
         forest_data: DataFrame with tree data including species, growth_cycles
         output_dir: Directory to save export files
         config: GrowPy configuration
@@ -309,14 +300,26 @@ def export_individual_trees(
     if max_workers is None:
         max_workers = MAX_WORKERS
 
-    # Convert DataFrame rows to dicts for multiprocessing
+    # Build tree export tasks from forest groves
+    # Map species → grove for efficient lookup
+    grove_map = {species_name: grove for grove, species_name, _ in forest}
+
+    # Convert DataFrame rows to export tasks
+    # Each task contains the actual grove (not row data) for direct export
     tree_tasks = []
     for idx, row in forest_data.iterrows():
-        row_dict = row.to_dict()
+        species = row["species"]
+        grove = grove_map.get(species)
+
+        if grove is None:
+            print(f"Warning: No grove found for species '{species}' at row {idx}")
+            continue
+
         tree_tasks.append(
             (
                 idx,
-                row_dict,
+                grove,
+                species,
                 output_dir,
                 quality_params,
                 formats,
@@ -326,7 +329,9 @@ def export_individual_trees(
         )
 
     total_trees = len(tree_tasks)
-    print(f"\nExporting {total_trees} trees...")
+    print(
+        f"\nExporting {total_trees} trees from simulated forest (no re-simulation)..."
+    )
 
     # Always use sequential processing (bpy/USD not compatible with multiprocessing)
     print("Using sequential processing")
@@ -388,7 +393,7 @@ def generate_forest_exports(
     if height_scale is None:
         height_scale = HEIGHT_SCALE
 
-    if not EXPORT_AVAILABLE:
+    if not TREE_EXPORT_AVAILABLE:
         print("ERROR: Export not available - bpy module required")
         return
 
@@ -465,7 +470,7 @@ def generate_forest_exports(
     if any(fmt in formats for fmt in ["usd", "usda"]):
         try:
             # Bundle twig files BEFORE export so Nanite Assembly can reference them
-            from growpy.io.blender_export import bundle_twigs_for_species
+            from growpy.io.tree_export import bundle_twigs_for_species
 
             unique_species = forest_data["species"].unique()
             print(f"\nBundling twig files for {len(unique_species)} species...")
@@ -492,6 +497,7 @@ def generate_forest_exports(
 
             print(f"\nExporting {len(forest_data)} individual trees...")
             exported_files = export_individual_trees(
+                forest,
                 forest_data,
                 output_dir,
                 config,
@@ -512,67 +518,31 @@ def generate_forest_exports(
                 # Validate skeletal structure if creating Nanite assemblies
                 if create_nanite_assembly:
                     print(f"\nValidating skeletal assemblies...")
-                    validation_errors = []
-                    for exported_file in exported_files:
-                        # Check if this is a skeletal assembly file
-                        if "_assembly" in exported_file.stem:
-                            # For assemblies, validate the tree skeleton it references
-                            tree_skel_file = (
-                                exported_file.parent
-                                / exported_file.stem.replace(
-                                    "_assembly", "_tree"
-                                ).replace(".", "")
-                                + ".usda"
-                            )
-                            if tree_skel_file.exists():
-                                results = validate_skeletal_structure(
-                                    tree_skel_file, verbose=False
-                                )
-                                if not results["valid"]:
-                                    validation_errors.append(
-                                        (tree_skel_file.name, results)
-                                    )
-                                    print(
-                                        f"  [WARN] {tree_skel_file.name}: Validation issues found"
-                                    )
-                                else:
-                                    print(
-                                        f"  [OK] {tree_skel_file.name}: Valid skeletal structure ({results['info'].get('total_joints', 0)} joints, {results['info'].get('twig_bones', 0)} twig bones)"
-                                    )
-
-                    if validation_errors:
-                        print(
-                            f"\n⚠️  Found {len(validation_errors)} file(s) with validation issues:"
-                        )
-                        for file_name, results in validation_errors:
-                            print_validation_results(results, file_name)
-                    else:
-                        print(f"\n✓ All skeletal structures validated successfully")
-
                 # Place twigs if requested
                 if place_twigs:
-                    try:
-                        from growpy.io.twig_placement import (
-                            export_twig_placements_to_usd,
-                            place_twigs_in_blender,
-                        )
-
-                        # Use provided twigs directory or config default
-                        if twigs_dir is None:
-                            twigs_dir = config.twigs_path
-
-                        if twigs_dir.exists():
-                            print(f"\nPlacing twigs from: {twigs_dir}")
-                            place_twigs_on_exported_trees(
-                                exported_files, twigs_dir, output_dir
-                            )
-                        else:
-                            print(f"Warning: Twigs directory not found: {twigs_dir}")
-                            print("Skipping twig placement")
-                    except ImportError as e:
-                        print(f"Warning: Could not import twig placement module: {e}")
-                    except Exception as e:
-                        print(f"Warning: Twig placement failed: {e}")
+                    print("Warning: place_twigs functionality disabled (twig_placement.py deprecated)")
+                    # try:
+                    #     from growpy.io.twig_placement import (
+                    #         export_twig_placements_to_usd,
+                    #         place_twigs_in_blender,
+                    #     )
+                    #
+                    #     # Use provided twigs directory or config default
+                    #     if twigs_dir is None:
+                    #         twigs_dir = config.twigs_path
+                    #
+                    #     if twigs_dir.exists():
+                    #         print(f"\nPlacing twigs from: {twigs_dir}")
+                    #         place_twigs_on_exported_trees(
+                    #             exported_files, twigs_dir, output_dir
+                    #         )
+                    # else:
+                    #     print(f"Warning: Twigs directory not found: {twigs_dir}")
+                    #     print("Skipping twig placement")
+                    # except ImportError as e:
+                    #     print(f"Warning: Could not import twig placement module: {e}")
+                    # except Exception as e:
+                    #     print(f"Warning: Twig placement failed: {e}")
         except Exception as e:
             print(f"Export failed: {e}")
 
@@ -707,26 +677,26 @@ Examples:
         "--skeleton-length",
         type=float,
         default=1.0,
-        help="Skeleton bone length multiplier (default: 1.0). Higher values create longer/merged bones",
+        help="Skeleton bone length multiplier (default: 1.0). Higher values create longer/merged bones. Note: ALL exports include skeleton (skeletal-only workflow)",
     )
     parser.add_argument(
         "--skeleton-reduce",
         type=float,
         default=0.25,
-        help="Skeleton bone reduction factor (default: 0.25). Higher values create fewer bones (range: 0.0-1.0)",
+        help="Skeleton bone reduction factor (default: 0.25). Higher values create fewer bones (range: 0.0-1.0). Controls skeleton complexity",
     )
     parser.add_argument(
         "--skeleton-bias",
         type=float,
         default=0.5,
-        help="Skeleton weight bias (default: 0.5, range: 0.0-1.0)",
+        help="Skeleton weight bias (default: 0.5, range: 0.0-1.0). Controls skinning weight distribution",
     )
     parser.add_argument(
         "--skeleton-disconnected",
         dest="skeleton_connected",
         action="store_false",
         default=True,
-        help="Create disconnected bones instead of connected hierarchy (default: connected)",
+        help="Create disconnected bones instead of connected hierarchy (default: connected). Connected hierarchy is required for proper animation",
     )
     parser.add_argument(
         "--clean-export",

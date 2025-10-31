@@ -11,7 +11,7 @@ from .paths import (
     get_preset_path,
     get_twig_files_by_type,
 )
-from .quality import get_lod_configs
+from .quality import get_lod_configs, get_quality_preset
 from .species import get_species_colors, get_species_data
 
 __all__ = [
@@ -25,4 +25,5 @@ __all__ = [
     "get_species_data",
     "get_species_colors",
     "get_lod_configs",
+    "get_quality_preset",
 ]
