@@ -52,9 +52,7 @@ grove.simulate(flushes=10)
 export_tree_as_usd(
     grove=grove,
     output_path=Path("output/Beech_nanite.usda"),
-    species_name="Beech",
-    include_skeleton=True,
-    export_skeleton_separately=False
+    species_name="Beech"
 )
 ```
 

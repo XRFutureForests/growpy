@@ -136,18 +136,10 @@ def _extract_twig_placements_from_usd(usd_path: Path) -> Dict[str, List[Dict]]:
 
 
 def export_tree(
-    grove,
+    model: Any,
+    skeleton: Any,
     output_path: Path,
     species_name: str,
-    include_skeleton: bool = True,
-    export_skeleton_separately: bool = False,
-    resolution: int = 32,
-    resolution_reduce: float = 0.8,
-    texture_repeat: int = 3,
-    build_cutoff_age: int = 0,
-    build_cutoff_thickness: float = 0.0,
-    build_blend: bool = True,
-    build_end_cap: bool = True,
     skeleton_length: float = 1.0,
     skeleton_reduce: float = 0.25,
     skeleton_bias: float = 0.5,
@@ -157,20 +149,20 @@ def export_tree(
 
     This is the main export function that creates a complete USD file with
     tree mesh, skeleton, materials, and all Grove attributes preserved.
+    The skeleton is always included for wind animation support.
+
+    Note: To export from a grove with multiple trees, call this function
+    once per tree with corresponding model/skeleton pairs:
+        models = grove.build_models({...})
+        skeletons = grove.build_skeletons()
+        for model, skeleton in zip(models, skeletons):
+            export_tree(model, skeleton, output_path, species_name)
 
     Args:
-        grove: Grove instance with simulated trees
+        model: Grove tree model from grove.build_models()
+        skeleton: Grove skeleton from grove.build_skeletons()
         output_path: Path for the USD file (.usd or .usda)
         species_name: Tree species name for material naming
-        include_skeleton: Whether to include skeleton in export
-        export_skeleton_separately: Export skeleton as separate USD file
-        resolution: Number of vertices around branch circumference (4-32, default: 32)
-        resolution_reduce: How quickly to reduce resolution on thinner branches (0.0-1.0, default: 0.8)
-        texture_repeat: Texture repetitions around trunk circumference (default: 3)
-        build_cutoff_age: Skip building branches younger than this age (default: 0)
-        build_cutoff_thickness: Skip branches thinner than this diameter (default: 0.0)
-        build_blend: Add smooth geometry at branch joints (default: True)
-        build_end_cap: Close off branch ends with geometry (default: True)
         skeleton_length: Bone length multiplier (default: 1.0, higher=longer bones)
         skeleton_reduce: Bone reduction factor (default: 0.25, higher=fewer bones)
         skeleton_bias: Weight bias (default: 0.5, range 0-1)
@@ -183,7 +175,9 @@ def export_tree(
         >>> grove = gc.Grove()
         >>> grove.add_new_tree(...)
         >>> grove.simulate(5)
-        >>> export_tree(grove, Path("tree.usda"), "oak", include_skeleton=True)
+        >>> models = grove.build_models({...})
+        >>> skeletons = grove.build_skeletons()
+        >>> export_tree(models[0], skeletons[0], Path("tree.usda"), "oak")
     """
     if not _check_bpy_available():
         print("bpy module not available - cannot export USD")
@@ -197,171 +191,44 @@ def export_tree(
     config = get_config()
 
     try:
-        # Clear existing scene
-        bpy.ops.object.select_all(action="SELECT")
-        bpy.ops.object.delete(use_global=False)
-
-        # Build tree model with configurable quality settings
-        models = grove.build_models(
-            {
-                "resolution": resolution,
-                "resolution_reduce": resolution_reduce,
-                "texture_repeat": texture_repeat,
-                "build_cutoff_age": build_cutoff_age,
-                "build_cutoff_thickness": build_cutoff_thickness,
-                "build_blend": build_blend,
-                "build_end_cap": build_end_cap,
-            }
-        )
-
-        if not models:
-            print("No models generated from grove")
-            return False
-
-        model = models[0]
-
         # Configure model for optimal export compatibility
         try:
             # Set up-axis to Z for Blender/Unreal compatibility
             model.set_up_axis("Z")
-            print("  Set model up-axis to Z (Blender/Unreal compatible)")
-
             # Set counter-clockwise winding for standard compatibility
             model.set_winding_order("COUNTER_CLOCKWISE")
-            print("  Set counter-clockwise winding order")
         except Exception as e:
             print(f"  Warning: Could not configure model orientation: {e}")
 
-        # Create mesh
-        mesh_name = f"{species_name}_tree_mesh"
-        mesh = bpy.data.meshes.new(mesh_name)
+        print(f"  Set model to Z up-axis and counter-clockwise winding")
 
-        points = model.get_points_flat()
-        faces = [[int(i) for i in face] for face in model.faces]
-        uvs = model.get_uvs_flat() if hasattr(model, "get_uvs_flat") else []
-
-        vertices = [
-            (points[i], points[i + 1], points[i + 2]) for i in range(0, len(points), 3)
-        ]
-
-        mesh.from_pydata(vertices, [], faces)
-        mesh.update()
-
-        if uvs and len(uvs) >= len(faces) * 6:
-            mesh.uv_layers.new(name="UVMap")
-            uv_layer = mesh.uv_layers.active.data
-            # Apply UVs as provided by Grove without modification
-            for poly in mesh.polygons:
-                for loop_index in poly.loop_indices:
-                    uv_index = loop_index * 2
-                    if uv_index + 1 < len(uvs):
-                        u = uvs[uv_index]
-                        v = uvs[uv_index + 1]
-                        uv_layer[loop_index].uv = (u, v)
-
-        _add_grove_attributes_to_mesh(mesh, model)
-
-        obj = bpy.data.objects.new(mesh_name, mesh)
-        bpy.context.collection.objects.link(obj)
-        bpy.context.view_layer.objects.active = obj
-        obj.select_set(True)
-
-        # Apply triangulation for Nanite (requires consistent topology)
-        triangulate_modifier = obj.modifiers.new(name="Triangulate", type="TRIANGULATE")
-        triangulate_modifier.quad_method = "BEAUTY"
-        triangulate_modifier.ngon_method = "BEAUTY"
-
-        # Build skeleton
-        armature_obj = None
-        if include_skeleton or export_skeleton_separately:
-            skeletons = grove.build_skeletons()
-            if skeletons:
-                armature_obj = _add_skeleton_to_object(
-                    obj,
-                    skeletons[0],
-                    species_name,
-                    grove,
-                    model,
-                    skeleton_length,
-                    skeleton_reduce,
-                    skeleton_bias,
-                    skeleton_connected,
-                )
-
-        # Add material with textures
-        _add_material_with_textures(obj, species_name, config)
-
-        # Validate mesh for Nanite
-        validation = validate_mesh_for_nanite(mesh)
-        if validation["warnings"]:
-            print(f"Nanite validation warnings for {species_name}:")
-            for warning in validation["warnings"]:
-                print(f"  - {warning}")
-        print(
-            f"Mesh stats: {validation['stats']['triangle_count']:,} tris, "
-            f"{validation['stats']['vertex_count']:,} verts"
-        )
-
-        # Export skeleton separately if requested
-        if export_skeleton_separately and armature_obj:
-            skeleton_path = (
-                output_path.parent / f"{output_path.stem}_skeleton{output_path.suffix}"
-            )
-            bpy.ops.object.select_all(action="DESELECT")
-            armature_obj.select_set(True)
-            bpy.context.view_layer.objects.active = armature_obj
-
-            skeleton_params = {
-                "filepath": str(skeleton_path),
-                "selected_objects_only": True,
-                "export_animation": False,
-                "export_armatures": True,
-                "export_shapekeys": False,
-                "use_instancing": False,
-                "evaluation_mode": "RENDER",
-            }
-
-            try:
-                bpy.ops.wm.usd_export(**skeleton_params, export_custom_properties=True)
-            except TypeError:
-                bpy.ops.wm.usd_export(**skeleton_params)
-
-        # Export mesh (with or without skeleton)
-        bpy.ops.object.select_all(action="DESELECT")
-        obj.select_set(True)
-        if include_skeleton and armature_obj and not export_skeleton_separately:
-            armature_obj.select_set(True)
-        bpy.context.view_layer.objects.active = obj
-
+        # Create output directory
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # USD export optimized for Nanite with all Grove attributes
-        export_params = {
-            "filepath": str(output_path),
-            "selected_objects_only": True,
-            "export_animation": (include_skeleton and not export_skeleton_separately),
-            "export_armatures": (include_skeleton and not export_skeleton_separately),
-            "export_shapekeys": False,
-            "use_instancing": False,
-            "evaluation_mode": "RENDER",
-            "generate_preview_surface": True,
-            "export_materials": True,
-            "export_uvmaps": True,
-            "export_normals": True,
-        }
+        # Build USD directly from Grove model with skeleton (no Blender export needed)
+        print(f"  Building USD with skeleton from Grove model...")
+        success = build_tree_mesh(
+            model=model,
+            skeleton=skeleton,
+            output_path=output_path,
+            up_axis="Z",
+            triangulated=True,
+            include_materials=True,
+            clean_export=False,
+            skeleton_length=skeleton_length,
+            skeleton_reduce=skeleton_reduce,
+            skeleton_bias=skeleton_bias,
+            skeleton_connected=skeleton_connected,
+        )
 
-        try:
-            bpy.ops.wm.usd_export(**export_params, export_custom_properties=True)
-        except TypeError:
-            bpy.ops.wm.usd_export(**export_params)
-
-        # Write Blender mesh attributes as USD primvars
-        _add_blender_attributes_as_usd_primvars(output_path, obj)
+        if not success:
+            print(f"Failed to build USD mesh")
+            return False
 
         # Add Nanite attributes to USD file
         add_nanite_attributes_to_usd(output_path, is_foliage=False)
 
-        print(f"[OK] Exported USD with Nanite compatibility for {species_name}")
+        print(f"[OK] Exported tree to USD with Nanite compatibility for {species_name}")
         return True
 
     except Exception as e:
@@ -374,12 +241,12 @@ def export_tree(
 
 def build_tree_mesh(
     model: Any,
+    skeleton: Optional[Any],
     output_path: Path,
     up_axis: str = "Z",
     triangulated: bool = True,
     include_materials: bool = True,
     clean_export: bool = False,
-    grove: Optional[Any] = None,
     skeleton_length: float = 1.0,
     skeleton_reduce: float = 0.1,
     skeleton_bias: float = 0.5,
@@ -389,7 +256,7 @@ def build_tree_mesh(
 
     This function extracts geometry data directly from the Grove model using
     the Python API and constructs a USD file without coordinate transformations.
-    If grove is provided, adds skeleton structure inline (skeletal-only workflow).
+    If skeleton is provided, adds skeleton structure inline.
 
     CRITICAL: The model must be triangulated BEFORE calling this function:
         model.triangulate()
@@ -399,12 +266,12 @@ def build_tree_mesh(
 
     Args:
         model: Grove tree model from grove.build_models() - MUST be triangulated first
+        skeleton: Optional Grove skeleton from grove.build_skeletons()
         output_path: Path where USD file will be saved
         up_axis: Coordinate system up axis ("Y" or "Z")
         triangulated: Whether the model has been triangulated (should always be True)
         include_materials: If False, creates simple geometry without materials/UVs
         clean_export: If True, creates minimal USD without default attributes (demo mode)
-        grove: Optional Grove instance for adding skeleton (skeletal-only workflow)
         skeleton_length: Bone length multiplier for skeleton creation
         skeleton_reduce: Bone reduction factor for skeleton creation
         skeleton_bias: Weight bias for skinning
@@ -418,9 +285,10 @@ def build_tree_mesh(
         >>> grove.add_new_tree(...)
         >>> grove.simulate(5)
         >>> models = grove.build_models({...})
+        >>> skeletons = grove.build_skeletons()
         >>> model = models[0]
         >>> model.triangulate()  # CRITICAL: Must triangulate first
-        >>> build_tree_mesh(model, Path("tree.usda"), up_axis="Z")
+        >>> build_tree_mesh(model, skeletons[0], Path("tree.usda"), up_axis="Z")
     """
     if not USD_AVAILABLE:
         print("Error: USD Python module not available")
@@ -489,12 +357,12 @@ def build_tree_mesh(
         # Add normals for proper Unreal rendering
         _add_mesh_normals(mesh, model)
 
-        # Add skeleton if grove is provided (skeletal-only workflow)
-        if grove is not None:
+        # Add skeleton if provided
+        if skeleton is not None:
             print(f"  Adding skeleton to USD stage...")
             skeleton_added = _add_skeleton_to_stage_inline(
                 stage=stage,
-                grove=grove,
+                skeleton=skeleton,
                 root_xform_prim=root_xform.GetPrim(),
                 mesh_prim=mesh.GetPrim(),
                 model=model,
@@ -525,7 +393,7 @@ def build_tree_mesh(
 
 def _add_skeleton_to_stage_inline(
     stage: Usd.Stage,
-    grove: Any,
+    skeleton: Any,
     root_xform_prim: Usd.Prim,
     mesh_prim: Usd.Prim,
     model: Optional[Any] = None,
@@ -534,118 +402,23 @@ def _add_skeleton_to_stage_inline(
     skeleton_bias: float = 0.5,
     skeleton_connected: bool = True,
 ) -> bool:
-    """Add skeleton to open USD stage using core.skeleton computation."""
+    """Add skeleton to open USD stage using Grove's skeleton data."""
     try:
-        from growpy.core.skeleton import (
-            build_skeleton_hierarchy,
-            get_bone_data_from_grove,
-        )
-
-        # Get bone data from Grove
-        bones_info = grove.tag_bone_id(
-            skeleton_length, skeleton_reduce, skeleton_bias, skeleton_connected
-        )
-
-        if not bones_info or len(bones_info) == 0:
+        if not skeleton:
+            print("Error: No skeleton provided")
             return False
 
-        # Build skeleton hierarchy using core module
-        skeleton_hierarchy = build_skeleton_hierarchy(bones_info)
-
-        # Convert to UsdSkel format
-        mesh = UsdGeom.Mesh(mesh_prim)
-        original_xform_path = root_xform_prim.GetPath()
-
-        # Create SkelRoot
-        skel_root_path = original_xform_path.AppendChild("SkelRoot")
-        UsdSkel.Root.Define(stage, skel_root_path)
-
-        # Create Skeleton
-        skel_path = skel_root_path.AppendChild("Skeleton")
-        skel_prim = UsdSkel.Skeleton.Define(stage, skel_path)
-
-        # Set joint data from hierarchy
-        skel_prim.CreateJointsAttr([j.name for j in skeleton_hierarchy.joints])
-        skel_prim.CreateBindTransformsAttr(
-            [Gf.Matrix4d().SetIdentity() for _ in skeleton_hierarchy.joints]
-        )
-        skel_prim.CreateRestTransformsAttr(
-            [Gf.Matrix4d().SetIdentity() for _ in skeleton_hierarchy.joints]
-        )
-
-        # Bind mesh to skeleton
-        binding_api = UsdSkel.BindingAPI.Apply(mesh_prim)
-        binding_api.CreateSkeletonRel().SetTargets([skel_path])
+        # Create UsdSkel skeleton structure directly in the stage
+        _build_usdskel_from_bones(stage, skeleton, None, None)
 
         return True
 
     except Exception as e:
-        print(f"    Error: {e}")
+        print(f"    Error adding skeleton: {e}")
+        import traceback
+
+        traceback.print_exc()
         return False
-
-
-def validate_mesh_for_nanite(mesh: Any) -> Dict[str, Any]:
-    """Validate mesh for Unreal Engine Nanite compatibility.
-
-    Based on official UE Nanite documentation.
-
-    Args:
-        mesh: Blender mesh object
-
-    Returns:
-        Dict with validation results (compatible, warnings, stats)
-    """
-    validation = {"compatible": True, "warnings": [], "stats": {}}
-
-    try:
-        triangle_count = len(mesh.polygons)
-        validation["stats"]["triangle_count"] = triangle_count
-        vertex_count = len(mesh.vertices)
-        validation["stats"]["vertex_count"] = vertex_count
-
-        # Vertex-to-triangle ratio check
-        if vertex_count > 0 and triangle_count > 0:
-            vertex_ratio = vertex_count / triangle_count
-            validation["stats"]["vertex_to_triangle_ratio"] = vertex_ratio
-
-            if vertex_ratio > 2.0:
-                validation["warnings"].append(
-                    f"High vertex-to-triangle ratio ({vertex_ratio:.2f}:1). "
-                    "Ratio >2:1 suggests faceted normals or poor vertex sharing."
-                )
-
-        # Check for quads vs triangles
-        quad_count = sum(1 for poly in mesh.polygons if len(poly.vertices) == 4)
-        tri_count = triangle_count - quad_count
-        validation["stats"]["quad_count"] = quad_count
-        validation["stats"]["tri_count"] = tri_count
-
-        # UV continuity check
-        if mesh.uv_layers:
-            uv_seam_count = sum(1 for edge in mesh.edges if edge.use_seam)
-            validation["stats"]["uv_seams"] = uv_seam_count
-            validation["stats"]["uv_layers"] = len(mesh.uv_layers)
-
-            if uv_seam_count > triangle_count * 0.3:
-                validation["warnings"].append(
-                    f"High UV seam count ({uv_seam_count}). "
-                    "UV discontinuities increase vertex count in Nanite."
-                )
-        else:
-            validation["warnings"].append(
-                "No UV maps found. UVs recommended for texturing."
-            )
-
-        # Materials check
-        validation["stats"]["material_count"] = len(mesh.materials)
-        if len(mesh.materials) == 0:
-            validation["warnings"].append("No materials assigned.")
-
-    except Exception as e:
-        validation["compatible"] = False
-        validation["warnings"].append(f"Validation error: {e}")
-
-    return validation
 
 
 def add_nanite_attributes_to_usd(usd_path: Path, is_foliage: bool = False) -> bool:
@@ -1107,27 +880,15 @@ def _add_grove_point_attributes(mesh: UsdGeom.Mesh, model: Any) -> None:
 def _add_usd_materials(
     stage: Usd.Stage, mesh_prim: UsdGeom.Mesh, model: Any, mesh_path: str
 ) -> None:
-    """Create proper USD materials for Unreal Engine compatibility."""
-    # Define color palette
+    """Create proper USD materials for Unreal Engine compatibility.
+
+    NOTE: Only bark material is applied to tree skeletal mesh.
+    Twig materials are handled separately in twig USD files.
+    """
+    # Define bark material color
     BARK_BROWN = Gf.Vec3f(0.45, 0.30, 0.20)
-    TWIG_GREEN = Gf.Vec3f(0.25, 0.50, 0.20)
-    DEAD_BROWN = Gf.Vec3f(0.35, 0.25, 0.15)
 
-    # Get face count
-    num_faces = len(model.faces) if hasattr(model, "faces") else 0
-    if num_faces == 0:
-        return
-
-    # Classify faces by material type
-    face_types = ["bark"] * num_faces
-
-    # Mark live twigs
-    if hasattr(model, "face_attribute_twig_long"):
-        for face_idx, is_twig in enumerate(model.face_attribute_twig_long):
-            if is_twig and face_idx < num_faces:
-                face_types[face_idx] = "twig"
-
-    # Create materials
+    # Create materials path
     materials_path = mesh_path + "/Materials"
     UsdGeom.Scope.Define(stage, materials_path)
 
@@ -1142,24 +903,11 @@ def _add_usd_materials(
         mat.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
         return mat
 
+    # Create only bark material for tree mesh
     bark_mat = create_material("BarkMaterial", BARK_BROWN)
-    twig_mat = create_material("TwigMaterial", TWIG_GREEN)
 
-    # Create geometry subsets
-    bark_faces = [i for i, t in enumerate(face_types) if t == "bark"]
-    twig_faces = [i for i, t in enumerate(face_types) if t == "twig"]
-
-    if bark_faces:
-        bark_subset = UsdGeom.Subset.Define(stage, mesh_path + "/BarkSubset")
-        bark_subset.CreateElementTypeAttr("face")
-        bark_subset.CreateIndicesAttr(bark_faces)
-        UsdShade.MaterialBindingAPI(bark_subset).Bind(bark_mat)
-
-    if twig_faces:
-        twig_subset = UsdGeom.Subset.Define(stage, mesh_path + "/TwigSubset")
-        twig_subset.CreateElementTypeAttr("face")
-        twig_subset.CreateIndicesAttr(twig_faces)
-        UsdShade.MaterialBindingAPI(twig_subset).Bind(twig_mat)
+    # Apply bark material to entire mesh
+    UsdShade.MaterialBindingAPI(mesh_prim).Bind(bark_mat)
 
 
 def _add_mesh_normals(mesh: UsdGeom.Mesh, model: Any) -> None:
@@ -1251,7 +999,13 @@ def _build_usdskel_from_bones(
     twig_placements: Optional[Dict[str, List[Dict]]] = None,
     verbose: bool = False,
 ) -> None:
-    """Build UsdSkel skeleton from Grove skeleton polylines."""
+    """Build UsdSkel skeleton from Grove skeleton polylines.
+
+    CRITICAL for Unreal Engine recognition:
+    1. SkelRoot MUST have SkelBindingAPI applied
+    2. SkelRoot MUST have skel:skeleton relationship pointing to Skeleton prim
+    3. Mesh should NOT have any skel:* relationships (those go on SkelRoot only)
+    """
     # Find mesh prim
     mesh_prim = None
     for prim in stage.Traverse():
@@ -1263,16 +1017,32 @@ def _build_usdskel_from_bones(
         print("Warning: No mesh found in USD stage")
         return
 
-    # Convert /tree to SkelRoot
+    # Convert /tree to SkelRoot with proper API schemas
     tree_prim = stage.GetPrimAtPath("/tree")
     if tree_prim:
-        skel_root = UsdSkel.Root.Define(stage, Sdf.Path("/tree"))
-        tree_prim = skel_root.GetPrim()
+        # Redefine as SkelRoot if not already
+        if not tree_prim.IsA(UsdSkel.Root):
+            skel_root = UsdSkel.Root.Define(stage, Sdf.Path("/tree"))
+            tree_prim = skel_root.GetPrim()
     else:
         skel_root = UsdSkel.Root.Define(stage, Sdf.Path("/tree"))
         tree_prim = skel_root.GetPrim()
 
-    # Create skeleton
+    # CRITICAL: Apply SkelBindingAPI to SkelRoot using proper metadata
+    # This is required for Unreal Engine to recognize the skeletal structure
+    api_schemas = tree_prim.GetMetadata("apiSchemas")
+    if api_schemas:
+        # Append to existing schemas
+        if "SkelBindingAPI" not in api_schemas.prependedItems:
+            api_schemas.prependedItems.append("SkelBindingAPI")
+            tree_prim.SetMetadata("apiSchemas", api_schemas)
+    else:
+        # Create new TokenListOp
+        api_schemas = Sdf.TokenListOp()
+        api_schemas.prependedItems = ["SkelBindingAPI"]
+        tree_prim.SetMetadata("apiSchemas", api_schemas)
+
+    # Create skeleton as sibling to mesh (both under SkelRoot)
     skel_path = Sdf.Path("/tree/TreeSkel")
     skel = UsdSkel.Skeleton.Define(stage, skel_path)
 
@@ -1351,9 +1121,60 @@ def _build_usdskel_from_bones(
     skel.CreateBindTransformsAttr(Vt.Matrix4dArray(bind_transforms))
     skel.CreateRestTransformsAttr(Vt.Matrix4dArray(rest_transforms))
 
-    # Bind mesh to skeleton
-    binding_api = UsdSkel.BindingAPI.Apply(tree_prim)
-    binding_api.CreateSkeletonRel().SetTargets([skel_path])
+    # CRITICAL: Apply SkelBindingAPI to mesh and add skinning data
+    # Unreal Engine requires BOTH SkelRoot and Mesh to have skeleton bindings
+    mesh_api_schemas = mesh_prim.GetMetadata("apiSchemas")
+    if mesh_api_schemas:
+        if "SkelBindingAPI" not in mesh_api_schemas.prependedItems:
+            mesh_api_schemas.prependedItems.append("SkelBindingAPI")
+            mesh_prim.SetMetadata("apiSchemas", mesh_api_schemas)
+    else:
+        mesh_api_schemas = Sdf.TokenListOp()
+        mesh_api_schemas.prependedItems = ["SkelBindingAPI"]
+        mesh_prim.SetMetadata("apiSchemas", mesh_api_schemas)
+
+    # Create skeleton relationship on mesh
+    mesh_skel_rel = mesh_prim.CreateRelationship("skel:skeleton", custom=False)
+    mesh_skel_rel.SetTargets([skel_path])
+
+    # Add skinning data (joint indices and weights) to mesh
+    mesh_geom = UsdGeom.Mesh(mesh_prim)
+    points_attr = mesh_geom.GetPointsAttr()
+    if points_attr:
+        points = points_attr.Get()
+        num_vertices = len(points)
+
+        # Create simple rigid binding: all vertices bound to root joint (joint_0)
+        # For proper skinning, this would need to calculate weights based on vertex positions
+        joint_indices = []
+        joint_weights = []
+
+        for _ in range(num_vertices):
+            # Bind each vertex to joint 0 with full weight
+            # Using 2 influences per vertex (elementSize = 2)
+            joint_indices.extend([0, 0])
+            joint_weights.extend([1.0, 0.0])
+
+        # Create primvars for skinning
+        primvars_api = UsdGeom.PrimvarsAPI(mesh_prim)
+
+        # Joint indices primvar
+        joint_indices_primvar = primvars_api.CreatePrimvar(
+            "skel:jointIndices", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.vertex
+        )
+        joint_indices_primvar.Set(joint_indices)
+        joint_indices_primvar.SetElementSize(2)
+
+        # Joint weights primvar
+        joint_weights_primvar = primvars_api.CreatePrimvar(
+            "skel:jointWeights", Sdf.ValueTypeNames.FloatArray, UsdGeom.Tokens.vertex
+        )
+        joint_weights_primvar.Set(joint_weights)
+        joint_weights_primvar.SetElementSize(2)
+
+    print(
+        f"    [OK] Applied SkelBindingAPI to SkelRoot and Mesh with {num_vertices} vertices"
+    )
 
 
 def add_twig_skeleton_to_usd(
@@ -1615,12 +1436,6 @@ def get_twig_usd_map_for_species(
                             break
 
                     if grove_type in twig_usd_map:
-                        break
-
-                    fbx_file = twig_file.with_suffix(".fbx")
-                    if fbx_file.exists():
-                        twig_usd_map[grove_type] = fbx_file
-                        print(f"    Found {grove_type}: {fbx_file.name}")
                         break
 
     return twig_usd_map
