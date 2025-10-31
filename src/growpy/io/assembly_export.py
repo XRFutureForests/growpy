@@ -50,7 +50,12 @@ def _extract_twig_placements_from_usd_inline(usd_path: Path) -> Dict[str, List[D
                 primvars_api = UsdGeom.PrimvarsAPI(mesh)
 
                 # Check for twig primvars
-                for twig_type in ["twig_long", "twig_short", "twig_upward", "twig_dead"]:
+                for twig_type in [
+                    "twig_long",
+                    "twig_short",
+                    "twig_upward",
+                    "twig_dead",
+                ]:
                     pos_primvar = primvars_api.GetPrimvar(f"{twig_type}_position")
                     normal_primvar = primvars_api.GetPrimvar(f"{twig_type}_normal")
                     scale_primvar = primvars_api.GetPrimvar(f"{twig_type}_scale")
@@ -58,16 +63,22 @@ def _extract_twig_placements_from_usd_inline(usd_path: Path) -> Dict[str, List[D
                     if pos_primvar and normal_primvar:
                         positions = pos_primvar.Get()
                         normals = normal_primvar.Get()
-                        scales = scale_primvar.Get() if scale_primvar else [1.0] * len(positions)
+                        scales = (
+                            scale_primvar.Get()
+                            if scale_primvar
+                            else [1.0] * len(positions)
+                        )
 
                         if positions and normals:
                             placements[twig_type] = []
                             for i in range(len(positions)):
-                                placements[twig_type].append({
-                                    "position": tuple(positions[i]),
-                                    "normal": tuple(normals[i]),
-                                    "scale": scales[i] if i < len(scales) else 1.0,
-                                })
+                                placements[twig_type].append(
+                                    {
+                                        "position": tuple(positions[i]),
+                                        "normal": tuple(normals[i]),
+                                        "scale": scales[i] if i < len(scales) else 1.0,
+                                    }
+                                )
     except Exception as e:
         print(f"Warning: Failed to extract twig placements: {e}")
 
@@ -591,7 +602,9 @@ def export_tree_as_nanite_assembly(
         from .tree_export import build_tree_mesh
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        temp_tree_path = output_path.parent / f"{output_path.stem}_tree.usda"
+        # Remove _nanite_assembly suffix from output_path.stem to get base tree name
+        base_name = output_path.stem.replace("_nanite_assembly", "")
+        temp_tree_path = output_path.parent / f"{base_name}_skeletal.usda"
 
         # Build USD directly from Grove API data
         if not build_tree_mesh(model, temp_tree_path, up_axis="Z", triangulated=False):

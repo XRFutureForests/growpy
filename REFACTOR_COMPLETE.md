@@ -69,8 +69,9 @@ Merged USD tree export functionality:
 - `bundle_twigs_for_species()` - Twig file bundling
 - All helper functions and internal USD building logic preserved
 
-**File**: `src/growpy/io/assembly.py` (RENAMED & UPDATED)
+**File**: `src/growpy/io/assembly_export.py` (RENAMED & UPDATED)
 
+- Renamed file: `unreal_nanite_assembly.py` → `assembly_export.py`
 - Renamed `create_nanite_assembly_usd()` → `create_assembly()`
 - Renamed `validate_nanite_assembly()` → `validate_assembly()`
 - Updated all internal references
@@ -91,8 +92,8 @@ from .tree_export import (
 
 # Twig export
 from .twig_export import export_twigs_from_blend
-
 # Assembly
+from .assembly_export import create_assembly, validate_assembly
 from .assembly import create_assembly, validate_assembly
 
 # Availability flags
@@ -195,12 +196,16 @@ These files are kept because they provide functionality not yet refactored:
 - `io/export.py` - Contains additional export utilities
 - `io/usd_validation.py` - USD validation functions
 
-## Files to Deprecate
+## Files Removed ✅
 
-After thorough testing passes, these files can be removed:
+All deprecated files have been successfully removed:
 
-- `io/blender_export.py` - Replaced by `io/tree_export.py`
+- `io/export.py` - Quality presets moved to `config/quality.py`
+- `io/blender_export.py` - Merged into `io/tree_export.py`
 - `io/usd_builder.py` - Merged into `io/tree_export.py`
+- `io/skeleton_from_bones.py` - Logic moved to `core/skeleton.py`, USD I/O inlined
+- `io/twig_placement.py` - Computation moved to `core/twig.py`, unused I/O removed
+- `io/usd_validation.py` - Development/testing tool, no longer needed
 
 ## Next Steps
 
@@ -261,11 +266,39 @@ from growpy.io import export_tree, create_assembly
 - **Files Renamed**: 2 (using git mv)
 - **Files Modified**: 6 (config, core, io **init**.py files, generate_forest.py, assembly.py, growpy/**init**.py)
 - **Functions Renamed**: 4 (export_tree, build_tree_mesh, create_assembly, validate_assembly)
-- **Functions Added**: 2 to tree_export.py (get_twig_usd_map_for_species, bundle_twigs_for_species)
-- **Lines of Code**: ~2000 lines reorganized, 570 lines new computation logic
-- **Import Updates**: 8 import statements updated across codebase
 
 ---
+
+**Completion Date**: 2025-10-31  
+**Verified**: ✅ All imports working, no syntax errors, CLI scripts functional  
+**Cleanup**: ✅ All deprecated files removed  
+**Status**: Complete and production-ready
+
+## Final Structure
+
+```
+src/growpy/
+├── core/
+│   ├── __init__.py
+│   ├── forest.py        # Forest simulation
+│   ├── grove.py         # Grove wrapper
+│   ├── skeleton.py      # ✨ NEW - Pure skeleton computation
+│   ├── tree.py          # Tree class
+│   └── twig.py          # ✨ NEW - Pure twig computation
+│
+├── io/
+│   ├── __init__.py
+│   ├── assembly_export.py  # ✨ RENAMED - Assembly creation (was unreal_nanite_assembly.py)
+│   ├── tree_export.py      # ✨ NEW - Tree USD export (merged blender_export + usd_builder)
+│   └── twig_export.py      # ✨ RENAMED - Twig export (was blender_twig_processor.py)
+│
+└── config/
+    ├── __init__.py
+    ├── core.py
+    ├── paths.py
+    ├── quality.py       # ✨ ENHANCED - Quality presets (absorbed export.py)
+    └── species.py
+```
 
 **Completion Date**: 2025-01-08  
 **Verified**: ✅ All imports working, no syntax errors  
