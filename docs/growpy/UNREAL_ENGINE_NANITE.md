@@ -9,11 +9,13 @@ GrowPy exports tree models optimized for Unreal Engine 5's Nanite virtualized ge
 ## Supported Export Formats
 
 ### FBX (Recommended for General Use)
+
 - **Format Version**: FBX 2020.2
 - **Best For**: Standard UE5 workflows, compatibility with other tools
 - **Features**: Mesh, skeleton/armature, materials, UVs, tangent space
 
 ### USD (Recommended for Nanite Assemblies)
+
 - **Format Version**: USD/USDA
 - **Best For**: Advanced Nanite workflows in UE 5.7+, complex hierarchies
 - **Features**: Full scene hierarchy, advanced material networks, skeletal data
@@ -37,9 +39,7 @@ output_path = Path("output/trees/Oak_nanite.fbx")
 export_tree_as_fbx(
     grove=grove,
     output_path=output_path,
-    species_name="Oak",
-    include_skeleton=True,           # Include armature for wind/physics
-    export_skeleton_separately=False  # Combine mesh + skeleton
+    species_name="Oak"
 )
 ```
 
@@ -59,9 +59,7 @@ tree_mesh_path = Path("output/trees/Beech_tree_mesh.usda")
 export_tree_as_usd(
     grove=grove,
     output_path=tree_mesh_path,
-    species_name="Beech",
-    include_skeleton=True,
-    export_skeleton_separately=False
+    species_name="Beech"
 )
 
 # Optional: Create Nanite Assembly USD with twig references
@@ -76,21 +74,6 @@ create_nanite_assembly_usd(
     twig_mesh_paths=twig_paths,
     output_assembly_path=assembly_path,
     species_name="Beech"
-)
-```
-
-### Separate Skeleton Export
-
-For complex rigging workflows, export skeleton separately:
-
-```python
-# Export mesh and skeleton as separate files
-export_tree_as_fbx(
-    grove=grove,
-    output_path=Path("output/trees/Oak_mesh.fbx"),
-    species_name="Oak",
-    include_skeleton=True,
-    export_skeleton_separately=True  # Creates Oak_mesh.fbx + Oak_mesh_skeleton.fbx
 )
 ```
 
@@ -253,21 +236,25 @@ If you exported with skeleton:
 ## Troubleshooting
 
 ### Mesh Appears Too Dark
+
 - Check normal map import (should use tangent space)
 - Verify material has proper lighting model
 - Enable two-sided if needed (but impacts performance)
 
 ### Nanite Not Enabled
+
 - Confirm "Enable Nanite Support" checked in Static Mesh settings
 - Check Project Settings → Rendering → Support Nanite
 - Verify GPU supports Nanite (requires DX12/Vulkan)
 
 ### Skeleton Not Importing
+
 - Check FBX export included armature
 - Verify Unreal import settings have "Import Skeletal Mesh" enabled
 - Try exporting skeleton separately
 
 ### Materials Missing
+
 - Re-export with material data
 - Manually assign materials in Unreal
 - Check texture paths are accessible
@@ -298,22 +285,14 @@ for species in species_list:
     export_tree_as_fbx(
         grove=grove,
         output_path=fbx_path,
-        species_name=species,
-        include_skeleton=True,
-        export_skeleton_separately=False
-    )
-
-    # Export USD (Nanite Assemblies)
+        species_name=species
+    )    # Export USD (Nanite Assemblies)
     usd_path = Path(f"output/ue5_nanite/{species}_tree.usda")
     export_tree_as_usd(
         grove=grove,
         output_path=usd_path,
-        species_name=species,
-        include_skeleton=True,
-        export_skeleton_separately=False
-    )
-
-    print(f"Exported {species} for UE5 Nanite")
+        species_name=species
+    )    print(f"Exported {species} for UE5 Nanite")
 ```
 
 ### Advanced Workflow (USD Assembly with Twigs)
@@ -338,9 +317,7 @@ tree_mesh_path = Path(f"output/meshes/{species}_trunk.usda")
 export_tree_as_usd(
     grove=grove,
     output_path=tree_mesh_path,
-    species_name=species,
-    include_skeleton=True,
-    export_skeleton_separately=False
+    species_name=species
 )
 
 # 2. Export twigs from blend file
@@ -387,6 +364,7 @@ print(f"Created Nanite Assembly for {species}: {assembly_path}")
 ## Summary
 
 GrowPy exports are optimized for Unreal Engine 5 Nanite foliage:
+
 - **FBX 2020.2** for broad compatibility
 - **USD/USDA** for advanced Nanite Assembly workflows
 - Full geometry (no masked cards) for optimal Nanite performance

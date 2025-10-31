@@ -530,19 +530,13 @@ def create_assembly(
 
 
 def export_tree_as_nanite_assembly(
-    grove: Any,
+    model: Any,
+    skeleton: Optional[Any],
     output_path: Path,
     species_name: str,
     twig_usd_paths: Optional[Dict[str, Path]] = None,
     include_twigs: bool = True,
     use_skeletal_mesh: bool = False,
-    resolution: int = 32,
-    resolution_reduce: float = 0.8,
-    texture_repeat: int = 3,
-    build_cutoff_age: int = 0,
-    build_cutoff_thickness: float = 0.0,
-    build_blend: bool = True,
-    build_end_cap: bool = True,
 ) -> bool:
     """Export Grove tree as Unreal Engine Nanite Assembly.
 
@@ -551,20 +545,17 @@ def export_tree_as_nanite_assembly(
     2. Creates Nanite Assembly USD with proper Unreal schema
     3. Includes twigs as PointInstancer prims
 
+    Note: Model must already be built with desired quality settings.
+    Call grove.build_models({...}) before passing model to this function.
+
     Args:
-        grove: Grove instance with simulated trees
+        model: Grove tree model from grove.build_models()
+        skeleton: Optional Grove skeleton from grove.build_skeletons()
         output_path: Path for Nanite Assembly USDA file
         species_name: Tree species name
         twig_usd_paths: Dict mapping twig types to USD paths
         include_twigs: Whether to include twig instances
         use_skeletal_mesh: Use skeletal mesh type (for animation)
-        resolution: Branch resolution (4-32)
-        resolution_reduce: Detail reduction rate (0.0-1.0)
-        texture_repeat: Texture repetitions
-        build_cutoff_age: Skip branches younger than N years
-        build_cutoff_thickness: Skip branches thinner than N meters
-        build_blend: Smooth branch joints
-        build_end_cap: Close branch ends
 
     Returns:
         bool: Success status
@@ -579,25 +570,6 @@ def export_tree_as_nanite_assembly(
 
         print(f"Exporting {species_name} as Unreal Nanite Assembly...")
 
-        # Build tree model
-        models = grove.build_models(
-            {
-                "resolution": resolution,
-                "resolution_reduce": resolution_reduce,
-                "texture_repeat": texture_repeat,
-                "build_cutoff_age": build_cutoff_age,
-                "build_cutoff_thickness": build_cutoff_thickness,
-                "build_blend": build_blend,
-                "build_end_cap": build_end_cap,
-            }
-        )
-
-        if not models:
-            print("No models generated from grove")
-            return False
-
-        model = models[0]
-
         # Export tree using direct Grove API geometry (no coordinate transformation)
         from .tree_export import build_tree_mesh
 
@@ -606,8 +578,14 @@ def export_tree_as_nanite_assembly(
         base_name = output_path.stem.replace("_nanite_assembly", "")
         temp_tree_path = output_path.parent / f"{base_name}_skeletal.usda"
 
-        # Build USD directly from Grove API data
-        if not build_tree_mesh(model, temp_tree_path, up_axis="Z", triangulated=False):
+        # Build USD directly from Grove API data with skeleton
+        if not build_tree_mesh(
+            model=model,
+            skeleton=skeleton,
+            output_path=temp_tree_path,
+            up_axis="Z",
+            triangulated=False,
+        ):
             print(f"  Error: Failed to build tree USD")
             return False
 
