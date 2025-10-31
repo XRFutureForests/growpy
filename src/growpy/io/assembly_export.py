@@ -203,11 +203,13 @@ def create_assembly(
             )
 
             # Now set the Nanite Assembly skeleton relationship (the ONLY binding)
+            # CRITICAL: Use SetTargets() instead of AddTarget() to create simple relationship
+            # AddTarget() creates list-edited relationships with "prepend" which breaks Unreal import
             skeleton_rel = root_prim.CreateRelationship(
                 "unreal:naniteAssembly:skeleton",
                 custom=False,
             )
-            skeleton_rel.AddTarget(f"/{assembly_name}/TreeMesh/TreeSkel")
+            skeleton_rel.SetTargets([Sdf.Path(f"/{assembly_name}/TreeMesh/TreeSkel")])
 
             print(f"    [OK] Skeletal tree embedded via TreeMesh (mesh + skeleton)")
             print(f"    Skeleton relationship: /{assembly_name}/TreeMesh/TreeSkel")
@@ -334,8 +336,9 @@ def create_assembly(
                         skel_root_prim = stage.DefinePrim(skel_root_path, "SkelRoot")
 
                         # Reference twig USD from SkelRoot child (not the wrapper)
+                        # CRITICAL: Use "/Twig" (capital T) to match twig file's defaultPrim
                         skel_root_prim.GetReferences().AddReference(
-                            f"./{twig_ref_path.name}", "/twig"
+                            f"./{twig_ref_path.name}", "/Twig"
                         )
 
                         print(
