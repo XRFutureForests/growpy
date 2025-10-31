@@ -31,22 +31,10 @@ Usage:
 """
 
 import argparse
-import logging
-import multiprocessing as mp
 import sys
 from pathlib import Path
 
 from growpy.utils.analysis import SpeciesGrowthAnalyzer
-
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
-
-# Suppress verbose matplotlib logging
-logging.getLogger("matplotlib").setLevel(logging.WARNING)
-logging.getLogger("matplotlib.font_manager").setLevel(logging.WARNING)
 
 
 def main():
@@ -144,55 +132,22 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         type=str,
         help="Specific species to analyze (if not provided, analyzes all species)",
     )
-    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
-    parser.add_argument(
-        "--parallel",
-        action="store_true",
-        default=True,
-        help="Use parallel processing (default: True)",
-    )
-    parser.add_argument(
-        "--no-parallel",
-        action="store_true",
-        help="Disable parallel processing (run sequentially)",
-    )
-    parser.add_argument(
-        "--workers",
-        type=int,
-        default=3,
-        help="Number of parallel workers (default: 3)",
-    )
 
     args = parser.parse_args()
 
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
-        # Keep matplotlib logging suppressed even in verbose mode
-        logging.getLogger("matplotlib").setLevel(logging.WARNING)
-        logging.getLogger("matplotlib.font_manager").setLevel(logging.WARNING)
-
-    # Determine parallel processing settings
-    use_parallel = args.parallel and not args.no_parallel
-    max_workers = args.workers
-
-    logger.info("Grove Species Growth Analysis")
-    logger.info("=" * 40)
-    logger.info(f"Assets directory: {args.assets_dir}")
-    logger.info(f"Growth cycles: {args.cycles}")
-    logger.info(f"Random seeds: {args.seeds}")
-    logger.info(f"Height threshold: {args.height_threshold}")
-    logger.info(f"Max cycles without growth: {args.max_cycles_without_growth}")
-    logger.info(f"Timeout: {args.timeout} seconds")
-    logger.info(f"Parallel processing: {'Enabled' if use_parallel else 'Disabled'}")
-    if use_parallel and max_workers:
-        logger.info(f"Max workers: {max_workers}")
-    elif use_parallel:
-        logger.info(f"Max workers: {max(1, mp.cpu_count() - 1)} (CPU count - 1)")
+    print("Grove Species Growth Analysis")
+    print("=" * 40)
+    print(f"Assets directory: {args.assets_dir}")
+    print(f"Growth cycles: {args.cycles}")
+    print(f"Random seeds: {args.seeds}")
+    print(f"Height threshold: {args.height_threshold}")
+    print(f"Max cycles without growth: {args.max_cycles_without_growth}")
+    print(f"Timeout: {args.timeout} seconds")
 
     # Check assets directory
     if not args.assets_dir.exists():
-        logger.error(f"Assets directory not found: {args.assets_dir}")
-        logger.error(
+        print(f"ERROR: Assets directory not found: {args.assets_dir}")
+        print(
             "Please run prepare_assets.py first to copy assets from Grove installation"
         )
         sys.exit(1)
@@ -200,8 +155,8 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
     # Check for presets directory
     presets_dir = args.assets_dir / "presets"
     if not presets_dir.exists():
-        logger.error(f"Presets directory not found: {presets_dir}")
-        logger.error("Please run prepare_assets.py first to copy species presets")
+        print(f"ERROR: Presets directory not found: {presets_dir}")
+        print("Please run prepare_assets.py first to copy species presets")
         sys.exit(1)
 
     # Create analyzer
@@ -216,12 +171,12 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
     if args.species:
         # Analyze single species
-        logger.info(f"Analyzing single species: {args.species}")
+        print(f"Analyzing single species: {args.species}")
 
         available_species = analyzer.get_available_species()
         if args.species not in available_species:
-            logger.error(f"Species '{args.species}' not found in available presets")
-            logger.info(f"Available species: {', '.join(available_species[:10])}...")
+            print(f"ERROR: Species '{args.species}' not found in available presets")
+            print(f"Available species: {', '.join(available_species[:10])}...")
             sys.exit(1)
 
         # Generate height and DBH curves
@@ -243,40 +198,38 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         # Save individual species results
         species_dir = analyzer.save_species_results(args.species)
 
-        logger.info(f"Final height: {metadata['final_height']:.2f}")
-        logger.info(f"Growth rate: {metadata['growth_rate']:.3f} units/cycle")
-        logger.info(f"Max height: {metadata['max_height']:.2f}")
-        logger.info(f"Final DBH: {metadata['final_dbh']:.3f}")
-        logger.info(f"Max DBH: {metadata['max_dbh']:.3f}")
-        logger.info(
+        print(f"Final height: {metadata['final_height']:.2f}")
+        print(f"Growth rate: {metadata['growth_rate']:.3f} units/cycle")
+        print(f"Max height: {metadata['max_height']:.2f}")
+        print(f"Final DBH: {metadata['final_dbh']:.3f}")
+        print(f"Max DBH: {metadata['max_dbh']:.3f}")
+        print(
             f"Planned cycles: {metadata['planned_cycles']}, "
             f"Actual max cycles: {metadata['actual_max_cycles']}"
         )
-        logger.info(f"Average actual cycles: {metadata['avg_actual_cycles']:.1f}")
-        logger.info(
-            f"Average simulation time: {metadata['avg_simulation_time']:.1f} seconds"
-        )
+        print(f"Average actual cycles: {metadata['avg_actual_cycles']:.1f}")
+        print(f"Average simulation time: {metadata['avg_simulation_time']:.1f} seconds")
 
         if metadata["early_terminations"] > 0:
-            logger.info(
+            print(
                 f"Early terminations: {metadata['early_terminations']}/{metadata['num_seeds']} seeds"
             )
         else:
-            logger.info("No early terminations occurred")
+            print("No early terminations occurred")
 
         if metadata["timeouts"] > 0:
-            logger.warning(
-                f"Timeouts occurred: {metadata['timeouts']}/{metadata['num_seeds']} seeds"
+            print(
+                f"WARNING: Timeouts occurred: {metadata['timeouts']}/{metadata['num_seeds']} seeds"
             )
         else:
-            logger.info("No timeouts occurred")
+            print("No timeouts occurred")
 
         # Save results
         analyzer.save_growth_models()
 
     else:
         # Analyze species from CSV
-        logger.info("Analyzing species from CSV...")
+        print("Analyzing species from CSV...")
 
         # Load CSV to get species list
         import pandas as pd
@@ -286,11 +239,9 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
             # Check if this is a forest placement CSV (has "species" column)
             if "species" in df.columns and "Common Name" not in df.columns:
-                logger.info(
-                    "Detected forest placement CSV, extracting unique species..."
-                )
+                print("Detected forest placement CSV, extracting unique species...")
                 unique_species = df["species"].dropna().unique().tolist()
-                logger.info(
+                print(
                     f"Found {len(unique_species)} unique species: {', '.join(unique_species)}"
                 )
 
@@ -299,7 +250,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
                     script_dir / "src" / "growpy" / "config" / "tree_asset_lookup.csv"
                 )
                 if not asset_lookup_path.exists():
-                    logger.error(f"Asset lookup table not found: {asset_lookup_path}")
+                    print(f"ERROR: Asset lookup table not found: {asset_lookup_path}")
                     sys.exit(1)
 
                 lookup_df = pd.read_csv(asset_lookup_path)
@@ -329,19 +280,19 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
                         if standardized:
                             csv_species.append(standardized)
                         else:
-                            logger.warning(f"No standardized name for '{species}'")
+                            print(f"WARNING: No standardized name for '{species}'")
                     else:
-                        logger.warning(
-                            f"Species '{species}' not found in asset lookup table"
+                        print(
+                            f"WARNING: Species '{species}' not found in asset lookup table"
                         )
 
                 if not csv_species:
-                    logger.error(
-                        f"None of the species in {args.csv.name} were found in asset lookup table"
+                    print(
+                        f"ERROR: None of the species in {args.csv.name} were found in asset lookup table"
                     )
                     sys.exit(1)
 
-                logger.info(f"Standardized species names from CSV: {csv_species}")
+                print(f"Standardized species names from CSV: {csv_species}")
             else:
                 # Direct asset lookup CSV - use Standardized Name column
                 if "Standardized Name" in df.columns:
@@ -358,11 +309,11 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
                         standardize_name(s) for s in df["Common Name"].tolist()
                     ]
 
-                logger.info(f"Found {len(csv_species)} species in CSV: {args.csv.name}")
-                logger.info(f"Standardized species names: {csv_species}")
+                print(f"Found {len(csv_species)} species in CSV: {args.csv.name}")
+                print(f"Standardized species names: {csv_species}")
 
         except Exception as e:
-            logger.error(f"Error reading CSV: {e}")
+            print(f"ERROR: Error reading CSV: {e}")
             sys.exit(1)
 
         # Get available species and filter to CSV species only
@@ -370,15 +321,15 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         species_to_process = [s for s in csv_species if s in available_species]
 
         if not species_to_process:
-            logger.error("No matching species found between CSV and available presets")
+            print("ERROR: No matching species found between CSV and available presets")
             sys.exit(1)
 
-        logger.info(f"Processing {len(species_to_process)} species (CSV-driven)")
+        print(f"Processing {len(species_to_process)} species (CSV-driven)")
 
         # Analyze filtered species
         results = analyzer.analyze_all_species(
-            parallel=use_parallel,
-            max_workers=max_workers,
+            parallel=False,
+            max_workers=None,
             species_filter=species_to_process,
         )
 
@@ -387,6 +338,4 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
 
 if __name__ == "__main__":
-    # For Windows multiprocessing support
-    mp.set_start_method("spawn", force=True)
     main()

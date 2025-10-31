@@ -50,7 +50,6 @@ except ImportError:
 # Import after bpy check to avoid potential conflicts
 from ..config import get_config
 from ..core.skeleton import calculate_vertex_weights
-from ..core.twig import extract_twig_placements_from_usd
 
 # Lazy import of gc to avoid conflicts with bpy
 _gc = None
@@ -82,6 +81,58 @@ def ensure_grove_available():
     gc = _get_gc()
     if gc is None:
         raise ImportError("Grove core (the_grove_22_core) not available")
+
+
+def _extract_twig_placements_from_usd(usd_path: Path) -> Dict[str, List[Dict]]:
+    """Extract twig placements from USD primvars - local helper for tree_export."""
+    if not USD_AVAILABLE:
+        return {}
+
+    placements = {}
+    try:
+        stage = Usd.Stage.Open(str(usd_path))
+        if not stage:
+            return placements
+
+        for prim in stage.Traverse():
+            if prim.IsA(UsdGeom.Mesh):
+                mesh = UsdGeom.Mesh(prim)
+                primvars_api = UsdGeom.PrimvarsAPI(mesh)
+
+                # Check for twig primvars
+                for twig_type in [
+                    "twig_long",
+                    "twig_short",
+                    "twig_upward",
+                    "twig_dead",
+                ]:
+                    pos_primvar = primvars_api.GetPrimvar(f"{twig_type}_position")
+                    normal_primvar = primvars_api.GetPrimvar(f"{twig_type}_normal")
+                    scale_primvar = primvars_api.GetPrimvar(f"{twig_type}_scale")
+
+                    if pos_primvar and normal_primvar:
+                        positions = pos_primvar.Get()
+                        normals = normal_primvar.Get()
+                        scales = (
+                            scale_primvar.Get()
+                            if scale_primvar
+                            else [1.0] * len(positions)
+                        )
+
+                        if positions and normals:
+                            placements[twig_type] = []
+                            for i in range(len(positions)):
+                                placements[twig_type].append(
+                                    {
+                                        "position": tuple(positions[i]),
+                                        "normal": tuple(normals[i]),
+                                        "scale": scales[i] if i < len(scales) else 1.0,
+                                    }
+                                )
+    except Exception as e:
+        print(f"Warning: Failed to extract twig placements: {e}")
+
+    return placements
 
 
 def export_tree(
@@ -485,7 +536,10 @@ def _add_skeleton_to_stage_inline(
 ) -> bool:
     """Add skeleton to open USD stage using core.skeleton computation."""
     try:
-        from growpy.core.skeleton import get_bone_data_from_grove, build_skeleton_hierarchy
+        from growpy.core.skeleton import (
+            build_skeleton_hierarchy,
+            get_bone_data_from_grove,
+        )
 
         # Get bone data from Grove
         bones_info = grove.tag_bone_id(
@@ -1170,13 +1224,9 @@ def add_skeleton_to_usd(
 
         skeleton = skeletons[0]
 
-        # Extract twig placements if needed
-        twig_placements = None
-        if add_twig_bones:
-            twig_placements = extract_twig_placements_from_usd(usd_path)
-
         # Create UsdSkel skeleton structure
-        _build_usdskel_from_bones(stage, skeleton, None, twig_placements)
+        # Note: Twig placement data is written as primvars and extracted during assembly creation
+        _build_usdskel_from_bones(stage, skeleton, None, None)
 
         # Set defaultPrim
         tree_prim = stage.GetPrimAtPath("/tree")

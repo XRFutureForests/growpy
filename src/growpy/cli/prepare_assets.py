@@ -103,13 +103,9 @@ def load_species_csv(csv_path: Path, script_dir: Path) -> pd.DataFrame:
 
     # Check if this is a forest placement CSV (has "species" column)
     if "species" in df.columns and "Common Name" not in df.columns:
-        print(f"[INFO] Detected forest placement CSV, extracting unique species...")
-
         # Extract unique species names
         unique_species = df["species"].dropna().unique().tolist()
-        print(
-            f"[INFO] Found {len(unique_species)} unique species: {', '.join(unique_species)}"
-        )
+        print(f"Found {len(unique_species)} unique species")
 
         # Load the asset lookup table
         asset_lookup_path = (
@@ -149,7 +145,6 @@ def load_species_csv(csv_path: Path, script_dir: Path) -> pd.DataFrame:
             )
 
         df = pd.concat(filtered_rows, ignore_index=True)
-        print(f"[INFO] Matched {len(df)} species entries in asset lookup table")
 
     # Validate we have required columns (either from direct CSV or after lookup)
     required_cols = ["Common Name", "Preset", "Twig", "Bark Texture"]
@@ -221,7 +216,7 @@ CSV Format Support:
 
     args = parser.parse_args()
 
-    print("📦 GrowPy Asset Preparation (CSV-driven)")
+    print("Asset Preparation")
     print("=" * 40)
 
     # Validate paths
@@ -232,22 +227,18 @@ CSV Format Support:
     # Override CSV if --all flag is set
     if args.all:
         args.csv = script_dir / "src" / "growpy" / "config" / "tree_asset_lookup.csv"
-        print(f"[INFO] --all flag set: copying ALL available Grove assets (57 species)")
+        print("Copying all available Grove assets")
 
     if not args.csv.exists():
-        print(f"[FAIL] Species CSV not found: {args.csv}")
+        print(f"ERROR: Species CSV not found: {args.csv}")
         return 1
-
-    print(f"📂 Source: {args.grove_dir}")
-    print(f"📂 Target: {args.assets_dir}")
-    print(f"📄 Species CSV: {args.csv}")
 
     # Load species CSV
     try:
         df = load_species_csv(args.csv, script_dir)
-        print(f"\n[CSV] Loaded {len(df)} species from CSV")
+        print(f"Loaded {len(df)} species")
     except Exception as e:
-        print(f"[FAIL] Error loading CSV: {e}")
+        print(f"ERROR: {e}")
         return 1
 
     # Create target directories
@@ -267,7 +258,7 @@ CSV Format Support:
     }
 
     # Copy presets with standardized naming
-    print(f"\n[PRESETS] Copying and standardizing species presets...")
+    print("\nCopying presets...")
     src_presets = args.grove_dir / "presets"
     dst_presets = args.assets_dir / "presets"
 
@@ -292,7 +283,7 @@ CSV Format Support:
             print(f"  ✗ {preset_file} (not found)")
 
     # Copy twigs (with CamelCase -> snake_case conversion)
-    print(f"\n[TWIGS] Copying and standardizing twig directories...")
+    print("\nCopying twigs...")
     src_twigs = args.grove_dir / "twigs"
     dst_twigs = args.assets_dir / "twigs"
 
@@ -338,7 +329,7 @@ CSV Format Support:
             print(f"  ✗ {twig_name_original} (not found)")
 
     # Copy bark textures with CamelCase -> snake_case conversion (preserves age numbers)
-    print(f"\n[TEXTURES] Copying and standardizing bark textures...")
+    print("\nCopying textures...")
     src_textures = args.grove_dir / "textures"
     dst_textures = args.assets_dir / "textures"
 
@@ -370,17 +361,14 @@ CSV Format Support:
 
     # Print summary
     print(f"\n{'='*40}")
-    print(f"[SUMMARY]")
     print(
-        f"  Presets:  {stats['presets_copied']} copied, {stats['presets_missing']} missing"
+        f"Presets:  {stats['presets_copied']} copied, {stats['presets_missing']} missing"
     )
+    print(f"Twigs:    {stats['twigs_copied']} copied, {stats['twigs_missing']} missing")
     print(
-        f"  Twigs:    {stats['twigs_copied']} copied, {stats['twigs_missing']} missing"
+        f"Textures: {stats['textures_copied']} copied, {stats['textures_missing']} missing"
     )
-    print(
-        f"  Textures: {stats['textures_copied']} copied, {stats['textures_missing']} missing"
-    )
-    print(f"\n[DONE] Asset preparation complete!")
+    print(f"\nComplete!")
 
     if (
         stats["presets_missing"] > 0
