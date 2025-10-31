@@ -833,25 +833,6 @@ def _add_grove_face_attributes(mesh: UsdGeom.Mesh, model: Any) -> None:
     """Add Grove face attributes as USD primvars."""
     primvars_api = UsdGeom.PrimvarsAPI(mesh)
 
-    # Twig placement attributes
-    if hasattr(model, "face_attribute_twig_long"):
-        primvar = primvars_api.CreatePrimvar(
-            "TwigLong", Sdf.ValueTypeNames.BoolArray, UsdGeom.Tokens.uniform
-        )
-        primvar.Set(model.face_attribute_twig_long)
-
-    if hasattr(model, "face_attribute_twig_short"):
-        primvar = primvars_api.CreatePrimvar(
-            "TwigShort", Sdf.ValueTypeNames.BoolArray, UsdGeom.Tokens.uniform
-        )
-        primvar.Set(model.face_attribute_twig_short)
-
-    if hasattr(model, "face_attribute_twig_upward"):
-        primvar = primvars_api.CreatePrimvar(
-            "TwigUpward", Sdf.ValueTypeNames.BoolArray, UsdGeom.Tokens.uniform
-        )
-        primvar.Set(model.face_attribute_twig_upward)
-
     # Branch attributes
     if hasattr(model, "face_attribute_branch_id"):
         primvar = primvars_api.CreatePrimvar(
@@ -1065,6 +1046,19 @@ def _build_usdskel_from_bones(
 
     skeleton_points = [to_tuple(p) for p in skeleton_points]
 
+    # Calculate tree offset from root point to convert world space to local space
+    # The mesh geometry is exported in local space (near origin), but skeleton points
+    # are in world space from grove.add_new_tree(position, ...). We need to subtract
+    # this offset so skeleton and mesh are in the same coordinate space.
+    if skeleton_points and skeleton_polylines and skeleton_polylines[0]:
+        root_point_idx = skeleton_polylines[0][0]
+        root_point = skeleton_points[root_point_idx]
+        tree_offset = Gf.Vec3d(root_point[0], root_point[1], root_point[2])
+        print(f"    Tree offset (root position): {tree_offset}")
+    else:
+        tree_offset = Gf.Vec3d(0, 0, 0)
+        print("    Warning: No skeleton points found, using zero offset")
+
     # Build joint hierarchy from polylines
     bone_positions = {}
     point_to_joint_path = {}
@@ -1079,6 +1073,8 @@ def _build_usdskel_from_bones(
         for i, point_idx in enumerate(polyline[start_idx:], start=start_idx):
             point = skeleton_points[point_idx]
             world_pos = Gf.Vec3d(point[0], point[1], point[2])
+            # Convert to local space by subtracting tree offset
+            local_pos = world_pos - tree_offset
 
             joint_name = f"joint_{joint_counter}"
             point_to_joint_index[point_idx] = joint_counter
@@ -1096,22 +1092,22 @@ def _build_usdskel_from_bones(
 
             point_to_joint_path[point_idx] = joint_path
             joint_tokens.append(joint_path)
-            bone_positions[point_idx] = world_pos
+            bone_positions[point_idx] = local_pos  # Store local position
 
-            # Create transforms
+            # Create bind transform with local position
             bind_transform = Gf.Matrix4d(1.0)
-            bind_transform.SetTranslateOnly(world_pos)
+            bind_transform.SetTranslateOnly(local_pos)
             bind_transforms.append(bind_transform)
 
             if i == 0:
-                local_pos = world_pos
+                relative_pos = local_pos
             else:
                 prev_point_idx = polyline[i - 1]
                 parent_pos = bone_positions.get(prev_point_idx, Gf.Vec3d(0, 0, 0))
-                local_pos = world_pos - parent_pos
+                relative_pos = local_pos - parent_pos
 
             rest_transform = Gf.Matrix4d(1.0)
-            rest_transform.SetTranslateOnly(local_pos)
+            rest_transform.SetTranslateOnly(relative_pos)
             rest_transforms.append(rest_transform)
 
             prev_joint_path = joint_path
@@ -1120,6 +1116,35 @@ def _build_usdskel_from_bones(
     skel.CreateJointsAttr(joint_tokens)
     skel.CreateBindTransformsAttr(Vt.Matrix4dArray(bind_transforms))
     skel.CreateRestTransformsAttr(Vt.Matrix4dArray(rest_transforms))
+
+    # CRITICAL: Create SkelAnimation for bind pose (required for Unreal skeletal mesh recognition)
+    # Even without animation, Unreal needs this to recognize as skeletal mesh
+    anim_path = Sdf.Path("/tree/Animation")
+    anim = UsdSkel.Animation.Define(stage, anim_path)
+
+    # Set animation joints (same as skeleton)
+    anim.CreateJointsAttr(joint_tokens)
+
+    # Set bind pose transforms (identity for each joint)
+    # USD requires these arrays to match the number of joints
+    num_joints = len(joint_tokens)
+    identity_translations = Vt.Vec3fArray([Gf.Vec3f(0, 0, 0)] * num_joints)
+    identity_rotations = Vt.QuatfArray(
+        [Gf.Quatf(1, 0, 0, 0)] * num_joints
+    )  # w, x, y, z
+    identity_scales = Vt.Vec3hArray([Gf.Vec3h(1, 1, 1)] * num_joints)
+
+    anim.CreateTranslationsAttr(identity_translations)
+    anim.CreateRotationsAttr(identity_rotations)
+    anim.CreateScalesAttr(identity_scales)
+
+    # Bind animation to skeleton via SkelRoot's animationSource relationship
+    skel_binding_api = UsdSkel.BindingAPI.Apply(tree_prim)
+    skel_binding_api.CreateAnimationSourceRel().SetTargets([anim_path])
+
+    print(
+        f"    [OK] Created SkelAnimation ({num_joints} joints, bind pose for UE skeletal mesh recognition)"
+    )
 
     # CRITICAL: Apply SkelBindingAPI to mesh and add skinning data
     # Unreal Engine requires BOTH SkelRoot and Mesh to have skeleton bindings
