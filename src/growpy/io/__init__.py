@@ -28,7 +28,9 @@ try:
         add_skeleton_to_usd,
         add_twig_skeleton_to_usd,
         build_tree_mesh,
+        bundle_twigs_for_species,
         export_tree,
+        get_twig_usd_map_for_species,
     )
 
     TREE_EXPORT_AVAILABLE = True
@@ -38,6 +40,8 @@ except ImportError:
     build_tree_mesh = None
     add_skeleton_to_usd = None
     add_twig_skeleton_to_usd = None
+    bundle_twigs_for_species = None
+    get_twig_usd_map_for_species = None
 
 # Twig export (requires bpy)
 try:
@@ -50,7 +54,7 @@ except ImportError:
 
 # Assembly creation and validation (requires USD)
 try:
-    from .assembly import create_assembly, validate_assembly
+    from .assembly_export import create_assembly, validate_assembly
 
     ASSEMBLY_AVAILABLE = True
 except ImportError:
@@ -65,6 +69,8 @@ __all__ = [
     "build_tree_mesh",
     "add_skeleton_to_usd",
     "add_twig_skeleton_to_usd",
+    "bundle_twigs_for_species",
+    "get_twig_usd_map_for_species",
     "TREE_EXPORT_AVAILABLE",
     # Twig export
     "export_twigs_from_blend",

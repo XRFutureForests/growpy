@@ -968,31 +968,6 @@ def process_twig_file(
             # Export in requested formats
             for fmt in formats:
                 if fmt in ["usd", "usda"]:
-                    # Export static mesh variant
-                    export_path = output_dir / f"{standardized_name}.{fmt}"
-                    print(f"    -> Exporting static USD: {export_path.name}")
-
-                    bpy.ops.wm.usd_export(
-                        filepath=str(export_path),
-                        selected_objects_only=True,
-                        export_materials=not clean_export,
-                        export_textures=not clean_export,
-                        export_uvmaps=True,
-                        export_normals=True,
-                        export_mesh_colors=True,
-                        use_instancing=False,
-                        evaluation_mode="RENDER",
-                        generate_preview_surface=True,
-                        relative_paths=True,
-                        export_hair=False,
-                        export_lights=False,
-                    )
-
-                    exported_files.append(export_path)
-
-                    # Fix texture paths in static USD
-                    fix_texture_paths_in_usd(export_path)
-
                     # Export skeletal mesh variant (using _skeletal to match tree convention)
                     skel_export_path = (
                         output_dir / f"{standardized_name}_skeletal.{fmt}"
