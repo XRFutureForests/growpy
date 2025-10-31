@@ -35,9 +35,14 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel
 
+from ..core.twig import extract_twig_placements_from_model
 
-def _extract_twig_placements_from_usd_inline(usd_path: Path) -> Dict[str, List[Dict]]:
-    """Extract twig placements from USD primvars - simplified inline version."""
+
+def _extract_twig_placements_from_usd(usd_path: Path) -> Dict[str, List[Dict]]:
+    """Extract twig placements from USD primvars written by tree_export.
+
+    Reads position/normal/scale primvars for each twig type from the tree skeletal mesh.
+    """
     placements = {}
     try:
         stage = Usd.Stage.Open(str(usd_path))
@@ -80,7 +85,7 @@ def _extract_twig_placements_from_usd_inline(usd_path: Path) -> Dict[str, List[D
                                     }
                                 )
     except Exception as e:
-        print(f"Warning: Failed to extract twig placements: {e}")
+        print(f"    Warning: Failed to extract twig placements from USD: {e}")
 
     return placements
 
@@ -92,7 +97,7 @@ def create_assembly(
     twig_usd_paths: Optional[Dict[str, Path]] = None,
     use_skeletal_mesh: bool = False,
     skeleton_source_usd: Optional[Path] = None,
-    twig_placement_source_usd: Optional[Path] = None,
+    twig_placements: Optional[Dict[str, List]] = None,
 ) -> bool:
     """Create an assembly USD file for Unreal Engine import.
 
@@ -217,19 +222,25 @@ def create_assembly(
         if twig_usd_paths:
             print(f"  Adding twigs as PointInstancer...")
 
-            # Extract twig placements from tree USD
-            # Use twig_placement_source_usd if provided (for skeletal assemblies),
-            # otherwise use tree_usd_path
-            placement_source = (
-                twig_placement_source_usd
-                if twig_placement_source_usd
-                else tree_usd_path
-            )
-            if twig_placement_source_usd:
-                print(
-                    f"    Extracting placements from: {twig_placement_source_usd.name}"
-                )
-            placements = _extract_twig_placements_from_usd_inline(placement_source)
+            # Use twig placements extracted from Grove model
+            if twig_placements:
+                # Convert TwigPlacement objects to dict format
+                placements = {}
+                for twig_type, placement_list in twig_placements.items():
+                    if placement_list:
+                        placements[twig_type] = [
+                            {
+                                "position": p.position,
+                                "normal": p.normal,
+                                "scale": p.scale,
+                            }
+                            for p in placement_list
+                        ]
+                total_twigs = sum(len(p) for p in placements.values())
+                print(f"    Using {total_twigs} twig placements from model")
+            else:
+                placements = {}
+                print("    WARNING: No twig placements provided")
 
             if placements and any(placements.values()):
                 # Remap twig paths from source assets to output directory copies
@@ -578,18 +589,36 @@ def export_tree_as_nanite_assembly(
         base_name = output_path.stem.replace("_nanite_assembly", "")
         temp_tree_path = output_path.parent / f"{base_name}_skeletal.usda"
 
+        # Triangulate model before building USD (CRITICAL for proper face/attribute matching)
+        try:
+            model.triangulate()
+        except Exception as e:
+            print(f"  Warning: Could not triangulate model: {e}")
+
         # Build USD directly from Grove API data with skeleton
         if not build_tree_mesh(
             model=model,
             skeleton=skeleton,
             output_path=temp_tree_path,
             up_axis="Z",
-            triangulated=False,
+            triangulated=True,
         ):
             print(f"  Error: Failed to build tree USD")
             return False
 
         print(f"  [OK] Exported base tree: {temp_tree_path.name}")
+
+        # Extract twig placements from Grove model BEFORE creating assembly
+        twig_placements = None
+        if include_twigs:
+            try:
+                twig_placements = extract_twig_placements_from_model(model)
+                total_twigs = sum(len(p) for p in twig_placements.values())
+                if total_twigs > 0:
+                    print(f"  Extracted {total_twigs} twig placements from model")
+            except Exception as e:
+                print(f"  Warning: Failed to extract twig placements: {e}")
+                twig_placements = None
 
         # Auto-lookup twigs if include_twigs=True and none provided
         if include_twigs and twig_usd_paths is None:
@@ -635,6 +664,7 @@ def export_tree_as_nanite_assembly(
             species_name=species_name,
             twig_usd_paths=twig_usd_paths if include_twigs else None,
             use_skeletal_mesh=use_skeletal_mesh,
+            twig_placements=twig_placements,
         )
 
         if success:
@@ -882,7 +912,9 @@ def validate_assembly(usd_path: Path) -> Dict[str, Any]:
 
         # Check for NaniteAssemblyRootAPI
         api_schemas = default_prim.GetMetadata("apiSchemas")
-        if not api_schemas or "NaniteAssemblyRootAPI" not in api_schemas:
+        if not api_schemas or "NaniteAssemblyRootAPI" not in (
+            api_schemas.prependedItems if hasattr(api_schemas, "prependedItems") else []
+        ):
             result["errors"].append("NaniteAssemblyRootAPI not applied to default prim")
             result["valid"] = False
 
@@ -924,7 +956,11 @@ def validate_assembly(usd_path: Path) -> Dict[str, Any]:
         prototypes_found = 0
         for prim in stage.Traverse():
             api_schemas = prim.GetMetadata("apiSchemas")
-            if api_schemas and "NaniteAssemblyExternalRefAPI" in api_schemas:
+            if api_schemas and "NaniteAssemblyExternalRefAPI" in (
+                api_schemas.prependedItems
+                if hasattr(api_schemas, "prependedItems")
+                else []
+            ):
                 prototypes_found += 1
 
                 # Check if it's instanceable
@@ -947,9 +983,10 @@ def validate_assembly(usd_path: Path) -> Dict[str, Any]:
                 if result["mesh_type"] == "skeletalMesh":
                     # Check for skeletal binding API
                     api_schemas = prim.GetMetadata("apiSchemas")
-                    if (
-                        not api_schemas
-                        or "NaniteAssemblySkelBindingAPI" not in api_schemas
+                    if not api_schemas or "NaniteAssemblySkelBindingAPI" not in (
+                        api_schemas.prependedItems
+                        if hasattr(api_schemas, "prependedItems")
+                        else []
                     ):
                         result["warnings"].append(
                             "PointInstancer missing NaniteAssemblySkelBindingAPI for skeletal mesh"

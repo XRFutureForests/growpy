@@ -186,9 +186,25 @@ def extract_twig_placements_from_model(
 
     placements = {twig_type: [] for twig_type in twig_types}
 
-    # Get geometry data
-    vertices = [(v.x, v.y, v.z) for v in model.point_coordinates()]
-    faces = model.face_indices()
+    # Get geometry data from Grove model
+    vertices = [(v.x, v.y, v.z) for v in model.points]
+    faces = model.faces  # List of faces, where each face is a list of vertex indices
+
+    # Get pre-computed face normals from Grove
+    face_normals = []
+    if hasattr(model, "face_attribute_direction"):
+        try:
+            directions = model.face_attribute_direction
+            # Grove face_attribute_direction is a list of Vector objects
+            for direction in directions:
+                if hasattr(direction, "x"):
+                    face_normals.append((direction.x, direction.y, direction.z))
+                else:
+                    # Fallback if direction is already a tuple
+                    face_normals.append(tuple(direction))
+        except Exception:
+            # Fallback to calculation if extraction fails
+            face_normals = []
 
     # Get face attributes for each twig type
     for twig_type in twig_types:
@@ -198,21 +214,30 @@ def extract_twig_placements_from_model(
 
         twig_values = getattr(model, attr_name)
 
-        # Group faces into triangles (assumes triangulated mesh)
-        num_faces = len(faces) // 3
-        for face_idx in range(num_faces):
-            twig_value = twig_values[face_idx] if face_idx < len(twig_values) else 0
+        # Iterate through each face
+        for face_idx, face in enumerate(faces):
+            if face_idx >= len(twig_values):
+                break
+
+            twig_value = twig_values[face_idx]
 
             if twig_value > 0:  # Face has twig placement
-                # Get triangle vertex indices
-                face_verts = [
-                    faces[face_idx * 3],
-                    faces[face_idx * 3 + 1],
-                    faces[face_idx * 3 + 2],
-                ]
+                # Get vertex indices for this face (should be triangle after triangulation)
+                face_vert_indices = list(face)
 
-                # Calculate center and normal
-                center, normal = get_face_center_and_normal(vertices, face_verts)
+                # Calculate face center
+                face_verts = [vertices[i] for i in face_vert_indices]
+                center = (
+                    sum(v[0] for v in face_verts) / len(face_verts),
+                    sum(v[1] for v in face_verts) / len(face_verts),
+                    sum(v[2] for v in face_verts) / len(face_verts),
+                )
+
+                # Use pre-computed normal from Grove if available, otherwise calculate
+                if face_idx < len(face_normals):
+                    normal = face_normals[face_idx]
+                else:
+                    _, normal = get_face_center_and_normal(vertices, face_vert_indices)
 
                 placement = TwigPlacement(
                     type=twig_type, position=center, normal=normal, scale=1.0
