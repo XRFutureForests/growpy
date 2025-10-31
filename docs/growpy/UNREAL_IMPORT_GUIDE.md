@@ -13,12 +13,14 @@ Export trees for Unreal with procedural variations:
 Each species is exported with 3 distinct variations for procedural diversity:
 
 ### Variation 1: **Standard Tree**
+
 - Normal growth pattern
 - Balanced branch distribution
 - 10 growth flushes
 - **Use for:** Main tree population
 
 ### Variation 2: **Leaning Dense Tree**
+
 - 15° lean angle (more natural/wind-affected look)
 - 20% more branch density
 - Slightly thinner branches (0.9x)
@@ -26,6 +28,7 @@ Each species is exported with 3 distinct variations for procedural diversity:
 - **Use for:** Edge trees, forest borders, varied terrain
 
 ### Variation 3: **Upright Thick Tree**
+
 - Minimal lean (5°, very upright)
 - Thicker trunk and branches (1.1x)
 - 12 growth flushes (more mature)
@@ -38,6 +41,7 @@ Each variation also uses a different random seed, ensuring unique branch pattern
 All exports are **Nanite-compatible** with proper validation and metadata. See [NANITE_COMPATIBILITY.md](./NANITE_COMPATIBILITY.md) for complete details.
 
 ### FBX (Universal Compatibility)
+
 - `output/unreal_assets/FBX/*.fbx`
 - ✓ Nanite-compatible (enable on import)
 - ✓ Embedded textures and materials
@@ -47,6 +51,7 @@ All exports are **Nanite-compatible** with proper validation and metadata. See [
 - Compatible with all UE versions
 
 ### USD (Nanite Native)
+
 - `output/unreal_assets/USD/*.usda`
 - ✓ Native Nanite support (automatic)
 - ✓ `unrealNanite` and `unrealNanitePreserveArea` attributes
@@ -109,13 +114,16 @@ Use the metadata JSON files to drive PCG scatter attributes:
 ## Fixed Issues
 
 ### ✅ Armature Parenting Warning
+
 **Fixed:** Removed parent relationship between mesh and armature. Now uses modifier-only approach, which FBX exporter supports properly.
 
 **Before:** "Sorry, ARMATURE parenting type is not supported"
 **After:** Clean export with no warnings
 
 ### ✅ Limited Variation
+
 **Fixed:** Added proper procedural variation with:
+
 - Different random seeds per variation
 - Varied growth parameters (lean, density, thickness)
 - Different growth stages
@@ -124,6 +132,7 @@ Use the metadata JSON files to drive PCG scatter attributes:
 ## Recommended Workflow
 
 1. **Export with 3-5 variations per species**
+
    ```bash
    ./.conda/python.exe src/growpy/cli/export_for_unreal.py forest.csv --variations 5
    ```
@@ -177,7 +186,7 @@ A: Make sure you imported all 3 variations and are using random selection
 A: Use Nanite (USD) or enable LODs and instancing (FBX)
 
 **Q: Skeleton not working**
-A: The skeleton is for potential wind animation. If not needed, you can skip skeleton export with `export_skeleton_separately=False`
+A: The skeleton is always included for wind animation support. Check that the USD file has a valid SkelRoot structure.
 
 **Q: Want more variation**
 A: Export with more variations: `--variations 5` or `--variations 10`

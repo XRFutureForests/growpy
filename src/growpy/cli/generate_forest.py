@@ -60,101 +60,6 @@ from growpy import (
 from growpy.config.quality import get_quality_preset
 
 
-def place_twigs_on_exported_trees(
-    tree_usd_files: list, twigs_dir: Path, output_dir: Path
-) -> None:
-    """Place twigs on exported tree USD files.
-
-    Args:
-        tree_usd_files: List of tree USD file paths
-        twigs_dir: Directory containing twig files
-        output_dir: Output directory for tree+twig assemblies
-    """
-    # DEPRECATED: twig_placement.py removed - this functionality not yet refactored
-    return
-
-    import bpy
-
-    # from growpy.io.twig_placement import (
-    #     export_twig_placements_to_usd,
-    #     extract_twig_placements_from_mesh,
-    # )
-
-    twigs_output = output_dir / "twigs_assemblies"
-    twigs_output.mkdir(parents=True, exist_ok=True)
-
-    for tree_file in tree_usd_files:
-        try:
-            # Find matching twig directory for this species
-            species_name = tree_file.stem.replace("_tree", "")
-
-            # Look for twig directory matching species (snake_case naming)
-            twig_candidates = list(twigs_dir.glob(f"*{species_name}*_twig"))
-            if not twig_candidates:
-                twig_candidates = list(twigs_dir.glob("*_twig"))
-
-            if not twig_candidates:
-                print(f"  No twig found for {species_name}, skipping")
-                continue
-
-            twig_dir = twig_candidates[0]
-            print(f"  Using twigs from: {twig_dir.name}")
-
-            # Find twig USD files
-            twig_files = list(twig_dir.glob("*.usda")) + list(twig_dir.glob("*.usd"))
-            if not twig_files:
-                print(f"  No USD twigs found in {twig_dir.name}")
-                continue
-
-            # Load tree to extract placement data
-            bpy.ops.wm.read_factory_settings(use_empty=True)
-            bpy.ops.wm.usd_import(filepath=str(tree_file.resolve()))
-
-            tree_obj = None
-            for obj in bpy.context.scene.objects:
-                if obj.type == "MESH":
-                    tree_obj = obj
-                    break
-
-            if not tree_obj:
-                print(f"  No mesh found in {tree_file.name}")
-                continue
-
-            # Map twig types to USD files
-            twig_usd_map = {}
-            for twig_file in twig_files:
-                name_lower = twig_file.stem.lower()
-                if "end" in name_lower or "long" in name_lower:
-                    twig_usd_map["twig_long"] = twig_file
-                elif "side" in name_lower or "short" in name_lower:
-                    twig_usd_map["twig_short"] = twig_file
-                else:
-                    # Use first generic twig for all types
-                    twig_usd_map["twig_long"] = twig_file
-                    twig_usd_map["twig_short"] = twig_file
-                    break
-
-            if not twig_usd_map:
-                print(f"  Could not map twig types for {species_name}")
-                continue
-
-            # Export assembly with twigs
-            output_file = twigs_output / f"{species_name}_with_twigs.usda"
-            # Pass tree_mesh (tree_obj) to avoid re-importing USD
-            if export_twig_placements_to_usd(
-                tree_file.resolve(),
-                twig_usd_map,
-                output_file.resolve(),
-                tree_obj,
-                extract_from_usd=False,
-            ):
-                print(f"  Created assembly: {output_file.name}")
-
-        except Exception as e:
-            print(f"  Failed to place twigs on {tree_file.name}: {e}")
-            continue
-
-
 def _export_single_tree_from_forest(args: tuple) -> list:
     """Export a single tree from an already-simulated grove (forest simulation phase).
 
@@ -163,8 +68,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     the old approach of recreating and re-simulating each tree individually.
 
     Args:
-        args: Tuple of (idx, grove_instance, species_name, output_dir, quality_params,
-                        formats, create_nanite_assembly, cleanup_mesh)
+        args: Tuple of (idx, grove_instance, species_name, output_dir, quality_params)
 
     Returns:
         List of exported file paths
@@ -184,16 +88,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     from growpy.io.assembly_export import export_tree_as_nanite_assembly
     from growpy.io.tree_export import get_twig_usd_map_for_species
 
-    (
-        idx,
-        grove,
-        species,
-        output_dir,
-        quality_params,
-        formats,
-        create_nanite_assembly,
-        cleanup_mesh,
-    ) = args
+    (idx, grove, species, output_dir, quality_params) = args
 
     # Get config in worker process
     config = get_config()
@@ -206,8 +101,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     )
 
     species_dir = output_dir / species_clean
-    if "usd" in formats or "usda" in formats:
-        species_dir.mkdir(parents=True, exist_ok=True)
+    species_dir.mkdir(parents=True, exist_ok=True)
 
     tree_name = f"{species_clean}_tree_{idx:04d}"
     exported = []
@@ -217,30 +111,44 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         # This grove was grown with inter-species light competition and is ready to export
         # No re-simulation needed - much faster!
 
-        if "usd" in formats or "usda" in formats:
-            usd_path = species_dir / f"{tree_name}_nanite_assembly.usda"
+        # Build models and skeletons from grove
+        models = grove.build_models(
+            {
+                "resolution": quality_params["resolution"],
+                "resolution_reduce": quality_params["resolution_reduce"],
+                "texture_repeat": quality_params["texture_repeat"],
+                "build_cutoff_age": quality_params["build_cutoff_age"],
+                "build_cutoff_thickness": quality_params["build_cutoff_thickness"],
+                "build_blend": quality_params["build_blend"],
+                "build_end_cap": quality_params["build_end_cap"],
+            }
+        )
 
-            # For skeletal assemblies, use skeletal twigs; for static, use static twigs
-            prefer_skeletal_twigs = create_nanite_assembly
+        skeletons = grove.build_skeletons()
+
+        if not models:
+            print(f"  Warning: No models generated from grove for {species}")
+            return exported
+
+        # Export each model/skeleton pair (handles multi-tree groves)
+        for model_idx, (model, skeleton) in enumerate(zip(models, skeletons)):
+            tree_suffix = f"_{model_idx:04d}" if len(models) > 1 else ""
+            usd_path = species_dir / f"{tree_name}{tree_suffix}_nanite_assembly.usda"
+
+            # Always use skeletal twigs for Nanite assemblies
             twig_usd_map = get_twig_usd_map_for_species(
-                species, config, prefer_skeletal=prefer_skeletal_twigs
+                species, config, prefer_skeletal=True
             )
 
-            # Export as Nanite Assembly (includes twigs, skeleton, proper UE schema)
+            # Export as skeletal Nanite Assembly (includes twigs, skeleton, proper UE schema)
             export_success = export_tree_as_nanite_assembly(
-                grove=grove,
+                model=model,
+                skeleton=skeleton,
                 output_path=usd_path,
                 species_name=species,
                 twig_usd_paths=twig_usd_map,
                 include_twigs=True,
-                use_skeletal_mesh=create_nanite_assembly,
-                resolution=quality_params["resolution"],
-                resolution_reduce=quality_params["resolution_reduce"],
-                texture_repeat=quality_params["texture_repeat"],
-                build_cutoff_age=quality_params["build_cutoff_age"],
-                build_cutoff_thickness=quality_params["build_cutoff_thickness"],
-                build_blend=quality_params["build_blend"],
-                build_end_cap=quality_params["build_end_cap"],
+                use_skeletal_mesh=True,
             )
 
             if export_success:
@@ -263,9 +171,6 @@ def export_individual_trees(
     output_dir: Path,
     config: GrowPyConfig,
     quality_params: dict,
-    formats: list,
-    create_nanite_assembly: bool,
-    cleanup_mesh: bool = False,
     use_multiprocessing: bool = True,
     max_workers: Optional[int] = None,
 ) -> list:
@@ -275,15 +180,14 @@ def export_individual_trees(
     light competition in the forest simulation phase. This is significantly faster than
     re-simulating individual trees.
 
+    Always exports as skeletal Nanite Assembly USD files (.usda format).
+
     Args:
         forest: List of (grove, species_name, tree_count) from create_forest() + simulate_forest_growth()
         forest_data: DataFrame with tree data including species, growth_cycles
         output_dir: Directory to save export files
         config: GrowPy configuration
         quality_params: Quality parameters dict
-        formats: List of export formats
-        create_nanite_assembly: Create Nanite Assembly USD
-        cleanup_mesh: Perform mesh cleanup operations (slow for large meshes)
         use_multiprocessing: Enable parallel export (default: True)
         max_workers: Number of parallel workers (default: CPU count - 1)
 
@@ -311,18 +215,7 @@ def export_individual_trees(
             print(f"Warning: No grove found for species '{species}' at row {idx}")
             continue
 
-        tree_tasks.append(
-            (
-                idx,
-                grove,
-                species,
-                output_dir,
-                quality_params,
-                formats,
-                create_nanite_assembly,
-                cleanup_mesh,
-            )
-        )
+        tree_tasks.append((idx, grove, species, output_dir, quality_params))
 
     total_trees = len(tree_tasks)
     print(f"\nExporting {total_trees} trees...")
@@ -340,15 +233,10 @@ def generate_forest_exports(
     csv_path: Path,
     output_dir: Path,
     config: GrowPyConfig,
-    formats: list = ["usda"],
     quality: str = "high",
     resolution: Optional[int] = None,
-    place_twigs: bool = False,
-    twigs_dir: Optional[Path] = None,
-    create_nanite_assembly: bool = True,
     growth_cycle_limit: Optional[int] = None,
     height_scale: Optional[float] = None,
-    cleanup_mesh: bool = False,
     use_multiprocessing: bool = True,
     max_workers: Optional[int] = None,
     skeleton_length: float = 1.0,
@@ -357,21 +245,18 @@ def generate_forest_exports(
     skeleton_connected: bool = True,
     clean_export: bool = False,
 ) -> None:
-    """Generate forest from CSV data and export in specified formats.
+    """Generate forest from CSV data and export as skeletal Nanite Assembly USD files.
+
+    Always exports as .usda format with skeletal mesh structure for Unreal Engine.
 
     Args:
         csv_path: Path to CSV file with forest data
         output_dir: Directory to save export files
         config: GrowPy configuration
-        formats: List of export formats ('usd', 'usda')
         quality: Quality preset name ('ultra', 'high', 'medium', 'low', 'performance')
         resolution: Override resolution from quality preset (4-32, optional)
-        place_twigs: Whether to place twig instances on trees (default: False)
-        twigs_dir: Directory containing twig files (default: config.twigs_path)
-        create_nanite_assembly: Create Nanite Assembly USD for Unreal Engine (default: True)
         growth_cycle_limit: Maximum growth cycles per tree (default: GROWTH_CYCLE_LIMIT)
         height_scale: Scale factor for tree heights (default: HEIGHT_SCALE)
-        cleanup_mesh: Perform mesh cleanup operations (slow for large meshes) (default: False)
         use_multiprocessing: Enable parallel export processing (default: True)
         max_workers: Number of parallel workers (default: CPU count - 1)
         skeleton_length: Bone length multiplier (default: 1.0)
@@ -460,86 +345,47 @@ def generate_forest_exports(
     quality_params["skeleton_connected"] = skeleton_connected
     quality_params["clean_export"] = clean_export
 
-    if any(fmt in formats for fmt in ["usd", "usda"]):
-        try:
-            # Bundle twig files BEFORE export so Nanite Assembly can reference them
-            from growpy.io.tree_export import bundle_twigs_for_species
+    try:
+        # Bundle twig files BEFORE export so Nanite Assembly can reference them
+        from growpy.io.tree_export import bundle_twigs_for_species
 
-            unique_species = forest_data["species"].unique()
-            print(f"\nBundling twig files for {len(unique_species)} species...")
+        unique_species = forest_data["species"].unique()
+        print(f"\nBundling twig files for {len(unique_species)} species...")
 
-            twig_formats = []
-            if "usda" in formats or "usd" in formats:
-                twig_formats.append("usda")
+        for species in unique_species:
+            species_clean = (
+                "".join(c for c in species if c.isalnum() or c in (" ", "-", "_"))
+                .strip()
+                .replace(" ", "_")
+                .lower()
+            )
+            species_dir = output_dir / species_clean
 
-            for species in unique_species:
-                species_clean = (
-                    "".join(c for c in species if c.isalnum() or c in (" ", "-", "_"))
-                    .strip()
-                    .replace(" ", "_")
-                    .lower()
-                )
-                species_dir = output_dir / species_clean
-
-                bundle_twigs_for_species(
-                    species_name=species,
-                    output_dir=species_dir,
-                    formats=twig_formats,
-                    config=config,
-                )
-
-            print(f"\nExporting {len(forest_data)} individual trees...")
-            exported_files = export_individual_trees(
-                forest,
-                forest_data,
-                output_dir,
-                config,
-                quality_params,
-                formats,
-                create_nanite_assembly,
-                cleanup_mesh=cleanup_mesh,
-                use_multiprocessing=use_multiprocessing,
-                max_workers=max_workers,
+            bundle_twigs_for_species(
+                species_name=species,
+                output_dir=species_dir,
+                formats=["usda"],
+                config=config,
             )
 
-            if exported_files:
-                format_str = ", ".join(formats)
-                print(
-                    f"Exported {len(exported_files)} tree files ({format_str}) with '{quality}' quality"
-                )
+        print(f"\nExporting {len(forest_data)} individual trees...")
+        exported_files = export_individual_trees(
+            forest,
+            forest_data,
+            output_dir,
+            config,
+            quality_params,
+            use_multiprocessing=use_multiprocessing,
+            max_workers=max_workers,
+        )
 
-                # Validate skeletal structure if creating Nanite assemblies
-                if create_nanite_assembly:
-                    print(f"\nValidating skeletal assemblies...")
-                # Place twigs if requested
-                if place_twigs:
-                    print(
-                        "Warning: place_twigs functionality disabled (twig_placement.py deprecated)"
-                    )
-                    # try:
-                    #     from growpy.io.twig_placement import (
-                    #         export_twig_placements_to_usd,
-                    #         place_twigs_in_blender,
-                    #     )
-                    #
-                    #     # Use provided twigs directory or config default
-                    #     if twigs_dir is None:
-                    #         twigs_dir = config.twigs_path
-                    #
-                    #     if twigs_dir.exists():
-                    #         print(f"\nPlacing twigs from: {twigs_dir}")
-                    #         place_twigs_on_exported_trees(
-                    #             exported_files, twigs_dir, output_dir
-                    #         )
-                    # else:
-                    #     print(f"Warning: Twigs directory not found: {twigs_dir}")
-                    #     print("Skipping twig placement")
-                    # except ImportError as e:
-                    #     print(f"Warning: Could not import twig placement module: {e}")
-                    # except Exception as e:
-                    #     print(f"Warning: Twig placement failed: {e}")
-        except Exception as e:
-            print(f"Export failed: {e}")
+        if exported_files:
+            print(
+                f"Exported {len(exported_files)} skeletal Nanite Assembly USD files with '{quality}' quality"
+            )
+
+    except Exception as e:
+        print(f"Export failed: {e}")
 
 
 def main():
@@ -593,13 +439,6 @@ Examples:
         help="Directory to save export files (default: data/output/forest)",
     )
     parser.add_argument(
-        "--formats",
-        nargs="+",
-        choices=["usd", "usda"],
-        default=["usda"],
-        help="Export formats (default: usda)",
-    )
-    parser.add_argument(
         "--quality",
         type=str,
         default="ultra",
@@ -615,29 +454,6 @@ Examples:
         help="Override resolution from quality preset. Vertices around branch circumference (4-32)",
     )
     parser.add_argument(
-        "--place-twigs",
-        action="store_true",
-        help="Place twig instances on exported trees (requires twigs directory)",
-    )
-    parser.add_argument(
-        "--twigs-dir",
-        type=Path,
-        default=None,
-        help="Directory containing twig files (default: from config)",
-    )
-    parser.add_argument(
-        "--create-nanite-assembly",
-        action="store_true",
-        default=True,
-        help="Create Nanite Assembly USD files for Unreal Engine 5.7+ (default: True)",
-    )
-    parser.add_argument(
-        "--no-nanite-assembly",
-        dest="create_nanite_assembly",
-        action="store_false",
-        help="Skip Nanite Assembly USD creation",
-    )
-    parser.add_argument(
         "--growth-cycle-limit",
         type=int,
         default=GROWTH_CYCLE_LIMIT,
@@ -648,12 +464,6 @@ Examples:
         type=float,
         default=HEIGHT_SCALE,
         help=f"Scale factor for tree heights (default: {HEIGHT_SCALE})",
-    )
-    parser.add_argument(
-        "--cleanup-mesh",
-        action="store_true",
-        default=False,
-        help="Perform mesh cleanup operations (slow for large meshes, improves Nanite compatibility)",
     )
     parser.add_argument(
         "--no-multiprocessing",
@@ -732,15 +542,10 @@ Examples:
             csv_path,
             args.output_dir,
             config,
-            args.formats,
             args.quality,
             args.resolution,
-            args.place_twigs,
-            args.twigs_dir,
-            args.create_nanite_assembly,
             args.growth_cycle_limit,
             args.height_scale,
-            args.cleanup_mesh,
             args.use_multiprocessing,
             args.max_workers,
             args.skeleton_length,
