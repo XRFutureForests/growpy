@@ -31,12 +31,50 @@ Based on:
 
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel
 
 
-def create_nanite_assembly_usd(
+def _extract_twig_placements_from_usd_inline(usd_path: Path) -> Dict[str, List[Dict]]:
+    """Extract twig placements from USD primvars - simplified inline version."""
+    placements = {}
+    try:
+        stage = Usd.Stage.Open(str(usd_path))
+        if not stage:
+            return placements
+
+        for prim in stage.Traverse():
+            if prim.IsA(UsdGeom.Mesh):
+                mesh = UsdGeom.Mesh(prim)
+                primvars_api = UsdGeom.PrimvarsAPI(mesh)
+
+                # Check for twig primvars
+                for twig_type in ["twig_long", "twig_short", "twig_upward", "twig_dead"]:
+                    pos_primvar = primvars_api.GetPrimvar(f"{twig_type}_position")
+                    normal_primvar = primvars_api.GetPrimvar(f"{twig_type}_normal")
+                    scale_primvar = primvars_api.GetPrimvar(f"{twig_type}_scale")
+
+                    if pos_primvar and normal_primvar:
+                        positions = pos_primvar.Get()
+                        normals = normal_primvar.Get()
+                        scales = scale_primvar.Get() if scale_primvar else [1.0] * len(positions)
+
+                        if positions and normals:
+                            placements[twig_type] = []
+                            for i in range(len(positions)):
+                                placements[twig_type].append({
+                                    "position": tuple(positions[i]),
+                                    "normal": tuple(normals[i]),
+                                    "scale": scales[i] if i < len(scales) else 1.0,
+                                })
+    except Exception as e:
+        print(f"Warning: Failed to extract twig placements: {e}")
+
+    return placements
+
+
+def create_assembly(
     tree_usd_path: Path,
     output_path: Path,
     species_name: str,
@@ -45,7 +83,7 @@ def create_nanite_assembly_usd(
     skeleton_source_usd: Optional[Path] = None,
     twig_placement_source_usd: Optional[Path] = None,
 ) -> bool:
-    """Create a Nanite Assembly USD file for Unreal Engine import.
+    """Create an assembly USD file for Unreal Engine import.
 
     This creates a USD Assembly following Unreal's schema with proper API schemas:
     - NaniteAssemblyRootAPI on the root Xform with meshType attribute
@@ -171,8 +209,6 @@ def create_nanite_assembly_usd(
             # Extract twig placements from tree USD
             # Use twig_placement_source_usd if provided (for skeletal assemblies),
             # otherwise use tree_usd_path
-            from .twig_placement import extract_twig_placements_from_usd
-
             placement_source = (
                 twig_placement_source_usd
                 if twig_placement_source_usd
@@ -182,7 +218,7 @@ def create_nanite_assembly_usd(
                 print(
                     f"    Extracting placements from: {twig_placement_source_usd.name}"
                 )
-            placements = extract_twig_placements_from_usd(placement_source)
+            placements = _extract_twig_placements_from_usd_inline(placement_source)
 
             if placements and any(placements.values()):
                 # Remap twig paths from source assets to output directory copies
@@ -323,7 +359,7 @@ def create_nanite_assembly_usd(
                         proto_idx = twig_type_to_proto_idx[twig_type]
 
                         for placement in placement_list:
-                            from .twig_placement import (
+                            from growpy.core.twig import (
                                 normal_to_rotation_matrix,
                                 rotation_matrix_to_quaternion,
                             )
@@ -459,8 +495,8 @@ def create_nanite_assembly_usd(
 
         # Validate the assembly structure (based on video requirements)
         if use_skeletal_mesh:
-            print(f"\n  Validating skeletal Nanite Assembly...")
-            validation_result = validate_nanite_assembly(output_path)
+            print(f"\n  Validating skeletal assembly...")
+            validation_result = validate_assembly(output_path)
             if not validation_result["valid"]:
                 print(f"  [WARN] Assembly validation found issues - may fail in Unreal")
                 for error in validation_result["errors"]:
@@ -552,13 +588,13 @@ def export_tree_as_nanite_assembly(
         model = models[0]
 
         # Export tree using direct Grove API geometry (no coordinate transformation)
-        from .usd_builder import build_tree_usd
+        from .tree_export import build_tree_mesh
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         temp_tree_path = output_path.parent / f"{output_path.stem}_tree.usda"
 
         # Build USD directly from Grove API data
-        if not build_tree_usd(model, temp_tree_path, up_axis="Z", triangulated=False):
+        if not build_tree_mesh(model, temp_tree_path, up_axis="Z", triangulated=False):
             print(f"  Error: Failed to build tree USD")
             return False
 
@@ -567,7 +603,7 @@ def export_tree_as_nanite_assembly(
         # Auto-lookup twigs if include_twigs=True and none provided
         if include_twigs and twig_usd_paths is None:
             try:
-                from .blender_export import get_twig_usd_map_for_species
+                from .tree_export import get_twig_usd_map_for_species
 
                 print(f"  Looking up twigs for species: {species_name}")
                 twig_usd_paths = get_twig_usd_map_for_species(
@@ -601,8 +637,8 @@ def export_tree_as_nanite_assembly(
             if copied_count > 0:
                 print(f"  Copied {copied_count} twig USD file(s) to output directory")
 
-        # Create Nanite Assembly USD
-        success = create_nanite_assembly_usd(
+        # Create Assembly USD
+        success = create_assembly(
             tree_usd_path=temp_tree_path,
             output_path=output_path,
             species_name=species_name,
@@ -813,8 +849,8 @@ def _find_nearest_joint(
     return (nearest_joint, nearest_distance)
 
 
-def validate_nanite_assembly(usd_path: Path) -> Dict[str, Any]:
-    """Validate a Nanite Assembly USD file for Unreal Engine compatibility.
+def validate_assembly(usd_path: Path) -> Dict[str, Any]:
+    """Validate an assembly USD file for Unreal Engine compatibility.
 
     Checks for:
     - Proper NaniteAssemblyRootAPI application

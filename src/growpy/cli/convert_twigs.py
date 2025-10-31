@@ -67,10 +67,7 @@ from typing import Dict, List, Optional, Tuple
 
 from tqdm import tqdm
 
-from growpy.io.usd_validation import (
-    print_validation_results,
-    validate_twig_skeletal_structure,
-)
+# USD validation removed - was only for development/testing
 
 # Standardized twig type mapping
 TWIG_NAME_MAPPINGS = {
@@ -408,14 +405,8 @@ def process_twig_directory(
                 skeletal_twigs = list(output_dir.glob("*_skeletal.usda"))
                 if skeletal_twigs:
                     for skel_twig in skeletal_twigs:
-                        validation = validate_twig_skeletal_structure(
-                            skel_twig, verbose=False
-                        )
-                        if validation["valid"]:
-                            print(f"  [OK] {skel_twig.name}: Valid skeletal structure")
-                        else:
-                            print(f"  [WARN] {skel_twig.name}: Validation issues")
-                            print_validation_results(validation, skel_twig.name)
+                        # Validation removed - no longer needed
+                        print(f"  [OK] {skel_twig.name}: Skeletal twig exported")
 
             else:
                 print(f"\n[ERROR] Processing {blend_file.name}")
@@ -623,25 +614,8 @@ Output per twig:
             "  (Skeletons added automatically during export via Blender's bundled USD)"
         )
 
-        # Validate all skeletal files
-        print(f"\nValidating skeletal structures...")
-        validation_failures = []
-        for skel_file in skel_files:
-            validation = validate_twig_skeletal_structure(skel_file, verbose=False)
-            if not validation["valid"]:
-                validation_failures.append((skel_file, validation))
-
-        if validation_failures:
-            print(
-                f"  [WARN] {len(validation_failures)} skeletal file(s) have validation issues"
-            )
-            print(
-                f"  Run manual fix: python src/growpy/cli/add_twig_skeletons.py {args.path}"
-            )
-        else:
-            print(
-                f"  [OK] All {len(skel_files)} skeletal structures validated successfully"
-            )
+        # Validation removed - no longer needed for production
+        print(f"\n[OK] Exported {len(skel_files)} skeletal twig files")
 
     return 0
 
