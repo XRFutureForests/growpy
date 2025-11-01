@@ -1,0 +1,44 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug: Generate Forest (test_single.csv)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/growpy/cli/generate_forest.py",
+            "console": "integratedTerminal",
+            "args": [
+                "data/input/test_single.csv",
+                "--quality",
+                "high",
+                "--growth-cycle-limit",
+                "2"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}/src/the_grove_22/modules"
+            }
+        },
+        {
+            "name": "Python Debugger: Current File with Arguments",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                "data/input/test_single.csv",
+                "--quality",
+                "high",
+                "--growth-cycle-limit",
+                "2"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}/src/the_grove_22/modules"
+            }
+        }
+    ]
+}
