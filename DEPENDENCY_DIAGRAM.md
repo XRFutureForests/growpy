@@ -550,10 +550,29 @@ generate_forest.py::main()
                                │  Purpose: Export single tree as skeletal USD with optional Assembly
                                │  Note: ALL exports are skeletal - skeleton is ALWAYS created
                                │
-                               ├─ PHASE 1: MODEL BUILDING (Generate geometry)
+                               ├─ PHASE 1A: SKELETON PRE-TAGGING (CRITICAL!)
+                               │   │
+                               │   │  Purpose: Tag skeleton BEFORE building models
+                               │   │           This bakes bone_id into model vertices
+                               │   │
+                               │   └─ grove.tag_bone_id(skeleton_length, skeleton_reduce, 
+                               │                         skeleton_bias, skeleton_connected)
+                               │       │
+                               │       ├─ Input: Skeleton quality parameters
+                               │       │   • skeleton_length: 0.0 (no length limits → keep all bones)
+                               │       │   • skeleton_reduce: 0.0 (no reduction → keep all bones)
+                               │       │   • skeleton_bias: 0.5 (weight distribution)
+                               │       │   • skeleton_connected: True (parent-child hierarchy)
+                               │       │
+                               │       └─ Effect: TAGS the grove's internal tree structure
+                               │           ◄─── THIS IS WHERE MESH-TO-SKELETON MAPPING IS DEFINED!
+                               │           Grove internally marks which mesh vertices belong to which bones
+                               │           Subsequent build_models() will include this mapping
+                               │
+                               ├─ PHASE 1B: MODEL BUILDING (Generate geometry WITH bone mapping)
                                │   │
                                │   │  Purpose: Build 3D tree mesh from Grove simulation data
-                               │   │           Skeleton will be added later in Phase 4
+                               │   │           NOW includes bone_id because tag_bone_id() was called first
                                │   │
                                │   └─ grove.build_models({quality_params})
                                │       │
@@ -573,7 +592,11 @@ generate_forest.py::main()
                                │           • face_indices() → triangle connectivity
                                │           • face_attribute_twig_* → twig placement data
                                │           • material_indices → material per face
-                               │           Note: Bone attributes (bone_id, bone_weight) are added later in Phase 4
+                               │           • point_attribute_bone_id[] ◄─── CRITICAL: vertex→bone mapping!
+                               │           • point_attribute_bone_weight[] ◄─── vertex influence weights!
+                               │           
+                               │           These bone attributes exist ONLY if tag_bone_id() was called first!
+                               │           This is the MESH-TO-SKELETON MAPPING (also called SKINNING data)
                                │
                                ├─ PHASE 2: MODEL PREPARATION (Ensure consistent topology)
                                │   │
@@ -584,6 +607,22 @@ generate_forest.py::main()
                                │       │
                                │       └─ Converts any quad/n-gon faces to triangles
                                │           Ensures face_attribute_twig_* alignment with geometry
+                               │           IMPORTANT: Preserves bone_id and bone_weight during triangulation
+                               │
+                               ├─ PHASE 2B: SKELETON STRUCTURE EXTRACTION
+                               │   │
+                               │   │  Purpose: Extract bone hierarchy separately (for skeleton joints)
+                               │   │           This is DIFFERENT from the vertex mapping done in Phase 1A
+                               │   │
+                               │   └─ skeletons = grove.build_skeletons()
+                               │       │
+                               │       └─ Returns: Skeleton objects with bone hierarchy
+                               │           • skeleton.points → joint positions
+                               │           • skeleton.poly_lines → bone connections (parent-child)
+                               │           
+                               │           NOTE: This creates the SKELETON JOINTS structure
+                               │           The MESH-TO-SKELETON MAPPING already exists from Phase 1A/1B
+                               │           in model.point_attribute_bone_id[]
                                │
                                ├─ PHASE 3: SKELETAL USD EXPORT (Mesh + Materials + Skeleton)
        │                    │   │
@@ -637,6 +676,24 @@ generate_forest.py::main()
        │                    │      │  │
        │                    │      │  │  Purpose: Preserve Grove's twig placement and skeletal binding data
        │                    │      │  │
+       │                    │      │  ├─ SKELETAL SKINNING DATA (Vertex-Varying): ◄─── MESH-TO-SKELETON MAPPING!
+       │                    │      │  │  │
+       │                    │      │  │  │  This is the MAPPING that connects mesh vertices to skeleton bones
+       │                    │      │  │  │  Data comes from Phase 1A (tag_bone_id) and Phase 1B (build_models)
+       │                    │      │  │  │
+       │                    │      │  │  ├─ bone_id: model.point_attribute_bone_id
+       │                    │      │  │  │  └─ Per-vertex bone index (which bone influences this vertex)
+       │                    │      │  │  │     Example: [0, 0, 0, 1, 1, 2, 2, 2, ...] (vertex 0-2 → bone 0, etc.)
+       │                    │      │  │  │
+       │                    │      │  │  └─ bone_weight: model.point_attribute_bone_weight
+       │                    │      │  │     └─ Per-vertex influence weight (0.0-1.0, how much bone affects vertex)
+       │                    │      │  │        Example: [1.0, 0.8, 0.6, 1.0, 0.9, ...]
+       │                    │      │  │
+       │                    │      │  │  TERMINOLOGY:
+       │                    │      │  │  • MAPPING: The relationship (which vertex connects to which bone)
+       │                    │      │  │  • SKINNING: The weighted influence (how much each bone affects vertex)
+       │                    │      │  │  Both are stored in point_attribute_bone_id and point_attribute_bone_weight
+       │                    │      │  │
        │                    │      │  ├─ TWIG PLACEMENT DATA (Face-Varying):
        │                    │      │  │  │
        │                    │      │  │  ├─ TwigLong: model.face_attribute_twig_long
@@ -651,8 +708,8 @@ generate_forest.py::main()
        │                    │      │  │  └─ TwigDead: model.face_attribute_twig_dead
        │                    │      │  │     └─ Per-face twig type ID for dead twigs
        │                    │      │  │
-       │                    │      │  │  Note: Skeletal binding data (bone_id, bone_weight) is NOT added here
-       │                    │      │  │        Skeleton doesn't exist yet - binding happens in Phase 4
+       │                    │      │  │  Note: These bone attributes are exported as USD primvars in Phase 3
+       │                    │      │  │        They will be converted to UsdSkel format in Phase 4
        │                    │      │  │
        │                    │      ├─ Add Materials to USD
        │                    │      │  │
@@ -668,27 +725,26 @@ generate_forest.py::main()
        │                    │            Contains: Mesh geometry + materials + twig placement data
        │                    │            Missing: Skeleton structure (added in Phase 4)
        │                    │
-       │                    ├─ PHASE 4: SKELETON ADDITION (CRITICAL PATH!)
+       │                    ├─ PHASE 4: USD SKELETON CREATION (Build UsdSkel structure)
        │                    │   │
-       │                    │   │  Purpose: Create skeleton structure and add bone binding to mesh
-       │                    │   │           THIS is where bone tagging happens (not before model building)
+       │                    │   │  Purpose: Create USD skeleton structure from Grove skeleton data
+       │                    │   │           USES the bone_id mapping already computed in Phase 1A/1B
+       │                    │   │           Converts bone_id to UsdSkel jointIndices format
        │                    │   │
-       │                    │   └─ add_skeleton_to_stage()  ◄─── IN skeleton.py
+       │                    │   └─ add_skeleton_to_usd(stage, grove, skeleton)  ◄─── IN io/tree_export.py
        │                    │      │
        │                    │      ├─ stage = Usd.Stage.Open(skeletal_tree_path)
        │                    │      │
-       │                    │      ├─ grove.tag_bone_id() ◄─── BONE TAGGING HAPPENS HERE!
+       │                    │      ├─ Extract bone hierarchy from skeleton object
        │                    │      │  │
-       │                    │      │  │  Purpose: Extract bone hierarchy from Grove's simulated tree
-       │                    │      │  │           This is the ONLY place bone tagging is needed
+       │                    │      │  │  Purpose: Get bone joint structure (NOT vertex mapping)
+       │                    │      │  │           Vertex mapping already exists in model.point_attribute_bone_id
        │                    │      │  │
-       │                    │      │  ├─ Input: Skeleton quality parameters
-       │                    │      │  │   • skeleton_length: Bone length multiplier (default: 1.0)
-       │                    │      │  │   • skeleton_reduce: Reduction factor 0-1 (default: 0.1)
-       │                    │      │  │   • skeleton_bias: Weight bias 0-1 (default: 0.5)
-       │                    │      │  │   • skeleton_connected: Use connected hierarchy (default: True)
+       │                    │      │  ├─ skeleton.points → joint positions
+       │                    │      │  ├─ skeleton.poly_lines → bone connections
        │                    │      │  │
-       │                    │      │  └─ Returns: bones_info = [(bone_id, parent_id, head, tail, radius), ...]
+       │                    │      │  └─ This creates the SKELETON JOINTS (parent-child hierarchy)
+       │                    │      │     NOT the mesh-to-skeleton mapping (that's from Phase 1A/1B)
        │                    │      │
        │                    │      ├─ Build USD Skeleton Structure
        │                    │      │  │
@@ -754,22 +810,37 @@ generate_forest.py::main()
        │                    │      │     └─ ARRAY: [-1, 0, 1]
        │                    │      │        This IS the jointIndices!
        │                    │      │
-       │                    │      ├─ Add Skinning Weights (if model provided)
+       │                    │      ├─ Convert bone_id to UsdSkel format ◄─── USES PRE-COMPUTED MAPPING!
+       │                    │      │  │
+       │                    │      │  │  Purpose: Convert Grove's bone_id to USD's jointIndices format
+       │                    │      │  │           The mapping was already computed in Phase 1A/1B!
+       │                    │      │  │           We're just reformatting it for USD
        │                    │      │  │
        │                    │      │  └─ For each vertex:
        │                    │      │     │
-       │                    │      │     ├─ bone_id = model.point_attribute_bone_id[vertex_idx]
+       │                    │      │     ├─ bone_id = model.point_attribute_bone_id[vertex_idx] ◄─── FROM PHASE 1B!
+       │                    │      │     │  └─ This was set by grove.build_models() after tag_bone_id()
        │                    │      │     │
        │                    │      │     ├─ joint_idx = bone_to_joint[bone_id]
+       │                    │      │     │  └─ Convert Grove bone index to USD joint index
        │                    │      │     │
        │                    │      │     └─ Append to joint_indices_array: [joint_idx, 0]
-       │                    │      │        └─ elementSize=2 (primary + padding)
+       │                    │      │        └─ elementSize=2 (primary influence + padding for secondary)
        │                    │      │
-       │                    │      ├─ binding.CreateJointIndicesPrimvar(False, 2)
+       │                    │      ├─ binding.CreateJointIndicesPrimvar(False, 2) ◄─── SET MESH BINDING!
        │                    │      │  │
-       │                    │      │  └─ SET MESH SKINNING WEIGHTS ◄─── MESH BINDING!
-       │                    │      │     For each vertex: which joint(s) influence it?
-       │                    │      │     └─ This tells Unreal which bones deform which vertices
+       │                    │      │  │  Purpose: Store which joints influence each vertex
+       │                    │      │  │           This is the SKINNING data (mesh-to-skeleton connection)
+       │                    │      │  │
+       │                    │      │  └─ Per-vertex data: which joint(s) deform this vertex
+       │                    │      │     Example: [0,0, 0,0, 1,0, 1,0, 2,0, ...] 
+       │                    │      │     Vertex 0-1 → joint 0, vertex 2-3 → joint 1, etc.
+       │                    │      │
+       │                    │      ├─ binding.CreateJointWeightsPrimvar(False, 2)
+       │                    │      │  │
+       │                    │      │  └─ Per-vertex weights: how much each joint influences vertex
+       │                    │      │     Example: [1.0,0.0, 0.8,0.2, 1.0,0.0, ...]
+       │                    │      │     From model.point_attribute_bone_weight (Phase 1B)
        │                    │      │
        │                    │      ├─ Create SkelAnimation for bind pose
        │                    │      │
@@ -971,7 +1042,65 @@ output/forest/
 
 ---
 
-## 8. Key Data Flow: From Grove Bones to USD jointIndices
+## 8. Mesh-to-Skeleton Binding: Mapping vs Skinning Explained
+
+### What is the difference between "mapping" and "skinning"?
+
+Both terms refer to connecting mesh vertices to skeleton bones, but with different emphasis:
+
+**MAPPING** (also called "rigging" or "binding"):
+
+- **What**: The relationship between mesh vertices and skeleton bones
+- **Data**: Which bone(s) influence which vertex
+- **Stored in**: `model.point_attribute_bone_id[]` (bone index per vertex)
+- **Example**: "Vertex 42 is controlled by bone 5"
+- **When**: Defined during `grove.tag_bone_id()` + `grove.build_models()`
+
+**SKINNING** (also called "vertex weighting" or "weight painting"):
+
+- **What**: The strength of influence each bone has on a vertex
+- **Data**: How much each bone affects vertex deformation (0.0 to 1.0)
+- **Stored in**: `model.point_attribute_bone_weight[]` (weight per vertex)
+- **Example**: "Vertex 42 is influenced 80% by bone 5, 20% by bone 6"
+- **When**: Computed during `grove.tag_bone_id()` + `grove.build_models()`
+
+**In practice**, both are needed together for skeletal animation:
+
+- **Mapping** tells which bones connect to which vertices
+- **Skinning** tells how much each bone influences the vertex
+- Together they enable smooth bone deformation during animation
+
+### Where does this happen in GrowPy?
+
+```
+PHASE 1A: grove.tag_bone_id()
+  └─ Tags skeleton structure in Grove's internal tree data
+     Effect: Marks which mesh regions belong to which bones
+     
+PHASE 1B: grove.build_models()
+  └─ Builds mesh WITH bone attributes (because tagging happened first)
+     Output: model.point_attribute_bone_id[] ← MAPPING (which bone)
+             model.point_attribute_bone_weight[] ← SKINNING (how much)
+             
+PHASE 4: Convert to USD format
+  └─ Reads model.point_attribute_bone_id and bone_weight
+     Output: USD primvars: skel:jointIndices and skel:jointWeights
+```
+
+**CRITICAL**: The mapping/skinning is computed in Phase 1, NOT Phase 4!
+Phase 4 only converts the Grove format to USD format.
+
+**Why use skeleton_length=0.0 and skeleton_reduce=0.0?**
+
+- `skeleton_length=0.0`: No length limits → include all bones
+- `skeleton_reduce=0.0`: No reduction → keep all bones
+- This ensures Grove creates a bone for EVERY branch segment
+- Result: Fine-grained mapping with bones matching mesh vertices
+- Each mesh region has its own bone for precise animation control
+
+---
+
+## 9. Key Data Flow: From Grove Bones to USD jointIndices
 
 ### Step-by-Step Data Transformation
 
@@ -1066,181 +1195,289 @@ output/forest/
 
 ---
 
-## 9. Module Responsibilities (Refactored Structure)
-
-## 9. Module Responsibilities (Refactored Structure)
+## 10. Module Responsibilities (Refactored Structure)
 
 ### Core Modules (src/growpy/core/)
 
-#### `skeleton.py` (NEW - moved from io/)
+**Design Philosophy**: Pure computation without I/O dependencies. Core modules contain simulation logic, data structures, and calculations that can be tested independently.
 
-- **Pure computation** for skeleton structures
+#### `skeleton.py`
+
+- **Pure skeleton computation** without USD dependencies
 - **WHERE JOINTINDICES ARE CALCULATED** ◄─── Core bone logic
 - **Responsibilities**:
-  - **Builds joint hierarchy** from bone tuples with parent indices
-  - **Creates jointIndices array** from bone parent relationships
-  - **Calculates vertex skinning weights** from `model.point_attribute_bone_id`
-  - No USD I/O - pure Python data structures
+  - **Builds joint hierarchy** from Grove bone data
+  - **Creates jointIndices array** encoding parent relationships
+  - **Calculates vertex skinning weights** from bone_id attributes
+  - Defines data structures: `Vector3`, `JointTransform`, `SkeletonHierarchy`
+  - No USD I/O - returns pure Python data structures
 
 **Key Functions:**
 
-- `build_skeleton_structure(bones_info)` - Build joint hierarchy
-- `calculate_joint_indices(bones_info)` - Create jointIndices array
+- `get_bone_data_from_grove(grove, ...)` - Extract bones via `grove.tag_bone_id()`
+- `build_skeleton_hierarchy(bones_info)` - Build joint hierarchy with parent indices
 - `calculate_vertex_weights(model, bones_info)` - Skinning weight calculation
 
-#### `twig.py` (NEW - moved from io/)
+**Key Data Structures:**
 
-- **Pure computation** for twig placement
+- `Vector3` - Simple 3D vector with math operations
+- `JointTransform` - Translation + rotation matrix
+- `SkeletonHierarchy` - Complete skeleton structure (joints, parents, transforms)
+
+#### `twig.py`
+
+- **Pure twig placement computation** without USD dependencies
 - **Responsibilities**:
-  - Extracts twig placement data from Grove model
-  - Calculates twig transforms (position, rotation, scale)
-  - TwigPlacement dataclass for structured data
-  - No USD I/O - pure geometric calculations
+  - Extracts twig placement data from Grove model face attributes
+  - Calculates twig transforms (position, rotation, scale) from face geometry
+  - Converts face normals to rotation matrices
+  - `TwigPlacement` dataclass for structured data
+  - No USD/Blender I/O - pure geometric calculations
 
 **Key Functions:**
 
-- `extract_twig_data(model)` - Extract from Grove model
-- `calculate_twig_transforms(positions, normals)` - Compute orientations
-- `TwigPlacement` - Data structure for placement info
+- `extract_twig_placements_from_model(model)` - Extract from Grove face attributes
+- `calculate_twig_transform(position, normal, scale)` - Compute full transform
+- `get_face_center_and_normal(vertices, face)` - Face geometry calculations
+- `normal_to_rotation_matrix(normal)` - Convert normal to rotation
 
-#### `grove.py` (existing)
+**Key Data Structures:**
 
-- **Functions**: `create_grove()`, `add_tree_to_grove()`
+- `TwigPlacement` - Twig instance data (type, position, normal, scale)
+
+#### `grove.py`
+
+- **Grove creation and tree addition** wrapper for Grove 2.2 API
 - **Responsibilities**:
   - Creates Grove instances with species presets
-  - Wraps Grove 2.2 API calls for tree addition
-  - Manages random seeds and grove configuration
+  - Wraps Grove 2.2 API calls (`gc.Grove()`, `grove.add_new_tree()`)
+  - Manages grove configuration and random seeds
+  - Provides clean interface to Grove API
 
-#### `forest.py` (existing)
+**Key Functions:**
 
-- **Functions**: `create_forest()`, `simulate_forest_growth()`
+- `create_grove(species_name, config=None, random_seed=None)` - Create and configure grove
+- `add_tree_to_grove(grove, position, delay=0)` - Add tree to existing grove
+
+#### `forest.py`
+
+- **Multi-species forest simulation** with light competition
 - **Responsibilities**:
-  - Creates multi-species forest with multiple groves
-  - Implements inter-species light competition simulation
+  - Creates multi-species forest from DataFrame
+  - Implements inter-species light competition during simulation
   - Orchestrates grove-level growth simulation
-  - Returns fully simulated groves for export
+  - Returns fully simulated groves for export (no re-simulation needed)
+
+**Key Functions:**
+
+- `create_forest(forest_data: pd.DataFrame)` - Create groves per species
+- `simulate_forest_growth(forest, cycles)` - Simulate with light competition
+
+#### `tree.py`
+
+- **Tree height/age utilities**
+- **Responsibilities**:
+  - Growth model loading and height-to-age conversion
+  - Uses sklearn models trained in `create_growth_models.py`
+
+**Key Functions:**
+
+- `calculate_growth_cycles_from_height(forest_data)` - Convert heights to ages
 
 ### IO Modules (src/growpy/io/)
 
-#### `tree_export.py` (NEW - combines blender_export + usd_builder)
+**Design Philosophy**: Handle external formats (USD, FBX, .blend). Use core/ modules for computation, focus on serialization/deserialization.
 
-- **Entry point**: `export_tree()`
+#### `tree_export.py`
+
+- **Main tree export orchestration** to USD with skeleton
 - **Responsibilities**:
-  - **Main orchestration** for tree export from pre-simulated groves
-  - Calls `grove.tag_bone_id()` BEFORE model building (CRITICAL!)
-  - Calls `grove.build_models()` to get model with bone IDs baked in
-  - Creates USD stage with mesh geometry from Grove model
-  - Extracts vertex/face/UV data directly from Grove API
-  - Adds Grove face/point attributes as primvars
-  - **Adds skeleton to USD** using `core.skeleton` for computation
+  - **Main entry point** for tree export from pre-simulated groves
+  - Calls `grove.tag_bone_id()` to get bone data
+  - Calls `grove.build_models()` to generate tree geometry
+  - Creates USD stage with mesh from Grove model
+  - Extracts vertex/face/UV data via Grove API
+  - Adds Grove attributes as USD primvars
+  - **Integrates skeleton from core.skeleton** into USD
   - Handles material/texture lookup and bundling
-  - Saves complete skeletal USD file (tree mesh + skeleton)
+  - Saves complete skeletal USD (tree mesh + skeleton + materials)
 
 **Key Functions:**
 
-- `export_tree()` - Main entry point (replaces `export_grove_tree_as_usda_native()`)
-- `build_tree_mesh()` - Creates mesh geometry (replaces `build_tree_usd()`)
-- `add_skeleton_to_stage()` - Add UsdSkel structure (uses core.skeleton)
-- `add_tree_materials()` - Material setup
-- `get_twig_usd_map_for_species()` - Twig asset lookup
+- `export_tree(grove, output_path, ...)` - Main entry point
+- `build_tree_mesh(model, output_path, ...)` - Create USD mesh from Grove model
+- `add_skeleton_to_usd(stage, grove, ...)` - Add UsdSkel structure (uses core.skeleton)
+- `add_twig_skeleton_to_usd(stage, ...)` - Add twig skeleton for standalone twigs
+- `bundle_twigs_for_species(...)` - Copy twig assets to output
+- `get_twig_usd_map_for_species(...)` - Twig asset lookup
 
-#### `twig_export.py` (RENAMED from blender_twig_processor.py)
+#### `twig_export.py`
 
-- **Entry point**: `export_twigs_from_blend()`
+- **Twig .blend to skeletal USD conversion**
 - **Responsibilities**:
-  - Exports twig meshes from .blend files to USD
-  - Creates single-bone skeleton for twigs
-  - Batch processes twig directories
+  - Loads Blender .blend files via bpy
+  - Adds single-bone root skeleton to twig meshes
+  - Exports to USD with UsdSkel structure
+  - Batch processing for twig directories
 
 **Key Functions:**
 
-- `export_twigs_from_blend()` - Main export from .blend
-- `create_single_bone_skeleton()` - Add root skeleton
-- `process_twig_directory()` - Batch processing
+- `export_twigs_from_blend(blend_path, output_dir)` - Main export
+- `create_single_bone_skeleton(mesh)` - Add root joint (via bpy)
+- `process_twig_directory(directory)` - Batch convert all .blend files
 
-#### `assembly.py` (RENAMED from unreal_nanite_assembly.py)
+#### `assembly_export.py`
 
-- **Entry point**: `create_assembly()`
+- **Nanite Assembly USD creation** for Unreal Engine
 - **Responsibilities**:
-  - **Composes final assembly** from tree + twig meshes
+  - **Composes final assembly** from skeletal tree + twig references
   - References external skeletal tree USD files
   - References external skeletal twig USD files
-  - Creates PointInstancer for twig instances with bindJoints
+  - Creates PointInstancer for twig instances
+  - Binds twig instances to tree skeleton joints
   - Uses `core.twig` for twig placement calculations
-  - Applies engine-specific schemas (NaniteAssemblyRootAPI, etc.)
-  - Sets up proper USD composition for engine import
+  - Applies UE-specific metadata and structure
+  - Sets up USD composition for engine import
 
 **Key Functions:**
 
-- `create_assembly()` - Main assembly creation (replaces `create_nanite_assembly_usd()`)
-- `validate_assembly()` - Assembly structure validation
-- `add_twig_instances()` - PointInstancer setup (uses core.twig)
+- `create_assembly(tree_path, twig_dir, output_path, ...)` - Main assembly
+- `validate_assembly(assembly_path)` - Structure validation
+- `add_twig_instances(stage, placements, ...)` - PointInstancer setup
 
-### Config Module (src/growpy/config/)
+### Config Modules (src/growpy/config/)
 
-#### `quality.py` (ENHANCED)
+**Design Philosophy**: Centralized configuration and asset management. No simulation logic.
 
-- **Functions**: `get_quality_preset()`, `get_lod_configs()`
+#### `core.py`
+
+- **Main GrowPyConfig class** for project configuration
 - **Responsibilities**:
-  - Quality presets for tree model building
-  - LOD configuration management
-  - Consolidated from io/export.py
-- **Functions**: `create_grove()`, `add_tree_to_grove()`
-- **Responsibilities**:
-  - Creates Grove instances with species presets
-  - Wraps Grove 2.2 API calls for tree addition
-  - Manages random seeds and grove configuration
+  - Asset path resolution (presets, textures, twigs, models)
+  - Species data loading from CSV
+  - Project directory management
+  - Singleton pattern via `get_config()`
 
-### `core/forest.py`
+**Key Functions:**
 
-- **Functions**: `create_forest()`, `simulate_forest_growth()`
+- `get_config()` - Get/create singleton config instance
+- `GrowPyConfig.get_preset_path(species)` - Resolve species preset
+- `GrowPyConfig.get_species_data()` - Load species lookup table
+
+#### `paths.py`
+
+- **Path utilities** for asset management
 - **Responsibilities**:
-  - Creates multi-species forest with multiple groves
-  - Implements inter-species light competition simulation
-  - Orchestrates grove-level growth simulation
-  - Returns fully simulated groves for export
+  - Standard directory getters (data/, assets/, growth_models/)
+  - Asset path resolution
+  - Twig file lookup by type
+
+**Key Functions:**
+
+- `get_data_directory()`, `get_assets_directory()`, etc.
+- `get_preset_path(species)` - Preset resolution
+- `get_twig_files_by_type(species, twig_type)` - Twig variant lookup
+
+#### `quality.py`
+
+- **Quality presets and LOD configuration**
+- **Responsibilities**:
+  - Quality presets (ultra/high/medium/low/performance)
+  - Build parameters (resolution, cutoff, blend, skeleton)
+  - LOD configuration for Unreal Engine
+
+**Key Functions:**
+
+- `get_quality_preset(preset_name)` - Get build parameters dict
+- `get_lod_configs()` - LOD distance/quality configuration
+
+#### `species.py`
+
+- **Species-specific data utilities**
+- **Responsibilities**:
+  - Species color mapping for visualization
+  - Species data from lookup table
+  - Species validation
+
+**Key Functions:**
+
+- `get_species_data()` - Load species from CSV
+- `get_species_colors()` - Species color palette
+
+### CLI Scripts (src/growpy/cli/)
+
+**Design Philosophy**: Thin wrappers around core/io functions. Parse CLI arguments, call functions, display progress.
+
+#### `prepare_assets.py`
+
+Copy assets from Grove 2.2 installation to project
+
+#### `convert_twigs.py`
+
+Convert .blend twig files to skeletal USD
+
+#### `create_growth_models.py`
+
+Generate sklearn height prediction models per species
+
+#### `generate_forest.py`
+
+Full forest generation pipeline (main export script)
 
 ---
 
-## 10. Where jointIndices Are Set (THE ANSWER)
+## 11. Where jointIndices Are Set (THE ANSWER)
 
 ### Location: `src/growpy/core/skeleton.py` (computation) + `src/growpy/io/tree_export.py` (USD I/O)
 
-**Functions**:
+**Refactored Architecture**: jointIndices computation is split between core (pure Python) and io (USD integration).
 
-- `core.skeleton.calculate_joint_indices()` - Pure computation
-- `io.tree_export.add_skeleton_to_stage()` - USD integration
+**Core Functions (computation only)**:
 
-**Code snippet** (lines ~245-255):
+- `core.skeleton.get_bone_data_from_grove(grove, ...)` - Extract bone hierarchy from Grove
+- `core.skeleton.build_skeleton_hierarchy(bones_info)` - Build joint data structure
+  - Returns `SkeletonHierarchy` with `joint_parents` array (the jointIndices!)
+
+**IO Functions (USD integration)**:
+
+- `io.tree_export.add_skeleton_to_usd(stage, grove, ...)` - Add UsdSkel to stage
+  - Calls `core.skeleton.build_skeleton_hierarchy()` for computation
+  - Sets USD skeleton attributes from returned data
+
+**Code flow**:
 
 ```python
-# CRITICAL: jointIndices array set here
-try:
-    # Try using official API first (newer USD versions)
-    skel_prim.CreateJointIndicesAttr().Set(Vt.IntArray(joint_parents))
-except AttributeError:
-    # Fallback for older USD versions
-    from pxr import Sdf
-    
-    joint_indices_attr = skel_prim.GetPrim().CreateAttribute(
-        "jointIndices",
-        Sdf.ValueTypeNames.IntArray,
-        custom=False,
-        variability=Sdf.VariabilityUniform,
-    )
-    joint_indices_attr.Set(Vt.IntArray(joint_parents))
+# In io/tree_export.py::add_skeleton_to_usd()
+
+# 1. Get bone data from Grove (calls grove.tag_bone_id())
+from growpy.core.skeleton import get_bone_data_from_grove, build_skeleton_hierarchy
+
+bones_info = get_bone_data_from_grove(grove, skeleton_length, skeleton_reduce, 
+                                      skeleton_bias, skeleton_connected)
+
+# 2. Build skeleton hierarchy (pure computation)
+skeleton_hierarchy = build_skeleton_hierarchy(bones_info)
+
+# 3. Set USD attributes
+skel_prim.CreateJointsAttr().Set(Vt.TokenArray(skeleton_hierarchy.joint_names))
+skel_prim.CreateBindTransformsAttr().Set(Vt.Matrix4dArray(skeleton_hierarchy.bind_transforms))
+skel_prim.CreateRestTransformsAttr().Set(Vt.Matrix4dArray(skeleton_hierarchy.rest_transforms))
+
+# CRITICAL: jointIndices set here
+skel_prim.CreateJointIndicesAttr().Set(Vt.IntArray(skeleton_hierarchy.joint_parents))
 ```
 
 **What happens**:
 
-1. `joint_parents` array is built as we loop through `bones_info` from Grove
-2. Each element stores the parent joint index for that position's joint
-3. The array is set as the `jointIndices` attribute on the Skeleton prim
-4. This encodes the entire hierarchy in a single flat array
+1. Grove bone data extracted via `grove.tag_bone_id()` → bone tuples with parent relationships
+2. `build_skeleton_hierarchy()` computes joint hierarchy and `joint_parents` array
+3. `joint_parents` contains parent index for each joint (root = -1)
+4. Array is set as USD `jointIndices` attribute on Skeleton prim
+5. This encodes the entire hierarchy in a single flat array
 
 ---
 
-## 11. When Skeleton Is Created (Timeline)
+## 12. When Skeleton Is Created (Timeline)
 
 ```
 Tree Export Timeline:
@@ -1249,30 +1486,34 @@ Tree Export Timeline:
 Time: 0ms
 ├─ Single-tree Grove created
 └─ Tree growth simulated
-
-Time: 10ms
-├─ grove.tag_bone_id() called ◄─── BONES TAGGED
-│  └─ Returns bone structure with parent relationships
-├─ grove.build_models() called
-│  └─ Models include point_attribute_bone_id from tagging
-└─ model.triangulate()
-
-Time: 20ms
-├─ build_tree_mesh() creates base USD with mesh
-│  └─ Mesh + primvars + materials
-└─ Save temp_tree_path (static mesh, no skeleton)
-
 Time: 25ms (SKELETON CREATION PHASE)
 ├─ Copy temp_tree_path → skeletal_tree_path
-└─ add_skeleton_to_stage(skeletal_tree_path) ◄─── SKELETON ADDED HERE
+└─ add_skeleton_to_usd(stage, grove, ...) ◄─── SKELETON ADDED HERE
    │
-   ├─ grove.tag_bone_id() called AGAIN
-   │  └─ Gets bone structure with parent relationships
+   ├─ core.skeleton.get_bone_data_from_grove(grove, ...)
+   │  └─ Calls grove.tag_bone_id() internally
+   │  └─ Returns bones_info with parent relationships
    │
-   ├─ Build joint hierarchy from bones
-   │  └─ Create joint_parents array
+   ├─ core.skeleton.build_skeleton_hierarchy(bones_info)
+   │  └─ Pure computation - builds joint hierarchy
+   │  └─ Returns SkeletonHierarchy with joint_parents array
    │
    ├─ Create USD Skeleton structure
+   │  └─ UsdSkel.Skeleton prim
+   │
+   ├─ SET jointIndices attribute ◄─── jointIndices SET HERE
+   │  └─ skel_prim.CreateJointIndicesAttr().Set(Vt.IntArray(skeleton_hierarchy.joint_parents))
+   │  └─ Uses computed data from core.skeleton
+   │
+   ├─ Add skinning weights to mesh
+   │  └─ mesh.CreateJointIndicesPrimvar() ← MESH joint influence data
+   │  └─ Uses core.skeleton.calculate_vertex_weights()
+   │
+   └─ stage.Save()
+
+Time: 30ms
+└─ Export complete, USD file with skeleton ready
+```├─ Create USD Skeleton structure
    │  └─ UsdSkel.Skeleton prim
    │
    ├─ SET jointIndices attribute ◄─── jointIndices SET HERE
@@ -1289,7 +1530,7 @@ Time: 30ms
 
 ---
 
-## 12. Data Structure: jointIndices Explained
+## 13. Data Structure: jointIndices Explained
 
 ### Definition
 
@@ -1330,39 +1571,46 @@ This tells which joints influence each vertex:
 
 ---
 
-## 13. Skeleton Creation Prerequisites
+## 14. Skeleton Creation Prerequisites
 
 ```
 For skeleton creation to work correctly:
 
 1. ✓ Grove instance with simulated tree
    └─ grove.simulate(flushes=N) must be called
+   └─ Required by: core.skeleton.get_bone_data_from_grove()
 
-2. ✓ tag_bone_id() callable on grove
-   └─ Requires The Grove 2.2 API
+2. ✓ The Grove 2.2 API available
+   └─ grove.tag_bone_id() method accessible
    └─ Parameters: length, reduce, bias, connected
+   └─ Required by: core.skeleton.get_bone_data_from_grove()
 
-3. ✓ Model with bone attributes
+3. ✓ Model with bone attributes (for skinning only)
    └─ model.point_attribute_bone_id[]
    └─ model.point_attribute_bone_weight[]
+   └─ Required by: core.skeleton.calculate_vertex_weights()
 
-4. ✓ USD stage with mesh already present
-   └─ usd_builder.build_tree_usd() must have been called first
-   └─ Skeleton is added to existing USD, not created from scratch
+4. ✓ USD stage with mesh already present (for USD export)
+   └─ io.tree_export.build_tree_mesh() must be called first
+   └─ Skeleton is added to existing USD stage
+   └─ Required by: io.tree_export.add_skeleton_to_usd()
 
-5. ✓ USD Python (pxr) available
+5. ✓ USD Python (pxr) available (for USD export only)
    └─ Via Blender's bundled USD (recommended)
-All prerequisites checked in:
-- tree_export.export_tree() - orchestration
-- core.skeleton - skeleton computation
-- io.tree_export.add_skeleton_to_stage() - USD skeleton creation
-- tree_export.export_tree() - orchestration
-- skeleton.add_skeleton_to_stage() - skeleton creation
+   └─ Required by: io.tree_export.add_skeleton_to_usd()
+
+Refactored Architecture Checkpoints:
+
+- core.skeleton.get_bone_data_from_grove() - Extract bones from Grove (requires 1, 2)
+- core.skeleton.build_skeleton_hierarchy() - Compute hierarchy (pure Python, no dependencies)
+- core.skeleton.calculate_vertex_weights() - Compute weights (requires 3)
+- io.tree_export.add_skeleton_to_usd() - USD integration (requires 4, 5)
+- io.tree_export.export_tree() - Full orchestration (all prerequisites)
 ```
 
 ---
 
-## 14. Quality Parameters' Role in Skeleton Creation
+## 15. Quality Parameters' Role in Skeleton Creation
 
 ```
 Skeleton Parameters (passed through generate_forest.py):
@@ -1399,7 +1647,7 @@ All flow through:
 
 ---
 
-## 15. Complete Export Architecture Diagram
+## 16. Complete Export Architecture Diagram
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
@@ -1460,20 +1708,35 @@ All flow through:
          └─────────┬────────┘
                    │
                    ▼
-        ┌──────────────────────┐
-        │ skeleton.py          │ ◄── SKELETON CREATION PHASE
-        │                      │
-        │ add_skeleton_to_     │
-        │ stage()              │
-        │                      │
-        │ • tag_bone_id()      │ ◄── BONES RETRIEVED AGAIN
-        │ • Build hierarchy    │
-        │ • jointIndices SET   │ ◄──── THE ANSWER IS HERE!
-        │ • Skinning weights   │
-        │ • SkelRoot/Skeleton  │
-        └──────┬───────────────┘
-               │
-               ▼
+        ┌──────────────────────────────────────────────┐
+        │ SKELETON CREATION PHASE (Refactored)         │
+        │                                              │
+        │ io/tree_export.py::add_skeleton_to_usd()    │
+        └──────────┬───────────────────────────────────┘
+                   │
+         ┌─────────┴─────────┐
+         ▼                   ▼
+   ┌──────────────┐   ┌───────────────────────┐
+   │ core/        │   │ io/tree_export.py     │
+   │ skeleton.py  │   │                       │
+   │              │   │ USD Integration Layer │
+   │ COMPUTATION  │   │                       │
+   │ ONLY         │   │ • Create UsdSkel prims│
+   └──────────────┘   │ • Set USD attributes  │
+         │            │ • Bind mesh to skel   │
+         ├─ get_bone_data_from_grove()        │
+         │  └─ grove.tag_bone_id()            │
+         │                                    │
+         ├─ build_skeleton_hierarchy()        │
+         │  └─ Creates joint_parents array    │
+         │  └─ jointIndices computed here! ◄──┼─── THE ANSWER!
+         │                                    │
+         ├─ calculate_vertex_weights()        │
+         │  └─ Skinning weights from bone_id  │
+         │                                    │
+         └────────────────────────────────────┘
+                   │
+                   ▼
         ┌──────────────────┐
         │ Skeletal Tree    │ (mesh + materials + skeleton + jointIndices)
         │ USD              │
@@ -1483,14 +1746,17 @@ All flow through:
                │                      │
                ▼                      ▼
         ┌────────────┐      ┌─────────────────────┐
-        │ Save as    │      │ assembly.py         │
-        │ Final Tree │      │                     │
-        │ USD        │      │ create_assembly()   │
-        └────────────┘      │                     │
+        │ Save as    │      │ io/assembly_        │
+        │ Final Tree │      │ export.py           │
+        │ USD        │      │                     │
+        └────────────┘      │ create_assembly()   │
+                            │                     │
+                            │ Uses core/twig.py   │
+                            │ for calculations    │
+                            │                     │
                             │ • Add twig refs     │
                             │ • UE5 metadata      │
                             │ • Point instancing  │
-                            │                     │
                             └─────┬───────────────┘
                                   │
                                   ▼
@@ -1512,38 +1778,60 @@ All flow through:
 
 ---
 
-## 16. Summary: jointIndices Creation Path
+## 17. Summary: jointIndices Creation Path
 
 **Architecture**: GrowPy ALWAYS creates skeletal meshes. There is no static mesh export option - all trees and twigs are exported with complete skeleton structures for Unreal Engine's Nanite skeletal mesh system.
 
+**Refactored Architecture**: Skeleton computation is split between `core/` (pure Python) and `io/` (USD integration).
+
 **Question**: At what point is the skeleton created and where are jointIndices set?
 
-1. **Skeleton Creation Phase**: `add_skeleton_to_stage()` in `io/tree_export.py` (uses `core/skeleton.py` for computation, called from `export_tree()`)
-**Answer**:
+**Answer** (Refactored Flow):
 
-1. **Skeleton Creation Phase**: `add_skeleton_to_stage()` in `skeleton.py` (called from `tree_export.export_tree()`)
+1. **Bone Extraction Phase**: `core.skeleton.get_bone_data_from_grove(grove, ...)`
+   - Calls `grove.tag_bone_id()` internally
+   - Returns bone tuples with parent relationships
+   - Pure Python function, no USD dependencies
 
-2. **jointIndices Location**: Set in `add_skeleton_to_stage()` around line 245:
+2. **Hierarchy Computation Phase**: `core.skeleton.build_skeleton_hierarchy(bones_info)`
+   - Builds joint hierarchy from bone data
+   - **Creates `joint_parents` array** (the jointIndices!)
+   - Returns `SkeletonHierarchy` dataclass
+   - Pure Python computation, testable in isolation
 
-   ```python
-   skel_prim.CreateJointIndicesAttr().Set(Vt.IntArray(joint_parents))
-   ```
+3. **USD Integration Phase**: `io.tree_export.add_skeleton_to_usd(stage, grove, ...)`
+   - Calls steps 1 and 2 to get skeleton data
+   - Creates USD Skeleton prim
+   - **Sets jointIndices attribute**:
 
-3. **Data Source**: `joint_parents` array, built by looping through `grove.tag_bone_id()` results
+     ```python
+     skel_prim.CreateJointIndicesAttr().Set(Vt.IntArray(skeleton_hierarchy.joint_parents))
+     ```
 
-4. **Format**: Each position `i` in the array stores the parent joint index of joint `i`, with `-1` for root
+   - Called from `io.tree_export.export_tree()`
 
-5. **Related Mesh Binding**: Mesh also gets `jointIndicesPrimvar` (derived from `model.point_attribute_bone_id`) which tells which joints influence each vertex
+4. **Data Source**: `joint_parents` array computed in step 2 from Grove bone relationships
 
-This dual jointIndices system:
+5. **Format**: Each position `i` stores the parent joint index of joint `i`, with `-1` for root
 
-- **Skeleton jointIndices**: Encodes bone hierarchy
-- **Mesh jointIndicesPrimvar**: Encodes vertex-to-bone influences
+6. **Related Mesh Binding**: Mesh also gets `jointIndicesPrimvar` (derived from `model.point_attribute_bone_id`) which tells which joints influence each vertex
+
+**Key Benefits of Refactored Architecture**:
+
+- **Separation of Concerns**: Computation (core) separate from serialization (io)
+- **Testability**: Core skeleton logic testable without USD or Grove installation
+- **Reusability**: Skeleton computation can be used for other export formats
+- **Maintainability**: Clear boundaries between modules
+
+**Dual jointIndices System**:
+
+- **Skeleton jointIndices**: Encodes bone hierarchy (parent relationships)
+- **Mesh jointIndicesPrimvar**: Encodes vertex-to-bone influences (skinning weights)
 - Together they enable skeletal mesh deformation in Unreal Engine
 
 ---
 
-## 17. Optimization: Single-Pass Export (No Re-Simulation)
+## 18. Optimization: Single-Pass Export (No Re-Simulation)
 
 ### The Problem (Original Implementation)
 
