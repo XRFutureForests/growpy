@@ -140,8 +140,8 @@ def export_tree(
     skeleton: Any,
     output_path: Path,
     species_name: str,
-    skeleton_length: float = 1.0,
-    skeleton_reduce: float = 0.25,
+    skeleton_length: float = 0.0,
+    skeleton_reduce: float = 0.0,
     skeleton_bias: float = 0.5,
     skeleton_connected: bool = True,
 ) -> bool:
@@ -189,6 +189,26 @@ def export_tree(
 
     ensure_grove_available()
     config = get_config()
+
+    # DEBUG BREAKPOINT 6: Tree export function entry point
+    print(f"\n[DEBUG] PHASE 3: export_tree called for {species_name}")
+    print(f"[DEBUG] Output path: {output_path}")
+
+    # Inspect model before export
+    if hasattr(model, "point_attribute_bone_id"):
+        bone_ids = model.point_attribute_bone_id
+        print(
+            f"[DEBUG] ✓ Model received with bone_id mapping: {len(bone_ids)} vertices"
+        )
+        print(f"[DEBUG]   Unique bone IDs: {len(set(bone_ids))} bones")
+    else:
+        print(f"[DEBUG] ✗ Model received WITHOUT bone_id mapping")
+
+    if hasattr(model, "point_attribute_bone_weight"):
+        print(f"[DEBUG] ✓ Model received with bone weights")
+    else:
+        print(f"[DEBUG] ✗ Model received WITHOUT bone weights")
+    print()
 
     try:
         # Configure model for optimal export compatibility
@@ -247,8 +267,8 @@ def build_tree_mesh(
     triangulated: bool = True,
     include_materials: bool = True,
     clean_export: bool = False,
-    skeleton_length: float = 1.0,
-    skeleton_reduce: float = 0.1,
+    skeleton_length: float = 0.0,
+    skeleton_reduce: float = 0.0,
     skeleton_bias: float = 0.5,
     skeleton_connected: bool = True,
 ) -> bool:
@@ -397,8 +417,8 @@ def _add_skeleton_to_stage_inline(
     root_xform_prim: Usd.Prim,
     mesh_prim: Usd.Prim,
     model: Optional[Any] = None,
-    skeleton_length: float = 1.0,
-    skeleton_reduce: float = 0.1,
+    skeleton_length: float = 0.0,
+    skeleton_reduce: float = 0.0,
     skeleton_bias: float = 0.5,
     skeleton_connected: bool = True,
 ) -> bool:
@@ -467,8 +487,8 @@ def _add_skeleton_to_object(
     species_name: str,
     grove: Any,
     model: Optional[Any] = None,
-    skeleton_length: float = 1.0,
-    skeleton_reduce: float = 0.25,
+    skeleton_length: float = 0.0,
+    skeleton_reduce: float = 0.0,
     skeleton_bias: float = 0.5,
     skeleton_connected: bool = True,
 ) -> Any:
@@ -912,8 +932,8 @@ def add_skeleton_to_usd(
     usd_path: Path,
     grove: Any,
     tree_model: Any = None,
-    skeleton_length: float = 2.0,
-    skeleton_reduce: float = 0.4,
+    skeleton_length: float = 0.0,
+    skeleton_reduce: float = 0.0,
     skeleton_bias: float = 0.5,
     skeleton_connected: bool = True,
     add_twig_bones: bool = True,

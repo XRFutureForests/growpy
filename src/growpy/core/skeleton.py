@@ -242,7 +242,11 @@ def calculate_vertex_weights(
         Tuple of (joint_indices_array, joint_weights_array)
         Arrays are flattened with element_size entries per vertex
     """
+    # DEBUG BREAKPOINT 4: Converting Grove bone_id to USD jointIndices
+    print(f"\n[DEBUG] PHASE 4: calculate_vertex_weights called")
+
     if not hasattr(model, "point_attribute_bone_id"):
+        print(f"[DEBUG] ✗ Model has no bone_id - returning empty arrays")
         return [], []
 
     joint_indices_array = []
@@ -255,8 +259,21 @@ def calculate_vertex_weights(
         else [1.0] * len(bone_ids)
     )
 
+    print(f"[DEBUG] Converting {len(bone_ids)} vertices from bone_id to joint indices")
+    print(f"[DEBUG] Bone-to-joint mapping has {len(bone_to_joint_map)} entries")
+    print(
+        f"[DEBUG] Sample bone_to_joint_map: {dict(list(bone_to_joint_map.items())[:5])}"
+    )
+
+    # Count bone_id usage for debugging
+    bone_usage = {}
     for bone_id, weight in zip(bone_ids, weights):
         joint_idx = bone_to_joint_map.get(bone_id, 0)
+
+        # Track which bones are used
+        if bone_id not in bone_usage:
+            bone_usage[bone_id] = {"count": 0, "joint_idx": joint_idx}
+        bone_usage[bone_id]["count"] += 1
 
         # Add primary joint influence
         joint_indices_array.append(joint_idx)
@@ -267,13 +284,23 @@ def calculate_vertex_weights(
             joint_indices_array.append(0)
             joint_weights_array.append(0.0)
 
+    print(
+        f"[DEBUG] Conversion complete: {len(joint_indices_array)} total entries ({len(bone_ids)} vertices × {element_size})"
+    )
+    print(f"[DEBUG] Bones used: {len(bone_usage)} unique bone IDs")
+    print(f"[DEBUG] Sample bone usage: {dict(list(bone_usage.items())[:5])}")
+    print(f"[DEBUG] Sample output joint_indices (first 20): {joint_indices_array[:20]}")
+    print(
+        f"[DEBUG] Sample output joint_weights (first 20): {[f'{w:.3f}' for w in joint_weights_array[:20]]}\n"
+    )
+
     return joint_indices_array, joint_weights_array
 
 
 def get_bone_data_from_grove(
     grove: Any,
-    skeleton_length: float = 1.0,
-    skeleton_reduce: float = 0.1,
+    skeleton_length: float = 0.0,
+    skeleton_reduce: float = 0.0,
     skeleton_bias: float = 0.5,
     skeleton_connected: bool = True,
 ) -> List[Tuple]:
@@ -289,7 +316,28 @@ def get_bone_data_from_grove(
     Returns:
         List of bone tuples: [(bone_idx, parent_idx, head_Vector, tail_Vector, radius), ...]
     """
+    # DEBUG BREAKPOINT 5: Extracting bone hierarchy
+    print(f"\n[DEBUG] PHASE 2B: get_bone_data_from_grove called")
+    print(
+        f"[DEBUG] Parameters: length={skeleton_length}, reduce={skeleton_reduce}, bias={skeleton_bias}, connected={skeleton_connected}"
+    )
+
     bones_info = grove.tag_bone_id(
         skeleton_length, skeleton_reduce, skeleton_bias, skeleton_connected
     )
+
+    if bones_info:
+        print(f"[DEBUG] ✓ tag_bone_id returned {len(bones_info)} bones")
+        # Show first few bones
+        for i, bone in enumerate(bones_info[:3]):
+            bone_idx, parent_idx, head, tail, radius = bone
+            print(
+                f"[DEBUG]   Bone {i}: idx={bone_idx}, parent={parent_idx}, radius={radius:.4f}"
+            )
+        if len(bones_info) > 3:
+            print(f"[DEBUG]   ... and {len(bones_info)-3} more bones")
+    else:
+        print(f"[DEBUG] ✗ tag_bone_id returned no bones!")
+    print()
+
     return bones_info if bones_info else []

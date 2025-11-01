@@ -40,7 +40,7 @@ import sys
 from functools import partial
 from typing import Optional
 
-GROWTH_CYCLE_LIMIT = 1
+GROWTH_CYCLE_LIMIT = 10
 HEIGHT_SCALE = 1
 MAX_WORKERS = max(1, mp.cpu_count() - 1)  # Leave one core for system
 
@@ -111,7 +111,24 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         # This grove was grown with inter-species light competition and is ready to export
         # No re-simulation needed - much faster!
 
-        # Build models and skeletons from grove
+        # DEBUG BREAKPOINT 1: BEFORE building models
+        # At this point, grove has been simulated but models don't exist yet
+        print(
+            f"\n[DEBUG] PHASE 1A: About to call grove.tag_bone_id() internally via build_skeletons"
+        )
+        print(f"[DEBUG] Grove has {len(grove.trees)} trees")
+        breakpoint()  # PAUSE HERE: Inspect grove.trees before skeleton building
+
+        # Build skeletons FIRST - this calls tag_bone_id() internally
+        # This is CRITICAL: tag_bone_id() must be called before build_models()
+        # to ensure bone_id attributes are included in the model
+        skeletons = grove.build_skeletons()
+        print(
+            f"[DEBUG] PHASE 1A COMPLETE: Skeleton tagging done, {len(skeletons)} skeletons created"
+        )
+
+        # DEBUG BREAKPOINT 2: NOW build models (with bone mapping already tagged)
+        print(f"[DEBUG] PHASE 1B: Building models with bone attributes...")
         models = grove.build_models(
             {
                 "resolution": quality_params["resolution"],
@@ -123,8 +140,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 "build_end_cap": quality_params["build_end_cap"],
             }
         )
-
-        skeletons = grove.build_skeletons()
+        print(f"[DEBUG] PHASE 1B COMPLETE: {len(models)} models created")
 
         if not models:
             print(f"  Warning: No models generated from grove for {species}")
@@ -132,6 +148,43 @@ def _export_single_tree_from_forest(args: tuple) -> list:
 
         # Export each model/skeleton pair (handles multi-tree groves)
         for model_idx, (model, skeleton) in enumerate(zip(models, skeletons)):
+            # DEBUG BREAKPOINT 3: Inspect model bone attributes
+            print(f"\n[DEBUG] === MODEL {model_idx} BONE ATTRIBUTES ===")
+            if hasattr(model, "point_attribute_bone_id"):
+                bone_ids = model.point_attribute_bone_id
+                print(f"[DEBUG] ✓ Model has bone_id mapping: {len(bone_ids)} vertices")
+                print(f"[DEBUG]   Unique bone IDs: {sorted(set(bone_ids))}")
+                print(f"[DEBUG]   Sample bone_ids (first 10 vertices): {bone_ids[:10]}")
+
+                # Check for skinning issues
+                unique_bones = set(bone_ids)
+                if len(unique_bones) == 1 and 0 in unique_bones:
+                    print(
+                        f"[DEBUG] ⚠️  SKINNING ISSUE: All vertices assigned to bone 0 only!"
+                    )
+                    print(
+                        f"[DEBUG] ⚠️  Tree may be too young (needs more growth cycles)"
+                    )
+                    breakpoint()  # PAUSE HERE: Inspect why all vertices map to bone 0
+            else:
+                print(f"[DEBUG] ✗ WARNING: Model missing point_attribute_bone_id!")
+                breakpoint()  # PAUSE HERE: Model has no bone mapping!
+
+            if hasattr(model, "point_attribute_bone_weight"):
+                weights = model.point_attribute_bone_weight
+                print(f"[DEBUG] ✓ Model has bone weights: {len(weights)} vertices")
+                print(
+                    f"[DEBUG]   Sample weights (first 10 vertices): {[f'{w:.3f}' for w in weights[:10]]}"
+                )
+            else:
+                print(f"[DEBUG] ✗ WARNING: Model missing point_attribute_bone_weight!")
+
+            # Skeleton structure
+            if skeleton:
+                print(f"[DEBUG] ✓ Skeleton has {len(skeleton.points)} joints")
+                print(f"[DEBUG]   Skeleton has {len(skeleton.poly_lines)} bone chains")
+            print(f"[DEBUG] =====================================\n")
+
             tree_suffix = f"_{model_idx:04d}" if len(models) > 1 else ""
             usd_path = species_dir / f"{tree_name}{tree_suffix}_nanite_assembly.usda"
 
@@ -239,8 +292,8 @@ def generate_forest_exports(
     height_scale: Optional[float] = None,
     use_multiprocessing: bool = True,
     max_workers: Optional[int] = None,
-    skeleton_length: float = 1.0,
-    skeleton_reduce: float = 0.25,
+    skeleton_length: float = 0.0,
+    skeleton_reduce: float = 0.0,
     skeleton_bias: float = 0.5,
     skeleton_connected: bool = True,
     clean_export: bool = False,
