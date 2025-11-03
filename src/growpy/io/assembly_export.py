@@ -37,7 +37,6 @@ from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel
 
 from ..core.twig import extract_twig_placements_from_model
 
-
 def _extract_twig_placements_from_usd(usd_path: Path) -> Dict[str, List[Dict]]:
     """Extract twig placements from USD primvars written by tree_export.
 
@@ -85,10 +84,9 @@ def _extract_twig_placements_from_usd(usd_path: Path) -> Dict[str, List[Dict]]:
                                     }
                                 )
     except Exception as e:
-        print(f"    Warning: Failed to extract twig placements from USD: {e}")
+        pass
 
     return placements
-
 
 def create_assembly(
     tree_usd_path: Path,
@@ -177,7 +175,6 @@ def create_assembly(
         if use_skeletal_mesh:
             # For skeletal: Set skeleton relationship to embedded skeleton
             # /tree is now a SkelRoot with /tree/tree_skel skeleton
-            print(f"  Adding skeletal tree with embedded skeleton...")
 
             # CRITICAL FIX: Override skel:* relationships with empty targets
             # USD references are compositional - we must explicitly override
@@ -198,10 +195,6 @@ def create_assembly(
                 removeSpec=True
             )  # removeSpec=True to block composition
 
-            print(
-                f"    [FIX] Overrode skel:* relationships with empty targets (prevents double-binding)"
-            )
-
             # Now set the Nanite Assembly skeleton relationship (the ONLY binding)
             # CRITICAL: Use SetTargets() instead of AddTarget() to create simple relationship
             # AddTarget() creates list-edited relationships with "prepend" which breaks Unreal import
@@ -211,18 +204,12 @@ def create_assembly(
             )
             skeleton_rel.SetTargets([Sdf.Path(f"/{assembly_name}/TreeMesh/TreeSkel")])
 
-            print(f"    [OK] Skeletal tree embedded via TreeMesh (mesh + skeleton)")
-            print(f"    Skeleton relationship: /{assembly_name}/TreeMesh/TreeSkel")
         else:
-            print(f"  Adding static tree mesh...")
-
-        print(f"  [OK] Created Nanite Assembly root: {assembly_name}")
-        print(f"    Mesh type: {mesh_type}")
-        print(f"    Tree reference: {tree_usd_path.resolve()}")
+            pass
 
         # Add twigs if provided
         if twig_usd_paths:
-            print(f"  Adding twigs as PointInstancer...")
+            pass
 
             # Use twig placements extracted from Grove model
             if twig_placements:
@@ -239,10 +226,8 @@ def create_assembly(
                             for p in placement_list
                         ]
                 total_twigs = sum(len(p) for p in placements.values())
-                print(f"    Using {total_twigs} twig placements from model")
             else:
                 placements = {}
-                print("    WARNING: No twig placements provided")
 
             if placements and any(placements.values()):
                 # Remap twig paths from source assets to output directory copies
@@ -282,18 +267,9 @@ def create_assembly(
                     if use_skeletal_mesh:
                         is_skeletal_twig = "_skeletal" in twig_ref_path.stem
                         if not is_skeletal_twig:
-                            print(
-                                f"    WARNING: Using static twig '{twig_ref_path.name}' in skeletal assembly!"
-                            )
-                            print(
-                                f"      Skeletal assemblies require skeletal twigs (_skeletal.usda)"
-                            )
-                            print(
-                                f"      This may cause Unreal import to fail or twigs not to animate"
-                            )
+                            pass
 
                     if not twig_ref_path.exists():
-                        print(f"    Warning: Twig mesh not found: {twig_ref_path}")
                         continue
 
                     # Copy twig file to output directory for relative references
@@ -303,7 +279,6 @@ def create_assembly(
                     output_twig_path = output_path.parent / twig_ref_path.name
                     if not output_twig_path.exists():
                         shutil.copy2(twig_ref_path, output_twig_path)
-                        print(f"      Copied twig to output: {output_twig_path.name}")
 
                     # Also copy any referenced texture files (if they exist alongside the twig)
                     twig_dir = twig_ref_path.parent
@@ -341,9 +316,6 @@ def create_assembly(
                             f"./{twig_ref_path.name}", "/Twig"
                         )
 
-                        print(
-                            f"      Prototype {proto_name}: {twig_ref_path.stem} (skeletal, Xform+SkelRoot wrapper)"
-                        )
                     else:
                         # Static twigs: simpler structure
                         proto_prim = stage.DefinePrim(
@@ -353,8 +325,6 @@ def create_assembly(
                             f"./{twig_ref_path.name}"
                         )
                         proto_prim.SetInstanceable(True)
-
-                    print(f"      Reference: {twig_ref_path.resolve()}")
 
                     prototype_paths.append(Sdf.Path(proto_prim.GetPath()))
 
@@ -496,52 +466,34 @@ def create_assembly(
                         bind_weights_attr.SetMetadata("interpolation", "uniform")
                         bind_weights_attr.SetMetadata("elementSize", 1)
 
-                        print(
-                            f"    [OK] Bound {len(bind_joints)} twig instances to tree skeleton joints"
-                        )
-                        print(
-                            f"    [OK] bindJoints controls instance placement (not vertex deformation)"
-                        )
                     else:
-                        print(
-                            f"    [OK] Added {len(all_positions)} twig instances ({len(prototype_paths)} types)"
-                        )
+                        pass
             else:
-                print(
-                    f"    WARNING: No twig placements found or all placement lists empty"
-                )
-                print(f"    Twig USD files will not be added to assembly")
+                pass
 
         # Skeleton is already embedded if use_skeletal_mesh=True (handled earlier)
 
         # Save stage
         stage.GetRootLayer().Save()
-        print(f"  [OK] Saved Nanite Assembly: {output_path.name}")
 
         # Validate the assembly structure (based on video requirements)
         if use_skeletal_mesh:
-            print(f"\n  Validating skeletal assembly...")
             validation_result = validate_assembly(output_path)
             if not validation_result["valid"]:
-                print(f"  [WARN] Assembly validation found issues - may fail in Unreal")
                 for error in validation_result["errors"]:
-                    print(f"    ERROR: {error}")
+                    pass
             else:
-                print(f"  [OK] Assembly validation passed")
+                pass
 
         return True
 
     except ImportError:
-        print("ERROR: USD Python (pxr) not available")
-        print("Install with: pip install usd-core")
         return False
     except Exception as e:
-        print(f"Failed to create Nanite Assembly USD: {e}")
         import traceback
 
         traceback.print_exc()
         return False
-
 
 def export_tree_as_nanite_assembly(
     model: Any,
@@ -579,10 +531,7 @@ def export_tree_as_nanite_assembly(
         try:
             import the_grove_22_core as gc
         except ImportError:
-            print("ERROR: Grove core (the_grove_22_core) not available")
             return False
-
-        print(f"Exporting {species_name} as Unreal Nanite Assembly...")
 
         # Export tree using direct Grove API geometry (no coordinate transformation)
         from .tree_export import build_tree_mesh
@@ -596,7 +545,7 @@ def export_tree_as_nanite_assembly(
         try:
             model.triangulate()
         except Exception as e:
-            print(f"  Warning: Could not triangulate model: {e}")
+            pass
 
         # Build USD directly from Grove API data with skeleton
         if not build_tree_mesh(
@@ -606,10 +555,7 @@ def export_tree_as_nanite_assembly(
             up_axis="Z",
             triangulated=True,
         ):
-            print(f"  Error: Failed to build tree USD")
             return False
-
-        print(f"  [OK] Exported base tree: {temp_tree_path.name}")
 
         # Extract twig placements from Grove model BEFORE creating assembly
         twig_placements = None
@@ -618,9 +564,8 @@ def export_tree_as_nanite_assembly(
                 twig_placements = extract_twig_placements_from_model(model)
                 total_twigs = sum(len(p) for p in twig_placements.values())
                 if total_twigs > 0:
-                    print(f"  Extracted {total_twigs} twig placements from model")
+                    pass
             except Exception as e:
-                print(f"  Warning: Failed to extract twig placements: {e}")
                 twig_placements = None
 
         # Auto-lookup twigs if include_twigs=True and none provided
@@ -628,16 +573,14 @@ def export_tree_as_nanite_assembly(
             try:
                 from .tree_export import get_twig_usd_map_for_species
 
-                print(f"  Looking up twigs for species: {species_name}")
                 twig_usd_paths = get_twig_usd_map_for_species(
                     species_name, prefer_skeletal=use_skeletal_mesh
                 )
                 if twig_usd_paths:
-                    print(f"  Found {len(twig_usd_paths)} twig type(s)")
+                    pass
                 else:
-                    print(f"  Warning: No twig USD files found for '{species_name}'")
+                    pass
             except Exception as e:
-                print(f"  Warning: Failed to lookup twigs: {e}")
                 twig_usd_paths = None
 
         # Copy twig USD files to output directory for relative references
@@ -655,10 +598,10 @@ def export_tree_as_nanite_assembly(
                         unique_twig_files.add(twig_path)
                         copied_count += 1
                     except Exception as e:
-                        print(f"  Warning: Failed to copy {twig_path.name}: {e}")
+                        pass
 
             if copied_count > 0:
-                print(f"  Copied {copied_count} twig USD file(s) to output directory")
+                pass
 
         # Create Assembly USD
         success = create_assembly(
@@ -671,20 +614,15 @@ def export_tree_as_nanite_assembly(
         )
 
         if success:
-            print(f"\n[OK] Complete: {output_path.name}")
-            print(f"  Import in Unreal Engine with USD importer")
-            print(f"  Schema: NaniteAssemblyRootAPI")
-            print(f"  Mesh type: {'skeletal' if use_skeletal_mesh else 'static'}")
+            pass
 
         return success
 
     except Exception as e:
-        print(f"Failed to export Nanite Assembly: {e}")
         import traceback
 
         traceback.print_exc()
         return False
-
 
 def _copy_skeleton_to_assembly(
     source_usd_path: Path,
@@ -716,7 +654,6 @@ def _copy_skeleton_to_assembly(
                 break
 
         if not skel_root_prim:
-            print("      Warning: No SkelRoot found in source USD")
             return False
 
         # Create SkelRoot in assembly
@@ -736,7 +673,6 @@ def _copy_skeleton_to_assembly(
             # CRITICAL: Skip Mesh prims - we only want the skeleton structure
             # The actual mesh geometry will be referenced externally
             if skip_mesh and source_prim.GetTypeName() == "Mesh":
-                print(f"        Skipping embedded mesh prim: {source_prim.GetName()}")
                 return
 
             # Create target prim with same type
@@ -783,13 +719,10 @@ def _copy_skeleton_to_assembly(
         # The mesh will be referenced externally via tree_mesh
         copy_prim_hierarchy(skel_root_prim, assembly_root_path, skip_mesh=True)
 
-        print(f"      [OK] Copied skeleton hierarchy (without embedded meshes)")
         return True
 
     except Exception as e:
-        print(f"      Warning: Failed to copy skeleton: {e}")
         return False
-
 
 def _extract_skeleton_joints_from_usd(
     tree_usd_path: Path,
@@ -835,10 +768,9 @@ def _extract_skeleton_joints_from_usd(
                 break  # Found skeleton, stop searching
 
     except Exception as e:
-        print(f"      Warning: Could not extract skeleton joints: {e}")
+        pass
 
     return joint_positions
-
 
 def _find_nearest_joint(
     position: "Gf.Vec3f", skeleton_joints: Dict[str, "Gf.Vec3d"]
@@ -871,7 +803,6 @@ def _find_nearest_joint(
             nearest_joint = joint_name
 
     return (nearest_joint, nearest_distance)
-
 
 def validate_assembly(usd_path: Path) -> Dict[str, Any]:
     """Validate an assembly USD file for Unreal Engine compatibility.
@@ -1012,28 +943,22 @@ def validate_assembly(usd_path: Path) -> Dict[str, Any]:
                             "Missing primvars:unreal:naniteAssembly:bindJointWeights"
                         )
 
-        print(f"\n{'[OK]' if result['valid'] else '[X]'} Validation: {usd_path.name}")
-        print(f"  Mesh Type: {result['mesh_type']}")
         if result["details"].get("skeleton_target"):
-            print(f"  Skeleton: {result['details']['skeleton_target']}")
-        print(f"  Prototypes: {result['details'].get('prototype_count', 0)}")
+            pass
 
         if result["errors"]:
-            print("  Errors:")
             for error in result["errors"]:
-                print(f"    - {error}")
+                pass
 
         if result["warnings"]:
-            print("  Warnings:")
             for warning in result["warnings"]:
-                print(f"    - {warning}")
+                pass
 
     except Exception as e:
         result["errors"].append(f"Validation failed: {e}")
         result["valid"] = False
 
     return result
-
 
 def _extract_twig_joint_mapping_from_usd(tree_usd_path: Path) -> Dict[str, str]:
     """Extract twig joint mapping from tree USD metadata.
@@ -1064,9 +989,7 @@ def _extract_twig_joint_mapping_from_usd(tree_usd_path: Path) -> Dict[str, str]:
         return {}
 
     except Exception as e:
-        print(f"      Warning: Could not extract twig joint mapping: {e}")
         return {}
-
 
 def _extract_skeleton_joints_from_usd(tree_usd_path: Path) -> Dict[str, Gf.Vec3d]:
     """Extract skeleton joint names and positions from tree USD file.
@@ -1107,9 +1030,7 @@ def _extract_skeleton_joints_from_usd(tree_usd_path: Path) -> Dict[str, Gf.Vec3d
         return joints_map
 
     except Exception as e:
-        print(f"      Warning: Could not extract skeleton joints: {e}")
         return {}
-
 
 def _find_nearest_joint(
     position: Gf.Vec3f, joints: Dict[str, Gf.Vec3d]
