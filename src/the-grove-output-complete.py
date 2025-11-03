@@ -1,6 +1,6 @@
 # %% IMPORTS
 from pathlib import Path
-
+from itertools import groupby
 import the_grove_22_core as gc
 
 # %% INPUT PARAMETERS - Configure these to generate different trees
@@ -20,12 +20,15 @@ preset_path = Path(
 )
 
 # Tree planting parameters
-position = (1, 2, 0)  # (x, y, z) coordinates (default: (0, 0, 0))
-direction = (0, 0, 1)  # Initial growth direction vector (default: (0, 0, 1))
-delay = 0  # Number of years to wait before growing (default: 0)
+positions = [(1, 2, 0), (5, 6, 0)]  # (x, y, z) coordinates (default: (0, 0, 0))
+directions = [
+    (0, 0, 1),
+    (0, 0, 1),
+]  # Initial growth direction vector (default: (0, 0, 1))
+delays = [0, 1]  # Number of years to wait before growing (default: 0)
 
 # Simulation parameters
-flushes = 3  # Number of growth cycles to simulate (default: 1)
+flushes = 2  # Number of growth cycles to simulate (default: 1)
 
 # Build parameters for 3D mesh generation
 resolution = 16  # Number of points at tree base (default: 16, range: 3-32)
@@ -76,9 +79,11 @@ with open(preset_path, "r") as f:
     json_string = f.read()
 properties = gc.io.properties_from_json_string(json_string)
 grove.set_properties(properties)
-position_vec = gc.Vector(*position)
-direction_vec = gc.Vector(*direction)
-grove.add_new_tree(position_vec, direction_vec, delay)
+
+for position, direction, delay in zip(positions, directions, delays):
+    position_vec = gc.Vector(*position)
+    direction_vec = gc.Vector(*direction)
+    grove.add_new_tree(position_vec, direction_vec, delay)
 
 # Simulate tree growth
 grove.simulate(flushes)
@@ -91,6 +96,33 @@ if enable_smooth:
         print(f"  Smoothing iteration {i+1} complete")
 else:
     print("\nSmoothing disabled")
+
+# %% SKELETON BUILDING (BEFORE WIND ANIMATION)
+
+# Build skeletons for all trees
+skeletons = grove.build_skeletons()
+
+# Tag bones with custom parameters matching Blender operator settings
+bones_list = grove.tag_bone_id(
+    skeleton_length,
+    skeleton_reduce**2,  # Square the reduce value as per Blender operator
+    skeleton_bias,
+    skeleton_connected,
+)
+
+bones_grouped = [list(g) for k, g in groupby(bones_list, lambda x: x[0])]
+bones_trees = [
+    bones_grouped[i]
+    + (bones_grouped[i + 1] if i + 1 < len(bones_grouped) else [])
+    for i in range(0, len(bones_grouped), 2)
+]
+
+
+print(f"\nGenerated skeletons for {len(skeletons)} trees with custom parameters")
+print(f"  Length threshold: {skeleton_length}")
+print(f"  Reduce threshold: {skeleton_reduce}")
+print(f"  Bias: {skeleton_bias}")
+print(f"  Connected: {skeleton_connected}")
 
 # %% MODEL BUILDING
 
@@ -106,261 +138,260 @@ build_params = {
 }
 
 models = grove.build_models(build_params)
-tree_model = models[0]
+for tree_model in models:
 
-# Configure coordinate system and winding order
-tree_model.set_up_axis(up_axis)
-tree_model.set_winding_order(winding_order)
+    # Configure coordinate system and winding order
+    tree_model.set_up_axis(up_axis)
+    tree_model.set_winding_order(winding_order)
 
-# Apply texture aspect ratio if needed
-if bark_texture_aspect_ratio != 1.0:
-    tree_model.apply_uv_aspect_ratio(bark_texture_aspect_ratio)
+    # Apply texture aspect ratio if needed
+    if bark_texture_aspect_ratio != 1.0:
+        tree_model.apply_uv_aspect_ratio(bark_texture_aspect_ratio)
 
-# Optionally triangulate mesh
-if triangulate_mesh:
-    tree_model.triangulate()
+    # Optionally triangulate mesh
+    if triangulate_mesh:
+        tree_model.triangulate()
 
-# %% SKELETON BUILDING (BEFORE WIND ANIMATION)
+# %% PROCESS AND EXPORT EACH TREE
 
-# Build skeleton
-skeletons = grove.build_skeletons()
-skeleton = skeletons[0]
+print(f"\nProcessing {len(models)} trees...")
 
-# Tag bones with custom parameters matching Blender operator settings
-bones = grove.tag_bone_id(
-    skeleton_length,
-    skeleton_reduce**2,  # Square the reduce value as per Blender operator
-    skeleton_bias,
-    skeleton_connected,
-)
+for tree_idx, (tree_model, skeleton, bones) in enumerate(zip(models, skeletons, bones_trees)):
+    print(f"\n--- Processing Tree {tree_idx} ---")
 
-# Skeleton geometry
-skeleton_points = skeleton.points  # [(x,y,z), ...] bone joint coordinates
-skeleton_poly_lines = skeleton.poly_lines  # [[idx1,idx2,...], ...] connects joints
-skeleton_location = skeleton.location  # (x,y,z) skeleton origin
+    # Skeleton geometry
+    skeleton_points = skeleton.points  # [(x,y,z), ...] bone joint coordinates
+    skeleton_poly_lines = skeleton.poly_lines  # [[idx1,idx2,...], ...] connects joints
+    skeleton_location = skeleton.location  # (x,y,z) skeleton origin
 
-# Skeleton attributes
-skeleton_face_branch_id = (
-    skeleton.face_attribute_branch_id
-)  # Branch ID for matching to model
-skeleton_point_age = skeleton.point_attribute_age  # Node age
-skeleton_point_mass = skeleton.point_attribute_mass  # Node mass
-skeleton_point_radius = skeleton.point_attribute_radius  # Branch radius
+    # Skeleton attributes
+    skeleton_face_branch_id = (
+        skeleton.face_attribute_branch_id
+    )  # Branch ID for matching to model
+    skeleton_point_age = skeleton.point_attribute_age  # Node age
+    skeleton_point_mass = skeleton.point_attribute_mass  # Node mass
+    skeleton_point_radius = skeleton.point_attribute_radius  # Branch radius
 
+    print(f"  Generated {len(bones)} bones from skeleton")
 
-print(f"Generated {len(bones)} bones from skeleton with custom parameters")
-print(f"  Length threshold: {skeleton_length}")
-print(f"  Reduce threshold: {skeleton_reduce}")
-print(f"  Bias: {skeleton_bias}")
-print(f"  Connected: {skeleton_connected}")
+    # %% EXTRACT MODEL GEOMETRY DATA
 
-# %% EXTRACT MODEL GEOMETRY DATA
+    # Basic geometry components
+    points = tree_model.points  # List of Vector objects with (x,y,z) coordinates
+    faces = tree_model.faces  # List of face definitions (point indices)
+    uvs = tree_model.uvs  # UV coordinates for texturing
 
-# Basic geometry components
-points = tree_model.points  # List of Vector objects with (x,y,z) coordinates
-faces = tree_model.faces  # List of face definitions (point indices)
-uvs = tree_model.uvs  # UV coordinates for texturing
+    # Flat/optimized geometry data for better Python performance
+    points_flat = tree_model.get_points_flat()  # [x1,y1,z1,x2,y2,z2,...]
+    uvs_flat = tree_model.get_uvs_flat()  # [u1,v1,u2,v2,...]
+    uvws_flat = tree_model.get_uvws_flat()  # [u1,v1,w1,u2,v2,w2,...] for Houdini
+    directions_flat = tree_model.get_directions_flat()  # Flat list of direction vectors
+    uv_islands_flat = tree_model.get_uv_islands_flat()  # UV island data
 
-# Flat/optimized geometry data for better Python performance
-points_flat = tree_model.get_points_flat()  # [x1,y1,z1,x2,y2,z2,...]
-uvs_flat = tree_model.get_uvs_flat()  # [u1,v1,u2,v2,...]
-uvws_flat = tree_model.get_uvws_flat()  # [u1,v1,w1,u2,v2,w2,...] for Houdini
-directions_flat = tree_model.get_directions_flat()  # Flat list of direction vectors
-uv_islands_flat = tree_model.get_uv_islands_flat()  # UV island data
+    # %% EXTRACT FACE ATTRIBUTES
 
-# %% EXTRACT FACE ATTRIBUTES
-
-# Tree and branch identification
-# Note: face_attribute_tree_id only exists when using Grove.build_as_one_model()
-# for multi-tree groves, not for individual trees from build_models()
-face_tree_id = (
-    tree_model.face_attribute_tree_id
-    if hasattr(tree_model, "face_attribute_tree_id")
-    else None
-)
-face_branch_id = tree_model.face_attribute_branch_id  # Branch ID for each face
-face_branch_id_parent = tree_model.face_attribute_branch_id_parent  # Parent branch ID
-
-# Twig placement attributes (for twig duplication)
-face_twig_long = tree_model.face_attribute_twig_long  # Long twig placement triangles
-face_twig_short = tree_model.face_attribute_twig_short  # Short twig placement
-face_twig_upward = tree_model.face_attribute_twig_upward  # Upward facing twigs
-face_twig_dead = tree_model.face_attribute_twig_dead  # Dead twigs
-
-# Branch state attributes
-face_dead = tree_model.face_attribute_dead  # Dead branch faces
-face_end = tree_model.face_attribute_end  # Branch end cap faces
-face_direction = tree_model.face_attribute_direction  # Original growth direction
-
-# %% EXTRACT POINT ATTRIBUTES
-
-# Age and structure
-point_age = tree_model.point_attribute_age  # Node age in flushes/years
-point_mass = tree_model.point_attribute_mass  # Mass of continuation + sub-branches
-
-# Physical properties
-point_thickness = tree_model.point_attribute_thickness  # Diameter (0.0-1.0 normalized)
-point_orientation = tree_model.point_attribute_orientation  # Quaternion orientation
-point_pitch = (
-    tree_model.point_attribute_pitch
-)  # Vertical angle (0.0=down, 0.5=horizontal, 1.0=up)
-
-# Growth and lighting attributes
-point_vigor = tree_model.point_attribute_vigor  # Growth power
-point_shade = (
-    tree_model.point_attribute_shade
-)  # Ambient occlusion (0.0=exposed, 1.0=shaded)
-point_photosynthesis = (
-    tree_model.point_attribute_photosynthesis
-)  # Light exposure * leaf area
-
-
-# %% EXPORT GEOMETRY AND ATTRIBUTES
-# All geometry and attribute data is exported directly from Grove API
-# Direct data access is more reliable than intermediate format parsing
-# %%
-# Export all geometry and attribute data to text files for systematic comparison
-output_dir = Path("data/output/grove_geometry_dump")
-output_dir.mkdir(parents=True, exist_ok=True)
-
-# Save basic geometry
-with open(output_dir / "points.txt", "w") as f:
-    f.write("# Point coordinates (x, y, z)\n")
-    for i, p in enumerate(points):
-        f.write(f"{i}: {p.x}, {p.y}, {p.z}\n")
-
-with open(output_dir / "faces.txt", "w") as f:
-    f.write("# Face definitions (point indices)\n")
-    for i, face in enumerate(faces):
-        f.write(f"{i}: {face}\n")
-
-with open(output_dir / "uvs.txt", "w") as f:
-    f.write("# UV coordinates (u, v)\n")
-    for i, uv in enumerate(uvs):
-        f.write(f"{i}: {uv}\n")
-
-# Save flat geometry data
-with open(output_dir / "points_flat.txt", "w") as f:
-    f.write("# Flat point array [x1,y1,z1,x2,y2,z2,...]\n")
-    f.write(str(points_flat))
-
-with open(output_dir / "uvs_flat.txt", "w") as f:
-    f.write("# Flat UV array [u1,v1,u2,v2,...]\n")
-    f.write(str(uvs_flat))
-
-with open(output_dir / "directions_flat.txt", "w") as f:
-    f.write("# Flat direction vectors\n")
-    f.write(str(directions_flat))
-
-# Save face attributes
-with open(output_dir / "face_attributes.txt", "w") as f:
-    f.write("# Face Attributes\n\n")
-
-    if face_tree_id:
-        f.write("## Tree ID\n")
-        f.write(f"{face_tree_id}\n\n")
-
-    f.write("## Branch ID\n")
-    f.write(f"{face_branch_id}\n\n")
-
-    f.write("## Branch Parent ID\n")
-    f.write(f"{face_branch_id_parent}\n\n")
-
-    f.write("## Twig Long\n")
-    f.write(f"{face_twig_long}\n\n")
-
-    f.write("## Twig Short\n")
-    f.write(f"{face_twig_short}\n\n")
-
-    f.write("## Twig Upward\n")
-    f.write(f"{face_twig_upward}\n\n")
-
-    f.write("## Twig Dead\n")
-    f.write(f"{face_twig_dead}\n\n")
-
-    f.write("## Dead Faces\n")
-    f.write(f"{face_dead}\n\n")
-
-    f.write("## End Faces\n")
-    f.write(f"{face_end}\n\n")
-
-    f.write("## Face Direction\n")
-    f.write(f"{face_direction}\n")
-
-# Save point attributes
-with open(output_dir / "point_attributes.txt", "w") as f:
-    f.write("# Point Attributes\n\n")
-
-    f.write("## Age\n")
-    f.write(f"{point_age}\n\n")
-
-    f.write("## Mass\n")
-    f.write(f"{point_mass}\n\n")
-
-    f.write("## Thickness\n")
-    f.write(f"{point_thickness}\n\n")
-
-    f.write("## Orientation\n")
-    f.write(f"{point_orientation}\n\n")
-
-    f.write("## Pitch\n")
-    f.write(f"{point_pitch}\n\n")
-
-    f.write("## Vigor\n")
-    f.write(f"{point_vigor}\n\n")
-
-    f.write("## Shade\n")
-    f.write(f"{point_shade}\n\n")
-
-    f.write("## Photosynthesis\n")
-    f.write(f"{point_photosynthesis}\n")
-
-# Save skeleton data
-with open(output_dir / "skeleton.txt", "w") as f:
-    f.write("# Skeleton Data\n\n")
-
-    f.write("## Points\n")
-    for i, p in enumerate(skeleton_points):
-        f.write(f"{i}: {p}\n")
-    f.write("\n")
-
-    f.write("## Poly Lines\n")
-    for i, line in enumerate(skeleton_poly_lines):
-        f.write(f"{i}: {line}\n")
-    f.write("\n")
-
-    f.write(f"## Location\n{skeleton_location}\n\n")
-
-    f.write(f"## Branch ID\n{skeleton_face_branch_id}\n\n")
-    f.write(f"## Point Age\n{skeleton_point_age}\n\n")
-    f.write(f"## Point Mass\n{skeleton_point_mass}\n\n")
-    f.write(f"## Point Radius\n{skeleton_point_radius}\n")
-
-# Save advanced skeleton bones data
-with open(output_dir / "skeleton_bones.txt", "w") as f:
-    f.write("# Advanced Skeleton Bones (Tagged with custom parameters)\n\n")
-    f.write(f"# Parameters:\n")
-    f.write(f"#   Length: {skeleton_length}\n")
-    f.write(f"#   Reduce: {skeleton_reduce}\n")
-    f.write(f"#   Bias: {skeleton_bias}\n")
-    f.write(f"#   Connected: {skeleton_connected}\n\n")
-    f.write(f"# Total bones: {len(bones)}\n\n")
-    f.write(
-        "# Format: bone_index: (branch_id, bone_id, start_point, end_point, parent_bone_id)\n\n"
+    # Tree and branch identification
+    # Note: face_attribute_tree_id only exists when using Grove.build_as_one_model()
+    # for multi-tree groves, not for individual trees from build_models()
+    face_tree_id = (
+        tree_model.face_attribute_tree_id
+        if hasattr(tree_model, "face_attribute_tree_id")
+        else None
     )
+    face_branch_id = tree_model.face_attribute_branch_id  # Branch ID for each face
+    face_branch_id_parent = (
+        tree_model.face_attribute_branch_id_parent
+    )  # Parent branch ID
 
-    for i, bone in enumerate(bones):
-        f.write(f"{i}: {bone}\n")
+    # Twig placement attributes (for twig duplication)
+    face_twig_long = (
+        tree_model.face_attribute_twig_long
+    )  # Long twig placement triangles
+    face_twig_short = tree_model.face_attribute_twig_short  # Short twig placement
+    face_twig_upward = tree_model.face_attribute_twig_upward  # Upward facing twigs
+    face_twig_dead = tree_model.face_attribute_twig_dead  # Dead twigs
 
-print(f"Exported all geometry and attributes to {output_dir}")
-print(f"\nExport Summary:")
-print(f"  Points: {len(points)}")
-print(f"  Faces: {len(faces)}")
-print(f"  UV Coordinates: {len(uvs)}")
-print(f"  Skeleton Points: {len(skeleton_points)}")
-print(f"  Skeleton Bones (advanced): {len(bones)}")
+    # Branch state attributes
+    face_dead = tree_model.face_attribute_dead  # Dead branch faces
+    face_end = tree_model.face_attribute_end  # Branch end cap faces
+    face_direction = tree_model.face_attribute_direction  # Original growth direction
+
+    # %% EXTRACT POINT ATTRIBUTES
+
+    # Age and structure
+    point_age = tree_model.point_attribute_age  # Node age in flushes/years
+    point_mass = tree_model.point_attribute_mass  # Mass of continuation + sub-branches
+
+    # Physical properties
+    point_thickness = (
+        tree_model.point_attribute_thickness
+    )  # Diameter (0.0-1.0 normalized)
+    point_orientation = tree_model.point_attribute_orientation  # Quaternion orientation
+    point_pitch = (
+        tree_model.point_attribute_pitch
+    )  # Vertical angle (0.0=down, 0.5=horizontal, 1.0=up)
+
+    # Growth and lighting attributes
+    point_vigor = tree_model.point_attribute_vigor  # Growth power
+    point_shade = (
+        tree_model.point_attribute_shade
+    )  # Ambient occlusion (0.0=exposed, 1.0=shaded)
+    point_photosynthesis = (
+        tree_model.point_attribute_photosynthesis
+    )  # Light exposure * leaf area
+
+    # Skeleton attributes
+    point_bone_id = tree_model.point_attribute_bone_id  # Bone ID for rigging/animation
+
+    # %% EXPORT GEOMETRY AND ATTRIBUTES
+    # All geometry and attribute data is exported directly from Grove API
+    # Direct data access is more reliable than intermediate format parsing
+    # %%
+    # Export all geometry and attribute data to text files for systematic comparison
+    output_dir = Path(f"data/output/grove_geometry_dump/tree_{tree_idx}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save basic geometry
+    with open(output_dir / "points.txt", "w") as f:
+        f.write("# Point coordinates (x, y, z)\n")
+        for i, p in enumerate(points):
+            f.write(f"{i}: {p.x}, {p.y}, {p.z}\n")
+
+    with open(output_dir / "faces.txt", "w") as f:
+        f.write("# Face definitions (point indices)\n")
+        for i, face in enumerate(faces):
+            f.write(f"{i}: {face}\n")
+
+    with open(output_dir / "uvs.txt", "w") as f:
+        f.write("# UV coordinates (u, v)\n")
+        for i, uv in enumerate(uvs):
+            f.write(f"{i}: {uv}\n")
+
+    # Save flat geometry data
+    with open(output_dir / "points_flat.txt", "w") as f:
+        f.write("# Flat point array [x1,y1,z1,x2,y2,z2,...]\n")
+        f.write(str(points_flat))
+
+    with open(output_dir / "uvs_flat.txt", "w") as f:
+        f.write("# Flat UV array [u1,v1,u2,v2,...]\n")
+        f.write(str(uvs_flat))
+
+    with open(output_dir / "directions_flat.txt", "w") as f:
+        f.write("# Flat direction vectors\n")
+        f.write(str(directions_flat))
+
+    # Save face attributes
+    with open(output_dir / "face_attributes.txt", "w") as f:
+        f.write("# Face Attributes\n\n")
+
+        if face_tree_id:
+            f.write("## Tree ID\n")
+            f.write(f"{face_tree_id}\n\n")
+
+        f.write("## Branch ID\n")
+        f.write(f"{face_branch_id}\n\n")
+
+        f.write("## Branch Parent ID\n")
+        f.write(f"{face_branch_id_parent}\n\n")
+
+        f.write("## Twig Long\n")
+        f.write(f"{face_twig_long}\n\n")
+
+        f.write("## Twig Short\n")
+        f.write(f"{face_twig_short}\n\n")
+
+        f.write("## Twig Upward\n")
+        f.write(f"{face_twig_upward}\n\n")
+
+        f.write("## Twig Dead\n")
+        f.write(f"{face_twig_dead}\n\n")
+
+        f.write("## Dead Faces\n")
+        f.write(f"{face_dead}\n\n")
+
+        f.write("## End Faces\n")
+        f.write(f"{face_end}\n\n")
+
+        f.write("## Face Direction\n")
+        f.write(f"{face_direction}\n")
+
+    # Save point attributes
+    with open(output_dir / "point_attributes.txt", "w") as f:
+        f.write("# Point Attributes\n\n")
+
+        f.write("## Age\n")
+        f.write(f"{point_age}\n\n")
+
+        f.write("## Mass\n")
+        f.write(f"{point_mass}\n\n")
+
+        f.write("## Thickness\n")
+        f.write(f"{point_thickness}\n\n")
+
+        f.write("## Orientation\n")
+        f.write(f"{point_orientation}\n\n")
+
+        f.write("## Pitch\n")
+        f.write(f"{point_pitch}\n\n")
+
+        f.write("## Vigor\n")
+        f.write(f"{point_vigor}\n\n")
+
+        f.write("## Shade\n")
+        f.write(f"{point_shade}\n\n")
+
+        f.write("## Photosynthesis\n")
+        f.write(f"{point_photosynthesis}\n")
+
+        f.write("## Bone ID\n")
+        f.write(f"{point_bone_id}\n")
+
+    # Save skeleton data
+    with open(output_dir / "skeleton.txt", "w") as f:
+        f.write("# Skeleton Data\n\n")
+
+        f.write("## Points\n")
+        for i, p in enumerate(skeleton_points):
+            f.write(f"{i}: {p}\n")
+        f.write("\n")
+
+        f.write("## Poly Lines\n")
+        for i, line in enumerate(skeleton_poly_lines):
+            f.write(f"{i}: {line}\n")
+        f.write("\n")
+
+        f.write(f"## Location\n{skeleton_location}\n\n")
+
+        f.write(f"## Branch ID\n{skeleton_face_branch_id}\n\n")
+        f.write(f"## Point Age\n{skeleton_point_age}\n\n")
+        f.write(f"## Point Mass\n{skeleton_point_mass}\n\n")
+        f.write(f"## Point Radius\n{skeleton_point_radius}\n")
+
+    # Save advanced skeleton bones data
+    with open(output_dir / "skeleton_bones.txt", "w") as f:
+        f.write("# Advanced Skeleton Bones (Tagged with custom parameters)\n\n")
+        f.write(f"# Parameters:\n")
+        f.write(f"#   Length: {skeleton_length}\n")
+        f.write(f"#   Reduce: {skeleton_reduce}\n")
+        f.write(f"#   Bias: {skeleton_bias}\n")
+        f.write(f"#   Connected: {skeleton_connected}\n\n")
+        f.write(f"# Total bones: {len(bones)}\n\n")
+        f.write(
+            "# Format: bone_id: (is_tree_root, parent_bone_id, start_point, end_point, radius, mass, is_branch_root, branch_id)\n\n"
+        )
+
+        for i, bone in enumerate(bones):
+            f.write(f"{i}: {bone}\n")
+
+    print(f"  Exported to {output_dir}")
+    print(f"    Points: {len(points)}")
+    print(f"    Faces: {len(faces)}")
+    print(f"    UV Coordinates: {len(uvs)}")
+    print(f"    Skeleton Points: {len(skeleton_points)}")
+    print(f"    Skeleton Bones: {len(bones)}")
+
+print(f"\n\nAll {len(models)} trees exported successfully!")
 if enable_smooth:
-    print(f"  Smoothing applied: {smooth_iterations} iteration(s)")
-print("\nAll data exported successfully!")
+    print(f"Smoothing applied: {smooth_iterations} iteration(s)")
 
 # %%

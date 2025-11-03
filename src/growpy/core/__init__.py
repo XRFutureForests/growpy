@@ -7,7 +7,6 @@ Key Functions:
     create_forest()              Create forest from CSV data
     simulate_forest_growth()     Simulate growth with light competition
     create_grove()               Create single-species grove
-    build_grove_with_all_attributes()  Build tree geometry
     calculate_growth_cycles_from_height()  Convert height to age
 
 Example:
