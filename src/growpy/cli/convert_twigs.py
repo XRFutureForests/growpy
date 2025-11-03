@@ -94,7 +94,6 @@ TEXTURE_MODIFIERS = {
     "bottom": ["bottom", "lower", "back", "underside"],
 }
 
-
 def standardize_twig_name(original_name: str, species_name: str) -> Tuple[str, Dict]:
     """Convert Grove's CamelCase .blend filenames to snake_case USD output names.
 
@@ -171,7 +170,6 @@ def standardize_twig_name(original_name: str, species_name: str) -> Tuple[str, D
 
     return standardized, metadata
 
-
 def classify_texture_type(texture_path: Path, material_name: str = "") -> str:
     """
     Classify texture type from filename with context awareness.
@@ -202,7 +200,6 @@ def classify_texture_type(texture_path: Path, material_name: str = "") -> str:
         return f"diffuse_{modifier}"
 
     return base_type
-
 
 def find_textures_for_material(
     blend_dir: Path, material_name: str, search_parent: bool = True
@@ -284,7 +281,6 @@ def find_textures_for_material(
 
     return texture_map
 
-
 def process_twig_directory(
     twig_dir: Path,
     formats: List[str] = ["usda"],
@@ -328,11 +324,7 @@ def process_twig_directory(
         blend_files = filtered_files
 
     if not blend_files:
-        print(f"No .blend files found in {twig_dir}")
         return {}
-
-    print(f"\nConverting {len(blend_files)} twig(s) to {', '.join(formats)}")
-    print(f"{'='*60}\n")
 
     # Import twig_export module directly
     from growpy.io.twig_export import process_twig_file
@@ -365,13 +357,12 @@ def process_twig_directory(
                 skeletal_twigs = [f for f in exported_files if "_skeletal" in f.stem]
                 if skeletal_twigs:
                     for skel_twig in skeletal_twigs:
-                        print(f"  [OK] {skel_twig.name}: Skeletal twig exported")
+                        pass
 
         except Exception as e:
-            print(f"\n[ERROR] Processing {blend_file.name}: {e}")
+            pass
 
     return results
-
 
 def main():
     import argparse
@@ -430,7 +421,6 @@ Output per twig:
     args = parser.parse_args()
 
     if not args.path.exists():
-        print(f"Error: Path not found: {args.path}")
         return 1
 
     # Load CSV filter if provided
@@ -439,14 +429,10 @@ Output per twig:
         if not args.csv.exists():
             # If using default CSV and it doesn't exist, skip filtering with a warning
             if args.csv == default_csv:
-                print(
-                    f"[WARN] Default CSV not found ({args.csv}), processing all twigs"
-                )
+                pass
             else:
-                print(f"Error: CSV file not found: {args.csv}")
                 return 1
         else:
-            print(f"Loading twig filter from CSV: {args.csv}")
             import pandas as pd
 
             try:
@@ -454,13 +440,7 @@ Output per twig:
 
                 # Check if this is a forest placement CSV (has "species" column)
                 if "species" in df.columns and "Twig" not in df.columns:
-                    print(
-                        f"[INFO] Detected forest placement CSV, extracting unique species..."
-                    )
                     unique_species = df["species"].dropna().unique().tolist()
-                    print(
-                        f"[INFO] Found {len(unique_species)} unique species: {', '.join(unique_species)}"
-                    )
 
                     # Load the asset lookup table
                     asset_lookup_path = (
@@ -471,9 +451,6 @@ Output per twig:
                         / "tree_asset_lookup.csv"
                     )
                     if not asset_lookup_path.exists():
-                        print(
-                            f"[ERROR] Asset lookup table not found: {asset_lookup_path}"
-                        )
                         return 1
 
                     lookup_df = pd.read_csv(asset_lookup_path)
@@ -508,14 +485,9 @@ Output per twig:
                             ):
                                 twig_filter.append(twig_name.strip())
                         else:
-                            print(
-                                f"[WARN] Species '{species}' not found in asset lookup table"
-                            )
+                            pass
 
                     twig_filter = list(set(twig_filter))  # Remove duplicates
-                    print(
-                        f"[INFO] Matched {len(twig_filter)} twig types from forest CSV"
-                    )
                 else:
                     # Direct asset lookup CSV - get unique twig names
                     twig_filter = []
@@ -524,15 +496,12 @@ Output per twig:
                             twig_filter.append(str(twig_name).strip())
 
                     twig_filter = list(set(twig_filter))  # Remove duplicates
-                    print(f"Will process {len(twig_filter)} twig types from CSV")
 
             except Exception as e:
-                print(f"Error reading CSV: {e}")
                 return 1
 
     if args.path.is_file() and args.path.suffix == ".blend":
         # Single file
-        print(f"Processing single file: {args.path.name}")
         results = process_twig_directory(
             args.path.parent, args.formats, args.clean_export, twig_filter
         )
@@ -542,17 +511,11 @@ Output per twig:
             args.path, args.formats, args.clean_export, twig_filter
         )
     else:
-        print(f"Error: Invalid path (must be .blend file or directory)")
         return 1
 
     # Summary
-    print(f"\n{'='*60}")
-    print("Conversion Complete")
-    print(f"{'='*60}")
 
     total_files = sum(len(files) for files in results.values())
-    print(f"\nTotal exported: {total_files} files")
-    print(f"Species processed: {len(results)}")
 
     # Check for any files that might need manual skeleton addition
     skel_files = []
@@ -560,16 +523,11 @@ Output per twig:
         skel_files.extend([f for f in files if "_skeletal" in f.stem])
 
     if skel_files:
-        print(f"\nSkeletal variants: {len(skel_files)} files")
-        print(
-            "  (Skeletons added automatically during export via Blender's bundled USD)"
-        )
+        pass
 
         # Validation removed - no longer needed for production
-        print(f"\n[OK] Exported {len(skel_files)} skeletal twig files")
 
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

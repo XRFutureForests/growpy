@@ -25,29 +25,23 @@ Usage:
     python src/growpy/cli/generate_forest.py [csv_file] --quality high --output-dir data/output/forest --growth-cycle-limit 5
 """
 
-# CRITICAL: Import bpy and expose bundled modules BEFORE any other imports
-# This ensures USD (pxr) is available for all subsequent imports
-try:
-    import bpy
+import bpy
 
-    if hasattr(bpy.utils, "expose_bundled_modules"):
-        bpy.utils.expose_bundled_modules()
-except ImportError:
-    pass  # bpy not available, will fall back to system USD if available
+if hasattr(bpy.utils, "expose_bundled_modules"):
+    bpy.utils.expose_bundled_modules()
 
 import multiprocessing as mp
 import sys
 from functools import partial
-from typing import Optional
-
-GROWTH_CYCLE_LIMIT = 10
-HEIGHT_SCALE = 1
-MAX_WORKERS = max(1, mp.cpu_count() - 1)  # Leave one core for system
-
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 from tqdm import tqdm
+
+GROWTH_CYCLE_LIMIT = 10
+HEIGHT_SCALE = 1
+MAX_WORKERS = max(1, mp.cpu_count() - 1)
 
 from growpy import (
     TREE_EXPORT_AVAILABLE,
@@ -73,14 +67,10 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     Returns:
         List of exported file paths
     """
-    # CRITICAL: Import bpy and expose bundled modules in worker process
-    try:
-        import bpy
+    import bpy
 
-        if hasattr(bpy.utils, "expose_bundled_modules"):
-            bpy.utils.expose_bundled_modules()
-    except ImportError:
-        pass
+    if hasattr(bpy.utils, "expose_bundled_modules"):
+        bpy.utils.expose_bundled_modules()
 
     import gc as _gc_module
 
@@ -111,24 +101,12 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         # This grove was grown with inter-species light competition and is ready to export
         # No re-simulation needed - much faster!
 
-        # DEBUG BREAKPOINT 1: BEFORE building models
-        # At this point, grove has been simulated but models don't exist yet
-        print(
-            f"\n[DEBUG] PHASE 1A: About to call grove.tag_bone_id() internally via build_skeletons"
-        )
-        print(f"[DEBUG] Grove has {len(grove.trees)} trees")
-        breakpoint()  # PAUSE HERE: Inspect grove.trees before skeleton building
-
         # Build skeletons FIRST - this calls tag_bone_id() internally
         # This is CRITICAL: tag_bone_id() must be called before build_models()
         # to ensure bone_id attributes are included in the model
         skeletons = grove.build_skeletons()
-        print(
-            f"[DEBUG] PHASE 1A COMPLETE: Skeleton tagging done, {len(skeletons)} skeletons created"
-        )
 
         # DEBUG BREAKPOINT 2: NOW build models (with bone mapping already tagged)
-        print(f"[DEBUG] PHASE 1B: Building models with bone attributes...")
         models = grove.build_models(
             {
                 "resolution": quality_params["resolution"],
@@ -140,50 +118,12 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 "build_end_cap": quality_params["build_end_cap"],
             }
         )
-        print(f"[DEBUG] PHASE 1B COMPLETE: {len(models)} models created")
 
         if not models:
-            print(f"  Warning: No models generated from grove for {species}")
             return exported
 
         # Export each model/skeleton pair (handles multi-tree groves)
         for model_idx, (model, skeleton) in enumerate(zip(models, skeletons)):
-            # DEBUG BREAKPOINT 3: Inspect model bone attributes
-            print(f"\n[DEBUG] === MODEL {model_idx} BONE ATTRIBUTES ===")
-            if hasattr(model, "point_attribute_bone_id"):
-                bone_ids = model.point_attribute_bone_id
-                print(f"[DEBUG] ✓ Model has bone_id mapping: {len(bone_ids)} vertices")
-                print(f"[DEBUG]   Unique bone IDs: {sorted(set(bone_ids))}")
-                print(f"[DEBUG]   Sample bone_ids (first 10 vertices): {bone_ids[:10]}")
-
-                # Check for skinning issues
-                unique_bones = set(bone_ids)
-                if len(unique_bones) == 1 and 0 in unique_bones:
-                    print(
-                        f"[DEBUG] ⚠️  SKINNING ISSUE: All vertices assigned to bone 0 only!"
-                    )
-                    print(
-                        f"[DEBUG] ⚠️  Tree may be too young (needs more growth cycles)"
-                    )
-                    breakpoint()  # PAUSE HERE: Inspect why all vertices map to bone 0
-            else:
-                print(f"[DEBUG] ✗ WARNING: Model missing point_attribute_bone_id!")
-                breakpoint()  # PAUSE HERE: Model has no bone mapping!
-
-            if hasattr(model, "point_attribute_bone_weight"):
-                weights = model.point_attribute_bone_weight
-                print(f"[DEBUG] ✓ Model has bone weights: {len(weights)} vertices")
-                print(
-                    f"[DEBUG]   Sample weights (first 10 vertices): {[f'{w:.3f}' for w in weights[:10]]}"
-                )
-            else:
-                print(f"[DEBUG] ✗ WARNING: Model missing point_attribute_bone_weight!")
-
-            # Skeleton structure
-            if skeleton:
-                print(f"[DEBUG] ✓ Skeleton has {len(skeleton.points)} joints")
-                print(f"[DEBUG]   Skeleton has {len(skeleton.poly_lines)} bone chains")
-            print(f"[DEBUG] =====================================\n")
 
             tree_suffix = f"_{model_idx:04d}" if len(models) > 1 else ""
             usd_path = species_dir / f"{tree_name}{tree_suffix}_nanite_assembly.usda"
@@ -210,7 +150,6 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         _gc_module.collect()
 
     except Exception as e:
-        print(f"ERROR exporting tree {idx} ({species}): {e}")
         import traceback
 
         traceback.print_exc()
@@ -265,13 +204,11 @@ def export_individual_trees(
         grove = grove_map.get(species)
 
         if grove is None:
-            print(f"Warning: No grove found for species '{species}' at row {idx}")
             continue
 
         tree_tasks.append((idx, grove, species, output_dir, quality_params))
 
     total_trees = len(tree_tasks)
-    print(f"\nExporting {total_trees} trees...")
 
     # Always use sequential processing (bpy/USD not compatible with multiprocessing)
     for task in tqdm(tree_tasks, desc="Exporting trees"):
@@ -325,14 +262,10 @@ def generate_forest_exports(
         height_scale = HEIGHT_SCALE
 
     if not TREE_EXPORT_AVAILABLE:
-        print("ERROR: Export not available - bpy module required")
         return
 
     if not csv_path.exists():
-        print(f"ERROR: CSV file not found: {csv_path}")
         return
-
-    print(f"Loading forest data from: {csv_path}")
 
     # Load forest data
     try:
@@ -344,17 +277,13 @@ def generate_forest_exports(
             col for col in required_columns if col not in forest_data.columns
         ]
         if missing_cols:
-            print(f"ERROR: CSV missing required columns: {missing_cols}")
-            print(f"   Available columns: {list(forest_data.columns)}")
-            print(f"   Required columns: {required_columns}")
             return
 
         # Ensure z column exists (will be added by create_forest if missing)
         if "z" not in forest_data.columns:
-            print("INFO: No 'z' column found, using z=0 for all trees")
+            pass
 
     except Exception as e:
-        print(f"ERROR: Error loading CSV: {e}")
         return
 
     try:
@@ -371,7 +300,6 @@ def generate_forest_exports(
             forest_data["growth_cycles"] * scale_factor
         ).astype(int)
         forest_data["growth_cycles"] = forest_data["growth_cycles"].clip(lower=1)
-        print(f"Scaled growth cycles: max {max_growth_cycles} -> {growth_cycle_limit}")
     else:
         # Apply height scale only if not scaling growth cycles
         forest_data["height"] /= height_scale
@@ -381,7 +309,6 @@ def generate_forest_exports(
         max_cycles = forest_data["growth_cycles"].max()
         simulate_forest_growth(forest, max_cycles)
     except Exception as e:
-        print(f"Forest simulation failed: {e}")
         return
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -403,7 +330,6 @@ def generate_forest_exports(
         from growpy.io.tree_export import bundle_twigs_for_species
 
         unique_species = forest_data["species"].unique()
-        print(f"\nBundling twig files for {len(unique_species)} species...")
 
         for species in unique_species:
             species_clean = (
@@ -421,7 +347,6 @@ def generate_forest_exports(
                 config=config,
             )
 
-        print(f"\nExporting {len(forest_data)} individual trees...")
         exported_files = export_individual_trees(
             forest,
             forest_data,
@@ -433,12 +358,10 @@ def generate_forest_exports(
         )
 
         if exported_files:
-            print(
-                f"Exported {len(exported_files)} skeletal Nanite Assembly USD files with '{quality}' quality"
-            )
+            pass
 
     except Exception as e:
-        print(f"Export failed: {e}")
+        pass
 
 
 def main():
@@ -585,9 +508,6 @@ Examples:
                     break
 
             if csv_path is None:
-                print("ERROR: No CSV file found")
-                print("Usage: python generate_forest.py <csv_file>")
-                print("Or place forest.csv in data/ or current directory")
                 return
 
         config = get_config()
@@ -609,7 +529,7 @@ Examples:
         )
 
     except Exception as e:
-        print(f"ERROR: Generation failed: {e}")
+        pass
 
 
 if __name__ == "__main__":
