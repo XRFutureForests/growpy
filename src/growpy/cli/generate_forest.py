@@ -33,6 +33,7 @@ if hasattr(bpy.utils, "expose_bundled_modules"):
 import multiprocessing as mp
 import sys
 from functools import partial
+from itertools import groupby
 from pathlib import Path
 from typing import Optional
 
@@ -55,14 +56,15 @@ from growpy.config.quality import get_quality_preset
 
 
 def _export_single_tree_from_forest(args: tuple) -> list:
-    """Export a single tree from an already-simulated grove (forest simulation phase).
+    """Export all trees from an already-simulated grove (forest simulation phase).
 
-    This exports a tree directly from a grove that was already simulated with inter-species
+    This exports trees directly from a grove that was already simulated with inter-species
     light competition. No re-simulation is performed - this is significantly faster than
     the old approach of recreating and re-simulating each tree individually.
 
     Args:
-        args: Tuple of (idx, grove_instance, species_name, output_dir, quality_params)
+        args: Tuple of (start_idx, grove_instance, species_name, output_dir, quality_params)
+              start_idx is the base tree number for sequential numbering
 
     Returns:
         List of exported file paths
@@ -78,7 +80,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     from growpy.io.assembly_export import export_tree_as_nanite_assembly
     from growpy.io.tree_export import get_twig_usd_map_for_species
 
-    (idx, grove, species, output_dir, quality_params) = args
+    (start_idx, grove, species, output_dir, quality_params) = args
 
     # Get config in worker process
     config = get_config()
@@ -93,7 +95,6 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     species_dir = output_dir / species_clean
     species_dir.mkdir(parents=True, exist_ok=True)
 
-    tree_name = f"{species_clean}_tree_{idx:04d}"
     exported = []
 
     try:
@@ -101,12 +102,21 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         # This grove was grown with inter-species light competition and is ready to export
         # No re-simulation needed - much faster!
 
-        # Build skeletons FIRST - this calls tag_bone_id() internally
-        # This is CRITICAL: tag_bone_id() must be called before build_models()
-        # to ensure bone_id attributes are included in the model
+        # CRITICAL BUILD ORDER: skeleton -> bones -> models
+        # 1. Build skeletons first
         skeletons = grove.build_skeletons()
 
-        # DEBUG BREAKPOINT 2: NOW build models (with bone mapping already tagged)
+        # 2. Tag bone IDs with length=0.0 and reduce=0.0 for maximum bone count
+        # Skeletal simplification happens later in Unreal Engine if needed
+        # Note: tag_bone_id() takes positional args: (length, reduce, bias, connected)
+        bones = grove.tag_bone_id(
+            0.0,  # skeleton_length - no merging by length
+            0.0,  # skeleton_reduce - no reduction by thickness
+            quality_params.get("skeleton_bias", 0.5),
+            quality_params.get("skeleton_connected", True),
+        )
+
+        # 3. NOW build models (with bone_id attributes already tagged)
         models = grove.build_models(
             {
                 "resolution": quality_params["resolution"],
@@ -122,11 +132,22 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         if not models:
             return exported
 
-        # Export each model/skeleton pair (handles multi-tree groves)
-        for model_idx, (model, skeleton) in enumerate(zip(models, skeletons)):
+        # Slice bones list for each tree in grove
+        bones_grouped = [list(g) for k, g in groupby(bones, lambda x: x[0])]
+        tree_bones = [
+            bones_grouped[i]
+            + (bones_grouped[i + 1] if i + 1 < len(bones_grouped) else [])
+            for i in range(0, len(bones_grouped), 2)
+        ]
 
-            tree_suffix = f"_{model_idx:04d}" if len(models) > 1 else ""
-            usd_path = species_dir / f"{tree_name}{tree_suffix}_nanite_assembly.usda"
+        # Export each model/skeleton/bones triplet (each is a separate tree)
+        for model_idx, (model, skeleton, bones_for_tree) in enumerate(
+            zip(models, skeletons, tree_bones)
+        ):
+            # Use sequential numbering: start_idx + model_idx
+            tree_num = start_idx + model_idx
+            tree_name = f"{species_clean}_tree_{tree_num:04d}"
+            usd_path = species_dir / f"{tree_name}_nanite_assembly.usda"
 
             # Always use skeletal twigs for Nanite assemblies
             twig_usd_map = get_twig_usd_map_for_species(
@@ -137,6 +158,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             export_success = export_tree_as_nanite_assembly(
                 model=model,
                 skeleton=skeleton,
+                bones_info=bones_for_tree,
                 output_path=usd_path,
                 species_name=species,
                 twig_usd_paths=twig_usd_map,
@@ -193,25 +215,17 @@ def export_individual_trees(
         max_workers = MAX_WORKERS
 
     # Build tree export tasks from forest groves
-    # Map species → grove for efficient lookup
-    grove_map = {species_name: grove for grove, species_name, _ in forest}
+    # Each grove contains multiple trees for that species, export all at once
+    # Trees are numbered per-species (starting at 0) since each species has its own folder
+    grove_tasks = []
 
-    # Convert DataFrame rows to export tasks
-    # Each task contains the actual grove (not row data) for direct export
-    tree_tasks = []
-    for idx, row in forest_data.iterrows():
-        species = row["species"]
-        grove = grove_map.get(species)
-
-        if grove is None:
-            continue
-
-        tree_tasks.append((idx, grove, species, output_dir, quality_params))
-
-    total_trees = len(tree_tasks)
+    for grove, species_name, tree_count in forest:
+        # Create one task per grove (which will export all trees in that grove)
+        # start_idx=0 for each grove since trees are numbered within species folder
+        grove_tasks.append((0, grove, species_name, output_dir, quality_params))
 
     # Always use sequential processing (bpy/USD not compatible with multiprocessing)
-    for task in tqdm(tree_tasks, desc="Exporting trees"):
+    for task in tqdm(grove_tasks, desc="Exporting groves"):
         result = _export_single_tree_from_forest(task)
         if result:
             exported_files.extend([Path(p) for p in result])
