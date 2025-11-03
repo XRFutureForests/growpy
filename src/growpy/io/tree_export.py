@@ -36,55 +36,6 @@ from ..config import get_config
 from ..core.skeleton import calculate_vertex_weights
 
 
-def _extract_twig_placements_from_usd(usd_path: Path) -> Dict[str, List[Dict]]:
-    """Extract twig placements from USD primvars - local helper for tree_export."""
-    placements = {}
-    try:
-        stage = Usd.Stage.Open(str(usd_path))
-        if not stage:
-            return placements
-
-        for prim in stage.Traverse():
-            if prim.IsA(UsdGeom.Mesh):
-                mesh = UsdGeom.Mesh(prim)
-                primvars_api = UsdGeom.PrimvarsAPI(mesh)
-
-                # Check for twig primvars
-                for twig_type in [
-                    "twig_long",
-                    "twig_short",
-                    "twig_upward",
-                    "twig_dead",
-                ]:
-                    pos_primvar = primvars_api.GetPrimvar(f"{twig_type}_position")
-                    normal_primvar = primvars_api.GetPrimvar(f"{twig_type}_normal")
-                    scale_primvar = primvars_api.GetPrimvar(f"{twig_type}_scale")
-
-                    if pos_primvar and normal_primvar:
-                        positions = pos_primvar.Get()
-                        normals = normal_primvar.Get()
-                        scales = (
-                            scale_primvar.Get()
-                            if scale_primvar
-                            else [1.0] * len(positions)
-                        )
-
-                        if positions and normals:
-                            placements[twig_type] = []
-                            for i in range(len(positions)):
-                                placements[twig_type].append(
-                                    {
-                                        "position": tuple(positions[i]),
-                                        "normal": tuple(normals[i]),
-                                        "scale": scales[i] if i < len(scales) else 1.0,
-                                    }
-                                )
-    except Exception as e:
-        pass
-
-    return placements
-
-
 def export_tree(
     model: Any,
     skeleton: Any,
@@ -178,6 +129,7 @@ def build_tree_mesh(
     model: Any,
     skeleton: Optional[Any],
     output_path: Path,
+    bones_info: Optional[List] = None,
     up_axis: str = "Z",
     triangulated: bool = True,
     include_materials: bool = True,
@@ -199,31 +151,25 @@ def build_tree_mesh(
     This ensures that face counts match between geometry and face attributes,
     preventing mismatches in twig placement and material assignment.
 
+    CRITICAL: For skeletal export with proper vertex-to-bone mapping, bones_info must be provided.
+    This enables direct vertex-to-bone mapping via model.point_attribute_bone_id.
+
     Args:
         model: Grove tree model from grove.build_models() - MUST be triangulated first
         skeleton: Optional Grove skeleton from grove.build_skeletons()
         output_path: Path where USD file will be saved
+        bones_info: Optional list of bone tuples from grove.tag_bone_id() for this tree
         up_axis: Coordinate system up axis ("Y" or "Z")
         triangulated: Whether the model has been triangulated (should always be True)
         include_materials: If False, creates simple geometry without materials/UVs
         clean_export: If True, creates minimal USD without default attributes (demo mode)
-        skeleton_length: Bone length multiplier for skeleton creation
-        skeleton_reduce: Bone reduction factor for skeleton creation
+        skeleton_length: Bone length multiplier for skeleton creation (deprecated if bones_info provided)
+        skeleton_reduce: Bone reduction factor for skeleton creation (deprecated if bones_info provided)
         skeleton_bias: Weight bias for skinning
-        skeleton_connected: Use connected bone hierarchy
+        skeleton_connected: Use connected bone hierarchy (deprecated if bones_info provided)
 
     Returns:
         bool: True if USD file was created successfully
-
-    Example:
-        >>> grove = gc.Grove()
-        >>> grove.add_new_tree(...)
-        >>> grove.simulate(5)
-        >>> models = grove.build_models({...})
-        >>> skeletons = grove.build_skeletons()
-        >>> model = models[0]
-        >>> model.triangulate()  # CRITICAL: Must triangulate first
-        >>> build_tree_mesh(model, skeletons[0], Path("tree.usda"), up_axis="Z")
     """
 
     try:
@@ -243,6 +189,13 @@ def build_tree_mesh(
         # Define root xform
         root_path = Sdf.Path("/tree")
         root_xform = UsdGeom.Xform.Define(stage, root_path)
+
+        # Store tree location as metadata for forest positioning reference
+        if hasattr(model, "location") and model.location:
+            loc = model.location
+            root_xform.GetPrim().SetCustomDataByKey(
+                "treeLocation", Gf.Vec3f(loc.x, loc.y, loc.z)
+            )
 
         # Define mesh
         mesh_path = root_path.AppendChild("TreeMesh")
@@ -277,14 +230,18 @@ def build_tree_mesh(
                 usd_uvs = [Gf.Vec2f(uv[0], uv[1]) for uv in uvs]
                 uv_primvar.Set(usd_uvs)
 
-            # Create proper USD materials with UsdPreviewSurface
-            _add_usd_materials(stage, mesh, model, str(mesh_path))
+            # TODO: Re-enable materials once assembly binding is fixed
+            # _add_usd_materials(stage, mesh, model, str(mesh_path))
 
-        # Add face attributes from Grove
-        _add_grove_face_attributes(mesh, model)
+        # Add all model attributes from Grove (face and point attributes)
+        _add_model_attributes(mesh, model)
 
-        # Add point attributes from Grove
-        _add_grove_point_attributes(mesh, model)
+        # Store UV islands as metadata for texture atlas reference
+        if hasattr(model, "uv_islands") and model.uv_islands:
+            # Store count and structure info as metadata
+            mesh.GetPrim().SetCustomDataByKey("uvIslandCount", len(model.uv_islands))
+            # Note: Full island data available but not stored to keep file size reasonable
+            # Can be accessed via model.uv_islands or model.get_uv_islands_flat() if needed
 
         # Add normals for proper Unreal rendering
         _add_mesh_normals(mesh, model)
@@ -297,6 +254,7 @@ def build_tree_mesh(
                 root_xform_prim=root_xform.GetPrim(),
                 mesh_prim=mesh.GetPrim(),
                 model=model,
+                bones_info=bones_info,
                 skeleton_length=skeleton_length,
                 skeleton_reduce=skeleton_reduce,
                 skeleton_bias=skeleton_bias,
@@ -327,18 +285,29 @@ def _add_skeleton_to_stage_inline(
     root_xform_prim: Usd.Prim,
     mesh_prim: Usd.Prim,
     model: Optional[Any] = None,
+    bones_info: Optional[List] = None,
     skeleton_length: float = 0.0,
     skeleton_reduce: float = 0.0,
     skeleton_bias: float = 0.5,
     skeleton_connected: bool = True,
 ) -> bool:
-    """Add skeleton to open USD stage using Grove's skeleton data."""
+    """Add skeleton to open USD stage using Grove's skeleton data.
+
+    CRITICAL: If bones_info is provided, it will be used for direct vertex-to-bone mapping
+    via model.point_attribute_bone_id. This is the preferred method as it uses Grove's
+    internal mapping rather than distance calculations.
+
+    Args:
+        bones_info: Optional list of bone tuples from grove.tag_bone_id() for this tree
+                   If provided, enables direct vertex-to-bone mapping
+    """
     try:
         if not skeleton:
             return False
 
         # Create UsdSkel skeleton structure directly in the stage
-        _build_usdskel_from_bones(stage, skeleton, None, None)
+        # Pass bones_info for direct vertex-to-bone mapping
+        _build_usdskel_from_bones(stage, skeleton, model, bones_info)
 
         return True
 
@@ -737,33 +706,99 @@ def _find_bark_texture(species_name: str, config: Any) -> Optional[Dict[str, Pat
         return None
 
 
-def _add_grove_face_attributes(mesh: UsdGeom.Mesh, model: Any) -> None:
-    """Add Grove face attributes as USD primvars."""
+def _add_model_attributes(mesh: UsdGeom.Mesh, model: Any) -> None:
+    """Add all Grove model attributes as USD primvars.
+
+    Dynamically discovers and adds all face_attribute_* and point_attribute_*
+    from the model, handling different attribute types automatically.
+
+    Face attributes are added with 'uniform' interpolation (per-face).
+    Point attributes are added with 'vertex' interpolation (per-vertex).
+
+    Skeleton-related attributes (bone_id, skeleton_joint_id) are skipped
+    as they're handled separately during skeleton binding.
+    """
     primvars_api = UsdGeom.PrimvarsAPI(mesh)
 
-    # Branch attributes
-    if hasattr(model, "face_attribute_branch_id"):
-        primvar = primvars_api.CreatePrimvar(
-            "BranchIndex", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.uniform
-        )
-        primvar.Set(model.face_attribute_branch_id)
+    # Mapping of attribute value types to USD types
+    def get_usd_type(attr_value):
+        """Determine USD value type from Python attribute."""
+        if not attr_value or len(attr_value) == 0:
+            return None
 
+        sample = attr_value[0]
+        if isinstance(sample, bool):
+            return Sdf.ValueTypeNames.BoolArray
+        elif isinstance(sample, int):
+            return Sdf.ValueTypeNames.IntArray
+        elif isinstance(sample, float):
+            return Sdf.ValueTypeNames.FloatArray
+        elif isinstance(sample, (tuple, list)) and len(sample) == 3:
+            # Vector3 type
+            return Sdf.ValueTypeNames.Float3Array
+        else:
+            # Default to float for unknown types
+            return Sdf.ValueTypeNames.FloatArray
 
-def _add_grove_point_attributes(mesh: UsdGeom.Mesh, model: Any) -> None:
-    """Add Grove point attributes as USD primvars."""
-    primvars_api = UsdGeom.PrimvarsAPI(mesh)
+    # Get all attribute names from model
+    model_attrs = dir(model)
 
-    if hasattr(model, "point_attribute_age"):
-        primvar = primvars_api.CreatePrimvar(
-            "Age", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.vertex
-        )
-        primvar.Set(model.point_attribute_age)
+    # Process face attributes (per-face, uniform interpolation)
+    face_attrs = [attr for attr in model_attrs if attr.startswith("face_attribute_")]
+    for attr_name in sorted(face_attrs):
+        try:
+            attr_value = getattr(model, attr_name, None)
+            if attr_value is None or len(attr_value) == 0:
+                continue
 
-    if hasattr(model, "point_attribute_thickness"):
-        primvar = primvars_api.CreatePrimvar(
-            "Thickness", Sdf.ValueTypeNames.FloatArray, UsdGeom.Tokens.vertex
-        )
-        primvar.Set(model.point_attribute_thickness)
+            usd_type = get_usd_type(attr_value)
+            if usd_type is None:
+                continue
+
+            # Convert attribute name to PascalCase for USD
+            # e.g., face_attribute_branch_id -> BranchId
+            primvar_name = "".join(
+                word.capitalize()
+                for word in attr_name.replace("face_attribute_", "").split("_")
+            )
+
+            primvar = primvars_api.CreatePrimvar(
+                primvar_name, usd_type, UsdGeom.Tokens.uniform
+            )
+            primvar.Set(attr_value)
+
+        except Exception as e:
+            # Skip attributes that fail to convert
+            pass
+
+    # Process point attributes (per-vertex, vertex interpolation)
+    point_attrs = [attr for attr in model_attrs if attr.startswith("point_attribute_")]
+
+    for attr_name in sorted(point_attrs):
+        try:
+            attr_value = getattr(model, attr_name, None)
+            if attr_value is None or len(attr_value) == 0:
+                continue
+
+            usd_type = get_usd_type(attr_value)
+            if usd_type is None:
+                continue
+
+            # Convert attribute name to PascalCase for USD
+            # e.g., point_attribute_thickness -> Thickness
+            primvar_name = "".join(
+                word.capitalize()
+                for word in attr_name.replace("point_attribute_", "").split("_")
+            )
+
+            primvar = primvars_api.CreatePrimvar(
+                primvar_name, usd_type, UsdGeom.Tokens.vertex
+            )
+            primvar.Set(attr_value)
+
+        except Exception as e:
+            # Skip attributes that fail to convert
+            pass
 
 
 def _add_usd_materials(
@@ -795,22 +830,49 @@ def _add_usd_materials(
     # Create only bark material for tree mesh
     bark_mat = create_material("BarkMaterial", BARK_BROWN)
 
-    # Apply bark material to entire mesh
-    UsdShade.MaterialBindingAPI(mesh_prim).Bind(bark_mat)
+    # Apply MaterialBindingAPI schema first, then bind material
+    binding_api = UsdShade.MaterialBindingAPI.Apply(mesh_prim.GetPrim())
+    binding_api.Bind(bark_mat)
 
 
 def _add_mesh_normals(mesh: UsdGeom.Mesh, model: Any) -> None:
-    """Add computed normals to mesh for proper Unreal rendering."""
-    try:
-        faces = model.faces if hasattr(model, "faces") else []
-        if not faces:
-            return
+    """Add normals to mesh for proper Unreal rendering.
 
-        # Create simple up-facing normals
-        normals = [Gf.Vec3f(0, 0, 1) for _ in faces]
-        normals_attr = mesh.CreateNormalsAttr()
-        normals_attr.Set(normals)
-        mesh.SetNormalsInterpolation(UsdGeom.Tokens.uniform)
+    Prefers using actual normals from model.shape if available,
+    falls back to simple up-facing normals if not.
+    """
+    try:
+        # Try to use real normals from model.shape
+        if hasattr(model, "shape") and model.shape:
+            # model.shape contains normal vectors for each vertex
+            # Convert to USD format
+            normals = []
+            for normal in model.shape:
+                if hasattr(normal, "x"):
+                    # Vector object
+                    normals.append(Gf.Vec3f(normal.x, normal.y, normal.z))
+                elif isinstance(normal, (tuple, list)) and len(normal) == 3:
+                    # Tuple/list format
+                    normals.append(Gf.Vec3f(normal[0], normal[1], normal[2]))
+                else:
+                    # Unknown format, skip
+                    continue
+
+            if normals:
+                normals_attr = mesh.CreateNormalsAttr()
+                normals_attr.Set(normals)
+                # Use vertex interpolation for per-vertex normals
+                mesh.SetNormalsInterpolation(UsdGeom.Tokens.vertex)
+                return
+
+        # Fallback: create simple per-face normals
+        faces = model.faces if hasattr(model, "faces") else []
+        if faces:
+            # Create up-facing normals for each face
+            normals = [Gf.Vec3f(0, 0, 1) for _ in faces]
+            normals_attr = mesh.CreateNormalsAttr()
+            normals_attr.Set(normals)
+            mesh.SetNormalsInterpolation(UsdGeom.Tokens.uniform)
 
     except Exception:
         pass
@@ -878,7 +940,8 @@ def add_skeleton_to_usd(
 def _build_usdskel_from_bones(
     stage: Usd.Stage,
     skeleton: Any,
-    bones: List[Tuple],
+    model: Optional[Any] = None,
+    bones_info: Optional[List[Tuple]] = None,
     twig_placements: Optional[Dict[str, List[Dict]]] = None,
     verbose: bool = False,
 ) -> None:
@@ -888,6 +951,19 @@ def _build_usdskel_from_bones(
     1. SkelRoot MUST have SkelBindingAPI applied
     2. SkelRoot MUST have skel:skeleton relationship pointing to Skeleton prim
     3. Mesh should NOT have any skel:* relationships (those go on SkelRoot only)
+
+    CRITICAL for proper vertex-to-bone mapping:
+    - If bones_info is provided AND model has point_attribute_bone_id, uses direct mapping
+    - This is the preferred method as it uses Grove's internal vertex-to-bone assignments
+    - Falls back to distance-based mapping only if point_attribute_bone_id is unavailable
+
+    Args:
+        stage: USD stage to add skeleton to
+        skeleton: Grove skeleton object with points and poly_lines
+        model: Optional Grove model with point_attribute_bone_id for direct mapping
+        bones_info: Optional list of bone tuples from grove.tag_bone_id()
+        twig_placements: Optional twig placement data (deprecated)
+        verbose: Whether to print debug information
     """
     # Find mesh prim
     mesh_prim = None
@@ -933,83 +1009,106 @@ def _build_usdskel_from_bones(
     bind_transforms = []
     rest_transforms = []
 
-    skeleton_points = skeleton.points
-    skeleton_polylines = skeleton.poly_lines
+    # Get tree offset for local space conversion
+    tree_offset = (
+        Gf.Vec3d(model.location.x, model.location.y, model.location.z)
+        if model and hasattr(model, "location") and model.location
+        else Gf.Vec3d(0, 0, 0)
+    )
 
-    # Convert points to tuples
-    def to_tuple(point):
-        if isinstance(point, tuple):
-            return point
-        elif hasattr(point, "x"):
-            return (point.x, point.y, point.z)
-        else:
-            return tuple(point)
+    # Build joint hierarchy from bones_info if available
 
-    skeleton_points = [to_tuple(p) for p in skeleton_points]
+    # bones_info format: (is_tree_root, parent_bone_id, start_point, end_point, radius, mass, is_branch_root, branch_id)
+    # CRITICAL: parent_bone_id values in bones_info are already global bone indices across all trees
+    # However, bone indices in the array restart at 0 for each tree
 
-    # Calculate tree offset from root point to convert world space to local space
-    # The mesh geometry is exported in local space (near origin), but skeleton points
-    # are in world space from grove.add_new_tree(position, ...). We need to subtract
-    # this offset so skeleton and mesh are in the same coordinate space.
-    if skeleton_points and skeleton_polylines and skeleton_polylines[0]:
-        root_point_idx = skeleton_polylines[0][0]
-        root_point = skeleton_points[root_point_idx]
-        tree_offset = Gf.Vec3d(root_point[0], root_point[1], root_point[2])
+    # Calculate bone ID offset from first bone
+    # If first bone is tree root and parent_bone_id > 0, that's the offset
+    # If first bone is tree root and parent_bone_id == 0, this is the first tree (offset = 0)
+    first_bone = bones_info[0]
+    is_tree_root, parent_bone_id = first_bone[0], first_bone[1]
+
+    if is_tree_root and parent_bone_id == 0:
+        bone_id_offset = 0  # First tree in grove
+    elif is_tree_root:
+        bone_id_offset = (
+            parent_bone_id  # Subsequent tree, offset by previous tree's bone count
+        )
     else:
-        tree_offset = Gf.Vec3d(0, 0, 0)
+        # Not a tree root (shouldn't happen for first bone)
+        bone_id_offset = 0
 
-    # Build joint hierarchy from polylines
+    if verbose:
+        print(f"Building skeleton from bones_info ({len(bones_info)} bones)")
+        print(f"  Bone ID offset: {bone_id_offset}")
+        print(f"  Tree offset: {tree_offset}")
+
+    # Build joints using bones_info
+    bone_id_to_joint_path = {}
     bone_positions = {}
-    point_to_joint_path = {}
-    point_to_joint_index = {}
 
-    joint_counter = 0
+    for bone_idx, bone_info in enumerate(bones_info):
+        (
+            is_tree_root,
+            parent_bone_id,
+            start_point,
+            end_point,
+            radius,
+            mass,
+            is_branch_root,
+            branch_id,
+        ) = bone_info
 
-    for polyline_idx, polyline in enumerate(skeleton_polylines):
-        prev_joint_path = None
-        start_idx = 1 if polyline_idx > 0 else 0
+        # Global bone ID = local index + offset
+        global_bone_id = bone_id_offset + bone_idx
 
-        for i, point_idx in enumerate(polyline[start_idx:], start=start_idx):
-            point = skeleton_points[point_idx]
-            world_pos = Gf.Vec3d(point[0], point[1], point[2])
-            # Convert to local space by subtracting tree offset
-            local_pos = world_pos - tree_offset
+        # Convert start point to local space (relative to tree origin)
+        world_pos = Gf.Vec3d(start_point.x, start_point.y, start_point.z)
+        local_pos = world_pos - tree_offset
+        bone_positions[global_bone_id] = local_pos
 
-            joint_name = f"joint_{joint_counter}"
-            point_to_joint_index[point_idx] = joint_counter
-            joint_counter += 1
+        # Name joints: "root" for first joint (bone 0), "joint_N" for rest
+        if global_bone_id == 0:
+            joint_name = "root"
+        else:
+            joint_name = f"joint_{global_bone_id}"
 
-            if i == start_idx:
-                if polyline_idx == 0:
-                    joint_path = joint_name
-                else:
-                    shared_point_idx = polyline[0]
-                    parent_joint_path = point_to_joint_path[shared_point_idx]
-                    joint_path = f"{parent_joint_path}/{joint_name}"
+        # Build joint path using parent_bone_id (which is already global)
+        if global_bone_id == 0:
+            # True root bone
+            joint_path = joint_name
+        else:
+            # Find parent's joint path using the global parent_bone_id from bones_info
+            parent_path = bone_id_to_joint_path.get(parent_bone_id)
+            if parent_path:
+                joint_path = f"{parent_path}/{joint_name}"
             else:
-                joint_path = f"{prev_joint_path}/{joint_name}"
+                # Fallback: attach to root if parent not found
+                if verbose:
+                    print(
+                        f"WARNING: Parent bone {parent_bone_id} not found for bone {global_bone_id}, attaching to root"
+                    )
+                joint_path = f"root/{joint_name}"
 
-            point_to_joint_path[point_idx] = joint_path
-            joint_tokens.append(joint_path)
-            bone_positions[point_idx] = local_pos  # Store local position
+        bone_id_to_joint_path[global_bone_id] = joint_path
+        joint_tokens.append(joint_path)
 
-            # Create bind transform with local position
-            bind_transform = Gf.Matrix4d(1.0)
-            bind_transform.SetTranslateOnly(local_pos)
-            bind_transforms.append(bind_transform)
+        # Create bind transform (absolute position in local space)
+        bind_transform = Gf.Matrix4d(1.0)
+        bind_transform.SetTranslateOnly(local_pos)
+        bind_transforms.append(bind_transform)
 
-            if i == 0:
-                relative_pos = local_pos
-            else:
-                prev_point_idx = polyline[i - 1]
-                parent_pos = bone_positions.get(prev_point_idx, Gf.Vec3d(0, 0, 0))
-                relative_pos = local_pos - parent_pos
+        # Create rest transform (position relative to parent)
+        if global_bone_id == 0:
+            # Root bone uses absolute position
+            relative_pos = local_pos
+        else:
+            parent_pos = bone_positions.get(parent_bone_id, Gf.Vec3d(0, 0, 0))
+            relative_pos = local_pos - parent_pos
 
-            rest_transform = Gf.Matrix4d(1.0)
-            rest_transform.SetTranslateOnly(relative_pos)
-            rest_transforms.append(rest_transform)
-
-            prev_joint_path = joint_path
+        rest_transform = Gf.Matrix4d(1.0)
+        rest_transform.SetTranslateOnly(relative_pos)
+        rest_transforms.append(rest_transform)
 
     # Set skeleton attributes
     skel.CreateJointsAttr(joint_tokens)
@@ -1064,33 +1163,62 @@ def _build_usdskel_from_bones(
         points = points_attr.Get()
         num_vertices = len(points)
 
-        # Create simple rigid binding: all vertices bound to root joint (joint_0)
-        # For proper skinning, this would need to calculate weights based on vertex positions
         joint_indices = []
         joint_weights = []
 
-        for _ in range(num_vertices):
-            # Bind each vertex to joint 0 with full weight
-            # Using 2 influences per vertex (elementSize = 2)
-            joint_indices.extend([0, 0])
-            joint_weights.extend([1.0, 0.0])
+        # CRITICAL: Use direct vertex-to-bone mapping if available
+        # Grove provides point_attribute_bone_id after calling tag_bone_id() before build_models()
+        if model and hasattr(model, "point_attribute_bone_id"):
+            bone_ids = model.point_attribute_bone_id
+
+            if verbose:
+                print(
+                    f"Using direct vertex-to-bone mapping via point_attribute_bone_id"
+                )
+                print(f"  Vertices: {len(bone_ids)}, Joints: {len(joint_tokens)}")
+                # Debug: show unique bone IDs and their distribution
+                unique_ids = set(bone_ids)
+                print(f"  Unique bone IDs found: {sorted(unique_ids)}")
+                print(f"  Bone ID range: {min(bone_ids)} to {max(bone_ids)}")
+
+            # Direct mapping: bone_ids are already the joint indices
+            # Each vertex is rigidly bound (weight=1.0) to its assigned bone
+            joint_indices = list(bone_ids)
+            joint_weights = [1.0] * len(bone_ids)
+
+        else:
+            # Fallback: simple rigid binding to root joint
+            # This should only happen if tag_bone_id() wasn't called before build_models()
+            if verbose:
+                print(
+                    f"WARNING: point_attribute_bone_id not available, using fallback rigid binding"
+                )
+                print(
+                    f"  Make sure to call grove.build_skeletons() and grove.tag_bone_id() BEFORE grove.build_models()"
+                )
+
+            for _ in range(num_vertices):
+                # Bind each vertex to joint 0 with full weight
+                # Using 1 influence per vertex (rigid binding)
+                joint_indices.append(0)
+                joint_weights.append(1.0)
 
         # Create primvars for skinning
         primvars_api = UsdGeom.PrimvarsAPI(mesh_prim)
 
-        # Joint indices primvar
+        # Joint indices primvar (1 influence per vertex for rigid binding)
         joint_indices_primvar = primvars_api.CreatePrimvar(
             "skel:jointIndices", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.vertex
         )
         joint_indices_primvar.Set(joint_indices)
-        joint_indices_primvar.SetElementSize(2)
+        joint_indices_primvar.SetElementSize(1)
 
-        # Joint weights primvar
+        # Joint weights primvar (1 influence per vertex for rigid binding)
         joint_weights_primvar = primvars_api.CreatePrimvar(
             "skel:jointWeights", Sdf.ValueTypeNames.FloatArray, UsdGeom.Tokens.vertex
         )
         joint_weights_primvar.Set(joint_weights)
-        joint_weights_primvar.SetElementSize(2)
+        joint_weights_primvar.SetElementSize(1)
 
 
 def add_twig_skeleton_to_usd(
@@ -1454,7 +1582,5 @@ def bundle_twigs_for_species(
 
     except Exception as e:
         pass
-
-    return results
 
     return results

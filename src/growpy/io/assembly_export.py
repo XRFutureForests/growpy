@@ -37,56 +37,6 @@ from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel
 
 from ..core.twig import extract_twig_placements_from_model
 
-def _extract_twig_placements_from_usd(usd_path: Path) -> Dict[str, List[Dict]]:
-    """Extract twig placements from USD primvars written by tree_export.
-
-    Reads position/normal/scale primvars for each twig type from the tree skeletal mesh.
-    """
-    placements = {}
-    try:
-        stage = Usd.Stage.Open(str(usd_path))
-        if not stage:
-            return placements
-
-        for prim in stage.Traverse():
-            if prim.IsA(UsdGeom.Mesh):
-                mesh = UsdGeom.Mesh(prim)
-                primvars_api = UsdGeom.PrimvarsAPI(mesh)
-
-                # Check for twig primvars
-                for twig_type in [
-                    "twig_long",
-                    "twig_short",
-                    "twig_upward",
-                    "twig_dead",
-                ]:
-                    pos_primvar = primvars_api.GetPrimvar(f"{twig_type}_position")
-                    normal_primvar = primvars_api.GetPrimvar(f"{twig_type}_normal")
-                    scale_primvar = primvars_api.GetPrimvar(f"{twig_type}_scale")
-
-                    if pos_primvar and normal_primvar:
-                        positions = pos_primvar.Get()
-                        normals = normal_primvar.Get()
-                        scales = (
-                            scale_primvar.Get()
-                            if scale_primvar
-                            else [1.0] * len(positions)
-                        )
-
-                        if positions and normals:
-                            placements[twig_type] = []
-                            for i in range(len(positions)):
-                                placements[twig_type].append(
-                                    {
-                                        "position": tuple(positions[i]),
-                                        "normal": tuple(normals[i]),
-                                        "scale": scales[i] if i < len(scales) else 1.0,
-                                    }
-                                )
-    except Exception as e:
-        pass
-
-    return placements
 
 def create_assembly(
     tree_usd_path: Path,
@@ -222,6 +172,7 @@ def create_assembly(
                                 "position": p.position,
                                 "normal": p.normal,
                                 "scale": p.scale,
+                                "bone_id": p.bone_id,  # CRITICAL: Include bone ID for perfect binding
                             }
                             for p in placement_list
                         ]
@@ -405,13 +356,13 @@ def create_assembly(
                         # Get primvars API for creating custom attributes
                         primvars_api = UsdGeom.PrimvarsAPI(instancer_prim)
 
-                        # Extract skeleton joints from tree USD (positions and paths)
-                        skeleton_joints = _extract_skeleton_joints_from_usd(
-                            tree_usd_path
-                        )
+                        # Extract joint names array from tree skeleton
+                        # Joint names are hierarchical paths like "joint_0/joint_1/joint_2"
+                        joint_names = _extract_joint_names_from_usd(tree_usd_path)
 
-                        # Build bindJoints array - each twig instance binds to nearest tree joint
-                        # These control INSTANCE transforms, not vertex deformation
+                        # Build bindJoints array using direct bone IDs from twig placements
+                        # CRITICAL: Perfect binding - each twig bound to exact bone controlling
+                        # the face it's placed on (from point_attribute_bone_id)
                         bind_joints = []
                         bind_weights = []
 
@@ -424,19 +375,22 @@ def create_assembly(
                                 continue
 
                             for placement in placement_list:
-                                # Get twig position
-                                twig_pos = placement.get("position", (0, 0, 0))
+                                # Get bone ID directly from placement (from point_attribute_bone_id)
+                                # Handle both TwigPlacement objects and dict representations
+                                if isinstance(placement, dict):
+                                    bone_id = placement.get("bone_id")
+                                else:
+                                    # TwigPlacement object
+                                    bone_id = getattr(placement, "bone_id", None)
 
-                                # Find nearest tree skeleton joint
-                                if skeleton_joints:
-                                    nearest_joint, distance = _find_nearest_joint(
-                                        Gf.Vec3f(twig_pos[0], twig_pos[1], twig_pos[2]),
-                                        skeleton_joints,
-                                    )
-                                    bind_joints.append(nearest_joint)
+                                if bone_id is not None and bone_id < len(joint_names):
+                                    # Perfect mapping: bone ID is index into joints array
+                                    # Use the hierarchical joint path from skeleton
+                                    joint_path = joint_names[bone_id]
+                                    bind_joints.append(joint_path)
                                     bind_weights.append(1.0)
                                 else:
-                                    # Fallback to root if no skeleton joints found
+                                    # Fallback to root if no bone ID or out of range
                                     bind_joints.append("joint_0")
                                     bind_weights.append(1.0)
 
@@ -495,11 +449,13 @@ def create_assembly(
         traceback.print_exc()
         return False
 
+
 def export_tree_as_nanite_assembly(
     model: Any,
     skeleton: Optional[Any],
     output_path: Path,
     species_name: str,
+    bones_info: Optional[List] = None,
     twig_usd_paths: Optional[Dict[str, Path]] = None,
     include_twigs: bool = True,
     use_skeletal_mesh: bool = False,
@@ -514,11 +470,14 @@ def export_tree_as_nanite_assembly(
     Note: Model must already be built with desired quality settings.
     Call grove.build_models({...}) before passing model to this function.
 
+    CRITICAL: For skeletal export, bones_info must be provided from grove.tag_bone_id()
+
     Args:
         model: Grove tree model from grove.build_models()
         skeleton: Optional Grove skeleton from grove.build_skeletons()
         output_path: Path for Nanite Assembly USDA file
         species_name: Tree species name
+        bones_info: Optional list of bone tuples from grove.tag_bone_id() for this specific tree
         twig_usd_paths: Dict mapping twig types to USD paths
         include_twigs: Whether to include twig instances
         use_skeletal_mesh: Use skeletal mesh type (for animation)
@@ -551,6 +510,7 @@ def export_tree_as_nanite_assembly(
         if not build_tree_mesh(
             model=model,
             skeleton=skeleton,
+            bones_info=bones_info,
             output_path=temp_tree_path,
             up_axis="Z",
             triangulated=True,
@@ -561,7 +521,9 @@ def export_tree_as_nanite_assembly(
         twig_placements = None
         if include_twigs:
             try:
-                twig_placements = extract_twig_placements_from_model(model)
+                twig_placements = extract_twig_placements_from_model(
+                    model, bones_info=bones_info
+                )
                 total_twigs = sum(len(p) for p in twig_placements.values())
                 if total_twigs > 0:
                     pass
@@ -624,185 +586,6 @@ def export_tree_as_nanite_assembly(
         traceback.print_exc()
         return False
 
-def _copy_skeleton_to_assembly(
-    source_usd_path: Path,
-    assembly_stage: Usd.Stage,
-    assembly_root_path: str,
-) -> bool:
-    """Copy skeleton hierarchy from source USD into assembly file.
-
-    This extracts the SkelRoot/Skeleton prims from the source file
-    and adds them directly to the assembly, allowing static meshes
-    to reference the geometry while the skeleton controls animation.
-
-    Args:
-        source_usd_path: Path to skeletal USD with embedded skeleton
-        assembly_stage: Target assembly stage to add skeleton to
-        assembly_root_path: Path to assembly root prim (e.g., "/TreeName_NaniteAssembly")
-
-    Returns:
-        bool: Success status
-    """
-    try:
-        source_stage = Usd.Stage.Open(str(source_usd_path))
-
-        # Find SkelRoot in source
-        skel_root_prim = None
-        for prim in source_stage.Traverse():
-            if prim.IsA(UsdSkel.Root):
-                skel_root_prim = prim
-                break
-
-        if not skel_root_prim:
-            return False
-
-        # Create SkelRoot in assembly
-        assembly_skel_root = assembly_stage.DefinePrim(
-            f"{assembly_root_path}/SkelRoot", "SkelRoot"
-        )
-
-        # Copy skeleton prim recursively
-        def copy_prim_hierarchy(source_prim, target_parent_path, skip_mesh=False):
-            """Recursively copy prim and its children.
-
-            Args:
-                source_prim: Source prim to copy from
-                target_parent_path: Target parent path
-                skip_mesh: If True, skip copying Mesh prims (we only want skeleton structure)
-            """
-            # CRITICAL: Skip Mesh prims - we only want the skeleton structure
-            # The actual mesh geometry will be referenced externally
-            if skip_mesh and source_prim.GetTypeName() == "Mesh":
-                return
-
-            # Create target prim with same type
-            target_path = f"{target_parent_path}/{source_prim.GetName()}"
-            target_prim = assembly_stage.DefinePrim(
-                target_path, source_prim.GetTypeName()
-            )
-
-            # Copy attributes
-            for attr in source_prim.GetAttributes():
-                attr_name = attr.GetName()
-                # Skip xform ops and problematic computed attributes
-                if attr_name.startswith("xformOp") or attr_name == "extent":
-                    continue
-
-                value = attr.Get()
-                if value is not None:  # Only set if value exists
-                    target_attr = target_prim.CreateAttribute(
-                        attr_name, attr.GetTypeName()
-                    )
-                    target_attr.Set(value)
-
-            # Copy metadata (API schemas, etc.)
-            for key in source_prim.GetAllMetadata():
-                if key not in ["specifier", "typeName"]:  # Skip auto-managed metadata
-                    target_prim.SetMetadata(key, source_prim.GetMetadata(key))
-
-            # Copy relationships
-            for rel in source_prim.GetRelationships():
-                target_rel = target_prim.CreateRelationship(rel.GetName())
-                for target in rel.GetTargets():
-                    # Adjust relationship paths to assembly
-                    adjusted_target = str(target).replace(
-                        source_prim.GetPath().GetParentPath().pathString,
-                        target_parent_path,
-                    )
-                    target_rel.AddTarget(adjusted_target)
-
-            # Recursively copy children (propagate skip_mesh flag)
-            for child in source_prim.GetChildren():
-                copy_prim_hierarchy(child, target_path, skip_mesh=skip_mesh)
-
-        # Copy SkelRoot and all descendants, but SKIP mesh geometry
-        # The mesh will be referenced externally via tree_mesh
-        copy_prim_hierarchy(skel_root_prim, assembly_root_path, skip_mesh=True)
-
-        return True
-
-    except Exception as e:
-        return False
-
-def _extract_skeleton_joints_from_usd(
-    tree_usd_path: Path,
-) -> Dict[str, "Gf.Vec3d"]:
-    """Extract skeleton joint names and positions from tree USD file.
-
-    Args:
-        tree_usd_path: Path to skeletal tree USD file
-
-    Returns:
-        Dictionary mapping joint names to their world positions
-    """
-    joint_positions = {}
-
-    try:
-        stage = Usd.Stage.Open(str(tree_usd_path))
-
-        # Find skeleton primitive
-        for prim in stage.Traverse():
-            if prim.IsA(UsdSkel.Skeleton):
-                skeleton = UsdSkel.Skeleton(prim)
-
-                # Get joint names
-                joints_attr = skeleton.GetJointsAttr()
-                if not joints_attr:
-                    continue
-
-                joint_names = joints_attr.Get()
-
-                # Get bind transforms (joint rest positions in world space)
-                bind_transforms_attr = skeleton.GetBindTransformsAttr()
-                if not bind_transforms_attr:
-                    continue
-
-                bind_transforms = bind_transforms_attr.Get()
-
-                # Extract position from each transform matrix
-                for joint_name, transform in zip(joint_names, bind_transforms):
-                    # Get translation component from matrix
-                    position = transform.ExtractTranslation()
-                    joint_positions[joint_name] = position
-
-                break  # Found skeleton, stop searching
-
-    except Exception as e:
-        pass
-
-    return joint_positions
-
-def _find_nearest_joint(
-    position: "Gf.Vec3f", skeleton_joints: Dict[str, "Gf.Vec3d"]
-) -> tuple[str, float]:
-    """Find the nearest skeleton joint to a given position.
-
-    Args:
-        position: Twig mount position
-        skeleton_joints: Dictionary of joint names to positions
-
-    Returns:
-        Tuple of (nearest_joint_name, distance)
-    """
-    if not skeleton_joints:
-        return ("Root", float("inf"))
-
-    nearest_joint = "Root"
-    nearest_distance = float("inf")
-
-    # Convert position to Vec3d for consistent math
-    pos_vec = Gf.Vec3d(position[0], position[1], position[2])
-
-    for joint_name, joint_pos in skeleton_joints.items():
-        # Calculate Euclidean distance
-        delta = pos_vec - joint_pos
-        distance = (delta[0] ** 2 + delta[1] ** 2 + delta[2] ** 2) ** 0.5
-
-        if distance < nearest_distance:
-            nearest_distance = distance
-            nearest_joint = joint_name
-
-    return (nearest_joint, nearest_distance)
 
 def validate_assembly(usd_path: Path) -> Dict[str, Any]:
     """Validate an assembly USD file for Unreal Engine compatibility.
@@ -960,103 +743,36 @@ def validate_assembly(usd_path: Path) -> Dict[str, Any]:
 
     return result
 
-def _extract_twig_joint_mapping_from_usd(tree_usd_path: Path) -> Dict[str, str]:
-    """Extract twig joint mapping from tree USD metadata.
 
-    The skeleton building process stores a mapping of twig placement indices
-    to dedicated twig mount bone names in the USD stage metadata.
+def _extract_joint_names_from_usd(tree_usd_path: Path) -> List[str]:
+    """Extract joint names array from tree USD skeleton.
 
-    Args:
-        tree_usd_path: Path to tree USD with skeleton
-
-    Returns:
-        Dict mapping twig keys (e.g., "twig_long_0") to joint paths (e.g., "root/joint_1/twig_0")
-    """
-    try:
-        from pxr import Usd
-
-        stage = Usd.Stage.Open(str(tree_usd_path))
-        if not stage:
-            return {}
-
-        # Extract twig joint mapping from customLayerData
-        custom_data = stage.GetMetadata("customLayerData")
-        if custom_data and isinstance(custom_data, dict):
-            twig_joint_names = custom_data.get("twig_joint_names", {})
-            if twig_joint_names:
-                return twig_joint_names
-
-        return {}
-
-    except Exception as e:
-        return {}
-
-def _extract_skeleton_joints_from_usd(tree_usd_path: Path) -> Dict[str, Gf.Vec3d]:
-    """Extract skeleton joint names and positions from tree USD file.
+    Joint names are hierarchical paths like "joint_0/joint_1/joint_2".
+    The bone ID from point_attribute_bone_id is an index into this array.
 
     Args:
         tree_usd_path: Path to tree USD with skeleton
 
     Returns:
-        Dict mapping joint names to their world positions
+        List of joint names in skeleton order
     """
     try:
         from pxr import Usd, UsdSkel
 
         stage = Usd.Stage.Open(str(tree_usd_path))
-        joints_map = {}
 
-        # Find skeleton prims
+        # Find skeleton prim
         for prim in stage.Traverse():
             if prim.IsA(UsdSkel.Skeleton):
                 skeleton = UsdSkel.Skeleton(prim)
-
-                # Get joint names and bind transforms
                 joints_attr = skeleton.GetJointsAttr()
-                bind_transforms_attr = skeleton.GetBindTransformsAttr()
 
-                if joints_attr and bind_transforms_attr:
+                if joints_attr:
                     joint_names = joints_attr.Get()
-                    bind_transforms = bind_transforms_attr.Get()
+                    # Convert to list of strings
+                    return [str(name) for name in joint_names]
 
-                    # Extract position from each transform matrix
-                    for i, (joint_name, transform) in enumerate(
-                        zip(joint_names, bind_transforms)
-                    ):
-                        # Get translation component from matrix
-                        position = transform.ExtractTranslation()
-                        joints_map[str(joint_name)] = position
-
-        return joints_map
+        return []
 
     except Exception as e:
-        return {}
-
-def _find_nearest_joint(
-    position: Gf.Vec3f, joints: Dict[str, Gf.Vec3d]
-) -> Tuple[str, float]:
-    """Find the nearest skeleton joint to a given position.
-
-    Args:
-        position: Twig position as Vec3f
-        joints: Dict of joint_name -> joint_position
-
-    Returns:
-        Tuple of (nearest_joint_name, distance)
-    """
-    if not joints:
-        return ("Root", float("inf"))
-
-    # Convert position to Vec3d for calculation
-    pos_d = Gf.Vec3d(position[0], position[1], position[2])
-
-    min_distance = float("inf")
-    nearest_joint = "Root"
-
-    for joint_name, joint_pos in joints.items():
-        distance = (joint_pos - pos_d).GetLength()
-        if distance < min_distance:
-            min_distance = distance
-            nearest_joint = joint_name
-
-    return (nearest_joint, min_distance)
+        return []

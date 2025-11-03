@@ -18,6 +18,7 @@ class TwigPlacement:
     position: Tuple[float, float, float]
     normal: Tuple[float, float, float]
     scale: float = 1.0
+    bone_id: Optional[int] = None  # Direct bone ID from point_attribute_bone_id
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation."""
@@ -26,6 +27,7 @@ class TwigPlacement:
             "position": self.position,
             "normal": self.normal,
             "scale": self.scale,
+            "bone_id": self.bone_id,
         }
 
 
@@ -156,13 +158,16 @@ def rotation_matrix_to_quaternion(
 
 
 def extract_twig_placements_from_model(
-    model: Any, twig_types: Optional[List[str]] = None
+    model: Any,
+    twig_types: Optional[List[str]] = None,
+    bones_info: Optional[List] = None,
 ) -> Dict[str, List[TwigPlacement]]:
     """Extract twig placement data from Grove model.
 
     Args:
-        model: Grove model with face attributes
+        model: Grove model with twig location/orientation/direction methods
         twig_types: List of twig types to extract (default: all known types)
+        bones_info: Optional skeleton bones list for branch-based binding
 
     Returns:
         Dictionary mapping twig type to list of TwigPlacement objects
@@ -172,22 +177,37 @@ def extract_twig_placements_from_model(
 
     placements = {twig_type: [] for twig_type in twig_types}
 
-    vertices = [(v.x, v.y, v.z) for v in model.points]
-    faces = model.faces
+    # Use Grove API methods for twig data - these return flat lists with 3 floats per twig
+    twig_locations = model.get_twig_locations()  # [x1, y1, z1, x2, y2, z2, ...]
+    twig_directions = model.get_twig_directions()  # [dx1, dy1, dz1, dx2, dy2, dz2, ...]
+    twig_orientations = (
+        model.get_twig_orientations()
+    )  # [ox1, oy1, oz1, ox2, oy2, oz2, ...]
 
-    face_normals = []
-    face_normals = []
-    if hasattr(model, "face_attribute_direction"):
-        try:
-            directions = model.face_attribute_direction
-            # Grove face_attribute_direction is a list of Vector objects
-            for direction in directions:
-                if hasattr(direction, "x"):
-                    face_normals.append((direction.x, direction.y, direction.z))
-                else:
-                    face_normals.append(tuple(direction))
-        except Exception:
-            face_normals = []
+    # Calculate number of twigs from flat array length
+    num_twigs = len(twig_locations) // 3
+
+    # Extract bone IDs for binding - prefer branch-based approach if available
+    bone_ids = []
+    if hasattr(model, "point_attribute_bone_id"):
+        bone_ids = model.point_attribute_bone_id
+
+    # Build branch_id → bone_id mapping for proper branch isolation
+    branch_to_bones = {}
+    if bones_info:
+        for bone_idx, bone in enumerate(bones_info):
+            if len(bone) >= 8:
+                branch_id = int(bone[7])
+                if branch_id not in branch_to_bones:
+                    branch_to_bones[branch_id] = []
+                branch_to_bones[branch_id].append(bone_idx)
+
+    # Extract branch IDs for face-level branch isolation
+    face_branch_ids = []
+    if hasattr(model, "face_attribute_branch_id"):
+        face_branch_ids = model.face_attribute_branch_id
+
+    faces = model.faces
 
     for twig_type in twig_types:
         attr_name = f"face_attribute_{twig_type}"
@@ -196,6 +216,9 @@ def extract_twig_placements_from_model(
 
         twig_values = getattr(model, attr_name)
 
+        # Track which twig index we're processing
+        twig_idx = 0
+
         for face_idx, face in enumerate(faces):
             if face_idx >= len(twig_values):
                 break
@@ -203,23 +226,78 @@ def extract_twig_placements_from_model(
             twig_value = twig_values[face_idx]
 
             if twig_value > 0:
-                face_vert_indices = list(face)
-                face_verts = [vertices[i] for i in face_vert_indices]
-                center = (
-                    sum(v[0] for v in face_verts) / len(face_verts),
-                    sum(v[1] for v in face_verts) / len(face_verts),
-                    sum(v[2] for v in face_verts) / len(face_verts),
+                # Check if we still have twig data available
+                if twig_idx >= num_twigs:
+                    break
+
+                # Extract position and normal from flat arrays (3 floats per twig)
+                base_idx = twig_idx * 3
+                position = (
+                    twig_locations[base_idx],
+                    twig_locations[base_idx + 1],
+                    twig_locations[base_idx + 2],
+                )
+                normal = (
+                    twig_directions[base_idx],
+                    twig_directions[base_idx + 1],
+                    twig_directions[base_idx + 2],
                 )
 
-                if face_idx < len(face_normals):
-                    normal = face_normals[face_idx]
-                else:
-                    _, normal = get_face_center_and_normal(vertices, face_vert_indices)
+                # BRANCH-BASED BINDING: Use face_attribute_branch_id to restrict binding to current branch
+                twig_bone_id = None
+
+                if (
+                    face_branch_ids
+                    and face_idx < len(face_branch_ids)
+                    and branch_to_bones
+                ):
+                    # PREFERRED: Use branch-based binding for perfect branch isolation
+                    face_branch_id = face_branch_ids[face_idx]
+                    branch_bones = branch_to_bones.get(face_branch_id, [])
+
+                    if branch_bones and bone_ids:
+                        # Within this branch, find which bone_id is most common among face vertices
+                        from collections import Counter
+
+                        face_vert_indices = list(face)
+                        face_bone_ids = []
+                        for vert_idx in face_vert_indices:
+                            if vert_idx < len(bone_ids):
+                                bone_id = bone_ids[vert_idx]
+                                # Only consider bones that belong to this branch
+                                if bone_id in branch_bones:
+                                    face_bone_ids.append(bone_id)
+
+                        if face_bone_ids:
+                            # Use most common bone within the branch
+                            twig_bone_id = Counter(face_bone_ids).most_common(1)[0][0]
+                        elif branch_bones:
+                            # Fallback: use first bone in branch (usually branch root)
+                            twig_bone_id = branch_bones[0]
+
+                elif bone_ids:
+                    # FALLBACK: Use vertex-based voting without branch filtering
+                    from collections import Counter
+
+                    face_vert_indices = list(face)
+                    face_bone_ids = []
+                    for vert_idx in face_vert_indices:
+                        if vert_idx < len(bone_ids):
+                            face_bone_ids.append(bone_ids[vert_idx])
+
+                    if face_bone_ids:
+                        twig_bone_id = Counter(face_bone_ids).most_common(1)[0][0]
 
                 placement = TwigPlacement(
-                    type=twig_type, position=center, normal=normal, scale=1.0
+                    type=twig_type,
+                    position=position,
+                    normal=normal,
+                    scale=1.0,
+                    bone_id=twig_bone_id,
                 )
                 placements[twig_type].append(placement)
+
+                twig_idx += 1
 
     return placements
 
@@ -248,57 +326,3 @@ def calculate_twig_transform(
         "quaternion": quaternion,
         "scale": (scale, scale, scale),
     }
-
-
-def convert_y_up_to_z_up(
-    pos: Tuple[float, float, float], scale: float = 1.0
-) -> Tuple[float, float, float]:
-    """Convert Y-up coordinates to Z-up.
-
-    Args:
-        pos: Position in Y-up coordinates (x, y, z)
-        scale: Scale factor to apply
-
-    Returns:
-        Position in Z-up coordinates (x, y, z)
-    """
-    return (pos[0] * scale, -pos[2] * scale, pos[1] * scale)
-
-
-def convert_y_up_normal_to_z_up(
-    normal: Tuple[float, float, float],
-) -> Tuple[float, float, float]:
-    """Convert Y-up normal vector to Z-up orientation.
-
-    Args:
-        normal: Normal in Y-up coordinates (x, y, z)
-
-    Returns:
-        Normal in Z-up coordinates (x, y, z)
-    """
-    return (normal[0], -normal[2], normal[1])
-
-
-def group_twigs_by_type(
-    placements: Dict[str, List[TwigPlacement]],
-) -> Dict[str, List[Dict[str, Any]]]:
-    """Group twig placements by type with full transforms.
-
-    Args:
-        placements: Dictionary of twig type to TwigPlacement list
-
-    Returns:
-        Dictionary of twig type to list of transform dictionaries
-    """
-    grouped = {}
-
-    for twig_type, placement_list in placements.items():
-        transforms = []
-        for placement in placement_list:
-            transform = calculate_twig_transform(
-                placement.position, placement.normal, placement.scale
-            )
-            transforms.append(transform)
-        grouped[twig_type] = transforms
-
-    return grouped
