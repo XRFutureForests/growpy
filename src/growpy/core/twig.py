@@ -41,7 +41,6 @@ def get_face_center_and_normal(
     Returns:
         Tuple of (center, normal) where both are (x, y, z) tuples
     """
-    # Calculate center
     face_verts = [vertices[i] for i in face]
     center = (
         sum(v[0] for v in face_verts) / len(face_verts),
@@ -49,7 +48,6 @@ def get_face_center_and_normal(
         sum(v[2] for v in face_verts) / len(face_verts),
     )
 
-    # Calculate normal using Newell's method for robustness
     normal = [0.0, 0.0, 0.0]
     for i in range(len(face_verts)):
         v1 = face_verts[i]
@@ -58,7 +56,6 @@ def get_face_center_and_normal(
         normal[1] += (v1[2] - v2[2]) * (v1[0] + v2[0])
         normal[2] += (v1[0] - v2[0]) * (v1[1] + v2[1])
 
-    # Normalize
     length = math.sqrt(sum(n * n for n in normal))
     if length > 0:
         normal = tuple(n / length for n in normal)
@@ -71,9 +68,6 @@ def get_face_center_and_normal(
 def normal_to_rotation_matrix(normal: Tuple[float, float, float]) -> List[List[float]]:
     """Convert normal vector to rotation matrix.
 
-    The Grove expects twigs to be modeled along the X-axis (base at origin, growing +X).
-    This creates a rotation matrix that aligns the X-axis with the given normal vector.
-
     Args:
         normal: Normal vector (x, y, z)
 
@@ -82,16 +76,12 @@ def normal_to_rotation_matrix(normal: Tuple[float, float, float]) -> List[List[f
     """
     nx, ny, nz = normal
 
-    # Build orthonormal basis with X-axis aligned to normal
     x_axis = normal
 
-    # Find perpendicular vector for Y-axis
     if abs(nz) > 0.9:
         ref = (1.0, 0.0, 0.0)
     else:
         ref = (0.0, 0.0, 1.0)
-
-    # Y-axis = normalize(ref cross x_axis)
     y_axis = (
         ref[1] * x_axis[2] - ref[2] * x_axis[1],
         ref[2] * x_axis[0] - ref[0] * x_axis[2],
@@ -103,7 +93,6 @@ def normal_to_rotation_matrix(normal: Tuple[float, float, float]) -> List[List[f
     else:
         y_axis = (0.0, 1.0, 0.0)
 
-    # Z-axis = x_axis cross y_axis
     z_axis = (
         x_axis[1] * y_axis[2] - x_axis[2] * y_axis[1],
         x_axis[2] * y_axis[0] - x_axis[0] * y_axis[2],
@@ -120,9 +109,7 @@ def normal_to_rotation_matrix(normal: Tuple[float, float, float]) -> List[List[f
 def rotation_matrix_to_quaternion(
     matrix: List[List[float]],
 ) -> Tuple[float, float, float, float]:
-    """Convert 3x3 rotation matrix to normalized quaternion (w, x, y, z).
-
-    Uses Shepperd's method for numerical stability.
+    """Convert 3x3 rotation matrix to normalized quaternion.
 
     Args:
         matrix: 3x3 rotation matrix as list of lists
@@ -161,7 +148,6 @@ def rotation_matrix_to_quaternion(
         y = (m12 + m21) / s
         z = 0.25 * s
 
-    # Normalize
     length = math.sqrt(w * w + x * x + y * y + z * z)
     if length > 0:
         return (w / length, x / length, y / length, z / length)
@@ -186,11 +172,10 @@ def extract_twig_placements_from_model(
 
     placements = {twig_type: [] for twig_type in twig_types}
 
-    # Get geometry data from Grove model
     vertices = [(v.x, v.y, v.z) for v in model.points]
-    faces = model.faces  # List of faces, where each face is a list of vertex indices
+    faces = model.faces
 
-    # Get pre-computed face normals from Grove
+    face_normals = []
     face_normals = []
     if hasattr(model, "face_attribute_direction"):
         try:
@@ -200,13 +185,10 @@ def extract_twig_placements_from_model(
                 if hasattr(direction, "x"):
                     face_normals.append((direction.x, direction.y, direction.z))
                 else:
-                    # Fallback if direction is already a tuple
                     face_normals.append(tuple(direction))
         except Exception:
-            # Fallback to calculation if extraction fails
             face_normals = []
 
-    # Get face attributes for each twig type
     for twig_type in twig_types:
         attr_name = f"face_attribute_{twig_type}"
         if not hasattr(model, attr_name):
@@ -214,18 +196,14 @@ def extract_twig_placements_from_model(
 
         twig_values = getattr(model, attr_name)
 
-        # Iterate through each face
         for face_idx, face in enumerate(faces):
             if face_idx >= len(twig_values):
                 break
 
             twig_value = twig_values[face_idx]
 
-            if twig_value > 0:  # Face has twig placement
-                # Get vertex indices for this face (should be triangle after triangulation)
+            if twig_value > 0:
                 face_vert_indices = list(face)
-
-                # Calculate face center
                 face_verts = [vertices[i] for i in face_vert_indices]
                 center = (
                     sum(v[0] for v in face_verts) / len(face_verts),
@@ -233,7 +211,6 @@ def extract_twig_placements_from_model(
                     sum(v[2] for v in face_verts) / len(face_verts),
                 )
 
-                # Use pre-computed normal from Grove if available, otherwise calculate
                 if face_idx < len(face_normals):
                     normal = face_normals[face_idx]
                 else:
@@ -276,7 +253,7 @@ def calculate_twig_transform(
 def convert_y_up_to_z_up(
     pos: Tuple[float, float, float], scale: float = 1.0
 ) -> Tuple[float, float, float]:
-    """Convert Y-up (Grove/OpenGL) coordinates to Z-up (Blender/USD standard).
+    """Convert Y-up coordinates to Z-up.
 
     Args:
         pos: Position in Y-up coordinates (x, y, z)
