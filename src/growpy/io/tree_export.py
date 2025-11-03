@@ -751,12 +751,22 @@ def _add_model_attributes(mesh: UsdGeom.Mesh, model: Any) -> None:
             if attr_value is None or len(attr_value) == 0:
                 continue
 
+            # Convert branch IDs from global to local indices
+            # This requires branch_id_offset from skeleton building
+            if attr_name in (
+                "face_attribute_branch_id",
+                "face_attribute_branch_id_parent",
+            ):
+                # These will be handled separately with proper offset conversion
+                # For now, skip them - they'll be added after skeleton building
+                continue
+
             usd_type = get_usd_type(attr_value)
             if usd_type is None:
                 continue
 
             # Convert attribute name to PascalCase for USD
-            # e.g., face_attribute_branch_id -> BranchId
+            # e.g., face_attribute_thickness -> Thickness
             primvar_name = "".join(
                 word.capitalize()
                 for word in attr_name.replace("face_attribute_", "").split("_")
@@ -776,6 +786,11 @@ def _add_model_attributes(mesh: UsdGeom.Mesh, model: Any) -> None:
 
     for attr_name in sorted(point_attrs):
         try:
+            # Skip bone_id as it's handled separately in skeleton binding
+            # The jointIndices primvar will have the local bone indices
+            if attr_name == "point_attribute_bone_id":
+                continue
+
             attr_value = getattr(model, attr_name, None)
             if attr_value is None or len(attr_value) == 0:
                 continue
@@ -1027,6 +1042,7 @@ def _build_usdskel_from_bones(
     # If first bone is tree root and parent_bone_id == 0, this is the first tree (offset = 0)
     first_bone = bones_info[0]
     is_tree_root, parent_bone_id = first_bone[0], first_bone[1]
+    first_branch_id = first_bone[7]  # branch_id from tuple
 
     if is_tree_root and parent_bone_id == 0:
         bone_id_offset = 0  # First tree in grove
@@ -1038,9 +1054,15 @@ def _build_usdskel_from_bones(
         # Not a tree root (shouldn't happen for first bone)
         bone_id_offset = 0
 
+    # Calculate branch ID offset
+    # Branch IDs in bones_info are global, we need to convert to local (0-based per tree)
+    # The first bone's branch_id tells us the offset
+    branch_id_offset = first_branch_id
+
     if verbose:
         print(f"Building skeleton from bones_info ({len(bones_info)} bones)")
         print(f"  Bone ID offset: {bone_id_offset}")
+        print(f"  Branch ID offset: {branch_id_offset}")
         print(f"  Tree offset: {tree_offset}")
 
     # Build joints using bones_info
@@ -1067,18 +1089,23 @@ def _build_usdskel_from_bones(
         local_pos = world_pos - tree_offset
         bone_positions[global_bone_id] = local_pos
 
-        # Name joints: "root" for first joint (bone 0), "joint_N" for rest
-        if global_bone_id == 0:
+        # Name joints using LOCAL bone index (bone_idx), not global_bone_id
+        # This ensures joint names match the jointIndices in vertex binding
+        # Tree 0: root, joint_1, joint_2, ...
+        # Tree 1: root, joint_1, joint_2, ... (restart numbering)
+        if bone_idx == 0:
             joint_name = "root"
         else:
-            joint_name = f"joint_{global_bone_id}"
+            joint_name = f"joint_{bone_idx}"
 
-        # Build joint path using parent_bone_id (which is already global)
-        if global_bone_id == 0:
-            # True root bone
+        # Build joint path using parent_bone_id
+        # Convert parent_bone_id from global to local index for this tree
+        if bone_idx == 0:
+            # True root bone (first bone in this tree)
             joint_path = joint_name
         else:
-            # Find parent's joint path using the global parent_bone_id from bones_info
+            # Parent bone ID is global, convert to local by subtracting offset
+            local_parent_id = parent_bone_id - bone_id_offset
             parent_path = bone_id_to_joint_path.get(parent_bone_id)
             if parent_path:
                 joint_path = f"{parent_path}/{joint_name}"
@@ -1086,7 +1113,7 @@ def _build_usdskel_from_bones(
                 # Fallback: attach to root if parent not found
                 if verbose:
                     print(
-                        f"WARNING: Parent bone {parent_bone_id} not found for bone {global_bone_id}, attaching to root"
+                        f"WARNING: Parent bone {parent_bone_id} (local: {local_parent_id}) not found for bone {global_bone_id} (local: {bone_idx}), attaching to root"
                     )
                 joint_path = f"root/{joint_name}"
 
@@ -1099,8 +1126,8 @@ def _build_usdskel_from_bones(
         bind_transforms.append(bind_transform)
 
         # Create rest transform (position relative to parent)
-        if global_bone_id == 0:
-            # Root bone uses absolute position
+        if bone_idx == 0:
+            # Root bone (first bone in this tree) uses absolute position
             relative_pos = local_pos
         else:
             parent_pos = bone_positions.get(parent_bone_id, Gf.Vec3d(0, 0, 0))
@@ -1181,10 +1208,19 @@ def _build_usdskel_from_bones(
                 print(f"  Unique bone IDs found: {sorted(unique_ids)}")
                 print(f"  Bone ID range: {min(bone_ids)} to {max(bone_ids)}")
 
-            # Direct mapping: bone_ids are already the joint indices
-            # Each vertex is rigidly bound (weight=1.0) to its assigned bone
-            joint_indices = list(bone_ids)
+            # Convert global bone IDs to local joint indices
+            # bone_ids from Grove contain global IDs that span across all trees
+            # We need local indices (0, 1, 2...) that match our joint names (root, joint_1, joint_2...)
+            joint_indices = [bone_id - bone_id_offset for bone_id in bone_ids]
             joint_weights = [1.0] * len(bone_ids)
+
+            if verbose:
+                print(f"  Converted to local indices with offset {bone_id_offset}")
+                local_unique_ids = set(joint_indices)
+                print(f"  Local joint indices: {sorted(local_unique_ids)}")
+                print(
+                    f"  Local index range: {min(joint_indices)} to {max(joint_indices)}"
+                )
 
         else:
             # Fallback: simple rigid binding to root joint
@@ -1219,6 +1255,45 @@ def _build_usdskel_from_bones(
         )
         joint_weights_primvar.Set(joint_weights)
         joint_weights_primvar.SetElementSize(1)
+
+        # Add branch ID attributes with local indices
+        # Convert from global branch IDs to local (0-based per tree)
+        if model and hasattr(model, "face_attribute_branch_id"):
+            global_branch_ids = model.face_attribute_branch_id
+            local_branch_ids = [
+                branch_id - branch_id_offset for branch_id in global_branch_ids
+            ]
+
+            branch_id_primvar = primvars_api.CreatePrimvar(
+                "BranchId", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.uniform
+            )
+            branch_id_primvar.Set(local_branch_ids)
+
+            if verbose:
+                print(
+                    f"  Converted BranchId: {len(local_branch_ids)} faces, offset={branch_id_offset}"
+                )
+                print(
+                    f"    Global range: {min(global_branch_ids)}-{max(global_branch_ids)}"
+                )
+                print(
+                    f"    Local range: {min(local_branch_ids)}-{max(local_branch_ids)}"
+                )
+
+        if model and hasattr(model, "face_attribute_branch_id_parent"):
+            global_parent_ids = model.face_attribute_branch_id_parent
+            local_parent_ids = [
+                parent_id - branch_id_offset if parent_id >= 0 else parent_id
+                for parent_id in global_parent_ids
+            ]
+
+            branch_parent_primvar = primvars_api.CreatePrimvar(
+                "BranchIdParent", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.uniform
+            )
+            branch_parent_primvar.Set(local_parent_ids)
+
+            if verbose:
+                print(f"  Converted BranchIdParent: {len(local_parent_ids)} faces")
 
 
 def add_twig_skeleton_to_usd(
