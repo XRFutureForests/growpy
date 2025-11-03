@@ -34,7 +34,6 @@ from pathlib import Path
 
 import pandas as pd
 
-
 def camel_to_snake(name: str) -> str:
     """Convert CamelCase to snake_case with number separation.
 
@@ -57,7 +56,6 @@ def camel_to_snake(name: str) -> str:
     s3 = re.sub("([a-z])([0-9])", r"\1_\2", s2)
     return s3.lower()
 
-
 def standardize_species_name(common_name: str) -> str:
     """Convert species common name to standardized snake_case.
 
@@ -76,7 +74,6 @@ def standardize_species_name(common_name: str) -> str:
     name = re.sub(r"[^\w\s-]", "", common_name.lower())
     name = re.sub(r"[-\s]+", "_", name)
     return name.strip("_")
-
 
 def load_species_csv(csv_path: Path, script_dir: Path) -> pd.DataFrame:
     """Load and validate species CSV.
@@ -105,7 +102,6 @@ def load_species_csv(csv_path: Path, script_dir: Path) -> pd.DataFrame:
     if "species" in df.columns and "Common Name" not in df.columns:
         # Extract unique species names
         unique_species = df["species"].dropna().unique().tolist()
-        print(f"Found {len(unique_species)} unique species")
 
         # Load the asset lookup table
         asset_lookup_path = (
@@ -136,7 +132,7 @@ def load_species_csv(csv_path: Path, script_dir: Path) -> pd.DataFrame:
             if not match.empty:
                 filtered_rows.append(match)
             else:
-                print(f"[WARN] Species '{species}' not found in asset lookup table")
+                pass
 
         if not filtered_rows:
             raise ValueError(
@@ -153,7 +149,6 @@ def load_species_csv(csv_path: Path, script_dir: Path) -> pd.DataFrame:
         raise ValueError(f"CSV missing required columns: {missing}")
 
     return df
-
 
 def main():
     """CSV-driven asset preparation - only copy assets for species in CSV."""
@@ -216,29 +211,21 @@ CSV Format Support:
 
     args = parser.parse_args()
 
-    print("Asset Preparation")
-    print("=" * 40)
-
     # Validate paths
     if not args.grove_dir.exists():
-        print(f"[FAIL] Grove directory not found: {args.grove_dir}")
         return 1
 
     # Override CSV if --all flag is set
     if args.all:
         args.csv = script_dir / "src" / "growpy" / "config" / "tree_asset_lookup.csv"
-        print("Copying all available Grove assets")
 
     if not args.csv.exists():
-        print(f"ERROR: Species CSV not found: {args.csv}")
         return 1
 
     # Load species CSV
     try:
         df = load_species_csv(args.csv, script_dir)
-        print(f"Loaded {len(df)} species")
     except Exception as e:
-        print(f"ERROR: {e}")
         return 1
 
     # Create target directories
@@ -258,7 +245,6 @@ CSV Format Support:
     }
 
     # Copy presets with standardized naming
-    print("\nCopying presets...")
     src_presets = args.grove_dir / "presets"
     dst_presets = args.assets_dir / "presets"
 
@@ -277,13 +263,10 @@ CSV Format Support:
         if src_file.exists():
             shutil.copy2(src_file, dst_file)
             stats["presets_copied"] += 1
-            print(f"  ✓ {preset_file} -> {dst_file.name}")
         else:
             stats["presets_missing"] += 1
-            print(f"  ✗ {preset_file} (not found)")
 
     # Copy twigs (with CamelCase -> snake_case conversion)
-    print("\nCopying twigs...")
     src_twigs = args.grove_dir / "twigs"
     dst_twigs = args.assets_dir / "twigs"
 
@@ -323,13 +306,10 @@ CSV Format Support:
             shutil.copytree(src_twig_dir, dst_twig_dir)
 
             stats["twigs_copied"] += 1
-            print(f"  ✓ {original_name} -> {twig_name_snake}")
         else:
             stats["twigs_missing"] += 1
-            print(f"  ✗ {twig_name_original} (not found)")
 
     # Copy bark textures with CamelCase -> snake_case conversion (preserves age numbers)
-    print("\nCopying textures...")
     src_textures = args.grove_dir / "textures"
     dst_textures = args.assets_dir / "textures"
 
@@ -354,32 +334,19 @@ CSV Format Support:
         if src_file.exists():
             shutil.copy2(src_file, dst_file)
             stats["textures_copied"] += 1
-            print(f"  ✓ {texture_file} -> {dst_file.name}")
         else:
             stats["textures_missing"] += 1
-            print(f"  ✗ {texture_file} (not found)")
 
     # Print summary
-    print(f"\n{'='*40}")
-    print(
-        f"Presets:  {stats['presets_copied']} copied, {stats['presets_missing']} missing"
-    )
-    print(f"Twigs:    {stats['twigs_copied']} copied, {stats['twigs_missing']} missing")
-    print(
-        f"Textures: {stats['textures_copied']} copied, {stats['textures_missing']} missing"
-    )
-    print(f"\nComplete!")
 
     if (
         stats["presets_missing"] > 0
         or stats["twigs_missing"] > 0
         or stats["textures_missing"] > 0
     ):
-        print(f"[WARN] Some assets were not found - check CSV entries")
         return 1
 
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

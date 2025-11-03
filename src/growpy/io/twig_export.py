@@ -20,22 +20,12 @@ import shutil
 import sys
 from pathlib import Path
 
-# Expose Blender's bundled USD module (Blender 4.4+)
-try:
-    import bpy
+import bpy
 
-    if hasattr(bpy.utils, "expose_bundled_modules"):
-        bpy.utils.expose_bundled_modules()
-        from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel, Vt
+if hasattr(bpy.utils, "expose_bundled_modules"):
+    bpy.utils.expose_bundled_modules()
 
-        USD_AVAILABLE = True
-    else:
-        print("Warning: bpy.utils.expose_bundled_modules() not available")
-        print("  Blender 4.4+ required for bundled USD support")
-        USD_AVAILABLE = False
-except ImportError as e:
-    print(f"Warning: Could not import USD from Blender: {e}")
-    USD_AVAILABLE = False
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel, Vt
 
 
 def fix_texture_paths_in_usd(usd_path):
@@ -47,9 +37,6 @@ def fix_texture_paths_in_usd(usd_path):
     Returns:
         bool: True if successful
     """
-    if not USD_AVAILABLE:
-        return False
-
     try:
         stage = Usd.Stage.Open(str(usd_path))
         if not stage:
@@ -74,7 +61,6 @@ def fix_texture_paths_in_usd(usd_path):
         stage.Save()
         return True
     except Exception as e:
-        print(f"      [WARN] Texture path fix failed: {e}")
         return False
 
 
@@ -129,21 +115,16 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
     Returns:
         bool: True if skeleton added successfully
     """
-    if not USD_AVAILABLE:
-        return False
-
     try:
         # Open existing stage
         stage = Usd.Stage.Open(str(usd_path))
         if not stage:
-            print(f"      [WARN] Could not open USD stage: {usd_path.name}")
             return False
 
         # Remove DomeLight artifact from Blender export (if present)
         dome_light = stage.GetPrimAtPath("/root/env_light")
         if dome_light:
             stage.RemovePrim("/root/env_light")
-            print(f"      [OK] Removed DomeLight artifact")
 
         # Ensure texture paths use ./textures/ prefix
         for prim in stage.Traverse():
@@ -170,14 +151,12 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
                 break
 
         if not mesh_prim:
-            print(f"      [WARN] No mesh found in: {usd_path.name}")
             return False
 
         # Verify mesh has vertices
         mesh = UsdGeom.Mesh(mesh_prim)
         points = mesh.GetPointsAttr().Get()
         if not points or len(points) == 0:
-            print(f"      [WARN] Mesh has no vertices: {usd_path.name}")
             return False
 
         # Create skeleton root (CamelCase naming)
@@ -443,7 +422,6 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
         root_prim = stage.GetPrimAtPath("/root")
         if root_prim and root_prim.IsValid():
             stage.RemovePrim(root_prim.GetPath())
-            print(f"      [OK] Removed old /root prim (Blender export artifact)")
 
         # Set Twig as default prim so it's the primary reference target
         twig_prim = stage.GetPrimAtPath("/Twig")
@@ -455,7 +433,6 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
         return True
 
     except Exception as e:
-        print(f"      [ERROR] Adding skeleton: {e}")
         return False
 
 
@@ -578,7 +555,6 @@ def setup_materials_with_textures(
     ]
 
     if not available_textures:
-        print("      No textures found, using default material")
         return False
 
     # Clear existing materials
@@ -662,7 +638,6 @@ def setup_materials_with_textures(
             # Use only top texture
             texture_map["diffuse"] = texture_map["diffuse_top"]
             del texture_map["diffuse_bottom"]
-            print(f"      Note: Using top texture only (both top/bottom found)")
         elif "diffuse_top" in texture_map:
             # Rename diffuse_top to diffuse for standard connection
             texture_map["diffuse"] = texture_map["diffuse_top"]
@@ -672,13 +647,10 @@ def setup_materials_with_textures(
             texture_map["diffuse"] = texture_map["diffuse_bottom"]
             del texture_map["diffuse_bottom"]
 
-        print(f"      Material '{mat_name}': {list(texture_map.keys())}")
-
         # Debug: Show texture file names
         for tex_type, tex_path in texture_map.items():
-            print(f"        - {tex_type}: {tex_path.name}")
+            pass
 
-        # Add texture nodes
         y_offset = 300
 
         # Create textures subdirectory
@@ -798,10 +770,8 @@ def setup_materials_with_textures(
                 y_offset -= 250
 
             except Exception as e:
-                print(f"      Warning: Could not load texture {tex_path.name}: {e}")
+                pass
 
-        # Set material properties for foliage
-        # Specular changed to Specular IOR in Blender 4.x
         if "Specular" in bsdf.inputs:
             bsdf.inputs["Specular"].default_value = 0.3
         elif "Specular IOR" in bsdf.inputs:
@@ -834,10 +804,6 @@ def process_twig_file(
     """
     import bpy
 
-    print("")
-    print(f"Processing: {Path(blend_file).name}")
-    print(f"Species: {species_name}")
-
     # Load blend file
     bpy.ops.wm.open_mainfile(filepath=str(blend_file))
 
@@ -848,10 +814,7 @@ def process_twig_file(
     mesh_objects = [obj for obj in bpy.context.scene.objects if obj.type == "MESH"]
 
     if not mesh_objects:
-        print("  [WARN] No mesh objects found")
         return []
-
-    print(f"  Found {len(mesh_objects)} mesh object(s)")
 
     exported_files = []
     texture_manifest = {}
@@ -888,19 +851,12 @@ def process_twig_file(
 
             standardized_name = "_".join(species_parts)
 
-            print(f"  Processing: {original_name}")
-            print(f"    -> Standardized: {standardized_name}")
-            print(
-                f"    -> Type: {metadata['type']}, Variation: {metadata.get('variation', 'none')}"
-            )
-
             # Center at origin
             obj.location = (0, 0, 0)
             bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 
             # Triangulate mesh to avoid tangent space export warnings
             # This ensures all polygons are triangles before export
-            print(f"    -> Triangulating mesh...")
             bpy.context.view_layer.objects.active = obj
             bpy.ops.object.mode_set(mode="EDIT")
             bpy.ops.mesh.select_all(action="SELECT")
@@ -908,14 +864,12 @@ def process_twig_file(
                 quad_method="BEAUTY", ngon_method="BEAUTY"
             )
             bpy.ops.object.mode_set(mode="OBJECT")
-            print(f"    -> Triangulation complete")
 
             # Note: UV coordinate fixes removed - they were breaking alpha channel
             # The texture orientation issue may be in the original texture files
             # or the way they're mapped in the original .blend files
 
             # Enable two-sided mesh rendering with smooth shading
-            print(f"    -> Configuring mesh for two-sided rendering...")
             bpy.context.view_layer.objects.active = obj
             bpy.ops.object.mode_set(mode="EDIT")
             bpy.ops.mesh.select_all(action="SELECT")
@@ -933,7 +887,6 @@ def process_twig_file(
             obj["TwoSided"] = 1
             obj["DoubleSided"] = True
             obj.data["TwoSided"] = 1
-            print(f"    -> Two-sided rendering configured")
 
             # Create mount point (empty at origin for Unreal PCG attachment)
             mount_point = bpy.data.objects.new(f"{standardized_name}_mount", None)
@@ -945,8 +898,6 @@ def process_twig_file(
             # Parent mesh to mount point for proper hierarchy
             obj.parent = mount_point
 
-            print(f"    -> Created mount point at origin")
-
             # Find and setup materials with textures
             # CRITICAL: Materials are created once and shared by ALL export formats
             # This ensures identical material/texture mapping in FBX and USD
@@ -955,11 +906,10 @@ def process_twig_file(
             )
 
             if material_setup_success:
-                print(f"    -> Materials: {len(obj.data.materials)} with textures")
+                pass
             else:
-                print(f"    -> Materials: {len(obj.data.materials)} (fallback)")
+                pass
 
-            # Select mount point and mesh for export (hierarchical export)
             bpy.ops.object.select_all(action="DESELECT")
             mount_point.select_set(True)
             obj.select_set(True)
@@ -972,7 +922,6 @@ def process_twig_file(
                     skel_export_path = (
                         output_dir / f"{standardized_name}_skeletal.{fmt}"
                     )
-                    print(f"    -> Exporting skeletal USD: {skel_export_path.name}")
 
                     bpy.ops.wm.usd_export(
                         filepath=str(skel_export_path),
@@ -994,19 +943,15 @@ def process_twig_file(
 
                     # Add skeleton directly using Blender's bundled USD
                     # This also fixes texture paths and removes DomeLight
-                    print(f"    -> Adding skeleton to: {skel_export_path.name}")
                     if add_skeleton_to_usd_file(
                         skel_export_path,
                         pivot_point=(0.0, 0.0, 0.0),
                         clean_export=clean_export,
                     ):
-                        print(f"    -> [OK] Skeleton added successfully")
+                        pass
                     else:
-                        print(
-                            f"    -> [WARN] Skeleton addition failed (will need manual step)"
-                        )
+                        pass
 
-            # Store metadata
             texture_manifest[standardized_name] = {
                 "original_name": original_name,
                 "metadata": metadata,
@@ -1018,10 +963,7 @@ def process_twig_file(
                 "export_formats": formats,
             }
 
-            print(f"    -> [OK] Exported successfully")
-
         except Exception as e:
-            print(f"    -> [ERROR] {e}")
             continue
 
     # Note: Manifest file removed - not needed in output
@@ -1031,12 +973,10 @@ def process_twig_file(
     try:
         if blend_file.exists():
             blend_file.unlink()
-            print(f"  [CLEANUP] Removed: {blend_file.name}")
 
         readme_file = output_dir / "ReadMe.txt"
         if readme_file.exists():
             readme_file.unlink()
-            print(f"  [CLEANUP] Removed: ReadMe.txt")
 
         # Remove original source texture files (now standardized copies exist in textures/)
         # Original files use CamelCase or species-specific naming (e.g., BeechAlpha.jpg)
@@ -1060,21 +1000,18 @@ def process_twig_file(
 
                 if not is_standardized:
                     tex_file.unlink()
-                    print(f"  [CLEANUP] Removed original texture: {tex_file.name}")
 
         # Remove any old texture files from root directory only (legacy from previous exports)
         for old_tex in output_dir.glob("*.[jpJP][pnPN][gG]"):
             # Remove root-level textures (textures should be in textures/ subfolder)
             old_tex.unlink()
-            print(f"  [CLEANUP] Removed root-level texture: {old_tex.name}")
 
         # Remove .hdr placeholders from root
         for hdr_file in output_dir.glob("*.hdr"):
             if hdr_file.stem.startswith("color_"):
                 hdr_file.unlink()
-                print(f"  [CLEANUP] Removed HDR placeholder: {hdr_file.name}")
     except Exception as e:
-        print(f"  [WARN] Cleanup failed: {e}")
+        pass
 
     return exported_files
 
@@ -1092,6 +1029,3 @@ if __name__ == "__main__":
     exported = process_twig_file(
         blend_file, output_dir, formats, species_name, clean_export
     )
-
-    print("")
-    print(f"[OK] Processed {len(exported)} file(s)")

@@ -24,70 +24,20 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-# Import bpy BEFORE any other Grove-related modules to avoid DLL conflicts
-try:
-    import bpy
+import bpy
 
-    # Expose Blender's bundled VFX libraries (USD/pxr, MaterialX, etc.)
-    # This allows importing pxr without DLL conflicts (Blender 4.4+)
-    if hasattr(bpy.utils, "expose_bundled_modules"):
-        bpy.utils.expose_bundled_modules()
+if hasattr(bpy.utils, "expose_bundled_modules"):
+    bpy.utils.expose_bundled_modules()
 
-    BPY_AVAILABLE = True
-except (ImportError, OSError) as e:
-    # bpy not available or DLL load failed - this is expected when not using Blender Python
-    bpy = None
-    BPY_AVAILABLE = False
+import the_grove_22_core as gc
+from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade, UsdSkel, Vt
 
-# Try to import USD after bpy exposure
-try:
-    from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade, UsdSkel, Vt
-
-    USD_AVAILABLE = True
-except ImportError:
-    USD_AVAILABLE = False
-
-# Import after bpy check to avoid potential conflicts
 from ..config import get_config
 from ..core.skeleton import calculate_vertex_weights
-
-# Lazy import of gc to avoid conflicts with bpy
-_gc = None
-_gc_available = None
-
-
-def _get_gc():
-    """Lazy import of grove core."""
-    global _gc, _gc_available
-    if _gc is None and _gc_available is None:
-        try:
-            import the_grove_22_core as grove_core
-
-            _gc = grove_core
-            _gc_available = True
-        except ImportError:
-            _gc = None
-            _gc_available = False
-    return _gc
-
-
-def _check_bpy_available():
-    """Check if bpy is available at runtime."""
-    return BPY_AVAILABLE
-
-
-def ensure_grove_available():
-    """Ensure Grove core is available."""
-    gc = _get_gc()
-    if gc is None:
-        raise ImportError("Grove core (the_grove_22_core) not available")
 
 
 def _extract_twig_placements_from_usd(usd_path: Path) -> Dict[str, List[Dict]]:
     """Extract twig placements from USD primvars - local helper for tree_export."""
-    if not USD_AVAILABLE:
-        return {}
-
     placements = {}
     try:
         stage = Usd.Stage.Open(str(usd_path))
@@ -130,7 +80,7 @@ def _extract_twig_placements_from_usd(usd_path: Path) -> Dict[str, List[Dict]]:
                                     }
                                 )
     except Exception as e:
-        print(f"Warning: Failed to extract twig placements: {e}")
+        pass
 
     return placements
 
@@ -179,36 +129,7 @@ def export_tree(
         >>> skeletons = grove.build_skeletons()
         >>> export_tree(models[0], skeletons[0], Path("tree.usda"), "oak")
     """
-    if not _check_bpy_available():
-        print("bpy module not available - cannot export USD")
-        return False
-
-    if not USD_AVAILABLE:
-        print("USD Python (pxr) not available - cannot export USD")
-        return False
-
-    ensure_grove_available()
     config = get_config()
-
-    # DEBUG BREAKPOINT 6: Tree export function entry point
-    print(f"\n[DEBUG] PHASE 3: export_tree called for {species_name}")
-    print(f"[DEBUG] Output path: {output_path}")
-
-    # Inspect model before export
-    if hasattr(model, "point_attribute_bone_id"):
-        bone_ids = model.point_attribute_bone_id
-        print(
-            f"[DEBUG] ✓ Model received with bone_id mapping: {len(bone_ids)} vertices"
-        )
-        print(f"[DEBUG]   Unique bone IDs: {len(set(bone_ids))} bones")
-    else:
-        print(f"[DEBUG] ✗ Model received WITHOUT bone_id mapping")
-
-    if hasattr(model, "point_attribute_bone_weight"):
-        print(f"[DEBUG] ✓ Model received with bone weights")
-    else:
-        print(f"[DEBUG] ✗ Model received WITHOUT bone weights")
-    print()
 
     try:
         # Configure model for optimal export compatibility
@@ -218,15 +139,12 @@ def export_tree(
             # Set counter-clockwise winding for standard compatibility
             model.set_winding_order("COUNTER_CLOCKWISE")
         except Exception as e:
-            print(f"  Warning: Could not configure model orientation: {e}")
-
-        print(f"  Set model to Z up-axis and counter-clockwise winding")
+            pass
 
         # Create output directory
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Build USD directly from Grove model with skeleton (no Blender export needed)
-        print(f"  Building USD with skeleton from Grove model...")
         success = build_tree_mesh(
             model=model,
             skeleton=skeleton,
@@ -242,17 +160,14 @@ def export_tree(
         )
 
         if not success:
-            print(f"Failed to build USD mesh")
             return False
 
         # Add Nanite attributes to USD file
         add_nanite_attributes_to_usd(output_path, is_foliage=False)
 
-        print(f"[OK] Exported tree to USD with Nanite compatibility for {species_name}")
         return True
 
     except Exception as e:
-        print(f"Failed to export tree USD: {e}")
         import traceback
 
         traceback.print_exc()
@@ -310,9 +225,6 @@ def build_tree_mesh(
         >>> model.triangulate()  # CRITICAL: Must triangulate first
         >>> build_tree_mesh(model, skeletons[0], Path("tree.usda"), up_axis="Z")
     """
-    if not USD_AVAILABLE:
-        print("Error: USD Python module not available")
-        return False
 
     try:
         # Create USD stage
@@ -379,7 +291,6 @@ def build_tree_mesh(
 
         # Add skeleton if provided
         if skeleton is not None:
-            print(f"  Adding skeleton to USD stage...")
             skeleton_added = _add_skeleton_to_stage_inline(
                 stage=stage,
                 skeleton=skeleton,
@@ -392,16 +303,15 @@ def build_tree_mesh(
                 skeleton_connected=skeleton_connected,
             )
             if skeleton_added:
-                print(f"    [OK] Skeleton added with UsdSkel structure")
+                pass
             else:
-                print(f"    Warning: Failed to add skeleton")
+                pass
 
         # Save stage
         stage.Save()
         return True
 
     except Exception as e:
-        print(f"Error building USD file: {e}")
         import traceback
 
         traceback.print_exc()
@@ -425,7 +335,6 @@ def _add_skeleton_to_stage_inline(
     """Add skeleton to open USD stage using Grove's skeleton data."""
     try:
         if not skeleton:
-            print("Error: No skeleton provided")
             return False
 
         # Create UsdSkel skeleton structure directly in the stage
@@ -434,7 +343,6 @@ def _add_skeleton_to_stage_inline(
         return True
 
     except Exception as e:
-        print(f"    Error adding skeleton: {e}")
         import traceback
 
         traceback.print_exc()
@@ -455,7 +363,6 @@ def add_nanite_attributes_to_usd(usd_path: Path, is_foliage: bool = False) -> bo
         # Open USD stage
         stage = Usd.Stage.Open(str(usd_path))
         if not stage:
-            print(f"Failed to open USD stage: {usd_path}")
             return False
 
         # Add Nanite attributes to all meshes
@@ -477,7 +384,6 @@ def add_nanite_attributes_to_usd(usd_path: Path, is_foliage: bool = False) -> bo
         return True
 
     except Exception as e:
-        print(f"Failed to add Nanite attributes to USD: {e}")
         return False
 
 
@@ -530,7 +436,6 @@ def _add_skeleton_to_object(
             skeleton_connected,
         )
         t_weight_calc = time.time()
-        print(f"      [TIME]  Weight calculation: {t_weight_calc-t_weight_start:.2f}s")
 
         # Find unique bones that are actually used
         used_bone_indices = set()
@@ -538,9 +443,6 @@ def _add_skeleton_to_object(
             used_bone_indices.update(joint_indices)
 
         num_bones_needed = len(used_bone_indices)
-        print(
-            f"      [INFO]  Creating {num_bones_needed} bones (from Grove's tag_bone_id)"
-        )
 
         # Create armature
         armature = bpy.data.armatures.new(f"{species_name}_armature")
@@ -607,9 +509,6 @@ def _add_skeleton_to_object(
 
         bpy.ops.object.mode_set(mode="OBJECT")
         t_bones = time.time()
-        print(
-            f"      [TIME]  Bone creation: {t_bones-t_weight_calc:.2f}s ({len(bone_names)} bones)"
-        )
 
         # Parent mesh to armature
         obj.parent = armature_obj
@@ -634,16 +533,10 @@ def _add_skeleton_to_object(
                     vgroup = obj.vertex_groups[bone_name]
                     vgroup.add([vert_idx], weight, "REPLACE")
         t_assign_end = time.time()
-        print(
-            f"      [TIME]  Weight assignment: {t_assign_end-t_assign_start:.2f}s ({len(vertices)} vertices)"
-        )
-
-        print(f"    [OK] Applied weights for {len(vertices)} vertices to skeleton")
 
         return armature_obj
 
     except Exception as e:
-        print(f"Failed to add skeleton: {e}")
         import traceback
 
         traceback.print_exc()
@@ -724,7 +617,7 @@ def _add_grove_attributes_to_mesh(mesh: Any, model: Any) -> None:
                 point_layer.data[i].value = val
 
     except Exception as e:
-        print(f"Warning: Failed to add some Grove attributes to mesh: {e}")
+        pass
 
 
 def _add_blender_attributes_as_usd_primvars(usd_path: Path, mesh_obj: Any) -> None:
@@ -732,7 +625,6 @@ def _add_blender_attributes_as_usd_primvars(usd_path: Path, mesh_obj: Any) -> No
     try:
         stage = Usd.Stage.Open(str(usd_path))
         if not stage:
-            print(f"Warning: Could not open USD stage at {usd_path}")
             return
 
         # Find the mesh prim
@@ -761,15 +653,11 @@ def _add_blender_attributes_as_usd_primvars(usd_path: Path, mesh_obj: Any) -> No
                         attr_name, value_type, UsdGeom.Tokens.uniform
                     )
                     primvar.Set(values)
-                    print(
-                        f"  Added primvar {attr_name}: {sum(values)} true out of {len(values)} faces"
-                    )
 
         stage.Save()
-        print(f"[OK] Added Blender attributes as USD primvars to {usd_path.name}")
 
     except Exception as e:
-        print(f"Warning: Failed to add primvars to USD file: {e}")
+        pass
 
 
 def _add_material_with_textures(obj: Any, species_name: str, config: Any) -> None:
@@ -817,7 +705,7 @@ def _add_material_with_textures(obj: Any, species_name: str, config: Any) -> Non
             obj.data.materials.append(mat)
 
     except Exception as e:
-        print(f"Warning: Failed to add material: {e}")
+        pass
 
 
 def _find_bark_texture(species_name: str, config: Any) -> Optional[Dict[str, Path]]:
@@ -955,20 +843,15 @@ def add_skeleton_to_usd(
     Returns:
         bool: True if skeleton was added successfully
     """
-    if not USD_AVAILABLE:
-        print("Error: USD Python module not available")
-        return False
 
     try:
         stage = Usd.Stage.Open(str(usd_path))
         if not stage:
-            print(f"Error: Could not open USD stage at {usd_path}")
             return False
 
         # Build skeleton from grove
         skeletons = grove.build_skeletons()
         if not skeletons:
-            print("Error: No skeletons generated from grove")
             return False
 
         skeleton = skeletons[0]
@@ -986,7 +869,6 @@ def add_skeleton_to_usd(
         return True
 
     except Exception as e:
-        print(f"Error adding skeleton to USD: {e}")
         import traceback
 
         traceback.print_exc()
@@ -1015,7 +897,6 @@ def _build_usdskel_from_bones(
             break
 
     if not mesh_prim:
-        print("Warning: No mesh found in USD stage")
         return
 
     # Convert /tree to SkelRoot with proper API schemas
@@ -1074,10 +955,8 @@ def _build_usdskel_from_bones(
         root_point_idx = skeleton_polylines[0][0]
         root_point = skeleton_points[root_point_idx]
         tree_offset = Gf.Vec3d(root_point[0], root_point[1], root_point[2])
-        print(f"    Tree offset (root position): {tree_offset}")
     else:
         tree_offset = Gf.Vec3d(0, 0, 0)
-        print("    Warning: No skeleton points found, using zero offset")
 
     # Build joint hierarchy from polylines
     bone_positions = {}
@@ -1162,10 +1041,6 @@ def _build_usdskel_from_bones(
     skel_binding_api = UsdSkel.BindingAPI.Apply(tree_prim)
     skel_binding_api.CreateAnimationSourceRel().SetTargets([anim_path])
 
-    print(
-        f"    [OK] Created SkelAnimation ({num_joints} joints, bind pose for UE skeletal mesh recognition)"
-    )
-
     # CRITICAL: Apply SkelBindingAPI to mesh and add skinning data
     # Unreal Engine requires BOTH SkelRoot and Mesh to have skeleton bindings
     mesh_api_schemas = mesh_prim.GetMetadata("apiSchemas")
@@ -1217,10 +1092,6 @@ def _build_usdskel_from_bones(
         joint_weights_primvar.Set(joint_weights)
         joint_weights_primvar.SetElementSize(2)
 
-    print(
-        f"    [OK] Applied SkelBindingAPI to SkelRoot and Mesh with {num_vertices} vertices"
-    )
-
 
 def add_twig_skeleton_to_usd(
     usd_path: Path,
@@ -1235,14 +1106,10 @@ def add_twig_skeleton_to_usd(
     Returns:
         bool: True if skeleton was added successfully
     """
-    if not USD_AVAILABLE:
-        print("Error: USD Python module not available")
-        return False
 
     try:
         stage = Usd.Stage.Open(str(usd_path))
         if not stage:
-            print(f"Error: Could not open USD stage at {usd_path}")
             return False
 
         # Find mesh prim
@@ -1253,7 +1120,6 @@ def add_twig_skeleton_to_usd(
                 break
 
         if not mesh_prim:
-            print(f"Warning: No mesh found in USD file {usd_path.name}")
             return False
 
         # Create skeleton root
@@ -1327,7 +1193,6 @@ def add_twig_skeleton_to_usd(
         return True
 
     except Exception as e:
-        print(f"Error adding twig skeleton to USD: {e}")
         import traceback
 
         traceback.print_exc()
@@ -1428,15 +1293,10 @@ def get_twig_usd_map_for_species(
 
     from growpy.config import get_twig_files_by_type
 
-    print(f"  Looking for twigs for species: {species_name}")
     twig_files_by_type = get_twig_files_by_type(species_name)
 
     if not twig_files_by_type:
-        print(f"  WARNING: No twig files found for species '{species_name}'")
-        print(f"  This could mean:")
-        print(f"    1. Species name doesn't match lookup table entries")
-        print(f"    2. Species has no twig configured in lookup table")
-        print(f"    3. Twig files don't exist in the twigs directory")
+        pass
 
     twig_usd_map = {}
 
@@ -1469,7 +1329,6 @@ def get_twig_usd_map_for_species(
                             )
                             if skeletal_file.exists():
                                 twig_usd_map[grove_type] = skeletal_file
-                                print(f"    Found {grove_type}: {skeletal_file.name}")
                                 break
                             continue
                         elif not prefer_skeletal and is_skeletal:
@@ -1477,7 +1336,6 @@ def get_twig_usd_map_for_species(
 
                         if usd_file.exists():
                             twig_usd_map[grove_type] = usd_file
-                            print(f"    Found {grove_type}: {usd_file.name}")
                             break
 
                     if grove_type in twig_usd_map:
@@ -1524,7 +1382,6 @@ def bundle_twigs_for_species(
         twig_files_by_type = get_twig_files_by_type(species_name)
 
         if not twig_files_by_type:
-            print(f"  No twig files found for {species_name}")
             return results
 
         twig_manifest = {"species": species_name, "twig_files": [], "total_twigs": 0}
@@ -1556,7 +1413,6 @@ def bundle_twigs_for_species(
                         results["twig_files"].append(dest_file)
                         twig_manifest["twig_files"].append(dest_file.name)
                         twig_manifest["total_twigs"] += 1
-                        print(f"    Copied twig: {dest_file.name}")
                         break
 
                     skeletal_file = (
@@ -1569,7 +1425,6 @@ def bundle_twigs_for_species(
                             results["twig_files"].append(dest_file)
                             twig_manifest["twig_files"].append(dest_file.name)
                             twig_manifest["total_twigs"] += 1
-                            print(f"    Copied twig: {dest_file.name}")
 
         source_texture_dir = None
         if all_twig_files:
@@ -1590,16 +1445,16 @@ def bundle_twigs_for_species(
                             copied_textures.add(texture_file.name)
 
                 if texture_count > 0:
-                    print(f"    Copied {texture_count} twig textures to textures/")
+                    pass
 
         if twig_manifest["total_twigs"] > 0:
-            print(
-                f"  [OK] Bundled {twig_manifest['total_twigs']} twig files for {species_name}"
-            )
+            pass
         else:
-            print(f"  ⚠ No twig files copied for {species_name}")
+            pass
 
     except Exception as e:
-        print(f"Failed to bundle twigs for {species_name}: {e}")
+        pass
+
+    return results
 
     return results

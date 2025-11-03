@@ -36,7 +36,6 @@ from pathlib import Path
 
 from growpy.utils.analysis import SpeciesGrowthAnalyzer
 
-
 def main():
     """Main function for command line usage."""
     parser = argparse.ArgumentParser(
@@ -135,28 +134,13 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
     args = parser.parse_args()
 
-    print("Grove Species Growth Analysis")
-    print("=" * 40)
-    print(f"Assets directory: {args.assets_dir}")
-    print(f"Growth cycles: {args.cycles}")
-    print(f"Random seeds: {args.seeds}")
-    print(f"Height threshold: {args.height_threshold}")
-    print(f"Max cycles without growth: {args.max_cycles_without_growth}")
-    print(f"Timeout: {args.timeout} seconds")
-
     # Check assets directory
     if not args.assets_dir.exists():
-        print(f"ERROR: Assets directory not found: {args.assets_dir}")
-        print(
-            "Please run prepare_assets.py first to copy assets from Grove installation"
-        )
         sys.exit(1)
 
     # Check for presets directory
     presets_dir = args.assets_dir / "presets"
     if not presets_dir.exists():
-        print(f"ERROR: Presets directory not found: {presets_dir}")
-        print("Please run prepare_assets.py first to copy species presets")
         sys.exit(1)
 
     # Create analyzer
@@ -171,12 +155,9 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
     if args.species:
         # Analyze single species
-        print(f"Analyzing single species: {args.species}")
 
         available_species = analyzer.get_available_species()
         if args.species not in available_species:
-            print(f"ERROR: Species '{args.species}' not found in available presets")
-            print(f"Available species: {', '.join(available_species[:10])}...")
             sys.exit(1)
 
         # Generate height and DBH curves
@@ -198,38 +179,21 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         # Save individual species results
         species_dir = analyzer.save_species_results(args.species)
 
-        print(f"Final height: {metadata['final_height']:.2f}")
-        print(f"Growth rate: {metadata['growth_rate']:.3f} units/cycle")
-        print(f"Max height: {metadata['max_height']:.2f}")
-        print(f"Final DBH: {metadata['final_dbh']:.3f}")
-        print(f"Max DBH: {metadata['max_dbh']:.3f}")
-        print(
-            f"Planned cycles: {metadata['planned_cycles']}, "
-            f"Actual max cycles: {metadata['actual_max_cycles']}"
-        )
-        print(f"Average actual cycles: {metadata['avg_actual_cycles']:.1f}")
-        print(f"Average simulation time: {metadata['avg_simulation_time']:.1f} seconds")
-
         if metadata["early_terminations"] > 0:
-            print(
-                f"Early terminations: {metadata['early_terminations']}/{metadata['num_seeds']} seeds"
-            )
+            pass
         else:
-            print("No early terminations occurred")
+            pass
 
         if metadata["timeouts"] > 0:
-            print(
-                f"WARNING: Timeouts occurred: {metadata['timeouts']}/{metadata['num_seeds']} seeds"
-            )
+            pass
         else:
-            print("No timeouts occurred")
+            pass
 
         # Save results
         analyzer.save_growth_models()
 
     else:
         # Analyze species from CSV
-        print("Analyzing species from CSV...")
 
         # Load CSV to get species list
         import pandas as pd
@@ -239,18 +203,13 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
             # Check if this is a forest placement CSV (has "species" column)
             if "species" in df.columns and "Common Name" not in df.columns:
-                print("Detected forest placement CSV, extracting unique species...")
                 unique_species = df["species"].dropna().unique().tolist()
-                print(
-                    f"Found {len(unique_species)} unique species: {', '.join(unique_species)}"
-                )
 
                 # Load the asset lookup table to get standardized names
                 asset_lookup_path = (
                     script_dir / "src" / "growpy" / "config" / "tree_asset_lookup.csv"
                 )
                 if not asset_lookup_path.exists():
-                    print(f"ERROR: Asset lookup table not found: {asset_lookup_path}")
                     sys.exit(1)
 
                 lookup_df = pd.read_csv(asset_lookup_path)
@@ -280,19 +239,13 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
                         if standardized:
                             csv_species.append(standardized)
                         else:
-                            print(f"WARNING: No standardized name for '{species}'")
+                            pass
                     else:
-                        print(
-                            f"WARNING: Species '{species}' not found in asset lookup table"
-                        )
+                        pass
 
                 if not csv_species:
-                    print(
-                        f"ERROR: None of the species in {args.csv.name} were found in asset lookup table"
-                    )
                     sys.exit(1)
 
-                print(f"Standardized species names from CSV: {csv_species}")
             else:
                 # Direct asset lookup CSV - use Standardized Name column
                 if "Standardized Name" in df.columns:
@@ -309,11 +262,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
                         standardize_name(s) for s in df["Common Name"].tolist()
                     ]
 
-                print(f"Found {len(csv_species)} species in CSV: {args.csv.name}")
-                print(f"Standardized species names: {csv_species}")
-
         except Exception as e:
-            print(f"ERROR: Error reading CSV: {e}")
             sys.exit(1)
 
         # Get available species and filter to CSV species only
@@ -321,10 +270,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         species_to_process = [s for s in csv_species if s in available_species]
 
         if not species_to_process:
-            print("ERROR: No matching species found between CSV and available presets")
             sys.exit(1)
-
-        print(f"Processing {len(species_to_process)} species (CSV-driven)")
 
         # Analyze filtered species
         results = analyzer.analyze_all_species(
@@ -335,7 +281,6 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
         # Save results
         analyzer.save_growth_models()
-
 
 if __name__ == "__main__":
     main()
