@@ -28,42 +28,6 @@ if hasattr(bpy.utils, "expose_bundled_modules"):
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel, Vt
 
 
-def fix_texture_paths_in_usd(usd_path):
-    """Ensure texture paths in USD file use ./textures/ subdirectory and fix naming conventions.
-
-    Args:
-        usd_path: Path to USD file
-
-    Returns:
-        bool: True if successful
-    """
-    try:
-        stage = Usd.Stage.Open(str(usd_path))
-        if not stage:
-            return False
-
-        # Fix texture paths to use ./textures/ prefix
-        for prim in stage.Traverse():
-            for attr in prim.GetAttributes():
-                if attr.GetTypeName() == Sdf.ValueTypeNames.Asset:
-                    asset_path = attr.Get()
-                    if asset_path and isinstance(asset_path, Sdf.AssetPath):
-                        path_str = asset_path.path
-                        if path_str and path_str.endswith(
-                            (".png", ".jpg", ".jpeg", ".tiff", ".exr")
-                        ):
-                            # Ensure path starts with ./textures/
-                            if not path_str.startswith("./textures/"):
-                                filename = Path(path_str).name
-                                new_path = f"./textures/{filename}"
-                                attr.Set(Sdf.AssetPath(new_path))
-
-        stage.Save()
-        return True
-    except Exception as e:
-        return False
-
-
 def rename_prim_recursive(stage, old_path, new_path):
     """Rename a prim and update all references to it."""
     layer = stage.GetRootLayer()
@@ -257,15 +221,13 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
         # Set skinning data - all vertices bound to root joint
         num_points = len(points)
 
-        # CRITICAL: Use elementSize=2 to match tree skeleton format
-        # Each vertex needs 2 joint influences (even if second is padded with 0/0.0)
+        # CRITICAL: Use elementSize=1 for rigid binding (1 influence per vertex)
+        # Each vertex bound to exactly one joint with full weight
         joint_indices = []
         joint_weights = []
         for _ in range(num_points):
-            joint_indices.extend(
-                [0, 0]
-            )  # First joint is root (0), second is padding (0)
-            joint_weights.extend([1.0, 0.0])  # First weight is 1.0, second is 0.0
+            joint_indices.append(0)  # Root joint only
+            joint_weights.append(1.0)  # Full weight
 
         # Set skinning attributes
         if clean_export:
@@ -278,7 +240,9 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
                 UsdGeom.Tokens.vertex,
             )
             joint_indices_primvar.Set(joint_indices)
-            joint_indices_primvar.SetElementSize(2)  # Changed from 1 to 2
+            joint_indices_primvar.SetElementSize(
+                1
+            )  # Rigid binding: 1 influence per vertex
 
             joint_weights_primvar = primvars_api.CreatePrimvar(
                 "skel:jointWeights",
@@ -286,15 +250,17 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False
                 UsdGeom.Tokens.vertex,
             )
             joint_weights_primvar.Set(joint_weights)
-            joint_weights_primvar.SetElementSize(2)  # Changed from 1 to 2
+            joint_weights_primvar.SetElementSize(
+                1
+            )  # Rigid binding: 1 influence per vertex
         else:
             # Standard mode: use BindingAPI
-            binding_api.CreateJointIndicesPrimvar(False, 2).Set(
+            binding_api.CreateJointIndicesPrimvar(False, 1).Set(
                 joint_indices
-            )  # Changed from 1 to 2
-            binding_api.CreateJointWeightsPrimvar(False, 2).Set(
+            )  # Rigid binding: 1 influence per vertex
+            binding_api.CreateJointWeightsPrimvar(False, 1).Set(
                 joint_weights
-            )  # Changed from 1 to 2
+            )  # Rigid binding: 1 influence per vertex
 
             # Copy materials from /root/_materials/ to /Twig/Materials/ (only if not clean export)
         if not clean_export:
