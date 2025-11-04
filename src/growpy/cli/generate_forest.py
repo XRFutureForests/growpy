@@ -7,7 +7,7 @@ Can generate standalone Unreal Python scripts for importing trees via VSCode ext
 
 Quick Start:
     # Generate forest (uses data/input/test.csv by default)
-    python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 3
+    python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 3  --import-to-unreal
 
     # Generate forest and create Unreal import script
     python src/growpy/cli/generate_forest.py --quality high --import-to-unreal
@@ -35,9 +35,7 @@ import bpy
 if hasattr(bpy.utils, "expose_bundled_modules"):
     bpy.utils.expose_bundled_modules()
 
-import multiprocessing as mp
 import sys
-from functools import partial
 from itertools import groupby
 from pathlib import Path
 from typing import Optional
@@ -47,7 +45,6 @@ from tqdm import tqdm
 
 GROWTH_CYCLE_LIMIT = 10
 HEIGHT_SCALE = 1
-MAX_WORKERS = max(1, mp.cpu_count() - 1)
 SMOOTH_ITERATIONS = 5
 
 from growpy import (
@@ -193,8 +190,6 @@ def export_individual_trees(
     output_dir: Path,
     config: GrowPyConfig,
     quality_params: dict,
-    use_multiprocessing: bool = True,
-    max_workers: Optional[int] = None,
 ) -> list:
     """Export trees directly from already-simulated forest groves (no re-simulation).
 
@@ -210,17 +205,11 @@ def export_individual_trees(
         output_dir: Directory to save export files
         config: GrowPy configuration
         quality_params: Quality parameters dict
-        use_multiprocessing: Enable parallel export (default: True)
-        max_workers: Number of parallel workers (default: CPU count - 1)
 
     Returns:
         List of exported file paths
     """
     exported_files = []
-
-    # Set defaults
-    if max_workers is None:
-        max_workers = MAX_WORKERS
 
     # Build tree export tasks from forest groves
     # Each grove contains multiple trees for that species, export all at once
@@ -246,16 +235,7 @@ def generate_forest_exports(
     output_dir: Path,
     config: GrowPyConfig,
     quality: str = "high",
-    resolution: Optional[int] = None,
     growth_cycle_limit: Optional[int] = None,
-    height_scale: Optional[float] = None,
-    use_multiprocessing: bool = True,
-    max_workers: Optional[int] = None,
-    skeleton_length: float = 0.0,
-    skeleton_reduce: float = 0.0,
-    skeleton_bias: float = 0.5,
-    skeleton_connected: bool = True,
-    clean_export: bool = True,
 ) -> None:
     """Generate forest from CSV data and export as skeletal Nanite Assembly USD files.
 
@@ -280,8 +260,7 @@ def generate_forest_exports(
     # Use defaults if not specified
     if growth_cycle_limit is None:
         growth_cycle_limit = GROWTH_CYCLE_LIMIT
-    if height_scale is None:
-        height_scale = HEIGHT_SCALE
+    height_scale = HEIGHT_SCALE  # Hardcoded height scale
 
     if not TREE_EXPORT_AVAILABLE:
         return
@@ -337,15 +316,10 @@ def generate_forest_exports(
 
     # Get quality settings
     quality_params = get_quality_preset(quality)
-    if resolution is not None:
-        quality_params["resolution"] = resolution
 
-    # Add skeleton parameters to quality_params
-    quality_params["skeleton_length"] = skeleton_length
-    quality_params["skeleton_reduce"] = skeleton_reduce
-    quality_params["skeleton_bias"] = skeleton_bias
-    quality_params["skeleton_connected"] = skeleton_connected
-    quality_params["clean_export"] = clean_export
+    # Hardcode skeleton parameters
+    quality_params["skeleton_bias"] = 0.5
+    quality_params["skeleton_connected"] = True
 
     try:
         # Bundle twig files BEFORE export so Nanite Assembly can reference them
@@ -375,8 +349,6 @@ def generate_forest_exports(
             output_dir,
             config,
             quality_params,
-            use_multiprocessing=use_multiprocessing,
-            max_workers=max_workers,
         )
 
         if exported_files:
@@ -722,68 +694,10 @@ Unreal Engine Integration:
         help="Quality preset (default: ultra). Controls resolution, detail level, and geometry complexity",
     )
     parser.add_argument(
-        "--resolution",
-        type=int,
-        default=None,
-        choices=range(4, 33),
-        metavar="4-32",
-        help="Override resolution from quality preset. Vertices around branch circumference (4-32)",
-    )
-    parser.add_argument(
         "--growth-cycle-limit",
         type=int,
         default=GROWTH_CYCLE_LIMIT,
         help=f"Maximum growth cycles per tree (default: {GROWTH_CYCLE_LIMIT}). Trees exceeding this will be scaled down proportionally",
-    )
-    parser.add_argument(
-        "--height-scale",
-        type=float,
-        default=HEIGHT_SCALE,
-        help=f"Scale factor for tree heights (default: {HEIGHT_SCALE})",
-    )
-    parser.add_argument(
-        "--no-multiprocessing",
-        dest="use_multiprocessing",
-        action="store_false",
-        default=True,
-        help="Disable parallel processing (use sequential export)",
-    )
-    parser.add_argument(
-        "--max-workers",
-        type=int,
-        default=None,
-        help=f"Number of parallel workers (default: {MAX_WORKERS} = CPU count - 1)",
-    )
-    parser.add_argument(
-        "--skeleton-length",
-        type=float,
-        default=1.0,
-        help="Skeleton bone length multiplier (default: 1.0). Higher values create longer/merged bones. Note: ALL exports include skeleton (skeletal-only workflow)",
-    )
-    parser.add_argument(
-        "--skeleton-reduce",
-        type=float,
-        default=0.25,
-        help="Skeleton bone reduction factor (default: 0.25). Higher values create fewer bones (range: 0.0-1.0). Controls skeleton complexity",
-    )
-    parser.add_argument(
-        "--skeleton-bias",
-        type=float,
-        default=0.5,
-        help="Skeleton weight bias (default: 0.5, range: 0.0-1.0). Controls skinning weight distribution",
-    )
-    parser.add_argument(
-        "--skeleton-disconnected",
-        dest="skeleton_connected",
-        action="store_false",
-        default=True,
-        help="Create disconnected bones instead of connected hierarchy (default: connected). Connected hierarchy is required for proper animation",
-    )
-    parser.add_argument(
-        "--clean-export",
-        action="store_true",
-        default=True,
-        help="Create minimal USD without materials/textures (default: True for Nanite compatibility)",
     )
     parser.add_argument(
         "--import-to-unreal",
@@ -827,16 +741,7 @@ Unreal Engine Integration:
             args.output_dir,
             config,
             args.quality,
-            args.resolution,
             args.growth_cycle_limit,
-            args.height_scale,
-            args.use_multiprocessing,
-            args.max_workers,
-            args.skeleton_length,
-            args.skeleton_reduce,
-            args.skeleton_bias,
-            args.skeleton_connected,
-            args.clean_export,
         )
 
         # Generate Unreal scripts if requested

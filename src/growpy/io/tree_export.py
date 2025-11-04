@@ -909,64 +909,6 @@ def _add_mesh_normals(mesh: UsdGeom.Mesh, model: Any) -> None:
         pass
 
 
-def add_skeleton_to_usd(
-    usd_path: Path,
-    grove: Any,
-    tree_model: Any = None,
-    skeleton_length: float = 0.0,
-    skeleton_reduce: float = 0.0,
-    skeleton_bias: float = 0.5,
-    skeleton_connected: bool = True,
-    add_twig_bones: bool = True,
-    verbose: bool = False,
-) -> bool:
-    """Add skeleton to existing USD file using Grove's skeleton data.
-
-    Args:
-        usd_path: Path to existing USD file with tree mesh
-        grove: Grove instance with simulated tree
-        tree_model: Tree model (unused, kept for compatibility)
-        skeleton_length: Length threshold
-        skeleton_reduce: Reduction factor
-        skeleton_bias: Bias setting
-        skeleton_connected: Connection setting
-        add_twig_bones: If True, add twig mount bones to skeleton
-        verbose: If True, print detailed debug information
-
-    Returns:
-        bool: True if skeleton was added successfully
-    """
-
-    try:
-        stage = Usd.Stage.Open(str(usd_path))
-        if not stage:
-            return False
-
-        # Build skeleton from grove
-        skeletons = grove.build_skeletons()
-        if not skeletons:
-            return False
-
-        skeleton = skeletons[0]
-
-        # Create UsdSkel skeleton structure
-        # Note: Twig placement data is written as primvars and extracted during assembly creation
-        _build_usdskel_from_bones(stage, skeleton, None, None)
-
-        # Set defaultPrim
-        tree_prim = stage.GetPrimAtPath("/tree")
-        if tree_prim:
-            stage.SetDefaultPrim(tree_prim)
-
-        stage.Save()
-        return True
-
-    except Exception as e:
-        import traceback
-
-        traceback.print_exc()
-        return False
-
 
 def _build_usdskel_from_bones(
     stage: Usd.Stage,
@@ -1281,7 +1223,7 @@ def _build_usdskel_from_bones(
             ]
 
             branch_id_primvar = primvars_api.CreatePrimvar(
-                "BranchId", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.uniform
+                "branchID", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.uniform
             )
             branch_id_primvar.Set(local_branch_ids)
 
@@ -1304,118 +1246,12 @@ def _build_usdskel_from_bones(
             ]
 
             branch_parent_primvar = primvars_api.CreatePrimvar(
-                "BranchIdParent", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.uniform
+                "branchIDParent", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.uniform
             )
             branch_parent_primvar.Set(local_parent_ids)
 
             if verbose:
                 print(f"  Converted BranchIdParent: {len(local_parent_ids)} faces")
-
-
-def add_twig_skeleton_to_usd(
-    usd_path: Path,
-    pivot_point: Tuple[float, float, float] = (0, 0, 0),
-) -> bool:
-    """Add simple skeleton to twig USD with single root joint at pivot.
-
-    Args:
-        usd_path: Path to existing USD file with twig mesh
-        pivot_point: World position of root joint (pivot/attachment point)
-
-    Returns:
-        bool: True if skeleton was added successfully
-    """
-
-    try:
-        stage = Usd.Stage.Open(str(usd_path))
-        if not stage:
-            return False
-
-        # Find mesh prim
-        mesh_prim = None
-        for prim in stage.Traverse():
-            if prim.IsA(UsdGeom.Mesh):
-                mesh_prim = prim
-                break
-
-        if not mesh_prim:
-            return False
-
-        # Create skeleton root
-        root_path = Sdf.Path("/twig")
-        skel_root = UsdSkel.Root.Define(stage, root_path)
-        skel_root_prim = stage.GetPrimAtPath(root_path)
-
-        UsdSkel.BindingAPI.Apply(skel_root_prim)
-
-        # Create skeleton with single root joint
-        skel_path = root_path.AppendChild("Skel")
-        skel = UsdSkel.Skeleton.Define(stage, skel_path)
-
-        joint_tokens = ["root"]
-        world_pos = Gf.Vec3d(pivot_point[0], pivot_point[1], pivot_point[2])
-
-        bind_transform = Gf.Matrix4d(1.0)
-        bind_transform.SetTranslateOnly(world_pos)
-
-        rest_transform = Gf.Matrix4d(1.0)
-        rest_transform.SetTranslateOnly(world_pos)
-
-        skel.CreateJointsAttr(joint_tokens)
-        skel.CreateBindTransformsAttr(Vt.Matrix4dArray([bind_transform]))
-        skel.CreateRestTransformsAttr(Vt.Matrix4dArray([rest_transform]))
-
-        # Move mesh under SkelRoot
-        expected_mesh_path = root_path.AppendChild("Mesh")
-        if mesh_prim.GetPath() != expected_mesh_path:
-            old_mesh_path = mesh_prim.GetPath()
-            Sdf.CopySpec(
-                stage.GetRootLayer(),
-                old_mesh_path,
-                stage.GetRootLayer(),
-                expected_mesh_path,
-            )
-            stage.RemovePrim(old_mesh_path)
-            mesh_prim = stage.GetPrimAtPath(expected_mesh_path)
-
-        mesh = UsdGeom.Mesh(mesh_prim)
-
-        # Bind mesh to skeleton
-        binding_api = UsdSkel.BindingAPI.Apply(mesh_prim)
-        binding_api.CreateSkeletonRel().SetTargets([skel_path])
-
-        # Set skinning data
-        points = mesh.GetPointsAttr().Get()
-        num_points = len(points)
-
-        joint_indices = []
-        joint_weights = []
-        for _ in range(num_points):
-            joint_indices.extend([0, 0])
-            joint_weights.extend([1.0, 0.0])
-
-        primvarsAPI = UsdGeom.PrimvarsAPI(mesh_prim)
-
-        joint_indices_primvar = primvarsAPI.CreatePrimvar(
-            "skel:jointIndices", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.vertex
-        )
-        joint_indices_primvar.Set(joint_indices)
-        joint_indices_primvar.SetElementSize(2)
-
-        joint_weights_primvar = primvarsAPI.CreatePrimvar(
-            "skel:jointWeights", Sdf.ValueTypeNames.FloatArray, UsdGeom.Tokens.vertex
-        )
-        joint_weights_primvar.Set(joint_weights)
-        joint_weights_primvar.SetElementSize(2)
-
-        stage.Save()
-        return True
-
-    except Exception as e:
-        import traceback
-
-        traceback.print_exc()
-        return False
 
 
 def get_quality_preset(preset_name: str) -> Dict[str, Any]:
