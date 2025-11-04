@@ -39,7 +39,8 @@
       "Bash(if [ -d \"src/the_grove_22/twigs\" ])",
       "Bash(then ls src/the_grove_22/twigs/)",
       "Bash(else echo \"Grove twigs source not found\")",
-      "Bash(fi)"
+      "Bash(fi)",
+      "Bash(cd /c/Users/Maximilian Sperlich/Git/the-grove)"
     ],
     "deny": [],
     "ask": []

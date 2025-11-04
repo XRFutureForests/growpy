@@ -38,7 +38,6 @@ Grove-Level Attributes (not exported to USD):
 - grove.roots - Root system geometry (if grown with grow_roots/build_roots)
 
 Main Functions:
-- export_tree(): Export complete tree with skeleton (formerly export_grove_tree_as_usda_native)
 - build_tree_mesh(): Build USD mesh from Grove model (formerly build_tree_usd)
 - add_skeleton_to_usd(): Add skeleton to existing USD file
 - add_twig_skeleton_to_usd(): Add simple skeleton for twig meshes
@@ -60,95 +59,6 @@ from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade, UsdSkel, Vt
 
 from ..config import get_config
 from ..core.skeleton import calculate_vertex_weights
-
-
-def export_tree(
-    model: Any,
-    skeleton: Any,
-    output_path: Path,
-    species_name: str,
-    skeleton_length: float = 0.0,
-    skeleton_reduce: float = 0.0,
-    skeleton_bias: float = 0.5,
-    skeleton_connected: bool = True,
-) -> bool:
-    """Export Grove tree model as USD for Unreal Engine 5 Nanite.
-
-    This is the main export function that creates a complete USD file with
-    tree mesh, skeleton, materials, and all Grove attributes preserved.
-    The skeleton is always included for wind animation support.
-
-    Note: To export from a grove with multiple trees, call this function
-    once per tree with corresponding model/skeleton pairs:
-        models = grove.build_models({...})
-        skeletons = grove.build_skeletons()
-        for model, skeleton in zip(models, skeletons):
-            export_tree(model, skeleton, output_path, species_name)
-
-    Args:
-        model: Grove tree model from grove.build_models()
-        skeleton: Grove skeleton from grove.build_skeletons()
-        output_path: Path for the USD file (.usd or .usda)
-        species_name: Tree species name for material naming
-        skeleton_length: Bone length multiplier (default: 1.0, higher=longer bones)
-        skeleton_reduce: Bone reduction factor (default: 0.25, higher=fewer bones)
-        skeleton_bias: Weight bias (default: 0.5, range 0-1)
-        skeleton_connected: Whether bones are connected (default: True)
-
-    Returns:
-        bool: Success status
-
-    Example:
-        >>> grove = gc.Grove()
-        >>> grove.add_new_tree(...)
-        >>> grove.simulate(5)
-        >>> models = grove.build_models({...})
-        >>> skeletons = grove.build_skeletons()
-        >>> export_tree(models[0], skeletons[0], Path("tree.usda"), "oak")
-    """
-    config = get_config()
-
-    try:
-        # Configure model for optimal export compatibility
-        try:
-            # Set up-axis to Z for Blender/Unreal compatibility
-            model.set_up_axis("Z")
-            # Set counter-clockwise winding for standard compatibility
-            model.set_winding_order("COUNTER_CLOCKWISE")
-        except Exception as e:
-            pass
-
-        # Create output directory
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Build USD directly from Grove model with skeleton (no Blender export needed)
-        success = build_tree_mesh(
-            model=model,
-            skeleton=skeleton,
-            output_path=output_path,
-            up_axis="Z",
-            triangulated=True,
-            include_materials=False,
-            clean_export=False,
-            skeleton_length=skeleton_length,
-            skeleton_reduce=skeleton_reduce,
-            skeleton_bias=skeleton_bias,
-            skeleton_connected=skeleton_connected,
-        )
-
-        if not success:
-            return False
-
-        # Add Nanite attributes to USD file
-        add_nanite_attributes_to_usd(output_path, is_foliage=False)
-
-        return True
-
-    except Exception as e:
-        import traceback
-
-        traceback.print_exc()
-        return False
 
 
 def build_tree_mesh(
@@ -601,7 +511,8 @@ def _add_grove_attributes_to_mesh(mesh: Any, model: Any) -> None:
             for i, val in enumerate(model.point_attribute_thickness):
                 point_layer.data[i].value = val
 
-    except Exception as e:
+    except Exception:
+        # Silently fail - Blender attribute addition is optional
         pass
 
 
@@ -641,7 +552,8 @@ def _add_blender_attributes_as_usd_primvars(usd_path: Path, mesh_obj: Any) -> No
 
         stage.Save()
 
-    except Exception as e:
+    except Exception:
+        # Silently fail - USD primvar addition is optional
         pass
 
 
@@ -689,7 +601,8 @@ def _add_material_with_textures(obj: Any, species_name: str, config: Any) -> Non
         else:
             obj.data.materials.append(mat)
 
-    except Exception as e:
+    except Exception:
+        # Silently fail - material addition is optional
         pass
 
 
@@ -906,6 +819,7 @@ def _add_mesh_normals(mesh: UsdGeom.Mesh, model: Any) -> None:
             mesh.SetNormalsInterpolation(UsdGeom.Tokens.uniform)
 
     except Exception:
+        # Silently fail - USD material addition is optional
         pass
 
 
@@ -1502,12 +1416,8 @@ def bundle_twigs_for_species(
                 if texture_count > 0:
                     pass
 
-        if twig_manifest["total_twigs"] > 0:
-            pass
-        else:
-            pass
-
-    except Exception as e:
+    except Exception:
+        # Silently fail - twig bundling is optional
         pass
 
     return results
