@@ -1,28 +1,33 @@
 #!/usr/bin/env python3
 """
-Forest generation with USD export.
+Forest generation with USD export and optional Unreal Engine import script generation.
 
 Generates multi-species forests from CSV data with configurable quality settings.
+Can generate standalone Unreal Python scripts for importing trees via VSCode extension.
 
 Quick Start:
-    # Uses data/input/test.csv by default
-    python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 15
+    # Generate forest (uses data/input/test.csv by default)
+    python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 3
+
+    # Generate forest and create Unreal import script
+    python src/growpy/cli/generate_forest.py --quality high --import-to-unreal
 
     # Or specify a different CSV file
-    python src/growpy/cli/generate_forest.py my_forest.csv --quality high
+    python src/growpy/cli/generate_forest.py my_forest.csv --quality high --import-to-unreal
 
 Common Flags:
     --quality {ultra,high,medium,low,performance}  Quality preset (default: ultra)
     --growth-cycle-limit INT                       Max growth cycles (default: 10)
     --height-scale FLOAT                           Tree height scale (default: 1.0)
-    --formats {usd,usda}                          Export formats (default: usda)
     --output-dir PATH                              Output directory
+    --import-to-unreal                             Generate Unreal import script
+    --unreal-project-path PATH                     Unreal destination (default: /Game/GrowPy/Trees)
 
 Full Documentation:
     See docs/guides/cli-reference.md for complete flag reference and examples
 
 Usage:
-    python src/growpy/cli/generate_forest.py [csv_file] --quality high --output-dir data/output/forest --growth-cycle-limit 5
+    python src/growpy/cli/generate_forest.py [csv_file] --quality high --output-dir data/output/forest --growth-cycle-limit 5 --import-to-unreal
 """
 
 import bpy
@@ -381,6 +386,273 @@ def generate_forest_exports(
         pass
 
 
+def generate_unreal_import_script(
+    output_dir: Path,
+    project_path: str = "/Game/GrowPy/Trees",
+) -> Path:
+    """
+    Generate a standalone Unreal Python script for importing forest USD files.
+
+    This script can be executed directly in Unreal Engine using:
+    - VSCode Unreal Python extension (right-click > Execute in Unreal)
+    - Unreal Editor Python console
+    - Command line
+
+    Args:
+        output_dir: Directory containing exported USD files
+        project_path: Unreal project Content path
+
+    Returns:
+        Path to generated script file
+    """
+    # Create unreal_scripts directory in output
+    script_dir = output_dir / "unreal_scripts"
+    script_dir.mkdir(exist_ok=True)
+
+    script_path = script_dir / "import_forest.py"
+
+    # Find all Nanite Assembly USD files
+    nanite_files = list(output_dir.glob("**/*nanite_assembly.usda")) + list(
+        output_dir.glob("**/*nanite_assembly.usd")
+    )
+
+    # Generate script content with forward slashes to avoid Unicode escape errors
+    script_path_str = str(script_path).replace("\\", "/")
+
+    script_content = f'''"""
+Unreal Engine script to import GrowPy forest - Auto-generated
+
+Execute this script in Unreal Engine:
+1. Right-click this file in VSCode > "Execute Python File in Unreal"
+2. Or from Unreal Python console: exec(open(r'{script_path_str}').read())
+"""
+
+import unreal
+
+print("=" * 60)
+print("GrowPy Forest Import to Unreal Engine")
+print("=" * 60)
+
+# Import configuration
+IMPORT_PATH = "{project_path}"
+
+print(f"Destination: {{IMPORT_PATH}}")
+print(f"Found {len(nanite_files)} Nanite Assembly USD files\\n")
+
+# Get asset tools
+asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
+
+imported_count = 0
+failed_count = 0
+
+'''
+
+    # Add import task for each USD file, organized by species
+    for usd_file in nanite_files:
+        usd_path = str(usd_file.resolve()).replace("\\", "/")
+        asset_name = usd_file.stem
+
+        # Get species name from parent directory (e.g., "european_beech")
+        species_folder = usd_file.parent.name
+        # Convert to title case for Unreal folder name (e.g., "EuropeanBeech")
+        species_display = "".join(
+            word.capitalize() for word in species_folder.split("_")
+        )
+
+        # Extract tree number (e.g., "0000" from "european_beech_tree_0000_nanite_assembly")
+        tree_number = (
+            asset_name.split("_tree_")[1].split("_")[0]
+            if "_tree_" in asset_name
+            else asset_name
+        )
+
+        script_content += f"""
+# Import {asset_name} to {species_display} folder (tree #{tree_number})
+try:
+    unreal.log("Importing {asset_name}...")
+    
+    # Import directly to species folder with custom asset path to avoid nested folders
+    species_dest = IMPORT_PATH + "/{species_display}"
+    
+    # Create import task
+    import_task = unreal.AssetImportTask()
+    import_task.filename = "{usd_path}"
+    import_task.destination_path = species_dest
+    import_task.automated = True
+    import_task.save = True
+    import_task.replace_existing = True
+    
+    # Configure USD import options
+    options = unreal.UsdStageImportOptions()
+    options.import_actors = False
+    options.import_geometry = True
+    options.import_materials = True
+    
+    import_task.options = options
+    
+    # Execute import
+    asset_tools.import_asset_tasks([import_task])
+    
+    # Check results
+    if import_task.imported_object_paths:
+        imported_count += 1
+        unreal.log("✓ Imported tree_{tree_number} to {{species_dest}}")
+    else:
+        failed_count += 1
+        unreal.log_warning("✗ Failed to import {asset_name}")
+except Exception as e:
+    failed_count += 1
+    unreal.log_error(f"✗ Error importing {asset_name}: {{e}}")
+"""
+
+    script_content += """
+
+print("")
+print("=" * 60)
+print(f"Import complete: {imported_count} succeeded, {failed_count} failed")
+print("=" * 60)
+
+if failed_count > 0:
+    unreal.log_warning("Some imports failed. Check that USD Importer plugin is enabled.")
+else:
+    print(f"\\nAssets imported to Content Browser: {IMPORT_PATH}")
+    print("Trees are ready to place in level or use with PCG")
+"""
+
+    # Write script file
+    script_path.write_text(script_content, encoding="utf-8")
+
+    return script_path
+
+
+def generate_unreal_cleanup_script(
+    output_dir: Path,
+    project_path: str = "/Game/GrowPy/Trees",
+    dry_run: bool = True,
+) -> Path:
+    """
+    Generate a standalone Unreal Python script for cleaning GrowPy assets.
+
+    Args:
+        output_dir: Directory to save cleanup script (same as import script)
+        project_path: Unreal project Content path to clean
+        dry_run: If True, generates preview-only script
+
+    Returns:
+        Path to generated script file
+    """
+    # Save in same unreal_scripts directory as import script
+    script_dir = output_dir / "unreal_scripts"
+    script_dir.mkdir(exist_ok=True)
+
+    script_path = script_dir / "clean_assets.py"
+
+    # Generate script content with forward slashes to avoid Unicode escape errors
+    script_path_str = str(script_path).replace("\\", "/")
+
+    script_content = f'''"""
+Unreal Engine cleanup script for GrowPy assets - Auto-generated
+
+Execute this script in Unreal Engine:
+1. Right-click this file in VSCode > "Execute Python File in Unreal"
+2. Or from Unreal Python console: exec(open(r'{script_path_str}').read())
+"""
+
+import unreal
+
+print("=" * 60)
+print("GrowPy Asset Cleanup")
+print("=" * 60)
+
+# Cleanup configuration
+CLEANUP_PATH = "{project_path}"
+DRY_RUN = {str(dry_run)}
+
+print(f"Target path: {{CLEANUP_PATH}} (including all subfolders)")
+
+if DRY_RUN:
+    print("\\n*** DRY RUN MODE - No assets will be deleted ***\\n")
+else:
+    print("\\n*** LIVE MODE - Assets will be permanently deleted ***\\n")
+
+# Get asset registry
+asset_registry = unreal.AssetRegistryHelpers.get_asset_registry()
+
+# Find all assets in target path (recursive to include species subfolders)
+assets = asset_registry.get_assets_by_path(CLEANUP_PATH, recursive=True)
+
+if not assets:
+    print(f"No assets found at {{CLEANUP_PATH}}")
+else:
+    print(f"Found {{len(assets)}} assets at {{CLEANUP_PATH}}\\n")
+    
+    if DRY_RUN:
+        # Dry run - just list assets
+        print("Assets that would be deleted:\\n")
+        for asset in assets:
+            asset_path = str(asset.package_name)
+            asset_name = str(asset.asset_name)
+            asset_class = str(asset.asset_class_path.asset_name)
+            
+            print(f"  {{asset_class}}: {{asset_name}}")
+            print(f"    Path: {{asset_path}}")
+        
+        print("\\n" + "=" * 60)
+        print("DRY RUN COMPLETE")
+        print("=" * 60)
+        print("Set DRY_RUN = False in script to perform actual deletion")
+    
+    else:
+        # Real cleanup - delete assets
+        print("Deleting assets...\\n")
+        deleted_count = 0
+        failed_count = 0
+        
+        for asset in assets:
+            asset_path = str(asset.package_name)
+            asset_name = str(asset.asset_name)
+            
+            try:
+                if unreal.EditorAssetLibrary.delete_asset(asset_path):
+                    deleted_count += 1
+                    unreal.log(f"✓ Deleted {{asset_name}}")
+                else:
+                    failed_count += 1
+                    unreal.log_warning(f"✗ Failed to delete: {{asset_name}}")
+            except Exception as e:
+                failed_count += 1
+                unreal.log_error(f"✗ Error deleting {{asset_name}}: {{e}}")
+        
+        print("")
+        print("=" * 60)
+        print(f"Cleanup complete: {{deleted_count}} deleted, {{failed_count}} failed")
+        print("=" * 60)
+        
+        if failed_count > 0:
+            unreal.log_warning("Some assets could not be deleted. They may be in use.")
+        else:
+            print(f"\\nAll assets removed from: {{CLEANUP_PATH}}")
+            
+            # Try to delete empty folder after assets are removed
+            try:
+                if unreal.EditorAssetLibrary.does_directory_exist(CLEANUP_PATH):
+                    # Check if directory is empty
+                    remaining = asset_registry.get_assets_by_path(CLEANUP_PATH, recursive=True)
+                    if not remaining:
+                        if unreal.EditorAssetLibrary.delete_directory(CLEANUP_PATH):
+                            print(f"✓ Removed empty directory: {{CLEANUP_PATH}}")
+                        else:
+                            unreal.log_warning(f"Could not remove directory: {{CLEANUP_PATH}}")
+            except Exception as e:
+                unreal.log_warning(f"Error removing directory: {{e}}")
+'''
+
+    # Write script file
+    script_path.write_text(script_content, encoding="utf-8")
+
+    return script_path
+
+
 def main():
     """Main forest generation function."""
     import argparse
@@ -401,6 +673,12 @@ Examples:
     # Generate forest using default input CSV (data/input/test.csv) with ultra quality
     python src/growpy/cli/generate_forest.py
 
+    # Generate and import directly to Unreal Engine Content Browser
+    python src/growpy/cli/generate_forest.py --quality high --import-to-unreal
+
+    # Complete pipeline with custom destination in Unreal
+    python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 15 --import-to-unreal --unreal-project-path "/Game/MyProject/Trees"
+
     # Ultra quality for hero trees (32 vertices, max detail)
     python src/growpy/cli/generate_forest.py --quality ultra
 
@@ -415,6 +693,11 @@ Examples:
 
     # Use a different CSV file with custom output directory
     python src/growpy/cli/generate_forest.py my_forest.csv --output-dir data/output/my_forest --quality ultra --growth-cycle-limit 15
+
+Unreal Engine Integration:
+    The --import-to-unreal flag generates a standalone Python script that can be executed
+    in Unreal Engine using the VSCode Unreal Python extension. Right-click the generated
+    script and select "Execute Python File in Unreal"
         """,
     )
 
@@ -502,6 +785,17 @@ Examples:
         default=True,
         help="Create minimal USD without materials/textures (default: True for Nanite compatibility)",
     )
+    parser.add_argument(
+        "--import-to-unreal",
+        action="store_true",
+        help="Generate Unreal Python script for importing trees (execute in Unreal via VSCode extension)",
+    )
+    parser.add_argument(
+        "--unreal-project-path",
+        type=str,
+        default="/Game/GrowPy/Trees",
+        help="Unreal project Content path for imports (default: /Game/GrowPy/Trees)",
+    )
 
     args = parser.parse_args()
 
@@ -544,6 +838,36 @@ Examples:
             args.skeleton_connected,
             args.clean_export,
         )
+
+        # Generate Unreal scripts if requested
+        if args.import_to_unreal:
+            import_script = generate_unreal_import_script(
+                args.output_dir,
+                args.unreal_project_path,
+            )
+
+            cleanup_script = generate_unreal_cleanup_script(
+                args.output_dir,
+                args.unreal_project_path,
+                dry_run=True,  # Default to dry-run mode for safety
+            )
+
+            print("\n" + "=" * 60)
+            print("UNREAL SCRIPTS GENERATED")
+            print("=" * 60)
+            print(f"Import script: {import_script}")
+            print(f"Cleanup script: {cleanup_script}")
+            print("\nTo import trees to Unreal Engine:")
+            print("1. Open import_forest.py in VSCode")
+            print("2. Right-click > 'Execute Python File in Unreal'")
+            print("\nTo cleanup assets:")
+            print("1. Open clean_assets.py in VSCode")
+            print("2. Review DRY_RUN setting (True = preview, False = delete)")
+            print("3. Right-click > 'Execute Python File in Unreal'")
+            print("\nRequirements:")
+            print("- Unreal Engine must be running")
+            print("- USD Importer plugin enabled")
+            print("- Editor Scripting Utilities plugin enabled")
 
     except Exception as e:
         pass

@@ -13,6 +13,7 @@ dependencies:
   - ipykernel
   - pip:
     - bpy  # Blender Python API with bundled USD, MaterialX, OpenImageIO, etc.
+    - unreal-remote-execution
 
 variables:
   PYTHONPATH: ./src:./src/the_grove_22/modules
