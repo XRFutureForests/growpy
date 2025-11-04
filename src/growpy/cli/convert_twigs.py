@@ -94,6 +94,7 @@ TEXTURE_MODIFIERS = {
     "bottom": ["bottom", "lower", "back", "underside"],
 }
 
+
 def standardize_twig_name(original_name: str, species_name: str) -> Tuple[str, Dict]:
     """Convert Grove's CamelCase .blend filenames to snake_case USD output names.
 
@@ -170,6 +171,7 @@ def standardize_twig_name(original_name: str, species_name: str) -> Tuple[str, D
 
     return standardized, metadata
 
+
 def classify_texture_type(texture_path: Path, material_name: str = "") -> str:
     """
     Classify texture type from filename with context awareness.
@@ -200,6 +202,7 @@ def classify_texture_type(texture_path: Path, material_name: str = "") -> str:
         return f"diffuse_{modifier}"
 
     return base_type
+
 
 def find_textures_for_material(
     blend_dir: Path, material_name: str, search_parent: bool = True
@@ -281,10 +284,11 @@ def find_textures_for_material(
 
     return texture_map
 
+
 def process_twig_directory(
     twig_dir: Path,
     formats: List[str] = ["usda"],
-    clean_export: bool = False,
+    clean_export: bool = True,
     twig_filter: Optional[List[str]] = None,
 ) -> Dict[str, List[Path]]:
     """Process all twig blend files in a directory.
@@ -292,7 +296,7 @@ def process_twig_directory(
     Args:
         twig_dir: Directory containing .blend twig files
         formats: Export formats to create
-        clean_export: If True, creates minimal USD without default attributes (demo mode)
+        clean_export: If True, creates minimal USD without materials/textures (default for Nanite)
         twig_filter: Optional list of twig directory names to process (snake_case)
 
     """
@@ -364,6 +368,7 @@ def process_twig_directory(
 
     return results
 
+
 def main():
     import argparse
 
@@ -414,8 +419,8 @@ Output per twig:
     parser.add_argument(
         "--clean-export",
         action="store_true",
-        default=False,
-        help="Create minimal USD without materials/textures (demo mode, matches demo structure)",
+        default=True,
+        help="Create minimal USD without materials/textures (default: True for Nanite compatibility)",
     )
 
     args = parser.parse_args()
@@ -528,6 +533,7 @@ Output per twig:
         # Validation removed - no longer needed for production
 
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

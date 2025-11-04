@@ -68,13 +68,13 @@ def rename_prim_recursive(stage, old_path, new_path):
                     attr.SetConnections(new_connections)
 
 
-def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=False):
+def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=True):
     """Add skeleton to USD file and remove DomeLight artifact using Blender's bundled pxr module.
 
     Args:
         usd_path: Path to USD file
         pivot_point: Root joint position (default: origin)
-        clean_export: If True, creates minimal USD without default attributes
+        clean_export: If True, creates minimal USD without materials/textures (default for Nanite)
 
     Returns:
         bool: True if skeleton added successfully
@@ -756,9 +756,7 @@ def setup_materials_with_textures(
     return materials_created > 0
 
 
-def process_twig_file(
-    blend_file, output_dir, formats, species_name, clean_export=False
-):
+def process_twig_file(blend_file, output_dir, formats, species_name, clean_export=True):
     """Process a single twig blend file.
 
     Args:
@@ -766,7 +764,7 @@ def process_twig_file(
         output_dir: Output directory for exported files
         formats: List of export formats
         species_name: Name of species
-        clean_export: If True, creates minimal USD without materials/textures (demo mode)
+        clean_export: If True, creates minimal USD without materials/textures (default for Nanite)
     """
     import bpy
 
@@ -988,7 +986,7 @@ if __name__ == "__main__":
     output_dir = Path(sys.argv[2])
     formats = sys.argv[3].split(",")
     species_name = sys.argv[4]
-    clean_export = "--clean-export" in sys.argv[5:] if len(sys.argv) > 5 else False
+    clean_export = "--clean-export" in sys.argv[5:] if len(sys.argv) > 5 else True
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
