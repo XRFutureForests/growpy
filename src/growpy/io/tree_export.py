@@ -11,6 +11,32 @@ Key Features:
 - Material and texture binding
 - Nanite Assembly creation for Unreal Engine 5.7+
 
+Exported Grove Model Attributes (as USD primvars):
+- All face_attribute_* exported as uniform primvars (per-face):
+  * branch_id, branch_id_parent, tree_id
+  * twig_long, twig_short, twig_upward, twig_dead
+  * dead, end, direction
+- All point_attribute_* exported as vertex primvars (per-vertex):
+  * age, mass, thickness, orientation, pitch
+  * vigor, shade, photosynthesis
+  * bone_id, skeleton_joint_id
+- Alternative twig placement methods (not currently exported):
+  * model.get_twig_locations()
+  * model.get_twig_orientations()
+  * model.get_twig_directions()
+
+Exported Skeleton Attributes:
+- Skeleton points, poly_lines, location
+- Skeleton attributes: branch_id, point_age, point_mass, point_radius
+- Advanced bones from grove.tag_bone_id()
+
+Grove-Level Attributes (not exported to USD):
+- grove.total_mass - Total mass of all trees
+- grove.number_of_branches - Total branch count
+- grove.height - Maximum tree height
+- grove.age - Grove age in flushes
+- grove.roots - Root system geometry (if grown with grow_roots/build_roots)
+
 Main Functions:
 - export_tree(): Export complete tree with skeleton (formerly export_grove_tree_as_usda_native)
 - build_tree_mesh(): Build USD mesh from Grove model (formerly build_tree_usd)
@@ -102,7 +128,7 @@ def export_tree(
             output_path=output_path,
             up_axis="Z",
             triangulated=True,
-            include_materials=True,
+            include_materials=False,
             clean_export=False,
             skeleton_length=skeleton_length,
             skeleton_reduce=skeleton_reduce,
@@ -132,7 +158,7 @@ def build_tree_mesh(
     bones_info: Optional[List] = None,
     up_axis: str = "Z",
     triangulated: bool = True,
-    include_materials: bool = True,
+    include_materials: bool = False,
     clean_export: bool = False,
     skeleton_length: float = 0.0,
     skeleton_reduce: float = 0.0,
@@ -220,18 +246,8 @@ def build_tree_mesh(
         mesh.CreateFaceVertexCountsAttr(face_vertex_counts)
         mesh.CreateFaceVertexIndicesAttr(face_vertex_indices)
 
-        # Add UV coordinates and materials only if requested
-        if include_materials:
-            if uvs:
-                primvars_api = UsdGeom.PrimvarsAPI(mesh)
-                uv_primvar = primvars_api.CreatePrimvar(
-                    "st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.faceVarying
-                )
-                usd_uvs = [Gf.Vec2f(uv[0], uv[1]) for uv in uvs]
-                uv_primvar.Set(usd_uvs)
-
-            # TODO: Re-enable materials once assembly binding is fixed
-            # _add_usd_materials(stage, mesh, model, str(mesh_path))
+        # Materials and textures disabled for Nanite assembly compatibility
+        # UV coordinates and materials cause issues with Nanite assembly import
 
         # Add all model attributes from Grove (face and point attributes)
         _add_model_attributes(mesh, model)

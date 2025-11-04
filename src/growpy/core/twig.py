@@ -192,15 +192,25 @@ def extract_twig_placements_from_model(
     if hasattr(model, "point_attribute_bone_id"):
         bone_ids = model.point_attribute_bone_id
 
-    # Build branch_id → bone_id mapping for proper branch isolation
-    branch_to_bones = {}
+    # Build branch_id → branch_root_bone_id mapping using is_branch_root flag
+    # bones_info format: (is_tree_root, parent_bone_id, start_point, end_point, radius, mass, is_branch_root, branch_id)
+
+    # Calculate branch_id_offset from first bone (global branch IDs need to be converted to local)
+    branch_id_offset = 0
+    if bones_info and len(bones_info) > 0 and len(bones_info[0]) >= 8:
+        branch_id_offset = int(bones_info[0][7])  # First bone's branch_id is the offset
+
+    branch_root_bones = {}
     if bones_info:
         for bone_idx, bone in enumerate(bones_info):
             if len(bone) >= 8:
-                branch_id = int(bone[7])
-                if branch_id not in branch_to_bones:
-                    branch_to_bones[branch_id] = []
-                branch_to_bones[branch_id].append(bone_idx)
+                is_branch_root = bone[6]  # Index 6 is is_branch_root flag
+                global_branch_id = int(bone[7])  # Index 7 is branch_id (global)
+                local_branch_id = (
+                    global_branch_id - branch_id_offset
+                )  # Convert to local
+                if is_branch_root:
+                    branch_root_bones[local_branch_id] = bone_idx
 
     # Extract branch IDs for face-level branch isolation
     face_branch_ids = []
@@ -243,37 +253,21 @@ def extract_twig_placements_from_model(
                     twig_directions[base_idx + 2],
                 )
 
-                # BRANCH-BASED BINDING: Use face_attribute_branch_id to restrict binding to current branch
+                # BRANCH-BASED BINDING: Direct mapping using face_attribute_branch_id → branch root bone
                 twig_bone_id = None
 
                 if (
                     face_branch_ids
                     and face_idx < len(face_branch_ids)
-                    and branch_to_bones
+                    and branch_root_bones
                 ):
-                    # PREFERRED: Use branch-based binding for perfect branch isolation
-                    face_branch_id = face_branch_ids[face_idx]
-                    branch_bones = branch_to_bones.get(face_branch_id, [])
-
-                    if branch_bones and bone_ids:
-                        # Within this branch, find which bone_id is most common among face vertices
-                        from collections import Counter
-
-                        face_vert_indices = list(face)
-                        face_bone_ids = []
-                        for vert_idx in face_vert_indices:
-                            if vert_idx < len(bone_ids):
-                                bone_id = bone_ids[vert_idx]
-                                # Only consider bones that belong to this branch
-                                if bone_id in branch_bones:
-                                    face_bone_ids.append(bone_id)
-
-                        if face_bone_ids:
-                            # Use most common bone within the branch
-                            twig_bone_id = Counter(face_bone_ids).most_common(1)[0][0]
-                        elif branch_bones:
-                            # Fallback: use first bone in branch (usually branch root)
-                            twig_bone_id = branch_bones[0]
+                    # PREFERRED: Direct mapping from face's branch_id to branch root bone
+                    # This uses Grove's authoritative branch assignments and is_branch_root flags
+                    global_face_branch_id = face_branch_ids[face_idx]
+                    local_face_branch_id = (
+                        global_face_branch_id - branch_id_offset
+                    )  # Convert to local
+                    twig_bone_id = branch_root_bones.get(local_face_branch_id)
 
                 elif bone_ids:
                     # FALLBACK: Use vertex-based voting without branch filtering
