@@ -123,22 +123,6 @@ class GrowPyConfig:
         from .paths import get_growth_model_path
         return get_growth_model_path(species)
 
-    def get_species_colors(self, species: str):
-        """Get species colors."""
-        from .species import get_species_colors
-        return get_species_colors(species)
-
-    def get_lod_configs(self):
-        """Get LOD configurations."""
-        from .quality import get_lod_configs
-        return get_lod_configs(self.lod_levels)
-
-    @staticmethod
-    def get_species_data(species: str):
-        """Get all species data."""
-        from .species import get_species_data
-        return get_species_data(species)
-
     @staticmethod
     def get_twig_files_by_type(species: str):
         """Get twig files organized by type."""

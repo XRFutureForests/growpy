@@ -86,13 +86,8 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
     # Get script directory for default paths
     script_dir = Path(__file__).parent.parent.parent.parent
+    default_assets_dir = script_dir / "data" / "assets"
 
-    parser.add_argument(
-        "--assets-dir",
-        type=Path,
-        default=script_dir / "data" / "assets",
-        help="Directory containing prepared GrowPy assets (default: data/assets)",
-    )
     parser.add_argument(
         "--csv",
         type=Path,
@@ -135,17 +130,17 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
     args = parser.parse_args()
 
     # Check assets directory
-    if not args.assets_dir.exists():
+    if not default_assets_dir.exists():
         sys.exit(1)
 
     # Check for presets directory
-    presets_dir = args.assets_dir / "presets"
+    presets_dir = default_assets_dir / "presets"
     if not presets_dir.exists():
         sys.exit(1)
 
     # Create analyzer
     analyzer = SpeciesGrowthAnalyzer(
-        args.assets_dir,
+        default_assets_dir,
         args.cycles,
         args.seeds,
         args.height_threshold,

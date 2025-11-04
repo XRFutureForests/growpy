@@ -409,19 +409,6 @@ Output per twig:
         default=default_csv,
         help="Path to species CSV - only twigs for CSV species will be converted (default: data/input/test.csv)",
     )
-    parser.add_argument(
-        "--formats",
-        nargs="+",
-        choices=["usd", "usda"],
-        default=["usda"],
-        help="Export formats (default: usda)",
-    )
-    parser.add_argument(
-        "--clean-export",
-        action="store_true",
-        default=True,
-        help="Create minimal USD without materials/textures (default: True for Nanite compatibility)",
-    )
 
     args = parser.parse_args()
 
@@ -508,12 +495,12 @@ Output per twig:
     if args.path.is_file() and args.path.suffix == ".blend":
         # Single file
         results = process_twig_directory(
-            args.path.parent, args.formats, args.clean_export, twig_filter
+            args.path.parent, ["usda"], True, twig_filter
         )
     elif args.path.is_dir():
         # Directory
         results = process_twig_directory(
-            args.path, args.formats, args.clean_export, twig_filter
+            args.path, ["usda"], True, twig_filter
         )
     else:
         return 1

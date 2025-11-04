@@ -192,12 +192,6 @@ CSV Format Support:
         help=f"Path to The Grove 2.2 directory (default: {default_grove})",
     )
     parser.add_argument(
-        "--assets-dir",
-        type=Path,
-        default=default_assets,
-        help=f"Path to assets output directory (default: {default_assets})",
-    )
-    parser.add_argument(
         "--csv",
         type=Path,
         default=default_csv,
@@ -228,11 +222,14 @@ CSV Format Support:
     except Exception as e:
         return 1
 
+    # Hardcode assets directory
+    assets_dir = default_assets
+
     # Create target directories
-    args.assets_dir.mkdir(parents=True, exist_ok=True)
-    (args.assets_dir / "presets").mkdir(exist_ok=True)
-    (args.assets_dir / "textures").mkdir(exist_ok=True)
-    (args.assets_dir / "twigs").mkdir(exist_ok=True)
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    (assets_dir / "presets").mkdir(exist_ok=True)
+    (assets_dir / "textures").mkdir(exist_ok=True)
+    (assets_dir / "twigs").mkdir(exist_ok=True)
 
     # Track statistics
     stats = {
@@ -246,7 +243,7 @@ CSV Format Support:
 
     # Copy presets with standardized naming
     src_presets = args.grove_dir / "presets"
-    dst_presets = args.assets_dir / "presets"
+    dst_presets = assets_dir / "presets"
 
     for _, row in df.iterrows():
         preset_file = row["Preset"]
@@ -268,7 +265,7 @@ CSV Format Support:
 
     # Copy twigs (with CamelCase -> snake_case conversion)
     src_twigs = args.grove_dir / "twigs"
-    dst_twigs = args.assets_dir / "twigs"
+    dst_twigs = assets_dir / "twigs"
 
     for _, row in df.iterrows():
         twig_name = row["Twig"]
@@ -311,7 +308,7 @@ CSV Format Support:
 
     # Copy bark textures with CamelCase -> snake_case conversion (preserves age numbers)
     src_textures = args.grove_dir / "textures"
-    dst_textures = args.assets_dir / "textures"
+    dst_textures = assets_dir / "textures"
 
     for _, row in df.iterrows():
         texture_file = row["Bark Texture"]
