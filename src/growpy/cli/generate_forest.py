@@ -43,6 +43,7 @@ from tqdm import tqdm
 GROWTH_CYCLE_LIMIT = 10
 HEIGHT_SCALE = 1
 MAX_WORKERS = max(1, mp.cpu_count() - 1)
+SMOOTH_ITERATIONS = 5
 
 from growpy import (
     TREE_EXPORT_AVAILABLE,
@@ -101,6 +102,8 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         # Export directly from already-simulated grove (from forest simulation phase)
         # This grove was grown with inter-species light competition and is ready to export
         # No re-simulation needed - much faster!
+        for i in range(SMOOTH_ITERATIONS):
+            grove.smooth()
 
         # CRITICAL BUILD ORDER: skeleton -> bones -> models
         # 1. Build skeletons first
@@ -247,7 +250,7 @@ def generate_forest_exports(
     skeleton_reduce: float = 0.0,
     skeleton_bias: float = 0.5,
     skeleton_connected: bool = True,
-    clean_export: bool = False,
+    clean_export: bool = True,
 ) -> None:
     """Generate forest from CSV data and export as skeletal Nanite Assembly USD files.
 
@@ -267,7 +270,7 @@ def generate_forest_exports(
         skeleton_reduce: Bone reduction factor (default: 0.25)
         skeleton_bias: Weight bias (default: 0.5)
         skeleton_connected: Connected bone hierarchy (default: True)
-        clean_export: If True, creates minimal USD without materials/textures (demo mode)
+        clean_export: If True, creates minimal USD without materials/textures (default for Nanite)
     """
     # Use defaults if not specified
     if growth_cycle_limit is None:
@@ -496,8 +499,8 @@ Examples:
     parser.add_argument(
         "--clean-export",
         action="store_true",
-        default=False,
-        help="Create minimal USD without materials/textures (demo mode, matches demo structure)",
+        default=True,
+        help="Create minimal USD without materials/textures (default: True for Nanite compatibility)",
     )
 
     args = parser.parse_args()

@@ -1,6 +1,7 @@
 # %% IMPORTS
-from pathlib import Path
 from itertools import groupby
+from pathlib import Path
+
 import the_grove_22_core as gc
 
 # %% INPUT PARAMETERS - Configure these to generate different trees
@@ -16,7 +17,7 @@ random_seed = 42
 
 # Path to tree species preset (default: None)
 preset_path = Path(
-    "/Users/maximiliansperlich/Developer/the-grove/data/assets/presets/european_beech.seed.json"
+    "C:\\Users\\Maximilian Sperlich\\Git\\the-grove\\data\\assets\\presets\\european_beech.seed.json"
 )
 
 # Tree planting parameters
@@ -112,8 +113,7 @@ bones_list = grove.tag_bone_id(
 
 bones_grouped = [list(g) for k, g in groupby(bones_list, lambda x: x[0])]
 bones_trees = [
-    bones_grouped[i]
-    + (bones_grouped[i + 1] if i + 1 < len(bones_grouped) else [])
+    bones_grouped[i] + (bones_grouped[i + 1] if i + 1 < len(bones_grouped) else [])
     for i in range(0, len(bones_grouped), 2)
 ]
 
@@ -123,6 +123,27 @@ print(f"  Length threshold: {skeleton_length}")
 print(f"  Reduce threshold: {skeleton_reduce}")
 print(f"  Bias: {skeleton_bias}")
 print(f"  Connected: {skeleton_connected}")
+
+# %% ROOT GENERATION
+
+# Generate root systems if desired
+print("\n--- Generating Root Systems ---")
+grove.grow_roots()  # Simulate root growth
+
+# Build root meshes with same parameters as tree models
+root_build_params = {
+    "resolution": resolution,
+    "resolution_reduce": resolution_reduce,
+    "texture_repeat": texture_repeat,
+    "build_cutoff_age": build_cutoff_age,
+    "build_cutoff_thickness": build_cutoff_thickness,
+    "build_blend": build_blend,
+    "build_end_cap": build_end_cap,
+}
+root_models = grove.build_roots(
+    root_build_params
+)  # Build individual root meshes (one per tree)
+print(f"Generated {len(root_models)} root system(s)")
 
 # %% MODEL BUILDING
 
@@ -152,11 +173,33 @@ for tree_model in models:
     if triangulate_mesh:
         tree_model.triangulate()
 
+# %% EXTRACT GROVE-LEVEL ATTRIBUTES
+
+# Grove-level attributes (apply to entire grove/simulation)
+grove_total_mass = (
+    grove.total_mass if hasattr(grove, "total_mass") else None
+)  # Total mass of all trees
+grove_number_of_branches = (
+    grove.number_of_branches if hasattr(grove, "number_of_branches") else None
+)  # Total branch count
+grove_height = grove.height if hasattr(grove, "height") else None  # Maximum tree height
+grove_age = grove.age if hasattr(grove, "age") else None  # Grove age in flushes
+grove_roots = grove.roots if hasattr(grove, "roots") else None  # Root system (if grown)
+
+print("\n--- Grove-Level Attributes ---")
+print(f"  Total Mass: {grove_total_mass}")
+print(f"  Number of Branches: {grove_number_of_branches}")
+print(f"  Max Height: {grove_height}")
+print(f"  Age: {grove_age} flushes")
+print(f"  Roots Available: {grove_roots is not None}")
+
 # %% PROCESS AND EXPORT EACH TREE
 
 print(f"\nProcessing {len(models)} trees...")
 
-for tree_idx, (tree_model, skeleton, bones) in enumerate(zip(models, skeletons, bones_trees)):
+for tree_idx, (tree_model, skeleton, bones, root_model) in enumerate(
+    zip(models, skeletons, bones_trees, root_models)
+):
     print(f"\n--- Processing Tree {tree_idx} ---")
 
     # Skeleton geometry
@@ -242,6 +285,30 @@ for tree_idx, (tree_model, skeleton, bones) in enumerate(zip(models, skeletons, 
 
     # Skeleton attributes
     point_bone_id = tree_model.point_attribute_bone_id  # Bone ID for rigging/animation
+    point_skeleton_joint_id = (
+        tree_model.point_attribute_skeleton_joint_id
+        if hasattr(tree_model, "point_attribute_skeleton_joint_id")
+        else None
+    )  # Skeleton joint ID (alternative to bone_id)
+
+    # %% EXTRACT TWIG PLACEMENT DATA FROM METHODS
+
+    # Twig placement methods (alternative to face attributes)
+    twig_locations = (
+        tree_model.get_twig_locations()
+        if hasattr(tree_model, "get_twig_locations")
+        else None
+    )
+    twig_orientations = (
+        tree_model.get_twig_orientations()
+        if hasattr(tree_model, "get_twig_orientations")
+        else None
+    )
+    twig_directions = (
+        tree_model.get_twig_directions()
+        if hasattr(tree_model, "get_twig_directions")
+        else None
+    )
 
     # %% EXPORT GEOMETRY AND ATTRIBUTES
     # All geometry and attribute data is exported directly from Grove API
@@ -252,36 +319,36 @@ for tree_idx, (tree_model, skeleton, bones) in enumerate(zip(models, skeletons, 
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Save basic geometry
-    with open(output_dir / "points.txt", "w") as f:
+    with open(output_dir / "tree_points.txt", "w") as f:
         f.write("# Point coordinates (x, y, z)\n")
         for i, p in enumerate(points):
             f.write(f"{i}: {p.x}, {p.y}, {p.z}\n")
 
-    with open(output_dir / "faces.txt", "w") as f:
+    with open(output_dir / "tree_faces.txt", "w") as f:
         f.write("# Face definitions (point indices)\n")
         for i, face in enumerate(faces):
             f.write(f"{i}: {face}\n")
 
-    with open(output_dir / "uvs.txt", "w") as f:
+    with open(output_dir / "tree_uvs.txt", "w") as f:
         f.write("# UV coordinates (u, v)\n")
         for i, uv in enumerate(uvs):
             f.write(f"{i}: {uv}\n")
 
     # Save flat geometry data
-    with open(output_dir / "points_flat.txt", "w") as f:
+    with open(output_dir / "tree_points_flat.txt", "w") as f:
         f.write("# Flat point array [x1,y1,z1,x2,y2,z2,...]\n")
         f.write(str(points_flat))
 
-    with open(output_dir / "uvs_flat.txt", "w") as f:
+    with open(output_dir / "tree_uvs_flat.txt", "w") as f:
         f.write("# Flat UV array [u1,v1,u2,v2,...]\n")
         f.write(str(uvs_flat))
 
-    with open(output_dir / "directions_flat.txt", "w") as f:
+    with open(output_dir / "tree_directions_flat.txt", "w") as f:
         f.write("# Flat direction vectors\n")
         f.write(str(directions_flat))
 
     # Save face attributes
-    with open(output_dir / "face_attributes.txt", "w") as f:
+    with open(output_dir / "tree_face_attributes.txt", "w") as f:
         f.write("# Face Attributes\n\n")
 
         if face_tree_id:
@@ -316,7 +383,7 @@ for tree_idx, (tree_model, skeleton, bones) in enumerate(zip(models, skeletons, 
         f.write(f"{face_direction}\n")
 
     # Save point attributes
-    with open(output_dir / "point_attributes.txt", "w") as f:
+    with open(output_dir / "tree_point_attributes.txt", "w") as f:
         f.write("# Point Attributes\n\n")
 
         f.write("## Age\n")
@@ -344,10 +411,14 @@ for tree_idx, (tree_model, skeleton, bones) in enumerate(zip(models, skeletons, 
         f.write(f"{point_photosynthesis}\n")
 
         f.write("## Bone ID\n")
-        f.write(f"{point_bone_id}\n")
+        f.write(f"{point_bone_id}\n\n")
+
+        if point_skeleton_joint_id is not None:
+            f.write("## Skeleton Joint ID\n")
+            f.write(f"{point_skeleton_joint_id}\n")
 
     # Save skeleton data
-    with open(output_dir / "skeleton.txt", "w") as f:
+    with open(output_dir / "skeleton_data.txt", "w") as f:
         f.write("# Skeleton Data\n\n")
 
         f.write("## Points\n")
@@ -367,6 +438,27 @@ for tree_idx, (tree_model, skeleton, bones) in enumerate(zip(models, skeletons, 
         f.write(f"## Point Mass\n{skeleton_point_mass}\n\n")
         f.write(f"## Point Radius\n{skeleton_point_radius}\n")
 
+    # Save twig placement data from methods
+    with open(output_dir / "twigs_placement_methods.txt", "w") as f:
+        f.write("# Twig Placement Data from Methods\n\n")
+
+        if twig_locations is not None:
+            f.write("## Twig Locations\n")
+            for i, loc in enumerate(twig_locations):
+                f.write(f"{i}: {loc}\n")
+            f.write("\n")
+
+        if twig_orientations is not None:
+            f.write("## Twig Orientations\n")
+            for i, orient in enumerate(twig_orientations):
+                f.write(f"{i}: {orient}\n")
+            f.write("\n")
+
+        if twig_directions is not None:
+            f.write("## Twig Directions\n")
+            for i, direction in enumerate(twig_directions):
+                f.write(f"{i}: {direction}\n")
+
     # Save advanced skeleton bones data
     with open(output_dir / "skeleton_bones.txt", "w") as f:
         f.write("# Advanced Skeleton Bones (Tagged with custom parameters)\n\n")
@@ -383,15 +475,243 @@ for tree_idx, (tree_model, skeleton, bones) in enumerate(zip(models, skeletons, 
         for i, bone in enumerate(bones):
             f.write(f"{i}: {bone}\n")
 
+    # %% EXPORT ROOT GEOMETRY AND ATTRIBUTES
+
+    # Extract root geometry
+    root_points = root_model.points  # [(x,y,z), ...] root vertex coordinates
+    root_faces = root_model.faces  # [[idx1,idx2,...], ...] face definitions
+    root_uvs = root_model.uvs  # UV coordinates for root texturing
+    root_location = root_model.location if hasattr(root_model, "location") else None
+
+    # Extract root flat geometry data
+    root_points_flat = (
+        root_model.get_points_flat() if hasattr(root_model, "get_points_flat") else None
+    )
+    root_uvs_flat = (
+        root_model.get_uvs_flat() if hasattr(root_model, "get_uvs_flat") else None
+    )
+    root_directions_flat = (
+        root_model.get_directions_flat()
+        if hasattr(root_model, "get_directions_flat")
+        else None
+    )
+
+    # Extract root face attributes
+    root_face_branch_id = (
+        root_model.face_attribute_branch_id
+        if hasattr(root_model, "face_attribute_branch_id")
+        else None
+    )
+    root_face_branch_id_parent = (
+        root_model.face_attribute_branch_id_parent
+        if hasattr(root_model, "face_attribute_branch_id_parent")
+        else None
+    )
+    root_face_dead = (
+        root_model.face_attribute_dead
+        if hasattr(root_model, "face_attribute_dead")
+        else None
+    )
+    root_face_end = (
+        root_model.face_attribute_end
+        if hasattr(root_model, "face_attribute_end")
+        else None
+    )
+    root_face_direction = (
+        root_model.face_attribute_direction
+        if hasattr(root_model, "face_attribute_direction")
+        else None
+    )
+
+    # Extract root point attributes (same structure as tree model)
+    root_point_age = (
+        root_model.point_attribute_age
+        if hasattr(root_model, "point_attribute_age")
+        else None
+    )
+    root_point_mass = (
+        root_model.point_attribute_mass
+        if hasattr(root_model, "point_attribute_mass")
+        else None
+    )
+    root_point_thickness = (
+        root_model.point_attribute_thickness
+        if hasattr(root_model, "point_attribute_thickness")
+        else None
+    )
+    root_point_orientation = (
+        root_model.point_attribute_orientation
+        if hasattr(root_model, "point_attribute_orientation")
+        else None
+    )
+    root_point_pitch = (
+        root_model.point_attribute_pitch
+        if hasattr(root_model, "point_attribute_pitch")
+        else None
+    )
+    root_point_vigor = (
+        root_model.point_attribute_vigor
+        if hasattr(root_model, "point_attribute_vigor")
+        else None
+    )
+    root_point_shade = (
+        root_model.point_attribute_shade
+        if hasattr(root_model, "point_attribute_shade")
+        else None
+    )
+    root_point_photosynthesis = (
+        root_model.point_attribute_photosynthesis
+        if hasattr(root_model, "point_attribute_photosynthesis")
+        else None
+    )
+    root_point_bone_id = (
+        root_model.point_attribute_bone_id
+        if hasattr(root_model, "point_attribute_bone_id")
+        else None
+    )
+    root_point_skeleton_joint_id = (
+        root_model.point_attribute_skeleton_joint_id
+        if hasattr(root_model, "point_attribute_skeleton_joint_id")
+        else None
+    )
+
+    # Save root geometry
+    with open(output_dir / "roots_points.txt", "w") as f:
+        f.write("# Root point coordinates (x, y, z)\n")
+        for i, p in enumerate(root_points):
+            f.write(f"{i}: {p.x}, {p.y}, {p.z}\n")
+
+    with open(output_dir / "roots_faces.txt", "w") as f:
+        f.write("# Root face definitions (point indices)\n")
+        for i, face in enumerate(root_faces):
+            f.write(f"{i}: {face}\n")
+
+    with open(output_dir / "roots_uvs.txt", "w") as f:
+        f.write("# Root UV coordinates (u, v)\n")
+        for i, uv in enumerate(root_uvs):
+            f.write(f"{i}: {uv}\n")
+
+    # Save root flat geometry data
+    if root_points_flat is not None:
+        with open(output_dir / "roots_points_flat.txt", "w") as f:
+            f.write("# Flat root point array [x1,y1,z1,x2,y2,z2,...]\n")
+            f.write(str(root_points_flat))
+
+    if root_uvs_flat is not None:
+        with open(output_dir / "roots_uvs_flat.txt", "w") as f:
+            f.write("# Flat root UV array [u1,v1,u2,v2,...]\n")
+            f.write(str(root_uvs_flat))
+
+    if root_directions_flat is not None:
+        with open(output_dir / "roots_directions_flat.txt", "w") as f:
+            f.write("# Flat root direction vectors\n")
+            f.write(str(root_directions_flat))
+
+    # Save root face attributes
+    with open(output_dir / "roots_face_attributes.txt", "w") as f:
+        f.write("# Root Face Attributes\n\n")
+
+        if root_face_branch_id is not None:
+            f.write("## Branch ID\n")
+            f.write(f"{root_face_branch_id}\n\n")
+
+        if root_face_branch_id_parent is not None:
+            f.write("## Branch Parent ID\n")
+            f.write(f"{root_face_branch_id_parent}\n\n")
+
+        if root_face_dead is not None:
+            f.write("## Dead Faces\n")
+            f.write(f"{root_face_dead}\n\n")
+
+        if root_face_end is not None:
+            f.write("## End Faces\n")
+            f.write(f"{root_face_end}\n\n")
+
+        if root_face_direction is not None:
+            f.write("## Face Direction\n")
+            f.write(f"{root_face_direction}\n")
+
+    # Save root point attributes
+    with open(output_dir / "roots_point_attributes.txt", "w") as f:
+        f.write("# Root Point Attributes\n\n")
+
+        if root_point_age is not None:
+            f.write("## Age\n")
+            f.write(f"{root_point_age}\n\n")
+
+        if root_point_mass is not None:
+            f.write("## Mass\n")
+            f.write(f"{root_point_mass}\n\n")
+
+        if root_point_thickness is not None:
+            f.write("## Thickness\n")
+            f.write(f"{root_point_thickness}\n\n")
+
+        if root_point_orientation is not None:
+            f.write("## Orientation\n")
+            f.write(f"{root_point_orientation}\n\n")
+
+        if root_point_pitch is not None:
+            f.write("## Pitch\n")
+            f.write(f"{root_point_pitch}\n\n")
+
+        if root_point_vigor is not None:
+            f.write("## Vigor\n")
+            f.write(f"{root_point_vigor}\n\n")
+
+        if root_point_shade is not None:
+            f.write("## Shade\n")
+            f.write(f"{root_point_shade}\n\n")
+
+        if root_point_photosynthesis is not None:
+            f.write("## Photosynthesis\n")
+            f.write(f"{root_point_photosynthesis}\n\n")
+
+        if root_point_bone_id is not None:
+            f.write("## Bone ID\n")
+            f.write(f"{root_point_bone_id}\n\n")
+
+        if root_point_skeleton_joint_id is not None:
+            f.write("## Skeleton Joint ID\n")
+            f.write(f"{root_point_skeleton_joint_id}\n")
+
     print(f"  Exported to {output_dir}")
     print(f"    Points: {len(points)}")
     print(f"    Faces: {len(faces)}")
     print(f"    UV Coordinates: {len(uvs)}")
     print(f"    Skeleton Points: {len(skeleton_points)}")
     print(f"    Skeleton Bones: {len(bones)}")
+    print(f"    Root Points: {len(root_points)}")
+    print(f"    Root Faces: {len(root_faces)}")
+
+# %% EXPORT GROVE-LEVEL ATTRIBUTES
+
+grove_output_dir = Path("data/output/grove_geometry_dump")
+with open(grove_output_dir / "grove_attributes.txt", "w") as f:
+    f.write("# Grove-Level Attributes\n\n")
+    f.write(f"## Total Mass: {grove_total_mass}\n")
+    f.write(f"## Number of Branches: {grove_number_of_branches}\n")
+    f.write(f"## Max Height: {grove_height}\n")
+    f.write(f"## Age: {grove_age} flushes\n\n")
+
+    if grove_roots:
+        f.write("## Root System Available: Yes\n")
+        f.write(f"Root data type: {type(grove_roots)}\n")
+        # Try to extract root attributes if available
+        if hasattr(grove_roots, "points"):
+            f.write(f"Root points count: {len(grove_roots.points)}\n")
+        if hasattr(grove_roots, "faces"):
+            f.write(f"Root faces count: {len(grove_roots.faces)}\n")
+    else:
+        f.write("## Root System Available: No\n")
+        f.write(
+            "Note: Use grove.grow_roots() and grove.build_roots() to generate root geometry\n"
+        )
 
 print(f"\n\nAll {len(models)} trees exported successfully!")
+print(f"Grove-level attributes exported to {grove_output_dir / 'grove_attributes.txt'}")
 if enable_smooth:
     print(f"Smoothing applied: {smooth_iterations} iteration(s)")
 
+# %%
 # %%
