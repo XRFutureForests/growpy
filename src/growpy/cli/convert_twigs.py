@@ -357,13 +357,8 @@ def process_twig_directory(
                     results[species_name] = []
                 results[species_name].extend(exported_files)
 
-                # Validate skeletal twigs
-                skeletal_twigs = [f for f in exported_files if "_skeletal" in f.stem]
-                if skeletal_twigs:
-                    for skel_twig in skeletal_twigs:
-                        pass
-
-        except Exception as e:
+        except Exception:
+            # Silently fail - export validation is optional
             pass
 
     return results
@@ -419,10 +414,8 @@ Output per twig:
     twig_filter = None
     if args.csv and str(args.csv) != "":
         if not args.csv.exists():
-            # If using default CSV and it doesn't exist, skip filtering with a warning
-            if args.csv == default_csv:
-                pass
-            else:
+            # If using default CSV and it doesn't exist, skip filtering
+            if args.csv != default_csv:
                 return 1
         else:
             import pandas as pd
@@ -476,8 +469,6 @@ Output per twig:
                                 twig_name
                             ):
                                 twig_filter.append(twig_name.strip())
-                        else:
-                            pass
 
                     twig_filter = list(set(twig_filter))  # Remove duplicates
                 else:
@@ -509,15 +500,7 @@ Output per twig:
 
     total_files = sum(len(files) for files in results.values())
 
-    # Check for any files that might need manual skeleton addition
-    skel_files = []
-    for species, files in results.items():
-        skel_files.extend([f for f in files if "_skeletal" in f.stem])
-
-    if skel_files:
-        pass
-
-        # Validation removed - no longer needed for production
+    # Validation removed - no longer needed for production
 
     return 0
 
