@@ -31,4 +31,3 @@ def calculate_growth_cycles_from_height(forest_data: pd.DataFrame) -> None:
 
     max_cycles = forest_data["growth_cycles"].max()
     forest_data["delay"] = max_cycles - forest_data["growth_cycles"]
-    forest_data["delay"] = max_cycles - forest_data["growth_cycles"]

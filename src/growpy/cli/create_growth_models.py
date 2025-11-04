@@ -174,16 +174,6 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         # Save individual species results
         species_dir = analyzer.save_species_results(args.species)
 
-        if metadata["early_terminations"] > 0:
-            pass
-        else:
-            pass
-
-        if metadata["timeouts"] > 0:
-            pass
-        else:
-            pass
-
         # Save results
         analyzer.save_growth_models()
 
@@ -233,10 +223,6 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
                         standardized = match.iloc[0].get("Standardized Name")
                         if standardized:
                             csv_species.append(standardized)
-                        else:
-                            pass
-                    else:
-                        pass
 
                 if not csv_species:
                     sys.exit(1)
