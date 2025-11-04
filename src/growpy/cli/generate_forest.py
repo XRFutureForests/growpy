@@ -280,9 +280,7 @@ def generate_forest_exports(
         if missing_cols:
             return
 
-        # Ensure z column exists (will be added by create_forest if missing)
-        if "z" not in forest_data.columns:
-            pass
+        # Z column will be added by create_forest if missing
 
     except Exception as e:
         return
@@ -343,7 +341,7 @@ def generate_forest_exports(
                 config=config,
             )
 
-        exported_files = export_individual_trees(
+        export_individual_trees(
             forest,
             forest_data,
             output_dir,
@@ -351,10 +349,8 @@ def generate_forest_exports(
             quality_params,
         )
 
-        if exported_files:
-            pass
-
-    except Exception as e:
+    except Exception:
+        # Silently fail - export is optional
         pass
 
 
@@ -774,7 +770,8 @@ Unreal Engine Integration:
             print("- USD Importer plugin enabled")
             print("- Editor Scripting Utilities plugin enabled")
 
-    except Exception as e:
+    except Exception:
+        # Silently fail - allows script to be used in various contexts
         pass
 
 
