@@ -1,69 +1,137 @@
-# Documentation Archive
+# GrowPy Documentation
 
-This directory contains historical development summaries, fix documentation, and implementation notes from the project's development phase.
+Complete documentation for the GrowPy pipeline - simplified tree generation for Unreal Engine using The Grove 2.2 with FBX export workflow.
 
-## Purpose
+## Quick Start
 
-These documents were created during active development to track:
+📚 **[Getting Started Guide](../GETTING_STARTED.md)** ⭐ **START HERE!**
 
-- Bug fixes and workarounds
-- Integration challenges and solutions
-- Implementation verification steps
-- Incremental improvements and updates
+New to GrowPy? Start here for quick setup and first steps.
 
-## Organization
+## Documentation Index
 
-Files are organized by topic:
+### Essential Guides
 
-### Nanite Assembly & Integration
+- **[CLI Reference](../guides/cli-reference.md)** 🔧 **COMMAND REFERENCE**
+  - Complete flag documentation for all CLI scripts
+  - Usage examples and workflows
+  - Quality presets reference
+  - Troubleshooting common issues
 
-- `NANITE_ASSEMBLY_*.md` - Various stages of Nanite assembly implementation
-- `FBX_NANITE_ASSEMBLY.md` - FBX export for Nanite workflow
-- `INTEGRATION_COMPLETE.md` - Final integration summary
+- **[Getting Started](../GETTING_STARTED.md)** 🚀 **QUICK SETUP**
+  - Installation and environment setup
+  - Two main workflows (Forest vs Library)
+  - Common commands
+  - First forest generation
 
-### Coordinate System Fixes
+- **[Unreal Import Guide](UNREAL_IMPORT_GUIDE.md)** 🎮 **UNREAL ENGINE**
+  - Import trees and twigs to UE5
+  - PCG (Procedural Content Generation) setup
+  - Foliage Tool usage
+  - Material setup and Nanite configuration
 
-- `COORDINATE_FIX_SUMMARY.md` - Overall coordinate system corrections
-- `TWIG_COORDINATE_FIX.md` - Twig-specific coordinate fixes
-- `TWIG_PLACEMENT_FIX.md` - Twig placement corrections
-- `TREE_USD_Z_UP_COMPLETE.md` - Z-up coordinate system for USD
+### Configuration
 
-### USD Export
+- **[Configuration Guide](CONFIGURATION.md)** - Package configuration
+  - `GrowPyConfig` class
+  - Species lookup table format
+  - Asset path resolution
+  - Adding new species
 
-- `USD_SCALE_FIX.md` - Scale factor corrections for USD
-- `TWIG_USD_UPDATE_ARCHIVED.md` - Historical twig USD updates
+- **[Config Override](CONFIG_OVERRIDE.md)** - Project-level overrides
+  - Override hierarchy
+  - Custom species configurations
 
-### Asset Lookup & Textures
+### Technical Documentation
 
-- `ASSET_LOOKUP_IMPROVEMENTS_SUMMARY.md` - Asset lookup system improvements
-- `BARK_TEXTURE_UPDATE.md` - Bark texture integration
-- `LOOKUP_IMPROVEMENTS.md` - Lookup system enhancements
-- `TWIG_LOOKUP_FIX.md` - Twig asset lookup corrections
-- `TWIG_TEXTURE_*.md` - Twig texture audits and fixes
+- **[Module Overview](MODULE_OVERVIEW.md)** - Code structure
+  - Package organization
+  - Module descriptions
+  - Programmatic usage
 
-### Mount Points & Twigs
+- **[Grove Integration](GROVE_INTEGRATION.md)** - Grove API integration
+  - Integration patterns
+  - Best practices
 
-- `MOUNT_POINT_INTEGRATION_COMPLETE.md` - Mount point system integration
-- `TWIG_MOUNT_POINT_UPDATE.md` - Twig mount point updates
-- `TWIG_CONVERSION_VERIFICATION.md` - Twig conversion validation
-- `TWIG_CONVERTER_V2_SUCCESS.md` - Version 2 converter completion
+- **[Texture Implementation](TEXTURE_IMPLEMENTATION.md)** - Materials & textures
+  - Material system
+  - Texture mapping
+  - FBX export details
 
-### General
+## Common Commands
 
-- `CLEANUP_SUMMARY.md` - Various cleanup operations
-- `WORKSPACE_CLEAN.md` - Workspace organization notes
-- `LOOKUP_INTEGRATION_VERIFICATION.md` - Lookup system verification
+### Forest Generation Workflow
 
-## Current Documentation
+```bash
+# Complete pipeline + forest generation
+python src/growpy/cli/run_pipeline.py
+python src/growpy/cli/generate_forest.py data/input/forest.csv
+```
 
-For current project documentation, see:
+### Individual Pipeline Steps
 
-- `/README.md` - Project overview and quick start
-- `/CHANGELOG.md` - Version history and notable changes
-- `/docs/growpy/` - GrowPy package documentation
-- `/docs/guides/` - User guides and tutorials
-- `/docs/GETTING_STARTED.md` - Getting started guide
+```bash
+# Step 1: Prepare assets
+python src/growpy/cli/prepare_assets.py
 
-## Note
+# Step 2: Convert twigs
+python src/growpy/cli/convert_twigs.py data/assets/twigs
 
-These archived documents may contain outdated information and should be used for historical reference only. Refer to the current documentation for up-to-date information.
+# Step 3: Create growth models
+python src/growpy/cli/create_growth_models.py
+```
+
+## Project Structure
+
+```
+the-grove/
+├── src/growpy/              # Core package
+│   ├── cli/                # Command-line scripts
+│   ├── config/             # Configuration module
+│   ├── core/               # Core simulation
+│   ├── io/                 # Import/Export
+│   └── utils/              # Utilities
+├── docs/growpy/            # This documentation
+├── data/                   # Data directory
+│   ├── assets/            # Assets from Grove
+│   │   ├── presets/       # Species presets
+│   │   ├── textures/      # Textures
+│   │   ├── twigs/         # Twig files
+│   │   └── growth_models/ # Generated models
+│   └── input/             # User input files
+└── config/                # Optional config overrides
+```
+
+## Key Features
+
+- **Complete FBX Pipeline** - Trees and twigs with mesh, skeleton, materials, and textures
+- **Smart Growth Models** - Automatic early termination when growth plateaus
+- **Light Competition** - Multi-species forest simulation with realistic shading
+- **Forest/Grove/Tree/Twig Hierarchy** - Logical organization maintained
+- **Unreal Engine Optimized** - Nanite-ready, skeletal mesh support, organized folders
+
+## Requirements
+
+- **The Grove 2.2** - Commercial tree modeling software with Python API
+- **Python 3.8+** - Via conda/mamba environment
+- **bpy module** - Blender Python API (`conda install -c conda-forge bpy`)
+
+## Getting Help
+
+1. Start with **[Getting Started Guide](../GETTING_STARTED.md)**
+2. Check **[User Guide](USER_GUIDE.md)** for detailed CLI reference
+3. See **[Unreal Import Guide](UNREAL_IMPORT_GUIDE.md)** for Unreal workflow
+4. Run script help: `python script.py --help`
+
+## Contributing
+
+When adding new features or documentation:
+
+1. Update relevant docs in `docs/growpy/`
+2. Keep the User Guide as the main entry point
+3. Link between related documentation
+4. Include code examples where appropriate
+
+## License
+
+This project integrates with The Grove 2.2. Please ensure you have a valid license for The Grove 2.2 before using GrowPy.
