@@ -25,8 +25,6 @@ from growpy.config import get_quality_preset
 # Tree export (requires bpy and USD)
 try:
     from .tree_export import (
-        add_skeleton_to_usd,
-        add_twig_skeleton_to_usd,
         build_tree_mesh,
         bundle_twigs_for_species,
         export_tree,
@@ -38,8 +36,6 @@ except ImportError:
     TREE_EXPORT_AVAILABLE = False
     export_tree = None
     build_tree_mesh = None
-    add_skeleton_to_usd = None
-    add_twig_skeleton_to_usd = None
     bundle_twigs_for_species = None
     get_twig_usd_map_for_species = None
 
@@ -67,8 +63,6 @@ __all__ = [
     # Tree export
     "export_tree",
     "build_tree_mesh",
-    "add_skeleton_to_usd",
-    "add_twig_skeleton_to_usd",
     "bundle_twigs_for_species",
     "get_twig_usd_map_for_species",
     "TREE_EXPORT_AVAILABLE",
