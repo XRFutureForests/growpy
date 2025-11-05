@@ -9,7 +9,8 @@
         "PYTHONPATH": "${workspaceFolder}/src;${workspaceFolder}/src/the_grove_22/modules"
     },
     "terminal.integrated.env.osx": {
-        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}/src/the_grove_22/modules"
+        "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}/src/the_grove_22/modules",
+        "UE_PROJECT_PATH": "/Users/maximiliansperlich/Documents/Unreal Projects/NaniteAssembly.uproject"
     },
     "terminal.integrated.env.linux": {
         "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}/src/the_grove_22/modules"
@@ -23,5 +24,7 @@
     "python-envs.defaultPackageManager": "ms-python.python:conda",
     "python-envs.pythonProjects": [],
     "powershell.integratedConsole.showOnStartup": false,
-    "powershell.integratedConsole.suppressStartupBanner": true
+    "powershell.integratedConsole.suppressStartupBanner": true,
+    "ue-python.remote.multicastBindAddress": "0.0.0.0",
+    "ue-python.remote.commandEndpoint": "0.0.0.0:6776",
 }

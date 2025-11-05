@@ -293,6 +293,19 @@ def process_twig_directory(
 ) -> Dict[str, List[Path]]:
     """Process all twig blend files in a directory.
 
+    CRITICAL: clean_export is forced to True for Nanite compatibility.
+    Materials and textures cause import failures with skeletal Nanite assemblies.
+
+    Args:
+        twig_dir: Directory containing .blend twig files
+        formats: Export formats to create
+        clean_export: ALWAYS True - materials/textures disabled for Nanite
+        twig_filter: Optional list of twig directory names to process (snake_case)
+    """
+    # Force clean export for Nanite compatibility
+    clean_export = True
+    """Process all twig blend files in a directory.
+
     Args:
         twig_dir: Directory containing .blend twig files
         formats: Export formats to create
@@ -485,14 +498,10 @@ Output per twig:
 
     if args.path.is_file() and args.path.suffix == ".blend":
         # Single file
-        results = process_twig_directory(
-            args.path.parent, ["usda"], True, twig_filter
-        )
+        results = process_twig_directory(args.path.parent, ["usda"], True, twig_filter)
     elif args.path.is_dir():
         # Directory
-        results = process_twig_directory(
-            args.path, ["usda"], True, twig_filter
-        )
+        results = process_twig_directory(args.path, ["usda"], True, twig_filter)
     else:
         return 1
 
