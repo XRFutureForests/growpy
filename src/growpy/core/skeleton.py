@@ -157,7 +157,7 @@ def build_skeleton_hierarchy(bones_info: List[Tuple]) -> SkeletonHierarchy:
     bind_transforms = []
     rest_transforms = []
 
-    joints.append("joint_0")
+    joints.append("root")
     joint_parents.append(-1)
     root_transform = JointTransform(translation=Vector3(0, 0, 0))
     bind_transforms.append(root_transform)
@@ -177,6 +177,7 @@ def build_skeleton_hierarchy(bones_info: List[Tuple]) -> SkeletonHierarchy:
         joint_parents.append(parent_joint_idx)
 
         joint_idx = len(joints)
+        # Use simple numeric names after root: joint_1, joint_2, etc.
         joint_name = f"joint_{joint_idx}"
         joints.append(joint_name)
         bone_to_joint[bone_idx] = joint_idx
