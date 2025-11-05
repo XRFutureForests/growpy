@@ -3,6 +3,10 @@
 This module creates USD files following Unreal Engine 5.7+ Nanite Assembly schema.
 It wraps Grove's native USD export with proper Unreal API schemas for optimal import.
 
+CRITICAL: All exports are clean (no materials/textures/masks)
+Nanite assemblies with skeletal meshes have known issues with materials, textures, and opacity masks.
+All visual appearance should be configured in Unreal Engine after import using Material Instances.
+
 CRITICAL Requirements:
 1. Static Mesh Assemblies:
    - Use meshType="staticMesh"
@@ -32,6 +36,10 @@ Based on:
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+from ..utils.pxr_init import ensure_pxr_with_unreal_schema
+
+ensure_pxr_with_unreal_schema()
 
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel
 
@@ -114,6 +122,10 @@ def create_assembly(
         tree_prim_type = "SkelRoot" if use_skeletal_mesh else "Xform"
         tree_prim = stage.DefinePrim(f"/{assembly_name}/TreeMesh", tree_prim_type)
 
+        # Do not apply SkelBindingAPI to TreeMesh here.
+        # For Nanite assemblies, binding is driven by NaniteAssemblySkelBindingAPI
+        # on the PointInstancer; TreeMesh remains a plain SkelRoot.
+
         # Reference the tree mesh
         # CRITICAL: Always explicitly reference the /tree prim path for consistency
         # This ensures Unreal properly understands the skeleton structure
@@ -123,39 +135,13 @@ def create_assembly(
         )
 
         if use_skeletal_mesh:
-            # For skeletal: Set skeleton relationship to embedded skeleton
-            # /tree is now a SkelRoot with /tree/tree_skel skeleton
-
-            # CRITICAL FIX: Override skel:* relationships with empty targets
-            # USD references are compositional - we must explicitly override
-            # the tree's internal skeleton bindings to prevent double-transformation
-            # The Nanite Assembly's skeleton relationship is the ONLY binding that should apply
-
-            # Create empty skel:skeleton relationship (overrides referenced tree's binding)
-            tree_skel_rel = tree_prim.CreateRelationship("skel:skeleton", custom=False)
-            tree_skel_rel.ClearTargets(
-                removeSpec=True
-            )  # removeSpec=True to block composition
-
-            # Create empty skel:animationSource relationship (overrides referenced tree's binding)
-            tree_anim_rel = tree_prim.CreateRelationship(
-                "skel:animationSource", custom=False
-            )
-            tree_anim_rel.ClearTargets(
-                removeSpec=True
-            )  # removeSpec=True to block composition
-
-            # Now set the Nanite Assembly skeleton relationship (the ONLY binding)
-            # CRITICAL: Use SetTargets() instead of AddTarget() to create simple relationship
-            # AddTarget() creates list-edited relationships with "prepend" which breaks Unreal import
+            # Set the Nanite Assembly skeleton relationship on root prim
+            # This points to the skeleton inside the referenced tree
             skeleton_rel = root_prim.CreateRelationship(
                 "unreal:naniteAssembly:skeleton",
                 custom=False,
             )
             skeleton_rel.SetTargets([Sdf.Path(f"/{assembly_name}/TreeMesh/TreeSkel")])
-
-        else:
-            pass
 
         # Add twigs if provided
         if twig_usd_paths:
@@ -231,13 +217,15 @@ def create_assembly(
                     if not output_twig_path.exists():
                         shutil.copy2(twig_ref_path, output_twig_path)
 
-                    # Also copy any referenced texture files (if they exist alongside the twig)
-                    twig_dir = twig_ref_path.parent
-                    for texture_ext in [".png", ".jpg", ".jpeg", ".exr"]:
-                        for texture_file in twig_dir.glob(f"*{texture_ext}"):
-                            output_texture = output_path.parent / texture_file.name
-                            if not output_texture.exists():
-                                shutil.copy2(texture_file, output_texture)
+                    # CRITICAL: Texture copying disabled for Nanite compatibility
+                    # Nanite assemblies with skeletal meshes don't use textures from USD
+                    # All materials and textures should be configured in Unreal Engine
+                    # twig_dir = twig_ref_path.parent
+                    # for texture_ext in [".png", ".jpg", ".jpeg", ".exr"]:
+                    #     for texture_file in twig_dir.glob(f"*{texture_ext}"):
+                    #         output_texture = output_path.parent / texture_file.name
+                    #         if not output_texture.exists():
+                    #             shutil.copy2(texture_file, output_texture)
 
                     twig_type_to_proto_idx[twig_type] = idx
 
@@ -280,7 +268,8 @@ def create_assembly(
                     prototype_paths.append(Sdf.Path(proto_prim.GetPath()))
 
                 if prototype_paths:
-                    # Create PointInstancer
+                    # Create PointInstancer as sibling to TreeMesh
+                    # Reference assembly shows PointInstancer at same level as TreeMesh (SkelRoot)
                     instancer_prim = stage.DefinePrim(
                         f"/{assembly_name}/TwigInstances", "PointInstancer"
                     )
@@ -404,6 +393,8 @@ def create_assembly(
                         bind_joints_attr.Set(bind_joints)
 
                         # Set interpolation and elementSize metadata
+                        # Per Unreal schema: "When applied to a PointInstancer a uniform number of joints
+                        # per instance must be supplied and described via the primvars elementSize metadata"
                         bind_joints_attr.SetMetadata("interpolation", "uniform")
                         bind_joints_attr.SetMetadata("elementSize", 1)
 
@@ -429,6 +420,12 @@ def create_assembly(
 
         # Save stage
         stage.GetRootLayer().Save()
+
+        # CRITICAL: USD composition overrides our apiSchemas metadata
+        # We need to manually edit the saved file to add "prepend apiSchemas" directives
+        # This ensures they take precedence over the referenced prim's schemas
+        if use_skeletal_mesh:
+            _fix_api_schemas_in_assembly(output_path, assembly_name)
 
         # Validate the assembly structure (based on video requirements)
         if use_skeletal_mesh:
@@ -742,6 +739,34 @@ def validate_assembly(usd_path: Path) -> Dict[str, Any]:
         result["valid"] = False
 
     return result
+
+
+def _fix_api_schemas_in_assembly(assembly_path: Path, assembly_name: str) -> None:
+    """Fix apiSchemas in assembly file by manually editing USD text.
+
+    USD composition can override our SetMetadata calls, so we need to manually
+    add 'prepend apiSchemas' directives to ensure they take precedence.
+    """
+    try:
+        # Read the file
+        content = assembly_path.read_text()
+
+        # TreeMesh is just a SkelRoot - no additional API schemas needed
+        # (Reference file doesn't have SkelBindingAPI on TreeMesh)
+        # The NaniteAssemblySkelBindingAPI on PointInstancer is sufficient
+
+        # Fix PointInstancer - add prepend apiSchemas
+        content = content.replace(
+            f'def PointInstancer "TwigInstances"\n    {{',
+            f'def PointInstancer "TwigInstances" (\n        prepend apiSchemas = ["NaniteAssemblySkelBindingAPI"]\n    )\n    {{',
+        )
+
+        # Write back
+        assembly_path.write_text(content)
+
+    except Exception as e:
+        # Non-fatal - assembly might still work without perfect schema setup
+        pass
 
 
 def _extract_joint_names_from_usd(tree_usd_path: Path) -> List[str]:
