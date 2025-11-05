@@ -127,8 +127,9 @@ def build_tree_mesh(
         root_path = Sdf.Path("/tree")
         root_xform = UsdGeom.Xform.Define(stage, root_path)
 
-        # Store tree location as metadata for forest positioning reference
-        if hasattr(model, "location") and model.location:
+        # Skip treeLocation metadata for clean export
+        # Tree positioning is handled at the assembly level
+        if not clean_export and hasattr(model, "location") and model.location:
             loc = model.location
             root_xform.GetPrim().SetCustomDataByKey(
                 "treeLocation", Gf.Vec3f(loc.x, loc.y, loc.z)
@@ -157,16 +158,16 @@ def build_tree_mesh(
         mesh.CreateFaceVertexCountsAttr(face_vertex_counts)
         mesh.CreateFaceVertexIndicesAttr(face_vertex_indices)
 
-        # CRITICAL: Materials and textures disabled for Nanite assembly compatibility
-        # Nanite assemblies with skeletal meshes have known issues with materials, textures, and masks
-        # All visual appearance should be handled in Unreal Engine after import
-        # No UV coordinates, no materials, no textures in USD export
+        # Skip model attributes for clean skeletal export
+        # These attributes (Age, Pitch, Vigor, etc.) are not needed for Nanite assembly
+        # and make debugging harder. They can be re-enabled if needed for analysis.
+        if not clean_export:
+            # Add all model attributes from Grove (face and point attributes)
+            _add_model_attributes(mesh, model)
 
-        # Add all model attributes from Grove (face and point attributes)
-        _add_model_attributes(mesh, model)
-
-        # Store UV islands as metadata for texture atlas reference
-        if hasattr(model, "uv_islands") and model.uv_islands:
+        # Skip UV island metadata for clean export
+        # UV data is included in the mesh but metadata is not needed for Nanite assembly
+        if not clean_export and hasattr(model, "uv_islands") and model.uv_islands:
             # Store count and structure info as metadata
             mesh.GetPrim().SetCustomDataByKey("uvIslandCount", len(model.uv_islands))
             # Note: Full island data available but not stored to keep file size reasonable
@@ -174,6 +175,9 @@ def build_tree_mesh(
 
         # Add normals for proper Unreal rendering
         _add_mesh_normals(mesh, model)
+
+        # Add simple base color material (no textures)
+        _add_usd_materials(stage, mesh, model, str(mesh_path))
 
         # Add skeleton if provided
         if skeleton is not None:
@@ -965,10 +969,10 @@ def _build_usdskel_from_bones(
 
         # Name joints using LOCAL bone index (bone_idx), not global_bone_id
         # This ensures joint names match the jointIndices in vertex binding
-        # Tree 0: joint_0, joint_1, joint_2, ...
-        # Tree 1: joint_0, joint_1, joint_2, ... (restart numbering)
+        # Tree 0: root, root/joint_1, root/joint_2, ...
+        # Tree 1: root, root/joint_1, root/joint_2, ... (restart numbering)
         if bone_idx == 0:
-            joint_name = "joint_0"
+            joint_name = "root"
         else:
             joint_name = f"joint_{bone_idx}"
 
@@ -987,9 +991,9 @@ def _build_usdskel_from_bones(
                 # Fallback: attach to root if parent not found
                 if verbose:
                     print(
-                        f"WARNING: Parent bone {parent_bone_id} (local: {local_parent_id}) not found for bone {global_bone_id} (local: {bone_idx}), attaching to joint_0"
+                        f"WARNING: Parent bone {parent_bone_id} (local: {local_parent_id}) not found for bone {global_bone_id} (local: {bone_idx}), attaching to root"
                     )
-                joint_path = f"joint_0/{joint_name}"
+                joint_path = f"root/{joint_name}"
 
         bone_id_to_joint_path[global_bone_id] = joint_path
         joint_tokens.append(joint_path)
@@ -1116,19 +1120,32 @@ def _build_usdskel_from_bones(
         # Create primvars for skinning
         primvars_api = UsdGeom.PrimvarsAPI(mesh_prim)
 
-        # Joint indices primvar (1 influence per vertex for rigid binding)
+        # CRITICAL: USD skeletal meshes require elementSize=2 for proper Unreal import
+        # Format joint indices and weights as pairs [primary, secondary] per vertex
+        # Even for rigid binding (single influence), we need pairs with zero-weight padding
+        joint_indices_paired = []
+        joint_weights_paired = []
+        for i in range(len(joint_indices)):
+            # Primary joint influence
+            joint_indices_paired.append(joint_indices[i])
+            joint_weights_paired.append(joint_weights[i])
+            # Secondary joint (padding with zero influence)
+            joint_indices_paired.append(0)
+            joint_weights_paired.append(0.0)
+
+        # Joint indices primvar (2 influences per vertex - rigid binding with padding)
         joint_indices_primvar = primvars_api.CreatePrimvar(
             "skel:jointIndices", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.vertex
         )
-        joint_indices_primvar.Set(joint_indices)
-        joint_indices_primvar.SetElementSize(1)
+        joint_indices_primvar.Set(joint_indices_paired)
+        joint_indices_primvar.SetElementSize(2)
 
-        # Joint weights primvar (1 influence per vertex for rigid binding)
+        # Joint weights primvar (2 influences per vertex - rigid binding with padding)
         joint_weights_primvar = primvars_api.CreatePrimvar(
             "skel:jointWeights", Sdf.ValueTypeNames.FloatArray, UsdGeom.Tokens.vertex
         )
-        joint_weights_primvar.Set(joint_weights)
-        joint_weights_primvar.SetElementSize(1)
+        joint_weights_primvar.Set(joint_weights_paired)
+        joint_weights_primvar.SetElementSize(2)
 
         # Add branch ID attributes with local indices
         # Convert from global branch IDs to local (0-based per tree)

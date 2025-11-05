@@ -302,9 +302,9 @@ def create_assembly(
                             pos = placement["position"]
                             normal = placement["normal"]
 
-                            # Keep positions in Blender coordinates to match tree mesh
-                            # Both tree and twigs use Blender Z-up coordinate system
-                            # No coordinate conversion needed here
+                            # CRITICAL: Positions remain in world space (matching reference assembly)
+                            # The bindJoints attribute tells Unreal which skeleton joint each instance follows
+                            # No position transformation needed
 
                             # Create rotation matrix from normal
                             rot_matrix = normal_to_rotation_matrix(normal)
@@ -392,11 +392,9 @@ def create_assembly(
                         )
                         bind_joints_attr.Set(bind_joints)
 
-                        # Set interpolation and elementSize metadata
-                        # Per Unreal schema: "When applied to a PointInstancer a uniform number of joints
-                        # per instance must be supplied and described via the primvars elementSize metadata"
+                        # Set interpolation metadata (matching reference assembly)
+                        # Note: elementSize NOT needed for single joint per instance
                         bind_joints_attr.SetMetadata("interpolation", "uniform")
-                        bind_joints_attr.SetMetadata("elementSize", 1)
 
                         # Create bindJointWeights primvar with uniform variability and interpolation
                         bind_weights_attr = instancer_prim.CreateAttribute(
@@ -407,9 +405,8 @@ def create_assembly(
                         )
                         bind_weights_attr.Set(bind_weights)
 
-                        # Set interpolation and elementSize metadata
+                        # Set interpolation metadata (matching reference assembly)
                         bind_weights_attr.SetMetadata("interpolation", "uniform")
-                        bind_weights_attr.SetMetadata("elementSize", 1)
 
                     else:
                         pass
@@ -801,3 +798,96 @@ def _extract_joint_names_from_usd(tree_usd_path: Path) -> List[str]:
 
     except Exception as e:
         return []
+
+
+def _extract_bind_transforms_from_usd(
+    tree_usd_path: Path,
+) -> List[Tuple[Tuple[float, ...], ...]]:
+    """Extract bind transforms (world transforms) from tree USD skeleton.
+
+    Bind transforms are the world-space transforms of each joint in rest pose.
+    These are needed to convert instance positions from world space to joint local space.
+
+    Args:
+        tree_usd_path: Path to tree USD with skeleton
+
+    Returns:
+        List of 4x4 matrices (as nested tuples) in skeleton joint order
+    """
+    try:
+        from pxr import Usd, UsdSkel
+
+        stage = Usd.Stage.Open(str(tree_usd_path))
+
+        # Find skeleton prim
+        for prim in stage.Traverse():
+            if prim.IsA(UsdSkel.Skeleton):
+                skeleton = UsdSkel.Skeleton(prim)
+                bind_transforms_attr = skeleton.GetBindTransformsAttr()
+
+                if bind_transforms_attr:
+                    bind_transforms = bind_transforms_attr.Get()
+                    # Convert Gf.Matrix4d to nested tuples for easy inversion
+                    return [tuple(tuple(row) for row in xform) for xform in bind_transforms]
+
+        return []
+
+    except Exception as e:
+        return []
+
+
+def _invert_matrix4(matrix: Tuple[Tuple[float, ...], ...]) -> Tuple[Tuple[float, ...], ...]:
+    """Invert a 4x4 matrix.
+
+    Args:
+        matrix: 4x4 matrix as nested tuple
+
+    Returns:
+        Inverted 4x4 matrix as nested tuple
+    """
+    try:
+        from pxr import Gf
+
+        # Convert to Gf.Matrix4d
+        gf_matrix = Gf.Matrix4d(*[row for row in matrix])
+        # Invert
+        inv_matrix = gf_matrix.GetInverse()
+        # Convert back to nested tuple
+        return tuple(tuple(inv_matrix[i]) for i in range(4))
+
+    except Exception as e:
+        # Return identity matrix if inversion fails
+        return ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))
+
+
+def _transform_point_by_matrix(
+    point: Tuple[float, float, float], matrix: Tuple[Tuple[float, ...], ...]
+) -> Tuple[float, float, float]:
+    """Transform a 3D point by a 4x4 matrix.
+
+    Args:
+        point: 3D point (x, y, z)
+        matrix: 4x4 transformation matrix as nested tuple
+
+    Returns:
+        Transformed 3D point (x, y, z)
+    """
+    try:
+        from pxr import Gf
+
+        # Convert to Gf types
+        gf_point = Gf.Vec3f(point[0], point[1], point[2])
+        gf_matrix = Gf.Matrix4d(*[row for row in matrix])
+
+        # Transform point (need to convert to Vec4 for matrix mult, then back to Vec3)
+        point_4d = Gf.Vec4f(gf_point[0], gf_point[1], gf_point[2], 1.0)
+        transformed_4d = point_4d * gf_matrix
+        # Divide by w component for proper homogeneous coordinates
+        w = transformed_4d[3] if transformed_4d[3] != 0 else 1.0
+        transformed = (transformed_4d[0] / w, transformed_4d[1] / w, transformed_4d[2] / w)
+
+        return transformed
+
+    except Exception as e:
+        # Return original point if transformation fails
+        return point
