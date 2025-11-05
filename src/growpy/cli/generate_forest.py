@@ -319,6 +319,10 @@ def generate_forest_exports(
     quality_params["skeleton_bias"] = 0.5
     quality_params["skeleton_connected"] = True
 
+    # CRITICAL: Force clean export for Nanite compatibility
+    # Materials, textures, and masks cause import failures with skeletal Nanite assemblies
+    quality_params["clean_export"] = True
+
     try:
         # Bundle twig files BEFORE export so Nanite Assembly can reference them
         from growpy.io.tree_export import bundle_twigs_for_species

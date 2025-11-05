@@ -22,8 +22,24 @@ from pathlib import Path
 
 import bpy
 
-if hasattr(bpy.utils, "expose_bundled_modules"):
-    bpy.utils.expose_bundled_modules()
+# Import path needs adjustment for standalone script execution
+try:
+    from ..utils.pxr_init import ensure_pxr_with_unreal_schema
+    ensure_pxr_with_unreal_schema()
+except ImportError:
+    # Standalone mode - do manual initialization
+    if hasattr(bpy.utils, "expose_bundled_modules"):
+        bpy.utils.expose_bundled_modules()
+    import os
+
+    from pxr import Plug
+    env_path = os.environ.get("PXR_PLUGINPATH_NAME")
+    if env_path:
+        abs_path = os.path.abspath(env_path)
+        if os.path.exists(abs_path):
+            reg = Plug.Registry()
+            if not reg.GetPluginWithName("unreal"):
+                reg.RegisterPlugins(abs_path)
 
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel, Vt
 
@@ -71,14 +87,19 @@ def rename_prim_recursive(stage, old_path, new_path):
 def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=True):
     """Add skeleton to USD file and remove DomeLight artifact using Blender's bundled pxr module.
 
+    CRITICAL: Always uses clean_export=True to prevent material/texture issues with Nanite assemblies.
+    Nanite assemblies with skeletal meshes have known problems with materials, textures, and masks.
+
     Args:
         usd_path: Path to USD file
         pivot_point: Root joint position (default: origin)
-        clean_export: If True, creates minimal USD without materials/textures (default for Nanite)
+        clean_export: ALWAYS True - materials/textures cause Nanite import failures
 
     Returns:
         bool: True if skeleton added successfully
     """
+    # Force clean export for Nanite compatibility
+    clean_export = True
     try:
         # Open existing stage
         stage = Usd.Stage.Open(str(usd_path))
@@ -153,7 +174,7 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=True)
         skel = UsdSkel.Skeleton.Define(stage, skel_path)
 
         # Create single root joint at pivot point
-        joint_tokens = ["root"]
+        joint_tokens = ["joint_0"]
         world_pos = Gf.Vec3d(pivot_point[0], pivot_point[1], pivot_point[2])
 
         # Bind transform (world space)
@@ -262,8 +283,10 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=True)
                 joint_weights
             )  # Rigid binding: 1 influence per vertex
 
-            # Copy materials from /root/_materials/ to /Twig/Materials/ (only if not clean export)
-        if not clean_export:
+        # CRITICAL: Never copy materials for Nanite assemblies
+        # Materials, textures, and masks cause import failures with skeletal Nanite assemblies
+        # All visual appearance should be configured in Unreal Engine after import
+        if False:  # Disabled - clean_export always True for Nanite compatibility
             from pxr import UsdShade
 
             materials_prim = stage.GetPrimAtPath("/root/_materials")
@@ -862,17 +885,16 @@ def process_twig_file(blend_file, output_dir, formats, species_name, clean_expor
             # Parent mesh to mount point for proper hierarchy
             obj.parent = mount_point
 
-            # Find and setup materials with textures
-            # CRITICAL: Materials are created once and shared by ALL export formats
-            # This ensures identical material/texture mapping in FBX and USD
-            material_setup_success = setup_materials_with_textures(
-                obj, blend_dir, species_name, output_dir, standardized_name, metadata
-            )
+            # CRITICAL: Material setup disabled for Nanite compatibility
+            # Nanite assemblies with skeletal meshes have known issues with materials, textures, and masks
+            # All visual appearance should be configured in Unreal Engine after import
+            material_setup_success = False  # Disabled - clean export always for Nanite
 
-            if material_setup_success:
-                pass
-            else:
-                pass
+            # Skip material setup entirely
+            # if not clean_export:
+            #     material_setup_success = setup_materials_with_textures(
+            #         obj, blend_dir, species_name, output_dir, standardized_name, metadata
+            #     )
 
             bpy.ops.object.select_all(action="DESELECT")
             mount_point.select_set(True)
@@ -887,17 +909,19 @@ def process_twig_file(blend_file, output_dir, formats, species_name, clean_expor
                         output_dir / f"{standardized_name}_skeletal.{fmt}"
                     )
 
+                    # CRITICAL: Force clean export - no materials, textures, or UVs
+                    # Nanite assemblies require geometry-only USD files
                     bpy.ops.wm.usd_export(
                         filepath=str(skel_export_path),
                         selected_objects_only=True,
-                        export_materials=not clean_export,
-                        export_textures=not clean_export,
-                        export_uvmaps=True,
+                        export_materials=False,  # Force disabled for Nanite
+                        export_textures=False,  # Force disabled for Nanite
+                        export_uvmaps=False,  # Force disabled for Nanite
                         export_normals=True,
-                        export_mesh_colors=True,
+                        export_mesh_colors=False,  # Force disabled for Nanite
                         use_instancing=False,
                         evaluation_mode="RENDER",
-                        generate_preview_surface=True,
+                        generate_preview_surface=False,  # Force disabled for Nanite
                         relative_paths=True,
                         export_hair=False,
                         export_lights=False,
@@ -992,4 +1016,5 @@ if __name__ == "__main__":
 
     exported = process_twig_file(
         blend_file, output_dir, formats, species_name, clean_export
+    )
     )
