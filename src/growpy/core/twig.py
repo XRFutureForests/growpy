@@ -195,6 +195,21 @@ def extract_twig_placements_from_model(
     # Build branch_id → branch_root_bone_id mapping using is_branch_root flag
     # bones_info format: (is_tree_root, parent_bone_id, start_point, end_point, radius, mass, is_branch_root, branch_id)
 
+    # Calculate bone_id_offset from first bone (needed for vertex voting fallback)
+    bone_id_offset = 0
+    if bones_info and len(bones_info) > 0:
+        first_bone = bones_info[0]
+        is_tree_root, parent_bone_id = first_bone[0], first_bone[1]
+
+        if is_tree_root and parent_bone_id == 0:
+            bone_id_offset = 0  # First tree in grove
+        elif is_tree_root:
+            bone_id_offset = (
+                parent_bone_id  # Subsequent tree, offset by previous tree's bone count
+            )
+        else:
+            bone_id_offset = 0
+
     # Calculate branch_id_offset from first bone (global branch IDs need to be converted to local)
     branch_id_offset = 0
     if bones_info and len(bones_info) > 0 and len(bones_info[0]) >= 8:
@@ -280,7 +295,10 @@ def extract_twig_placements_from_model(
                             face_bone_ids.append(bone_ids[vert_idx])
 
                     if face_bone_ids:
-                        twig_bone_id = Counter(face_bone_ids).most_common(1)[0][0]
+                        # Get most common bone ID (this is a GLOBAL bone ID)
+                        global_bone_id = Counter(face_bone_ids).most_common(1)[0][0]
+                        # Convert global bone ID to local bone index for joint_names array
+                        twig_bone_id = global_bone_id - bone_id_offset
 
                 placement = TwigPlacement(
                     type=twig_type,

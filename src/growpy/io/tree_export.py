@@ -50,11 +50,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import bpy
-
-if hasattr(bpy.utils, "expose_bundled_modules"):
-    bpy.utils.expose_bundled_modules()
-
 import the_grove_22_core as gc
+
+from ..utils.pxr_init import ensure_pxr_with_unreal_schema
+
+ensure_pxr_with_unreal_schema()
+
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade, UsdSkel, Vt
 
 from ..config import get_config
@@ -69,7 +70,7 @@ def build_tree_mesh(
     up_axis: str = "Z",
     triangulated: bool = True,
     include_materials: bool = False,
-    clean_export: bool = False,
+    clean_export: bool = True,
     skeleton_length: float = 0.0,
     skeleton_reduce: float = 0.0,
     skeleton_bias: float = 0.5,
@@ -156,8 +157,10 @@ def build_tree_mesh(
         mesh.CreateFaceVertexCountsAttr(face_vertex_counts)
         mesh.CreateFaceVertexIndicesAttr(face_vertex_indices)
 
-        # Materials and textures disabled for Nanite assembly compatibility
-        # UV coordinates and materials cause issues with Nanite assembly import
+        # CRITICAL: Materials and textures disabled for Nanite assembly compatibility
+        # Nanite assemblies with skeletal meshes have known issues with materials, textures, and masks
+        # All visual appearance should be handled in Unreal Engine after import
+        # No UV coordinates, no materials, no textures in USD export
 
         # Add all model attributes from Grove (face and point attributes)
         _add_model_attributes(mesh, model)
@@ -358,10 +361,10 @@ def _add_skeleton_to_object(
         point_to_bone = {}
 
         # Create root bone at index 0
-        root_bone = armature.edit_bones.new("Root")
+        root_bone = armature.edit_bones.new("joint_0")
         root_bone.head = (0, 0, 0)
         root_bone.tail = (0, 0, 0.1)
-        bone_names.append("Root")
+        bone_names.append("joint_0")
         bones_map[0] = root_bone
 
         # Build bones from polylines
@@ -823,7 +826,6 @@ def _add_mesh_normals(mesh: UsdGeom.Mesh, model: Any) -> None:
         pass
 
 
-
 def _build_usdskel_from_bones(
     stage: Usd.Stage,
     skeleton: Any,
@@ -963,10 +965,10 @@ def _build_usdskel_from_bones(
 
         # Name joints using LOCAL bone index (bone_idx), not global_bone_id
         # This ensures joint names match the jointIndices in vertex binding
-        # Tree 0: root, joint_1, joint_2, ...
-        # Tree 1: root, joint_1, joint_2, ... (restart numbering)
+        # Tree 0: joint_0, joint_1, joint_2, ...
+        # Tree 1: joint_0, joint_1, joint_2, ... (restart numbering)
         if bone_idx == 0:
-            joint_name = "root"
+            joint_name = "joint_0"
         else:
             joint_name = f"joint_{bone_idx}"
 
@@ -985,9 +987,9 @@ def _build_usdskel_from_bones(
                 # Fallback: attach to root if parent not found
                 if verbose:
                     print(
-                        f"WARNING: Parent bone {parent_bone_id} (local: {local_parent_id}) not found for bone {global_bone_id} (local: {bone_idx}), attaching to root"
+                        f"WARNING: Parent bone {parent_bone_id} (local: {local_parent_id}) not found for bone {global_bone_id} (local: {bone_idx}), attaching to joint_0"
                     )
-                joint_path = f"root/{joint_name}"
+                joint_path = f"joint_0/{joint_name}"
 
         bone_id_to_joint_path[global_bone_id] = joint_path
         joint_tokens.append(joint_path)
@@ -1395,26 +1397,26 @@ def bundle_twigs_for_species(
                             twig_manifest["twig_files"].append(dest_file.name)
                             twig_manifest["total_twigs"] += 1
 
-        source_texture_dir = None
-        if all_twig_files:
-            first_twig = next(iter(all_twig_files))
-            source_texture_dir = first_twig.parent / "textures"
-
-            if source_texture_dir.exists():
-                dest_texture_dir = twig_dir / "textures"
-                dest_texture_dir.mkdir(exist_ok=True)
-
-                texture_count = 0
-                for texture_file in source_texture_dir.glob("*"):
-                    if texture_file.is_file():
-                        dest_tex = dest_texture_dir / texture_file.name
-                        if not dest_tex.exists():
-                            shutil.copy2(texture_file, dest_tex)
-                            texture_count += 1
-                            copied_textures.add(texture_file.name)
-
-                if texture_count > 0:
-                    pass
+        # CRITICAL: Texture bundling disabled for Nanite compatibility
+        # Nanite assemblies with skeletal meshes don't use textures from USD
+        # All materials and textures should be configured in Unreal Engine
+        # source_texture_dir = None
+        # if all_twig_files:
+        #     first_twig = next(iter(all_twig_files))
+        #     source_texture_dir = first_twig.parent / "textures"
+        #
+        #     if source_texture_dir.exists():
+        #         dest_texture_dir = twig_dir / "textures"
+        #         dest_texture_dir.mkdir(exist_ok=True)
+        #
+        #         texture_count = 0
+        #         for texture_file in source_texture_dir.glob("*"):
+        #             if texture_file.is_file():
+        #                 dest_tex = dest_texture_dir / texture_file.name
+        #                 if not dest_tex.exists():
+        #                     shutil.copy2(texture_file, dest_tex)
+        #                     texture_count += 1
+        #                     copied_textures.add(texture_file.name)
 
     except Exception:
         # Silently fail - twig bundling is optional
