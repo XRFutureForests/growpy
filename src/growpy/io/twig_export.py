@@ -25,6 +25,7 @@ import bpy
 # Import path needs adjustment for standalone script execution
 try:
     from ..utils.pxr_init import ensure_pxr_with_unreal_schema
+
     ensure_pxr_with_unreal_schema()
 except ImportError:
     # Standalone mode - do manual initialization
@@ -33,6 +34,7 @@ except ImportError:
     import os
 
     from pxr import Plug
+
     env_path = os.environ.get("PXR_PLUGINPATH_NAME")
     if env_path:
         abs_path = os.path.abspath(env_path)
@@ -82,6 +84,42 @@ def rename_prim_recursive(stage, old_path, new_path):
                         new_connections.append(conn)
                 if new_connections != list(connections):
                     attr.SetConnections(new_connections)
+
+
+def _add_twig_material(stage, mesh_prim, mesh_path):
+    """Add simple green leaf material to twig mesh.
+
+    Args:
+        stage: USD stage
+        mesh_prim: UsdGeom.Mesh prim
+        mesh_path: Path to mesh prim
+    """
+    try:
+        from pxr import Gf, Sdf, UsdShade
+
+        # Define leaf green color
+        LEAF_GREEN = Gf.Vec3f(0.3, 0.6, 0.2)
+
+        # Create materials path under Twig root
+        materials_path = "/Twig/Materials"
+        UsdGeom.Scope.Define(stage, materials_path)
+
+        # Create leaf material
+        mat = UsdShade.Material.Define(stage, f"{materials_path}/LeafMaterial")
+        shader = UsdShade.Shader.Define(
+            stage, f"{materials_path}/LeafMaterial/PreviewSurface"
+        )
+        shader.CreateIdAttr("UsdPreviewSurface")
+        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(LEAF_GREEN)
+        shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.5)
+        mat.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+
+        # Bind material to mesh
+        binding_api = UsdShade.MaterialBindingAPI.Apply(mesh_prim.GetPrim())
+        binding_api.Bind(mat)
+    except Exception:
+        # Silently fail - material addition is optional
+        pass
 
 
 def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=True):
@@ -242,13 +280,18 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=True)
         # Set skinning data - all vertices bound to root joint
         num_points = len(points)
 
-        # CRITICAL: Use elementSize=1 for rigid binding (1 influence per vertex)
-        # Each vertex bound to exactly one joint with full weight
+        # CRITICAL: Use elementSize=2 for USD skeletal mesh compatibility with Unreal
+        # Format as pairs [primary, secondary] per vertex even for rigid binding
+        # Each vertex bound to root joint with full weight, plus zero-weight padding
         joint_indices = []
         joint_weights = []
         for _ in range(num_points):
-            joint_indices.append(0)  # Root joint only
-            joint_weights.append(1.0)  # Full weight
+            # Primary influence: root joint (index 0) with full weight
+            joint_indices.append(0)
+            joint_weights.append(1.0)
+            # Secondary influence: padding with zero weight
+            joint_indices.append(0)
+            joint_weights.append(0.0)
 
         # Set skinning attributes
         if clean_export:
@@ -262,8 +305,8 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=True)
             )
             joint_indices_primvar.Set(joint_indices)
             joint_indices_primvar.SetElementSize(
-                1
-            )  # Rigid binding: 1 influence per vertex
+                2
+            )  # Rigid binding with padding: 2 values per vertex
 
             joint_weights_primvar = primvars_api.CreatePrimvar(
                 "skel:jointWeights",
@@ -272,16 +315,16 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=True)
             )
             joint_weights_primvar.Set(joint_weights)
             joint_weights_primvar.SetElementSize(
-                1
-            )  # Rigid binding: 1 influence per vertex
+                2
+            )  # Rigid binding with padding: 2 values per vertex
         else:
-            # Standard mode: use BindingAPI
-            binding_api.CreateJointIndicesPrimvar(False, 1).Set(
+            # Standard mode: use BindingAPI with elementSize=2
+            binding_api.CreateJointIndicesPrimvar(False, 2).Set(
                 joint_indices
-            )  # Rigid binding: 1 influence per vertex
-            binding_api.CreateJointWeightsPrimvar(False, 1).Set(
+            )  # Rigid binding with padding: 2 values per vertex
+            binding_api.CreateJointWeightsPrimvar(False, 2).Set(
                 joint_weights
-            )  # Rigid binding: 1 influence per vertex
+            )  # Rigid binding with padding: 2 values per vertex
 
         # CRITICAL: Never copy materials for Nanite assemblies
         # Materials, textures, and masks cause import failures with skeletal Nanite assemblies
@@ -416,6 +459,9 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=True)
         twig_prim = stage.GetPrimAtPath("/Twig")
         if twig_prim and twig_prim.IsValid():
             stage.SetDefaultPrim(twig_prim)
+
+        # Add simple base color material (no textures)
+        _add_twig_material(stage, mesh, new_mesh_path)
 
         # Save stage
         stage.Save()
@@ -1016,5 +1062,4 @@ if __name__ == "__main__":
 
     exported = process_twig_file(
         blend_file, output_dir, formats, species_name, clean_export
-    )
     )
