@@ -330,8 +330,8 @@ def create_assembly(
                         # Apply NaniteAssemblySkelBindingAPI and set bindJoints for skeletal assembly
                         #
                         # CRITICAL: bindJoints controls INSTANCE PLACEMENT (not vertex deformation)
-                        # - Tree skeleton twig mount bones (e.g., "root/joint_1/twig_0") move instances
-                        # - Each twig's internal skeleton (e.g., "root") deforms its own mesh vertices
+                        # - Tree skeleton branch joints (e.g., "tree_root/joint_1/branch_0") move instances
+                        # - Each twig's internal skeleton (e.g., "twig_root") deforms its own mesh vertices
                         # - NO cross-skeleton binding: tree skeleton doesn't deform twig vertices
                         #
                         # This is required for Unreal to recognize and import the skeletal assembly correctly.
@@ -349,9 +349,9 @@ def create_assembly(
                         # Joint names are hierarchical paths like "joint_0/joint_1/joint_2"
                         joint_names = _extract_joint_names_from_usd(tree_usd_path)
 
-                        # Build bindJoints array using direct bone IDs from twig placements
-                        # CRITICAL: Perfect binding - each twig bound to exact bone controlling
-                        # the face it's placed on (from point_attribute_bone_id)
+                        # Build bindJoints array using branch IDs from twig placements
+                        # CRITICAL: Clean binding - each twig bound to branch_X joint based on
+                        # Grove's branch_id. Pattern: "tree_root/joint_1/.../branch_X"
                         bind_joints = []
                         bind_weights = []
 
@@ -364,23 +364,38 @@ def create_assembly(
                                 continue
 
                             for placement in placement_list:
-                                # Get bone ID directly from placement (from point_attribute_bone_id)
+                                # Get branch ID directly from placement (from face_attribute_branch_id)
                                 # Handle both TwigPlacement objects and dict representations
                                 if isinstance(placement, dict):
-                                    bone_id = placement.get("bone_id")
+                                    branch_id = placement.get("branch_id")
                                 else:
                                     # TwigPlacement object
-                                    bone_id = getattr(placement, "bone_id", None)
+                                    branch_id = getattr(placement, "branch_id", None)
 
-                                if bone_id is not None and bone_id < len(joint_names):
-                                    # Perfect mapping: bone ID is index into joints array
-                                    # Use the hierarchical joint path from skeleton
-                                    joint_path = joint_names[bone_id]
+                                if branch_id is not None:
+                                    # Use branch_X joint for clean binding
+                                    # Joint paths in skeleton follow pattern: tree_root/.../branch_X
+                                    
+                                    # DEBUG: Print first time we try to find a branch
+                                    if not bind_joints:  # First twig
+                                        print(f"\nDEBUG: First twig has branch_id={branch_id}")
+                                        print(f"  joint_names type: {type(joint_names)}, length: {len(joint_names)}")
+                                        print(f"  First 3 joint_names: {joint_names[:3]}")
+                                        branch_joints = [j for j in joint_names if 'branch_' in j]
+                                        print(f"  Joints with 'branch_': {len(branch_joints)}")
+                                        if branch_joints:
+                                            print(f"  Sample branch joints: {branch_joints[:3]}")
+                                    
+                                    joint_path = _find_branch_joint(
+                                        joint_names, branch_id
+                                    )
+                                    if joint_path == "tree_root":
+                                        print(f"  ⚠️  Failed to find branch_{branch_id}")
                                     bind_joints.append(joint_path)
                                     bind_weights.append(1.0)
                                 else:
-                                    # Fallback to root if no bone ID or out of range
-                                    bind_joints.append("joint_0")
+                                    # Fallback to tree root if no branch ID
+                                    bind_joints.append("tree_root")
                                     bind_weights.append(1.0)
 
                         # Create bindJoints primvar with uniform variability and interpolation
@@ -766,10 +781,31 @@ def _fix_api_schemas_in_assembly(assembly_path: Path, assembly_name: str) -> Non
         pass
 
 
+def _find_branch_joint(joint_names: List[str], branch_id: int) -> str:
+    """Find the branch_X joint path in the joint names array.
+
+    Args:
+        joint_names: List of joint paths from skeleton
+        branch_id: Local branch ID to find
+
+    Returns:
+        Full joint path ending with branch_X, or "tree_root" as fallback
+    """
+    branch_name = f"branch_{branch_id}"
+
+    # Find joint path ending with branch_X
+    for joint_path in joint_names:
+        if joint_path.endswith(f"/{branch_name}"):
+            return joint_path
+
+    # Fallback to tree root if branch not found
+    return "tree_root"
+
+
 def _extract_joint_names_from_usd(tree_usd_path: Path) -> List[str]:
     """Extract joint names array from tree USD skeleton.
 
-    Joint names are hierarchical paths like "joint_0/joint_1/joint_2".
+    Joint names are hierarchical paths like "tree_root/joint_1/branch_0/joint_2".
     The bone ID from point_attribute_bone_id is an index into this array.
 
     Args:
@@ -828,7 +864,9 @@ def _extract_bind_transforms_from_usd(
                 if bind_transforms_attr:
                     bind_transforms = bind_transforms_attr.Get()
                     # Convert Gf.Matrix4d to nested tuples for easy inversion
-                    return [tuple(tuple(row) for row in xform) for xform in bind_transforms]
+                    return [
+                        tuple(tuple(row) for row in xform) for xform in bind_transforms
+                    ]
 
         return []
 
@@ -836,7 +874,9 @@ def _extract_bind_transforms_from_usd(
         return []
 
 
-def _invert_matrix4(matrix: Tuple[Tuple[float, ...], ...]) -> Tuple[Tuple[float, ...], ...]:
+def _invert_matrix4(
+    matrix: Tuple[Tuple[float, ...], ...],
+) -> Tuple[Tuple[float, ...], ...]:
     """Invert a 4x4 matrix.
 
     Args:
@@ -884,7 +924,11 @@ def _transform_point_by_matrix(
         transformed_4d = point_4d * gf_matrix
         # Divide by w component for proper homogeneous coordinates
         w = transformed_4d[3] if transformed_4d[3] != 0 else 1.0
-        transformed = (transformed_4d[0] / w, transformed_4d[1] / w, transformed_4d[2] / w)
+        transformed = (
+            transformed_4d[0] / w,
+            transformed_4d[1] / w,
+            transformed_4d[2] / w,
+        )
 
         return transformed
 

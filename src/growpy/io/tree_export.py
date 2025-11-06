@@ -173,11 +173,13 @@ def build_tree_mesh(
             # Note: Full island data available but not stored to keep file size reasonable
             # Can be accessed via model.uv_islands or model.get_uv_islands_flat() if needed
 
-        # Add normals for proper Unreal rendering
-        _add_mesh_normals(mesh, model)
+        # Add normals for proper Unreal rendering (skip for clean export)
+        _add_mesh_normals(mesh, model, clean_export=clean_export)
 
-        # Add simple base color material (no textures)
-        _add_usd_materials(stage, mesh, model, str(mesh_path))
+        # DISABLED: Materials break Nanite assembly recognition in UE 5.7
+        # Materials should be configured in Unreal Engine, not in USD files
+        # if not clean_export:
+        #     _add_usd_materials(stage, mesh, model, str(mesh_path))
 
         # Add skeleton if provided
         if skeleton is not None:
@@ -192,6 +194,7 @@ def build_tree_mesh(
                 skeleton_reduce=skeleton_reduce,
                 skeleton_bias=skeleton_bias,
                 skeleton_connected=skeleton_connected,
+                clean_export=clean_export,
             )
             if skeleton_added:
                 pass
@@ -223,6 +226,7 @@ def _add_skeleton_to_stage_inline(
     skeleton_reduce: float = 0.0,
     skeleton_bias: float = 0.5,
     skeleton_connected: bool = True,
+    clean_export: bool = True,
 ) -> bool:
     """Add skeleton to open USD stage using Grove's skeleton data.
 
@@ -240,7 +244,9 @@ def _add_skeleton_to_stage_inline(
 
         # Create UsdSkel skeleton structure directly in the stage
         # Pass bones_info for direct vertex-to-bone mapping
-        _build_usdskel_from_bones(stage, skeleton, model, bones_info)
+        _build_usdskel_from_bones(
+            stage, skeleton, model, bones_info, clean_export=clean_export
+        )
 
         return True
 
@@ -786,12 +792,20 @@ def _add_usd_materials(
     binding_api.Bind(bark_mat)
 
 
-def _add_mesh_normals(mesh: UsdGeom.Mesh, model: Any) -> None:
+def _add_mesh_normals(
+    mesh: UsdGeom.Mesh, model: Any, clean_export: bool = True
+) -> None:
     """Add normals to mesh for proper Unreal rendering.
 
     Prefers using actual normals from model.shape if available,
     falls back to simple up-facing normals if not.
+
+    Args:
+        clean_export: If True, skip normals entirely (Nanite assemblies don't need them)
     """
+    # Skip normals for clean export (reference files don't have them)
+    if clean_export:
+        return
     try:
         # Try to use real normals from model.shape
         if hasattr(model, "shape") and model.shape:
@@ -837,6 +851,7 @@ def _build_usdskel_from_bones(
     bones_info: Optional[List[Tuple]] = None,
     twig_placements: Optional[Dict[str, List[Dict]]] = None,
     verbose: bool = False,
+    clean_export: bool = True,
 ) -> None:
     """Build UsdSkel skeleton from Grove skeleton polylines.
 
@@ -946,6 +961,9 @@ def _build_usdskel_from_bones(
     # Build joints using bones_info
     bone_id_to_joint_path = {}
     bone_positions = {}
+    branch_id_to_joint_path = (
+        {}
+    )  # Maps local branch_id to joint path ending with branch_X
 
     for bone_idx, bone_info in enumerate(bones_info):
         (
@@ -967,36 +985,37 @@ def _build_usdskel_from_bones(
         local_pos = world_pos - tree_offset
         bone_positions[global_bone_id] = local_pos
 
-        # Name joints using LOCAL bone index (bone_idx), not global_bone_id
-        # This ensures joint names match the jointIndices in vertex binding
-        # Tree 0: root, root/joint_1, root/joint_2, ...
-        # Tree 1: root, root/joint_1, root/joint_2, ... (restart numbering)
+        # Name joints with branch awareness for clean twig binding
+        # Pattern: tree_root/joint_1/.../branch_X/joint_Y/.../branch_Z
+        # Where branch_X uses Grove's actual branch_id (converted to local)
+        local_branch_id = branch_id - branch_id_offset
+
         if bone_idx == 0:
-            joint_name = "root"
+            joint_name = "tree_root"
         else:
             joint_name = f"joint_{bone_idx}"
 
         # Build joint path using parent_bone_id
-        # Convert parent_bone_id from global to local index for this tree
         if bone_idx == 0:
-            # True root bone (first bone in this tree)
+            # Root bone
             joint_path = joint_name
         else:
-            # Parent bone ID is global, convert to local by subtracting offset
-            local_parent_id = parent_bone_id - bone_id_offset
             parent_path = bone_id_to_joint_path.get(parent_bone_id)
             if parent_path:
                 joint_path = f"{parent_path}/{joint_name}"
             else:
-                # Fallback: attach to root if parent not found
+                # Fallback: attach to tree_root if parent not found
                 if verbose:
+                    local_parent_id = parent_bone_id - bone_id_offset
                     print(
-                        f"WARNING: Parent bone {parent_bone_id} (local: {local_parent_id}) not found for bone {global_bone_id} (local: {bone_idx}), attaching to root"
+                        f"WARNING: Parent bone {parent_bone_id} (local: {local_parent_id}) not found for bone {global_bone_id} (local: {bone_idx}), attaching to tree_root"
                     )
-                joint_path = f"root/{joint_name}"
+                joint_path = f"tree_root/{joint_name}"
 
-        bone_id_to_joint_path[global_bone_id] = joint_path
-        joint_tokens.append(joint_path)
+        # Store the bone's joint path first (before adding branch marker)
+        bone_joint_path = joint_path
+        bone_id_to_joint_path[global_bone_id] = bone_joint_path
+        joint_tokens.append(bone_joint_path)
 
         # Create bind transform (absolute position in local space)
         bind_transform = Gf.Matrix4d(1.0)
@@ -1015,35 +1034,34 @@ def _build_usdskel_from_bones(
         rest_transform.SetTranslateOnly(relative_pos)
         rest_transforms.append(rest_transform)
 
+        # If this is a branch root, add a branch_X marker joint
+        # This creates a clean binding target: twigs bind to "root/.../branch_X"
+        # The branch joint has identity transforms (no offset from parent bone)
+        if is_branch_root:
+            branch_joint_name = f"branch_{local_branch_id}"
+            branch_joint_path = f"{bone_joint_path}/{branch_joint_name}"
+            joint_tokens.append(branch_joint_path)
+
+            # Branch joint has same position as parent bone (identity offset)
+            branch_bind_transform = Gf.Matrix4d(1.0)
+            branch_bind_transform.SetTranslateOnly(local_pos)  # Same as parent
+            bind_transforms.append(branch_bind_transform)
+
+            branch_rest_transform = Gf.Matrix4d(1.0)  # Identity - no offset from parent
+            rest_transforms.append(branch_rest_transform)
+
+            # Map this branch_id to its full joint path for bindJoints lookup
+            branch_id_to_joint_path[local_branch_id] = branch_joint_path
+
     # Set skeleton attributes
     skel.CreateJointsAttr(joint_tokens)
     skel.CreateBindTransformsAttr(Vt.Matrix4dArray(bind_transforms))
     skel.CreateRestTransformsAttr(Vt.Matrix4dArray(rest_transforms))
 
-    # CRITICAL: Create SkelAnimation for bind pose (required for Unreal skeletal mesh recognition)
-    # Even without animation, Unreal needs this to recognize as skeletal mesh
-    anim_path = Sdf.Path("/tree/Animation")
-    anim = UsdSkel.Animation.Define(stage, anim_path)
-
-    # Set animation joints (same as skeleton)
-    anim.CreateJointsAttr(joint_tokens)
-
-    # Set bind pose transforms (identity for each joint)
-    # USD requires these arrays to match the number of joints
-    num_joints = len(joint_tokens)
-    identity_translations = Vt.Vec3fArray([Gf.Vec3f(0, 0, 0)] * num_joints)
-    identity_rotations = Vt.QuatfArray(
-        [Gf.Quatf(1, 0, 0, 0)] * num_joints
-    )  # w, x, y, z
-    identity_scales = Vt.Vec3hArray([Gf.Vec3h(1, 1, 1)] * num_joints)
-
-    anim.CreateTranslationsAttr(identity_translations)
-    anim.CreateRotationsAttr(identity_rotations)
-    anim.CreateScalesAttr(identity_scales)
-
-    # Bind animation to skeleton via SkelRoot's animationSource relationship
-    skel_binding_api = UsdSkel.BindingAPI.Apply(tree_prim)
-    skel_binding_api.CreateAnimationSourceRel().SetTargets([anim_path])
+    # Store branch_id mapping for later use in bindJoints
+    # This allows assembly export to use: branch_id_to_joint_path[placement.branch_id]
+    if hasattr(tree_prim, "branch_id_to_joint_path"):
+        tree_prim.branch_id_to_joint_path = branch_id_to_joint_path
 
     # CRITICAL: Apply SkelBindingAPI to mesh and add skinning data
     # Unreal Engine requires BOTH SkelRoot and Mesh to have skeleton bindings
@@ -1147,44 +1165,48 @@ def _build_usdskel_from_bones(
         joint_weights_primvar.Set(joint_weights_paired)
         joint_weights_primvar.SetElementSize(2)
 
-        # Add branch ID attributes with local indices
+        # Add branch ID attributes with local indices (only if not clean export)
         # Convert from global branch IDs to local (0-based per tree)
-        if model and hasattr(model, "face_attribute_branch_id"):
-            global_branch_ids = model.face_attribute_branch_id
-            local_branch_ids = [
-                branch_id - branch_id_offset for branch_id in global_branch_ids
-            ]
+        # These are debug/visualization attributes not required for Nanite
+        if not clean_export:
+            if model and hasattr(model, "face_attribute_branch_id"):
+                global_branch_ids = model.face_attribute_branch_id
+                local_branch_ids = [
+                    branch_id - branch_id_offset for branch_id in global_branch_ids
+                ]
 
-            branch_id_primvar = primvars_api.CreatePrimvar(
-                "branchID", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.uniform
-            )
-            branch_id_primvar.Set(local_branch_ids)
-
-            if verbose:
-                print(
-                    f"  Converted BranchId: {len(local_branch_ids)} faces, offset={branch_id_offset}"
+                branch_id_primvar = primvars_api.CreatePrimvar(
+                    "branchID", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.uniform
                 )
-                print(
-                    f"    Global range: {min(global_branch_ids)}-{max(global_branch_ids)}"
+                branch_id_primvar.Set(local_branch_ids)
+
+                if verbose:
+                    print(
+                        f"  Converted BranchId: {len(local_branch_ids)} faces, offset={branch_id_offset}"
+                    )
+                    print(
+                        f"    Global range: {min(global_branch_ids)}-{max(global_branch_ids)}"
+                    )
+                    print(
+                        f"    Local range: {min(local_branch_ids)}-{max(local_branch_ids)}"
+                    )
+
+            if model and hasattr(model, "face_attribute_branch_id_parent"):
+                global_parent_ids = model.face_attribute_branch_id_parent
+                local_parent_ids = [
+                    parent_id - branch_id_offset if parent_id >= 0 else parent_id
+                    for parent_id in global_parent_ids
+                ]
+
+                branch_parent_primvar = primvars_api.CreatePrimvar(
+                    "branchIDParent",
+                    Sdf.ValueTypeNames.IntArray,
+                    UsdGeom.Tokens.uniform,
                 )
-                print(
-                    f"    Local range: {min(local_branch_ids)}-{max(local_branch_ids)}"
-                )
+                branch_parent_primvar.Set(local_parent_ids)
 
-        if model and hasattr(model, "face_attribute_branch_id_parent"):
-            global_parent_ids = model.face_attribute_branch_id_parent
-            local_parent_ids = [
-                parent_id - branch_id_offset if parent_id >= 0 else parent_id
-                for parent_id in global_parent_ids
-            ]
-
-            branch_parent_primvar = primvars_api.CreatePrimvar(
-                "branchIDParent", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.uniform
-            )
-            branch_parent_primvar.Set(local_parent_ids)
-
-            if verbose:
-                print(f"  Converted BranchIdParent: {len(local_parent_ids)} faces")
+                if verbose:
+                    print(f"  Converted BranchIdParent: {len(local_parent_ids)} faces")
 
 
 def get_quality_preset(preset_name: str) -> Dict[str, Any]:
