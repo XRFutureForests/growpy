@@ -965,6 +965,12 @@ def _build_usdskel_from_bones(
         {}
     )  # Maps local branch_id to joint path ending with branch_X
 
+    # Create lookup dict for bones_info by global bone ID
+    bones_info_dict = {}
+    for bone_idx, bone_info in enumerate(bones_info):
+        global_bone_id = bone_id_offset + bone_idx
+        bones_info_dict[global_bone_id] = bone_info
+
     for bone_idx, bone_info in enumerate(bones_info):
         (
             is_tree_root,
@@ -980,53 +986,50 @@ def _build_usdskel_from_bones(
         # Global bone ID = local index + offset
         global_bone_id = bone_id_offset + bone_idx
 
-        # Convert start point to local space (relative to tree origin)
+        # Convert start point to tree-local space (world position - tree origin)
         world_pos = Gf.Vec3d(start_point.x, start_point.y, start_point.z)
         local_pos = world_pos - tree_offset
         bone_positions[global_bone_id] = local_pos
 
-        # Name joints with branch awareness for clean twig binding
-        # Pattern: tree_root/joint_1/.../branch_X/joint_Y/.../branch_Z
-        # Where branch_X uses Grove's actual branch_id (converted to local)
+        # NATURAL HIERARCHY - Build joint paths following parent-child relationships
+        # This preserves the natural bone structure from Grove
         local_branch_id = branch_id - branch_id_offset
 
         if bone_idx == 0:
+            # First bone is always tree_root
             joint_name = "tree_root"
-        else:
-            joint_name = f"joint_{bone_idx}"
-
-        # Build joint path using parent_bone_id
-        if bone_idx == 0:
-            # Root bone
             joint_path = joint_name
-        else:
-            parent_path = bone_id_to_joint_path.get(parent_bone_id)
-            if parent_path:
-                joint_path = f"{parent_path}/{joint_name}"
+        elif is_branch_root:
+            # Branch root: tree_root/branch_X
+            joint_name = f"branch_{local_branch_id}"
+            # Get parent's joint path and append this joint
+            if parent_bone_id in bone_id_to_joint_path:
+                parent_joint_path = bone_id_to_joint_path[parent_bone_id]
+                joint_path = f"{parent_joint_path}/{joint_name}"
             else:
-                # Fallback: attach to tree_root if parent not found
-                if verbose:
-                    local_parent_id = parent_bone_id - bone_id_offset
-                    print(
-                        f"WARNING: Parent bone {parent_bone_id} (local: {local_parent_id}) not found for bone {global_bone_id} (local: {bone_idx}), attaching to tree_root"
-                    )
+                joint_path = f"tree_root/{joint_name}"
+        else:
+            # Regular joint: follow parent hierarchy
+            joint_name = f"joint_{bone_idx}"
+            # Get parent's joint path and append this joint
+            if parent_bone_id in bone_id_to_joint_path:
+                parent_joint_path = bone_id_to_joint_path[parent_bone_id]
+                joint_path = f"{parent_joint_path}/{joint_name}"
+            else:
                 joint_path = f"tree_root/{joint_name}"
 
-        # Store the bone's joint path first (before adding branch marker)
+        # Store the bone's joint path
         bone_joint_path = joint_path
         bone_id_to_joint_path[global_bone_id] = bone_joint_path
         joint_tokens.append(bone_joint_path)
 
-        # Create bind transform (absolute position in local space)
-        bind_transform = Gf.Matrix4d(1.0)
-        bind_transform.SetTranslateOnly(local_pos)
-        bind_transforms.append(bind_transform)
-
-        # Create rest transform (position relative to parent)
+        # Create restTransform (LOCAL space - position relative to parent bone)
+        # USD requirement: restTransforms are in local space
         if bone_idx == 0:
-            # Root bone (first bone in this tree) uses absolute position
-            relative_pos = local_pos
+            # Root bone: identity transform (no translation from origin)
+            relative_pos = Gf.Vec3d(0, 0, 0)
         else:
+            # Calculate offset from parent bone position
             parent_pos = bone_positions.get(parent_bone_id, Gf.Vec3d(0, 0, 0))
             relative_pos = local_pos - parent_pos
 
@@ -1034,24 +1037,17 @@ def _build_usdskel_from_bones(
         rest_transform.SetTranslateOnly(relative_pos)
         rest_transforms.append(rest_transform)
 
-        # If this is a branch root, add a branch_X marker joint
-        # This creates a clean binding target: twigs bind to "root/.../branch_X"
-        # The branch joint has identity transforms (no offset from parent bone)
+        # Create bindTransform (WORLD space - absolute position from tree origin)
+        # USD requirement: bindTransforms are in world space (tree-local coordinates)
+        # This is used by skinning to transform vertices from bind pose to animated pose
+        bind_transform = Gf.Matrix4d(1.0)
+        bind_transform.SetTranslateOnly(local_pos)
+        bind_transforms.append(bind_transform)
+
+        # If this is a branch root, map branch_id to joint path for bindJoints lookup
+        # The joint itself is already named "branch_X" so no separate joint needed
         if is_branch_root:
-            branch_joint_name = f"branch_{local_branch_id}"
-            branch_joint_path = f"{bone_joint_path}/{branch_joint_name}"
-            joint_tokens.append(branch_joint_path)
-
-            # Branch joint has same position as parent bone (identity offset)
-            branch_bind_transform = Gf.Matrix4d(1.0)
-            branch_bind_transform.SetTranslateOnly(local_pos)  # Same as parent
-            bind_transforms.append(branch_bind_transform)
-
-            branch_rest_transform = Gf.Matrix4d(1.0)  # Identity - no offset from parent
-            rest_transforms.append(branch_rest_transform)
-
-            # Map this branch_id to its full joint path for bindJoints lookup
-            branch_id_to_joint_path[local_branch_id] = branch_joint_path
+            branch_id_to_joint_path[local_branch_id] = bone_joint_path
 
     # Set skeleton attributes
     skel.CreateJointsAttr(joint_tokens)
