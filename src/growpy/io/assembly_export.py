@@ -158,7 +158,8 @@ def create_assembly(
                                 "position": p.position,
                                 "normal": p.normal,
                                 "scale": p.scale,
-                                "bone_id": p.bone_id,  # CRITICAL: Include bone ID for perfect binding
+                                "bone_id": p.bone_id,
+                                "branch_id": p.branch_id,  # CRITICAL: branch_id for binding to branch_X joints
                             }
                             for p in placement_list
                         ]
@@ -375,40 +376,27 @@ def create_assembly(
                                 if branch_id is not None:
                                     # Use branch_X joint for clean binding
                                     # Joint paths in skeleton follow pattern: tree_root/.../branch_X
-
-                                    # DEBUG: Print first time we try to find a branch
-                                    if not bind_joints:  # First twig
-                                        print(
-                                            f"\nDEBUG: First twig has branch_id={branch_id}"
-                                        )
-                                        print(
-                                            f"  joint_names type: {type(joint_names)}, length: {len(joint_names)}"
-                                        )
-                                        print(
-                                            f"  First 3 joint_names: {joint_names[:3]}"
-                                        )
-                                        branch_joints = [
-                                            j for j in joint_names if "branch_" in j
-                                        ]
-                                        print(
-                                            f"  Joints with 'branch_': {len(branch_joints)}"
-                                        )
-                                        if branch_joints:
-                                            print(
-                                                f"  Sample branch joints: {branch_joints[:3]}"
-                                            )
-
                                     joint_path = _find_branch_joint(
                                         joint_names, branch_id
                                     )
-                                    if joint_path == "tree_root":
-                                        print(f"  ⚠️  Failed to find branch_{branch_id}")
                                     bind_joints.append(joint_path)
                                     bind_weights.append(1.0)
                                 else:
                                     # Fallback to tree root if no branch ID
                                     bind_joints.append("tree_root")
                                     bind_weights.append(1.0)
+
+                        # Validate all bindJoints exist in skeleton
+                        skeleton_joints = set(joint_names)
+                        missing_joints = [
+                            j for j in set(bind_joints) if j not in skeleton_joints
+                        ]
+                        if missing_joints:
+                            print(
+                                f"\n⚠️  WARNING: {len(missing_joints)} bindJoints not found in skeleton:"
+                            )
+                            for mj in missing_joints[:5]:
+                                print(f"   - {mj}")
 
                         # Create bindJoints primvar with uniform variability and interpolation
                         bind_joints_attr = instancer_prim.CreateAttribute(
@@ -796,18 +784,21 @@ def _fix_api_schemas_in_assembly(assembly_path: Path, assembly_name: str) -> Non
 def _find_branch_joint(joint_names: List[str], branch_id: int) -> str:
     """Find the branch_X joint path in the joint names array.
 
+    With natural hierarchy, branches can be at any depth in the tree structure.
+    Pattern: tree_root/.../branch_X (e.g., tree_root/joint_1/branch_1 or tree_root/joint_1/joint_2/branch_2)
+
     Args:
         joint_names: List of joint paths from skeleton
         branch_id: Local branch ID to find
 
     Returns:
-        Full joint path ending with branch_X, or "tree_root" as fallback
+        Branch joint path like "tree_root/.../branch_X", or "tree_root" as fallback
     """
     branch_name = f"branch_{branch_id}"
 
-    # Find joint path ending with branch_X
+    # Search for any joint ending with /branch_X (handles natural hierarchy at any depth)
     for joint_path in joint_names:
-        if joint_path.endswith(f"/{branch_name}"):
+        if joint_path.endswith(f"/{branch_name}") or joint_path == branch_name:
             return joint_path
 
     # Fallback to tree root if branch not found
