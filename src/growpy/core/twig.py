@@ -19,6 +19,7 @@ class TwigPlacement:
     normal: Tuple[float, float, float]
     scale: float = 1.0
     bone_id: Optional[int] = None  # Direct bone ID from point_attribute_bone_id
+    branch_id: Optional[int] = None  # Branch ID for binding to branch_X joints
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation."""
@@ -28,6 +29,7 @@ class TwigPlacement:
             "normal": self.normal,
             "scale": self.scale,
             "bone_id": self.bone_id,
+            "branch_id": self.branch_id,
         }
 
 
@@ -227,11 +229,6 @@ def extract_twig_placements_from_model(
                 if is_branch_root:
                     branch_root_bones[local_branch_id] = bone_idx
 
-    # Extract branch IDs for face-level branch isolation
-    face_branch_ids = []
-    if hasattr(model, "face_attribute_branch_id"):
-        face_branch_ids = model.face_attribute_branch_id
-
     faces = model.faces
 
     for twig_type in twig_types:
@@ -268,24 +265,12 @@ def extract_twig_placements_from_model(
                     twig_directions[base_idx + 2],
                 )
 
-                # BRANCH-BASED BINDING: Direct mapping using face_attribute_branch_id → branch root bone
+                # BONE-BASED BINDING: Get bone_id from vertices, then extract branch_id from that bone
                 twig_bone_id = None
+                branch_id_for_twig = None
 
-                if (
-                    face_branch_ids
-                    and face_idx < len(face_branch_ids)
-                    and branch_root_bones
-                ):
-                    # PREFERRED: Direct mapping from face's branch_id to branch root bone
-                    # This uses Grove's authoritative branch assignments and is_branch_root flags
-                    global_face_branch_id = face_branch_ids[face_idx]
-                    local_face_branch_id = (
-                        global_face_branch_id - branch_id_offset
-                    )  # Convert to local
-                    twig_bone_id = branch_root_bones.get(local_face_branch_id)
-
-                elif bone_ids:
-                    # FALLBACK: Use vertex-based voting without branch filtering
+                if bone_ids:
+                    # Get the bone that this twig face belongs to via vertex voting
                     from collections import Counter
 
                     face_vert_indices = list(face)
@@ -297,8 +282,17 @@ def extract_twig_placements_from_model(
                     if face_bone_ids:
                         # Get most common bone ID (this is a GLOBAL bone ID)
                         global_bone_id = Counter(face_bone_ids).most_common(1)[0][0]
-                        # Convert global bone ID to local bone index for joint_names array
-                        twig_bone_id = global_bone_id - bone_id_offset
+                        # Convert global bone ID to local bone index
+                        local_bone_id = global_bone_id - bone_id_offset
+                        twig_bone_id = local_bone_id
+
+                        # Now get the branch_id from this bone
+                        # bones_info is indexed by local bone_id
+                        if bones_info and local_bone_id < len(bones_info):
+                            bone = bones_info[local_bone_id]
+                            if len(bone) >= 8:
+                                global_branch_id = int(bone[7])  # Index 7 is branch_id
+                                branch_id_for_twig = global_branch_id - branch_id_offset
 
                 placement = TwigPlacement(
                     type=twig_type,
@@ -306,6 +300,7 @@ def extract_twig_placements_from_model(
                     normal=normal,
                     scale=1.0,
                     bone_id=twig_bone_id,
+                    branch_id=branch_id_for_twig,
                 )
                 placements[twig_type].append(placement)
 

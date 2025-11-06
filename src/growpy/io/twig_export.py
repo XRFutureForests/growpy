@@ -212,7 +212,7 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=True)
         skel = UsdSkel.Skeleton.Define(stage, skel_path)
 
         # Create single root joint at pivot point
-        joint_tokens = ["joint_0"]
+        joint_tokens = ["twig_root"]
         world_pos = Gf.Vec3d(pivot_point[0], pivot_point[1], pivot_point[2])
 
         # Bind transform (world space)
