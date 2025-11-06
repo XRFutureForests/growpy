@@ -375,17 +375,29 @@ def create_assembly(
                                 if branch_id is not None:
                                     # Use branch_X joint for clean binding
                                     # Joint paths in skeleton follow pattern: tree_root/.../branch_X
-                                    
+
                                     # DEBUG: Print first time we try to find a branch
                                     if not bind_joints:  # First twig
-                                        print(f"\nDEBUG: First twig has branch_id={branch_id}")
-                                        print(f"  joint_names type: {type(joint_names)}, length: {len(joint_names)}")
-                                        print(f"  First 3 joint_names: {joint_names[:3]}")
-                                        branch_joints = [j for j in joint_names if 'branch_' in j]
-                                        print(f"  Joints with 'branch_': {len(branch_joints)}")
+                                        print(
+                                            f"\nDEBUG: First twig has branch_id={branch_id}"
+                                        )
+                                        print(
+                                            f"  joint_names type: {type(joint_names)}, length: {len(joint_names)}"
+                                        )
+                                        print(
+                                            f"  First 3 joint_names: {joint_names[:3]}"
+                                        )
+                                        branch_joints = [
+                                            j for j in joint_names if "branch_" in j
+                                        ]
+                                        print(
+                                            f"  Joints with 'branch_': {len(branch_joints)}"
+                                        )
                                         if branch_joints:
-                                            print(f"  Sample branch joints: {branch_joints[:3]}")
-                                    
+                                            print(
+                                                f"  Sample branch joints: {branch_joints[:3]}"
+                                            )
+
                                     joint_path = _find_branch_joint(
                                         joint_names, branch_id
                                     )
