@@ -176,11 +176,6 @@ def build_tree_mesh(
         # Add normals for proper Unreal rendering (skip for clean export)
         _add_mesh_normals(mesh, model, clean_export=clean_export)
 
-        # DISABLED: Materials break Nanite assembly recognition in UE 5.7
-        # Materials should be configured in Unreal Engine, not in USD files
-        # if not clean_export:
-        #     _add_usd_materials(stage, mesh, model, str(mesh_path))
-
         # Add skeleton if provided
         if skeleton is not None:
             skeleton_added = _add_skeleton_to_stage_inline(
@@ -200,6 +195,10 @@ def build_tree_mesh(
                 pass
             else:
                 pass
+
+        # Add materials to mesh (required for Nanite assembly recognition)
+        # Materials are created as siblings to TreeMesh inside /tree root
+        _add_skeletal_materials(stage, mesh.GetPrim(), str(root_path))
 
         # Save stage
         stage.Save()
@@ -790,6 +789,48 @@ def _add_usd_materials(
     # Apply MaterialBindingAPI schema first, then bind material
     binding_api = UsdShade.MaterialBindingAPI.Apply(mesh_prim.GetPrim())
     binding_api.Bind(bark_mat)
+
+
+def _add_skeletal_materials(
+    stage: Usd.Stage, mesh_prim: Usd.Prim, root_path: str
+) -> None:
+    """Add materials to skeletal tree mesh for Nanite assembly recognition.
+
+    Creates Materials scope as sibling to TreeMesh inside /tree root,
+    matching the structure used in twig files.
+
+    Args:
+        stage: USD stage
+        mesh_prim: TreeMesh prim
+        root_path: Path to root xform (e.g., "/tree")
+    """
+    try:
+        # Bark material color (brown)
+        BARK_BROWN = Gf.Vec3f(0.4, 0.3, 0.2)
+
+        # Create Materials scope as sibling to TreeMesh
+        materials_path = root_path + "/Materials"
+        UsdGeom.Scope.Define(stage, materials_path)
+
+        # Create BarkMaterial
+        bark_mat = UsdShade.Material.Define(stage, f"{materials_path}/BarkMaterial")
+        shader = UsdShade.Shader.Define(
+            stage, f"{materials_path}/BarkMaterial/PreviewSurface"
+        )
+        shader.CreateIdAttr("UsdPreviewSurface")
+        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(BARK_BROWN)
+        shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.8)
+        bark_mat.CreateSurfaceOutput().ConnectToSource(
+            shader.ConnectableAPI(), "surface"
+        )
+
+        # Apply MaterialBindingAPI to mesh and bind material
+        binding_api = UsdShade.MaterialBindingAPI.Apply(mesh_prim)
+        binding_api.Bind(bark_mat)
+
+    except Exception as e:
+        # Silently fail - material addition is optional
+        pass
 
 
 def _add_mesh_normals(
