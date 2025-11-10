@@ -123,7 +123,9 @@ def _add_twig_material(stage, mesh_prim, mesh_path):
 
 
 def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=True):
-    """Add skeleton to USD file and remove DomeLight artifact using Blender's bundled pxr module.
+    """Add skeleton to USD file and remove Blender export artifacts using Blender's bundled pxr module.
+
+    Removes DomeLight, Blender userProperties metadata (data_name, Copyright), and ensures clean export.
 
     CRITICAL: Always uses clean_export=True to prevent material/texture issues with Nanite assemblies.
     Nanite assemblies with skeletal meshes have known problems with materials, textures, and masks.
@@ -148,6 +150,18 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=True)
         dome_light = stage.GetPrimAtPath("/root/env_light")
         if dome_light:
             stage.RemovePrim("/root/env_light")
+
+        # Remove Blender-specific userProperties custom attributes
+        for prim in stage.Traverse():
+            # Remove userProperties:blender:data_name
+            if prim.HasAttribute("userProperties:blender:data_name"):
+                prim.RemoveProperty("userProperties:blender:data_name")
+            # Remove userProperties:Copyright
+            if prim.HasAttribute("userProperties:Copyright"):
+                prim.RemoveProperty("userProperties:Copyright")
+            # Remove userProperties:TwoSided (also common in Blender exports)
+            if prim.HasAttribute("userProperties:TwoSided"):
+                prim.RemoveProperty("userProperties:TwoSided")
 
         # Ensure texture paths use ./textures/ prefix
         for prim in stage.Traverse():
