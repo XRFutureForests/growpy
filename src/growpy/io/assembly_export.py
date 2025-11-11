@@ -350,9 +350,13 @@ def create_assembly(
                         # Joint names are hierarchical paths like "joint_0/joint_1/joint_2"
                         joint_names = _extract_joint_names_from_usd(tree_usd_path)
 
-                        # Build bindJoints array using branch IDs from twig placements
-                        # CRITICAL: Clean binding - each twig bound to branch_X joint based on
-                        # Grove's branch_id. Pattern: "tree_root/joint_1/.../branch_X"
+                        # Extract bone segments (start/end points) for distance-based binding
+                        joint_segments = _extract_joint_coordinates_from_usd(
+                            tree_usd_path
+                        )
+
+                        # Build bindJoints array using perpendicular distance to bone segments
+                        # Each twig binds to the NEAREST bone segment within its assigned branch
                         bind_joints = []
                         bind_weights = []
 
@@ -365,24 +369,28 @@ def create_assembly(
                                 continue
 
                             for placement in placement_list:
-                                # Get branch ID directly from placement (from face_attribute_branch_id)
+                                # Get branch ID and position from placement
                                 # Handle both TwigPlacement objects and dict representations
                                 if isinstance(placement, dict):
                                     branch_id = placement.get("branch_id")
+                                    position = placement.get("position")
                                 else:
                                     # TwigPlacement object
                                     branch_id = getattr(placement, "branch_id", None)
+                                    position = getattr(placement, "position", None)
 
-                                if branch_id is not None:
-                                    # Use branch_X joint for clean binding
-                                    # Joint paths in skeleton follow pattern: tree_root/.../branch_X
-                                    joint_path = _find_branch_joint(
-                                        joint_names, branch_id
+                                if position is not None:
+                                    # Find nearest joint using perpendicular distance to bone segments
+                                    # Use global search for best spatial accuracy
+                                    joint_path = _find_nearest_joint_globally(
+                                        joint_names,
+                                        joint_segments,
+                                        position,
                                     )
                                     bind_joints.append(joint_path)
                                     bind_weights.append(1.0)
                                 else:
-                                    # Fallback to tree root if no branch ID
+                                    # Fallback to tree root if no position
                                     bind_joints.append("tree_root")
                                     bind_weights.append(1.0)
 
@@ -805,6 +813,211 @@ def _find_branch_joint(joint_names: List[str], branch_id: int) -> str:
     return "tree_root"
 
 
+def _find_nearest_joint_globally(
+    joint_names: List[str],
+    joint_segments: Dict[
+        str, Tuple[Tuple[float, float, float], Tuple[float, float, float]]
+    ],
+    twig_position: Tuple[float, float, float],
+) -> str:
+    """Find the nearest joint to a twig position across all joints.
+
+    Uses perpendicular distance to bone segments for accurate spatial binding.
+
+    Args:
+        joint_names: List of all joint paths from skeleton
+        joint_segments: Dict mapping joint_path to ((start_x,y,z), (end_x,y,z))
+        twig_position: Twig location as (x, y, z) tuple
+
+    Returns:
+        Joint path of nearest joint
+    """
+    import math
+
+    def point_to_segment_distance(
+        point: Tuple[float, float, float],
+        seg_start: Tuple[float, float, float],
+        seg_end: Tuple[float, float, float],
+    ) -> float:
+        """Calculate perpendicular distance from point to line segment."""
+        px, py, pz = point
+        ax, ay, az = seg_start
+        bx, by, bz = seg_end
+
+        abx, aby, abz = bx - ax, by - ay, bz - az
+        apx, apy, apz = px - ax, py - ay, pz - az
+        ab_len_sq = abx * abx + aby * aby + abz * abz
+
+        if ab_len_sq == 0:
+            return math.sqrt(apx * apx + apy * apy + apz * apz)
+
+        t = (apx * abx + apy * aby + apz * abz) / ab_len_sq
+        t = max(0.0, min(1.0, t))
+
+        closest_x = ax + t * abx
+        closest_y = ay + t * aby
+        closest_z = az + t * abz
+
+        dx = px - closest_x
+        dy = py - closest_y
+        dz = pz - closest_z
+
+        return math.sqrt(dx * dx + dy * dy + dz * dz)
+
+    min_distance = float("inf")
+    nearest_joint = "tree_root"
+
+    for joint_path in joint_names:
+        if joint_path not in joint_segments:
+            continue
+
+        start_point, end_point = joint_segments[joint_path]
+        distance = point_to_segment_distance(twig_position, start_point, end_point)
+
+        if distance < min_distance:
+            min_distance = distance
+            nearest_joint = joint_path
+
+    return nearest_joint
+
+
+def _find_nearest_joint_in_branch(
+    joint_names: List[str],
+    joint_segments: Dict[
+        str, Tuple[Tuple[float, float, float], Tuple[float, float, float]]
+    ],
+    twig_position: Tuple[float, float, float],
+    branch_id: int,
+) -> str:
+    """Find the nearest joint within a specific branch for twig binding.
+
+    Calculates perpendicular distance from twig to bone segments using each
+    bone's start and end points. This ensures accurate binding for twigs
+    placed along bone segments.
+
+    Args:
+        joint_names: List of all joint paths from skeleton
+        joint_segments: Dict mapping joint_path to ((start_x,y,z), (end_x,y,z))
+        twig_position: Twig location as (x, y, z) tuple
+        branch_id: Local branch ID the twig belongs to
+
+    Returns:
+        Joint path of nearest joint within the branch, or branch root as fallback
+    """
+    import math
+
+    def point_to_segment_distance(
+        point: Tuple[float, float, float],
+        seg_start: Tuple[float, float, float],
+        seg_end: Tuple[float, float, float],
+    ) -> float:
+        """Calculate perpendicular distance from point to line segment.
+
+        Uses parametric line equation and projects point onto segment.
+        If projection falls outside segment, returns distance to nearest endpoint.
+        """
+        px, py, pz = point
+        ax, ay, az = seg_start
+        bx, by, bz = seg_end
+
+        # Vector from A to B (segment direction)
+        abx, aby, abz = bx - ax, by - ay, bz - az
+
+        # Vector from A to P (point)
+        apx, apy, apz = px - ax, py - ay, pz - az
+
+        # Segment length squared
+        ab_len_sq = abx * abx + aby * aby + abz * abz
+
+        if ab_len_sq == 0:
+            # Degenerate segment (start == end), return distance to point
+            return math.sqrt(apx * apx + apy * apy + apz * apz)
+
+        # Parameter t represents projection of P onto line AB
+        # t = 0 means projection at A, t = 1 means projection at B
+        t = (apx * abx + apy * aby + apz * abz) / ab_len_sq
+
+        # Clamp t to [0, 1] to stay within segment bounds
+        t = max(0.0, min(1.0, t))
+
+        # Find closest point on segment
+        closest_x = ax + t * abx
+        closest_y = ay + t * aby
+        closest_z = az + t * abz
+
+        # Distance from point to closest point on segment
+        dx = px - closest_x
+        dy = py - closest_y
+        dz = pz - closest_z
+
+        return math.sqrt(dx * dx + dy * dy + dz * dz)
+
+    # Special case: branch_id=0 means main trunk (no specific branch)
+    # Search all joints that are NOT part of any branch
+    if branch_id == 0:
+        branch_joints = []
+        for joint_path in joint_names:
+            # Include joints that don't contain "branch_" in their path
+            if "/branch_" not in joint_path and not joint_path.startswith("branch_"):
+                branch_joints.append(joint_path)
+
+        if not branch_joints:
+            return "tree_root"
+    else:
+        # Normal branch: find branch_X root and its lineage
+        branch_name = f"branch_{branch_id}"
+
+        # Find the branch root joint (e.g., "tree_root/joint_1/joint_2/branch_2")
+        branch_root = None
+        for joint_path in joint_names:
+            if joint_path.endswith(f"/{branch_name}") or joint_path == branch_name:
+                branch_root = joint_path
+                break
+
+        if not branch_root:
+            # Fallback to tree root if branch not found
+            return "tree_root"
+
+        # Include all joints from tree_root to branch root, plus all descendants of branch
+        # This handles twigs placed on trunk segments leading to the branch
+        branch_joints = []
+
+        # Add all ancestors of branch root (trunk path to this branch)
+        parts = branch_root.split("/")
+        for i in range(1, len(parts) + 1):
+            ancestor = "/".join(parts[:i])
+            if ancestor in joint_names:
+                branch_joints.append(ancestor)
+
+        # Add all descendants of branch root (joints within the branch)
+        for joint_path in joint_names:
+            if joint_path.startswith(f"{branch_root}/"):
+                branch_joints.append(joint_path)
+
+        if not branch_joints:
+            return "tree_root"
+
+    # Calculate distance from twig to each bone segment in the branch
+    min_distance = float("inf")
+    nearest_joint = branch_joints[0]  # Default to first branch joint
+
+    for joint_path in branch_joints:
+        if joint_path not in joint_segments:
+            continue
+
+        # Get bone segment endpoints (start_point, end_point)
+        start_point, end_point = joint_segments[joint_path]
+
+        # Calculate perpendicular distance to bone segment
+        distance = point_to_segment_distance(twig_position, start_point, end_point)
+
+        if distance < min_distance:
+            min_distance = distance
+            nearest_joint = joint_path
+
+    return nearest_joint
+
+
 def _extract_joint_names_from_usd(tree_usd_path: Path) -> List[str]:
     """Extract joint names array from tree USD skeleton.
 
@@ -837,6 +1050,82 @@ def _extract_joint_names_from_usd(tree_usd_path: Path) -> List[str]:
 
     except Exception as e:
         return []
+
+
+def _extract_joint_coordinates_from_usd(
+    tree_usd_path: Path,
+) -> Dict[str, Tuple[Tuple[float, float, float], Tuple[float, float, float]]]:
+    """Extract bone segment endpoints from tree USD skeleton.
+
+    Each bone is represented by its start and end points, enabling accurate
+    point-to-segment distance calculations for twig binding.
+
+    Args:
+        tree_usd_path: Path to tree USD with skeleton
+
+    Returns:
+        Dict mapping joint_path to ((start_x, start_y, start_z), (end_x, end_y, end_z))
+    """
+    try:
+        from pxr import Usd, UsdSkel
+
+        stage = Usd.Stage.Open(str(tree_usd_path))
+        joint_segments = {}
+
+        # Find skeleton prim
+        for prim in stage.Traverse():
+            if prim.IsA(UsdSkel.Skeleton):
+                skeleton = UsdSkel.Skeleton(prim)
+
+                # Get joint names
+                joints_attr = skeleton.GetJointsAttr()
+                if not joints_attr:
+                    continue
+                joint_names = [str(name) for name in joints_attr.Get()]
+
+                # Get bind transforms (rest pose) for joint endpoints
+                bind_transforms_attr = skeleton.GetBindTransformsAttr()
+                if not bind_transforms_attr:
+                    continue
+                bind_transforms = bind_transforms_attr.Get()
+
+                # Extract joint positions (endpoints)
+                joint_positions = {}
+                for joint_name, transform in zip(joint_names, bind_transforms):
+                    translation = transform.ExtractTranslation()
+                    joint_positions[joint_name] = (
+                        float(translation[0]),
+                        float(translation[1]),
+                        float(translation[2]),
+                    )
+
+                # Build bone segments: start = parent position, end = joint position
+                for joint_name in joint_names:
+                    if "/" in joint_name:
+                        # Joint has parent - create segment from parent to this joint
+                        parent_path = joint_name.rsplit("/", 1)[0]
+                        if (
+                            parent_path in joint_positions
+                            and joint_name in joint_positions
+                        ):
+                            joint_segments[joint_name] = (
+                                joint_positions[parent_path],  # start (parent)
+                                joint_positions[joint_name],  # end (this joint)
+                            )
+                    else:
+                        # Root joint - segment from origin to root
+                        if joint_name in joint_positions:
+                            joint_segments[joint_name] = (
+                                (0.0, 0.0, 0.0),  # start (origin)
+                                joint_positions[joint_name],  # end (root)
+                            )
+
+                break  # Found skeleton, done
+
+        return joint_segments
+
+    except Exception as e:
+        return {}
 
 
 def _extract_bind_transforms_from_usd(
