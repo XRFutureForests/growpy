@@ -57,7 +57,7 @@ skeleton_connected = True  # Whether bones are connected in hierarchy (default: 
 # Smoothing parameters
 enable_smooth = True  # Apply smoothing to reduce sharp branch angles (default: False)
 smooth_iterations = (
-    5  # Number of smoothing iterations to apply (default: 1, range: 1-10)
+    10  # Number of smoothing iterations to apply (default: 1, range: 1-10)
 )
 
 # Model export settings
