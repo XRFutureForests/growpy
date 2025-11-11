@@ -75,6 +75,8 @@ def build_tree_mesh(
     skeleton_reduce: float = 0.0,
     skeleton_bias: float = 0.5,
     skeleton_connected: bool = True,
+    junction_blend_distance: float = 0.5,
+    blend_mode: str = "linear",
 ) -> bool:
     """Build USD file directly from Grove model using API geometry data.
 
@@ -190,6 +192,8 @@ def build_tree_mesh(
                 skeleton_bias=skeleton_bias,
                 skeleton_connected=skeleton_connected,
                 clean_export=clean_export,
+                junction_blend_distance=junction_blend_distance,
+                blend_mode=blend_mode,
             )
             if skeleton_added:
                 pass
@@ -226,6 +230,8 @@ def _add_skeleton_to_stage_inline(
     skeleton_bias: float = 0.5,
     skeleton_connected: bool = True,
     clean_export: bool = True,
+    junction_blend_distance: float = 0.1,
+    blend_mode: str = "linear",
 ) -> bool:
     """Add skeleton to open USD stage using Grove's skeleton data.
 
@@ -242,9 +248,16 @@ def _add_skeleton_to_stage_inline(
             return False
 
         # Create UsdSkel skeleton structure directly in the stage
-        # Pass bones_info for direct vertex-to-bone mapping
+        # Pass bones_info for direct vertex-to-bone mapping with junction blending
         _build_usdskel_from_bones(
-            stage, skeleton, model, bones_info, clean_export=clean_export
+            stage,
+            skeleton,
+            model,
+            bones_info,
+            clean_export=clean_export,
+            verbose=False,  # Set to True for debugging
+            junction_blend_distance=junction_blend_distance,
+            blend_mode=blend_mode,
         )
 
         return True
@@ -893,6 +906,8 @@ def _build_usdskel_from_bones(
     twig_placements: Optional[Dict[str, List[Dict]]] = None,
     verbose: bool = False,
     clean_export: bool = True,
+    junction_blend_distance: float = 0.5,
+    blend_mode: str = "linear",
 ) -> None:
     """Build UsdSkel skeleton from Grove skeleton polylines.
 
@@ -1133,7 +1148,7 @@ def _build_usdskel_from_bones(
 
             if verbose:
                 print(
-                    f"Using direct vertex-to-bone mapping via point_attribute_bone_id"
+                    f"Using hierarchical junction blending with blend_distance={junction_blend_distance}"
                 )
                 print(f"  Vertices: {len(bone_ids)}, Joints: {len(joint_tokens)}")
                 # Debug: show unique bone IDs and their distribution
@@ -1141,18 +1156,35 @@ def _build_usdskel_from_bones(
                 print(f"  Unique bone IDs found: {sorted(unique_ids)}")
                 print(f"  Bone ID range: {min(bone_ids)} to {max(bone_ids)}")
 
-            # Convert global bone IDs to local joint indices
-            # bone_ids from Grove contain global IDs that span across all trees
-            # We need local indices (0, 1, 2...) that match our joint names (root, joint_1, joint_2...)
-            joint_indices = [bone_id - bone_id_offset for bone_id in bone_ids]
-            joint_weights = [1.0] * len(bone_ids)
+            # Build bone_to_joint_map for local (tree-specific) bone indices
+            bone_to_joint_map = {}
+            for bone_idx in range(len(bones_info)):
+                global_bone_id = bone_id_offset + bone_idx
+                local_bone_id = bone_idx
+                bone_to_joint_map[global_bone_id] = local_bone_id
+
+            # Use calculate_vertex_weights with reduced weights at junctions
+            from ..core.skeleton import calculate_vertex_weights
+
+            joint_indices_flat, joint_weights_flat = calculate_vertex_weights(
+                model=model,
+                bone_to_joint_map=bone_to_joint_map,
+                bones_info=bones_info,
+                element_size=2,
+                junction_blend_distance=junction_blend_distance,
+                blend_mode=blend_mode,
+            )
+
+            # Unpack flat arrays (2 values per vertex from calculate_vertex_weights with dual-bone weighting)
+            joint_indices = joint_indices_flat
+            joint_weights = joint_weights_flat
 
             if verbose:
-                print(f"  Converted to local indices with offset {bone_id_offset}")
-                local_unique_ids = set(joint_indices)
-                print(f"  Local joint indices: {sorted(local_unique_ids)}")
+                print(f"  Calculated weights with {len(joint_indices)} vertices")
+                # Count vertices with reduced weights at junctions
+                reduced_weight_count = sum(1 for w in joint_weights if w < 1.0)
                 print(
-                    f"  Local index range: {min(joint_indices)} to {max(joint_indices)}"
+                    f"  Vertices with reduced weights: {reduced_weight_count} ({reduced_weight_count * 100 / len(joint_weights):.1f}%)"
                 )
 
         else:
@@ -1168,38 +1200,28 @@ def _build_usdskel_from_bones(
 
             for _ in range(num_vertices):
                 # Bind each vertex to joint 0 with full weight
-                # Using 1 influence per vertex (rigid binding)
                 joint_indices.append(0)
                 joint_weights.append(1.0)
 
         # Create primvars for skinning
         primvars_api = UsdGeom.PrimvarsAPI(mesh_prim)
 
-        # CRITICAL: USD skeletal meshes require elementSize=2 for proper Unreal import
-        # Format joint indices and weights as pairs [primary, secondary] per vertex
-        # Even for rigid binding (single influence), we need pairs with zero-weight padding
-        joint_indices_paired = []
-        joint_weights_paired = []
-        for i in range(len(joint_indices)):
-            # Primary joint influence
-            joint_indices_paired.append(joint_indices[i])
-            joint_weights_paired.append(joint_weights[i])
-            # Secondary joint (padding with zero influence)
-            joint_indices_paired.append(0)
-            joint_weights_paired.append(0.0)
+        # CRITICAL: Use elementSize=2 for dual-bone binding with parent/child weight blending
+        # joint_indices and joint_weights are in dual-bone format from calculate_vertex_weights
+        # Each vertex has two bone indices and two weight values that sum to 1.0
 
-        # Joint indices primvar (2 influences per vertex - rigid binding with padding)
+        # Joint indices primvar (2 influences per vertex)
         joint_indices_primvar = primvars_api.CreatePrimvar(
             "skel:jointIndices", Sdf.ValueTypeNames.IntArray, UsdGeom.Tokens.vertex
         )
-        joint_indices_primvar.Set(joint_indices_paired)
+        joint_indices_primvar.Set(joint_indices)
         joint_indices_primvar.SetElementSize(2)
 
-        # Joint weights primvar (2 influences per vertex - rigid binding with padding)
+        # Joint weights primvar (2 influences per vertex for dual-bone weighting)
         joint_weights_primvar = primvars_api.CreatePrimvar(
             "skel:jointWeights", Sdf.ValueTypeNames.FloatArray, UsdGeom.Tokens.vertex
         )
-        joint_weights_primvar.Set(joint_weights_paired)
+        joint_weights_primvar.Set(joint_weights)
         joint_weights_primvar.SetElementSize(2)
 
         # Add branch ID attributes with local indices (only if not clean export)

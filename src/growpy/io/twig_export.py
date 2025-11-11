@@ -294,18 +294,14 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=True)
         # Set skinning data - all vertices bound to root joint
         num_points = len(points)
 
-        # CRITICAL: Use elementSize=2 for USD skeletal mesh compatibility with Unreal
-        # Format as pairs [primary, secondary] per vertex even for rigid binding
-        # Each vertex bound to root joint with full weight, plus zero-weight padding
+        # CRITICAL: Use elementSize=2 dual-bone format for consistency
+        # Twigs use rigid binding: root joint (index 0) with full weight, dummy second bone
         joint_indices = []
         joint_weights = []
         for _ in range(num_points):
-            # Primary influence: root joint (index 0) with full weight
-            joint_indices.append(0)
-            joint_weights.append(1.0)
-            # Secondary influence: padding with zero weight
-            joint_indices.append(0)
-            joint_weights.append(0.0)
+            # Rigid binding in dual-bone format: [joint0, weight0, joint1, weight1]
+            joint_indices.extend([0, 0])  # Root joint and dummy second joint
+            joint_weights.extend([1.0, 0.0])  # Full weight on root, zero on dummy
 
         # Set skinning attributes
         if clean_export:
@@ -318,9 +314,7 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=True)
                 UsdGeom.Tokens.vertex,
             )
             joint_indices_primvar.Set(joint_indices)
-            joint_indices_primvar.SetElementSize(
-                2
-            )  # Rigid binding with padding: 2 values per vertex
+            joint_indices_primvar.SetElementSize(2)  # Dual-bone format for consistency
 
             joint_weights_primvar = primvars_api.CreatePrimvar(
                 "skel:jointWeights",
@@ -328,17 +322,15 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=True)
                 UsdGeom.Tokens.vertex,
             )
             joint_weights_primvar.Set(joint_weights)
-            joint_weights_primvar.SetElementSize(
-                2
-            )  # Rigid binding with padding: 2 values per vertex
+            joint_weights_primvar.SetElementSize(2)  # Dual-bone format for consistency
         else:
             # Standard mode: use BindingAPI with elementSize=2
             binding_api.CreateJointIndicesPrimvar(False, 2).Set(
                 joint_indices
-            )  # Rigid binding with padding: 2 values per vertex
+            )  # Dual-bone format for consistency
             binding_api.CreateJointWeightsPrimvar(False, 2).Set(
                 joint_weights
-            )  # Rigid binding with padding: 2 values per vertex
+            )  # Dual-bone format for consistency
 
         # CRITICAL: Never copy materials for Nanite assemblies
         # Materials, textures, and masks cause import failures with skeletal Nanite assemblies
