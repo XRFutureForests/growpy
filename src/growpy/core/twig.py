@@ -307,29 +307,3 @@ def extract_twig_placements_from_model(
                 twig_idx += 1
 
     return placements
-
-
-def calculate_twig_transform(
-    position: Tuple[float, float, float],
-    normal: Tuple[float, float, float],
-    scale: float = 1.0,
-) -> Dict[str, Any]:
-    """Calculate full transform (position, rotation, scale) for twig placement.
-
-    Args:
-        position: World position (x, y, z)
-        normal: Normal vector for orientation (x, y, z)
-        scale: Uniform scale factor
-
-    Returns:
-        Dictionary with 'position', 'rotation_matrix', 'quaternion', 'scale'
-    """
-    rotation_matrix = normal_to_rotation_matrix(normal)
-    quaternion = rotation_matrix_to_quaternion(rotation_matrix)
-
-    return {
-        "position": position,
-        "rotation_matrix": rotation_matrix,
-        "quaternion": quaternion,
-        "scale": (scale, scale, scale),
-    }
