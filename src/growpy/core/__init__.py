@@ -38,7 +38,6 @@ from .skeleton import (
 from .tree import calculate_growth_cycles_from_height
 from .twig import (
     TwigPlacement,
-    calculate_twig_transform,
     extract_twig_placements_from_model,
     get_face_center_and_normal,
     normal_to_rotation_matrix,
@@ -60,7 +59,6 @@ __all__ = [
     # Twig
     "TwigPlacement",
     "extract_twig_placements_from_model",
-    "calculate_twig_transform",
     "get_face_center_and_normal",
     "normal_to_rotation_matrix",
 ]
