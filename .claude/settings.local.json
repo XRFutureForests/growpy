@@ -40,7 +40,12 @@
       "Bash(then ls src/the_grove_22/twigs/)",
       "Bash(else echo \"Grove twigs source not found\")",
       "Bash(fi)",
-      "Bash(cd /c/Users/Maximilian Sperlich/Git/the-grove)"
+      "Bash(cd /c/Users/Maximilian Sperlich/Git/the-grove)",
+      "Bash(find:*)",
+      "Bash(\"/c/Users/Maximilian Sperlich/miniconda3/Scripts/conda.exe\" run -n the-grove python src/growpy/cli/prepare_assets.py --help)",
+      "Bash(\"/c/Users/Maximilian Sperlich/miniconda3/Scripts/conda.exe\" run -n the-grove python src/growpy/cli/convert_twigs.py --help)",
+      "Bash(\"/c/Users/Maximilian Sperlich/miniconda3/Scripts/conda.exe\" run -n the-grove python src/growpy/cli/create_growth_models.py --help)",
+      "Bash(\"/c/Users/Maximilian Sperlich/miniconda3/Scripts/conda.exe\" run -n the-grove python:*)"
     ],
     "deny": [],
     "ask": []
