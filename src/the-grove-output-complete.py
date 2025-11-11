@@ -17,7 +17,7 @@ random_seed = 42
 
 # Path to tree species preset (default: None)
 preset_path = Path(
-    "/Users/maximiliansperlich/Developer/the-grove/data/assets/presets/european_beech.seed.json"
+    "data/assets/presets/european_beech.seed.json"
 )
 
 # Tree planting parameters
