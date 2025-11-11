@@ -46,46 +46,6 @@ except ImportError:
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel, Vt
 
 
-def rename_prim_recursive(stage, old_path, new_path):
-    """Rename a prim and update all references to it."""
-    layer = stage.GetRootLayer()
-    Sdf.CopySpec(layer, old_path, layer, new_path)
-    stage.RemovePrim(old_path)
-
-    # Update all references to the old path
-    for prim in stage.Traverse():
-        for rel in prim.GetRelationships():
-            targets = rel.GetTargets()
-            if targets:
-                new_targets = []
-                for target in targets:
-                    target_str = str(target)
-                    if str(old_path) in target_str:
-                        new_target_str = target_str.replace(
-                            str(old_path), str(new_path)
-                        )
-                        new_targets.append(Sdf.Path(new_target_str))
-                    else:
-                        new_targets.append(target)
-                if new_targets != list(targets):
-                    rel.SetTargets(new_targets)
-
-        for attr in prim.GetAttributes():
-            # Update connection paths
-            connections = attr.GetConnections()
-            if connections:
-                new_connections = []
-                for conn in connections:
-                    conn_str = str(conn)
-                    if str(old_path) in conn_str:
-                        new_conn_str = conn_str.replace(str(old_path), str(new_path))
-                        new_connections.append(Sdf.Path(new_conn_str))
-                    else:
-                        new_connections.append(conn)
-                if new_connections != list(connections):
-                    attr.SetConnections(new_connections)
-
-
 def _add_twig_material(stage, mesh_prim, mesh_path):
     """Add simple green leaf material to twig mesh.
 
