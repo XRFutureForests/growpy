@@ -25,6 +25,6 @@
     "python-envs.pythonProjects": [],
     "powershell.integratedConsole.showOnStartup": false,
     "powershell.integratedConsole.suppressStartupBanner": true,
-    "ue-python.remote.multicastBindAddress": "0.0.0.0",
-    "ue-python.remote.commandEndpoint": "0.0.0.0:6776",
+    "ue-python.remote.multicastBindAddress": "127.0.0.1",
+    "ue-python.remote.commandEndpoint": "127.0.0.1:6776",
 }
