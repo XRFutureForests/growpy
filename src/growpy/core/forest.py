@@ -36,13 +36,14 @@ def create_forest(forest_data: pd.DataFrame) -> List[Tuple[gc.Grove, str, int]]:
 
 
 def simulate_forest_growth(
-    forest: List[Tuple[gc.Grove, str, int]], cycles: int
+    forest: List[Tuple[gc.Grove, str, int]], cycles: int, smooth_iterations: int = 10
 ) -> None:
     """Simulate forest growth with inter-species light competition.
 
     Args:
         forest: List of (grove, species_name, tree_count) tuples from create_forest()
         cycles: Number of growth cycles to simulate
+        smooth_iterations: Number of smoothing iterations to apply after simulation (default: 10)
     """
     groves = [grove for grove, _, _ in forest]
 
@@ -59,4 +60,12 @@ def simulate_forest_growth(
         for grove, species_name, tree_count in forest:
             grove.weigh_and_bend()
             grove.simulate(1)
-            grove.simulate(1)
+
+    # Apply smoothing AFTER simulation but BEFORE building
+    # This reduces sharp branch angles for smoother geometry
+    if smooth_iterations > 0:
+        for grove, species_name, _ in tqdm(
+            forest, desc="Smoothing branch angles", unit="species"
+        ):
+            for i in range(smooth_iterations):
+                grove.smooth()

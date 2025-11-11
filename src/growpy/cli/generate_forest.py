@@ -45,7 +45,7 @@ from tqdm import tqdm
 
 GROWTH_CYCLE_LIMIT = 10
 HEIGHT_SCALE = 1
-SMOOTH_ITERATIONS = 5
+SMOOTH_ITERATIONS = 10
 
 from growpy import (
     TREE_EXPORT_AVAILABLE,
@@ -104,8 +104,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         # Export directly from already-simulated grove (from forest simulation phase)
         # This grove was grown with inter-species light competition and is ready to export
         # No re-simulation needed - much faster!
-        for i in range(SMOOTH_ITERATIONS):
-            grove.smooth()
+        # Note: Smoothing is applied during simulate_forest_growth(), not here
 
         # CRITICAL BUILD ORDER: skeleton -> bones -> models
         # 1. Build skeletons first
@@ -306,7 +305,8 @@ def generate_forest_exports(
     try:
         forest = create_forest(forest_data)
         max_cycles = forest_data["growth_cycles"].max()
-        simulate_forest_growth(forest, max_cycles)
+        # Smoothing is applied automatically during simulation (default: 10 iterations)
+        simulate_forest_growth(forest, max_cycles, smooth_iterations=SMOOTH_ITERATIONS)
     except Exception as e:
         return
 
