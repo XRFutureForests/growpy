@@ -62,6 +62,94 @@ from ..config import get_config
 from ..core.skeleton import calculate_vertex_weights
 
 
+def build_static_tree_mesh(
+    model: Any,
+    output_path: Path,
+    species_name: Optional[str] = None,
+    up_axis: str = "Z",
+    triangulated: bool = True,
+) -> bool:
+    """Build static USD mesh from Grove model (no skeleton, with materials).
+
+    This function creates a static mesh USD file for Nanite static assemblies.
+    Unlike skeletal meshes, this includes materials and textures but no skeleton.
+
+    CRITICAL: The model must be triangulated BEFORE calling this function:
+        model.triangulate()
+
+    Args:
+        model: Grove tree model from grove.build_models() - MUST be triangulated first
+        output_path: Path where USD file will be saved
+        species_name: Species name for texture lookup
+        up_axis: Coordinate system up axis ("Y" or "Z")
+        triangulated: Whether the model has been triangulated (should always be True)
+
+    Returns:
+        bool: True if USD file was created successfully
+    """
+    try:
+        # Create USD stage
+        stage = Usd.Stage.CreateNew(str(output_path))
+
+        # Set stage metadata
+        UsdGeom.SetStageUpAxis(
+            stage, UsdGeom.Tokens.z if up_axis == "Z" else UsdGeom.Tokens.y
+        )
+        stage.SetMetadata("metersPerUnit", 1.0)
+
+        # Define root xform
+        root_path = Sdf.Path("/tree")
+        root_xform = UsdGeom.Xform.Define(stage, root_path)
+
+        # Add tree location metadata if available
+        if hasattr(model, "location") and model.location:
+            loc = model.location
+            root_xform.GetPrim().SetCustomDataByKey(
+                "treeLocation", Gf.Vec3f(loc.x, loc.y, loc.z)
+            )
+
+        # Define mesh
+        mesh_path = root_path.AppendChild("TreeMesh")
+        mesh = UsdGeom.Mesh.Define(stage, mesh_path)
+
+        # Extract geometry data from Grove model
+        points = model.points
+        faces = model.faces
+        uvs = model.uvs
+
+        # Convert points to USD format
+        usd_points = [Gf.Vec3f(p.x, p.y, p.z) for p in points]
+
+        # Convert faces to USD format
+        face_vertex_counts = [len(face) for face in faces]
+        face_vertex_indices = []
+        for face in faces:
+            face_vertex_indices.extend(face)
+
+        # Set mesh topology
+        mesh.CreatePointsAttr(usd_points)
+        mesh.CreateFaceVertexCountsAttr(face_vertex_counts)
+        mesh.CreateFaceVertexIndicesAttr(face_vertex_indices)
+
+        # Add normals for proper rendering
+        _add_mesh_normals(mesh, model, clean_export=False)
+
+        # Add materials with textures
+        _add_static_materials(
+            stage, mesh.GetPrim(), str(root_path), model, species_name
+        )
+
+        # Save stage
+        stage.Save()
+        return True
+
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        return False
+
+
 def build_tree_mesh(
     model: Any,
     skeleton: Optional[Any],
@@ -487,6 +575,111 @@ def _add_skeletal_materials(
         # Apply MaterialBindingAPI to mesh and bind material
         binding_api = UsdShade.MaterialBindingAPI.Apply(mesh_prim)
         binding_api.Bind(bark_mat)
+
+    except Exception as e:
+        # Silently fail - material addition is optional
+        pass
+
+
+def _add_static_materials(
+    stage: Usd.Stage,
+    mesh_prim: Usd.Prim,
+    root_path: str,
+    model: Any,
+    species_name: Optional[str] = None,
+) -> None:
+    """Add materials with textures to static tree mesh.
+
+    Creates Materials scope with bark material and texture support for static assemblies.
+    Unlike skeletal materials, this includes texture references for more detailed rendering.
+
+    Args:
+        stage: USD stage
+        mesh_prim: TreeMesh prim
+        root_path: Path to root xform (e.g., "/tree")
+        model: Grove model (for accessing texture/material data if needed)
+        species_name: Species name for texture lookup
+    """
+    try:
+        from ..config import get_config
+
+        config = get_config()
+
+        # Bark material color (brown) - fallback if no texture
+        BARK_BROWN = Gf.Vec3f(0.4, 0.3, 0.2)
+
+        # Create Materials scope as sibling to TreeMesh
+        materials_path = root_path + "/Materials"
+        UsdGeom.Scope.Define(stage, materials_path)
+
+        # Create BarkMaterial with texture support
+        bark_mat = UsdShade.Material.Define(stage, f"{materials_path}/BarkMaterial")
+        shader = UsdShade.Shader.Define(
+            stage, f"{materials_path}/BarkMaterial/PreviewSurface"
+        )
+        shader.CreateIdAttr("UsdPreviewSurface")
+
+        # Try to find and add bark texture if available using asset lookup table
+        texture_found = False
+        texture_file = None
+        if species_name:
+            from growpy.config.paths import get_bark_texture_path
+
+            texture_file = get_bark_texture_path(species_name)
+
+            if texture_file and texture_file.exists():
+                texture_found = True
+                # Create texture reader
+                tex_reader = UsdShade.Shader.Define(
+                    stage, f"{materials_path}/BarkMaterial/DiffuseTexture"
+                )
+                tex_reader.CreateIdAttr("UsdUVTexture")
+                # Use relative path to textures/ subdirectory
+                tex_reader.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
+                    f"./textures/{texture_file.name}"
+                )
+                tex_reader.CreateInput(
+                    "sourceColorSpace", Sdf.ValueTypeNames.Token
+                ).Set("sRGB")
+                tex_reader.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+
+                # Connect texture to shader
+                shader.CreateInput(
+                    "diffuseColor", Sdf.ValueTypeNames.Color3f
+                ).ConnectToSource(tex_reader.ConnectableAPI(), "rgb")
+
+        # Fallback to solid color if no texture found
+        if not texture_found:
+            shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(
+                BARK_BROWN
+            )
+
+        shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.7)
+        shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
+        bark_mat.CreateSurfaceOutput().ConnectToSource(
+            shader.ConnectableAPI(), "surface"
+        )
+
+        # Apply MaterialBindingAPI to mesh and bind material
+        binding_api = UsdShade.MaterialBindingAPI.Apply(mesh_prim)
+        binding_api.Bind(bark_mat)
+
+        # Copy texture file to output directory if found
+        if texture_found and texture_file:
+            import shutil
+            from pathlib import Path
+
+            # Get output directory from stage
+            output_dir = Path(stage.GetRootLayer().realPath).parent
+
+            # Create textures subdirectory (matches twig texture structure)
+            textures_dir = output_dir / "textures"
+            textures_dir.mkdir(exist_ok=True)
+
+            # Copy texture file to textures/ subdirectory
+            dest_texture = textures_dir / texture_file.name
+            if not dest_texture.exists():
+                shutil.copy2(texture_file, dest_texture)
 
     except Exception as e:
         # Silently fail - material addition is optional
@@ -985,6 +1178,7 @@ def get_twig_usd_map_for_species(
     config: Optional[Any] = None,
     prefer_nanite_assembly: bool = False,
     prefer_skeletal: bool = False,
+    prefer_static: bool = False,
 ) -> Dict[str, Path]:
     """Get mapping of twig types to USD file paths for a species.
 
@@ -997,6 +1191,7 @@ def get_twig_usd_map_for_species(
         config: GrowPy configuration
         prefer_nanite_assembly: DEPRECATED - always False, kept for compatibility
         prefer_skeletal: If True, prefer skeletal twig variants (_skeletal.usda)
+        prefer_static: If True, prefer static twig variants (_static.usda)
 
     Returns:
         Dict mapping twig types to USD file paths:
@@ -1037,22 +1232,45 @@ def get_twig_usd_map_for_species(
                         if "_nanite_assembly" in usd_file.name:
                             continue
 
-                        is_skeletal = "_skel" in usd_file.stem
-                        if prefer_skeletal and not is_skeletal:
-                            skeletal_file = (
-                                usd_file.parent
-                                / f"{usd_file.stem}_skel{usd_file.suffix}"
-                            )
-                            if skeletal_file.exists():
-                                twig_usd_map[grove_type] = skeletal_file
-                                break
-                            continue
-                        elif not prefer_skeletal and is_skeletal:
-                            continue
+                        # Check for skeletal or static variants
+                        is_skeletal = "_skeletal" in usd_file.stem
+                        is_static = "_static" in usd_file.stem
 
-                        if usd_file.exists():
-                            twig_usd_map[grove_type] = usd_file
-                            break
+                        if prefer_static:
+                            # Look for static variant
+                            if not is_static:
+                                static_file = (
+                                    usd_file.parent
+                                    / f"{usd_file.stem}_static{usd_file.suffix}"
+                                )
+                                if static_file.exists():
+                                    twig_usd_map[grove_type] = static_file
+                                    break
+                                continue
+                            if is_static and usd_file.exists():
+                                twig_usd_map[grove_type] = usd_file
+                                break
+                        elif prefer_skeletal:
+                            # Look for skeletal variant
+                            if not is_skeletal:
+                                skeletal_file = (
+                                    usd_file.parent
+                                    / f"{usd_file.stem}_skeletal{usd_file.suffix}"
+                                )
+                                if skeletal_file.exists():
+                                    twig_usd_map[grove_type] = skeletal_file
+                                    break
+                                continue
+                            if is_skeletal and usd_file.exists():
+                                twig_usd_map[grove_type] = usd_file
+                                break
+                        else:
+                            # No preference - skip variants
+                            if is_skeletal or is_static:
+                                continue
+                            if usd_file.exists():
+                                twig_usd_map[grove_type] = usd_file
+                                break
 
                     if grove_type in twig_usd_map:
                         break

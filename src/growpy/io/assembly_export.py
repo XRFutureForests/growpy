@@ -201,6 +201,9 @@ def create_assembly(
                     # Each twig must have its own root bone for wind/animation
                     twig_ref_path = twig_path
 
+                    # Get original source path for texture copying
+                    source_twig_path = twig_usd_paths.get(twig_type, twig_path)
+
                     # Validate skeletal twigs for skeletal assemblies
                     if use_skeletal_mesh:
                         is_skeletal_twig = "_skeletal" in twig_ref_path.stem
@@ -218,15 +221,29 @@ def create_assembly(
                     if not output_twig_path.exists():
                         shutil.copy2(twig_ref_path, output_twig_path)
 
-                    # CRITICAL: Texture copying disabled for Nanite compatibility
-                    # Nanite assemblies with skeletal meshes don't use textures from USD
-                    # All materials and textures should be configured in Unreal Engine
-                    # twig_dir = twig_ref_path.parent
-                    # for texture_ext in [".png", ".jpg", ".jpeg", ".exr"]:
-                    #     for texture_file in twig_dir.glob(f"*{texture_ext}"):
-                    #         output_texture = output_path.parent / texture_file.name
-                    #         if not output_texture.exists():
-                    #             shutil.copy2(texture_file, output_texture)
+                    # Copy twig textures for static assemblies only
+                    # Skeletal assemblies should configure materials in Unreal Engine
+                    if not use_skeletal_mesh:
+                        # Use source path (in assets) to find textures
+                        twig_dir = source_twig_path.parent
+                        # Twigs store textures in a textures/ subdirectory
+                        source_textures_dir = twig_dir / "textures"
+
+                        if source_textures_dir.exists():
+                            # Create output textures subdirectory
+                            output_textures_dir = output_path.parent / "textures"
+                            output_textures_dir.mkdir(exist_ok=True)
+
+                            # Copy all texture files
+                            for texture_ext in [".png", ".jpg", ".jpeg", ".exr"]:
+                                for texture_file in source_textures_dir.glob(
+                                    f"*{texture_ext}"
+                                ):
+                                    output_texture = (
+                                        output_textures_dir / texture_file.name
+                                    )
+                                    if not output_texture.exists():
+                                        shutil.copy2(texture_file, output_texture)
 
                     twig_type_to_proto_idx[twig_type] = idx
 
@@ -476,6 +493,7 @@ def export_tree_as_nanite_assembly(
     twig_usd_paths: Optional[Dict[str, Path]] = None,
     include_twigs: bool = True,
     use_skeletal_mesh: bool = False,
+    use_static_mesh: bool = False,
 ) -> bool:
     """Export Grove tree as Unreal Engine Nanite Assembly.
 
@@ -488,6 +506,7 @@ def export_tree_as_nanite_assembly(
     Call grove.build_models({...}) before passing model to this function.
 
     CRITICAL: For skeletal export, bones_info must be provided from grove.tag_bone_id()
+    CRITICAL: use_skeletal_mesh and use_static_mesh are mutually exclusive
 
     Args:
         model: Grove tree model from grove.build_models()
@@ -498,6 +517,7 @@ def export_tree_as_nanite_assembly(
         twig_usd_paths: Dict mapping twig types to USD paths
         include_twigs: Whether to include twig instances
         use_skeletal_mesh: Use skeletal mesh type (for animation)
+        use_static_mesh: Use static mesh type (with materials/textures, no skeleton)
 
     Returns:
         bool: Success status
@@ -509,13 +529,19 @@ def export_tree_as_nanite_assembly(
         except ImportError:
             return False
 
-        # Export tree using direct Grove API geometry (no coordinate transformation)
-        from .tree_export import build_tree_mesh
+        # Determine export mode
+        if use_static_mesh and use_skeletal_mesh:
+            # Both flags set - error
+            return False
+
+        # Export tree using direct Grove API geometry
+        from .tree_export import build_static_tree_mesh, build_tree_mesh
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        # Remove _nanite_assembly suffix from output_path.stem to get base tree name
+        # Remove _nanite_assembly and mesh type suffix from output_path.stem to get base tree name
         base_name = output_path.stem.replace("_nanite_assembly", "")
-        temp_tree_path = output_path.parent / f"{base_name}_skeletal.usda"
+        # Also strip mesh type suffix if present (e.g., _skeletal or _static)
+        base_name = base_name.replace("_skeletal", "").replace("_static", "")
 
         # Triangulate model before building USD (CRITICAL for proper face/attribute matching)
         try:
@@ -523,23 +549,37 @@ def export_tree_as_nanite_assembly(
         except Exception as e:
             pass
 
-        # Build USD directly from Grove API data with skeleton
-        if not build_tree_mesh(
-            model=model,
-            skeleton=skeleton,
-            bones_info=bones_info,
-            output_path=temp_tree_path,
-            up_axis="Z",
-            triangulated=True,
-        ):
-            return False
+        # Choose export function and filename based on mesh type
+        if use_static_mesh:
+            # Static mesh export
+            temp_tree_path = output_path.parent / f"{base_name}_static.usda"
+            if not build_static_tree_mesh(
+                model=model,
+                output_path=temp_tree_path,
+                species_name=species_name,
+                up_axis="Z",
+                triangulated=True,
+            ):
+                return False
+        else:
+            # Skeletal mesh export (default)
+            temp_tree_path = output_path.parent / f"{base_name}_skeletal.usda"
+            if not build_tree_mesh(
+                model=model,
+                skeleton=skeleton,
+                bones_info=bones_info,
+                output_path=temp_tree_path,
+                up_axis="Z",
+                triangulated=True,
+            ):
+                return False
 
         # Extract twig placements from Grove model BEFORE creating assembly
         twig_placements = None
         if include_twigs:
             try:
                 twig_placements = extract_twig_placements_from_model(
-                    model, bones_info=bones_info
+                    model, bones_info=bones_info if not use_static_mesh else None
                 )
                 total_twigs = sum(len(p) for p in twig_placements.values())
                 if total_twigs > 0:
@@ -553,7 +593,9 @@ def export_tree_as_nanite_assembly(
                 from .tree_export import get_twig_usd_map_for_species
 
                 twig_usd_paths = get_twig_usd_map_for_species(
-                    species_name, prefer_skeletal=use_skeletal_mesh
+                    species_name,
+                    prefer_skeletal=use_skeletal_mesh,
+                    prefer_static=use_static_mesh,
                 )
                 if twig_usd_paths:
                     pass
@@ -588,7 +630,7 @@ def export_tree_as_nanite_assembly(
             output_path=output_path,
             species_name=species_name,
             twig_usd_paths=twig_usd_paths if include_twigs else None,
-            use_skeletal_mesh=use_skeletal_mesh,
+            use_skeletal_mesh=use_skeletal_mesh and not use_static_mesh,
             twig_placements=twig_placements,
         )
 
