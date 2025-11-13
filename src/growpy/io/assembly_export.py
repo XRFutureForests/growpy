@@ -285,6 +285,11 @@ def create_assembly(
 
                     prototype_paths.append(Sdf.Path(proto_prim.GetPath()))
 
+                # CRITICAL: Deactivate prototypes AFTER creating all children
+                # This prevents them from rendering while still allowing instancing
+                if prototype_paths:
+                    prototypes_group.SetActive(False)
+
                 if prototype_paths:
                     # Create PointInstancer as sibling to TreeMesh
                     # Reference assembly shows PointInstancer at same level as TreeMesh (SkelRoot)
