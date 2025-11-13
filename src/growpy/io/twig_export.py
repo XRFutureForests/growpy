@@ -82,6 +82,155 @@ def _add_twig_material(stage, mesh_prim, mesh_path):
         pass
 
 
+def clean_static_usd_file(usd_path):
+    """Clean static USD file by removing Blender export artifacts and ensuring proper structure.
+
+    Removes DomeLight, Blender userProperties metadata, and ensures materials/textures are properly set up.
+    Does NOT add skeleton - this is for static meshes only.
+
+    Args:
+        usd_path: Path to USD file
+
+    Returns:
+        bool: True if cleaning successful
+    """
+    try:
+        # Open existing stage
+        stage = Usd.Stage.Open(str(usd_path))
+        if not stage:
+            return False
+
+        # Remove DomeLight artifact from Blender export (if present)
+        dome_light = stage.GetPrimAtPath("/root/env_light")
+        if dome_light:
+            stage.RemovePrim("/root/env_light")
+
+        # Remove Blender-specific userProperties custom attributes
+        for prim in stage.Traverse():
+            # Remove userProperties:blender:data_name
+            if prim.HasAttribute("userProperties:blender:data_name"):
+                prim.RemoveProperty("userProperties:blender:data_name")
+            # Remove userProperties:Copyright
+            if prim.HasAttribute("userProperties:Copyright"):
+                prim.RemoveProperty("userProperties:Copyright")
+            # Remove userProperties:TwoSided (also common in Blender exports)
+            if prim.HasAttribute("userProperties:TwoSided"):
+                prim.RemoveProperty("userProperties:TwoSided")
+
+        # Ensure texture paths use ./textures/ prefix
+        for prim in stage.Traverse():
+            for attr in prim.GetAttributes():
+                if attr.GetTypeName() == Sdf.ValueTypeNames.Asset:
+                    asset_path = attr.Get()
+                    if asset_path and isinstance(asset_path, Sdf.AssetPath):
+                        path_str = asset_path.path
+                        if path_str and not path_str.startswith("./textures/"):
+                            # Add ./textures/ prefix if missing
+                            filename = (
+                                Path(path_str).name
+                                if path_str.startswith("./")
+                                else path_str
+                            )
+                            new_path = f"./textures/{filename}"
+                            attr.Set(Sdf.AssetPath(new_path))
+
+        # Find mesh prim
+        mesh_prim = None
+        for prim in stage.Traverse():
+            if prim.IsA(UsdGeom.Mesh):
+                mesh_prim = prim
+                break
+
+        if not mesh_prim:
+            return False
+
+        # Verify mesh has vertices
+        mesh = UsdGeom.Mesh(mesh_prim)
+        points = mesh.GetPointsAttr().Get()
+        if not points or len(points) == 0:
+            return False
+
+        # Create Twig root Xform (non-skeletal)
+        root_path = Sdf.Path("/Twig")
+        root_xform = UsdGeom.Xform.Define(stage, root_path)
+
+        # Re-parent mesh under /Twig as TwigMesh
+        new_mesh_path = root_path.AppendChild("TwigMesh")
+        old_mesh_path = mesh_prim.GetPath()
+
+        # Copy mesh to new location
+        Sdf.CopySpec(
+            stage.GetRootLayer(), old_mesh_path, stage.GetRootLayer(), new_mesh_path
+        )
+
+        # Remove old mesh
+        stage.RemovePrim(old_mesh_path)
+
+        # CRITICAL: Copy materials from /root/_materials to /Twig/Materials if they exist
+        materials_prim = stage.GetPrimAtPath("/root/_materials")
+        if materials_prim and materials_prim.IsValid():
+            from pxr import UsdShade
+
+            new_materials_path = root_path.AppendChild("Materials")
+            materials_scope = stage.DefinePrim(new_materials_path, "Scope")
+
+            # Copy all material definitions
+            for child in materials_prim.GetChildren():
+                # Clean material name (remove numeric suffixes)
+                mat_name = child.GetName()
+                clean_mat_name = mat_name.split(".")[0] if "." in mat_name else mat_name
+
+                new_mat_path = new_materials_path.AppendChild(clean_mat_name)
+                # Use CopySpec to copy entire material hierarchy
+                Sdf.CopySpec(
+                    stage.GetRootLayer(),
+                    child.GetPath(),
+                    stage.GetRootLayer(),
+                    new_mat_path,
+                )
+
+            # Update mesh material binding to point to new location
+            new_mesh_prim = stage.GetPrimAtPath(new_mesh_path)
+            mat_binding_api = UsdShade.MaterialBindingAPI(new_mesh_prim)
+            mat_binding = mat_binding_api.GetDirectBinding()
+            if mat_binding:
+                mat_path = mat_binding.GetMaterialPath()
+                if mat_path and "/root/_materials/" in str(mat_path):
+                    new_mat_path_str = str(mat_path).replace(
+                        "/root/_materials/", str(new_materials_path) + "/"
+                    )
+                    # Also update for cleaned material name
+                    path_parts = new_mat_path_str.split("/")
+                    if path_parts:
+                        mat_name = path_parts[-1].split(".")[0]
+                        path_parts[-1] = mat_name
+                        new_mat_path_str = "/".join(path_parts)
+
+                    new_mat_path = Sdf.Path(new_mat_path_str)
+                    mat_prim = stage.GetPrimAtPath(new_mat_path)
+                    if mat_prim and mat_prim.IsValid():
+                        UsdShade.MaterialBindingAPI.Apply(new_mesh_prim).Bind(
+                            UsdShade.Material(mat_prim)
+                        )
+
+        # CRITICAL: Remove the old /root prim that Blender created
+        root_prim = stage.GetPrimAtPath("/root")
+        if root_prim and root_prim.IsValid():
+            stage.RemovePrim(root_prim.GetPath())
+
+        # Set Twig as default prim so it's the primary reference target
+        twig_prim = stage.GetPrimAtPath("/Twig")
+        if twig_prim and twig_prim.IsValid():
+            stage.SetDefaultPrim(twig_prim)
+
+        # Save stage
+        stage.Save()
+        return True
+
+    except Exception as e:
+        return False
+
+
 def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=True):
     """Add skeleton to USD file and remove Blender export artifacts using Blender's bundled pxr module.
 
@@ -791,7 +940,14 @@ def setup_materials_with_textures(
     return materials_created > 0
 
 
-def process_twig_file(blend_file, output_dir, formats, species_name, clean_export=True):
+def process_twig_file(
+    blend_file,
+    output_dir,
+    formats,
+    species_name,
+    clean_export=True,
+    export_static=False,
+):
     """Process a single twig blend file.
 
     Args:
@@ -799,7 +955,8 @@ def process_twig_file(blend_file, output_dir, formats, species_name, clean_expor
         output_dir: Output directory for exported files
         formats: List of export formats
         species_name: Name of species
-        clean_export: If True, creates minimal USD without materials/textures (default for Nanite)
+        clean_export: If True, creates minimal USD without materials/textures (for skeletal)
+        export_static: If True, also export static (non-skeletal) variant with materials
     """
     import bpy
 
@@ -952,6 +1109,47 @@ def process_twig_file(blend_file, output_dir, formats, species_name, clean_expor
                     else:
                         pass
 
+                    # Export static mesh variant if requested
+                    if export_static:
+                        static_export_path = (
+                            output_dir / f"{standardized_name}_static.{fmt}"
+                        )
+
+                        # Enable materials for static export
+                        material_setup_success = setup_materials_with_textures(
+                            obj,
+                            blend_dir,
+                            species_name,
+                            output_dir,
+                            standardized_name,
+                            metadata,
+                        )
+
+                        # Export with materials and textures
+                        bpy.ops.wm.usd_export(
+                            filepath=str(static_export_path),
+                            selected_objects_only=True,
+                            export_materials=True,
+                            export_textures=True,
+                            export_uvmaps=True,
+                            export_normals=True,
+                            export_mesh_colors=False,
+                            use_instancing=False,
+                            evaluation_mode="RENDER",
+                            generate_preview_surface=True,
+                            relative_paths=True,
+                            export_hair=False,
+                            export_lights=False,
+                        )
+
+                        exported_files.append(static_export_path)
+
+                        # Clean up static USD (remove skeleton artifacts, fix structure)
+                        if clean_static_usd_file(static_export_path):
+                            pass
+                        else:
+                            pass
+
             texture_manifest[standardized_name] = {
                 "original_name": original_name,
                 "metadata": metadata,
@@ -969,20 +1167,21 @@ def process_twig_file(blend_file, output_dir, formats, species_name, clean_expor
     # Note: Manifest file removed - not needed in output
     # Twig metadata is preserved in file naming and structure
 
-    # Cleanup: Remove original .blend file, ReadMe.txt, and source textures
+    # Cleanup: Keep original .blend file (preserve source assets)
+    # Only remove auxiliary files that can be regenerated
     try:
-        if blend_file.exists():
-            blend_file.unlink()
-
+        # Remove ReadMe.txt
         readme_file = output_dir / "ReadMe.txt"
         if readme_file.exists():
             readme_file.unlink()
 
-        # Remove original source texture files (now standardized copies exist in textures/)
+        # Remove original source texture files ONLY if standardized copies exist
+        # This allows running skeletal-only export without breaking future static exports
         # Original files use CamelCase or species-specific naming (e.g., BeechAlpha.jpg)
         # Standardized files use snake_case with full standardized name (e.g., european_beech_twig_alpha.jpg)
         textures_dir = output_dir / "textures"
-        if textures_dir.exists():
+        if textures_dir.exists() and export_static:
+            # Only clean up non-standardized textures if we just created standardized ones
             for tex_file in textures_dir.glob("*"):
                 if not tex_file.is_file():
                     continue

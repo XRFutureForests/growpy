@@ -6,11 +6,16 @@ Generates multi-species forests from CSV data with configurable quality settings
 Can generate standalone Unreal Python scripts for importing trees via VSCode extension.
 
 Quick Start:
-    # Generate forest (uses data/input/test.csv by default)
-    python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 3  --import-to-unreal
+    # Generate skeletal mesh forest (default - with animation support, no materials)
+    # Output: aspen_tree_0000_skeletal.usda, aspen_tree_0000_skeletal_nanite_assembly.usda
+    python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 3 --mesh-type skeletal
+
+    # Generate static mesh forest (with materials and textures, no animation)
+    # Output: aspen_tree_0000_static.usda, aspen_tree_0000_static_nanite_assembly.usda
+    python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 3 --mesh-type static
 
     # Generate forest and create Unreal import script
-    python src/growpy/cli/generate_forest.py --quality high --import-to-unreal
+    python src/growpy/cli/generate_forest.py --quality high --import-to-unreal --mesh-type static
 
     # Or specify a different CSV file
     python src/growpy/cli/generate_forest.py my_forest.csv --quality high --import-to-unreal
@@ -19,9 +24,21 @@ Common Flags:
     --quality {ultra,high,medium,low,performance}  Quality preset (default: ultra)
     --growth-cycle-limit INT                       Max growth cycles (default: 10)
     --height-scale FLOAT                           Tree height scale (default: 1.0)
+    --mesh-type {skeletal,static}                  Assembly type (default: skeletal)
     --output-dir PATH                              Output directory
     --import-to-unreal                             Generate Unreal import script
     --unreal-project-path PATH                     Unreal destination (default: /Game/GrowPy/Trees)
+
+Mesh Types:
+    skeletal: Skeletal mesh assemblies with animation support (no materials/textures)
+              - Supports skeletal animation for wind and growth
+              - Smaller file size
+              - Reference: species_tree_####_skeletal_nanite_assembly.usda
+
+    static:   Static mesh assemblies with materials and textures (no animation)
+              - Full PBR materials from The Grove 2.2
+              - Better visual quality
+              - Reference: species_tree_####_static_nanite_assembly.usda
 
 Full Documentation:
     See docs/guides/cli-reference.md for complete flag reference and examples
@@ -83,7 +100,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     from growpy.io.assembly_export import export_tree_as_nanite_assembly
     from growpy.io.tree_export import get_twig_usd_map_for_species
 
-    (start_idx, grove, species, output_dir, quality_params) = args
+    (start_idx, grove, species, output_dir, quality_params, mesh_type) = args
 
     # Get config in worker process
     config = get_config()
@@ -151,23 +168,30 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             # Use sequential numbering: start_idx + model_idx
             tree_num = start_idx + model_idx
             tree_name = f"{species_clean}_tree_{tree_num:04d}"
-            usd_path = species_dir / f"{tree_name}_nanite_assembly.usda"
 
-            # Always use skeletal twigs for Nanite assemblies
+            # Use appropriate twig type based on mesh_type
+            use_skeletal = mesh_type == "skeletal"
+            use_static = mesh_type == "static"
+
+            # Add mesh type suffix to assembly filename to prevent overwriting
+            mesh_suffix = "skeletal" if use_skeletal else "static"
+            usd_path = species_dir / f"{tree_name}_{mesh_suffix}_nanite_assembly.usda"
+
             twig_usd_map = get_twig_usd_map_for_species(
-                species, config, prefer_skeletal=True
+                species, config, prefer_skeletal=use_skeletal, prefer_static=use_static
             )
 
-            # Export as skeletal Nanite Assembly (includes twigs, skeleton, proper UE schema)
+            # Export as Nanite Assembly with specified mesh type
             export_success = export_tree_as_nanite_assembly(
                 model=model,
-                skeleton=skeleton,
-                bones_info=bones_for_tree,
+                skeleton=skeleton if use_skeletal else None,
+                bones_info=bones_for_tree if use_skeletal else None,
                 output_path=usd_path,
                 species_name=species,
                 twig_usd_paths=twig_usd_map,
                 include_twigs=True,
-                use_skeletal_mesh=True,
+                use_skeletal_mesh=use_skeletal,
+                use_static_mesh=use_static,
             )
 
             if export_success:
@@ -189,6 +213,7 @@ def export_individual_trees(
     output_dir: Path,
     config: GrowPyConfig,
     quality_params: dict,
+    mesh_type: str = "skeletal",
 ) -> list:
     """Export trees directly from already-simulated forest groves (no re-simulation).
 
@@ -196,7 +221,7 @@ def export_individual_trees(
     light competition in the forest simulation phase. This is significantly faster than
     re-simulating individual trees.
 
-    Always exports as skeletal Nanite Assembly USD files (.usda format).
+    Exports as Nanite Assembly USD files (.usda format) with specified mesh type.
 
     Args:
         forest: List of (grove, species_name, tree_count) from create_forest() + simulate_forest_growth()
@@ -204,6 +229,7 @@ def export_individual_trees(
         output_dir: Directory to save export files
         config: GrowPy configuration
         quality_params: Quality parameters dict
+        mesh_type: Mesh type - 'skeletal' or 'static'
 
     Returns:
         List of exported file paths
@@ -218,7 +244,9 @@ def export_individual_trees(
     for grove, species_name, tree_count in forest:
         # Create one task per grove (which will export all trees in that grove)
         # start_idx=0 for each grove since trees are numbered within species folder
-        grove_tasks.append((0, grove, species_name, output_dir, quality_params))
+        grove_tasks.append(
+            (0, grove, species_name, output_dir, quality_params, mesh_type)
+        )
 
     # Always use sequential processing (bpy/USD not compatible with multiprocessing)
     for task in tqdm(grove_tasks, desc="Exporting groves"):
@@ -235,26 +263,19 @@ def generate_forest_exports(
     config: GrowPyConfig,
     quality: str = "high",
     growth_cycle_limit: Optional[int] = None,
+    mesh_type: str = "skeletal",
 ) -> None:
-    """Generate forest from CSV data and export as skeletal Nanite Assembly USD files.
+    """Generate forest from CSV data and export as Nanite Assembly USD files.
 
-    Always exports as .usda format with skeletal mesh structure for Unreal Engine.
+    Exports as .usda format with either skeletal or static mesh structure for Unreal Engine.
 
     Args:
         csv_path: Path to CSV file with forest data
         output_dir: Directory to save export files
         config: GrowPy configuration
         quality: Quality preset name ('ultra', 'high', 'medium', 'low', 'performance')
-        resolution: Override resolution from quality preset (4-32, optional)
         growth_cycle_limit: Maximum growth cycles per tree (default: GROWTH_CYCLE_LIMIT)
-        height_scale: Scale factor for tree heights (default: HEIGHT_SCALE)
-        use_multiprocessing: Enable parallel export processing (default: True)
-        max_workers: Number of parallel workers (default: CPU count - 1)
-        skeleton_length: Bone length multiplier (default: 1.0)
-        skeleton_reduce: Bone reduction factor (default: 0.25)
-        skeleton_bias: Weight bias (default: 0.5)
-        skeleton_connected: Connected bone hierarchy (default: True)
-        clean_export: If True, creates minimal USD without materials/textures (default for Nanite)
+        mesh_type: Mesh type - 'skeletal' for animation support, 'static' for performance with materials
     """
     # Use defaults if not specified
     if growth_cycle_limit is None:
@@ -351,6 +372,7 @@ def generate_forest_exports(
             output_dir,
             config,
             quality_params,
+            mesh_type=mesh_type,
         )
 
     except Exception:
@@ -710,6 +732,13 @@ Unreal Engine Integration:
         default="/Game/GrowPy/Trees",
         help="Unreal project Content path for imports (default: /Game/GrowPy/Trees)",
     )
+    parser.add_argument(
+        "--mesh-type",
+        type=str,
+        default="skeletal",
+        choices=["skeletal", "static"],
+        help="Mesh type for Nanite assemblies (default: skeletal). Skeletal for animation, static for performance with materials",
+    )
 
     args = parser.parse_args()
 
@@ -742,6 +771,7 @@ Unreal Engine Integration:
             config,
             args.quality,
             args.growth_cycle_limit,
+            mesh_type=args.mesh_type,
         )
 
         # Generate Unreal scripts if requested
