@@ -190,6 +190,12 @@ def create_assembly(
                     f"/{assembly_name}/TwigPrototypes", "Scope"
                 )
 
+                # CRITICAL: Set visibility to invisible to prevent prototypes from rendering
+                # They should only be visible through the PointInstancer
+                prototypes_imageable = UsdGeom.Imageable(prototypes_group)
+                if prototypes_imageable:
+                    prototypes_imageable.MakeInvisible()
+
                 # Map twig types to prototype indices
                 twig_type_to_proto_idx = {}
                 prototype_paths = []
@@ -274,21 +280,27 @@ def create_assembly(
                         )
 
                     else:
-                        # Static twigs: simpler structure
-                        proto_prim = stage.DefinePrim(
-                            f"/{assembly_name}/TwigPrototypes/{proto_name}"
+                        # Static twigs: use Xform wrapper like skeletal to isolate reference
+                        # CRITICAL: This wrapper pattern prevents prototypes from rendering at root
+                        proto_xform = UsdGeom.Xform.Define(
+                            stage, f"/{assembly_name}/TwigPrototypes/{proto_name}"
                         )
-                        proto_prim.GetReferences().AddReference(
-                            f"./{twig_ref_path.name}"
-                        )
+                        proto_prim = proto_xform.GetPrim()
                         proto_prim.SetInstanceable(True)
 
-                    prototype_paths.append(Sdf.Path(proto_prim.GetPath()))
+                        # Create child Xform that references the twig USD
+                        # Using child prim isolates the reference from direct rendering
+                        twig_child_path = (
+                            f"/{assembly_name}/TwigPrototypes/{proto_name}/TwigMesh"
+                        )
+                        twig_child_prim = stage.DefinePrim(twig_child_path, "Xform")
 
-                # CRITICAL: Deactivate prototypes AFTER creating all children
-                # This prevents them from rendering while still allowing instancing
-                if prototype_paths:
-                    prototypes_group.SetActive(False)
+                        # Reference twig USD from child (not the wrapper)
+                        twig_child_prim.GetReferences().AddReference(
+                            f"./{twig_ref_path.name}", "/Twig"
+                        )
+
+                    prototype_paths.append(Sdf.Path(proto_prim.GetPath()))
 
                 if prototype_paths:
                     # Create PointInstancer as sibling to TreeMesh
