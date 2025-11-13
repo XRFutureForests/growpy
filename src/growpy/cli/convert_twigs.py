@@ -1,35 +1,56 @@
 #!/usr/bin/env python3
 """
-Convert Grove twig .blend files to USD with textures.
+Convert Grove twig .blend files to USD with skeletal or static mesh variants.
 
-This is a pure Blender-to-format conversion that produces static mesh assets
-in Unreal Engine in USD format. No Grove functions are required -
-only Blender Python API (bpy).
+This is a pure Blender-to-format conversion that produces mesh assets for
+Unreal Engine in USD format. No Grove functions are required - only Blender
+Python API (bpy).
 
 Key Features:
-    - Material/texture mapping optimized for USD
+    - Dual export modes: skeletal (with skeleton) or static (with materials)
+    - Material/texture mapping optimized for USD (static variants)
     - Textures copied to output directory with relative path references
     - Coordinate system: Z-up (Blender right-handed to Unreal left-handed)
     - Standardized naming convention for twig types
-    - Skeletal mesh export with single root joint for animation support
+    - Original .blend files preserved for regeneration
+
+Export Variants:
+    Skeletal (_skeletal.usda):
+        - Single root joint skeleton for animation support
+        - No materials or textures (clean geometry only)
+        - Used in skeletal Nanite assemblies
+        - Supports wind animation and procedural placement
+
+    Static (_static.usda):
+        - Full PBR materials with textures from The Grove 2.2
+        - No skeleton (static geometry)
+        - Used in static Nanite assemblies
+        - Better visual quality, smaller file size
+        - Optional with --export-static flag
 
 Supports two CSV formats:
   1. Forest placement CSV (x, y, species, height) - auto-extracts unique species
   2. Asset lookup CSV (Common Name, Preset, Twig, Bark Texture) - direct asset reference
 
 Quick Start:
-    # Convert twigs for 5 species in data/input/test.csv (default)
+    # Convert skeletal twigs only (default - for animation)
+    # Output: aspen_twig_apical_skeletal.usda
     python src/growpy/cli/convert_twigs.py data/assets/twigs
 
-    # Skeletal variants exported with skeleton added via Blender's bundled USD
+    # Convert both skeletal AND static twigs
+    # Output: aspen_twig_apical_skeletal.usda + aspen_twig_apical_static.usda
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --export-static
 
 Common Flags:
     --formats {usd,usda}  Export formats (default: usda)
     --csv PATH            Species CSV filter (default: data/input/test.csv)
+    --export-static       Also create static variants with materials/textures
 
 Output per twig:
-    - standard_name_skeletal.usda # Skeletal mesh USD with single root joint
-    - textures/*                  # All textures copied to output directory
+    - {species}_twig_{type}_skeletal.usda  # Skeletal mesh (always created)
+    - {species}_twig_{type}_static.usda    # Static mesh (with --export-static)
+    - textures/                            # Textures for static variants
+    - {TwigName}.blend                     # Original source file (PRESERVED)
 
 Twig Type Mapping:
     apical/long/end/terminal -> twig_long attribute (terminal twigs)
@@ -43,9 +64,12 @@ Coordinate Systems:
     - Unreal: Z-up, left-handed (X-forward, Y-right, Z-up)
     - USD preserves Z-up, handedness handled on Unreal import
 
-Note:
-    Twig skeletons use a single root joint at the origin for Unreal PCG attachment.
-    This enables proper mount point handling in Nanite assemblies.
+File Preservation:
+    Original .blend files are PRESERVED after conversion. This allows:
+    - Regeneration of both skeletal and static variants from same source
+    - Version control of original assets
+    - Future re-export with different settings
+    Only auxiliary files are cleaned (ReadMe.txt, duplicate textures)
 
 Full Documentation:
     See docs/guides/cli-reference.md for complete flag reference and examples
@@ -290,6 +314,7 @@ def process_twig_directory(
     formats: List[str] = ["usda"],
     clean_export: bool = True,
     twig_filter: Optional[List[str]] = None,
+    export_static: bool = False,
 ) -> Dict[str, List[Path]]:
     """Process all twig blend files in a directory.
 
@@ -311,6 +336,7 @@ def process_twig_directory(
         formats: Export formats to create
         clean_export: If True, creates minimal USD without materials/textures (default for Nanite)
         twig_filter: Optional list of twig directory names to process (snake_case)
+        export_static: If True, also exports static variants with materials/textures
 
     """
 
@@ -362,6 +388,7 @@ def process_twig_directory(
                 formats=formats,
                 species_name=species_name,
                 clean_export=clean_export,
+                export_static=export_static,
             )
 
             # Collect results
@@ -390,10 +417,16 @@ def main():
         epilog="""
 Examples:
     # Convert twigs for 5 species from forest placement CSV (auto-extracts from data/input/test.csv)
+    # Creates skeletal variants by default:
+    #   - aspen_twig_apical_skeletal.usda
+    #   - aspen_twig_lateral_skeletal.usda
     python src/growpy/cli/convert_twigs.py data/assets/twigs --formats usda
 
-    # Convert with both USD formats
-    python src/growpy/cli/convert_twigs.py data/assets/twigs --formats usd usda
+    # Convert with both skeletal and static variants
+    # Static variants include full materials and textures:
+    #   - aspen_twig_apical_skeletal.usda (no materials, with skeleton)
+    #   - aspen_twig_apical_static.usda (with materials, no skeleton)
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --formats usda --export-static
 
     # Convert specific species twig directory (no CSV filtering)
     python src/growpy/cli/convert_twigs.py data/assets/twigs/european_beech_twig --formats usda --csv ""
@@ -406,6 +439,7 @@ CSV Format Support:
 
 Output per twig:
     - standard_name_skeletal.usda          # Skeletal mesh USD (root joint at origin)
+    - standard_name_static.usda            # Static mesh USD (with materials, optional with --export-static)
         """,
     )
     parser.add_argument(
@@ -416,6 +450,11 @@ Output per twig:
         type=Path,
         default=default_csv,
         help="Path to species CSV - only twigs for CSV species will be converted (default: data/input/test.csv)",
+    )
+    parser.add_argument(
+        "--export-static",
+        action="store_true",
+        help="Export static variants with materials and textures (in addition to skeletal variants)",
     )
 
     args = parser.parse_args()
@@ -498,10 +537,14 @@ Output per twig:
 
     if args.path.is_file() and args.path.suffix == ".blend":
         # Single file
-        results = process_twig_directory(args.path.parent, ["usda"], True, twig_filter)
+        results = process_twig_directory(
+            args.path.parent, ["usda"], True, twig_filter, args.export_static
+        )
     elif args.path.is_dir():
         # Directory
-        results = process_twig_directory(args.path, ["usda"], True, twig_filter)
+        results = process_twig_directory(
+            args.path, ["usda"], True, twig_filter, args.export_static
+        )
     else:
         return 1
 
