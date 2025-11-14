@@ -57,7 +57,7 @@ from tqdm import tqdm
 
 GROWTH_CYCLE_LIMIT = 10
 HEIGHT_SCALE = 1
-SMOOTH_ITERATIONS = 10
+SMOOTH_ITERATIONS = 20  # Recommended: 10-20 iterations for natural smoothing
 
 from growpy import (
     TREE_EXPORT_AVAILABLE,
@@ -324,7 +324,10 @@ def generate_forest_exports(
     try:
         forest = create_forest(forest_data)
         max_cycles = forest_data["growth_cycles"].max()
-        # Smoothing is applied automatically during simulation (default: 10 iterations)
+        # Smoothing is applied automatically during simulation:
+        # 1. smooth_minimal() - Fixes ugly kinks on thick branches
+        # 2. smooth() - Reduces sharp corner angles (SMOOTH_ITERATIONS times)
+        # 3. weigh_and_bend() - Re-calculates branch positions with smoothed angles
         simulate_forest_growth(forest, max_cycles, smooth_iterations=SMOOTH_ITERATIONS)
     except Exception as e:
         return

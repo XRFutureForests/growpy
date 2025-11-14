@@ -1,8 +1,12 @@
 # %% IMPORTS
+import os
 from itertools import groupby
 from pathlib import Path
 
 import the_grove_22_core as gc
+
+# Set working directory to script location
+os.chdir(Path(__file__).parent)
 
 # %% INPUT PARAMETERS - Configure these to generate different trees
 # This script demonstrates comprehensive Grove API usage including:
@@ -16,9 +20,7 @@ import the_grove_22_core as gc
 random_seed = 42
 
 # Path to tree species preset (default: None)
-preset_path = Path(
-    "data/assets/presets/european_beech.seed.json"
-)
+preset_path = Path("../data/assets/presets/european_beech.seed.json")
 
 # Tree planting parameters
 positions = [(1, 2, 0), (5, 6, 0)]  # (x, y, z) coordinates (default: (0, 0, 0))
@@ -89,14 +91,91 @@ for position, direction, delay in zip(positions, directions, delays):
 # Simulate tree growth
 grove.simulate(flushes)
 
-# Apply smoothing if enabled
+# Build parameters for 3D mesh generation (defined early for comparison test)
+build_params = {
+    "resolution": resolution,
+    "resolution_reduce": resolution_reduce,
+    "texture_repeat": texture_repeat,
+    "build_cutoff_age": build_cutoff_age,
+    "build_cutoff_thickness": build_cutoff_thickness,
+    "build_blend": build_blend,
+    "build_end_cap": build_end_cap,
+}
+
+# COMPARISON TEST: Create TWO separate groves for fair comparison
+print("\n=== SMOOTHING COMPARISON TEST ===")
+
+# Grove 1: WITHOUT smoothing
+print("Creating grove WITHOUT smoothing...")
+grove_no_smooth = gc.Grove()
+grove_no_smooth.set_properties(properties)
+for position, direction, delay in zip(positions, directions, delays):
+    position_vec = gc.Vector(*position)
+    direction_vec = gc.Vector(*direction)
+    grove_no_smooth.add_new_tree(position_vec, direction_vec, delay)
+grove_no_smooth.set_random_seed(random_seed)
+grove_no_smooth.simulate(flushes)
+grove_no_smooth.weigh_and_bend()
+models_before = grove_no_smooth.build_models(build_params)
+points_before = len(models_before[0].points) if models_before else 0
+faces_before = len(models_before[0].faces) if models_before else 0
+print(f"  Points WITHOUT smoothing: {points_before}")
+print(f"  Faces WITHOUT smoothing: {faces_before}")
+
+# Grove 2: WITH smoothing
+print("\nCreating grove WITH smoothing...")
 if enable_smooth:
-    print(f"\nApplying smoothing with {smooth_iterations} iteration(s)")
+    grove.smooth_minimal()
+    print(f"Applying smoothing with {smooth_iterations} iteration(s)")
     for i in range(smooth_iterations):
         grove.smooth()
         print(f"  Smoothing iteration {i+1} complete")
+
+    # CRITICAL: Re-calculate branch bending after smoothing!
+    print("Re-calculating branch positions (weigh_and_bend)...")
+    grove.weigh_and_bend()
+
+# Build model from smoothed grove
+print("\nBuilding model WITH smoothing...")
+models_after = grove.build_models(build_params)
+points_after = len(models_after[0].points) if models_after else 0
+faces_after = len(models_after[0].faces) if models_after else 0
+print(f"  Points AFTER smoothing: {points_after}")
+print(f"  Faces AFTER smoothing: {faces_after}")
+
+print(f"\nDifference:")
+print(f"  Points changed: {points_after - points_before} ({((points_after - points_before) / points_before * 100):.2f}%)")
+print(f"  Faces changed: {faces_after - faces_before} ({((faces_after - faces_before) / faces_before * 100):.2f}%)")
+
+# Check if vertex POSITIONS actually changed
+if points_before == points_after and points_before > 0:
+    print("\nChecking if vertex positions changed...")
+    position_changes = 0
+    max_distance = 0.0
+
+    for i in range(min(points_before, 100)):  # Sample first 100 points
+        p_before = models_before[0].points[i]
+        p_after = models_after[0].points[i]
+
+        distance = ((p_after.x - p_before.x)**2 +
+                   (p_after.y - p_before.y)**2 +
+                   (p_after.z - p_before.z)**2)**0.5
+
+        if distance > 0.0001:  # Threshold for "changed"
+            position_changes += 1
+            max_distance = max(max_distance, distance)
+
+    print(f"  Vertices with position changes (sampled 100): {position_changes}")
+    print(f"  Maximum position change: {max_distance:.6f} units")
+
+    if position_changes > 0:
+        print(f"\n✓ Smoothing IS working - vertex positions changed!")
+    else:
+        print(f"\n✗ Smoothing NOT working - no vertex position changes detected")
 else:
-    print("\nSmoothing disabled")
+    print("\n  (Cannot compare positions - point counts differ)")
+
+print("=== END COMPARISON TEST ===\n")
 
 # %% SKELETON BUILDING (BEFORE WIND ANIMATION)
 
@@ -147,18 +226,8 @@ print(f"Generated {len(root_models)} root system(s)")
 
 # %% MODEL BUILDING
 
-# Build 3D models with configured parameters
-build_params = {
-    "resolution": resolution,
-    "resolution_reduce": resolution_reduce,
-    "texture_repeat": texture_repeat,
-    "build_cutoff_age": build_cutoff_age,
-    "build_cutoff_thickness": build_cutoff_thickness,
-    "build_blend": build_blend,
-    "build_end_cap": build_end_cap,
-}
-
-models = grove.build_models(build_params)
+# Use the models built AFTER smoothing for export
+models = models_after
 for tree_model in models:
 
     # Configure coordinate system and winding order

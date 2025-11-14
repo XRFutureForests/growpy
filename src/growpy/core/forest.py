@@ -38,12 +38,20 @@ def create_forest(forest_data: pd.DataFrame) -> List[Tuple[gc.Grove, str, int]]:
 def simulate_forest_growth(
     forest: List[Tuple[gc.Grove, str, int]], cycles: int, smooth_iterations: int = 10
 ) -> None:
-    """Simulate forest growth with inter-species light competition.
+    """Simulate forest growth with inter-species light competition and optional smoothing.
+
+    The smoothing workflow (applied if smooth_iterations > 0):
+    1. grove.smooth_minimal() - Fixes ugly kinks on thick branches (one-time operation)
+    2. grove.smooth() - Reduces sharp corner angles (called smooth_iterations times)
+    3. grove.weigh_and_bend() - Re-calculates branch positions based on smoothed angles
+
+    Without step 3 (weigh_and_bend), smoothing has no effect on the final geometry!
 
     Args:
         forest: List of (grove, species_name, tree_count) tuples from create_forest()
         cycles: Number of growth cycles to simulate
-        smooth_iterations: Number of smoothing iterations to apply after simulation (default: 10)
+        smooth_iterations: Number of smoothing iterations (default: 10, recommended: 10-20)
+                          Set to 0 to disable smoothing entirely
     """
     groves = [grove for grove, _, _ in forest]
 
@@ -64,8 +72,18 @@ def simulate_forest_growth(
     # Apply smoothing AFTER simulation but BEFORE building
     # This reduces sharp branch angles for smoother geometry
     if smooth_iterations > 0:
-        for grove, species_name, _ in tqdm(
-            forest, desc="Smoothing branch angles", unit="species"
-        ):
-            for i in range(smooth_iterations):
+        print(f"\n[Smoothing] Applying {smooth_iterations} smoothing iterations to {len(forest)} species")
+        for grove, species_name, _ in forest:
+            grove.smooth_minimal()
+            # Show progress for smoothing iterations
+            for i in tqdm(
+                range(smooth_iterations),
+                desc=f"Smoothing {species_name}",
+                unit="iter",
+            ):
                 grove.smooth()
+
+            # CRITICAL: Re-calculate branch bending after smoothing
+            # This applies the smoothed angles to actual branch positions
+            grove.weigh_and_bend()
+            print(f"[Smoothing] Completed for {species_name} - grove modified in-place")
