@@ -190,11 +190,9 @@ def create_assembly(
                     f"/{assembly_name}/TwigPrototypes", "Scope"
                 )
 
-                # CRITICAL: Set visibility to invisible to prevent prototypes from rendering
-                # They should only be visible through the PointInstancer
-                prototypes_imageable = UsdGeom.Imageable(prototypes_group)
-                if prototypes_imageable:
-                    prototypes_imageable.MakeInvisible()
+                # NOTE: Do NOT set visibility to invisible on TwigPrototypes
+                # Unreal Engine needs to see the prototypes to import them correctly
+                # The instanceable flag on the Xform wrappers handles instancing
 
                 # Map twig types to prototype indices
                 twig_type_to_proto_idx = {}
@@ -450,7 +448,7 @@ def create_assembly(
                         bind_joints_attr.Set(bind_joints)
 
                         # Set interpolation metadata (matching reference assembly)
-                        # Note: elementSize NOT needed for single joint per instance
+                        # Note: elementSize is NOT set - Unreal infers 1 joint per instance from array length
                         bind_joints_attr.SetMetadata("interpolation", "uniform")
 
                         # Create bindJointWeights primvar with uniform variability and interpolation
@@ -463,6 +461,7 @@ def create_assembly(
                         bind_weights_attr.Set(bind_weights)
 
                         # Set interpolation metadata (matching reference assembly)
+                        # Note: elementSize is NOT set - Unreal infers 1 joint per instance from array length
                         bind_weights_attr.SetMetadata("interpolation", "uniform")
 
                     else:
