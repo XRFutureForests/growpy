@@ -131,6 +131,22 @@ def build_static_tree_mesh(
         mesh.CreateFaceVertexCountsAttr(face_vertex_counts)
         mesh.CreateFaceVertexIndicesAttr(face_vertex_indices)
 
+        # Add UVs for texture mapping
+        if uvs and len(uvs) > 0:
+            primvars_api = UsdGeom.PrimvarsAPI(mesh)
+
+            # Convert Grove UVs to USD format
+            # Grove UVs are tuples (u, v)
+            usd_uvs = [Gf.Vec2f(uv[0], uv[1]) for uv in uvs]
+
+            # Create UV primvar with faceVarying interpolation
+            uv_primvar = primvars_api.CreatePrimvar(
+                "st",
+                Sdf.ValueTypeNames.TexCoord2fArray,
+                UsdGeom.Tokens.faceVarying
+            )
+            uv_primvar.Set(usd_uvs)
+
         # Add normals for proper rendering
         _add_mesh_normals(mesh, model, clean_export=False)
 
@@ -249,12 +265,27 @@ def build_tree_mesh(
         mesh.CreateFaceVertexCountsAttr(face_vertex_counts)
         mesh.CreateFaceVertexIndicesAttr(face_vertex_indices)
 
-        # Skip model attributes for clean skeletal export
-        # These attributes (Age, Pitch, Vigor, etc.) are not needed for Nanite assembly
-        # and make debugging harder. They can be re-enabled if needed for analysis.
-        if not clean_export:
-            # Add all model attributes from Grove (face and point attributes)
-            _add_model_attributes(mesh, model)
+        # Add UVs for texture mapping
+        # CRITICAL: UVs are required for bark textures to display correctly
+        if uvs and len(uvs) > 0:
+            primvars_api = UsdGeom.PrimvarsAPI(mesh)
+
+            # Convert Grove UVs to USD format
+            # Grove UVs are tuples (u, v)
+            usd_uvs = [Gf.Vec2f(uv[0], uv[1]) for uv in uvs]
+
+            # Create UV primvar with faceVarying interpolation
+            # faceVarying means one UV per face-vertex (matches face_vertex_indices)
+            uv_primvar = primvars_api.CreatePrimvar(
+                "st",
+                Sdf.ValueTypeNames.TexCoord2fArray,
+                UsdGeom.Tokens.faceVarying
+            )
+            uv_primvar.Set(usd_uvs)
+
+        # Add all model attributes from Grove (face and point attributes)
+        # These provide rich data for analysis and potential use in Unreal
+        _add_model_attributes(mesh, model)
 
         # Skip UV island metadata for clean export
         # UV data is included in the mesh but metadata is not needed for Nanite assembly
@@ -581,6 +612,15 @@ def _add_skeletal_materials(
 
             if texture_file and texture_file.exists():
                 texture_found = True
+
+                # Create UV reader for texture mapping
+                uv_reader = UsdShade.Shader.Define(
+                    stage, f"{materials_path}/BarkMaterial/uvmap"
+                )
+                uv_reader.CreateIdAttr("UsdPrimvarReader_float2")
+                uv_reader.CreateInput("varname", Sdf.ValueTypeNames.Token).Set("st")
+                uv_reader.CreateOutput("result", Sdf.ValueTypeNames.Float2)
+
                 # Create texture reader
                 tex_reader = UsdShade.Shader.Define(
                     stage, f"{materials_path}/BarkMaterial/DiffuseTexture"
@@ -594,6 +634,11 @@ def _add_skeletal_materials(
                     "sourceColorSpace", Sdf.ValueTypeNames.Token
                 ).Set("sRGB")
                 tex_reader.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+
+                # Connect UV reader to texture sampler
+                tex_reader.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
+                    uv_reader.ConnectableAPI(), "result"
+                )
 
                 # Connect texture to shader
                 shader.CreateInput(
@@ -686,6 +731,15 @@ def _add_static_materials(
 
             if texture_file and texture_file.exists():
                 texture_found = True
+
+                # Create UV reader for texture mapping
+                uv_reader = UsdShade.Shader.Define(
+                    stage, f"{materials_path}/BarkMaterial/uvmap"
+                )
+                uv_reader.CreateIdAttr("UsdPrimvarReader_float2")
+                uv_reader.CreateInput("varname", Sdf.ValueTypeNames.Token).Set("st")
+                uv_reader.CreateOutput("result", Sdf.ValueTypeNames.Float2)
+
                 # Create texture reader
                 tex_reader = UsdShade.Shader.Define(
                     stage, f"{materials_path}/BarkMaterial/DiffuseTexture"
@@ -699,6 +753,11 @@ def _add_static_materials(
                     "sourceColorSpace", Sdf.ValueTypeNames.Token
                 ).Set("sRGB")
                 tex_reader.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+
+                # Connect UV reader to texture sampler
+                tex_reader.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
+                    uv_reader.ConnectableAPI(), "result"
+                )
 
                 # Connect texture to shader
                 shader.CreateInput(
