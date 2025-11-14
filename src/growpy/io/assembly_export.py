@@ -164,8 +164,12 @@ def create_assembly(
                             for p in placement_list
                         ]
                 total_twigs = sum(len(p) for p in placements.values())
+                print(f"  Creating assembly with {total_twigs} twig instances:")
+                for twig_type, p_list in placements.items():
+                    print(f"    {twig_type}: {len(p_list)} instances")
             else:
                 placements = {}
+                print("  WARNING: No twig placements available!")
 
             if placements and any(placements.values()):
                 # Remap twig paths from source assets to output directory copies
@@ -327,9 +331,11 @@ def create_assembly(
                             not placement_list
                             or twig_type not in twig_type_to_proto_idx
                         ):
+                            print(f"  Skipping {twig_type}: placement_list={bool(placement_list)}, has_proto={twig_type in twig_type_to_proto_idx}")
                             continue
 
                         proto_idx = twig_type_to_proto_idx[twig_type]
+                        print(f"  Adding {len(placement_list)} instances of {twig_type} (proto_idx={proto_idx})")
 
                         for placement in placement_list:
                             from growpy.core.twig import (
@@ -340,9 +346,8 @@ def create_assembly(
                             pos = placement["position"]
                             normal = placement["normal"]
 
-                            # CRITICAL: Positions remain in world space (matching reference assembly)
+                            # CRITICAL: Positions from Grove API are already in the correct coordinate space
                             # The bindJoints attribute tells Unreal which skeleton joint each instance follows
-                            # No position transformation needed
 
                             # Create rotation matrix from normal
                             rot_matrix = normal_to_rotation_matrix(normal)

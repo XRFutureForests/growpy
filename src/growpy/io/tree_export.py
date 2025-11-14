@@ -653,6 +653,8 @@ def _add_skeletal_materials(
 
         shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.7)
         shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
+        shader.CreateInput("specular", Sdf.ValueTypeNames.Float).Set(0.5)
+        shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(1.0)
         bark_mat.CreateSurfaceOutput().ConnectToSource(
             shader.ConnectableAPI(), "surface"
         )
@@ -772,6 +774,8 @@ def _add_static_materials(
 
         shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.7)
         shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
+        shader.CreateInput("specular", Sdf.ValueTypeNames.Float).Set(0.5)
+        shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(1.0)
         bark_mat.CreateSurfaceOutput().ConnectToSource(
             shader.ConnectableAPI(), "surface"
         )
@@ -1327,7 +1331,8 @@ def get_twig_usd_map_for_species(
 
     twig_usd_map = {}
 
-    # Map Grove attribute names to twig file types
+    # Map Grove attribute names to twig file types with priority order
+    # Earlier keywords have higher priority (e.g., "apical" preferred over "var_a")
     type_mapping = {
         "twig_long": ["apical", "long", "end", "terminal", "var_a", "var_c"],
         "twig_short": ["lateral", "short", "side", "var_b", "var_d"],
@@ -1335,60 +1340,122 @@ def get_twig_usd_map_for_species(
         "twig_dead": ["dead", "fall", "winter"],
     }
 
+    # Priority-based matching: try each keyword in order for each grove type
     for grove_type, keywords in type_mapping.items():
-        for twig_type, twig_paths in twig_files_by_type.items():
-            if any(kw in twig_type.lower() for kw in keywords):
-                if twig_paths:
-                    twig_file = twig_paths[0]
+        matched = False
 
-                    # CRITICAL: ALWAYS use regular USD files for twigs
+        # Try keywords in priority order (specific names like "apical" before generic "var_a")
+        for keyword in keywords:
+            if matched:
+                break
+
+            for twig_type, twig_paths in twig_files_by_type.items():
+                twig_type_lower = twig_type.lower()
+
+                # Check for exact or substring match
+                if keyword in twig_type_lower:
+                    if twig_paths:
+                        twig_file = twig_paths[0]
+
+                        # CRITICAL: ALWAYS use regular USD files for twigs
+                        for ext in [".usda", ".usd"]:
+                            usd_file = twig_file.with_suffix(ext)
+
+                            if "_nanite_assembly" in usd_file.name:
+                                continue
+
+                            # Check for skeletal or static variants
+                            is_skeletal = "_skeletal" in usd_file.stem
+                            is_static = "_static" in usd_file.stem
+
+                            if prefer_static:
+                                # Look for static variant
+                                if not is_static:
+                                    static_file = (
+                                        usd_file.parent
+                                        / f"{usd_file.stem}_static{usd_file.suffix}"
+                                    )
+                                    if static_file.exists():
+                                        twig_usd_map[grove_type] = static_file
+                                        matched = True
+                                        break
+                                    continue
+                                if is_static and usd_file.exists():
+                                    twig_usd_map[grove_type] = usd_file
+                                    matched = True
+                                    break
+                            elif prefer_skeletal:
+                                # Look for skeletal variant
+                                if not is_skeletal:
+                                    skeletal_file = (
+                                        usd_file.parent
+                                        / f"{usd_file.stem}_skeletal{usd_file.suffix}"
+                                    )
+                                    if skeletal_file.exists():
+                                        twig_usd_map[grove_type] = skeletal_file
+                                        matched = True
+                                        break
+                                    continue
+                                if is_skeletal and usd_file.exists():
+                                    twig_usd_map[grove_type] = usd_file
+                                    matched = True
+                                    break
+                            else:
+                                # No preference - skip variants
+                                if is_skeletal or is_static:
+                                    continue
+                                if usd_file.exists():
+                                    twig_usd_map[grove_type] = usd_file
+                                    matched = True
+                                    break
+
+                        if matched:
+                            break
+
+    # Fallback: If no variant-specific twigs found, use base twig file for all types
+    # This handles species like Pacific Silver Fir that only have one twig file
+    if not twig_usd_map and twig_files_by_type:
+        # Look for base twig file (species_name_twig_skeletal.usda or species_name_twig_static.usda)
+        for twig_type, twig_paths in twig_files_by_type.items():
+            if twig_paths:
+                twig_file = twig_paths[0]
+
+                # Check if this is a base twig file (not a variant)
+                stem_lower = twig_file.stem.lower()
+                has_variant = any(
+                    v in stem_lower
+                    for v in ["var_a", "var_b", "var_c", "var_d", "var_e", "apical", "lateral", "upward"]
+                )
+
+                if not has_variant:
+                    # This is a base twig file - use it for all twig types
                     for ext in [".usda", ".usd"]:
                         usd_file = twig_file.with_suffix(ext)
 
                         if "_nanite_assembly" in usd_file.name:
                             continue
 
-                        # Check for skeletal or static variants
                         is_skeletal = "_skeletal" in usd_file.stem
                         is_static = "_static" in usd_file.stem
 
-                        if prefer_static:
-                            # Look for static variant
-                            if not is_static:
-                                static_file = (
-                                    usd_file.parent
-                                    / f"{usd_file.stem}_static{usd_file.suffix}"
-                                )
-                                if static_file.exists():
-                                    twig_usd_map[grove_type] = static_file
-                                    break
-                                continue
-                            if is_static and usd_file.exists():
+                        if prefer_static and is_static and usd_file.exists():
+                            # Use this file for all twig types
+                            for grove_type in type_mapping.keys():
                                 twig_usd_map[grove_type] = usd_file
-                                break
-                        elif prefer_skeletal:
-                            # Look for skeletal variant
-                            if not is_skeletal:
-                                skeletal_file = (
-                                    usd_file.parent
-                                    / f"{usd_file.stem}_skeletal{usd_file.suffix}"
-                                )
-                                if skeletal_file.exists():
-                                    twig_usd_map[grove_type] = skeletal_file
-                                    break
-                                continue
-                            if is_skeletal and usd_file.exists():
+                            break
+                        elif prefer_skeletal and is_skeletal and usd_file.exists():
+                            # Use this file for all twig types
+                            for grove_type in type_mapping.keys():
                                 twig_usd_map[grove_type] = usd_file
-                                break
-                        else:
-                            # No preference - skip variants
-                            if is_skeletal or is_static:
-                                continue
-                            if usd_file.exists():
-                                twig_usd_map[grove_type] = usd_file
+                            break
+                        elif not prefer_static and not prefer_skeletal:
+                            if not is_skeletal and not is_static and usd_file.exists():
+                                # Use this file for all twig types
+                                for grove_type in type_mapping.keys():
+                                    twig_usd_map[grove_type] = usd_file
                                 break
 
-                    if grove_type in twig_usd_map:
+                    if twig_usd_map:
                         break
 
     return twig_usd_map
@@ -1476,26 +1543,39 @@ def bundle_twigs_for_species(
                             twig_manifest["twig_files"].append(dest_file.name)
                             twig_manifest["total_twigs"] += 1
 
-        # CRITICAL: Texture bundling disabled for Nanite compatibility
-        # Nanite assemblies with skeletal meshes don't use textures from USD
-        # All materials and textures should be configured in Unreal Engine
-        # source_texture_dir = None
-        # if all_twig_files:
-        #     first_twig = next(iter(all_twig_files))
-        #     source_texture_dir = first_twig.parent / "textures"
-        #
-        #     if source_texture_dir.exists():
-        #         dest_texture_dir = twig_dir / "textures"
-        #         dest_texture_dir.mkdir(exist_ok=True)
-        #
-        #         texture_count = 0
-        #         for texture_file in source_texture_dir.glob("*"):
-        #             if texture_file.is_file():
-        #                 dest_tex = dest_texture_dir / texture_file.name
-        #                 if not dest_tex.exists():
-        #                     shutil.copy2(texture_file, dest_tex)
-        #                     texture_count += 1
-        #                     copied_textures.add(texture_file.name)
+        # Copy opaque-only textures for Nanite compatibility
+        # CRITICAL: Filter out alpha/translucent/mask textures
+        source_texture_dir = None
+        if all_twig_files:
+            first_twig = next(iter(all_twig_files))
+            source_texture_dir = first_twig.parent / "textures"
+
+            if source_texture_dir.exists():
+                dest_texture_dir = twig_dir / "textures"
+                dest_texture_dir.mkdir(exist_ok=True)
+
+                # Import texture classification function
+                from growpy.io.twig_export import classify_texture_from_name
+
+                # CRITICAL: Only use base color (diffuse) textures
+                # Normal maps and other texture types are excluded
+                OPAQUE_TEXTURE_TYPES = ["diffuse"]
+
+                texture_count = 0
+                for texture_file in source_texture_dir.glob("*"):
+                    if texture_file.is_file():
+                        # Classify texture type
+                        tex_type = classify_texture_from_name(texture_file.stem)
+
+                        # Skip non-base-color textures
+                        if tex_type not in OPAQUE_TEXTURE_TYPES:
+                            continue
+
+                        dest_tex = dest_texture_dir / texture_file.name
+                        if not dest_tex.exists():
+                            shutil.copy2(texture_file, dest_tex)
+                            texture_count += 1
+                            copied_textures.add(texture_file.name)
 
     except Exception:
         # Silently fail - twig bundling is optional

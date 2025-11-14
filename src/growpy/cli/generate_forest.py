@@ -57,7 +57,7 @@ from tqdm import tqdm
 
 GROWTH_CYCLE_LIMIT = 10
 HEIGHT_SCALE = 1
-SMOOTH_ITERATIONS = 20  # Recommended: 10-20 iterations for natural smoothing
+SMOOTH_ITERATIONS = 3  # Recommended: 10-20 iterations for natural smoothing
 
 from growpy import (
     TREE_EXPORT_AVAILABLE,
