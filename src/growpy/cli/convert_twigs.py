@@ -309,6 +309,15 @@ def process_twig_directory(
     clean_export: bool = True,
     twig_filter: Optional[List[str]] = None,
     export_static: bool = True,
+    *,
+    densify: bool = True,
+    subdiv_levels: int = 4,
+    alpha_trim_threshold: float = 0.5,
+    edge_adaptive: bool = False,
+    edge_subdiv_levels: Optional[int] = None,
+    interior_decimate: bool = False,
+    decimate_ratio: float = 0.5,
+    boundary_rings: int = 1,
 ) -> Dict[str, List[Path]]:
     """Process all twig blend files in a directory.
 
@@ -383,6 +392,14 @@ def process_twig_directory(
                 species_name=species_name,
                 clean_export=clean_export,
                 export_static=export_static,
+                densify=densify,
+                alpha_trim_threshold=alpha_trim_threshold,
+                subdiv_levels=subdiv_levels,
+                edge_adaptive=edge_adaptive,
+                edge_subdiv_levels=edge_subdiv_levels,
+                interior_decimate=interior_decimate,
+                decimate_ratio=decimate_ratio,
+                boundary_rings=boundary_rings,
             )
 
             # Collect results
@@ -441,7 +458,52 @@ Output per twig:
         default=default_csv,
         help="Path to species CSV - only twigs for CSV species will be converted (default: data/input/test.csv)",
     )
-
+    # Geometry processing flags (enabled by default for Nanite-friendly high poly twigs)
+    parser.add_argument(
+        "--no-densify",
+        action="store_true",
+        help="Disable mesh densification (subdivision)",
+    )
+    parser.add_argument(
+        "--subdiv",
+        type=int,
+        default=4,
+        help="Subdivision levels for densification (default: 4)",
+    )
+    parser.add_argument(
+        "--alpha-trim",
+        type=float,
+        default=0.5,
+        help="Alpha threshold for edge trimming (default: 0.5)",
+    )
+    parser.add_argument(
+        "--edge-adaptive",
+        action="store_true",
+        help="Enable edge-adaptive leaf densification using alpha mask (default: off)",
+    )
+    parser.add_argument(
+        "--edge-subdiv",
+        type=int,
+        default=None,
+        help="Additional edge-only subdivision cuts near alpha edges (default: none)",
+    )
+    parser.add_argument(
+        "--interior-decimate",
+        action="store_true",
+        help="Reduce interior leaf density while preserving alpha silhouette (default: off)",
+    )
+    parser.add_argument(
+        "--decimate-ratio",
+        type=float,
+        default=0.5,
+        help="Collapse decimate ratio for interior (0..1, lower = stronger, default: 0.5)",
+    )
+    parser.add_argument(
+        "--boundary-rings",
+        type=int,
+        default=1,
+        help="Edge protection width in vertex rings around silhouette (default: 1)",
+    )
     args = parser.parse_args()
 
     if not args.path.exists():
@@ -523,12 +585,44 @@ Output per twig:
     if args.path.is_file() and args.path.suffix == ".blend":
         # Single file
         results = process_twig_directory(
-            args.path.parent, ["usda"], True, twig_filter, export_static=True
+            args.path.parent,
+            ["usda"],
+            True,
+            twig_filter,
+            export_static=True,
+            densify=(not args.no_densify),
+            subdiv_levels=max(1, args.subdiv),
+            alpha_trim_threshold=min(max(0.0, args.alpha_trim), 1.0),
+            edge_adaptive=args.edge_adaptive,
+            edge_subdiv_levels=(
+                int(args.edge_subdiv)
+                if args.edge_subdiv and args.edge_subdiv > 0
+                else None
+            ),
+            interior_decimate=args.interior_decimate,
+            decimate_ratio=float(args.decimate_ratio),
+            boundary_rings=max(0, int(args.boundary_rings)),
         )
     elif args.path.is_dir():
         # Directory
         results = process_twig_directory(
-            args.path, ["usda"], True, twig_filter, export_static=True
+            args.path,
+            ["usda"],
+            True,
+            twig_filter,
+            export_static=True,
+            densify=(not args.no_densify),
+            subdiv_levels=max(1, args.subdiv),
+            alpha_trim_threshold=min(max(0.0, args.alpha_trim), 1.0),
+            edge_adaptive=args.edge_adaptive,
+            edge_subdiv_levels=(
+                int(args.edge_subdiv)
+                if args.edge_subdiv and args.edge_subdiv > 0
+                else None
+            ),
+            interior_decimate=args.interior_decimate,
+            decimate_ratio=float(args.decimate_ratio),
+            boundary_rings=max(0, int(args.boundary_rings)),
         )
     else:
         return 1
