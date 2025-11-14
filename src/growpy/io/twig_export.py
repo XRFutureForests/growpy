@@ -16,11 +16,20 @@ Texture Handling:
 """
 
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
+from typing import Optional, Set
 
+import bmesh
 import bpy
+import mathutils
+
+try:
+    from PIL import Image
+except Exception:
+    Image = None
 
 # Import path needs adjustment for standalone script execution
 try:
@@ -46,7 +55,14 @@ except ImportError:
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel, Vt
 
 
-def _add_twig_material(stage, mesh_prim, mesh_path, texture_dir=None, species_name=None, standardized_name=None):
+def _add_twig_material(
+    stage,
+    mesh_prim,
+    mesh_path,
+    texture_dir=None,
+    species_name=None,
+    standardized_name=None,
+):
     """Add material with opaque-only textures to twig mesh.
 
     CRITICAL: Filters out alpha/translucent/mask textures for Nanite compatibility.
@@ -102,7 +118,11 @@ def _add_twig_material(stage, mesh_prim, mesh_path, texture_dir=None, species_na
 
             if not base_name_parts or "twig" not in base_name_parts:
                 # Fallback to species_twig
-                base_name = species_name.lower().replace(" ", "_") + "_twig" if species_name else "twig"
+                base_name = (
+                    species_name.lower().replace(" ", "_") + "_twig"
+                    if species_name
+                    else "twig"
+                )
             else:
                 base_name = "_".join(base_name_parts)
 
@@ -147,22 +167,26 @@ def _add_twig_material(stage, mesh_prim, mesh_path, texture_dir=None, species_na
                 tex_node.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
                     f"./textures/{texture_map['diffuse'].name}"
                 )
-                tex_node.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set("sRGB")
+                tex_node.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set(
+                    "sRGB"
+                )
 
                 # Connect UV reader to texture sampler
                 if uv_reader:
-                    tex_node.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
-                        uv_reader.ConnectableAPI(), "result"
-                    )
+                    tex_node.CreateInput(
+                        "st", Sdf.ValueTypeNames.Float2
+                    ).ConnectToSource(uv_reader.ConnectableAPI(), "result")
 
                 # Connect diffuse to base color
-                shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(
-                    tex_node.ConnectableAPI(), "rgb"
-                )
+                shader.CreateInput(
+                    "diffuseColor", Sdf.ValueTypeNames.Color3f
+                ).ConnectToSource(tex_node.ConnectableAPI(), "rgb")
                 textures_found = True
             else:
                 # Fallback to solid color
-                shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(LEAF_GREEN)
+                shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(
+                    LEAF_GREEN
+                )
 
             # Normal textures removed - only using base color
 
@@ -171,7 +195,9 @@ def _add_twig_material(stage, mesh_prim, mesh_path, texture_dir=None, species_na
 
         if not textures_found:
             # No textures found - use simple color
-            shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(LEAF_GREEN)
+            shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(
+                LEAF_GREEN
+            )
             shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.5)
 
         # Add specular and opacity for proper Unreal rendering
@@ -781,7 +807,9 @@ def classify_texture_from_name(name):
     return "diffuse"
 
 
-def copy_opaque_textures_for_skeletal(blend_dir, output_dir, standardized_name, metadata):
+def copy_opaque_textures_for_skeletal(
+    blend_dir, output_dir, standardized_name, metadata
+):
     """Copy only opaque textures for skeletal twig exports.
 
     CRITICAL: Filters out alpha/translucent/mask textures for Nanite compatibility.
@@ -850,10 +878,654 @@ def copy_opaque_textures_for_skeletal(blend_dir, output_dir, standardized_name, 
     return copied_count
 
 
+def _detect_leaf_material_indices(obj):
+    """Return a set of material indices that likely correspond to leaves/foliage."""
+    leaf_kw = ("leaf", "leaves", "foliage", "needle")
+    bark_kw = ("bark", "branch", "twig", "wood")
+    idxs = set()
+    mats = getattr(obj.data, "materials", []) or []
+    for i, mat in enumerate(mats):
+        name = (mat.name if mat else "").lower()
+        if any(k in name for k in leaf_kw) and not any(k in name for k in bark_kw):
+            idxs.add(i)
+    return idxs
+
+
+def smooth_leaf_mesh(
+    obj,
+    iterations: int = 10,
+    factor: float = 0.2,
+    material_indices: Optional[Set[int]] = None,
+):
+    """Smooth selected (leaf) regions to reduce faceting from low-poly meshes.
+
+    Uses Laplacian smoothing limited to vertices belonging to faces with
+    material indices in `material_indices`. If `material_indices` is None,
+    applies to the whole mesh.
+    """
+    import bmesh
+    import bpy
+
+    if iterations <= 0 or factor <= 0.0:
+        return
+
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.mode_set(mode="EDIT")
+
+    bm = bmesh.from_edit_mesh(obj.data)
+    for v in bm.verts:
+        v.select = False
+    if material_indices:
+        for f in bm.faces:
+            if f.material_index in material_indices:
+                for v in f.verts:
+                    v.select = True
+    else:
+        for v in bm.verts:
+            v.select = True
+
+    bmesh.update_edit_mesh(obj.data, loop_triangles=False, destructive=False)
+
+    try:
+        bpy.ops.mesh.select_mode(type="VERT")
+    except Exception:
+        pass
+
+    try:
+        bpy.ops.mesh.smooth_laplacian(
+            repeat=int(iterations), lambda_factor=float(factor), preserve_volume=True
+        )
+    except Exception:
+        try:
+            bpy.ops.mesh.vertices_smooth(repeat=int(iterations), factor=float(factor))
+        except Exception:
+            pass
+
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+
+def _gather_texture_candidates(blend_dir, standardized_name, species, metadata):
+    """Find likely textures without modifying materials.
+
+    Returns dict: {'diffuse': Path, 'alpha': Path, 'translucent': Path, 'normal': Path}
+    """
+    texture_extensions = [".png", ".jpg", ".jpeg", ".tiff", ".exr", ".bmp"]
+    search_dirs = [blend_dir / "textures", blend_dir, blend_dir.parent / "textures"]
+    files = []
+    for d in search_dirs:
+        if Path(d).exists():
+            for ext in texture_extensions:
+                files.extend(Path(d).glob(f"*{ext}"))
+
+    # Build base name up to 'twig'
+    parts = []
+    found_twig = False
+    for part in standardized_name.split("_"):
+        parts.append(part)
+        if part == "twig":
+            found_twig = True
+            break
+    if not found_twig:
+        base_name = f"{species.lower().replace(' ', '_')}_twig"
+    else:
+        base_name = "_".join(parts)
+
+    def pick(kind_words, prefer_top=True):
+        def score(p: Path):
+            n = p.stem.lower()
+            s = 0
+            if base_name in n:
+                s += 5
+            if any(k in n for k in kind_words):
+                s += 3
+            if prefer_top and ("top" in n or "upper" in n):
+                s += 1
+            return s
+
+        best, best_s = None, -1
+        for p in files:
+            s = score(p)
+            if s > best_s:
+                best, best_s = p, s
+        return best
+
+    out = {}
+    diffuse = pick(["diffuse", "albedo", "color", "basecolor", "base"])
+    if diffuse:
+        out["diffuse"] = diffuse
+    alpha = pick(["alpha", "opacity", "mask"], prefer_top=False)
+    if alpha:
+        out["alpha"] = alpha
+    translucent = pick(
+        ["translucent", "transmission", "sss", "subsurface"], prefer_top=False
+    )
+    if translucent and "alpha" not in out:
+        out["translucent"] = translucent
+    normal = pick(["normal", "norm", "nrm", "bump"], prefer_top=False)
+    if normal:
+        out["normal"] = normal
+    return out
+
+
+def densify_mesh(obj, subdivision_levels=3, material_indices=None):
+    """Densify mesh using subdivision to create more triangles.
+
+    Args:
+        obj: Blender mesh object
+        subdivision_levels: Number of subdivision iterations (default: 3)
+        material_indices: Optional set of material indices to restrict densification
+    """
+    try:
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode="OBJECT")
+
+        # Use bmesh for subdivision
+        bm = bmesh.new()
+        bm.from_mesh(obj.data)
+
+        edges = bm.edges
+        if material_indices:
+            face_edges = set()
+            for f in bm.faces:
+                if f.material_index in material_indices:
+                    for e in f.edges:
+                        face_edges.add(e)
+            edges = list(face_edges)
+
+        if edges:
+            bmesh.ops.subdivide_edges(
+                bm, edges=edges, cuts=subdivision_levels, use_grid_fill=True
+            )
+
+        # Write back to mesh
+        bm.to_mesh(obj.data)
+        bm.free()
+
+        obj.data.update()
+    except Exception as e:
+        pass
+
+
+def apply_normal_displacement(
+    obj, normal_texture_path, strength=0.005, material_indices=None
+):
+    """Displace mesh vertices based on normal map texture.
+
+    Args:
+        obj: Blender mesh object
+        normal_texture_path: Path to normal map texture
+        strength: Displacement strength multiplier (default: 0.01)
+    """
+    try:
+        if Image is None:
+            return
+        if not normal_texture_path or not Path(normal_texture_path).exists():
+            return
+
+        # Load normal map image
+        img = Image.open(normal_texture_path)
+        img_width, img_height = img.size
+        pixels = img.load()
+
+        # Get UV layer
+        if not obj.data.uv_layers.active:
+            return
+
+        uv_layer = obj.data.uv_layers.active.data
+        mesh = obj.data
+
+        # Build vertex UV mapping
+        vertex_uvs = {}
+        for poly in mesh.polygons:
+            for loop_idx in poly.loop_indices:
+                loop = mesh.loops[loop_idx]
+                vert_idx = loop.vertex_index
+                uv = uv_layer[loop_idx].uv
+                if vert_idx not in vertex_uvs:
+                    vertex_uvs[vert_idx] = uv
+
+        # If restricting to leaf faces, collect eligible vertices
+        eligible = None
+        if material_indices:
+            eligible = set()
+            for poly in mesh.polygons:
+                if poly.material_index in material_indices:
+                    for loop_idx in poly.loop_indices:
+                        eligible.add(mesh.loops[loop_idx].vertex_index)
+
+        # Displace vertices based on normal map
+        for vert_idx, uv in vertex_uvs.items():
+            if eligible is not None and vert_idx not in eligible:
+                continue
+            vert = mesh.vertices[vert_idx]
+
+            # Sample normal map at UV coordinate
+            x = int(uv.x * (img_width - 1))
+            y = int((1.0 - uv.y) * (img_height - 1))  # Flip Y
+            x = max(0, min(img_width - 1, x))
+            y = max(0, min(img_height - 1, y))
+
+            # Get pixel color (normal map RGB)
+            pixel = pixels[x, y]
+            if len(pixel) >= 3:
+                # Convert from [0-255] to [-1, 1] range
+                nx = (pixel[0] / 255.0) * 2.0 - 1.0
+                ny = (pixel[1] / 255.0) * 2.0 - 1.0
+                nz = (pixel[2] / 255.0) * 2.0 - 1.0
+
+                # Normalize
+                length = (nx * nx + ny * ny + nz * nz) ** 0.5
+                if length > 0:
+                    nx /= length
+                    ny /= length
+                    nz /= length
+
+                # Displace along vertex normal weighted by normal map Z component
+                displacement = mathutils.Vector(vert.normal) * nz * strength
+                vert.co += displacement
+
+        mesh.update()
+    except Exception as e:
+        pass
+
+
+def trim_by_alpha_mask(
+    obj,
+    alpha_texture_path,
+    threshold=0.5,
+    require_alpha_channel=False,
+    material_indices=None,
+    allow_luminance_for_masks: bool = False,
+):
+    """Trim mesh geometry based on alpha/opacity mask texture.
+
+    Removes faces where all vertices have alpha values below threshold.
+
+    Args:
+        obj: Blender mesh object
+        alpha_texture_path: Path to alpha/mask texture
+        threshold: Alpha threshold for keeping geometry (0.0-1.0, default: 0.5)
+    """
+    try:
+        if Image is None:
+            return
+        if not alpha_texture_path or not Path(alpha_texture_path).exists():
+            return
+
+        # Load alpha/translucency image
+        img = Image.open(alpha_texture_path)
+        bands = img.getbands()
+        has_alpha = "A" in bands
+
+        # Determine if we can use luminance as alpha for explicit mask textures
+        name_lower = Path(alpha_texture_path).stem.lower()
+        looks_like_mask = any(
+            k in name_lower
+            for k in ["alpha", "opacity", "mask", "transparent", "cutout"]
+        )
+
+        if require_alpha_channel and not has_alpha:
+            return
+
+        # Choose channel for trimming
+        alpha_img = None
+        if has_alpha:
+            alpha_img = img.getchannel("A")
+        elif allow_luminance_for_masks and looks_like_mask:
+            # Use luminance for explicit mask textures
+            alpha_img = img.convert("L")
+        else:
+            # No usable alpha information
+            return
+
+        img_width, img_height = alpha_img.size
+        pixels = alpha_img.load()
+
+        # Heuristic inversion for certain mask naming
+        invert_mask = any(k in name_lower for k in ["mask", "cutout"])
+
+        # Get UV layer
+        if not obj.data.uv_layers.active:
+            return
+
+        mesh = obj.data
+        uv_layer = mesh.uv_layers.active.data
+
+        # Use bmesh for efficient face deletion
+        bm = bmesh.new()
+        bm.from_mesh(mesh)
+
+        # Build UV layer reference in bmesh
+        uv_layer_bm = bm.loops.layers.uv.active
+        if not uv_layer_bm:
+            bm.free()
+            return
+
+        # Mark faces for deletion based on alpha values
+        faces_to_delete = []
+        for face in bm.faces:
+            if material_indices and face.material_index not in material_indices:
+                continue
+            # Sample alpha at each vertex of the face
+            alpha_values = []
+            for loop in face.loops:
+                uv = loop[uv_layer_bm].uv
+
+                # Sample alpha texture
+                x = int(uv.x * (img_width - 1))
+                y = int((1.0 - uv.y) * (img_height - 1))  # Flip Y
+                x = max(0, min(img_width - 1, x))
+                y = max(0, min(img_height - 1, y))
+
+                # Get alpha value (0-255)
+                alpha = pixels[x, y] / 255.0
+                if invert_mask:
+                    alpha = 1.0 - alpha
+                alpha_values.append(alpha)
+
+            # Delete face if all vertices below threshold (completely transparent)
+            if all(a < threshold for a in alpha_values):
+                faces_to_delete.append(face)
+
+        # Delete marked faces
+        bmesh.ops.delete(bm, geom=faces_to_delete, context="FACES")
+
+        # Write back to mesh
+        bm.to_mesh(mesh)
+        bm.free()
+
+        mesh.update()
+    except Exception as e:
+        pass
+
+
+def _load_alpha_image(
+    texture_path, require_alpha_channel=False, allow_luminance_for_masks: bool = False
+):
+    """Load alpha mask PIL image (single-channel) from texture.
+
+    Returns PIL Image in 'L' mode or None if not available/allowed.
+    Prefers alpha channel; if require_alpha_channel=True, returns None when no alpha present.
+    """
+    if Image is None:
+        return None
+    try:
+        if not texture_path or not Path(texture_path).exists():
+            return None
+        img = Image.open(texture_path)
+        bands = img.getbands()
+        has_alpha = "A" in bands
+        if require_alpha_channel and not has_alpha:
+            return None
+        if has_alpha:
+            return img.getchannel("A")
+        # Allow luminance-only mask images when explicitly labeled as masks
+        if allow_luminance_for_masks:
+            name_lower = Path(texture_path).stem.lower()
+            if any(
+                k in name_lower
+                for k in ["alpha", "opacity", "mask", "transparent", "cutout"]
+            ):
+                return img.convert("L")
+        return None
+    except Exception:
+        return None
+
+
+def _build_vertex_alpha_map(mesh, alpha_img):
+    """Build per-vertex alpha map by sampling the alpha image at UVs.
+
+    Returns: dict vert_index -> alpha [0..1]
+    """
+    if alpha_img is None or not mesh.uv_layers.active:
+        return {}
+    pixels = alpha_img.load()
+    w, h = alpha_img.size
+    uv_layer = mesh.uv_layers.active.data
+    vert_alpha = {}
+    # Use averaged alpha over all loops touching the vertex
+    accum = {}
+    counts = {}
+    for poly in mesh.polygons:
+        for loop_idx in poly.loop_indices:
+            loop = mesh.loops[loop_idx]
+            vi = loop.vertex_index
+            uv = uv_layer[loop_idx].uv
+            x = int(max(0, min(w - 1, uv.x * (w - 1))))
+            y = int(max(0, min(h - 1, (1.0 - uv.y) * (h - 1))))
+            a = pixels[x, y] / 255.0
+            accum[vi] = accum.get(vi, 0.0) + a
+            counts[vi] = counts.get(vi, 0) + 1
+    for vi, total in accum.items():
+        vert_alpha[vi] = total / max(1, counts.get(vi, 1))
+    return vert_alpha
+
+
+def densify_mesh_edge_adaptive(
+    obj,
+    material_indices,
+    alpha_img,
+    threshold,
+    base_cuts=4,
+    edge_cuts=16,
+):
+    """Densify leaf mesh with higher density along alpha silhouette edges.
+
+    - boundary edges (cross threshold or near it) subdivided with edge_cuts
+    - interior leaf edges subdivided with base_cuts
+    """
+    try:
+        mesh = obj.data
+        if not material_indices:
+            return
+        # Build per-vertex alpha map
+        v_alpha = _build_vertex_alpha_map(mesh, alpha_img)
+        if not v_alpha:
+            return
+        # Collect candidate edges from leaf faces
+        leaf_edge_keys = set()
+        for poly in mesh.polygons:
+            if poly.material_index in material_indices:
+                # iterate poly edges via loops
+                loop_indices = list(poly.loop_indices)
+                for i in range(len(loop_indices)):
+                    li0 = loop_indices[i]
+                    li1 = loop_indices[(i + 1) % len(loop_indices)]
+                    v0 = mesh.loops[li0].vertex_index
+                    v1 = mesh.loops[li1].vertex_index
+                    key = tuple(sorted((v0, v1)))
+                    leaf_edge_keys.add(key)
+
+        # Classify edges
+        eps = 0.08  # near-threshold band
+        boundary_keys = []
+        interior_keys = []
+        for v0, v1 in leaf_edge_keys:
+            a0 = v_alpha.get(v0)
+            a1 = v_alpha.get(v1)
+            if a0 is None or a1 is None:
+                continue
+            crosses = (a0 - threshold) * (a1 - threshold) < 0.0
+            near = (abs(a0 - threshold) < eps) or (abs(a1 - threshold) < eps)
+            if crosses or near:
+                boundary_keys.append((v0, v1))
+            else:
+                interior_keys.append((v0, v1))
+
+        if not boundary_keys and not interior_keys:
+            return
+
+        # Build bmesh and mapping from edge key to bm edge
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode="OBJECT")
+        bm = bmesh.new()
+        bm.from_mesh(mesh)
+
+        # Map current bm edges by key
+        bm_edge_by_key = {}
+        for e in bm.edges:
+            kv = tuple(sorted((e.verts[0].index, e.verts[1].index)))
+            bm_edge_by_key[kv] = e
+
+        boundary_edges = [
+            bm_edge_by_key[k] for k in boundary_keys if k in bm_edge_by_key
+        ]
+        interior_edges = [
+            bm_edge_by_key[k] for k in interior_keys if k in bm_edge_by_key
+        ]
+
+        # Subdivide boundary first (high cuts), then interior (base cuts)
+        if boundary_edges and edge_cuts > 0:
+            bmesh.ops.subdivide_edges(
+                bm, edges=boundary_edges, cuts=edge_cuts, use_grid_fill=True
+            )
+        if interior_edges and base_cuts > 0:
+            bmesh.ops.subdivide_edges(
+                bm, edges=interior_edges, cuts=base_cuts, use_grid_fill=True
+            )
+
+        bm.to_mesh(mesh)
+        bm.free()
+        mesh.update()
+    except Exception:
+        pass
+
+
+def _apply_interior_decimate(
+    obj,
+    leaf_material_indices: Set[int],
+    alpha_img,
+    threshold: float,
+    ratio: float = 0.5,
+    boundary_rings: int = 1,
+):
+    """Apply edge-protected interior decimation on leaf regions.
+
+    - Builds a preserve vertex group that includes:
+      - A band of vertices around the alpha silhouette (edge band)
+      - All non-leaf vertices (twig/bark) to avoid decimating wood
+    - Applies Decimate (Collapse) with invert_vertex_group=True so only
+      non-preserved (leaf interior) vertices are reduced.
+    """
+    if ratio <= 0.0 or ratio >= 1.0:
+        return
+
+    mesh = obj.data
+    if not mesh or not mesh.uv_layers.active:
+        return
+
+    # Per-vertex alpha
+    v_alpha = _build_vertex_alpha_map(mesh, alpha_img)
+    if not v_alpha:
+        return
+
+    # Build adjacency from edges
+    adjacency = {}
+    for e in mesh.edges:
+        v0, v1 = e.vertices[0], e.vertices[1]
+        adjacency.setdefault(v0, set()).add(v1)
+        adjacency.setdefault(v1, set()).add(v0)
+
+    # Collect leaf vertices and initial edge vertices (crossing threshold)
+    leaf_vertices = set()
+    edge_vertices = set()
+    for poly in mesh.polygons:
+        is_leaf = poly.material_index in leaf_material_indices
+        for li in poly.loop_indices:
+            vi = mesh.loops[li].vertex_index
+            if is_leaf:
+                leaf_vertices.add(vi)
+        if is_leaf:
+            # Inspect edges via loops
+            loop_indices = list(poly.loop_indices)
+            for i in range(len(loop_indices)):
+                li0 = loop_indices[i]
+                li1 = loop_indices[(i + 1) % len(loop_indices)]
+                v0 = mesh.loops[li0].vertex_index
+                v1 = mesh.loops[li1].vertex_index
+                a0 = v_alpha.get(v0)
+                a1 = v_alpha.get(v1)
+                if a0 is None or a1 is None:
+                    continue
+                if (a0 - threshold) * (a1 - threshold) < 0.0:
+                    edge_vertices.add(v0)
+                    edge_vertices.add(v1)
+
+    if not leaf_vertices:
+        return
+
+    # Expand edge band by boundary_rings using adjacency
+    current = set(edge_vertices)
+    for _ in range(max(0, int(boundary_rings))):
+        grow = set()
+        for v in current:
+            for nb in adjacency.get(v, ()):  # neighbors
+                if nb in leaf_vertices and nb not in edge_vertices:
+                    grow.add(nb)
+        if not grow:
+            break
+        edge_vertices.update(grow)
+        current = grow
+
+    # Preserve set = edge band (leaf) + all non-leaf vertices
+    preserve = set(edge_vertices)
+    if len(leaf_material_indices) > 0:
+        for poly in mesh.polygons:
+            if poly.material_index not in leaf_material_indices:
+                for li in poly.loop_indices:
+                    preserve.add(mesh.loops[li].vertex_index)
+
+    # Create/replace vertex group
+    vg_name = "edge_protect"
+    if vg_name in obj.vertex_groups:
+        vg_old = obj.vertex_groups.get(vg_name)
+        try:
+            obj.vertex_groups.remove(vg_old)
+        except Exception:
+            pass
+    vg = obj.vertex_groups.new(name=vg_name)
+
+    if preserve:
+        try:
+            vg.add(list(preserve), 1.0, "REPLACE")
+        except Exception:
+            # Fallback: add in chunks to avoid limits
+            inds = list(preserve)
+            step = 32766
+            for i in range(0, len(inds), step):
+                vg.add(inds[i : i + step], 1.0, "REPLACE")
+
+    # Apply Decimate (Collapse) only to non-preserved (invert group)
+    import bpy
+
+    bpy.context.view_layer.objects.active = obj
+    try:
+        bpy.ops.object.mode_set(mode="OBJECT")
+    except Exception:
+        pass
+    mod = obj.modifiers.new(name="InteriorDecimate", type="DECIMATE")
+    mod.ratio = float(ratio)
+    mod.vertex_group = vg.name
+    mod.invert_vertex_group = True
+    # Triangulate collapse produces more stable results for our pipeline
+    if hasattr(mod, "use_collapse_triangulate"):
+        mod.use_collapse_triangulate = True
+
+    try:
+        bpy.ops.object.modifier_apply(modifier=mod.name)
+    except Exception:
+        # If apply fails (rare), leave modifier on the stack
+        pass
+
+
 def setup_materials_with_textures(
     obj, blend_dir, species_name, output_dir, standardized_name, metadata=None
 ):
-    """Setup materials with all available textures."""
+    """Setup materials with all available textures.
+
+    Returns:
+        dict: Texture map of texture_type -> Path, or None if no textures
+    """
     if metadata is None:
         metadata = {"species": species_name}
     import bpy
@@ -1110,7 +1782,18 @@ def setup_materials_with_textures(
         obj.data.materials.append(material)
         materials_created += 1
 
-    return materials_created > 0
+    # Return texture map for geometry processing
+    if material_groups and materials_created > 0:
+        # Merge all texture groups into single map for first material
+        combined_texture_map = {}
+        for mat_textures in material_groups.values():
+            for tex_path in mat_textures:
+                tex_type = classify_texture_from_name(tex_path.stem)
+                if tex_type not in combined_texture_map:
+                    combined_texture_map[tex_type] = tex_path
+        return combined_texture_map
+
+    return None
 
 
 def process_twig_file(
@@ -1120,6 +1803,14 @@ def process_twig_file(
     species_name,
     clean_export=True,
     export_static=False,
+    densify=False,
+    alpha_trim_threshold=0.0,
+    subdiv_levels=3,
+    edge_adaptive=False,
+    edge_subdiv_levels=None,
+    interior_decimate=False,
+    decimate_ratio=0.5,
+    boundary_rings=1,
 ):
     """Process a single twig blend file.
 
@@ -1130,6 +1821,9 @@ def process_twig_file(
         species_name: Name of species
         clean_export: If True, creates minimal USD without materials/textures (for skeletal)
         export_static: If True, also export static (non-skeletal) variant with materials
+        densify: If True, subdivide mesh for higher polygon count (default: False)
+        displacement_strength: Strength of normal map displacement (0.0 = disabled, default: 0.0)
+        alpha_trim_threshold: Alpha threshold for geometry trimming (0.0 = disabled, default: 0.0)
     """
     import bpy
 
@@ -1232,11 +1926,143 @@ def process_twig_file(
             # All visual appearance should be configured in Unreal Engine after import
             material_setup_success = False  # Disabled - clean export always for Nanite
 
-            # Skip material setup entirely
-            # if not clean_export:
-            #     material_setup_success = setup_materials_with_textures(
-            #         obj, blend_dir, species_name, output_dir, standardized_name, metadata
-            #     )
+            # Optional geometry processing for enhanced leaf detail
+            # Restrict to leaf materials to avoid artifacts on twigs/bark
+            if densify or alpha_trim_threshold > 0.0 or interior_decimate:
+                leaf_mats = _detect_leaf_material_indices(obj)
+                tex_map = _gather_texture_candidates(
+                    blend_dir, standardized_name, species_name, metadata
+                )
+
+                # 1) Densify leaf region (edge-adaptive only when explicitly enabled)
+                if densify and leaf_mats:
+                    if edge_adaptive:
+                        alpha_img = None
+                        alpha_path = tex_map.get("alpha") or tex_map.get("translucent")
+                        if alpha_path:
+                            alpha_img = _load_alpha_image(alpha_path)
+                        if alpha_img is None and tex_map.get("diffuse"):
+                            alpha_img = _load_alpha_image(
+                                tex_map.get("diffuse"), require_alpha_channel=True
+                            )
+
+                        if alpha_img is not None and alpha_trim_threshold > 0.0:
+                            # Heavier cuts on edges, lighter inside
+                            edge_cuts = max(1, int(subdiv_levels))
+                            base_cuts = max(0, int(round(subdiv_levels * 0.25)))
+                            densify_mesh_edge_adaptive(
+                                obj,
+                                material_indices=leaf_mats,
+                                alpha_img=alpha_img,
+                                threshold=alpha_trim_threshold,
+                                base_cuts=base_cuts,
+                                edge_cuts=edge_cuts,
+                            )
+                        else:
+                            densify_mesh(
+                                obj,
+                                subdivision_levels=subdiv_levels,
+                                material_indices=leaf_mats,
+                            )
+                    else:
+                        densify_mesh(
+                            obj,
+                            subdivision_levels=subdiv_levels,
+                            material_indices=leaf_mats,
+                        )
+
+                # Optional: extra edge-only densify pass using alpha silhouette
+                # Runs after primary densify (uniform or adaptive) to increase edge detail
+                if (
+                    densify
+                    and leaf_mats
+                    and edge_subdiv_levels is not None
+                    and int(edge_subdiv_levels) > 0
+                ):
+                    alpha_img = None
+                    alpha_path = tex_map.get("alpha") or tex_map.get("translucent")
+                    if alpha_path:
+                        alpha_img = _load_alpha_image(
+                            alpha_path, allow_luminance_for_masks=True
+                        )
+                    if alpha_img is None and tex_map.get("diffuse"):
+                        alpha_img = _load_alpha_image(
+                            tex_map.get("diffuse"),
+                            require_alpha_channel=True,
+                            allow_luminance_for_masks=False,
+                        )
+
+                    if alpha_img is not None and alpha_trim_threshold > 0.0:
+                        densify_mesh_edge_adaptive(
+                            obj,
+                            material_indices=leaf_mats,
+                            alpha_img=alpha_img,
+                            threshold=alpha_trim_threshold,
+                            base_cuts=0,
+                            edge_cuts=max(1, int(edge_subdiv_levels)),
+                        )
+
+                # Optional: interior decimation (edge-protected) to reduce interior density
+                if interior_decimate and leaf_mats:
+                    alpha_img = None
+                    alpha_path = tex_map.get("alpha") or tex_map.get("translucent")
+                    if alpha_path:
+                        alpha_img = _load_alpha_image(
+                            alpha_path, allow_luminance_for_masks=True
+                        )
+                    if alpha_img is None and tex_map.get("diffuse"):
+                        alpha_img = _load_alpha_image(
+                            tex_map.get("diffuse"),
+                            require_alpha_channel=True,
+                            allow_luminance_for_masks=False,
+                        )
+
+                    if (
+                        alpha_img is not None
+                        and 0.0 < decimate_ratio < 1.0
+                        and alpha_trim_threshold > 0.0
+                    ):
+                        try:
+                            _apply_interior_decimate(
+                                obj,
+                                leaf_mats,
+                                alpha_img,
+                                threshold=alpha_trim_threshold,
+                                ratio=float(decimate_ratio),
+                                boundary_rings=max(0, int(boundary_rings)),
+                            )
+                        except Exception:
+                            pass
+
+                # 2) Trim leaf edges using alpha/translucency/diffuse alpha
+                if alpha_trim_threshold > 0.0 and leaf_mats:
+                    alpha_tex = tex_map.get("alpha") or tex_map.get("translucent")
+                    if alpha_tex:
+                        trim_by_alpha_mask(
+                            obj,
+                            str(alpha_tex),
+                            alpha_trim_threshold,
+                            material_indices=leaf_mats,
+                            allow_luminance_for_masks=True,
+                        )
+                    else:
+                        diffuse_tex = tex_map.get("diffuse")
+                        if diffuse_tex:
+                            trim_by_alpha_mask(
+                                obj,
+                                str(diffuse_tex),
+                                alpha_trim_threshold,
+                                require_alpha_channel=True,
+                                material_indices=leaf_mats,
+                                allow_luminance_for_masks=False,
+                            )
+
+                # Recalculate normals
+                bpy.context.view_layer.objects.active = obj
+                bpy.ops.object.mode_set(mode="EDIT")
+                bpy.ops.mesh.select_all(action="SELECT")
+                bpy.ops.mesh.normals_make_consistent(inside=False)
+                bpy.ops.object.mode_set(mode="OBJECT")
 
             bpy.ops.object.select_all(action="DESELECT")
             mount_point.select_set(True)
@@ -1305,7 +2131,11 @@ def process_twig_file(
                                         stage,
                                         UsdGeom.Mesh(mesh_prim),
                                         mesh_prim.GetPath(),
-                                        texture_dir=texture_dir if texture_dir.exists() else None,
+                                        texture_dir=(
+                                            texture_dir
+                                            if texture_dir.exists()
+                                            else None
+                                        ),
                                         species_name=species_name,
                                         standardized_name=standardized_name,
                                     )
@@ -1428,10 +2258,44 @@ if __name__ == "__main__":
     output_dir = Path(sys.argv[2])
     formats = sys.argv[3].split(",")
     species_name = sys.argv[4]
-    clean_export = "--clean-export" in sys.argv[5:] if len(sys.argv) > 5 else True
+
+    # Parse optional flags
+    args = sys.argv[5:] if len(sys.argv) > 5 else []
+    clean_export = "--clean-export" in args
+    densify = "--densify" in args
+
+    # Parse numeric parameters
+    displacement_strength = 0.0
+    alpha_trim_threshold = 0.0
+    subdiv_levels = 3
+
+    for arg in args:
+        if arg.startswith("--displacement="):
+            try:
+                displacement_strength = float(arg.split("=")[1])
+            except ValueError:
+                pass
+        elif arg.startswith("--alpha-trim="):
+            try:
+                alpha_trim_threshold = float(arg.split("=")[1])
+            except ValueError:
+                pass
+        elif arg.startswith("--subdiv="):
+            try:
+                subdiv_levels = max(1, int(arg.split("=")[1]))
+            except ValueError:
+                pass
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
     exported = process_twig_file(
-        blend_file, output_dir, formats, species_name, clean_export
+        blend_file,
+        output_dir,
+        formats,
+        species_name,
+        clean_export,
+        densify=densify,
+        displacement_strength=displacement_strength,
+        alpha_trim_threshold=alpha_trim_threshold,
+        subdiv_levels=subdiv_levels,
     )
