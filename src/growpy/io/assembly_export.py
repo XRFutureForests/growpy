@@ -592,6 +592,7 @@ def export_tree_as_nanite_assembly(
                 output_path=temp_tree_path,
                 up_axis="Z",
                 triangulated=True,
+                species_name=species_name,
             ):
                 return False
 

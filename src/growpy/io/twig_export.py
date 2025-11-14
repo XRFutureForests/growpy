@@ -46,38 +46,181 @@ except ImportError:
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel, Vt
 
 
-def _add_twig_material(stage, mesh_prim, mesh_path):
-    """Add simple green leaf material to twig mesh.
+def _add_twig_material(stage, mesh_prim, mesh_path, texture_dir=None, species_name=None):
+    """Add material with opaque-only textures to twig mesh.
+
+    CRITICAL: Filters out alpha/translucent/mask textures for Nanite compatibility.
+    Nanite assemblies do not work well with transparency or opacity masks.
+    Only opaque textures (diffuse, normal, roughness, metallic, ao) are used.
 
     Args:
         stage: USD stage
         mesh_prim: UsdGeom.Mesh prim
         mesh_path: Path to mesh prim
+        texture_dir: Optional path to textures directory
+        species_name: Optional species name for material naming
     """
     try:
         from pxr import Gf, Sdf, UsdShade
 
-        # Define leaf green color
+        # Define leaf green color as fallback
         LEAF_GREEN = Gf.Vec3f(0.3, 0.6, 0.2)
 
         # Create materials path under Twig root
         materials_path = "/Twig/Materials"
         UsdGeom.Scope.Define(stage, materials_path)
 
+        # Determine material name
+        mat_name = species_name if species_name else "LeafMaterial"
+        mat_name = mat_name.replace(" ", "_").replace("-", "_")
+
         # Create leaf material
-        mat = UsdShade.Material.Define(stage, f"{materials_path}/LeafMaterial")
+        mat = UsdShade.Material.Define(stage, f"{materials_path}/{mat_name}")
         shader = UsdShade.Shader.Define(
-            stage, f"{materials_path}/LeafMaterial/PreviewSurface"
+            stage, f"{materials_path}/{mat_name}/Principled_BSDF"
         )
         shader.CreateIdAttr("UsdPreviewSurface")
-        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(LEAF_GREEN)
-        shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.5)
+
+        # Find and add opaque-only textures if texture_dir provided
+        textures_found = False
+        if texture_dir and texture_dir.exists():
+            texture_extensions = [".png", ".jpg", ".jpeg", ".exr"]
+
+            # CRITICAL: Filter texture types - only opaque textures for Nanite
+            # Exclude: alpha, opacity, mask, transparent, translucent
+            OPAQUE_TEXTURE_TYPES = ["diffuse", "normal", "roughness", "metallic", "ao"]
+
+            texture_map = {}
+            for ext in texture_extensions:
+                for tex_file in texture_dir.glob(f"*{ext}"):
+                    tex_type = classify_texture_from_name(tex_file.stem)
+
+                    # Skip non-opaque textures
+                    if tex_type not in OPAQUE_TEXTURE_TYPES:
+                        continue
+
+                    # Keep first match for each type
+                    if tex_type not in texture_map:
+                        texture_map[tex_type] = tex_file
+
+            # Add textures to shader
+            y_offset = 0
+
+            # CRITICAL: Create UV reader for texture mapping
+            # This connects the mesh UVs (primvars:st) to texture samplers
+            uv_reader = None
+            if texture_map:  # Only create if we have textures
+                uv_reader = UsdShade.Shader.Define(
+                    stage, f"{materials_path}/{mat_name}/uvmap"
+                )
+                uv_reader.CreateIdAttr("UsdPrimvarReader_float2")
+                uv_reader.CreateInput("varname", Sdf.ValueTypeNames.Token).Set("st")
+                uv_reader.CreateOutput("result", Sdf.ValueTypeNames.Float2)
+
+            if "diffuse" in texture_map:
+                tex_node = UsdShade.Shader.Define(
+                    stage, f"{materials_path}/{mat_name}/DiffuseTexture"
+                )
+                tex_node.CreateIdAttr("UsdUVTexture")
+                tex_node.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
+                    f"./textures/{texture_map['diffuse'].name}"
+                )
+                tex_node.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set("sRGB")
+
+                # Connect UV reader to texture sampler
+                if uv_reader:
+                    tex_node.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
+                        uv_reader.ConnectableAPI(), "result"
+                    )
+
+                # Connect diffuse to base color
+                shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(
+                    tex_node.ConnectableAPI(), "rgb"
+                )
+                textures_found = True
+            else:
+                # Fallback to solid color
+                shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(LEAF_GREEN)
+
+            if "normal" in texture_map:
+                tex_node = UsdShade.Shader.Define(
+                    stage, f"{materials_path}/{mat_name}/NormalTexture"
+                )
+                tex_node.CreateIdAttr("UsdUVTexture")
+                tex_node.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
+                    f"./textures/{texture_map['normal'].name}"
+                )
+                tex_node.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set("raw")
+
+                # Connect UV reader to texture sampler
+                if uv_reader:
+                    tex_node.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
+                        uv_reader.ConnectableAPI(), "result"
+                    )
+
+                # Connect normal
+                shader.CreateInput("normal", Sdf.ValueTypeNames.Normal3f).ConnectToSource(
+                    tex_node.ConnectableAPI(), "rgb"
+                )
+                textures_found = True
+
+            if "roughness" in texture_map:
+                tex_node = UsdShade.Shader.Define(
+                    stage, f"{materials_path}/{mat_name}/RoughnessTexture"
+                )
+                tex_node.CreateIdAttr("UsdUVTexture")
+                tex_node.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
+                    f"./textures/{texture_map['roughness'].name}"
+                )
+                tex_node.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set("raw")
+
+                # Connect UV reader to texture sampler
+                if uv_reader:
+                    tex_node.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
+                        uv_reader.ConnectableAPI(), "result"
+                    )
+
+                # Connect roughness
+                shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).ConnectToSource(
+                    tex_node.ConnectableAPI(), "r"
+                )
+                textures_found = True
+            else:
+                shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.5)
+
+            if "metallic" in texture_map:
+                tex_node = UsdShade.Shader.Define(
+                    stage, f"{materials_path}/{mat_name}/MetallicTexture"
+                )
+                tex_node.CreateIdAttr("UsdUVTexture")
+                tex_node.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
+                    f"./textures/{texture_map['metallic'].name}"
+                )
+                tex_node.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set("raw")
+
+                # Connect UV reader to texture sampler
+                if uv_reader:
+                    tex_node.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
+                        uv_reader.ConnectableAPI(), "result"
+                    )
+
+                # Connect metallic
+                shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).ConnectToSource(
+                    tex_node.ConnectableAPI(), "r"
+                )
+                textures_found = True
+
+        if not textures_found:
+            # No textures found - use simple color
+            shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(LEAF_GREEN)
+            shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.5)
+
         mat.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
 
         # Bind material to mesh
         binding_api = UsdShade.MaterialBindingAPI.Apply(mesh_prim.GetPrim())
         binding_api.Bind(mat)
-    except Exception:
+    except Exception as e:
         # Silently fail - material addition is optional
         pass
 
@@ -575,9 +718,6 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=True)
         if twig_prim and twig_prim.IsValid():
             stage.SetDefaultPrim(twig_prim)
 
-        # Add simple base color material (no textures)
-        _add_twig_material(stage, mesh, new_mesh_path)
-
         # Save stage
         stage.Save()
         return True
@@ -675,6 +815,73 @@ def classify_texture_from_name(name):
         return "ao"
 
     return "diffuse"
+
+
+def copy_opaque_textures_for_skeletal(blend_dir, output_dir, standardized_name, metadata):
+    """Copy only opaque textures for skeletal twig exports.
+
+    CRITICAL: Filters out alpha/translucent/mask textures for Nanite compatibility.
+    Only copies opaque texture types (diffuse, normal, roughness, metallic, ao).
+
+    Args:
+        blend_dir: Source directory containing textures
+        output_dir: Output directory for texture copies
+        standardized_name: Standardized twig name for texture naming
+        metadata: Twig metadata dict
+
+    Returns:
+        Number of textures copied
+    """
+    texture_extensions = [".png", ".jpg", ".jpeg", ".exr"]
+    OPAQUE_TEXTURE_TYPES = ["diffuse", "normal", "roughness", "metallic", "ao"]
+
+    # Search for textures
+    search_dirs = [blend_dir / "textures", blend_dir, blend_dir.parent / "textures"]
+    available_textures = []
+
+    for search_dir in search_dirs:
+        if not Path(search_dir).exists():
+            continue
+        for ext in texture_extensions:
+            available_textures.extend(Path(search_dir).glob(f"*{ext}"))
+
+    if not available_textures:
+        return 0
+
+    # Create textures subdirectory
+    textures_dir = output_dir / "textures"
+    textures_dir.mkdir(exist_ok=True)
+
+    # Copy opaque-only textures
+    copied_count = 0
+    for tex_path in available_textures:
+        tex_type = classify_texture_from_name(tex_path.stem)
+
+        # Skip non-opaque textures
+        if tex_type not in OPAQUE_TEXTURE_TYPES:
+            continue
+
+        # Generate standardized name
+        tex_ext = tex_path.suffix
+        base_name_parts = []
+        for part in standardized_name.split("_"):
+            base_name_parts.append(part)
+            if part == "twig":
+                break
+
+        if not any(p == "twig" for p in base_name_parts):
+            base_name = metadata.get("species", "").lower().replace(" ", "_") + "_twig"
+        else:
+            base_name = "_".join(base_name_parts)
+
+        standardized_tex_name = f"{base_name}_{tex_type}{tex_ext}"
+        dest_tex = textures_dir / standardized_tex_name
+
+        if not dest_tex.exists():
+            shutil.copy2(tex_path, dest_tex)
+            copied_count += 1
+
+    return copied_count
 
 
 def setup_materials_with_textures(
@@ -1078,19 +1285,19 @@ def process_twig_file(
                         output_dir / f"{standardized_name}_skeletal.{fmt}"
                     )
 
-                    # CRITICAL: Force clean export - no materials, textures, or UVs
-                    # Nanite assemblies require geometry-only USD files
+                    # CRITICAL: Export UVs for texture mapping but disable materials/textures at Blender level
+                    # Materials and textures will be added later via USD with opaque-only filtering
                     bpy.ops.wm.usd_export(
                         filepath=str(skel_export_path),
                         selected_objects_only=True,
-                        export_materials=False,  # Force disabled for Nanite
-                        export_textures=False,  # Force disabled for Nanite
-                        export_uvmaps=False,  # Force disabled for Nanite
+                        export_materials=False,  # Disabled - added later with opaque-only filtering
+                        export_textures=False,  # Disabled - added later with opaque-only filtering
+                        export_uvmaps=True,  # CRITICAL: Required for texture mapping
                         export_normals=True,
                         export_mesh_colors=False,  # Force disabled for Nanite
                         use_instancing=False,
                         evaluation_mode="RENDER",
-                        generate_preview_surface=False,  # Force disabled for Nanite
+                        generate_preview_surface=False,  # Disabled - created later
                         relative_paths=True,
                         export_hair=False,
                         export_lights=False,
@@ -1105,7 +1312,40 @@ def process_twig_file(
                         pivot_point=(0.0, 0.0, 0.0),
                         clean_export=clean_export,
                     ):
-                        pass
+                        # Copy opaque-only textures for skeletal twig (no alpha/translucent for Nanite)
+                        textures_copied = copy_opaque_textures_for_skeletal(
+                            blend_dir, output_dir, standardized_name, metadata
+                        )
+
+                        # Add opaque-only textures to skeletal twig material
+                        try:
+                            from pxr import Usd, UsdGeom
+
+                            stage = Usd.Stage.Open(str(skel_export_path))
+                            if stage:
+                                # Find mesh prim
+                                mesh_prim = None
+                                for prim in stage.Traverse():
+                                    if prim.IsA(UsdGeom.Mesh):
+                                        mesh_prim = prim
+                                        break
+
+                                if mesh_prim:
+                                    # Find textures directory
+                                    texture_dir = output_dir / "textures"
+
+                                    # Add material with opaque-only textures
+                                    _add_twig_material(
+                                        stage,
+                                        UsdGeom.Mesh(mesh_prim),
+                                        mesh_prim.GetPath(),
+                                        texture_dir=texture_dir if texture_dir.exists() else None,
+                                        species_name=species_name,
+                                    )
+
+                                    stage.Save()
+                        except Exception:
+                            pass
                     else:
                         pass
 
