@@ -188,12 +188,18 @@ def extract_twig_placements_from_model(
 
     # Calculate number of twigs from flat array length
     num_twigs = len(twig_locations) // 3
-    
+
     print(f"\n=== TWIG EXTRACTION DEBUG ===")
     print(f"Total twigs in Grove API arrays: {num_twigs}")
-    print(f"  twig_locations length: {len(twig_locations)} ({len(twig_locations)//3} twigs)")
-    print(f"  twig_directions length: {len(twig_directions)} ({len(twig_directions)//3} twigs)")
-    print(f"  twig_orientations length: {len(twig_orientations)} ({len(twig_orientations)//3} twigs)")
+    print(
+        f"  twig_locations length: {len(twig_locations)} ({len(twig_locations)//3} twigs)"
+    )
+    print(
+        f"  twig_directions length: {len(twig_directions)} ({len(twig_directions)//3} twigs)"
+    )
+    print(
+        f"  twig_orientations length: {len(twig_orientations)} ({len(twig_orientations)//3} twigs)"
+    )
 
     # Extract bone IDs for binding - prefer branch-based approach if available
     bone_ids = []
