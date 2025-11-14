@@ -165,6 +165,7 @@ def build_tree_mesh(
     skeleton_connected: bool = True,
     junction_blend_distance: float = 0.5,
     blend_mode: str = "linear",
+    species_name: Optional[str] = None,
 ) -> bool:
     """Build USD file directly from Grove model using API geometry data.
 
@@ -290,7 +291,7 @@ def build_tree_mesh(
 
         # Add materials to mesh (required for Nanite assembly recognition)
         # Materials are created as siblings to TreeMesh inside /tree root
-        _add_skeletal_materials(stage, mesh.GetPrim(), str(root_path))
+        _add_skeletal_materials(stage, mesh.GetPrim(), str(root_path), species_name)
 
         # Save stage
         stage.Save()
@@ -540,34 +541,73 @@ def _add_usd_materials(
 
 
 def _add_skeletal_materials(
-    stage: Usd.Stage, mesh_prim: Usd.Prim, root_path: str
+    stage: Usd.Stage, mesh_prim: Usd.Prim, root_path: str, species_name: Optional[str] = None
 ) -> None:
-    """Add materials to skeletal tree mesh for Nanite assembly recognition.
+    """Add materials with opaque-only textures to skeletal tree mesh for Nanite assembly.
 
     Creates Materials scope as sibling to TreeMesh inside /tree root,
-    matching the structure used in twig files.
+    matching the structure used in twig files. Includes bark textures for better visuals
+    while excluding alpha/translucent textures for Nanite compatibility.
 
     Args:
         stage: USD stage
         mesh_prim: TreeMesh prim
         root_path: Path to root xform (e.g., "/tree")
+        species_name: Optional species name for bark texture lookup
     """
     try:
-        # Bark material color (brown)
+        # Bark material color (brown) - fallback if no texture
         BARK_BROWN = Gf.Vec3f(0.4, 0.3, 0.2)
 
         # Create Materials scope as sibling to TreeMesh
         materials_path = root_path + "/Materials"
         UsdGeom.Scope.Define(stage, materials_path)
 
-        # Create BarkMaterial
+        # Create BarkMaterial with texture support
         bark_mat = UsdShade.Material.Define(stage, f"{materials_path}/BarkMaterial")
         shader = UsdShade.Shader.Define(
             stage, f"{materials_path}/BarkMaterial/PreviewSurface"
         )
         shader.CreateIdAttr("UsdPreviewSurface")
-        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(BARK_BROWN)
-        shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.8)
+
+        # Try to find and add bark texture if available
+        # CRITICAL: Only opaque textures for Nanite compatibility
+        texture_found = False
+        texture_file = None
+        if species_name:
+            from growpy.config.paths import get_bark_texture_path
+
+            texture_file = get_bark_texture_path(species_name)
+
+            if texture_file and texture_file.exists():
+                texture_found = True
+                # Create texture reader
+                tex_reader = UsdShade.Shader.Define(
+                    stage, f"{materials_path}/BarkMaterial/DiffuseTexture"
+                )
+                tex_reader.CreateIdAttr("UsdUVTexture")
+                # Use relative path to textures/ subdirectory
+                tex_reader.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
+                    f"./textures/{texture_file.name}"
+                )
+                tex_reader.CreateInput(
+                    "sourceColorSpace", Sdf.ValueTypeNames.Token
+                ).Set("sRGB")
+                tex_reader.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+
+                # Connect texture to shader
+                shader.CreateInput(
+                    "diffuseColor", Sdf.ValueTypeNames.Color3f
+                ).ConnectToSource(tex_reader.ConnectableAPI(), "rgb")
+
+        # Fallback to solid color if no texture found
+        if not texture_found:
+            shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(
+                BARK_BROWN
+            )
+
+        shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.7)
+        shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
         bark_mat.CreateSurfaceOutput().ConnectToSource(
             shader.ConnectableAPI(), "surface"
         )
@@ -575,6 +615,23 @@ def _add_skeletal_materials(
         # Apply MaterialBindingAPI to mesh and bind material
         binding_api = UsdShade.MaterialBindingAPI.Apply(mesh_prim)
         binding_api.Bind(bark_mat)
+
+        # Copy texture file to output directory if found
+        if texture_found and texture_file:
+            import shutil
+            from pathlib import Path
+
+            # Get output directory from stage
+            output_dir = Path(stage.GetRootLayer().realPath).parent
+
+            # Create textures subdirectory (matches twig texture structure)
+            textures_dir = output_dir / "textures"
+            textures_dir.mkdir(exist_ok=True)
+
+            # Copy texture file to textures/ subdirectory
+            dest_texture = textures_dir / texture_file.name
+            if not dest_texture.exists():
+                shutil.copy2(texture_file, dest_texture)
 
     except Exception as e:
         # Silently fail - material addition is optional
