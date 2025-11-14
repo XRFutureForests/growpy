@@ -328,9 +328,7 @@ def create_assembly(
 
                     for twig_type, placement_list in placements.items():
                         if not placement_list:
-                            print(
-                                f"  Skipping {twig_type}: empty placement_list"
-                            )
+                            print(f"  Skipping {twig_type}: empty placement_list")
                             continue
 
                         # Map twig type to prototype index with fallback logic
@@ -339,13 +337,16 @@ def create_assembly(
                         # - twig_dead → twig_short (dead twigs use lateral/short twigs)
                         fallback_map = {
                             "twig_upward": "twig_long",  # Upward twigs → apical/long
-                            "twig_dead": "twig_short",   # Dead twigs → lateral/short
+                            "twig_dead": "twig_short",  # Dead twigs → lateral/short
                         }
 
                         if twig_type in twig_type_to_proto_idx:
                             proto_idx = twig_type_to_proto_idx[twig_type]
                             mapped_type = twig_type
-                        elif twig_type in fallback_map and fallback_map[twig_type] in twig_type_to_proto_idx:
+                        elif (
+                            twig_type in fallback_map
+                            and fallback_map[twig_type] in twig_type_to_proto_idx
+                        ):
                             # Use fallback mapping
                             mapped_type = fallback_map[twig_type]
                             proto_idx = twig_type_to_proto_idx[mapped_type]
@@ -443,7 +444,10 @@ def create_assembly(
                             if twig_type in twig_type_to_proto_idx:
                                 # Direct mapping exists
                                 pass
-                            elif twig_type in fallback_map and fallback_map[twig_type] in twig_type_to_proto_idx:
+                            elif (
+                                twig_type in fallback_map
+                                and fallback_map[twig_type] in twig_type_to_proto_idx
+                            ):
                                 # Use fallback mapping
                                 pass
                             else:
