@@ -188,6 +188,12 @@ def extract_twig_placements_from_model(
 
     # Calculate number of twigs from flat array length
     num_twigs = len(twig_locations) // 3
+    
+    print(f"\n=== TWIG EXTRACTION DEBUG ===")
+    print(f"Total twigs in Grove API arrays: {num_twigs}")
+    print(f"  twig_locations length: {len(twig_locations)} ({len(twig_locations)//3} twigs)")
+    print(f"  twig_directions length: {len(twig_directions)} ({len(twig_directions)//3} twigs)")
+    print(f"  twig_orientations length: {len(twig_orientations)} ({len(twig_orientations)//3} twigs)")
 
     # Extract bone IDs for binding - prefer branch-based approach if available
     bone_ids = []
@@ -231,79 +237,96 @@ def extract_twig_placements_from_model(
 
     faces = model.faces
 
+    # Get twig type attributes for all faces
+    twig_type_attrs = {}
     for twig_type in twig_types:
         attr_name = f"face_attribute_{twig_type}"
-        if not hasattr(model, attr_name):
-            continue
+        if hasattr(model, attr_name):
+            twig_type_attrs[twig_type] = getattr(model, attr_name)
+            # Count faces with this twig type
+            twig_count = sum(1 for val in getattr(model, attr_name) if val > 0)
+            print(f"  {twig_type}: {twig_count} faces marked")
 
-        twig_values = getattr(model, attr_name)
+    # Track which twig index we're processing across ALL types
+    twig_idx = 0
 
-        # Track which twig index we're processing
-        twig_idx = 0
+    # Iterate through all faces once
+    for face_idx, face in enumerate(faces):
+        # Check which twig type (if any) this face has
+        current_twig_type = None
+        for twig_type, twig_values in twig_type_attrs.items():
+            if face_idx < len(twig_values) and twig_values[face_idx] > 0:
+                current_twig_type = twig_type
+                break  # Face can only have one twig type
 
-        for face_idx, face in enumerate(faces):
-            if face_idx >= len(twig_values):
+        # If this face has a twig, process it
+        if current_twig_type:
+            # Check if we still have twig data available
+            if twig_idx >= num_twigs:
                 break
 
-            twig_value = twig_values[face_idx]
+            # Extract position and normal from flat arrays (3 floats per twig)
+            base_idx = twig_idx * 3
+            position = (
+                twig_locations[base_idx],
+                twig_locations[base_idx + 1],
+                twig_locations[base_idx + 2],
+            )
+            normal = (
+                twig_directions[base_idx],
+                twig_directions[base_idx + 1],
+                twig_directions[base_idx + 2],
+            )
 
-            if twig_value > 0:
-                # Check if we still have twig data available
-                if twig_idx >= num_twigs:
-                    break
+            # BONE-BASED BINDING: Get bone_id from vertices, then extract branch_id from that bone
+            twig_bone_id = None
+            branch_id_for_twig = None
 
-                # Extract position and normal from flat arrays (3 floats per twig)
-                base_idx = twig_idx * 3
-                position = (
-                    twig_locations[base_idx],
-                    twig_locations[base_idx + 1],
-                    twig_locations[base_idx + 2],
-                )
-                normal = (
-                    twig_directions[base_idx],
-                    twig_directions[base_idx + 1],
-                    twig_directions[base_idx + 2],
-                )
+            if bone_ids:
+                # Get the bone that this twig face belongs to via vertex voting
+                from collections import Counter
 
-                # BONE-BASED BINDING: Get bone_id from vertices, then extract branch_id from that bone
-                twig_bone_id = None
-                branch_id_for_twig = None
+                face_vert_indices = list(face)
+                face_bone_ids = []
+                for vert_idx in face_vert_indices:
+                    if vert_idx < len(bone_ids):
+                        face_bone_ids.append(bone_ids[vert_idx])
 
-                if bone_ids:
-                    # Get the bone that this twig face belongs to via vertex voting
-                    from collections import Counter
+                if face_bone_ids:
+                    # Get most common bone ID (this is a GLOBAL bone ID)
+                    global_bone_id = Counter(face_bone_ids).most_common(1)[0][0]
+                    # Convert global bone ID to local bone index
+                    local_bone_id = global_bone_id - bone_id_offset
+                    twig_bone_id = local_bone_id
 
-                    face_vert_indices = list(face)
-                    face_bone_ids = []
-                    for vert_idx in face_vert_indices:
-                        if vert_idx < len(bone_ids):
-                            face_bone_ids.append(bone_ids[vert_idx])
+                    # Now get the branch_id from this bone
+                    # bones_info is indexed by local bone_id
+                    if bones_info and local_bone_id < len(bones_info):
+                        bone = bones_info[local_bone_id]
+                        if len(bone) >= 8:
+                            global_branch_id = int(bone[7])  # Index 7 is branch_id
+                            branch_id_for_twig = global_branch_id - branch_id_offset
 
-                    if face_bone_ids:
-                        # Get most common bone ID (this is a GLOBAL bone ID)
-                        global_bone_id = Counter(face_bone_ids).most_common(1)[0][0]
-                        # Convert global bone ID to local bone index
-                        local_bone_id = global_bone_id - bone_id_offset
-                        twig_bone_id = local_bone_id
+            placement = TwigPlacement(
+                type=current_twig_type,
+                position=position,
+                normal=normal,
+                scale=1.0,
+                bone_id=twig_bone_id,
+                branch_id=branch_id_for_twig,
+            )
+            placements[current_twig_type].append(placement)
 
-                        # Now get the branch_id from this bone
-                        # bones_info is indexed by local bone_id
-                        if bones_info and local_bone_id < len(bones_info):
-                            bone = bones_info[local_bone_id]
-                            if len(bone) >= 8:
-                                global_branch_id = int(bone[7])  # Index 7 is branch_id
-                                branch_id_for_twig = global_branch_id - branch_id_offset
+            # Increment twig index for ALL types (they share the same sequential array)
+            twig_idx += 1
 
-                placement = TwigPlacement(
-                    type=twig_type,
-                    position=position,
-                    normal=normal,
-                    scale=1.0,
-                    bone_id=twig_bone_id,
-                    branch_id=branch_id_for_twig,
-                )
-                placements[twig_type].append(placement)
-
-                twig_idx += 1
+    # Report results
+    print(f"\nTwig extraction complete:")
+    for twig_type in twig_types:
+        count = len(placements[twig_type])
+        print(f"  {twig_type}: {count} placements extracted")
+    print(f"Total twigs extracted: {sum(len(p) for p in placements.values())}")
+    print(f"Total twigs processed from arrays: {twig_idx}/{num_twigs}")
+    print("=== END TWIG EXTRACTION DEBUG ===\n")
 
     return placements
