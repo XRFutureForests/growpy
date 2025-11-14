@@ -327,15 +327,41 @@ def create_assembly(
                     all_proto_indices = []
 
                     for twig_type, placement_list in placements.items():
-                        if (
-                            not placement_list
-                            or twig_type not in twig_type_to_proto_idx
-                        ):
-                            print(f"  Skipping {twig_type}: placement_list={bool(placement_list)}, has_proto={twig_type in twig_type_to_proto_idx}")
+                        if not placement_list:
+                            print(
+                                f"  Skipping {twig_type}: empty placement_list"
+                            )
                             continue
 
-                        proto_idx = twig_type_to_proto_idx[twig_type]
-                        print(f"  Adding {len(placement_list)} instances of {twig_type} (proto_idx={proto_idx})")
+                        # Map twig type to prototype index with fallback logic
+                        # If this twig type has no matching prototype, use a fallback:
+                        # - twig_upward → twig_long (upward growth uses apical/terminal twigs)
+                        # - twig_dead → twig_short (dead twigs use lateral/short twigs)
+                        fallback_map = {
+                            "twig_upward": "twig_long",  # Upward twigs → apical/long
+                            "twig_dead": "twig_short",   # Dead twigs → lateral/short
+                        }
+
+                        if twig_type in twig_type_to_proto_idx:
+                            proto_idx = twig_type_to_proto_idx[twig_type]
+                            mapped_type = twig_type
+                        elif twig_type in fallback_map and fallback_map[twig_type] in twig_type_to_proto_idx:
+                            # Use fallback mapping
+                            mapped_type = fallback_map[twig_type]
+                            proto_idx = twig_type_to_proto_idx[mapped_type]
+                            print(
+                                f"  Mapping {twig_type} → {mapped_type} (proto_idx={proto_idx})"
+                            )
+                        else:
+                            # No mapping available - skip
+                            print(
+                                f"  Skipping {twig_type}: no matching prototype or fallback"
+                            )
+                            continue
+
+                        print(
+                            f"  Adding {len(placement_list)} instances of {twig_type} (proto_idx={proto_idx})"
+                        )
 
                         for placement in placement_list:
                             from growpy.core.twig import (
@@ -403,11 +429,25 @@ def create_assembly(
                         bind_weights = []
 
                         # Iterate through placements in same order as instance creation
+                        # CRITICAL: Must match instance creation loop logic exactly
                         for twig_type, placement_list in placements.items():
-                            if (
-                                not placement_list
-                                or twig_type not in twig_type_to_proto_idx
-                            ):
+                            if not placement_list:
+                                continue
+
+                            # Apply same fallback mapping as instance creation
+                            fallback_map = {
+                                "twig_upward": "twig_long",
+                                "twig_dead": "twig_short",
+                            }
+
+                            if twig_type in twig_type_to_proto_idx:
+                                # Direct mapping exists
+                                pass
+                            elif twig_type in fallback_map and fallback_map[twig_type] in twig_type_to_proto_idx:
+                                # Use fallback mapping
+                                pass
+                            else:
+                                # No mapping - skip
                                 continue
 
                             for placement in placement_list:
