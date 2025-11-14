@@ -190,9 +190,14 @@ def create_assembly(
                     f"/{assembly_name}/TwigPrototypes", "Scope"
                 )
 
-                # NOTE: Do NOT set visibility to invisible on TwigPrototypes
-                # Unreal Engine needs to see the prototypes to import them correctly
-                # The instanceable flag on the Xform wrappers handles instancing
+                # CRITICAL: Visibility behavior differs between skeletal and static assemblies
+                # - Skeletal assemblies: prototypes MUST be visible for Unreal to import them
+                # - Static assemblies: prototypes MUST be invisible to prevent duplicate rendering at origin
+                if not use_skeletal_mesh:
+                    # Static assembly: hide prototypes to prevent rendering at tree base
+                    prototypes_imageable = UsdGeom.Imageable(prototypes_group)
+                    if prototypes_imageable:
+                        prototypes_imageable.MakeInvisible()
 
                 # Map twig types to prototype indices
                 twig_type_to_proto_idx = {}
