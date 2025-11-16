@@ -36,7 +36,7 @@ Assembly Types (both created by default):
               - Reference: species_tree_####_static_nanite_assembly.usda
 
 Full Documentation:
-    See docs/guides/cli-reference.md for complete flag reference and examples
+    See docs/archive/cli-reference.md for complete flag reference and examples
 
 Usage:
     python src/growpy/cli/generate_forest.py [csv_file] --quality high --output-dir data/output/forest --growth-cycle-limit 5 --import-to-unreal
