@@ -11,23 +11,23 @@ Supports two CSV formats:
 Quick Start:
     python src/growpy/cli/create_growth_models.py --cycles 25
 
-Common Flags:
-    --species TEXT           Analyze specific species (default: all from CSV)
-    --csv PATH              Species CSV (default: data/input/test.csv)
-    --cycles INT            Maximum growth cycles (default: 125)
-    --height-threshold FLOAT Minimum growth to continue (default: 0.05)
-    --timeout INT           Max simulation time per seed (default: 300s)
-    --workers INT           Parallel workers (default: 3)
-    --no-parallel           Disable parallel processing
+Common Flags (current):
+    --csv PATH                Species CSV (default: data/input/test.csv)
+    --cycles INT              Maximum growth cycles (default: 125)
+    --seeds INT               Random seeds to average (default: 1)
+    --height-threshold FLOAT  Minimum growth to continue (default: 0.05)
+    --max-cycles-without-growth INT  Stop after N flat cycles (default: 3)
+    --timeout INT             Max simulation time per seed in seconds (default: 300)
+    --species TEXT            Analyze a specific species (optional)
 
 Full Documentation:
-    See docs/guides/cli-reference.md for complete flag reference and examples
+    See docs/archive/cli-reference.md for complete flag reference and examples
 
 Note:
     Run prepare_assets.py first to copy species presets from Grove installation.
 
 Usage:
-    python create_growth_models.py [options]
+    python src/growpy/cli/create_growth_models.py [options]
 """
 
 import argparse
@@ -54,17 +54,8 @@ Examples:
     # Analyze with custom height monitoring and timeout
     python src/growpy/cli/create_growth_models.py --height-threshold 0.005 --max-cycles-without-growth 15 --timeout 120
 
-    # Analyze with custom assets directory
-    python src/growpy/cli/create_growth_models.py --assets-dir data/assets
-
-    # Analyze sequentially (no parallel processing)
-    python src/growpy/cli/create_growth_models.py --no-parallel
-
-    # Analyze with custom number of workers
-    python src/growpy/cli/create_growth_models.py --workers 4
-
-    # Analyze specific species with detailed logging
-    python src/growpy/cli/create_growth_models.py --species "European oak" --verbose
+    # Analyze specific species
+    python src/growpy/cli/create_growth_models.py --species "European oak"
 
     # Analyze ALL 57 available species using comprehensive lookup table
     python src/growpy/cli/create_growth_models.py --csv src/growpy/config/tree_asset_lookup.csv
@@ -80,7 +71,6 @@ Height Monitoring & Timeout Protection:
     - This prevents wasting computation time on trees that have reached their growth plateau or are stuck
 
 Note: Run prepare_assets.py first to copy species presets from Grove installation.
-      Parallel processing significantly speeds up analysis when processing multiple species.
         """,
     )
 

@@ -16,15 +16,14 @@ Quick Start:
 
 Common Flags:
     --grove-dir PATH    Source directory (default: src/the_grove_22)
-    --assets-dir PATH   Target directory (default: data/assets)
     --csv PATH          Species CSV (default: data/input/test.csv)
     --all               Copy ALL 57 Grove assets (ignores --csv)
 
 Full Documentation:
-    See docs/guides/cli-reference.md for complete flag reference and examples
+    See docs/archive/cli-reference.md for complete flag reference and examples
 
 Usage:
-    python prepare_assets.py [options]
+    python src/growpy/cli/prepare_assets.py [options]
 """
 import argparse
 import re
