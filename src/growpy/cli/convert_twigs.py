@@ -36,9 +36,16 @@ Quick Start:
     # Output: aspen_twig_apical_skeletal.usda + aspen_twig_apical_static.usda
     python src/growpy/cli/convert_twigs.py data/assets/twigs
 
-Common Flags:
-    --formats {usd,usda}  Export formats (default: usda)
-    --csv PATH            Species CSV filter (default: data/input/test.csv)
+Common Flags (current):
+    --csv PATH              Species CSV filter (default: data/input/test.csv)
+    --no-densify            Disable mesh densification (subdivision)
+    --subdiv INT            Subdivision levels for densification (default: 4)
+    --alpha-trim FLOAT      Alpha threshold for edge trimming (default: 0.5)
+    --edge-adaptive         Enable edge-adaptive leaf densification
+    --edge-subdiv INT       Additional edge-only subdivision cuts
+    --interior-decimate     Reduce interior leaf density while preserving silhouette
+    --decimate-ratio FLOAT  Collapse decimate ratio for interior (default: 0.5)
+    --boundary-rings INT    Edge protection rings around silhouette (default: 1)
 
 Output per twig:
     - {species}_twig_{type}_skeletal.usda  # Skeletal mesh with skeleton
@@ -66,10 +73,10 @@ File Preservation:
     Only auxiliary files are cleaned (ReadMe.txt, duplicate textures)
 
 Full Documentation:
-    See docs/guides/cli-reference.md for complete flag reference and examples
+    See docs/archive/cli-reference.md for complete flag reference and examples
 
 Usage:
-    python convert_twigs.py <path> [options]
+    python src/growpy/cli/convert_twigs.py <path> [options]
 """
 
 import sys
@@ -332,16 +339,6 @@ def process_twig_directory(
     """
     # Force clean export for Nanite compatibility
     clean_export = True
-    """Process all twig blend files in a directory.
-
-    Args:
-        twig_dir: Directory containing .blend twig files
-        formats: Export formats to create
-        clean_export: If True, creates minimal USD without materials/textures (default for Nanite)
-        twig_filter: Optional list of twig directory names to process (snake_case)
-        export_static: Always True - exports both skeletal and static variants (default: True)
-
-    """
 
     blend_files = list(twig_dir.rglob("*.blend"))
 
