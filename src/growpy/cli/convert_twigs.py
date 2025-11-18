@@ -36,16 +36,72 @@ Quick Start:
     # Output: aspen_twig_apical_skeletal.usda + aspen_twig_apical_static.usda
     python src/growpy/cli/convert_twigs.py data/assets/twigs
 
-Common Flags (current):
+Common Flags:
+    Processing Pipeline (in order):
+        1. --subdiv         → Subdivide mesh (higher = more triangles, smoother curves)
+        2. --interior-decimate → Reduce interior density (enabled by flag)
+        3. --alpha-trim     → Remove transparent areas (creates jagged edges)
+        4. --smooth-boundary → Smooth those jagged edges (enabled by flag)
+
+    Core Flags:
     --csv PATH              Species CSV filter (default: data/input/test.csv)
     --no-densify            Disable mesh densification (subdivision)
-    --subdiv INT            Subdivision levels for densification (default: 4)
+    
+    --subdiv INT            Subdivision levels (default: 4)
+                            Higher = more triangles = smoother but slower
+                            Typical: 4-10 for production, 20-30 for extreme detail
+                            Affects: Overall mesh resolution before decimation
+    
     --alpha-trim FLOAT      Alpha threshold for edge trimming (default: 0.5)
-    --edge-adaptive         Enable edge-adaptive leaf densification
-    --edge-subdiv INT       Additional edge-only subdivision cuts
-    --interior-decimate     Reduce interior leaf density while preserving silhouette
-    --decimate-ratio FLOAT  Collapse decimate ratio for interior (default: 0.5)
-    --boundary-rings INT    Edge protection rings around silhouette (default: 1)
+                            Lower = more aggressive trimming (less leaf area)
+                            Higher = keeps more semi-transparent areas
+                            Range: 0.0 (trim everything) to 1.0 (keep everything)
+    
+    --interior-decimate     Enable interior decimation (off by default)
+                            Reduces triangle count inside leaves while protecting edges
+                            Use with: High subdivision + low decimate-ratio
+    
+    --decimate-ratio FLOAT  Interior collapse ratio (default: 0.5)
+                            Lower = more aggressive reduction (fewer triangles)
+                            Higher = gentler reduction (more triangles)
+                            Range: 0.0 (extreme) to 1.0 (minimal)
+                            Example: 0.01 keeps ~1% of interior triangles
+    
+    --boundary-rings INT    Edge protection width (default: 1)
+                            Widens the protected edge region during decimation
+                            Higher = more triangles preserved near edges
+                            Typical: 1-3 rings, higher for detailed silhouettes
+    
+    --smooth-boundary       Enable boundary smoothing (off by default)
+                            Smooths jagged edges created by alpha trimming
+                            Use after: High subdivision + alpha-trim
+                            Effect: Natural curves instead of regular grid edges
+    
+    --smooth-iterations INT Smoothing passes (default: 3)
+                            How many times to smooth (accumulative effect)
+                            Lower = subtle smoothing (2-5)
+                            Higher = aggressive smoothing (5-10)
+                            Use: Increase for very jagged edges
+    
+    --smooth-factor FLOAT   Smoothing strength per pass (default: 0.5)
+                            How much to blend with neighbors each iteration
+                            Lower = subtle per-pass (0.1-0.3)
+                            Higher = strong per-pass (0.5-0.8)
+                            Use: Increase for faster convergence
+
+    Common Workflows:
+        # High detail with optimized interior
+        --subdiv 30 --interior-decimate --decimate-ratio 0.01 --boundary-rings 1
+        
+        # High detail with smooth natural edges
+        --subdiv 30 --interior-decimate --decimate-ratio 0.01 --smooth-boundary
+        
+        # Balanced quality and performance
+        --subdiv 10 --interior-decimate --decimate-ratio 0.3 --smooth-boundary
+        
+        # Maximum quality (slow)
+        --subdiv 30 --interior-decimate --decimate-ratio 0.01 --smooth-boundary \
+        --smooth-iterations 5 --smooth-factor 0.6 --boundary-rings 2
 
 Output per twig:
     - {species}_twig_{type}_skeletal.usda  # Skeletal mesh with skeleton
@@ -320,11 +376,12 @@ def process_twig_directory(
     densify: bool = True,
     subdiv_levels: int = 4,
     alpha_trim_threshold: float = 0.5,
-    edge_adaptive: bool = False,
-    edge_subdiv_levels: Optional[int] = None,
     interior_decimate: bool = False,
     decimate_ratio: float = 0.5,
     boundary_rings: int = 1,
+    smooth_boundary: bool = False,
+    smooth_iterations: int = 3,
+    smooth_factor: float = 0.5,
 ) -> Dict[str, List[Path]]:
     """Process all twig blend files in a directory.
 
@@ -392,11 +449,12 @@ def process_twig_directory(
                 densify=densify,
                 alpha_trim_threshold=alpha_trim_threshold,
                 subdiv_levels=subdiv_levels,
-                edge_adaptive=edge_adaptive,
-                edge_subdiv_levels=edge_subdiv_levels,
                 interior_decimate=interior_decimate,
                 decimate_ratio=decimate_ratio,
                 boundary_rings=boundary_rings,
+                smooth_boundary=smooth_boundary,
+                smooth_iterations=smooth_iterations,
+                smooth_factor=smooth_factor,
             )
 
             # Collect results
@@ -474,17 +532,6 @@ Output per twig:
         help="Alpha threshold for edge trimming (default: 0.5)",
     )
     parser.add_argument(
-        "--edge-adaptive",
-        action="store_true",
-        help="Enable edge-adaptive leaf densification using alpha mask (default: off)",
-    )
-    parser.add_argument(
-        "--edge-subdiv",
-        type=int,
-        default=None,
-        help="Additional edge-only subdivision cuts near alpha edges (default: none)",
-    )
-    parser.add_argument(
         "--interior-decimate",
         action="store_true",
         help="Reduce interior leaf density while preserving alpha silhouette (default: off)",
@@ -500,6 +547,23 @@ Output per twig:
         type=int,
         default=1,
         help="Edge protection width in vertex rings around silhouette (default: 1)",
+    )
+    parser.add_argument(
+        "--smooth-boundary",
+        action="store_true",
+        help="Smooth boundary edges to follow texture curves more naturally (default: off)",
+    )
+    parser.add_argument(
+        "--smooth-iterations",
+        type=int,
+        default=3,
+        help="Number of Laplacian smoothing passes for boundary edges (default: 3)",
+    )
+    parser.add_argument(
+        "--smooth-factor",
+        type=float,
+        default=0.5,
+        help="Smoothing strength per iteration (0.0-1.0, default: 0.5)",
     )
     args = parser.parse_args()
 
@@ -590,15 +654,12 @@ Output per twig:
             densify=(not args.no_densify),
             subdiv_levels=max(1, args.subdiv),
             alpha_trim_threshold=min(max(0.0, args.alpha_trim), 1.0),
-            edge_adaptive=args.edge_adaptive,
-            edge_subdiv_levels=(
-                int(args.edge_subdiv)
-                if args.edge_subdiv and args.edge_subdiv > 0
-                else None
-            ),
             interior_decimate=args.interior_decimate,
             decimate_ratio=float(args.decimate_ratio),
             boundary_rings=max(0, int(args.boundary_rings)),
+            smooth_boundary=args.smooth_boundary,
+            smooth_iterations=max(1, int(args.smooth_iterations)),
+            smooth_factor=min(max(0.0, float(args.smooth_factor)), 1.0),
         )
     elif args.path.is_dir():
         # Directory
@@ -611,15 +672,12 @@ Output per twig:
             densify=(not args.no_densify),
             subdiv_levels=max(1, args.subdiv),
             alpha_trim_threshold=min(max(0.0, args.alpha_trim), 1.0),
-            edge_adaptive=args.edge_adaptive,
-            edge_subdiv_levels=(
-                int(args.edge_subdiv)
-                if args.edge_subdiv and args.edge_subdiv > 0
-                else None
-            ),
             interior_decimate=args.interior_decimate,
             decimate_ratio=float(args.decimate_ratio),
             boundary_rings=max(0, int(args.boundary_rings)),
+            smooth_boundary=args.smooth_boundary,
+            smooth_iterations=max(1, int(args.smooth_iterations)),
+            smooth_factor=min(max(0.0, float(args.smooth_factor)), 1.0),
         )
     else:
         return 1

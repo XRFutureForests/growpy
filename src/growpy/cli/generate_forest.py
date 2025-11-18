@@ -192,6 +192,23 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             if export_success:
                 exported.append(str(usd_path))
 
+                # Generate wind JSON for skeletal meshes
+                if use_skeletal and skeleton and bones_for_tree:
+                    from growpy.io.wind_json import generate_wind_json
+
+                    wind_json_path = species_dir / f"{tree_name}_DynamicWind.json"
+                    try:
+                        generate_wind_json(
+                            tree_usd_path=str(usd_path),
+                            skeleton=skeleton,
+                            bones_info=bones_for_tree,
+                            output_path=str(wind_json_path),
+                        )
+                    except Exception as wind_error:
+                        print(
+                            f"Warning: Failed to generate wind JSON for {tree_name}: {wind_error}"
+                        )
+
         _gc_module.collect()
 
     except Exception as e:
