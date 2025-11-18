@@ -209,6 +209,23 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                             f"Warning: Failed to generate wind JSON for {tree_name}: {wind_error}"
                         )
 
+                # Generate PVE preset JSON (for both skeletal and static meshes)
+                from growpy.io.pve_grove_mapper import generate_pve_from_grove
+
+                pve_json_path = species_dir / f"{tree_name}_PVEPreset.json"
+                try:
+                    generate_pve_from_grove(
+                        grove=grove,
+                        output_path=pve_json_path,
+                        species_name=species,
+                        tree_index=model_idx,
+                        verbose=False,
+                    )
+                except Exception as pve_error:
+                    print(
+                        f"Warning: Failed to generate PVE preset JSON for {tree_name}: {pve_error}"
+                    )
+
         _gc_module.collect()
 
     except Exception as e:
