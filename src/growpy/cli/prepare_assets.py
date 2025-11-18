@@ -33,6 +33,7 @@ from pathlib import Path
 
 import pandas as pd
 
+
 def camel_to_snake(name: str) -> str:
     """Convert CamelCase to snake_case with number separation.
 
@@ -55,6 +56,7 @@ def camel_to_snake(name: str) -> str:
     s3 = re.sub("([a-z])([0-9])", r"\1_\2", s2)
     return s3.lower()
 
+
 def standardize_species_name(common_name: str) -> str:
     """Convert species common name to standardized snake_case.
 
@@ -73,6 +75,7 @@ def standardize_species_name(common_name: str) -> str:
     name = re.sub(r"[^\w\s-]", "", common_name.lower())
     name = re.sub(r"[-\s]+", "_", name)
     return name.strip("_")
+
 
 def load_species_csv(csv_path: Path, script_dir: Path) -> pd.DataFrame:
     """Load and validate species CSV.
@@ -148,6 +151,7 @@ def load_species_csv(csv_path: Path, script_dir: Path) -> pd.DataFrame:
         raise ValueError(f"CSV missing required columns: {missing}")
 
     return df
+
 
 def main():
     """CSV-driven asset preparation - only copy assets for species in CSV."""
@@ -344,5 +348,7 @@ CSV Format Support:
 
     return 0
 
+
 if __name__ == "__main__":
+    sys.exit(main())
     sys.exit(main())
