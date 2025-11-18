@@ -1,0 +1,1559 @@
+{
+    "Joints": [
+        {
+            "JointName": "Quaking_Aspen_01_A_point_0",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_1",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_2",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_3",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_4",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_5",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_6",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_7",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_8",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_9",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_10",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_11",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_12",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_13",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_14",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_15",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_16",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_17",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_18",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_19",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_20",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_21",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_22",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_23",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_24",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_25",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_26",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_27",
+            "SimulationGroupIndex": 0
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_28",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_29",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_30",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_31",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_32",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_33",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_34",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_35",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_36",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_37",
+            "SimulationGroupIndex": 1
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_38",
+            "SimulationGroupIndex": 1
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_39",
+            "SimulationGroupIndex": 1
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_40",
+            "SimulationGroupIndex": 1
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_41",
+            "SimulationGroupIndex": 1
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_42",
+            "SimulationGroupIndex": 1
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_43",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_44",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_45",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_46",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_47",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_48",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_49",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_50",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_51",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_52",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_53",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_54",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_55",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_56",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_57",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_58",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_59",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_60",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_61",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_62",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_63",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_64",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_65",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_66",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_67",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_68",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_69",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_70",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_71",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_72",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_73",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_74",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_75",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_76",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_77",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_78",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_79",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_80",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_81",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_82",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_83",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_84",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_85",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_86",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_87",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_88",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_89",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_90",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_91",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_92",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_93",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_94",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_95",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_96",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_97",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_98",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_99",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_100",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_101",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_102",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_103",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_104",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_105",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_106",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_107",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_108",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_109",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_110",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_111",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_112",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_113",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_114",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_115",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_116",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_117",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_118",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_119",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_120",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_121",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_122",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_123",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_124",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_125",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_126",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_127",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_128",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_129",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_130",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_131",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_132",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_133",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_134",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_135",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_136",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_137",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_138",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_139",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_140",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_141",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_142",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_143",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_144",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_145",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_146",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_147",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_148",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_149",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_150",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_151",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_152",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_153",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_154",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_155",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_156",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_157",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_158",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_159",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_160",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_161",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_162",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_163",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_164",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_165",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_166",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_167",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_168",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_169",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_170",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_171",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_172",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_173",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_174",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_175",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_176",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_177",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_178",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_179",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_180",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_181",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_182",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_183",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_184",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_185",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_186",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_187",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_188",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_189",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_190",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_191",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_192",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_193",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_194",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_195",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_196",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_197",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_198",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_199",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_200",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_201",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_202",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_203",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_204",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_205",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_206",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_207",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_208",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_209",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_210",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_211",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_212",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_213",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_214",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_215",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_216",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_217",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_218",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_219",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_220",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_221",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_222",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_223",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_224",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_225",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_226",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_227",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_228",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_229",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_230",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_231",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_232",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_233",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_234",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_235",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_236",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_237",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_238",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_239",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_240",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_241",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_242",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_243",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_244",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_245",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_246",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_247",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_248",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_249",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_250",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_251",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_252",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_253",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_254",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_255",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_256",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_257",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_258",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_259",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_260",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_261",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_262",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_263",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_264",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_265",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_266",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_267",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_268",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_269",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_270",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_271",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_272",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_273",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_274",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_275",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_276",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_277",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_278",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_279",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_280",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_281",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_282",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_283",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_284",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_285",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_286",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_287",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_288",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_289",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_290",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_291",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_292",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_293",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_294",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_295",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_296",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_297",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_298",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_299",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_300",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_301",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_302",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_303",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_304",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_305",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_306",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_307",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_308",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_309",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_310",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_311",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_312",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_313",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_314",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_315",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_316",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_317",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_318",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_319",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_320",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_321",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_322",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_323",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_324",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_325",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_326",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_327",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_328",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_329",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_330",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_331",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_332",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_333",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_334",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_335",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_336",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_337",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_338",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_339",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_340",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_341",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_342",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_343",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_344",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_345",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_346",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_347",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_348",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_349",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_350",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_351",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_352",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_353",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_354",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_355",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_356",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_357",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_358",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_359",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_360",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_361",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_362",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_363",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_364",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_365",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_366",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_367",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_368",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_369",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_370",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_371",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_372",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_373",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_374",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_375",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_376",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_377",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_378",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_379",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_380",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_381",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_382",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_383",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_384",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_385",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_386",
+            "SimulationGroupIndex": 2
+        },
+        {
+            "JointName": "Quaking_Aspen_01_A_point_387",
+            "SimulationGroupIndex": 2
+        }
+    ],
+    "SimulationGroups": [],
+    "bIsGroundCover": false,
+    "GustAttenuation": 0.0
+}

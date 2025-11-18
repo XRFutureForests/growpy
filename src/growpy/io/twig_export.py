@@ -1391,6 +1391,125 @@ def densify_mesh_edge_adaptive(
         pass
 
 
+def _smooth_boundary_edges(
+    obj,
+    leaf_material_indices: Set[int],
+    alpha_img,
+    threshold: float,
+    smooth_iterations: int = 3,
+    smooth_factor: float = 0.5,
+    boundary_rings: int = 1,
+):
+    """Apply Laplacian smoothing to mesh boundary vertices after alpha trimming.
+
+    This smooths the actual mesh edges (after face removal) to follow texture contours
+    more naturally, reducing jagged appearance from regular subdivision grid.
+
+    CRITICAL: Must be called AFTER alpha trimming, as it smooths the actual trimmed
+    mesh boundary, not the pre-trim alpha threshold crossings.
+
+    Args:
+        obj: Blender mesh object (after alpha trimming)
+        leaf_material_indices: Set of material indices for leaf geometry
+        alpha_img: Not used - kept for API compatibility
+        threshold: Not used - kept for API compatibility
+        smooth_iterations: Number of smoothing passes (default: 3)
+        smooth_factor: Smoothing strength per iteration (0.0-1.0, default: 0.5)
+        boundary_rings: Width of boundary region to smooth (default: 1)
+    """
+    if smooth_iterations <= 0 or smooth_factor <= 0.0:
+        return
+
+    mesh = obj.data
+    if not mesh:
+        return
+
+    # Build adjacency and identify boundary edges
+    # A boundary edge has at least one adjacent face and is on the mesh perimeter
+    import bmesh
+
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+
+    # Collect leaf faces
+    leaf_faces = set()
+    for face in bm.faces:
+        if face.material_index in leaf_material_indices:
+            leaf_faces.add(face)
+
+    if not leaf_faces:
+        bm.free()
+        return
+
+    # Find boundary vertices - vertices on edges with only one adjacent leaf face
+    boundary_verts = set()
+    for edge in bm.edges:
+        # Count adjacent leaf faces
+        adjacent_leaf_faces = sum(1 for f in edge.link_faces if f in leaf_faces)
+
+        # Boundary edge has exactly 1 adjacent leaf face (outer perimeter)
+        if adjacent_leaf_faces == 1:
+            for vert in edge.verts:
+                boundary_verts.add(vert)
+
+    if not boundary_verts:
+        bm.free()
+        return
+
+    # Expand boundary by boundary_rings
+    all_leaf_verts = set()
+    for face in leaf_faces:
+        for vert in face.verts:
+            all_leaf_verts.add(vert)
+
+    current = set(boundary_verts)
+    for _ in range(max(0, int(boundary_rings))):
+        grow = set()
+        for v in current:
+            for edge in v.link_edges:
+                for nb in edge.verts:
+                    if nb in all_leaf_verts and nb not in boundary_verts:
+                        grow.add(nb)
+        if not grow:
+            break
+        boundary_verts.update(grow)
+        current = grow
+
+    # Apply Laplacian smoothing to boundary vertices
+    for iteration in range(smooth_iterations):
+        # Calculate new positions
+        new_positions = {}
+        for vert in boundary_verts:
+            # Get connected vertices through edges
+            neighbors = []
+            for edge in vert.link_edges:
+                for nb in edge.verts:
+                    if nb != vert and nb in all_leaf_verts:
+                        neighbors.append(nb)
+
+            if not neighbors:
+                continue
+
+            # Average neighbor positions
+            avg_pos = mathutils.Vector((0, 0, 0))
+            for nb in neighbors:
+                avg_pos += nb.co
+            avg_pos /= len(neighbors)
+
+            # Blend between original and averaged position
+            new_pos = vert.co.lerp(avg_pos, smooth_factor)
+            new_positions[vert] = new_pos
+
+        # Apply new positions
+        for vert, new_pos in new_positions.items():
+            vert.co = new_pos
+
+    # Write back to mesh
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.update()
+
+
 def _apply_interior_decimate(
     obj,
     leaf_material_indices: Set[int],
@@ -1811,6 +1930,9 @@ def process_twig_file(
     interior_decimate=False,
     decimate_ratio=0.5,
     boundary_rings=1,
+    smooth_boundary=False,
+    smooth_iterations=3,
+    smooth_factor=0.5,
 ):
     """Process a single twig blend file.
 
@@ -2056,6 +2178,36 @@ def process_twig_file(
                                 material_indices=leaf_mats,
                                 allow_luminance_for_masks=False,
                             )
+
+                # Optional: smooth boundary edges to follow texture curves more naturally
+                # Applied AFTER trimming to smooth the jagged edges created by regular subdivision grid
+                if smooth_boundary and leaf_mats:
+                    alpha_img = None
+                    alpha_path = tex_map.get("alpha") or tex_map.get("translucent")
+                    if alpha_path:
+                        alpha_img = _load_alpha_image(
+                            alpha_path, allow_luminance_for_masks=True
+                        )
+                    if alpha_img is None and tex_map.get("diffuse"):
+                        alpha_img = _load_alpha_image(
+                            tex_map.get("diffuse"),
+                            require_alpha_channel=True,
+                            allow_luminance_for_masks=False,
+                        )
+
+                    if alpha_img is not None and alpha_trim_threshold > 0.0:
+                        try:
+                            _smooth_boundary_edges(
+                                obj,
+                                leaf_mats,
+                                alpha_img,
+                                threshold=alpha_trim_threshold,
+                                smooth_iterations=max(1, int(smooth_iterations)),
+                                smooth_factor=min(max(0.0, float(smooth_factor)), 1.0),
+                                boundary_rings=max(0, int(boundary_rings)),
+                            )
+                        except Exception:
+                            pass
 
                 # Recalculate normals
                 bpy.context.view_layer.objects.active = obj
