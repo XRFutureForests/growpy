@@ -105,7 +105,8 @@ def _add_twig_material(
 
             # CRITICAL: Use base color (diffuse) and normal textures for Nanite compatibility
             # Alpha/translucent/mask textures excluded for Nanite
-            OPAQUE_TEXTURE_TYPES = ["diffuse", "normal"]
+            # Also check for two-sided textures (top/bottom)
+            OPAQUE_TEXTURE_TYPES = ["diffuse", "diffuse_top", "normal"]
 
             # Build standardized texture name base
             # Extract base name (everything up to and including 'twig')
@@ -145,6 +146,19 @@ def _add_twig_material(
                             break
                         if tex_type in texture_map:
                             break
+
+            # Handle two-sided textures: prefer top over bottom
+            # Note: USD doesn't support per-face textures for double-sided materials
+            # (see https://docs.blender.org/manual/en/latest/files/import_export/usd.html)
+            # Solution: Use top texture only, enable two-sided rendering (backface culling disabled)
+            # Bottom texture is copied to output but NOT referenced in USD file
+            if "diffuse_top" in texture_map:
+                texture_map["diffuse"] = texture_map["diffuse_top"]
+                # Remove bottom from map so it's not added to USD file
+                texture_map.pop("diffuse_bottom", None)
+            elif "diffuse_bottom" in texture_map and "diffuse" not in texture_map:
+                # Use bottom only if no top texture exists
+                texture_map["diffuse"] = texture_map["diffuse_bottom"]
 
             # Add textures to shader
             # CRITICAL: Create UV reader for texture mapping
@@ -806,19 +820,30 @@ def classify_texture_from_name(name):
     """Classify texture type from filename."""
     name_lower = name.lower()
 
-    # Check modifiers
-    if "top" in name_lower or "upper" in name_lower:
-        if any(kw in name_lower for kw in ["diffuse", "albedo", "color"]):
-            return "diffuse_top"
-    if "bottom" in name_lower or "lower" in name_lower:
-        if any(kw in name_lower for kw in ["diffuse", "albedo", "color"]):
-            return "diffuse_bottom"
-
-    # Standard types
+    # Check for specific texture types first (alpha, normal, bump, etc.)
+    # These take precedence over top/bottom classification
     if any(kw in name_lower for kw in ["alpha", "opacity", "mask"]):
         return "alpha"
-    if any(kw in name_lower for kw in ["normal", "norm", "bump"]):
+    # Distinguish between normal maps (RGB) and bump maps (grayscale height)
+    if any(kw in name_lower for kw in ["normal", "norm", "nrm"]):
         return "normal"
+    if any(kw in name_lower for kw in ["bump", "height", "displacement"]):
+        return "bump"
+
+    # Check for top/bottom diffuse textures
+    # These can have explicit "diffuse" keyword OR be implicit (e.g., "OakTop.png")
+    has_top = "top" in name_lower or "upper" in name_lower or "face" in name_lower
+    has_bottom = "bottom" in name_lower or "lower" in name_lower or "back" in name_lower
+    has_diffuse_keyword = any(kw in name_lower for kw in ["diffuse", "albedo", "color"])
+
+    # If it has top/bottom keywords, classify as two-sided texture
+    # Even without explicit "diffuse" keyword (e.g., Grove's "OakTop.png")
+    if has_top and not has_bottom:
+        return "diffuse_top"
+    if has_bottom and not has_top:
+        return "diffuse_bottom"
+
+    # Continue with other standard types
     if any(kw in name_lower for kw in ["translucent", "transmission", "sss"]):
         return "translucent"
     if any(kw in name_lower for kw in ["roughness", "rough"]):
@@ -838,6 +863,7 @@ def copy_opaque_textures_for_skeletal(
 
     CRITICAL: Filters out alpha/translucent/mask textures for Nanite compatibility.
     Only copies opaque texture types (diffuse, normal).
+    Converts bump maps to normal maps automatically.
 
     Args:
         blend_dir: Source directory containing textures
@@ -851,7 +877,9 @@ def copy_opaque_textures_for_skeletal(
     texture_extensions = [".png", ".jpg", ".jpeg", ".exr"]
     # CRITICAL: Use base color (diffuse) and normal textures for Nanite compatibility
     # Alpha/translucent/mask textures excluded for Nanite
-    OPAQUE_TEXTURE_TYPES = ["diffuse", "normal"]
+    # Bump maps are converted to normal maps (not copied as bump)
+    # Two-sided textures (top/bottom) are both kept
+    OPAQUE_TEXTURE_TYPES = ["diffuse", "diffuse_top", "diffuse_bottom", "normal", "bump"]
 
     # Search for textures
     search_dirs = [blend_dir / "textures", blend_dir, blend_dir.parent / "textures"]
@@ -870,8 +898,10 @@ def copy_opaque_textures_for_skeletal(
     textures_dir = output_dir / "textures"
     textures_dir.mkdir(exist_ok=True)
 
-    # Copy base color and normal textures
+    # Copy base color and normal textures (converting bump to normal)
     copied_count = 0
+    bump_converted = False  # Track if we've converted a bump map
+
     for tex_path in available_textures:
         tex_type = classify_texture_from_name(tex_path.stem)
 
@@ -892,12 +922,29 @@ def copy_opaque_textures_for_skeletal(
         else:
             base_name = "_".join(base_name_parts)
 
-        standardized_tex_name = f"{base_name}_{tex_type}{tex_ext}"
-        dest_tex = textures_dir / standardized_tex_name
+        # Convert bump maps to normal maps (don't copy bump itself)
+        if tex_type == "bump":
+            from growpy.io.texture_utils import bump_to_normal
 
-        if not dest_tex.exists():
-            shutil.copy2(tex_path, dest_tex)
-            copied_count += 1
+            # Generate normal map name
+            standardized_tex_name = f"{base_name}_normal{tex_ext}"
+            dest_tex = textures_dir / standardized_tex_name
+
+            # Convert bump to normal if not already exists and we haven't converted yet
+            if not dest_tex.exists() and not bump_converted:
+                converted_path = bump_to_normal(tex_path, dest_tex)
+                if converted_path:
+                    copied_count += 1
+                    bump_converted = True
+            # Don't copy the original bump file - only the converted normal
+        else:
+            # Regular copy for diffuse, diffuse_top, diffuse_bottom, and normal
+            standardized_tex_name = f"{base_name}_{tex_type}{tex_ext}"
+            dest_tex = textures_dir / standardized_tex_name
+
+            if not dest_tex.exists():
+                shutil.copy2(tex_path, dest_tex)
+                copied_count += 1
 
     return copied_count
 
@@ -1771,19 +1818,36 @@ def setup_materials_with_textures(
             if tex_type not in texture_map:
                 texture_map[tex_type] = tex
 
-        # If both diffuse_top and diffuse_bottom exist, prioritize top
-        if "diffuse_top" in texture_map and "diffuse_bottom" in texture_map:
-            # Use only top texture
-            texture_map["diffuse"] = texture_map["diffuse_top"]
-            del texture_map["diffuse_bottom"]
-        elif "diffuse_top" in texture_map:
-            # Rename diffuse_top to diffuse for standard connection
-            texture_map["diffuse"] = texture_map["diffuse_top"]
-            del texture_map["diffuse_top"]
-        elif "diffuse_bottom" in texture_map:
-            # Use bottom if that's all we have
-            texture_map["diffuse"] = texture_map["diffuse_bottom"]
-            del texture_map["diffuse_bottom"]
+        # Convert bump maps to normal maps if needed
+        if "bump" in texture_map and "normal" not in texture_map:
+            from growpy.io.texture_utils import bump_to_normal
+
+            # Generate normal map from bump
+            bump_path = texture_map["bump"]
+            normal_path = textures_dir / f"{bump_path.stem}_normal{bump_path.suffix}"
+
+            if not normal_path.exists():
+                converted = bump_to_normal(bump_path, normal_path)
+                if converted:
+                    texture_map["normal"] = normal_path
+            else:
+                texture_map["normal"] = normal_path
+
+            # Remove bump from map since we've converted it
+            del texture_map["bump"]
+
+        # Handle two-sided materials (top/bottom diffuse textures)
+        # Keep both if available for two-sided rendering
+        has_two_sided = "diffuse_top" in texture_map and "diffuse_bottom" in texture_map
+
+        if not has_two_sided:
+            # Single-sided: use top or bottom as main diffuse
+            if "diffuse_top" in texture_map:
+                texture_map["diffuse"] = texture_map["diffuse_top"]
+                del texture_map["diffuse_top"]
+            elif "diffuse_bottom" in texture_map:
+                texture_map["diffuse"] = texture_map["diffuse_bottom"]
+                del texture_map["diffuse_bottom"]
 
         # Debug: Show texture file names
         for tex_type, tex_path in texture_map.items():
@@ -1836,6 +1900,17 @@ def setup_materials_with_textures(
                 if tex_type == "diffuse":
                     links.new(tex_node.outputs["Color"], bsdf.inputs["Base Color"])
 
+                elif tex_type == "diffuse_top":
+                    # Two-sided material: use top texture with geometry node for face orientation
+                    # For now, just use top as main texture
+                    # USD/Unreal will handle two-sided rendering
+                    links.new(tex_node.outputs["Color"], bsdf.inputs["Base Color"])
+
+                elif tex_type == "diffuse_bottom":
+                    # Only used if top texture connected via MixRGB later
+                    # For now, skip - top texture takes precedence
+                    pass
+
                 elif tex_type == "alpha":
                     # Alpha masks: use Non-Color for proper grayscale interpretation
                     tex_node.image.colorspace_settings.name = "Non-Color"
@@ -1874,6 +1949,23 @@ def setup_materials_with_textures(
                     normal_map.location = (-200, y_offset - 100)
                     links.new(tex_node.outputs["Color"], normal_map.inputs["Color"])
                     links.new(normal_map.outputs["Normal"], bsdf.inputs["Normal"])
+
+                elif tex_type == "bump":
+                    # Bump maps should have been converted to normal maps already
+                    # But if still present, convert on-the-fly
+                    from growpy.io.texture_utils import bump_to_normal
+
+                    normal_path = textures_dir / f"{tex_path.stem}_normal{tex_path.suffix}"
+                    if not normal_path.exists():
+                        bump_to_normal(tex_path, normal_path)
+
+                    if normal_path.exists():
+                        # Load and use the converted normal map
+                        tex_node.image.colorspace_settings.name = "Non-Color"
+                        normal_map = nodes.new("ShaderNodeNormalMap")
+                        normal_map.location = (-200, y_offset - 100)
+                        links.new(tex_node.outputs["Color"], normal_map.inputs["Color"])
+                        links.new(normal_map.outputs["Normal"], bsdf.inputs["Normal"])
 
                 elif tex_type == "translucent":
                     # Transmission changed to Transmission Weight in newer Blender
