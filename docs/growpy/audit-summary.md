@@ -12,12 +12,14 @@
 Updated all four CLI scripts with accurate quick-start examples and corrected flag documentation:
 
 #### prepare_assets.py
+
 - **Added**: Clear quick-start example at line 14
 - **Removed**: Unsupported `--assets-dir` flag (hardcoded to `data/assets`)
 - **Fixed**: Documentation path from `docs/guides/cli-reference.md` → `docs/archive/cli-reference.md`
 - **Fixed**: Usage path from `python prepare_assets.py` → `python src/growpy/cli/prepare_assets.py`
 
 #### create_growth_models.py
+
 - **Added**: Quick-start example with `--cycles 25` flag
 - **Updated**: "Common Flags" section to match actual argparse implementation
 - **Removed**: Unsupported flags (`--workers`, `--no-parallel`, `--assets-dir`, `--verbose`)
@@ -25,6 +27,7 @@ Updated all four CLI scripts with accurate quick-start examples and corrected fl
 - **Trimmed**: Epilog examples to match implemented features
 
 #### convert_twigs.py
+
 - **Added**: Quick-start example showing dual output (skeletal + static USD)
 - **Updated**: "Common Flags" to include all geometry processing options:
   - `--no-densify`, `--subdiv`, `--alpha-trim`
@@ -34,6 +37,7 @@ Updated all four CLI scripts with accurate quick-start examples and corrected fl
 - **Fixed**: Documentation and usage paths
 
 #### generate_forest.py
+
 - **No major changes**: Docstring was already accurate
 - **Fixed**: Documentation path to `docs/archive/cli-reference.md`
 
@@ -42,18 +46,21 @@ Updated all four CLI scripts with accurate quick-start examples and corrected fl
 Identified all deprecated parameters and code blocks for future cleanup:
 
 **Deprecated Parameters** (4 instances):
+
 1. `tree_export.py:210-213` - skeleton parameters (deprecated when bones_info provided)
 2. `tree_export.py:889` - twig_placements parameter
 3. `tree_export.py:1312` - prefer_nanite_assembly parameter
 4. `assembly_export.py:81` - skeleton_source_usd parameter
 
 **Dead Code** (1 instance):
+
 - `twig_export.py:580` - 60-line material copying block disabled with `if False:`
 - **Reason**: Materials cause Unreal Nanite import failures
 
 ### 3. Documentation Structure Analysis ✓
 
 **Current state**:
+
 - `docs/archive/` contains 150+ historical documentation files
 - Many files are one-time fix reports or debugging notes
 - No central API reference or troubleshooting guide
@@ -63,6 +70,7 @@ Identified all deprecated parameters and code blocks for future cleanup:
 ### 4. Commented Code Audit ✓
 
 **Search results**: Only 4 matches for commented-out code patterns
+
 - All matches are valid comments (not dead code)
 - No harmful `# TODO`, `# FIXME`, or `if False:` blocks except the one noted above
 
@@ -70,6 +78,7 @@ Identified all deprecated parameters and code blocks for future cleanup:
 
 **Tool used**: grep_search for import statements  
 **Result**: All imports appear necessary and organized
+
 - Standard library imports grouped correctly
 - Third-party imports (bpy, pandas, Grove API) present where needed
 - Local relative imports use consistent pattern (`from ..module import`)
@@ -81,11 +90,13 @@ Identified all deprecated parameters and code blocks for future cleanup:
 ## Key Findings
 
 ### Documentation Debt
+
 - **High**: CLI docstrings had incorrect flags and outdated paths
 - **Medium**: 150+ archive docs need organization
 - **Low**: Missing centralized API reference
 
 ### Code Quality
+
 - **Positive**: No significant dead code accumulation
 - **Positive**: Import structure is clean and organized
 - **Neutral**: Some long functions (~800 lines in generate_forest.py) but acceptable
@@ -93,6 +104,7 @@ Identified all deprecated parameters and code blocks for future cleanup:
 - **Issue**: 1 dead code block (~60 lines) can be removed
 
 ### Fragility Analysis
+
 - **Critical modules**: `tree_export.py`, `assembly_export.py`, `twig_export.py`
 - **Reason**: USD structure must match Unreal Engine 5.7+ Nanite assembly requirements
 - **Risk**: Any logic change in export functions can break Unreal imports
@@ -105,6 +117,7 @@ Identified all deprecated parameters and code blocks for future cleanup:
 **File**: `docs/growpy/refactoring-plan.md`
 
 **Phases**:
+
 1. Documentation cleanup (SAFE)
 2. Remove deprecated code (LOW RISK)
 3. Code structure improvements (MEDIUM RISK)
@@ -115,6 +128,7 @@ Identified all deprecated parameters and code blocks for future cleanup:
 **Implementation order**: Phases 1 → 2 → 3 → 5, with phase 5 running after each change
 
 **Safety measures**:
+
 - Byte-by-byte USD output comparison before/after
 - Unreal Engine import validation
 - Git strategy: one commit per phase with rollback plan

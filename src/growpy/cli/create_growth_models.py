@@ -36,6 +36,7 @@ from pathlib import Path
 
 from growpy.utils.analysis import SpeciesGrowthAnalyzer
 
+
 def main():
     """Main function for command line usage."""
     parser = argparse.ArgumentParser(
@@ -253,5 +254,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         # Save results
         analyzer.save_growth_models()
 
+
 if __name__ == "__main__":
+    main()
     main()
