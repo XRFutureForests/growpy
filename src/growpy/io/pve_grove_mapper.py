@@ -58,14 +58,16 @@ def _create_empty_global_attributes(reference: Dict) -> Dict:
 
 
 def _create_empty_point_attributes(reference: Dict) -> Dict:
-    """Create empty point attributes structure."""
+    """Create empty point attributes structure, preserving 'value' vs 'values' key."""
     empty = {}
     for key, value in reference.items():
+        # Preserve the exact key name from reference (value vs values)
+        value_key = "values" if "values" in value else "value"
         empty[key] = {
             "isArray": value.get("isArray", False),
             "size": value.get("size", 1),
             "type": value.get("type", "float"),
-            "value": [],
+            value_key: [],
         }
     return empty
 
@@ -148,11 +150,13 @@ def _map_global_attributes(grove: Any, properties: Any, template: Dict) -> Dict:
     """
     Map Grove properties to PVE globalAttributes.
 
-    Maps what we can from Grove, leaves rest as defaults from template.
+    Only fills values we can reliably extract from Grove, keeps empty arrays as-is.
     """
-    global_attrs = template.copy()
+    import copy
 
-    # Map basic simulation parameters
+    global_attrs = copy.deepcopy(template)
+
+    # Map only the basic simulation parameters we have
     if "cycle" in global_attrs:
         global_attrs["cycle"]["value"] = getattr(properties, "simulation_steps", 30)
 
@@ -164,25 +168,12 @@ def _map_global_attributes(grove: Any, properties: Any, template: Dict) -> Dict:
             properties, "gravity", 2.0
         )
 
-    # Map growth parameters where Grove equivalents exist
-    if "lateralElongation" in global_attrs:
-        # Grove has lateral_bud_chance, bud_scale, etc. - map what makes sense
-        lateral = getattr(properties, "lateral_bud_chance", 0.5)
-        scale = getattr(properties, "scale", 1.0)
-        # Keep template structure but inject Grove values where possible
-        if global_attrs["lateralElongation"]["isArray"]:
-            # Preserve array structure, update first few values
-            values = global_attrs["lateralElongation"]["value"]
-            if len(values) > 0:
-                values[0] = lateral * scale * 0.01  # Scale factor to match PVE range
+    if "randomSeed" in global_attrs:
+        global_attrs["randomSeed"]["value"] = getattr(properties, "random_seed", 0)
 
-    # Map branching parameters
-    if "maxBranchNumber" in global_attrs:
-        # Grove doesn't have exact equivalent, use reasonable default
-        global_attrs["maxBranchNumber"]["value"] = 400
-
-    if "maxBudNumber" in global_attrs:
-        global_attrs["maxBudNumber"]["value"] = 2000
+    # For array parameters (curves), keep them empty if template has empty
+    # Grove doesn't export these parameter curves, so preserve Hazel structure
+    # Empty arrays will remain empty, matching Hazel behavior
 
     return global_attrs
 
@@ -191,9 +182,11 @@ def _map_points_from_skeleton(skeleton: Any, template: Dict) -> Dict:
     """
     Map Grove skeleton points to PVE points structure.
 
-    The skeleton points represent branch tips/joints, which map to PVE point cloud.
+    Only fills position and core attributes, keeps other attributes empty like Hazel.
     """
-    points_data = {"attributes": template["attributes"].copy(), "positions": []}
+    import copy
+
+    points_data = {"attributes": copy.deepcopy(template["attributes"]), "positions": []}
 
     # Extract skeleton points (these are branch joints)
     skeleton_points = skeleton.points  # List of (x, y, z) tuples
@@ -201,37 +194,53 @@ def _map_points_from_skeleton(skeleton: Any, template: Dict) -> Dict:
 
     # Get positions
     positions = [[p[0], p[1], p[2]] for p in skeleton_points]
-
     points_data["positions"] = positions
 
-    # Map point attributes from skeleton
-    # Grove skeleton provides: age, mass, radius per point
+    # Fill only the essential point attributes that Grove provides
 
-    # Generation (branch hierarchy depth)
+    # P (position as attribute - copy of positions, flattened)
+    if "P" in points_data["attributes"]:
+        p_flat = [coord for pos in positions for coord in pos]
+        value_key = "values" if "values" in points_data["attributes"]["P"] else "value"
+        points_data["attributes"]["P"][value_key] = p_flat
+
+    # generation (branch hierarchy depth)
     if "generation" in points_data["attributes"]:
         generation = _calculate_generation_from_polylines(skeleton)
-        points_data["attributes"]["generation"]["value"] = generation
+        value_key = (
+            "values" if "values" in points_data["attributes"]["generation"] else "value"
+        )
+        points_data["attributes"]["generation"][value_key] = generation
 
     # pscale (point scale/radius)
     if "pscale" in points_data["attributes"]:
         pscales = list(skeleton.point_attribute_radius)
-        points_data["attributes"]["pscale"]["value"] = pscales
+        value_key = (
+            "values" if "values" in points_data["attributes"]["pscale"] else "value"
+        )
+        points_data["attributes"]["pscale"][value_key] = pscales
 
     # lengthFromRoot (cumulative distance from root)
     if "lengthFromRoot" in points_data["attributes"]:
         lengths = _calculate_length_from_root(skeleton)
-        points_data["attributes"]["lengthFromRoot"]["value"] = lengths
+        value_key = (
+            "values"
+            if "values" in points_data["attributes"]["lengthFromRoot"]
+            else "value"
+        )
+        points_data["attributes"]["lengthFromRoot"][value_key] = lengths
 
     # branchGradient (normalized position along branch)
     if "branchGradient" in points_data["attributes"]:
         gradients = _calculate_branch_gradients(skeleton)
-        points_data["attributes"]["branchGradient"]["value"] = gradients
+        value_key = (
+            "values"
+            if "values" in points_data["attributes"]["branchGradient"]
+            else "value"
+        )
+        points_data["attributes"]["branchGradient"][value_key] = gradients
 
-    # P (position as attribute - copy of positions)
-    if "P" in points_data["attributes"]:
-        # Flatten positions for P attribute
-        p_flat = [coord for pos in positions for coord in pos]
-        points_data["attributes"]["P"]["value"] = p_flat
+    # All other attributes (LOD, bud, UV, etc.) remain empty as in Hazel template
 
     return points_data
 
@@ -240,41 +249,68 @@ def _map_primitives_from_skeleton(skeleton: Any, template: Dict) -> Dict:
     """
     Map Grove skeleton poly_lines to PVE primitives (branch curves).
 
-    Each poly_line in the skeleton represents a branch.
+    Only fills core branch attributes, keeps other attributes empty like Hazel.
     """
-    primitives_data = {"attributes": template["attributes"].copy(), "points": []}
+    import copy
+
+    primitives_data = {
+        "attributes": copy.deepcopy(template["attributes"]),
+        "points": [],
+    }
 
     # Get poly_lines from skeleton
     poly_lines = skeleton.poly_lines  # List of lists of point indices
     num_poly_lines = len(poly_lines)
 
-    # Each poly_line is a branch
+    # Each poly_line is a branch - add to points array
     for poly_line in poly_lines:
         point_indices = list(poly_line)
         primitives_data["points"].append(point_indices)
 
-    # Map primitive attributes (per-branch data)
+    # Fill only core branch attributes
     num_branches = num_poly_lines
 
     # branchNumber (sequential ID)
     if "branchNumber" in primitives_data["attributes"]:
-        primitives_data["attributes"]["branchNumber"]["value"] = list(
+        value_key = (
+            "values"
+            if "values" in primitives_data["attributes"]["branchNumber"]
+            else "value"
+        )
+        primitives_data["attributes"]["branchNumber"][value_key] = list(
             range(num_branches)
         )
 
     # branchGeneration (depth in hierarchy)
     if "branchGeneration" in primitives_data["attributes"]:
         generations = _calculate_branch_generation(skeleton)
-        primitives_data["attributes"]["branchGeneration"]["value"] = generations
+        value_key = (
+            "values"
+            if "values" in primitives_data["attributes"]["branchGeneration"]
+            else "value"
+        )
+        primitives_data["attributes"]["branchGeneration"][value_key] = generations
 
     # branchParentNumber (parent branch index)
     if "branchParentNumber" in primitives_data["attributes"]:
         parents = _calculate_branch_parents(skeleton)
-        primitives_data["attributes"]["branchParentNumber"]["value"] = parents
+        value_key = (
+            "values"
+            if "values" in primitives_data["attributes"]["branchParentNumber"]
+            else "value"
+        )
+        primitives_data["attributes"]["branchParentNumber"][value_key] = parents
 
     # plantNumber (all same tree)
     if "plantNumber" in primitives_data["attributes"]:
-        primitives_data["attributes"]["plantNumber"]["value"] = [0] * num_branches
+        value_key = (
+            "values"
+            if "values" in primitives_data["attributes"]["plantNumber"]
+            else "value"
+        )
+        primitives_data["attributes"]["plantNumber"][value_key] = [0] * num_branches
+
+    # All other attributes (compound, instancer, etc.) remain empty as in Hazel template
 
     return primitives_data
 
@@ -469,7 +505,7 @@ def generate_pve_from_grove(
     verbose: bool = True,
 ) -> Dict:
     """
-    Generate PVE preset JSON from Grove simulation.
+    Generate PVE preset JSON from Grove simulation using Hazel structure as template.
 
     Args:
         grove: Grove object after simulation
@@ -481,10 +517,24 @@ def generate_pve_from_grove(
     Returns:
         Generated PVE preset dictionary
     """
-    # Create empty template from schema (no reference file needed)
+    # Load Hazel JSON as template
     if verbose:
-        print(f"  Creating PVE preset from Grove data...")
-    template = create_empty_pve_preset()
+        print(f"  Creating PVE preset from Grove data using Hazel template...")
+
+    # Find Hazel reference file
+    project_root = Path(__file__).parent.parent.parent.parent
+    hazel_reference = (
+        project_root / "data" / "megaplant" / "json" / "Broadleaf_Hazel_04.json"
+    )
+
+    if not hazel_reference.exists():
+        if verbose:
+            print(
+                f"  Warning: Hazel reference not found at {hazel_reference}, using schema"
+            )
+        template = create_empty_pve_preset()
+    else:
+        template = create_pve_template_from_reference(hazel_reference)
 
     # Map Grove data to template
     pve_data = map_grove_to_pve(grove, template, species_name, tree_index)
