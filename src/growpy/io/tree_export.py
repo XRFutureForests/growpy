@@ -605,10 +605,12 @@ def _add_skeletal_materials(
         # CRITICAL: Only opaque textures for Nanite compatibility
         texture_found = False
         texture_file = None
+        normal_texture_file = None
         if species_name:
-            from growpy.config.paths import get_bark_texture_path
+            from growpy.config.paths import get_bark_texture_path, get_bark_normal_texture_path
 
             texture_file = get_bark_texture_path(species_name)
+            normal_texture_file = get_bark_normal_texture_path(species_name)
 
             if texture_file and texture_file.exists():
                 texture_found = True
@@ -621,7 +623,7 @@ def _add_skeletal_materials(
                 uv_reader.CreateInput("varname", Sdf.ValueTypeNames.Token).Set("st")
                 uv_reader.CreateOutput("result", Sdf.ValueTypeNames.Float2)
 
-                # Create texture reader
+                # Create diffuse texture reader
                 tex_reader = UsdShade.Shader.Define(
                     stage, f"{materials_path}/BarkMaterial/DiffuseTexture"
                 )
@@ -645,6 +647,31 @@ def _add_skeletal_materials(
                     "diffuseColor", Sdf.ValueTypeNames.Color3f
                 ).ConnectToSource(tex_reader.ConnectableAPI(), "rgb")
 
+                # Add normal map if available
+                if normal_texture_file and normal_texture_file.exists():
+                    normal_tex_reader = UsdShade.Shader.Define(
+                        stage, f"{materials_path}/BarkMaterial/NormalTexture"
+                    )
+                    normal_tex_reader.CreateIdAttr("UsdUVTexture")
+                    normal_tex_reader.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
+                        f"./textures/{normal_texture_file.name}"
+                    )
+                    # Normal maps use raw color space (not sRGB)
+                    normal_tex_reader.CreateInput(
+                        "sourceColorSpace", Sdf.ValueTypeNames.Token
+                    ).Set("raw")
+                    normal_tex_reader.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+
+                    # Connect UV reader to normal texture sampler
+                    normal_tex_reader.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
+                        uv_reader.ConnectableAPI(), "result"
+                    )
+
+                    # Connect normal to shader
+                    shader.CreateInput(
+                        "normal", Sdf.ValueTypeNames.Normal3f
+                    ).ConnectToSource(normal_tex_reader.ConnectableAPI(), "rgb")
+
         # Fallback to solid color if no texture found
         if not texture_found:
             shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(
@@ -663,7 +690,7 @@ def _add_skeletal_materials(
         binding_api = UsdShade.MaterialBindingAPI.Apply(mesh_prim)
         binding_api.Bind(bark_mat)
 
-        # Copy texture file to output directory if found
+        # Copy texture files to output directory if found
         if texture_found and texture_file:
             import shutil
             from pathlib import Path
@@ -675,10 +702,16 @@ def _add_skeletal_materials(
             textures_dir = output_dir / "textures"
             textures_dir.mkdir(exist_ok=True)
 
-            # Copy texture file to textures/ subdirectory
+            # Copy diffuse texture file to textures/ subdirectory
             dest_texture = textures_dir / texture_file.name
             if not dest_texture.exists():
                 shutil.copy2(texture_file, dest_texture)
+
+            # Copy normal texture file if available
+            if normal_texture_file and normal_texture_file.exists():
+                dest_normal = textures_dir / normal_texture_file.name
+                if not dest_normal.exists():
+                    shutil.copy2(normal_texture_file, dest_normal)
 
     except Exception as e:
         # Silently fail - material addition is optional
@@ -726,10 +759,12 @@ def _add_static_materials(
         # Try to find and add bark texture if available using asset lookup table
         texture_found = False
         texture_file = None
+        normal_texture_file = None
         if species_name:
-            from growpy.config.paths import get_bark_texture_path
+            from growpy.config.paths import get_bark_texture_path, get_bark_normal_texture_path
 
             texture_file = get_bark_texture_path(species_name)
+            normal_texture_file = get_bark_normal_texture_path(species_name)
 
             if texture_file and texture_file.exists():
                 texture_found = True
@@ -742,7 +777,7 @@ def _add_static_materials(
                 uv_reader.CreateInput("varname", Sdf.ValueTypeNames.Token).Set("st")
                 uv_reader.CreateOutput("result", Sdf.ValueTypeNames.Float2)
 
-                # Create texture reader
+                # Create diffuse texture reader
                 tex_reader = UsdShade.Shader.Define(
                     stage, f"{materials_path}/BarkMaterial/DiffuseTexture"
                 )
@@ -766,6 +801,31 @@ def _add_static_materials(
                     "diffuseColor", Sdf.ValueTypeNames.Color3f
                 ).ConnectToSource(tex_reader.ConnectableAPI(), "rgb")
 
+                # Add normal map if available
+                if normal_texture_file and normal_texture_file.exists():
+                    normal_tex_reader = UsdShade.Shader.Define(
+                        stage, f"{materials_path}/BarkMaterial/NormalTexture"
+                    )
+                    normal_tex_reader.CreateIdAttr("UsdUVTexture")
+                    normal_tex_reader.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
+                        f"./textures/{normal_texture_file.name}"
+                    )
+                    # Normal maps use raw color space (not sRGB)
+                    normal_tex_reader.CreateInput(
+                        "sourceColorSpace", Sdf.ValueTypeNames.Token
+                    ).Set("raw")
+                    normal_tex_reader.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+
+                    # Connect UV reader to normal texture sampler
+                    normal_tex_reader.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
+                        uv_reader.ConnectableAPI(), "result"
+                    )
+
+                    # Connect normal to shader
+                    shader.CreateInput(
+                        "normal", Sdf.ValueTypeNames.Normal3f
+                    ).ConnectToSource(normal_tex_reader.ConnectableAPI(), "rgb")
+
         # Fallback to solid color if no texture found
         if not texture_found:
             shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(
@@ -784,7 +844,7 @@ def _add_static_materials(
         binding_api = UsdShade.MaterialBindingAPI.Apply(mesh_prim)
         binding_api.Bind(bark_mat)
 
-        # Copy texture file to output directory if found
+        # Copy texture files to output directory if found
         if texture_found and texture_file:
             import shutil
             from pathlib import Path
@@ -796,10 +856,16 @@ def _add_static_materials(
             textures_dir = output_dir / "textures"
             textures_dir.mkdir(exist_ok=True)
 
-            # Copy texture file to textures/ subdirectory
+            # Copy diffuse texture file to textures/ subdirectory
             dest_texture = textures_dir / texture_file.name
             if not dest_texture.exists():
                 shutil.copy2(texture_file, dest_texture)
+
+            # Copy normal texture file if available
+            if normal_texture_file and normal_texture_file.exists():
+                dest_normal = textures_dir / normal_texture_file.name
+                if not dest_normal.exists():
+                    shutil.copy2(normal_texture_file, dest_normal)
 
     except Exception as e:
         # Silently fail - material addition is optional

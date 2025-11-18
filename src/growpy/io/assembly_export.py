@@ -234,29 +234,28 @@ def create_assembly(
                     if not output_twig_path.exists():
                         shutil.copy2(twig_ref_path, output_twig_path)
 
-                    # Copy twig textures for static assemblies only
-                    # Skeletal assemblies should configure materials in Unreal Engine
-                    if not use_skeletal_mesh:
-                        # Use source path (in assets) to find textures
-                        twig_dir = source_twig_path.parent
-                        # Twigs store textures in a textures/ subdirectory
-                        source_textures_dir = twig_dir / "textures"
+                    # Copy twig textures (base color and normal maps)
+                    # Both skeletal and static assemblies now include textures
+                    # Use source path (in assets) to find textures
+                    twig_dir = source_twig_path.parent
+                    # Twigs store textures in a textures/ subdirectory
+                    source_textures_dir = twig_dir / "textures"
 
-                        if source_textures_dir.exists():
-                            # Create output textures subdirectory
-                            output_textures_dir = output_path.parent / "textures"
-                            output_textures_dir.mkdir(exist_ok=True)
+                    if source_textures_dir.exists():
+                        # Create output textures subdirectory
+                        output_textures_dir = output_path.parent / "textures"
+                        output_textures_dir.mkdir(exist_ok=True)
 
-                            # Copy all texture files
-                            for texture_ext in [".png", ".jpg", ".jpeg", ".exr"]:
-                                for texture_file in source_textures_dir.glob(
-                                    f"*{texture_ext}"
-                                ):
-                                    output_texture = (
-                                        output_textures_dir / texture_file.name
-                                    )
-                                    if not output_texture.exists():
-                                        shutil.copy2(texture_file, output_texture)
+                        # Copy all texture files (includes diffuse and normal maps)
+                        for texture_ext in [".png", ".jpg", ".jpeg", ".exr"]:
+                            for texture_file in source_textures_dir.glob(
+                                f"*{texture_ext}"
+                            ):
+                                output_texture = (
+                                    output_textures_dir / texture_file.name
+                                )
+                                if not output_texture.exists():
+                                    shutil.copy2(texture_file, output_texture)
 
                     twig_type_to_proto_idx[twig_type] = idx
 
