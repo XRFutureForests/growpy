@@ -103,9 +103,9 @@ def _add_twig_material(
         if texture_dir and texture_dir.exists():
             texture_extensions = [".png", ".jpg", ".jpeg", ".exr"]
 
-            # CRITICAL: Only use base color (diffuse) textures for Nanite compatibility
-            # Normal maps and other texture types are excluded
-            OPAQUE_TEXTURE_TYPES = ["diffuse"]
+            # CRITICAL: Use base color (diffuse) and normal textures for Nanite compatibility
+            # Alpha/translucent/mask textures excluded for Nanite
+            OPAQUE_TEXTURE_TYPES = ["diffuse", "normal"]
 
             # Build standardized texture name base
             # Extract base name (everything up to and including 'twig')
@@ -188,9 +188,33 @@ def _add_twig_material(
                     LEAF_GREEN
                 )
 
-            # Normal textures removed - only using base color
+            # Add normal map if available
+            if "normal" in texture_map:
+                normal_tex_node = UsdShade.Shader.Define(
+                    stage, f"{materials_path}/{mat_name}/NormalTexture"
+                )
+                normal_tex_node.CreateIdAttr("UsdUVTexture")
+                normal_tex_node.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
+                    f"./textures/{texture_map['normal'].name}"
+                )
+                # Normal maps use raw color space (not sRGB)
+                normal_tex_node.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set(
+                    "raw"
+                )
 
-            # Roughness and metallic textures removed - only using base color
+                # Connect UV reader to normal texture sampler
+                if uv_reader:
+                    normal_tex_node.CreateInput(
+                        "st", Sdf.ValueTypeNames.Float2
+                    ).ConnectToSource(uv_reader.ConnectableAPI(), "result")
+
+                # Connect normal to shader
+                shader.CreateInput(
+                    "normal", Sdf.ValueTypeNames.Normal3f
+                ).ConnectToSource(normal_tex_node.ConnectableAPI(), "rgb")
+                textures_found = True
+
+            # Roughness and metallic textures removed - only using base color and normal
             shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.5)
 
         if not textures_found:
@@ -813,7 +837,7 @@ def copy_opaque_textures_for_skeletal(
     """Copy only opaque textures for skeletal twig exports.
 
     CRITICAL: Filters out alpha/translucent/mask textures for Nanite compatibility.
-    Only copies opaque texture types (diffuse, normal, roughness, metallic, ao).
+    Only copies opaque texture types (diffuse, normal).
 
     Args:
         blend_dir: Source directory containing textures
@@ -825,9 +849,9 @@ def copy_opaque_textures_for_skeletal(
         Number of textures copied
     """
     texture_extensions = [".png", ".jpg", ".jpeg", ".exr"]
-    # CRITICAL: Only use base color (diffuse) textures
-    # Normal maps and other texture types are excluded
-    OPAQUE_TEXTURE_TYPES = ["diffuse"]
+    # CRITICAL: Use base color (diffuse) and normal textures for Nanite compatibility
+    # Alpha/translucent/mask textures excluded for Nanite
+    OPAQUE_TEXTURE_TYPES = ["diffuse", "normal"]
 
     # Search for textures
     search_dirs = [blend_dir / "textures", blend_dir, blend_dir.parent / "textures"]
@@ -846,12 +870,12 @@ def copy_opaque_textures_for_skeletal(
     textures_dir = output_dir / "textures"
     textures_dir.mkdir(exist_ok=True)
 
-    # Copy base color textures only
+    # Copy base color and normal textures
     copied_count = 0
     for tex_path in available_textures:
         tex_type = classify_texture_from_name(tex_path.stem)
 
-        # Skip non-base-color textures
+        # Skip textures not in allowed list (no alpha/translucent/mask)
         if tex_type not in OPAQUE_TEXTURE_TYPES:
             continue
 

@@ -1,9 +1,0 @@
-# Grove-Level Attributes
-
-## Total Mass: 156.8097845109121
-## Number of Branches: 12
-## Max Height: 1.5918465986983155
-## Age: 2 flushes
-
-## Root System Available: Yes
-Root data type: <class 'list'>
