@@ -197,6 +197,56 @@ def get_bark_texture_path(species: str) -> Optional[Path]:
         return None
 
 
+def get_bark_normal_texture_path(species: str) -> Optional[Path]:
+    """Get bark normal map texture file path for species.
+
+    The normal texture files follow the same naming convention as diffuse textures
+    but with _normal suffix (e.g., beech_60_bark_normal.jpg).
+
+    Args:
+        species: Species name
+
+    Returns:
+        Path to bark normal texture file, or None if not found
+    """
+    try:
+        row = _find_species_row(species)
+        texture_name = row.get("Bark Texture", "")
+
+        if pd.isna(texture_name) or texture_name in ["—", "", "nan"]:
+            return None
+
+        textures_dir = get_assets_directory() / "textures"
+
+        # Convert CamelCase Grove name to snake_case with _bark_normal suffix
+        # Examples: "Beech60.jpg" -> "beech_60_bark_normal.jpg"
+        #           "BaldCypress80.jpg" -> "bald_cypress_80_bark_normal.jpg"
+        import re
+
+        texture_stem = Path(texture_name).stem
+        texture_ext = Path(texture_name).suffix
+
+        # Insert underscore before uppercase letters and numbers, convert to lowercase
+        standardized_name = (
+            re.sub(r"([A-Z])", r"_\1", texture_stem)
+            .lower()
+            .lstrip("_")
+            .replace("__", "_")
+        )
+        # Insert underscore before numbers
+        standardized_name = re.sub(r"([a-z])(\d)", r"\1_\2", standardized_name)
+
+        texture_path = textures_dir / f"{standardized_name}_bark_normal{texture_ext}"
+
+        if texture_path.exists():
+            return texture_path
+
+        return None
+
+    except (ValueError, KeyError):
+        return None
+
+
 def get_twig_files_by_type(species: str) -> Dict[str, List[Path]]:
     """Get twig files organized by type for species.
 

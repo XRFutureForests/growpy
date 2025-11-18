@@ -34,7 +34,7 @@ Supports two CSV formats:
 Quick Start:
     # Convert twigs (creates both skeletal and static variants)
     # Output: aspen_twig_apical_skeletal.usda + aspen_twig_apical_static.usda
-    python src/growpy/cli/convert_twigs.py data/assets/twigs
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --subdiv 30 --alpha-trim 0.0 --interior-decimate --decimate-ratio 0.01 --boundary-rings 1 --smooth-boundary --smooth-iterations 10 --smooth-factor 0.1
 
 Common Flags:
     Processing Pipeline (in order):
