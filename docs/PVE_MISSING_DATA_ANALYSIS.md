@@ -1,14 +1,17 @@
 # PVE Preset Missing Data Analysis & Implementation Guide
 
 ## Overview
+
 Analysis of missing data in PVE preset JSON generation and how to extract or generate it from The Grove API.
 
 ## Critical Missing Data
 
 ### 1. **Foliage Instancer Data** (HIGHEST PRIORITY)
+
 **Status:** Completely missing - trees have no leaves!
 
 **Required Structure:**
+
 ```json
 "primitives": {
   "attributes": {
@@ -77,6 +80,7 @@ Analysis of missing data in PVE preset JSON generation and how to extract or gen
 ```
 
 **How to Extract from Grove:**
+
 ```python
 # Grove provides twigs via build_models with build_twigs=True
 models = grove.build_models({
@@ -106,6 +110,7 @@ for tree_idx, model in enumerate(models):
 ```
 
 **Coordinate Conversion (Z-up to Y-up + cm scale):**
+
 ```python
 # Grove uses Z-up meters, PVE uses Y-up centimeters
 def grove_to_pve_position(grove_pos):
@@ -134,6 +139,7 @@ def quaternion_to_up_normal(quat):
 ```
 
 **Twig Name Mapping:**
+
 ```python
 # Grove twig types correspond to FBX files
 # Need to map Grove twig_type_id to Unreal asset names
@@ -154,9 +160,11 @@ def get_twig_name(species_name, twig_type_id):
 ---
 
 ### 2. **Branch Hierarchy (parents/children arrays)**
+
 **Status:** Empty arrays - breaks hierarchy traversal
 
 **Required Structure:**
+
 ```json
 "primitives": {
   "attributes": {
@@ -188,6 +196,7 @@ def get_twig_name(species_name, twig_type_id):
 ```
 
 **How to Extract from Grove:**
+
 ```python
 # Grove skeleton has branch hierarchy
 skeleton = skeletons[tree_index]
@@ -218,9 +227,11 @@ for branch_idx, poly_line in enumerate(skeleton.poly_lines):
 ---
 
 ### 3. **Growth Parameter Curves (globalAttributes)**
+
 **Status:** All empty arrays - missing growth model data
 
 **Required Values (from Hazel reference):**
+
 ```json
 "globalAttributes": {
   "phyllotaxyLeaf": {  // REQUIRED by C++ validation!
@@ -250,6 +261,7 @@ for branch_idx, poly_line in enumerate(skeleton.poly_lines):
 **Extraction Strategy:**
 
 1. **From .seed.json files (BEST source):**
+
 ```python
 import json
 from pathlib import Path
@@ -278,6 +290,7 @@ def load_growth_params_from_seed(species_name):
 ```
 
 2. **Default values (FALLBACK):**
+
 ```python
 # Use Hazel values as sensible defaults for broadleaf trees
 HAZEL_DEFAULTS = {
@@ -305,9 +318,11 @@ def get_growth_params(species_name, use_defaults=False):
 ---
 
 ### 4. **Plant Profiles (Optional but Useful)**
+
 **Status:** Empty arrays
 
 **Required Structure:**
+
 ```json
 "globalAttributes": {
   "plantProfile_1": {
@@ -322,11 +337,13 @@ def get_growth_params(species_name, use_defaults=False):
 ```
 
 **What They Represent:**
+
 - Age-based attribute curves (e.g., vigor over tree lifetime)
 - Used for procedural variation in PVE
 - Can be generated or use defaults
 
 **Extraction:**
+
 ```python
 def generate_plant_profiles(num_profiles=5, num_points=100):
     """Generate smooth profile curves."""
@@ -358,6 +375,7 @@ def generate_plant_profiles(num_profiles=5, num_points=100):
 ## Implementation Priority
 
 ### Phase 1: Foliage Data (CRITICAL)
+
 1. Extract twig instances from `grove.build_models(build_twigs=True)`
 2. Group by branch_id
 3. Convert positions/rotations to PVE format
@@ -365,16 +383,19 @@ def generate_plant_profiles(num_profiles=5, num_points=100):
 5. Map twig_type_id to Unreal asset names
 
 ### Phase 2: Branch Hierarchy (IMPORTANT)
+
 1. Extract parent_index from skeleton.poly_lines
 2. Build parents array (trivial)
 3. Build children array (inverse of parents)
 
 ### Phase 3: Growth Parameters (NICE TO HAVE)
+
 1. Load from .seed.json if available
 2. Use Hazel defaults as fallback
 3. Add configuration option to override
 
 ### Phase 4: Plant Profiles (OPTIONAL)
+
 1. Generate synthetic profiles OR
 2. Use Hazel profiles as defaults
 
