@@ -8,7 +8,10 @@ Can generate standalone Unreal Python scripts for importing trees via VSCode ext
 Quick Start:
     # Generate forest (creates both skeletal and static mesh assemblies)
     # Output: aspen_tree_0000_skeletal_nanite_assembly.usda + aspen_tree_0000_static_nanite_assembly.usda
-    python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 3
+    python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 3 --generate-pve-json
+
+    # Generate forest with PVE preset JSON files for Procedural Vegetation Editor
+    python src/growpy/cli/generate_forest.py --quality high --generate-pve-json
 
     # Generate forest and create Unreal import script
     python src/growpy/cli/generate_forest.py --quality high --import-to-unreal
@@ -23,6 +26,7 @@ Common Flags:
     --output-dir PATH                              Output directory
     --import-to-unreal                             Generate Unreal import script
     --unreal-project-path PATH                     Unreal destination (default: /Game/GrowPy/Trees)
+    --generate-pve-json                            Generate PVE preset JSON files for Procedural Vegetation Editor
 
 Assembly Types (both created by default):
     skeletal: Skeletal mesh assemblies with animation support (no materials/textures)
@@ -39,7 +43,7 @@ Full Documentation:
     See docs/archive/cli-reference.md for complete flag reference and examples
 
 Usage:
-    python src/growpy/cli/generate_forest.py [csv_file] --quality high --output-dir data/output/forest --growth-cycle-limit 5 --import-to-unreal
+    python src/growpy/cli/generate_forest.py [csv_file] --quality high --output-dir data/output/forest --growth-cycle-limit 5 --import-to-unreal --generate-pve-json
 """
 
 import bpy
@@ -770,6 +774,9 @@ Examples:
 
     # Use a different CSV file with custom output directory
     python src/growpy/cli/generate_forest.py my_forest.csv --output-dir data/output/my_forest --quality ultra --growth-cycle-limit 15
+
+    # Generate with PVE preset JSON files for Procedural Vegetation Editor
+    python src/growpy/cli/generate_forest.py --quality high --generate-pve-json
 
 Unreal Engine Integration:
     The --import-to-unreal flag generates a standalone Python script that can be executed
