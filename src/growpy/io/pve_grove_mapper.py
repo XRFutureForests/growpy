@@ -11,6 +11,9 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
+from .pve_foliage_extractor import extract_foliage_data
+from .pve_growth_defaults import get_default_growth_params, merge_growth_params
+from .pve_hierarchy_builder import build_hierarchy_arrays
 from .pve_schema import create_empty_pve_preset
 
 
@@ -90,6 +93,9 @@ def map_grove_to_pve(
     template: Dict,
     species_name: str,
     tree_index: int = 0,
+    use_default_growth_params: bool = True,
+    twig_density: float = 1.0,
+    custom_growth_params: Optional[Dict] = None,
 ) -> Dict:
     """
     Map Grove simulation data to PVE preset JSON format.
@@ -99,6 +105,9 @@ def map_grove_to_pve(
         template: Empty PVE template from create_pve_template_from_reference()
         species_name: Name of species
         tree_index: Index of tree in grove
+        use_default_growth_params: If True, use Hazel defaults for growth curves
+        twig_density: Foliage density multiplier (0.0-1.0+)
+        custom_growth_params: Optional dictionary to override specific parameters
 
     Returns:
         Filled PVE preset dictionary
@@ -108,7 +117,7 @@ def map_grove_to_pve(
     # Get Grove properties and build models
     properties = grove.get_properties()
 
-    # Build tree models to access geometry
+    # Build tree models WITH TWIGS for foliage data
     build_params = {
         "resolution": 16,
         "resolution_reduce": 0.8,
@@ -117,6 +126,8 @@ def map_grove_to_pve(
         "build_cutoff_thickness": 0.0,
         "build_blend": True,
         "build_end_cap": True,
+        "build_twigs": True,  # CRITICAL: Enable twig generation
+        "twig_density": twig_density,
     }
     models = grove.build_models(build_params)
 
@@ -126,9 +137,13 @@ def map_grove_to_pve(
     # Fill template with Grove data
     pve_data = template.copy()
 
-    # Map global attributes
+    # Map global attributes with defaults
     pve_data["globalAttributes"] = _map_global_attributes(
-        grove, properties, template["globalAttributes"]
+        grove,
+        properties,
+        template["globalAttributes"],
+        use_default_growth_params,
+        custom_growth_params,
     )
 
     # Map point data from skeleton
@@ -139,24 +154,45 @@ def map_grove_to_pve(
     # Map primitives from skeleton poly_lines
     if tree_index < len(skeletons):
         skeleton = skeletons[tree_index]
+        num_branches = len(skeleton.poly_lines)
+
         pve_data["primitives"] = _map_primitives_from_skeleton(
-            skeleton, template["primitives"]
+            skeleton,
+            template["primitives"],
+            models,
+            tree_index,
+            species_name,
+            num_branches,
         )
 
     return pve_data
 
 
-def _map_global_attributes(grove: Any, properties: Any, template: Dict) -> Dict:
+def _map_global_attributes(
+    grove: Any,
+    properties: Any,
+    template: Dict,
+    use_default_growth_params: bool = True,
+    custom_growth_params: Optional[Dict] = None,
+) -> Dict:
     """
-    Map Grove properties to PVE globalAttributes.
+    Map Grove properties to PVE globalAttributes with default growth curves.
 
-    Only fills values we can reliably extract from Grove, keeps empty arrays as-is.
+    Args:
+        grove: Grove object
+        properties: Grove properties
+        template: Template global attributes
+        use_default_growth_params: If True, use Hazel defaults
+        custom_growth_params: Optional overrides
+
+    Returns:
+        Global attributes with populated growth curves
     """
     import copy
 
     global_attrs = copy.deepcopy(template)
 
-    # Map only the basic simulation parameters we have
+    # Map basic simulation parameters from Grove
     if "cycle" in global_attrs:
         global_attrs["cycle"]["value"] = getattr(properties, "simulation_steps", 30)
 
@@ -171,9 +207,18 @@ def _map_global_attributes(grove: Any, properties: Any, template: Dict) -> Dict:
     if "randomSeed" in global_attrs:
         global_attrs["randomSeed"]["value"] = getattr(properties, "random_seed", 0)
 
-    # For array parameters (curves), keep them empty if template has empty
-    # Grove doesn't export these parameter curves, so preserve Hazel structure
-    # Empty arrays will remain empty, matching Hazel behavior
+    # Fill growth parameter curves with defaults
+    if use_default_growth_params:
+        defaults = get_default_growth_params(use_hazel_defaults=True)
+
+        # Merge defaults with custom overrides
+        if custom_growth_params:
+            defaults = merge_growth_params(defaults, custom_growth_params)
+
+        # Apply to global_attrs
+        for key, value in defaults.items():
+            if key in global_attrs:
+                global_attrs[key] = value
 
     return global_attrs
 
@@ -245,11 +290,27 @@ def _map_points_from_skeleton(skeleton: Any, template: Dict) -> Dict:
     return points_data
 
 
-def _map_primitives_from_skeleton(skeleton: Any, template: Dict) -> Dict:
+def _map_primitives_from_skeleton(
+    skeleton: Any,
+    template: Dict,
+    models: List[Any],
+    tree_index: int,
+    species_name: str,
+    num_branches: int,
+) -> Dict:
     """
-    Map Grove skeleton poly_lines to PVE primitives (branch curves).
+    Map Grove skeleton poly_lines to PVE primitives with foliage and hierarchy.
 
-    Only fills core branch attributes, keeps other attributes empty like Hazel.
+    Args:
+        skeleton: Grove skeleton
+        template: Template primitive attributes
+        models: Grove models (with twigs)
+        tree_index: Tree index
+        species_name: Species name for twig naming
+        num_branches: Number of branches
+
+    Returns:
+        Primitives data with foliage, hierarchy, and branch data
     """
     import copy
 
@@ -259,7 +320,7 @@ def _map_primitives_from_skeleton(skeleton: Any, template: Dict) -> Dict:
     }
 
     # Get poly_lines from skeleton
-    poly_lines = skeleton.poly_lines  # List of lists of point indices
+    poly_lines = skeleton.poly_lines
     num_poly_lines = len(poly_lines)
 
     # Each poly_line is a branch - add to points array
@@ -267,9 +328,7 @@ def _map_primitives_from_skeleton(skeleton: Any, template: Dict) -> Dict:
         point_indices = list(poly_line)
         primitives_data["points"].append(point_indices)
 
-    # Fill only core branch attributes
-    num_branches = num_poly_lines
-
+    # Fill core branch attributes
     # branchNumber (sequential ID)
     if "branchNumber" in primitives_data["attributes"]:
         value_key = (
@@ -310,7 +369,20 @@ def _map_primitives_from_skeleton(skeleton: Any, template: Dict) -> Dict:
         )
         primitives_data["attributes"]["plantNumber"][value_key] = [0] * num_branches
 
-    # All other attributes (compound, instancer, etc.) remain empty as in Hazel template
+    # Add parent/child hierarchy arrays
+    hierarchy = build_hierarchy_arrays(skeleton)
+    if "parents" in primitives_data["attributes"]:
+        primitives_data["attributes"]["parents"] = hierarchy["parents"]
+    if "children" in primitives_data["attributes"]:
+        primitives_data["attributes"]["children"] = hierarchy["children"]
+
+    # Extract foliage/twig instancer data
+    foliage_data = extract_foliage_data(models, tree_index, species_name, num_branches)
+
+    # Merge foliage data into primitives attributes
+    for key, value in foliage_data.items():
+        if key in primitives_data["attributes"]:
+            primitives_data["attributes"][key] = value
 
     return primitives_data
 
@@ -503,9 +575,12 @@ def generate_pve_from_grove(
     species_name: str,
     tree_index: int = 0,
     verbose: bool = True,
+    use_default_growth_params: bool = True,
+    twig_density: float = 1.0,
+    custom_growth_params: Optional[Dict] = None,
 ) -> Dict:
     """
-    Generate PVE preset JSON from Grove simulation using Hazel structure as template.
+    Generate PVE preset JSON from Grove simulation with full foliage and hierarchy.
 
     Args:
         grove: Grove object after simulation
@@ -513,13 +588,16 @@ def generate_pve_from_grove(
         species_name: Name of species
         tree_index: Index of tree in grove
         verbose: Whether to print progress messages
+        use_default_growth_params: If True, use Hazel defaults for growth curves
+        twig_density: Foliage density multiplier (0.0-1.0+)
+        custom_growth_params: Optional dictionary to override specific parameters
 
     Returns:
         Generated PVE preset dictionary
     """
     # Load Hazel JSON as template
     if verbose:
-        print(f"  Creating PVE preset from Grove data using Hazel template...")
+        print(f"  Creating PVE preset from Grove data with foliage...")
 
     # Find Hazel reference file
     project_root = Path(__file__).parent.parent.parent.parent
@@ -536,8 +614,16 @@ def generate_pve_from_grove(
     else:
         template = create_pve_template_from_reference(hazel_reference)
 
-    # Map Grove data to template
-    pve_data = map_grove_to_pve(grove, template, species_name, tree_index)
+    # Map Grove data to template with all features
+    pve_data = map_grove_to_pve(
+        grove,
+        template,
+        species_name,
+        tree_index,
+        use_default_growth_params=use_default_growth_params,
+        twig_density=twig_density,
+        custom_growth_params=custom_growth_params,
+    )
 
     # Save to file
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -545,5 +631,5 @@ def generate_pve_from_grove(
         json.dump(pve_data, f, indent=2)
 
     if verbose:
-        print(f"  ✓ PVE preset: {output_path.name}")
+        print(f"  ✓ PVE preset with foliage: {output_path.name}")
     return pve_data
