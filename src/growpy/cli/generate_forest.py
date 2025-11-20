@@ -243,6 +243,7 @@ def export_individual_trees(
     config: GrowPyConfig,
     quality_params: dict,
     mesh_type: str = "skeletal",
+    generate_pve_json: bool = False,
 ) -> list:
     """Export trees directly from already-simulated forest groves (no re-simulation).
 
@@ -251,6 +252,7 @@ def export_individual_trees(
     re-simulating individual trees.
 
     Exports as Nanite Assembly USD files (.usda format) with both skeletal and static mesh types.
+    Optionally also generates PVE preset JSON files for use in Unreal's Procedural Vegetation Editor.
 
     Args:
         forest: List of (grove, species_name, tree_count) from create_forest() + simulate_forest_growth()
@@ -259,6 +261,7 @@ def export_individual_trees(
         config: GrowPy configuration
         quality_params: Quality parameters dict
         mesh_type: Ignored - both skeletal and static are always created
+        generate_pve_json: If True, also generate PVE preset JSON for each tree
 
     Returns:
         List of exported file paths
@@ -286,6 +289,46 @@ def export_individual_trees(
         if result:
             exported_files.extend([Path(p) for p in result])
 
+    # Generate PVE preset JSON files if requested
+    if generate_pve_json:
+        try:
+            from growpy.io.pve_preset_json import generate_pve_preset_json
+
+            pve_dir = output_dir / "pve_presets"
+            pve_dir.mkdir(parents=True, exist_ok=True)
+
+            for grove, species_name, tree_count in tqdm(
+                forest, desc="Generating PVE presets"
+            ):
+                species_clean = (
+                    "".join(
+                        c for c in species_name if c.isalnum() or c in (" ", "-", "_")
+                    )
+                    .strip()
+                    .replace(" ", "_")
+                    .lower()
+                )
+
+                species_pve_dir = pve_dir / species_clean
+                species_pve_dir.mkdir(parents=True, exist_ok=True)
+
+                # Generate JSON for each tree in the grove
+                for tree_idx in range(tree_count):
+                    tree_name = f"{species_clean}_tree_{tree_idx:04d}"
+                    json_path = species_pve_dir / f"{tree_name}.json"
+
+                    generate_pve_preset_json(
+                        grove=grove,
+                        species_name=tree_name,
+                        output_path=json_path,
+                        tree_index=tree_idx,
+                    )
+                    exported_files.append(json_path)
+
+            print(f"\nPVE preset JSONs saved to: {pve_dir}")
+        except Exception as e:
+            print(f"Warning: PVE JSON generation failed: {e}")
+
     return exported_files
 
 
@@ -296,10 +339,12 @@ def generate_forest_exports(
     quality: str = "high",
     growth_cycle_limit: Optional[int] = None,
     mesh_type: str = "skeletal",
+    generate_pve_json: bool = False,
 ) -> None:
     """Generate forest from CSV data and export as Nanite Assembly USD files.
 
     Exports as .usda format with both skeletal and static mesh structures for Unreal Engine.
+    Optionally also generates PVE preset JSON files.
 
     Args:
         csv_path: Path to CSV file with forest data
@@ -308,6 +353,7 @@ def generate_forest_exports(
         quality: Quality preset name ('ultra', 'high', 'medium', 'low', 'performance')
         growth_cycle_limit: Maximum growth cycles per tree (default: GROWTH_CYCLE_LIMIT)
         mesh_type: Ignored - both skeletal and static are always created
+        generate_pve_json: If True, also generate PVE preset JSON for each tree
     """
     # Use defaults if not specified
     if growth_cycle_limit is None:
@@ -409,6 +455,7 @@ def generate_forest_exports(
             config,
             quality_params,
             mesh_type="skeletal",  # Ignored - both types are created
+            generate_pve_json=generate_pve_json,
         )
 
     except Exception:
@@ -768,6 +815,11 @@ Unreal Engine Integration:
         default="/Game/GrowPy/Trees",
         help="Unreal project Content path for imports (default: /Game/GrowPy/Trees)",
     )
+    parser.add_argument(
+        "--generate-pve-json",
+        action="store_true",
+        help="Generate PVE preset JSON files for Procedural Vegetation Editor in Unreal",
+    )
 
     args = parser.parse_args()
 
@@ -801,6 +853,7 @@ Unreal Engine Integration:
             args.quality,
             args.growth_cycle_limit,
             mesh_type="skeletal",  # Ignored - both skeletal and static are created
+            generate_pve_json=args.generate_pve_json,
         )
 
         # Generate Unreal scripts if requested
