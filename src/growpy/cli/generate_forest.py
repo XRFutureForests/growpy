@@ -82,8 +82,9 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     the old approach of recreating and re-simulating each tree individually.
 
     Args:
-        args: Tuple of (start_idx, grove_instance, species_name, output_dir, quality_params)
+        args: Tuple of (start_idx, grove_instance, species_name, output_dir, quality_params, mesh_type, verbose)
               start_idx is the base tree number for sequential numbering
+              verbose is boolean for verbose output
 
     Returns:
         List of exported file paths
@@ -99,7 +100,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     from growpy.io.assembly_export import export_tree_as_nanite_assembly
     from growpy.io.tree_export import get_twig_usd_map_for_species
 
-    (start_idx, grove, species, output_dir, quality_params, mesh_type) = args
+    (start_idx, grove, species, output_dir, quality_params, mesh_type, verbose) = args
 
     # Get config in worker process
     config = get_config()
@@ -214,21 +215,26 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         )
 
                 # Generate PVE preset JSON (for both skeletal and static meshes)
-                from growpy.io.pve_grove_mapper import generate_pve_from_grove
+                # Only generate once per tree (not for both skeletal and static)
+                if use_skeletal:  # Generate only for skeletal mesh to avoid duplicates
+                    from growpy.io.pve_grove_mapper import generate_pve_from_grove
 
-                pve_json_path = species_dir / f"{tree_name}_PVEPreset.json"
-                try:
-                    generate_pve_from_grove(
-                        grove=grove,
-                        output_path=pve_json_path,
-                        species_name=species,
-                        tree_index=model_idx,
-                        verbose=False,
-                    )
-                except Exception as pve_error:
-                    print(
-                        f"Warning: Failed to generate PVE preset JSON for {tree_name}: {pve_error}"
-                    )
+                    pve_json_path = species_dir / f"{tree_name}_PVEPreset.json"
+                    pve_config_dir = Path("data/assets/pve_configs")
+                    try:
+                        generate_pve_from_grove(
+                            grove=grove,
+                            output_path=pve_json_path,
+                            species_name=species,
+                            tree_index=model_idx,
+                            skeleton=skeleton,
+                            verbose=True,  # Always verbose for PVE config debugging
+                            pve_config_dir=pve_config_dir,
+                        )
+                    except Exception as pve_error:
+                        print(
+                            f"Warning: Failed to generate PVE preset JSON for {tree_name}: {pve_error}"
+                        )
 
         _gc_module.collect()
 
@@ -248,6 +254,7 @@ def export_individual_trees(
     quality_params: dict,
     mesh_type: str = "skeletal",
     generate_pve_json: bool = False,
+    verbose: bool = False,
 ) -> list:
     """Export trees directly from already-simulated forest groves (no re-simulation).
 
@@ -281,10 +288,10 @@ def export_individual_trees(
         # Create two tasks per grove - one for skeletal, one for static
         # start_idx=0 for each grove since trees are numbered within species folder
         grove_tasks.append(
-            (0, grove, species_name, output_dir, quality_params, "skeletal")
+            (0, grove, species_name, output_dir, quality_params, "skeletal", verbose)
         )
         grove_tasks.append(
-            (0, grove, species_name, output_dir, quality_params, "static")
+            (0, grove, species_name, output_dir, quality_params, "static", verbose)
         )
 
     # Always use sequential processing (bpy/USD not compatible with multiprocessing)
@@ -293,45 +300,8 @@ def export_individual_trees(
         if result:
             exported_files.extend([Path(p) for p in result])
 
-    # Generate PVE preset JSON files if requested
-    if generate_pve_json:
-        try:
-            from growpy.io.pve_preset_json import generate_pve_preset_json
-
-            pve_dir = output_dir / "pve_presets"
-            pve_dir.mkdir(parents=True, exist_ok=True)
-
-            for grove, species_name, tree_count in tqdm(
-                forest, desc="Generating PVE presets"
-            ):
-                species_clean = (
-                    "".join(
-                        c for c in species_name if c.isalnum() or c in (" ", "-", "_")
-                    )
-                    .strip()
-                    .replace(" ", "_")
-                    .lower()
-                )
-
-                species_pve_dir = pve_dir / species_clean
-                species_pve_dir.mkdir(parents=True, exist_ok=True)
-
-                # Generate JSON for each tree in the grove
-                for tree_idx in range(tree_count):
-                    tree_name = f"{species_clean}_tree_{tree_idx:04d}"
-                    json_path = species_pve_dir / f"{tree_name}.json"
-
-                    generate_pve_preset_json(
-                        grove=grove,
-                        species_name=tree_name,
-                        output_path=json_path,
-                        tree_index=tree_idx,
-                    )
-                    exported_files.append(json_path)
-
-            print(f"\nPVE preset JSONs saved to: {pve_dir}")
-        except Exception as e:
-            print(f"Warning: PVE JSON generation failed: {e}")
+    # PVE JSON generation now happens inline during tree export
+    # No separate batch generation needed
 
     return exported_files
 
@@ -344,6 +314,7 @@ def generate_forest_exports(
     growth_cycle_limit: Optional[int] = None,
     mesh_type: str = "skeletal",
     generate_pve_json: bool = False,
+    verbose: bool = False,
 ) -> None:
     """Generate forest from CSV data and export as Nanite Assembly USD files.
 
@@ -460,6 +431,7 @@ def generate_forest_exports(
             quality_params,
             mesh_type="skeletal",  # Ignored - both types are created
             generate_pve_json=generate_pve_json,
+            verbose=verbose,
         )
 
     except Exception:
@@ -827,6 +799,12 @@ Unreal Engine Integration:
         action="store_true",
         help="Generate PVE preset JSON files for Procedural Vegetation Editor in Unreal",
     )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output for PVE preset generation",
+    )
 
     args = parser.parse_args()
 
@@ -861,6 +839,7 @@ Unreal Engine Integration:
             args.growth_cycle_limit,
             mesh_type="skeletal",  # Ignored - both skeletal and static are created
             generate_pve_json=args.generate_pve_json,
+            verbose=args.verbose,
         )
 
         # Generate Unreal scripts if requested

@@ -57,7 +57,9 @@ def generate_pve_preset_json(
     properties = grove.get_properties()
 
     # Extract global attributes from Grove
-    global_attrs = _extract_global_attributes(grove, properties)
+    # Note: skeleton parameter not passed here since this is the old API
+    # For optimized version, use pve_grove_mapper.generate_pve_from_grove()
+    global_attrs = _extract_global_attributes(grove, properties, skeleton=None)
 
     # Extract point data from Grove geometry
     points_data = _extract_points_data(grove, tree_index)
@@ -81,11 +83,18 @@ def generate_pve_preset_json(
     return pve_preset
 
 
-def _extract_global_attributes(grove: Any, properties: Any) -> Dict:
+def _extract_global_attributes(
+    grove: Any, properties: Any, skeleton: Optional[Any] = None
+) -> Dict:
     """
     Extract global growth attributes from Grove properties.
 
     Maps Grove parameters to PVE globalAttributes format.
+
+    Args:
+        grove: Grove object
+        properties: Grove properties
+        skeleton: Optional pre-built skeleton to avoid redundant API calls
     """
     import the_grove_22_core as gc
 
@@ -119,30 +128,30 @@ def _extract_global_attributes(grove: Any, properties: Any) -> Dict:
             "type": "float",
             "value": getattr(properties, "gravitational_force", 2.0),
         },
-        # Branch structure limits
+        # Branch structure limits - calculated from skeleton
         "maxBranchNumber": {
             "isArray": False,
             "size": 1,
             "type": "int",
-            "value": grove.get_num_branches(),
+            "value": _get_num_branches(grove, skeleton),
         },
         "maxBudNumber": {
             "isArray": False,
             "size": 1,
             "type": "int",
-            "value": grove.get_num_buds(),
+            "value": _get_num_buds(grove, skeleton),
         },
         "compoundMaxBranchGeneration": {
             "isArray": False,
             "size": 1,
             "type": "int",
-            "value": _get_max_generation(grove),
+            "value": _get_max_generation(grove, skeleton),
         },
         "compoundMaxBranchNumber": {
             "isArray": False,
             "size": 1,
             "type": "int",
-            "value": grove.get_num_branches(),
+            "value": _get_num_branches(grove, skeleton),
         },
         # Growth parameters (these are typically curves in Grove)
         # For now, we'll extract simple values - can be enhanced with curve data
@@ -429,11 +438,66 @@ def _get_property_value(
     return default
 
 
-def _get_max_generation(grove: Any) -> int:
-    """Get maximum branch generation (hierarchy depth)."""
+def _get_num_branches(grove: Any, skeleton: Optional[Any] = None) -> int:
+    """Get number of branches from Grove skeleton.
+
+    Args:
+        grove: Grove object
+        skeleton: Optional pre-built skeleton to avoid redundant API calls
+    """
     try:
-        # This would need Grove API to traverse branch hierarchy
-        return 3  # Default placeholder
+        if skeleton is not None:
+            return len(skeleton.poly_lines)
+        skeletons = grove.build_skeletons()
+        if skeletons and len(skeletons) > 0:
+            return len(skeletons[0].poly_lines)
+        return 1
+    except:
+        return 1
+
+
+def _get_num_buds(grove: Any, skeleton: Optional[Any] = None) -> int:
+    """Get approximate number of buds/endpoints from Grove skeleton.
+
+    Args:
+        grove: Grove object
+        skeleton: Optional pre-built skeleton to avoid redundant API calls
+    """
+    try:
+        if skeleton is not None:
+            # Estimate: each branch has at least one bud at the end
+            return len(skeleton.poly_lines)
+        skeletons = grove.build_skeletons()
+        if skeletons and len(skeletons) > 0:
+            return len(skeletons[0].poly_lines)
+        return 1
+    except:
+        return 1
+
+
+def _get_max_generation(grove: Any, skeleton: Optional[Any] = None) -> int:
+    """Get maximum branch generation (hierarchy depth).
+
+    Args:
+        grove: Grove object
+        skeleton: Optional pre-built skeleton to avoid redundant API calls
+    """
+    try:
+        if skeleton is not None:
+            poly_lines = skeleton.poly_lines
+            # Estimate max depth based on number of branches
+            # Main trunk = 0, first branches = 1, etc.
+            # Use log scale as rough estimate
+            import math
+
+            return max(1, int(math.log2(len(poly_lines) + 1)))
+        skeletons = grove.build_skeletons()
+        if skeletons and len(skeletons) > 0:
+            poly_lines = skeletons[0].poly_lines
+            import math
+
+            return max(1, int(math.log2(len(poly_lines) + 1)))
+        return 3
     except:
         return 3
 

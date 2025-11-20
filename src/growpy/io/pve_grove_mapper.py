@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
+from ..config.pve_species_overrides import apply_species_overrides
 from .pve_foliage_extractor import extract_foliage_data
 from .pve_growth_defaults import get_default_growth_params, merge_growth_params
 from .pve_hierarchy_builder import build_hierarchy_arrays
@@ -93,9 +94,12 @@ def map_grove_to_pve(
     template: Dict,
     species_name: str,
     tree_index: int = 0,
+    skeleton: Optional[Any] = None,
     use_default_growth_params: bool = True,
     twig_density: float = 1.0,
     custom_growth_params: Optional[Dict] = None,
+    pve_config_dir: Optional[Path] = None,
+    verbose: bool = False,
 ) -> Dict:
     """
     Map Grove simulation data to PVE preset JSON format.
@@ -105,9 +109,12 @@ def map_grove_to_pve(
         template: Empty PVE template from create_pve_template_from_reference()
         species_name: Name of species
         tree_index: Index of tree in grove
+        skeleton: Optional pre-built skeleton to avoid redundant API calls
         use_default_growth_params: If True, use Hazel defaults for growth curves
         twig_density: Foliage density multiplier (0.0-1.0+)
         custom_growth_params: Optional dictionary to override specific parameters
+        pve_config_dir: Optional directory for species PVE config files
+        verbose: Print detailed information
 
     Returns:
         Filled PVE preset dictionary
@@ -131,31 +138,46 @@ def map_grove_to_pve(
     }
     models = grove.build_models(build_params)
 
-    # Build skeleton for branch hierarchy
-    skeletons = grove.build_skeletons()
+    # Build skeleton for branch hierarchy (if not provided)
+    if skeleton is None:
+        skeletons = grove.build_skeletons()
+        if tree_index < len(skeletons):
+            skeleton = skeletons[tree_index]
 
-    # Fill template with Grove data
-    pve_data = template.copy()
+    # Fill template with Grove data, ensuring all Hazel attributes are present
+    import copy
 
-    # Map global attributes with defaults
-    pve_data["globalAttributes"] = _map_global_attributes(
+    pve_data = copy.deepcopy(template)
+
+    # Fill globalAttributes: Grove-fillable attributes get Grove values, others remain empty/default
+    filled_attrs = _map_global_attributes(
         grove,
         properties,
         template["globalAttributes"],
+        skeleton,
         use_default_growth_params,
         custom_growth_params,
     )
+    for key in pve_data["globalAttributes"]:
+        if key in filled_attrs:
+            # Only fill if Grove can provide a value, else leave as empty/default
+            if (
+                isinstance(filled_attrs[key]["value"], list)
+                and filled_attrs[key]["value"]
+            ) or (
+                not isinstance(filled_attrs[key]["value"], list)
+                and filled_attrs[key]["value"] != 0
+            ):
+                pve_data["globalAttributes"][key]["value"] = filled_attrs[key]["value"]
+            # else: leave as empty/default
 
     # Map point data from skeleton
-    if tree_index < len(skeletons):
-        skeleton = skeletons[tree_index]
+    if skeleton is not None:
         pve_data["points"] = _map_points_from_skeleton(skeleton, template["points"])
 
     # Map primitives from skeleton poly_lines
-    if tree_index < len(skeletons):
-        skeleton = skeletons[tree_index]
+    if skeleton is not None:
         num_branches = len(skeleton.poly_lines)
-
         pve_data["primitives"] = _map_primitives_from_skeleton(
             skeleton,
             template["primitives"],
@@ -165,6 +187,11 @@ def map_grove_to_pve(
             num_branches,
         )
 
+    # Apply species-specific overrides from config files
+    pve_data = apply_species_overrides(
+        pve_data, species_name, pve_config_dir, verbose=verbose
+    )
+
     return pve_data
 
 
@@ -172,6 +199,7 @@ def _map_global_attributes(
     grove: Any,
     properties: Any,
     template: Dict,
+    skeleton: Optional[Any] = None,
     use_default_growth_params: bool = True,
     custom_growth_params: Optional[Dict] = None,
 ) -> Dict:
@@ -182,6 +210,7 @@ def _map_global_attributes(
         grove: Grove object
         properties: Grove properties
         template: Template global attributes
+        skeleton: Optional pre-built skeleton to avoid redundant API calls
         use_default_growth_params: If True, use Hazel defaults
         custom_growth_params: Optional overrides
 
@@ -328,6 +357,9 @@ def _map_primitives_from_skeleton(
         point_indices = list(poly_line)
         primitives_data["points"].append(point_indices)
 
+    # Get the model for this tree
+    model = models[tree_index] if tree_index < len(models) else None
+
     # Fill core branch attributes
     # branchNumber (sequential ID)
     if "branchNumber" in primitives_data["attributes"]:
@@ -341,8 +373,10 @@ def _map_primitives_from_skeleton(
         )
 
     # branchGeneration (depth in hierarchy)
-    if "branchGeneration" in primitives_data["attributes"]:
-        generations = _calculate_branch_generation(skeleton)
+    if "branchGeneration" in primitives_data["attributes"] and model:
+        from .pve_hierarchy_builder import get_branch_generation
+
+        generations = get_branch_generation(model, num_branches)
         value_key = (
             "values"
             if "values" in primitives_data["attributes"]["branchGeneration"]
@@ -351,8 +385,8 @@ def _map_primitives_from_skeleton(
         primitives_data["attributes"]["branchGeneration"][value_key] = generations
 
     # branchParentNumber (parent branch index)
-    if "branchParentNumber" in primitives_data["attributes"]:
-        parents = _calculate_branch_parents(skeleton)
+    if "branchParentNumber" in primitives_data["attributes"] and model:
+        parents = _calculate_branch_parents_from_model(model, num_branches)
         value_key = (
             "values"
             if "values" in primitives_data["attributes"]["branchParentNumber"]
@@ -370,11 +404,12 @@ def _map_primitives_from_skeleton(
         primitives_data["attributes"]["plantNumber"][value_key] = [0] * num_branches
 
     # Add parent/child hierarchy arrays
-    hierarchy = build_hierarchy_arrays(skeleton)
-    if "parents" in primitives_data["attributes"]:
-        primitives_data["attributes"]["parents"] = hierarchy["parents"]
-    if "children" in primitives_data["attributes"]:
-        primitives_data["attributes"]["children"] = hierarchy["children"]
+    if model:
+        hierarchy = build_hierarchy_arrays(model, num_branches)
+        if "parents" in primitives_data["attributes"]:
+            primitives_data["attributes"]["parents"] = hierarchy["parents"]
+        if "children" in primitives_data["attributes"]:
+            primitives_data["attributes"]["children"] = hierarchy["children"]
 
     # Extract foliage/twig instancer data
     foliage_data = extract_foliage_data(models, tree_index, species_name, num_branches)
@@ -479,52 +514,6 @@ def _calculate_branch_gradients(skeleton: Any) -> List[float]:
     return gradients
 
 
-def _calculate_branch_generation(skeleton: Any) -> List[int]:
-    """
-    Calculate generation (depth) for each branch primitive.
-
-    Main trunk is 0, branches from it are 1, etc.
-    """
-    poly_lines = skeleton.poly_lines
-    num_poly_lines = len(poly_lines)
-    generations = [0] * num_poly_lines
-
-    # First poly_line is main trunk (generation 0)
-    if num_poly_lines > 0:
-        generations[0] = 0
-
-    # Calculate for remaining branches
-    # Heuristic: branch connects to a point that already has a generation assigned
-    point_to_generation = {}
-
-    # Assign main trunk points to generation 0
-    if num_poly_lines > 0:
-        main_trunk = poly_lines[0]
-        for i in range(len(main_trunk)):
-            point_to_generation[main_trunk[i]] = 0
-
-    # Process remaining poly_lines
-    for poly_idx in range(1, num_poly_lines):
-        poly_line = poly_lines[poly_idx]
-
-        if len(poly_line) > 0:
-            first_point = poly_line[0]
-
-            # Check if this point already has a generation
-            if first_point in point_to_generation:
-                branch_gen = point_to_generation[first_point] + 1
-            else:
-                branch_gen = 1
-
-            generations[poly_idx] = branch_gen
-
-            # Update all points in this poly_line
-            for i in range(len(poly_line)):
-                point_to_generation[poly_line[i]] = branch_gen
-
-    return generations
-
-
 def _calculate_branch_parents(skeleton: Any) -> List[int]:
     """
     Calculate parent branch index for each branch.
@@ -569,15 +558,47 @@ def _calculate_branch_parents(skeleton: Any) -> List[int]:
     return parents
 
 
+def _calculate_branch_parents_from_model(model: Any, num_branches: int) -> List[int]:
+    """
+    Calculate parent branch index for each branch using model face attributes.
+
+    Args:
+        model: Grove model with face_attribute_branch_id and face_attribute_branch_id_parent
+        num_branches: Total number of branches
+
+    Returns:
+        List of parent indices per branch (-1 for root)
+    """
+    # Extract branch parent relationships from model face attributes
+    branch_ids = model.face_attribute_branch_id
+    parent_branch_ids = model.face_attribute_branch_id_parent
+
+    # Build branch->parent mapping
+    branch_to_parent = {}
+    for branch_id, parent_id in zip(branch_ids, parent_branch_ids):
+        if branch_id not in branch_to_parent:
+            branch_to_parent[branch_id] = parent_id
+
+    # Build parents list
+    parents = []
+    for branch_idx in range(num_branches):
+        parent_idx = branch_to_parent.get(branch_idx, -1)
+        parents.append(parent_idx)
+
+    return parents
+
+
 def generate_pve_from_grove(
     grove: Any,
     output_path: Path,
     species_name: str,
     tree_index: int = 0,
+    skeleton: Optional[Any] = None,
     verbose: bool = True,
     use_default_growth_params: bool = True,
     twig_density: float = 1.0,
     custom_growth_params: Optional[Dict] = None,
+    pve_config_dir: Optional[Path] = None,
 ) -> Dict:
     """
     Generate PVE preset JSON from Grove simulation with full foliage and hierarchy.
@@ -587,10 +608,12 @@ def generate_pve_from_grove(
         output_path: Path to save generated JSON
         species_name: Name of species
         tree_index: Index of tree in grove
+        skeleton: Optional pre-built skeleton to avoid redundant API calls
         verbose: Whether to print progress messages
         use_default_growth_params: If True, use Hazel defaults for growth curves
         twig_density: Foliage density multiplier (0.0-1.0+)
         custom_growth_params: Optional dictionary to override specific parameters
+        pve_config_dir: Optional directory for species PVE config files
 
     Returns:
         Generated PVE preset dictionary
@@ -620,9 +643,12 @@ def generate_pve_from_grove(
         template,
         species_name,
         tree_index,
+        skeleton=skeleton,
         use_default_growth_params=use_default_growth_params,
         twig_density=twig_density,
         custom_growth_params=custom_growth_params,
+        pve_config_dir=pve_config_dir,
+        verbose=verbose,
     )
 
     # Save to file
