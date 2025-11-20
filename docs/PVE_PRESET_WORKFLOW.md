@@ -99,6 +99,11 @@ Growth simulation parameters that control tree behavior:
     "phototropism": {"isArray": true, "size": 1, "type": "float", "value": [0.5, 0.0, 1.0, ...]},
     "phyllotaxy": {"isArray": true, "size": 1, "type": "float", "value": [137.5, 0.0, ...]},
     "gravitationalForce": {"isArray": false, "size": 1, "type": "float", "value": 2.0},
+    "plantProfile_1": {"isArray": true, "size": 1, "type": "float", "value": [0.85, 0.87, ...]},
+    "plantProfile_2": {"isArray": true, "size": 1, "type": "float", "value": [0.82, 0.84, ...]},
+    "plantProfile_3": {"isArray": true, "size": 1, "type": "float", "value": [0.88, 0.90, ...]},
+    "plantProfile_4": {"isArray": true, "size": 1, "type": "float", "value": [0.81, 0.83, ...]},
+    "plantProfile_5": {"isArray": true, "size": 1, "type": "float", "value": [0.86, 0.88, ...]},
     ...
   }
 }
@@ -111,6 +116,148 @@ Key parameters:
 - **phototropism**: Light-seeking behavior curve
 - **phyllotaxy**: Branching angle patterns
 - **gravitationalForce**: Branch drooping strength
+- **plantProfile_1-5**: Radial crown envelope profiles (see detailed section below)
+
+#### PlantProfile Arrays - Crown Envelope Definition
+
+The `plantProfile_1` through `plantProfile_5` attributes define the radial crown envelope of the tree. These are critical for controlling tree shape and procedural foliage placement.
+
+**Structure:**
+
+- Each plantProfile is an array of exactly 100 float values
+- Values typically range from 0.75 to 1.0 (normalized radii)
+- The 100 values represent samples around a full 360° circle (3.6° per sample)
+- Arrays are cyclic: the first value equals the last value for smooth wrapping
+
+**What They Represent:**
+
+- Each value defines the crown radius at a specific angle when viewed from above
+- Think of it as a top-down outline of the tree's crown shape
+- Value of 1.0 = maximum crown extent at that angle
+- Value of 0.75 = 75% of maximum extent (creating indentations/irregularities)
+- The variation creates natural, irregular crown shapes rather than perfect circles
+
+**Example Profile Pattern:**
+
+```json
+"plantProfile_1": {
+  "value": [
+    0.8525,  // 0° (north)
+    0.8631,  // 3.6°
+    0.8738,  // 7.2°
+    ...      // continues around circle
+    0.9750,  // 352.8°
+    0.8525   // 356.4° (back to start)
+  ]
+}
+```
+
+**How PVE Uses Multiple Profiles:**
+
+- **5 profiles provide natural variation** between tree instances
+- When spawning multiple trees, PVE randomly selects from profiles 1-5
+- This creates diversity without needing separate preset files
+- Each profile should have different irregularities for maximum variation
+
+**Species-Specific Guidelines:**
+
+*Broadleaf Trees* (Oak, Beech, Hazel, Maple):
+
+- Use 5 varied profiles with values ranging 0.80-1.0
+- Create irregular patterns mimicking natural crown asymmetry
+- Include 10-15 local maxima per profile (simulating major branches)
+- Variation should be gradual (avoid sharp peaks)
+
+*Coniferous Trees* (Pine, Spruce, Fir):
+
+- Use more uniform profiles with values 0.90-1.0
+- Create smoother, more conical patterns
+- Fewer local maxima (3-5 per profile)
+- Lower branches can have smaller radii (tapering effect)
+
+**Creating Custom Profiles:**
+
+To generate biologically accurate profiles:
+
+```python
+import numpy as np
+import json
+
+def generate_crown_profile(num_major_branches=12, irregularity=0.15):
+    """Generate a naturalistic crown profile with major branch lobes"""
+    angles = np.linspace(0, 2*np.pi, 100)
+    
+    # Base circular shape
+    profile = np.ones(100)
+    
+    # Add major branch lobes
+    branch_angles = np.linspace(0, 2*np.pi, num_major_branches, endpoint=False)
+    for branch_angle in branch_angles:
+        # Gaussian lobe around each major branch
+        lobe = irregularity * np.exp(-((angles - branch_angle)**2) / 0.5)
+        profile += lobe
+    
+    # Add small-scale variation (minor branches, foliage clumps)
+    noise = irregularity * 0.3 * np.random.randn(100)
+    profile += noise
+    
+    # Normalize to 0.75-1.0 range
+    profile = 0.75 + 0.25 * (profile - profile.min()) / (profile.max() - profile.min())
+    
+    # Ensure cyclic (first = last)
+    profile[-1] = profile[0]
+    
+    return profile.tolist()
+
+# Generate 5 variation profiles
+profiles = {
+    f"plantProfile_{i+1}": {
+        "isArray": True,
+        "size": 1,
+        "type": "float",
+        "value": generate_crown_profile(num_major_branches=np.random.randint(10, 15))
+    }
+    for i in range(5)
+}
+
+# Save to config
+with open("data/assets/pve_configs/my_species_pve.json", "w") as f:
+    json.dump({"plantProfile_overrides": profiles}, f, indent=2)
+```
+
+**Debugging Profiles:**
+
+To visualize a profile:
+
+```python
+import matplotlib.pyplot as plt
+import numpy as np
+import json
+
+# Load profile
+with open("data/assets/pve_configs/european_beech_pve.json") as f:
+    config = json.load(f)
+
+profile = config["plantProfile_1"]["value"]
+
+# Convert to polar coordinates
+angles = np.linspace(0, 2*np.pi, len(profile))
+
+# Plot
+fig, ax = plt.subplots(subplot_kw=dict(projection='polar'))
+ax.plot(angles, profile)
+ax.fill(angles, profile, alpha=0.3)
+ax.set_title("Crown Profile - Top View")
+plt.savefig("crown_profile.png")
+```
+
+**Important Notes:**
+
+- All 5 profiles are **required** for proper PVE preset functionality
+- Missing profiles will cause import errors in Unreal Engine
+- Profiles must have exactly 100 values (no more, no less)
+- Values outside 0.5-1.2 range may cause rendering artifacts
+- When in doubt, use reference profiles from Quixel Megaplants samples
 
 ### 2. points
 
@@ -155,6 +302,100 @@ Branch connectivity defining tree structure:
 ```
 
 ## Importing to Unreal Engine
+
+### Enabling PVE Debug Mode (Exposing Hidden Properties)
+
+The Procedural Vegetation Editor has internal development properties that are hidden by default. To import JSON presets and access advanced parameters, you need to enable debug mode.
+
+**Using Console Variable (Recommended - No Recompilation Required):**
+
+1. Open the Unreal Editor console (press `~` key)
+
+2. Enable debug mode:
+
+   ```text
+   PV.DebugMode.Enabled 1
+   ```
+
+3. This immediately reveals all internal properties marked as `DevelopmentOnly` in the PVE preset asset
+
+4. To hide properties again:
+
+   ```text
+   PV.DebugMode.Enabled 0
+   ```
+
+**How It Works:**
+
+The `CVarEnablePVDebugMode` console variable is defined in `PVUtilities.cpp`:
+
+```cpp
+static TAutoConsoleVariable<bool> CVarEnablePVDebugMode(
+    TEXT("PV.DebugMode.Enabled"),
+    false,
+    TEXT("Enables debug mode for the Procedural Vegetation Editor"), 
+    FConsoleVariableDelegate::CreateLambda([](IConsoleVariable* ConsoleVariable)
+    {
+        UPVImporterSettings::StaticClass()->GetDefaultObject<UPVImporterSettings>()->bExposeToLibrary = ConsoleVariable->GetBool();
+        UProceduralVegetationPreset::ShowHideInternalProperties(ConsoleVariable->GetBool());
+    })
+);
+```
+
+When you enable this console variable:
+
+- It calls `ShowHideInternalProperties(true)` internally
+- All `DevelopmentOnly` internal properties become visible in the Details panel
+- No editor recompilation is required
+- Changes take effect immediately via the dynamic delegate callback
+
+**What Hidden Properties Are Exposed:**
+
+With debug mode enabled, you can see and edit:
+
+- `plantProfile_1` through `plantProfile_5` (crown envelope arrays)
+- `maxBranchNumber` and `maxBudNumber` (growth limits)
+- `compoundMaxBranchGeneration` and `compoundMaxBranchNumber` (compound leaf parameters)
+- `photogrammetryTrunk` (photogrammetry flag)
+- Deprecated scale parameters (`maxPscale`, `minPscale`, `max_curve_length`, `max_pscale`)
+- Other internal PVE simulation parameters
+
+**When to Use Debug Mode:**
+
+Enable debug mode when:
+
+- Importing JSON preset files that contain these hidden attributes
+- Fine-tuning advanced tree generation parameters
+- Debugging PVE preset behavior
+- Comparing GrowPy-generated presets with Quixel references
+
+Keep debug mode disabled for:
+
+- Normal production workflows
+- Preventing accidental modification of internal parameters
+- Cleaner UI with only user-facing properties visible
+
+**Persistent Configuration (Recommended):**
+
+To keep debug mode enabled across editor sessions:
+
+1. Locate `DefaultEditor.ini` in your project's `Config/` folder
+   - Path: `<YourProject>/Config/DefaultEditor.ini`
+
+2. Open the file in a text editor
+
+3. Scroll to the **very bottom** of the file
+
+4. Add these two lines at the end:
+
+   ```ini
+   [ConsoleVariables]
+   PV.DebugMode.Enabled=1
+   ```
+
+5. Save the file and restart Unreal Editor
+
+**Important**: Add these lines at the bottom, after all existing content (after the `[/Script/AdvancedPreviewScene.SharedProfiles]` section with all the `+Profiles=(...)` entries).
 
 ### Required Folder Structure in Unreal
 
@@ -390,11 +631,18 @@ For each species:
 
 ## Troubleshooting
 
+### JSON Import Shows Missing Properties
+
+- **Solution**: Enable PVE Debug Mode using console command `PV.DebugMode.Enabled 1`
+- Hidden properties like `plantProfile_1-5` are only visible with debug mode enabled
+- See "Enabling PVE Debug Mode" section above for details
+
 ### JSON Not Recognized
 
 - Check file location: Must be in `Instances/` subfolder
 - Verify JSON structure: Compare with reference Megaplants preset
 - File extension: Must be `.json`
+- Enable debug mode to expose import functionality
 
 ### Skeletal Mesh Import Fails
 
@@ -490,6 +738,8 @@ PVE presets can work with Dynamic Wind in Unreal:
 
 ## See Also
 
+- [PVE Attribute Reference](PVE_ATTRIBUTE_REFERENCE.md) - Detailed explanation of all PVE attributes (maxBranchNumber, compound leaves, pscale, etc.)
+- [PlantProfile Reference Guide](PLANTPROFILE_REFERENCE.md) - Comprehensive guide to crown profile arrays
 - [PVE Direct from Grove](PVE_DIRECT_FROM_GROVE.md) - Technical implementation details
 - [Nanite Assembly Export](NANITE_CLEAN_EXPORT.md) - USD export workflow
 - [CLI Reference](archive/cli-reference.md) - Complete command reference
