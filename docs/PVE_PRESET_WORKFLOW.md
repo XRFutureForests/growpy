@@ -427,8 +427,7 @@ GrowPy PVE module:
 
 CLI tools:
 
-- `src/growpy/cli/generate_pve_preset.py`
-- `src/growpy/cli/generate_forest.py`
+- `src/growpy/cli/generate_forest.py` (with `--generate-pve-json` flag)
 
 ## Advanced Topics
 

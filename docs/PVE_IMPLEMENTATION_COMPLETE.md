@@ -60,24 +60,7 @@ The generated JSON follows Quixel Megaplants format with three sections:
 2. **points**: Point cloud with positions and botanical attributes
 3. **primitives**: Branch connectivity and hierarchy
 
-### 3. CLI Tool for Standalone Generation
-
-**File**: `src/growpy/cli/generate_pve_preset.py` (already existed)
-
-Dedicated tool for generating PVE presets without full forest export:
-
-```bash
-# Single preset
-python src/growpy/cli/generate_pve_preset.py "European Beech" --output beech.json
-
-# Multiple variations
-python src/growpy/cli/generate_pve_preset.py "European Beech" --variations 5 --output-dir presets/
-
-# High quality
-python src/growpy/cli/generate_pve_preset.py "Scots Pine" --cycles 15 --resolution 32
-```
-
-### 4. Comprehensive Documentation
+### 3. Comprehensive Documentation
 
 **File**: `docs/PVE_PRESET_WORKFLOW.md`
 
@@ -91,7 +74,7 @@ Created complete workflow guide covering:
 #### Generation Methods
 
 - From forest export (`--generate-pve-json` flag)
-- Standalone generation (`generate_pve_preset.py`)
+- Programmatic generation via Python API
 - Batch generation scripts
 
 #### JSON Structure Explained
