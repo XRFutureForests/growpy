@@ -198,6 +198,208 @@ def apply_species_overrides(
     return pve_preset
 
 
+def create_null_placeholder_config(
+    output_path: Path, species_name: str, common_name: str
+) -> None:
+    """
+    Create a PVE config with null placeholders for all overridable attributes.
+
+    Null values signal to use computed values from Grove or sensible defaults.
+    Users can edit this file to provide species-specific overrides.
+
+    Includes ALL attributes found in Hazel reference for maximum customizability.
+
+    Args:
+        output_path: Path to write config file
+        species_name: Normalized species name (e.g., "european_beech")
+        common_name: Display name (e.g., "European Beech")
+    """
+    config = {
+        "_comment": f"PVE attribute overrides for {common_name}",
+        "_description": "Set values to customize, or leave as null to use computed/default values",
+        "_species": species_name,
+        "globalAttributes": {
+            # Simulation parameters - null = use Grove values
+            "cycle": {"isArray": False, "size": 1, "type": "int", "value": None},
+            "cycleTime": {"isArray": False, "size": 1, "type": "float", "value": None},
+            "randomSeed": {"isArray": False, "size": 1, "type": "int", "value": None},
+            # Growth curves - null = use Hazel defaults
+            "abscissionSenescense": {
+                "isArray": True,
+                "size": 1,
+                "type": "float",
+                "value": None,
+            },
+            "axialElongation": {
+                "isArray": True,
+                "size": 1,
+                "type": "float",
+                "value": None,
+            },
+            "axialElongationChild": {
+                "isArray": True,
+                "size": 1,
+                "type": "float",
+                "value": None,
+            },
+            "branchingCondition": {
+                "isArray": True,
+                "size": 1,
+                "type": "float",
+                "value": None,
+            },
+            "branchingConditionChild": {
+                "isArray": True,
+                "size": 1,
+                "type": "float",
+                "value": None,
+            },
+            "lateralElongation": {
+                "isArray": True,
+                "size": 1,
+                "type": "float",
+                "value": None,
+            },
+            "lateralElongationChild": {
+                "isArray": True,
+                "size": 1,
+                "type": "float",
+                "value": None,
+            },
+            "leafGrowth": {"isArray": True, "size": 1, "type": "float", "value": None},
+            "lightDetection": {
+                "isArray": True,
+                "size": 1,
+                "type": "float",
+                "value": None,
+            },
+            "trunkGrowth": {"isArray": True, "size": 1, "type": "float", "value": None},
+            # Physical parameters - null = use Grove/default values
+            "gravitationalForce": {
+                "isArray": False,
+                "size": 1,
+                "type": "float",
+                "value": None,
+            },
+            "guide": {"isArray": True, "size": 1, "type": "float", "value": None},
+            # Light-seeking behavior - null = use Hazel defaults
+            "phototropism": {
+                "isArray": True,
+                "size": 1,
+                "type": "float",
+                "value": None,
+            },
+            "phototropismChild": {
+                "isArray": True,
+                "size": 1,
+                "type": "float",
+                "value": None,
+            },
+            # Branching angles - null = use Hazel defaults
+            "phyllotaxy": {"isArray": True, "size": 1, "type": "float", "value": None},
+            "phyllotaxyChild": {
+                "isArray": True,
+                "size": 1,
+                "type": "float",
+                "value": None,
+            },
+            "phyllotaxyLeaf": {
+                "isArray": True,
+                "size": 1,
+                "type": "float",
+                "value": None,
+            },
+            "randomAngle": {"isArray": True, "size": 1, "type": "float", "value": None},
+            "randomAngleChild": {
+                "isArray": True,
+                "size": 1,
+                "type": "float",
+                "value": None,
+            },
+            # Crown shape profiles - null = use generated naturalistic profiles
+            "plantProfile_1": {
+                "isArray": True,
+                "size": 1,
+                "type": "float",
+                "value": None,
+            },
+            "plantProfile_2": {
+                "isArray": True,
+                "size": 1,
+                "type": "float",
+                "value": None,
+            },
+            "plantProfile_3": {
+                "isArray": True,
+                "size": 1,
+                "type": "float",
+                "value": None,
+            },
+            "plantProfile_4": {
+                "isArray": True,
+                "size": 1,
+                "type": "float",
+                "value": None,
+            },
+            "plantProfile_5": {
+                "isArray": True,
+                "size": 1,
+                "type": "float",
+                "value": None,
+            },
+            # Branch/bud metadata - null = compute from skeleton
+            "maxBranchNumber": {
+                "isArray": False,
+                "size": 1,
+                "type": "int",
+                "value": None,
+            },
+            "maxBudNumber": {"isArray": False, "size": 1, "type": "int", "value": None},
+            # Compound leaf parameters - null = use defaults (0 for simple leaves)
+            "compoundMaxBranchGeneration": {
+                "isArray": False,
+                "size": 1,
+                "type": "int",
+                "value": None,
+            },
+            "compoundMaxBranchNumber": {
+                "isArray": False,
+                "size": 1,
+                "type": "int",
+                "value": None,
+            },
+            # Photogrammetry - null = use default (0 = procedural)
+            "photogrammetryTrunk": {
+                "isArray": False,
+                "size": 1,
+                "type": "int",
+                "value": None,
+            },
+            # Scale parameters - null = compute from skeleton or use defaults
+            "maxPscale": {"isArray": False, "size": 1, "type": "float", "value": None},
+            "minPscale": {"isArray": False, "size": 1, "type": "float", "value": None},
+            "max_curve_length": {
+                "isArray": False,
+                "size": 1,
+                "type": "float",
+                "value": None,
+            },
+            "max_pscale": {"isArray": False, "size": 1, "type": "float", "value": None},
+            "maxPscales": {"isArray": True, "size": 1, "type": "float", "value": None},
+            "maxDavinciPscales": {
+                "isArray": True,
+                "size": 1,
+                "type": "float",
+                "value": None,
+            },
+        },
+    }
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w") as f:
+        json.dump(config, f, indent=2)
+
+
 def extract_pve_overrides_from_reference(
     reference_json_path: Path, output_path: Path, species_name: str
 ) -> None:

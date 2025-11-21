@@ -9,7 +9,28 @@ Supports two CSV formats:
   2. Asset lookup CSV (Common Name, Preset, Twig, Bark Texture) - direct asset reference
 
 Quick Start:
+    # Basic growth model generation with defaults shown
+    python src/growpy/cli/create_growth_models.py \
+        --csv data/input/test.csv \
+        --cycles 125 \
+        --seeds 1 \
+        --height-threshold 0.05 \
+        --max-cycles-without-growth 3 \
+        --timeout 300
+    
+    # Quick analysis (fewer cycles)
     python src/growpy/cli/create_growth_models.py --cycles 25
+    
+    # Analyze specific species
+    python src/growpy/cli/create_growth_models.py \
+        --species "European oak" \
+        --cycles 125 \
+        --seeds 3
+    
+    # Analyze all 57 species
+    python src/growpy/cli/create_growth_models.py \
+        --csv src/growpy/config/tree_asset_lookup.csv \
+        --cycles 125
 
 Common Flags (current):
     --csv PATH                Species CSV (default: data/input/test.csv)
@@ -256,5 +277,4 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
 
 if __name__ == "__main__":
-    main()
     main()

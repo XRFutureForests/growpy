@@ -251,9 +251,7 @@ def create_assembly(
                             for texture_file in source_textures_dir.glob(
                                 f"*{texture_ext}"
                             ):
-                                output_texture = (
-                                    output_textures_dir / texture_file.name
-                                )
+                                output_texture = output_textures_dir / texture_file.name
                                 if not output_texture.exists():
                                     shutil.copy2(texture_file, output_texture)
 
@@ -563,6 +561,7 @@ def export_tree_as_nanite_assembly(
     include_twigs: bool = True,
     use_skeletal_mesh: bool = False,
     use_static_mesh: bool = False,
+    include_grove_attributes: bool = False,
 ) -> bool:
     """Export Grove tree as Unreal Engine Nanite Assembly.
 
@@ -587,6 +586,7 @@ def export_tree_as_nanite_assembly(
         include_twigs: Whether to include twig instances
         use_skeletal_mesh: Use skeletal mesh type (for animation)
         use_static_mesh: Use static mesh type (with materials/textures, no skeleton)
+        include_grove_attributes: If True, include Grove metadata in USD (increases size ~70%)
 
     Returns:
         bool: Success status
@@ -604,7 +604,7 @@ def export_tree_as_nanite_assembly(
             return False
 
         # Export tree using direct Grove API geometry
-        from .tree_export import build_static_tree_mesh, build_tree_mesh
+        from .tree_export import build_tree_mesh
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         # Remove _nanite_assembly and mesh type suffix from output_path.stem to get base tree name
@@ -618,20 +618,25 @@ def export_tree_as_nanite_assembly(
         except Exception as e:
             pass
 
-        # Choose export function and filename based on mesh type
+        # Use unified build_tree_mesh for both skeletal and static
+        # Skeletal mesh (with skeleton) is preferred for Nanite performance
         if use_static_mesh:
-            # Static mesh export
+            # Static mesh export (no skeleton)
             temp_tree_path = output_path.parent / f"{base_name}_static.usda"
-            if not build_static_tree_mesh(
+            if not build_tree_mesh(
                 model=model,
+                skeleton=None,
+                bones_info=None,
                 output_path=temp_tree_path,
-                species_name=species_name,
                 up_axis="Z",
                 triangulated=True,
+                include_skeleton=False,
+                include_grove_attributes=include_grove_attributes,
+                species_name=species_name,
             ):
                 return False
         else:
-            # Skeletal mesh export (default)
+            # Skeletal mesh export (default - preferred for performance)
             temp_tree_path = output_path.parent / f"{base_name}_skeletal.usda"
             if not build_tree_mesh(
                 model=model,
@@ -640,6 +645,8 @@ def export_tree_as_nanite_assembly(
                 output_path=temp_tree_path,
                 up_axis="Z",
                 triangulated=True,
+                include_skeleton=True,
+                include_grove_attributes=include_grove_attributes,
                 species_name=species_name,
             ):
                 return False
@@ -662,10 +669,13 @@ def export_tree_as_nanite_assembly(
             try:
                 from .tree_export import get_twig_usd_map_for_species
 
+                # CRITICAL: Always use skeletal twigs for both skeletal and static assemblies
+                # Static twig variants don't exist, and skeletal twigs work as point instances
+                # in both assembly types (assembly type only affects tree mesh, not twig references)
                 twig_usd_paths = get_twig_usd_map_for_species(
                     species_name,
-                    prefer_skeletal=use_skeletal_mesh,
-                    prefer_static=use_static_mesh,
+                    prefer_skeletal=True,
+                    prefer_static=False,
                 )
                 if twig_usd_paths:
                     pass
