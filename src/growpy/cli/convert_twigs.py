@@ -17,7 +17,7 @@ Key Features:
 Export Variants (both created by default):
     Skeletal (_skeletal.usda):
         - Single root joint skeleton for animation support
-        - No materials or textures (clean geometry only)
+        - Minimal export: geometry only (no materials/textures/attributes)
         - Used in skeletal Nanite assemblies
         - Supports wind animation and procedural placement
 
@@ -32,9 +32,14 @@ Supports two CSV formats:
   2. Asset lookup CSV (Common Name, Preset, Twig, Bark Texture) - direct asset reference
 
 Quick Start:
-    # Convert twigs (creates both skeletal and static variants)
-    # Output: aspen_twig_apical_skeletal.usda + aspen_twig_apical_static.usda
-    python src/growpy/cli/convert_twigs.py data/assets/twigs --subdiv 30 --alpha-trim 0.1 --interior-decimate --decimate-ratio 0.25 --boundary-rings 1 --smooth-boundary --smooth-iterations 10 --smooth-factor 0.2
+    # Basic twig conversion with defaults shown
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --csv data/input/test.csv --subdiv 4 --alpha-trim 0.5 --decimate-ratio 0.5 --boundary-rings 1 --smooth-iterations 3 --smooth-factor 0.5
+    
+    # High quality conversion (all flags with recommended values)
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --subdiv 33 --alpha-trim 0.11 --interior-decimate --decimate-ratio 0.22 --boundary-rings 1 --smooth-boundary --smooth-iterations 11 --smooth-factor 0.22
+    
+    # Maximum quality (extreme detail, slow)
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --subdiv 30 --alpha-trim 0.5 --interior-decimate --decimate-ratio 0.01 --boundary-rings 2 --smooth-boundary --smooth-iterations 5 --smooth-factor 0.6
 
 Common Flags:
     Processing Pipeline (in order):
@@ -369,9 +374,9 @@ def find_textures_for_material(
 def process_twig_directory(
     twig_dir: Path,
     formats: List[str] = ["usda"],
-    clean_export: bool = True,
+    minimal_export: bool = True,
     twig_filter: Optional[List[str]] = None,
-    export_static: bool = True,
+    include_skeleton: bool = True,
     *,
     densify: bool = True,
     subdiv_levels: int = 4,
@@ -444,8 +449,8 @@ def process_twig_directory(
                 output_dir=output_dir,
                 formats=formats,
                 species_name=species_name,
-                clean_export=clean_export,
-                export_static=export_static,
+                minimal_export=minimal_export,
+                include_skeleton=include_skeleton,
                 densify=densify,
                 alpha_trim_threshold=alpha_trim_threshold,
                 subdiv_levels=subdiv_levels,
@@ -650,7 +655,7 @@ Output per twig:
             ["usda"],
             True,
             twig_filter,
-            export_static=True,
+            include_skeleton=True,
             densify=(not args.no_densify),
             subdiv_levels=max(1, args.subdiv),
             alpha_trim_threshold=min(max(0.0, args.alpha_trim), 1.0),
@@ -668,7 +673,7 @@ Output per twig:
             ["usda"],
             True,
             twig_filter,
-            export_static=True,
+            include_skeleton=True,
             densify=(not args.no_densify),
             subdiv_levels=max(1, args.subdiv),
             alpha_trim_threshold=min(max(0.0, args.alpha_trim), 1.0),

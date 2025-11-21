@@ -6,18 +6,17 @@ Generates multi-species forests from CSV data with configurable quality settings
 Can generate standalone Unreal Python scripts for importing trees via VSCode extension.
 
 Quick Start:
-    # Generate forest (creates both skeletal and static mesh assemblies)
-    # Output: aspen_tree_0000_skeletal_nanite_assembly.usda + aspen_tree_0000_static_nanite_assembly.usda
-    python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 3 --generate-pve-json
+    # Basic forest generation with all defaults shown
+    python src/growpy/cli/generate_forest.py --quality ultra --growth-cycle-limit 10 --output-dir data/output/forest
 
-    # Generate forest with PVE preset JSON files for Procedural Vegetation Editor
-    python src/growpy/cli/generate_forest.py --quality high --generate-pve-json
+    # Generate forest with all common options (defaults shown)
+    python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 10 --output-dir data/output/forest --generate-pve-json --unreal-project-path /Game/GrowPy/Trees
 
-    # Generate forest and create Unreal import script
-    python src/growpy/cli/generate_forest.py --quality high --import-to-unreal
+    # Generate forest with Unreal import script
+    python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 3 --import-to-unreal --generate-pve-json
 
-    # Or specify a different CSV file
-    python src/growpy/cli/generate_forest.py my_forest.csv --quality high --import-to-unreal
+    # Include Grove metadata attributes for analysis (age, mass, vigor, etc. - increases size ~70%)
+    python src/growpy/cli/generate_forest.py my_forest.csv --quality ultra --growth-cycle-limit 5 --include-grove-attributes
 
 Common Flags:
     --quality {ultra,high,medium,low,performance}  Quality preset (default: ultra)
@@ -27,16 +26,20 @@ Common Flags:
     --import-to-unreal                             Generate Unreal import script
     --unreal-project-path PATH                     Unreal destination (default: /Game/GrowPy/Trees)
     --generate-pve-json                            Generate PVE preset JSON files for Procedural Vegetation Editor
+    --include-grove-attributes                     Include Grove metadata (age, mass, vigor) in USD - increases size ~70%
 
 Assembly Types (both created by default):
-    skeletal: Skeletal mesh assemblies with animation support (no materials/textures)
+    skeletal: Skeletal mesh assemblies with animation support
+              - Minimal export: geometry and skeleton only (no materials/textures)
+              - Grove attributes disabled by default (use --include-grove-attributes to enable)
               - Supports skeletal animation for wind and growth
               - Smaller file size
               - Reference: species_tree_####_skeletal_nanite_assembly.usda
 
     static:   Static mesh assemblies with materials and textures (no animation)
               - Full PBR materials from The Grove 2.2
-              - Better visual quality
+              - Grove attributes disabled by default (use --include-grove-attributes to enable)
+              - Better visual quality for static placement
               - Reference: species_tree_####_static_nanite_assembly.usda
 
 Full Documentation:
@@ -177,8 +180,11 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             mesh_suffix = "skeletal" if use_skeletal else "static"
             usd_path = species_dir / f"{tree_name}_{mesh_suffix}_nanite_assembly.usda"
 
+            # CRITICAL: Always use skeletal twigs for both skeletal and static assemblies
+            # Static twig variants don't exist, and skeletal twigs work as point instances
+            # in both assembly types (assembly type only affects tree mesh, not twig references)
             twig_usd_map = get_twig_usd_map_for_species(
-                species, config, prefer_skeletal=use_skeletal, prefer_static=use_static
+                species, config, prefer_skeletal=True, prefer_static=False
             )
 
             # Export as Nanite Assembly with specified mesh type
@@ -192,6 +198,9 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 include_twigs=True,
                 use_skeletal_mesh=use_skeletal,
                 use_static_mesh=use_static,
+                include_grove_attributes=quality_params.get(
+                    "include_grove_attributes", False
+                ),
             )
 
             if export_success:
@@ -314,6 +323,7 @@ def generate_forest_exports(
     growth_cycle_limit: Optional[int] = None,
     mesh_type: str = "skeletal",
     generate_pve_json: bool = False,
+    include_grove_attributes: bool = False,
     verbose: bool = False,
 ) -> None:
     """Generate forest from CSV data and export as Nanite Assembly USD files.
@@ -329,6 +339,7 @@ def generate_forest_exports(
         growth_cycle_limit: Maximum growth cycles per tree (default: GROWTH_CYCLE_LIMIT)
         mesh_type: Ignored - both skeletal and static are always created
         generate_pve_json: If True, also generate PVE preset JSON for each tree
+        include_grove_attributes: If True, include Grove metadata in USD files (increases size ~70%, minimal_export always True for skeletal)
     """
     # Use defaults if not specified
     if growth_cycle_limit is None:
@@ -396,9 +407,13 @@ def generate_forest_exports(
     quality_params["skeleton_bias"] = 0.5
     quality_params["skeleton_connected"] = True
 
-    # CRITICAL: Force clean export for Nanite compatibility
-    # Materials, textures, and masks cause import failures with skeletal Nanite assemblies
-    quality_params["clean_export"] = True
+    # CRITICAL: Force minimal export for Nanite compatibility
+    # Skeletal meshes: geometry + skeleton only (no materials/textures/attributes)
+    # Grove attributes can be optionally added via include_grove_attributes flag
+    quality_params["minimal_export"] = True
+
+    # Include Grove attributes if requested (adds ~70% file size to skeletal meshes)
+    quality_params["include_grove_attributes"] = include_grove_attributes
 
     try:
         # Bundle twig files BEFORE export so Nanite Assembly can reference them
@@ -797,7 +812,12 @@ Unreal Engine Integration:
     parser.add_argument(
         "--generate-pve-json",
         action="store_true",
-        help="Generate PVE preset JSON files for Procedural Vegetation Editor in Unreal",
+        help="Generate PVE preset JSON files for Procedural Vegetation Editor",
+    )
+    parser.add_argument(
+        "--include-grove-attributes",
+        action="store_true",
+        help="Include Grove metadata attributes (age, mass, vigor, etc.) in USD files for analysis (increases file size ~70%%)",
     )
     parser.add_argument(
         "-v",
@@ -839,6 +859,7 @@ Unreal Engine Integration:
             args.growth_cycle_limit,
             mesh_type="skeletal",  # Ignored - both skeletal and static are created
             generate_pve_json=args.generate_pve_json,
+            include_grove_attributes=args.include_grove_attributes,
             verbose=args.verbose,
         )
 

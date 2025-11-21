@@ -282,11 +282,11 @@ def _extract_global_attributes(
         ),
         # Plant profiles (shape curves) - these define the tree silhouette
         # For now, create default profiles - can be extracted from Grove later
-        "plantProfile_1": _create_plant_profile(101),
-        "plantProfile_2": _create_plant_profile(101),
-        "plantProfile_3": _create_plant_profile(101),
-        "plantProfile_4": _create_plant_profile(101),
-        "plantProfile_5": _create_plant_profile(101),
+        "plantProfile_1": _create_plant_profile(100),
+        "plantProfile_2": _create_plant_profile(100),
+        "plantProfile_3": _create_plant_profile(100),
+        "plantProfile_4": _create_plant_profile(100),
+        "plantProfile_5": _create_plant_profile(100),
         # Scale parameters
         "maxPscale": {
             "isArray": False,
@@ -408,19 +408,46 @@ def _create_curve_attribute(values: List[float]) -> Dict:
     return {"isArray": True, "size": 1, "type": "float", "value": values}
 
 
-def _create_plant_profile(num_points: int = 101) -> Dict:
+def _create_plant_profile(num_points: int = 100) -> Dict:
     """
-    Create a plant profile curve (defines tree silhouette).
+    Create a plant profile curve (defines tree crown silhouette from top view).
 
-    Default creates a simple parabolic shape.
+    Generates 100 values representing radial crown extent at 3.6-degree intervals
+    around a full circle. Values range from 0.75-1.0 (normalized radii).
+
+    Default creates a naturalistic irregular shape with slight variation.
     """
-    # Create simple default curve
+    import math
+    import random
+
+    # Create naturalistic crown profile with some irregularity
     curve_points = []
+    random.seed(42)  # Consistent but varied profiles
+
     for i in range(num_points):
-        t = i / (num_points - 1)
-        # Simple parabolic shape
-        value = 4.0 * t * (1.0 - t)  # Peak at center
+        angle = (i / num_points) * 2 * math.pi
+
+        # Base circular shape (0.85-0.95 range)
+        base_value = 0.90
+
+        # Add major branch lobes (simulate 8-12 primary branches)
+        num_major_branches = 10
+        for j in range(num_major_branches):
+            branch_angle = (j / num_major_branches) * 2 * math.pi
+            lobe = 0.08 * math.exp(-((angle - branch_angle) ** 2) / 0.3)
+            base_value += lobe
+
+        # Add small-scale noise for natural irregularity
+        noise = random.gauss(0, 0.02)
+        value = base_value + noise
+
+        # Clamp to realistic range (0.75-1.0)
+        value = max(0.75, min(1.0, value))
         curve_points.append(value)
+
+    # Ensure cyclic (first == last for smooth wrapping)
+    if len(curve_points) > 0:
+        curve_points[-1] = curve_points[0]
 
     return {"isArray": True, "size": 1, "type": "float", "value": curve_points}
 

@@ -47,7 +47,12 @@ def get_pve_schema() -> Dict[str, Any]:
             "maxDavinciPscales": {"isArray": True, "size": 1, "type": "float"},
             "maxGenerations": {"isArray": False, "size": 1, "type": "int"},
             "maxPscales": {"isArray": True, "size": 1, "type": "float"},
-            "plantProfile": {"isArray": True, "size": 1, "type": "float"},
+            # Crown profile arrays (required - 5 variations with 100 float values each)
+            "plantProfile_1": {"isArray": True, "size": 1, "type": "float"},
+            "plantProfile_2": {"isArray": True, "size": 1, "type": "float"},
+            "plantProfile_3": {"isArray": True, "size": 1, "type": "float"},
+            "plantProfile_4": {"isArray": True, "size": 1, "type": "float"},
+            "plantProfile_5": {"isArray": True, "size": 1, "type": "float"},
         },
         "points": {
             "attributes": {

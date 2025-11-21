@@ -12,7 +12,7 @@ Supports two CSV formats:
   2. Asset lookup CSV (Common Name, Preset, Twig, Bark Texture) - direct asset reference
 
 Quick Start:
-    python src/growpy/cli/convert_twigs.py data/assets/twigs --subdiv 33 --alpha-trim 0.11 --interior-decimate --decimate-ratio 0.22 --boundary-rings 1 --smooth-boundary --smooth-iterations 11 --smooth-factor 0.22
+    python src/growpy/cli/prepare_assets.py
 
 Common Flags:
     --grove-dir PATH    Source directory (default: src/the_grove_22)
@@ -233,6 +233,7 @@ CSV Format Support:
     (assets_dir / "presets").mkdir(exist_ok=True)
     (assets_dir / "textures").mkdir(exist_ok=True)
     (assets_dir / "twigs").mkdir(exist_ok=True)
+    (assets_dir / "pve_configs").mkdir(exist_ok=True)
 
     # Track statistics
     stats = {
@@ -242,6 +243,7 @@ CSV Format Support:
         "twigs_missing": 0,
         "textures_copied": 0,
         "textures_missing": 0,
+        "pve_configs_created": 0,
     }
 
     # Copy presets with standardized naming
@@ -337,6 +339,22 @@ CSV Format Support:
         else:
             stats["textures_missing"] += 1
 
+    # Generate PVE config files with null placeholders for each species
+    from growpy.config.pve_species_overrides import create_null_placeholder_config
+
+    dst_pve_configs = assets_dir / "pve_configs"
+
+    for _, row in df.iterrows():
+        common_name = row["Common Name"]
+        standardized_name = standardize_species_name(common_name)
+
+        config_file = dst_pve_configs / f"{standardized_name}_pve.json"
+
+        # Only create if it doesn't exist (preserve user customizations)
+        if not config_file.exists():
+            create_null_placeholder_config(config_file, standardized_name, common_name)
+            stats["pve_configs_created"] += 1
+
     # Print summary
 
     if (
@@ -350,5 +368,4 @@ CSV Format Support:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
     sys.exit(main())
