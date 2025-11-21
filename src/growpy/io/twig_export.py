@@ -212,9 +212,9 @@ def _add_twig_material(
                     f"./textures/{texture_map['normal'].name}"
                 )
                 # Normal maps use raw color space (not sRGB)
-                normal_tex_node.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set(
-                    "raw"
-                )
+                normal_tex_node.CreateInput(
+                    "sourceColorSpace", Sdf.ValueTypeNames.Token
+                ).Set("raw")
 
                 # Connect UV reader to normal texture sampler
                 if uv_reader:
@@ -402,7 +402,7 @@ def clean_static_usd_file(usd_path):
         return False
 
 
-def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=True):
+def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), minimal_export=True):
     """Add skeleton to USD file and remove Blender export artifacts using Blender's bundled pxr module.
 
     Removes DomeLight, Blender userProperties metadata (data_name, Copyright), and ensures clean export.
@@ -484,8 +484,8 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=True)
 
         # CRITICAL: Add SkelBindingAPI to SkelRoot for proper Unreal Engine skeletal mesh interpretation
         # Without this, Unreal cannot properly bind the skeleton to the mesh
-        if clean_export:
-            # Manually add SkelBindingAPI to apiSchemas for clean export
+        if minimal_export:
+            # Manually add SkelBindingAPI to apiSchemas for minimal export
             root_prim = skel_root.GetPrim()
             api_schemas = root_prim.GetMetadata("apiSchemas") or Sdf.TokenListOp()
             if not isinstance(api_schemas, Sdf.TokenListOp):
@@ -554,9 +554,9 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=True)
         mesh = UsdGeom.Mesh(mesh_prim)
 
         # Bind mesh to skeleton
-        # For clean export, manually set apiSchemas; otherwise use BindingAPI.Apply
-        if clean_export:
-            # Manually add SkelBindingAPI to apiSchemas for clean export
+        # For minimal export, manually set apiSchemas; otherwise use BindingAPI.Apply
+        if minimal_export:
+            # Manually add SkelBindingAPI to apiSchemas for minimal export
             api_schemas = mesh_prim.GetMetadata("apiSchemas") or Sdf.TokenListOp()
             if not isinstance(api_schemas, Sdf.TokenListOp):
                 api_schemas = Sdf.TokenListOp()
@@ -584,8 +584,8 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), clean_export=True)
             joint_weights.extend([1.0, 0.0])  # Full weight on root, zero on dummy
 
         # Set skinning attributes
-        if clean_export:
-            # Use PrimvarsAPI directly for clean export
+        if minimal_export:
+            # Use PrimvarsAPI directly for minimal export
             primvars_api = UsdGeom.PrimvarsAPI(mesh_prim)
 
             joint_indices_primvar = primvars_api.CreatePrimvar(
@@ -879,7 +879,13 @@ def copy_opaque_textures_for_skeletal(
     # Alpha/translucent/mask textures excluded for Nanite
     # Bump maps are converted to normal maps (not copied as bump)
     # Two-sided textures (top/bottom) are both kept
-    OPAQUE_TEXTURE_TYPES = ["diffuse", "diffuse_top", "diffuse_bottom", "normal", "bump"]
+    OPAQUE_TEXTURE_TYPES = [
+        "diffuse",
+        "diffuse_top",
+        "diffuse_bottom",
+        "normal",
+        "bump",
+    ]
 
     # Search for textures
     search_dirs = [blend_dir / "textures", blend_dir, blend_dir.parent / "textures"]
@@ -1955,7 +1961,9 @@ def setup_materials_with_textures(
                     # But if still present, convert on-the-fly
                     from growpy.io.texture_utils import bump_to_normal
 
-                    normal_path = textures_dir / f"{tex_path.stem}_normal{tex_path.suffix}"
+                    normal_path = (
+                        textures_dir / f"{tex_path.stem}_normal{tex_path.suffix}"
+                    )
                     if not normal_path.exists():
                         bump_to_normal(tex_path, normal_path)
 
@@ -2036,8 +2044,8 @@ def process_twig_file(
     output_dir,
     formats,
     species_name,
-    clean_export=True,
-    export_static=False,
+    minimal_export=True,
+    include_skeleton=True,
     densify=False,
     alpha_trim_threshold=0.0,
     subdiv_levels=3,
@@ -2057,8 +2065,8 @@ def process_twig_file(
         output_dir: Output directory for exported files
         formats: List of export formats
         species_name: Name of species
-        clean_export: If True, creates minimal USD without materials/textures (for skeletal)
-        export_static: If True, also export static (non-skeletal) variant with materials
+        minimal_export: If True, creates minimal USD without materials/textures/attributes (geometry only)
+        include_skeleton: If True, creates skeletal variant with skeleton (default: True, set False for static)
         densify: If True, subdivide mesh for higher polygon count (default: False)
         displacement_strength: Strength of normal map displacement (0.0 = disabled, default: 0.0)
         alpha_trim_threshold: Alpha threshold for geometry trimming (0.0 = disabled, default: 0.0)
@@ -2370,7 +2378,7 @@ def process_twig_file(
                     if add_skeleton_to_usd_file(
                         skel_export_path,
                         pivot_point=(0.0, 0.0, 0.0),
-                        clean_export=clean_export,
+                        minimal_export=minimal_export,
                     ):
                         # Copy opaque-only textures for skeletal twig (no alpha/translucent for Nanite)
                         textures_copied = copy_opaque_textures_for_skeletal(
@@ -2414,8 +2422,8 @@ def process_twig_file(
                     else:
                         pass
 
-                    # Export static mesh variant if requested
-                    if export_static:
+                    # Export static mesh variant if requested (no skeleton)
+                    if not include_skeleton:
                         static_export_path = (
                             output_dir / f"{standardized_name}_static.{fmt}"
                         )
@@ -2485,7 +2493,7 @@ def process_twig_file(
         # Original files use CamelCase or species-specific naming (e.g., BeechAlpha.jpg)
         # Standardized files use snake_case with full standardized name (e.g., european_beech_twig_alpha.jpg)
         textures_dir = output_dir / "textures"
-        if textures_dir.exists() and export_static:
+        if textures_dir.exists() and not include_skeleton:
             # Only clean up non-standardized textures if we just created standardized ones
             for tex_file in textures_dir.glob("*"):
                 if not tex_file.is_file():
@@ -2529,7 +2537,7 @@ if __name__ == "__main__":
 
     # Parse optional flags
     args = sys.argv[5:] if len(sys.argv) > 5 else []
-    clean_export = "--clean-export" in args
+    minimal_export = "--minimal-export" in args
     densify = "--densify" in args
 
     # Parse numeric parameters
@@ -2561,7 +2569,7 @@ if __name__ == "__main__":
         output_dir,
         formats,
         species_name,
-        clean_export,
+        minimal_export,
         densify=densify,
         displacement_strength=displacement_strength,
         alpha_trim_threshold=alpha_trim_threshold,

@@ -69,101 +69,35 @@ def build_static_tree_mesh(
     up_axis: str = "Z",
     triangulated: bool = True,
 ) -> bool:
-    """Build static USD mesh from Grove model (no skeleton, with materials).
+    """DEPRECATED: Use build_tree_mesh() with include_skeleton=False instead.
 
-    This function creates a static mesh USD file for Nanite static assemblies.
-    Unlike skeletal meshes, this includes materials and textures but no skeleton.
-
-    CRITICAL: The model must be triangulated BEFORE calling this function:
-        model.triangulate()
+    This function is maintained for backward compatibility but redirects to
+    the unified build_tree_mesh() implementation.
 
     Args:
-        model: Grove tree model from grove.build_models() - MUST be triangulated first
+        model: Grove tree model from grove.build_models()
         output_path: Path where USD file will be saved
         species_name: Species name for texture lookup
         up_axis: Coordinate system up axis ("Y" or "Z")
-        triangulated: Whether the model has been triangulated (should always be True)
+        triangulated: Whether the model has been triangulated
 
     Returns:
         bool: True if USD file was created successfully
     """
-    try:
-        # Create USD stage
-        stage = Usd.Stage.CreateNew(str(output_path))
-
-        # Set stage metadata
-        UsdGeom.SetStageUpAxis(
-            stage, UsdGeom.Tokens.z if up_axis == "Z" else UsdGeom.Tokens.y
-        )
-        stage.SetMetadata("metersPerUnit", 1.0)
-
-        # Define root xform
-        root_path = Sdf.Path("/tree")
-        root_xform = UsdGeom.Xform.Define(stage, root_path)
-
-        # Add tree location metadata if available
-        if hasattr(model, "location") and model.location:
-            loc = model.location
-            root_xform.GetPrim().SetCustomDataByKey(
-                "treeLocation", Gf.Vec3f(loc.x, loc.y, loc.z)
-            )
-
-        # Define mesh
-        mesh_path = root_path.AppendChild("TreeMesh")
-        mesh = UsdGeom.Mesh.Define(stage, mesh_path)
-
-        # Extract geometry data from Grove model
-        points = model.points
-        faces = model.faces
-        uvs = model.uvs
-
-        # Convert points to USD format
-        usd_points = [Gf.Vec3f(p.x, p.y, p.z) for p in points]
-
-        # Convert faces to USD format
-        face_vertex_counts = [len(face) for face in faces]
-        face_vertex_indices = []
-        for face in faces:
-            face_vertex_indices.extend(face)
-
-        # Set mesh topology
-        mesh.CreatePointsAttr(usd_points)
-        mesh.CreateFaceVertexCountsAttr(face_vertex_counts)
-        mesh.CreateFaceVertexIndicesAttr(face_vertex_indices)
-
-        # Add UVs for texture mapping
-        if uvs and len(uvs) > 0:
-            primvars_api = UsdGeom.PrimvarsAPI(mesh)
-
-            # Convert Grove UVs to USD format
-            # Grove UVs are tuples (u, v)
-            usd_uvs = [Gf.Vec2f(uv[0], uv[1]) for uv in uvs]
-
-            # Create UV primvar with faceVarying interpolation
-            uv_primvar = primvars_api.CreatePrimvar(
-                "st",
-                Sdf.ValueTypeNames.TexCoord2fArray,
-                UsdGeom.Tokens.faceVarying
-            )
-            uv_primvar.Set(usd_uvs)
-
-        # Add normals for proper rendering
-        _add_mesh_normals(mesh, model, clean_export=False)
-
-        # Add materials with textures
-        _add_static_materials(
-            stage, mesh.GetPrim(), str(root_path), model, species_name
-        )
-
-        # Save stage
-        stage.Save()
-        return True
-
-    except Exception as e:
-        import traceback
-
-        traceback.print_exc()
-        return False
+    # Redirect to unified function with skeleton disabled
+    return build_tree_mesh(
+        model=model,
+        skeleton=None,
+        output_path=output_path,
+        bones_info=None,
+        up_axis=up_axis,
+        triangulated=triangulated,
+        include_materials=True,
+        clean_export=False,
+        include_skeleton=False,
+        include_grove_attributes=False,
+        species_name=species_name,
+    )
 
 
 def build_tree_mesh(
@@ -182,12 +116,14 @@ def build_tree_mesh(
     junction_blend_distance: float = 0.5,
     blend_mode: str = "linear",
     species_name: Optional[str] = None,
+    include_skeleton: bool = True,
+    include_grove_attributes: bool = False,
 ) -> bool:
     """Build USD file directly from Grove model using API geometry data.
 
-    This function extracts geometry data directly from the Grove model using
-    the Python API and constructs a USD file without coordinate transformations.
-    If skeleton is provided, adds skeleton structure inline.
+    This unified function handles both skeletal and static mesh export.
+    The skeletal approach (include_skeleton=True) is preferred for Nanite assemblies
+    due to superior performance in Unreal Engine (60fps with voxelization).
 
     CRITICAL: The model must be triangulated BEFORE calling this function:
         model.triangulate()
@@ -211,6 +147,9 @@ def build_tree_mesh(
         skeleton_reduce: Bone reduction factor for skeleton creation (deprecated if bones_info provided)
         skeleton_bias: Weight bias for skinning
         skeleton_connected: Use connected bone hierarchy (deprecated if bones_info provided)
+        species_name: Species name for material/texture lookup
+        include_skeleton: If True and skeleton provided, add skeleton structure (skeletal mesh)
+        include_grove_attributes: If True, add Grove metadata attributes as primvars (for analysis)
 
     Returns:
         bool: True if USD file was created successfully
@@ -277,15 +216,15 @@ def build_tree_mesh(
             # Create UV primvar with faceVarying interpolation
             # faceVarying means one UV per face-vertex (matches face_vertex_indices)
             uv_primvar = primvars_api.CreatePrimvar(
-                "st",
-                Sdf.ValueTypeNames.TexCoord2fArray,
-                UsdGeom.Tokens.faceVarying
+                "st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.faceVarying
             )
             uv_primvar.Set(usd_uvs)
 
         # Add all model attributes from Grove (face and point attributes)
-        # These provide rich data for analysis and potential use in Unreal
-        _add_model_attributes(mesh, model)
+        # These provide rich data for analysis but add ~70% file size
+        # Only include when explicitly requested for R&D/debugging
+        if include_grove_attributes:
+            _add_model_attributes(mesh, model)
 
         # Skip UV island metadata for clean export
         # UV data is included in the mesh but metadata is not needed for Nanite assembly
@@ -298,8 +237,8 @@ def build_tree_mesh(
         # Add normals for proper Unreal rendering (skip for clean export)
         _add_mesh_normals(mesh, model, clean_export=clean_export)
 
-        # Add skeleton if provided
-        if skeleton is not None:
+        # Add skeleton if provided and enabled (skeletal mesh export)
+        if skeleton is not None and include_skeleton:
             skeleton_added = _add_skeleton_to_stage_inline(
                 stage=stage,
                 skeleton=skeleton,
@@ -572,7 +511,10 @@ def _add_usd_materials(
 
 
 def _add_skeletal_materials(
-    stage: Usd.Stage, mesh_prim: Usd.Prim, root_path: str, species_name: Optional[str] = None
+    stage: Usd.Stage,
+    mesh_prim: Usd.Prim,
+    root_path: str,
+    species_name: Optional[str] = None,
 ) -> None:
     """Add materials with opaque-only textures to skeletal tree mesh for Nanite assembly.
 
@@ -607,7 +549,10 @@ def _add_skeletal_materials(
         texture_file = None
         normal_texture_file = None
         if species_name:
-            from growpy.config.paths import get_bark_texture_path, get_bark_normal_texture_path
+            from growpy.config.paths import (
+                get_bark_normal_texture_path,
+                get_bark_texture_path,
+            )
 
             texture_file = get_bark_texture_path(species_name)
             normal_texture_file = get_bark_normal_texture_path(species_name)
@@ -663,9 +608,9 @@ def _add_skeletal_materials(
                     normal_tex_reader.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
 
                     # Connect UV reader to normal texture sampler
-                    normal_tex_reader.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
-                        uv_reader.ConnectableAPI(), "result"
-                    )
+                    normal_tex_reader.CreateInput(
+                        "st", Sdf.ValueTypeNames.Float2
+                    ).ConnectToSource(uv_reader.ConnectableAPI(), "result")
 
                     # Connect normal to shader
                     shader.CreateInput(
@@ -761,7 +706,10 @@ def _add_static_materials(
         texture_file = None
         normal_texture_file = None
         if species_name:
-            from growpy.config.paths import get_bark_texture_path, get_bark_normal_texture_path
+            from growpy.config.paths import (
+                get_bark_normal_texture_path,
+                get_bark_texture_path,
+            )
 
             texture_file = get_bark_texture_path(species_name)
             normal_texture_file = get_bark_normal_texture_path(species_name)
@@ -817,9 +765,9 @@ def _add_static_materials(
                     normal_tex_reader.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
 
                     # Connect UV reader to normal texture sampler
-                    normal_tex_reader.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
-                        uv_reader.ConnectableAPI(), "result"
-                    )
+                    normal_tex_reader.CreateInput(
+                        "st", Sdf.ValueTypeNames.Float2
+                    ).ConnectToSource(uv_reader.ConnectableAPI(), "result")
 
                     # Connect normal to shader
                     shader.CreateInput(
@@ -1490,7 +1438,16 @@ def get_twig_usd_map_for_species(
                 stem_lower = twig_file.stem.lower()
                 has_variant = any(
                     v in stem_lower
-                    for v in ["var_a", "var_b", "var_c", "var_d", "var_e", "apical", "lateral", "upward"]
+                    for v in [
+                        "var_a",
+                        "var_b",
+                        "var_c",
+                        "var_d",
+                        "var_e",
+                        "apical",
+                        "lateral",
+                        "upward",
+                    ]
                 )
 
                 if not has_variant:
