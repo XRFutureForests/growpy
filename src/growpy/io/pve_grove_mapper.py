@@ -150,6 +150,7 @@ def map_grove_to_pve(
     pve_data = copy.deepcopy(template)
 
     # Fill globalAttributes: Grove-fillable attributes get Grove values, others remain empty/default
+    # CRITICAL: Preserve Hazel attribute order for Unreal PVE C++ parser compatibility
     filled_attrs = _map_global_attributes(
         grove,
         properties,
@@ -158,18 +159,16 @@ def map_grove_to_pve(
         use_default_growth_params,
         custom_growth_params,
     )
-    for key in pve_data["globalAttributes"]:
+
+    # Rebuild globalAttributes dict in template order to preserve Hazel ordering
+    ordered_global_attrs = {}
+    for key in template["globalAttributes"].keys():
         if key in filled_attrs:
-            # Only fill if Grove can provide a value, else leave as empty/default
-            if (
-                isinstance(filled_attrs[key]["value"], list)
-                and filled_attrs[key]["value"]
-            ) or (
-                not isinstance(filled_attrs[key]["value"], list)
-                and filled_attrs[key]["value"] != 0
-            ):
-                pve_data["globalAttributes"][key]["value"] = filled_attrs[key]["value"]
-            # else: leave as empty/default
+            ordered_global_attrs[key] = filled_attrs[key]
+        else:
+            ordered_global_attrs[key] = template["globalAttributes"][key]
+
+    pve_data["globalAttributes"] = ordered_global_attrs
 
     # Map point data from skeleton
     if skeleton is not None:
@@ -314,7 +313,71 @@ def _map_points_from_skeleton(skeleton: Any, template: Dict) -> Dict:
         )
         points_data["attributes"]["branchGradient"][value_key] = gradients
 
-    # All other attributes (LOD, bud, UV, etc.) remain empty as in Hazel template
+    # Fill remaining attributes with skeleton data where available, otherwise defaults
+    # PVE requires all point attributes to have per-point data (not empty arrays)
+
+    # Try to extract additional skeleton attributes
+    age_values = None
+    if hasattr(skeleton, "point_attribute_age"):
+        age_values = list(skeleton.point_attribute_age)
+
+    for attr_name, attr_data in points_data["attributes"].items():
+        value_key = "values" if "values" in attr_data else "value"
+
+        # Skip attributes we already filled
+        if attr_data[value_key]:
+            continue
+
+        # Map Grove skeleton attributes to PVE attributes where possible
+        default_value = 0 if attr_data.get("type") == "int" else 0.0
+
+        # Try to use real skeleton data for certain attributes
+        if attr_name == "lengthFromSeed" and age_values:
+            # Use age as proxy for length from seed (growth order)
+            if attr_data.get("isArray", False):
+                points_data["attributes"][attr_name][value_key] = [
+                    [float(age)] for age in age_values
+                ]
+            else:
+                points_data["attributes"][attr_name][value_key] = [
+                    float(age) for age in age_values
+                ]
+        elif attr_name == "plantGradient" and age_values:
+            # Normalize age to 0-1 for plant gradient
+            max_age = max(age_values) if age_values else 1.0
+            normalized = (
+                [age / max_age for age in age_values]
+                if max_age > 0
+                else [0.0] * num_points
+            )
+            if attr_data.get("isArray", False):
+                points_data["attributes"][attr_name][value_key] = [
+                    [v] for v in normalized
+                ]
+            else:
+                points_data["attributes"][attr_name][value_key] = normalized
+        else:
+            # Fill with default per-point values
+            if attr_data.get("isArray", False):
+                # Array attributes: one array per point containing default value
+                if attr_data.get("type") == "int":
+                    points_data["attributes"][attr_name][value_key] = [
+                        [0] for _ in range(num_points)
+                    ]
+                else:  # float
+                    points_data["attributes"][attr_name][value_key] = [
+                        [0.0] for _ in range(num_points)
+                    ]
+            else:
+                # Scalar attributes: one value per point
+                if attr_data.get("type") == "int":
+                    points_data["attributes"][attr_name][value_key] = [
+                        0 for _ in range(num_points)
+                    ]
+                else:  # float
+                    points_data["attributes"][attr_name][value_key] = [
+                        0.0 for _ in range(num_points)
+                    ]
 
     return points_data
 
@@ -625,7 +688,15 @@ def generate_pve_from_grove(
     # Find Hazel reference file
     project_root = Path(__file__).parent.parent.parent.parent
     hazel_reference = (
-        project_root / "data" / "megaplant" / "json" / "Broadleaf_Hazel_04.json"
+        project_root
+        / "data"
+        / "tmp"
+        / "ProceduralVegetationEditor"
+        / "Content"
+        / "SampleAssets"
+        / "Tree_Common_Hazel_01"
+        / "Instances"
+        / "Broadleaf_Hazel_04.json"
     )
 
     if not hazel_reference.exists():
