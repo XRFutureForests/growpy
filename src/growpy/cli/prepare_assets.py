@@ -12,7 +12,7 @@ Supports two CSV formats:
   2. Asset lookup CSV (Common Name, Preset, Twig, Bark Texture) - direct asset reference
 
 Quick Start:
-    python src/growpy/cli/prepare_assets.py
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --subdiv 33 --alpha-trim 0.11 --interior-decimate --decimate-ratio 0.22 --boundary-rings 1 --smooth-boundary --smooth-iterations 11 --smooth-factor 0.22
 
 Common Flags:
     --grove-dir PATH    Source directory (default: src/the_grove_22)
