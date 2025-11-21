@@ -228,7 +228,10 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 if use_skeletal:  # Generate only for skeletal mesh to avoid duplicates
                     from growpy.io.pve_grove_mapper import generate_pve_from_grove
 
-                    pve_json_path = species_dir / f"{tree_name}_PVEPreset.json"
+                    # Use Unreal PVE naming convention: species_tree_####.json
+                    # Must match the filename format that PVE expects (lowercase with underscores and 4 digits)
+                    pve_variation_name = f"{species_clean}_tree_{tree_num:04d}.json"
+                    pve_json_path = species_dir / pve_variation_name
                     pve_config_dir = Path("data/assets/pve_configs")
                     try:
                         generate_pve_from_grove(
