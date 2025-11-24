@@ -273,11 +273,11 @@ def _map_points_from_skeleton(skeleton: Any, template: Dict) -> Dict:
 
     # Fill only the essential point attributes that Grove provides
 
-    # P (position as attribute - copy of positions, flattened)
+    # P (position as attribute - array of [x, y, z] arrays, NOT flattened)
     if "P" in points_data["attributes"]:
-        p_flat = [coord for pos in positions for coord in pos]
+        # Keep as array of [x, y, z] arrays to match Hazel reference format
         value_key = "values" if "values" in points_data["attributes"]["P"] else "value"
-        points_data["attributes"]["P"][value_key] = p_flat
+        points_data["attributes"]["P"][value_key] = positions
 
     # generation (branch hierarchy depth)
     if "generation" in points_data["attributes"]:
@@ -361,25 +361,40 @@ def _map_points_from_skeleton(skeleton: Any, template: Dict) -> Dict:
         else:
             # Fill with default per-point values
             if attr_data.get("isArray", False):
-                # Array attributes: one array per point containing default value
+                # Array attributes with size>1: variable-length arrays of size-element groups
+                # e.g., budDirection with size=3 → [[0,0,0], [0,0,0], ...] or [[x,y,z, x,y,z, ...], ...]
+                attr_size = attr_data.get("size", 1)
                 if attr_data.get("type") == "int":
                     points_data["attributes"][attr_name][value_key] = [
-                        [0] for _ in range(num_points)
+                        [0] * attr_size for _ in range(num_points)
                     ]
                 else:  # float
                     points_data["attributes"][attr_name][value_key] = [
-                        [0.0] for _ in range(num_points)
+                        [0.0] * attr_size for _ in range(num_points)
                     ]
             else:
-                # Scalar attributes: one value per point
-                if attr_data.get("type") == "int":
-                    points_data["attributes"][attr_name][value_key] = [
-                        0 for _ in range(num_points)
-                    ]
-                else:  # float
-                    points_data["attributes"][attr_name][value_key] = [
-                        0.0 for _ in range(num_points)
-                    ]
+                # Non-array attributes with size > 1: array of size-element arrays per point
+                # e.g., uv_base with size=3 → [[0,0,0], [0,0,0], ...]
+                attr_size = attr_data.get("size", 1)
+                if attr_size > 1:
+                    if attr_data.get("type") == "int":
+                        points_data["attributes"][attr_name][value_key] = [
+                            [0] * attr_size for _ in range(num_points)
+                        ]
+                    else:  # float
+                        points_data["attributes"][attr_name][value_key] = [
+                            [0.0] * attr_size for _ in range(num_points)
+                        ]
+                else:
+                    # Scalar attributes: one value per point
+                    if attr_data.get("type") == "int":
+                        points_data["attributes"][attr_name][value_key] = [
+                            0 for _ in range(num_points)
+                        ]
+                    else:  # float
+                        points_data["attributes"][attr_name][value_key] = [
+                            0.0 for _ in range(num_points)
+                        ]
 
     return points_data
 
@@ -471,6 +486,121 @@ def _map_primitives_from_skeleton(
         primitives_data["attributes"]["parents"] = hierarchy["parents"]
     if "children" in primitives_data["attributes"]:
         primitives_data["attributes"]["children"] = hierarchy["children"]
+
+    # Populate remaining required attributes to avoid array index errors in Unreal
+    # branchHierarchyNumber: Use same as branchGeneration
+    if "branchHierarchyNumber" in primitives_data["attributes"]:
+        if "branchGeneration" in primitives_data["attributes"]:
+            gen_key = (
+                "values"
+                if "values" in primitives_data["attributes"]["branchGeneration"]
+                else "value"
+            )
+            generations = primitives_data["attributes"]["branchGeneration"][gen_key]
+        else:
+            generations = [0] * num_branches
+        value_key = (
+            "values"
+            if "values" in primitives_data["attributes"]["branchHierarchyNumber"]
+            else "value"
+        )
+        primitives_data["attributes"]["branchHierarchyNumber"][value_key] = generations
+
+    # branchSourceBudNumber: Not available in Grove data, use 0
+    if "branchSourceBudNumber" in primitives_data["attributes"]:
+        value_key = (
+            "values"
+            if "values" in primitives_data["attributes"]["branchSourceBudNumber"]
+            else "value"
+        )
+        primitives_data["attributes"]["branchSourceBudNumber"][value_key] = [
+            0
+        ] * num_branches
+
+    # compoundBranchGeneration: Use same as branchGeneration
+    if "compoundBranchGeneration" in primitives_data["attributes"]:
+        if "branchGeneration" in primitives_data["attributes"]:
+            gen_key = (
+                "values"
+                if "values" in primitives_data["attributes"]["branchGeneration"]
+                else "value"
+            )
+            generations = primitives_data["attributes"]["branchGeneration"][gen_key]
+        else:
+            generations = [0] * num_branches
+        value_key = (
+            "values"
+            if "values" in primitives_data["attributes"]["compoundBranchGeneration"]
+            else "value"
+        )
+        primitives_data["attributes"]["compoundBranchGeneration"][
+            value_key
+        ] = generations
+
+    # compoundBranchNumber: Sequential numbering
+    if "compoundBranchNumber" in primitives_data["attributes"]:
+        value_key = (
+            "values"
+            if "values" in primitives_data["attributes"]["compoundBranchNumber"]
+            else "value"
+        )
+        primitives_data["attributes"]["compoundBranchNumber"][value_key] = list(
+            range(num_branches)
+        )
+
+    # compoundBranchParentNumber: Use same as branchParentNumber
+    if "compoundBranchParentNumber" in primitives_data["attributes"]:
+        if "branchParentNumber" in primitives_data["attributes"]:
+            parent_key = (
+                "values"
+                if "values" in primitives_data["attributes"]["branchParentNumber"]
+                else "value"
+            )
+            parents = primitives_data["attributes"]["branchParentNumber"][parent_key]
+        else:
+            parents = [0] * num_branches
+        value_key = (
+            "values"
+            if "values" in primitives_data["attributes"]["compoundBranchParentNumber"]
+            else "value"
+        )
+        primitives_data["attributes"]["compoundBranchParentNumber"][value_key] = parents
+
+    # pivotPointLocation: First point position of each branch
+    if "pivotPointLocation" in primitives_data["attributes"] and skeleton:
+        from .pve_foliage_extractor import grove_to_pve_position
+
+        pivot_locations = []
+        for poly_line in poly_lines:
+            if len(poly_line) > 0:
+                first_point_idx = poly_line[0]
+                if first_point_idx < len(skeleton.points):
+                    pos = skeleton.points[first_point_idx]
+                    # Convert to PVE coordinates
+                    pve_pos = grove_to_pve_position(pos)
+                    pivot_locations.append(list(pve_pos))
+                else:
+                    pivot_locations.append([0.0, 0.0, 0.0])
+            else:
+                pivot_locations.append([0.0, 0.0, 0.0])
+        value_key = (
+            "values"
+            if "values" in primitives_data["attributes"]["pivotPointLocation"]
+            else "value"
+        )
+        primitives_data["attributes"]["pivotPointLocation"][value_key] = pivot_locations
+
+    # shop_materialpath: Use default material path for species
+    if "shop_materialpath" in primitives_data["attributes"]:
+        material_path = f"/obj/_Datasource/{species_name.replace(' ', '_')}_Trunkmat/Import_Mat_Net/2_0_Material"
+        value_key = (
+            "values"
+            if "values" in primitives_data["attributes"]["shop_materialpath"]
+            else "value"
+        )
+        primitives_data["attributes"]["shop_materialpath"][value_key] = [
+            material_path
+        ] * num_branches
 
     # Extract foliage/twig instancer data from pre-built model
     # CRITICAL: Pass bones_info for correct branch_id assignment
