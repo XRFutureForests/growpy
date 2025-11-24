@@ -220,9 +220,20 @@ def extract_foliage_data(
                 # For PVE, we need "up" (growth direction) and "normal" (surface normal)
                 # Use the twig direction as "up" and derive normal from it
                 pve_normal = grove_to_pve_position(normal)  # Convert direction vector
-                # For now, use the same vector for both (PVE can handle this)
-                up = pve_normal
-                pve_normal_out = pve_normal
+
+                # CRITICAL: Normalize vectors to unit length (magnitude = 1.0)
+                # Unreal PVE expects normalized direction vectors
+                import math
+
+                magnitude = math.sqrt(sum(x * x for x in pve_normal))
+                if magnitude > 0:
+                    pve_normal_normalized = tuple(x / magnitude for x in pve_normal)
+                else:
+                    pve_normal_normalized = (0.0, 0.0, 1.0)  # Default up if zero vector
+
+                # For now, use the same normalized vector for both up and normal
+                up = pve_normal_normalized
+                pve_normal_out = pve_normal_normalized
 
                 # Append to arrays
                 names.append(twig_name)
