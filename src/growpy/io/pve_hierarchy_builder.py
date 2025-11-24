@@ -50,13 +50,13 @@ def build_hierarchy_arrays(model: Any, num_branches: int) -> Dict[str, Dict]:
             "isArray": True,
             "size": 1,
             "type": "int",
-            "value": parents_values,
+            "values": parents_values,
         },
         "children": {
             "isArray": True,
             "size": 1,
             "type": "int",
-            "value": children_arrays,
+            "values": children_arrays,
         },
     }
 

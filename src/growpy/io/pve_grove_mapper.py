@@ -77,14 +77,16 @@ def _create_empty_point_attributes(reference: Dict) -> Dict:
 
 
 def _create_empty_primitive_attributes(reference: Dict) -> Dict:
-    """Create empty primitive attributes structure."""
+    """Create empty primitive attributes structure, preserving 'value' vs 'values' key."""
     empty = {}
     for key, value in reference.items():
+        # Preserve the exact key name from reference (value vs values)
+        value_key = "values" if "values" in value else "value"
         empty[key] = {
             "isArray": value.get("isArray", False),
             "size": value.get("size", 1),
             "type": value.get("type", "int"),
-            "value": [],
+            value_key: [],
         }
     return empty
 
@@ -94,7 +96,9 @@ def map_grove_to_pve(
     template: Dict,
     species_name: str,
     tree_index: int = 0,
+    model: Optional[Any] = None,
     skeleton: Optional[Any] = None,
+    bones_info: Optional[List] = None,
     use_default_growth_params: bool = True,
     twig_density: float = 1.0,
     custom_growth_params: Optional[Dict] = None,
@@ -104,12 +108,17 @@ def map_grove_to_pve(
     """
     Map Grove simulation data to PVE preset JSON format.
 
+    CRITICAL: Uses pre-built model/skeleton/bones_info from export phase.
+    No model rebuilding occurs - all data is extracted from already-built objects.
+
     Args:
         grove: Grove object after simulation
         template: Empty PVE template from create_pve_template_from_reference()
         species_name: Name of species
         tree_index: Index of tree in grove
-        skeleton: Optional pre-built skeleton to avoid redundant API calls
+        model: Pre-built model (with twigs) from export phase
+        skeleton: Pre-built skeleton from export phase
+        bones_info: Pre-built bones info from export phase
         use_default_growth_params: If True, use Hazel defaults for growth curves
         twig_density: Foliage density multiplier (0.0-1.0+)
         custom_growth_params: Optional dictionary to override specific parameters
@@ -121,22 +130,15 @@ def map_grove_to_pve(
     """
     import the_grove_22_core as gc
 
-    # Get Grove properties and build models
-    properties = grove.get_properties()
+    # CRITICAL: Model must be provided from export phase with twigs already built
+    if model is None:
+        raise ValueError(
+            "Model must be provided to generate_pve_from_grove - "
+            "no model rebuilding occurs. Pass model from export phase."
+        )
 
-    # Build tree models WITH TWIGS for foliage data
-    build_params = {
-        "resolution": 16,
-        "resolution_reduce": 0.8,
-        "texture_repeat": 3,
-        "build_cutoff_age": 0,
-        "build_cutoff_thickness": 0.0,
-        "build_blend": True,
-        "build_end_cap": True,
-        "build_twigs": True,  # CRITICAL: Enable twig generation
-        "twig_density": twig_density,
-    }
-    models = grove.build_models(build_params)
+    # Get Grove properties
+    properties = grove.get_properties()
 
     # Build skeleton for branch hierarchy (if not provided)
     if skeleton is None:
@@ -180,8 +182,8 @@ def map_grove_to_pve(
         pve_data["primitives"] = _map_primitives_from_skeleton(
             skeleton,
             template["primitives"],
-            models,
-            tree_index,
+            model,
+            bones_info,
             species_name,
             num_branches,
         )
@@ -385,8 +387,8 @@ def _map_points_from_skeleton(skeleton: Any, template: Dict) -> Dict:
 def _map_primitives_from_skeleton(
     skeleton: Any,
     template: Dict,
-    models: List[Any],
-    tree_index: int,
+    model: Any,
+    bones_info: List,
     species_name: str,
     num_branches: int,
 ) -> Dict:
@@ -396,8 +398,8 @@ def _map_primitives_from_skeleton(
     Args:
         skeleton: Grove skeleton
         template: Template primitive attributes
-        models: Grove models (with twigs)
-        tree_index: Tree index
+        model: Grove model (with twigs) from export phase
+        bones_info: Bones info from export phase
         species_name: Species name for twig naming
         num_branches: Number of branches
 
@@ -419,9 +421,6 @@ def _map_primitives_from_skeleton(
     for poly_line in poly_lines:
         point_indices = list(poly_line)
         primitives_data["points"].append(point_indices)
-
-    # Get the model for this tree
-    model = models[tree_index] if tree_index < len(models) else None
 
     # Fill core branch attributes
     # branchNumber (sequential ID)
@@ -466,16 +465,18 @@ def _map_primitives_from_skeleton(
         )
         primitives_data["attributes"]["plantNumber"][value_key] = [0] * num_branches
 
-    # Add parent/child hierarchy arrays
-    if model:
-        hierarchy = build_hierarchy_arrays(model, num_branches)
-        if "parents" in primitives_data["attributes"]:
-            primitives_data["attributes"]["parents"] = hierarchy["parents"]
-        if "children" in primitives_data["attributes"]:
-            primitives_data["attributes"]["children"] = hierarchy["children"]
+    # Add parent/child hierarchy arrays from model face attributes
+    hierarchy = build_hierarchy_arrays(model, num_branches)
+    if "parents" in primitives_data["attributes"]:
+        primitives_data["attributes"]["parents"] = hierarchy["parents"]
+    if "children" in primitives_data["attributes"]:
+        primitives_data["attributes"]["children"] = hierarchy["children"]
 
-    # Extract foliage/twig instancer data
-    foliage_data = extract_foliage_data(models, tree_index, species_name, num_branches)
+    # Extract foliage/twig instancer data from pre-built model
+    # CRITICAL: Pass bones_info for correct branch_id assignment
+    foliage_data = extract_foliage_data(
+        model, species_name, bones_info=bones_info, verbose=False
+    )
 
     # Merge foliage data into primitives attributes
     for key, value in foliage_data.items():
@@ -656,7 +657,9 @@ def generate_pve_from_grove(
     output_path: Path,
     species_name: str,
     tree_index: int = 0,
+    model: Optional[Any] = None,
     skeleton: Optional[Any] = None,
+    bones_info: Optional[List] = None,
     verbose: bool = True,
     use_default_growth_params: bool = True,
     twig_density: float = 1.0,
@@ -666,12 +669,17 @@ def generate_pve_from_grove(
     """
     Generate PVE preset JSON from Grove simulation with full foliage and hierarchy.
 
+    CRITICAL: Pass model/skeleton/bones_info from main export phase to avoid rebuilding.
+    The model must have twigs already built for foliage extraction to work.
+
     Args:
         grove: Grove object after simulation
         output_path: Path to save generated JSON
         species_name: Name of species
         tree_index: Index of tree in grove
-        skeleton: Optional pre-built skeleton to avoid redundant API calls
+        model: Pre-built model (with twigs) from export phase - REQUIRED
+        skeleton: Pre-built skeleton from export phase - REQUIRED
+        bones_info: Pre-built bones info from export phase - REQUIRED
         verbose: Whether to print progress messages
         use_default_growth_params: If True, use Hazel defaults for growth curves
         twig_density: Foliage density multiplier (0.0-1.0+)
@@ -714,7 +722,9 @@ def generate_pve_from_grove(
         template,
         species_name,
         tree_index,
+        model=model,
         skeleton=skeleton,
+        bones_info=bones_info,
         use_default_growth_params=use_default_growth_params,
         twig_density=twig_density,
         custom_growth_params=custom_growth_params,
