@@ -510,11 +510,16 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), minimal_export=Tru
         world_pos = Gf.Vec3d(pivot_point[0], pivot_point[1], pivot_point[2])
 
         # Bind transform (world space)
+        # Rotate bone to point along +X axis (twig direction) instead of default +Y
+        # Rotation: -90 degrees around Z axis transforms Y-forward to X-forward
         bind_transform = Gf.Matrix4d(1.0)
+        rotation = Gf.Rotation(Gf.Vec3d(0, 0, 1), -90.0)  # Z-axis, -90 degrees
+        bind_transform.SetRotateOnly(rotation)
         bind_transform.SetTranslateOnly(world_pos)
 
         # Rest transform (local space, same as bind since no parent)
         rest_transform = Gf.Matrix4d(1.0)
+        rest_transform.SetRotateOnly(rotation)
         rest_transform.SetTranslateOnly(world_pos)
 
         # Set skeleton attributes
