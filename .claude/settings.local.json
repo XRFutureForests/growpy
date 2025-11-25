@@ -45,7 +45,12 @@
       "Bash(\"/c/Users/Maximilian Sperlich/miniconda3/Scripts/conda.exe\" run -n the-grove python src/growpy/cli/prepare_assets.py --help)",
       "Bash(\"/c/Users/Maximilian Sperlich/miniconda3/Scripts/conda.exe\" run -n the-grove python src/growpy/cli/convert_twigs.py --help)",
       "Bash(\"/c/Users/Maximilian Sperlich/miniconda3/Scripts/conda.exe\" run -n the-grove python src/growpy/cli/create_growth_models.py --help)",
-      "Bash(\"/c/Users/Maximilian Sperlich/miniconda3/Scripts/conda.exe\" run -n the-grove python:*)"
+      "Bash(\"/c/Users/Maximilian Sperlich/miniconda3/Scripts/conda.exe\" run -n the-grove python:*)",
+      "Bash(cd:*)",
+      "Bash(/usr/bin/python3:*)",
+      "Bash(for attr in \"instancer_scale\" \"instancer_UP\" \"instancer_N\" \"instancer_LFR\")",
+      "Bash(do echo \"--- $attr ---\" grep \"\"\"$attr\"\"\" -A 4 \"c:/Users/Maximilian Sperlich/Git/the-grove/data/output/forest/european_beech/european_beech_tree_0000.json\")",
+      "Bash(xargs:*)"
     ],
     "deny": [],
     "ask": []
