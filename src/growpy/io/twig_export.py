@@ -950,26 +950,50 @@ def copy_opaque_textures_for_skeletal(
             # Don't copy the original bump file - only the converted normal
         else:
             # Regular copy for diffuse, diffuse_top, diffuse_bottom, and normal
+            # CRITICAL: Use power-of-2 resizing for Unreal virtual texture support
             standardized_tex_name = f"{base_name}_{tex_type}{tex_ext}"
             dest_tex = textures_dir / standardized_tex_name
 
             if not dest_tex.exists():
-                shutil.copy2(tex_path, dest_tex)
-                copied_count += 1
+                from .texture_utils import copy_and_resize_texture
+
+                if copy_and_resize_texture(tex_path, dest_tex):
+                    copied_count += 1
+                else:
+                    # Fallback to regular copy
+                    shutil.copy2(tex_path, dest_tex)
+                    copied_count += 1
 
     return copied_count
 
 
 def _detect_leaf_material_indices(obj):
-    """Return a set of material indices that likely correspond to leaves/foliage."""
+    """Return a set of material indices that likely correspond to leaves/foliage.
+
+    For twig meshes, if no explicit leaf materials are found, returns ALL material
+    indices since twigs are typically entirely foliage geometry that needs processing.
+    """
     leaf_kw = ("leaf", "leaves", "foliage", "needle")
     bark_kw = ("bark", "branch", "twig", "wood")
     idxs = set()
     mats = getattr(obj.data, "materials", []) or []
+
+    # First pass: look for explicit leaf materials
     for i, mat in enumerate(mats):
         name = (mat.name if mat else "").lower()
         if any(k in name for k in leaf_kw) and not any(k in name for k in bark_kw):
             idxs.add(i)
+
+    # CRITICAL: For twigs, if no leaf materials found, treat entire mesh as foliage
+    # This ensures geometry processing (alpha trim, densify, decimate) runs on all faces
+    # Twig meshes are typically 100% leaf/foliage geometry without bark segments
+    if not idxs:
+        # Return all material indices (or {0} if no materials assigned)
+        if mats:
+            idxs = set(range(len(mats)))
+        else:
+            idxs = {0}  # Default to material slot 0 for unmaterialized meshes
+
     return idxs
 
 
@@ -1027,9 +1051,13 @@ def smooth_leaf_mesh(
 
 
 def _gather_texture_candidates(blend_dir, standardized_name, species, metadata):
-    """Find likely textures without modifying materials.
+    """Find diffuse and normal textures for Nanite-compatible twig export.
 
-    Returns dict: {'diffuse': Path, 'alpha': Path, 'translucent': Path, 'normal': Path}
+    CRITICAL: Only returns diffuse and normal textures for Nanite compatibility.
+    Alpha/translucent/mask textures are NOT supported by Nanite assemblies and
+    cause import failures in Unreal Engine.
+
+    Returns dict: {'diffuse': Path, 'normal': Path}
     """
     texture_extensions = [".png", ".jpg", ".jpeg", ".tiff", ".exr", ".bmp"]
     search_dirs = [blend_dir / "textures", blend_dir, blend_dir.parent / "textures"]
@@ -1055,11 +1083,14 @@ def _gather_texture_candidates(blend_dir, standardized_name, species, metadata):
     def pick(kind_words, prefer_top=True):
         def score(p: Path):
             n = p.stem.lower()
-            s = 0
+            # CRITICAL: Require at least one keyword match to be considered
+            # Without this, base_name match alone would pick wrong textures
+            # (e.g., diffuse texture picked as alpha just because it has species name)
+            if not any(k in n for k in kind_words):
+                return -1  # Not a match for this texture type
+            s = 3  # Base score for keyword match
             if base_name in n:
-                s += 5
-            if any(k in n for k in kind_words):
-                s += 3
+                s += 5  # Bonus for matching standardized naming
             if prefer_top and ("top" in n or "upper" in n):
                 s += 1
             return s
@@ -1072,17 +1103,11 @@ def _gather_texture_candidates(blend_dir, standardized_name, species, metadata):
         return best
 
     out = {}
+    # CRITICAL: Only diffuse and normal textures for Nanite compatibility
+    # Alpha/translucent/mask textures cause Nanite assembly import failures
     diffuse = pick(["diffuse", "albedo", "color", "basecolor", "base"])
     if diffuse:
         out["diffuse"] = diffuse
-    alpha = pick(["alpha", "opacity", "mask"], prefer_top=False)
-    if alpha:
-        out["alpha"] = alpha
-    translucent = pick(
-        ["translucent", "transmission", "sss", "subsurface"], prefer_top=False
-    )
-    if translucent and "alpha" not in out:
-        out["translucent"] = translucent
     normal = pick(["normal", "norm", "nrm", "bump"], prefer_top=False)
     if normal:
         out["normal"] = normal
@@ -1894,7 +1919,12 @@ def setup_materials_with_textures(
                 standardized_tex_name = f"{base_name}_{tex_type}{tex_ext}"
                 dest_tex = textures_dir / standardized_tex_name
                 if not dest_tex.exists():
-                    shutil.copy2(tex_path, dest_tex)
+                    # CRITICAL: Use power-of-2 resizing for Unreal virtual texture support
+                    from .texture_utils import copy_and_resize_texture
+
+                    if not copy_and_resize_texture(tex_path, dest_tex):
+                        # Fallback to regular copy
+                        shutil.copy2(tex_path, dest_tex)
 
                 # Load texture from textures subdirectory (enables relative path export)
                 # USD will reference textures with ./textures/ prefix
@@ -2188,11 +2218,10 @@ def process_twig_file(
                 # 1) Densify leaf region (edge-adaptive only when explicitly enabled)
                 if densify and leaf_mats:
                     if edge_adaptive:
+                        # CRITICAL: Only use diffuse texture alpha channel for Nanite compatibility
+                        # Separate alpha/translucent textures are NOT supported by Nanite assemblies
                         alpha_img = None
-                        alpha_path = tex_map.get("alpha") or tex_map.get("translucent")
-                        if alpha_path:
-                            alpha_img = _load_alpha_image(alpha_path)
-                        if alpha_img is None and tex_map.get("diffuse"):
+                        if tex_map.get("diffuse"):
                             alpha_img = _load_alpha_image(
                                 tex_map.get("diffuse"), require_alpha_channel=True
                             )
@@ -2230,13 +2259,9 @@ def process_twig_file(
                     and edge_subdiv_levels is not None
                     and int(edge_subdiv_levels) > 0
                 ):
+                    # CRITICAL: Only use diffuse texture alpha channel for Nanite compatibility
                     alpha_img = None
-                    alpha_path = tex_map.get("alpha") or tex_map.get("translucent")
-                    if alpha_path:
-                        alpha_img = _load_alpha_image(
-                            alpha_path, allow_luminance_for_masks=True
-                        )
-                    if alpha_img is None and tex_map.get("diffuse"):
+                    if tex_map.get("diffuse"):
                         alpha_img = _load_alpha_image(
                             tex_map.get("diffuse"),
                             require_alpha_channel=True,
@@ -2255,13 +2280,9 @@ def process_twig_file(
 
                 # Optional: interior decimation (edge-protected) to reduce interior density
                 if interior_decimate and leaf_mats:
+                    # CRITICAL: Only use diffuse texture alpha channel for Nanite compatibility
                     alpha_img = None
-                    alpha_path = tex_map.get("alpha") or tex_map.get("translucent")
-                    if alpha_path:
-                        alpha_img = _load_alpha_image(
-                            alpha_path, allow_luminance_for_masks=True
-                        )
-                    if alpha_img is None and tex_map.get("diffuse"):
+                    if tex_map.get("diffuse"):
                         alpha_img = _load_alpha_image(
                             tex_map.get("diffuse"),
                             require_alpha_channel=True,
@@ -2285,39 +2306,26 @@ def process_twig_file(
                         except Exception:
                             pass
 
-                # 2) Trim leaf edges using alpha/translucency/diffuse alpha
+                # 2) Trim leaf edges using diffuse texture alpha channel only
+                # CRITICAL: Separate alpha/translucent textures are NOT supported by Nanite
                 if alpha_trim_threshold > 0.0 and leaf_mats:
-                    alpha_tex = tex_map.get("alpha") or tex_map.get("translucent")
-                    if alpha_tex:
+                    diffuse_tex = tex_map.get("diffuse")
+                    if diffuse_tex:
                         trim_by_alpha_mask(
                             obj,
-                            str(alpha_tex),
+                            str(diffuse_tex),
                             alpha_trim_threshold,
+                            require_alpha_channel=True,
                             material_indices=leaf_mats,
-                            allow_luminance_for_masks=True,
+                            allow_luminance_for_masks=False,
                         )
-                    else:
-                        diffuse_tex = tex_map.get("diffuse")
-                        if diffuse_tex:
-                            trim_by_alpha_mask(
-                                obj,
-                                str(diffuse_tex),
-                                alpha_trim_threshold,
-                                require_alpha_channel=True,
-                                material_indices=leaf_mats,
-                                allow_luminance_for_masks=False,
-                            )
 
                 # Optional: smooth boundary edges to follow texture curves more naturally
                 # Applied AFTER trimming to smooth the jagged edges created by regular subdivision grid
                 if smooth_boundary and leaf_mats:
+                    # CRITICAL: Only use diffuse texture alpha channel for Nanite compatibility
                     alpha_img = None
-                    alpha_path = tex_map.get("alpha") or tex_map.get("translucent")
-                    if alpha_path:
-                        alpha_img = _load_alpha_image(
-                            alpha_path, allow_luminance_for_masks=True
-                        )
-                    if alpha_img is None and tex_map.get("diffuse"):
+                    if tex_map.get("diffuse"):
                         alpha_img = _load_alpha_image(
                             tex_map.get("diffuse"),
                             require_alpha_channel=True,
