@@ -132,6 +132,9 @@ def get_preset_path(species: str) -> Path:
 def get_growth_model_path(species: str) -> Path:
     """Get growth model directory for species.
 
+    The growth model directories are stored with standardized names (e.g., norway_spruce)
+    matching the Standardized Name column in the lookup table.
+
     Args:
         species: Species name
 
@@ -139,10 +142,25 @@ def get_growth_model_path(species: str) -> Path:
         Path to growth model directory
     """
     row = _find_species_row(species)
-    model_name = row["Growth Model"]
-
     models_dir = get_assets_directory() / "growth_models"
-    model_path = models_dir / model_name
+
+    # Use standardized name for directory lookup (growth_models use standardized names)
+    standardized_name = row.get("Standardized Name", "")
+    if standardized_name and not pd.isna(standardized_name):
+        model_path = models_dir / standardized_name
+        if model_path.exists():
+            return model_path
+
+    # Fallback: try the Growth Model column (legacy family-based naming)
+    model_name = row.get("Growth Model", "")
+    if model_name and not pd.isna(model_name):
+        model_path = models_dir / model_name
+        if model_path.exists():
+            return model_path
+
+    # Fallback: derive from Common Name
+    common_name = str(row["Common Name"]).lower().replace(" ", "_").replace("/", "_")
+    model_path = models_dir / common_name
 
     return model_path
 

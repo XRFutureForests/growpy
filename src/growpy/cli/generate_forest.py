@@ -86,8 +86,8 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     the old approach of recreating and re-simulating each tree individually.
 
     Args:
-        args: Tuple of (start_idx, grove_instance, species_name, output_dir, quality_params, mesh_type, verbose)
-              start_idx is the base tree number for sequential numbering
+        args: Tuple of (fids, grove_instance, species_name, output_dir, quality_params, mesh_type, verbose)
+              fids is a list of original CSV fid values for each tree in the grove
               verbose is boolean for verbose output
 
     Returns:
@@ -104,7 +104,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     from growpy.io.assembly_export import export_tree_as_nanite_assembly
     from growpy.io.tree_export import get_twig_usd_map_for_species
 
-    (start_idx, grove, species, output_dir, quality_params, mesh_type, verbose) = args
+    (fids, grove, species, output_dir, quality_params, mesh_type, verbose) = args
 
     # Get config in worker process
     config = get_config()
@@ -169,9 +169,9 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         for model_idx, (model, skeleton, bones_for_tree) in enumerate(
             zip(models, skeletons, tree_bones)
         ):
-            # Use sequential numbering: start_idx + model_idx
-            tree_num = start_idx + model_idx
-            tree_name = f"{species_clean}_tree_{tree_num:04d}"
+            # Use original CSV fid for naming (with leading zeros)
+            tree_fid = fids[model_idx]
+            tree_name = f"{species_clean}_tree_{tree_fid:04d}"
 
             # Use appropriate twig type based on mesh_type
             use_skeletal = mesh_type == "skeletal"
@@ -229,8 +229,8 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 if use_skeletal:
                     from growpy.io.pve_grove_mapper import generate_pve_from_grove
 
-                    # Use Unreal PVE naming convention: species_tree_####.json
-                    pve_variation_name = f"{species_clean}_tree_{tree_num:04d}.json"
+                    # Use Unreal PVE naming convention: species_tree_####.json (using fid)
+                    pve_variation_name = f"{species_clean}_tree_{tree_fid:04d}.json"
                     pve_json_path = species_dir / pve_variation_name
                     pve_config_dir = Path("data/assets/pve_configs")
                     try:
@@ -279,7 +279,7 @@ def export_individual_trees(
     Also generates PVE preset JSON files for use in Unreal's Procedural Vegetation Editor.
 
     Args:
-        forest: List of (grove, species_name, tree_count) from create_forest() + simulate_forest_growth()
+        forest: List of (grove, species_name, tree_count, fid_list) from create_forest() + simulate_forest_growth()
         forest_data: DataFrame with tree data including species, growth_cycles
         output_dir: Directory to save export files
         config: GrowPy configuration
@@ -294,17 +294,17 @@ def export_individual_trees(
 
     # Build tree export tasks from forest groves
     # Each grove contains multiple trees for that species, export all at once
-    # Trees are numbered per-species (starting at 0) since each species has its own folder
+    # Trees are named using their original CSV fid values
     grove_tasks = []
 
-    for grove, species_name, tree_count in forest:
+    for grove, species_name, tree_count, fids in forest:
         # Create two tasks per grove - one for skeletal, one for static
-        # start_idx=0 for each grove since trees are numbered within species folder
+        # Pass fids list so each tree can be named with its original CSV fid
         grove_tasks.append(
-            (0, grove, species_name, output_dir, quality_params, "skeletal", verbose)
+            (fids, grove, species_name, output_dir, quality_params, "skeletal", verbose)
         )
         grove_tasks.append(
-            (0, grove, species_name, output_dir, quality_params, "static", verbose)
+            (fids, grove, species_name, output_dir, quality_params, "static", verbose)
         )
 
     # Always use sequential processing (bpy/USD not compatible with multiprocessing)
