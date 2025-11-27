@@ -9,14 +9,17 @@ from tqdm import tqdm
 from .grove import add_tree_to_grove, create_grove
 
 
-def create_forest(forest_data: pd.DataFrame) -> List[Tuple[gc.Grove, str, int]]:
+def create_forest(
+    forest_data: pd.DataFrame,
+) -> List[Tuple[gc.Grove, str, int, List[int]]]:
     """Create groves for each species in forest data.
 
     Args:
-        forest_data: DataFrame with columns: x, y, species, z (optional), delay (optional)
+        forest_data: DataFrame with columns: x, y, species, z (optional), delay (optional), fid (optional)
 
     Returns:
-        List of tuples: (grove_instance, species_name, tree_count)
+        List of tuples: (grove_instance, species_name, tree_count, fid_list)
+        fid_list contains the original CSV fids for each tree in the grove (in order)
     """
     if "z" not in forest_data.columns:
         forest_data["z"] = 0.0
@@ -25,18 +28,25 @@ def create_forest(forest_data: pd.DataFrame) -> List[Tuple[gc.Grove, str, int]]:
     for species_name, species_data in forest_data.groupby("species"):
         grove = create_grove(str(species_name))
 
-        for _, row in species_data.iterrows():
+        # Collect fids for this species (use row index if fid column not present)
+        fids = []
+        for idx, row in species_data.iterrows():
             position = (row["x"], row["y"], row["z"])
             delay = int(row.get("delay", 0))
             add_tree_to_grove(grove, position, delay)
+            # Use fid column if available, otherwise use DataFrame index
+            fid = int(row["fid"]) if "fid" in row else int(idx)
+            fids.append(fid)
 
-        forest.append((grove, str(species_name), len(species_data)))
+        forest.append((grove, str(species_name), len(species_data), fids))
 
     return forest
 
 
 def simulate_forest_growth(
-    forest: List[Tuple[gc.Grove, str, int]], cycles: int, smooth_iterations: int = 10
+    forest: List[Tuple[gc.Grove, str, int, List[int]]],
+    cycles: int,
+    smooth_iterations: int = 10,
 ) -> None:
     """Simulate forest growth with inter-species light competition and optional smoothing.
 
@@ -48,12 +58,12 @@ def simulate_forest_growth(
     Without step 3 (weigh_and_bend), smoothing has no effect on the final geometry!
 
     Args:
-        forest: List of (grove, species_name, tree_count) tuples from create_forest()
+        forest: List of (grove, species_name, tree_count, fid_list) tuples from create_forest()
         cycles: Number of growth cycles to simulate
         smooth_iterations: Number of smoothing iterations (default: 10, recommended: 10-20)
                           Set to 0 to disable smoothing entirely
     """
-    groves = [grove for grove, _, _ in forest]
+    groves = [grove for grove, _, _, _ in forest]
 
     for cycle in tqdm(range(cycles), desc="Simulating growth cycles", unit="cycle"):
         if len(groves) > 1:
@@ -65,15 +75,17 @@ def simulate_forest_growth(
             for grove in groves:
                 grove.calculate_shade_together(all_coords)
 
-        for grove, species_name, tree_count in forest:
+        for grove, species_name, tree_count, fids in forest:
             grove.weigh_and_bend()
             grove.simulate(1)
 
     # Apply smoothing AFTER simulation but BEFORE building
     # This reduces sharp branch angles for smoother geometry
     if smooth_iterations > 0:
-        print(f"\n[Smoothing] Applying {smooth_iterations} smoothing iterations to {len(forest)} species")
-        for grove, species_name, _ in forest:
+        print(
+            f"\n[Smoothing] Applying {smooth_iterations} smoothing iterations to {len(forest)} species"
+        )
+        for grove, species_name, _, _ in forest:
             grove.smooth_minimal()
             # Show progress for smoothing iterations
             for i in tqdm(
