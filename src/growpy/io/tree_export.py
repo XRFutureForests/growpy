@@ -637,8 +637,9 @@ def _add_skeletal_materials(
 
         # Copy texture files to output directory if found
         if texture_found and texture_file:
-            import shutil
             from pathlib import Path
+
+            from .texture_utils import copy_and_resize_texture
 
             # Get output directory from stage
             output_dir = Path(stage.GetRootLayer().realPath).parent
@@ -647,16 +648,16 @@ def _add_skeletal_materials(
             textures_dir = output_dir / "textures"
             textures_dir.mkdir(exist_ok=True)
 
-            # Copy diffuse texture file to textures/ subdirectory
+            # Copy diffuse texture file to textures/ subdirectory (power-of-2 for Unreal)
             dest_texture = textures_dir / texture_file.name
             if not dest_texture.exists():
-                shutil.copy2(texture_file, dest_texture)
+                copy_and_resize_texture(texture_file, dest_texture)
 
             # Copy normal texture file if available
             if normal_texture_file and normal_texture_file.exists():
                 dest_normal = textures_dir / normal_texture_file.name
                 if not dest_normal.exists():
-                    shutil.copy2(normal_texture_file, dest_normal)
+                    copy_and_resize_texture(normal_texture_file, dest_normal)
 
     except Exception as e:
         # Silently fail - material addition is optional
@@ -794,8 +795,9 @@ def _add_static_materials(
 
         # Copy texture files to output directory if found
         if texture_found and texture_file:
-            import shutil
             from pathlib import Path
+
+            from .texture_utils import copy_and_resize_texture
 
             # Get output directory from stage
             output_dir = Path(stage.GetRootLayer().realPath).parent
@@ -804,16 +806,16 @@ def _add_static_materials(
             textures_dir = output_dir / "textures"
             textures_dir.mkdir(exist_ok=True)
 
-            # Copy diffuse texture file to textures/ subdirectory
+            # Copy diffuse texture file to textures/ subdirectory (power-of-2 for Unreal)
             dest_texture = textures_dir / texture_file.name
             if not dest_texture.exists():
-                shutil.copy2(texture_file, dest_texture)
+                copy_and_resize_texture(texture_file, dest_texture)
 
             # Copy normal texture file if available
             if normal_texture_file and normal_texture_file.exists():
                 dest_normal = textures_dir / normal_texture_file.name
                 if not dest_normal.exists():
-                    shutil.copy2(normal_texture_file, dest_normal)
+                    copy_and_resize_texture(normal_texture_file, dest_normal)
 
     except Exception as e:
         # Silently fail - material addition is optional
@@ -1568,6 +1570,7 @@ def bundle_twigs_for_species(
 
         # Copy opaque-only textures for Nanite compatibility
         # CRITICAL: Filter out alpha/translucent/mask textures
+        # CRITICAL: Only copy standardized twig textures (contain _twig_)
         source_texture_dir = None
         if all_twig_files:
             first_twig = next(iter(all_twig_files))
@@ -1587,6 +1590,11 @@ def bundle_twigs_for_species(
                 texture_count = 0
                 for texture_file in source_texture_dir.glob("*"):
                     if texture_file.is_file():
+                        # CRITICAL: Only copy standardized textures (contain _twig_)
+                        # Skip original Grove textures like BeechDiffuse.jpg
+                        if "_twig_" not in texture_file.stem:
+                            continue
+
                         # Classify texture type
                         tex_type = classify_texture_from_name(texture_file.stem)
 
@@ -1596,12 +1604,16 @@ def bundle_twigs_for_species(
 
                         dest_tex = dest_texture_dir / texture_file.name
                         if not dest_tex.exists():
-                            shutil.copy2(texture_file, dest_tex)
+                            from .texture_utils import copy_and_resize_texture
+
+                            copy_and_resize_texture(texture_file, dest_tex)
                             texture_count += 1
                             copied_textures.add(texture_file.name)
 
     except Exception:
         # Silently fail - twig bundling is optional
         pass
+
+    return results
 
     return results
