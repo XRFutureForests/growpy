@@ -1,14 +1,204 @@
 """Texture processing utilities for GrowPy.
 
-Includes bump-to-normal map conversion and texture manipulation.
-Based on https://github.com/MircoWerner/BumpToNormalMap
+Includes bump-to-normal map conversion, texture manipulation, and power-of-2
+resolution scaling for Unreal Engine virtual texture compatibility.
+
+Based on https://github.com/MircoWerner/BumpToNormalMap for normal conversion.
+
+Virtual Texture Requirements (Unreal Engine):
+    - Textures must have power-of-2 dimensions (e.g., 256, 512, 1024, 2048)
+    - Both width and height must be powers of 2 (but can be different)
+    - This is required for virtual texture streaming to work properly
+    - See: https://dev.epicgames.com/community/learning/knowledge-base/jB8v/unreal-engine-usd-ue-format-support
 """
 
+import math
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 from PIL import Image
+
+
+def next_power_of_2(value: int) -> int:
+    """Return the next power of 2 >= value.
+
+    Args:
+        value: Input integer
+
+    Returns:
+        Smallest power of 2 that is >= value
+
+    Examples:
+        next_power_of_2(100) -> 128
+        next_power_of_2(256) -> 256
+        next_power_of_2(257) -> 512
+    """
+    if value <= 0:
+        return 1
+    # If already a power of 2, return as-is
+    if value & (value - 1) == 0:
+        return value
+    # Find next power of 2
+    return 1 << (value - 1).bit_length()
+
+
+def is_power_of_2(value: int) -> bool:
+    """Check if value is a power of 2.
+
+    Args:
+        value: Integer to check
+
+    Returns:
+        True if value is a power of 2
+    """
+    return value > 0 and (value & (value - 1)) == 0
+
+
+def resize_to_power_of_2(
+    image_path: Path,
+    output_path: Optional[Path] = None,
+    resample: int = Image.LANCZOS,
+    upscale_only: bool = True,
+) -> Optional[Path]:
+    """Resize image to power-of-2 dimensions for Unreal virtual texture compatibility.
+
+    CRITICAL: Unreal Engine virtual textures require power-of-2 dimensions.
+    This function upscales images to the nearest power of 2 to avoid losing detail.
+
+    Args:
+        image_path: Path to input image
+        output_path: Optional output path (defaults to overwriting input)
+        resample: PIL resampling filter (default: LANCZOS for high quality)
+        upscale_only: If True, only upscale to next power of 2 (never downscale)
+                      If False, use nearest power of 2 (may downscale if closer)
+
+    Returns:
+        Path to resized image, or None if failed
+
+    Examples:
+        # 720x480 -> 1024x512 (upscale both dimensions)
+        # 1024x1024 -> 1024x1024 (already power of 2, no change)
+        # 2000x1500 -> 2048x2048 (upscale to next power of 2)
+    """
+    try:
+        img = Image.open(image_path)
+        original_width, original_height = img.size
+
+        # Calculate target dimensions
+        if upscale_only:
+            new_width = next_power_of_2(original_width)
+            new_height = next_power_of_2(original_height)
+        else:
+            # Find nearest power of 2 (may be smaller)
+            new_width = next_power_of_2(original_width)
+            new_height = next_power_of_2(original_height)
+            # Check if previous power of 2 is closer
+            prev_width = new_width // 2
+            prev_height = new_height // 2
+            if abs(original_width - prev_width) < abs(original_width - new_width):
+                new_width = prev_width
+            if abs(original_height - prev_height) < abs(original_height - new_height):
+                new_height = prev_height
+
+        # Skip if already correct size
+        if new_width == original_width and new_height == original_height:
+            return image_path
+
+        # Resize image
+        resized_img = img.resize((new_width, new_height), resample=resample)
+
+        # Determine output path
+        if output_path is None:
+            output_path = image_path
+
+        # Save with same format
+        resized_img.save(output_path)
+
+        return output_path
+
+    except Exception as e:
+        return None
+
+
+def ensure_power_of_2_textures(
+    texture_dir: Path,
+    extensions: Optional[Tuple[str, ...]] = None,
+    upscale_only: bool = True,
+) -> int:
+    """Ensure all textures in a directory have power-of-2 dimensions.
+
+    Args:
+        texture_dir: Directory containing textures
+        extensions: File extensions to process (default: common image formats)
+        upscale_only: If True, only upscale (never downscale)
+
+    Returns:
+        Number of textures resized
+    """
+    if extensions is None:
+        extensions = (".png", ".jpg", ".jpeg", ".tiff", ".exr", ".bmp")
+
+    resized_count = 0
+
+    if not texture_dir.exists():
+        return 0
+
+    for ext in extensions:
+        for texture_file in texture_dir.glob(f"*{ext}"):
+            result = resize_to_power_of_2(texture_file, upscale_only=upscale_only)
+            if result and result != texture_file:
+                resized_count += 1
+        # Also check uppercase extensions
+        for texture_file in texture_dir.glob(f"*{ext.upper()}"):
+            result = resize_to_power_of_2(texture_file, upscale_only=upscale_only)
+            if result and result != texture_file:
+                resized_count += 1
+
+    return resized_count
+
+
+def copy_and_resize_texture(
+    src_path: Path,
+    dst_path: Path,
+    upscale_only: bool = True,
+) -> Optional[Path]:
+    """Copy a texture to destination and resize to power-of-2 if needed.
+
+    Args:
+        src_path: Source texture path
+        dst_path: Destination texture path
+        upscale_only: If True, only upscale (never downscale)
+
+    Returns:
+        Path to destination texture, or None if failed
+    """
+    try:
+        img = Image.open(src_path)
+        original_width, original_height = img.size
+
+        # Calculate target dimensions
+        if upscale_only:
+            new_width = next_power_of_2(original_width)
+            new_height = next_power_of_2(original_height)
+        else:
+            new_width = next_power_of_2(original_width)
+            new_height = next_power_of_2(original_height)
+
+        # Resize if needed
+        if new_width != original_width or new_height != original_height:
+            img = img.resize((new_width, new_height), resample=Image.LANCZOS)
+
+        # Ensure destination directory exists
+        dst_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Save to destination
+        img.save(dst_path)
+
+        return dst_path
+
+    except Exception as e:
+        return None
 
 
 def bump_to_normal(
@@ -105,7 +295,9 @@ def bump_to_normal(
         # Determine output path
         if output_path is None:
             # Generate output path: input_name_normal.ext
-            output_path = bump_path.parent / f"{bump_path.stem}_normal{bump_path.suffix}"
+            output_path = (
+                bump_path.parent / f"{bump_path.stem}_normal{bump_path.suffix}"
+            )
 
         # Save normal map
         normal_img.save(output_path)
@@ -142,7 +334,9 @@ def ensure_normal_map(
         return texture_path
 
     # Check if converted normal map already exists
-    normal_path = texture_path.parent / f"{texture_path.stem}_normal{texture_path.suffix}"
+    normal_path = (
+        texture_path.parent / f"{texture_path.stem}_normal{texture_path.suffix}"
+    )
     if normal_path.exists():
         return normal_path
 

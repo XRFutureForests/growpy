@@ -246,14 +246,38 @@ def create_assembly(
                         output_textures_dir = output_path.parent / "textures"
                         output_textures_dir.mkdir(exist_ok=True)
 
-                        # Copy all texture files (includes diffuse and normal maps)
+                        # CRITICAL: Only copy standardized twig textures (diffuse/normal)
+                        # Skip original Grove textures - only copy renamed versions with _twig_ naming
+                        # Alpha/translucent/mask textures are NOT copied (used for geometry only)
+                        from .texture_utils import copy_and_resize_texture
+                        from .twig_export import classify_texture_from_name
+
+                        ALLOWED_TEXTURE_TYPES = [
+                            "diffuse",
+                            "diffuse_top",
+                            "diffuse_bottom",
+                            "normal",
+                        ]
+
                         for texture_ext in [".png", ".jpg", ".jpeg", ".exr"]:
                             for texture_file in source_textures_dir.glob(
                                 f"*{texture_ext}"
                             ):
+                                # CRITICAL: Only copy standardized textures (contain _twig_)
+                                # Skip original Grove textures like BeechDiffuse.jpg
+                                if "_twig_" not in texture_file.stem:
+                                    continue
+
+                                # Filter to only diffuse and normal textures
+                                tex_type = classify_texture_from_name(texture_file.stem)
+                                if tex_type not in ALLOWED_TEXTURE_TYPES:
+                                    continue
+
                                 output_texture = output_textures_dir / texture_file.name
                                 if not output_texture.exists():
-                                    shutil.copy2(texture_file, output_texture)
+                                    copy_and_resize_texture(
+                                        texture_file, output_texture
+                                    )
 
                     twig_type_to_proto_idx[twig_type] = idx
 
@@ -348,7 +372,7 @@ def create_assembly(
                             mapped_type = fallback_map[twig_type]
                             proto_idx = twig_type_to_proto_idx[mapped_type]
                             print(
-                                f"  Mapping {twig_type} → {mapped_type} (proto_idx={proto_idx})"
+                                f"  Mapping {twig_type} -> {mapped_type} (proto_idx={proto_idx})"
                             )
                         else:
                             # No mapping available - skip
@@ -414,15 +438,12 @@ def create_assembly(
 
                         # Extract joint names array from tree skeleton
                         # Joint names are hierarchical paths like "joint_0/joint_1/joint_2"
+                        # The bone_id in each TwigPlacement is a direct index into this array
                         joint_names = _extract_joint_names_from_usd(tree_usd_path)
 
-                        # Extract bone segments (start/end points) for distance-based binding
-                        joint_segments = _extract_joint_coordinates_from_usd(
-                            tree_usd_path
-                        )
-
-                        # Build bindJoints array using perpendicular distance to bone segments
-                        # Each twig binds to the NEAREST bone segment within its assigned branch
+                        # Build bindJoints array using direct bone_id lookup
+                        # Each twig has a bone_id that's a direct index into joint_names
+                        # This is O(1) per twig instead of O(n) spatial search
                         bind_joints = []
                         bind_weights = []
 
@@ -452,28 +473,23 @@ def create_assembly(
                                 continue
 
                             for placement in placement_list:
-                                # Get branch ID and position from placement
+                                # Get bone_id from placement - this is a direct index into joint_names
                                 # Handle both TwigPlacement objects and dict representations
                                 if isinstance(placement, dict):
-                                    branch_id = placement.get("branch_id")
-                                    position = placement.get("position")
+                                    bone_id = placement.get("bone_id")
                                 else:
                                     # TwigPlacement object
-                                    branch_id = getattr(placement, "branch_id", None)
-                                    position = getattr(placement, "position", None)
+                                    bone_id = getattr(placement, "bone_id", None)
 
-                                if position is not None:
-                                    # Find nearest joint using perpendicular distance to bone segments
-                                    # Use global search for best spatial accuracy
-                                    joint_path = _find_nearest_joint_globally(
-                                        joint_names,
-                                        joint_segments,
-                                        position,
-                                    )
+                                # Use bone_id as direct index into joint_names (O(1) lookup)
+                                if bone_id is not None and 0 <= bone_id < len(
+                                    joint_names
+                                ):
+                                    joint_path = joint_names[bone_id]
                                     bind_joints.append(joint_path)
                                     bind_weights.append(1.0)
                                 else:
-                                    # Fallback to tree root if no position
+                                    # Fallback to tree root if bone_id is invalid
                                     bind_joints.append("tree_root")
                                     bind_weights.append(1.0)
 
@@ -911,74 +927,6 @@ def _fix_api_schemas_in_assembly(assembly_path: Path, assembly_name: str) -> Non
         pass
 
 
-def _find_nearest_joint_globally(
-    joint_names: List[str],
-    joint_segments: Dict[
-        str, Tuple[Tuple[float, float, float], Tuple[float, float, float]]
-    ],
-    twig_position: Tuple[float, float, float],
-) -> str:
-    """Find the nearest joint to a twig position across all joints.
-
-    Uses perpendicular distance to bone segments for accurate spatial binding.
-
-    Args:
-        joint_names: List of all joint paths from skeleton
-        joint_segments: Dict mapping joint_path to ((start_x,y,z), (end_x,y,z))
-        twig_position: Twig location as (x, y, z) tuple
-
-    Returns:
-        Joint path of nearest joint
-    """
-    import math
-
-    def point_to_segment_distance(
-        point: Tuple[float, float, float],
-        seg_start: Tuple[float, float, float],
-        seg_end: Tuple[float, float, float],
-    ) -> float:
-        """Calculate perpendicular distance from point to line segment."""
-        px, py, pz = point
-        ax, ay, az = seg_start
-        bx, by, bz = seg_end
-
-        abx, aby, abz = bx - ax, by - ay, bz - az
-        apx, apy, apz = px - ax, py - ay, pz - az
-        ab_len_sq = abx * abx + aby * aby + abz * abz
-
-        if ab_len_sq == 0:
-            return math.sqrt(apx * apx + apy * apy + apz * apz)
-
-        t = (apx * abx + apy * aby + apz * abz) / ab_len_sq
-        t = max(0.0, min(1.0, t))
-
-        closest_x = ax + t * abx
-        closest_y = ay + t * aby
-        closest_z = az + t * abz
-
-        dx = px - closest_x
-        dy = py - closest_y
-        dz = pz - closest_z
-
-        return math.sqrt(dx * dx + dy * dy + dz * dz)
-
-    min_distance = float("inf")
-    nearest_joint = "tree_root"
-
-    for joint_path in joint_names:
-        if joint_path not in joint_segments:
-            continue
-
-        start_point, end_point = joint_segments[joint_path]
-        distance = point_to_segment_distance(twig_position, start_point, end_point)
-
-        if distance < min_distance:
-            min_distance = distance
-            nearest_joint = joint_path
-
-    return nearest_joint
-
-
 def _extract_joint_names_from_usd(tree_usd_path: Path) -> List[str]:
     """Extract joint names array from tree USD skeleton.
 
@@ -1011,79 +959,3 @@ def _extract_joint_names_from_usd(tree_usd_path: Path) -> List[str]:
 
     except Exception as e:
         return []
-
-
-def _extract_joint_coordinates_from_usd(
-    tree_usd_path: Path,
-) -> Dict[str, Tuple[Tuple[float, float, float], Tuple[float, float, float]]]:
-    """Extract bone segment endpoints from tree USD skeleton.
-
-    Each bone is represented by its start and end points, enabling accurate
-    point-to-segment distance calculations for twig binding.
-
-    Args:
-        tree_usd_path: Path to tree USD with skeleton
-
-    Returns:
-        Dict mapping joint_path to ((start_x, start_y, start_z), (end_x, end_y, end_z))
-    """
-    try:
-        from pxr import Usd, UsdSkel
-
-        stage = Usd.Stage.Open(str(tree_usd_path))
-        joint_segments = {}
-
-        # Find skeleton prim
-        for prim in stage.Traverse():
-            if prim.IsA(UsdSkel.Skeleton):
-                skeleton = UsdSkel.Skeleton(prim)
-
-                # Get joint names
-                joints_attr = skeleton.GetJointsAttr()
-                if not joints_attr:
-                    continue
-                joint_names = [str(name) for name in joints_attr.Get()]
-
-                # Get bind transforms (rest pose) for joint endpoints
-                bind_transforms_attr = skeleton.GetBindTransformsAttr()
-                if not bind_transforms_attr:
-                    continue
-                bind_transforms = bind_transforms_attr.Get()
-
-                # Extract joint positions (endpoints)
-                joint_positions = {}
-                for joint_name, transform in zip(joint_names, bind_transforms):
-                    translation = transform.ExtractTranslation()
-                    joint_positions[joint_name] = (
-                        float(translation[0]),
-                        float(translation[1]),
-                        float(translation[2]),
-                    )
-
-                # Build bone segments: start = parent position, end = joint position
-                for joint_name in joint_names:
-                    if "/" in joint_name:
-                        # Joint has parent - create segment from parent to this joint
-                        parent_path = joint_name.rsplit("/", 1)[0]
-                        if (
-                            parent_path in joint_positions
-                            and joint_name in joint_positions
-                        ):
-                            joint_segments[joint_name] = (
-                                joint_positions[parent_path],  # start (parent)
-                                joint_positions[joint_name],  # end (this joint)
-                            )
-                    else:
-                        # Root joint - segment from origin to root
-                        if joint_name in joint_positions:
-                            joint_segments[joint_name] = (
-                                (0.0, 0.0, 0.0),  # start (origin)
-                                joint_positions[joint_name],  # end (root)
-                            )
-
-                break  # Found skeleton, done
-
-        return joint_segments
-
-    except Exception as e:
-        return {}
