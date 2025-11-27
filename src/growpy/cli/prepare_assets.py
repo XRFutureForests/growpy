@@ -26,12 +26,41 @@ Usage:
     python src/growpy/cli/prepare_assets.py [options]
 """
 import argparse
+
+# Direct imports using importlib to avoid circular import through growpy package __init__.py
+# These modules only depend on numpy/PIL, not the heavy sklearn/bpy imports
+import importlib.util
 import re
 import shutil
 import sys
 from pathlib import Path
 
 import pandas as pd
+
+
+def _import_module_directly(module_name: str, file_path: Path):
+    """Import a module directly from file path, bypassing package __init__.py."""
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+# Get the src directory
+_src_dir = Path(__file__).parent.parent.parent
+
+# Import texture_utils directly (only needs numpy, PIL)
+_texture_utils = _import_module_directly(
+    "texture_utils", _src_dir / "growpy" / "io" / "texture_utils.py"
+)
+ensure_power_of_2_textures = _texture_utils.ensure_power_of_2_textures
+copy_and_resize_texture = _texture_utils.copy_and_resize_texture
+
+# Import pve_species_overrides directly (only needs json, pathlib)
+_pve_overrides = _import_module_directly(
+    "pve_species_overrides", _src_dir / "growpy" / "config" / "pve_species_overrides.py"
+)
+create_null_placeholder_config = _pve_overrides.create_null_placeholder_config
 
 
 def camel_to_snake(name: str) -> str:
@@ -205,6 +234,11 @@ CSV Format Support:
         action="store_true",
         help="Copy ALL available Grove assets (uses comprehensive lookup table, ignores --csv)",
     )
+    parser.add_argument(
+        "--resize-textures",
+        action="store_true",
+        help="Resize textures to power-of-2 for Unreal (slow, skip by default)",
+    )
 
     args = parser.parse_args()
 
@@ -307,14 +341,13 @@ CSV Format Support:
                 shutil.rmtree(dst_twig_dir)
             shutil.copytree(src_twig_dir, dst_twig_dir)
 
-            # CRITICAL: Resize all twig textures to power-of-2 for Unreal virtual texture support
-            from growpy.io.texture_utils import ensure_power_of_2_textures
-
-            twig_textures_dir = dst_twig_dir / "textures"
-            if twig_textures_dir.exists():
-                ensure_power_of_2_textures(twig_textures_dir)
-            # Also check root directory for textures
-            ensure_power_of_2_textures(dst_twig_dir)
+            # Optional: Resize twig textures to power-of-2 for Unreal virtual texture support
+            # This is slow for large textures, so skip by default
+            if args.resize_textures:
+                twig_textures_dir = dst_twig_dir / "textures"
+                if twig_textures_dir.exists():
+                    ensure_power_of_2_textures(twig_textures_dir)
+                ensure_power_of_2_textures(dst_twig_dir)
 
             stats["twigs_copied"] += 1
         else:
@@ -343,21 +376,21 @@ CSV Format Support:
         dst_file = dst_textures / f"{standardized_name}_bark{file_ext}"
 
         if src_file.exists():
-            # CRITICAL: Copy and resize to power-of-2 for Unreal virtual texture support
-            from growpy.io.texture_utils import copy_and_resize_texture
-
-            if copy_and_resize_texture(src_file, dst_file):
-                stats["textures_copied"] += 1
+            if args.resize_textures:
+                # Resize to power-of-2 for Unreal virtual texture support (slow)
+                if copy_and_resize_texture(src_file, dst_file):
+                    stats["textures_copied"] += 1
+                else:
+                    shutil.copy2(src_file, dst_file)
+                    stats["textures_copied"] += 1
             else:
-                # Fallback to regular copy if resize fails
+                # Just copy without resizing (fast)
                 shutil.copy2(src_file, dst_file)
                 stats["textures_copied"] += 1
         else:
             stats["textures_missing"] += 1
 
     # Generate PVE config files with null placeholders for each species
-    from growpy.config.pve_species_overrides import create_null_placeholder_config
-
     dst_pve_configs = assets_dir / "pve_configs"
 
     for _, row in df.iterrows():
