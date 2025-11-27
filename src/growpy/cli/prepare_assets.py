@@ -307,6 +307,15 @@ CSV Format Support:
                 shutil.rmtree(dst_twig_dir)
             shutil.copytree(src_twig_dir, dst_twig_dir)
 
+            # CRITICAL: Resize all twig textures to power-of-2 for Unreal virtual texture support
+            from growpy.io.texture_utils import ensure_power_of_2_textures
+
+            twig_textures_dir = dst_twig_dir / "textures"
+            if twig_textures_dir.exists():
+                ensure_power_of_2_textures(twig_textures_dir)
+            # Also check root directory for textures
+            ensure_power_of_2_textures(dst_twig_dir)
+
             stats["twigs_copied"] += 1
         else:
             stats["twigs_missing"] += 1
@@ -334,8 +343,15 @@ CSV Format Support:
         dst_file = dst_textures / f"{standardized_name}_bark{file_ext}"
 
         if src_file.exists():
-            shutil.copy2(src_file, dst_file)
-            stats["textures_copied"] += 1
+            # CRITICAL: Copy and resize to power-of-2 for Unreal virtual texture support
+            from growpy.io.texture_utils import copy_and_resize_texture
+
+            if copy_and_resize_texture(src_file, dst_file):
+                stats["textures_copied"] += 1
+            else:
+                # Fallback to regular copy if resize fails
+                shutil.copy2(src_file, dst_file)
+                stats["textures_copied"] += 1
         else:
             stats["textures_missing"] += 1
 
