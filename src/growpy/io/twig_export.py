@@ -1051,13 +1051,18 @@ def smooth_leaf_mesh(
 
 
 def _gather_texture_candidates(blend_dir, standardized_name, species, metadata):
-    """Find diffuse and normal textures for Nanite-compatible twig export.
+    """Find textures for twig geometry processing and export.
 
-    CRITICAL: Only returns diffuse and normal textures for Nanite compatibility.
-    Alpha/translucent/mask textures are NOT supported by Nanite assemblies and
-    cause import failures in Unreal Engine.
+    Returns dict with texture types:
+        - 'diffuse': Base color texture (may have embedded alpha)
+        - 'normal': Normal map texture
+        - 'alpha': Dedicated alpha/opacity texture (preferred for geometry trimming)
+        - 'translucent': Translucency texture (can be used as alpha fallback)
 
-    Returns dict: {'diffuse': Path, 'normal': Path}
+    For geometry processing (trimming, decimation), alpha sources are prioritized:
+        1. Dedicated 'alpha' texture file
+        2. Dedicated 'translucent' texture file
+        3. Embedded alpha channel in 'diffuse' texture (fallback)
     """
     texture_extensions = [".png", ".jpg", ".jpeg", ".tiff", ".exr", ".bmp"]
     search_dirs = [blend_dir / "textures", blend_dir, blend_dir.parent / "textures"]
@@ -1103,14 +1108,22 @@ def _gather_texture_candidates(blend_dir, standardized_name, species, metadata):
         return best
 
     out = {}
-    # CRITICAL: Only diffuse and normal textures for Nanite compatibility
-    # Alpha/translucent/mask textures cause Nanite assembly import failures
+    # Gather all texture types for geometry processing
     diffuse = pick(["diffuse", "albedo", "color", "basecolor", "base"])
     if diffuse:
         out["diffuse"] = diffuse
     normal = pick(["normal", "norm", "nrm", "bump"], prefer_top=False)
     if normal:
         out["normal"] = normal
+    # Include alpha/translucent textures for geometry processing (trimming, decimation)
+    alpha = pick(["alpha", "opacity", "mask", "cutout"], prefer_top=False)
+    if alpha:
+        out["alpha"] = alpha
+    translucent = pick(
+        ["translucent", "translucency", "transmission"], prefer_top=False
+    )
+    if translucent:
+        out["translucent"] = translucent
     return out
 
 
@@ -1342,7 +1355,7 @@ def trim_by_alpha_mask(
         bm.free()
 
         mesh.update()
-    except Exception as e:
+    except Exception:
         pass
 
 
@@ -1371,12 +1384,49 @@ def _load_alpha_image(
             name_lower = Path(texture_path).stem.lower()
             if any(
                 k in name_lower
-                for k in ["alpha", "opacity", "mask", "transparent", "cutout"]
+                for k in [
+                    "alpha",
+                    "opacity",
+                    "mask",
+                    "transparent",
+                    "cutout",
+                    "translucent",
+                    "translucency",
+                ]
             ):
                 return img.convert("L")
         return None
     except Exception:
         return None
+
+
+def _get_alpha_texture_for_geometry(tex_map: dict):
+    """Get the best alpha source for geometry processing from texture map.
+
+    Priority order:
+        1. Dedicated 'alpha' texture file (use as luminance)
+        2. Dedicated 'translucent' texture file (use as luminance)
+        3. Embedded alpha channel in 'diffuse' texture (fallback)
+
+    Args:
+        tex_map: Dict from _gather_texture_candidates with texture paths
+
+    Returns:
+        (texture_path, use_luminance) tuple, or (None, False) if no alpha available
+    """
+    # Priority 1: Dedicated alpha texture
+    if tex_map.get("alpha"):
+        return tex_map["alpha"], True  # Use luminance for dedicated alpha files
+
+    # Priority 2: Translucent texture as alpha source
+    if tex_map.get("translucent"):
+        return tex_map["translucent"], True  # Use luminance for translucent files
+
+    # Priority 3: Embedded alpha in diffuse texture
+    if tex_map.get("diffuse"):
+        return tex_map["diffuse"], False  # Use embedded alpha channel
+
+    return None, False
 
 
 def _build_vertex_alpha_map(mesh, alpha_img):
@@ -2215,17 +2265,30 @@ def process_twig_file(
                     blend_dir, standardized_name, species_name, metadata
                 )
 
+                # Get best alpha source: dedicated alpha/translucent texture, or diffuse embedded alpha
+                alpha_tex_path, use_luminance = _get_alpha_texture_for_geometry(tex_map)
+
+                # Load alpha image from best available source
+                alpha_img = None
+                if alpha_tex_path:
+                    if use_luminance:
+                        # Dedicated alpha/translucent texture - use luminance
+                        alpha_img = _load_alpha_image(
+                            alpha_tex_path,
+                            require_alpha_channel=False,
+                            allow_luminance_for_masks=True,
+                        )
+                    else:
+                        # Diffuse texture - use embedded alpha channel
+                        alpha_img = _load_alpha_image(
+                            alpha_tex_path,
+                            require_alpha_channel=True,
+                            allow_luminance_for_masks=False,
+                        )
+
                 # 1) Densify leaf region (edge-adaptive only when explicitly enabled)
                 if densify and leaf_mats:
                     if edge_adaptive:
-                        # CRITICAL: Only use diffuse texture alpha channel for Nanite compatibility
-                        # Separate alpha/translucent textures are NOT supported by Nanite assemblies
-                        alpha_img = None
-                        if tex_map.get("diffuse"):
-                            alpha_img = _load_alpha_image(
-                                tex_map.get("diffuse"), require_alpha_channel=True
-                            )
-
                         if alpha_img is not None and alpha_trim_threshold > 0.0:
                             # Heavier cuts on edges, lighter inside
                             edge_cuts = max(1, int(subdiv_levels))
@@ -2259,15 +2322,6 @@ def process_twig_file(
                     and edge_subdiv_levels is not None
                     and int(edge_subdiv_levels) > 0
                 ):
-                    # CRITICAL: Only use diffuse texture alpha channel for Nanite compatibility
-                    alpha_img = None
-                    if tex_map.get("diffuse"):
-                        alpha_img = _load_alpha_image(
-                            tex_map.get("diffuse"),
-                            require_alpha_channel=True,
-                            allow_luminance_for_masks=False,
-                        )
-
                     if alpha_img is not None and alpha_trim_threshold > 0.0:
                         densify_mesh_edge_adaptive(
                             obj,
@@ -2278,17 +2332,22 @@ def process_twig_file(
                             edge_cuts=max(1, int(edge_subdiv_levels)),
                         )
 
-                # Optional: interior decimation (edge-protected) to reduce interior density
-                if interior_decimate and leaf_mats:
-                    # CRITICAL: Only use diffuse texture alpha channel for Nanite compatibility
-                    alpha_img = None
-                    if tex_map.get("diffuse"):
-                        alpha_img = _load_alpha_image(
-                            tex_map.get("diffuse"),
-                            require_alpha_channel=True,
-                            allow_luminance_for_masks=False,
-                        )
+                # 2) Trim leaf edges using alpha texture
+                # Uses dedicated alpha/translucent texture if available, else diffuse embedded alpha
+                # MUST run before interior decimation so we only decimate remaining geometry
+                if alpha_trim_threshold > 0.0 and leaf_mats and alpha_tex_path:
+                    trim_by_alpha_mask(
+                        obj,
+                        str(alpha_tex_path),
+                        alpha_trim_threshold,
+                        require_alpha_channel=(not use_luminance),
+                        material_indices=leaf_mats,
+                        allow_luminance_for_masks=use_luminance,
+                    )
 
+                # 3) Interior decimation (edge-protected) to reduce interior density
+                # Runs AFTER trimming to only decimate the remaining opaque geometry
+                if interior_decimate and leaf_mats:
                     if (
                         alpha_img is not None
                         and 0.0 < decimate_ratio < 1.0
@@ -2306,32 +2365,9 @@ def process_twig_file(
                         except Exception:
                             pass
 
-                # 2) Trim leaf edges using diffuse texture alpha channel only
-                # CRITICAL: Separate alpha/translucent textures are NOT supported by Nanite
-                if alpha_trim_threshold > 0.0 and leaf_mats:
-                    diffuse_tex = tex_map.get("diffuse")
-                    if diffuse_tex:
-                        trim_by_alpha_mask(
-                            obj,
-                            str(diffuse_tex),
-                            alpha_trim_threshold,
-                            require_alpha_channel=True,
-                            material_indices=leaf_mats,
-                            allow_luminance_for_masks=False,
-                        )
-
-                # Optional: smooth boundary edges to follow texture curves more naturally
+                # 4) Smooth boundary edges to follow texture curves more naturally
                 # Applied AFTER trimming to smooth the jagged edges created by regular subdivision grid
                 if smooth_boundary and leaf_mats:
-                    # CRITICAL: Only use diffuse texture alpha channel for Nanite compatibility
-                    alpha_img = None
-                    if tex_map.get("diffuse"):
-                        alpha_img = _load_alpha_image(
-                            tex_map.get("diffuse"),
-                            require_alpha_channel=True,
-                            allow_luminance_for_masks=False,
-                        )
-
                     if alpha_img is not None and alpha_trim_threshold > 0.0:
                         try:
                             _smooth_boundary_edges(
