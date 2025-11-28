@@ -15,6 +15,7 @@ Quick Start:
     # Quick analysis (fewer cycles)
     python src/growpy/cli/create_growth_models.py --cycles 25
     
+    
     # Analyze specific species
     python src/growpy/cli/create_growth_models.py --species "European oak" --cycles 125 --seeds 3
     
