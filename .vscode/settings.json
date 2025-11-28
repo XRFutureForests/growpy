@@ -1,12 +1,5 @@
 {
     "python.defaultInterpreterPath": "$HOME/miniforge3/envs/the-grove/bin/python",
-    "python.terminal.activateEnvInCurrentTerminal": false,
-    "python.terminal.focusAfterLaunch": true,
-    "python.terminal.activateEnvironment": false,
-    "python.terminal.executeInFileDir": false,
-    "python.terminal.launchArgs": [],
-    "python.REPL.sendToNativeREPL": false,
-    "terminal.integrated.shellIntegration.enabled": true,
     "python.analysis.extraPaths": [
         "${workspaceFolder}/src",
         "${workspaceFolder}/src/the_grove_22/modules"
@@ -32,10 +25,6 @@
     "python-envs.defaultEnvManager": "ms-python.python:conda",
     "python-envs.defaultPackageManager": "ms-python.python:conda",
     "python-envs.pythonProjects": [],
-    "powershell.integratedConsole.showOnStartup": false,
-    "powershell.integratedConsole.suppressStartupBanner": true,
-    "powershell.integratedConsole.startInBackground": true,
-    "powershell.promptToUpdatePowerShell": false,
     "ue-python.remote.multicastBindAddress": "127.0.0.1",
     "ue-python.remote.commandEndpoint": "127.0.0.1:6776",
 }

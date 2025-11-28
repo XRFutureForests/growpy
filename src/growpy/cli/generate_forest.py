@@ -13,7 +13,7 @@ Quick Start:
     python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 10 --output-dir data/output/forest --unreal-project-path /Game/GrowPy/Trees
 
     # Generate forest with Unreal import script
-    python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 3 --import-to-unreal
+    python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 3 --smooth-iterations 15 --import-to-unreal
 
     # Include Grove metadata attributes for analysis (age, mass, vigor, etc. - increases size ~70%)
     python src/growpy/cli/generate_forest.py my_forest.csv --quality ultra --growth-cycle-limit 5 --include-grove-attributes
@@ -21,6 +21,7 @@ Quick Start:
 Common Flags:
     --quality {ultra,high,medium,low,performance}  Quality preset (default: ultra)
     --growth-cycle-limit INT                       Max growth cycles (default: 10)
+    --smooth-iterations INT                        Branch smoothing iterations (default: 10, range: 0-20)
     --height-scale FLOAT                           Tree height scale (default: 1.0)
     --output-dir PATH                              Output directory
     --import-to-unreal                             Generate Unreal import script
@@ -65,7 +66,7 @@ from tqdm import tqdm
 
 GROWTH_CYCLE_LIMIT = 10
 HEIGHT_SCALE = 1
-SMOOTH_ITERATIONS = 3  # Recommended: 10-20 iterations for natural smoothing
+SMOOTH_ITERATIONS = 10  # Default: 10 iterations for natural smoothing (range: 0-20)
 
 from growpy import (
     TREE_EXPORT_AVAILABLE,
@@ -325,6 +326,7 @@ def generate_forest_exports(
     config: GrowPyConfig,
     quality: str = "high",
     growth_cycle_limit: Optional[int] = None,
+    smooth_iterations: Optional[int] = None,
     mesh_type: str = "skeletal",
     include_grove_attributes: bool = False,
     verbose: bool = False,
@@ -340,6 +342,8 @@ def generate_forest_exports(
         config: GrowPy configuration
         quality: Quality preset name ('ultra', 'high', 'medium', 'low', 'performance')
         growth_cycle_limit: Maximum growth cycles per tree (default: GROWTH_CYCLE_LIMIT)
+        smooth_iterations: Number of smoothing iterations for branches (default: SMOOTH_ITERATIONS)
+                          Higher values (10-20) produce smoother branches, 0 disables smoothing
         mesh_type: Ignored - both skeletal and static are always created
         include_grove_attributes: If True, include Grove metadata in USD files (increases size ~70%, minimal_export always True for skeletal)
         verbose: Print detailed progress information
@@ -347,6 +351,8 @@ def generate_forest_exports(
     # Use defaults if not specified
     if growth_cycle_limit is None:
         growth_cycle_limit = GROWTH_CYCLE_LIMIT
+    if smooth_iterations is None:
+        smooth_iterations = SMOOTH_ITERATIONS
     height_scale = HEIGHT_SCALE  # Hardcoded height scale
 
     if not TREE_EXPORT_AVAILABLE:
@@ -395,9 +401,9 @@ def generate_forest_exports(
         max_cycles = forest_data["growth_cycles"].max()
         # Smoothing is applied automatically during simulation:
         # 1. smooth_minimal() - Fixes ugly kinks on thick branches
-        # 2. smooth() - Reduces sharp corner angles (SMOOTH_ITERATIONS times)
+        # 2. smooth() - Reduces sharp corner angles (smooth_iterations times)
         # 3. weigh_and_bend() - Re-calculates branch positions with smoothed angles
-        simulate_forest_growth(forest, max_cycles, smooth_iterations=SMOOTH_ITERATIONS)
+        simulate_forest_growth(forest, max_cycles, smooth_iterations=smooth_iterations)
     except Exception as e:
         return
 
@@ -761,6 +767,12 @@ Examples:
     # Custom: high quality preset but with 32 vertices
     python src/growpy/cli/generate_forest.py --quality high --resolution 32
 
+    # Extra smooth branches for hero trees (20 iterations)
+    python src/growpy/cli/generate_forest.py --quality ultra --smooth-iterations 20
+
+    # Disable smoothing entirely for raw simulation output
+    python src/growpy/cli/generate_forest.py --smooth-iterations 0
+
     # Use a different CSV file with custom output directory
     python src/growpy/cli/generate_forest.py my_forest.csv --output-dir data/output/my_forest --quality ultra --growth-cycle-limit 15
 
@@ -799,6 +811,12 @@ Unreal Engine Integration:
         type=int,
         default=GROWTH_CYCLE_LIMIT,
         help=f"Maximum growth cycles per tree (default: {GROWTH_CYCLE_LIMIT}). Trees exceeding this will be scaled down proportionally",
+    )
+    parser.add_argument(
+        "--smooth-iterations",
+        type=int,
+        default=SMOOTH_ITERATIONS,
+        help=f"Number of branch smoothing iterations (default: {SMOOTH_ITERATIONS}, range: 0-20). Higher values produce smoother branches with less sharp angles. Set to 0 to disable smoothing",
     )
     parser.add_argument(
         "--import-to-unreal",
@@ -854,6 +872,7 @@ Unreal Engine Integration:
             config,
             args.quality,
             args.growth_cycle_limit,
+            args.smooth_iterations,
             mesh_type="skeletal",  # Ignored - both skeletal and static are created
             include_grove_attributes=args.include_grove_attributes,
             verbose=args.verbose,
