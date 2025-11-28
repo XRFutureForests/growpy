@@ -342,3 +342,204 @@ def ensure_normal_map(
 
     # Convert bump to normal
     return bump_to_normal(texture_path, normal_path, strength, invert)
+
+
+def extract_alpha_from_diffuse(
+    diffuse_path: Path, output_path: Path = None
+) -> Optional[Path]:
+    """Extract alpha channel from RGBA diffuse texture and save as grayscale.
+
+    Creates a dedicated alpha texture from diffuse textures that have embedded
+    alpha channels. This standardizes the alpha source for consistent geometry
+    trimming across all twig types.
+
+    Args:
+        diffuse_path: Path to RGBA diffuse texture
+        output_path: Output path for alpha texture (default: auto-generate)
+
+    Returns:
+        Path to extracted alpha texture, or None if no alpha channel
+    """
+    try:
+        if not diffuse_path.exists():
+            return None
+
+        img = Image.open(diffuse_path)
+
+        # Check if image has alpha channel
+        if "A" not in img.getbands():
+            return None
+
+        # Extract alpha channel as grayscale
+        alpha = img.getchannel("A")
+
+        # Check if alpha is meaningful (not all opaque)
+        extrema = alpha.getextrema()
+        if extrema[0] == extrema[1] == 255:
+            # All opaque, no meaningful alpha
+            return None
+
+        # Generate output path if not provided
+        if output_path is None:
+            # Use same naming convention as existing alpha textures
+            stem = diffuse_path.stem
+            # Remove _diffuse suffix if present, add _alpha
+            if "_diffuse" in stem.lower():
+                base = (
+                    stem.lower()
+                    .replace("_diffuse", "")
+                    .replace("_top", "")
+                    .replace("_bottom", "")
+                )
+            else:
+                base = stem.lower()
+            output_path = diffuse_path.parent / f"{base}_alpha.png"
+
+        # Save as PNG for lossless alpha preservation
+        alpha.save(output_path)
+        return output_path
+
+    except Exception:
+        return None
+
+
+def strip_alpha_from_diffuse(diffuse_path: Path) -> bool:
+    """Remove alpha channel from diffuse texture, converting RGBA to RGB.
+
+    This ensures diffuse textures don't have embedded alpha after we've
+    extracted it to a dedicated alpha texture. Matches the pattern of
+    existing Grove textures like BeechDiffuse.jpg which have no alpha.
+
+    Args:
+        diffuse_path: Path to diffuse texture (PNG with alpha)
+
+    Returns:
+        True if alpha was stripped, False otherwise
+    """
+    try:
+        if not diffuse_path.exists():
+            return False
+
+        img = Image.open(diffuse_path)
+
+        # Only process if image has alpha channel
+        if "A" not in img.getbands():
+            return False
+
+        # Convert RGBA to RGB (removes alpha channel)
+        rgb_img = img.convert("RGB")
+
+        # Save back to same path (overwrite)
+        rgb_img.save(diffuse_path)
+        return True
+
+    except Exception:
+        return False
+
+
+def _get_standardized_alpha_name(twig_dir: Path) -> str:
+    """Get standardized alpha texture name based on twig directory name.
+
+    Args:
+        twig_dir: Path to twig directory (e.g., european_beech_twig)
+
+    Returns:
+        Standardized alpha filename (e.g., european_beech_twig_alpha.png)
+    """
+    twig_name = twig_dir.name.lower()
+    if not twig_name.endswith("_twig"):
+        twig_name = f"{twig_name}_twig"
+    return f"{twig_name}_alpha.png"
+
+
+def ensure_alpha_texture(twig_dir: Path) -> Optional[Path]:
+    """Ensure a dedicated alpha texture exists for a twig directory.
+
+    If a non-standardized alpha texture exists (e.g., BeechAlpha.jpg), converts
+    it to standardized naming (e.g., european_beech_twig_alpha.png).
+
+    If no dedicated alpha texture exists but diffuse textures have embedded
+    alpha, extracts the alpha channel to create a dedicated texture.
+
+    Also strips alpha channels from all diffuse textures to ensure they are
+    pure RGB (matching the pattern of existing Grove textures like BeechDiffuse).
+
+    Args:
+        twig_dir: Path to twig directory containing textures
+
+    Returns:
+        Path to alpha texture (existing, renamed, or newly created), or None
+    """
+    textures_dir = twig_dir / "textures"
+    if not textures_dir.exists():
+        textures_dir = twig_dir
+
+    standardized_name = _get_standardized_alpha_name(twig_dir)
+    standardized_path = textures_dir / standardized_name
+
+    # Collect all diffuse textures for later alpha stripping
+    diffuse_keywords = ["diffuse", "albedo", "color", "basecolor"]
+    all_diffuse_files = []
+    for tex_file in textures_dir.iterdir():
+        if tex_file.is_file() and tex_file.suffix.lower() in [".png"]:
+            name_lower = tex_file.stem.lower()
+            if any(k in name_lower for k in diffuse_keywords):
+                all_diffuse_files.append(tex_file)
+
+    # Check if standardized alpha texture already exists
+    if standardized_path.exists():
+        # Still strip alpha from diffuse textures for consistency
+        for diffuse_file in all_diffuse_files:
+            strip_alpha_from_diffuse(diffuse_file)
+        return standardized_path
+
+    # Check if non-standardized alpha texture exists
+    alpha_keywords = ["alpha", "opacity", "mask", "cutout"]
+    existing_alpha = None
+    for tex_file in textures_dir.iterdir():
+        if tex_file.is_file() and tex_file.suffix.lower() in [".png", ".jpg", ".jpeg"]:
+            name_lower = tex_file.stem.lower()
+            if any(k in name_lower for k in alpha_keywords):
+                existing_alpha = tex_file
+                break
+
+    if existing_alpha:
+        # Convert existing alpha to standardized format
+        try:
+            img = Image.open(existing_alpha)
+            # Convert to grayscale if not already
+            if img.mode != "L":
+                img = img.convert("L")
+            # Save as PNG with standardized name
+            img.save(standardized_path)
+            # Strip alpha from diffuse textures
+            for diffuse_file in all_diffuse_files:
+                strip_alpha_from_diffuse(diffuse_file)
+            return standardized_path
+        except Exception:
+            return existing_alpha  # Fallback to original if conversion fails
+
+    # No dedicated alpha - look for diffuse with embedded alpha
+    diffuse_files_with_alpha = []
+    for tex_file in all_diffuse_files:
+        # Prefer "top" variants
+        name_lower = tex_file.stem.lower()
+        priority = 1 if "top" in name_lower else 0
+        diffuse_files_with_alpha.append((priority, tex_file))
+
+    if not diffuse_files_with_alpha:
+        return None
+
+    # Sort by priority and use best match
+    diffuse_files_with_alpha.sort(key=lambda x: -x[0])
+    diffuse_path = diffuse_files_with_alpha[0][1]
+
+    # Extract alpha from diffuse with standardized name
+    alpha_result = extract_alpha_from_diffuse(diffuse_path, standardized_path)
+
+    # Strip alpha from ALL diffuse textures (both top and bottom variants)
+    if alpha_result:
+        for diffuse_file in all_diffuse_files:
+            strip_alpha_from_diffuse(diffuse_file)
+
+    return alpha_result
