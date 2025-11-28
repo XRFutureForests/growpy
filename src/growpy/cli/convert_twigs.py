@@ -36,7 +36,7 @@ Quick Start:
     python src/growpy/cli/convert_twigs.py data/assets/twigs --csv data/input/test.csv --subdiv 4 --alpha-trim 0.5 --decimate-ratio 0.5 --boundary-rings 1 --smooth-iterations 3 --smooth-factor 0.5
     
     # High quality conversion (all flags with recommended values)
-    python src/growpy/cli/convert_twigs.py data/assets/twigs --subdiv 40 --alpha-trim 0.01 --interior-decimate --decimate-ratio 0.5 --boundary-rings 1 --smooth-boundary --smooth-iterations 20 --smooth-factor 0.25
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --subdiv 35 --alpha-trim 0.1 --interior-decimate --decimate-ratio 0.75 --boundary-rings 1 --smooth-boundary --smooth-iterations 20 --smooth-factor 0.25
     
     # Maximum quality (extreme detail, slow)
     python src/growpy/cli/convert_twigs.py data/assets/twigs --subdiv 30 --alpha-trim 0.5 --interior-decimate --decimate-ratio 0.01 --boundary-rings 2 --smooth-boundary --smooth-iterations 5 --smooth-factor 0.6
