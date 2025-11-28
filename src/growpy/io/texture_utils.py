@@ -478,12 +478,19 @@ def ensure_alpha_texture(twig_dir: Path) -> Optional[Path]:
     standardized_path = textures_dir / standardized_name
 
     # Collect all diffuse textures for later alpha stripping
+    # Includes standardized names (diffuse, albedo, etc.) and Grove original patterns
+    # (files with top/bottom variants without explicit diffuse keyword)
     diffuse_keywords = ["diffuse", "albedo", "color", "basecolor"]
+    bump_keywords = ["bump", "height"]
     all_diffuse_files = []
     for tex_file in textures_dir.iterdir():
-        if tex_file.is_file() and tex_file.suffix.lower() in [".png"]:
+        if tex_file.is_file() and tex_file.suffix.lower() in [".png", ".jpg", ".jpeg"]:
             name_lower = tex_file.stem.lower()
-            if any(k in name_lower for k in diffuse_keywords):
+            # Exclude alpha, normal, and bump maps
+            if any(k in name_lower for k in ["alpha", "opacity", "mask", "normal", "nrm", "bump"]):
+                continue
+            # Match explicit diffuse keywords OR top/bottom variants (Grove pattern)
+            if any(k in name_lower for k in diffuse_keywords) or any(k in name_lower for k in ["top", "bottom"]):
                 all_diffuse_files.append(tex_file)
 
     # Check if standardized alpha texture already exists
@@ -538,8 +545,9 @@ def ensure_alpha_texture(twig_dir: Path) -> Optional[Path]:
     alpha_result = extract_alpha_from_diffuse(diffuse_path, standardized_path)
 
     # Strip alpha from ALL diffuse textures (both top and bottom variants)
-    if alpha_result:
-        for diffuse_file in all_diffuse_files:
-            strip_alpha_from_diffuse(diffuse_file)
+    # Do this regardless of whether alpha extraction succeeded
+    # (need to convert RGBA to RGB for all textures, even if alpha was all-opaque)
+    for diffuse_file in all_diffuse_files:
+        strip_alpha_from_diffuse(diffuse_file)
 
     return alpha_result
