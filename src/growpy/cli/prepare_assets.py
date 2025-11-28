@@ -55,6 +55,7 @@ _texture_utils = _import_module_directly(
 )
 ensure_power_of_2_textures = _texture_utils.ensure_power_of_2_textures
 copy_and_resize_texture = _texture_utils.copy_and_resize_texture
+ensure_alpha_texture = _texture_utils.ensure_alpha_texture
 
 # Import pve_species_overrides directly (only needs json, pathlib)
 _pve_overrides = _import_module_directly(
@@ -275,6 +276,7 @@ CSV Format Support:
         "presets_missing": 0,
         "twigs_copied": 0,
         "twigs_missing": 0,
+        "alpha_extracted": 0,
         "textures_copied": 0,
         "textures_missing": 0,
         "pve_configs_created": 0,
@@ -348,6 +350,12 @@ CSV Format Support:
                 if twig_textures_dir.exists():
                     ensure_power_of_2_textures(twig_textures_dir)
                 ensure_power_of_2_textures(dst_twig_dir)
+
+            # Extract alpha texture from diffuse if no dedicated alpha exists
+            # This standardizes alpha source for consistent geometry trimming
+            alpha_path = ensure_alpha_texture(dst_twig_dir)
+            if alpha_path:
+                stats["alpha_extracted"] += 1
 
             stats["twigs_copied"] += 1
         else:

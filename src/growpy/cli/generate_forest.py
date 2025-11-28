@@ -384,7 +384,7 @@ def generate_forest_exports(
         forest_data["growth_cycles"] = 10
         forest_data["delay"] = 0
 
-    # Scale growth cycles if max exceeds growth_cycle_limit
+    # Cap growth cycles to growth_cycle_limit if they exceed it
     max_growth_cycles = forest_data["growth_cycles"].max()
     if max_growth_cycles > growth_cycle_limit:
         scale_factor = growth_cycle_limit / max_growth_cycles
@@ -392,7 +392,14 @@ def generate_forest_exports(
             forest_data["growth_cycles"] * scale_factor
         ).astype(int)
         forest_data["growth_cycles"] = forest_data["growth_cycles"].clip(lower=1)
+
+        # CRITICAL: Recalculate delays after scaling cycles
+        # Without this, delays can exceed the total simulation cycles,
+        # preventing trees from growing entirely
+        max_cycles_after_scaling = forest_data["growth_cycles"].max()
+        forest_data["delay"] = max_cycles_after_scaling - forest_data["growth_cycles"]
     else:
+        # Use calculated cycles (based on height) if they're within the limit
         # Apply height scale only if not scaling growth cycles
         forest_data["height"] /= height_scale
 
