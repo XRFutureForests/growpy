@@ -13,7 +13,6 @@ Key Features:
     - Coordinate system: Z-up (Blender right-handed to Unreal left-handed)
     - Standardized naming convention for twig types
     - Original .blend files preserved for regeneration
-    - Consistent mesh density across species via mm-based edge length targets
 
 Export Variants (both created by default):
     Skeletal (_skeletal.usda):
@@ -32,34 +31,31 @@ Supports two CSV formats:
   1. Forest placement CSV (x, y, species, height) - auto-extracts unique species
   2. Asset lookup CSV (Common Name, Preset, Twig, Bark Texture) - direct asset reference
 
-Quick Start (copy-paste ready with all defaults shown):
-    # Full conversion with all flags (recommended for production)
-    python src/growpy/cli/convert_twigs.py data/assets/twigs --csv data/input/test.csv --target-edge-mm 2.0 --alpha-trim 0.5 --interior-decimate --interior-edge-mm 5.0 --boundary-rings 1 --smooth-boundary --smooth-iterations 3 --smooth-factor 0.5
-
-    # High quality with smooth edges (detailed silhouettes)
-    python src/growpy/cli/convert_twigs.py data/assets/twigs --csv data/input/test.csv --target-edge-mm 1.0 --alpha-trim 0.3 --interior-decimate --interior-edge-mm 3.0 --boundary-rings 2 --smooth-boundary --smooth-iterations 5 --smooth-factor 0.5
-
-    # Maximum quality (slow, extremely detailed edges)
-    python src/growpy/cli/convert_twigs.py data/assets/twigs --csv data/input/test.csv --target-edge-mm 0.5 --alpha-trim 0.3 --interior-decimate --interior-edge-mm 2.0 --boundary-rings 2 --smooth-boundary --smooth-iterations 10 --smooth-factor 0.6
-
-    # Fast preview (minimal processing)
-    python src/growpy/cli/convert_twigs.py data/assets/twigs --csv data/input/test.csv --no-densify --alpha-trim 0.5
+Quick Start:
+    # Basic twig conversion with defaults shown
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --csv data/input/test.csv --subdiv 4 --alpha-trim 0.5 --decimate-ratio 0.5 --boundary-rings 1 --smooth-iterations 3 --smooth-factor 0.5
+    
+    # High quality conversion (all flags with recommended values)
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --subdiv 35 --alpha-trim 0.1 --interior-decimate --decimate-ratio 0.75 --boundary-rings 1 --smooth-boundary --smooth-iterations 20 --smooth-factor 0.25
+    
+    # Maximum quality (extreme detail, slow)
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --subdiv 30 --alpha-trim 0.5 --interior-decimate --decimate-ratio 0.01 --boundary-rings 2 --smooth-boundary --smooth-iterations 5 --smooth-factor 0.6
 
 Common Flags:
     Processing Pipeline (in order):
-        1. --target-edge-mm  -> Subdivide mesh to target edge length
-        2. --alpha-trim      -> Remove transparent areas (creates jagged edges)
-        3. --interior-decimate + --interior-edge-mm -> Reduce interior density
-        4. --smooth-boundary -> Smooth jagged edges created by trimming
+        1. --subdiv         → Subdivide mesh (higher = more triangles, smoother curves)
+        2. --interior-decimate → Reduce interior density (enabled by flag)
+        3. --alpha-trim     → Remove transparent areas (creates jagged edges)
+        4. --smooth-boundary → Smooth those jagged edges (enabled by flag)
 
     Core Flags:
     --csv PATH              Species CSV filter (default: data/input/test.csv)
     --no-densify            Disable mesh densification (subdivision)
     
-    --target-edge-mm FLOAT  Target boundary edge length in millimeters (e.g., 2.0)
-                            Iteratively subdivides until edges reach target length.
-                            Provides consistent triangle sizes across all species.
-                            Recommended: 1.0-3.0 for production quality
+    --subdiv INT            Subdivision levels (default: 4)
+                            Higher = more triangles = smoother but slower
+                            Typical: 4-10 for production, 20-30 for extreme detail
+                            Affects: Overall mesh resolution before decimation
     
     --alpha-trim FLOAT      Alpha threshold for edge trimming (default: 0.5)
                             Lower = more aggressive trimming (less leaf area)
@@ -68,13 +64,13 @@ Common Flags:
     
     --interior-decimate     Enable interior decimation (off by default)
                             Reduces triangle count inside leaves while protecting edges
-                            Requires --interior-edge-mm to be set
+                            Use with: High subdivision + low decimate-ratio
     
-    --interior-edge-mm FLOAT Target interior edge length in millimeters (e.g., 5.0)
-                            Should be larger than --target-edge-mm for optimization.
-                            Uses iterative decimation with edge length feedback.
-                            Features UV preservation to prevent texture seam issues.
-                            Recommended: 2-3x the --target-edge-mm value
+    --decimate-ratio FLOAT  Interior collapse ratio (default: 0.5)
+                            Lower = more aggressive reduction (fewer triangles)
+                            Higher = gentler reduction (more triangles)
+                            Range: 0.0 (extreme) to 1.0 (minimal)
+                            Example: 0.01 keeps ~1% of interior triangles
     
     --boundary-rings INT    Edge protection width (default: 1)
                             Widens the protected edge region during decimation
@@ -83,26 +79,34 @@ Common Flags:
     
     --smooth-boundary       Enable boundary smoothing (off by default)
                             Smooths jagged edges created by alpha trimming
+                            Use after: High subdivision + alpha-trim
                             Effect: Natural curves instead of regular grid edges
     
     --smooth-iterations INT Smoothing passes (default: 3)
                             How many times to smooth (accumulative effect)
-                            Typical: 3-10 for natural looking edges
+                            Lower = subtle smoothing (2-5)
+                            Higher = aggressive smoothing (5-10)
+                            Use: Increase for very jagged edges
     
     --smooth-factor FLOAT   Smoothing strength per pass (default: 0.5)
                             How much to blend with neighbors each iteration
-                            Range: 0.1 (subtle) to 0.8 (aggressive)
+                            Lower = subtle per-pass (0.1-0.3)
+                            Higher = strong per-pass (0.5-0.8)
+                            Use: Increase for faster convergence
 
     Common Workflows:
-        # Consistent mesh density across species (recommended)
-        --target-edge-mm 2.0 --interior-decimate --interior-edge-mm 5.0
+        # High detail with optimized interior
+        --subdiv 30 --interior-decimate --decimate-ratio 0.01 --boundary-rings 1
         
-        # High quality with smooth edges
-        --target-edge-mm 1.0 --interior-decimate --interior-edge-mm 3.0 --smooth-boundary
+        # High detail with smooth natural edges
+        --subdiv 30 --interior-decimate --decimate-ratio 0.01 --smooth-boundary
         
-        # Maximum quality (slow, detailed edges)
-        --target-edge-mm 0.5 --interior-decimate --interior-edge-mm 2.0 \\
-        --smooth-boundary --smooth-iterations 10 --boundary-rings 2
+        # Balanced quality and performance
+        --subdiv 10 --interior-decimate --decimate-ratio 0.3 --smooth-boundary
+        
+        # Maximum quality (slow)
+        --subdiv 30 --interior-decimate --decimate-ratio 0.01 --smooth-boundary \
+        --smooth-iterations 5 --smooth-factor 0.6 --boundary-rings 2
 
 Output per twig:
     - {species}_twig_{type}_skeletal.usda  # Skeletal mesh with skeleton
@@ -152,34 +156,28 @@ TWIG_NAME_MAPPINGS = {
     "lateral": ["lateral", "side", "short", "laterall"],  # note: typo in some files
     # Upward-facing twigs (twig_upward attribute)
     "upward": ["upward", "up"],
-    # Dead/Winter twigs (twig_dead attribute)
-    "dead": ["dead", "winter", "bare"],
-    # Season variants
+    # Dead/Fall/Winter twigs (twig_dead attribute)
+    "dead": ["dead", "fall", "winter", "bare"],
+    # Summer/Spring variants
     "summer": ["summer", "spring", "green"],
-    "fall": ["fall", "autumn"],
 }
 
 # Texture type classifications with extended keywords
-# Supports both CamelCase and underscore_separated patterns
 TEXTURE_CLASSIFICATIONS = {
     "diffuse": ["diffuse", "albedo", "color", "basecolor", "base", "diff", "col"],
     "alpha": ["alpha", "opacity", "mask", "transparent", "cutout"],
-    "normal": ["normal", "normals", "norm", "nrm"],  # Separate from bump
-    "bump": ["bump", "height", "displacement"],  # Bump maps (grayscale height)
+    "normal": ["normal", "norm", "nrm", "bump", "height"],
     "translucent": ["translucent", "translucency", "transmission", "sss", "subsurface"],
     "roughness": ["roughness", "rough", "gloss", "glossiness"],
     "metallic": ["metallic", "metal", "metalness"],
     "ao": ["ao", "ambient", "occlusion", "ambientocclusion"],
     "emissive": ["emissive", "emission", "glow"],
-    "bark": ["bark", "twigbark", "branch", "wood"],
 }
 
-# Special texture patterns (top/bottom for leaves, seasons)
+# Special texture patterns (top/bottom for leaves)
 TEXTURE_MODIFIERS = {
     "top": ["top", "upper", "face"],
     "bottom": ["bottom", "lower", "back", "underside"],
-    "summer": ["summer", "spring"],
-    "fall": ["fall", "autumn"],
 }
 
 
@@ -264,95 +262,32 @@ def classify_texture_type(texture_path: Path, material_name: str = "") -> str:
     """
     Classify texture type from filename with context awareness.
 
-    Supports Grove 2.2 texture naming patterns:
-    - CamelCase: BeechAlpha.jpg, AspenTop.png, OakEuropeanTopBump.png
-    - Underscore: SalixCaprea_alpha.png, OneLeavedAsh_diffuse.png
-    - Top/Bottom variants (are diffuse textures): AspenTop.png, AspenBottom.png
-    - Seasonal variants: PaperBirchSummerTop.png, BeechFallBottom.png
-    - Bump vs Normal: Both patterns supported (TopBump, _normal, _normals)
-    - Latin names: EucalyptusGlobulus.png, AcerPalmatumAtropurpureum_diffuse.jpg
-
-    Returns texture type with modifiers for diffuse:
-        - "diffuse" (plain diffuse or single texture)
-        - "diffuse_top", "diffuse_bottom" (position variants)
-        - "diffuse_summer_top", "diffuse_fall_bottom" (seasonal + position)
-        - "alpha", "normal", "bump", "translucent", "bark" (other types)
+    Handles:
+    - Standard PBR naming (diffuse, normal, etc.)
+    - Top/bottom variants for leaves
+    - Compound names with duplicates
     """
     name_lower = texture_path.stem.lower()
 
-    # PRIORITY 1: Check for explicit texture type keywords FIRST
-    # These take precedence over position/season modifiers
-    # Order matters: check more specific patterns before generic ones
+    # Check for modifiers first (top/bottom)
+    modifier = None
+    for mod_type, keywords in TEXTURE_MODIFIERS.items():
+        if any(kw in name_lower for kw in keywords):
+            modifier = mod_type
+            break
 
-    # Alpha/Opacity/Mask textures
-    if any(kw in name_lower for kw in ["alpha", "opacity", "mask", "cutout"]):
-        return "alpha"
+    # Classify base type
+    base_type = "diffuse"  # Default
+    for tex_type, keywords in TEXTURE_CLASSIFICATIONS.items():
+        if any(kw in name_lower for kw in keywords):
+            base_type = tex_type
+            break
 
-    # Normal maps (check before bump since some files have both words)
-    if any(kw in name_lower for kw in ["normal", "normals", "norm", "nrm"]):
-        return "normal"
+    # Combine with modifier if present
+    if modifier and base_type == "diffuse":
+        return f"diffuse_{modifier}"
 
-    # Bump/Height maps (separate from normal for conversion)
-    if any(kw in name_lower for kw in ["bump", "height", "displacement"]):
-        return "bump"
-
-    # Translucent/SSS textures
-    if any(
-        kw in name_lower
-        for kw in ["translucent", "translucency", "transmission", "subsurface", "sss"]
-    ):
-        return "translucent"
-
-    # Bark/Branch textures
-    if any(kw in name_lower for kw in ["bark", "twigbark", "branch", "wood"]):
-        return "bark"
-
-    # Roughness/Gloss
-    if any(kw in name_lower for kw in ["roughness", "rough", "gloss", "glossiness"]):
-        return "roughness"
-
-    # Metallic
-    if any(kw in name_lower for kw in ["metallic", "metal", "metalness"]):
-        return "metallic"
-
-    # AO
-    if any(kw in name_lower for kw in ["_ao", "ambient", "occlusion"]):
-        return "ao"
-
-    # PRIORITY 2: Diffuse textures with modifiers
-    # If no explicit type keyword found, classify as diffuse with modifiers
-    modifiers = []
-
-    # Check for season modifiers (summer, fall/autumn)
-    if any(kw in name_lower for kw in ["summer", "spring"]):
-        modifiers.append("summer")
-    elif any(kw in name_lower for kw in ["fall", "autumn"]):
-        modifiers.append("fall")
-
-    # Check for position modifiers (top, bottom)
-    # Note: Top/Bottom without other keywords ARE diffuse textures in Grove
-    has_top = "top" in name_lower or "upper" in name_lower
-    has_bottom = "bottom" in name_lower or "lower" in name_lower
-
-    if has_top and not has_bottom:
-        modifiers.append("top")
-    elif has_bottom and not has_top:
-        modifiers.append("bottom")
-
-    # Check for explicit "diffuse" keyword
-    has_diffuse_keyword = any(
-        kw in name_lower for kw in ["diffuse", "albedo", "color", "basecolor"]
-    )
-
-    # Return diffuse with modifiers if any, or plain diffuse
-    if modifiers:
-        return "diffuse_" + "_".join(modifiers)
-    elif has_diffuse_keyword:
-        return "diffuse"
-    else:
-        # Default: single texture files (e.g., ScotsPine.png, Bottlebrush.png)
-        # These are typically diffuse with embedded alpha
-        return "diffuse"
+    return base_type
 
 
 def find_textures_for_material(
@@ -447,13 +382,11 @@ def process_twig_directory(
     subdiv_levels: int = 4,
     alpha_trim_threshold: float = 0.5,
     interior_decimate: bool = False,
+    decimate_ratio: float = 0.5,
     boundary_rings: int = 1,
     smooth_boundary: bool = False,
     smooth_iterations: int = 3,
     smooth_factor: float = 0.5,
-    target_edge_mm: float = None,
-    interior_edge_mm: float = None,
-    vertex_trim: bool = False,
 ) -> Dict[str, List[Path]]:
     """Process all twig blend files in a directory.
 
@@ -465,8 +398,6 @@ def process_twig_directory(
         formats: Export formats to create
         clean_export: ALWAYS True - materials/textures disabled for Nanite
         twig_filter: Optional list of twig directory names to process (snake_case)
-        target_edge_mm: Target boundary edge length in mm for subdivision
-        interior_edge_mm: Target interior edge length in mm for iterative decimation
     """
     # Force clean export for Nanite compatibility
     clean_export = True
@@ -524,13 +455,11 @@ def process_twig_directory(
                 alpha_trim_threshold=alpha_trim_threshold,
                 subdiv_levels=subdiv_levels,
                 interior_decimate=interior_decimate,
+                decimate_ratio=decimate_ratio,
                 boundary_rings=boundary_rings,
                 smooth_boundary=smooth_boundary,
                 smooth_iterations=smooth_iterations,
                 smooth_factor=smooth_factor,
-                target_edge_mm=target_edge_mm,
-                interior_edge_mm=interior_edge_mm,
-                vertex_trim=vertex_trim,
             )
 
             # Collect results
@@ -596,6 +525,12 @@ Output per twig:
         help="Disable mesh densification (subdivision)",
     )
     parser.add_argument(
+        "--subdiv",
+        type=int,
+        default=4,
+        help="Subdivision levels for densification (default: 4)",
+    )
+    parser.add_argument(
         "--alpha-trim",
         type=float,
         default=0.5,
@@ -605,6 +540,12 @@ Output per twig:
         "--interior-decimate",
         action="store_true",
         help="Reduce interior leaf density while preserving alpha silhouette (default: off)",
+    )
+    parser.add_argument(
+        "--decimate-ratio",
+        type=float,
+        default=0.5,
+        help="Collapse decimate ratio for interior (0..1, lower = stronger, default: 0.5)",
     )
     parser.add_argument(
         "--boundary-rings",
@@ -628,28 +569,6 @@ Output per twig:
         type=float,
         default=0.5,
         help="Smoothing strength per iteration (0.0-1.0, default: 0.5)",
-    )
-    # Absolute edge length thresholds in mm for consistent mesh density across species
-    parser.add_argument(
-        "--target-edge-mm",
-        type=float,
-        default=None,
-        help="Target boundary edge length in millimeters for subdivision. "
-        "Use for consistent triangle sizes across species (e.g., 2.0 for 2mm edges). "
-        "Enables iterative subdivision until target edge length is reached.",
-    )
-    parser.add_argument(
-        "--interior-edge-mm",
-        type=float,
-        default=None,
-        help="Target interior edge length in millimeters for decimation. "
-        "Should be larger than --target-edge-mm (e.g., 5.0 for 5mm interior edges). "
-        "Uses iterative decimation with edge length feedback and UV preservation.",
-    )
-    parser.add_argument(
-        "--vertex-trim",
-        action="store_true",
-        help="Use vertex-based alpha trimming instead of face-based (simpler, more direct)",
     )
     args = parser.parse_args()
 
@@ -738,16 +657,14 @@ Output per twig:
             twig_filter,
             include_skeleton=True,
             densify=(not args.no_densify),
-            subdiv_levels=4,  # Default, ignored when target_edge_mm is set
+            subdiv_levels=max(1, args.subdiv),
             alpha_trim_threshold=min(max(0.0, args.alpha_trim), 1.0),
             interior_decimate=args.interior_decimate,
+            decimate_ratio=float(args.decimate_ratio),
             boundary_rings=max(0, int(args.boundary_rings)),
             smooth_boundary=args.smooth_boundary,
             smooth_iterations=max(1, int(args.smooth_iterations)),
             smooth_factor=min(max(0.0, float(args.smooth_factor)), 1.0),
-            target_edge_mm=args.target_edge_mm,
-            interior_edge_mm=args.interior_edge_mm,
-            vertex_trim=args.vertex_trim,
         )
     elif args.path.is_dir():
         # Directory
@@ -758,16 +675,14 @@ Output per twig:
             twig_filter,
             include_skeleton=True,
             densify=(not args.no_densify),
-            subdiv_levels=4,  # Default, ignored when target_edge_mm is set
+            subdiv_levels=max(1, args.subdiv),
             alpha_trim_threshold=min(max(0.0, args.alpha_trim), 1.0),
             interior_decimate=args.interior_decimate,
+            decimate_ratio=float(args.decimate_ratio),
             boundary_rings=max(0, int(args.boundary_rings)),
             smooth_boundary=args.smooth_boundary,
             smooth_iterations=max(1, int(args.smooth_iterations)),
             smooth_factor=min(max(0.0, float(args.smooth_factor)), 1.0),
-            target_edge_mm=args.target_edge_mm,
-            interior_edge_mm=args.interior_edge_mm,
-            vertex_trim=args.vertex_trim,
         )
     else:
         return 1

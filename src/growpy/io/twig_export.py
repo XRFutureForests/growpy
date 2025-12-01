@@ -792,24 +792,17 @@ def standardize_twig_name(original_name, species_name):
     elif any(kw in name_lower for kw in ["summer", "spring", "green"]):
         metadata["season"] = "summer"
 
-    # Detect variation - require explicit variation markers to avoid false positives
-    # e.g., "VariationA", "VarB", "TwigA" but NOT "ScotsPineTwig" matching "etwig"
+    # Detect variation
     for letter in ["a", "b", "c", "d", "e"]:
         if any(
             pat in name_lower
             for pat in [
-                f"var{letter}",  # VarA, VarB, etc.
-                f"variation{letter}",  # VariationA, VariationB, etc.
+                f"var{letter}",
+                f"variation{letter}",
+                f"twig{letter}",
+                f"{letter}twig",
             ]
         ):
-            metadata["variation"] = letter
-            break
-        # Also check for single letter suffix like "TwigA", "TwigB" but require preceding 'twig'
-        # This avoids matching "ScotsPineTwig" as variation E (from "etwig")
-        if f"twig{letter}" in name_lower and name_lower.index(
-            f"twig{letter}"
-        ) == name_lower.rindex("twig"):
-            # Only match if this is the LAST occurrence and letter is after twig
             metadata["variation"] = letter
             break
 
@@ -829,84 +822,41 @@ def standardize_twig_name(original_name, species_name):
 
 
 def classify_texture_from_name(name):
-    """Classify texture type from filename.
-
-    Supports Grove 2.2 texture naming patterns:
-    - CamelCase: BeechAlpha.jpg, AspenTop.png, OakEuropeanTopBump.png
-    - Underscore: SalixCaprea_alpha.png, OneLeavedAsh_diffuse.png
-    - Top/Bottom variants (are diffuse textures): AspenTop.png, AspenBottom.png
-    - Seasonal variants: PaperBirchSummerTop.png, BeechFallBottom.png
-    - Bump vs Normal: Both patterns supported (TopBump, _normal, _normals)
-    - Latin names: EucalyptusGlobulus.png, AcerPalmatumAtropurpureum_diffuse.jpg
-
-    Returns texture type with modifiers for diffuse:
-        - "diffuse" (plain diffuse or single texture)
-        - "diffuse_top", "diffuse_bottom" (position variants)
-        - "diffuse_summer_top", "diffuse_fall_bottom" (seasonal + position)
-        - "alpha", "normal", "bump", "translucent", "bark" (other types)
-    """
+    """Classify texture type from filename."""
     name_lower = name.lower()
 
-    # PRIORITY 1: Check for explicit texture type keywords FIRST
-    # These take precedence over position/season modifiers
-
-    # Alpha/Opacity/Mask textures
-    if any(kw in name_lower for kw in ["alpha", "opacity", "mask", "cutout"]):
+    # Check for specific texture types first (alpha, normal, bump, etc.)
+    # These take precedence over top/bottom classification
+    if any(kw in name_lower for kw in ["alpha", "opacity", "mask"]):
         return "alpha"
-
-    # Normal maps (check "normals" plural too - used by GoatWillow, Hackberry, Hazel)
-    if any(kw in name_lower for kw in ["normal", "normals", "norm", "nrm"]):
+    # Distinguish between normal maps (RGB) and bump maps (grayscale height)
+    if any(kw in name_lower for kw in ["normal", "norm", "nrm"]):
         return "normal"
-
-    # Bump/Height maps (separate from normal for conversion)
     if any(kw in name_lower for kw in ["bump", "height", "displacement"]):
         return "bump"
 
-    # Translucent/SSS textures
-    if any(
-        kw in name_lower
-        for kw in ["translucent", "translucency", "transmission", "subsurface", "sss"]
-    ):
-        return "translucent"
+    # Check for top/bottom diffuse textures
+    # These can have explicit "diffuse" keyword OR be implicit (e.g., "OakTop.png")
+    has_top = "top" in name_lower or "upper" in name_lower or "face" in name_lower
+    has_bottom = "bottom" in name_lower or "lower" in name_lower or "back" in name_lower
+    has_diffuse_keyword = any(kw in name_lower for kw in ["diffuse", "albedo", "color"])
 
-    # Bark/Branch textures (e.g., TwigBark.jpg)
-    if any(kw in name_lower for kw in ["bark", "twigbark", "branch", "wood"]):
-        return "bark"
-
-    # Roughness/Gloss
-    if any(kw in name_lower for kw in ["roughness", "rough", "gloss", "glossiness"]):
-        return "roughness"
-
-    # Metallic
-    if any(kw in name_lower for kw in ["metallic", "metal", "metalness"]):
-        return "metallic"
-
-    # AO (be careful not to match words containing "ao")
-    if any(kw in name_lower for kw in ["_ao", "ambient", "occlusion"]):
-        return "ao"
-
-    # PRIORITY 2: Diffuse textures with modifiers
-    modifiers = []
-
-    # Check for season modifiers (summer, fall/autumn)
-    if any(kw in name_lower for kw in ["summer", "spring"]):
-        modifiers.append("summer")
-    elif any(kw in name_lower for kw in ["fall", "autumn"]):
-        modifiers.append("fall")
-
-    # Check for position modifiers (top, bottom)
-    # Note: Top/Bottom without other keywords ARE diffuse textures in Grove
-    has_top = "top" in name_lower or "upper" in name_lower
-    has_bottom = "bottom" in name_lower or "lower" in name_lower
-
+    # If it has top/bottom keywords, classify as two-sided texture
+    # Even without explicit "diffuse" keyword (e.g., Grove's "OakTop.png")
     if has_top and not has_bottom:
-        modifiers.append("top")
-    elif has_bottom and not has_top:
-        modifiers.append("bottom")
+        return "diffuse_top"
+    if has_bottom and not has_top:
+        return "diffuse_bottom"
 
-    # Return diffuse with modifiers if any
-    if modifiers:
-        return "diffuse_" + "_".join(modifiers)
+    # Continue with other standard types
+    if any(kw in name_lower for kw in ["translucent", "transmission", "sss"]):
+        return "translucent"
+    if any(kw in name_lower for kw in ["roughness", "rough"]):
+        return "roughness"
+    if any(kw in name_lower for kw in ["metallic", "metal"]):
+        return "metallic"
+    if "ao" in name_lower or "ambient" in name_lower:
+        return "ao"
 
     return "diffuse"
 
@@ -914,14 +864,11 @@ def classify_texture_from_name(name):
 def copy_opaque_textures_for_skeletal(
     blend_dir, output_dir, standardized_name, metadata
 ):
-    """Copy pre-processed textures for skeletal twig exports.
-
-    NOTE: Texture processing (bump-to-normal, alpha extraction, alpha stripping)
-    now happens during prepare_assets.py. This function just copies the
-    already-processed textures to the output directory with standardized names.
+    """Copy only opaque textures for skeletal twig exports.
 
     CRITICAL: Filters out alpha/translucent/mask textures for Nanite compatibility.
-    Only copies opaque texture types (diffuse, normal, bark).
+    Only copies opaque texture types (diffuse, normal).
+    Converts bump maps to normal maps automatically.
 
     Args:
         blend_dir: Source directory containing textures
@@ -932,23 +879,20 @@ def copy_opaque_textures_for_skeletal(
     Returns:
         Number of textures copied
     """
-    from growpy.io.texture_utils import copy_and_resize_texture
-
     texture_extensions = [".png", ".jpg", ".jpeg", ".exr"]
-    # Opaque texture types for Nanite compatibility
+    # CRITICAL: Use base color (diffuse) and normal textures for Nanite compatibility
+    # Alpha/translucent/mask textures excluded for Nanite
+    # Bump maps are converted to normal maps (not copied as bump)
+    # Two-sided textures (top/bottom) are both kept
     OPAQUE_TEXTURE_TYPES = [
         "diffuse",
         "diffuse_top",
         "diffuse_bottom",
-        "diffuse_summer_top",
-        "diffuse_summer_bottom",
-        "diffuse_fall_top",
-        "diffuse_fall_bottom",
         "normal",
-        "bark",
+        "bump",
     ]
 
-    # Search for textures (already processed by prepare_assets.py)
+    # Search for textures
     search_dirs = [blend_dir / "textures", blend_dir, blend_dir.parent / "textures"]
     available_textures = []
 
@@ -965,38 +909,60 @@ def copy_opaque_textures_for_skeletal(
     textures_dir = output_dir / "textures"
     textures_dir.mkdir(exist_ok=True)
 
-    # Build standardized base name
-    base_name_parts = []
-    for part in standardized_name.split("_"):
-        base_name_parts.append(part)
-        if part == "twig":
-            break
-
-    if not any(p == "twig" for p in base_name_parts):
-        base_name = metadata.get("species", "").lower().replace(" ", "_") + "_twig"
-    else:
-        base_name = "_".join(base_name_parts)
-
-    # Copy textures with standardized naming
+    # Copy base color and normal textures (converting bump to normal)
     copied_count = 0
+    bump_converted = False  # Track if we've converted a bump map
 
     for tex_path in available_textures:
         tex_type = classify_texture_from_name(tex_path.stem)
 
-        # Skip textures not in allowed list (no alpha/translucent for Nanite)
+        # Skip textures not in allowed list (no alpha/translucent/mask)
         if tex_type not in OPAQUE_TEXTURE_TYPES:
             continue
 
+        # Generate standardized name
         tex_ext = tex_path.suffix
-        standardized_tex_name = f"{base_name}_{tex_type}{tex_ext}"
-        dest_tex = textures_dir / standardized_tex_name
+        base_name_parts = []
+        for part in standardized_name.split("_"):
+            base_name_parts.append(part)
+            if part == "twig":
+                break
 
-        if not dest_tex.exists():
-            if copy_and_resize_texture(tex_path, dest_tex):
-                copied_count += 1
-            else:
-                shutil.copy2(tex_path, dest_tex)
-                copied_count += 1
+        if not any(p == "twig" for p in base_name_parts):
+            base_name = metadata.get("species", "").lower().replace(" ", "_") + "_twig"
+        else:
+            base_name = "_".join(base_name_parts)
+
+        # Convert bump maps to normal maps (don't copy bump itself)
+        if tex_type == "bump":
+            from growpy.io.texture_utils import bump_to_normal
+
+            # Generate normal map name
+            standardized_tex_name = f"{base_name}_normal{tex_ext}"
+            dest_tex = textures_dir / standardized_tex_name
+
+            # Convert bump to normal if not already exists and we haven't converted yet
+            if not dest_tex.exists() and not bump_converted:
+                converted_path = bump_to_normal(tex_path, dest_tex)
+                if converted_path:
+                    copied_count += 1
+                    bump_converted = True
+            # Don't copy the original bump file - only the converted normal
+        else:
+            # Regular copy for diffuse, diffuse_top, diffuse_bottom, and normal
+            # CRITICAL: Use power-of-2 resizing for Unreal virtual texture support
+            standardized_tex_name = f"{base_name}_{tex_type}{tex_ext}"
+            dest_tex = textures_dir / standardized_tex_name
+
+            if not dest_tex.exists():
+                from .texture_utils import copy_and_resize_texture
+
+                if copy_and_resize_texture(tex_path, dest_tex):
+                    copied_count += 1
+                else:
+                    # Fallback to regular copy
+                    shutil.copy2(tex_path, dest_tex)
+                    copied_count += 1
 
     return copied_count
 
@@ -1087,24 +1053,11 @@ def smooth_leaf_mesh(
 def _gather_texture_candidates(blend_dir, standardized_name, species, metadata):
     """Find textures for twig geometry processing and export.
 
-    Supports all Grove 2.2 texture naming patterns:
-    - Top/Bottom only: AspenTop.png, AspenBottom.png
-    - Top/Bottom + Bump: OakEuropeanTop.png, OakEuropeanTopBump.png
-    - Explicit ADNT (underscore): SalixCaprea_alpha.png, SalixCaprea_diffuse.png
-    - Explicit ADNT (CamelCase): BeechAlpha.jpg, BeechDiffuse.jpg
-    - Single texture: ScotsPine.png, Bottlebrush.png (embedded alpha)
-    - Seasonal: PaperBirchSummerTop.png, BeechFallBottom.png
-    - Latin names: EucalyptusGlobulus.png, AcerPalmatumAtropurpureum_diffuse.jpg
-
     Returns dict with texture types:
         - 'diffuse': Base color texture (may have embedded alpha)
-        - 'diffuse_top', 'diffuse_bottom': Position variants
-        - 'diffuse_summer_top', 'diffuse_fall_bottom': Seasonal variants
         - 'normal': Normal map texture
-        - 'bump': Bump/height map (can be converted to normal)
-        - 'alpha': Dedicated alpha/opacity texture
-        - 'translucent': Translucency texture
-        - 'bark': Twig bark texture
+        - 'alpha': Dedicated alpha/opacity texture (preferred for geometry trimming)
+        - 'translucent': Translucency texture (can be used as alpha fallback)
 
     For geometry processing (trimming, decimation), alpha sources are prioritized:
         1. Dedicated 'alpha' texture file
@@ -1118,99 +1071,69 @@ def _gather_texture_candidates(blend_dir, standardized_name, species, metadata):
         if Path(d).exists():
             for ext in texture_extensions:
                 files.extend(Path(d).glob(f"*{ext}"))
-                files.extend(Path(d).glob(f"*{ext.upper()}"))
 
-    # Remove duplicates
-    files = list(set(files))
+    # Build base name up to 'twig'
+    parts = []
+    found_twig = False
+    for part in standardized_name.split("_"):
+        parts.append(part)
+        if part == "twig":
+            found_twig = True
+            break
+    if not found_twig:
+        base_name = f"{species.lower().replace(' ', '_')}_twig"
+    else:
+        base_name = "_".join(parts)
 
-    if not files:
-        return {}
+    def pick(kind_words, prefer_top=True):
+        def score(p: Path):
+            n = p.stem.lower()
+            # CRITICAL: Require at least one keyword match to be considered
+            # Without this, base_name match alone would pick wrong textures
+            # (e.g., diffuse texture picked as alpha just because it has species name)
+            if not any(k in n for k in kind_words):
+                return -1  # Not a match for this texture type
+            s = 3  # Base score for keyword match
+            if base_name in n:
+                s += 5  # Bonus for matching standardized naming
+            if prefer_top and ("top" in n or "upper" in n):
+                s += 1
+            return s
 
-    # Build species name variations for matching
-    species_lower = species.lower().replace(" ", "_")
-    species_compact = species.lower().replace(" ", "").replace("_", "")
+        best, best_s = None, -1
+        for p in files:
+            s = score(p)
+            if s > best_s:
+                best, best_s = p, s
+        return best
 
-    # Classify ALL textures first
-    texture_map = {}
-    for tex_file in files:
-        tex_type = classify_texture_from_name(tex_file.stem)
-
-        # Store by type (keep best match if multiple)
-        if tex_type not in texture_map:
-            texture_map[tex_type] = tex_file
-        else:
-            # Prefer files matching species name
-            old_name = texture_map[tex_type].stem.lower().replace("_", "")
-            new_name = tex_file.stem.lower().replace("_", "")
-            if species_compact in new_name and species_compact not in old_name:
-                texture_map[tex_type] = tex_file
-
-    # Build output map with normalized keys
     out = {}
-
-    # Direct mappings for explicit types
-    for tex_type in [
-        "alpha",
-        "normal",
-        "bump",
-        "translucent",
-        "bark",
-        "roughness",
-        "metallic",
-        "ao",
-    ]:
-        if tex_type in texture_map:
-            out[tex_type] = texture_map[tex_type]
-
-    # Handle diffuse variants - prioritize by type
-    # Priority: diffuse > diffuse_top > diffuse_summer_top > diffuse_fall_top
-    diffuse_keys = [
-        k for k in texture_map.keys() if k == "diffuse" or k.startswith("diffuse_")
-    ]
-
-    if diffuse_keys:
-        # Store all diffuse variants
-        for dk in diffuse_keys:
-            out[dk] = texture_map[dk]
-
-        # Also set a primary "diffuse" for fallback use (prefer top > plain > bottom)
-        if "diffuse" not in out:
-            for prefer in [
-                "diffuse_top",
-                "diffuse_summer_top",
-                "diffuse_fall_top",
-                "diffuse_bottom",
-                "diffuse_summer_bottom",
-                "diffuse_fall_bottom",
-            ]:
-                if prefer in out:
-                    out["diffuse"] = out[prefer]
-                    break
-
-    # FALLBACK: If no diffuse found at all, treat remaining unclassified textures as diffuse
-    # This handles single-texture files like ScotsPine.png, Bottlebrush.png
-    if "diffuse" not in out and not any(k.startswith("diffuse") for k in out.keys()):
-        for tex_file in files:
-            tex_type = classify_texture_from_name(tex_file.stem)
-            # If texture wasn't classified as a specific type, it's likely a diffuse
-            if tex_type == "diffuse" and tex_file not in out.values():
-                out["diffuse"] = tex_file
-                break
-
+    # Gather all texture types for geometry processing
+    diffuse = pick(["diffuse", "albedo", "color", "basecolor", "base"])
+    if diffuse:
+        out["diffuse"] = diffuse
+    normal = pick(["normal", "norm", "nrm", "bump"], prefer_top=False)
+    if normal:
+        out["normal"] = normal
+    # Include alpha/translucent textures for geometry processing (trimming, decimation)
+    alpha = pick(["alpha", "opacity", "mask", "cutout"], prefer_top=False)
+    if alpha:
+        out["alpha"] = alpha
+    translucent = pick(
+        ["translucent", "translucency", "transmission"], prefer_top=False
+    )
+    if translucent:
+        out["translucent"] = translucent
     return out
 
 
-def densify_mesh(obj, subdivision_levels=3, material_indices=None, target_edge_mm=None):
+def densify_mesh(obj, subdivision_levels=3, material_indices=None):
     """Densify mesh using subdivision to create more triangles.
 
     Args:
         obj: Blender mesh object
-        subdivision_levels: Number of subdivision iterations (default: 3, ignored if target_edge_mm set)
+        subdivision_levels: Number of subdivision iterations (default: 3)
         material_indices: Optional set of material indices to restrict densification
-        target_edge_mm: Target edge length in millimeters. If set, subdivides adaptively
-                       until edges are at or below this length. Provides consistent mesh
-                       density across different twig sizes (e.g., conifer vs broadleaf).
-                       Example: 2.0 = 2mm edges, suitable for most twigs.
     """
     try:
         bpy.context.view_layer.objects.active = obj
@@ -1220,51 +1143,19 @@ def densify_mesh(obj, subdivision_levels=3, material_indices=None, target_edge_m
         bm = bmesh.new()
         bm.from_mesh(obj.data)
 
-        if target_edge_mm is not None and target_edge_mm > 0:
-            # Convert mm to Blender units (1 Blender unit = 1000mm typically)
-            # For twig meshes, scale is typically 1:1 so 1 unit = 1m = 1000mm
-            target_edge_bu = target_edge_mm / 1000.0
+        edges = bm.edges
+        if material_indices:
+            face_edges = set()
+            for f in bm.faces:
+                if f.material_index in material_indices:
+                    for e in f.edges:
+                        face_edges.add(e)
+            edges = list(face_edges)
 
-            # Adaptive subdivision based on edge length
-            max_iterations = 10  # Safety limit
-            for iteration in range(max_iterations):
-                # Collect edges that exceed target length
-                edges_to_subdivide = []
-                for e in bm.edges:
-                    if material_indices:
-                        # Check if edge belongs to a face with matching material
-                        has_material = any(
-                            f.material_index in material_indices for f in e.link_faces
-                        )
-                        if not has_material:
-                            continue
-
-                    edge_length = (e.verts[0].co - e.verts[1].co).length
-                    if edge_length > target_edge_bu:
-                        edges_to_subdivide.append(e)
-
-                if not edges_to_subdivide:
-                    break  # All edges are at or below target length
-
-                # Subdivide long edges (1 cut = split in half)
-                bmesh.ops.subdivide_edges(
-                    bm, edges=edges_to_subdivide, cuts=1, use_grid_fill=True
-                )
-        else:
-            # Original behavior: fixed subdivision levels
-            edges = list(bm.edges)
-            if material_indices:
-                face_edges = set()
-                for f in bm.faces:
-                    if f.material_index in material_indices:
-                        for e in f.edges:
-                            face_edges.add(e)
-                edges = list(face_edges)
-
-            if edges:
-                bmesh.ops.subdivide_edges(
-                    bm, edges=edges, cuts=subdivision_levels, use_grid_fill=True
-                )
+        if edges:
+            bmesh.ops.subdivide_edges(
+                bm, edges=edges, cuts=subdivision_levels, use_grid_fill=True
+            )
 
         # Write back to mesh
         bm.to_mesh(obj.data)
@@ -1368,17 +1259,12 @@ def trim_by_alpha_mask(
 ):
     """Trim mesh geometry based on alpha/opacity mask texture.
 
-    Removes faces where ALL vertices have alpha values below threshold.
-    This conservative approach preserves edge quality by keeping any face
-    that has at least one vertex in an opaque region.
+    Removes faces where all vertices have alpha values below threshold.
 
     Args:
         obj: Blender mesh object
         alpha_texture_path: Path to alpha/mask texture
         threshold: Alpha threshold for keeping geometry (0.0-1.0, default: 0.5)
-        require_alpha_channel: If True, texture must have embedded alpha channel
-        material_indices: Optional set of material indices to restrict trimming
-        allow_luminance_for_masks: If True, use luminance for mask-named textures
     """
     try:
         if Image is None:
@@ -1423,6 +1309,7 @@ def trim_by_alpha_mask(
             return
 
         mesh = obj.data
+        uv_layer = mesh.uv_layers.active.data
 
         # Use bmesh for efficient face deletion
         bm = bmesh.new()
@@ -1435,27 +1322,28 @@ def trim_by_alpha_mask(
             return
 
         # Mark faces for deletion based on alpha values
-        # Delete face only if ALL vertices are below threshold (completely transparent)
         faces_to_delete = []
         for face in bm.faces:
             if material_indices and face.material_index not in material_indices:
                 continue
-
             # Sample alpha at each vertex of the face
             alpha_values = []
             for loop in face.loops:
                 uv = loop[uv_layer_bm].uv
+
+                # Sample alpha texture
                 x = int(uv.x * (img_width - 1))
                 y = int((1.0 - uv.y) * (img_height - 1))  # Flip Y
                 x = max(0, min(img_width - 1, x))
                 y = max(0, min(img_height - 1, y))
 
+                # Get alpha value (0-255)
                 alpha = pixels[x, y] / 255.0
                 if invert_mask:
                     alpha = 1.0 - alpha
                 alpha_values.append(alpha)
 
-            # Delete face if ALL vertices below threshold (completely transparent)
+            # Delete face if all vertices below threshold (completely transparent)
             if all(a < threshold for a in alpha_values):
                 faces_to_delete.append(face)
 
@@ -1466,133 +1354,6 @@ def trim_by_alpha_mask(
         bm.to_mesh(mesh)
         bm.free()
 
-        mesh.update()
-    except Exception:
-        pass
-
-
-def trim_vertices_by_alpha(
-    obj,
-    alpha_texture_path,
-    threshold=0.5,
-    require_alpha_channel=False,
-    material_indices=None,
-    allow_luminance_for_masks: bool = False,
-):
-    """Trim mesh by deleting vertices with alpha below threshold.
-
-    This is simpler and more direct than face-based deletion. Deleting a vertex
-    automatically removes all faces that used that vertex.
-
-    Args:
-        obj: Blender mesh object
-        alpha_texture_path: Path to alpha/mask texture
-        threshold: Alpha threshold - vertices below this are deleted (0.0-1.0, default: 0.5)
-        require_alpha_channel: If True, texture must have embedded alpha channel
-        material_indices: Optional set of material indices to restrict trimming
-        allow_luminance_for_masks: If True, use luminance for mask-named textures
-    """
-    try:
-        if Image is None:
-            return
-        if not alpha_texture_path or not Path(alpha_texture_path).exists():
-            return
-
-        # Load alpha image
-        img = Image.open(alpha_texture_path)
-        bands = img.getbands()
-        has_alpha = "A" in bands
-
-        name_lower = Path(alpha_texture_path).stem.lower()
-        looks_like_mask = any(
-            k in name_lower
-            for k in ["alpha", "opacity", "mask", "transparent", "cutout"]
-        )
-
-        if require_alpha_channel and not has_alpha:
-            return
-
-        alpha_img = None
-        if has_alpha:
-            alpha_img = img.getchannel("A")
-        elif allow_luminance_for_masks and looks_like_mask:
-            alpha_img = img.convert("L")
-        else:
-            return
-
-        img_width, img_height = alpha_img.size
-        pixels = alpha_img.load()
-
-        invert_mask = any(k in name_lower for k in ["mask", "cutout"])
-
-        if not obj.data.uv_layers.active:
-            return
-
-        mesh = obj.data
-        uv_layer = mesh.uv_layers.active.data
-
-        # Build per-vertex alpha values (average across all UV instances)
-        vert_alpha = {}
-        vert_counts = {}
-
-        # If material_indices specified, only consider vertices from those faces
-        eligible_verts = None
-        if material_indices:
-            eligible_verts = set()
-            for poly in mesh.polygons:
-                if poly.material_index in material_indices:
-                    for loop_idx in poly.loop_indices:
-                        eligible_verts.add(mesh.loops[loop_idx].vertex_index)
-
-        for poly in mesh.polygons:
-            for loop_idx in poly.loop_indices:
-                vi = mesh.loops[loop_idx].vertex_index
-
-                if eligible_verts is not None and vi not in eligible_verts:
-                    continue
-
-                uv = uv_layer[loop_idx].uv
-                x = int(uv.x * (img_width - 1))
-                y = int((1.0 - uv.y) * (img_height - 1))
-                x = max(0, min(img_width - 1, x))
-                y = max(0, min(img_height - 1, y))
-
-                alpha = pixels[x, y] / 255.0
-                if invert_mask:
-                    alpha = 1.0 - alpha
-
-                vert_alpha[vi] = vert_alpha.get(vi, 0.0) + alpha
-                vert_counts[vi] = vert_counts.get(vi, 0) + 1
-
-        # Average the alpha values
-        for vi in vert_alpha:
-            vert_alpha[vi] /= vert_counts[vi]
-
-        # Use bmesh for vertex deletion
-        bm = bmesh.new()
-        bm.from_mesh(mesh)
-        bm.verts.ensure_lookup_table()
-
-        # Collect vertices to delete
-        verts_to_delete = []
-        for v in bm.verts:
-            if v.index in vert_alpha and vert_alpha[v.index] < threshold:
-                verts_to_delete.append(v)
-
-        # Delete vertices (automatically removes attached faces)
-        bmesh.ops.delete(bm, geom=verts_to_delete, context="VERTS")
-
-        # Clean up: remove loose edges and vertices
-        loose_edges = [e for e in bm.edges if not e.link_faces]
-        if loose_edges:
-            bmesh.ops.delete(bm, geom=loose_edges, context="EDGES")
-
-        loose_verts = [v for v in bm.verts if not v.link_edges]
-        if loose_verts:
-            bmesh.ops.delete(bm, geom=loose_verts, context="VERTS")
-
-        bm.to_mesh(mesh)
-        bm.free()
         mesh.update()
     except Exception:
         pass
@@ -1906,138 +1667,52 @@ def _smooth_boundary_edges(
     mesh.update()
 
 
-def _measure_interior_edge_length(
-    mesh, leaf_material_indices: Set[int], exclude_vertices: Set[int] = None
-) -> float:
-    """Measure average edge length for interior (leaf) geometry.
-
-    Args:
-        mesh: Blender mesh data
-        leaf_material_indices: Set of material indices for leaf geometry
-        exclude_vertices: Optional set of vertex indices to exclude from measurement.
-                         Edges touching these vertices are not measured.
-                         Use this to exclude boundary/protected edges.
-
-    Returns average edge length in Blender units, or 0.0 if no edges found.
-    """
-    if exclude_vertices is None:
-        exclude_vertices = set()
-
-    interior_edges = set()
-    for poly in mesh.polygons:
-        if poly.material_index in leaf_material_indices:
-            for edge_key in poly.edge_keys:
-                # Skip edges that touch excluded vertices
-                if edge_key[0] in exclude_vertices or edge_key[1] in exclude_vertices:
-                    continue
-                interior_edges.add(edge_key)
-
-    if not interior_edges:
-        return 0.0
-
-    total_length = 0.0
-    for v0_idx, v1_idx in interior_edges:
-        v0 = mesh.vertices[v0_idx].co
-        v1 = mesh.vertices[v1_idx].co
-        total_length += (v0 - v1).length
-
-    return total_length / len(interior_edges)
-
-
 def _apply_interior_decimate(
     obj,
     leaf_material_indices: Set[int],
     alpha_img,
     threshold: float,
+    ratio: float = 0.5,
     boundary_rings: int = 1,
-    target_edge_mm: float = None,
-    max_iterations: int = 20,
-    use_alpha_edges: bool = False,
 ):
-    """Apply iterative edge-protected interior decimation on leaf regions.
+    """Apply edge-protected interior decimation on leaf regions.
 
-    Uses Blender's Decimate modifier in iterative passes with measured edge lengths
-    to achieve consistent target mesh density. Uses gradual decimation steps (ratio
-    ~0.6-0.85) for more uniform triangle sizes rather than aggressive single-step
-    decimation which creates highly variable triangles.
-
-    Features:
-        - Gradual decimation for uniform interior triangle sizes
-        - Iterative refinement for accurate target edge length
-        - Edge band protection preserves alpha silhouette quality
-        - Non-leaf geometry (bark/wood) fully protected
-
-    Args:
-        obj: Blender mesh object
-        leaf_material_indices: Set of material indices for leaf geometry
-        alpha_img: PIL alpha image for boundary detection
-        threshold: Alpha threshold for boundary detection
-        boundary_rings: Number of vertex rings to protect around boundary
-        target_edge_mm: Target interior edge length in millimeters.
-                       Example: 5.0 = 5mm interior edges (coarser than boundary).
-        max_iterations: Maximum decimation passes (default: 10, allows convergence)
-        use_alpha_edges: If True, also protect alpha threshold crossings.
-                        If False (default), only protect actual mesh boundaries.
-                        Set to False when alpha trimming was already applied.
+    - Builds a preserve vertex group that includes:
+      - A band of vertices around the alpha silhouette (edge band)
+      - All non-leaf vertices (twig/bark) to avoid decimating wood
+    - Applies Decimate (Collapse) with invert_vertex_group=True so only
+      non-preserved (leaf interior) vertices are reduced.
     """
-    import bpy
+    if ratio <= 0.0 or ratio >= 1.0:
+        return
 
     mesh = obj.data
     if not mesh or not mesh.uv_layers.active:
         return
 
-    if target_edge_mm is None or target_edge_mm <= 0:
-        return
-
-    # Convert mm to Blender units (1 Blender unit = 1000mm)
-    target_edge_bu = target_edge_mm / 1000.0
-
-    # Per-vertex alpha for edge detection
+    # Per-vertex alpha
     v_alpha = _build_vertex_alpha_map(mesh, alpha_img)
     if not v_alpha:
         return
 
-    # Build adjacency and edge-to-face count for boundary detection
+    # Build adjacency from edges
     adjacency = {}
-    edge_face_count = {}
     for e in mesh.edges:
         v0, v1 = e.vertices[0], e.vertices[1]
         adjacency.setdefault(v0, set()).add(v1)
         adjacency.setdefault(v1, set()).add(v0)
-        edge_face_count[tuple(sorted((v0, v1)))] = 0
 
-    # Count faces per edge
-    for poly in mesh.polygons:
-        for ek in poly.edge_keys:
-            key = tuple(sorted(ek))
-            if key in edge_face_count:
-                edge_face_count[key] += 1
-
-    # Detect actual mesh boundary edges (edges with only 1 adjacent face)
-    # These are created by alpha trimming and MUST be protected
-    mesh_boundary_verts = set()
-    for (v0, v1), count in edge_face_count.items():
-        if count == 1:
-            mesh_boundary_verts.add(v0)
-            mesh_boundary_verts.add(v1)
-
-    # Collect leaf vertices and initial edge vertices
-    # Edge vertices include:
-    # 1. Actual mesh boundary vertices (edges with only 1 adjacent face) - ALWAYS
-    # 2. Alpha threshold crossing vertices (from texture sampling) - ONLY if use_alpha_edges=True
-    #
-    # When alpha trimming is applied BEFORE decimation, mesh boundaries are the TRUE edges.
-    # Alpha edge detection is only needed when NOT doing alpha trimming.
+    # Collect leaf vertices and initial edge vertices (crossing threshold)
     leaf_vertices = set()
-    alpha_edge_vertices = set()
+    edge_vertices = set()
     for poly in mesh.polygons:
         is_leaf = poly.material_index in leaf_material_indices
         for li in poly.loop_indices:
             vi = mesh.loops[li].vertex_index
             if is_leaf:
                 leaf_vertices.add(vi)
-        # Only detect alpha edges if explicitly requested
-        if is_leaf and use_alpha_edges:
+        if is_leaf:
+            # Inspect edges via loops
             loop_indices = list(poly.loop_indices)
             for i in range(len(loop_indices)):
                 li0 = loop_indices[i]
@@ -2049,46 +1724,24 @@ def _apply_interior_decimate(
                 if a0 is None or a1 is None:
                     continue
                 if (a0 - threshold) * (a1 - threshold) < 0.0:
-                    alpha_edge_vertices.add(v0)
-                    alpha_edge_vertices.add(v1)
-
-    # Combine boundary detection methods (alpha edges only if enabled)
-    edge_vertices = set(mesh_boundary_verts)
-    if use_alpha_edges:
-        edge_vertices |= alpha_edge_vertices
-
-    if use_alpha_edges:
-        print(
-            f"  Boundary detection: {len(mesh_boundary_verts)} mesh boundary + {len(alpha_edge_vertices)} alpha edge = {len(edge_vertices)} total edge verts"
-        )
-    else:
-        print(
-            f"  Boundary detection: {len(mesh_boundary_verts)} mesh boundary verts (alpha edges disabled - using trimmed mesh boundaries)"
-        )
+                    edge_vertices.add(v0)
+                    edge_vertices.add(v1)
 
     if not leaf_vertices:
-        print("  Warning: No leaf vertices found, skipping interior decimation")
         return
 
     # Expand edge band by boundary_rings using adjacency
-    initial_edge_verts = len(edge_vertices)
     current = set(edge_vertices)
-    for ring in range(max(0, int(boundary_rings))):
+    for _ in range(max(0, int(boundary_rings))):
         grow = set()
         for v in current:
-            for nb in adjacency.get(v, ()):
+            for nb in adjacency.get(v, ()):  # neighbors
                 if nb in leaf_vertices and nb not in edge_vertices:
                     grow.add(nb)
         if not grow:
-            print(f"  Ring {ring+1}: no new vertices to add, stopping expansion")
             break
         edge_vertices.update(grow)
         current = grow
-
-    if boundary_rings > 0:
-        print(
-            f"  Boundary expansion: {initial_edge_verts} -> {len(edge_vertices)} verts ({boundary_rings} rings)"
-        )
 
     # Preserve set = edge band (leaf) + all non-leaf vertices
     preserve = set(edge_vertices)
@@ -2098,27 +1751,7 @@ def _apply_interior_decimate(
                 for li in poly.loop_indices:
                     preserve.add(mesh.loops[li].vertex_index)
 
-    # Calculate how many vertices are available for decimation
-    total_verts = len(mesh.vertices)
-    interior_verts = total_verts - len(preserve)
-    protect_percent = 100 * len(preserve) / total_verts if total_verts > 0 else 0
-    print(
-        f"  Interior decimate: {interior_verts}/{total_verts} verts available ({100-protect_percent:.1f}% interior), protecting {len(preserve)} verts"
-    )
-
-    if interior_verts < 10:
-        print(
-            f"  Warning: Too few interior vertices ({interior_verts}), skipping decimation"
-        )
-        return
-
-    if len(preserve) == 0:
-        print("  Warning: No vertices marked for protection! Check boundary detection.")
-        return
-
-    # Create vertex group for edge protection
-    # Weight = 1.0 means protected, weight = 0.0 means can be decimated
-    # With invert_vertex_group=True, verts IN the group are protected
+    # Create/replace vertex group
     vg_name = "edge_protect"
     if vg_name in obj.vertex_groups:
         vg_old = obj.vertex_groups.get(vg_name)
@@ -2128,118 +1761,36 @@ def _apply_interior_decimate(
             pass
     vg = obj.vertex_groups.new(name=vg_name)
 
-    # Add protected vertices with weight 1.0
     if preserve:
         try:
             vg.add(list(preserve), 1.0, "REPLACE")
         except Exception:
-            # Split into chunks if too many vertices
+            # Fallback: add in chunks to avoid limits
             inds = list(preserve)
             step = 32766
             for i in range(0, len(inds), step):
                 vg.add(inds[i : i + step], 1.0, "REPLACE")
+
+    # Apply Decimate (Collapse) only to non-preserved (invert group)
+    import bpy
 
     bpy.context.view_layer.objects.active = obj
     try:
         bpy.ops.object.mode_set(mode="OBJECT")
     except Exception:
         pass
+    mod = obj.modifiers.new(name="InteriorDecimate", type="DECIMATE")
+    mod.ratio = float(ratio)
+    mod.vertex_group = vg.name
+    mod.invert_vertex_group = True
+    # Triangulate collapse produces more stable results for our pipeline
+    if hasattr(mod, "use_collapse_triangulate"):
+        mod.use_collapse_triangulate = True
 
-    # Iterative decimation with edge length feedback
-    # Use edge_vertices to exclude boundary edges from measurement
-    #
-    # Strategy: Start aggressive, then gradual. The boundary protection limits
-    # how much we can decimate, so we need to make real progress early.
-    prev_edge = 0.0
-    stall_count = 0
-    for iteration in range(max_iterations):
-        # Measure current interior edge length (excluding boundary edges)
-        current_avg_edge = _measure_interior_edge_length(
-            obj.data, leaf_material_indices, exclude_vertices=edge_vertices
-        )
-        if current_avg_edge <= 0:
-            print(f"  Iter {iteration}: No interior edges to measure, stopping")
-            break
-
-        # Check if we've reached target (within 15% tolerance)
-        if current_avg_edge >= target_edge_bu * 0.85:
-            print(
-                f"  Iter {iteration}: Target reached ({current_avg_edge*1000:.2f}mm >= {target_edge_bu*1000*0.85:.2f}mm)"
-            )
-            break
-
-        # Check if we're making progress (edge length should increase)
-        if iteration > 0 and current_avg_edge <= prev_edge * 1.05:
-            stall_count += 1
-            if stall_count >= 2:
-                print(
-                    f"  Iter {iteration}: Stalled (edge={current_avg_edge*1000:.2f}mm, prev={prev_edge*1000:.2f}mm), boundary protection limit reached"
-                )
-                break
-        else:
-            stall_count = 0
-        prev_edge = current_avg_edge
-
-        # Calculate decimation ratio based on how far we are from target
-        # Use more aggressive ratio when far from target, gentler when close
-        edge_ratio = current_avg_edge / target_edge_bu  # e.g., 0.15/5.0 = 0.03
-
-        # Ideal ratio to reach target in one step would be edge_ratio^2
-        # But we want gradual steps, so blend between aggressive and conservative
-        ideal_ratio = edge_ratio**2  # e.g., 0.03^2 = 0.0009
-
-        # Use a blend: more aggressive when far (ratio closer to ideal),
-        # more conservative when close (ratio closer to 0.7)
-        # Blend factor based on distance to target
-        blend = min(1.0, edge_ratio * 2)  # 0 when very far, 1 when at 50% of target
-        conservative_ratio = 0.65
-        ratio = ideal_ratio * (1 - blend) + conservative_ratio * blend
-
-        # Clamp to prevent extremes
-        ratio = max(0.25, min(0.80, ratio))
-
-        faces_before = len(obj.data.polygons)
-        print(
-            f"  Iter {iteration}: edge={current_avg_edge*1000:.2f}mm (target={target_edge_bu*1000:.2f}mm), ratio={ratio:.3f}, faces={faces_before}"
-        )
-
-        # Apply Decimate modifier (COLLAPSE mode is default)
-        mod = obj.modifiers.new(name=f"InteriorDecimate_{iteration}", type="DECIMATE")
-        mod.decimate_type = "COLLAPSE"
-        mod.ratio = float(ratio)
-        mod.vertex_group = vg.name
-        mod.invert_vertex_group = True
-
-        # DISABLE triangulation - it increases face count on meshes with quads
-        # The mesh should already be triangulated from densification
-        if hasattr(mod, "use_collapse_triangulate"):
-            mod.use_collapse_triangulate = False
-
-        try:
-            bpy.ops.object.modifier_apply(modifier=mod.name)
-            faces_after = len(obj.data.polygons)
-            reduction = (
-                100 * (1 - faces_after / faces_before) if faces_before > 0 else 0
-            )
-            print(f"         -> {faces_after} faces (-{reduction:.1f}%)")
-        except Exception as e:
-            print(f"         -> Failed to apply: {e}")
-            break
-
-    # Final measurement and report
-    final_avg_edge = _measure_interior_edge_length(
-        obj.data, leaf_material_indices, exclude_vertices=edge_vertices
-    )
-    if final_avg_edge > 0:
-        print(
-            f"  Interior decimate complete: final edge={final_avg_edge*1000:.2f}mm (target={target_edge_bu*1000:.2f}mm)"
-        )
-
-    # Cleanup vertex group
     try:
-        if vg_name in obj.vertex_groups:
-            obj.vertex_groups.remove(obj.vertex_groups[vg_name])
+        bpy.ops.object.modifier_apply(modifier=mod.name)
     except Exception:
+        # If apply fails (rare), leave modifier on the stack
         pass
 
 
@@ -2353,28 +1904,24 @@ def setup_materials_with_textures(
             if tex_type not in texture_map:
                 texture_map[tex_type] = tex
 
-        # Create textures subdirectory
-        textures_dir = output_dir / "textures"
-        textures_dir.mkdir(exist_ok=True)
+        # Convert bump maps to normal maps if needed
+        if "bump" in texture_map and "normal" not in texture_map:
+            from growpy.io.texture_utils import bump_to_normal
 
-        # Build standardized base name
-        base_name_parts = []
-        found_twig = False
-        for part in standardized_name.split("_"):
-            base_name_parts.append(part)
-            if part == "twig":
-                found_twig = True
-                break
-        if not found_twig:
-            base_name = metadata["species"].lower().replace(" ", "_") + "_twig"
-        else:
-            base_name = "_".join(base_name_parts)
+            # Generate normal map from bump
+            bump_path = texture_map["bump"]
+            normal_path = textures_dir / f"{bump_path.stem}_normal{bump_path.suffix}"
 
-        # Import texture utility for copying
-        from growpy.io.texture_utils import copy_and_resize_texture
+            if not normal_path.exists():
+                converted = bump_to_normal(bump_path, normal_path)
+                if converted:
+                    texture_map["normal"] = normal_path
+            else:
+                texture_map["normal"] = normal_path
 
-        # NOTE: Texture processing (bump-to-normal, alpha extraction, alpha stripping)
-        # now happens during prepare_assets.py. This function uses pre-processed textures.
+            # Remove bump from map since we've converted it
+            del texture_map["bump"]
+
         # Handle two-sided materials (top/bottom diffuse textures)
         # Keep both if available for two-sided rendering
         has_two_sided = "diffuse_top" in texture_map and "diffuse_bottom" in texture_map
@@ -2388,15 +1935,43 @@ def setup_materials_with_textures(
                 texture_map["diffuse"] = texture_map["diffuse_bottom"]
                 del texture_map["diffuse_bottom"]
 
+        # Debug: Show texture file names
+        for tex_type, tex_path in texture_map.items():
+            pass
+
         y_offset = 300
+
+        # Create textures subdirectory
+        textures_dir = output_dir / "textures"
+        textures_dir.mkdir(exist_ok=True)
 
         for tex_type, tex_path in texture_map.items():
             try:
                 # CRITICAL: Copy texture with standardized naming to textures/ subfolder
+                # Format: textures/{species_twig}_{texture_type}{ext}
+                # Remove variant suffixes (_var_a, _var_b, etc.) from texture names
                 tex_ext = tex_path.suffix
+                # Extract base species name (everything up to and including 'twig')
+                base_name_parts = []
+                found_twig = False
+                for part in standardized_name.split("_"):
+                    base_name_parts.append(part)
+                    if part == "twig":
+                        found_twig = True
+                        break
+
+                # If 'twig' not found, use species name from metadata
+                if not found_twig:
+                    base_name = metadata["species"].lower().replace(" ", "_") + "_twig"
+                else:
+                    base_name = "_".join(base_name_parts)
+
                 standardized_tex_name = f"{base_name}_{tex_type}{tex_ext}"
                 dest_tex = textures_dir / standardized_tex_name
                 if not dest_tex.exists():
+                    # CRITICAL: Use power-of-2 resizing for Unreal virtual texture support
+                    from .texture_utils import copy_and_resize_texture
+
                     if not copy_and_resize_texture(tex_path, dest_tex):
                         # Fallback to regular copy
                         shutil.copy2(tex_path, dest_tex)
@@ -2562,13 +2137,11 @@ def process_twig_file(
     edge_adaptive=False,
     edge_subdiv_levels=None,
     interior_decimate=False,
+    decimate_ratio=0.5,
     boundary_rings=1,
     smooth_boundary=False,
     smooth_iterations=3,
     smooth_factor=0.5,
-    target_edge_mm=None,
-    interior_edge_mm=None,
-    vertex_trim=False,
 ):
     """Process a single twig blend file.
 
@@ -2580,12 +2153,8 @@ def process_twig_file(
         minimal_export: If True, creates minimal USD without materials/textures/attributes (geometry only)
         include_skeleton: If True, creates skeletal variant with skeleton (default: True, set False for static)
         densify: If True, subdivide mesh for higher polygon count (default: False)
+        displacement_strength: Strength of normal map displacement (0.0 = disabled, default: 0.0)
         alpha_trim_threshold: Alpha threshold for geometry trimming (0.0 = disabled, default: 0.0)
-        subdiv_levels: Number of subdivision levels (ignored if target_edge_mm is set)
-        target_edge_mm: Target boundary edge length in mm for subdivision (overrides subdiv_levels)
-        interior_edge_mm: Target interior edge length in mm for decimation. Uses iterative
-                         decimation with edge length feedback and UV preservation.
-        vertex_trim: If True, use vertex-based alpha trimming instead of face-based
     """
     import bpy
 
@@ -2737,14 +2306,12 @@ def process_twig_file(
                                 obj,
                                 subdivision_levels=subdiv_levels,
                                 material_indices=leaf_mats,
-                                target_edge_mm=target_edge_mm,
                             )
                     else:
                         densify_mesh(
                             obj,
                             subdivision_levels=subdiv_levels,
                             material_indices=leaf_mats,
-                            target_edge_mm=target_edge_mm,
                         )
 
                 # Optional: extra edge-only densify pass using alpha silhouette
@@ -2769,69 +2336,31 @@ def process_twig_file(
                 # Uses dedicated alpha/translucent texture if available, else diffuse embedded alpha
                 # MUST run before interior decimation so we only decimate remaining geometry
                 if alpha_trim_threshold > 0.0 and leaf_mats and alpha_tex_path:
-                    if vertex_trim:
-                        # Vertex-based trimming: simpler, deletes vertices below threshold
-                        trim_vertices_by_alpha(
-                            obj,
-                            str(alpha_tex_path),
-                            alpha_trim_threshold,
-                            require_alpha_channel=(not use_luminance),
-                            material_indices=leaf_mats,
-                            allow_luminance_for_masks=use_luminance,
-                        )
-                    else:
-                        # Face-based trimming: samples at face centroid
-                        trim_by_alpha_mask(
-                            obj,
-                            str(alpha_tex_path),
-                            alpha_trim_threshold,
-                            require_alpha_channel=(not use_luminance),
-                            material_indices=leaf_mats,
-                            allow_luminance_for_masks=use_luminance,
-                        )
+                    trim_by_alpha_mask(
+                        obj,
+                        str(alpha_tex_path),
+                        alpha_trim_threshold,
+                        require_alpha_channel=(not use_luminance),
+                        material_indices=leaf_mats,
+                        allow_luminance_for_masks=use_luminance,
+                    )
 
                 # 3) Interior decimation (edge-protected) to reduce interior density
                 # Runs AFTER trimming to only decimate the remaining opaque geometry
-                # Uses iterative decimation with edge length feedback and UV preservation
                 if interior_decimate and leaf_mats:
-                    has_target_edge = (
-                        interior_edge_mm is not None and interior_edge_mm > 0
-                    )
                     if (
                         alpha_img is not None
-                        and has_target_edge
+                        and 0.0 < decimate_ratio < 1.0
                         and alpha_trim_threshold > 0.0
                     ):
                         try:
-                            # When alpha trimming is enabled, use ONLY mesh boundary detection.
-                            # The actual mesh boundaries after trimming are the TRUE edges.
-                            # Alpha edge detection (texture gradient crossings) can mark too many
-                            # interior vertices when textures have soft gradients.
-                            #
-                            # Auto-scale boundary_rings based on edge density ratio.
-                            # With 0.25mm boundary edges and 5.0mm interior edges, we need
-                            # many more rings to create a visible protection zone.
-                            effective_rings = max(0, int(boundary_rings))
-                            if target_edge_mm is not None and target_edge_mm > 0:
-                                # Calculate how many rings needed for ~1-2mm protection zone
-                                # Each ring adds ~target_edge_mm to the protection width
-                                desired_protection_mm = min(2.0, interior_edge_mm * 0.4)
-                                min_rings = int(desired_protection_mm / target_edge_mm)
-                                if min_rings > effective_rings:
-                                    print(
-                                        f"  Auto-scaling boundary_rings: {effective_rings} -> {min_rings} (for {desired_protection_mm:.1f}mm protection zone)"
-                                    )
-                                    effective_rings = min_rings
-                                effective_rings = max(effective_rings, min_rings)
-
                             _apply_interior_decimate(
                                 obj,
                                 leaf_mats,
                                 alpha_img,
                                 threshold=alpha_trim_threshold,
-                                boundary_rings=effective_rings,
-                                target_edge_mm=interior_edge_mm,
-                                use_alpha_edges=False,  # Trimmed mesh has real edges
+                                ratio=float(decimate_ratio),
+                                boundary_rings=max(0, int(boundary_rings)),
                             )
                         except Exception:
                             pass
