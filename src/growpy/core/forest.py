@@ -63,8 +63,15 @@ def simulate_forest_growth(
         smooth_iterations: Number of smoothing iterations (default: 10, recommended: 10-20)
                           Set to 0 to disable smoothing entirely
     """
+    import time
+
     groves = [grove for grove, _, _, _ in forest]
 
+    print(f"\n{'='*60}")
+    print(f"PHASE 1: GROWTH SIMULATION ({cycles} cycles)")
+    print(f"{'='*60}")
+
+    growth_start = time.time()
     for cycle in tqdm(range(cycles), desc="Simulating growth cycles", unit="cycle"):
         if len(groves) > 1:
             all_coords = []
@@ -79,12 +86,17 @@ def simulate_forest_growth(
             grove.weigh_and_bend()
             grove.simulate(1)
 
+    growth_elapsed = time.time() - growth_start
+    print(f"\nGrowth simulation complete ({growth_elapsed:.1f}s)")
+
     # Apply smoothing AFTER simulation but BEFORE building
     # This reduces sharp branch angles for smoother geometry
     if smooth_iterations > 0:
-        print(
-            f"\n[Smoothing] Applying {smooth_iterations} smoothing iterations to {len(forest)} species"
-        )
+        print(f"\n{'='*60}")
+        print(f"PHASE 2: BRANCH SMOOTHING ({smooth_iterations} iterations)")
+        print(f"{'='*60}")
+
+        smooth_start = time.time()
         for grove, species_name, _, _ in forest:
             grove.smooth_minimal()
             # Show progress for smoothing iterations
@@ -98,4 +110,7 @@ def simulate_forest_growth(
             # CRITICAL: Re-calculate branch bending after smoothing
             # This applies the smoothed angles to actual branch positions
             grove.weigh_and_bend()
-            print(f"[Smoothing] Completed for {species_name} - grove modified in-place")
+            print(f"[Smoothing] Completed for {species_name}")
+
+        smooth_elapsed = time.time() - smooth_start
+        print(f"\nBranch smoothing complete ({smooth_elapsed:.1f}s)")

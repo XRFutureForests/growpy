@@ -154,7 +154,7 @@ Projects naturally evolve: **Flat → Modular**
 - **Environment Creation**: Use `mamba create -n <project-name> python=3.x` for new environments
 - **Package Installation**: Use `mamba install` or `conda install` when possible, `pip install` only when packages unavailable in conda-forge
 - **Docker Commands**: Always use `docker compose` (with space) instead of `docker-compose` (with hyphen)
-- **Python Execution**: Verify environment is active with correct Python interpreter before running scripts
+- **Python Execution**: Verify environment is active with correct Python interpreter before running scripts. As an alternative use `conda run -n <project-name> python ...`
 
 ## Linear MCP Integration
 
@@ -270,7 +270,6 @@ Projects naturally evolve: **Flat → Modular**
 ---
 
 *These instructions integrate with Linear MCP workflow for enhanced project management and follow established development patterns for Python/R/PostGIS projects.*
-
 
 ## Additional Claude Code Specific Notes
 

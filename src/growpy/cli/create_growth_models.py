@@ -13,7 +13,7 @@ Quick Start:
     python src/growpy/cli/create_growth_models.py --csv data/input/test.csv --cycles 125 --seeds 1 --height-threshold 0.05 --max-cycles-without-growth 3 --timeout 300
     
     # Quick analysis (fewer cycles)
-    python src/growpy/cli/create_growth_models.py --cycles 25
+    python src/growpy/cli/create_growth_models.py --cycles 35
     
     
     # Analyze specific species
