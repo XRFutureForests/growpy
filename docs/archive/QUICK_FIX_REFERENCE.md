@@ -1,150 +1,137 @@
-# Quick Reference: Skeletal Nanite Assembly Fix
+# Quick Fix Reference - BudDevelopment Crash
 
-**Issue Fixed**: Joint hierarchy not working in Unreal Engine  
-**Root Cause**: Wrong UsdSkel attribute name (`jointParents` instead of `jointIndices`)  
-**Solution**: Use standard `uniform int[] jointIndices` attribute  
-**Status**: COMPLETE ✓
+## TL;DR
 
-## The Fix (One Line)
+**Error**: `Assertion failed: BudDevelopment.Num() > 2 [PVMaterialSettings.cpp:71]`
 
-Changed skeleton topology attribute name from `jointParents` to `jointIndices`.
+**Cause**: budDevelopment JSON arrays have 1 element, need 6+
 
-## Why It Failed
+**Solution**:
+1. Fix schema: `size: 1` → `size: 6`, `isArray: False` → `True`, `type: "float"` → `type: "int"`
+2. Extract data: Add budDevelopment mapping in pve_grove_mapper.py
 
-UsdSkel specification requires:
+---
 
-```usda
-uniform int[] jointIndices = [-1, 0, 1, 2, 3, ...]  # Parent index for each joint
+## Quick Fix - 3 Minutes
+
+### 1. Fix Schema (30 seconds)
+
+**File**: `src/growpy/io/pve_schema.py`
+
+**Line 90 - Change from:**
+```python
+"budDevelopment": {"isArray": False, "size": 1, "type": "float"},
 ```
 
-We were using:
-
-```usda
-int[] jointParents = [-1, 0, 1, 2, 3, ...]  # Custom attribute (ignored by Unreal)
+**To:**
+```python
+"budDevelopment": {"isArray": True, "size": 6, "type": "int"},
 ```
 
-## How to Verify
+### 2. Add Data Extraction (2 minutes)
+
+**File**: `src/growpy/io/pve_grove_mapper.py`
+
+**Function**: `_map_points_from_skeleton()`
+
+**After line 360** (after plantGradient mapping), add:
+
+```python
+elif attr_name == "budDevelopment":
+    bud_dev_list = []
+    for point_idx in range(num_points):
+        gen = points_data["attributes"].get("generation", {}).get("values", [0] * num_points)[point_idx]
+        age = points_data["attributes"].get("generation", {}).get("values", [0] * num_points)[point_idx]
+        bud_dev_list.append([int(gen), int(age), int(age), 50, 50, 16])
+    points_data["attributes"][attr_name]["values"] = bud_dev_list
+```
+
+### 3. Regenerate & Test (30 seconds)
 
 ```bash
-# Check if file has correct attribute
-grep "uniform int\[\] jointIndices" your_skeletal.usda
-
-# Or use verification script
-python src/verify_skel_simple.py your_skeletal.usda
+python src/growpy/cli/generate_forest.py --species european_beech --output data/output/forest/european_beech/
 ```
 
-## Testing in Unreal
-
-1. **Import**: `data/output/joint_indices_fix_test/Western_redcedar/Western_redcedar_tree_0000_NaniteAssembly_skeletal.usda`
-2. **Open**: Skeleton Editor
-3. **Check**: Bone hierarchy shows parent-child connections (not all flat under root)
-4. **Test**: Rotate middle joint → all children should move together
-
-## Expected Results
-
-### Before Fix
-
-- All bones appear as siblings of root
-- No parent-child connections
-- Rotating bone only moves that bone
-- Mesh doesn't deform properly
-
-### After Fix
-
-- Proper tree hierarchy: root → trunk → branches
-- Parent-child connections visible
-- Rotating parent moves all children
-- Mesh sections deform with their bones
-
-## Files Changed
-
-- `src/growpy/io/usd_builder.py` (lines ~535-545)
-- `docs/archive/JOINT_INDICES_FIX.md` (detailed explanation)
-- `docs/archive/SKELETAL_ASSEMBLY_COMPLETE.md` (full summary)
-- `src/verify_skel_simple.py` (verification tool)
-
-## Git Commits
-
-- **351458f**: Main fix (attribute name change)
-- **3da8acc**: Verification script
-- **84b5c37**: Complete documentation
-
-## Previous Related Fixes
-
-This was the third and final fix for skeletal assemblies:
-
-1. **92f8155**: Vertex-based binding (eliminated face conflicts)
-2. **ea1c956**: Geodesic distance algorithm (direction-agnostic)
-3. **351458f**: Correct attribute name (THIS FIX)
-
-## Quick Commands
-
+Verify JSON:
 ```bash
-# Regenerate with fix
-conda activate the-grove
-python src/growpy/cli/generate_forest.py data/input/test.csv \
-    --quality high \
-    --output-dir data/output/test_with_fix \
-    --growth-cycle-limit 3 \
-    --formats usda \
-    --clean-export
-
-# Verify output
-python src/verify_skel_simple.py \
-    data/output/test_with_fix/Western_redcedar/*_skeletal.usda
-
-# Check for correct attribute in USD file
-grep "uniform int\[\] jointIndices" \
-    data/output/test_with_fix/Western_redcedar/*_skeletal.usda
+grep '"budDevelopment"' -A 10 data/output/forest/european_beech/european_beech_tree_0000.json
 ```
 
-## Troubleshooting
+Should show `[number, number, number, number, number, number]` arrays ✓
 
-### If Still Not Working in Unreal
+---
 
-1. **Verify USD has fix**:
+## What Gets Fixed
 
-   ```bash
-   grep "jointParents\|jointIndices" your_skeletal.usda
-   ```
+### BEFORE (Crashes):
+```json
+"budDevelopment": {
+  "values": [
+    [0],        // ❌ WRONG
+    [0],
+    ...
+  ]
+}
+```
 
-   - Should show: `uniform int[] jointIndices`
-   - Should NOT show: `jointParents`
+### AFTER (Works):
+```json
+"budDevelopment": {
+  "values": [
+    [0, 0, 0, 50, 50, 16],     // ✓ CORRECT
+    [1, 5, 5, 75, 60, 16],
+    [2, 10, 10, 90, 70, 16],
+    ...
+  ]
+}
+```
 
-2. **Check Unreal version**: Must be 5.7+ (skeletal Nanite requirement)
+---
 
-3. **Check console**: Look for warnings about skeleton topology
+## Why It Works
 
-4. **Simplify test**: Try with growth-cycle-limit 2 (fewer joints)
+The PVE material system accesses:
+- `BudDevelopment[0]` - Generation (branch depth)
+- `BudDevelopment[2]` - Age (material selection)
 
-### If Verification Script Fails
+Both need to be present. The array must have at least 3 elements (indices 0, 1, 2).
 
-Common issues:
+---
 
-- File path wrong
-- Not using skeletal file (*_skeletal.usda, not*_tree_only.usda)
-- Old file generated before fix
+## Validation
 
-### If Mesh Doesn't Deform
+After making changes:
 
-This is different from hierarchy issue. Check:
+1. **Schema check**: grep shows 6 in schema ✓
+2. **JSON check**: Each budDevelopment has 6 numbers ✓
+3. **Import test**: Preset imports without error ✓
+4. **Mesh test**: Generate Mesh doesn't crash ✓
 
-- Vertex binding (primvars:skel:jointIndices on mesh)
-- Joint weights (primvars:skel:jointWeights)
-- Geodesic distance algorithm working (commit ea1c956)
+---
 
-## Contact
+## Common Issues
 
-If issues persist after applying this fix, provide:
+| Issue | Solution |
+|-------|----------|
+| "isArray must be boolean" | Make sure it's `True` not `"True"` |
+| Still has 1 element | Make sure elif is in right place in function |
+| Assertion still fails | Check generation values exist in points_data |
+| Import fails | Validate JSON syntax (use jq or Python json.tool) |
 
-1. Screenshot of Unreal's skeleton hierarchy view
-2. Output of `python src/verify_skel_simple.py your_file.usda`
-3. Any console errors from Unreal Engine
-4. Unreal Engine version number
+---
 
-## Summary
+## Files to Edit
 
-**Problem**: Bones not connected to parent bones  
-**Cause**: Wrong attribute name  
-**Fix**: Use `uniform int[] jointIndices`  
-**Result**: Proper skeletal hierarchy in Unreal ✓
+1. `src/growpy/io/pve_schema.py` (line 90)
+2. `src/growpy/io/pve_grove_mapper.py` (after line 360)
+
+That's it! 2 files, ~5 lines of changes total.
+
+---
+
+## Detailed Docs
+
+For complete explanation, see:
+- [BUDDEVELOPMENT_FIX_GUIDE.md](BUDDEVELOPMENT_FIX_GUIDE.md) - Full implementation guide
+- [PVE_CRASH_ANALYSIS_SUMMARY.md](PVE_CRASH_ANALYSIS_SUMMARY.md) - Complete analysis
+- [BUDDEVELOPMENT_ROOT_CAUSE.md](BUDDEVELOPMENT_ROOT_CAUSE.md) - Deep dive analysis
