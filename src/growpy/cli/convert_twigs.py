@@ -32,15 +32,18 @@ Supports two CSV formats:
   1. Forest placement CSV (x, y, species, height) - auto-extracts unique species
   2. Asset lookup CSV (Common Name, Preset, Twig, Bark Texture) - direct asset reference
 
-Quick Start:
-    # Basic conversion with mm-based edge targets (recommended)
-    python src/growpy/cli/convert_twigs.py data/assets/twigs \\
-        --target-edge-mm 2.0 --alpha-trim 0.5 --interior-decimate --interior-edge-mm 5.0
-    
-    # High quality with smooth edges
-    python src/growpy/cli/convert_twigs.py data/assets/twigs \\
-        --target-edge-mm 1.0 --alpha-trim 0.3 --interior-decimate --interior-edge-mm 3.0 \\
-        --smooth-boundary --smooth-iterations 5
+Quick Start (copy-paste ready with all defaults shown):
+    # Full conversion with all flags (recommended for production)
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --csv data/input/test.csv --target-edge-mm 2.0 --alpha-trim 0.5 --interior-decimate --interior-edge-mm 5.0 --boundary-rings 1 --smooth-boundary --smooth-iterations 3 --smooth-factor 0.5
+
+    # High quality with smooth edges (detailed silhouettes)
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --csv data/input/test.csv --target-edge-mm 1.0 --alpha-trim 0.3 --interior-decimate --interior-edge-mm 3.0 --boundary-rings 2 --smooth-boundary --smooth-iterations 5 --smooth-factor 0.5
+
+    # Maximum quality (slow, extremely detailed edges)
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --csv data/input/test.csv --target-edge-mm 0.5 --alpha-trim 0.3 --interior-decimate --interior-edge-mm 2.0 --boundary-rings 2 --smooth-boundary --smooth-iterations 10 --smooth-factor 0.6
+
+    # Fast preview (minimal processing)
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --csv data/input/test.csv --no-densify --alpha-trim 0.5
 
 Common Flags:
     Processing Pipeline (in order):
