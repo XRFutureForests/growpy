@@ -50,7 +50,12 @@
       "Bash(/usr/bin/python3:*)",
       "Bash(for attr in \"instancer_scale\" \"instancer_UP\" \"instancer_N\" \"instancer_LFR\")",
       "Bash(do echo \"--- $attr ---\" grep \"\"\"$attr\"\"\" -A 4 \"c:/Users/Maximilian Sperlich/Git/the-grove/data/output/forest/european_beech/european_beech_tree_0000.json\")",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(\"/c/Users/Maximilian Sperlich/miniconda3/envs/the-grove/python.exe\" test_fix.py)",
+      "Bash(\"/c/Users/Maximilian Sperlich/miniconda3/envs/the-grove/python.exe\" test_all_twigs.py)",
+      "Bash(\"/c/Users/Maximilian Sperlich/miniconda3/envs/the-grove/python.exe\" detailed_grove_analysis.py)",
+      "Bash(\"/c/Users/Maximilian Sperlich/miniconda3/envs/the-grove/python.exe\" check_alpha_in_top_bottom.py)",
+      "Bash(git reset:*)"
     ],
     "deny": [],
     "ask": []
