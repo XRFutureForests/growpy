@@ -4,29 +4,31 @@ Forest generation with USD export and optional Unreal Engine import script gener
 
 Generates multi-species forests from CSV data with configurable quality settings.
 Can generate standalone Unreal Python scripts for importing trees via VSCode extension.
+Creates both skeletal (animation-ready) and static (material-rich) Nanite assemblies.
 
-Quick Start:
-    # Basic forest generation with all defaults shown
-    python src/growpy/cli/generate_forest.py --quality ultra --growth-cycle-limit 10 --output-dir data/output/forest
+Quick Start (copy-paste ready with all defaults shown):
+    # Full forest generation with all flags (recommended for production)
+    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 10 --smooth-iterations 10 --height-scale 1.0 --output-dir data/output/forest --unreal-project-path /Game/GrowPy/Trees
 
-    # Generate forest with all common options (defaults shown)
-    python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 10 --output-dir data/output/forest --unreal-project-path /Game/GrowPy/Trees
+    # Generate with Unreal import script for one-click import
+    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 10 --smooth-iterations 10 --height-scale 1.0 --output-dir data/output/forest --import-to-unreal --unreal-project-path /Game/GrowPy/Trees
 
-    # Generate forest with Unreal import script
-    python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 10 --smooth-iterations 15 --import-to-unreal
+    # Include Grove metadata for debugging/analysis (age, mass, vigor - increases size ~70%)
+    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 10 --smooth-iterations 10 --height-scale 1.0 --output-dir data/output/forest --include-grove-attributes
 
-    # Include Grove metadata attributes for analysis (age, mass, vigor, etc. - increases size ~70%)
-    python src/growpy/cli/generate_forest.py my_forest.csv --quality ultra --growth-cycle-limit 5 --include-grove-attributes
+    # Fast preview (lower quality, fewer cycles)
+    python src/growpy/cli/generate_forest.py data/input/test.csv --quality medium --growth-cycle-limit 5 --smooth-iterations 5 --height-scale 1.0 --output-dir data/output/forest
 
 Common Flags:
+    [csv_file]                                     Input CSV with tree positions (default: data/input/test.csv)
     --quality {ultra,high,medium,low,performance}  Quality preset (default: ultra)
-    --growth-cycle-limit INT                       Max growth cycles (default: 10)
+    --growth-cycle-limit INT                       Maximum growth cycles per tree (default: 10)
     --smooth-iterations INT                        Branch smoothing iterations (default: 10, range: 0-20)
-    --height-scale FLOAT                           Tree height scale (default: 1.0)
-    --output-dir PATH                              Output directory
-    --import-to-unreal                             Generate Unreal import script
-    --unreal-project-path PATH                     Unreal destination (default: /Game/GrowPy/Trees)
-    --include-grove-attributes                     Include Grove metadata (age, mass, vigor) in USD - increases size ~70%
+    --height-scale FLOAT                           Tree height multiplier (default: 1.0)
+    --output-dir PATH                              Output directory (default: data/output/forest)
+    --import-to-unreal                             Generate Unreal Python import script
+    --unreal-project-path PATH                     Unreal content path (default: /Game/GrowPy/Trees)
+    --include-grove-attributes                     Include Grove metadata in USD (increases size ~70%)
 
 Note: PVE preset JSON files are always generated automatically for each tree
 
@@ -44,11 +46,22 @@ Assembly Types (both created by default):
               - Better visual quality for static placement
               - Reference: species_tree_####_static_nanite_assembly.usda
 
+Output:
+    data/output/forest/{species}/                         Per-species directories
+    data/output/forest/{species}/*_skeletal_nanite_assembly.usda  Skeletal assemblies
+    data/output/forest/{species}/*_static_nanite_assembly.usda    Static assemblies
+    data/output/forest/{species}/*_pve_preset.json        PVE configuration files
+    data/output/forest/unreal_import_trees.py             Unreal import script (if --import-to-unreal)
+
+Note:
+    Run prepare_assets.py and convert_twigs.py first to prepare species assets.
+    This is Step 4 (final step) of the pipeline.
+
 Full Documentation:
     See docs/archive/cli-reference.md for complete flag reference and examples
 
 Usage:
-    python src/growpy/cli/generate_forest.py [csv_file] --quality high --output-dir data/output/forest --growth-cycle-limit 5 --import-to-unreal --generate-pve-json
+    python src/growpy/cli/generate_forest.py [csv_file] [options]
 """
 
 import bpy
