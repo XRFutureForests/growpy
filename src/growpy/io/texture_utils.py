@@ -487,10 +487,15 @@ def ensure_alpha_texture(twig_dir: Path) -> Optional[Path]:
         if tex_file.is_file() and tex_file.suffix.lower() in [".png", ".jpg", ".jpeg"]:
             name_lower = tex_file.stem.lower()
             # Exclude alpha, normal, and bump maps
-            if any(k in name_lower for k in ["alpha", "opacity", "mask", "normal", "nrm", "bump"]):
+            if any(
+                k in name_lower
+                for k in ["alpha", "opacity", "mask", "normal", "nrm", "bump"]
+            ):
                 continue
             # Match explicit diffuse keywords OR top/bottom variants (Grove pattern)
-            if any(k in name_lower for k in diffuse_keywords) or any(k in name_lower for k in ["top", "bottom"]):
+            if any(k in name_lower for k in diffuse_keywords) or any(
+                k in name_lower for k in ["top", "bottom"]
+            ):
                 all_diffuse_files.append(tex_file)
 
     # Check if standardized alpha texture already exists
@@ -551,3 +556,93 @@ def ensure_alpha_texture(twig_dir: Path) -> Optional[Path]:
         strip_alpha_from_diffuse(diffuse_file)
 
     return alpha_result
+
+
+def ensure_normal_from_bump(twig_dir: Path) -> Optional[Path]:
+    """Convert bump maps to normal maps for a twig directory.
+
+    Searches for bump/height map textures and converts them to normal maps.
+    The original bump map is preserved, and a new normal map is created.
+
+    Args:
+        twig_dir: Path to twig directory containing textures
+
+    Returns:
+        Path to generated normal map, or None if no bump map found
+    """
+    textures_dir = twig_dir / "textures"
+    if not textures_dir.exists():
+        textures_dir = twig_dir
+
+    # Find bump maps
+    bump_keywords = ["bump", "height", "displacement"]
+    bump_file = None
+
+    for tex_file in textures_dir.iterdir():
+        if tex_file.is_file() and tex_file.suffix.lower() in [".png", ".jpg", ".jpeg"]:
+            name_lower = tex_file.stem.lower()
+            if any(k in name_lower for k in bump_keywords):
+                bump_file = tex_file
+                break
+
+    if not bump_file:
+        return None
+
+    # Check if normal map already exists (don't regenerate)
+    # Look for existing normal maps
+    for tex_file in textures_dir.iterdir():
+        if tex_file.is_file() and tex_file.suffix.lower() in [".png", ".jpg", ".jpeg"]:
+            name_lower = tex_file.stem.lower()
+            if any(k in name_lower for k in ["normal", "normals", "nrm"]):
+                return tex_file  # Normal already exists
+
+    # Generate standardized normal map name
+    twig_name = twig_dir.name.lower()
+    if not twig_name.endswith("_twig"):
+        twig_name = f"{twig_name}_twig"
+    normal_path = textures_dir / f"{twig_name}_normal.png"
+
+    # Convert bump to normal
+    return bump_to_normal(bump_file, normal_path)
+
+
+def process_twig_textures(twig_dir: Path) -> dict:
+    """Process all textures for a twig directory during asset preparation.
+
+    This is the main entry point for texture processing during prepare_assets.
+    It handles:
+        1. Bump-to-normal map conversion
+        2. Alpha extraction from diffuse textures (if no dedicated alpha)
+        3. Alpha channel stripping from diffuse textures (RGBA -> RGB)
+
+    After processing, all twigs will have consistent texture sets:
+        - Diffuse (RGB only, no embedded alpha)
+        - Alpha (dedicated grayscale texture, if available)
+        - Normal (from existing normal map or converted from bump)
+
+    Args:
+        twig_dir: Path to twig directory containing textures
+
+    Returns:
+        Dict with processing results:
+            - 'alpha_path': Path to alpha texture (or None)
+            - 'normal_path': Path to normal texture (or None)
+            - 'diffuse_stripped': Number of diffuse files with alpha stripped
+    """
+    results = {
+        "alpha_path": None,
+        "normal_path": None,
+        "diffuse_stripped": 0,
+    }
+
+    # Step 1: Convert bump maps to normal maps
+    normal_path = ensure_normal_from_bump(twig_dir)
+    if normal_path:
+        results["normal_path"] = normal_path
+
+    # Step 2: Ensure alpha texture exists (also strips alpha from diffuse)
+    alpha_path = ensure_alpha_texture(twig_dir)
+    if alpha_path:
+        results["alpha_path"] = alpha_path
+
+    return results
