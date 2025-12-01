@@ -152,28 +152,34 @@ TWIG_NAME_MAPPINGS = {
     "lateral": ["lateral", "side", "short", "laterall"],  # note: typo in some files
     # Upward-facing twigs (twig_upward attribute)
     "upward": ["upward", "up"],
-    # Dead/Fall/Winter twigs (twig_dead attribute)
-    "dead": ["dead", "fall", "winter", "bare"],
-    # Summer/Spring variants
+    # Dead/Winter twigs (twig_dead attribute)
+    "dead": ["dead", "winter", "bare"],
+    # Season variants
     "summer": ["summer", "spring", "green"],
+    "fall": ["fall", "autumn"],
 }
 
 # Texture type classifications with extended keywords
+# Supports both CamelCase and underscore_separated patterns
 TEXTURE_CLASSIFICATIONS = {
     "diffuse": ["diffuse", "albedo", "color", "basecolor", "base", "diff", "col"],
     "alpha": ["alpha", "opacity", "mask", "transparent", "cutout"],
-    "normal": ["normal", "norm", "nrm", "bump", "height"],
+    "normal": ["normal", "normals", "norm", "nrm"],  # Separate from bump
+    "bump": ["bump", "height", "displacement"],  # Bump maps (grayscale height)
     "translucent": ["translucent", "translucency", "transmission", "sss", "subsurface"],
     "roughness": ["roughness", "rough", "gloss", "glossiness"],
     "metallic": ["metallic", "metal", "metalness"],
     "ao": ["ao", "ambient", "occlusion", "ambientocclusion"],
     "emissive": ["emissive", "emission", "glow"],
+    "bark": ["bark", "twigbark", "branch", "wood"],
 }
 
-# Special texture patterns (top/bottom for leaves)
+# Special texture patterns (top/bottom for leaves, seasons)
 TEXTURE_MODIFIERS = {
     "top": ["top", "upper", "face"],
     "bottom": ["bottom", "lower", "back", "underside"],
+    "summer": ["summer", "spring"],
+    "fall": ["fall", "autumn"],
 }
 
 
@@ -258,32 +264,95 @@ def classify_texture_type(texture_path: Path, material_name: str = "") -> str:
     """
     Classify texture type from filename with context awareness.
 
-    Handles:
-    - Standard PBR naming (diffuse, normal, etc.)
-    - Top/bottom variants for leaves
-    - Compound names with duplicates
+    Supports Grove 2.2 texture naming patterns:
+    - CamelCase: BeechAlpha.jpg, AspenTop.png, OakEuropeanTopBump.png
+    - Underscore: SalixCaprea_alpha.png, OneLeavedAsh_diffuse.png
+    - Top/Bottom variants (are diffuse textures): AspenTop.png, AspenBottom.png
+    - Seasonal variants: PaperBirchSummerTop.png, BeechFallBottom.png
+    - Bump vs Normal: Both patterns supported (TopBump, _normal, _normals)
+    - Latin names: EucalyptusGlobulus.png, AcerPalmatumAtropurpureum_diffuse.jpg
+
+    Returns texture type with modifiers for diffuse:
+        - "diffuse" (plain diffuse or single texture)
+        - "diffuse_top", "diffuse_bottom" (position variants)
+        - "diffuse_summer_top", "diffuse_fall_bottom" (seasonal + position)
+        - "alpha", "normal", "bump", "translucent", "bark" (other types)
     """
     name_lower = texture_path.stem.lower()
 
-    # Check for modifiers first (top/bottom)
-    modifier = None
-    for mod_type, keywords in TEXTURE_MODIFIERS.items():
-        if any(kw in name_lower for kw in keywords):
-            modifier = mod_type
-            break
+    # PRIORITY 1: Check for explicit texture type keywords FIRST
+    # These take precedence over position/season modifiers
+    # Order matters: check more specific patterns before generic ones
 
-    # Classify base type
-    base_type = "diffuse"  # Default
-    for tex_type, keywords in TEXTURE_CLASSIFICATIONS.items():
-        if any(kw in name_lower for kw in keywords):
-            base_type = tex_type
-            break
+    # Alpha/Opacity/Mask textures
+    if any(kw in name_lower for kw in ["alpha", "opacity", "mask", "cutout"]):
+        return "alpha"
 
-    # Combine with modifier if present
-    if modifier and base_type == "diffuse":
-        return f"diffuse_{modifier}"
+    # Normal maps (check before bump since some files have both words)
+    if any(kw in name_lower for kw in ["normal", "normals", "norm", "nrm"]):
+        return "normal"
 
-    return base_type
+    # Bump/Height maps (separate from normal for conversion)
+    if any(kw in name_lower for kw in ["bump", "height", "displacement"]):
+        return "bump"
+
+    # Translucent/SSS textures
+    if any(
+        kw in name_lower
+        for kw in ["translucent", "translucency", "transmission", "subsurface", "sss"]
+    ):
+        return "translucent"
+
+    # Bark/Branch textures
+    if any(kw in name_lower for kw in ["bark", "twigbark", "branch", "wood"]):
+        return "bark"
+
+    # Roughness/Gloss
+    if any(kw in name_lower for kw in ["roughness", "rough", "gloss", "glossiness"]):
+        return "roughness"
+
+    # Metallic
+    if any(kw in name_lower for kw in ["metallic", "metal", "metalness"]):
+        return "metallic"
+
+    # AO
+    if any(kw in name_lower for kw in ["_ao", "ambient", "occlusion"]):
+        return "ao"
+
+    # PRIORITY 2: Diffuse textures with modifiers
+    # If no explicit type keyword found, classify as diffuse with modifiers
+    modifiers = []
+
+    # Check for season modifiers (summer, fall/autumn)
+    if any(kw in name_lower for kw in ["summer", "spring"]):
+        modifiers.append("summer")
+    elif any(kw in name_lower for kw in ["fall", "autumn"]):
+        modifiers.append("fall")
+
+    # Check for position modifiers (top, bottom)
+    # Note: Top/Bottom without other keywords ARE diffuse textures in Grove
+    has_top = "top" in name_lower or "upper" in name_lower
+    has_bottom = "bottom" in name_lower or "lower" in name_lower
+
+    if has_top and not has_bottom:
+        modifiers.append("top")
+    elif has_bottom and not has_top:
+        modifiers.append("bottom")
+
+    # Check for explicit "diffuse" keyword
+    has_diffuse_keyword = any(
+        kw in name_lower for kw in ["diffuse", "albedo", "color", "basecolor"]
+    )
+
+    # Return diffuse with modifiers if any, or plain diffuse
+    if modifiers:
+        return "diffuse_" + "_".join(modifiers)
+    elif has_diffuse_keyword:
+        return "diffuse"
+    else:
+        # Default: single texture files (e.g., ScotsPine.png, Bottlebrush.png)
+        # These are typically diffuse with embedded alpha
+        return "diffuse"
 
 
 def find_textures_for_material(
