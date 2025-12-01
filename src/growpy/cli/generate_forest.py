@@ -13,7 +13,7 @@ Quick Start:
     python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 10 --output-dir data/output/forest --unreal-project-path /Game/GrowPy/Trees
 
     # Generate forest with Unreal import script
-    python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 3 --smooth-iterations 15 --import-to-unreal
+    python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 10 --smooth-iterations 15 --import-to-unreal
 
     # Include Grove metadata attributes for analysis (age, mass, vigor, etc. - increases size ~70%)
     python src/growpy/cli/generate_forest.py my_forest.csv --quality ultra --growth-cycle-limit 5 --include-grove-attributes
