@@ -13,6 +13,7 @@ Key Features:
     - Coordinate system: Z-up (Blender right-handed to Unreal left-handed)
     - Standardized naming convention for twig types
     - Original .blend files preserved for regeneration
+    - Consistent mesh density across species via mm-based edge length targets
 
 Export Variants (both created by default):
     Skeletal (_skeletal.usda):
@@ -32,30 +33,42 @@ Supports two CSV formats:
   2. Asset lookup CSV (Common Name, Preset, Twig, Bark Texture) - direct asset reference
 
 Quick Start:
-    # Basic twig conversion with defaults shown
-    python src/growpy/cli/convert_twigs.py data/assets/twigs --csv data/input/test.csv --subdiv 4 --alpha-trim 0.5 --decimate-ratio 0.5 --boundary-rings 1 --smooth-iterations 3 --smooth-factor 0.5
-    
-    # High quality conversion (all flags with recommended values)
-    python src/growpy/cli/convert_twigs.py data/assets/twigs --subdiv 35 --alpha-trim 0.1 --interior-decimate --decimate-ratio 0.75 --boundary-rings 1 --smooth-boundary --smooth-iterations 20 --smooth-factor 0.25
-    
-    # Maximum quality (extreme detail, slow)
-    python src/growpy/cli/convert_twigs.py data/assets/twigs --subdiv 30 --alpha-trim 0.5 --interior-decimate --decimate-ratio 0.01 --boundary-rings 2 --smooth-boundary --smooth-iterations 5 --smooth-factor 0.6
+    # Consistent mesh density across all species (RECOMMENDED)
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --csv data/input/test.csv --target-edge-mm 0.5 --alpha-trim 0.5 --interior-decimate --decimate-ratio 0.01 --boundary-rings 2 --smooth-boundary --smooth-iterations 5 --smooth-factor 0.6
+
+    # Legacy mode with fixed subdivision levels (results vary by initial mesh density)
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --csv data/input/test.csv --subdiv 30 --alpha-trim 0.5 --interior-decimate --decimate-ratio 0.01 --boundary-rings 2 --smooth-boundary --smooth-iterations 5 --smooth-factor 0.6
 
 Common Flags:
     Processing Pipeline (in order):
-        1. --subdiv         → Subdivide mesh (higher = more triangles, smoother curves)
-        2. --interior-decimate → Reduce interior density (enabled by flag)
-        3. --alpha-trim     → Remove transparent areas (creates jagged edges)
-        4. --smooth-boundary → Smooth those jagged edges (enabled by flag)
+        1. --target-edge-mm OR --subdiv  -> Subdivide mesh to target density
+        2. --alpha-trim                  -> Remove transparent areas (creates jagged edges)
+        3. --interior-decimate           -> Reduce interior density (enabled by flag)
+        4. --smooth-boundary             -> Smooth those jagged edges (enabled by flag)
 
-    Core Flags:
-    --csv PATH              Species CSV filter (default: data/input/test.csv)
-    --no-densify            Disable mesh densification (subdivision)
+    NEW: mm-Based Consistent Density (preferred):
+    --target-edge-mm FLOAT  Target boundary edge length in millimeters (e.g., 0.5)
+                            Adaptively subdivides until edges reach this length.
+                            Provides consistent boundary density across all species.
+                            Overrides --subdiv when set.
     
+    --interior-edge-mm FLOAT Target interior edge length in millimeters (e.g., 2.0)
+                            Iteratively decimates until interior reaches this length.
+                            Should be larger than --target-edge-mm.
+                            Overrides --decimate-ratio when set.
+
+    Legacy Fixed-Count Mode:
     --subdiv INT            Subdivision levels (default: 4)
                             Higher = more triangles = smoother but slower
-                            Typical: 4-10 for production, 20-30 for extreme detail
-                            Affects: Overall mesh resolution before decimation
+                            Note: Results vary by twig size - prefer --target-edge-mm
+    
+    --decimate-ratio FLOAT  Interior collapse ratio (default: 0.5)
+                            Lower = more aggressive reduction (fewer triangles)
+                            Note: Results vary by mesh - prefer --interior-edge-mm
+
+    Common Flags:
+    --csv PATH              Species CSV filter (default: data/input/test.csv)
+    --no-densify            Disable mesh densification (subdivision)
     
     --alpha-trim FLOAT      Alpha threshold for edge trimming (default: 0.5)
                             Lower = more aggressive trimming (less leaf area)
@@ -64,13 +77,6 @@ Common Flags:
     
     --interior-decimate     Enable interior decimation (off by default)
                             Reduces triangle count inside leaves while protecting edges
-                            Use with: High subdivision + low decimate-ratio
-    
-    --decimate-ratio FLOAT  Interior collapse ratio (default: 0.5)
-                            Lower = more aggressive reduction (fewer triangles)
-                            Higher = gentler reduction (more triangles)
-                            Range: 0.0 (extreme) to 1.0 (minimal)
-                            Example: 0.01 keeps ~1% of interior triangles
     
     --boundary-rings INT    Edge protection width (default: 1)
                             Widens the protected edge region during decimation
@@ -79,34 +85,27 @@ Common Flags:
     
     --smooth-boundary       Enable boundary smoothing (off by default)
                             Smooths jagged edges created by alpha trimming
-                            Use after: High subdivision + alpha-trim
                             Effect: Natural curves instead of regular grid edges
     
     --smooth-iterations INT Smoothing passes (default: 3)
                             How many times to smooth (accumulative effect)
-                            Lower = subtle smoothing (2-5)
-                            Higher = aggressive smoothing (5-10)
-                            Use: Increase for very jagged edges
     
     --smooth-factor FLOAT   Smoothing strength per pass (default: 0.5)
                             How much to blend with neighbors each iteration
-                            Lower = subtle per-pass (0.1-0.3)
-                            Higher = strong per-pass (0.5-0.8)
-                            Use: Increase for faster convergence
 
-    Common Workflows:
-        # High detail with optimized interior
-        --subdiv 30 --interior-decimate --decimate-ratio 0.01 --boundary-rings 1
+    Recommended Workflows:
+        # Consistent density across all species (BEST)
+        --target-edge-mm 0.5 --alpha-trim 0.5 --interior-decimate --decimate-ratio 0.01 --boundary-rings 2
         
-        # High detail with smooth natural edges
-        --subdiv 30 --interior-decimate --decimate-ratio 0.01 --smooth-boundary
+        # High quality with smooth edges (RECOMMENDED)
+        --target-edge-mm 0.5 --alpha-trim 0.5 --interior-decimate --decimate-ratio 0.01 \\
+            --boundary-rings 2 --smooth-boundary --smooth-iterations 5 --smooth-factor 0.6
+
+        # Legacy: Fixed subdivision (results vary by initial mesh density)
+        --subdiv 30 --interior-decimate --decimate-ratio 0.01 --boundary-rings 2
         
         # Balanced quality and performance
-        --subdiv 10 --interior-decimate --decimate-ratio 0.3 --smooth-boundary
-        
-        # Maximum quality (slow)
-        --subdiv 30 --interior-decimate --decimate-ratio 0.01 --smooth-boundary \
-        --smooth-iterations 5 --smooth-factor 0.6 --boundary-rings 2
+        --target-edge-mm 1.0 --interior-decimate --decimate-ratio 0.1 --smooth-boundary
 
 Output per twig:
     - {species}_twig_{type}_skeletal.usda  # Skeletal mesh with skeleton
@@ -387,6 +386,8 @@ def process_twig_directory(
     smooth_boundary: bool = False,
     smooth_iterations: int = 3,
     smooth_factor: float = 0.5,
+    target_edge_mm: float = None,
+    interior_edge_mm: float = None,
 ) -> Dict[str, List[Path]]:
     """Process all twig blend files in a directory.
 
@@ -460,6 +461,8 @@ def process_twig_directory(
                 smooth_boundary=smooth_boundary,
                 smooth_iterations=smooth_iterations,
                 smooth_factor=smooth_factor,
+                target_edge_mm=target_edge_mm,
+                interior_edge_mm=interior_edge_mm,
             )
 
             # Collect results
@@ -570,6 +573,23 @@ Output per twig:
         default=0.5,
         help="Smoothing strength per iteration (0.0-1.0, default: 0.5)",
     )
+    # Target edge length parameters for consistent mesh density across species
+    parser.add_argument(
+        "--target-edge-mm",
+        type=float,
+        default=None,
+        help="Target boundary edge length in millimeters (e.g., 0.5). "
+        "When set, adaptively subdivides until edges reach this length. "
+        "Provides consistent boundary density across different twig sizes.",
+    )
+    parser.add_argument(
+        "--interior-edge-mm",
+        type=float,
+        default=None,
+        help="Target interior edge length in millimeters (e.g., 2.0). "
+        "When set with --interior-decimate, iteratively decimates until "
+        "interior edges reach this length. Should be larger than --target-edge-mm.",
+    )
     args = parser.parse_args()
 
     if not args.path.exists():
@@ -665,6 +685,8 @@ Output per twig:
             smooth_boundary=args.smooth_boundary,
             smooth_iterations=max(1, int(args.smooth_iterations)),
             smooth_factor=min(max(0.0, float(args.smooth_factor)), 1.0),
+            target_edge_mm=args.target_edge_mm,
+            interior_edge_mm=args.interior_edge_mm,
         )
     elif args.path.is_dir():
         # Directory
@@ -683,6 +705,8 @@ Output per twig:
             smooth_boundary=args.smooth_boundary,
             smooth_iterations=max(1, int(args.smooth_iterations)),
             smooth_factor=min(max(0.0, float(args.smooth_factor)), 1.0),
+            target_edge_mm=args.target_edge_mm,
+            interior_edge_mm=args.interior_edge_mm,
         )
     else:
         return 1
