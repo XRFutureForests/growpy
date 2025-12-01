@@ -11,13 +11,26 @@ Supports two CSV formats:
   1. Forest placement CSV (x, y, species, height) - auto-extracts unique species
   2. Asset lookup CSV (Common Name, Preset, Twig, Bark Texture) - direct asset reference
 
-Quick Start:
-    python src/growpy/cli/prepare_assets.py
+Quick Start (copy-paste ready with all defaults shown):
+    # Prepare assets for species in CSV (recommended)
+    python src/growpy/cli/prepare_assets.py --csv data/input/test.csv --grove-dir src/the_grove_22
+
+    # Prepare ALL 57 Grove species (ignores CSV filter)
+    python src/growpy/cli/prepare_assets.py --all --grove-dir src/the_grove_22
 
 Common Flags:
-    --grove-dir PATH    Source directory (default: src/the_grove_22)
-    --csv PATH          Species CSV (default: data/input/test.csv)
+    --grove-dir PATH    Source Grove 2.2 installation directory (default: src/the_grove_22)
+    --csv PATH          Species CSV filter (default: data/input/test.csv)
     --all               Copy ALL 57 Grove assets (ignores --csv)
+
+Output:
+    data/assets/presets/     Species .seed.json preset files
+    data/assets/twigs/       Twig .blend files (snake_case directories)
+    data/assets/textures/    Bark texture files
+    data/assets/pve_configs/ PVE placeholder configs
+
+Note:
+    This is Step 1 of the pipeline. Run this before convert_twigs.py or generate_forest.py.
 
 Full Documentation:
     See docs/archive/cli-reference.md for complete flag reference and examples
