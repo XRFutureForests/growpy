@@ -1166,6 +1166,123 @@ def densify_mesh(obj, subdivision_levels=3, material_indices=None):
         pass
 
 
+def _measure_average_edge_length(mesh, material_indices=None):
+    """Measure average edge length for faces matching material indices.
+
+    Args:
+        mesh: Blender mesh data
+        material_indices: Optional set of material indices to filter by
+
+    Returns:
+        Average edge length in Blender units, or 0.0 if no edges found.
+    """
+    edge_set = set()
+    for poly in mesh.polygons:
+        if material_indices and poly.material_index not in material_indices:
+            continue
+        for edge_key in poly.edge_keys:
+            edge_set.add(edge_key)
+
+    if not edge_set:
+        return 0.0
+
+    total_length = 0.0
+    for v0_idx, v1_idx in edge_set:
+        v0 = mesh.vertices[v0_idx].co
+        v1 = mesh.vertices[v1_idx].co
+        total_length += (v0 - v1).length
+
+    return total_length / len(edge_set)
+
+
+def densify_mesh_to_target_edge(
+    obj, target_edge_mm, material_indices=None, max_iterations=8
+):
+    """Densify mesh by iteratively subdividing until target edge length is reached.
+
+    This ensures consistent mesh density across different twig sizes by targeting
+    an absolute edge length rather than a fixed subdivision count.
+
+    Args:
+        obj: Blender mesh object
+        target_edge_mm: Target edge length in millimeters (e.g., 0.5 for 0.5mm edges)
+        material_indices: Optional set of material indices to restrict densification
+        max_iterations: Maximum subdivision iterations to prevent runaway (default: 8)
+
+    Returns:
+        Final average edge length in mm
+    """
+    if target_edge_mm is None or target_edge_mm <= 0:
+        return 0.0
+
+    # Convert mm to Blender units (1 Blender unit = 1m = 1000mm for typical twig scale)
+    target_edge_bu = target_edge_mm / 1000.0
+
+    try:
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode="OBJECT")
+
+        # Measure initial edge length
+        initial_edge = _measure_average_edge_length(obj.data, material_indices)
+        initial_edge_mm = initial_edge * 1000.0
+
+        for iteration in range(max_iterations):
+            # Measure current edge length
+            current_edge = _measure_average_edge_length(obj.data, material_indices)
+            if current_edge <= 0:
+                break
+
+            # Check if we've reached target (within 20% tolerance)
+            if current_edge <= target_edge_bu * 1.2:
+                break
+
+            # Calculate how many cuts needed to approximately halve edge length
+            # Each cut=1 roughly halves edge length
+            ratio = current_edge / target_edge_bu
+            if ratio <= 1.5:
+                cuts = 1
+            elif ratio <= 3:
+                cuts = 2
+            else:
+                cuts = 3  # Don't go too aggressive per iteration
+
+            # Subdivide
+            bm = bmesh.new()
+            bm.from_mesh(obj.data)
+
+            edges = list(bm.edges)
+            if material_indices:
+                face_edges = set()
+                for f in bm.faces:
+                    if f.material_index in material_indices:
+                        for e in f.edges:
+                            face_edges.add(e)
+                edges = list(face_edges)
+
+            if edges:
+                bmesh.ops.subdivide_edges(
+                    bm, edges=edges, cuts=cuts, use_grid_fill=True
+                )
+
+            bm.to_mesh(obj.data)
+            bm.free()
+            obj.data.update()
+
+        # Return final edge length in mm
+        final_edge = _measure_average_edge_length(obj.data, material_indices)
+        final_edge_mm = final_edge * 1000.0
+
+        print(
+            f"  [DEBUG] Adaptive densify: {initial_edge_mm:.2f}mm -> {final_edge_mm:.2f}mm "
+            f"(target: {target_edge_mm:.2f}mm, {iteration + 1} iterations)"
+        )
+
+        return final_edge_mm
+
+    except Exception:
+        return 0.0
+
+
 def apply_normal_displacement(
     obj, normal_texture_path, strength=0.005, material_indices=None
 ):
@@ -1674,82 +1791,151 @@ def _apply_interior_decimate(
     threshold: float,
     ratio: float = 0.5,
     boundary_rings: int = 1,
+    use_mesh_boundary: bool = True,
 ):
     """Apply edge-protected interior decimation on leaf regions.
 
-    - Builds a preserve vertex group that includes:
-      - A band of vertices around the alpha silhouette (edge band)
-      - All non-leaf vertices (twig/bark) to avoid decimating wood
-    - Applies Decimate (Collapse) with invert_vertex_group=True so only
-      non-preserved (leaf interior) vertices are reduced.
+    After alpha trimming, the mesh boundary IS the leaf silhouette. This function
+    protects the actual mesh perimeter (edges with 1 adjacent face) rather than
+    relying on alpha-threshold crossings which can be noisy with gradient textures.
+
+    Args:
+        obj: Blender mesh object (should be called AFTER alpha trimming)
+        leaf_material_indices: Set of material indices for leaf geometry
+        alpha_img: Alpha texture (used only if use_mesh_boundary=False)
+        threshold: Alpha threshold (used only if use_mesh_boundary=False)
+        ratio: Decimation ratio (0.0-1.0, lower = more reduction)
+        boundary_rings: Number of vertex rings to protect around boundary
+        use_mesh_boundary: If True, use actual mesh boundary detection (recommended
+            after alpha trimming). If False, use alpha-threshold crossing detection.
     """
     if ratio <= 0.0 or ratio >= 1.0:
         return
 
     mesh = obj.data
-    if not mesh or not mesh.uv_layers.active:
+    if not mesh:
         return
 
-    # Per-vertex alpha
-    v_alpha = _build_vertex_alpha_map(mesh, alpha_img)
-    if not v_alpha:
+    import bmesh
+
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    bm.verts.ensure_lookup_table()
+
+    # Collect leaf faces and all leaf vertices
+    leaf_faces = set()
+    leaf_verts = set()
+    for face in bm.faces:
+        if face.material_index in leaf_material_indices:
+            leaf_faces.add(face)
+            for vert in face.verts:
+                leaf_verts.add(vert)
+
+    if not leaf_faces:
+        bm.free()
         return
 
-    # Build adjacency from edges
-    adjacency = {}
-    for e in mesh.edges:
-        v0, v1 = e.vertices[0], e.vertices[1]
-        adjacency.setdefault(v0, set()).add(v1)
-        adjacency.setdefault(v1, set()).add(v0)
+    # Find boundary vertices
+    boundary_verts = set()
 
-    # Collect leaf vertices and initial edge vertices (crossing threshold)
-    leaf_vertices = set()
-    edge_vertices = set()
-    for poly in mesh.polygons:
-        is_leaf = poly.material_index in leaf_material_indices
-        for li in poly.loop_indices:
-            vi = mesh.loops[li].vertex_index
-            if is_leaf:
-                leaf_vertices.add(vi)
-        if is_leaf:
-            # Inspect edges via loops
-            loop_indices = list(poly.loop_indices)
-            for i in range(len(loop_indices)):
-                li0 = loop_indices[i]
-                li1 = loop_indices[(i + 1) % len(loop_indices)]
-                v0 = mesh.loops[li0].vertex_index
-                v1 = mesh.loops[li1].vertex_index
-                a0 = v_alpha.get(v0)
-                a1 = v_alpha.get(v1)
+    if use_mesh_boundary:
+        # Use actual mesh boundary: edges with exactly 1 adjacent leaf face
+        # This is the TRUE leaf edge after alpha trimming
+        for edge in bm.edges:
+            adjacent_leaf_faces = sum(1 for f in edge.link_faces if f in leaf_faces)
+            if adjacent_leaf_faces == 1:
+                for vert in edge.verts:
+                    boundary_verts.add(vert)
+
+        # Diagnostic: check if we found reasonable boundary
+        boundary_ratio = len(boundary_verts) / len(leaf_verts) if leaf_verts else 0
+        if boundary_ratio < 0.005:
+            # Less than 0.5% boundary vertices - mesh boundary detection likely failed
+            # Fall back to alpha-threshold crossing
+            print(
+                f"  [DEBUG] Mesh boundary found only {len(boundary_verts)} verts "
+                f"({boundary_ratio:.1%}) - falling back to alpha detection"
+            )
+            boundary_verts.clear()
+            use_mesh_boundary = False
+
+    if not use_mesh_boundary:
+        # Fallback: use alpha-threshold crossing (legacy behavior)
+        if not mesh.uv_layers.active:
+            bm.free()
+            return
+        v_alpha = _build_vertex_alpha_map(mesh, alpha_img)
+        if not v_alpha:
+            bm.free()
+            return
+
+        for face in leaf_faces:
+            for i, vert in enumerate(face.verts):
+                next_vert = face.verts[(i + 1) % len(face.verts)]
+                a0 = v_alpha.get(vert.index)
+                a1 = v_alpha.get(next_vert.index)
                 if a0 is None or a1 is None:
                     continue
                 if (a0 - threshold) * (a1 - threshold) < 0.0:
-                    edge_vertices.add(v0)
-                    edge_vertices.add(v1)
+                    boundary_verts.add(vert)
+                    boundary_verts.add(next_vert)
 
-    if not leaf_vertices:
+    # Log boundary detection results
+    if boundary_verts:
+        print(
+            f"  [DEBUG] Boundary detection: {len(boundary_verts)} verts protected "
+            f"({len(boundary_verts)/len(leaf_verts)*100:.1f}% of leaf verts)"
+        )
+
+    if not boundary_verts:
+        bm.free()
         return
 
-    # Expand edge band by boundary_rings using adjacency
-    current = set(edge_vertices)
+    # Calculate average boundary edge length for diagnostics
+    boundary_edge_lengths = []
+    for v in boundary_verts:
+        for edge in v.link_edges:
+            if edge.verts[0] in boundary_verts and edge.verts[1] in boundary_verts:
+                boundary_edge_lengths.append(edge.calc_length())
+    avg_edge_len = (
+        sum(boundary_edge_lengths) / len(boundary_edge_lengths)
+        if boundary_edge_lengths
+        else 0.001
+    )
+
+    # Expand boundary by boundary_rings
+    initial_boundary_count = len(boundary_verts)
+    current = set(boundary_verts)
     for _ in range(max(0, int(boundary_rings))):
         grow = set()
         for v in current:
-            for nb in adjacency.get(v, ()):  # neighbors
-                if nb in leaf_vertices and nb not in edge_vertices:
-                    grow.add(nb)
+            for edge in v.link_edges:
+                for nb in edge.verts:
+                    if nb in leaf_verts and nb not in boundary_verts:
+                        grow.add(nb)
         if not grow:
             break
-        edge_vertices.update(grow)
+        boundary_verts.update(grow)
         current = grow
 
-    # Preserve set = edge band (leaf) + all non-leaf vertices
-    preserve = set(edge_vertices)
-    if len(leaf_material_indices) > 0:
-        for poly in mesh.polygons:
-            if poly.material_index not in leaf_material_indices:
-                for li in poly.loop_indices:
-                    preserve.add(mesh.loops[li].vertex_index)
+    # Log expansion results
+    protection_width_mm = avg_edge_len * boundary_rings * 1000
+    print(
+        f"  [DEBUG] Boundary expanded: {initial_boundary_count} -> {len(boundary_verts)} verts "
+        f"({len(boundary_verts)/len(leaf_verts)*100:.1f}%), "
+        f"edge ~{avg_edge_len*1000:.2f}mm, width ~{protection_width_mm:.1f}mm"
+    )
+
+    # Convert to vertex indices for vertex group
+    preserve_indices = {v.index for v in boundary_verts}
+
+    # Also preserve all non-leaf vertices (twig/bark geometry)
+    all_verts = set(range(len(bm.verts)))
+    leaf_vert_indices = {v.index for v in leaf_verts}
+    non_leaf_indices = all_verts - leaf_vert_indices
+    preserve_indices.update(non_leaf_indices)
+
+    bm.free()
 
     # Create/replace vertex group
     vg_name = "edge_protect"
@@ -1761,12 +1947,12 @@ def _apply_interior_decimate(
             pass
     vg = obj.vertex_groups.new(name=vg_name)
 
-    if preserve:
+    if preserve_indices:
         try:
-            vg.add(list(preserve), 1.0, "REPLACE")
+            vg.add(list(preserve_indices), 1.0, "REPLACE")
         except Exception:
             # Fallback: add in chunks to avoid limits
-            inds = list(preserve)
+            inds = list(preserve_indices)
             step = 32766
             for i in range(0, len(inds), step):
                 vg.add(inds[i : i + step], 1.0, "REPLACE")
@@ -1792,6 +1978,242 @@ def _apply_interior_decimate(
     except Exception:
         # If apply fails (rare), leave modifier on the stack
         pass
+
+
+def _measure_interior_edge_length(mesh, leaf_material_indices, edge_vertices):
+    """Measure average edge length for interior leaf edges (excluding boundary).
+
+    Args:
+        mesh: Blender mesh data
+        leaf_material_indices: Set of material indices for leaf geometry
+        edge_vertices: Set of vertex indices to exclude (boundary vertices)
+
+    Returns:
+        Average interior edge length in Blender units, or 0.0 if no edges found.
+    """
+    interior_edges = set()
+    for poly in mesh.polygons:
+        if poly.material_index not in leaf_material_indices:
+            continue
+        for edge_key in poly.edge_keys:
+            # Skip edges that touch boundary vertices
+            if edge_key[0] in edge_vertices or edge_key[1] in edge_vertices:
+                continue
+            interior_edges.add(edge_key)
+
+    if not interior_edges:
+        return 0.0
+
+    total_length = 0.0
+    for v0_idx, v1_idx in interior_edges:
+        v0 = mesh.vertices[v0_idx].co
+        v1 = mesh.vertices[v1_idx].co
+        total_length += (v0 - v1).length
+
+    return total_length / len(interior_edges)
+
+
+def _apply_interior_decimate_to_target(
+    obj,
+    leaf_material_indices: Set[int],
+    alpha_img,
+    threshold: float,
+    boundary_rings: int = 1,
+    target_edge_mm: float = None,
+    max_iterations: int = 10,
+    use_mesh_boundary: bool = True,
+):
+    """Apply iterative edge-protected interior decimation to reach target edge length.
+
+    After alpha trimming, the mesh boundary IS the leaf silhouette. This function
+    protects the actual mesh perimeter rather than relying on alpha-threshold crossings.
+
+    Args:
+        obj: Blender mesh object (should be called AFTER alpha trimming)
+        leaf_material_indices: Set of material indices for leaf geometry
+        alpha_img: Alpha texture (used only if use_mesh_boundary=False)
+        threshold: Alpha threshold (used only if use_mesh_boundary=False)
+        boundary_rings: Number of vertex rings to protect around boundary
+        target_edge_mm: Target interior edge length in millimeters
+        max_iterations: Maximum decimation passes
+        use_mesh_boundary: If True, use actual mesh boundary detection (recommended)
+
+    Returns:
+        Final interior edge length in mm
+    """
+    if target_edge_mm is None or target_edge_mm <= 0:
+        return 0.0
+
+    target_edge_bu = target_edge_mm / 1000.0
+
+    mesh = obj.data
+    if not mesh:
+        return 0.0
+
+    import bmesh
+
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    bm.verts.ensure_lookup_table()
+
+    # Collect leaf faces and vertices
+    leaf_faces = set()
+    leaf_verts = set()
+    for face in bm.faces:
+        if face.material_index in leaf_material_indices:
+            leaf_faces.add(face)
+            for vert in face.verts:
+                leaf_verts.add(vert)
+
+    if not leaf_faces:
+        bm.free()
+        return 0.0
+
+    # Find boundary vertices
+    boundary_verts = set()
+
+    if use_mesh_boundary:
+        # Use actual mesh boundary: edges with exactly 1 adjacent leaf face
+        for edge in bm.edges:
+            adjacent_leaf_faces = sum(1 for f in edge.link_faces if f in leaf_faces)
+            if adjacent_leaf_faces == 1:
+                for vert in edge.verts:
+                    boundary_verts.add(vert)
+
+        # Check if mesh boundary detection found reasonable results
+        boundary_ratio = len(boundary_verts) / len(leaf_verts) if leaf_verts else 0
+        if boundary_ratio < 0.005:
+            # Less than 0.5% - mesh boundary detection likely failed, fall back
+            print(
+                f"  [DEBUG] Target decimate: mesh boundary found only {len(boundary_verts)} verts "
+                f"({boundary_ratio:.1%}) - falling back to alpha detection"
+            )
+            boundary_verts.clear()
+            use_mesh_boundary = False
+
+    if not use_mesh_boundary:
+        # Fallback: alpha-threshold crossing
+        if not mesh.uv_layers.active:
+            bm.free()
+            return 0.0
+        v_alpha = _build_vertex_alpha_map(mesh, alpha_img)
+        if not v_alpha:
+            bm.free()
+            return 0.0
+
+        for face in leaf_faces:
+            for i, vert in enumerate(face.verts):
+                next_vert = face.verts[(i + 1) % len(face.verts)]
+                a0 = v_alpha.get(vert.index)
+                a1 = v_alpha.get(next_vert.index)
+                if a0 is None or a1 is None:
+                    continue
+                if (a0 - threshold) * (a1 - threshold) < 0.0:
+                    boundary_verts.add(vert)
+                    boundary_verts.add(next_vert)
+
+    if not boundary_verts:
+        bm.free()
+        return 0.0
+
+    # Expand boundary by boundary_rings
+    current = set(boundary_verts)
+    for _ in range(max(0, int(boundary_rings))):
+        grow = set()
+        for v in current:
+            for edge in v.link_edges:
+                for nb in edge.verts:
+                    if nb in leaf_verts and nb not in boundary_verts:
+                        grow.add(nb)
+        if not grow:
+            break
+        boundary_verts.update(grow)
+        current = grow
+
+    # Convert to vertex indices
+    boundary_indices = {v.index for v in boundary_verts}
+    leaf_vert_indices = {v.index for v in leaf_verts}
+
+    # Preserve = boundary band + non-leaf vertices
+    all_verts = set(range(len(bm.verts)))
+    non_leaf_indices = all_verts - leaf_vert_indices
+    preserve = boundary_indices | non_leaf_indices
+
+    bm.free()
+
+    # Create vertex group for edge protection
+    vg_name = "edge_protect"
+    if vg_name in obj.vertex_groups:
+        try:
+            obj.vertex_groups.remove(obj.vertex_groups[vg_name])
+        except Exception:
+            pass
+    vg = obj.vertex_groups.new(name=vg_name)
+
+    if preserve:
+        try:
+            vg.add(list(preserve), 1.0, "REPLACE")
+        except Exception:
+            inds = list(preserve)
+            step = 32766
+            for i in range(0, len(inds), step):
+                vg.add(inds[i : i + step], 1.0, "REPLACE")
+
+    bpy.context.view_layer.objects.active = obj
+    try:
+        bpy.ops.object.mode_set(mode="OBJECT")
+    except Exception:
+        pass
+
+    # Iterative decimation with edge length feedback
+    prev_edge = 0.0
+    for iteration in range(max_iterations):
+        # Measure current interior edge length
+        current_edge = _measure_interior_edge_length(
+            obj.data, leaf_material_indices, boundary_indices
+        )
+        if current_edge <= 0:
+            break
+
+        # Check if we've reached target (within 20% tolerance)
+        if current_edge >= target_edge_bu * 0.8:
+            break
+
+        # Check for stall (not making progress)
+        if iteration > 0 and current_edge <= prev_edge * 1.05:
+            break
+        prev_edge = current_edge
+
+        # Calculate decimation ratio based on current vs target edge length
+        # Edge length scales roughly with sqrt(face_count), so ratio ~ (current/target)^2
+        edge_ratio = current_edge / target_edge_bu
+        ratio = max(0.3, min(0.85, edge_ratio**2))
+
+        # Apply Decimate modifier
+        mod = obj.modifiers.new(name=f"InteriorDecimate_{iteration}", type="DECIMATE")
+        mod.ratio = float(ratio)
+        mod.vertex_group = vg.name
+        mod.invert_vertex_group = True
+        if hasattr(mod, "use_collapse_triangulate"):
+            mod.use_collapse_triangulate = True
+
+        try:
+            bpy.ops.object.modifier_apply(modifier=mod.name)
+        except Exception:
+            break
+
+    # Cleanup vertex group
+    try:
+        if vg_name in obj.vertex_groups:
+            obj.vertex_groups.remove(obj.vertex_groups[vg_name])
+    except Exception:
+        pass
+
+    # Return final edge length in mm
+    final_edge = _measure_interior_edge_length(
+        obj.data, leaf_material_indices, boundary_indices
+    )
+    return final_edge * 1000.0 if final_edge > 0 else 0.0
 
 
 def setup_materials_with_textures(
@@ -2142,6 +2564,8 @@ def process_twig_file(
     smooth_boundary=False,
     smooth_iterations=3,
     smooth_factor=0.5,
+    target_edge_mm=None,
+    interior_edge_mm=None,
 ):
     """Process a single twig blend file.
 
@@ -2153,8 +2577,11 @@ def process_twig_file(
         minimal_export: If True, creates minimal USD without materials/textures/attributes (geometry only)
         include_skeleton: If True, creates skeletal variant with skeleton (default: True, set False for static)
         densify: If True, subdivide mesh for higher polygon count (default: False)
-        displacement_strength: Strength of normal map displacement (0.0 = disabled, default: 0.0)
         alpha_trim_threshold: Alpha threshold for geometry trimming (0.0 = disabled, default: 0.0)
+        target_edge_mm: Target boundary edge length in mm. When set, adaptively subdivides
+                       until edges reach this length for consistent density across species.
+        interior_edge_mm: Target interior edge length in mm. When set with interior_decimate,
+                         iteratively decimates until interior edges reach this length.
     """
     import bpy
 
@@ -2286,9 +2713,17 @@ def process_twig_file(
                             allow_luminance_for_masks=False,
                         )
 
-                # 1) Densify leaf region (edge-adaptive only when explicitly enabled)
+                # 1) Densify leaf region
+                # Priority: target_edge_mm (consistent density) > edge_adaptive > fixed subdiv_levels
                 if densify and leaf_mats:
-                    if edge_adaptive:
+                    if target_edge_mm is not None and target_edge_mm > 0:
+                        # Use mm-based adaptive subdivision for consistent density
+                        densify_mesh_to_target_edge(
+                            obj,
+                            target_edge_mm=target_edge_mm,
+                            material_indices=leaf_mats,
+                        )
+                    elif edge_adaptive:
                         if alpha_img is not None and alpha_trim_threshold > 0.0:
                             # Heavier cuts on edges, lighter inside
                             edge_cuts = max(1, int(subdiv_levels))
@@ -2347,21 +2782,32 @@ def process_twig_file(
 
                 # 3) Interior decimation (edge-protected) to reduce interior density
                 # Runs AFTER trimming to only decimate the remaining opaque geometry
+                # Priority: interior_edge_mm (consistent density) > decimate_ratio (fixed ratio)
                 if interior_decimate and leaf_mats:
-                    if (
-                        alpha_img is not None
-                        and 0.0 < decimate_ratio < 1.0
-                        and alpha_trim_threshold > 0.0
-                    ):
+                    if alpha_img is not None and alpha_trim_threshold > 0.0:
                         try:
-                            _apply_interior_decimate(
-                                obj,
-                                leaf_mats,
-                                alpha_img,
-                                threshold=alpha_trim_threshold,
-                                ratio=float(decimate_ratio),
-                                boundary_rings=max(0, int(boundary_rings)),
-                            )
+                            if interior_edge_mm is not None and interior_edge_mm > 0:
+                                # Use mm-based iterative decimation for consistent interior density
+                                _apply_interior_decimate_to_target(
+                                    obj,
+                                    leaf_mats,
+                                    alpha_img,
+                                    threshold=alpha_trim_threshold,
+                                    boundary_rings=max(0, int(boundary_rings)),
+                                    target_edge_mm=interior_edge_mm,
+                                    use_mesh_boundary=True,
+                                )
+                            elif 0.0 < decimate_ratio < 1.0:
+                                # Fallback to fixed ratio decimation
+                                _apply_interior_decimate(
+                                    obj,
+                                    leaf_mats,
+                                    alpha_img,
+                                    threshold=alpha_trim_threshold,
+                                    ratio=float(decimate_ratio),
+                                    boundary_rings=max(0, int(boundary_rings)),
+                                    use_mesh_boundary=True,
+                                )
                         except Exception:
                             pass
 
