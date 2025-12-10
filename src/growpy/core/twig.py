@@ -306,12 +306,24 @@ def extract_twig_placements_from_model(
                     twig_bone_id = local_bone_id
 
                     # Now get the branch_id from this bone
-                    # bones_info is indexed by local bone_id
-                    if bones_info and local_bone_id < len(bones_info):
+                    # bones_info is indexed by local_bone_id
+                    if (
+                        bones_info
+                        and local_bone_id < len(bones_info)
+                        and local_bone_id >= 0
+                    ):
                         bone = bones_info[local_bone_id]
                         if len(bone) >= 8:
                             global_branch_id = int(bone[7])  # Index 7 is branch_id
                             branch_id_for_twig = global_branch_id - branch_id_offset
+                    elif bones_info:
+                        # Debug: bone_id out of bounds
+                        print(
+                            f"  Warning: twig bone_id {local_bone_id} out of bounds (bones_info length: {len(bones_info)})"
+                        )
+                        print(
+                            f"    global_bone_id={global_bone_id}, bone_id_offset={bone_id_offset}"
+                        )
 
             placement = TwigPlacement(
                 type=current_twig_type,

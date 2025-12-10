@@ -8,27 +8,51 @@ Creates both skeletal (animation-ready) and static (material-rich) Nanite assemb
 
 Quick Start (copy-paste ready with all defaults shown):
     # Full forest generation with all flags (recommended for production)
-    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 10 --smooth-iterations 10 --height-scale 1.0 --output-dir data/output/forest --unreal-project-path /Game/GrowPy/Trees
+    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 10 --smooth-iterations 10 --output-dir data/output/forest --unreal-project-path /Game/GrowPy/Trees
 
     # Generate with Unreal import script for one-click import
-    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 10 --smooth-iterations 10 --height-scale 1.0 --output-dir data/output/forest --import-to-unreal --unreal-project-path /Game/GrowPy/Trees
+    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 10 --smooth-iterations 10 --output-dir data/output/forest --import-to-unreal --unreal-project-path /Game/GrowPy/Trees
 
     # Include Grove metadata for debugging/analysis (age, mass, vigor - increases size ~70%)
-    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 10 --smooth-iterations 10 --height-scale 1.0 --output-dir data/output/forest --include-grove-attributes
+    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 10 --smooth-iterations 10 --output-dir data/output/forest --include-grove-attributes
 
     # Fast preview (lower quality, fewer cycles)
-    python src/growpy/cli/generate_forest.py data/input/test.csv --quality medium --growth-cycle-limit 5 --smooth-iterations 5 --height-scale 1.0 --output-dir data/output/forest
+    python src/growpy/cli/generate_forest.py data/input/test.csv --quality medium --growth-cycle-limit 5 --smooth-iterations 5 --output-dir data/output/forest
 
 Common Flags:
     [csv_file]                                     Input CSV with tree positions (default: data/input/test.csv)
-    --quality {ultra,high,medium,low,performance}  Quality preset (default: ultra)
-    --growth-cycle-limit INT                       Maximum growth cycles per tree (default: 10)
+                                                   Required columns: x, y, species, height; Optional: z (defaults to 0)
+
+    --quality {ultra,high,medium,low,performance}  Quality preset affecting resolution and detail (default: ultra)
+                                                   - ultra: 32 vertices, max detail, hero trees
+                                                   - high: 24 vertices, high detail, featured trees
+                                                   - medium: 16 vertices, balanced quality/performance
+                                                   - low: 12 vertices, background trees
+                                                   - performance: 8 vertices, distant trees, minimal detail
+
+    --growth-cycle-limit INT                       Maximum growth cycles per tree (default: 10, range: 1-125)
+                                                   Effect: Trees exceeding this are scaled down proportionally
+                                                   Higher values = more detailed branch structure but slower export
+
     --smooth-iterations INT                        Branch smoothing iterations (default: 10, range: 0-20)
-    --height-scale FLOAT                           Tree height multiplier (default: 1.0)
+                                                   Effect: Reduces sharp angles in branch geometry
+                                                   Higher values = smoother, more organic branches
+                                                   Set to 0 to disable smoothing (raw simulation output)
+
     --output-dir PATH                              Output directory (default: data/output/forest)
-    --import-to-unreal                             Generate Unreal Python import script
+                                                   Creates species subdirectories automatically
+
+    --import-to-unreal                             Generate Unreal Python import script for VSCode extension
+                                                   Creates unreal_import_trees.py and unreal_cleanup_trees.py
+
     --unreal-project-path PATH                     Unreal content path (default: /Game/GrowPy/Trees)
-    --include-grove-attributes                     Include Grove metadata in USD (increases size ~70%)
+                                                   Base directory for imported assets in Unreal Content Browser
+
+    --include-grove-attributes                     Include Grove metadata in USD files (default: disabled)
+                                                   Adds age, mass, vigor, etc. attributes for analysis
+                                                   Effect: Increases USD file size by ~70%
+
+    -v, --verbose                                  Enable verbose output for PVE preset generation
 
 Note: PVE preset JSON files are always generated automatically for each tree
 
@@ -260,9 +284,13 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                             pve_config_dir=pve_config_dir,
                         )
                     except Exception as pve_error:
+                        import traceback
+
                         print(
                             f"Warning: Failed to generate PVE preset JSON for {tree_name}: {pve_error}"
                         )
+                        if verbose:
+                            traceback.print_exc()
 
         _gc_module.collect()
 
@@ -736,7 +764,7 @@ else:
                     remaining = asset_registry.get_assets_by_path(CLEANUP_PATH, recursive=True)
                     if not remaining:
                         if unreal.EditorAssetLibrary.delete_directory(CLEANUP_PATH):
-                            print(f"✓ Removed empty directory: {{CLEANUP_PATH}}")
+                            print(f"[OK] Removed empty directory: {{CLEANUP_PATH}}")
                         else:
                             unreal.log_warning(f"Could not remove directory: {{CLEANUP_PATH}}")
             except Exception as e:

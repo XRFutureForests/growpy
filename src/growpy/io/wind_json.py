@@ -301,7 +301,7 @@ def _extract_skeleton_attrs_from_grove(
                     point_idx += 1
 
             # Handle last point (end of last bone)
-            if point_idx < len(age_array) and bones_info:
+            if point_idx < len(age_array) and bones_info and len(bones_info) > 0:
                 last_bone = bones_info[-1]
                 last_branch_id = bone_branch_ids[len(bones_info) - 1]
                 branch_depth_map[point_idx] = branch_to_depth[last_branch_id]

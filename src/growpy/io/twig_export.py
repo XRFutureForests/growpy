@@ -16,6 +16,7 @@ Texture Handling:
 """
 
 import json
+import math
 import os
 import shutil
 import sys
@@ -1373,15 +1374,21 @@ def trim_by_alpha_mask(
     require_alpha_channel=False,
     material_indices=None,
     allow_luminance_for_masks: bool = False,
+    method="all",
+    preserve_interior=True,
 ):
     """Trim mesh geometry based on alpha/opacity mask texture.
 
-    Removes faces where all vertices have alpha values below threshold.
+    Removes faces based on alpha values using specified method.
 
     Args:
         obj: Blender mesh object
         alpha_texture_path: Path to alpha/mask texture
         threshold: Alpha threshold for keeping geometry (0.0-1.0, default: 0.5)
+        method: 'all' (default) = delete only if ALL vertices < threshold (conservative),
+                'average' = delete if avg alpha < threshold (more aggressive)
+        preserve_interior: If True (default), preserve faces whose center samples
+                           an opaque alpha value, protecting thin geometry centers.
     """
     try:
         if Image is None:
@@ -1440,13 +1447,17 @@ def trim_by_alpha_mask(
 
         # Mark faces for deletion based on alpha values
         faces_to_delete = []
+        center_preserved = 0
         for face in bm.faces:
             if material_indices and face.material_index not in material_indices:
                 continue
+
             # Sample alpha at each vertex of the face
             alpha_values = []
+            uv_coords = []
             for loop in face.loops:
                 uv = loop[uv_layer_bm].uv
+                uv_coords.append((uv.x, uv.y))
 
                 # Sample alpha texture
                 x = int(uv.x * (img_width - 1))
@@ -1460,61 +1471,62 @@ def trim_by_alpha_mask(
                     alpha = 1.0 - alpha
                 alpha_values.append(alpha)
 
-            # Delete face if all vertices below threshold (completely transparent)
-            if all(a < threshold for a in alpha_values):
-                faces_to_delete.append(face)
+            # PRESERVE_INTERIOR: Also sample alpha at face centroid
+            # This protects thin geometry (needles) whose corners may sample
+            # transparent areas but whose CENTER samples opaque texture
+            if preserve_interior and uv_coords:
+                center_u = sum(uv[0] for uv in uv_coords) / len(uv_coords)
+                center_v = sum(uv[1] for uv in uv_coords) / len(uv_coords)
+                cx = int(center_u * (img_width - 1))
+                cy = int((1.0 - center_v) * (img_height - 1))
+                cx = max(0, min(img_width - 1, cx))
+                cy = max(0, min(img_height - 1, cy))
+                center_alpha = pixels[cx, cy] / 255.0
+                if invert_mask:
+                    center_alpha = 1.0 - center_alpha
+                # If center is opaque, preserve this face (needle center protection)
+                if center_alpha >= threshold:
+                    center_preserved += 1
+                    continue
+
+            # Delete face based on method
+            if method == "all":
+                # Delete only if ALL vertices below threshold (aggressive)
+                if all(a < threshold for a in alpha_values):
+                    faces_to_delete.append(face)
+            else:  # method == "average" (default)
+                # Delete if average alpha below threshold (better for thin geometry)
+                avg_alpha = (
+                    sum(alpha_values) / len(alpha_values) if alpha_values else 0.0
+                )
+                if avg_alpha < threshold:
+                    faces_to_delete.append(face)
 
         # Delete marked faces
+        total_faces_before = len(bm.faces)
         bmesh.ops.delete(bm, geom=faces_to_delete, context="FACES")
+        faces_remaining = len(bm.faces)
+
+        center_msg = (
+            f", {center_preserved} center-preserved"
+            if preserve_interior and center_preserved > 0
+            else ""
+        )
+        print(
+            f"  [DEBUG] Alpha trimming: deleted {len(faces_to_delete)}/{total_faces_before} faces ({100*len(faces_to_delete)/total_faces_before:.1f}%), {faces_remaining} remaining{center_msg}, threshold={threshold}"
+        )
 
         # Write back to mesh
         bm.to_mesh(mesh)
         bm.free()
 
         mesh.update()
-    except Exception:
+    except Exception as e:
+        print(f"  [DEBUG] Alpha trimming failed: {e}")
+        import traceback
+
+        traceback.print_exc()
         pass
-
-
-def _load_alpha_image(
-    texture_path, require_alpha_channel=False, allow_luminance_for_masks: bool = False
-):
-    """Load alpha mask PIL image (single-channel) from texture.
-
-    Returns PIL Image in 'L' mode or None if not available/allowed.
-    Prefers alpha channel; if require_alpha_channel=True, returns None when no alpha present.
-    """
-    if Image is None:
-        return None
-    try:
-        if not texture_path or not Path(texture_path).exists():
-            return None
-        img = Image.open(texture_path)
-        bands = img.getbands()
-        has_alpha = "A" in bands
-        if require_alpha_channel and not has_alpha:
-            return None
-        if has_alpha:
-            return img.getchannel("A")
-        # Allow luminance-only mask images when explicitly labeled as masks
-        if allow_luminance_for_masks:
-            name_lower = Path(texture_path).stem.lower()
-            if any(
-                k in name_lower
-                for k in [
-                    "alpha",
-                    "opacity",
-                    "mask",
-                    "transparent",
-                    "cutout",
-                    "translucent",
-                    "translucency",
-                ]
-            ):
-                return img.convert("L")
-        return None
-    except Exception:
-        return None
 
 
 def _get_alpha_texture_for_geometry(tex_map: dict):
@@ -1575,94 +1587,379 @@ def _build_vertex_alpha_map(mesh, alpha_img):
     return vert_alpha
 
 
-def densify_mesh_edge_adaptive(
+def _detect_alpha_inversion(alpha_img):
+    """Detect if alpha mask uses inverted convention (black=opaque).
+
+    Samples the alpha image to determine if it needs inversion.
+    Standard convention: white=opaque, black=transparent
+    Inverted convention: black=opaque, white=transparent (common in masks)
+
+    Returns:
+        True if alpha should be inverted (mean alpha < 0.4)
+    """
+    if alpha_img is None:
+        return False
+
+    pixels = alpha_img.load()
+    w, h = alpha_img.size
+
+    # Sample grid of points to estimate mean alpha
+    sample_count = 0
+    alpha_sum = 0.0
+    step = max(1, min(w, h) // 20)  # Sample ~400 points
+
+    for y in range(0, h, step):
+        for x in range(0, w, step):
+            alpha_sum += pixels[x, y] / 255.0
+            sample_count += 1
+
+    mean_alpha = alpha_sum / max(1, sample_count)
+
+    # If mean is below 0.4, likely inverted (most of image is dark = opaque leaf)
+    return mean_alpha < 0.4
+
+
+def _sample_alpha_at_uv(uv_x, uv_y, alpha_img, invert=False):
+    """Sample alpha value at UV coordinate from alpha image.
+
+    Args:
+        uv_x, uv_y: UV coordinates (0-1 range)
+        alpha_img: PIL Image in grayscale mode
+        invert: If True, invert alpha (1.0 - value)
+
+    Returns:
+        Alpha value 0.0-1.0
+    """
+    if alpha_img is None:
+        return 1.0
+    pixels = alpha_img.load()
+    w, h = alpha_img.size
+    x = int(max(0, min(w - 1, uv_x * (w - 1))))
+    y = int(max(0, min(h - 1, (1.0 - uv_y) * (h - 1))))
+    alpha = pixels[x, y] / 255.0
+    return (1.0 - alpha) if invert else alpha
+
+
+def densify_and_trim_interleaved(
     obj,
     material_indices,
     alpha_img,
     threshold,
-    base_cuts=4,
-    edge_cuts=16,
+    target_edge_factor=0.5,
+    max_iterations=10,
+    method="all",
 ):
-    """Densify leaf mesh with higher density along alpha silhouette edges.
+    """Densify leaf edges with interleaved trimming - your proposed algorithm.
 
-    - boundary edges (cross threshold or near it) subdivided with edge_cuts
-    - interior leaf edges subdivided with base_cuts
+    Algorithm:
+        1. Identify leaf faces (by material_indices)
+        2. Build vertex alpha map from texture sampling (auto-inverts if needed)
+        3. Remove faces where ALL/AVG vertices have alpha < threshold (based on method)
+        4. Find transition edges (connect opaque vertex to transparent vertex)
+        5. Split transition edges at midpoint, sample alpha for new vertex
+        6. Repeat steps 3-5 until longest transition edge < target length
+
+    Key advantages over previous approach:
+        - Interleaved deletion removes fully-transparent faces early
+        - Only subdivides transition edges (not nearby edges)
+        - Direct texture sampling for new vertices (not interpolation)
+        - More efficient: less work per iteration, fewer vertices created
+        - Auto-detects inverted alpha masks (black=opaque convention)
+
+    Args:
+        obj: Blender mesh object
+        material_indices: Set of material indices for leaf geometry
+        alpha_img: Alpha texture PIL Image (grayscale)
+        threshold: Alpha threshold (0.0-1.0) - vertices below are "transparent"
+        target_edge_factor: Target edge as fraction of avg edge (default: 0.5)
+        max_iterations: Maximum subdivision iterations (default: 10)
+        method: Trim method - "all" (delete only if ALL verts < threshold) or
+                "average" (delete if avg < threshold). Default "all" is conservative.
     """
     try:
         mesh = obj.data
-        if not material_indices:
-            return
-        # Build per-vertex alpha map
-        v_alpha = _build_vertex_alpha_map(mesh, alpha_img)
-        if not v_alpha:
-            return
-        # Collect candidate edges from leaf faces
-        leaf_edge_keys = set()
-        for poly in mesh.polygons:
-            if poly.material_index in material_indices:
-                # iterate poly edges via loops
-                loop_indices = list(poly.loop_indices)
-                for i in range(len(loop_indices)):
-                    li0 = loop_indices[i]
-                    li1 = loop_indices[(i + 1) % len(loop_indices)]
-                    v0 = mesh.loops[li0].vertex_index
-                    v1 = mesh.loops[li1].vertex_index
-                    key = tuple(sorted((v0, v1)))
-                    leaf_edge_keys.add(key)
-
-        # Classify edges
-        eps = 0.08  # near-threshold band
-        boundary_keys = []
-        interior_keys = []
-        for v0, v1 in leaf_edge_keys:
-            a0 = v_alpha.get(v0)
-            a1 = v_alpha.get(v1)
-            if a0 is None or a1 is None:
-                continue
-            crosses = (a0 - threshold) * (a1 - threshold) < 0.0
-            near = (abs(a0 - threshold) < eps) or (abs(a1 - threshold) < eps)
-            if crosses or near:
-                boundary_keys.append((v0, v1))
-            else:
-                interior_keys.append((v0, v1))
-
-        if not boundary_keys and not interior_keys:
+        if not mesh or not material_indices or alpha_img is None:
             return
 
-        # Build bmesh and mapping from edge key to bm edge
         bpy.context.view_layer.objects.active = obj
         bpy.ops.object.mode_set(mode="OBJECT")
+
+        # Detect if alpha mask needs inversion by sampling average alpha
+        # If mean alpha < 0.5, the mask likely uses black=opaque convention
+        invert_alpha = _detect_alpha_inversion(alpha_img)
+
+        # Measure initial mesh scale
+        avg_edge_length = _measure_average_edge_length(mesh, material_indices)
+        if avg_edge_length <= 0:
+            return
+
+        target_edge_bu = avg_edge_length * max(0.1, min(1.0, target_edge_factor))
+
+        initial_face_count = len(mesh.polygons)
+
+        # Limit face growth to prevent runaway subdivision
+        # Allow up to 8x original face count for thorough boundary densification
+        max_face_count = initial_face_count * 8
+
+        total_faces_deleted = 0
+
+        for iteration in range(max_iterations):
+            # Check face count limit
+            current_face_count = len(mesh.polygons)
+            if current_face_count > max_face_count:
+                break
+
+            bm = bmesh.new()
+            bm.from_mesh(mesh)
+            bm.verts.ensure_lookup_table()
+            bm.edges.ensure_lookup_table()
+            bm.faces.ensure_lookup_table()
+
+            # Get UV layer
+            uv_layer = bm.loops.layers.uv.active
+            if not uv_layer:
+                bm.free()
+                return
+
+            # Build vertex alpha map by sampling texture at UV coordinates
+            # Also build vertex UV map for later sampling
+            vert_alpha = {}
+            vert_uv = {}
+            for face in bm.faces:
+                if face.material_index not in material_indices:
+                    continue
+                for loop in face.loops:
+                    vi = loop.vert.index
+                    uv = loop[uv_layer].uv
+                    alpha = _sample_alpha_at_uv(
+                        uv.x, uv.y, alpha_img, invert=invert_alpha
+                    )
+                    # Average if vertex seen multiple times
+                    if vi in vert_alpha:
+                        vert_alpha[vi] = (vert_alpha[vi] + alpha) / 2
+                        # Keep average UV too
+                        old_uv = vert_uv[vi]
+                        vert_uv[vi] = ((old_uv[0] + uv.x) / 2, (old_uv[1] + uv.y) / 2)
+                    else:
+                        vert_alpha[vi] = alpha
+                        vert_uv[vi] = (uv.x, uv.y)
+
+            # STEP 3: Remove faces based on method
+            # Sample alpha at vertices, centroid, AND along edges at target_edge intervals
+            # This catches undulating leaf edges that dip into/out of the triangle
+            faces_to_delete = []
+            for face in bm.faces:
+                if face.material_index not in material_indices:
+                    continue
+
+                # Collect UVs for all loops
+                loop_uvs = []
+                for loop in face.loops:
+                    uv = loop[uv_layer].uv
+                    loop_uvs.append((uv.x, uv.y))
+
+                # Sample alpha at each vertex UV
+                all_alphas = []
+                for uv_x, uv_y in loop_uvs:
+                    alpha = _sample_alpha_at_uv(
+                        uv_x, uv_y, alpha_img, invert=invert_alpha
+                    )
+                    all_alphas.append(alpha)
+
+                # Sample at face centroid
+                if loop_uvs:
+                    center_u = sum(uv[0] for uv in loop_uvs) / len(loop_uvs)
+                    center_v = sum(uv[1] for uv in loop_uvs) / len(loop_uvs)
+                    center_alpha = _sample_alpha_at_uv(
+                        center_u, center_v, alpha_img, invert=invert_alpha
+                    )
+                    all_alphas.append(center_alpha)
+
+                # Sample along each edge at target_edge_bu intervals
+                # This catches leaf edges that undulate in/out of the triangle
+                if len(loop_uvs) >= 3:
+                    for i in range(len(loop_uvs)):
+                        uv1 = loop_uvs[i]
+                        uv2 = loop_uvs[(i + 1) % len(loop_uvs)]
+
+                        # Get corresponding 3D edge to measure length
+                        v1 = face.verts[i]
+                        v2 = face.verts[(i + 1) % len(face.verts)]
+                        edge_len_3d = (v1.co - v2.co).length
+
+                        # Number of samples along this edge (at least 1 midpoint)
+                        num_samples = max(1, int(edge_len_3d / target_edge_bu))
+
+                        # Sample at intervals along the edge
+                        for s in range(1, num_samples + 1):
+                            t = s / (
+                                num_samples + 1
+                            )  # Interpolation factor (0 < t < 1)
+                            sample_u = uv1[0] + t * (uv2[0] - uv1[0])
+                            sample_v = uv1[1] + t * (uv2[1] - uv1[1])
+                            edge_alpha = _sample_alpha_at_uv(
+                                sample_u, sample_v, alpha_img, invert=invert_alpha
+                            )
+                            all_alphas.append(edge_alpha)
+
+                if method == "all":
+                    # Conservative: delete only if ALL samples below threshold
+                    should_delete = all(a < threshold for a in all_alphas)
+                else:
+                    # Average method: delete if average alpha below threshold
+                    should_delete = (sum(all_alphas) / len(all_alphas)) < threshold
+
+                if should_delete:
+                    faces_to_delete.append(face)
+
+            if faces_to_delete:
+                bmesh.ops.delete(bm, geom=faces_to_delete, context="FACES")
+                total_faces_deleted += len(faces_to_delete)
+                bm.verts.ensure_lookup_table()
+                bm.edges.ensure_lookup_table()
+                bm.faces.ensure_lookup_table()
+
+            # STEP 4: Find edges to subdivide
+            # We want to subdivide edges that are:
+            # - On or outside the leaf boundary (NOT fully inside the opaque leaf area)
+            # - Longer than target edge length
+            #
+            # Edge classification:
+            # - INTERIOR: both vertices opaque (alpha >= threshold) -> DO NOT split
+            # - TRANSITION: one opaque, one transparent -> SPLIT (this is the leaf edge)
+            # - EXTERIOR: both vertices transparent (alpha < threshold) -> SPLIT (outside leaf)
+            edges_to_split = []
+
+            for edge in bm.edges:
+                # Check if edge belongs to a leaf face
+                leaf_faces = [
+                    f for f in edge.link_faces if f.material_index in material_indices
+                ]
+                if not leaf_faces:
+                    continue
+
+                v0, v1 = edge.verts
+                a0 = vert_alpha.get(v0.index, 1.0)
+                a1 = vert_alpha.get(v1.index, 1.0)
+
+                # Classify edge
+                v0_opaque = a0 >= threshold
+                v1_opaque = a1 >= threshold
+
+                # INTERIOR edge: both vertices opaque -> skip (preserve interior)
+                if v0_opaque and v1_opaque:
+                    continue
+
+                # TRANSITION or EXTERIOR edge: at least one vertex is transparent
+                # These edges are on or outside the leaf boundary
+                edge_len = edge.calc_length()
+
+                if edge_len > target_edge_bu:
+                    edges_to_split.append(edge)
+
+            # Check stopping condition
+            if not edges_to_split:
+                bm.to_mesh(mesh)
+                bm.free()
+                mesh.update()
+                break
+
+            # STEP 5: Split boundary edges at midpoint
+            for edge in edges_to_split:
+                if edge.is_valid:
+                    try:
+                        bmesh.utils.edge_split(edge, edge.verts[0], 0.5)
+                    except Exception:
+                        pass
+
+            # Only triangulate faces that are FULLY TRANSPARENT (all vertices below threshold)
+            # These are the faces we want to delete - triangulating them allows checking
+            # each resulting triangle individually
+            # Interior and mixed faces remain as n-gons to preserve topology
+            exterior_ngons = []
+            for face in bm.faces:
+                if len(face.verts) <= 3:
+                    continue
+                if face.material_index not in material_indices:
+                    continue
+                # Check if ALL vertices are transparent
+                all_transparent = True
+                for vert in face.verts:
+                    if vert_alpha.get(vert.index, 1.0) >= threshold:
+                        all_transparent = False
+                        break
+                if all_transparent:
+                    exterior_ngons.append(face)
+
+            if exterior_ngons:
+                bmesh.ops.triangulate(bm, faces=exterior_ngons)
+
+            # Update mesh and prepare for next iteration
+            bm.to_mesh(mesh)
+            bm.free()
+            mesh.update()
+
+        # After all iterations, ensure ALL faces are triangles for Nanite compatibility
         bm = bmesh.new()
         bm.from_mesh(mesh)
+        ngons = [f for f in bm.faces if len(f.verts) > 3]
+        if ngons:
+            bmesh.ops.triangulate(bm, faces=ngons)
 
-        # Map current bm edges by key
-        bm_edge_by_key = {}
-        for e in bm.edges:
-            kv = tuple(sorted((e.verts[0].index, e.verts[1].index)))
-            bm_edge_by_key[kv] = e
+        # FINAL PASS: Delete triangles that are fully transparent
+        # Now that we have small triangles, we can identify fully-transparent ones
+        uv_layer = bm.loops.layers.uv.active
+        if uv_layer:
+            final_faces_to_delete = []
+            for face in bm.faces:
+                if face.material_index not in material_indices:
+                    continue
+                # Sample all vertices
+                all_transparent = True
+                for loop in face.loops:
+                    uv = loop[uv_layer].uv
+                    alpha = _sample_alpha_at_uv(
+                        uv.x, uv.y, alpha_img, invert=invert_alpha
+                    )
+                    if alpha >= threshold:
+                        all_transparent = False
+                        break
+                if all_transparent:
+                    # Also check centroid
+                    loop_uvs = [
+                        (loop[uv_layer].uv.x, loop[uv_layer].uv.y)
+                        for loop in face.loops
+                    ]
+                    center_u = sum(uv[0] for uv in loop_uvs) / len(loop_uvs)
+                    center_v = sum(uv[1] for uv in loop_uvs) / len(loop_uvs)
+                    center_alpha = _sample_alpha_at_uv(
+                        center_u, center_v, alpha_img, invert=invert_alpha
+                    )
+                    if center_alpha < threshold:
+                        final_faces_to_delete.append(face)
 
-        boundary_edges = [
-            bm_edge_by_key[k] for k in boundary_keys if k in bm_edge_by_key
-        ]
-        interior_edges = [
-            bm_edge_by_key[k] for k in interior_keys if k in bm_edge_by_key
-        ]
-
-        # Subdivide boundary first (high cuts), then interior (base cuts)
-        if boundary_edges and edge_cuts > 0:
-            bmesh.ops.subdivide_edges(
-                bm, edges=boundary_edges, cuts=edge_cuts, use_grid_fill=True
-            )
-        if interior_edges and base_cuts > 0:
-            bmesh.ops.subdivide_edges(
-                bm, edges=interior_edges, cuts=base_cuts, use_grid_fill=True
-            )
+            if final_faces_to_delete:
+                bmesh.ops.delete(bm, geom=final_faces_to_delete, context="FACES")
+                total_faces_deleted += len(final_faces_to_delete)
 
         bm.to_mesh(mesh)
         bm.free()
         mesh.update()
-    except Exception:
-        pass
+
+        mesh.update()
+        final_vert_count = len(mesh.vertices)
+        final_face_count = len(mesh.polygons)
+
+        print(
+            f"  Alpha trim: {initial_face_count}->{final_face_count} faces "
+            f"({total_faces_deleted} deleted)"
+        )
+
+    except Exception as e:
+        print(f"  Alpha trim error: {e}")
+        import traceback
+
+        traceback.print_exc()
 
 
 def _smooth_boundary_edges(
@@ -1784,6 +2081,149 @@ def _smooth_boundary_edges(
     mesh.update()
 
 
+def _cleanup_boundary_spikes(
+    obj,
+    leaf_material_indices: Set[int],
+    iterations: int = 2,
+    area_factor: float = 0.2,
+    short_len_factor: float = 0.25,
+    angle_deg: float = 55.0,
+):
+    """Remove tiny boundary spike faces and collapse very short boundary edges.
+
+    Targets sliver triangles created by alpha-based trimming that point inwards or
+    stick out as small spikes. Heuristics:
+      - Delete faces with >=2 boundary edges and very small area
+      - Prefer deletion when the angle between the two boundary edges at the tip
+        is sharp (below angle_deg)
+      - Collapse boundary edges that are much shorter than the typical boundary
+        edge length
+
+    Args:
+        obj: Blender mesh object (after alpha trimming)
+        leaf_material_indices: Set of material indices for leaf geometry
+        iterations: How many cleanup passes to run
+        area_factor: Threshold as a fraction of median leaf-face area
+        short_len_factor: Boundary edge collapse threshold as fraction of median
+        angle_deg: Max angle at spike tip to qualify for deletion
+    """
+    mesh = obj.data
+    if not mesh:
+        return
+
+    import bmesh
+
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    bm.verts.ensure_lookup_table()
+    bm.edges.ensure_lookup_table()
+    bm.faces.ensure_lookup_table()
+
+    # Collect leaf faces and basic stats
+    leaf_faces = [f for f in bm.faces if f.material_index in leaf_material_indices]
+    if not leaf_faces:
+        bm.free()
+        return
+
+    face_areas = [f.calc_area() for f in leaf_faces]
+    if not face_areas:
+        bm.free()
+        return
+
+    # Robust median area for thresholds
+    sorted_areas = sorted(face_areas)
+    median_area = sorted_areas[len(sorted_areas) // 2] or 1e-12
+
+    # Boundary edge length stats
+    boundary_edges = []
+    leaf_face_set = set(leaf_faces)
+    for e in bm.edges:
+        if sum(1 for f in e.link_faces if f in leaf_face_set) == 1:
+            boundary_edges.append(e)
+    if boundary_edges:
+        lengths = [e.calc_length() for e in boundary_edges]
+        lengths.sort()
+        median_len = lengths[len(lengths) // 2] or 1e-9
+    else:
+        median_len = 1e-9
+
+    short_len_thresh = median_len * max(0.0, float(short_len_factor))
+    spike_angle = math.radians(max(1.0, float(angle_deg)))
+
+    for _ in range(max(1, int(iterations))):
+        to_delete = set()
+
+        for f in list(leaf_faces):
+            # Count boundary edges for this face
+            b_edges = [
+                e
+                for e in f.edges
+                if sum(1 for lf in e.link_faces if lf in leaf_face_set) == 1
+            ]
+            if len(b_edges) < 2:
+                continue
+
+            area = f.calc_area()
+            # Angle at the common vertex of two boundary edges (if exists)
+            sharp = False
+            if len(b_edges) >= 2:
+                v_common = None
+                s0 = set(b_edges[0].verts)
+                s1 = set(b_edges[1].verts)
+                inter = s0 & s1
+                if inter:
+                    v_common = list(inter)[0]
+                if v_common is not None:
+                    # Build vectors along the two edges from the common vertex
+                    vecs = []
+                    for e in b_edges[:2]:
+                        other = e.other_vert(v_common)
+                        v = other.co - v_common.co
+                        if v.length_squared > 0:
+                            vecs.append(v.normalized())
+                    if len(vecs) == 2:
+                        try:
+                            ang = vecs[0].angle(vecs[1])
+                            sharp = ang < spike_angle
+                        except Exception:
+                            sharp = False
+
+            if area < median_area * area_factor or sharp:
+                to_delete.add(f)
+
+        if to_delete:
+            bmesh.ops.delete(bm, geom=list(to_delete), context="FACES")
+            # Refresh cached collections
+            bm.verts.ensure_lookup_table()
+            bm.edges.ensure_lookup_table()
+            bm.faces.ensure_lookup_table()
+            # Rebuild leaf face list after deletions
+            leaf_faces = [
+                f for f in bm.faces if f.material_index in leaf_material_indices
+            ]
+            leaf_face_set = set(leaf_faces)
+
+        # Collapse very short boundary edges
+        to_collapse = [
+            e
+            for e in bm.edges
+            if sum(1 for lf in e.link_faces if lf in leaf_face_set) == 1
+            and e.calc_length() < short_len_thresh
+        ]
+        if to_collapse:
+            try:
+                bmesh.ops.collapse(bm, edges=to_collapse)
+                bm.verts.ensure_lookup_table()
+                bm.edges.ensure_lookup_table()
+                bm.faces.ensure_lookup_table()
+            except Exception:
+                pass
+
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.update()
+
+
 def _apply_interior_decimate(
     obj,
     leaf_material_indices: Set[int],
@@ -1858,6 +2298,15 @@ def _apply_interior_decimate(
             )
             boundary_verts.clear()
             use_mesh_boundary = False
+        elif boundary_ratio > 0.9:
+            # More than 90% boundary - likely a thin plane/cylinder with poor classification
+            # Skip decimation entirely to avoid destroying geometry
+            print(
+                f"  [DEBUG] Boundary ratio too high ({boundary_ratio:.1%}) - "
+                f"skipping decimation (likely branch classified as leaf)"
+            )
+            bm.free()
+            return
 
     if not use_mesh_boundary:
         # Fallback: use alpha-threshold crossing (legacy behavior)
@@ -2555,33 +3004,33 @@ def process_twig_file(
     include_skeleton=True,
     densify=False,
     alpha_trim_threshold=0.0,
-    subdiv_levels=3,
-    edge_adaptive=False,
-    edge_subdiv_levels=None,
-    interior_decimate=False,
-    decimate_ratio=0.5,
-    boundary_rings=1,
+    alpha_trim_method="all",
     smooth_boundary=False,
     smooth_iterations=3,
     smooth_factor=0.5,
-    target_edge_mm=None,
-    interior_edge_mm=None,
+    boundary_edge_mm=0.5,
+    boundary_band_mm=1.0,
 ):
     """Process a single twig blend file.
+
+    Uses boundary-only densification to preserve interior mesh topology while
+    creating high-detail silhouettes for Nanite compatibility.
 
     Args:
         blend_file: Path to .blend file
         output_dir: Output directory for exported files
         formats: List of export formats
         species_name: Name of species
-        minimal_export: If True, creates minimal USD without materials/textures/attributes (geometry only)
-        include_skeleton: If True, creates skeletal variant with skeleton (default: True, set False for static)
-        densify: If True, subdivide mesh for higher polygon count (default: False)
-        alpha_trim_threshold: Alpha threshold for geometry trimming (0.0 = disabled, default: 0.0)
-        target_edge_mm: Target boundary edge length in mm. When set, adaptively subdivides
-                       until edges reach this length for consistent density across species.
-        interior_edge_mm: Target interior edge length in mm. When set with interior_decimate,
-                         iteratively decimates until interior edges reach this length.
+        minimal_export: If True, creates minimal USD without materials/textures/attributes
+        include_skeleton: If True, creates skeletal variant with skeleton
+        densify: If True, densify boundary edges (default: False)
+        alpha_trim_threshold: Alpha threshold for geometry trimming (0.0 = disabled)
+        alpha_trim_method: Trimming method (default: 'all' - conservative)
+        smooth_boundary: Enable boundary edge smoothing
+        smooth_iterations: Number of smoothing passes
+        smooth_factor: Smoothing strength per iteration
+        boundary_edge_mm: Target boundary edge length in mm (default: 0.5)
+        boundary_band_mm: Distance from silhouette in mm to include (default: 1.0)
     """
     import bpy
 
@@ -2698,79 +3147,40 @@ def process_twig_file(
                 # Load alpha image from best available source
                 alpha_img = None
                 if alpha_tex_path:
-                    if use_luminance:
-                        # Dedicated alpha/translucent texture - use luminance
-                        alpha_img = _load_alpha_image(
-                            alpha_tex_path,
-                            require_alpha_channel=False,
-                            allow_luminance_for_masks=True,
-                        )
-                    else:
-                        # Diffuse texture - use embedded alpha channel
-                        alpha_img = _load_alpha_image(
-                            alpha_tex_path,
-                            require_alpha_channel=True,
-                            allow_luminance_for_masks=False,
-                        )
+                    try:
+                        from PIL import Image as PILImage
 
-                # 1) Densify leaf region
-                # Priority: target_edge_mm (consistent density) > edge_adaptive > fixed subdiv_levels
-                if densify and leaf_mats:
-                    if target_edge_mm is not None and target_edge_mm > 0:
-                        # Use mm-based adaptive subdivision for consistent density
-                        densify_mesh_to_target_edge(
-                            obj,
-                            target_edge_mm=target_edge_mm,
-                            material_indices=leaf_mats,
-                        )
-                    elif edge_adaptive:
-                        if alpha_img is not None and alpha_trim_threshold > 0.0:
-                            # Heavier cuts on edges, lighter inside
-                            edge_cuts = max(1, int(subdiv_levels))
-                            base_cuts = max(0, int(round(subdiv_levels * 0.25)))
-                            densify_mesh_edge_adaptive(
-                                obj,
-                                material_indices=leaf_mats,
-                                alpha_img=alpha_img,
-                                threshold=alpha_trim_threshold,
-                                base_cuts=base_cuts,
-                                edge_cuts=edge_cuts,
-                            )
+                        if use_luminance:
+                            # Dedicated alpha/translucent texture - use as grayscale
+                            img = PILImage.open(alpha_tex_path)
+                            alpha_img = img.convert("L") if img.mode != "L" else img
                         else:
-                            densify_mesh(
-                                obj,
-                                subdivision_levels=subdiv_levels,
-                                material_indices=leaf_mats,
-                            )
-                    else:
-                        densify_mesh(
-                            obj,
-                            subdivision_levels=subdiv_levels,
-                            material_indices=leaf_mats,
-                        )
+                            # Diffuse texture - extract embedded alpha channel
+                            img = PILImage.open(alpha_tex_path)
+                            if "A" in img.getbands():
+                                alpha_img = img.getchannel("A")
+                    except Exception as e:
+                        alpha_img = None
 
-                # Optional: extra edge-only densify pass using alpha silhouette
-                # Runs after primary densify (uniform or adaptive) to increase edge detail
+                # INTERLEAVED DENSIFY + TRIM - new algorithm that subdivides
+                # only transition edges and trims faces each iteration
                 if (
                     densify
                     and leaf_mats
-                    and edge_subdiv_levels is not None
-                    and int(edge_subdiv_levels) > 0
+                    and alpha_img is not None
+                    and alpha_trim_threshold > 0.0
                 ):
-                    if alpha_img is not None and alpha_trim_threshold > 0.0:
-                        densify_mesh_edge_adaptive(
-                            obj,
-                            material_indices=leaf_mats,
-                            alpha_img=alpha_img,
-                            threshold=alpha_trim_threshold,
-                            base_cuts=0,
-                            edge_cuts=max(1, int(edge_subdiv_levels)),
-                        )
-
-                # 2) Trim leaf edges using alpha texture
-                # Uses dedicated alpha/translucent texture if available, else diffuse embedded alpha
-                # MUST run before interior decimation so we only decimate remaining geometry
-                if alpha_trim_threshold > 0.0 and leaf_mats and alpha_tex_path:
+                    densify_and_trim_interleaved(
+                        obj,
+                        material_indices=leaf_mats,
+                        alpha_img=alpha_img,
+                        threshold=alpha_trim_threshold,
+                        target_edge_factor=boundary_edge_mm,
+                        max_iterations=15,
+                        method=alpha_trim_method,
+                    )
+                elif alpha_trim_threshold > 0.0 and leaf_mats and alpha_tex_path:
+                    # Fallback: just trim without densification
                     trim_by_alpha_mask(
                         obj,
                         str(alpha_tex_path),
@@ -2778,41 +3188,24 @@ def process_twig_file(
                         require_alpha_channel=(not use_luminance),
                         material_indices=leaf_mats,
                         allow_luminance_for_masks=use_luminance,
+                        method=alpha_trim_method,
                     )
 
-                # 3) Interior decimation (edge-protected) to reduce interior density
-                # Runs AFTER trimming to only decimate the remaining opaque geometry
-                # Priority: interior_edge_mm (consistent density) > decimate_ratio (fixed ratio)
-                if interior_decimate and leaf_mats:
-                    if alpha_img is not None and alpha_trim_threshold > 0.0:
-                        try:
-                            if interior_edge_mm is not None and interior_edge_mm > 0:
-                                # Use mm-based iterative decimation for consistent interior density
-                                _apply_interior_decimate_to_target(
-                                    obj,
-                                    leaf_mats,
-                                    alpha_img,
-                                    threshold=alpha_trim_threshold,
-                                    boundary_rings=max(0, int(boundary_rings)),
-                                    target_edge_mm=interior_edge_mm,
-                                    use_mesh_boundary=True,
-                                )
-                            elif 0.0 < decimate_ratio < 1.0:
-                                # Fallback to fixed ratio decimation
-                                _apply_interior_decimate(
-                                    obj,
-                                    leaf_mats,
-                                    alpha_img,
-                                    threshold=alpha_trim_threshold,
-                                    ratio=float(decimate_ratio),
-                                    boundary_rings=max(0, int(boundary_rings)),
-                                    use_mesh_boundary=True,
-                                )
-                        except Exception:
-                            pass
+                # 3) Cleanup tiny spikes along the trimmed boundary
+                if alpha_trim_threshold > 0.0 and leaf_mats and alpha_tex_path:
+                    try:
+                        _cleanup_boundary_spikes(
+                            obj,
+                            leaf_mats,
+                            iterations=2,
+                            area_factor=0.2,
+                            short_len_factor=0.25,
+                            angle_deg=55.0,
+                        )
+                    except Exception:
+                        pass
 
                 # 4) Smooth boundary edges to follow texture curves more naturally
-                # Applied AFTER trimming to smooth the jagged edges created by regular subdivision grid
                 if smooth_boundary and leaf_mats:
                     if alpha_img is not None and alpha_trim_threshold > 0.0:
                         try:
@@ -2823,7 +3216,7 @@ def process_twig_file(
                                 threshold=alpha_trim_threshold,
                                 smooth_iterations=max(1, int(smooth_iterations)),
                                 smooth_factor=min(max(0.0, float(smooth_factor)), 1.0),
-                                boundary_rings=max(0, int(boundary_rings)),
+                                boundary_rings=1,
                             )
                         except Exception:
                             pass
@@ -2848,13 +3241,13 @@ def process_twig_file(
                         output_dir / f"{standardized_name}_skeletal.{fmt}"
                     )
 
-                    # CRITICAL: Export UVs for texture mapping but disable materials/textures at Blender level
-                    # Materials and textures will be added later via USD with opaque-only filtering
+                    # CRITICAL: Export UVs only (no materials from Blender)
+                    # Materials will be added later with only opaque textures (no alpha/translucent)
                     bpy.ops.wm.usd_export(
                         filepath=str(skel_export_path),
                         selected_objects_only=True,
-                        export_materials=False,  # Disabled - added later with opaque-only filtering
-                        export_textures=False,  # Disabled - added later with opaque-only filtering
+                        export_materials=False,  # Disabled - materials added later with filtering
+                        export_textures=False,  # Disabled - textures added later with filtering
                         export_uvmaps=True,  # CRITICAL: Required for texture mapping
                         export_normals=True,
                         export_mesh_colors=False,  # Force disabled for Nanite

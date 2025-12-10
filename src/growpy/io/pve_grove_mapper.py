@@ -868,5 +868,5 @@ def generate_pve_from_grove(
         json.dump(pve_data, f, indent=2)
 
     if verbose:
-        print(f"  ✓ PVE preset with foliage: {output_path.name}")
+        print(f"  [OK] PVE preset with foliage: {output_path.name}")
     return pve_data

@@ -174,7 +174,7 @@ def main():
     example_output = output_dir / "example_species_pve.json"
     create_example_pve_config(example_output, "example_species")
 
-    print(f"\n✓ Config files created in {output_dir}")
+    print(f"\n[OK] Config files created in {output_dir}")
     print("\nTo use for a specific species:")
     print("1. Copy example_species_pve.json to <species_name>_pve.json")
     print("2. Edit the plantProfile_* arrays to match species crown shape")
