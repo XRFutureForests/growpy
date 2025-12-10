@@ -1610,53 +1610,42 @@ def _build_vertex_alpha_map(mesh, alpha_img):
 def _detect_alpha_inversion(alpha_img):
     """Detect if alpha mask uses inverted convention (black=opaque).
 
-    CRITICAL FIX: The original mean-based detection was broken because alpha
-    textures naturally contain large transparent areas (background).
+    Uses corner-based detection: samples corners of the texture to determine
+    the "background" value (should be transparent in standard convention).
 
-    Standard convention (white=opaque) is universal in 3D graphics. Only invert
-    if we find clear evidence: histogram analysis showing pure black dominates
-    with few white pixels (pattern of black=opaque, white=transparent).
-
-    This fixes cases where alder/birch/ash were inverted incorrectly because
-    their mean luminance was low due to transparent backgrounds.
+    The actual leaf/bark geometry doesn't extend to texture edges, so corners
+    reliably represent the transparent background. If corners are bright,
+    the convention is inverted (white=opaque).
 
     Returns:
-        True only if texture clearly uses inverted convention (black=opaque)
+        True if texture uses inverted convention (bright corners = white background)
     """
     if alpha_img is None:
         return False
 
-    pixels = alpha_img.load()
-    w, h = alpha_img.size
+    pixels_array = np.array(alpha_img, dtype=np.float32)
+    h, w = pixels_array.shape
 
-    # Sample texture to build histogram
-    histogram = [0] * 256
-    step = max(1, min(w, h) // 30)
-
-    for y in range(0, h, step):
-        for x in range(0, w, step):
-            val = pixels[x, y]
-            if isinstance(val, (tuple, list)):  # RGBA or tuple
-                val = val[0] if len(val) > 0 else 0
-            histogram[min(255, max(0, int(val)))] += 1
-
-    total = sum(histogram)
-    if total == 0:
+    # Sample corners: 10x10 patches at each corner
+    patch_size = min(10, h // 4, w // 4)
+    if patch_size < 2:
+        # Image too small to detect reliably, assume standard
         return False
 
-    # Distribution: black (0-85), mid (85-170), white (170-255)
-    black_count = sum(histogram[0:86])
-    white_count = sum(histogram[170:256])
+    corners = [
+        pixels_array[0:patch_size, 0:patch_size],  # top-left
+        pixels_array[0:patch_size, -patch_size:],  # top-right
+        pixels_array[-patch_size:, 0:patch_size],  # bottom-left
+        pixels_array[-patch_size:, -patch_size:],  # bottom-right
+    ]
 
-    black_ratio = black_count / total
-    white_ratio = white_count / total
+    # Calculate mean corner value (represents the background)
+    corner_values = [corner.mean() for corner in corners]
+    corner_mean = np.mean(corner_values)
 
-    # Only invert if clear inverted pattern: >60% black AND <20% white
-    # This filters out normal textures while catching true inverted masks
-    if black_ratio > 0.6 and white_ratio < 0.2:
-        return True
-
-    return False
+    # If corners are bright (> ~155/255), background is white = inverted convention
+    # If corners are dark (< ~100/255), background is black = standard convention
+    return corner_mean > 155
 
 
 def _sample_alpha_at_uv(uv_x, uv_y, alpha_img, invert=False):
