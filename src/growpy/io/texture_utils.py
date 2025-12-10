@@ -648,9 +648,11 @@ def standardize_twig_textures(twig_dir: Path) -> dict:
     }
 
     # Define texture type keywords and their standardized names
+    # Keywords are used to identify texture type - matches on any keyword
     texture_patterns = {
         "diffuse": {
-            "keywords": ["diffuse", "albedo", "color", "basecolor", "base"],
+            # Matches: diffuse, albedo, color, basecolor, base, or Grove pattern (just top/bottom with no other keyword)
+            "keywords": ["diffuse", "albedo", "color", "basecolor", "base", "top", "bottom"],
             "modifiers": {None: "_diffuse", "top": "_diffuse_top", "bottom": "_diffuse_bottom"},
         },
         "alpha": {
@@ -682,23 +684,31 @@ def standardize_twig_textures(twig_dir: Path) -> dict:
         texture_type = None
         modifier = None
 
-        for tex_type, patterns in texture_patterns.items():
-            if any(k in name_lower for k in patterns["keywords"]):
-                texture_type = tex_type
+        # Check for explicit texture type keywords first (alpha, normal)
+        # These take priority over diffuse matches
+        if any(k in name_lower for k in ["alpha", "opacity", "mask", "cutout"]):
+            texture_type = "alpha"
+        elif any(k in name_lower for k in ["normal", "norm", "nrm"]):
+            texture_type = "normal"
+        elif any(k in name_lower for k in ["bark", "wood", "branch", "twig"]):
+            # Skip bark/wood textures (not leaf geometry)
+            continue
+        else:
+            # Everything else is diffuse (matches Grove convention: OakEuropeanTop, OakEuropeanBottom)
+            # This includes files with: diffuse keyword, or top/bottom variants, or generic color textures
+            texture_type = "diffuse"
 
-                # Check for modifier (top/bottom)
-                if tex_type == "diffuse":
-                    if any(k in name_lower for k in ["top", "upper", "face"]):
-                        modifier = "top"
-                    elif any(k in name_lower for k in ["bottom", "lower", "back", "underside"]):
-                        modifier = "bottom"
-
-                break
+            # Check for modifier (top/bottom) for diffuse
+            if any(k in name_lower for k in ["top", "upper", "face", "summer", "spring", "green"]):
+                modifier = "top"
+            elif any(k in name_lower for k in ["bottom", "lower", "back", "underside", "fall", "winter"]):
+                modifier = "bottom"
 
         if not texture_type:
             continue
 
         # Generate standardized name
+        patterns = texture_patterns[texture_type]
         if modifier and texture_type in ["diffuse"]:
             suffix = patterns["modifiers"][modifier]
         else:
@@ -727,8 +737,10 @@ def standardize_twig_textures(twig_dir: Path) -> dict:
                     results["alpha"] = new_path
                 elif texture_type == "normal":
                     results["normal"] = new_path
-            except Exception:
-                pass  # Silently skip if rename fails
+            except Exception as e:
+                # Log error for debugging
+                import sys
+                print(f"  Warning: Could not rename {tex_file.name} to {new_name}: {e}", file=sys.stderr)
 
     return results
 
