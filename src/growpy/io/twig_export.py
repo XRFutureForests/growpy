@@ -3409,46 +3409,45 @@ def process_twig_file(
                     else:
                         pass
 
-                    # Export static mesh variant if requested (no skeleton)
-                    if not include_skeleton:
-                        static_export_path = (
-                            output_dir / f"{standardized_name}_static.{fmt}"
-                        )
+                    # Export static mesh variant (always created alongside skeletal)
+                    static_export_path = (
+                        output_dir / f"{standardized_name}_static.{fmt}"
+                    )
 
-                        # Enable materials for static export
-                        material_setup_success = setup_materials_with_textures(
-                            obj,
-                            blend_dir,
-                            species_name,
-                            output_dir,
-                            standardized_name,
-                            metadata,
-                        )
+                    # Enable materials for static export
+                    material_setup_success = setup_materials_with_textures(
+                        obj,
+                        blend_dir,
+                        species_name,
+                        output_dir,
+                        standardized_name,
+                        metadata,
+                    )
 
-                        # Export with materials and textures
-                        bpy.ops.wm.usd_export(
-                            filepath=str(static_export_path),
-                            selected_objects_only=True,
-                            export_materials=True,
-                            export_textures=True,
-                            export_uvmaps=True,
-                            export_normals=True,
-                            export_mesh_colors=False,
-                            use_instancing=False,
-                            evaluation_mode="RENDER",
-                            generate_preview_surface=True,
-                            relative_paths=True,
-                            export_hair=False,
-                            export_lights=False,
-                        )
+                    # Export with materials and textures
+                    bpy.ops.wm.usd_export(
+                        filepath=str(static_export_path),
+                        selected_objects_only=True,
+                        export_materials=True,
+                        export_textures=True,
+                        export_uvmaps=True,
+                        export_normals=True,
+                        export_mesh_colors=False,
+                        use_instancing=False,
+                        evaluation_mode="RENDER",
+                        generate_preview_surface=True,
+                        relative_paths=True,
+                        export_hair=False,
+                        export_lights=False,
+                    )
 
-                        exported_files.append(static_export_path)
+                    exported_files.append(static_export_path)
 
-                        # Clean up static USD (remove skeleton artifacts, fix structure)
-                        if clean_static_usd_file(static_export_path):
-                            pass
-                        else:
-                            pass
+                    # Clean up static USD (remove skeleton artifacts, fix structure)
+                    if clean_static_usd_file(static_export_path):
+                        pass
+                    else:
+                        pass
 
             texture_manifest[standardized_name] = {
                 "original_name": original_name,
