@@ -1590,12 +1590,18 @@ def _build_vertex_alpha_map(mesh, alpha_img):
 def _detect_alpha_inversion(alpha_img):
     """Detect if alpha mask uses inverted convention (black=opaque).
 
-    Samples the alpha image to determine if it needs inversion.
-    Standard convention: white=opaque, black=transparent
-    Inverted convention: black=opaque, white=transparent (common in masks)
+    CRITICAL FIX: The original mean-based detection was broken because alpha
+    textures naturally contain large transparent areas (background).
+
+    Standard convention (white=opaque) is universal in 3D graphics. Only invert
+    if we find clear evidence: histogram analysis showing pure black dominates
+    with few white pixels (pattern of black=opaque, white=transparent).
+
+    This fixes cases where alder/birch/ash were inverted incorrectly because
+    their mean luminance was low due to transparent backgrounds.
 
     Returns:
-        True if alpha should be inverted (mean alpha < 0.4)
+        True only if texture clearly uses inverted convention (black=opaque)
     """
     if alpha_img is None:
         return False
@@ -1603,20 +1609,34 @@ def _detect_alpha_inversion(alpha_img):
     pixels = alpha_img.load()
     w, h = alpha_img.size
 
-    # Sample grid of points to estimate mean alpha
-    sample_count = 0
-    alpha_sum = 0.0
-    step = max(1, min(w, h) // 20)  # Sample ~400 points
+    # Sample texture to build histogram
+    histogram = [0] * 256
+    step = max(1, min(w, h) // 30)
 
     for y in range(0, h, step):
         for x in range(0, w, step):
-            alpha_sum += pixels[x, y] / 255.0
-            sample_count += 1
+            val = pixels[x, y]
+            if isinstance(val, (tuple, list)):  # RGBA or tuple
+                val = val[0] if len(val) > 0 else 0
+            histogram[min(255, max(0, int(val)))] += 1
 
-    mean_alpha = alpha_sum / max(1, sample_count)
+    total = sum(histogram)
+    if total == 0:
+        return False
 
-    # If mean is below 0.4, likely inverted (most of image is dark = opaque leaf)
-    return mean_alpha < 0.4
+    # Distribution: black (0-85), mid (85-170), white (170-255)
+    black_count = sum(histogram[0:86])
+    white_count = sum(histogram[170:256])
+
+    black_ratio = black_count / total
+    white_ratio = white_count / total
+
+    # Only invert if clear inverted pattern: >60% black AND <20% white
+    # This filters out normal textures while catching true inverted masks
+    if black_ratio > 0.6 and white_ratio < 0.2:
+        return True
+
+    return False
 
 
 def _sample_alpha_at_uv(uv_x, uv_y, alpha_img, invert=False):
