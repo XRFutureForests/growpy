@@ -608,18 +608,19 @@ def ensure_normal_from_bump(twig_dir: Path) -> Optional[Path]:
 
 
 def standardize_twig_textures(twig_dir: Path) -> dict:
-    """Standardize naming of textures in a twig directory.
+    """Standardize naming and format of textures in a twig directory.
 
-    Creates copies with standardized naming pattern:
-        {twig_name}_{texture_type}.{ext}
+    Creates PNG copies with standardized naming pattern:
+        {twig_name}_{texture_type}.png
 
+    All standardized textures are converted to PNG format for consistency.
     Original textures are preserved (required for Blender blend files which
     reference them). Standardized versions are used for USD export and
     geometry processing (alpha trimming).
 
     Handles:
-        - Diffuse (with top/bottom variants, including bark) - copied
-        - Normal - copied to standard names
+        - Diffuse (with top/bottom variants, including bark) - converted to PNG
+        - Normal - converted to PNG
         - Bump - kept as-is, will be converted to normal
         - Alpha - skipped (will be handled by ensure_alpha_texture to guarantee PNG)
         - Other textures - kept as-is, not processed
@@ -629,13 +630,13 @@ def standardize_twig_textures(twig_dir: Path) -> dict:
 
     Returns:
         Dict with standardized texture paths:
-            - 'diffuse': Path to primary diffuse texture (standardized)
-            - 'diffuse_top': Path to top variant (standardized, if exists)
-            - 'diffuse_bottom': Path to bottom variant (standardized, if exists)
-            - 'diffuse_bark': Path to bark texture (standardized, if exists)
+            - 'diffuse': Path to primary diffuse texture (PNG)
+            - 'diffuse_top': Path to top variant (PNG, if exists)
+            - 'diffuse_bottom': Path to bottom variant (PNG, if exists)
+            - 'diffuse_bark': Path to bark texture (PNG, if exists)
             - 'alpha': Always None (handled by ensure_alpha_texture)
-            - 'normal': Path to normal texture (standardized, if exists)
-            - 'copied_count': Number of files copied to standard names
+            - 'normal': Path to normal texture (PNG, if exists)
+            - 'copied_count': Number of files processed to standard PNG format
     """
     textures_dir = twig_dir / "textures"
     if not textures_dir.exists():
@@ -716,21 +717,35 @@ def standardize_twig_textures(twig_dir: Path) -> dict:
         if not texture_type:
             continue
 
-        # Generate standardized name
+        # Generate standardized name (always use PNG for standardized files)
         patterns = texture_patterns[texture_type]
         if modifier and texture_type in ["diffuse"]:
             suffix = patterns["modifiers"][modifier]
         else:
             suffix = patterns["modifiers"][None]
 
-        new_name = f"{twig_name}{suffix}{tex_file.suffix}"
+        # Standardized files always use PNG format for consistency
+        new_name = f"{twig_name}{suffix}.png"
         new_path = textures_dir / new_name
 
-        # Only copy if different
+        # Only process if different
         if new_path != tex_file:
             try:
-                # Copy file to standard name (preserves original for Blender)
-                shutil.copy2(tex_file, new_path)
+                # Convert and save as PNG (standardizes format)
+                img = Image.open(tex_file)
+
+                # For diffuse: preserve alpha for now (will be extracted by ensure_alpha_texture)
+                # For normal: ensure RGB format
+                if texture_type == "normal":
+                    # Normal maps should be RGB (discard any alpha)
+                    if img.mode == "RGBA":
+                        img = img.convert("RGB")
+                    elif img.mode not in ["RGB", "L"]:
+                        img = img.convert("RGB")
+                # else: keep diffuse as-is (including RGBA if present)
+
+                # Save as PNG
+                img.save(new_path)
                 results["copied_count"] += 1
 
                 # Track result
@@ -748,7 +763,7 @@ def standardize_twig_textures(twig_dir: Path) -> dict:
             except Exception as e:
                 # Log error for debugging
                 import sys
-                print(f"  Warning: Could not copy {tex_file.name} to {new_name}: {e}", file=sys.stderr)
+                print(f"  Warning: Could not process {tex_file.name} to {new_name}: {e}", file=sys.stderr)
 
     return results
 
