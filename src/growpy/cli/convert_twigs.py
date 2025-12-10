@@ -8,132 +8,77 @@ Python API (bpy).
 
 Key Features:
     - Dual export modes: skeletal (with skeleton) or static (with materials)
-    - Material/texture mapping optimized for USD (static variants)
-    - Textures copied to output directory with relative path references
-    - Coordinate system: Z-up (Blender right-handed to Unreal left-handed)
-    - Standardized naming convention for twig types
-    - Original .blend files preserved for regeneration
-    - Consistent mesh density across species via mm-based edge length targets
+    - Interleaved densify+trim: subdivides only transition edges while trimming
+    - Relative edge targets for consistent density across species
+    - Alpha-based silhouette trimming with configurable methods
+    - Coordinate system: Z-up (Blender to Unreal)
+
+Algorithm (Interleaved Densify+Trim):
+    1. Build vertex alpha map by sampling texture at UV coordinates
+    2. Delete faces where ALL/AVG vertices have alpha < threshold (based on method)
+    3. Find transition edges (connect opaque vertex to transparent vertex)
+    4. Split transition edges at midpoint using edge_split (preserves interior)
+    5. Repeat steps 2-4 until longest transition edge < target length
+
+    Key advantages:
+    - Interleaved deletion removes fully-transparent faces early
+    - Only subdivides transition edges (not nearby or interior edges)
+    - Uses edge_split to preserve interior mesh topology completely
+    - Direct texture sampling for new vertices (not interpolation)
 
 Export Variants (both created by default):
     Skeletal (_skeletal.usda):
         - Single root joint skeleton for animation support
         - Minimal export: geometry only (no materials/textures/attributes)
         - Used in skeletal Nanite assemblies
-        - Supports wind animation and procedural placement
 
     Static (_static.usda):
         - Full PBR materials with textures from The Grove 2.2
         - No skeleton (static geometry)
         - Used in static Nanite assemblies
-        - Better visual quality, smaller file size
-
-Supports two CSV formats:
-  1. Forest placement CSV (x, y, species, height) - auto-extracts unique species
-  2. Asset lookup CSV (Common Name, Preset, Twig, Bark Texture) - direct asset reference
 
 Quick Start:
-    # Consistent mesh density across all species (RECOMMENDED)
-    python src/growpy/cli/convert_twigs.py data/assets/twigs --csv data/input/test.csv --target-edge-mm 0.5 --alpha-trim 0.5 --interior-decimate --decimate-ratio 0.01 --boundary-rings 2 --smooth-boundary --smooth-iterations 5 --smooth-factor 0.6
+    # Recommended: default settings work well for most species
+    python src/growpy/cli/convert_twigs.py data/assets/twigs
 
-    # Legacy mode with fixed subdivision levels (results vary by initial mesh density)
-    python src/growpy/cli/convert_twigs.py data/assets/twigs --csv data/input/test.csv --subdiv 30 --alpha-trim 0.5 --interior-decimate --decimate-ratio 0.01 --boundary-rings 2 --smooth-boundary --smooth-iterations 5 --smooth-factor 0.6
+    # Explicit defaults:
+    python src/growpy/cli/convert_twigs.py data/assets/twigs \\
+        --boundary-edge-mm 0.5 --alpha-trim 0.5
 
-Common Flags:
-    Processing Pipeline (in order):
-        1. --target-edge-mm OR --subdiv  -> Subdivide mesh to target density
-        2. --alpha-trim                  -> Remove transparent areas (creates jagged edges)
-        3. --interior-decimate           -> Reduce interior density (enabled by flag)
-        4. --smooth-boundary             -> Smooth those jagged edges (enabled by flag)
+    # With boundary smoothing for natural curves
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --smooth-boundary
 
-    NEW: mm-Based Consistent Density (preferred):
-    --target-edge-mm FLOAT  Target boundary edge length in millimeters (e.g., 0.5)
-                            Adaptively subdivides until edges reach this length.
-                            Provides consistent boundary density across all species.
-                            Overrides --subdiv when set.
-    
-    --interior-edge-mm FLOAT Target interior edge length in millimeters (e.g., 2.0)
-                            Iteratively decimates until interior reaches this length.
-                            Should be larger than --target-edge-mm.
-                            Overrides --decimate-ratio when set.
+    # Skip densification (export original low-poly mesh)
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --no-densify
 
-    Legacy Fixed-Count Mode:
-    --subdiv INT            Subdivision levels (default: 4)
-                            Higher = more triangles = smoother but slower
-                            Note: Results vary by twig size - prefer --target-edge-mm
-    
-    --decimate-ratio FLOAT  Interior collapse ratio (default: 0.5)
-                            Lower = more aggressive reduction (fewer triangles)
-                            Note: Results vary by mesh - prefer --interior-edge-mm
+    # Convert ALL species from asset lookup table
+    python src/growpy/cli/convert_twigs.py data/assets/twigs \\
+        --csv src/growpy/config/tree_asset_lookup.csv
 
-    Common Flags:
-    --csv PATH              Species CSV filter (default: data/input/test.csv)
-    --no-densify            Disable mesh densification (subdivision)
-    
-    --alpha-trim FLOAT      Alpha threshold for edge trimming (default: 0.5)
-                            Lower = more aggressive trimming (less leaf area)
-                            Higher = keeps more semi-transparent areas
-                            Range: 0.0 (trim everything) to 1.0 (keep everything)
-    
-    --interior-decimate     Enable interior decimation (off by default)
-                            Reduces triangle count inside leaves while protecting edges
-    
-    --boundary-rings INT    Edge protection width (default: 1)
-                            Widens the protected edge region during decimation
-                            Higher = more triangles preserved near edges
-                            Typical: 1-3 rings, higher for detailed silhouettes
-    
-    --smooth-boundary       Enable boundary smoothing (off by default)
-                            Smooths jagged edges created by alpha trimming
-                            Effect: Natural curves instead of regular grid edges
-    
-    --smooth-iterations INT Smoothing passes (default: 3)
-                            How many times to smooth (accumulative effect)
-    
-    --smooth-factor FLOAT   Smoothing strength per pass (default: 0.5)
-                            How much to blend with neighbors each iteration
+All Flags:
+    path                        Path to twig directory or .blend file (required)
+    --csv PATH                  Species CSV filter (default: data/input/test.csv)
+    --no-densify                Disable mesh densification
+    --boundary-edge-mm FLOAT    Target edge as fraction of avg edge (default: 0.5)
+    --alpha-trim FLOAT          Alpha threshold for trimming (default: 0.5)
+    --smooth-boundary           Enable boundary smoothing
+    --smooth-iterations INT     Smoothing passes (default: 3)
+    --smooth-factor FLOAT       Smoothing strength 0.0-1.0 (default: 0.5)
 
-    Recommended Workflows:
-        # Consistent density across all species (BEST)
-        --target-edge-mm 0.5 --alpha-trim 0.5 --interior-decimate --decimate-ratio 0.01 --boundary-rings 2
-        
-        # High quality with smooth edges (RECOMMENDED)
-        --target-edge-mm 0.5 --alpha-trim 0.5 --interior-decimate --decimate-ratio 0.01 \\
-            --boundary-rings 2 --smooth-boundary --smooth-iterations 5 --smooth-factor 0.6
+Edge Densification (RELATIVE sizing - robust to any mesh scale):
+    --boundary-edge-mm 1.0      No subdivision (original mesh)
+    --boundary-edge-mm 0.5      Subdivide to 50% of avg edge (RECOMMENDED)
+    --boundary-edge-mm 0.25     Subdivide to 25% (very dense)
 
-        # Legacy: Fixed subdivision (results vary by initial mesh density)
-        --subdiv 30 --interior-decimate --decimate-ratio 0.01 --boundary-rings 2
-        
-        # Balanced quality and performance
-        --target-edge-mm 1.0 --interior-decimate --decimate-ratio 0.1 --smooth-boundary
+Alpha Trimming:
+    --alpha-trim 0.05-0.3       Minimal trimming (conservative)
+    --alpha-trim 0.5            Moderate trimming (RECOMMENDED)
+    --alpha-trim 0.7            Aggressive trimming
+    (Uses 'all' method: delete only if ALL samples < threshold)
 
 Output per twig:
     - {species}_twig_{type}_skeletal.usda  # Skeletal mesh with skeleton
-    - {species}_twig_{type}_static.usda    # Static mesh with materials/textures
-    - textures/                            # Textures for static variants
-    - {TwigName}.blend                     # Original source file (PRESERVED)
-
-Twig Type Mapping:
-    apical/long/end/terminal -> twig_long attribute (terminal twigs)
-    lateral/short/side -> twig_short attribute (side branches)
-    upward/up -> twig_upward attribute (upward-facing twigs)
-    dead/fall/winter -> twig_dead attribute (dead/bare twigs)
-
-Coordinate Systems:
-    - Both Blender and Unreal use Z-up coordinate systems
-    - Blender: Z-up, right-handed (X-right, Y-forward, Z-up)
-    - Unreal: Z-up, left-handed (X-forward, Y-right, Z-up)
-    - USD preserves Z-up, handedness handled on Unreal import
-
-File Preservation:
-    Original .blend files are PRESERVED after conversion. This allows:
-    - Regeneration of both skeletal and static variants from same source
-    - Version control of original assets
-    - Future re-export with different settings
-    Only auxiliary files are cleaned (ReadMe.txt, duplicate textures)
-
-Full Documentation:
-    See docs/archive/cli-reference.md for complete flag reference and examples
+    - {species}_twig_{type}_static.usda    # Static mesh with materials
 
 Usage:
     python src/growpy/cli/convert_twigs.py <path> [options]
@@ -378,27 +323,27 @@ def process_twig_directory(
     include_skeleton: bool = True,
     *,
     densify: bool = True,
-    subdiv_levels: int = 4,
     alpha_trim_threshold: float = 0.5,
-    interior_decimate: bool = False,
-    decimate_ratio: float = 0.5,
-    boundary_rings: int = 1,
+    alpha_trim_method: str = "all",
     smooth_boundary: bool = False,
     smooth_iterations: int = 3,
     smooth_factor: float = 0.5,
-    target_edge_mm: float = None,
-    interior_edge_mm: float = None,
+    boundary_edge_mm: float = 0.5,
 ) -> Dict[str, List[Path]]:
     """Process all twig blend files in a directory.
 
-    CRITICAL: clean_export is forced to True for Nanite compatibility.
-    Materials and textures cause import failures with skeletal Nanite assemblies.
+    Uses boundary-only densification to preserve interior mesh topology while
+    creating high-detail silhouettes. Parameters are mm-based for consistency
+    across different leaf sizes.
 
     Args:
         twig_dir: Directory containing .blend twig files
         formats: Export formats to create
-        clean_export: ALWAYS True - materials/textures disabled for Nanite
         twig_filter: Optional list of twig directory names to process (snake_case)
+        densify: Enable boundary densification (default: True)
+        alpha_trim_threshold: Alpha threshold for silhouette trimming (default: 0.5)
+        boundary_edge_mm: Target edge as fraction of avg edge (default: 0.5)
+        smooth_boundary: Enable boundary edge smoothing (default: False)
     """
     # Force clean export for Nanite compatibility
     clean_export = True
@@ -454,15 +399,11 @@ def process_twig_directory(
                 include_skeleton=include_skeleton,
                 densify=densify,
                 alpha_trim_threshold=alpha_trim_threshold,
-                subdiv_levels=subdiv_levels,
-                interior_decimate=interior_decimate,
-                decimate_ratio=decimate_ratio,
-                boundary_rings=boundary_rings,
+                alpha_trim_method=alpha_trim_method,
                 smooth_boundary=smooth_boundary,
                 smooth_iterations=smooth_iterations,
                 smooth_factor=smooth_factor,
-                target_edge_mm=target_edge_mm,
-                interior_edge_mm=interior_edge_mm,
+                boundary_edge_mm=boundary_edge_mm,
             )
 
             # Collect results
@@ -471,8 +412,12 @@ def process_twig_directory(
                     results[species_name] = []
                 results[species_name].extend(exported_files)
 
-        except Exception:
-            # Silently fail - export validation is optional
+        except Exception as e:
+            # Print error for debugging
+            print(f"  [ERROR] Failed to process {blend_file.name}: {e}")
+            import traceback
+
+            traceback.print_exc()
             pass
 
     return results
@@ -528,33 +473,11 @@ Output per twig:
         help="Disable mesh densification (subdivision)",
     )
     parser.add_argument(
-        "--subdiv",
-        type=int,
-        default=4,
-        help="Subdivision levels for densification (default: 4)",
-    )
-    parser.add_argument(
         "--alpha-trim",
         type=float,
         default=0.5,
-        help="Alpha threshold for edge trimming (default: 0.5)",
-    )
-    parser.add_argument(
-        "--interior-decimate",
-        action="store_true",
-        help="Reduce interior leaf density while preserving alpha silhouette (default: off)",
-    )
-    parser.add_argument(
-        "--decimate-ratio",
-        type=float,
-        default=0.5,
-        help="Collapse decimate ratio for interior (0..1, lower = stronger, default: 0.5)",
-    )
-    parser.add_argument(
-        "--boundary-rings",
-        type=int,
-        default=1,
-        help="Edge protection width in vertex rings around silhouette (default: 1)",
+        help="Alpha threshold for trimming (default: 0.5). "
+        "0.1-0.3=minimal (~0.3%% faces), 0.5=moderate (~7%%), 0.7=aggressive (~12-65%%).",
     )
     parser.add_argument(
         "--smooth-boundary",
@@ -573,22 +496,14 @@ Output per twig:
         default=0.5,
         help="Smoothing strength per iteration (0.0-1.0, default: 0.5)",
     )
-    # Target edge length parameters for consistent mesh density across species
+    # Edge densification parameters
     parser.add_argument(
-        "--target-edge-mm",
+        "--boundary-edge-mm",
         type=float,
-        default=None,
-        help="Target boundary edge length in millimeters (e.g., 0.5). "
-        "When set, adaptively subdivides until edges reach this length. "
-        "Provides consistent boundary density across different twig sizes.",
-    )
-    parser.add_argument(
-        "--interior-edge-mm",
-        type=float,
-        default=None,
-        help="Target interior edge length in millimeters (e.g., 2.0). "
-        "When set with --interior-decimate, iteratively decimates until "
-        "interior edges reach this length. Should be larger than --target-edge-mm.",
+        default=0.5,
+        help="Target edge as fraction of avg edge (default: 0.5). "
+        "1.0=no subdivision, 0.5=50%% of avg, 0.25=25%%. "
+        "Only transition edges (opaque->transparent) are subdivided.",
     )
     args = parser.parse_args()
 
@@ -677,16 +592,11 @@ Output per twig:
             twig_filter,
             include_skeleton=True,
             densify=(not args.no_densify),
-            subdiv_levels=max(1, args.subdiv),
             alpha_trim_threshold=min(max(0.0, args.alpha_trim), 1.0),
-            interior_decimate=args.interior_decimate,
-            decimate_ratio=float(args.decimate_ratio),
-            boundary_rings=max(0, int(args.boundary_rings)),
             smooth_boundary=args.smooth_boundary,
             smooth_iterations=max(1, int(args.smooth_iterations)),
             smooth_factor=min(max(0.0, float(args.smooth_factor)), 1.0),
-            target_edge_mm=args.target_edge_mm,
-            interior_edge_mm=args.interior_edge_mm,
+            boundary_edge_mm=max(0.1, float(args.boundary_edge_mm)),
         )
     elif args.path.is_dir():
         # Directory
@@ -697,16 +607,11 @@ Output per twig:
             twig_filter,
             include_skeleton=True,
             densify=(not args.no_densify),
-            subdiv_levels=max(1, args.subdiv),
             alpha_trim_threshold=min(max(0.0, args.alpha_trim), 1.0),
-            interior_decimate=args.interior_decimate,
-            decimate_ratio=float(args.decimate_ratio),
-            boundary_rings=max(0, int(args.boundary_rings)),
             smooth_boundary=args.smooth_boundary,
             smooth_iterations=max(1, int(args.smooth_iterations)),
             smooth_factor=min(max(0.0, float(args.smooth_factor)), 1.0),
-            target_edge_mm=args.target_edge_mm,
-            interior_edge_mm=args.interior_edge_mm,
+            boundary_edge_mm=max(0.1, float(args.boundary_edge_mm)),
         )
     else:
         return 1
