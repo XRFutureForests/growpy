@@ -619,9 +619,9 @@ def standardize_twig_textures(twig_dir: Path) -> dict:
 
     Handles:
         - Diffuse (with top/bottom variants, including bark) - copied
-        - Alpha - copied to standard names
         - Normal - copied to standard names
         - Bump - kept as-is, will be converted to normal
+        - Alpha - skipped (will be handled by ensure_alpha_texture to guarantee PNG)
         - Other textures - kept as-is, not processed
 
     Args:
@@ -633,7 +633,7 @@ def standardize_twig_textures(twig_dir: Path) -> dict:
             - 'diffuse_top': Path to top variant (standardized, if exists)
             - 'diffuse_bottom': Path to bottom variant (standardized, if exists)
             - 'diffuse_bark': Path to bark texture (standardized, if exists)
-            - 'alpha': Path to alpha texture (standardized, if exists)
+            - 'alpha': Always None (handled by ensure_alpha_texture)
             - 'normal': Path to normal texture (standardized, if exists)
             - 'copied_count': Number of files copied to standard names
     """
@@ -688,15 +688,17 @@ def standardize_twig_textures(twig_dir: Path) -> dict:
         if any(k in name_lower for k in ["bump", "height"]):
             continue
 
+        # Skip alpha maps (will be handled by ensure_alpha_texture to guarantee PNG format)
+        if any(k in name_lower for k in ["alpha", "opacity", "mask", "cutout"]):
+            continue
+
         # Determine texture type and modifier (top/bottom)
         texture_type = None
         modifier = None
 
-        # Check for explicit texture type keywords first (alpha, normal)
-        # These take priority over diffuse matches
-        if any(k in name_lower for k in ["alpha", "opacity", "mask", "cutout"]):
-            texture_type = "alpha"
-        elif any(k in name_lower for k in ["normal", "norm", "nrm"]):
+        # Check for explicit texture type keywords first (normal maps)
+        # Alpha is skipped above, so we don't check it here
+        if any(k in name_lower for k in ["normal", "norm", "nrm"]):
             texture_type = "normal"
         else:
             # Everything else is diffuse (matches Grove convention: OakEuropeanTop, OakEuropeanBottom)
@@ -741,8 +743,6 @@ def standardize_twig_textures(twig_dir: Path) -> dict:
                         results["diffuse_bark"] = new_path
                     else:
                         results["diffuse"] = new_path
-                elif texture_type == "alpha":
-                    results["alpha"] = new_path
                 elif texture_type == "normal":
                     results["normal"] = new_path
             except Exception as e:
