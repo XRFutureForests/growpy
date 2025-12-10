@@ -26,6 +26,7 @@ from typing import Optional, Set
 import bmesh
 import bpy
 import mathutils
+import numpy as np
 
 try:
     from PIL import Image
