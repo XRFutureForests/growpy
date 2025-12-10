@@ -104,10 +104,10 @@ def _add_twig_material(
         if texture_dir and texture_dir.exists():
             texture_extensions = [".png", ".jpg", ".jpeg", ".exr"]
 
-            # CRITICAL: Use base color (diffuse) and normal textures for Nanite compatibility
+            # CRITICAL: Use base color (diffuse, bark) and normal textures for Nanite compatibility
             # Alpha/translucent/mask textures excluded for Nanite
-            # Also check for two-sided textures (top/bottom)
-            OPAQUE_TEXTURE_TYPES = ["diffuse", "diffuse_top", "normal"]
+            # Also check for two-sided textures (top/bottom) and bark textures
+            OPAQUE_TEXTURE_TYPES = ["diffuse", "diffuse_top", "bark", "normal"]
 
             # Build standardized texture name base
             # Extract base name (everything up to and including 'twig')
@@ -823,7 +823,13 @@ def standardize_twig_name(original_name, species_name):
 
 
 def classify_texture_from_name(name):
-    """Classify texture type from filename."""
+    """Classify texture type from filename, with support for material variants.
+
+    Supports texture categories:
+    - Seasonal variants: summer (preferred) > fall/winter > spring
+    - Material parts: leaf (default), bark
+    - View variants: top (preferred) > bottom
+    """
     name_lower = name.lower()
 
     # Check for specific texture types first (alpha, normal, bump, etc.)
@@ -835,6 +841,16 @@ def classify_texture_from_name(name):
         return "normal"
     if any(kw in name_lower for kw in ["bump", "height", "displacement"]):
         return "bump"
+
+    # Check for bark texture
+    if "bark" in name_lower:
+        has_top = "top" in name_lower or "upper" in name_lower or "face" in name_lower
+        has_bottom = "bottom" in name_lower or "lower" in name_lower or "back" in name_lower
+        if has_top and not has_bottom:
+            return "bark_top"
+        if has_bottom and not has_top:
+            return "bark_bottom"
+        return "bark"
 
     # Check for top/bottom diffuse textures
     # These can have explicit "diffuse" keyword OR be implicit (e.g., "OakTop.png")
@@ -881,14 +897,18 @@ def copy_opaque_textures_for_skeletal(
         Number of textures copied
     """
     texture_extensions = [".png", ".jpg", ".jpeg", ".exr"]
-    # CRITICAL: Use base color (diffuse) and normal textures for Nanite compatibility
+    # CRITICAL: Use base color (diffuse, bark) and normal textures for Nanite compatibility
     # Alpha/translucent/mask textures excluded for Nanite
     # Bump maps are converted to normal maps (not copied as bump)
     # Two-sided textures (top/bottom) are both kept
+    # Bark textures are included as separate material
     OPAQUE_TEXTURE_TYPES = [
         "diffuse",
         "diffuse_top",
         "diffuse_bottom",
+        "bark",
+        "bark_top",
+        "bark_bottom",
         "normal",
         "bump",
     ]
@@ -2694,28 +2714,76 @@ def setup_materials_with_textures(
     # Clear existing materials
     obj.data.materials.clear()
 
-    # Group existing materials by base name
+    # Group textures by material and season with proper preferences
+    # Preferred order: material type -> season (summer > fall > winter > spring)
     material_groups = {}
-    existing_materials = list(bpy.data.materials)
 
     for texture in available_textures:
-        # Find best material match
-        mat_name = None
-        for mat in existing_materials:
-            if (
-                mat.name.lower() in texture.stem.lower()
-                or texture.stem.lower() in mat.name.lower()
-            ):
-                mat_name = mat.name
-                break
+        # Classify texture
+        tex_type = classify_texture_from_name(texture.stem)
 
-        if not mat_name:
-            # Create generic material name
-            mat_name = species_name
+        # Determine material base name and seasonal preference
+        tex_lower = texture.stem.lower()
 
-        if mat_name not in material_groups:
-            material_groups[mat_name] = []
-        material_groups[mat_name].append(texture)
+        # Identify material type (leaf is default, bark if explicitly marked)
+        material_part = "bark" if "bark" in tex_lower else "leaf"
+
+        # Identify season (summer preferred, fall/winter/spring deprioritized)
+        season = None
+        if "summer" in tex_lower:
+            season = "summer"
+        elif "fall" in tex_lower or "autumn" in tex_lower:
+            season = "fall"
+        elif "winter" in tex_lower or "bare" in tex_lower:
+            season = "winter"
+        elif "spring" in tex_lower:
+            season = "spring"
+
+        # Build material group key: material_part + season
+        if season:
+            mat_group_key = f"{material_part}_{season}"
+        else:
+            mat_group_key = material_part
+
+        if mat_group_key not in material_groups:
+            material_groups[mat_group_key] = []
+        material_groups[mat_group_key].append(texture)
+
+    # Consolidate season variants: if summer exists, prefer it
+    # Remove fall/winter/spring variants if summer is available
+    season_prioritization = {
+        "leaf": [],
+        "bark": [],
+    }
+
+    for group_key in list(material_groups.keys()):
+        if "summer" in group_key:
+            material_type = group_key.replace("_summer", "")
+            season_prioritization[material_type] = material_groups.pop(group_key)
+        elif "fall" in group_key or "winter" in group_key or "spring" in group_key:
+            material_type = group_key.split("_")[0]
+            # Only use if summer variant doesn't exist
+            if f"{material_type}_summer" not in material_groups:
+                if not season_prioritization[material_type]:
+                    season_prioritization[material_type] = material_groups.pop(group_key)
+                else:
+                    material_groups.pop(group_key)
+            else:
+                material_groups.pop(group_key)
+        elif material_groups[group_key]:
+            # No season in this group, use as base
+            material_type = group_key.split("_")[0]
+            if not season_prioritization[material_type]:
+                season_prioritization[material_type] = material_groups.pop(group_key)
+
+    # Rename groups with proper species prefix
+    final_material_groups = {}
+    for material_type, textures in season_prioritization.items():
+        if textures:
+            mat_name = f"{species_name}_{material_type}" if material_type else species_name
+            final_material_groups[mat_name] = textures
+
+    material_groups = final_material_groups if final_material_groups else material_groups
 
     # If no good grouping, use all textures for single material
     if not material_groups:
@@ -2863,6 +2931,18 @@ def setup_materials_with_textures(
                 elif tex_type == "diffuse_bottom":
                     # Only used if top texture connected via MixRGB later
                     # For now, skip - top texture takes precedence
+                    pass
+
+                elif tex_type == "bark":
+                    # Bark textures treated same as diffuse (separate material)
+                    links.new(tex_node.outputs["Color"], bsdf.inputs["Base Color"])
+
+                elif tex_type == "bark_top":
+                    # Bark texture with top/bottom variants
+                    links.new(tex_node.outputs["Color"], bsdf.inputs["Base Color"])
+
+                elif tex_type == "bark_bottom":
+                    # Bark bottom variant - skip if top exists
                     pass
 
                 elif tex_type == "alpha":
