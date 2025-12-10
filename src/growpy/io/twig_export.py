@@ -57,6 +57,85 @@ except ImportError:
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel, Vt
 
 
+def export_blender_mesh_to_usd(obj, output_path, include_normals=True, include_uvs=True):
+    """Export Blender mesh object to USD file using pxr directly.
+
+    This is a fallback when bpy.ops.wm.usd_export is not available (e.g., in standalone bpy).
+
+    Args:
+        obj: Blender mesh object to export
+        output_path: Path to write USD file
+        include_normals: Include vertex normals in export
+        include_uvs: Include UV coordinates in export
+
+    Returns:
+        True if export succeeded, False otherwise
+    """
+    try:
+        # Create USD stage
+        stage = Usd.Stage.CreateNew(str(output_path))
+
+        # Create mesh prim
+        mesh_path = "/Mesh"
+        mesh_prim = UsdGeom.Mesh.Define(stage, mesh_path)
+
+        # Get mesh data
+        mesh = obj.data
+
+        # Collect vertex positions
+        points = []
+        for vert in mesh.vertices:
+            co = vert.co
+            points.append((co.x, co.y, co.z))
+
+        mesh_prim.GetPointsAttr().Set([Gf.Vec3f(*p) for p in points])
+
+        # Collect face indices (triangles or quads)
+        face_vertex_counts = []
+        face_vertex_indices = []
+
+        for poly in mesh.polygons:
+            face_vertex_counts.append(len(poly.vertices))
+            face_vertex_indices.extend(poly.vertices)
+
+        mesh_prim.GetFaceVertexCountsAttr().Set(face_vertex_counts)
+        mesh_prim.GetFaceVertexIndicesAttr().Set(face_vertex_indices)
+
+        # Add normals if requested
+        if include_normals:
+            normals = []
+            for vert in mesh.vertices:
+                n = vert.normal
+                normals.append((n.x, n.y, n.z))
+
+            mesh_prim.GetNormalsAttr().Set([Gf.Vec3f(*n) for n in normals])
+
+        # Add UVs if requested and available
+        if include_uvs and mesh.uv_layers:
+            uv_layer = mesh.uv_layers[0]
+            uvs = []
+            for uv_data in uv_layer.data:
+                uvs.append((uv_data.uv.x, uv_data.uv.y))
+
+            # Create primvar for UVs
+            texCoords_attr = mesh_prim.CreatePrimvar(
+                UsdGeom.Tokens.st,
+                Sdf.ValueTypeNames.TexCoord2fArray,
+                UsdGeom.Tokens.faceVarying
+            )
+            texCoords_attr.Set([Gf.Vec2f(*uv) for uv in uvs])
+
+        # Save stage
+        stage.GetRootLayer().Save()
+        return True
+
+    except Exception as e:
+        print(f"[ERROR] Direct USD export failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
 def _add_twig_material(
     stage,
     mesh_prim,
@@ -3341,6 +3420,9 @@ def process_twig_file(
 
                     # CRITICAL: Export UVs only (no materials from Blender)
                     # Materials will be added later with only opaque textures (no alpha/translucent)
+                    export_success = False
+
+                    # Try Blender's USD export operator first
                     try:
                         result = bpy.ops.wm.usd_export(
                             filepath=str(skel_export_path),
@@ -3358,13 +3440,21 @@ def process_twig_file(
                             export_lights=False,
                         )
                         if result == {'FINISHED'}:
-                            exported_files.append(skel_export_path)
+                            export_success = True
                         else:
-                            print(f"[WARNING] Skeletal USD export returned: {result}")
+                            print(f"[WARNING] Blender USD export operator returned: {result}")
                     except Exception as export_err:
-                        print(f"[ERROR] Skeletal USD export failed: {export_err}")
-                        import traceback
-                        traceback.print_exc()
+                        print(f"[WARNING] Blender USD export operator not available, trying direct export: {export_err}")
+
+                    # Fallback: use direct pxr export if operator failed
+                    if not export_success:
+                        if export_blender_mesh_to_usd(mount_point, skel_export_path):
+                            export_success = True
+                        else:
+                            print(f"[ERROR] Both Blender and direct USD export failed for {skel_export_path}")
+
+                    if export_success:
+                        exported_files.append(skel_export_path)
 
                     # Add skeleton directly using Blender's bundled USD
                     # This also fixes texture paths and removes DomeLight
@@ -3432,6 +3522,9 @@ def process_twig_file(
                     )
 
                     # Export with materials and textures
+                    static_export_success = False
+
+                    # Try Blender's USD export operator first
                     try:
                         result = bpy.ops.wm.usd_export(
                             filepath=str(static_export_path),
@@ -3449,13 +3542,21 @@ def process_twig_file(
                             export_lights=False,
                         )
                         if result == {'FINISHED'}:
-                            exported_files.append(static_export_path)
+                            static_export_success = True
                         else:
-                            print(f"[WARNING] Static USD export returned: {result}")
+                            print(f"[WARNING] Blender USD export operator returned: {result}")
                     except Exception as export_err:
-                        print(f"[ERROR] Static USD export failed: {export_err}")
-                        import traceback
-                        traceback.print_exc()
+                        print(f"[WARNING] Blender USD export operator not available, trying direct export: {export_err}")
+
+                    # Fallback: use direct pxr export if operator failed
+                    if not static_export_success:
+                        if export_blender_mesh_to_usd(obj, static_export_path):
+                            static_export_success = True
+                        else:
+                            print(f"[ERROR] Both Blender and direct USD export failed for {static_export_path}")
+
+                    if static_export_success:
+                        exported_files.append(static_export_path)
 
                     # Clean up static USD (remove skeleton artifacts, fix structure)
                     if clean_static_usd_file(static_export_path):
