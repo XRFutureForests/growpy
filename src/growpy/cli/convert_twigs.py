@@ -42,8 +42,7 @@ Quick Start:
     python src/growpy/cli/convert_twigs.py data/assets/twigs
 
     # Explicit defaults:
-    python src/growpy/cli/convert_twigs.py data/assets/twigs \\
-        --boundary-edge-mm 0.5 --alpha-trim 0.5
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --boundary-edge-mm 0.5 --alpha-trim 0.5
 
     # With boundary smoothing for natural curves
     python src/growpy/cli/convert_twigs.py data/assets/twigs --smooth-boundary
@@ -52,8 +51,7 @@ Quick Start:
     python src/growpy/cli/convert_twigs.py data/assets/twigs --no-densify
 
     # Convert ALL species from asset lookup table
-    python src/growpy/cli/convert_twigs.py data/assets/twigs \\
-        --csv src/growpy/config/tree_asset_lookup.csv
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --csv src/growpy/config/tree_asset_lookup.csv
 
 All Flags:
     path                        Path to twig directory or .blend file (required)
