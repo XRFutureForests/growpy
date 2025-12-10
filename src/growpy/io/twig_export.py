@@ -3108,6 +3108,15 @@ def process_twig_file(
             # Optional geometry processing for enhanced leaf detail
             # Restrict to leaf materials to avoid artifacts on twigs/bark
             if densify or alpha_trim_threshold > 0.0 or interior_decimate:
+                # Validate textures before geometry processing
+                # Textures should have been standardized during asset preparation
+                from growpy.io.texture_utils import validate_twig_textures
+
+                is_valid, validation_msg = validate_twig_textures(blend_dir)
+                if not is_valid:
+                    print(f"  Warning: {validation_msg}")
+                    print(f"  Geometry processing may produce suboptimal results")
+
                 leaf_mats = _detect_leaf_material_indices(obj)
                 tex_map = _gather_texture_candidates(
                     blend_dir, standardized_name, species_name, metadata
