@@ -445,11 +445,9 @@ def normalize_alpha_texture(alpha_path: Path) -> bool:
     - Standard: white (255) = opaque, black (0) = transparent
     - Inverted: black (0) = opaque, white (255) = transparent
 
-    This function detects the convention by analyzing the histogram and inverts
-    if necessary to ensure all alpha textures use the standard convention.
-
-    The detection heuristic: if >60% of pixels are black AND <20% are white,
-    it's likely using the inverted convention and gets inverted.
+    Uses corner-based detection: samples the four corners to determine what value
+    represents "background/transparent". Corners are most reliable because actual
+    leaf/bark geometry doesn't extend to texture edges.
 
     Args:
         alpha_path: Path to alpha texture file
@@ -467,30 +465,38 @@ def normalize_alpha_texture(alpha_path: Path) -> bool:
         if img.mode != "L":
             img = img.convert("L")
 
-        # Analyze histogram to detect convention
-        histogram = [0] * 256
-        pixels = np.array(img)
-        for val in pixels.flat:
-            histogram[int(val)] += 1
+        pixels_array = np.array(img, dtype=np.float32)
+        h, w = pixels_array.shape
 
-        total = sum(histogram)
-        if total == 0:
+        # Sample corners: 10x10 patches at each corner
+        # (actual texture content doesn't extend to edges)
+        patch_size = min(10, h // 4, w // 4)
+        if patch_size < 2:
+            # Image too small to reliably detect corners
             return False
 
-        # Distribution: black (0-85), mid (85-170), white (170-255)
-        black_count = sum(histogram[0:86])
-        white_count = sum(histogram[170:256])
+        corners = [
+            pixels_array[0:patch_size, 0:patch_size],  # top-left
+            pixels_array[0:patch_size, -patch_size:],  # top-right
+            pixels_array[-patch_size:, 0:patch_size],  # bottom-left
+            pixels_array[-patch_size:, -patch_size:],  # bottom-right
+        ]
 
-        black_ratio = black_count / total
-        white_ratio = white_count / total
+        # Calculate mean corner value (represents the "transparent" background)
+        corner_values = [corner.mean() for corner in corners]
+        corner_mean = np.mean(corner_values)
 
-        # Invert if clear inverted pattern: >60% black AND <20% white
-        if black_ratio > 0.6 and white_ratio < 0.2:
-            # Invert the image (0->255, 255->0)
+        # If corners are dark (< 100), background is black = transparent (standard)
+        # If corners are bright (> 155), background is white = opaque (inverted!)
+        # Threshold: 127 is midpoint
+        if corner_mean > 155:  # Corners are bright (> ~60%)
+            # Bright corners = inverted convention (white=opaque, black=transparent)
+            # Invert the image to make white=opaque standard
             inverted = Image.eval(img, lambda x: 255 - x)
             inverted.save(alpha_path)
             return True
 
+        # Corners are dark or midtone = standard convention, no change needed
         return False
 
     except Exception:
