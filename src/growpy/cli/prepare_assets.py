@@ -379,12 +379,23 @@ CSV Format Support:
                 ensure_power_of_2_textures(dst_twig_dir)
 
             # Process twig textures:
-            # 1. Convert bump maps to normal maps
-            # 2. Extract alpha from diffuse if no dedicated alpha exists
-            # 3. Strip alpha channel from diffuse textures (RGBA -> RGB)
+            # 1. Standardize texture naming to consistent pattern
+            # 2. Convert bump maps to normal maps
+            # 3. Extract alpha from diffuse if no dedicated alpha exists
+            # 4. Strip alpha channel from diffuse textures (RGBA -> RGB)
+            # 5. Validate all required textures exist
             tex_results = process_twig_textures(dst_twig_dir)
             if tex_results.get("alpha_path"):
                 stats["alpha_extracted"] += 1
+
+            # Log texture validation result
+            if tex_results.get("renamed_count", 0) > 0:
+                print(f"  Renamed {tex_results['renamed_count']} texture files")
+
+            if tex_results.get("is_valid"):
+                print(f"  ✓ {tex_results.get('validation_message', '')}")
+            else:
+                print(f"  ✗ {tex_results.get('validation_message', 'Texture validation failed')}")
 
             stats["twigs_copied"] += 1
         else:
