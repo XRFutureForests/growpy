@@ -389,8 +389,8 @@ CSV Format Support:
                 stats["alpha_extracted"] += 1
 
             # Log texture validation result
-            if tex_results.get("renamed_count", 0) > 0:
-                print(f"  Renamed {tex_results['renamed_count']} texture files")
+            if tex_results.get("copied_count", 0) > 0:
+                print(f"  Standardized {tex_results['copied_count']} texture files")
 
             if tex_results.get("is_valid"):
                 print(f"  ✓ {tex_results.get('validation_message', '')}")

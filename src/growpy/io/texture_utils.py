@@ -13,6 +13,7 @@ Virtual Texture Requirements (Unreal Engine):
 """
 
 import math
+import shutil
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -607,28 +608,34 @@ def ensure_normal_from_bump(twig_dir: Path) -> Optional[Path]:
 
 
 def standardize_twig_textures(twig_dir: Path) -> dict:
-    """Standardize naming of all textures in a twig directory.
+    """Standardize naming of textures in a twig directory.
 
-    Renames textures to follow the standardized pattern:
+    Creates copies with standardized naming pattern:
         {twig_name}_{texture_type}.{ext}
 
+    Original textures are preserved (required for Blender blend files which
+    reference them). Standardized versions are used for USD export and
+    geometry processing (alpha trimming).
+
     Handles:
-        - Diffuse (with top/bottom variants)
-        - Alpha
-        - Normal
-        - Bump (keeps original, but marked for conversion)
+        - Diffuse (with top/bottom variants, including bark) - copied
+        - Alpha - copied to standard names
+        - Normal - copied to standard names
+        - Bump - kept as-is, will be converted to normal
+        - Other textures - kept as-is, not processed
 
     Args:
         twig_dir: Path to twig directory containing textures
 
     Returns:
-        Dict with renamed texture paths:
-            - 'diffuse': Path to primary diffuse texture
-            - 'diffuse_top': Path to top variant (if exists)
-            - 'diffuse_bottom': Path to bottom variant (if exists)
-            - 'alpha': Path to alpha texture (if exists)
-            - 'normal': Path to normal texture (if exists)
-            - 'renamed_count': Number of files renamed
+        Dict with standardized texture paths:
+            - 'diffuse': Path to primary diffuse texture (standardized)
+            - 'diffuse_top': Path to top variant (standardized, if exists)
+            - 'diffuse_bottom': Path to bottom variant (standardized, if exists)
+            - 'diffuse_bark': Path to bark texture (standardized, if exists)
+            - 'alpha': Path to alpha texture (standardized, if exists)
+            - 'normal': Path to normal texture (standardized, if exists)
+            - 'copied_count': Number of files copied to standard names
     """
     textures_dir = twig_dir / "textures"
     if not textures_dir.exists():
@@ -642,9 +649,10 @@ def standardize_twig_textures(twig_dir: Path) -> dict:
         "diffuse": None,
         "diffuse_top": None,
         "diffuse_bottom": None,
+        "diffuse_bark": None,
         "alpha": None,
         "normal": None,
-        "renamed_count": 0,
+        "copied_count": 0,
     }
 
     # Define texture type keywords and their standardized names
@@ -653,7 +661,7 @@ def standardize_twig_textures(twig_dir: Path) -> dict:
         "diffuse": {
             # Matches: diffuse, albedo, color, basecolor, base, or Grove pattern (just top/bottom with no other keyword)
             "keywords": ["diffuse", "albedo", "color", "basecolor", "base", "top", "bottom"],
-            "modifiers": {None: "_diffuse", "top": "_diffuse_top", "bottom": "_diffuse_bottom"},
+            "modifiers": {None: "_diffuse", "top": "_diffuse_top", "bottom": "_diffuse_bottom", "bark": "_diffuse_bark"},
         },
         "alpha": {
             "keywords": ["alpha", "opacity", "mask", "cutout"],
@@ -690,16 +698,15 @@ def standardize_twig_textures(twig_dir: Path) -> dict:
             texture_type = "alpha"
         elif any(k in name_lower for k in ["normal", "norm", "nrm"]):
             texture_type = "normal"
-        elif any(k in name_lower for k in ["bark", "wood", "branch", "twig"]):
-            # Skip bark/wood textures (not leaf geometry)
-            continue
         else:
             # Everything else is diffuse (matches Grove convention: OakEuropeanTop, OakEuropeanBottom)
-            # This includes files with: diffuse keyword, or top/bottom variants, or generic color textures
+            # This includes leaf diffuse and bark diffuse (different mesh parts)
             texture_type = "diffuse"
 
-            # Check for modifier (top/bottom) for diffuse
-            if any(k in name_lower for k in ["top", "upper", "face", "summer", "spring", "green"]):
+            # Check for modifier (top/bottom/bark) for diffuse
+            if any(k in name_lower for k in ["bark"]):
+                modifier = "bark"
+            elif any(k in name_lower for k in ["top", "upper", "face", "summer", "spring", "green"]):
                 modifier = "top"
             elif any(k in name_lower for k in ["bottom", "lower", "back", "underside", "fall", "winter"]):
                 modifier = "bottom"
@@ -717,13 +724,12 @@ def standardize_twig_textures(twig_dir: Path) -> dict:
         new_name = f"{twig_name}{suffix}{tex_file.suffix}"
         new_path = textures_dir / new_name
 
-        # Only rename if different
+        # Only copy if different
         if new_path != tex_file:
             try:
-                if new_path.exists():
-                    new_path.unlink()  # Remove destination if it exists
-                tex_file.rename(new_path)
-                results["renamed_count"] += 1
+                # Copy file to standard name (preserves original for Blender)
+                shutil.copy2(tex_file, new_path)
+                results["copied_count"] += 1
 
                 # Track result
                 if texture_type == "diffuse":
@@ -731,6 +737,8 @@ def standardize_twig_textures(twig_dir: Path) -> dict:
                         results["diffuse_top"] = new_path
                     elif modifier == "bottom":
                         results["diffuse_bottom"] = new_path
+                    elif modifier == "bark":
+                        results["diffuse_bark"] = new_path
                     else:
                         results["diffuse"] = new_path
                 elif texture_type == "alpha":
@@ -740,7 +748,7 @@ def standardize_twig_textures(twig_dir: Path) -> dict:
             except Exception as e:
                 # Log error for debugging
                 import sys
-                print(f"  Warning: Could not rename {tex_file.name} to {new_name}: {e}", file=sys.stderr)
+                print(f"  Warning: Could not copy {tex_file.name} to {new_name}: {e}", file=sys.stderr)
 
     return results
 
@@ -840,7 +848,7 @@ def process_twig_textures(twig_dir: Path) -> dict:
             - 'alpha_path': Path to alpha texture (or None)
             - 'normal_path': Path to normal texture (or None)
             - 'diffuse_paths': List of standardized diffuse texture paths
-            - 'renamed_count': Number of files renamed
+            - 'copied_count': Number of files copied to standard names
             - 'is_valid': Whether all required textures present
             - 'validation_message': Validation result message
     """
@@ -848,14 +856,14 @@ def process_twig_textures(twig_dir: Path) -> dict:
         "alpha_path": None,
         "normal_path": None,
         "diffuse_paths": [],
-        "renamed_count": 0,
+        "copied_count": 0,
         "is_valid": False,
         "validation_message": "",
     }
 
     # Step 0: Standardize texture naming
-    rename_results = standardize_twig_textures(twig_dir)
-    results["renamed_count"] = rename_results["renamed_count"]
+    standardize_results = standardize_twig_textures(twig_dir)
+    results["copied_count"] = standardize_results["copied_count"]
 
     # Step 1: Convert bump maps to normal maps
     normal_path = ensure_normal_from_bump(twig_dir)
