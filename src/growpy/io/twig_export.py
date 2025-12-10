@@ -63,12 +63,16 @@ def _add_twig_material(
     texture_dir=None,
     species_name=None,
     standardized_name=None,
+    mesh_object_name=None,
 ):
     """Add material with opaque-only textures to twig mesh.
 
     CRITICAL: Filters out alpha/translucent/mask textures for Nanite compatibility.
     Nanite assemblies do not work well with transparency or opacity masks.
     Only base color (diffuse) textures are used.
+
+    Supports separate bark and leaf materials - will prefer bark textures if mesh
+    object name suggests it's a bark mesh (contains "bark" keyword).
 
     Args:
         stage: USD stage
@@ -77,6 +81,7 @@ def _add_twig_material(
         texture_dir: Optional path to textures directory
         species_name: Optional species name for material naming
         standardized_name: Standardized twig name for texture reference generation
+        mesh_object_name: Optional mesh object name from Blender (used to detect material type)
     """
     try:
         from pxr import Gf, Sdf, UsdShade
@@ -128,6 +133,9 @@ def _add_twig_material(
             else:
                 base_name = "_".join(base_name_parts)
 
+            # Detect if this is a bark mesh (for separate bark/leaf materials)
+            is_bark_mesh = mesh_object_name and "bark" in mesh_object_name.lower()
+
             # Look for standardized texture files
             texture_map = {}
             for tex_type in OPAQUE_TEXTURE_TYPES:
@@ -148,18 +156,37 @@ def _add_twig_material(
                         if tex_type in texture_map:
                             break
 
-            # Handle two-sided textures: prefer top over bottom
-            # Note: USD doesn't support per-face textures for double-sided materials
-            # (see https://docs.blender.org/manual/en/latest/files/import_export/usd.html)
-            # Solution: Use top texture only, enable two-sided rendering (backface culling disabled)
-            # Bottom texture is copied to output but NOT referenced in USD file
-            if "diffuse_top" in texture_map:
-                texture_map["diffuse"] = texture_map["diffuse_top"]
-                # Remove bottom from map so it's not added to USD file
+            # If this is a bark mesh, prefer bark textures and ignore diffuse
+            if is_bark_mesh:
+                # Move bark textures to diffuse slot for rendering
+                if "bark" in texture_map and "diffuse" not in texture_map:
+                    texture_map["diffuse"] = texture_map.pop("bark")
+                elif "bark_top" in texture_map and "diffuse" not in texture_map:
+                    texture_map["diffuse"] = texture_map.pop("bark_top")
+                    texture_map.pop("bark_bottom", None)
+                elif "bark_bottom" in texture_map and "diffuse" not in texture_map:
+                    texture_map["diffuse"] = texture_map.pop("bark_bottom")
+                # Remove non-bark diffuse textures for bark meshes
                 texture_map.pop("diffuse_bottom", None)
-            elif "diffuse_bottom" in texture_map and "diffuse" not in texture_map:
-                # Use bottom only if no top texture exists
-                texture_map["diffuse"] = texture_map["diffuse_bottom"]
+                texture_map.pop("diffuse_top", None)
+            else:
+                # Regular leaf mesh: prefer diffuse, ignore bark
+                texture_map.pop("bark", None)
+                texture_map.pop("bark_top", None)
+                texture_map.pop("bark_bottom", None)
+
+                # Handle two-sided textures: prefer top over bottom
+                # Note: USD doesn't support per-face textures for double-sided materials
+                # (see https://docs.blender.org/manual/en/latest/files/import_export/usd.html)
+                # Solution: Use top texture only, enable two-sided rendering (backface culling disabled)
+                # Bottom texture is copied to output but NOT referenced in USD file
+                if "diffuse_top" in texture_map:
+                    texture_map["diffuse"] = texture_map["diffuse_top"]
+                    # Remove bottom from map so it's not added to USD file
+                    texture_map.pop("diffuse_bottom", None)
+                elif "diffuse_bottom" in texture_map and "diffuse" not in texture_map:
+                    # Use bottom only if no top texture exists
+                    texture_map["diffuse"] = texture_map["diffuse_bottom"]
 
             # Add textures to shader
             # CRITICAL: Create UV reader for texture mapping
@@ -3372,6 +3399,7 @@ def process_twig_file(
                                         ),
                                         species_name=species_name,
                                         standardized_name=standardized_name,
+                                        mesh_object_name=original_name,
                                     )
 
                                     stage.Save()
