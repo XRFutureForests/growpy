@@ -18,10 +18,24 @@ Quick Start (copy-paste ready with all defaults shown):
     # Prepare ALL 57 Grove species (ignores CSV filter)
     python src/growpy/cli/prepare_assets.py --all --grove-dir src/the_grove_22
 
+    # Enable texture resizing for Unreal compatibility (slow, adds processing time)
+    python src/growpy/cli/prepare_assets.py --csv data/input/test.csv --resize-textures
+
 Common Flags:
-    --grove-dir PATH    Source Grove 2.2 installation directory (default: src/the_grove_22)
-    --csv PATH          Species CSV filter (default: data/input/test.csv)
-    --all               Copy ALL 57 Grove assets (ignores --csv)
+    --grove-dir PATH        Source Grove 2.2 installation directory (default: src/the_grove_22)
+                            Must contain presets/, twigs/, and textures/ subdirectories
+
+    --csv PATH              Species CSV filter (default: data/input/test.csv)
+                            Accepts forest placement CSV (x,y,species,height) or asset lookup CSV
+                            Only assets for species in CSV are copied
+
+    --all                   Copy ALL 57 Grove assets (ignores --csv filter)
+                            Uses src/growpy/config/tree_asset_lookup.csv for comprehensive asset list
+                            Effect: Copies complete asset library (~1-2GB)
+
+    --resize-textures       Resize textures to power-of-2 dimensions for Unreal Engine (default: disabled)
+                            Effect: Adds significant processing time, ensures GPU compatibility
+                            Only needed if Grove textures are not already power-of-2
 
 Output:
     data/assets/presets/     Species .seed.json preset files

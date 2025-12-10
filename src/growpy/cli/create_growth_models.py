@@ -23,13 +23,32 @@ Quick Start (copy-paste ready with all defaults shown):
     python src/growpy/cli/create_growth_models.py --csv src/growpy/config/tree_asset_lookup.csv --cycles 125 --seeds 1 --height-threshold 0.05 --max-cycles-without-growth 3 --timeout 300
 
 Common Flags:
-    --csv PATH                Species CSV filter (default: data/input/test.csv)
-    --cycles INT              Maximum growth cycles to simulate (default: 125)
-    --seeds INT               Random seeds to average for robust curves (default: 1)
-    --height-threshold FLOAT  Minimum height increase per cycle to continue (default: 0.05)
-    --max-cycles-without-growth INT  Stop after N consecutive flat cycles (default: 3)
-    --timeout INT             Maximum simulation time per seed in seconds (default: 300)
-    --species TEXT            Analyze a single specific species (optional)
+    --csv PATH                          Species CSV filter (default: data/input/test.csv)
+                                        Accepts forest placement CSV (x,y,species,height) or asset lookup CSV
+
+    --cycles INT                        Maximum growth cycles to simulate (default: 125, range: 1-250)
+                                        Effect: More cycles = more complete growth curve data
+                                        Automatically stops early when growth plateaus
+
+    --seeds INT                         Random seeds to average for robust curves (default: 1, range: 1-10)
+                                        Effect: Multiple seeds average out growth variation
+                                        Use 3+ for production, 1 for quick tests
+
+    --height-threshold FLOAT            Minimum height increase to consider growth (default: 0.05, range: 0.001-0.5)
+                                        Effect: Lower values = more sensitive plateau detection
+                                        Unit: meters per cycle
+
+    --max-cycles-without-growth INT     Stop after N consecutive flat cycles (default: 3, range: 1-20)
+                                        Effect: Prevents wasting time on plateaued trees
+                                        Lower values = earlier termination
+
+    --timeout INT                       Maximum simulation time per seed in seconds (default: 300, range: 10-3600)
+                                        Effect: Prevents infinite loops or stuck simulations
+                                        Increase for complex species
+
+    --species TEXT                      Analyze a single specific species (optional)
+                                        Example: "European oak" or "Norway spruce"
+                                        If omitted, analyzes all species from CSV
 
 Output:
     data/assets/growth_models/{species}_growth_model.json  Growth curve data
