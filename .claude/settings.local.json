@@ -55,7 +55,15 @@
       "Bash(\"/c/Users/Maximilian Sperlich/miniconda3/envs/the-grove/python.exe\" test_all_twigs.py)",
       "Bash(\"/c/Users/Maximilian Sperlich/miniconda3/envs/the-grove/python.exe\" detailed_grove_analysis.py)",
       "Bash(\"/c/Users/Maximilian Sperlich/miniconda3/envs/the-grove/python.exe\" check_alpha_in_top_bottom.py)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(/c/ProgramData/miniforge3/envs/the-grove/python.exe:*)",
+      "Bash(\"/c/Users/Maximilian Sperlich/miniconda3/Scripts/conda.exe\" activate the-grove)",
+      "Bash(\"/c/Users/Maximilian Sperlich/miniconda3/Scripts/conda.exe\" run -n the-grove python -m growpy.cli.prepare_assets --help)",
+      "Bash(\"/c/Users/Maximilian Sperlich/miniconda3/Scripts/conda.exe\" run -n the-grove python -m growpy.cli.prepare_assets --csv data/input/oak_test.csv)",
+      "Bash(\"/c/Users/Maximilian Sperlich/miniconda3/Scripts/conda.exe\" run -n the-grove python -m growpy.cli.prepare_assets --csv data/input/test_species.csv)",
+      "Bash(\"/c/Users/Maximilian Sperlich/miniconda3/Scripts/conda.exe\" run -n the-grove python -m growpy.cli.prepare_assets --csv data/input/test_beech.csv)",
+      "Bash(\"/c/Users/Maximilian Sperlich/miniconda3/Scripts/conda.exe\" run -n the-grove python -c \"\nfrom PIL import Image\nfrom pathlib import Path\nimport numpy as np\n\nsource_dir = Path(''src/the_grove_22/twigs/EuropeanOakTwig/textures'')\nfor tex_file in sorted(source_dir.glob(''OakEuropean*.png'')):\n    img = Image.open(tex_file)\n    print(f''{tex_file.name}: mode={img.mode}, has_alpha={\"\"A\"\" in img.getbands()}'')\n    if ''A'' in img.getbands():\n        alpha_band = img.split()[-1]\n        alpha_array = np.array(alpha_band)\n        print(f''  Alpha range: {alpha_array.min()}-{alpha_array.max()}, mean: {alpha_array.mean():.1f}'')\n\")",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

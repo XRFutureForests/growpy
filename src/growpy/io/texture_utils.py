@@ -438,6 +438,65 @@ def strip_alpha_from_diffuse(diffuse_path: Path) -> bool:
         return False
 
 
+def normalize_alpha_texture(alpha_path: Path) -> bool:
+    """Normalize alpha texture to standard convention (white=opaque, black=transparent).
+
+    Different asset sources may use different alpha conventions:
+    - Standard: white (255) = opaque, black (0) = transparent
+    - Inverted: black (0) = opaque, white (255) = transparent
+
+    This function detects the convention by analyzing the histogram and inverts
+    if necessary to ensure all alpha textures use the standard convention.
+
+    The detection heuristic: if >60% of pixels are black AND <20% are white,
+    it's likely using the inverted convention and gets inverted.
+
+    Args:
+        alpha_path: Path to alpha texture file
+
+    Returns:
+        True if normalization was applied (image was inverted), False if no change needed
+    """
+    try:
+        if not alpha_path.exists():
+            return False
+
+        img = Image.open(alpha_path)
+
+        # Convert to grayscale if not already
+        if img.mode != "L":
+            img = img.convert("L")
+
+        # Analyze histogram to detect convention
+        histogram = [0] * 256
+        pixels = np.array(img)
+        for val in pixels.flat:
+            histogram[int(val)] += 1
+
+        total = sum(histogram)
+        if total == 0:
+            return False
+
+        # Distribution: black (0-85), mid (85-170), white (170-255)
+        black_count = sum(histogram[0:86])
+        white_count = sum(histogram[170:256])
+
+        black_ratio = black_count / total
+        white_ratio = white_count / total
+
+        # Invert if clear inverted pattern: >60% black AND <20% white
+        if black_ratio > 0.6 and white_ratio < 0.2:
+            # Invert the image (0->255, 255->0)
+            inverted = Image.eval(img, lambda x: 255 - x)
+            inverted.save(alpha_path)
+            return True
+
+        return False
+
+    except Exception:
+        return False
+
+
 def _get_standardized_alpha_name(twig_dir: Path) -> str:
     """Get standardized alpha texture name based on twig directory name.
 
@@ -501,7 +560,8 @@ def ensure_alpha_texture(twig_dir: Path) -> Optional[Path]:
 
     # Check if standardized alpha texture already exists
     if standardized_path.exists():
-        # Still strip alpha from diffuse textures for consistency
+        # Normalize to standard convention and strip alpha from diffuse textures
+        normalize_alpha_texture(standardized_path)
         for diffuse_file in all_diffuse_files:
             strip_alpha_from_diffuse(diffuse_file)
         return standardized_path
@@ -525,6 +585,8 @@ def ensure_alpha_texture(twig_dir: Path) -> Optional[Path]:
                 img = img.convert("L")
             # Save as PNG with standardized name
             img.save(standardized_path)
+            # Normalize to standard convention (white=opaque)
+            normalize_alpha_texture(standardized_path)
             # Strip alpha from diffuse textures
             for diffuse_file in all_diffuse_files:
                 strip_alpha_from_diffuse(diffuse_file)
@@ -549,6 +611,10 @@ def ensure_alpha_texture(twig_dir: Path) -> Optional[Path]:
 
     # Extract alpha from diffuse with standardized name
     alpha_result = extract_alpha_from_diffuse(diffuse_path, standardized_path)
+
+    # Normalize extracted alpha to standard convention (white=opaque)
+    if alpha_result:
+        normalize_alpha_texture(alpha_result)
 
     # Strip alpha from ALL diffuse textures (both top and bottom variants)
     # Do this regardless of whether alpha extraction succeeded
