@@ -63,7 +63,7 @@ def export_blender_mesh_to_usd(obj, output_path, include_normals=True, include_u
     This is a fallback when bpy.ops.wm.usd_export is not available (e.g., in standalone bpy).
 
     Args:
-        obj: Blender mesh object to export
+        obj: Blender mesh object or empty with child mesh to export
         output_path: Path to write USD file
         include_normals: Include vertex normals in export
         include_uvs: Include UV coordinates in export
@@ -72,6 +72,20 @@ def export_blender_mesh_to_usd(obj, output_path, include_normals=True, include_u
         True if export succeeded, False otherwise
     """
     try:
+        # Find actual mesh object (might be passed an empty with children)
+        mesh_obj = obj
+        if not hasattr(obj.data, 'vertices'):
+            # obj is an empty, find first mesh child
+            found = False
+            for child in obj.children:
+                if hasattr(child.data, 'vertices'):
+                    mesh_obj = child
+                    found = True
+                    break
+            if not found:
+                print(f"[ERROR] No mesh data found in object or its children")
+                return False
+
         # Create USD stage
         stage = Usd.Stage.CreateNew(str(output_path))
 
@@ -80,7 +94,7 @@ def export_blender_mesh_to_usd(obj, output_path, include_normals=True, include_u
         mesh_prim = UsdGeom.Mesh.Define(stage, mesh_path)
 
         # Get mesh data
-        mesh = obj.data
+        mesh = mesh_obj.data
 
         # Collect vertex positions
         points = []
@@ -117,12 +131,14 @@ def export_blender_mesh_to_usd(obj, output_path, include_normals=True, include_u
             for uv_data in uv_layer.data:
                 uvs.append((uv_data.uv.x, uv_data.uv.y))
 
-            # Create primvar for UVs
-            texCoords_attr = mesh_prim.CreatePrimvar(
+            # Create primvar for UVs using proper UsdGeom API
+            prim = stage.GetPrimAtPath(mesh_path)
+            prim_vars = prim.GetPrimvarsAPI()
+            texCoords_attr = prim_vars.CreatePrimvar(
                 UsdGeom.Tokens.st,
-                Sdf.ValueTypeNames.TexCoord2fArray,
-                UsdGeom.Tokens.faceVarying
+                Sdf.ValueTypeNames.TexCoord2fArray
             )
+            texCoords_attr.SetInterpolation(UsdGeom.Tokens.faceVarying)
             texCoords_attr.Set([Gf.Vec2f(*uv) for uv in uvs])
 
         # Save stage
