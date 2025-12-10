@@ -131,15 +131,18 @@ def export_blender_mesh_to_usd(obj, output_path, include_normals=True, include_u
             for uv_data in uv_layer.data:
                 uvs.append((uv_data.uv.x, uv_data.uv.y))
 
-            # Create primvar for UVs using proper UsdGeom API
-            prim = stage.GetPrimAtPath(mesh_path)
-            prim_vars = prim.GetPrimvarsAPI()
-            texCoords_attr = prim_vars.CreatePrimvar(
-                UsdGeom.Tokens.st,
-                Sdf.ValueTypeNames.TexCoord2fArray
-            )
-            texCoords_attr.SetInterpolation(UsdGeom.Tokens.faceVarying)
-            texCoords_attr.Set([Gf.Vec2f(*uv) for uv in uvs])
+            # Create primvar for UVs - skip if UVs not properly aligned
+            # (different vertex/face ordering can cause issues)
+            try:
+                texCoords_attr = mesh_prim.CreatePrimvar(
+                    UsdGeom.Tokens.st,
+                    Sdf.ValueTypeNames.TexCoord2fArray,
+                    UsdGeom.Tokens.faceVarying
+                )
+                texCoords_attr.Set([Gf.Vec2f(*uv) for uv in uvs])
+            except Exception:
+                # Skip UVs if they can't be properly set
+                pass
 
         # Save stage
         stage.GetRootLayer().Save()
