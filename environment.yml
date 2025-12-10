@@ -13,7 +13,7 @@ dependencies:
   - ipykernel
   - pillow
   - pip:
-    - bpy  # Blender Python API with bundled USD, MaterialX, OpenImageIO, etc.
+      - bpy # Blender Python API with bundled USD, MaterialX, OpenImageIO, etc.
 
 variables:
   PYTHONPATH: ./src:./src/the_grove_22/modules
