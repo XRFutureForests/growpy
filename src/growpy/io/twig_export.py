@@ -3341,23 +3341,30 @@ def process_twig_file(
 
                     # CRITICAL: Export UVs only (no materials from Blender)
                     # Materials will be added later with only opaque textures (no alpha/translucent)
-                    bpy.ops.wm.usd_export(
-                        filepath=str(skel_export_path),
-                        selected_objects_only=True,
-                        export_materials=False,  # Disabled - materials added later with filtering
-                        export_textures=False,  # Disabled - textures added later with filtering
-                        export_uvmaps=True,  # CRITICAL: Required for texture mapping
-                        export_normals=True,
-                        export_mesh_colors=False,  # Force disabled for Nanite
-                        use_instancing=False,
-                        evaluation_mode="RENDER",
-                        generate_preview_surface=False,  # Disabled - created later
-                        relative_paths=True,
-                        export_hair=False,
-                        export_lights=False,
-                    )
-
-                    exported_files.append(skel_export_path)
+                    try:
+                        result = bpy.ops.wm.usd_export(
+                            filepath=str(skel_export_path),
+                            selected_objects_only=True,
+                            export_materials=False,  # Disabled - materials added later with filtering
+                            export_textures=False,  # Disabled - textures added later with filtering
+                            export_uvmaps=True,  # CRITICAL: Required for texture mapping
+                            export_normals=True,
+                            export_mesh_colors=False,  # Force disabled for Nanite
+                            use_instancing=False,
+                            evaluation_mode="RENDER",
+                            generate_preview_surface=False,  # Disabled - created later
+                            relative_paths=True,
+                            export_hair=False,
+                            export_lights=False,
+                        )
+                        if result == {'FINISHED'}:
+                            exported_files.append(skel_export_path)
+                        else:
+                            print(f"[WARNING] Skeletal USD export returned: {result}")
+                    except Exception as export_err:
+                        print(f"[ERROR] Skeletal USD export failed: {export_err}")
+                        import traceback
+                        traceback.print_exc()
 
                     # Add skeleton directly using Blender's bundled USD
                     # This also fixes texture paths and removes DomeLight
@@ -3425,23 +3432,30 @@ def process_twig_file(
                     )
 
                     # Export with materials and textures
-                    bpy.ops.wm.usd_export(
-                        filepath=str(static_export_path),
-                        selected_objects_only=True,
-                        export_materials=True,
-                        export_textures=True,
-                        export_uvmaps=True,
-                        export_normals=True,
-                        export_mesh_colors=False,
-                        use_instancing=False,
-                        evaluation_mode="RENDER",
-                        generate_preview_surface=True,
-                        relative_paths=True,
-                        export_hair=False,
-                        export_lights=False,
-                    )
-
-                    exported_files.append(static_export_path)
+                    try:
+                        result = bpy.ops.wm.usd_export(
+                            filepath=str(static_export_path),
+                            selected_objects_only=True,
+                            export_materials=True,
+                            export_textures=True,
+                            export_uvmaps=True,
+                            export_normals=True,
+                            export_mesh_colors=False,
+                            use_instancing=False,
+                            evaluation_mode="RENDER",
+                            generate_preview_surface=True,
+                            relative_paths=True,
+                            export_hair=False,
+                            export_lights=False,
+                        )
+                        if result == {'FINISHED'}:
+                            exported_files.append(static_export_path)
+                        else:
+                            print(f"[WARNING] Static USD export returned: {result}")
+                    except Exception as export_err:
+                        print(f"[ERROR] Static USD export failed: {export_err}")
+                        import traceback
+                        traceback.print_exc()
 
                     # Clean up static USD (remove skeleton artifacts, fix structure)
                     if clean_static_usd_file(static_export_path):
@@ -3461,6 +3475,9 @@ def process_twig_file(
             }
 
         except Exception as e:
+            import traceback
+            print(f"[ERROR] Failed to export {original_name}: {e}")
+            traceback.print_exc()
             continue
 
     # Note: Manifest file removed - not needed in output
