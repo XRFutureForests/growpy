@@ -606,18 +606,218 @@ def ensure_normal_from_bump(twig_dir: Path) -> Optional[Path]:
     return bump_to_normal(bump_file, normal_path)
 
 
+def standardize_twig_textures(twig_dir: Path) -> dict:
+    """Standardize naming of all textures in a twig directory.
+
+    Renames textures to follow the standardized pattern:
+        {twig_name}_{texture_type}.{ext}
+
+    Handles:
+        - Diffuse (with top/bottom variants)
+        - Alpha
+        - Normal
+        - Bump (keeps original, but marked for conversion)
+
+    Args:
+        twig_dir: Path to twig directory containing textures
+
+    Returns:
+        Dict with renamed texture paths:
+            - 'diffuse': Path to primary diffuse texture
+            - 'diffuse_top': Path to top variant (if exists)
+            - 'diffuse_bottom': Path to bottom variant (if exists)
+            - 'alpha': Path to alpha texture (if exists)
+            - 'normal': Path to normal texture (if exists)
+            - 'renamed_count': Number of files renamed
+    """
+    textures_dir = twig_dir / "textures"
+    if not textures_dir.exists():
+        textures_dir = twig_dir
+
+    twig_name = twig_dir.name.lower()
+    if not twig_name.endswith("_twig"):
+        twig_name = f"{twig_name}_twig"
+
+    results = {
+        "diffuse": None,
+        "diffuse_top": None,
+        "diffuse_bottom": None,
+        "alpha": None,
+        "normal": None,
+        "renamed_count": 0,
+    }
+
+    # Define texture type keywords and their standardized names
+    texture_patterns = {
+        "diffuse": {
+            "keywords": ["diffuse", "albedo", "color", "basecolor", "base"],
+            "modifiers": {None: "_diffuse", "top": "_diffuse_top", "bottom": "_diffuse_bottom"},
+        },
+        "alpha": {
+            "keywords": ["alpha", "opacity", "mask", "cutout"],
+            "modifiers": {None: "_alpha"},
+        },
+        "normal": {
+            "keywords": ["normal", "norm", "nrm"],
+            "modifiers": {None: "_normal"},
+        },
+    }
+
+    # Collect all texture files
+    texture_files = []
+    if textures_dir.exists():
+        for tex_file in textures_dir.iterdir():
+            if tex_file.is_file() and tex_file.suffix.lower() in [".png", ".jpg", ".jpeg"]:
+                texture_files.append(tex_file)
+
+    # Process each texture file
+    for tex_file in texture_files:
+        name_lower = tex_file.stem.lower()
+
+        # Skip bump maps (will be handled separately)
+        if any(k in name_lower for k in ["bump", "height"]):
+            continue
+
+        # Determine texture type and modifier (top/bottom)
+        texture_type = None
+        modifier = None
+
+        for tex_type, patterns in texture_patterns.items():
+            if any(k in name_lower for k in patterns["keywords"]):
+                texture_type = tex_type
+
+                # Check for modifier (top/bottom)
+                if tex_type == "diffuse":
+                    if any(k in name_lower for k in ["top", "upper", "face"]):
+                        modifier = "top"
+                    elif any(k in name_lower for k in ["bottom", "lower", "back", "underside"]):
+                        modifier = "bottom"
+
+                break
+
+        if not texture_type:
+            continue
+
+        # Generate standardized name
+        if modifier and texture_type in ["diffuse"]:
+            suffix = patterns["modifiers"][modifier]
+        else:
+            suffix = patterns["modifiers"][None]
+
+        new_name = f"{twig_name}{suffix}{tex_file.suffix}"
+        new_path = textures_dir / new_name
+
+        # Only rename if different
+        if new_path != tex_file:
+            try:
+                if new_path.exists():
+                    new_path.unlink()  # Remove destination if it exists
+                tex_file.rename(new_path)
+                results["renamed_count"] += 1
+
+                # Track result
+                if texture_type == "diffuse":
+                    if modifier == "top":
+                        results["diffuse_top"] = new_path
+                    elif modifier == "bottom":
+                        results["diffuse_bottom"] = new_path
+                    else:
+                        results["diffuse"] = new_path
+                elif texture_type == "alpha":
+                    results["alpha"] = new_path
+                elif texture_type == "normal":
+                    results["normal"] = new_path
+            except Exception:
+                pass  # Silently skip if rename fails
+
+    return results
+
+
+def validate_twig_textures(twig_dir: Path) -> Tuple[bool, str]:
+    """Validate that all required textures exist for a twig directory.
+
+    After alpha extraction and normal conversion, validates:
+        1. At least one diffuse texture (standard, top, or bottom)
+        2. Alpha texture exists (extracted or original)
+        3. Normal texture exists (original or converted from bump)
+
+    Args:
+        twig_dir: Path to twig directory containing textures
+
+    Returns:
+        Tuple (is_valid: bool, message: str)
+            - True if all required textures present
+            - String describing validation result
+    """
+    textures_dir = twig_dir / "textures"
+    if not textures_dir.exists():
+        textures_dir = twig_dir
+
+    # Check for diffuse textures
+    diffuse_found = False
+    alpha_found = False
+    normal_found = False
+
+    for tex_file in textures_dir.iterdir():
+        if not tex_file.is_file() or tex_file.suffix.lower() not in [".png", ".jpg", ".jpeg"]:
+            continue
+
+        name_lower = tex_file.stem.lower()
+
+        if any(k in name_lower for k in ["diffuse", "albedo", "color", "basecolor"]):
+            # Verify it's RGB (no alpha channel)
+            try:
+                img = Image.open(tex_file)
+                if img.mode == "RGBA" or "A" in img.getbands():
+                    # Has embedded alpha - this is a problem
+                    pass  # Will be caught if alpha stripping failed
+                else:
+                    diffuse_found = True
+            except Exception:
+                pass
+
+        elif any(k in name_lower for k in ["alpha", "opacity", "mask", "cutout"]):
+            # Verify it's grayscale
+            try:
+                img = Image.open(tex_file)
+                if img.mode == "L" or len(img.getbands()) == 1:
+                    alpha_found = True
+            except Exception:
+                pass
+
+        elif any(k in name_lower for k in ["normal", "norm", "nrm"]):
+            normal_found = True
+
+    # Build result message
+    missing = []
+    if not diffuse_found:
+        missing.append("diffuse (RGB)")
+    if not alpha_found:
+        missing.append("alpha (grayscale)")
+    if not normal_found:
+        missing.append("normal")
+
+    if missing:
+        msg = f"Missing textures in {twig_dir.name}: {', '.join(missing)}"
+        return False, msg
+
+    return True, f"All required textures found in {twig_dir.name}"
+
+
 def process_twig_textures(twig_dir: Path) -> dict:
     """Process all textures for a twig directory during asset preparation.
 
     This is the main entry point for texture processing during prepare_assets.
     It handles:
-        1. Bump-to-normal map conversion
-        2. Alpha extraction from diffuse textures (if no dedicated alpha)
-        3. Alpha channel stripping from diffuse textures (RGBA -> RGB)
+        1. Standardize texture naming to consistent pattern
+        2. Bump-to-normal map conversion
+        3. Alpha extraction from diffuse textures (if no dedicated alpha)
+        4. Alpha channel stripping from diffuse textures (RGBA -> RGB)
+        5. Validate all required textures exist
 
     After processing, all twigs will have consistent texture sets:
         - Diffuse (RGB only, no embedded alpha)
-        - Alpha (dedicated grayscale texture, if available)
+        - Alpha (dedicated grayscale texture)
         - Normal (from existing normal map or converted from bump)
 
     Args:
@@ -627,13 +827,23 @@ def process_twig_textures(twig_dir: Path) -> dict:
         Dict with processing results:
             - 'alpha_path': Path to alpha texture (or None)
             - 'normal_path': Path to normal texture (or None)
-            - 'diffuse_stripped': Number of diffuse files with alpha stripped
+            - 'diffuse_paths': List of standardized diffuse texture paths
+            - 'renamed_count': Number of files renamed
+            - 'is_valid': Whether all required textures present
+            - 'validation_message': Validation result message
     """
     results = {
         "alpha_path": None,
         "normal_path": None,
-        "diffuse_stripped": 0,
+        "diffuse_paths": [],
+        "renamed_count": 0,
+        "is_valid": False,
+        "validation_message": "",
     }
+
+    # Step 0: Standardize texture naming
+    rename_results = standardize_twig_textures(twig_dir)
+    results["renamed_count"] = rename_results["renamed_count"]
 
     # Step 1: Convert bump maps to normal maps
     normal_path = ensure_normal_from_bump(twig_dir)
@@ -644,5 +854,21 @@ def process_twig_textures(twig_dir: Path) -> dict:
     alpha_path = ensure_alpha_texture(twig_dir)
     if alpha_path:
         results["alpha_path"] = alpha_path
+
+    # Step 3: Collect all standardized diffuse paths
+    textures_dir = twig_dir / "textures"
+    if not textures_dir.exists():
+        textures_dir = twig_dir
+
+    for tex_file in textures_dir.iterdir():
+        if tex_file.is_file() and tex_file.suffix.lower() in [".png", ".jpg", ".jpeg"]:
+            name_lower = tex_file.stem.lower()
+            if any(k in name_lower for k in ["diffuse"]):
+                results["diffuse_paths"].append(tex_file)
+
+    # Step 4: Validate all required textures
+    is_valid, validation_msg = validate_twig_textures(twig_dir)
+    results["is_valid"] = is_valid
+    results["validation_message"] = validation_msg
 
     return results
