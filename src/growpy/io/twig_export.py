@@ -1649,21 +1649,23 @@ def densify_and_trim_interleaved(
     max_iterations=10,
     method="all",
 ):
-    """Densify leaf edges with interleaved trimming - your proposed algorithm.
+    """Densify leaf edges with interleaved trimming - edge-face-aware algorithm.
 
     Algorithm:
-        1. Identify leaf faces (by material_indices)
-        2. Build vertex alpha map from texture sampling (auto-inverts if needed)
-        3. Remove faces where ALL/AVG vertices have alpha < threshold (based on method)
-        4. Find transition edges (connect opaque vertex to transparent vertex)
-        5. Split transition edges at midpoint, sample alpha for new vertex
-        6. Repeat steps 3-5 until longest transition edge < target length
+        1. Separate twig vs leaf based on material attributes
+        2. Pre-triangulate all leaf faces (ensure triangle assumption)
+        3. Build vertex alpha map from texture sampling (auto-inverts if needed)
+        4. Detect edge faces (faces with ≥1 boundary edge)
+        5. Remove fully-transparent edge faces with edges ≤ target length
+        6. Expand edge faces when all vertices transparent but edges > target
+        7. Subdivide long edges in edge faces
+        8. Repeat steps 3-7 until convergence
 
-    Key advantages over previous approach:
-        - Interleaved deletion removes fully-transparent faces early
-        - Only subdivides transition edges (not nearby edges)
-        - Direct texture sampling for new vertices (not interpolation)
-        - More efficient: less work per iteration, fewer vertices created
+    Key advantages:
+        - Robust boundary detection using face neighbors, not just vertex alpha
+        - Only processes edge faces, preserves interior geometry
+        - Proper edge expansion handles varied mesh densities
+        - Explicit triangulation ensures triangle assumption always valid
         - Auto-detects inverted alpha masks (black=opaque convention)
 
     Args:
@@ -1703,6 +1705,24 @@ def densify_and_trim_interleaved(
 
         total_faces_deleted = 0
 
+        # PRE-PROCESSING: Ensure mesh is fully triangulated before edge detection
+        # This satisfies the algorithm requirement to check and triangulate if needed
+        bm = bmesh.new()
+        bm.from_mesh(mesh)
+        bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
+
+        leaf_faces_to_triangulate = [
+            f for f in bm.faces if f.material_index in material_indices and len(f.verts) > 3
+        ]
+        if leaf_faces_to_triangulate:
+            bmesh.ops.triangulate(bm, faces=leaf_faces_to_triangulate)
+
+        bm.to_mesh(mesh)
+        bm.free()
+        mesh.update()
+
         for iteration in range(max_iterations):
             # Check face count limit
             current_face_count = len(mesh.polygons)
@@ -1722,7 +1742,6 @@ def densify_and_trim_interleaved(
                 return
 
             # Build vertex alpha map by sampling texture at UV coordinates
-            # Also build vertex UV map for later sampling
             vert_alpha = {}
             vert_uv = {}
             for face in bm.faces:
@@ -1737,79 +1756,41 @@ def densify_and_trim_interleaved(
                     # Average if vertex seen multiple times
                     if vi in vert_alpha:
                         vert_alpha[vi] = (vert_alpha[vi] + alpha) / 2
-                        # Keep average UV too
                         old_uv = vert_uv[vi]
                         vert_uv[vi] = ((old_uv[0] + uv.x) / 2, (old_uv[1] + uv.y) / 2)
                     else:
                         vert_alpha[vi] = alpha
                         vert_uv[vi] = (uv.x, uv.y)
 
-            # STEP 3: Remove faces based on method
-            # Sample alpha at vertices, centroid, AND along edges at target_edge intervals
-            # This catches undulating leaf edges that dip into/out of the triangle
+            # STEP 1: Detect edge faces (faces with ≥1 boundary edge)
+            # An edge is a boundary edge if it has exactly 1 adjacent leaf face
+            leaf_faces_set = {f for f in bm.faces if f.material_index in material_indices}
+
+            edge_faces = set()
+            for face in leaf_faces_set:
+                for edge in face.edges:
+                    # Count adjacent leaf faces
+                    adj_count = sum(1 for f in edge.link_faces if f in leaf_faces_set)
+                    if adj_count == 1:  # Boundary edge
+                        edge_faces.add(face)
+                        break
+
+            # STEP 2: Check edge faces for removal
+            # Remove fully-transparent edge faces with all edges ≤ target length
             faces_to_delete = []
-            for face in bm.faces:
-                if face.material_index not in material_indices:
+            for face in edge_faces:
+                # Must be triangle (guaranteed by pre-triangulation, but double-check)
+                if len(face.verts) != 3:
                     continue
 
-                # Collect UVs for all loops
-                loop_uvs = []
-                for loop in face.loops:
-                    uv = loop[uv_layer].uv
-                    loop_uvs.append((uv.x, uv.y))
+                # Check if ALL three vertices transparent
+                alphas = [vert_alpha.get(v.index, 1.0) for v in face.verts]
+                if not all(a < threshold for a in alphas):
+                    continue
 
-                # Sample alpha at each vertex UV
-                all_alphas = []
-                for uv_x, uv_y in loop_uvs:
-                    alpha = _sample_alpha_at_uv(
-                        uv_x, uv_y, alpha_img, invert=invert_alpha
-                    )
-                    all_alphas.append(alpha)
-
-                # Sample at face centroid
-                if loop_uvs:
-                    center_u = sum(uv[0] for uv in loop_uvs) / len(loop_uvs)
-                    center_v = sum(uv[1] for uv in loop_uvs) / len(loop_uvs)
-                    center_alpha = _sample_alpha_at_uv(
-                        center_u, center_v, alpha_img, invert=invert_alpha
-                    )
-                    all_alphas.append(center_alpha)
-
-                # Sample along each edge at target_edge_bu intervals
-                # This catches leaf edges that undulate in/out of the triangle
-                if len(loop_uvs) >= 3:
-                    for i in range(len(loop_uvs)):
-                        uv1 = loop_uvs[i]
-                        uv2 = loop_uvs[(i + 1) % len(loop_uvs)]
-
-                        # Get corresponding 3D edge to measure length
-                        v1 = face.verts[i]
-                        v2 = face.verts[(i + 1) % len(face.verts)]
-                        edge_len_3d = (v1.co - v2.co).length
-
-                        # Number of samples along this edge (at least 1 midpoint)
-                        num_samples = max(1, int(edge_len_3d / target_edge_bu))
-
-                        # Sample at intervals along the edge
-                        for s in range(1, num_samples + 1):
-                            t = s / (
-                                num_samples + 1
-                            )  # Interpolation factor (0 < t < 1)
-                            sample_u = uv1[0] + t * (uv2[0] - uv1[0])
-                            sample_v = uv1[1] + t * (uv2[1] - uv1[1])
-                            edge_alpha = _sample_alpha_at_uv(
-                                sample_u, sample_v, alpha_img, invert=invert_alpha
-                            )
-                            all_alphas.append(edge_alpha)
-
-                if method == "all":
-                    # Conservative: delete only if ALL samples below threshold
-                    should_delete = all(a < threshold for a in all_alphas)
-                else:
-                    # Average method: delete if average alpha below threshold
-                    should_delete = (sum(all_alphas) / len(all_alphas)) < threshold
-
-                if should_delete:
+                # Check if ALL three edges shorter than target
+                max_edge = max(e.calc_length() for e in face.edges)
+                if max_edge <= target_edge_bu:
                     faces_to_delete.append(face)
 
             if faces_to_delete:
@@ -1819,52 +1800,57 @@ def densify_and_trim_interleaved(
                 bm.edges.ensure_lookup_table()
                 bm.faces.ensure_lookup_table()
 
-            # STEP 4: Find edges to subdivide
-            # We want to subdivide edges that are:
-            # - On or outside the leaf boundary (NOT fully inside the opaque leaf area)
-            # - Longer than target edge length
-            #
-            # Edge classification:
-            # - INTERIOR: both vertices opaque (alpha >= threshold) -> DO NOT split
-            # - TRANSITION: one opaque, one transparent -> SPLIT (this is the leaf edge)
-            # - EXTERIOR: both vertices transparent (alpha < threshold) -> SPLIT (outside leaf)
-            edges_to_split = []
+                # Rebuild edge_faces set after deletion
+                leaf_faces_set = {f for f in bm.faces if f.material_index in material_indices}
+                edge_faces = set()
+                for face in leaf_faces_set:
+                    for edge in face.edges:
+                        adj_count = sum(1 for f in edge.link_faces if f in leaf_faces_set)
+                        if adj_count == 1:
+                            edge_faces.add(face)
+                            break
 
-            for edge in bm.edges:
-                # Check if edge belongs to a leaf face
-                leaf_faces = [
-                    f for f in edge.link_faces if f.material_index in material_indices
-                ]
-                if not leaf_faces:
+            # STEP 3: Expand edge faces if needed
+            # If all vertices transparent but edges too long, add neighbors to edge_faces
+            faces_to_expand = []
+            for face in edge_faces:
+                if len(face.verts) != 3:
                     continue
 
-                v0, v1 = edge.verts
-                a0 = vert_alpha.get(v0.index, 1.0)
-                a1 = vert_alpha.get(v1.index, 1.0)
-
-                # Classify edge
-                v0_opaque = a0 >= threshold
-                v1_opaque = a1 >= threshold
-
-                # INTERIOR edge: both vertices opaque -> skip (preserve interior)
-                if v0_opaque and v1_opaque:
+                # Check if all vertices transparent
+                alphas = [vert_alpha.get(v.index, 1.0) for v in face.verts]
+                if not all(a < threshold for a in alphas):
                     continue
 
-                # TRANSITION or EXTERIOR edge: at least one vertex is transparent
-                # These edges are on or outside the leaf boundary
-                edge_len = edge.calc_length()
+                # Check edge lengths
+                max_edge = max(e.calc_length() for e in face.edges)
 
-                if edge_len > target_edge_bu:
-                    edges_to_split.append(edge)
+                if max_edge > target_edge_bu:
+                    # Edges too long - need to add neighboring faces
+                    for edge in face.edges:
+                        for neighbor_face in edge.link_faces:
+                            if (neighbor_face in leaf_faces_set
+                                and neighbor_face not in edge_faces
+                                and neighbor_face not in faces_to_expand):
+                                faces_to_expand.append(neighbor_face)
+
+            edge_faces.update(faces_to_expand)
+
+            # STEP 4: Find edges to subdivide in edge faces
+            edges_to_split = set()
+            for face in edge_faces:
+                for edge in face.edges:
+                    if edge.calc_length() > target_edge_bu:
+                        edges_to_split.add(edge)
 
             # Check stopping condition
-            if not edges_to_split:
+            if not faces_to_delete and not edges_to_split:
                 bm.to_mesh(mesh)
                 bm.free()
                 mesh.update()
                 break
 
-            # STEP 5: Split boundary edges at midpoint
+            # STEP 5: Split edges at midpoint
             for edge in edges_to_split:
                 if edge.is_valid:
                     try:
@@ -1872,27 +1858,13 @@ def densify_and_trim_interleaved(
                     except Exception:
                         pass
 
-            # Only triangulate faces that are FULLY TRANSPARENT (all vertices below threshold)
-            # These are the faces we want to delete - triangulating them allows checking
-            # each resulting triangle individually
-            # Interior and mixed faces remain as n-gons to preserve topology
-            exterior_ngons = []
-            for face in bm.faces:
-                if len(face.verts) <= 3:
-                    continue
-                if face.material_index not in material_indices:
-                    continue
-                # Check if ALL vertices are transparent
-                all_transparent = True
-                for vert in face.verts:
-                    if vert_alpha.get(vert.index, 1.0) >= threshold:
-                        all_transparent = False
-                        break
-                if all_transparent:
-                    exterior_ngons.append(face)
-
-            if exterior_ngons:
-                bmesh.ops.triangulate(bm, faces=exterior_ngons)
+            # STEP 6: Triangulate any n-gons created by subdivision
+            new_ngons = [f for f in bm.faces
+                         if len(f.verts) > 3
+                         and f in edge_faces
+                         and f.material_index in material_indices]
+            if new_ngons:
+                bmesh.ops.triangulate(bm, faces=new_ngons)
 
             # Update mesh and prepare for next iteration
             bm.to_mesh(mesh)
