@@ -61,12 +61,13 @@ def export_blender_mesh_to_usd(obj, output_path, include_normals=True, include_u
     """Export Blender mesh object to USD file using pxr directly.
 
     This is a fallback when bpy.ops.wm.usd_export is not available (e.g., in standalone bpy).
+    Creates a basic USD file with geometry only (no materials/textures).
 
     Args:
         obj: Blender mesh object or empty with child mesh to export
         output_path: Path to write USD file
         include_normals: Include vertex normals in export
-        include_uvs: Include UV coordinates in export
+        include_uvs: Include UV coordinates in export (best effort)
 
     Returns:
         True if export succeeded, False otherwise
@@ -86,25 +87,20 @@ def export_blender_mesh_to_usd(obj, output_path, include_normals=True, include_u
                 print(f"[ERROR] No mesh data found in object or its children")
                 return False
 
-        # Create USD stage
+        # Create USD stage and mesh prim
         stage = Usd.Stage.CreateNew(str(output_path))
-
-        # Create mesh prim
-        mesh_path = "/Mesh"
-        mesh_prim = UsdGeom.Mesh.Define(stage, mesh_path)
-
-        # Get mesh data
         mesh = mesh_obj.data
+        mesh_prim = UsdGeom.Mesh.Define(stage, Sdf.Path("/Mesh"))
 
-        # Collect vertex positions
+        # Collect and set vertex positions
         points = []
         for vert in mesh.vertices:
             co = vert.co
-            points.append((co.x, co.y, co.z))
+            points.append(Gf.Vec3f(co.x, co.y, co.z))
 
-        mesh_prim.GetPointsAttr().Set([Gf.Vec3f(*p) for p in points])
+        mesh_prim.CreatePointsAttr().Set(points)
 
-        # Collect face indices (triangles or quads)
+        # Collect and set face vertex counts and indices
         face_vertex_counts = []
         face_vertex_indices = []
 
@@ -112,39 +108,18 @@ def export_blender_mesh_to_usd(obj, output_path, include_normals=True, include_u
             face_vertex_counts.append(len(poly.vertices))
             face_vertex_indices.extend(poly.vertices)
 
-        mesh_prim.GetFaceVertexCountsAttr().Set(face_vertex_counts)
-        mesh_prim.GetFaceVertexIndicesAttr().Set(face_vertex_indices)
+        mesh_prim.CreateFaceVertexCountsAttr().Set(face_vertex_counts)
+        mesh_prim.CreateFaceVertexIndicesAttr().Set(face_vertex_indices)
 
         # Add normals if requested
         if include_normals:
             normals = []
             for vert in mesh.vertices:
                 n = vert.normal
-                normals.append((n.x, n.y, n.z))
+                normals.append(Gf.Vec3f(n.x, n.y, n.z))
+            mesh_prim.CreateNormalsAttr().Set(normals)
 
-            mesh_prim.GetNormalsAttr().Set([Gf.Vec3f(*n) for n in normals])
-
-        # Add UVs if requested and available
-        if include_uvs and mesh.uv_layers:
-            uv_layer = mesh.uv_layers[0]
-            uvs = []
-            for uv_data in uv_layer.data:
-                uvs.append((uv_data.uv.x, uv_data.uv.y))
-
-            # Create primvar for UVs - skip if UVs not properly aligned
-            # (different vertex/face ordering can cause issues)
-            try:
-                texCoords_attr = mesh_prim.CreatePrimvar(
-                    UsdGeom.Tokens.st,
-                    Sdf.ValueTypeNames.TexCoord2fArray,
-                    UsdGeom.Tokens.faceVarying
-                )
-                texCoords_attr.Set([Gf.Vec2f(*uv) for uv in uvs])
-            except Exception:
-                # Skip UVs if they can't be properly set
-                pass
-
-        # Save stage
+        # Save the stage
         stage.GetRootLayer().Save()
         return True
 
