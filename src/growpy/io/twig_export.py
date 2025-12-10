@@ -3421,14 +3421,13 @@ def process_twig_file(
                         result = bpy.ops.wm.usd_export(
                             filepath=str(skel_export_path),
                             selected_objects_only=True,
-                            export_materials=False,  # Disabled - materials added later with filtering
-                            export_textures=False,  # Disabled - textures added later with filtering
+                            export_materials=False,
                             export_uvmaps=True,  # CRITICAL: Required for texture mapping
                             export_normals=True,
-                            export_mesh_colors=False,  # Force disabled for Nanite
+                            export_mesh_colors=False,
                             use_instancing=False,
                             evaluation_mode="RENDER",
-                            generate_preview_surface=False,  # Disabled - created later
+                            generate_preview_surface=False,
                             relative_paths=True,
                             export_hair=False,
                             export_lights=False,
@@ -3438,17 +3437,12 @@ def process_twig_file(
                         else:
                             print(f"[WARNING] Blender USD export operator returned: {result}")
                     except Exception as export_err:
-                        print(f"[WARNING] Blender USD export operator not available, trying direct export: {export_err}")
-
-                    # Fallback: use direct pxr export if operator failed
-                    if not export_success:
-                        if export_blender_mesh_to_usd(mount_point, skel_export_path):
-                            export_success = True
-                        else:
-                            print(f"[ERROR] Both Blender and direct USD export failed for {skel_export_path}")
+                        print(f"[WARNING] Blender USD export operator failed: {export_err}")
 
                     if export_success:
                         exported_files.append(skel_export_path)
+                    else:
+                        print(f"[ERROR] Skeletal USD export failed for {skel_export_path}")
 
                     # Add skeleton directly using Blender's bundled USD
                     # This also fixes texture paths and removes DomeLight
@@ -3524,7 +3518,6 @@ def process_twig_file(
                             filepath=str(static_export_path),
                             selected_objects_only=True,
                             export_materials=True,
-                            export_textures=True,
                             export_uvmaps=True,
                             export_normals=True,
                             export_mesh_colors=False,
@@ -3540,17 +3533,12 @@ def process_twig_file(
                         else:
                             print(f"[WARNING] Blender USD export operator returned: {result}")
                     except Exception as export_err:
-                        print(f"[WARNING] Blender USD export operator not available, trying direct export: {export_err}")
-
-                    # Fallback: use direct pxr export if operator failed
-                    if not static_export_success:
-                        if export_blender_mesh_to_usd(obj, static_export_path):
-                            static_export_success = True
-                        else:
-                            print(f"[ERROR] Both Blender and direct USD export failed for {static_export_path}")
+                        print(f"[WARNING] Blender USD export operator failed: {export_err}")
 
                     if static_export_success:
                         exported_files.append(static_export_path)
+                    else:
+                        print(f"[ERROR] Static USD export failed for {static_export_path}")
 
                     # Clean up static USD (remove skeleton artifacts, fix structure)
                     if clean_static_usd_file(static_export_path):
