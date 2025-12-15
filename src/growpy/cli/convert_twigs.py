@@ -8,23 +8,26 @@ Python API (bpy).
 
 Key Features:
     - Dual export modes: skeletal (with skeleton) or static (with materials)
-    - Interleaved densify+trim: subdivides only transition edges while trimming
+    - Interleaved densify+trim: subdivides transition and transparent faces
     - Relative edge targets for consistent density across species
     - Alpha-based silhouette trimming with configurable methods
     - Coordinate system: Z-up (Blender to Unreal)
 
 Algorithm (Interleaved Densify+Trim):
     1. Build vertex alpha map by sampling texture at UV coordinates
-    2. Delete faces where ALL/AVG vertices have alpha < threshold (based on method)
-    3. Find transition edges (connect opaque vertex to transparent vertex)
-    4. Split transition edges at midpoint using edge_split (preserves interior)
-    5. Repeat steps 2-4 until longest transition edge < target length
+    2. Identify working faces:
+       - Transition faces: have BOTH opaque and transparent vertices
+       - Transparent faces: ALL vertices transparent with long edges
+       - Boundary faces: have at least one mesh boundary edge
+    3. Delete small fully-transparent faces (all edges <= target)
+    4. Subdivide long edges in working faces (edge_split affects neighbors)
+    5. Repeat steps 1-4 until no more changes
 
     Key advantages:
-    - Interleaved deletion removes fully-transparent faces early
-    - Only subdivides transition edges (not nearby or interior edges)
-    - Uses edge_split to preserve interior mesh topology completely
-    - Direct texture sampling for new vertices (not interpolation)
+    - Transition faces (the actual silhouette) get densified first
+    - Transparent faces subdivided only to make them small enough to delete
+    - edge_split naturally propagates to neighboring faces sharing edges
+    - Auto-detects inverted alpha masks (black=opaque convention)
 
 Export Variants (both created by default):
     Skeletal (_skeletal.usda):
@@ -67,6 +70,7 @@ Edge Densification (RELATIVE sizing - robust to any mesh scale):
     --boundary-edge-mm 1.0      No subdivision (original mesh)
     --boundary-edge-mm 0.5      Subdivide to 50% of avg edge (RECOMMENDED)
     --boundary-edge-mm 0.25     Subdivide to 25% (very dense)
+    --boundary-edge-mm 0.1      Very fine (10%, high poly count)
 
 Alpha Trimming:
     --alpha-trim 0.05-0.3       Minimal trimming (conservative)
