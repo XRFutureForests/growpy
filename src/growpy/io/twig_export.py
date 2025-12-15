@@ -57,7 +57,9 @@ except ImportError:
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel, Vt
 
 
-def export_blender_mesh_to_usd(obj, output_path, include_normals=True, include_uvs=True):
+def export_blender_mesh_to_usd(
+    obj, output_path, include_normals=True, include_uvs=True
+):
     """Export Blender mesh object to USD file using pxr directly.
 
     This is a fallback when bpy.ops.wm.usd_export is not available (e.g., in standalone bpy).
@@ -75,11 +77,11 @@ def export_blender_mesh_to_usd(obj, output_path, include_normals=True, include_u
     try:
         # Find actual mesh object (might be passed an empty with children)
         mesh_obj = obj
-        if not hasattr(obj.data, 'vertices'):
+        if not hasattr(obj.data, "vertices"):
             # obj is an empty, find first mesh child
             found = False
             for child in obj.children:
-                if hasattr(child.data, 'vertices'):
+                if hasattr(child.data, "vertices"):
                     mesh_obj = child
                     found = True
                     break
@@ -126,6 +128,7 @@ def export_blender_mesh_to_usd(obj, output_path, include_normals=True, include_u
     except Exception as e:
         print(f"[ERROR] Direct USD export failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -946,7 +949,9 @@ def classify_texture_from_name(name):
     # Check for bark texture
     if "bark" in name_lower:
         has_top = "top" in name_lower or "upper" in name_lower or "face" in name_lower
-        has_bottom = "bottom" in name_lower or "lower" in name_lower or "back" in name_lower
+        has_bottom = (
+            "bottom" in name_lower or "lower" in name_lower or "back" in name_lower
+        )
         if has_top and not has_bottom:
             return "bark_top"
         if has_bottom and not has_top:
@@ -1779,23 +1784,23 @@ def densify_and_trim_interleaved(
     max_iterations=10,
     method="all",
 ):
-    """Densify leaf edges with interleaved trimming - edge-face-aware algorithm.
+    """Densify leaf edges with interleaved trimming - transition-face-aware algorithm.
 
     Algorithm:
-        1. Separate twig vs leaf based on material attributes
-        2. Pre-triangulate all leaf faces (ensure triangle assumption)
-        3. Build vertex alpha map from texture sampling (auto-inverts if needed)
-        4. Detect edge faces (faces with ≥1 boundary edge)
-        5. Remove fully-transparent edge faces with edges ≤ target length
-        6. Expand edge faces when all vertices transparent but edges > target
-        7. Subdivide long edges in edge faces
-        8. Repeat steps 3-7 until convergence
+        1. Pre-triangulate all leaf faces (ensure triangle assumption)
+        2. Build vertex alpha map from texture sampling (auto-inverts if needed)
+        3. Identify working faces:
+           - Transition faces: have both opaque (>=threshold) and transparent (<threshold) vertices
+           - Transparent faces: ALL vertices transparent AND at least one edge > target
+           - Boundary faces: have at least one mesh boundary edge
+        4. Delete small fully-transparent faces (all edges <= target)
+        5. Subdivide long edges in working faces (edge_split affects all adjacent faces)
+        6. Repeat steps 2-5 until no changes
 
     Key advantages:
-        - Robust boundary detection using face neighbors, not just vertex alpha
-        - Only processes edge faces, preserves interior geometry
-        - Proper edge expansion handles varied mesh densities
-        - Explicit triangulation ensures triangle assumption always valid
+        - Transition faces get densified first (the actual leaf silhouette boundary)
+        - Transparent faces are subdivided only to make them small enough to delete
+        - edge_split naturally propagates subdivision to neighboring faces
         - Auto-detects inverted alpha masks (black=opaque convention)
 
     Args:
@@ -1830,8 +1835,9 @@ def densify_and_trim_interleaved(
         initial_face_count = len(mesh.polygons)
 
         # Limit face growth to prevent runaway subdivision
-        # Allow up to 8x original face count for thorough boundary densification
-        max_face_count = initial_face_count * 8
+        # Allow up to 20x original face count for thorough boundary densification
+        # This allows fine subdivision (0.05 factor) without hitting the limit
+        max_face_count = initial_face_count * 20
 
         total_faces_deleted = 0
 
@@ -1844,7 +1850,9 @@ def densify_and_trim_interleaved(
         bm.faces.ensure_lookup_table()
 
         leaf_faces_to_triangulate = [
-            f for f in bm.faces if f.material_index in material_indices and len(f.verts) > 3
+            f
+            for f in bm.faces
+            if f.material_index in material_indices and len(f.verts) > 3
         ]
         if leaf_faces_to_triangulate:
             bmesh.ops.triangulate(bm, faces=leaf_faces_to_triangulate)
@@ -1892,33 +1900,57 @@ def densify_and_trim_interleaved(
                         vert_alpha[vi] = alpha
                         vert_uv[vi] = (uv.x, uv.y)
 
-            # STEP 1: Detect edge faces (faces with ≥1 boundary edge)
-            # An edge is a boundary edge if it has exactly 1 adjacent leaf face
-            leaf_faces_set = {f for f in bm.faces if f.material_index in material_indices}
+            leaf_faces_set = {
+                f for f in bm.faces if f.material_index in material_indices
+            }
 
-            edge_faces = set()
+            # STEP 1: Identify working faces - THREE categories:
+            # A) Transition faces: have BOTH opaque and transparent vertices (alpha threshold crossing)
+            # B) Transparent faces: ALL vertices transparent with long edges (need subdivision)
+            # C) Boundary faces: have at least one mesh boundary edge
+            working_faces = set()
+            transition_faces = set()
+            transparent_faces = set()
+
             for face in leaf_faces_set:
-                for edge in face.edges:
-                    # Count adjacent leaf faces
-                    adj_count = sum(1 for f in edge.link_faces if f in leaf_faces_set)
-                    if adj_count == 1:  # Boundary edge
-                        edge_faces.add(face)
-                        break
-
-            # STEP 2: Check edge faces for removal
-            # Remove fully-transparent edge faces with all edges ≤ target length
-            faces_to_delete = []
-            for face in edge_faces:
-                # Must be triangle (guaranteed by pre-triangulation, but double-check)
                 if len(face.verts) != 3:
                     continue
 
-                # Check if ALL three vertices transparent
+                alphas = [vert_alpha.get(v.index, 1.0) for v in face.verts]
+                has_opaque = any(a >= threshold for a in alphas)
+                has_transparent = any(a < threshold for a in alphas)
+                all_transparent = all(a < threshold for a in alphas)
+
+                # Category A: Transition face (crosses threshold)
+                if has_opaque and has_transparent:
+                    transition_faces.add(face)
+                    working_faces.add(face)
+
+                # Category B: Fully transparent face with long edges
+                elif all_transparent:
+                    max_edge = max(e.calc_length() for e in face.edges)
+                    if max_edge > target_edge_bu:
+                        transparent_faces.add(face)
+                        working_faces.add(face)
+
+                # Category C: Boundary face (mesh edge)
+                for edge in face.edges:
+                    adj_count = sum(1 for f in edge.link_faces if f in leaf_faces_set)
+                    if adj_count == 1:  # Boundary edge
+                        working_faces.add(face)
+                        break
+
+            # STEP 2: Delete small fully-transparent faces
+            faces_to_delete = []
+            for face in leaf_faces_set:
+                if len(face.verts) != 3:
+                    continue
+
                 alphas = [vert_alpha.get(v.index, 1.0) for v in face.verts]
                 if not all(a < threshold for a in alphas):
                     continue
 
-                # Check if ALL three edges shorter than target
+                # All edges must be short enough to delete
                 max_edge = max(e.calc_length() for e in face.edges)
                 if max_edge <= target_edge_bu:
                     faces_to_delete.append(face)
@@ -1930,45 +1962,39 @@ def densify_and_trim_interleaved(
                 bm.edges.ensure_lookup_table()
                 bm.faces.ensure_lookup_table()
 
-                # Rebuild edge_faces set after deletion
-                leaf_faces_set = {f for f in bm.faces if f.material_index in material_indices}
-                edge_faces = set()
+                # Rebuild working faces after deletion
+                leaf_faces_set = {
+                    f for f in bm.faces if f.material_index in material_indices
+                }
+                working_faces = set()
+
                 for face in leaf_faces_set:
-                    for edge in face.edges:
-                        adj_count = sum(1 for f in edge.link_faces if f in leaf_faces_set)
-                        if adj_count == 1:
-                            edge_faces.add(face)
-                            break
+                    if len(face.verts) != 3:
+                        continue
 
-            # STEP 3: Expand edge faces if needed
-            # If all vertices transparent but edges too long, add neighbors to edge_faces
-            faces_to_expand = []
-            for face in edge_faces:
-                if len(face.verts) != 3:
-                    continue
+                    alphas = [vert_alpha.get(v.index, 1.0) for v in face.verts]
+                    has_opaque = any(a >= threshold for a in alphas)
+                    has_transparent = any(a < threshold for a in alphas)
+                    all_transparent = all(a < threshold for a in alphas)
 
-                # Check if all vertices transparent
-                alphas = [vert_alpha.get(v.index, 1.0) for v in face.verts]
-                if not all(a < threshold for a in alphas):
-                    continue
+                    if has_opaque and has_transparent:
+                        working_faces.add(face)
+                    elif all_transparent:
+                        max_edge = max(e.calc_length() for e in face.edges)
+                        if max_edge > target_edge_bu:
+                            working_faces.add(face)
+                    else:
+                        for edge in face.edges:
+                            adj_count = sum(
+                                1 for f in edge.link_faces if f in leaf_faces_set
+                            )
+                            if adj_count == 1:
+                                working_faces.add(face)
+                                break
 
-                # Check edge lengths
-                max_edge = max(e.calc_length() for e in face.edges)
-
-                if max_edge > target_edge_bu:
-                    # Edges too long - need to add neighboring faces
-                    for edge in face.edges:
-                        for neighbor_face in edge.link_faces:
-                            if (neighbor_face in leaf_faces_set
-                                and neighbor_face not in edge_faces
-                                and neighbor_face not in faces_to_expand):
-                                faces_to_expand.append(neighbor_face)
-
-            edge_faces.update(faces_to_expand)
-
-            # STEP 4: Find edges to subdivide in edge faces
+            # STEP 3: Find edges to subdivide in working faces
             edges_to_split = set()
-            for face in edge_faces:
+            for face in working_faces:
                 for edge in face.edges:
                     if edge.calc_length() > target_edge_bu:
                         edges_to_split.add(edge)
@@ -1980,7 +2006,7 @@ def densify_and_trim_interleaved(
                 mesh.update()
                 break
 
-            # STEP 5: Split edges at midpoint
+            # STEP 4: Split edges at midpoint
             for edge in edges_to_split:
                 if edge.is_valid:
                     try:
@@ -1988,11 +2014,13 @@ def densify_and_trim_interleaved(
                     except Exception:
                         pass
 
-            # STEP 6: Triangulate any n-gons created by subdivision
-            new_ngons = [f for f in bm.faces
-                         if len(f.verts) > 3
-                         and f in edge_faces
-                         and f.material_index in material_indices]
+            # STEP 5: Triangulate any n-gons created by subdivision
+            # Important: triangulate ALL n-gons in leaf geometry, not just working faces
+            new_ngons = [
+                f
+                for f in bm.faces
+                if len(f.verts) > 3 and f.material_index in material_indices
+            ]
             if new_ngons:
                 bmesh.ops.triangulate(bm, faces=new_ngons)
 
@@ -2855,7 +2883,9 @@ def setup_materials_with_textures(
             # Only use if summer variant doesn't exist
             if f"{material_type}_summer" not in material_groups:
                 if not season_prioritization[material_type]:
-                    season_prioritization[material_type] = material_groups.pop(group_key)
+                    season_prioritization[material_type] = material_groups.pop(
+                        group_key
+                    )
                 else:
                     material_groups.pop(group_key)
             else:
@@ -2870,10 +2900,14 @@ def setup_materials_with_textures(
     final_material_groups = {}
     for material_type, textures in season_prioritization.items():
         if textures:
-            mat_name = f"{species_name}_{material_type}" if material_type else species_name
+            mat_name = (
+                f"{species_name}_{material_type}" if material_type else species_name
+            )
             final_material_groups[mat_name] = textures
 
-    material_groups = final_material_groups if final_material_groups else material_groups
+    material_groups = (
+        final_material_groups if final_material_groups else material_groups
+    )
 
     # If no good grouping, use all textures for single material
     if not material_groups:
@@ -3432,17 +3466,23 @@ def process_twig_file(
                             export_hair=False,
                             export_lights=False,
                         )
-                        if result == {'FINISHED'}:
+                        if result == {"FINISHED"}:
                             export_success = True
                         else:
-                            print(f"[WARNING] Blender USD export operator returned: {result}")
+                            print(
+                                f"[WARNING] Blender USD export operator returned: {result}"
+                            )
                     except Exception as export_err:
-                        print(f"[WARNING] Blender USD export operator failed: {export_err}")
+                        print(
+                            f"[WARNING] Blender USD export operator failed: {export_err}"
+                        )
 
                     if export_success:
                         exported_files.append(skel_export_path)
                     else:
-                        print(f"[ERROR] Skeletal USD export failed for {skel_export_path}")
+                        print(
+                            f"[ERROR] Skeletal USD export failed for {skel_export_path}"
+                        )
 
                     # Add skeleton directly using Blender's bundled USD
                     # This also fixes texture paths and removes DomeLight
@@ -3528,17 +3568,23 @@ def process_twig_file(
                             export_hair=False,
                             export_lights=False,
                         )
-                        if result == {'FINISHED'}:
+                        if result == {"FINISHED"}:
                             static_export_success = True
                         else:
-                            print(f"[WARNING] Blender USD export operator returned: {result}")
+                            print(
+                                f"[WARNING] Blender USD export operator returned: {result}"
+                            )
                     except Exception as export_err:
-                        print(f"[WARNING] Blender USD export operator failed: {export_err}")
+                        print(
+                            f"[WARNING] Blender USD export operator failed: {export_err}"
+                        )
 
                     if static_export_success:
                         exported_files.append(static_export_path)
                     else:
-                        print(f"[ERROR] Static USD export failed for {static_export_path}")
+                        print(
+                            f"[ERROR] Static USD export failed for {static_export_path}"
+                        )
 
                     # Clean up static USD (remove skeleton artifacts, fix structure)
                     if clean_static_usd_file(static_export_path):
@@ -3559,6 +3605,7 @@ def process_twig_file(
 
         except Exception as e:
             import traceback
+
             print(f"[ERROR] Failed to export {original_name}: {e}")
             traceback.print_exc()
             continue
