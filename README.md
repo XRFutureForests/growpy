@@ -122,6 +122,33 @@ python src/growpy/cli/create_growth_models.py --cycles 125 --seeds 1
 python src/growpy/cli/generate_forest.py data/input/forest.csv
 ```
 
+### Performance Optimization Flags
+
+Forest generation supports several flags to optimize export time:
+
+```bash
+# Fast mode - skip wind JSON, PVE JSON (skeletal meshes only by default)
+python src/growpy/cli/generate_forest.py data/input/test.csv --fast
+
+# Profile to identify bottlenecks
+python src/growpy/cli/generate_forest.py data/input/test.csv --profile
+
+# Also generate static mesh assemblies (disabled by default)
+python src/growpy/cli/generate_forest.py data/input/test.csv --include-static
+
+# Skip individual optional steps
+python src/growpy/cli/generate_forest.py data/input/test.csv --skip-wind-json --skip-pve-json
+```
+
+**Performance Flags**:
+
+- `--fast` - Skip wind JSON, PVE JSON, static meshes, and validation (saves ~60% export time)
+- `--skip-wind-json` - Skip wind animation JSON (saves ~37% export time)
+- `--skip-pve-json` - Skip PVE preset JSON (saves ~3% export time)
+- `--skip-validation` - Skip USD assembly validation (saves ~5% export time)
+- `--include-static` - Also generate static mesh assemblies (adds ~7% time)
+- `--profile` - Print timing report to identify bottlenecks
+
 ## Output Structure
 
 Forest generation creates organized output folders ready for Unreal import:

@@ -45,6 +45,36 @@ from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel
 
 from ..core.twig import extract_twig_placements_from_model
 
+# Module-level cache for copied twig files (optimization: avoid redundant copies per species)
+# Key: (source_path, dest_dir) tuple, Value: destination path
+_copied_twig_cache: dict = {}
+
+
+def clear_twig_copy_cache() -> None:
+    """Clear the twig file copy cache. Call at start of new export session."""
+    global _copied_twig_cache
+    _copied_twig_cache.clear()
+
+
+def _copy_twig_file_cached(source_path: "Path", dest_dir: "Path") -> "Path":
+    """Copy twig file to destination directory with caching.
+
+    If the file has already been copied to this destination, skips the copy.
+    Returns the destination path.
+    """
+    import shutil
+
+    cache_key = (str(source_path), str(dest_dir))
+    if cache_key in _copied_twig_cache:
+        return _copied_twig_cache[cache_key]
+
+    dest_path = dest_dir / source_path.name
+    if not dest_path.exists():
+        shutil.copy2(source_path, dest_path)
+
+    _copied_twig_cache[cache_key] = dest_path
+    return dest_path
+
 
 def create_assembly(
     tree_usd_path: Path,
@@ -54,6 +84,7 @@ def create_assembly(
     use_skeletal_mesh: bool = False,
     skeleton_source_usd: Optional[Path] = None,
     twig_placements: Optional[Dict[str, List]] = None,
+    validate: bool = True,
 ) -> bool:
     """Create an assembly USD file for Unreal Engine import.
 
@@ -79,7 +110,8 @@ def create_assembly(
         twig_usd_paths: Optional dict mapping twig types to USD paths (skeletal or static matching assembly type)
         use_skeletal_mesh: Whether to use skeletal mesh type
         skeleton_source_usd: Deprecated - skeleton is now embedded in tree_usd_path
-        twig_placement_source_usd: Optional USD to extract twig placements from (if different from tree_usd_path)
+        twig_placements: Optional dict of twig placements extracted from Grove model
+        validate: If True, validate assembly structure after creation (default: True)
 
     Returns:
         bool: Success status
@@ -226,13 +258,9 @@ def create_assembly(
                     if not twig_ref_path.exists():
                         continue
 
-                    # Copy twig file to output directory for relative references
+                    # Copy twig file to output directory for relative references (with caching)
                     # This ensures the assembly can find its twigs using ./filename.usda
-                    import shutil
-
-                    output_twig_path = output_path.parent / twig_ref_path.name
-                    if not output_twig_path.exists():
-                        shutil.copy2(twig_ref_path, output_twig_path)
+                    _copy_twig_file_cached(twig_ref_path, output_path.parent)
 
                     # Copy twig textures (base color and normal maps)
                     # Both skeletal and static assemblies now include textures
@@ -548,7 +576,7 @@ def create_assembly(
             _fix_api_schemas_in_assembly(output_path, assembly_name)
 
         # Validate the assembly structure (based on video requirements)
-        if use_skeletal_mesh:
+        if validate and use_skeletal_mesh:
             validation_result = validate_assembly(output_path)
             if not validation_result["valid"]:
                 for error in validation_result["errors"]:
@@ -578,6 +606,8 @@ def export_tree_as_nanite_assembly(
     use_skeletal_mesh: bool = False,
     use_static_mesh: bool = False,
     include_grove_attributes: bool = False,
+    validate: bool = True,
+    timer: Optional[Any] = None,
 ) -> bool:
     """Export Grove tree as Unreal Engine Nanite Assembly.
 
@@ -603,10 +633,20 @@ def export_tree_as_nanite_assembly(
         use_skeletal_mesh: Use skeletal mesh type (for animation)
         use_static_mesh: Use static mesh type (with materials/textures, no skeleton)
         include_grove_attributes: If True, include Grove metadata in USD (increases size ~70%)
+        validate: If True, validate assembly structure after creation (default: True)
+        timer: Optional ProfileTimer for sub-step profiling
 
     Returns:
         bool: Success status
     """
+    # Create a no-op timer context if none provided
+    from contextlib import nullcontext
+
+    def _track(name):
+        if timer is not None:
+            return timer.track(name, parent="export_nanite_assembly_skeletal")
+        return nullcontext()
+
     try:
         # First, export using Grove's native USD
         try:
@@ -629,106 +669,102 @@ def export_tree_as_nanite_assembly(
         base_name = base_name.replace("_skeletal", "").replace("_static", "")
 
         # Triangulate model before building USD (CRITICAL for proper face/attribute matching)
-        try:
-            model.triangulate()
-        except Exception as e:
-            pass
+        with _track("triangulate"):
+            try:
+                model.triangulate()
+            except Exception as e:
+                pass
 
         # Use unified build_tree_mesh for both skeletal and static
         # Skeletal mesh (with skeleton) is preferred for Nanite performance
         if use_static_mesh:
             # Static mesh export (no skeleton)
             temp_tree_path = output_path.parent / f"{base_name}_static.usda"
-            if not build_tree_mesh(
-                model=model,
-                skeleton=None,
-                bones_info=None,
-                output_path=temp_tree_path,
-                up_axis="Z",
-                triangulated=True,
-                include_skeleton=False,
-                include_grove_attributes=include_grove_attributes,
-                species_name=species_name,
-            ):
-                return False
+            with _track("build_tree_mesh"):
+                if not build_tree_mesh(
+                    model=model,
+                    skeleton=None,
+                    bones_info=None,
+                    output_path=temp_tree_path,
+                    up_axis="Z",
+                    triangulated=True,
+                    include_skeleton=False,
+                    include_grove_attributes=include_grove_attributes,
+                    species_name=species_name,
+                ):
+                    return False
         else:
             # Skeletal mesh export (default - preferred for performance)
             temp_tree_path = output_path.parent / f"{base_name}_skeletal.usda"
-            if not build_tree_mesh(
-                model=model,
-                skeleton=skeleton,
-                bones_info=bones_info,
-                output_path=temp_tree_path,
-                up_axis="Z",
-                triangulated=True,
-                include_skeleton=True,
-                include_grove_attributes=include_grove_attributes,
-                species_name=species_name,
-            ):
-                return False
+            with _track("build_tree_mesh"):
+                if not build_tree_mesh(
+                    model=model,
+                    skeleton=skeleton,
+                    bones_info=bones_info,
+                    output_path=temp_tree_path,
+                    up_axis="Z",
+                    triangulated=True,
+                    include_skeleton=True,
+                    include_grove_attributes=include_grove_attributes,
+                    species_name=species_name,
+                ):
+                    return False
 
         # Extract twig placements from Grove model BEFORE creating assembly
         twig_placements = None
         if include_twigs:
-            try:
-                twig_placements = extract_twig_placements_from_model(
-                    model, bones_info=bones_info if not use_static_mesh else None
-                )
-                total_twigs = sum(len(p) for p in twig_placements.values())
-                if total_twigs > 0:
-                    pass
-            except Exception as e:
-                twig_placements = None
+            with _track("extract_twig_placements"):
+                try:
+                    twig_placements = extract_twig_placements_from_model(
+                        model, bones_info=bones_info if not use_static_mesh else None
+                    )
+                    total_twigs = sum(len(p) for p in twig_placements.values())
+                    if total_twigs > 0:
+                        pass
+                except Exception as e:
+                    twig_placements = None
 
         # Auto-lookup twigs if include_twigs=True and none provided
         if include_twigs and twig_usd_paths is None:
-            try:
-                from .tree_export import get_twig_usd_map_for_species
+            with _track("twig_lookup"):
+                try:
+                    from .tree_export import get_twig_usd_map_for_species
 
-                # CRITICAL: Always use skeletal twigs for both skeletal and static assemblies
-                # Static twig variants don't exist, and skeletal twigs work as point instances
-                # in both assembly types (assembly type only affects tree mesh, not twig references)
-                twig_usd_paths = get_twig_usd_map_for_species(
-                    species_name,
-                    prefer_skeletal=True,
-                    prefer_static=False,
-                )
-                if twig_usd_paths:
-                    pass
-                else:
-                    pass
-            except Exception as e:
-                twig_usd_paths = None
-
-        # Copy twig USD files to output directory for relative references
-        if twig_usd_paths:
-            import shutil
-
-            copied_count = 0
-            unique_twig_files = set()
-
-            for twig_type, twig_path in twig_usd_paths.items():
-                if twig_path.exists() and twig_path not in unique_twig_files:
-                    dest_path = output_path.parent / twig_path.name
-                    try:
-                        shutil.copy2(twig_path, dest_path)
-                        unique_twig_files.add(twig_path)
-                        copied_count += 1
-                    except Exception as e:
+                    # CRITICAL: Always use skeletal twigs for both skeletal and static assemblies
+                    # Static twig variants don't exist, and skeletal twigs work as point instances
+                    # in both assembly types (assembly type only affects tree mesh, not twig references)
+                    twig_usd_paths = get_twig_usd_map_for_species(
+                        species_name,
+                        prefer_skeletal=True,
+                        prefer_static=False,
+                    )
+                    if twig_usd_paths:
                         pass
+                    else:
+                        pass
+                except Exception as e:
+                    twig_usd_paths = None
 
-            if copied_count > 0:
-                pass
+        # Copy twig USD files to output directory for relative references (with caching)
+        if twig_usd_paths:
+            with _track("copy_twig_files"):
+                dest_dir = output_path.parent
+
+                for twig_type, twig_path in twig_usd_paths.items():
+                    if twig_path.exists():
+                        _copy_twig_file_cached(twig_path, dest_dir)
 
         # Create Assembly USD
-        success = create_assembly(
-            tree_usd_path=temp_tree_path,
-            output_path=output_path,
-            species_name=species_name,
-            twig_usd_paths=twig_usd_paths if include_twigs else None,
-            use_skeletal_mesh=use_skeletal_mesh and not use_static_mesh,
-            twig_placements=twig_placements,
-        )
+        with _track("create_assembly"):
+            success = create_assembly(
+                tree_usd_path=temp_tree_path,
+                output_path=output_path,
+                species_name=species_name,
+                twig_usd_paths=twig_usd_paths if include_twigs else None,
+                use_skeletal_mesh=use_skeletal_mesh and not use_static_mesh,
+                twig_placements=twig_placements,
+                validate=validate,
+            )
 
         if success:
             pass

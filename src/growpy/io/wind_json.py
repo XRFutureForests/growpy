@@ -12,11 +12,85 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 
+def extract_joint_names_from_bones_info(bones_info: List) -> List[str]:
+    """
+    Extract joint names from bones_info without reading USD file.
+
+    This is significantly faster than reading the USD file (~90% speedup).
+    The joint naming logic mirrors _build_usdskel_from_bones in tree_export.py.
+
+    Args:
+        bones_info: List of bone tuples from grove.tag_bone_id()
+                   Format: (is_tree_root, parent_id, start_point, end_point, radius, mass, is_branch_root, branch_id)
+
+    Returns:
+        List of joint names in skeleton order
+    """
+    if not bones_info:
+        return []
+
+    joint_tokens = []
+    bone_id_to_joint_path = {}
+
+    # Calculate offsets from first bone
+    first_bone = bones_info[0]
+    is_tree_root, parent_bone_id = first_bone[0], first_bone[1]
+    first_branch_id = first_bone[7]
+
+    if is_tree_root and parent_bone_id == 0:
+        bone_id_offset = 0
+    elif is_tree_root:
+        bone_id_offset = parent_bone_id
+    else:
+        bone_id_offset = 0
+
+    branch_id_offset = first_branch_id
+
+    for bone_idx, bone_info in enumerate(bones_info):
+        (
+            is_tree_root,
+            parent_bone_id,
+            start_point,
+            end_point,
+            radius,
+            mass,
+            is_branch_root,
+            branch_id,
+        ) = bone_info
+
+        global_bone_id = bone_id_offset + bone_idx
+        local_branch_id = branch_id - branch_id_offset
+
+        if bone_idx == 0:
+            joint_name = "tree_root"
+            joint_path = joint_name
+        elif is_branch_root:
+            joint_name = f"branch_{local_branch_id}"
+            if parent_bone_id in bone_id_to_joint_path:
+                parent_joint_path = bone_id_to_joint_path[parent_bone_id]
+                joint_path = f"{parent_joint_path}/{joint_name}"
+            else:
+                joint_path = f"tree_root/{joint_name}"
+        else:
+            joint_name = f"joint_{bone_idx}"
+            if parent_bone_id in bone_id_to_joint_path:
+                parent_joint_path = bone_id_to_joint_path[parent_bone_id]
+                joint_path = f"{parent_joint_path}/{joint_name}"
+            else:
+                joint_path = f"tree_root/{joint_name}"
+
+        bone_id_to_joint_path[global_bone_id] = joint_path
+        joint_tokens.append(joint_path)
+
+    return joint_tokens
+
+
 def generate_wind_json(
     tree_usd_path: Path,
     skeleton: Optional[Any] = None,
     bones_info: Optional[List] = None,
     output_path: Optional[Path] = None,
+    joint_names: Optional[List[str]] = None,
 ) -> Dict:
     """
     Generate DynamicWind JSON for a tree USD file using Grove skeleton data.
@@ -26,6 +100,7 @@ def generate_wind_json(
         skeleton: Optional Grove skeleton object from grove.build_skeletons()
         bones_info: Optional list of bone tuples from grove.tag_bone_id()
         output_path: Optional output path for JSON file. If None, returns dict only.
+        joint_names: Optional list of joint names (if provided, skips USD reading for ~90% speedup)
 
     Returns:
         Dictionary with DynamicWind JSON structure
@@ -37,8 +112,9 @@ def generate_wind_json(
     if output_path:
         output_path = Path(output_path) if isinstance(output_path, str) else output_path
 
-    # Extract joint names from USD
-    joint_names = _extract_joint_names_from_usd(tree_usd_path)
+    # Use provided joint_names if available, otherwise extract from USD (slow)
+    if joint_names is None:
+        joint_names = _extract_joint_names_from_usd(tree_usd_path)
 
     if not joint_names:
         raise ValueError(f"No skeleton joints found in {tree_usd_path}")
