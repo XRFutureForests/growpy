@@ -11,13 +11,16 @@ Quick Start (copy-paste ready with all defaults shown):
     python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 10 --smooth-iterations 10 --output-dir data/output/forest --unreal-project-path /Game/GrowPy/Trees
 
     # Generate with Unreal import script for one-click import
-    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 10 --smooth-iterations 10 --output-dir data/output/forest --import-to-unreal --unreal-project-path /Game/GrowPy/Trees
+    python src/growpy/cli/generate_forest.py data/input/test.csv --quality medium --growth-cycle-limit 100 --smooth-iterations 10 --output-dir data/output/forest --import-to-unreal --unreal-project-path /Game/GrowPy/Trees
 
     # Include Grove metadata for debugging/analysis (age, mass, vigor - increases size ~70%)
     python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 10 --smooth-iterations 10 --output-dir data/output/forest --include-grove-attributes
 
     # Fast preview (lower quality, fewer cycles)
     python src/growpy/cli/generate_forest.py data/input/test.csv --quality medium --growth-cycle-limit 5 --smooth-iterations 5 --output-dir data/output/forest
+
+    # Prevent tree death at high cycle counts by reducing decay
+    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 100 --preset-override drop_decay=0.1
 
 Common Flags:
     [csv_file]                                     Input CSV with tree positions (default: data/input/test.csv)
@@ -51,6 +54,24 @@ Common Flags:
     --include-grove-attributes                     Include Grove metadata in USD files (default: disabled)
                                                    Adds age, mass, vigor, etc. attributes for analysis
                                                    Effect: Increases USD file size by ~70%
+
+Preset Override Flags (prevent tree death at high cycle counts):
+    --longevity-mode                               Apply pre-configured overrides to prevent tree death
+                                                   Sets drop_decay=0.1, drop_weak=0.1, etc.
+                                                   Use this if trees "die" at high growth cycles
+
+    --preset-override PARAM=VALUE                  Override a preset parameter with fixed value
+                                                   Example: --preset-override drop_decay=0.1
+                                                   Can be specified multiple times
+
+    Common parameters to override:
+        drop_decay      Rate of dead branch decay (0.0-1.0, lower = less decay)
+        drop_weak       Rate of weak branch dropping (0.0-1.0, lower = keep more)
+        drop_shaded     Rate of shaded branch dropping (0.0-1.0)
+        drop_obsolete   Rate of obsolete branch dropping (0.0-1.0)
+
+    Note: For cycle-based interpolation, use _curve definitions in seed.json files.
+          See docs/grove-preset-reference.md for format details.
 
     -v, --verbose                                  Enable verbose output for PVE preset generation
 
@@ -112,6 +133,11 @@ from growpy import (
     create_forest,
     get_config,
     simulate_forest_growth,
+)
+from growpy.config.preset_overrides import (
+    LONGEVITY_OVERRIDES,
+    PresetOverrides,
+    create_overrides_from_args,
 )
 from growpy.config.quality import get_quality_preset
 
@@ -371,6 +397,7 @@ def generate_forest_exports(
     mesh_type: str = "skeletal",
     include_grove_attributes: bool = False,
     verbose: bool = False,
+    preset_overrides: Optional[PresetOverrides] = None,
 ) -> None:
     """Generate forest from CSV data and export as Nanite Assembly USD files.
 
@@ -388,6 +415,7 @@ def generate_forest_exports(
         mesh_type: Ignored - both skeletal and static are always created
         include_grove_attributes: If True, include Grove metadata in USD files (increases size ~70%, minimal_export always True for skeletal)
         verbose: Print detailed progress information
+        preset_overrides: Optional PresetOverrides for dynamic parameter adjustment during simulation
     """
     # Use defaults if not specified
     if growth_cycle_limit is None:
@@ -451,7 +479,12 @@ def generate_forest_exports(
         # 1. smooth_minimal() - Fixes ugly kinks on thick branches
         # 2. smooth() - Reduces sharp corner angles (smooth_iterations times)
         # 3. weigh_and_bend() - Re-calculates branch positions with smoothed angles
-        simulate_forest_growth(forest, max_cycles, smooth_iterations=smooth_iterations)
+        simulate_forest_growth(
+            forest,
+            max_cycles,
+            smooth_iterations=smooth_iterations,
+            preset_overrides=preset_overrides,
+        )
     except Exception as e:
         return
 
@@ -883,6 +916,18 @@ Unreal Engine Integration:
         help="Include Grove metadata attributes (age, mass, vigor, etc.) in USD files for analysis (increases file size ~70%%). Note: PVE preset JSON files are always generated automatically",
     )
     parser.add_argument(
+        "--preset-override",
+        type=str,
+        action="append",
+        metavar="PARAM=VALUE",
+        help="Override preset parameter with fixed value (e.g., --preset-override drop_decay=0.1). Can be specified multiple times.",
+    )
+    parser.add_argument(
+        "--longevity-mode",
+        action="store_true",
+        help="Apply pre-configured overrides to prevent tree death at high cycle counts (reduces drop_decay, drop_weak, etc.)",
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -914,6 +959,21 @@ Unreal Engine Integration:
                 return
 
         config = get_config()
+
+        # Build preset overrides from CLI arguments
+        preset_overrides = None
+        if args.longevity_mode:
+            preset_overrides = LONGEVITY_OVERRIDES
+            print(
+                "\n[Longevity Mode] Using pre-configured overrides to prevent tree death:"
+            )
+            print(f"  Static: {preset_overrides.static_overrides}")
+        elif args.preset_override:
+            preset_overrides = create_overrides_from_args(
+                static_args=args.preset_override,
+            )
+            print(f"\n[Preset Overrides] Static: {preset_overrides.static_overrides}")
+
         generate_forest_exports(
             csv_path,
             args.output_dir,
@@ -924,6 +984,7 @@ Unreal Engine Integration:
             mesh_type="skeletal",  # Ignored - both skeletal and static are created
             include_grove_attributes=args.include_grove_attributes,
             verbose=args.verbose,
+            preset_overrides=preset_overrides,
         )
 
         # Generate Unreal scripts if requested
