@@ -8,10 +8,10 @@ Creates both skeletal (animation-ready) and static (material-rich) Nanite assemb
 
 Quick Start (copy-paste ready with all defaults shown):
     # Full forest generation with all flags (recommended for production)
-    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 10 --smooth-iterations 10 --output-dir data/output/forest --unreal-project-path /Game/GrowPy/Trees
+    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 10 --smooth-iterations 10 --output-dir data/output/forest --preset-override drop_decay=0.1
 
     # Generate with Unreal import script for one-click import
-    python src/growpy/cli/generate_forest.py data/input/test.csv --quality medium --growth-cycle-limit 100 --smooth-iterations 10 --output-dir data/output/forest --import-to-unreal --unreal-project-path /Game/GrowPy/Trees
+    python src/growpy/cli/generate_forest.py data/input/test.csv --quality medium --growth-cycle-limit 100 --smooth-iterations 10 --output-dir data/output/forest --import-to-unreal --unreal-project-path /Game/GrowPy/Trees --preset-override drop_decay=0.1
 
     # Include Grove metadata for debugging/analysis (age, mass, vigor - increases size ~70%)
     python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 10 --smooth-iterations 10 --output-dir data/output/forest --include-grove-attributes
