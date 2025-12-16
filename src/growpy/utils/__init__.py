@@ -1,6 +1,6 @@
 """Utilities for GrowPy.
 
-Provides growth analysis and plotting.
+Provides growth analysis, plotting, and profiling.
 """
 
 try:
@@ -13,7 +13,12 @@ try:
 except ImportError:
     plot_growth_curves = None
 
+from .profiling import ProfileTimer, get_timer, init_profiler
+
 __all__ = [
     "SpeciesGrowthAnalyzer",
     "plot_growth_curves",
+    "ProfileTimer",
+    "get_timer",
+    "init_profiler",
 ]

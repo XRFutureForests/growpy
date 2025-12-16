@@ -55,6 +55,10 @@ Common Flags:
                                                    Adds age, mass, vigor, etc. attributes for analysis
                                                    Effect: Increases USD file size by ~70%
 
+    --profile                                      Enable profiling to track execution time of each step
+                                                   Prints detailed timing report showing bottlenecks
+                                                   Useful for identifying slow processing steps
+
 Preset Override Flags (prevent tree death at high cycle counts):
     --longevity-mode                               Apply pre-configured overrides to prevent tree death
                                                    Sets drop_decay=0.1, drop_weak=0.1, etc.
@@ -140,6 +144,7 @@ from growpy.config.preset_overrides import (
     create_overrides_from_args,
 )
 from growpy.config.quality import get_quality_preset
+from growpy.utils.profiling import ProfileTimer, get_timer, init_profiler
 
 
 def _export_single_tree_from_forest(args: tuple) -> list:
@@ -150,9 +155,10 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     the old approach of recreating and re-simulating each tree individually.
 
     Args:
-        args: Tuple of (fids, grove_instance, species_name, output_dir, quality_params, mesh_type, verbose)
+        args: Tuple of (fids, grove_instance, species_name, output_dir, quality_params, mesh_type, verbose, timer)
               fids is a list of original CSV fid values for each tree in the grove
               verbose is boolean for verbose output
+              timer is optional ProfileTimer instance
 
     Returns:
         List of exported file paths
@@ -167,8 +173,13 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     from growpy import get_config
     from growpy.io.assembly_export import export_tree_as_nanite_assembly
     from growpy.io.tree_export import get_twig_usd_map_for_species
+    from growpy.utils.profiling import ProfileTimer
 
-    (fids, grove, species, output_dir, quality_params, mesh_type, verbose) = args
+    (fids, grove, species, output_dir, quality_params, mesh_type, verbose, timer) = args
+
+    # Use provided timer or create disabled one
+    if timer is None:
+        timer = ProfileTimer(enabled=False)
 
     # Get config in worker process
     config = get_config()
@@ -193,41 +204,45 @@ def _export_single_tree_from_forest(args: tuple) -> list:
 
         # CRITICAL BUILD ORDER: skeleton -> bones -> models
         # 1. Build skeletons first
-        skeletons = grove.build_skeletons()
+        with timer.track("build_skeletons", parent="grove_export"):
+            skeletons = grove.build_skeletons()
 
         # 2. Tag bone IDs with length=0.0 and reduce=0.0 for maximum bone count
         # Skeletal simplification happens later in Unreal Engine if needed
         # Note: tag_bone_id() takes positional args: (length, reduce, bias, connected)
-        bones = grove.tag_bone_id(
-            0.0,  # skeleton_length - no merging by length
-            0.0,  # skeleton_reduce - no reduction by thickness
-            quality_params.get("skeleton_bias", 0.5),
-            quality_params.get("skeleton_connected", True),
-        )
+        with timer.track("tag_bone_id", parent="grove_export"):
+            bones = grove.tag_bone_id(
+                0.0,  # skeleton_length - no merging by length
+                0.0,  # skeleton_reduce - no reduction by thickness
+                quality_params.get("skeleton_bias", 0.5),
+                quality_params.get("skeleton_connected", True),
+            )
 
         # 3. NOW build models (with bone_id attributes already tagged)
-        models = grove.build_models(
-            {
-                "resolution": quality_params["resolution"],
-                "resolution_reduce": quality_params["resolution_reduce"],
-                "texture_repeat": quality_params["texture_repeat"],
-                "build_cutoff_age": quality_params["build_cutoff_age"],
-                "build_cutoff_thickness": quality_params["build_cutoff_thickness"],
-                "build_blend": quality_params["build_blend"],
-                "build_end_cap": quality_params["build_end_cap"],
-            }
-        )
+        with timer.track("build_models", parent="grove_export"):
+            models = grove.build_models(
+                {
+                    "resolution": quality_params["resolution"],
+                    "resolution_reduce": quality_params["resolution_reduce"],
+                    "texture_repeat": quality_params["texture_repeat"],
+                    "build_cutoff_age": quality_params["build_cutoff_age"],
+                    "build_cutoff_thickness": quality_params["build_cutoff_thickness"],
+                    "build_blend": quality_params["build_blend"],
+                    "build_end_cap": quality_params["build_end_cap"],
+                }
+            )
 
         if not models:
             return exported
 
         # Slice bones list for each tree in grove
-        bones_grouped = [list(g) for k, g in groupby(bones, lambda x: x[0])]
-        tree_bones = [
-            bones_grouped[i]
-            + (bones_grouped[i + 1] if i + 1 < len(bones_grouped) else [])
-            for i in range(0, len(bones_grouped), 2)
-        ]
+        with timer.track("slice_bones", parent="grove_export"):
+            bones_grouped = [list(g) for k, g in groupby(bones, lambda x: x[0])]
+            tree_bones = [
+                bones_grouped[i]
+                + (bones_grouped[i + 1] if i + 1 < len(bones_grouped) else [])
+                for i in range(0, len(bones_grouped), 2)
+            ]
 
         # Export each model/skeleton/bones triplet (each is a separate tree)
         for model_idx, (model, skeleton, bones_for_tree) in enumerate(
@@ -248,25 +263,29 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             # CRITICAL: Always use skeletal twigs for both skeletal and static assemblies
             # Static twig variants don't exist, and skeletal twigs work as point instances
             # in both assembly types (assembly type only affects tree mesh, not twig references)
-            twig_usd_map = get_twig_usd_map_for_species(
-                species, config, prefer_skeletal=True, prefer_static=False
-            )
+            with timer.track("get_twig_usd_map", parent="grove_export"):
+                twig_usd_map = get_twig_usd_map_for_species(
+                    species, config, prefer_skeletal=True, prefer_static=False
+                )
 
             # Export as Nanite Assembly with specified mesh type
-            export_success = export_tree_as_nanite_assembly(
-                model=model,
-                skeleton=skeleton if use_skeletal else None,
-                bones_info=bones_for_tree if use_skeletal else None,
-                output_path=usd_path,
-                species_name=species,
-                twig_usd_paths=twig_usd_map,
-                include_twigs=True,
-                use_skeletal_mesh=use_skeletal,
-                use_static_mesh=use_static,
-                include_grove_attributes=quality_params.get(
-                    "include_grove_attributes", False
-                ),
-            )
+            with timer.track(
+                f"export_nanite_assembly_{mesh_suffix}", parent="grove_export"
+            ):
+                export_success = export_tree_as_nanite_assembly(
+                    model=model,
+                    skeleton=skeleton if use_skeletal else None,
+                    bones_info=bones_for_tree if use_skeletal else None,
+                    output_path=usd_path,
+                    species_name=species,
+                    twig_usd_paths=twig_usd_map,
+                    include_twigs=True,
+                    use_skeletal_mesh=use_skeletal,
+                    use_static_mesh=use_static,
+                    include_grove_attributes=quality_params.get(
+                        "include_grove_attributes", False
+                    ),
+                )
 
             if export_success:
                 exported.append(str(usd_path))
@@ -277,12 +296,13 @@ def _export_single_tree_from_forest(args: tuple) -> list:
 
                     wind_json_path = species_dir / f"{tree_name}_DynamicWind.json"
                     try:
-                        generate_wind_json(
-                            tree_usd_path=str(usd_path),
-                            skeleton=skeleton,
-                            bones_info=bones_for_tree,
-                            output_path=str(wind_json_path),
-                        )
+                        with timer.track("generate_wind_json", parent="grove_export"):
+                            generate_wind_json(
+                                tree_usd_path=str(usd_path),
+                                skeleton=skeleton,
+                                bones_info=bones_for_tree,
+                                output_path=str(wind_json_path),
+                            )
                     except Exception as wind_error:
                         print(
                             f"Warning: Failed to generate wind JSON for {tree_name}: {wind_error}"
@@ -298,17 +318,18 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                     pve_json_path = species_dir / pve_variation_name
                     pve_config_dir = Path("data/assets/pve_configs")
                     try:
-                        generate_pve_from_grove(
-                            grove=grove,
-                            output_path=pve_json_path,
-                            species_name=species,
-                            tree_index=model_idx,
-                            model=model,  # Pass current model (has twigs)
-                            skeleton=skeleton,
-                            bones_info=bones_for_tree,
-                            verbose=True,
-                            pve_config_dir=pve_config_dir,
-                        )
+                        with timer.track("generate_pve_json", parent="grove_export"):
+                            generate_pve_from_grove(
+                                grove=grove,
+                                output_path=pve_json_path,
+                                species_name=species,
+                                tree_index=model_idx,
+                                model=model,  # Pass current model (has twigs)
+                                skeleton=skeleton,
+                                bones_info=bones_for_tree,
+                                verbose=True,
+                                pve_config_dir=pve_config_dir,
+                            )
                     except Exception as pve_error:
                         import traceback
 
@@ -336,6 +357,7 @@ def export_individual_trees(
     quality_params: dict,
     mesh_type: str = "skeletal",
     verbose: bool = False,
+    timer: Optional["ProfileTimer"] = None,
 ) -> list:
     """Export trees directly from already-simulated forest groves (no re-simulation).
 
@@ -354,10 +376,16 @@ def export_individual_trees(
         quality_params: Quality parameters dict
         mesh_type: Ignored - both skeletal and static are always created
         verbose: Print detailed progress information
+        timer: Optional ProfileTimer for tracking execution times
 
     Returns:
         List of exported file paths
     """
+    from growpy.utils.profiling import ProfileTimer
+
+    if timer is None:
+        timer = ProfileTimer(enabled=False)
+
     exported_files = []
 
     # Build tree export tasks from forest groves
@@ -369,17 +397,36 @@ def export_individual_trees(
         # Create two tasks per grove - one for skeletal, one for static
         # Pass fids list so each tree can be named with its original CSV fid
         grove_tasks.append(
-            (fids, grove, species_name, output_dir, quality_params, "skeletal", verbose)
+            (
+                fids,
+                grove,
+                species_name,
+                output_dir,
+                quality_params,
+                "skeletal",
+                verbose,
+                timer,
+            )
         )
         grove_tasks.append(
-            (fids, grove, species_name, output_dir, quality_params, "static", verbose)
+            (
+                fids,
+                grove,
+                species_name,
+                output_dir,
+                quality_params,
+                "static",
+                verbose,
+                timer,
+            )
         )
 
     # Always use sequential processing (bpy/USD not compatible with multiprocessing)
     for task in tqdm(grove_tasks, desc="Exporting groves"):
-        result = _export_single_tree_from_forest(task)
-        if result:
-            exported_files.extend([Path(p) for p in result])
+        with timer.track("grove_export"):
+            result = _export_single_tree_from_forest(task)
+            if result:
+                exported_files.extend([Path(p) for p in result])
 
     # PVE JSON generation now happens inline during tree export
     # No separate batch generation needed
@@ -398,6 +445,7 @@ def generate_forest_exports(
     include_grove_attributes: bool = False,
     verbose: bool = False,
     preset_overrides: Optional[PresetOverrides] = None,
+    timer: Optional["ProfileTimer"] = None,
 ) -> None:
     """Generate forest from CSV data and export as Nanite Assembly USD files.
 
@@ -416,7 +464,12 @@ def generate_forest_exports(
         include_grove_attributes: If True, include Grove metadata in USD files (increases size ~70%, minimal_export always True for skeletal)
         verbose: Print detailed progress information
         preset_overrides: Optional PresetOverrides for dynamic parameter adjustment during simulation
+        timer: Optional ProfileTimer for tracking execution times
     """
+    from growpy.utils.profiling import ProfileTimer
+
+    if timer is None:
+        timer = ProfileTimer(enabled=False)
     # Use defaults if not specified
     if growth_cycle_limit is None:
         growth_cycle_limit = GROWTH_CYCLE_LIMIT
@@ -432,59 +485,65 @@ def generate_forest_exports(
 
     # Load forest data
     try:
-        forest_data = pd.read_csv(csv_path)
-        required_columns = ["x", "y", "species", "height"]
+        with timer.track("load_csv"):
+            forest_data = pd.read_csv(csv_path)
+            required_columns = ["x", "y", "species", "height"]
 
-        # Check required columns
-        missing_cols = [
-            col for col in required_columns if col not in forest_data.columns
-        ]
-        if missing_cols:
-            return
+            # Check required columns
+            missing_cols = [
+                col for col in required_columns if col not in forest_data.columns
+            ]
+            if missing_cols:
+                return
 
-        # Z column will be added by create_forest if missing
+            # Z column will be added by create_forest if missing
 
     except Exception as e:
         return
 
+    with timer.track("calculate_growth_cycles"):
+        try:
+            calculate_growth_cycles_from_height(forest_data)
+        except Exception:
+            forest_data["growth_cycles"] = 10
+            forest_data["delay"] = 0
+
+        # Cap growth cycles to growth_cycle_limit if they exceed it
+        max_growth_cycles = forest_data["growth_cycles"].max()
+        if max_growth_cycles > growth_cycle_limit:
+            scale_factor = growth_cycle_limit / max_growth_cycles
+            forest_data["growth_cycles"] = (
+                forest_data["growth_cycles"] * scale_factor
+            ).astype(int)
+            forest_data["growth_cycles"] = forest_data["growth_cycles"].clip(lower=1)
+
+            # CRITICAL: Recalculate delays after scaling cycles
+            # Without this, delays can exceed the total simulation cycles,
+            # preventing trees from growing entirely
+            max_cycles_after_scaling = forest_data["growth_cycles"].max()
+            forest_data["delay"] = (
+                max_cycles_after_scaling - forest_data["growth_cycles"]
+            )
+        else:
+            # Use calculated cycles (based on height) if they're within the limit
+            # Apply height scale only if not scaling growth cycles
+            forest_data["height"] /= height_scale
+
     try:
-        calculate_growth_cycles_from_height(forest_data)
-    except Exception:
-        forest_data["growth_cycles"] = 10
-        forest_data["delay"] = 0
-
-    # Cap growth cycles to growth_cycle_limit if they exceed it
-    max_growth_cycles = forest_data["growth_cycles"].max()
-    if max_growth_cycles > growth_cycle_limit:
-        scale_factor = growth_cycle_limit / max_growth_cycles
-        forest_data["growth_cycles"] = (
-            forest_data["growth_cycles"] * scale_factor
-        ).astype(int)
-        forest_data["growth_cycles"] = forest_data["growth_cycles"].clip(lower=1)
-
-        # CRITICAL: Recalculate delays after scaling cycles
-        # Without this, delays can exceed the total simulation cycles,
-        # preventing trees from growing entirely
-        max_cycles_after_scaling = forest_data["growth_cycles"].max()
-        forest_data["delay"] = max_cycles_after_scaling - forest_data["growth_cycles"]
-    else:
-        # Use calculated cycles (based on height) if they're within the limit
-        # Apply height scale only if not scaling growth cycles
-        forest_data["height"] /= height_scale
-
-    try:
-        forest = create_forest(forest_data)
+        with timer.track("create_forest"):
+            forest = create_forest(forest_data)
         max_cycles = forest_data["growth_cycles"].max()
         # Smoothing is applied automatically during simulation:
         # 1. smooth_minimal() - Fixes ugly kinks on thick branches
         # 2. smooth() - Reduces sharp corner angles (smooth_iterations times)
         # 3. weigh_and_bend() - Re-calculates branch positions with smoothed angles
-        simulate_forest_growth(
-            forest,
-            max_cycles,
-            smooth_iterations=smooth_iterations,
-            preset_overrides=preset_overrides,
-        )
+        with timer.track("simulate_forest_growth"):
+            simulate_forest_growth(
+                forest,
+                max_cycles,
+                smooth_iterations=smooth_iterations,
+                preset_overrides=preset_overrides,
+            )
     except Exception as e:
         return
 
@@ -511,32 +570,35 @@ def generate_forest_exports(
 
         unique_species = forest_data["species"].unique()
 
-        for species in unique_species:
-            species_clean = (
-                "".join(c for c in species if c.isalnum() or c in (" ", "-", "_"))
-                .strip()
-                .replace(" ", "_")
-                .lower()
-            )
-            species_dir = output_dir / species_clean
+        with timer.track("bundle_twigs"):
+            for species in unique_species:
+                species_clean = (
+                    "".join(c for c in species if c.isalnum() or c in (" ", "-", "_"))
+                    .strip()
+                    .replace(" ", "_")
+                    .lower()
+                )
+                species_dir = output_dir / species_clean
 
-            bundle_twigs_for_species(
-                species_name=species,
-                output_dir=species_dir,
-                formats=["usda"],
-                config=config,
-            )
+                bundle_twigs_for_species(
+                    species_name=species,
+                    output_dir=species_dir,
+                    formats=["usda"],
+                    config=config,
+                )
 
         # mesh_type parameter ignored - both skeletal and static are always created
-        export_individual_trees(
-            forest,
-            forest_data,
-            output_dir,
-            config,
-            quality_params,
-            mesh_type="skeletal",  # Ignored - both types are created
-            verbose=verbose,
-        )
+        with timer.track("export_trees"):
+            export_individual_trees(
+                forest,
+                forest_data,
+                output_dir,
+                config,
+                quality_params,
+                mesh_type="skeletal",  # Ignored - both types are created
+                verbose=verbose,
+                timer=timer,
+            )
 
     except Exception:
         # Silently fail - export is optional
@@ -933,8 +995,16 @@ Unreal Engine Integration:
         action="store_true",
         help="Enable verbose output for PVE preset generation",
     )
+    parser.add_argument(
+        "--profile",
+        action="store_true",
+        help="Enable profiling to track execution time of each processing step",
+    )
 
     args = parser.parse_args()
+
+    # Initialize profiler
+    timer = init_profiler(enabled=args.profile)
 
     try:
         # Determine CSV path
@@ -974,18 +1044,24 @@ Unreal Engine Integration:
             )
             print(f"\n[Preset Overrides] Static: {preset_overrides.static_overrides}")
 
-        generate_forest_exports(
-            csv_path,
-            args.output_dir,
-            config,
-            args.quality,
-            args.growth_cycle_limit,
-            args.smooth_iterations,
-            mesh_type="skeletal",  # Ignored - both skeletal and static are created
-            include_grove_attributes=args.include_grove_attributes,
-            verbose=args.verbose,
-            preset_overrides=preset_overrides,
-        )
+        with timer.track("total_forest_generation"):
+            generate_forest_exports(
+                csv_path,
+                args.output_dir,
+                config,
+                args.quality,
+                args.growth_cycle_limit,
+                args.smooth_iterations,
+                mesh_type="skeletal",  # Ignored - both skeletal and static are created
+                include_grove_attributes=args.include_grove_attributes,
+                verbose=args.verbose,
+                preset_overrides=preset_overrides,
+                timer=timer,
+            )
+
+        # Print profiling report if enabled
+        if args.profile:
+            timer.print_report()
 
         # Generate Unreal scripts if requested
         if args.import_to_unreal:
