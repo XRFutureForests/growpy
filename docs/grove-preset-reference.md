@@ -17,6 +17,128 @@ The same preset files work across The Grove in Blender, Houdini, and the standal
 
 ---
 
+## Cycle-Based Parameter Curves (GrowPy Extension)
+
+GrowPy extends the standard preset format with optional `_curve` definitions that allow parameters to change over the simulation. This is useful for preventing tree "death" at high cycle counts by gradually introducing decay/pruning.
+
+### Curve Format
+
+Add a `_curve` suffix to any numeric parameter:
+
+```json
+{
+    "drop_decay": 0.3,
+    "drop_decay_curve": {
+        "start": 0.0,
+        "end": 0.3,
+        "easing": "ease_in"
+    }
+}
+```
+
+### Curve Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `start` | float | 0.0 | Value at cycle 0 |
+| `end` | float | (static value) | Value at final cycle |
+| `easing` | string | "linear" | Interpolation type (see below) |
+| `power` | float | 2.0 | Curve steepness (1.0=linear, 2.0=quadratic, 3.0=cubic) |
+| `midpoint` | float | 0.5 | Relative inflection point for ease_in_out (0.0-1.0) |
+| `midpoint_cycle` | int | null | Absolute cycle for ease_in_out inflection (overrides midpoint) |
+| `transition_cycle` | int | null | Absolute cycle where ease_in/ease_out reaches 50% (overrides power) |
+
+### Easing Options
+
+| Easing | Formula | Description |
+|--------|---------|-------------|
+| `linear` | `t` | Constant rate of change |
+| `ease_in` | `t^power` | Starts slow, accelerates (delayed effect) |
+| `ease_out` | `1-(1-t)^power` | Starts fast, decelerates (early effect) |
+| `ease_in_out` | S-curve | Smooth transition with controllable midpoint |
+
+### Power Parameter
+
+Controls how steep/sharp the curve is:
+
+| Power | Effect | Use Case |
+|-------|--------|----------|
+| 1.0 | Linear (no curve) | Same as `linear` easing |
+| 2.0 | Quadratic (default) | Gentle, natural-looking curve |
+| 3.0 | Cubic | Steeper curve, more delay before effect |
+| 4.0+ | Very steep | Almost step-like, abrupt transition |
+
+### Absolute Cycle Parameters
+
+These let you specify exact cycle numbers instead of relative positions:
+
+| Parameter | Applies to | Description |
+|-----------|------------|-------------|
+| `transition_cycle` | ease_in, ease_out | The cycle at which the curve reaches 50% of its transition |
+| `midpoint_cycle` | ease_in_out | The cycle at which the S-curve inflection occurs |
+
+**Example: decay starts accelerating at cycle 30 (regardless of total cycles)**
+
+```json
+{
+    "drop_decay_curve": {
+        "start": 0.0,
+        "end": 0.3,
+        "easing": "ease_in",
+        "transition_cycle": 30
+    }
+}
+```
+
+### Relative Midpoint Parameter (ease_in_out only)
+
+Controls where the S-curve inflection occurs as a fraction of total cycles:
+
+| Midpoint | Effect |
+|----------|--------|
+| 0.3 | Early transition - fast growth early, slows down sooner |
+| 0.5 | Symmetric S-curve (default) |
+| 0.7 | Late transition - slow growth early, accelerates later |
+
+### Examples
+
+**Basic: Gradual decay introduction**
+
+```json
+{
+    "drop_decay": 0.3,
+    "drop_decay_curve": {"start": 0.0, "end": 0.3, "easing": "ease_in"}
+}
+```
+
+**Advanced: Steep cubic curve with late transition**
+
+```json
+{
+    "drop_decay": 0.3,
+    "drop_decay_curve": {
+        "start": 0.0,
+        "end": 0.3,
+        "easing": "ease_in_out",
+        "power": 3.0,
+        "midpoint": 0.7
+    }
+}
+```
+
+**Preventing tree death (recommended for high cycle counts)**
+
+```json
+{
+    "drop_decay": 0.3,
+    "drop_decay_curve": {"start": 0.0, "end": 0.3, "easing": "ease_in", "power": 3.0},
+    "drop_weak": 0.3,
+    "drop_weak_curve": {"start": 0.0, "end": 0.3, "easing": "ease_in", "power": 3.0}
+}
+```
+
+---
+
 ## Parameter Groups
 
 ### 1. Branch Addition (add_*)

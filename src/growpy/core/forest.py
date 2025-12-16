@@ -1,11 +1,12 @@
 """Forest simulation functions with Grove API integration."""
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 import the_grove_22_core as gc
 from tqdm import tqdm
 
+from ..config.preset_overrides import PresetOverrides, get_species_overrides
 from .grove import add_tree_to_grove, create_grove
 
 
@@ -47,6 +48,8 @@ def simulate_forest_growth(
     forest: List[Tuple[gc.Grove, str, int, List[int]]],
     cycles: int,
     smooth_iterations: int = 10,
+    preset_overrides: Optional[PresetOverrides] = None,
+    use_species_curves: bool = True,
 ) -> None:
     """Simulate forest growth with inter-species light competition and optional smoothing.
 
@@ -57,22 +60,54 @@ def simulate_forest_growth(
 
     Without step 3 (weigh_and_bend), smoothing has no effect on the final geometry!
 
+    Preset Overrides (applied in order of priority):
+        1. Species curves from seed.json files (if use_species_curves=True)
+        2. CLI preset_overrides (if provided, overrides species curves)
+
     Args:
         forest: List of (grove, species_name, tree_count, fid_list) tuples from create_forest()
         cycles: Number of growth cycles to simulate
         smooth_iterations: Number of smoothing iterations (default: 10, recommended: 10-20)
                           Set to 0 to disable smoothing entirely
+        preset_overrides: Optional PresetOverrides for dynamic parameter adjustment (overrides species curves)
+        use_species_curves: Load curves from species seed.json files (default: True)
     """
     import time
 
     groves = [grove for grove, _, _, _ in forest]
 
+    # Load per-species overrides from their seed.json files
+    species_overrides: Dict[str, PresetOverrides] = {}
+    if use_species_curves:
+        for grove, species_name, _, _ in forest:
+            species_ov = get_species_overrides(species_name)
+            if not species_ov.is_empty():
+                species_overrides[species_name] = species_ov
+
     print(f"\n{'='*60}")
     print(f"PHASE 1: GROWTH SIMULATION ({cycles} cycles)")
+    if preset_overrides and not preset_overrides.is_empty():
+        print(
+            f"  CLI overrides: {len(preset_overrides.static_overrides)} static, "
+            f"{len(preset_overrides.interpolated_overrides)} interpolated"
+        )
+    if species_overrides:
+        for sp, ov in species_overrides.items():
+            print(f"  {sp} curves: {len(ov.interpolated_overrides)} from seed.json")
     print(f"{'='*60}")
 
     growth_start = time.time()
     for cycle in tqdm(range(cycles), desc="Simulating growth cycles", unit="cycle"):
+        # Apply preset overrides at each cycle (for dynamic parameter adjustment)
+        for grove, species_name, _, _ in forest:
+            # First apply species-specific curves from seed.json
+            if species_name in species_overrides:
+                species_overrides[species_name].apply_to_grove(grove, cycle, cycles)
+
+            # Then apply CLI overrides (these take priority)
+            if preset_overrides and not preset_overrides.is_empty():
+                preset_overrides.apply_to_grove(grove, cycle, cycles)
+
         if len(groves) > 1:
             all_coords = []
             for grove in groves:
