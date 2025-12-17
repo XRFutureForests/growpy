@@ -28,11 +28,13 @@ Example:
 from .forest import create_forest, simulate_forest_growth
 from .grove import create_grove
 from .skeleton import (
+    UNREAL_MAX_BONE_INDEX,
     JointTransform,
     SkeletonHierarchy,
     Vector3,
     build_skeleton_hierarchy,
     calculate_vertex_weights,
+    filter_bones_for_mesh,
     get_bone_data_from_grove,
 )
 from .tree import calculate_growth_cycles_from_height
@@ -53,8 +55,10 @@ __all__ = [
     "Vector3",
     "JointTransform",
     "SkeletonHierarchy",
+    "UNREAL_MAX_BONE_INDEX",
     "build_skeleton_hierarchy",
     "calculate_vertex_weights",
+    "filter_bones_for_mesh",
     "get_bone_data_from_grove",
     # Twig
     "TwigPlacement",
