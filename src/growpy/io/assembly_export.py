@@ -80,6 +80,7 @@ def create_assembly(
     tree_usd_path: Path,
     output_path: Path,
     species_name: str,
+    tree_id: Optional[str] = None,
     twig_usd_paths: Optional[Dict[str, Path]] = None,
     use_skeletal_mesh: bool = False,
     skeleton_source_usd: Optional[Path] = None,
@@ -127,7 +128,11 @@ def create_assembly(
         # Root Xform with NaniteAssemblyRootAPI
         # Sanitize species name: replace spaces and hyphens with underscores for valid USD path
         sanitized_name = species_name.replace(" ", "_").replace("-", "_").lower()
-        assembly_name = f"{sanitized_name}_nanite_assembly"
+        # Include tree_id in prim name for unique Unreal assets
+        if tree_id:
+            assembly_name = f"{sanitized_name}_tree_{tree_id}_nanite_assembly"
+        else:
+            assembly_name = f"{sanitized_name}_nanite_assembly"
         root_prim = stage.DefinePrim(f"/{assembly_name}", "Xform")
         stage.SetDefaultPrim(root_prim)
 
@@ -152,18 +157,31 @@ def create_assembly(
         # For skeletal: TreeMesh must be SkelRoot so Unreal can find it as ancestor of skeleton
         # For static: TreeMesh is simple Xform wrapper
         tree_prim_type = "SkelRoot" if use_skeletal_mesh else "Xform"
-        tree_prim = stage.DefinePrim(f"/{assembly_name}/TreeMesh", tree_prim_type)
+        # Use species-specific mesh prim name for unique Unreal assets
+        if tree_id:
+            tree_mesh_name = f"{sanitized_name}_{tree_id}"
+        else:
+            tree_mesh_name = sanitized_name if sanitized_name else "TreeMesh"
+        tree_prim = stage.DefinePrim(
+            f"/{assembly_name}/{tree_mesh_name}", tree_prim_type
+        )
 
         # Do not apply SkelBindingAPI to TreeMesh here.
         # For Nanite assemblies, binding is driven by NaniteAssemblySkelBindingAPI
         # on the PointInstancer; TreeMesh remains a plain SkelRoot.
 
-        # Reference the tree mesh
-        # CRITICAL: Always explicitly reference the /tree prim path for consistency
-        # This ensures Unreal properly understands the skeleton structure
+        # Reference the tree mesh USD file
+        # Prim path matches the species-specific naming in tree_export.py
+        if tree_id:
+            ref_root_name = f"{sanitized_name}_{tree_id}"
+            ref_skel_name = f"{sanitized_name}_{tree_id}_skel"
+        else:
+            ref_root_name = "tree"
+            ref_skel_name = "TreeSkel"
+
         tree_prim.GetReferences().AddReference(
             f"./{tree_usd_path.name}",
-            "/tree",  # Explicit prim path (matches demo structure)
+            f"/{ref_root_name}",
         )
 
         if use_skeletal_mesh:
@@ -173,7 +191,9 @@ def create_assembly(
                 "unreal:naniteAssembly:skeleton",
                 custom=False,
             )
-            skeleton_rel.SetTargets([Sdf.Path(f"/{assembly_name}/TreeMesh/TreeSkel")])
+            skeleton_rel.SetTargets(
+                [Sdf.Path(f"/{assembly_name}/{tree_mesh_name}/{ref_skel_name}")]
+            )
 
         # Add twigs if provided
         if twig_usd_paths:
@@ -312,6 +332,12 @@ def create_assembly(
                     # Create prototype with ExternalRef
                     proto_name = twig_type.replace("_", "")
 
+                    # Extract twig name from file for unique Unreal asset names
+                    # e.g., one_leaved_ash_twig_apical_var_d_skeletal -> one_leaved_ash_twig_apical_var_d
+                    twig_asset_name = twig_ref_path.stem.replace(
+                        "_skeletal", ""
+                    ).replace("_static", "")
+
                     # CRITICAL: For skeletal twigs, use Xform wrapper with SkelRoot child
                     # This matches the demo structure and properly isolates the twig skeleton
                     # from the tree skeleton, preventing cross-skeleton interference
@@ -323,10 +349,8 @@ def create_assembly(
                         proto_prim = proto_xform.GetPrim()
                         proto_prim.SetInstanceable(True)
 
-                        # Create SkelRoot child that references the twig USD
-                        skel_root_path = (
-                            f"/{assembly_name}/TwigPrototypes/{proto_name}/TwigSkelRoot"
-                        )
+                        # Create SkelRoot child with twig-specific name for unique Unreal assets
+                        skel_root_path = f"/{assembly_name}/TwigPrototypes/{proto_name}/{twig_asset_name}"
                         skel_root_prim = stage.DefinePrim(skel_root_path, "SkelRoot")
 
                         # Reference twig USD from SkelRoot child (not the wrapper)
@@ -344,11 +368,9 @@ def create_assembly(
                         proto_prim = proto_xform.GetPrim()
                         proto_prim.SetInstanceable(True)
 
-                        # Create child Xform that references the twig USD
+                        # Create child Xform with twig-specific name for unique Unreal assets
                         # Using child prim isolates the reference from direct rendering
-                        twig_child_path = (
-                            f"/{assembly_name}/TwigPrototypes/{proto_name}/TwigMesh"
-                        )
+                        twig_child_path = f"/{assembly_name}/TwigPrototypes/{proto_name}/{twig_asset_name}"
                         twig_child_prim = stage.DefinePrim(twig_child_path, "Xform")
 
                         # Reference twig USD from child (not the wrapper)
@@ -602,6 +624,7 @@ def export_tree_as_nanite_assembly(
     skeleton: Optional[Any],
     output_path: Path,
     species_name: str,
+    tree_id: Optional[str] = None,
     bones_info: Optional[List] = None,
     twig_usd_paths: Optional[Dict[str, Path]] = None,
     include_twigs: bool = True,
@@ -629,6 +652,7 @@ def export_tree_as_nanite_assembly(
         skeleton: Optional Grove skeleton from grove.build_skeletons()
         output_path: Path for Nanite Assembly USDA file
         species_name: Tree species name
+        tree_id: Optional tree ID for unique prim names (e.g., "0007")
         bones_info: Optional list of bone tuples from grove.tag_bone_id() for this specific tree
         twig_usd_paths: Dict mapping twig types to USD paths
         include_twigs: Whether to include twig instances
@@ -665,10 +689,12 @@ def export_tree_as_nanite_assembly(
         from .tree_export import build_tree_mesh
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        # Remove _nanite_assembly and mesh type suffix from output_path.stem to get base tree name
-        base_name = output_path.stem.replace("_nanite_assembly", "")
-        # Also strip mesh type suffix if present (e.g., _skeletal or _static)
-        base_name = base_name.replace("_skeletal", "").replace("_static", "")
+        # Generate tree mesh filename from species and tree_id for clear identification
+        sanitized_species = species_name.replace(" ", "_").replace("-", "_").lower()
+        if tree_id:
+            base_name = f"{sanitized_species}_{tree_id}"
+        else:
+            base_name = sanitized_species
 
         # Triangulate model before building USD (CRITICAL for proper face/attribute matching)
         with _track("triangulate"):
@@ -693,6 +719,7 @@ def export_tree_as_nanite_assembly(
                     include_skeleton=False,
                     include_grove_attributes=include_grove_attributes,
                     species_name=species_name,
+                    tree_id=tree_id,
                 ):
                     return False
         else:
@@ -709,6 +736,7 @@ def export_tree_as_nanite_assembly(
                     include_skeleton=True,
                     include_grove_attributes=include_grove_attributes,
                     species_name=species_name,
+                    tree_id=tree_id,
                 ):
                     return False
 
@@ -762,6 +790,7 @@ def export_tree_as_nanite_assembly(
                 tree_usd_path=temp_tree_path,
                 output_path=output_path,
                 species_name=species_name,
+                tree_id=tree_id,
                 twig_usd_paths=twig_usd_paths if include_twigs else None,
                 use_skeletal_mesh=use_skeletal_mesh and not use_static_mesh,
                 twig_placements=twig_placements,
@@ -997,3 +1026,123 @@ def _extract_joint_names_from_usd(tree_usd_path: Path) -> List[str]:
 
     except Exception as e:
         return []
+
+
+def create_species_assembly(
+    species_name: str,
+    tree_assembly_paths: List[Path],
+    output_path: Path,
+    use_skeletal_mesh: bool = True,
+) -> bool:
+    """Create a species-level assembly that references all tree assemblies.
+
+    This creates a single USD file per species that:
+    1. Defines shared twig prototypes once (imported to single folder)
+    2. References individual tree assemblies as child prims with unique names
+
+    When imported to Unreal:
+    - Creates ONE folder per species (based on this file's name)
+    - Shared twigs are imported once
+    - Each tree becomes a separate skeletal/static mesh asset
+
+    Args:
+        species_name: Species name (e.g., "common_ash")
+        tree_assembly_paths: List of paths to individual tree assembly USDs
+        output_path: Output path for species assembly USDA
+        use_skeletal_mesh: Whether trees use skeletal mesh type
+
+    Returns:
+        bool: Success status
+    """
+    if not tree_assembly_paths:
+        return False
+
+    try:
+        stage = Usd.Stage.CreateNew(str(output_path))
+
+        # Set stage metadata
+        UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
+        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
+
+        # Sanitize species name
+        sanitized_name = species_name.replace(" ", "_").replace("-", "_").lower()
+        assembly_name = f"{sanitized_name}_species"
+
+        # Create root prim
+        root_prim = stage.DefinePrim(f"/{assembly_name}", "Xform")
+        stage.SetDefaultPrim(root_prim)
+
+        # Apply model kind
+        root_prim.SetMetadata("kind", "assembly")
+
+        # Collect unique twig references from all tree assemblies
+        twig_refs = {}  # twig_name -> relative_path
+
+        for tree_path in tree_assembly_paths:
+            try:
+                tree_stage = Usd.Stage.Open(str(tree_path))
+                for prim in tree_stage.Traverse():
+                    refs = prim.GetMetadata("references")
+                    if refs and hasattr(refs, "prependedItems"):
+                        for ref in refs.prependedItems:
+                            ref_path = (
+                                ref.assetPath if hasattr(ref, "assetPath") else str(ref)
+                            )
+                            # Only collect twig references (not tree mesh)
+                            if "twig" in ref_path.lower():
+                                twig_name = Path(ref_path.lstrip("./")).stem
+                                if twig_name not in twig_refs:
+                                    twig_refs[twig_name] = ref_path
+            except Exception:
+                pass
+
+        # Create shared TwigPrototypes scope
+        if twig_refs:
+            prototypes_prim = stage.DefinePrim(
+                f"/{assembly_name}/TwigPrototypes", "Scope"
+            )
+
+            for twig_name, ref_path in twig_refs.items():
+                # Create prototype prim
+                proto_prim = stage.DefinePrim(
+                    f"/{assembly_name}/TwigPrototypes/{twig_name}", "Xform"
+                )
+                proto_prim.SetInstanceable(True)
+
+                # Reference the twig USD with twig-specific SkelRoot name
+                prim_type = "SkelRoot" if use_skeletal_mesh else "Xform"
+                # Use twig name for unique Unreal asset naming
+                twig_asset_name = twig_name.replace("_skeletal", "").replace(
+                    "_static", ""
+                )
+                twig_mesh_prim = stage.DefinePrim(
+                    f"/{assembly_name}/TwigPrototypes/{twig_name}/{twig_asset_name}",
+                    prim_type,
+                )
+                twig_mesh_prim.GetReferences().AddReference(ref_path, "/Twig")
+
+        # Create Trees scope with references to individual tree assemblies
+        trees_prim = stage.DefinePrim(f"/{assembly_name}/Trees", "Scope")
+
+        for tree_path in tree_assembly_paths:
+            # Extract tree ID from filename (e.g., "common_ash_tree_0007" from full path)
+            tree_stem = (
+                tree_path.stem
+            )  # e.g., "common_ash_tree_0007_skeletal_nanite_assembly"
+            # Extract just tree ID (e.g., "tree_0007")
+            parts = tree_stem.split("_tree_")
+            if len(parts) > 1:
+                tree_id = f"tree_{parts[1].split('_')[0]}"
+            else:
+                tree_id = tree_stem
+
+            # Create tree prim that references the individual assembly
+            tree_prim = stage.DefinePrim(f"/{assembly_name}/Trees/{tree_id}", "Xform")
+            tree_prim.GetReferences().AddReference(f"./{tree_path.name}")
+
+        stage.GetRootLayer().Save()
+        return True
+
+    except Exception as e:
+        print(f"Error creating species assembly: {e}")
+        return False

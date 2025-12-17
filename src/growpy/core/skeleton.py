@@ -8,6 +8,11 @@ any USD I/O dependencies.
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
+# Unreal Engine uses 16-bit signed integers for joint indices in skeletal meshes
+# Maximum bone index is 32767 (2^15 - 1)
+# Exceeding this causes integer overflow, resulting in negative indices like -31497
+UNREAL_MAX_BONE_INDEX = 32767
+
 
 @dataclass
 class Vector3:
@@ -211,6 +216,120 @@ def build_skeleton_hierarchy(bones_info: List[Tuple]) -> SkeletonHierarchy:
         rest_transforms=rest_transforms,
         bone_to_joint_map=bone_to_joint,
     )
+
+
+def filter_bones_for_mesh(
+    model: Any,
+    bones_info: List[Tuple],
+    bone_id_offset: int = 0,
+) -> Tuple[List[Tuple], Dict[int, int]]:
+    """Filter bones_info to only include bones referenced by mesh vertices.
+
+    When build_models() is called with cutoff parameters, some branches are
+    removed from the mesh but their bones still exist in bones_info. This
+    function filters bones_info to only include bones that have at least one
+    vertex referencing them, and creates a remapping from old to new bone IDs.
+
+    CRITICAL: This prevents Unreal Engine crashes caused by vertices referencing
+    bone indices that don't exist in the skeleton.
+
+    Args:
+        model: Grove model with point_attribute_bone_id attribute
+        bones_info: Full list of bone tuples from grove.tag_bone_id()
+        bone_id_offset: Offset to add to local bone indices (for multi-tree groves)
+
+    Returns:
+        Tuple of (filtered_bones_info, old_to_new_bone_map)
+        - filtered_bones_info: List of bones that are actually referenced
+        - old_to_new_bone_map: Dict mapping old global bone IDs to new indices
+    """
+    if not hasattr(model, "point_attribute_bone_id"):
+        # No bone IDs available, return original
+        return bones_info, {i + bone_id_offset: i for i in range(len(bones_info))}
+
+    # Get unique bone IDs used by mesh vertices
+    vertex_bone_ids = set(model.point_attribute_bone_id)
+
+    # Find which bones are referenced (including parent chain for hierarchy)
+    referenced_bones = set()
+    bones_info_dict = {bone_id_offset + i: bone for i, bone in enumerate(bones_info)}
+
+    def add_with_parents(global_bone_id: int) -> None:
+        """Recursively add bone and all its parents."""
+        if global_bone_id in referenced_bones:
+            return
+        if global_bone_id not in bones_info_dict:
+            return
+        referenced_bones.add(global_bone_id)
+        # Add parent bone too (for hierarchy integrity)
+        parent_id = bones_info_dict[global_bone_id][1]  # parent_bone_id is index 1
+        if parent_id != global_bone_id:  # Avoid infinite loop at root
+            add_with_parents(parent_id)
+
+    # Add all vertex-referenced bones and their parent chains
+    for bone_id in vertex_bone_ids:
+        add_with_parents(bone_id)
+
+    # Always include root bone (first bone)
+    if len(bones_info) > 0:
+        referenced_bones.add(bone_id_offset)
+
+    # Build filtered list maintaining relative order
+    filtered_bones = []
+    old_to_new_map = {}
+    new_idx = 0
+
+    for local_idx, bone in enumerate(bones_info):
+        global_id = bone_id_offset + local_idx
+        if global_id in referenced_bones:
+            # Update parent_bone_id in the bone tuple to use new index
+            # bone format: (is_tree_root, parent_bone_id, start, end, radius, mass, is_branch_root, branch_id)
+            old_to_new_map[global_id] = new_idx
+            filtered_bones.append(bone)
+            new_idx += 1
+
+    # Second pass: update parent references in filtered bones
+    updated_filtered_bones = []
+    for bone in filtered_bones:
+        (
+            is_tree_root,
+            parent_bone_id,
+            start_point,
+            end_point,
+            radius,
+            mass,
+            is_branch_root,
+            branch_id,
+        ) = bone
+
+        # Remap parent to new index
+        if parent_bone_id in old_to_new_map:
+            new_parent = old_to_new_map[parent_bone_id]
+        else:
+            # Parent was filtered out, use root (0)
+            new_parent = 0
+
+        updated_bone = (
+            is_tree_root,
+            new_parent,
+            start_point,
+            end_point,
+            radius,
+            mass,
+            is_branch_root,
+            branch_id,
+        )
+        updated_filtered_bones.append(updated_bone)
+
+    # Validate bone count is within Unreal's 16-bit signed integer limit
+    if len(updated_filtered_bones) > UNREAL_MAX_BONE_INDEX:
+        print(
+            f"WARNING: Tree has {len(updated_filtered_bones)} bones, exceeding Unreal's "
+            f"limit of {UNREAL_MAX_BONE_INDEX}. This will cause integer overflow crashes. "
+            f"Use higher build_cutoff_age/build_cutoff_thickness to reduce bone count."
+        )
+
+    return updated_filtered_bones, old_to_new_map
 
 
 def calculate_vertex_weights(
@@ -454,6 +573,22 @@ def calculate_vertex_weights(
             print(
                 f"[Junction Blending] Weight reduction coverage: {100.0 * branch_verts_in_range / branch_verts_checked:.1f}% of branch root verts"
             )
+
+    # Validate joint indices are within Unreal's 16-bit signed integer limit
+    max_joint_idx = max(joint_indices_array) if joint_indices_array else 0
+    min_joint_idx = min(joint_indices_array) if joint_indices_array else 0
+
+    if max_joint_idx > UNREAL_MAX_BONE_INDEX:
+        print(
+            f"ERROR: Joint index {max_joint_idx} exceeds Unreal's 16-bit limit of {UNREAL_MAX_BONE_INDEX}. "
+            f"This will cause integer overflow crashes. Reduce bone count or increase cutoff."
+        )
+
+    if min_joint_idx < 0:
+        print(
+            f"ERROR: Negative joint index {min_joint_idx} detected. "
+            f"This indicates a bone ID mapping error that will crash Unreal."
+        )
 
     return joint_indices_array, joint_weights_array
 

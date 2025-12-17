@@ -116,6 +116,7 @@ def build_tree_mesh(
     junction_blend_distance: float = 0.5,
     blend_mode: str = "linear",
     species_name: Optional[str] = None,
+    tree_id: Optional[str] = None,
     include_skeleton: bool = True,
     include_grove_attributes: bool = False,
 ) -> bool:
@@ -147,7 +148,8 @@ def build_tree_mesh(
         skeleton_reduce: Bone reduction factor for skeleton creation (deprecated if bones_info provided)
         skeleton_bias: Weight bias for skinning
         skeleton_connected: Use connected bone hierarchy (deprecated if bones_info provided)
-        species_name: Species name for material/texture lookup
+        species_name: Species name for material/texture lookup and prim naming
+        tree_id: Tree ID for unique prim naming (e.g., "0004")
         include_skeleton: If True and skeleton provided, add skeleton structure (skeletal mesh)
         include_grove_attributes: If True, add Grove metadata attributes as primvars (for analysis)
 
@@ -169,8 +171,19 @@ def build_tree_mesh(
         if clean_export:
             stage.SetMetadata("customLayerData", {"clean_export": True})
 
+        # Generate prim names from species and tree_id for unique Unreal assets
+        if species_name and tree_id:
+            sanitized_species = species_name.replace(" ", "_").replace("-", "_").lower()
+            root_name = f"{sanitized_species}_{tree_id}"
+            mesh_name = f"{sanitized_species}_{tree_id}_mesh"
+            skel_name = f"{sanitized_species}_{tree_id}_skel"
+        else:
+            root_name = "tree"
+            mesh_name = "TreeMesh"
+            skel_name = "TreeSkel"
+
         # Define root xform
-        root_path = Sdf.Path("/tree")
+        root_path = Sdf.Path(f"/{root_name}")
         root_xform = UsdGeom.Xform.Define(stage, root_path)
 
         # Skip treeLocation metadata for clean export
@@ -181,8 +194,8 @@ def build_tree_mesh(
                 "treeLocation", Gf.Vec3f(loc.x, loc.y, loc.z)
             )
 
-        # Define mesh
-        mesh_path = root_path.AppendChild("TreeMesh")
+        # Define mesh with species-specific name
+        mesh_path = root_path.AppendChild(mesh_name)
         mesh = UsdGeom.Mesh.Define(stage, mesh_path)
 
         # Extract geometry data from Grove model
@@ -502,8 +515,11 @@ def _add_usd_materials(
         mat.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
         return mat
 
-    # Create only bark material for tree mesh
-    bark_mat = create_material("BarkMaterial", BARK_BROWN)
+    # Create bark material with species-specific name
+    mat_name = (
+        f"{species_name.replace(' ', '_').lower()}_bark" if species_name else "bark"
+    )
+    bark_mat = create_material(mat_name, BARK_BROWN)
 
     # Apply MaterialBindingAPI schema first, then bind material
     binding_api = UsdShade.MaterialBindingAPI.Apply(mesh_prim.GetPrim())
@@ -536,10 +552,13 @@ def _add_skeletal_materials(
         materials_path = root_path + "/Materials"
         UsdGeom.Scope.Define(stage, materials_path)
 
-        # Create BarkMaterial with texture support
-        bark_mat = UsdShade.Material.Define(stage, f"{materials_path}/BarkMaterial")
+        # Create bark material with species-specific name for unique Unreal assets
+        bark_mat_name = (
+            f"{species_name.replace(' ', '_').lower()}_bark" if species_name else "bark"
+        )
+        bark_mat = UsdShade.Material.Define(stage, f"{materials_path}/{bark_mat_name}")
         shader = UsdShade.Shader.Define(
-            stage, f"{materials_path}/BarkMaterial/PreviewSurface"
+            stage, f"{materials_path}/{bark_mat_name}/PreviewSurface"
         )
         shader.CreateIdAttr("UsdPreviewSurface")
 
@@ -562,7 +581,7 @@ def _add_skeletal_materials(
 
                 # Create UV reader for texture mapping
                 uv_reader = UsdShade.Shader.Define(
-                    stage, f"{materials_path}/BarkMaterial/uvmap"
+                    stage, f"{materials_path}/{bark_mat_name}/uvmap"
                 )
                 uv_reader.CreateIdAttr("UsdPrimvarReader_float2")
                 uv_reader.CreateInput("varname", Sdf.ValueTypeNames.Token).Set("st")
@@ -570,7 +589,7 @@ def _add_skeletal_materials(
 
                 # Create diffuse texture reader
                 tex_reader = UsdShade.Shader.Define(
-                    stage, f"{materials_path}/BarkMaterial/DiffuseTexture"
+                    stage, f"{materials_path}/{bark_mat_name}/DiffuseTexture"
                 )
                 tex_reader.CreateIdAttr("UsdUVTexture")
                 # Use relative path to textures/ subdirectory
@@ -595,7 +614,7 @@ def _add_skeletal_materials(
                 # Add normal map if available
                 if normal_texture_file and normal_texture_file.exists():
                     normal_tex_reader = UsdShade.Shader.Define(
-                        stage, f"{materials_path}/BarkMaterial/NormalTexture"
+                        stage, f"{materials_path}/{bark_mat_name}/NormalTexture"
                     )
                     normal_tex_reader.CreateIdAttr("UsdUVTexture")
                     normal_tex_reader.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
@@ -695,10 +714,13 @@ def _add_static_materials(
         materials_path = root_path + "/Materials"
         UsdGeom.Scope.Define(stage, materials_path)
 
-        # Create BarkMaterial with texture support
-        bark_mat = UsdShade.Material.Define(stage, f"{materials_path}/BarkMaterial")
+        # Create bark material with species-specific name
+        bark_mat_name = (
+            f"{species_name.replace(' ', '_').lower()}_bark" if species_name else "bark"
+        )
+        bark_mat = UsdShade.Material.Define(stage, f"{materials_path}/{bark_mat_name}")
         shader = UsdShade.Shader.Define(
-            stage, f"{materials_path}/BarkMaterial/PreviewSurface"
+            stage, f"{materials_path}/{bark_mat_name}/PreviewSurface"
         )
         shader.CreateIdAttr("UsdPreviewSurface")
 
@@ -720,7 +742,7 @@ def _add_static_materials(
 
                 # Create UV reader for texture mapping
                 uv_reader = UsdShade.Shader.Define(
-                    stage, f"{materials_path}/BarkMaterial/uvmap"
+                    stage, f"{materials_path}/{bark_mat_name}/uvmap"
                 )
                 uv_reader.CreateIdAttr("UsdPrimvarReader_float2")
                 uv_reader.CreateInput("varname", Sdf.ValueTypeNames.Token).Set("st")
@@ -728,7 +750,7 @@ def _add_static_materials(
 
                 # Create diffuse texture reader
                 tex_reader = UsdShade.Shader.Define(
-                    stage, f"{materials_path}/BarkMaterial/DiffuseTexture"
+                    stage, f"{materials_path}/{bark_mat_name}/DiffuseTexture"
                 )
                 tex_reader.CreateIdAttr("UsdUVTexture")
                 # Use relative path to textures/ subdirectory
@@ -753,7 +775,7 @@ def _add_static_materials(
                 # Add normal map if available
                 if normal_texture_file and normal_texture_file.exists():
                     normal_tex_reader = UsdShade.Shader.Define(
-                        stage, f"{materials_path}/BarkMaterial/NormalTexture"
+                        stage, f"{materials_path}/{bark_mat_name}/NormalTexture"
                     )
                     normal_tex_reader.CreateIdAttr("UsdUVTexture")
                     normal_tex_reader.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
@@ -915,15 +937,16 @@ def _build_usdskel_from_bones(
     if not mesh_prim:
         return
 
-    # Convert /tree to SkelRoot with proper API schemas
-    tree_prim = stage.GetPrimAtPath("/tree")
+    # Get root path from mesh parent (supports species-specific naming)
+    root_path = mesh_prim.GetPath().GetParentPath()
+    tree_prim = stage.GetPrimAtPath(root_path)
     if tree_prim:
         # Redefine as SkelRoot if not already
         if not tree_prim.IsA(UsdSkel.Root):
-            skel_root = UsdSkel.Root.Define(stage, Sdf.Path("/tree"))
+            skel_root = UsdSkel.Root.Define(stage, root_path)
             tree_prim = skel_root.GetPrim()
     else:
-        skel_root = UsdSkel.Root.Define(stage, Sdf.Path("/tree"))
+        skel_root = UsdSkel.Root.Define(stage, root_path)
         tree_prim = skel_root.GetPrim()
 
     # CRITICAL: Apply SkelBindingAPI to SkelRoot using proper metadata
@@ -941,7 +964,19 @@ def _build_usdskel_from_bones(
         tree_prim.SetMetadata("apiSchemas", api_schemas)
 
     # Create skeleton as sibling to mesh (both under SkelRoot)
-    skel_path = Sdf.Path("/tree/TreeSkel")
+    # Use species-specific skeleton name for unique Unreal assets
+    # The skeleton is a child of tree_prim (the SkelRoot)
+    tree_prim_path = tree_prim.GetPath()
+    tree_prim_name = tree_prim_path.name
+
+    # Derive skeleton name from tree prim name pattern
+    if "_" in tree_prim_name and tree_prim_name != "tree":
+        # Species-specific naming: common_ash_0007 -> common_ash_0007_skel
+        skel_name = f"{tree_prim_name}_skel"
+    else:
+        skel_name = "TreeSkel"
+
+    skel_path = tree_prim_path.AppendChild(skel_name)
     skel = UsdSkel.Skeleton.Define(stage, skel_path)
 
     # Build joint hierarchy
@@ -979,9 +1014,27 @@ def _build_usdskel_from_bones(
         # Not a tree root (shouldn't happen for first bone)
         bone_id_offset = 0
 
-    # Calculate branch ID offset
-    # Branch IDs in bones_info are global, we need to convert to local (0-based per tree)
-    # The first bone's branch_id tells us the offset
+    # CRITICAL: Filter bones_info to only include bones referenced by mesh vertices
+    # This prevents crashes when build_models() was called with cutoff parameters
+    # that removed branches (and their vertices) but bones still exist in bones_info
+    from ..core.skeleton import filter_bones_for_mesh
+
+    original_bone_count = len(bones_info)
+    bones_info, old_to_new_bone_map = filter_bones_for_mesh(
+        model, bones_info, bone_id_offset
+    )
+
+    if verbose and len(bones_info) < original_bone_count:
+        print(
+            f"  Filtered bones: {original_bone_count} -> {len(bones_info)} (removed unreferenced bones)"
+        )
+
+    # After filtering, bone_id_offset is 0 since bones are now renumbered
+    bone_id_offset = 0
+
+    # Calculate branch ID offset from FILTERED bones_info
+    # (recalculate since first bone may have changed after filtering)
+    first_branch_id = bones_info[0][7] if len(bones_info) > 0 else 0
     branch_id_offset = first_branch_id
 
     if verbose:
@@ -1132,12 +1185,9 @@ def _build_usdskel_from_bones(
                 print(f"  Unique bone IDs found: {sorted(unique_ids)}")
                 print(f"  Bone ID range: {min(bone_ids)} to {max(bone_ids)}")
 
-            # Build bone_to_joint_map for local (tree-specific) bone indices
-            bone_to_joint_map = {}
-            for bone_idx in range(len(bones_info)):
-                global_bone_id = bone_id_offset + bone_idx
-                local_bone_id = bone_idx
-                bone_to_joint_map[global_bone_id] = local_bone_id
+            # Build bone_to_joint_map using the old_to_new mapping from filtering
+            # This maps original GLOBAL bone IDs to new filtered joint indices
+            bone_to_joint_map = old_to_new_bone_map
 
             # Use calculate_vertex_weights with reduced weights at junctions
             from ..core.skeleton import calculate_vertex_weights
