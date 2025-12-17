@@ -104,20 +104,18 @@ Assembly Types:
               - Grove attributes disabled by default (use --include-grove-attributes to enable)
               - Supports skeletal animation for wind and growth
               - Smaller file size
-              - Reference: species_tree_####_skeletal_nanite_assembly.usda
 
     static (--include-static): Static mesh assemblies with materials and textures (no animation)
               - Full PBR materials from The Grove 2.2
               - Grove attributes disabled by default (use --include-grove-attributes to enable)
               - Better visual quality for static placement
-              - Reference: species_tree_####_static_nanite_assembly.usda
 
 Output:
-    data/output/forest/{species}/                         Per-species directories
-    data/output/forest/{species}/*_skeletal_nanite_assembly.usda  Skeletal assemblies (always)
-    data/output/forest/{species}/*_static_nanite_assembly.usda    Static assemblies (with --include-static)
-    data/output/forest/{species}/*_pve_preset.json        PVE configuration files (unless --skip-pve-json)
-    data/output/forest/unreal_import_trees.py             Unreal import script (if --import-to-unreal)
+    data/output/forest/{species}/tree_####/                           Per-tree directories
+    data/output/forest/{species}/tree_####/{species}.usda             Nanite assembly (same name per species)
+    data/output/forest/{species}/tree_####/{species}_{tree_id}_skeletal.usda  Tree mesh with skeleton
+    data/output/forest/{species}/*_pve_preset.json                    PVE configuration files (unless --skip-pve-json)
+    data/output/forest/unreal_import_trees.py                         Unreal import script (if --import-to-unreal)
 
 Note:
     Run prepare_assets.py and convert_twigs.py first to prepare species assets.
@@ -224,18 +222,23 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         with timer.track("build_skeletons", parent="grove_export"):
             skeletons = grove.build_skeletons()
 
-        # 2. Tag bone IDs with length=0.0 and reduce=0.0 for maximum bone count
-        # Skeletal simplification happens later in Unreal Engine if needed
+        # 2. Tag bone IDs with reduction parameters from quality preset
+        # Higher skeleton_length and skeleton_reduce = fewer bones
+        # CRITICAL: Unreal Engine has 32,767 bone limit (16-bit signed int)
         # Note: tag_bone_id() takes positional args: (length, reduce, bias, connected)
         with timer.track("tag_bone_id", parent="grove_export"):
+            skeleton_length = quality_params.get("skeleton_length", 2.0)
+            skeleton_reduce = quality_params.get("skeleton_reduce", 0.4)
             bones = grove.tag_bone_id(
-                0.0,  # skeleton_length - no merging by length
-                0.0,  # skeleton_reduce - no reduction by thickness
+                skeleton_length,
+                skeleton_reduce**2,  # Squared like Grove UI does
                 quality_params.get("skeleton_bias", 0.5),
                 quality_params.get("skeleton_connected", True),
             )
 
         # 3. NOW build models (with bone_id attributes already tagged)
+        # Cutoff is allowed for skeletal meshes - bone filtering happens during export
+        # to ensure skeleton only includes bones referenced by the mesh geometry
         with timer.track("build_models", parent="grove_export"):
             models = grove.build_models(
                 {
@@ -267,15 +270,19 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         ):
             # Use original CSV fid for naming (with leading zeros)
             tree_fid = fids[model_idx]
-            tree_name = f"{species_clean}_tree_{tree_fid:04d}"
+            tree_id = f"{tree_fid:04d}"
+            tree_name = f"{species_clean}_tree_{tree_id}"
 
             # Use appropriate twig type based on mesh_type
             use_skeletal = mesh_type == "skeletal"
             use_static = mesh_type == "static"
 
-            # Add mesh type suffix to assembly filename to prevent overwriting
+            # Create tree-specific subfolder with tree ID
+            # Assembly uses species name (shared), tree mesh uses tree_id (unique)
             mesh_suffix = "skeletal" if use_skeletal else "static"
-            usd_path = species_dir / f"{tree_name}_{mesh_suffix}_nanite_assembly.usda"
+            tree_dir = species_dir / f"tree_{tree_id}"
+            tree_dir.mkdir(parents=True, exist_ok=True)
+            usd_path = tree_dir / f"{species_clean}.usda"
 
             # CRITICAL: Always use skeletal twigs for both skeletal and static assemblies
             # Static twig variants don't exist, and skeletal twigs work as point instances
@@ -286,6 +293,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 )
 
             # Export as Nanite Assembly with specified mesh type
+            # tree_id in prim name ensures unique Unreal assets
             with timer.track(
                 f"export_nanite_assembly_{mesh_suffix}", parent="grove_export"
             ):
@@ -295,6 +303,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                     bones_info=bones_for_tree if use_skeletal else None,
                     output_path=usd_path,
                     species_name=species,
+                    tree_id=tree_id,
                     twig_usd_paths=twig_usd_map,
                     include_twigs=True,
                     use_skeletal_mesh=use_skeletal,
@@ -317,7 +326,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         generate_wind_json,
                     )
 
-                    wind_json_path = species_dir / f"{tree_name}_DynamicWind.json"
+                    wind_json_path = tree_dir / f"{tree_name}_DynamicWind.json"
                     try:
                         with timer.track("generate_wind_json", parent="grove_export"):
                             # Extract joint names directly from bones_info (90% faster than reading USD)
@@ -343,8 +352,8 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                     from growpy.io.pve_grove_mapper import generate_pve_from_grove
 
                     # Use Unreal PVE naming convention: species_tree_####.json (using fid)
-                    pve_variation_name = f"{species_clean}_tree_{tree_fid:04d}.json"
-                    pve_json_path = species_dir / pve_variation_name
+                    pve_variation_name = f"{tree_name}.json"
+                    pve_json_path = tree_dir / pve_variation_name
                     pve_config_dir = Path("data/assets/pve_configs")
                     try:
                         with timer.track("generate_pve_json", parent="grove_export"):
@@ -614,27 +623,8 @@ def generate_forest_exports(
     quality_params["skip_validation"] = skip_validation
 
     try:
-        # Bundle twig files BEFORE export so Nanite Assembly can reference them
-        from growpy.io.tree_export import bundle_twigs_for_species
-
-        unique_species = forest_data["species"].unique()
-
-        with timer.track("bundle_twigs"):
-            for species in unique_species:
-                species_clean = (
-                    "".join(c for c in species if c.isalnum() or c in (" ", "-", "_"))
-                    .strip()
-                    .replace(" ", "_")
-                    .lower()
-                )
-                species_dir = output_dir / species_clean
-
-                bundle_twigs_for_species(
-                    species_name=species,
-                    output_dir=species_dir,
-                    formats=["usda"],
-                    config=config,
-                )
+        # Twigs are copied to each tree folder by assembly_export
+        # No need for species-level bundling
 
         # mesh_type parameter ignored - both skeletal and static are always created
         with timer.track("export_trees"):
@@ -661,8 +651,9 @@ def generate_unreal_import_script(
     """
     Generate a standalone Unreal Python script for importing forest USD files.
 
-    All trees of a species are imported to the same folder, so shared twigs
-    are naturally deduplicated (each import overwrites the same twig assets).
+    Trees are organized as species/tree_{id}/{species}.usda (assembly)
+    Each assembly references {species}_{tree_id}_skeletal.usda (unique tree mesh).
+    Assembly filename is same per species (like twigs), tree mesh has unique tree_id.
 
     This script can be executed directly in Unreal Engine using:
     - VSCode Unreal Python extension (right-click > Execute in Unreal)
@@ -682,24 +673,42 @@ def generate_unreal_import_script(
 
     script_path = script_dir / "import_forest.py"
 
-    # Find all Nanite Assembly USD files (trees only)
-    nanite_files = list(output_dir.glob("**/*nanite_assembly.usda")) + list(
-        output_dir.glob("**/*nanite_assembly.usd")
+    # Find all tree assemblies in species/tree_{id}/ folders
+    # Structure: species/tree_0001/{species}.usda (assembly references {species}_{tree_id}_skeletal.usda)
+    nanite_files = list(output_dir.glob("*/tree_*/*.usda")) + list(
+        output_dir.glob("*/tree_*/*.usd")
     )
 
-    # Group trees by species for organized import
+    # Filter to only include assembly files (exclude tree mesh and twig files)
+    # Tree mesh files have _skeletal or _static suffix, or contain digits (tree_id)
+    # Twig files contain "twig" in the name
+    # Assembly files are just {species}.usda with no suffix or tree_id
+    nanite_files = [
+        f
+        for f in nanite_files
+        if not f.stem.endswith("_skeletal")
+        and not f.stem.endswith("_static")
+        and "twig" not in f.stem.lower()
+        and not any(c.isdigit() for c in f.stem)  # Exclude files with tree_id
+    ]
+
+    # Group trees by species (parent of tree_XXXX folder)
     trees_by_species = {}
     for usd_file in nanite_files:
-        species_folder = usd_file.parent.name
-        if species_folder not in trees_by_species:
-            trees_by_species[species_folder] = []
-        trees_by_species[species_folder].append(usd_file)
+        # Structure: species_dir/tree_XXXX/assembly.usda
+        tree_folder = usd_file.parent
+        species_folder = tree_folder.parent
+        species_name = species_folder.name
+
+        if species_name not in trees_by_species:
+            trees_by_species[species_name] = []
+        trees_by_species[species_name].append(usd_file)
+
+    num_species = len(trees_by_species)
+    total_trees = len(nanite_files)
 
     # Generate script content with forward slashes to avoid Unicode escape errors
     script_path_str = str(script_path).replace("\\", "/")
-
-    total_trees = len(nanite_files)
-    num_species = len(trees_by_species)
 
     script_content = f'''"""
 Unreal Engine script to import GrowPy forest - Auto-generated
@@ -738,24 +747,25 @@ failed_count = 0
 
 '''
 
+    # Generate import code for each species
     for species_folder, species_trees in sorted(trees_by_species.items()):
-        species_display = "".join(
-            word.capitalize() for word in species_folder.split("_")
-        )
+        # Use original folder name for Unreal path (matches USD file structure)
+        species_display = species_folder
 
         script_content += f"""
-# --- {species_display} ({len(species_trees)} trees) ---
-print("Importing {species_display}...")
+# --- {species_folder} ({len(species_trees)} trees) ---
+print("Importing {species_folder}...")
 """
 
         for usd_file in sorted(species_trees):
             usd_path = str(usd_file.resolve()).replace("\\", "/")
-            asset_name = usd_file.stem
 
+            # Extract tree ID from folder name (tree_0001, tree_0002, etc.)
+            tree_folder = usd_file.parent.name
             tree_number = (
-                asset_name.split("_tree_")[1].split("_")[0]
-                if "_tree_" in asset_name
-                else asset_name
+                tree_folder.replace("tree_", "")
+                if tree_folder.startswith("tree_")
+                else "0000"
             )
 
             script_content += f"""
@@ -771,8 +781,12 @@ try:
     options.import_actors = False
     options.import_geometry = True
     options.import_materials = True
-    # Flatten folder structure - don't create subfolders for each prim
+    # Flatten folder structure - assets by type (Materials, StaticMeshes, etc)
     options.set_editor_property('prim_path_folder_structure', False)
+    # Share identical assets (twigs, materials) between trees
+    options.set_editor_property('share_assets_for_identical_prims', True)
+    # Combine identical material slots
+    options.set_editor_property('merge_identical_material_slots', True)
     import_task.options = options
     
     asset_tools.import_asset_tasks([import_task])
@@ -782,7 +796,7 @@ try:
         print(f"  Imported tree #{tree_number}")
     else:
         failed_count += 1
-        unreal.log_warning("Failed to import: {asset_name}")
+        unreal.log_warning("Failed to import tree_{tree_number}")
     
     # Cleanup and delay to prevent crashes
     gc.collect()
@@ -791,7 +805,7 @@ try:
     
 except Exception as e:
     failed_count += 1
-    unreal.log_error(f"Error importing {asset_name}: {{e}}")
+    unreal.log_error(f"Error importing tree_{tree_number}: {{e}}")
 """
 
     script_content += """
