@@ -44,6 +44,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+# Grove Properties parameters that require int type (not float)
+INT_PARAMS = {
+    "add_side_branches",
+    "add_bud_life",
+    "grow_nodes",
+    "shade_alongside",
+    "twig_longevity",
+    "twig_wither",
+    "sow_age",
+    "sow_limit",
+}
+
 
 @dataclass
 class StaticOverride:
@@ -287,6 +299,9 @@ class PresetOverrides:
         props = grove.get_properties()
         for param, value in overrides.items():
             if hasattr(props, param):
+                # Cast to int for parameters that require it
+                if param in INT_PARAMS:
+                    value = int(value)
                 setattr(props, param, value)
         grove.set_properties(props)
 

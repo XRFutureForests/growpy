@@ -382,11 +382,12 @@ def create_assembly(
 
                         # Map twig type to prototype index with fallback logic
                         # If this twig type has no matching prototype, use a fallback:
+                        # Fallback mapping for twig types without dedicated prototypes:
                         # - twig_upward → twig_long (upward growth uses apical/terminal twigs)
-                        # - twig_dead → twig_short (dead twigs use lateral/short twigs)
+                        # - twig_dead: NO MAPPING - dead branches have no foliage
                         fallback_map = {
                             "twig_upward": "twig_long",  # Upward twigs → apical/long
-                            "twig_dead": "twig_short",  # Dead twigs → lateral/short
+                            # twig_dead intentionally excluded - dead branches shouldn't have foliage
                         }
 
                         if twig_type in twig_type_to_proto_idx:
@@ -413,12 +414,13 @@ def create_assembly(
                             f"  Adding {len(placement_list)} instances of {twig_type} (proto_idx={proto_idx})"
                         )
 
-                        for placement in placement_list:
-                            from growpy.core.twig import (
-                                normal_to_rotation_matrix,
-                                rotation_matrix_to_quaternion,
-                            )
+                        # Import rotation functions once outside the loop for performance
+                        from growpy.core.twig import (
+                            normal_to_rotation_matrix,
+                            rotation_matrix_to_quaternion,
+                        )
 
+                        for placement in placement_list:
                             pos = placement["position"]
                             normal = placement["normal"]
 
@@ -482,9 +484,9 @@ def create_assembly(
                                 continue
 
                             # Apply same fallback mapping as instance creation
+                            # twig_dead intentionally excluded - dead branches have no foliage
                             fallback_map = {
                                 "twig_upward": "twig_long",
-                                "twig_dead": "twig_short",
                             }
 
                             if twig_type in twig_type_to_proto_idx:
