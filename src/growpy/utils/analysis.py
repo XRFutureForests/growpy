@@ -140,6 +140,9 @@ class SpeciesGrowthAnalyzer:
     def apply_species_preset(self, grove, species: str) -> bool:
         """Apply a species preset to a grove using direct file loading.
 
+        Automatically sets drop_decay=0.0 to prevent trees from dying off
+        during long growth simulations (around 100+ cycles).
+
         Args:
             grove: Grove object to apply preset to
             species: Species name (e.g., "Fagaceae - European oak")
@@ -154,8 +157,12 @@ class SpeciesGrowthAnalyzer:
                 return False
 
             with open(preset_file, "r") as f:
-                preset_json = f.read()
+                preset_data = json.load(f)
 
+            # Override drop_decay to prevent trees from dying off at high cycle counts
+            preset_data["drop_decay"] = 0.0
+
+            preset_json = json.dumps(preset_data)
             properties = gc.io.properties_from_json_string(preset_json)
             grove.set_properties(properties)
 
@@ -557,8 +564,10 @@ class SpeciesGrowthAnalyzer:
             return False
 
     def analyze_all_species(
-        self, parallel: bool = True, max_workers: Optional[int] = None,
-        species_filter: Optional[list] = None
+        self,
+        parallel: bool = True,
+        max_workers: Optional[int] = None,
+        species_filter: Optional[list] = None,
     ) -> Dict[str, bool]:
         """Analyze all available species (sequential or parallel).
 
