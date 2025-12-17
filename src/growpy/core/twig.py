@@ -168,14 +168,16 @@ def extract_twig_placements_from_model(
 
     Args:
         model: Grove model with twig location/orientation/direction methods
-        twig_types: List of twig types to extract (default: all known types)
+        twig_types: List of twig types to extract (default: living twig types only)
         bones_info: Optional skeleton bones list for branch-based binding
 
     Returns:
         Dictionary mapping twig type to list of TwigPlacement objects
     """
     if twig_types is None:
-        twig_types = ["twig_long", "twig_short", "twig_upward", "twig_dead"]
+        # Only extract living twig types - dead branches have no foliage
+        # twig_dead is intentionally excluded to save memory
+        twig_types = ["twig_long", "twig_short", "twig_upward"]
 
     placements = {twig_type: [] for twig_type in twig_types}
 

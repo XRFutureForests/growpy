@@ -661,6 +661,9 @@ def generate_unreal_import_script(
     """
     Generate a standalone Unreal Python script for importing forest USD files.
 
+    All trees of a species are imported to the same folder, so shared twigs
+    are naturally deduplicated (each import overwrites the same twig assets).
+
     This script can be executed directly in Unreal Engine using:
     - VSCode Unreal Python extension (right-click > Execute in Unreal)
     - Unreal Editor Python console
@@ -679,16 +682,30 @@ def generate_unreal_import_script(
 
     script_path = script_dir / "import_forest.py"
 
-    # Find all Nanite Assembly USD files
+    # Find all Nanite Assembly USD files (trees only)
     nanite_files = list(output_dir.glob("**/*nanite_assembly.usda")) + list(
         output_dir.glob("**/*nanite_assembly.usd")
     )
 
+    # Group trees by species for organized import
+    trees_by_species = {}
+    for usd_file in nanite_files:
+        species_folder = usd_file.parent.name
+        if species_folder not in trees_by_species:
+            trees_by_species[species_folder] = []
+        trees_by_species[species_folder].append(usd_file)
+
     # Generate script content with forward slashes to avoid Unicode escape errors
     script_path_str = str(script_path).replace("\\", "/")
 
+    total_trees = len(nanite_files)
+    num_species = len(trees_by_species)
+
     script_content = f'''"""
 Unreal Engine script to import GrowPy forest - Auto-generated
+
+All trees of each species are imported to the same folder.
+Shared twigs are automatically deduplicated (overwritten on each import).
 
 Execute this script in Unreal Engine:
 1. Right-click this file in VSCode > "Execute Python File in Unreal"
@@ -696,6 +713,8 @@ Execute this script in Unreal Engine:
 """
 
 import unreal
+import gc
+import time
 
 print("=" * 60)
 print("GrowPy Forest Import to Unreal Engine")
@@ -704,8 +723,12 @@ print("=" * 60)
 # Import configuration
 IMPORT_PATH = "{project_path}"
 
+# Delay between imports to prevent crashes (seconds)
+# Increase if you experience crashes
+IMPORT_DELAY = 0.5
+
 print(f"Destination: {{IMPORT_PATH}}")
-print(f"Found {len(nanite_files)} Nanite Assembly USD files\\n")
+print(f"Found {num_species} species with {total_trees} trees\\n")
 
 # Get asset tools
 asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
@@ -715,75 +738,74 @@ failed_count = 0
 
 '''
 
-    # Add import task for each USD file, organized by species
-    for usd_file in nanite_files:
-        usd_path = str(usd_file.resolve()).replace("\\", "/")
-        asset_name = usd_file.stem
-
-        # Get species name from parent directory (e.g., "european_beech")
-        species_folder = usd_file.parent.name
-        # Convert to title case for Unreal folder name (e.g., "EuropeanBeech")
+    for species_folder, species_trees in sorted(trees_by_species.items()):
         species_display = "".join(
             word.capitalize() for word in species_folder.split("_")
         )
 
-        # Extract tree number (e.g., "0000" from "european_beech_tree_0000_nanite_assembly")
-        tree_number = (
-            asset_name.split("_tree_")[1].split("_")[0]
-            if "_tree_" in asset_name
-            else asset_name
-        )
-
         script_content += f"""
-# Import {asset_name} to {species_display} folder (tree #{tree_number})
+# --- {species_display} ({len(species_trees)} trees) ---
+print("Importing {species_display}...")
+"""
+
+        for usd_file in sorted(species_trees):
+            usd_path = str(usd_file.resolve()).replace("\\", "/")
+            asset_name = usd_file.stem
+
+            tree_number = (
+                asset_name.split("_tree_")[1].split("_")[0]
+                if "_tree_" in asset_name
+                else asset_name
+            )
+
+            script_content += f"""
 try:
-    unreal.log("Importing {asset_name}...")
-    
-    # Import directly to species folder with custom asset path to avoid nested folders
-    species_dest = IMPORT_PATH + "/{species_display}"
-    
-    # Create import task
     import_task = unreal.AssetImportTask()
     import_task.filename = "{usd_path}"
-    import_task.destination_path = species_dest
+    import_task.destination_path = IMPORT_PATH + "/{species_display}"
     import_task.automated = True
     import_task.save = True
     import_task.replace_existing = True
     
-    # Configure USD import options
     options = unreal.UsdStageImportOptions()
     options.import_actors = False
     options.import_geometry = True
     options.import_materials = True
-    
+    # Flatten folder structure - don't create subfolders for each prim
+    options.set_editor_property('prim_path_folder_structure', False)
     import_task.options = options
     
-    # Execute import
     asset_tools.import_asset_tasks([import_task])
     
-    # Check results
     if import_task.imported_object_paths:
         imported_count += 1
-        unreal.log("✓ Imported tree_{tree_number} to {{species_dest}}")
+        print(f"  Imported tree #{tree_number}")
     else:
         failed_count += 1
-        unreal.log_warning("✗ Failed to import {asset_name}")
+        unreal.log_warning("Failed to import: {asset_name}")
+    
+    # Cleanup and delay to prevent crashes
+    gc.collect()
+    unreal.SystemLibrary.collect_garbage()
+    time.sleep(IMPORT_DELAY)
+    
 except Exception as e:
     failed_count += 1
-    unreal.log_error(f"✗ Error importing {asset_name}: {{e}}")
+    unreal.log_error(f"Error importing {asset_name}: {{e}}")
 """
 
     script_content += """
 
 print("")
 print("=" * 60)
-print(f"Import complete: {imported_count} succeeded, {failed_count} failed")
+print(f"Import complete: {imported_count} trees imported, {failed_count} failed")
 print("=" * 60)
 
 if failed_count > 0:
     unreal.log_warning("Some imports failed. Check that USD Importer plugin is enabled.")
 else:
     print(f"\\nAssets imported to Content Browser: {IMPORT_PATH}")
+    print("Each species folder contains trees and shared twigs")
     print("Trees are ready to place in level or use with PCG")
 """
 
