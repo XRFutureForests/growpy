@@ -8,7 +8,7 @@ Creates skeletal (animation-ready) Nanite assemblies by default, with optional s
 
 Quick Start (copy-paste ready with all defaults shown):
     # Full forest generation with all flags (recommended for production)
-    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 10 --smooth-iterations 10 --output-dir data/output/forest --preset-override drop_decay=0.1
+    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 10 --smooth-iterations 10 --output-dir data/output/forest --preset-override drop_decay=0.1 --skip-pve-json
 
     # Generate with Unreal import script for one-click import
     python src/growpy/cli/generate_forest.py data/input/test.csv --quality medium --growth-cycle-limit 100 --smooth-iterations 10 --output-dir data/output/forest --import-to-unreal --unreal-project-path /Game/GrowPy/Trees --preset-override drop_decay=0.1 --fast --profile
@@ -206,9 +206,6 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         .lower()
     )
 
-    species_dir = output_dir / species_clean
-    species_dir.mkdir(parents=True, exist_ok=True)
-
     exported = []
 
     try:
@@ -265,9 +262,14 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             ]
 
         # Export each model/skeleton/bones triplet (each is a separate tree)
-        for model_idx, (model, skeleton, bones_for_tree) in enumerate(
-            zip(models, skeletons, tree_bones)
-        ):
+        # Process one tree at a time and immediately release memory to reduce peak RAM
+        num_trees = len(models)
+        for model_idx in range(num_trees):
+            # Get current tree's data
+            model = models[model_idx]
+            skeleton = skeletons[model_idx]
+            bones_for_tree = tree_bones[model_idx]
+
             # Use original CSV fid for naming (with leading zeros)
             tree_fid = fids[model_idx]
             tree_id = f"{tree_fid:04d}"
@@ -280,7 +282,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             # Create tree-specific subfolder with tree ID
             # Assembly uses species name (shared), tree mesh uses tree_id (unique)
             mesh_suffix = "skeletal" if use_skeletal else "static"
-            tree_dir = species_dir / f"tree_{tree_id}"
+            tree_dir = output_dir / species_clean / f"tree_{tree_id}"
             tree_dir.mkdir(parents=True, exist_ok=True)
             usd_path = tree_dir / f"{species_clean}.usda"
 
@@ -377,7 +379,16 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         if verbose:
                             traceback.print_exc()
 
-        _gc_module.collect()
+            # MEMORY OPTIMIZATION: Clear this tree's data immediately after export
+            # This releases large mesh/skeleton data before processing next tree
+            models[model_idx] = None
+            skeletons[model_idx] = None
+            tree_bones[model_idx] = None
+            del model, skeleton, bones_for_tree
+            _gc_module.collect()
+
+        # Clear remaining references
+        del models, skeletons, tree_bones
 
     except Exception as e:
         import traceback
@@ -462,11 +473,15 @@ def export_individual_trees(
             )
 
     # Always use sequential processing (bpy/USD not compatible with multiprocessing)
-    for task in tqdm(grove_tasks, desc="Exporting groves"):
+    for task_idx, task in enumerate(tqdm(grove_tasks, desc="Exporting groves")):
         with timer.track("grove_export"):
             result = _export_single_tree_from_forest(task)
             if result:
                 exported_files.extend([Path(p) for p in result])
+
+        # MEMORY OPTIMIZATION: Clear grove reference after export to free RAM
+        # The grove object holds all simulation data which is no longer needed
+        grove_tasks[task_idx] = None
 
     # PVE JSON generation now happens inline during tree export
     # No separate batch generation needed
@@ -820,7 +835,22 @@ if failed_count > 0:
 else:
     print(f"\\nAssets imported to Content Browser: {IMPORT_PATH}")
     print("Each species folder contains trees and shared twigs")
-    print("Trees are ready to place in level or use with PCG")
+    print("")
+    print("=" * 60)
+    print("TREE PLACEMENT")
+    print("=" * 60)
+    print("Trees are exported at origin (0,0,0)")
+    print("Use TREE_POSITIONS dictionary to place trees at their CSV coordinates")
+    print("")
+    print("Example placement code:")
+    print("  # Get tree mesh from Content Browser")
+    print("  tree_asset = unreal.EditorAssetLibrary.load_asset(IMPORT_PATH + '/species/SK_species_tree_0001')")
+    print("  # Get position for this tree")
+    print("  pos = TREE_POSITIONS.get('species_0001', (0,0,0))")
+    print("  # Place in level")
+    print("  actor = unreal.EditorLevelLibrary.spawn_actor_from_object(tree_asset, unreal.Vector(pos[0]*100, pos[1]*100, pos[2]*100))")
+    print("")
+    print(f"Available tree positions: {len(TREE_POSITIONS)}")
 """
 
     # Write script file
