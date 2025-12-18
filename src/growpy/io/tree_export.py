@@ -997,22 +997,27 @@ def _build_usdskel_from_bones(
     # CRITICAL: parent_bone_id values in bones_info are already global bone indices across all trees
     # However, bone indices in the array restart at 0 for each tree
 
-    # Calculate bone ID offset from first bone
-    # If first bone is tree root and parent_bone_id > 0, that's the offset
-    # If first bone is tree root and parent_bone_id == 0, this is the first tree (offset = 0)
-    first_bone = bones_info[0]
-    is_tree_root, parent_bone_id = first_bone[0], first_bone[1]
-    first_branch_id = first_bone[7]  # branch_id from tuple
-
-    if is_tree_root and parent_bone_id == 0:
-        bone_id_offset = 0  # First tree in grove
-    elif is_tree_root:
-        bone_id_offset = (
-            parent_bone_id  # Subsequent tree, offset by previous tree's bone count
-        )
+    # Calculate bone ID offset from model's vertex bone IDs
+    # The minimum bone_id in the model's vertices tells us the global offset for this tree
+    # This is more reliable than checking parent_bone_id which is 0 for all tree roots
+    if (
+        model
+        and hasattr(model, "point_attribute_bone_id")
+        and model.point_attribute_bone_id
+    ):
+        bone_id_offset = min(model.point_attribute_bone_id)
     else:
-        # Not a tree root (shouldn't happen for first bone)
-        bone_id_offset = 0
+        # Fallback to old method if no vertex bone IDs available
+        first_bone = bones_info[0]
+        is_tree_root, parent_bone_id = first_bone[0], first_bone[1]
+        if is_tree_root and parent_bone_id == 0:
+            bone_id_offset = 0
+        elif is_tree_root:
+            bone_id_offset = parent_bone_id
+        else:
+            bone_id_offset = 0
+
+    first_branch_id = bones_info[0][7]  # branch_id from tuple
 
     # CRITICAL: Filter bones_info to only include bones referenced by mesh vertices
     # This prevents crashes when build_models() was called with cutoff parameters

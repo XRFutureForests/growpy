@@ -1,6 +1,7 @@
 """Grove operations for forest simulation."""
 
 from typing import Optional, Tuple
+
 import the_grove_22_core as gc
 
 from ..config import get_config

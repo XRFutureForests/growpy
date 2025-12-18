@@ -44,9 +44,9 @@ python src/growpy/cli/generate_forest.py data/input/forest_inventory.csv
 ### Import to Unreal Engine
 
 1. Copy entire output folder to Unreal Content Browser
-2. Trees and twigs are organized by species
-3. Assemble using PCG, Foliage Tool, or manual placement
-4. Enable Nanite for optimized rendering
+2. USD files are auto-imported as Nanite Assemblies (UE 5.7+)
+3. Trees and twigs are organized by species in individual folders
+4. Enable Nanite for optimized rendering (usually auto-detected)
 
 **No twig placement needed** - trees and twigs export as separate assets for Unreal-side assembly
 
@@ -156,15 +156,15 @@ Forest generation creates organized output folders ready for Unreal import:
 ```
 output/
 └── forest/
-    ├── SpeciesName_001.fbx       # Tree model with skeleton
-    ├── SpeciesName_002.fbx       # Multiple trees per species
-    ├── twigs/
-    │   ├── SpeciesName_Twig_Long.fbx
-    │   └── SpeciesName_Twig_Short.fbx
-    ├── textures/
-    │   ├── bark_diffuse.png
-    │   └── leaf_diffuse.png
-    └── metadata.json             # Species metadata
+    ├── species_name/
+    │   ├── tree_0001/
+    │   │   ├── species_name.usda              # Nanite assembly
+    │   │   ├── species_name_0001_skeletal.usda  # Tree mesh with skeleton
+    │   │   └── [twig files copied here]
+    │   └── tree_0002/
+    │       └── ...
+    ├── textures/                              # Shared textures
+    └── unreal_import_trees.py                 # Optional import script
 ```
 
 ## Requirements
@@ -212,11 +212,12 @@ Norway spruce,NorwaySpruce.seed.json,Norway_Spruce,NorwaySpruceTwig
 - Configurable height threshold and cycle limits
 - Timeout protection for reliable batch processing
 
-### FBX Export
+### USD Export
 
-- Native Grove 2.2 mesh and skeleton output
+- Native USD/USDA format for Unreal Engine 5.7+
+- Nanite Assembly structure with skeletal mesh support
 - Material and texture assignments
-- Compatible with Blender, Unreal, Unity, Maya
+- Compatible with Unreal Engine 5 Nanite workflows
 
 ### Unreal Engine Optimized
 
@@ -228,8 +229,9 @@ Norway spruce,NorwaySpruce.seed.json,Norway_Spruce,NorwaySpruceTwig
 ## Programmatic Usage
 
 ```python
-from growpy import create_grove, export_tree_as_fbx, get_config
-from growpy.utils.dependencies import gc
+from growpy import create_grove, get_config
+from growpy.io.assembly_export import export_tree_as_nanite_assembly
+from pathlib import Path
 
 # Get configuration
 config = get_config()
@@ -237,14 +239,25 @@ config = get_config()
 # Create grove for species
 grove = create_grove("European beech")
 
-# Add tree at origin
+# Add tree and simulate growth
+import the_grove_22_core as gc
 grove.add_new_tree(gc.Vector(0, 0, 0), gc.Vector(0, 0, 1), 0)
-
-# Simulate growth
 grove.simulate(flushes=10)
 
-# Export with skeleton
-export_tree_as_fbx(grove, "beech.fbx", "European beech", include_skeleton=True)
+# Build models and skeletons
+skeletons = grove.build_skeletons()
+bones = grove.tag_bone_id(2.0, 0.16, 0.5, True)
+models = grove.build_models({"resolution": 16})
+
+# Export as USD Nanite Assembly
+export_tree_as_nanite_assembly(
+    model=models[0],
+    skeleton=skeletons[0],
+    bones_info=bones,
+    output_path=Path("beech.usda"),
+    species_name="European beech",
+    tree_id="0001"
+)
 ```
 
 ## Troubleshooting
