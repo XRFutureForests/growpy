@@ -63,9 +63,6 @@ Common Flags:
                                                    Useful for identifying slow processing steps
 
 Performance Flags (skip optional generation steps):
-    --skip-wind-json                               Skip wind JSON generation (saves ~37% export time)
-                                                   Wind animation data not needed for static placement
-
     --skip-pve-json                                Skip PVE preset JSON generation (saves ~3% export time)
                                                    PVE presets only needed for Unreal Procedural Vegetation Editor
 
@@ -73,8 +70,11 @@ Performance Flags (skip optional generation steps):
                                                    Static meshes have full PBR materials but no animation
                                                    Saves ~7% export time when disabled
 
-    --fast                                         Fast mode: skip wind JSON, PVE JSON, and static meshes
-                                                   Equivalent to --skip-wind-json --skip-pve-json (static already off)
+    --fast                                         Fast mode: skip PVE JSON and static meshes
+                                                   Equivalent to --skip-pve-json (static already off)
+
+    Note: DynamicWind data is exported as separate JSON files (*_DynamicWind.json)
+          Import in Unreal using ImportDynamicWindSkeletalDataFromFile after USD import
 
 Preset Override Flags (prevent tree death at high cycle counts):
     --longevity-mode                               Apply pre-configured overrides to prevent tree death
@@ -320,32 +320,34 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             if export_success:
                 exported.append(str(usd_path))
 
-                # Generate wind JSON for skeletal meshes (optional, skip with --skip-wind-json)
-                skip_wind = quality_params.get("skip_wind_json", False)
-                if use_skeletal and skeleton and bones_for_tree and not skip_wind:
-                    from growpy.io.wind_json import (
-                        extract_joint_names_from_bones_info,
-                        generate_wind_json,
-                    )
+                # Generate DynamicWind JSON for Unreal import
+                # CRITICAL: Unreal currently requires separate JSON import, not USD attributes
+                # Use ImportDynamicWindSkeletalDataFromFile in Unreal after USD import
+                if use_skeletal:
+                    from growpy.io.wind_json import generate_wind_json
 
-                    wind_json_path = tree_dir / f"{tree_name}_DynamicWind.json"
+                    # Path to the skeletal USD file (tree mesh with skeleton)
+                    skeletal_usd_path = (
+                        tree_dir / f"{species_clean}_{tree_id}_skeletal.usda"
+                    )
+                    wind_json_name = f"{tree_name}_DynamicWind.json"
+                    wind_json_path = tree_dir / wind_json_name
                     try:
                         with timer.track("generate_wind_json", parent="grove_export"):
-                            # Extract joint names directly from bones_info (90% faster than reading USD)
-                            joint_names = extract_joint_names_from_bones_info(
-                                bones_for_tree
-                            )
                             generate_wind_json(
-                                tree_usd_path=str(usd_path),
+                                tree_usd_path=skeletal_usd_path,
                                 skeleton=skeleton,
                                 bones_info=bones_for_tree,
-                                output_path=str(wind_json_path),
-                                joint_names=joint_names,
+                                output_path=wind_json_path,
                             )
                     except Exception as wind_error:
+                        import traceback
+
                         print(
                             f"Warning: Failed to generate wind JSON for {tree_name}: {wind_error}"
                         )
+                        if verbose:
+                            traceback.print_exc()
 
                 # Generate PVE preset JSON (optional, skip with --skip-pve-json)
                 # Only generate once per tree (skeletal mesh export, not static)
@@ -500,7 +502,6 @@ def generate_forest_exports(
     verbose: bool = False,
     preset_overrides: Optional[PresetOverrides] = None,
     timer: Optional["ProfileTimer"] = None,
-    skip_wind_json: bool = False,
     skip_pve_json: bool = False,
     include_static: bool = False,
     skip_validation: bool = False,
@@ -509,6 +510,9 @@ def generate_forest_exports(
 
     By default, only skeletal mesh assemblies are generated (optimized for wind animation).
     Static mesh assemblies can be optionally generated with include_static=True.
+
+    DynamicWind attributes are now embedded directly in the USD skeleton prim
+    (unreal:dynamicWind:jointNames, unreal:dynamicWind:jointSimulationGroups).
 
     Args:
         csv_path: Path to CSV file with forest data
@@ -522,7 +526,6 @@ def generate_forest_exports(
         verbose: Print detailed progress information
         preset_overrides: Optional PresetOverrides for dynamic parameter adjustment during simulation
         timer: Optional ProfileTimer for tracking execution times
-        skip_wind_json: If True, skip wind JSON generation (saves ~37% export time)
         skip_pve_json: If True, skip PVE preset JSON generation (saves ~3% export time)
         include_static: If True, also generate static mesh assemblies (disabled by default, saves ~7% time)
         skip_validation: If True, skip assembly validation (saves ~5-10% export time)
@@ -632,7 +635,7 @@ def generate_forest_exports(
     quality_params["include_grove_attributes"] = include_grove_attributes
 
     # Skip optional JSON generation (passed via quality_params for simplicity)
-    quality_params["skip_wind_json"] = skip_wind_json
+    # Note: DynamicWind JSON is always generated for skeletal meshes
     quality_params["skip_pve_json"] = skip_pve_json
     quality_params["include_static"] = include_static
     quality_params["skip_validation"] = skip_validation
@@ -1115,11 +1118,7 @@ Unreal Engine Integration:
         action="store_true",
         help="Enable profiling to track execution time of each processing step",
     )
-    parser.add_argument(
-        "--skip-wind-json",
-        action="store_true",
-        help="Skip wind JSON generation (saves ~37%% of export time)",
-    )
+    # Note: --skip-wind-json removed - wind data now embedded in USD skeleton
     parser.add_argument(
         "--skip-pve-json",
         action="store_true",
@@ -1133,7 +1132,7 @@ Unreal Engine Integration:
     parser.add_argument(
         "--fast",
         action="store_true",
-        help="Fast mode: skip wind JSON, PVE JSON, validation, and static mesh generation",
+        help="Fast mode: skip PVE JSON, validation, and static mesh generation",
     )
     parser.add_argument(
         "--include-static",
@@ -1184,8 +1183,8 @@ Unreal Engine Integration:
             )
             print(f"\n[Preset Overrides] Static: {preset_overrides.static_overrides}")
 
-        # Handle --fast flag (skip wind/pve json, validation, and static meshes)
-        skip_wind_json = args.skip_wind_json or args.fast
+        # Handle --fast flag (skip pve json, validation, and static meshes)
+        # Note: DynamicWind JSON is always generated for skeletal meshes
         skip_pve_json = args.skip_pve_json or args.fast
         skip_validation = args.skip_validation or args.fast
         # Static meshes disabled by default, enable with --include-static
@@ -1204,7 +1203,6 @@ Unreal Engine Integration:
                 verbose=args.verbose,
                 preset_overrides=preset_overrides,
                 timer=timer,
-                skip_wind_json=skip_wind_json,
                 skip_pve_json=skip_pve_json,
                 include_static=include_static,
                 skip_validation=skip_validation,
