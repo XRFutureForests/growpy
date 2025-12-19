@@ -3,6 +3,15 @@ Wind JSON generation for Unreal Engine DynamicWind system.
 
 Generates DynamicWind JSON files that assign SimulationGroupIndex values to skeleton joints
 based on Grove skeleton attributes (age, mass, hierarchy). Compatible with Nanite skeletal meshes.
+
+JSON Format (matches Epic's DynamicWind import schema):
+- Joints: List of {JointName, SimulationGroupIndex} for each skeleton joint
+- SimulationGroups: List of group configurations with Influence, ShiftTop, bIsTrunkGroup
+- bIsGroundCover: Whether object is ground cover (affects wind behavior)
+- GustAttenuation: Gust attenuation factor for trunk groups
+
+Reference: src/DynamicWind/Resources/PythonExamples/export_dynamic_wind_json.py (Epic Games)
+Schema: src/DynamicWind/Resources/UsdResources/Plugins/unrealDynamicWind/resources/dynamicWind/schema.usda
 """
 
 import json
@@ -136,10 +145,41 @@ def generate_wind_json(
             {"JointName": joint_name, "SimulationGroupIndex": group_index}
         )
 
-    # Build wind JSON structure
+    # Build SimulationGroups data matching Epic's DynamicWind schema
+    # Group 0 = trunk (rigid), Group 1 = primary branches (medium), Group 2 = tips (flexible)
+    # Influence values control how much each group responds to wind
+    # ShiftTop attenuates influence near chain ends, bIsTrunkGroup marks trunk groups
+    simulation_groups = [
+        {
+            "bUseDualInfluence": False,
+            "Influence": 0.2,  # Low influence for rigid trunk
+            "MinInfluence": 0.0,
+            "MaxInfluence": 0.0,
+            "ShiftTop": 0.0,
+            "bIsTrunkGroup": True,  # Group 0 is trunk
+        },
+        {
+            "bUseDualInfluence": False,
+            "Influence": 0.6,  # Medium influence for primary branches
+            "MinInfluence": 0.0,
+            "MaxInfluence": 0.0,
+            "ShiftTop": 0.0,
+            "bIsTrunkGroup": False,
+        },
+        {
+            "bUseDualInfluence": False,
+            "Influence": 1.0,  # Full influence for flexible tips
+            "MinInfluence": 0.0,
+            "MaxInfluence": 0.0,
+            "ShiftTop": 0.0,
+            "bIsTrunkGroup": False,
+        },
+    ]
+
+    # Build wind JSON structure matching Epic's createSkeletalImportData format
     wind_json = {
         "Joints": joints_data,
-        "SimulationGroups": [],
+        "SimulationGroups": simulation_groups,
         "bIsGroundCover": False,
         "GustAttenuation": 0.0,
     }

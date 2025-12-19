@@ -44,7 +44,7 @@ def get_quality_preset(preset_name: str) -> Dict[str, Any]:
             "build_blend": True,
             "build_end_cap": True,
             # Skeleton: minimal reduction for maximum detail
-            "skeleton_length": 0.5,
+            "skeleton_length": 0.1,
             "skeleton_reduce": 0.1,
             "skeleton_bias": 0.5,
             "skeleton_connected": True,
@@ -58,7 +58,7 @@ def get_quality_preset(preset_name: str) -> Dict[str, Any]:
             "build_blend": True,
             "build_end_cap": True,
             # Skeleton: light reduction
-            "skeleton_length": 1.0,
+            "skeleton_length": 0.25,
             "skeleton_reduce": 0.2,
             "skeleton_bias": 0.5,
             "skeleton_connected": True,
