@@ -19,7 +19,7 @@ conda env create -f environment.yml
 conda activate the-grove
 ```
 
-2. Install package in development mode:
+1. Install package in development mode:
 
 ```bash
 pip install -e .
@@ -49,6 +49,87 @@ python src/growpy/cli/generate_forest.py data/input/forest_inventory.csv
 4. Enable Nanite for optimized rendering (usually auto-detected)
 
 **No twig placement needed** - trees and twigs export as separate assets for Unreal-side assembly
+
+### Import DynamicWind Data (Wind Animation)
+
+Each tree exports a `*_DynamicWind.json` file for wind animation. To import:
+
+**Method 1: Right-Click Asset Action (Recommended)**
+
+1. Import the USD assembly first (drag into Content Browser)
+2. Select the imported **SkeletalMesh** asset
+3. Right-click and look for **"Scripted Asset Actions"** > **"Import Dynamic Wind Data"**
+4. Select the matching `*_DynamicWind.json` file
+
+**Method 2: Blueprint/Python**
+
+```python
+# Unreal Python
+import unreal
+skeletal_mesh = unreal.load_asset("/Game/Path/To/YourSkeletalMesh")
+unreal.DynamicWindBlueprintLibrary.import_dynamic_wind_skeletal_data_from_file(skeletal_mesh)
+```
+
+**Required Plugins**: Dynamic Wind, Nanite, Nanite Foliage (all experimental)
+
+### Unreal Engine Setup
+
+**Required Plugins** (enable in Plugins window):
+
+- Python Editor Script Plugin
+- Editor Scripting Utilities
+- USD Importer
+- Nanite (experimental)
+- Nanite Foliage (experimental)
+- Dynamic Wind (experimental)
+
+**Project Settings**:
+
+- **Remote Execution**: Edit > Project Settings > Plugins > Python > Enable Remote Execution
+  - Allows running Python scripts from VSCode
+- **USD Importer**: Edit > Project Settings > Plugins > USD Importer
+  - Enable "Use Nanite" for automatic Nanite mesh generation
+
+**Environment Variables** (for custom USD plugins):
+
+```bash
+# Point to custom USD plugin path if needed
+set PXR_PLUGINPATH_NAME=C:\Path\To\Plugins
+```
+
+**VSCode Integration**:
+
+```bash
+# Install Unreal Python extension
+code --install-extension NilsSoderman.ue-python
+```
+
+This enables running Python scripts directly in Unreal from VSCode.
+
+### PVE Debug Mode (Procedural Vegetation Editor)
+
+To see hidden PVE attributes in the editor:
+
+```
+# In Unreal console (press ~)
+PV.DebugMode.Enabled 1
+```
+
+This reveals additional debug information for procedural vegetation assets.
+
+### FBX/USD Import Tips
+
+**FBX Import Settings**:
+
+- Auto Generate Collision: **Disabled** (not needed for foliage)
+- Build Nanite: **Enabled**
+- Import Materials: **Enabled**
+
+**USD Import**:
+
+- USD files auto-import as Nanite assemblies in UE 5.7+
+- Skeletal mesh hierarchy is preserved
+- Materials reference textures by relative path
 
 ## Project Structure
 
