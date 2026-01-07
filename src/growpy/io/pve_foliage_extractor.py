@@ -104,6 +104,7 @@ def extract_foliage_data(
     model: Any,
     species_name: str,
     bones_info: Optional[List] = None,
+    num_branches: Optional[int] = None,
     verbose: bool = False,
 ) -> Dict[str, Dict]:
     """
@@ -117,6 +118,7 @@ def extract_foliage_data(
         model: Grove tree model (with twigs) from build_models()
         species_name: Species name for twig filename construction (e.g., "european_beech")
         bones_info: Bones info from export phase for branch_id calculation - REQUIRED
+        num_branches: Number of branches from skeleton (poly_lines count). If None, calculated from model.
         verbose: Print detailed extraction information
 
     Returns:
@@ -135,13 +137,20 @@ def extract_foliage_data(
         len(placements) for placements in twig_placements_by_type.values()
     )
 
-    # Get num_branches from model face attributes
-    if hasattr(model, "face_attribute_branch_id"):
-        num_branches = len(set(model.face_attribute_branch_id))
-    else:
-        num_branches = 0
+    # Use provided num_branches (from skeleton poly_lines) or calculate from model
+    # CRITICAL: num_branches from skeleton is the authoritative count for PVE arrays
+    if num_branches is None:
+        if hasattr(model, "face_attribute_branch_id"):
+            num_branches = len(set(model.face_attribute_branch_id))
+        else:
+            num_branches = 0
+            if verbose:
+                print("  Warning: Model has no branch IDs, cannot extract foliage")
+            return _create_empty_instancer_arrays(0)
+
+    if num_branches == 0:
         if verbose:
-            print("  Warning: Model has no branch IDs, cannot extract foliage")
+            print("  Warning: num_branches is 0, cannot extract foliage")
         return _create_empty_instancer_arrays(0)
 
     if total_twigs == 0:
@@ -157,15 +166,26 @@ def extract_foliage_data(
         )
 
     # Group twigs by branch_id - flatten all twig types into one list
+    # CRITICAL: Handle None branch_ids (assign to branch 0 as fallback)
     twigs_by_branch = {}
+    skipped_none_branch = 0
     for twig_type, placements in twig_placements_by_type.items():
         for placement in placements:
             branch_id = placement.branch_id
+            # Handle None or negative branch_id - assign to branch 0
+            if branch_id is None or branch_id < 0:
+                branch_id = 0
+                skipped_none_branch += 1
+            # Clamp branch_id to valid range (0 to num_branches-1)
+            if branch_id >= num_branches:
+                branch_id = num_branches - 1 if num_branches > 0 else 0
             if branch_id not in twigs_by_branch:
                 twigs_by_branch[branch_id] = []
             # Store twig_type with placement for filename construction
             twigs_by_branch[branch_id].append((twig_type, placement))
 
+    if skipped_none_branch > 0:
+        print(f"  PVE: Warning: {skipped_none_branch} twigs had None/invalid branch_id, assigned to branch 0")
     print(f"  PVE: Grouped {total_twigs} twigs into {len(twigs_by_branch)} branches")
     print(
         f"  PVE: num_branches={num_branches}, branch_ids in data: {sorted(list(twigs_by_branch.keys()))[:10]}"
