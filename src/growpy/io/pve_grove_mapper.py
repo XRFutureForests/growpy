@@ -604,8 +604,9 @@ def _map_primitives_from_skeleton(
 
     # Extract foliage/twig instancer data from pre-built model
     # CRITICAL: Pass bones_info for correct branch_id assignment
+    # CRITICAL: Pass num_branches from skeleton (poly_lines count), not from model branch IDs
     foliage_data = extract_foliage_data(
-        model, species_name, bones_info=bones_info, verbose=False
+        model, species_name, bones_info=bones_info, num_branches=num_branches, verbose=False
     )
 
     # Merge foliage data into primitives attributes
@@ -626,14 +627,25 @@ def _calculate_generation_from_polylines(skeleton: Any) -> List[int]:
     poly_lines = skeleton.poly_lines
     num_poly_lines = len(poly_lines)
 
-    # Initialize all points to -1
-    generation = [-1] * num_points
+    # Find actual max point index used in poly_lines
+    max_point_idx = num_points - 1
+    for poly_line in poly_lines:
+        for pt_idx in poly_line:
+            if pt_idx > max_point_idx:
+                max_point_idx = pt_idx
+
+    # Initialize generation array to cover all point indices
+    # Use max_point_idx + 1 to ensure we can index all points
+    array_size = max(num_points, max_point_idx + 1)
+    generation = [-1] * array_size
 
     # Assume first poly_line is main trunk (generation 0)
     if num_poly_lines > 0:
         main_trunk = poly_lines[0]
         for i in range(len(main_trunk)):
-            generation[main_trunk[i]] = 0
+            pt_idx = main_trunk[i]
+            if 0 <= pt_idx < array_size:
+                generation[pt_idx] = 0
 
     # Process remaining poly_lines
     for poly_idx in range(1, num_poly_lines):
@@ -641,14 +653,16 @@ def _calculate_generation_from_polylines(skeleton: Any) -> List[int]:
         if len(poly_line) > 0:
             # First point connects to parent, check its generation
             first_point = poly_line[0]
-            parent_gen = generation[first_point] if first_point < len(generation) else 0
+            parent_gen = generation[first_point] if 0 <= first_point < array_size else 0
 
             # All points in this poly_line are parent_gen + 1
             for i in range(len(poly_line)):
-                generation[poly_line[i]] = max(generation[poly_line[i]], parent_gen + 1)
+                pt_idx = poly_line[i]
+                if 0 <= pt_idx < array_size:
+                    generation[pt_idx] = max(generation[pt_idx], parent_gen + 1)
 
-    # Fill any remaining -1 with 0
-    generation = [max(0, g) for g in generation]
+    # Fill any remaining -1 with 0, and truncate to num_points if needed
+    generation = [max(0, g) for g in generation[:num_points]]
 
     return generation
 
@@ -657,10 +671,20 @@ def _calculate_length_from_root(skeleton: Any) -> List[float]:
     """Calculate cumulative distance from root for each point."""
     skeleton_points = skeleton.points
     num_points = len(skeleton_points)
-    lengths = [0.0] * num_points
+
+    # Find actual max point index used in poly_lines
+    poly_lines = skeleton.poly_lines
+    max_point_idx = num_points - 1
+    for poly_line in poly_lines:
+        for pt_idx in poly_line:
+            if pt_idx > max_point_idx:
+                max_point_idx = pt_idx
+
+    # Use larger array size if needed
+    array_size = max(num_points, max_point_idx + 1)
+    lengths = [0.0] * array_size
 
     # Process each poly_line
-    poly_lines = skeleton.poly_lines
     for poly_line in poly_lines:
         cumulative = 0.0
         for i in range(len(poly_line)):
@@ -668,20 +692,24 @@ def _calculate_length_from_root(skeleton: Any) -> List[float]:
 
             if i > 0:
                 prev_idx = poly_line[i - 1]
-                p1 = skeleton_points[prev_idx]
-                p2 = skeleton_points[point_idx]
+                # Bounds check for skeleton_points access
+                if prev_idx < num_points and point_idx < num_points:
+                    p1 = skeleton_points[prev_idx]
+                    p2 = skeleton_points[point_idx]
 
-                # Euclidean distance
-                dx = p2[0] - p1[0]
-                dy = p2[1] - p1[1]
-                dz = p2[2] - p1[2]
-                distance = (dx * dx + dy * dy + dz * dz) ** 0.5
+                    # Euclidean distance
+                    dx = p2[0] - p1[0]
+                    dy = p2[1] - p1[1]
+                    dz = p2[2] - p1[2]
+                    distance = (dx * dx + dy * dy + dz * dz) ** 0.5
 
-                cumulative += distance
+                    cumulative += distance
 
-            lengths[point_idx] = max(lengths[point_idx], cumulative)
+            if 0 <= point_idx < array_size:
+                lengths[point_idx] = max(lengths[point_idx], cumulative)
 
-    return lengths
+    # Truncate to num_points
+    return lengths[:num_points]
 
 
 def _calculate_branch_gradients(skeleton: Any) -> List[float]:
@@ -689,9 +717,19 @@ def _calculate_branch_gradients(skeleton: Any) -> List[float]:
     Calculate normalized position (0-1) along each branch for each point.
     """
     num_points = len(skeleton.points)
-    gradients = [0.0] * num_points
-
     poly_lines = skeleton.poly_lines
+
+    # Find actual max point index used in poly_lines
+    max_point_idx = num_points - 1
+    for poly_line in poly_lines:
+        for pt_idx in poly_line:
+            if pt_idx > max_point_idx:
+                max_point_idx = pt_idx
+
+    # Use larger array size if needed
+    array_size = max(num_points, max_point_idx + 1)
+    gradients = [0.0] * array_size
+
     for poly_line in poly_lines:
         num_pts_in_branch = len(poly_line)
 
@@ -699,13 +737,17 @@ def _calculate_branch_gradients(skeleton: Any) -> List[float]:
             for i in range(num_pts_in_branch):
                 point_idx = poly_line[i]
                 gradient = i / (num_pts_in_branch - 1)
-                gradients[point_idx] = gradient
+                if 0 <= point_idx < array_size:
+                    gradients[point_idx] = gradient
         else:
             # Single point branch
             if num_pts_in_branch == 1:
-                gradients[poly_line[0]] = 0.0
+                point_idx = poly_line[0]
+                if 0 <= point_idx < array_size:
+                    gradients[point_idx] = 0.0
 
-    return gradients
+    # Truncate to num_points
+    return gradients[:num_points]
 
 
 def _calculate_branch_parents(skeleton: Any) -> List[int]:
@@ -758,7 +800,7 @@ def _calculate_branch_parents_from_model(model: Any, num_branches: int) -> List[
 
     Args:
         model: Grove model with face_attribute_branch_id and face_attribute_branch_id_parent
-        num_branches: Total number of branches
+        num_branches: Total number of branches (from skeleton poly_lines)
 
     Returns:
         List of parent indices per branch (-1 for root)
@@ -767,16 +809,32 @@ def _calculate_branch_parents_from_model(model: Any, num_branches: int) -> List[
     branch_ids = model.face_attribute_branch_id
     parent_branch_ids = model.face_attribute_branch_id_parent
 
-    # Build branch->parent mapping
-    branch_to_parent = {}
+    # Build branch->parent mapping using raw branch IDs
+    branch_to_parent_raw = {}
     for branch_id, parent_id in zip(branch_ids, parent_branch_ids):
-        if branch_id not in branch_to_parent:
-            branch_to_parent[branch_id] = parent_id
+        if branch_id not in branch_to_parent_raw:
+            branch_to_parent_raw[branch_id] = parent_id
+
+    # Build remapping from model branch IDs to skeleton indices (0 to num_branches-1)
+    unique_branch_ids = sorted(set(branch_ids))
+    branch_id_to_idx = {bid: idx for idx, bid in enumerate(unique_branch_ids)}
 
     # Build parents list
     parents = []
     for branch_idx in range(num_branches):
-        parent_idx = branch_to_parent.get(branch_idx, -1)
+        # Get original branch ID for this index
+        if branch_idx < len(unique_branch_ids):
+            original_branch_id = unique_branch_ids[branch_idx]
+            parent_raw = branch_to_parent_raw.get(original_branch_id, -1)
+
+            # Remap parent to index
+            if parent_raw == -1 or parent_raw not in branch_id_to_idx:
+                parent_idx = -1
+            else:
+                parent_idx = branch_id_to_idx[parent_raw]
+        else:
+            parent_idx = -1
+
         parents.append(parent_idx)
 
     return parents
