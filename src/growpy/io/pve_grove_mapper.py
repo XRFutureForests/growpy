@@ -430,9 +430,17 @@ def _map_primitives_from_skeleton(
     poly_lines = skeleton.poly_lines
     num_poly_lines = len(poly_lines)
 
-    # Each poly_line is a branch - add to points array
+    # CRITICAL: Rebase poly_line indices to start at 0
+    # Grove skeleton poly_lines use global indices across all skeletons in the grove.
+    # When exporting a single skeleton, its points array is 0-indexed, but poly_lines
+    # may start at a non-zero index (e.g., if there are other skeletons before this one).
+    # We must subtract the minimum index to make poly_line indices match points array.
+    all_indices = [idx for pl in poly_lines for idx in pl]
+    index_offset = min(all_indices) if all_indices else 0
+
+    # Each poly_line is a branch - add rebased indices to points array
     for poly_line in poly_lines:
-        point_indices = list(poly_line)
+        point_indices = [idx - index_offset for idx in poly_line]
         primitives_data["points"].append(point_indices)
 
     # Fill core branch attributes
@@ -625,25 +633,22 @@ def _calculate_generation_from_polylines(skeleton: Any) -> List[int]:
     poly_lines = skeleton.poly_lines
     num_poly_lines = len(poly_lines)
 
-    # Find actual max point index used in poly_lines
-    max_point_idx = num_points - 1
-    for poly_line in poly_lines:
-        for pt_idx in poly_line:
-            if pt_idx > max_point_idx:
-                max_point_idx = pt_idx
+    if num_poly_lines == 0:
+        return [0] * num_points
 
-    # Initialize generation array to cover all point indices
-    # Use max_point_idx + 1 to ensure we can index all points
-    array_size = max(num_points, max_point_idx + 1)
-    generation = [-1] * array_size
+    # Calculate index offset for rebasing (poly_lines use global indices)
+    all_indices = [idx for pl in poly_lines for idx in pl]
+    index_offset = min(all_indices) if all_indices else 0
+
+    # Initialize generation array for rebased indices
+    generation = [-1] * num_points
 
     # Assume first poly_line is main trunk (generation 0)
-    if num_poly_lines > 0:
-        main_trunk = poly_lines[0]
-        for i in range(len(main_trunk)):
-            pt_idx = main_trunk[i]
-            if 0 <= pt_idx < array_size:
-                generation[pt_idx] = 0
+    main_trunk = poly_lines[0]
+    for pt_idx in main_trunk:
+        rebased_idx = pt_idx - index_offset
+        if 0 <= rebased_idx < num_points:
+            generation[rebased_idx] = 0
 
     # Process remaining poly_lines
     for poly_idx in range(1, num_poly_lines):
@@ -651,49 +656,48 @@ def _calculate_generation_from_polylines(skeleton: Any) -> List[int]:
         if len(poly_line) > 0:
             # First point connects to parent, check its generation
             first_point = poly_line[0]
-            parent_gen = generation[first_point] if 0 <= first_point < array_size else 0
+            rebased_first = first_point - index_offset
+            parent_gen = generation[rebased_first] if 0 <= rebased_first < num_points else 0
 
             # All points in this poly_line are parent_gen + 1
-            for i in range(len(poly_line)):
-                pt_idx = poly_line[i]
-                if 0 <= pt_idx < array_size:
-                    generation[pt_idx] = max(generation[pt_idx], parent_gen + 1)
+            for pt_idx in poly_line:
+                rebased_idx = pt_idx - index_offset
+                if 0 <= rebased_idx < num_points:
+                    generation[rebased_idx] = max(generation[rebased_idx], parent_gen + 1)
 
-    # Fill any remaining -1 with 0, and truncate to num_points if needed
-    generation = [max(0, g) for g in generation[:num_points]]
-
-    return generation
+    # Fill any remaining -1 with 0
+    return [max(0, g) for g in generation]
 
 
 def _calculate_length_from_root(skeleton: Any) -> List[float]:
     """Calculate cumulative distance from root for each point."""
     skeleton_points = skeleton.points
     num_points = len(skeleton_points)
-
-    # Find actual max point index used in poly_lines
     poly_lines = skeleton.poly_lines
-    max_point_idx = num_points - 1
-    for poly_line in poly_lines:
-        for pt_idx in poly_line:
-            if pt_idx > max_point_idx:
-                max_point_idx = pt_idx
 
-    # Use larger array size if needed
-    array_size = max(num_points, max_point_idx + 1)
-    lengths = [0.0] * array_size
+    if not poly_lines:
+        return [0.0] * num_points
 
-    # Process each poly_line
+    # Calculate index offset for rebasing (poly_lines use global indices)
+    all_indices = [idx for pl in poly_lines for idx in pl]
+    index_offset = min(all_indices) if all_indices else 0
+
+    lengths = [0.0] * num_points
+
+    # Process each poly_line with rebased indices
     for poly_line in poly_lines:
         cumulative = 0.0
         for i in range(len(poly_line)):
             point_idx = poly_line[i]
+            rebased_idx = point_idx - index_offset
 
             if i > 0:
                 prev_idx = poly_line[i - 1]
-                # Bounds check for skeleton_points access
-                if prev_idx < num_points and point_idx < num_points:
-                    p1 = skeleton_points[prev_idx]
-                    p2 = skeleton_points[point_idx]
+                rebased_prev = prev_idx - index_offset
+                # Bounds check for skeleton_points access with rebased indices
+                if 0 <= rebased_prev < num_points and 0 <= rebased_idx < num_points:
+                    p1 = skeleton_points[rebased_prev]
+                    p2 = skeleton_points[rebased_idx]
 
                     # Euclidean distance
                     dx = p2[0] - p1[0]
@@ -703,11 +707,10 @@ def _calculate_length_from_root(skeleton: Any) -> List[float]:
 
                     cumulative += distance
 
-            if 0 <= point_idx < array_size:
-                lengths[point_idx] = max(lengths[point_idx], cumulative)
+            if 0 <= rebased_idx < num_points:
+                lengths[rebased_idx] = max(lengths[rebased_idx], cumulative)
 
-    # Truncate to num_points
-    return lengths[:num_points]
+    return lengths
 
 
 def _calculate_branch_gradients(skeleton: Any) -> List[float]:
@@ -717,16 +720,14 @@ def _calculate_branch_gradients(skeleton: Any) -> List[float]:
     num_points = len(skeleton.points)
     poly_lines = skeleton.poly_lines
 
-    # Find actual max point index used in poly_lines
-    max_point_idx = num_points - 1
-    for poly_line in poly_lines:
-        for pt_idx in poly_line:
-            if pt_idx > max_point_idx:
-                max_point_idx = pt_idx
+    if not poly_lines:
+        return [0.0] * num_points
 
-    # Use larger array size if needed
-    array_size = max(num_points, max_point_idx + 1)
-    gradients = [0.0] * array_size
+    # Calculate index offset for rebasing (poly_lines use global indices)
+    all_indices = [idx for pl in poly_lines for idx in pl]
+    index_offset = min(all_indices) if all_indices else 0
+
+    gradients = [0.0] * num_points
 
     for poly_line in poly_lines:
         num_pts_in_branch = len(poly_line)
@@ -734,18 +735,18 @@ def _calculate_branch_gradients(skeleton: Any) -> List[float]:
         if num_pts_in_branch > 1:
             for i in range(num_pts_in_branch):
                 point_idx = poly_line[i]
+                rebased_idx = point_idx - index_offset
                 gradient = i / (num_pts_in_branch - 1)
-                if 0 <= point_idx < array_size:
-                    gradients[point_idx] = gradient
-        else:
+                if 0 <= rebased_idx < num_points:
+                    gradients[rebased_idx] = gradient
+        elif num_pts_in_branch == 1:
             # Single point branch
-            if num_pts_in_branch == 1:
-                point_idx = poly_line[0]
-                if 0 <= point_idx < array_size:
-                    gradients[point_idx] = 0.0
+            point_idx = poly_line[0]
+            rebased_idx = point_idx - index_offset
+            if 0 <= rebased_idx < num_points:
+                gradients[rebased_idx] = 0.0
 
-    # Truncate to num_points
-    return gradients[:num_points]
+    return gradients
 
 
 def _calculate_branch_parents(skeleton: Any) -> List[int]:
