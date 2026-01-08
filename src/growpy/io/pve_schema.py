@@ -87,7 +87,9 @@ def get_pve_schema() -> Dict[str, Any]:
                 "lengthFromSeed": {"isArray": False, "size": 1, "type": "float"},
                 "plantGradient": {"isArray": False, "size": 1, "type": "float"},
                 # Bud attributes
-                "budDevelopment": {"isArray": False, "size": 1, "type": "float"},
+                # budDevelopment: 6-element int array per point [gen, cycle, age, 0, 0, max_age]
+                # Required by PVMaterialSettings.cpp: BudDevelopment[0]=gen, BudDevelopment[2]=age
+                "budDevelopment": {"isArray": True, "size": 1, "type": "int"},
                 "budDirection": {"isArray": False, "size": 3, "type": "float"},
                 "budHormoneLevels": {"isArray": False, "size": 2, "type": "float"},
                 "budLateralMeristem": {"isArray": False, "size": 1, "type": "int"},

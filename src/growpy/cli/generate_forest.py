@@ -352,6 +352,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 # Generate PVE preset JSON (optional, skip with --skip-pve-json)
                 # Only generate once per tree (skeletal mesh export, not static)
                 skip_pve = quality_params.get("skip_pve_json", False)
+                profile_pve = quality_params.get("profile_pve", False)
                 if use_skeletal and not skip_pve:
                     from growpy.io.pve_grove_mapper import generate_pve_from_grove
 
@@ -372,6 +373,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                                 bones_info=bones_for_tree,
                                 verbose=True,
                                 pve_config_dir=pve_config_dir,
+                                profile=profile_pve,
                             )
                     except Exception as pve_error:
                         import traceback
@@ -653,6 +655,9 @@ def generate_forest_exports(
     quality_params["skip_pve_json"] = skip_pve_json
     quality_params["include_static"] = include_static
     quality_params["skip_validation"] = skip_validation
+    quality_params["profile_pve"] = (
+        timer.enabled
+    )  # Enable PVE profiling when --profile is set
 
     try:
         # Twigs are copied to each tree folder by assembly_export

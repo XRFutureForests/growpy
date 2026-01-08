@@ -6,6 +6,7 @@ Quixel Megaplants PVE format, avoiding Houdini entirely.
 """
 
 import json
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -102,6 +103,7 @@ def map_grove_to_pve(
     custom_growth_params: Optional[Dict] = None,
     pve_config_dir: Optional[Path] = None,
     verbose: bool = False,
+    profile: bool = False,
 ) -> Dict:
     """
     Map Grove simulation data to PVE preset JSON format.
@@ -128,6 +130,8 @@ def map_grove_to_pve(
     """
     import the_grove_22_core as gc
 
+    timings = {} if profile else None
+
     # CRITICAL: Model must be provided from export phase with twigs already built
     if model is None:
         raise ValueError(
@@ -136,21 +140,31 @@ def map_grove_to_pve(
         )
 
     # Get Grove properties
+    t0 = time.perf_counter() if profile else 0
     properties = grove.get_properties()
+    if profile:
+        timings["get_properties"] = time.perf_counter() - t0
 
     # Build skeleton for branch hierarchy (if not provided)
+    t0 = time.perf_counter() if profile else 0
     if skeleton is None:
         skeletons = grove.build_skeletons()
         if tree_index < len(skeletons):
             skeleton = skeletons[tree_index]
+    if profile:
+        timings["build_skeleton"] = time.perf_counter() - t0
 
     # Fill template with Grove data, ensuring all Hazel attributes are present
     import copy
 
+    t0 = time.perf_counter() if profile else 0
     pve_data = copy.deepcopy(template)
+    if profile:
+        timings["copy_template"] = time.perf_counter() - t0
 
     # Fill globalAttributes: Grove-fillable attributes get Grove values, others remain empty/default
     # CRITICAL: Preserve Hazel attribute order for Unreal PVE C++ parser compatibility
+    t0 = time.perf_counter() if profile else 0
     filled_attrs = _map_global_attributes(
         grove,
         properties,
@@ -169,12 +183,18 @@ def map_grove_to_pve(
             ordered_global_attrs[key] = template["globalAttributes"][key]
 
     pve_data["globalAttributes"] = ordered_global_attrs
+    if profile:
+        timings["map_global_attrs"] = time.perf_counter() - t0
 
     # Map point data from skeleton
+    t0 = time.perf_counter() if profile else 0
     if skeleton is not None:
         pve_data["points"] = _map_points_from_skeleton(skeleton, template["points"])
+    if profile:
+        timings["map_points"] = time.perf_counter() - t0
 
     # Map primitives from skeleton poly_lines
+    t0 = time.perf_counter() if profile else 0
     if skeleton is not None:
         num_branches = len(skeleton.poly_lines)
         pve_data["primitives"] = _map_primitives_from_skeleton(
@@ -184,12 +204,25 @@ def map_grove_to_pve(
             bones_info,
             species_name,
             num_branches,
+            profile=profile,
         )
+    if profile:
+        timings["map_primitives"] = time.perf_counter() - t0
 
     # Apply species-specific overrides from config files
+    t0 = time.perf_counter() if profile else 0
     pve_data = apply_species_overrides(
         pve_data, species_name, pve_config_dir, verbose=verbose
     )
+    if profile:
+        timings["apply_overrides"] = time.perf_counter() - t0
+
+    if profile and verbose:
+        total = sum(timings.values())
+        print(f"    map_grove_to_pve breakdown ({total:.3f}s):")
+        for step, elapsed in sorted(timings.items(), key=lambda x: -x[1]):
+            pct = (elapsed / total * 100) if total > 0 else 0
+            print(f"      {step}: {elapsed:.3f}s ({pct:.1f}%)")
 
     return pve_data
 
@@ -255,18 +288,51 @@ def _map_points_from_skeleton(skeleton: Any, template: Dict) -> Dict:
     """
     Map Grove skeleton points to PVE points structure.
 
+    Converts from Grove coordinate system (Z-up, world coords) to PVE format (Y-up, local coords).
     Only fills position and core attributes, keeps other attributes empty like Hazel.
     """
     import copy
 
     points_data = {"attributes": copy.deepcopy(template["attributes"]), "positions": []}
 
+    # CRITICAL: PVE bud attribute inner array sizes from Hazel reference
+    # These are per-point arrays containing data for multiple buds
+    # The "size" field in schema is metadata, not the actual array length
+    BUD_ATTR_INNER_SIZES = {
+        "budDirection": 18,  # 6 buds x 3 floats (xyz direction per bud)
+        "budHormoneLevels": 6,  # Per-bud hormone levels
+        "budLateralMeristem": 7,  # Per-bud lateral meristem data
+        "budLightDetected": 4,  # Per-bud light detection
+        "budStatus": 10,  # Per-bud status flags
+        "budDevelopment": 6,  # Per-bud development: [gen, cycle, age, 0, 0, max_age]
+    }
+
     # Extract skeleton points (these are branch joints)
-    skeleton_points = skeleton.points  # List of (x, y, z) tuples
+    skeleton_points = skeleton.points  # List of (x, y, z) tuples in Grove coords (Z-up)
     num_points = len(skeleton_points)
 
-    # Get positions
-    positions = [[p[0], p[1], p[2]] for p in skeleton_points]
+    if num_points == 0:
+        points_data["positions"] = []
+        return points_data
+
+    # Find tree origin (first point - base of trunk) for world-to-local conversion
+    # Grove stores points in world coordinates, PVE expects local coordinates
+    origin = skeleton_points[0]
+    origin_x, origin_y, origin_z = origin[0], origin[1], origin[2]
+
+    # Convert positions:
+    # 1. Subtract origin (world to local)
+    # 2. Swap Y and Z axes (Grove Z-up to PVE Y-up)
+    # Grove: (X, Y, Z) where Z is up
+    # PVE:   (X, Z, Y) where Y is up (swap Y<->Z)
+    positions = []
+    for p in skeleton_points:
+        local_x = p[0] - origin_x
+        local_y = p[1] - origin_y
+        local_z = p[2] - origin_z
+        # Swap Y and Z for PVE Y-up coordinate system
+        positions.append([local_x, local_z, local_y])
+
     points_data["positions"] = positions
 
     # Fill only the essential point attributes that Grove provides
@@ -321,6 +387,35 @@ def _map_points_from_skeleton(skeleton: Any, template: Dict) -> Dict:
     if hasattr(skeleton, "point_attribute_age"):
         age_values = list(skeleton.point_attribute_age)
 
+    # Get generation values if already computed
+    generation_values = None
+    if "generation" in points_data["attributes"]:
+        gen_value_key = (
+            "values" if "values" in points_data["attributes"]["generation"] else "value"
+        )
+        generation_values = points_data["attributes"]["generation"].get(gen_value_key)
+
+    # budDevelopment requires 6-element arrays per point for PVMaterialSettings
+    # Structure: [generation, cycle, age, 0, 0, max_age]
+    # PVMaterialSettings.cpp accesses: BudDevelopment[0]=generation, BudDevelopment[2]=age
+    if "budDevelopment" in points_data["attributes"]:
+        value_key = (
+            "values"
+            if "values" in points_data["attributes"]["budDevelopment"]
+            else "value"
+        )
+        # Get max cycle/age for the tree
+        max_age = max(age_values) if age_values else num_points
+        bud_development_data = []
+        for i in range(num_points):
+            gen = generation_values[i] if generation_values else 0
+            age = age_values[i] if age_values else i
+            # 6-element array: [generation, cycle, age, 0, 0, max_age]
+            bud_development_data.append(
+                [int(gen), int(max_age), int(age), 0, 0, int(max_age)]
+            )
+        points_data["attributes"]["budDevelopment"][value_key] = bud_development_data
+
     for attr_name, attr_data in points_data["attributes"].items():
         value_key = "values" if "values" in attr_data else "value"
 
@@ -358,9 +453,20 @@ def _map_points_from_skeleton(skeleton: Any, template: Dict) -> Dict:
                 points_data["attributes"][attr_name][value_key] = normalized
         else:
             # Fill with default per-point values
-            if attr_data.get("isArray", False):
+            # CRITICAL: Use BUD_ATTR_INNER_SIZES for bud attributes, not schema "size"
+            if attr_name in BUD_ATTR_INNER_SIZES:
+                inner_size = BUD_ATTR_INNER_SIZES[attr_name]
+                if attr_data.get("type") == "int":
+                    points_data["attributes"][attr_name][value_key] = [
+                        [0] * inner_size for _ in range(num_points)
+                    ]
+                else:  # float
+                    points_data["attributes"][attr_name][value_key] = [
+                        [0.0] * inner_size for _ in range(num_points)
+                    ]
+            elif attr_data.get("isArray", False):
                 # Array attributes with size>1: variable-length arrays of size-element groups
-                # e.g., budDirection with size=3 → [[0,0,0], [0,0,0], ...] or [[x,y,z, x,y,z, ...], ...]
+                # e.g., budDirection with size=3 -> [[0,0,0], [0,0,0], ...] or [[x,y,z, x,y,z, ...], ...]
                 attr_size = attr_data.get("size", 1)
                 if attr_data.get("type") == "int":
                     points_data["attributes"][attr_name][value_key] = [
@@ -372,7 +478,7 @@ def _map_points_from_skeleton(skeleton: Any, template: Dict) -> Dict:
                     ]
             else:
                 # Non-array attributes with size > 1: array of size-element arrays per point
-                # e.g., uv_base with size=3 → [[0,0,0], [0,0,0], ...]
+                # e.g., uv_base with size=3 -> [[0,0,0], [0,0,0], ...]
                 attr_size = attr_data.get("size", 1)
                 if attr_size > 1:
                     if attr_data.get("type") == "int":
@@ -404,6 +510,7 @@ def _map_primitives_from_skeleton(
     bones_info: List,
     species_name: str,
     num_branches: int,
+    profile: bool = False,
 ) -> Dict:
     """
     Map Grove skeleton poly_lines to PVE primitives with foliage and hierarchy.
@@ -415,16 +522,23 @@ def _map_primitives_from_skeleton(
         bones_info: Bones info from export phase
         species_name: Species name for twig naming
         num_branches: Number of branches
+        profile: Enable timing output
 
     Returns:
         Primitives data with foliage, hierarchy, and branch data
     """
     import copy
 
+    timings = {} if profile else None
+    total_start = time.perf_counter() if profile else 0
+
+    t0 = time.perf_counter() if profile else 0
     primitives_data = {
         "attributes": copy.deepcopy(template["attributes"]),
         "points": [],
     }
+    if profile:
+        timings["copy_template"] = time.perf_counter() - t0
 
     # Get poly_lines from skeleton
     poly_lines = skeleton.poly_lines
@@ -442,6 +556,8 @@ def _map_primitives_from_skeleton(
     for poly_line in poly_lines:
         point_indices = [idx - index_offset for idx in poly_line]
         primitives_data["points"].append(point_indices)
+    if profile:
+        timings["setup_polylines"] = time.perf_counter() - t0
 
     # Fill core branch attributes
     # branchNumber (sequential ID)
@@ -456,6 +572,7 @@ def _map_primitives_from_skeleton(
         )
 
     # branchGeneration (depth in hierarchy)
+    t0 = time.perf_counter() if profile else 0
     if "branchGeneration" in primitives_data["attributes"] and model:
         from .pve_hierarchy_builder import get_branch_generation
 
@@ -466,8 +583,11 @@ def _map_primitives_from_skeleton(
             else "value"
         )
         primitives_data["attributes"]["branchGeneration"][value_key] = generations
+    if profile:
+        timings["branch_generation"] = time.perf_counter() - t0
 
     # branchParentNumber (parent branch index) - use skeleton for accurate hierarchy
+    t0 = time.perf_counter() if profile else 0
     if "branchParentNumber" in primitives_data["attributes"]:
         parents = _calculate_branch_parents_from_skeleton(skeleton, num_branches)
         value_key = (
@@ -476,6 +596,8 @@ def _map_primitives_from_skeleton(
             else "value"
         )
         primitives_data["attributes"]["branchParentNumber"][value_key] = parents
+    if profile:
+        timings["branch_parents"] = time.perf_counter() - t0
 
     # plantNumber (all same tree)
     if "plantNumber" in primitives_data["attributes"]:
@@ -487,13 +609,17 @@ def _map_primitives_from_skeleton(
         primitives_data["attributes"]["plantNumber"][value_key] = [0] * num_branches
 
     # Add parent/child hierarchy arrays from skeleton poly_line connectivity
+    t0 = time.perf_counter() if profile else 0
     hierarchy = build_hierarchy_arrays(model, num_branches, skeleton)
     if "parents" in primitives_data["attributes"]:
         primitives_data["attributes"]["parents"] = hierarchy["parents"]
     if "children" in primitives_data["attributes"]:
         primitives_data["attributes"]["children"] = hierarchy["children"]
+    if profile:
+        timings["hierarchy_arrays"] = time.perf_counter() - t0
 
     # Populate remaining required attributes to avoid array index errors in Unreal
+    t0 = time.perf_counter() if profile else 0
     # branchHierarchyNumber: Use same as branchGeneration
     if "branchHierarchyNumber" in primitives_data["attributes"]:
         if "branchGeneration" in primitives_data["attributes"]:
@@ -571,20 +697,26 @@ def _map_primitives_from_skeleton(
             else "value"
         )
         primitives_data["attributes"]["compoundBranchParentNumber"][value_key] = parents
+    if profile:
+        timings["populate_attrs"] = time.perf_counter() - t0
 
     # pivotPointLocation: First point position of each branch
+    t0 = time.perf_counter() if profile else 0
     if "pivotPointLocation" in primitives_data["attributes"] and skeleton:
-        from .pve_foliage_extractor import grove_to_pve_position
+        # Pre-fetch all skeleton points for fast access (avoiding repeated attribute lookup)
+        skel_points = skeleton.points
+        num_skel_points = len(skel_points)
 
         pivot_locations = []
         for poly_line in poly_lines:
             if len(poly_line) > 0:
                 first_point_idx = poly_line[0]
-                if first_point_idx < len(skeleton.points):
-                    pos = skeleton.points[first_point_idx]
-                    # Convert to PVE coordinates
-                    pve_pos = grove_to_pve_position(pos)
-                    pivot_locations.append(list(pve_pos))
+                if first_point_idx < num_skel_points:
+                    pos = skel_points[first_point_idx]
+                    # Inline coordinate conversion (Grove Z-up meters -> PVE Y-up centimeters)
+                    pivot_locations.append(
+                        [pos[0] * 100.0, pos[2] * 100.0, pos[1] * 100.0]
+                    )
                 else:
                     pivot_locations.append([0.0, 0.0, 0.0])
             else:
@@ -595,6 +727,8 @@ def _map_primitives_from_skeleton(
             else "value"
         )
         primitives_data["attributes"]["pivotPointLocation"][value_key] = pivot_locations
+    if profile:
+        timings["pivot_locations"] = time.perf_counter() - t0
 
     # shop_materialpath: Use default material path for species
     if "shop_materialpath" in primitives_data["attributes"]:
@@ -611,14 +745,35 @@ def _map_primitives_from_skeleton(
     # Extract foliage/twig instancer data from pre-built model
     # CRITICAL: Pass bones_info for correct branch_id assignment
     # CRITICAL: Pass num_branches from skeleton (poly_lines count), not from model branch IDs
+    t0 = time.perf_counter() if profile else 0
     foliage_data = extract_foliage_data(
-        model, species_name, bones_info=bones_info, num_branches=num_branches, verbose=False
+        model,
+        species_name,
+        bones_info=bones_info,
+        num_branches=num_branches,
+        verbose=False,
+        profile=profile,
     )
+    if profile:
+        timings["extract_foliage"] = time.perf_counter() - t0
 
     # Merge foliage data into primitives attributes
     for key, value in foliage_data.items():
         if key in primitives_data["attributes"]:
             primitives_data["attributes"][key] = value
+
+    if profile:
+        total_elapsed = time.perf_counter() - total_start
+        accounted = sum(timings.values())
+        unaccounted = total_elapsed - accounted
+        if unaccounted > 0.001:
+            timings["other_untracked"] = unaccounted
+        print(
+            f"      _map_primitives_from_skeleton breakdown ({total_elapsed:.3f}s total):"
+        )
+        for step, elapsed in sorted(timings.items(), key=lambda x: -x[1]):
+            pct = (elapsed / total_elapsed * 100) if total_elapsed > 0 else 0
+            print(f"        {step}: {elapsed:.3f}s ({pct:.1f}%)")
 
     return primitives_data
 
@@ -657,13 +812,17 @@ def _calculate_generation_from_polylines(skeleton: Any) -> List[int]:
             # First point connects to parent, check its generation
             first_point = poly_line[0]
             rebased_first = first_point - index_offset
-            parent_gen = generation[rebased_first] if 0 <= rebased_first < num_points else 0
+            parent_gen = (
+                generation[rebased_first] if 0 <= rebased_first < num_points else 0
+            )
 
             # All points in this poly_line are parent_gen + 1
             for pt_idx in poly_line:
                 rebased_idx = pt_idx - index_offset
                 if 0 <= rebased_idx < num_points:
-                    generation[rebased_idx] = max(generation[rebased_idx], parent_gen + 1)
+                    generation[rebased_idx] = max(
+                        generation[rebased_idx], parent_gen + 1
+                    )
 
     # Fill any remaining -1 with 0
     return [max(0, g) for g in generation]
@@ -793,12 +952,14 @@ def _calculate_branch_parents(skeleton: Any) -> List[int]:
     return parents
 
 
-def _calculate_branch_parents_from_skeleton(skeleton: Any, num_branches: int) -> List[int]:
+def _calculate_branch_parents_from_skeleton(
+    skeleton: Any, num_branches: int
+) -> List[int]:
     """
     Calculate parent branch index for each branch using skeleton poly_line connectivity.
 
     PVE format: Root branch (0) has parent 0 (self-reference), not -1.
-    
+
     Uses skeleton (not model) because model only has faces for branches passing cutoff.
 
     Args:
@@ -809,9 +970,9 @@ def _calculate_branch_parents_from_skeleton(skeleton: Any, num_branches: int) ->
         List of parent indices per branch (self-reference for roots)
     """
     from .pve_hierarchy_builder import _derive_parents_from_skeleton
-    
+
     immediate_parents = _derive_parents_from_skeleton(skeleton)
-    
+
     # Convert to PVE format: -1 becomes self-reference
     parents = []
     for branch_idx in range(num_branches):
@@ -824,14 +985,14 @@ def _calculate_branch_parents_from_skeleton(skeleton: Any, num_branches: int) ->
                 parents.append(parent)
         else:
             parents.append(branch_idx)
-    
+
     return parents
 
 
 def _calculate_branch_parents_from_model(model: Any, num_branches: int) -> List[int]:
     """
     DEPRECATED: Calculate parent branch index for each branch using model face attributes.
-    
+
     NOTE: This function uses model.face_attribute_branch_id which only contains
     branches passing cutoff. Use _calculate_branch_parents_from_skeleton instead.
 
@@ -894,6 +1055,7 @@ def generate_pve_from_grove(
     twig_density: float = 1.0,
     custom_growth_params: Optional[Dict] = None,
     pve_config_dir: Optional[Path] = None,
+    profile: bool = False,
 ) -> Dict:
     """
     Generate PVE preset JSON from Grove simulation with full foliage and hierarchy.
@@ -918,6 +1080,8 @@ def generate_pve_from_grove(
     Returns:
         Generated PVE preset dictionary
     """
+    timings = {} if profile else None
+
     # Load Hazel JSON as template
     if verbose:
         print(f"  Creating PVE preset from Grove data with foliage...")
@@ -936,6 +1100,7 @@ def generate_pve_from_grove(
         / "Broadleaf_Hazel_04.json"
     )
 
+    t0 = time.perf_counter() if profile else 0
     if not hazel_reference.exists():
         if verbose:
             print(
@@ -944,8 +1109,11 @@ def generate_pve_from_grove(
         template = create_empty_pve_preset()
     else:
         template = create_pve_template_from_reference(hazel_reference)
+    if profile:
+        timings["load_template"] = time.perf_counter() - t0
 
     # Map Grove data to template with all features
+    t0 = time.perf_counter() if profile else 0
     pve_data = map_grove_to_pve(
         grove,
         template,
@@ -959,12 +1127,25 @@ def generate_pve_from_grove(
         custom_growth_params=custom_growth_params,
         pve_config_dir=pve_config_dir,
         verbose=verbose,
+        profile=profile,
     )
+    if profile:
+        timings["map_grove_to_pve"] = time.perf_counter() - t0
 
     # Save to file
+    t0 = time.perf_counter() if profile else 0
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         json.dump(pve_data, f, indent=2)
+    if profile:
+        timings["write_json"] = time.perf_counter() - t0
+
+    if profile and verbose:
+        total = sum(timings.values())
+        print(f"  PVE Generation Timing (total: {total:.3f}s):")
+        for step, elapsed in sorted(timings.items(), key=lambda x: -x[1]):
+            pct = (elapsed / total * 100) if total > 0 else 0
+            print(f"    {step}: {elapsed:.3f}s ({pct:.1f}%)")
 
     if verbose:
         print(f"  [OK] PVE preset with foliage: {output_path.name}")
