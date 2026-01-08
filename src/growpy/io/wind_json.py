@@ -16,9 +16,7 @@ Schema: src/DynamicWind/Resources/UsdResources/Plugins/unrealDynamicWind/resourc
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-
-import numpy as np
+from typing import Any, Dict, List, Optional
 
 
 def extract_joint_names_from_bones_info(bones_info: List) -> List[str]:
@@ -503,5 +501,4 @@ def generate_wind_json_for_species(
         except Exception as e:
             print(f"Error generating wind JSON for {skeletal_usd.name}: {e}")
 
-    return generated_files
     return generated_files

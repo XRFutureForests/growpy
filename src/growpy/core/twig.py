@@ -163,6 +163,7 @@ def extract_twig_placements_from_model(
     model: Any,
     twig_types: Optional[List[str]] = None,
     bones_info: Optional[List] = None,
+    verbose: bool = False,
 ) -> Dict[str, List[TwigPlacement]]:
     """Extract twig placement data from Grove model.
 
@@ -170,6 +171,7 @@ def extract_twig_placements_from_model(
         model: Grove model with twig location/orientation/direction methods
         twig_types: List of twig types to extract (default: living twig types only)
         bones_info: Optional skeleton bones list for branch-based binding
+        verbose: If True, print debug information during extraction
 
     Returns:
         Dictionary mapping twig type to list of TwigPlacement objects
@@ -191,17 +193,21 @@ def extract_twig_placements_from_model(
     # Calculate number of twigs from flat array length
     num_twigs = len(twig_locations) // 3
 
-    print(f"\n=== TWIG EXTRACTION DEBUG ===")
-    print(f"Total twigs in Grove API arrays: {num_twigs}")
-    print(
-        f"  twig_locations length: {len(twig_locations)} ({len(twig_locations)//3} twigs)"
-    )
-    print(
-        f"  twig_directions length: {len(twig_directions)} ({len(twig_directions)//3} twigs)"
-    )
-    print(
-        f"  twig_orientations length: {len(twig_orientations)} ({len(twig_orientations)//3} twigs)"
-    )
+    if verbose:
+        print(f"\n=== TWIG EXTRACTION DEBUG ===")
+        print(f"Total twigs in Grove API arrays: {num_twigs}")
+        print(
+            f"  twig_locations length: {len(twig_locations)} "
+            f"({len(twig_locations)//3} twigs)"
+        )
+        print(
+            f"  twig_directions length: {len(twig_directions)} "
+            f"({len(twig_directions)//3} twigs)"
+        )
+        print(
+            f"  twig_orientations length: {len(twig_orientations)} "
+            f"({len(twig_orientations)//3} twigs)"
+        )
 
     # Extract bone IDs for binding - prefer branch-based approach if available
     bone_ids = []
@@ -251,9 +257,10 @@ def extract_twig_placements_from_model(
         attr_name = f"face_attribute_{twig_type}"
         if hasattr(model, attr_name):
             twig_type_attrs[twig_type] = getattr(model, attr_name)
-            # Count faces with this twig type
-            twig_count = sum(1 for val in getattr(model, attr_name) if val > 0)
-            print(f"  {twig_type}: {twig_count} faces marked")
+            if verbose:
+                # Count faces with this twig type
+                twig_count = sum(1 for val in getattr(model, attr_name) if val > 0)
+                print(f"  {twig_type}: {twig_count} faces marked")
 
     # Track which twig index we're processing across ALL types
     twig_idx = 0
@@ -318,13 +325,15 @@ def extract_twig_placements_from_model(
                         if len(bone) >= 8:
                             global_branch_id = int(bone[7])  # Index 7 is branch_id
                             branch_id_for_twig = global_branch_id - branch_id_offset
-                    elif bones_info:
+                    elif bones_info and verbose:
                         # Debug: bone_id out of bounds
                         print(
-                            f"  Warning: twig bone_id {local_bone_id} out of bounds (bones_info length: {len(bones_info)})"
+                            f"  Warning: twig bone_id {local_bone_id} out of bounds "
+                            f"(bones_info length: {len(bones_info)})"
                         )
                         print(
-                            f"    global_bone_id={global_bone_id}, bone_id_offset={bone_id_offset}"
+                            f"    global_bone_id={global_bone_id}, "
+                            f"bone_id_offset={bone_id_offset}"
                         )
 
             placement = TwigPlacement(
@@ -341,12 +350,13 @@ def extract_twig_placements_from_model(
             twig_idx += 1
 
     # Report results
-    print(f"\nTwig extraction complete:")
-    for twig_type in twig_types:
-        count = len(placements[twig_type])
-        print(f"  {twig_type}: {count} placements extracted")
-    print(f"Total twigs extracted: {sum(len(p) for p in placements.values())}")
-    print(f"Total twigs processed from arrays: {twig_idx}/{num_twigs}")
-    print("=== END TWIG EXTRACTION DEBUG ===\n")
+    if verbose:
+        print(f"\nTwig extraction complete:")
+        for twig_type in twig_types:
+            count = len(placements[twig_type])
+            print(f"  {twig_type}: {count} placements extracted")
+        print(f"Total twigs extracted: {sum(len(p) for p in placements.values())}")
+        print(f"Total twigs processed from arrays: {twig_idx}/{num_twigs}")
+        print("=== END TWIG EXTRACTION DEBUG ===\n")
 
     return placements

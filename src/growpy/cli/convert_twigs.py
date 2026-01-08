@@ -415,12 +415,10 @@ def process_twig_directory(
                 results[species_name].extend(exported_files)
 
         except Exception as e:
-            # Print error for debugging
             print(f"  [ERROR] Failed to process {blend_file.name}: {e}")
             import traceback
 
             traceback.print_exc()
-            pass
 
     return results
 
@@ -583,6 +581,7 @@ Output per twig:
                     twig_filter = list(set(twig_filter))  # Remove duplicates
 
             except Exception as e:
+                print(f"Error processing CSV file: {e}")
                 return 1
 
     if args.path.is_file() and args.path.suffix == ".blend":

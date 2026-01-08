@@ -549,9 +549,13 @@ def generate_forest_exports(
     height_scale = HEIGHT_SCALE  # Hardcoded height scale
 
     if not TREE_EXPORT_AVAILABLE:
+        if verbose:
+            print("Error: Tree export not available (missing dependencies)")
         return
 
     if not csv_path.exists():
+        if verbose:
+            print(f"Error: CSV file not found: {csv_path}")
         return
 
     # Load forest data
@@ -565,17 +569,24 @@ def generate_forest_exports(
                 col for col in required_columns if col not in forest_data.columns
             ]
             if missing_cols:
+                if verbose:
+                    print(f"Error: Missing required columns: {missing_cols}")
                 return
 
             # Z column will be added by create_forest if missing
 
     except Exception as e:
+        if verbose:
+            print(f"Error loading CSV: {e}")
         return
 
     with timer.track("calculate_growth_cycles"):
         try:
             calculate_growth_cycles_from_height(forest_data)
-        except Exception:
+        except Exception as e:
+            if verbose:
+                print(f"Warning: Could not calculate growth cycles from height: {e}")
+                print("  Using default: growth_cycles=10, delay=0")
             forest_data["growth_cycles"] = 10
             forest_data["delay"] = 0
 
@@ -616,6 +627,8 @@ def generate_forest_exports(
                 preset_overrides=preset_overrides,
             )
     except Exception as e:
+        if verbose:
+            print(f"Error creating/simulating forest: {e}")
         return
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -658,9 +671,9 @@ def generate_forest_exports(
                 timer=timer,
             )
 
-    except Exception:
-        # Silently fail - export is optional
-        pass
+    except Exception as e:
+        if verbose:
+            print(f"Warning: Export failed: {e}")
 
 
 def generate_unreal_import_script(
