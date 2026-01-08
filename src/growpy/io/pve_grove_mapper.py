@@ -9,8 +9,6 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import numpy as np
-
 from ..config.pve_species_overrides import apply_species_overrides
 from .pve_foliage_extractor import extract_foliage_data
 from .pve_growth_defaults import get_default_growth_params, merge_growth_params

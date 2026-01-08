@@ -270,6 +270,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
                     ]
 
         except Exception as e:
+            print(f"Error processing CSV file: {e}")
             sys.exit(1)
 
         # Get available species and filter to CSV species only

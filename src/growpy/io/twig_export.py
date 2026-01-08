@@ -1652,7 +1652,6 @@ def trim_by_alpha_mask(
         import traceback
 
         traceback.print_exc()
-        pass
 
 
 def _get_alpha_texture_for_geometry(tex_map: dict):
