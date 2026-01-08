@@ -5,6 +5,7 @@ Converts Grove twig instances to PVE instancer format with proper
 coordinate system conversion and grouping by branch.
 """
 
+import math
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -106,6 +107,7 @@ def extract_foliage_data(
     bones_info: Optional[List] = None,
     num_branches: Optional[int] = None,
     verbose: bool = False,
+    profile: bool = False,
 ) -> Dict[str, Dict]:
     """
     Extract foliage instancer data from a Grove model.
@@ -120,17 +122,25 @@ def extract_foliage_data(
         bones_info: Bones info from export phase for branch_id calculation - REQUIRED
         num_branches: Number of branches from skeleton (poly_lines count). If None, calculated from model.
         verbose: Print detailed extraction information
+        profile: Enable timing output
 
     Returns:
         Dictionary with instancer_* attribute structures
     """
+    import time
+
     from ..core.twig import extract_twig_placements_from_model
+
+    timings = {} if profile else None
 
     # Extract twig placements using the same method as USD export
     # CRITICAL: Pass bones_info so branch_id is correctly calculated
+    t0 = time.perf_counter() if profile else 0
     twig_placements_by_type = extract_twig_placements_from_model(
         model, bones_info=bones_info
     )
+    if profile:
+        timings["extract_twig_placements"] = time.perf_counter() - t0
 
     # Count total twigs across all types
     total_twigs = sum(
@@ -167,6 +177,7 @@ def extract_foliage_data(
 
     # Group twigs by branch_id - flatten all twig types into one list
     # CRITICAL: Handle None branch_ids (assign to branch 0 as fallback)
+    t0 = time.perf_counter() if profile else 0
     twigs_by_branch = {}
     skipped_none_branch = 0
     for twig_type, placements in twig_placements_by_type.items():
@@ -183,15 +194,20 @@ def extract_foliage_data(
                 twigs_by_branch[branch_id] = []
             # Store twig_type with placement for filename construction
             twigs_by_branch[branch_id].append((twig_type, placement))
+    if profile:
+        timings["group_by_branch"] = time.perf_counter() - t0
 
     if skipped_none_branch > 0:
-        print(f"  PVE: Warning: {skipped_none_branch} twigs had None/invalid branch_id, assigned to branch 0")
+        print(
+            f"  PVE: Warning: {skipped_none_branch} twigs had None/invalid branch_id, assigned to branch 0"
+        )
     print(f"  PVE: Grouped {total_twigs} twigs into {len(twigs_by_branch)} branches")
     print(
         f"  PVE: num_branches={num_branches}, branch_ids in data: {sorted(list(twigs_by_branch.keys()))[:10]}"
     )
 
     # Build instancer arrays
+    t0 = time.perf_counter() if profile else 0
     instancer_names = []
     instancer_pivots = []
     instancer_ups = []
@@ -234,26 +250,19 @@ def extract_foliage_data(
                 species_clean = species_name.replace(" ", "_").lower()
                 twig_name = f"{species_clean}_twig_{variant}"
 
-                # Convert to PVE format
+                # Convert to PVE format (Y-up centimeters)
                 pve_pos = grove_to_pve_position(position)
-                # TwigPlacement.normal is the direction vector - use it as the "up" vector
-                # For PVE, we need "up" (growth direction) and "normal" (surface normal)
-                # Use the twig direction as "up" and derive normal from it
-                pve_normal = grove_to_pve_position(normal)  # Convert direction vector
+                pve_normal = grove_to_pve_position(normal)
 
-                # CRITICAL: Normalize vectors to unit length (magnitude = 1.0)
-                # Unreal PVE expects normalized direction vectors
-                import math
-
-                magnitude = math.sqrt(sum(x * x for x in pve_normal))
-                if magnitude > 0:
-                    pve_normal_normalized = tuple(x / magnitude for x in pve_normal)
+                # Fast vector normalization (avoid tuple/list overhead)
+                nx, ny, nz = pve_normal
+                mag_sq = nx * nx + ny * ny + nz * nz
+                if mag_sq > 1e-10:
+                    inv_mag = 1.0 / math.sqrt(mag_sq)
+                    up = (nx * inv_mag, ny * inv_mag, nz * inv_mag)
                 else:
-                    pve_normal_normalized = (0.0, 0.0, 1.0)  # Default up if zero vector
-
-                # For now, use the same normalized vector for both up and normal
-                up = pve_normal_normalized
-                pve_normal_out = pve_normal_normalized
+                    up = (0.0, 1.0, 0.0)  # Default up if zero vector
+                pve_normal_out = up
 
                 # Append to arrays
                 names.append(twig_name)
@@ -279,6 +288,14 @@ def extract_foliage_data(
             instancer_normals.append([])
             instancer_scales.append([])
             instancer_lfrs.append([])
+
+    if profile:
+        timings["build_instancer_arrays"] = time.perf_counter() - t0
+        total = sum(timings.values())
+        print(f"        extract_foliage_data breakdown ({total:.3f}s):")
+        for step, elapsed in sorted(timings.items(), key=lambda x: -x[1]):
+            pct = (elapsed / total * 100) if total > 0 else 0
+            print(f"          {step}: {elapsed:.3f}s ({pct:.1f}%)")
 
     return {
         "instancer_name": {
