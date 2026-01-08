@@ -348,7 +348,7 @@ def _extract_points_data(grove: Any, tree_index: int = 0) -> Dict:
             "budNumber": {},  # Bud identifier
             "budStatus": {},  # Active/dormant/etc
             "budDirection": {},  # Growth direction vector
-            "budDevelopment": {},  # Development stage
+            "budDevelopment": {},  # Development stage: 6-element int array [gen, cycle, age, 0, 0, max_age]
             "budHormoneLevels": {},  # Auxin/cytokinin levels
             "budLateralMeristem": {},  # Lateral bud info
             "budLightDetected": {},  # Light exposure

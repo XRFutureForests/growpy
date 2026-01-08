@@ -214,6 +214,15 @@ def extract_twig_placements_from_model(
     if hasattr(model, "point_attribute_bone_id"):
         bone_ids = model.point_attribute_bone_id
 
+    # FAST PATH: Direct face-to-branch mapping (avoids vertex voting)
+    face_branch_ids = None
+    if hasattr(model, "face_attribute_branch_id"):
+        face_branch_ids = model.face_attribute_branch_id
+        if verbose:
+            print(f"  Using direct face_attribute_branch_id (fast path)")
+    elif verbose:
+        print(f"  Using vertex voting fallback (slow path)")
+
     # Build branch_id → branch_root_bone_id mapping using is_branch_root flag
     # bones_info format: (is_tree_root, parent_bone_id, start_point, end_point, radius, mass, is_branch_root, branch_id)
 
@@ -238,7 +247,11 @@ def extract_twig_placements_from_model(
         branch_id_offset = int(bones_info[0][7])  # First bone's branch_id is the offset
 
     branch_root_bones = {}
+    # Pre-compute global_bone_id -> local_branch_id lookup table for O(1) access
+    # This avoids repeated bones_info lookups in the inner loop
+    bone_to_branch = {}
     if bones_info:
+        num_bones = len(bones_info)
         for bone_idx, bone in enumerate(bones_info):
             if len(bone) >= 8:
                 is_branch_root = bone[6]  # Index 6 is is_branch_root flag
@@ -246,6 +259,8 @@ def extract_twig_placements_from_model(
                 local_branch_id = (
                     global_branch_id - branch_id_offset
                 )  # Convert to local
+                # Store branch_id for every bone (not just root bones)
+                bone_to_branch[bone_idx] = local_branch_id
                 if is_branch_root:
                     branch_root_bones[local_branch_id] = bone_idx
 
@@ -293,48 +308,30 @@ def extract_twig_placements_from_model(
                 twig_directions[base_idx + 2],
             )
 
-            # BONE-BASED BINDING: Get bone_id from vertices, then extract branch_id from that bone
+            # DIRECT BRANCH LOOKUP: Use face_attribute_branch_id for O(1) access
+            # This is much faster than the old vertex voting approach
             twig_bone_id = None
             branch_id_for_twig = None
 
-            if bone_ids:
-                # Get the bone that this twig face belongs to via vertex voting
-                from collections import Counter
+            if face_branch_ids is not None and face_idx < len(face_branch_ids):
+                # Direct lookup - no vertex iteration needed
+                global_branch_id = face_branch_ids[face_idx]
+                branch_id_for_twig = global_branch_id - branch_id_offset
 
-                face_vert_indices = list(face)
-                face_bone_ids = []
+            # Fallback to vertex voting only if face_attribute_branch_id unavailable
+            elif bone_ids:
+                face_vert_indices = face
+                bone_counts = {}
                 for vert_idx in face_vert_indices:
                     if vert_idx < len(bone_ids):
-                        face_bone_ids.append(bone_ids[vert_idx])
+                        bid = bone_ids[vert_idx]
+                        bone_counts[bid] = bone_counts.get(bid, 0) + 1
 
-                if face_bone_ids:
-                    # Get most common bone ID (this is a GLOBAL bone ID)
-                    global_bone_id = Counter(face_bone_ids).most_common(1)[0][0]
-                    # Convert global bone ID to local bone index
+                if bone_counts:
+                    global_bone_id = max(bone_counts, key=bone_counts.get)
                     local_bone_id = global_bone_id - bone_id_offset
                     twig_bone_id = local_bone_id
-
-                    # Now get the branch_id from this bone
-                    # bones_info is indexed by local_bone_id
-                    if (
-                        bones_info
-                        and local_bone_id < len(bones_info)
-                        and local_bone_id >= 0
-                    ):
-                        bone = bones_info[local_bone_id]
-                        if len(bone) >= 8:
-                            global_branch_id = int(bone[7])  # Index 7 is branch_id
-                            branch_id_for_twig = global_branch_id - branch_id_offset
-                    elif bones_info and verbose:
-                        # Debug: bone_id out of bounds
-                        print(
-                            f"  Warning: twig bone_id {local_bone_id} out of bounds "
-                            f"(bones_info length: {len(bones_info)})"
-                        )
-                        print(
-                            f"    global_bone_id={global_bone_id}, "
-                            f"bone_id_offset={bone_id_offset}"
-                        )
+                    branch_id_for_twig = bone_to_branch.get(local_bone_id)
 
             placement = TwigPlacement(
                 type=current_twig_type,
