@@ -453,7 +453,7 @@ def _map_primitives_from_skeleton(
     if "branchGeneration" in primitives_data["attributes"] and model:
         from .pve_hierarchy_builder import get_branch_generation
 
-        generations = get_branch_generation(model, num_branches)
+        generations = get_branch_generation(model, num_branches, skeleton)
         value_key = (
             "values"
             if "values" in primitives_data["attributes"]["branchGeneration"]
@@ -461,9 +461,9 @@ def _map_primitives_from_skeleton(
         )
         primitives_data["attributes"]["branchGeneration"][value_key] = generations
 
-    # branchParentNumber (parent branch index)
-    if "branchParentNumber" in primitives_data["attributes"] and model:
-        parents = _calculate_branch_parents_from_model(model, num_branches)
+    # branchParentNumber (parent branch index) - use skeleton for accurate hierarchy
+    if "branchParentNumber" in primitives_data["attributes"]:
+        parents = _calculate_branch_parents_from_skeleton(skeleton, num_branches)
         value_key = (
             "values"
             if "values" in primitives_data["attributes"]["branchParentNumber"]
@@ -480,8 +480,8 @@ def _map_primitives_from_skeleton(
         )
         primitives_data["attributes"]["plantNumber"][value_key] = [0] * num_branches
 
-    # Add parent/child hierarchy arrays from model face attributes
-    hierarchy = build_hierarchy_arrays(model, num_branches)
+    # Add parent/child hierarchy arrays from skeleton poly_line connectivity
+    hierarchy = build_hierarchy_arrays(model, num_branches, skeleton)
     if "parents" in primitives_data["attributes"]:
         primitives_data["attributes"]["parents"] = hierarchy["parents"]
     if "children" in primitives_data["attributes"]:
@@ -794,16 +794,56 @@ def _calculate_branch_parents(skeleton: Any) -> List[int]:
     return parents
 
 
+def _calculate_branch_parents_from_skeleton(skeleton: Any, num_branches: int) -> List[int]:
+    """
+    Calculate parent branch index for each branch using skeleton poly_line connectivity.
+
+    PVE format: Root branch (0) has parent 0 (self-reference), not -1.
+    
+    Uses skeleton (not model) because model only has faces for branches passing cutoff.
+
+    Args:
+        skeleton: Grove skeleton with poly_lines
+        num_branches: Total number of branches
+
+    Returns:
+        List of parent indices per branch (self-reference for roots)
+    """
+    from .pve_hierarchy_builder import _derive_parents_from_skeleton
+    
+    immediate_parents = _derive_parents_from_skeleton(skeleton)
+    
+    # Convert to PVE format: -1 becomes self-reference
+    parents = []
+    for branch_idx in range(num_branches):
+        if branch_idx < len(immediate_parents):
+            parent = immediate_parents[branch_idx]
+            if parent == -1:
+                # Root - use self-reference for PVE format
+                parents.append(branch_idx)
+            else:
+                parents.append(parent)
+        else:
+            parents.append(branch_idx)
+    
+    return parents
+
+
 def _calculate_branch_parents_from_model(model: Any, num_branches: int) -> List[int]:
     """
-    Calculate parent branch index for each branch using model face attributes.
+    DEPRECATED: Calculate parent branch index for each branch using model face attributes.
+    
+    NOTE: This function uses model.face_attribute_branch_id which only contains
+    branches passing cutoff. Use _calculate_branch_parents_from_skeleton instead.
+
+    PVE format: Root branch (0) has parent 0 (self-reference), not -1.
 
     Args:
         model: Grove model with face_attribute_branch_id and face_attribute_branch_id_parent
         num_branches: Total number of branches (from skeleton poly_lines)
 
     Returns:
-        List of parent indices per branch (-1 for root)
+        List of parent indices per branch (0 for root = self-reference)
     """
     # Extract branch parent relationships from model face attributes
     branch_ids = model.face_attribute_branch_id
@@ -829,11 +869,13 @@ def _calculate_branch_parents_from_model(model: Any, num_branches: int) -> List[
 
             # Remap parent to index
             if parent_raw == -1 or parent_raw not in branch_id_to_idx:
-                parent_idx = -1
+                # Root branch - use self-reference (branch_idx) for PVE format
+                parent_idx = branch_idx
             else:
                 parent_idx = branch_id_to_idx[parent_raw]
         else:
-            parent_idx = -1
+            # Fallback - use self-reference
+            parent_idx = branch_idx
 
         parents.append(parent_idx)
 
