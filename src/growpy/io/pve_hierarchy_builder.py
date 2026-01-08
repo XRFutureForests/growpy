@@ -1,65 +1,133 @@
 """
 Build parent/child hierarchy arrays for PVE preset primitives.
 
-Extracts branch relationship data from Grove model face attributes.
+Derives branch relationship data from Grove skeleton poly_line connectivity.
+NOTE: We use skeleton (not model) because model.face_attribute_branch_id only
+contains faces for branches that pass cutoff filters. Skeleton has ALL branches.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
-def build_hierarchy_arrays(model: Any, num_branches: int) -> Dict[str, Dict]:
+def _derive_parents_from_skeleton(skeleton: Any) -> List[int]:
     """
-    Build parent and children arrays from Grove model branch IDs.
+    Derive parent branch indices from skeleton poly_line connectivity.
+    
+    Each poly_line is a branch. A branch's first point connects to its parent branch.
+    We find the parent by looking for another branch that contains our first point
+    (but doesn't start with it - that would be a sibling).
+    
+    Args:
+        skeleton: Grove skeleton object with poly_lines attribute
+        
+    Returns:
+        List of parent indices (-1 for root branches)
+    """
+    poly_lines = skeleton.poly_lines
+    num_branches = len(poly_lines)
+    
+    if num_branches == 0:
+        return []
+    
+    # Build point -> branches mapping
+    point_to_branches = {}
+    for branch_idx, pl in enumerate(poly_lines):
+        for point_idx in pl:
+            if point_idx not in point_to_branches:
+                point_to_branches[point_idx] = []
+            point_to_branches[point_idx].append(branch_idx)
+    
+    # Derive parent for each branch
+    parents = []
+    for branch_idx, pl in enumerate(poly_lines):
+        if len(pl) == 0:
+            parents.append(-1)
+            continue
+        
+        first_point = pl[0]
+        containing_branches = point_to_branches.get(first_point, [])
+        
+        # Find parent: another branch that contains this point but doesn't start with it
+        parent = -1
+        for other_branch in containing_branches:
+            if other_branch == branch_idx:
+                continue
+            other_pl = poly_lines[other_branch]
+            if len(other_pl) > 0 and other_pl[0] != first_point:
+                # This branch contains our first point but doesn't start with it - it's the parent
+                parent = other_branch
+                break
+        
+        parents.append(parent)
+    
+    return parents
+
+
+def build_hierarchy_arrays(
+    model: Any, 
+    num_branches: int, 
+    skeleton: Optional[Any] = None
+) -> Dict[str, Dict]:
+    """
+    Build parent and children arrays from Grove skeleton poly_line connectivity.
+
+    PVE format expects:
+    - parents: Full ancestor chain from branch back to root [[0], [1, 0], [2, 1, 0], ...]
+    - children: List of direct children for each branch [[1, 2, 3], [4, 5], ...]
+
+    The root branch (0) has parents = [0] (self-reference, not -1).
+    
+    CRITICAL: Uses skeleton (not model) for hierarchy because model only contains
+    faces for branches passing cutoff filters, while skeleton has ALL branches.
 
     Args:
-        model: Grove model object with face_attribute_branch_id and face_attribute_branch_id_parent
+        model: Grove model (legacy, kept for compatibility but not used)
         num_branches: Total number of branches in the tree (from skeleton poly_lines)
+        skeleton: Grove skeleton object - REQUIRED for hierarchy derivation
 
     Returns:
         Dictionary with "parents" and "children" attribute structures
     """
-    # Extract branch parent relationships from model face attributes
-    branch_ids = model.face_attribute_branch_id
-    parent_branch_ids = model.face_attribute_branch_id_parent
-
-    # Build branch->parent mapping using raw branch IDs
-    # Note: branch IDs may not be consecutive 0 to N-1
-    branch_to_parent_raw = {}
-    for branch_id, parent_id in zip(branch_ids, parent_branch_ids):
-        if branch_id not in branch_to_parent_raw:
-            branch_to_parent_raw[branch_id] = parent_id
-
-    # Build remapping from model branch IDs to skeleton indices (0 to num_branches-1)
-    # Skeleton poly_lines are indexed 0 to num_branches-1
-    # We need to map sparse model branch IDs to this dense range
-    unique_branch_ids = sorted(set(branch_ids))
-    branch_id_to_idx = {bid: idx for idx, bid in enumerate(unique_branch_ids)}
-
-    # Build parents array and children tracking
+    if skeleton is None:
+        # Fallback: return empty/self-referencing hierarchy
+        print("  [HIERARCHY] WARNING: No skeleton provided, using default hierarchy")
+        parents_values = [[i] for i in range(num_branches)]
+        return {
+            "parents": {"isArray": True, "size": 1, "type": "int", "values": parents_values},
+            "children": {"isArray": True, "size": 1, "type": "int", "values": [[] for _ in range(num_branches)]},
+        }
+    
+    # Derive immediate parents from skeleton poly_line connectivity
+    immediate_parents = _derive_parents_from_skeleton(skeleton)
+    
+    # Build full parent chain and children arrays
     parents_values = []
     children_arrays = [[] for _ in range(num_branches)]
 
     for branch_idx in range(num_branches):
-        # Get the original branch ID for this index if it exists
-        if branch_idx < len(unique_branch_ids):
-            original_branch_id = unique_branch_ids[branch_idx]
-            parent_raw = branch_to_parent_raw.get(original_branch_id, -1)
-
-            # Remap parent to index
-            if parent_raw == -1 or parent_raw not in branch_id_to_idx:
-                parent_idx = -1
-            else:
-                parent_idx = branch_id_to_idx[parent_raw]
-        else:
-            parent_idx = -1
+        parent_idx = immediate_parents[branch_idx] if branch_idx < len(immediate_parents) else -1
 
         if parent_idx == -1:
-            # Root branch - no parent
-            parents_values.append([-1])
+            # Root branch - self-reference (PVE format uses [branch_idx] not [-1])
+            parents_values.append([branch_idx])
         else:
-            # Has parent
-            parents_values.append([parent_idx])
-            # Add this branch as child of parent
+            # Build full ancestor chain: [immediate_parent, grandparent, ..., root]
+            chain = []
+            current = branch_idx
+            visited = set()
+            while current >= 0 and current < len(immediate_parents) and current not in visited:
+                parent = immediate_parents[current]
+                if parent == -1:
+                    # Reached root - add root (which is current) to chain
+                    chain.append(current)
+                    break
+                chain.append(parent)
+                visited.add(current)
+                current = parent
+
+            parents_values.append(chain)
+
+            # Add this branch as child of its immediate parent
             if 0 <= parent_idx < num_branches:
                 children_arrays[parent_idx].append(branch_idx)
 
@@ -78,80 +146,56 @@ def build_hierarchy_arrays(model: Any, num_branches: int) -> Dict[str, Dict]:
         },
     }
 
-    return {
-        "parents": {
-            "isArray": True,
-            "size": 1,
-            "type": "int",
-            "values": parents_values,
-        },
-        "children": {
-            "isArray": True,
-            "size": 1,
-            "type": "int",
-            "values": children_arrays,
-        },
-    }
 
-
-def get_branch_generation(model: Any, num_branches: int) -> List[int]:
+def get_branch_generation(
+    model: Any, 
+    num_branches: int, 
+    skeleton: Optional[Any] = None
+) -> List[int]:
     """
     Calculate generation number for each branch.
 
     Generation 0 = trunk, 1 = primary branches, 2 = secondary, etc.
+    
+    CRITICAL: Uses skeleton (not model) because model only contains faces for
+    branches passing cutoff filters, while skeleton has ALL branches.
 
     Args:
-        model: Grove model object with face_attribute_branch_id_parent
+        model: Grove model object (legacy, kept for compatibility)
         num_branches: Total number of branches (from skeleton poly_lines)
+        skeleton: Grove skeleton object - REQUIRED for generation calculation
 
     Returns:
         List of generation numbers per branch
     """
-    # Extract branch parent relationships from model
-    branch_ids = model.face_attribute_branch_id
-    parent_branch_ids = model.face_attribute_branch_id_parent
-
-    # Build branch->parent mapping using raw branch IDs
-    branch_to_parent_raw = {}
-    for branch_id, parent_id in zip(branch_ids, parent_branch_ids):
-        if branch_id not in branch_to_parent_raw:
-            branch_to_parent_raw[branch_id] = parent_id
-
-    # Build remapping from model branch IDs to skeleton indices (0 to num_branches-1)
-    unique_branch_ids = sorted(set(branch_ids))
-    branch_id_to_idx = {bid: idx for idx, bid in enumerate(unique_branch_ids)}
-
-    # Calculate generations
+    if skeleton is None:
+        # Fallback: all branches at generation 0
+        print("  [HIERARCHY] WARNING: No skeleton provided, using generation 0 for all")
+        return [0] * num_branches
+    
+    # Derive parents from skeleton
+    immediate_parents = _derive_parents_from_skeleton(skeleton)
+    
+    # Calculate generations by counting ancestors to root
     generations = [0] * num_branches
-
-    # Iteratively calculate generations (handle cycles safely)
-    max_iterations = num_branches
-    for _ in range(max_iterations):
-        changed = False
-        for branch_idx in range(num_branches):
-            # Get original branch ID for this index
-            if branch_idx < len(unique_branch_ids):
-                original_branch_id = unique_branch_ids[branch_idx]
-                parent_raw = branch_to_parent_raw.get(original_branch_id, -1)
-
-                # Remap parent to index
-                if parent_raw == -1 or parent_raw not in branch_id_to_idx:
-                    parent_idx = -1
-                else:
-                    parent_idx = branch_id_to_idx[parent_raw]
-            else:
-                parent_idx = -1
-
-            if parent_idx == -1:
-                generations[branch_idx] = 0  # Root
-            elif 0 <= parent_idx < num_branches:
-                # Generation is parent's generation + 1
-                new_gen = generations[parent_idx] + 1
-                if new_gen != generations[branch_idx]:
-                    generations[branch_idx] = new_gen
-                    changed = True
-
-        if not changed:
-            break
-
+    
+    for branch_idx in range(num_branches):
+        if branch_idx >= len(immediate_parents):
+            continue
+            
+        # Count depth to root
+        depth = 0
+        current = branch_idx
+        visited = set()
+        while current >= 0 and current < len(immediate_parents) and current not in visited:
+            parent = immediate_parents[current]
+            if parent == -1:
+                break  # Reached root
+            depth += 1
+            visited.add(current)
+            current = parent
+        
+        generations[branch_idx] = depth
+    
     return generations
+
