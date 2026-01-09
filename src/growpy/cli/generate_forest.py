@@ -684,6 +684,7 @@ def generate_forest_exports(
 def generate_unreal_import_script(
     output_dir: Path,
     project_path: str = "/Game/GrowPy/Trees",
+    forest_data: Optional[pd.DataFrame] = None,
 ) -> Path:
     """
     Generate a standalone Unreal Python script for importing forest USD files.
@@ -700,6 +701,7 @@ def generate_unreal_import_script(
     Args:
         output_dir: Directory containing exported USD files
         project_path: Unreal project Content path
+        forest_data: Optional DataFrame with tree positions (must have fid, x, y, z columns)
 
     Returns:
         Path to generated script file
@@ -744,6 +746,25 @@ def generate_unreal_import_script(
     num_species = len(trees_by_species)
     total_trees = len(nanite_files)
 
+    # Build TREE_POSITIONS dictionary from forest_data if provided
+    tree_positions_dict = {}
+    if forest_data is not None:
+        for _, row in forest_data.iterrows():
+            fid = int(row["fid"])
+            x = float(row["x"])
+            y = float(row["y"])
+            z = float(row.get("z", 0.0))  # Default to 0 if z not present
+            species = row["species"]
+            # Format: "species_####" matching tree folder names
+            tree_key = f"{species}_{fid:04d}"
+            tree_positions_dict[tree_key] = (x, y, z)
+
+    # Format dictionary as Python code for the script
+    tree_positions_code = "TREE_POSITIONS = {\n"
+    for tree_key, (x, y, z) in sorted(tree_positions_dict.items()):
+        tree_positions_code += f"    '{tree_key}': ({x}, {y}, {z}),\n"
+    tree_positions_code += "}\n"
+
     # Generate script content with forward slashes to avoid Unicode escape errors
     script_path_str = str(script_path).replace("\\", "/")
 
@@ -772,6 +793,9 @@ IMPORT_PATH = "{project_path}"
 # Delay between imports to prevent crashes (seconds)
 # Increase if you experience crashes
 IMPORT_DELAY = 0.5
+
+# Tree positions from CSV (in meters, multiply by 100 for Unreal units)
+{tree_positions_code}
 
 print(f"Destination: {{IMPORT_PATH}}")
 print(f"Found {num_species} species with {total_trees} trees\\n")
@@ -1233,9 +1257,20 @@ Unreal Engine Integration:
 
         # Generate Unreal scripts if requested
         if args.import_to_unreal:
+            # Load forest data for tree positions
+            try:
+                forest_data = pd.read_csv(csv_path)
+                # Ensure fid column exists
+                if "fid" not in forest_data.columns:
+                    forest_data["fid"] = range(1, len(forest_data) + 1)
+            except Exception as e:
+                print(f"Warning: Could not load CSV for position data: {e}")
+                forest_data = None
+
             import_script = generate_unreal_import_script(
                 args.output_dir,
                 args.unreal_project_path,
+                forest_data=forest_data,
             )
 
             cleanup_script = generate_unreal_cleanup_script(
