@@ -416,6 +416,43 @@ def _map_points_from_skeleton(skeleton: Any, template: Dict) -> Dict:
             )
         points_data["attributes"]["budDevelopment"][value_key] = bud_development_data
 
+    # budDirection - Calculate from skeleton poly_lines
+    if "budDirection" in points_data["attributes"]:
+        bud_directions = _calculate_bud_directions(skeleton)
+        value_key = (
+            "values"
+            if "values" in points_data["attributes"]["budDirection"]
+            else "value"
+        )
+        points_data["attributes"]["budDirection"][value_key] = bud_directions
+
+    # budNumber - Assign sequential IDs
+    if "budNumber" in points_data["attributes"]:
+        bud_numbers = list(range(1, num_points + 1))  # Start from 1
+        value_key = (
+            "values" if "values" in points_data["attributes"]["budNumber"] else "value"
+        )
+        points_data["attributes"]["budNumber"][value_key] = bud_numbers
+
+    # LOD gradients - Calculate from pscale and age
+    if age_values and "pscale" in points_data["attributes"]:
+        pscale_key = (
+            "values" if "values" in points_data["attributes"]["pscale"] else "value"
+        )
+        pscales = points_data["attributes"]["pscale"][pscale_key]
+
+        lod_gradients = _calculate_lod_gradients(skeleton, pscales, age_values)
+
+        # Populate each LOD gradient attribute
+        for lod_name, lod_values in lod_gradients.items():
+            if lod_name in points_data["attributes"]:
+                value_key = (
+                    "values"
+                    if "values" in points_data["attributes"][lod_name]
+                    else "value"
+                )
+                points_data["attributes"][lod_name][value_key] = lod_values
+
     for attr_name, attr_data in points_data["attributes"].items():
         value_key = "values" if "values" in attr_data else "value"
 
@@ -1040,6 +1077,183 @@ def _calculate_branch_parents_from_model(model: Any, num_branches: int) -> List[
         parents.append(parent_idx)
 
     return parents
+
+
+def _calculate_bud_directions(skeleton: Any) -> List[List[float]]:
+    """
+    Calculate bud direction vectors from skeleton poly_lines.
+
+    Each point gets up to 6 bud direction vectors (18 floats total).
+    Directions are computed from point-to-point connections in poly_lines.
+
+    Args:
+        skeleton: Grove skeleton with points and poly_lines
+
+    Returns:
+        List of 18-float arrays (6 buds × 3D vector) per point
+    """
+    import math
+
+    skeleton_points = skeleton.points
+    num_points = len(skeleton_points)
+    poly_lines = skeleton.poly_lines
+
+    if not poly_lines:
+        return [[0.0] * 18 for _ in range(num_points)]
+
+    # Calculate index offset for rebasing
+    all_indices = [idx for pl in poly_lines for idx in pl]
+    index_offset = min(all_indices) if all_indices else 0
+
+    # Initialize with zero vectors (6 buds per point, 3 floats per bud)
+    bud_directions = [[0.0] * 18 for _ in range(num_points)]
+
+    # Build a map from point index to all poly_lines it belongs to
+    point_to_polylines = {}
+    for pl_idx, poly_line in enumerate(poly_lines):
+        for pt_idx in poly_line:
+            rebased_idx = pt_idx - index_offset
+            if rebased_idx not in point_to_polylines:
+                point_to_polylines[rebased_idx] = []
+            point_to_polylines[rebased_idx].append((pl_idx, poly_line))
+
+    # Calculate direction vectors for each point
+    for point_idx in range(num_points):
+        if point_idx not in point_to_polylines:
+            continue
+
+        directions = []
+
+        # For each poly_line containing this point
+        for pl_idx, poly_line in point_to_polylines[point_idx]:
+            # Find this point's position in the poly_line
+            global_idx = point_idx + index_offset
+            if global_idx not in poly_line:
+                continue
+
+            pos_in_line = poly_line.index(global_idx)
+
+            # Calculate forward direction (to next point)
+            if pos_in_line < len(poly_line) - 1:
+                next_global_idx = poly_line[pos_in_line + 1]
+                next_idx = next_global_idx - index_offset
+
+                if 0 <= next_idx < num_points:
+                    p1 = skeleton_points[point_idx]
+                    p2 = skeleton_points[next_idx]
+
+                    # Calculate direction vector (Grove Z-up coords)
+                    dx = p2[0] - p1[0]
+                    dy = p2[1] - p1[1]
+                    dz = p2[2] - p1[2]
+
+                    # Normalize
+                    length = math.sqrt(dx * dx + dy * dy + dz * dz)
+                    if length > 0.0001:
+                        dx /= length
+                        dy /= length
+                        dz /= length
+
+                        # Convert to PVE Y-up coords (swap Y and Z)
+                        # Grove: (X, Y, Z) where Z is up
+                        # PVE:   (X, Z, Y) where Y is up
+                        pve_x = dx
+                        pve_y = dz  # Grove Z becomes PVE Y
+                        pve_z = dy  # Grove Y becomes PVE Z
+
+                        directions.extend([pve_x, pve_y, pve_z])
+
+        # Fill bud_directions array (up to 6 buds = 18 floats)
+        for i in range(min(len(directions), 18)):
+            bud_directions[point_idx][i] = directions[i]
+
+        # If we have fewer than 6 buds worth of directions, pad with zeros
+        # (already initialized to zeros, so no action needed)
+
+    return bud_directions
+
+
+def _calculate_lod_gradients(
+    skeleton: Any, pscales: List[float], age_values: List[int]
+) -> Dict[str, List[float]]:
+    """
+    Calculate LOD (Level of Detail) gradient values from skeleton data.
+
+    PVE uses these gradients to control mesh density and material properties.
+    Gradients range from ~1.0 at base to ~0.0 at tips.
+
+    Args:
+        skeleton: Grove skeleton
+        pscales: Point scale (radius) values
+        age_values: Point age values
+
+    Returns:
+        Dictionary with LOD gradient arrays
+    """
+    num_points = len(skeleton.points)
+
+    if not pscales or not age_values:
+        # Fallback if data is missing
+        return {
+            "LOD_totalPscaleGradient": [0.0] * num_points,
+            "LOD_plantPscaleGradient": [0.0] * num_points,
+            "LOD_branchPscaleGradient": [0.0] * num_points,
+            "LOD_groundGradient": [0.0] * num_points,
+            "LOD_hullGradient": [0.0] * num_points,
+            "LOD_mainTrunkGradient": [0.0] * num_points,
+            "LOD_canopyGradient": [0.0] * num_points,
+        }
+
+    # Calculate max values for normalization
+    max_pscale = max(pscales) if pscales else 1.0
+    max_age = max(age_values) if age_values else 1.0
+
+    # Avoid division by zero
+    if max_pscale < 0.0001:
+        max_pscale = 1.0
+    if max_age < 0.0001:
+        max_age = 1.0
+
+    # LOD_totalPscaleGradient: Based on pscale ratio (thick = high, thin = low)
+    # Range from ~1.0 at base to ~0.0 at tips
+    lod_total_pscale_gradient = [pscale / max_pscale for pscale in pscales]
+
+    # LOD_plantPscaleGradient: Similar to total, but inverted age contribution
+    # Older points (closer to base) have higher values
+    lod_plant_pscale_gradient = [
+        pscales[i] / max_pscale * (1.0 - age_values[i] / max_age)
+        for i in range(num_points)
+    ]
+
+    # LOD_branchPscaleGradient: Per-branch thickness gradient
+    lod_branch_pscale_gradient = [pscale / max_pscale for pscale in pscales]
+
+    # LOD_groundGradient: Proximity to ground (inverse age)
+    lod_ground_gradient = [1.0 - age / max_age for age in age_values]
+
+    # LOD_hullGradient: Tree envelope/silhouette (based on pscale)
+    lod_hull_gradient = [pscale / max_pscale for pscale in pscales]
+
+    # LOD_mainTrunkGradient: Main trunk identification (highest pscale points)
+    # Threshold: consider points with pscale > 50% of max as main trunk
+    trunk_threshold = max_pscale * 0.5
+    lod_main_trunk_gradient = [
+        1.0 if pscale >= trunk_threshold else 0.0 for pscale in pscales
+    ]
+
+    # LOD_canopyGradient: Canopy/crown region (younger, thinner branches)
+    # Inverse of ground gradient
+    lod_canopy_gradient = [age / max_age for age in age_values]
+
+    return {
+        "LOD_totalPscaleGradient": lod_total_pscale_gradient,
+        "LOD_plantPscaleGradient": lod_plant_pscale_gradient,
+        "LOD_branchPscaleGradient": lod_branch_pscale_gradient,
+        "LOD_groundGradient": lod_ground_gradient,
+        "LOD_hullGradient": lod_hull_gradient,
+        "LOD_mainTrunkGradient": lod_main_trunk_gradient,
+        "LOD_canopyGradient": lod_canopy_gradient,
+    }
 
 
 def generate_pve_from_grove(
