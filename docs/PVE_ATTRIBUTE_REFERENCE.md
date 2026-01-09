@@ -361,15 +361,45 @@ Branch 0 contains points 0-4, Branch 1 contains points 5-7, etc.
 
 ## Crash Prevention Checklist
 
-Based on source code analysis, these conditions will crash Unreal:
+Based on source code analysis, these conditions will cause "Array index out of bounds" crashes in Unreal:
+
+### Critical Array Sizes (Per Point)
+
+| Attribute | Required Size | Indices Accessed | Source Location |
+|-----------|---------------|------------------|-----------------|
+| `budDirection` | **18 floats** | [0-2], [3-5], [15-17] (6 bud vectors) | PVMeshBuilder.cpp L782, L806; PVFoliage.cpp L141-143 |
+| `budDevelopment` | **6 integers** | [0] (generation), [2] (age) | PVMaterialSettings.cpp L72-73; PVRemoveBranches.cpp L89 |
+| `budHormoneLevels` | **6 floats** | [4] (ethylene level) | PVFoliage.cpp L167-168 |
+| `budLightDetected` | **4 floats** | [2] (light detected) | PVRemoveBranches.cpp L82 |
+
+### Critical Array Sizes (Global)
+
+| Attribute | Required Size | Indices Accessed | Source Location |
+|-----------|---------------|------------------|-----------------|
+| `phyllotaxyLeaf` | **9 floats** | [1], [3], [4], [6], [7] | PVFoliage.cpp L41-45 |
+| `plantProfile_N` | **100 floats** | [0-99] (optional) | PVMeshBuilder.cpp L658-659 |
+
+### Other Crash Conditions
 
 | Issue | Crash Location | Prevention |
 |-------|----------------|------------|
 | All pscale values = 0 | PVMeshBuilder.cpp L748-749 | Ensure max(pscale) > 0 |
-| budDirection too short | PVMeshBuilder.cpp L806 | Ensure 18 floats per point |
-| budDirection[0-2] all zero | Slope node | Provide valid direction vectors |
-| budDevelopment < 3 elements | PVMaterialSettings.cpp L71 | Ensure 6 elements per point |
-| Empty Points array | Multiple locations | Ensure branches have points |
+| budDirection[0-2] all zero | PVSlope.cpp | Provide valid non-zero direction vectors |
+| Branch with < 2 points | PVRemoveBranches.cpp L78 | Ensure each branch in primitives.points has >= 2 point indices |
+| Empty Points array | Multiple locations | Ensure all branches have point indices |
+
+### Quick Validation Checklist
+
+Before loading a PVE JSON in Unreal, verify:
+
+- [ ] Every point has `budDirection` with exactly 18 floats
+- [ ] Every point has `budDevelopment` with exactly 6 integers  
+- [ ] Every point has `budHormoneLevels` with exactly 6 floats
+- [ ] Every point has `budLightDetected` with exactly 4 floats
+- [ ] Global `phyllotaxyLeaf` has at least 9 floats
+- [ ] At least one `pscale` value is > 0
+- [ ] Each branch in `primitives.points` has at least 2 point indices
+- [ ] `budDirection` vectors [0-2] are not all zeros
 
 ---
 
