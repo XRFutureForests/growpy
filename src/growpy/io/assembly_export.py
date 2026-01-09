@@ -504,6 +504,10 @@ def create_assembly(
                         bind_joints = []
                         bind_weights = []
 
+                        # Debug: Track bone_id usage
+                        bone_id_usage = {}
+                        invalid_bone_ids = []
+
                         # Iterate through placements in same order as instance creation
                         # CRITICAL: Must match instance creation loop logic exactly
                         for twig_type, placement_list in placements.items():
@@ -545,10 +549,35 @@ def create_assembly(
                                     joint_path = joint_names[bone_id]
                                     bind_joints.append(joint_path)
                                     bind_weights.append(1.0)
+                                    # Track bone_id usage for debugging
+                                    bone_id_usage[bone_id] = bone_id_usage.get(bone_id, 0) + 1
                                 else:
                                     # Fallback to tree root if bone_id is invalid
                                     bind_joints.append("tree_root")
                                     bind_weights.append(1.0)
+                                    # Track invalid bone_ids
+                                    if len(invalid_bone_ids) < 10:
+                                        invalid_bone_ids.append(
+                                            (bone_id, len(joint_names))
+                                        )
+
+                        # Debug output
+                        print(f"\n  BindJoints creation:")
+                        print(f"    Total joint_names in skeleton: {len(joint_names)}")
+                        print(f"    Total bind_joints created: {len(bind_joints)}")
+                        print(f"    Unique bone_ids used: {len(bone_id_usage)}")
+                        if bone_id_usage:
+                            # Show distribution of bone_id usage
+                            sorted_usage = sorted(bone_id_usage.items())
+                            print(f"    Bone ID range: {sorted_usage[0][0]} to {sorted_usage[-1][0]}")
+                            if len(sorted_usage) <= 10:
+                                print(f"    Bone ID usage: {dict(sorted_usage)}")
+                        if invalid_bone_ids:
+                            print(
+                                f"    ⚠️  {len(invalid_bone_ids)} invalid bone_ids (bone_id, joint_count):"
+                            )
+                            for bid, jcount in invalid_bone_ids:
+                                print(f"       bone_id={bid}, joint_names length={jcount}")
 
                         # Validate all bindJoints exist in skeleton
                         skeleton_joints = set(joint_names)
@@ -557,10 +586,10 @@ def create_assembly(
                         ]
                         if missing_joints:
                             print(
-                                f"\n⚠️  WARNING: {len(missing_joints)} bindJoints not found in skeleton:"
+                                f"\n    ⚠️  WARNING: {len(missing_joints)} bindJoints not found in skeleton:"
                             )
                             for mj in missing_joints[:5]:
-                                print(f"   - {mj}")
+                                print(f"       - {mj}")
 
                         # Create bindJoints primvar with uniform variability and interpolation
                         bind_joints_attr = instancer_prim.CreateAttribute(
@@ -758,6 +787,86 @@ def export_tree_as_nanite_assembly(
                         pass
                 except Exception as e:
                     twig_placements = None
+
+            # CRITICAL: Remap twig bone_ids from UNFILTERED to FILTERED indices
+            # After filter_bones_for_mesh in tree export, bone indices are renumbered
+            # Twig bone_ids are GLOBAL bone IDs that need to be mapped to NEW joint indices
+            if twig_placements and bones_info and not use_static_mesh:
+                with _track("remap_twig_bone_ids"):
+                    from ..core.skeleton import filter_bones_for_mesh
+
+                    # Get bone_id_offset to match tree export
+                    if (
+                        model
+                        and hasattr(model, "point_attribute_bone_id")
+                        and model.point_attribute_bone_id
+                    ):
+                        bone_id_offset = min(model.point_attribute_bone_id)
+                    else:
+                        bone_id_offset = 0
+
+                    # Apply same filtering as tree export to get old_to_new mapping
+                    _, old_to_new_bone_map = filter_bones_for_mesh(
+                        model, bones_info, bone_id_offset
+                    )
+
+                    # Build parent chain lookup for fallback
+                    # When a bone is filtered out, use its nearest existing parent
+                    bone_parent_map = {}  # global_bone_id -> parent_global_bone_id
+                    for bone_idx, bone in enumerate(bones_info):
+                        global_bone_id = bone_id_offset + bone_idx
+                        parent_bone_id = int(bone[1])  # Index 1 is parent
+                        bone_parent_map[global_bone_id] = parent_bone_id
+
+                    def find_nearest_existing_bone(old_bone_id: int) -> int:
+                        """Walk up parent chain to find nearest bone that exists in filtered skeleton."""
+                        current = old_bone_id
+                        visited = set()
+                        while current not in old_to_new_bone_map:
+                            if current in visited or current not in bone_parent_map:
+                                # Cycle detected or reached end, fall back to root
+                                return 0
+                            visited.add(current)
+                            parent = bone_parent_map[current]
+                            if parent == current:  # Root bone
+                                return 0
+                            current = parent
+                        return old_to_new_bone_map[current]
+
+                    # Update each twig placement's bone_id from OLD global to NEW filtered index
+                    remapped_count = 0
+                    parent_fallback_count = 0
+                    root_fallback_count = 0
+                    missing_bones = []
+                    for twig_type, placement_list in twig_placements.items():
+                        for placement in placement_list:
+                            if placement.bone_id is not None:
+                                old_bone_id = placement.bone_id
+                                # bone_id is GLOBAL bone ID, map it to NEW joint index
+                                if placement.bone_id in old_to_new_bone_map:
+                                    placement.bone_id = old_to_new_bone_map[
+                                        placement.bone_id
+                                    ]
+                                    remapped_count += 1
+                                else:
+                                    # Bone was filtered out, find nearest parent that exists
+                                    nearest = find_nearest_existing_bone(old_bone_id)
+                                    if nearest == 0:
+                                        root_fallback_count += 1
+                                    else:
+                                        parent_fallback_count += 1
+                                    if len(missing_bones) < 5:  # Track first 5 missing
+                                        missing_bones.append((old_bone_id, nearest))
+                                    placement.bone_id = nearest
+
+                    print(
+                        f"  Twig bone remapping: {remapped_count} direct, "
+                        f"{parent_fallback_count} parent fallback, {root_fallback_count} root fallback"
+                    )
+                    if missing_bones:
+                        print(
+                            f"    Sample fallbacks (old_bone_id -> new_bone_id): {missing_bones}"
+                        )
 
         # Auto-lookup twigs if include_twigs=True and none provided
         if include_twigs and twig_usd_paths is None:

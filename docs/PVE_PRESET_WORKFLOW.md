@@ -85,7 +85,9 @@ generated = generate_pve_preset_for_species(
 
 ## PVE Preset JSON Structure
 
-The generated JSON follows the Quixel Megaplants format with three main sections:
+The generated JSON follows the Quixel Megaplants format with three main sections.
+
+**For detailed attribute documentation, see [PVE_ATTRIBUTE_REFERENCE.md](PVE_ATTRIBUTE_REFERENCE.md).**
 
 ### 1. globalAttributes
 

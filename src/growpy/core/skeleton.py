@@ -371,15 +371,12 @@ def calculate_vertex_weights(
 
     # Build branch topology: identify branch root bones and their parents
     # Store both head (junction) and tail positions for distance-along-bone calculation
-    # CRITICAL: bone_to_joint_map uses GLOBAL bone IDs as keys (from vertex bone_id attributes)
-    # We need to reverse-lookup from global IDs to local indices for bones_info access
-    global_to_local_bone = {}  # Reverse map: global bone ID -> local bone index
-    for global_id, local_idx in bone_to_joint_map.items():
-        global_to_local_bone[global_id] = local_idx
+    # CRITICAL: bone_to_joint_map uses OLD global bone IDs as keys (from vertex bone_id attributes)
+    # and maps them to NEW local joint indices after bone filtering
 
     branch_info = (
         {}
-    )  # {GLOBAL_bone_id: (is_branch_root, parent_GLOBAL_bone_id, head_pos, tail_pos)}
+    )  # {OLD_GLOBAL_bone_id: (is_branch_root, parent_OLD_GLOBAL_bone_id, head_pos, tail_pos)}
     branch_root_count = 0
     branch_root_bones = []
 
@@ -393,7 +390,7 @@ def calculate_vertex_weights(
             )
 
     for local_idx, bone in enumerate(bones_info):
-        # Find the global bone ID for this local index
+        # Find the OLD global bone ID for this NEW local index
         global_bone_id = None
         for gid, lidx in bone_to_joint_map.items():
             if lidx == local_idx:
@@ -408,15 +405,16 @@ def calculate_vertex_weights(
         head_pos = bone[2].as_tuple() if hasattr(bone[2], "as_tuple") else (0, 0, 0)
         tail_pos = bone[3].as_tuple() if hasattr(bone[3], "as_tuple") else (0, 0, 0)
 
-        # CRITICAL DISCOVERY: bones_info contains GLOBAL parent indices, not local!
-        # parent_local_idx is actually parent_GLOBAL_idx
-        # For junction blending, only process bones whose parent is within THIS tree
-        parent_global_id = parent_local_idx if parent_local_idx >= 0 else -1
-
-        # Skip bones whose parent is outside this tree (inter-tree references)
-        if parent_global_id >= 0 and parent_global_id not in bone_to_joint_map:
-            # Parent is in a different tree - skip for junction blending
-            parent_global_id = None
+        # CRITICAL: After bone filtering, bones_info contains NEW local parent indices, not global!
+        # We need to convert the NEW local parent index back to the OLD global bone ID
+        # because vertex bone_ids and branch_info keys use OLD global bone IDs
+        parent_global_id = None
+        if parent_local_idx >= 0:
+            # Reverse lookup: NEW local parent index → OLD global bone ID
+            for gid, lidx in bone_to_joint_map.items():
+                if lidx == parent_local_idx:
+                    parent_global_id = gid
+                    break
 
         branch_info[global_bone_id] = (
             is_branch_root,
