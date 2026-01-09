@@ -308,18 +308,14 @@ def extract_twig_placements_from_model(
                 twig_directions[base_idx + 2],
             )
 
-            # DIRECT BRANCH LOOKUP: Use face_attribute_branch_id for O(1) access
-            # This is much faster than the old vertex voting approach
+            # BONE ASSIGNMENT STRATEGY:
+            # PRIMARY: Vertex voting - most reliable, uses actual vertex bone assignments
+            # FALLBACK: Branch lookup - only if no vertex bone data available
             twig_bone_id = None
             branch_id_for_twig = None
 
-            if face_branch_ids is not None and face_idx < len(face_branch_ids):
-                # Direct lookup - no vertex iteration needed
-                global_branch_id = face_branch_ids[face_idx]
-                branch_id_for_twig = global_branch_id - branch_id_offset
-
-            # Fallback to vertex voting only if face_attribute_branch_id unavailable
-            elif bone_ids:
+            # PRIMARY METHOD: Vertex voting (most reliable)
+            if bone_ids:
                 face_vert_indices = face
                 bone_counts = {}
                 for vert_idx in face_vert_indices:
@@ -328,10 +324,26 @@ def extract_twig_placements_from_model(
                         bone_counts[bid] = bone_counts.get(bid, 0) + 1
 
                 if bone_counts:
+                    # Get the most common bone ID among this face's vertices
                     global_bone_id = max(bone_counts, key=bone_counts.get)
-                    local_bone_id = global_bone_id - bone_id_offset
-                    twig_bone_id = local_bone_id
-                    branch_id_for_twig = bone_to_branch.get(local_bone_id)
+                    # Store GLOBAL bone ID for assembly export to remap after filtering
+                    twig_bone_id = global_bone_id
+
+            # FALLBACK: If vertex voting failed, try branch lookup
+            if twig_bone_id is None and face_branch_ids is not None and face_idx < len(face_branch_ids):
+                global_branch_id = face_branch_ids[face_idx]
+                branch_id_for_twig = global_branch_id - branch_id_offset
+
+                # Try to convert branch_id to bone_id using branch_root_bones
+                if branch_id_for_twig in branch_root_bones:
+                    local_bone_idx = branch_root_bones[branch_id_for_twig]
+                    # Convert local bone index to GLOBAL bone ID
+                    twig_bone_id = local_bone_idx + bone_id_offset
+
+            # Extract branch_id_for_twig if we have a bone_id but no branch_id yet
+            if twig_bone_id is not None and branch_id_for_twig is None:
+                local_bone_id = twig_bone_id - bone_id_offset
+                branch_id_for_twig = bone_to_branch.get(local_bone_id)
 
             placement = TwigPlacement(
                 type=current_twig_type,
@@ -347,13 +359,30 @@ def extract_twig_placements_from_model(
             twig_idx += 1
 
     # Report results
-    if verbose:
+    total_extracted = sum(len(p) for p in placements.values())
+    if verbose or total_extracted > 0:
         print(f"\nTwig extraction complete:")
         for twig_type in twig_types:
             count = len(placements[twig_type])
             print(f"  {twig_type}: {count} placements extracted")
-        print(f"Total twigs extracted: {sum(len(p) for p in placements.values())}")
+        print(f"Total twigs extracted: {total_extracted}")
         print(f"Total twigs processed from arrays: {twig_idx}/{num_twigs}")
-        print("=== END TWIG EXTRACTION DEBUG ===\n")
+
+        # Show bone_id statistics
+        all_bone_ids = [
+            p.bone_id
+            for plist in placements.values()
+            for p in plist
+            if p.bone_id is not None
+        ]
+        if all_bone_ids:
+            print(
+                f"Bone IDs: {len(all_bone_ids)} twigs with bone_id, range {min(all_bone_ids)} to {max(all_bone_ids)}"
+            )
+        else:
+            print("⚠️  WARNING: No twigs have bone_id set!")
+
+        if verbose:
+            print("=== END TWIG EXTRACTION DEBUG ===\n")
 
     return placements
