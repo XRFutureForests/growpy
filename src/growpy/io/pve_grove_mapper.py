@@ -353,7 +353,19 @@ def _map_points_from_skeleton(skeleton: Any, template: Dict) -> Dict:
 
     # pscale (point scale/radius)
     if "pscale" in points_data["attributes"]:
+        # CRITICAL: Ensure pscale values are non-zero to prevent division by zero
+        # Location: PVMeshBuilderElement.cpp line 218-219
+        # Code: check(MaxPointScale > 0); MaxPointScaleRatio = 1.0f / (MaxPointScale * UE_TWO_PI);
         pscales = list(skeleton.point_attribute_radius)
+
+        # Apply minimum threshold to prevent zero values
+        MIN_PSCALE = 0.001  # Minimum 1mm radius in meters
+        pscales = [max(p, MIN_PSCALE) for p in pscales]
+
+        # Validate
+        if max(pscales) == 0:
+            print("    WARNING: All pscale values were 0, applied minimum threshold")
+
         value_key = (
             "values" if "values" in points_data["attributes"]["pscale"] else "value"
         )
@@ -1167,8 +1179,25 @@ def _calculate_bud_directions(skeleton: Any) -> List[List[float]]:
         for i in range(min(len(directions), 18)):
             bud_directions[point_idx][i] = directions[i]
 
-        # If we have fewer than 6 buds worth of directions, pad with zeros
-        # (already initialized to zeros, so no action needed)
+        # CRITICAL: If we have fewer than 6 buds worth of directions, ensure at least
+        # indices [0] and [5] have valid vectors (required by PVMeshBuilderElement.cpp line 782, 806)
+        # If we don't have any directions, use default up vector
+        if len(directions) == 0:
+            # No direction data - use default up vector (Y-up in PVE coords)
+            bud_directions[point_idx][0] = 0.0  # X
+            bud_directions[point_idx][1] = 1.0  # Y (up)
+            bud_directions[point_idx][2] = 0.0  # Z
+            # Copy to index [5] as well (required by PVMeshBuilderElement.cpp line 806)
+            bud_directions[point_idx][15] = 0.0  # X
+            bud_directions[point_idx][16] = 1.0  # Y (up)
+            bud_directions[point_idx][17] = 0.0  # Z
+        elif len(directions) < 18:
+            # Ensure index [5] (indices 15-17) has a valid vector
+            if all(bud_directions[point_idx][i] == 0.0 for i in range(15, 18)):
+                # Copy first vector to index [5]
+                bud_directions[point_idx][15] = bud_directions[point_idx][0]
+                bud_directions[point_idx][16] = bud_directions[point_idx][1]
+                bud_directions[point_idx][17] = bud_directions[point_idx][2]
 
     return bud_directions
 
