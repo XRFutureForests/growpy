@@ -28,7 +28,28 @@ The generated PVE JSON files from Grove trees were causing Unreal Engine to cras
 - **Zero budDirection values**: Many points have all-zero budDirection arrays (see beech validation)
   - Does NOT crash but may cause rendering artifacts
   - Current implementation fills with default up vectors for completely missing data
-  - **Status**: ⚠️ Needs better direction calculation from Grove skeleton data
+  - **Status**: Needs better direction calculation from Grove skeleton data
+
+### Critical Hierarchy Issues (NEW - 2026-01-09)
+
+1. **Invalid `parents` Array Values** (`PVBranchFacade.cpp` line 179)
+   - Code: `const int32 ParentBranchNumber = ParentsBranchNumbers.Last();`
+   - Then: `return BranchNumbers.Get().Find(ParentBranchNumber);`
+   - If `parents` array contains 0 but `branchNumber` starts at 1, `Find(0)` returns `INDEX_NONE`
+   - **Result**: Hierarchy traversal fails completely - Slope/Gravity can't find children
+   - **Status**: FIXED - Trunk must have empty `parents: []`, children have `parents: [1]` (parent branch number)
+
+2. **Incorrect `lengthFromRoot` for Child Branches** (`PVSlope.cpp` lines 214-216)
+   - Code uses LFR comparison to match children to parent segments:
+
+     ```cpp
+     if (ChildLengthFromRoot > BranchPointLengthFromRoot || 
+         ChildLengthFromRoot <= PreviousBranchPointLengthFromRoot) continue;
+     ```
+
+   - Child first point LFR must equal parent branch-off point LFR (not 0.0!)
+   - **Result**: Children never matched to parent segments, Slope/Gravity only affect trunk
+   - **Status**: FIXED - Child branch first point LFR now matches parent branch-off point LFR
 
 ## Implementation Summary
 
