@@ -113,14 +113,43 @@ const float MaxScaleRatio = 1.0f / (MaxPointScale * UE_TWO_PI);
 
 | Attribute | Type | Description | Usage |
 |-----------|------|-------------|-------|
-| `lengthFromRoot` | float[] | Distance from trunk root point | UV mapping, foliage placement |
+| `lengthFromRoot` | float[] | Distance from branch root point | UV mapping, foliage placement, **child branch matching** |
 | `lengthFromSeed` | float[] | Distance from seed point | Alternative distance metric |
+
+**CRITICAL: Child Branch Matching via lengthFromRoot**
+
+The `lengthFromRoot` value for **child branch first points** is critical for Slope and Gravity node propagation. The PVE system matches child branches to their parent segment using `lengthFromRoot` comparison:
+
+```cpp
+// From PVSlope.cpp - GetBranchSegmentChildren()
+const float ChildLengthFromRoot = PointFacade.GetLengthFromRoot(FirstChildPointIndex);
+if (ChildLengthFromRoot > BranchPointLengthFromRoot || ChildLengthFromRoot <= PreviousBranchPointLengthFromRoot)
+{
+    continue;  // Child is NOT matched to this segment
+}
+```
+
+**Matching Logic:**
+
+- Child branch's first point must have `PreviousParentPointLFR < ChildFirstPointLFR <= CurrentParentPointLFR`
+- If a child branch first point has LFR=0.0 but connects to a parent at LFR=0.9, the child will NOT be found
+- Child first point LFR should equal the parent branch-off point LFR
+
+**Example:**
+
+```
+Trunk points:        LFR: 0.0, 0.3, 0.6, 0.9, 1.2, 1.4, 1.6, 1.7
+Child branch at trunk point 3 (LFR=0.9):
+  - Child first point LFR should be 0.9 (NOT 0.0!)
+  - This allows: 0.6 < 0.9 <= 0.9 = TRUE (child found)
+```
 
 **Usage:**
 
 - Used for UV texture coordinate calculation
 - Foliage distribution based on distance from trunk
 - LOD calculations
+- **Child branch matching in Slope/Gravity recursive traversal**
 
 ### LOD Gradients (Level of Detail)
 
