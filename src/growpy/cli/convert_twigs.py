@@ -45,7 +45,7 @@ Quick Start:
     python src/growpy/cli/convert_twigs.py data/assets/twigs
 
     # Explicit defaults:
-    python src/growpy/cli/convert_twigs.py data/assets/twigs --boundary-edge-mm 0.5 --alpha-trim 0.5
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --boundary-edge-mm 0.1 --alpha-trim 0.5 --smooth-boundary --smooth-factor 0.25
 
     # With boundary smoothing for natural curves
     python src/growpy/cli/convert_twigs.py data/assets/twigs --smooth-boundary
