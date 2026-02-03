@@ -5,6 +5,9 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
+# GBIF integration for species name resolution
+_GBIF_ENABLED = True  # Can be disabled if pygbif not available or API issues
+
 
 def _get_project_root() -> Path:
     """Get project root directory."""
@@ -40,11 +43,19 @@ def _get_lookup_table() -> pd.DataFrame:
     )
 
 
-def _find_species_row(species: str) -> pd.Series:
+def _find_species_row(species: str, use_gbif: bool = True) -> pd.Series:
     """Find species row in lookup table.
 
+    Matching order:
+    1. Common Name (exact, case-insensitive)
+    2. Standardized Name (exact, case-insensitive)
+    3. Scientific Name (exact, case-insensitive)
+    4. Aliases (comma-separated list)
+    5. GBIF fallback (resolves synonyms, misspellings, scientific names)
+
     Args:
-        species: Species name (Common Name, Scientific Name, or Alias)
+        species: Species name (Common Name, Scientific Name, Alias, or synonym)
+        use_gbif: Whether to use GBIF for unmatched names (default: True)
 
     Returns:
         Series with species data
@@ -78,6 +89,17 @@ def _find_species_row(species: str) -> pd.Series:
             aliases = str(row.get("Aliases", "")).lower()
             if species_lower in [a.strip() for a in aliases.split(",")]:
                 return row
+
+    # GBIF fallback - resolves synonyms, misspellings, alternative names
+    if use_gbif and _GBIF_ENABLED:
+        try:
+            from growpy.utils.gbif_species import match_species_via_gbif
+
+            gbif_match = match_species_via_gbif(species, lookup_df)
+            if gbif_match is not None:
+                return gbif_match
+        except ImportError:
+            pass  # pygbif not available
 
     raise ValueError(f"Species '{species}' not found in lookup table")
 
