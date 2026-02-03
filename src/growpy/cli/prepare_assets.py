@@ -134,16 +134,24 @@ def standardize_species_name(common_name: str) -> str:
     return name.strip("_")
 
 
-def load_species_csv(csv_path: Path, script_dir: Path) -> pd.DataFrame:
+def load_species_csv(
+    csv_path: Path, script_dir: Path, use_gbif: bool = True
+) -> pd.DataFrame:
     """Load and validate species CSV.
 
     Handles two CSV formats:
     1. Forest placement CSV (columns: species, x, y, height) - extracts unique species
     2. Asset lookup CSV (columns: Common Name, Preset, Twig, Bark Texture) - direct use
 
+    Species matching uses GBIF fallback when local matching fails, allowing:
+    - Synonym resolution (e.g., "Pedunculate oak" -> "European oak")
+    - Scientific name matching (e.g., "Quercus robur" -> "European oak")
+    - Misspelling tolerance via GBIF fuzzy matching
+
     Args:
         csv_path: Path to species CSV file
         script_dir: Path to project root for loading asset lookup table
+        use_gbif: Whether to use GBIF for unmatched species (default: True)
 
     Returns:
         DataFrame with species data in asset lookup format
@@ -174,24 +182,60 @@ def load_species_csv(csv_path: Path, script_dir: Path) -> pd.DataFrame:
 
         lookup_df = pd.read_csv(asset_lookup_path)
 
-        # Filter lookup table by species names (match Common Name or Aliases)
-        filtered_rows = []
-        for species in unique_species:
-            # Try matching Common Name
-            match = lookup_df[lookup_df["Common Name"].str.lower() == species.lower()]
+        # Try GBIF-enhanced matching if available
+        gbif_available = False
+        if use_gbif:
+            try:
+                from growpy.utils.gbif_species import resolve_species_list
 
-            # Try matching aliases if no direct match
-            if match.empty and "Aliases" in lookup_df.columns:
-                for idx, row in lookup_df.iterrows():
-                    aliases = str(row.get("Aliases", "")).lower()
-                    if species.lower() in [a.strip() for a in aliases.split(",")]:
-                        match = lookup_df.iloc[[idx]]
-                        break
-
-            if not match.empty:
-                filtered_rows.append(match)
-            else:
+                gbif_available = True
+            except ImportError:
                 pass
+
+        # Filter lookup table by species names
+        filtered_rows = []
+        unmatched = []
+
+        if gbif_available:
+            # Use GBIF-enhanced matching for all species at once
+            matches = resolve_species_list(
+                unique_species, lookup_df, use_gbif=True, verbose=True
+            )
+            for species, match in matches.items():
+                if match is not None:
+                    # Convert Series to single-row DataFrame for concat
+                    filtered_rows.append(pd.DataFrame([match]))
+                else:
+                    unmatched.append(species)
+        else:
+            # Fallback: local matching only
+            for species in unique_species:
+                # Try matching Common Name
+                match = lookup_df[
+                    lookup_df["Common Name"].str.lower() == species.lower()
+                ]
+
+                # Try matching Scientific Name
+                if match.empty and "Scientific Name" in lookup_df.columns:
+                    match = lookup_df[
+                        lookup_df["Scientific Name"].str.lower() == species.lower()
+                    ]
+
+                # Try matching aliases if no direct match
+                if match.empty and "Aliases" in lookup_df.columns:
+                    for idx, row in lookup_df.iterrows():
+                        aliases = str(row.get("Aliases", "")).lower()
+                        if species.lower() in [a.strip() for a in aliases.split(",")]:
+                            match = lookup_df.iloc[[idx]]
+                            break
+
+                if not match.empty:
+                    filtered_rows.append(match)
+                else:
+                    unmatched.append(species)
+
+        if unmatched:
+            print(f"WARNING: Could not match {len(unmatched)} species: {unmatched}")
 
         if not filtered_rows:
             raise ValueError(
@@ -395,7 +439,9 @@ CSV Format Support:
             if tex_results.get("is_valid"):
                 print(f"  ✓ {tex_results.get('validation_message', '')}")
             else:
-                print(f"  ✗ {tex_results.get('validation_message', 'Texture validation failed')}")
+                print(
+                    f"  ✗ {tex_results.get('validation_message', 'Texture validation failed')}"
+                )
 
             stats["twigs_copied"] += 1
         else:
