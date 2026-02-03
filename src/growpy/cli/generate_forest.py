@@ -1107,16 +1107,15 @@ def generate_unreal_import_script(
     )
 
     # Filter to only include assembly files (exclude tree mesh and twig files)
-    # Tree mesh files have _skeletal or _static suffix, or contain digits (tree_id)
+    # Tree mesh files have _skeletal or _static suffix
     # Twig files contain "twig" in the name
-    # Assembly files are just {species}.usda with no suffix or tree_id
+    # Assembly files include cycle/height metadata but NOT _skeletal/_static suffix
     nanite_files = [
         f
         for f in nanite_files
         if not f.stem.endswith("_skeletal")
         and not f.stem.endswith("_static")
         and "twig" not in f.stem.lower()
-        and not any(c.isdigit() for c in f.stem)  # Exclude files with tree_id
     ]
 
     # Group trees by species (parent of tree_XXXX folder)
