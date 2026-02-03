@@ -6,9 +6,16 @@ Generates multi-species forests from CSV data with configurable quality settings
 Can generate standalone Unreal Python scripts for importing trees via VSCode extension.
 Creates skeletal (animation-ready) Nanite assemblies by default, with optional static assemblies.
 
+Two Export Modes:
+    1. Height-based (default): Trees grown to target heights specified in CSV
+    2. Multi-stage: Multiple tree models at different growth cycles from single positions
+
 Quick Start (copy-paste ready with all defaults shown):
     # Full forest generation with all flags (recommended for production)
     python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 10 --smooth-iterations 10 --output-dir data/output/forest --preset-override drop_decay=0.1 --skip-pve-json
+
+    # Multi-stage mode: Generate 5 fir trees at different ages from one position
+    python src/growpy/cli/generate_forest.py data/input/test_stages.csv --cycle-interval 10 --max-cycles 60
 
     # Generate with Unreal import script for one-click import
     python src/growpy/cli/generate_forest.py data/input/test.csv --quality high --growth-cycle-limit 100 --smooth-iterations 10 --output-dir data/output/forest --import-to-unreal --unreal-project-path /Game/GrowPy/Trees --preset-override drop_decay=0.1 --profile
@@ -27,7 +34,8 @@ Quick Start (copy-paste ready with all defaults shown):
 
 Common Flags:
     [csv_file]                                     Input CSV with tree positions (default: data/input/test.csv)
-                                                   Required columns: x, y, species, height; Optional: z (defaults to 0)
+                                                   Height mode: x, y, species, height; Optional: z
+                                                   Multi-stage mode: x, y, species, cycle_interval, max_cycles
 
     --quality {ultra,high,medium,low,performance}  Quality preset affecting resolution and detail (default: ultra)
                                                    - ultra: 32 vertices, max detail, hero trees
@@ -61,6 +69,29 @@ Common Flags:
     --profile                                      Enable profiling to track execution time of each step
                                                    Prints detailed timing report showing bottlenecks
                                                    Useful for identifying slow processing steps
+
+Multi-Stage Export Flags (generate trees at different growth stages):
+    --cycle-interval INT                           Export trees every N cycles (e.g., 10 = cycles 10, 20, 30...)
+                                                   Enables multi-stage mode. Required for multi-stage export.
+
+    --max-cycles INT                               Optional cap on maximum cycles (default: use height-derived cycles)
+                                                   Each tree's max cycles is calculated from its height.
+
+    CSV Format (same as height mode - height column required):
+        fid,species,x,y,z,height
+        1,Norway spruce,0,0,0,15.0
+
+    How it works:
+        1. Height is converted to cycles using pre-trained growth models
+        2. Each tree gets snapshots at [interval, 2*interval, ...] up to its calculated cycles
+        3. Shorter trees get fewer snapshots than taller trees
+
+    Example usage:
+        python src/growpy/cli/generate_forest.py data/input/test.csv --cycle-interval 10
+
+    Output naming includes metadata for easy selection:
+        norway_spruce_c030_h12m5_d32cm.usda
+        Format: {species}_c{cycle:03d}_h{meters}m{tenths}_d{dbh_cm}cm
 
 Performance Flags (skip optional generation steps):
     --skip-pve-json                                Skip PVE preset JSON generation (saves ~3% export time)
@@ -111,11 +142,14 @@ Assembly Types:
               - Better visual quality for static placement
 
 Output:
-    data/output/forest/{species}/tree_####/                           Per-tree directories
-    data/output/forest/{species}/tree_####/{species}.usda             Nanite assembly (same name per species)
-    data/output/forest/{species}/tree_####/{species}_{tree_id}_skeletal.usda  Tree mesh with skeleton
-    data/output/forest/{species}/*_pve_preset.json                    PVE configuration files (unless --skip-pve-json)
-    data/output/forest/unreal_import_trees.py                         Unreal import script (if --import-to-unreal)
+    Height mode:
+        data/output/forest/{species}/tree_####/                           Per-tree directories
+        data/output/forest/{species}/tree_####/{species}.usda             Nanite assembly
+        data/output/forest/{species}/tree_####/{species}_{tree_id}_skeletal.usda  Tree mesh with skeleton
+
+    Multi-stage mode:
+        data/output/forest/{species}/tree_####/{species}_c{cycle}_h{height}_d{dbh}.usda
+        Example: data/output/forest/norway_spruce/tree_0001/norway_spruce_c030_h12m5_d32cm.usda
 
 Note:
     Run prepare_assets.py and convert_twigs.py first to prepare species assets.
@@ -159,6 +193,7 @@ from growpy.config.preset_overrides import (
     create_overrides_from_args,
 )
 from growpy.config.quality import get_quality_preset
+from growpy.core.forest import simulate_forest_growth_with_snapshots
 from growpy.utils.profiling import ProfileTimer, get_timer, init_profiler
 
 
@@ -492,6 +527,313 @@ def export_individual_trees(
     # No separate batch generation needed
 
     return exported_files
+
+
+def format_height_for_filename(height_m: float) -> str:
+    """Format height in meters for filename: h12m5 = 12.5m.
+
+    Args:
+        height_m: Height in meters
+
+    Returns:
+        Formatted string like 'h12m5' for 12.5 meters
+    """
+    meters = int(height_m)
+    tenths = int((height_m - meters) * 10)
+    return f"h{meters}m{tenths}"
+
+
+def format_dbh_for_filename(dbh_m: float) -> str:
+    """Format DBH in meters for filename: d32cm = 0.32m.
+
+    Args:
+        dbh_m: DBH in meters
+
+    Returns:
+        Formatted string like 'd32cm' for 32 centimeters
+    """
+    cm = int(dbh_m * 100)
+    return f"d{cm}cm"
+
+
+def generate_forest_stages(
+    csv_path: Path,
+    output_dir: Path,
+    config: GrowPyConfig,
+    quality: str = "high",
+    cycle_interval: Optional[int] = None,
+    max_cycles: Optional[int] = None,
+    growth_cycle_limit: Optional[int] = None,
+    smooth_iterations: Optional[int] = None,
+    include_grove_attributes: bool = False,
+    verbose: bool = False,
+    preset_overrides: Optional[PresetOverrides] = None,
+    timer: Optional["ProfileTimer"] = None,
+    skip_pve_json: bool = False,
+    include_static: bool = False,
+    skip_validation: bool = False,
+) -> None:
+    """Generate trees at multiple growth stages with height-based cycle calculation.
+
+    This mode exports multiple tree models at different ages from a single tree position,
+    with height and DBH encoded in the filename for easy asset selection.
+
+    Height-to-Cycles Conversion:
+        - Each tree's target height is converted to growth cycles using pre-trained models
+        - Snapshots are exported at cycle intervals up to each tree's calculated max
+        - Shorter trees get fewer snapshots than taller trees
+
+    CSV Format (requires height column):
+        fid,species,x,y,z,height
+        1,Norway spruce,0,0,0,15.0
+
+    Output naming:
+        {species}_c{cycle:03d}_{height}_{dbh}.usda
+        e.g., norway_spruce_c030_h12m5_d32cm.usda
+
+    Args:
+        csv_path: Path to CSV file with forest data (requires: species, x, y, height)
+        output_dir: Directory to save export files
+        config: GrowPy configuration
+        quality: Quality preset name
+        cycle_interval: Export every N cycles (default: 10)
+        max_cycles: Cap maximum cycles (default: use height-derived cycles)
+        growth_cycle_limit: Scale down cycles if they exceed this limit (like height mode)
+        smooth_iterations: Number of smoothing iterations for branches
+        include_grove_attributes: If True, include Grove metadata in USD files
+        verbose: Print detailed progress information
+        preset_overrides: Optional PresetOverrides for dynamic parameter adjustment
+        timer: Optional ProfileTimer for tracking execution times
+        skip_pve_json: If True, skip PVE preset JSON generation
+        include_static: If True, also generate static mesh assemblies
+        skip_validation: If True, skip assembly validation
+    """
+    from growpy.io.assembly_export import export_tree_as_nanite_assembly
+    from growpy.io.tree_export import get_twig_usd_map_for_species
+    from growpy.utils.profiling import ProfileTimer
+
+    if timer is None:
+        timer = ProfileTimer(enabled=False)
+
+    # Clear twig file copy cache at start of export session
+    from growpy.io.assembly_export import clear_twig_copy_cache
+
+    clear_twig_copy_cache()
+
+    # Use defaults if not specified
+    if smooth_iterations is None:
+        smooth_iterations = SMOOTH_ITERATIONS
+
+    if not TREE_EXPORT_AVAILABLE:
+        if verbose:
+            print("Error: Tree export not available (missing dependencies)")
+        return
+
+    if not csv_path.exists():
+        if verbose:
+            print(f"Error: CSV file not found: {csv_path}")
+        return
+
+    # Load forest data
+    try:
+        with timer.track("load_csv"):
+            forest_data = pd.read_csv(csv_path)
+
+            # Check required columns - height is required for cycle calculation
+            required_columns = ["x", "y", "species", "height"]
+            missing_cols = [
+                col for col in required_columns if col not in forest_data.columns
+            ]
+            if missing_cols:
+                if verbose:
+                    print(f"Error: Missing required columns: {missing_cols}")
+                    print(
+                        "  Multi-stage mode requires height to calculate growth cycles"
+                    )
+                return
+
+            # Ensure fid column exists
+            if "fid" not in forest_data.columns:
+                forest_data["fid"] = range(1, len(forest_data) + 1)
+
+            # Ensure z column exists
+            if "z" not in forest_data.columns:
+                forest_data["z"] = 0.0
+
+    except Exception as e:
+        if verbose:
+            print(f"Error loading CSV: {e}")
+        return
+
+    # Calculate growth cycles from height using growth models
+    with timer.track("calculate_growth_cycles"):
+        try:
+            calculate_growth_cycles_from_height(forest_data)
+        except Exception as e:
+            if verbose:
+                print(f"Error: Could not calculate growth cycles from height: {e}")
+                print(
+                    "  Ensure growth models exist (run create_growth_models.py first)"
+                )
+            return
+
+        # Apply growth_cycle_limit scaling (same as height-based mode)
+        # This scales all tree cycles proportionally to fit within the limit
+        if growth_cycle_limit is not None:
+            max_growth_cycles = forest_data["growth_cycles"].max()
+            if max_growth_cycles > growth_cycle_limit:
+                scale_factor = growth_cycle_limit / max_growth_cycles
+                forest_data["growth_cycles"] = (
+                    forest_data["growth_cycles"] * scale_factor
+                ).astype(int)
+                forest_data["growth_cycles"] = forest_data["growth_cycles"].clip(
+                    lower=1
+                )
+
+    # Use CLI interval, calculate max from height-derived cycles (after scaling)
+    effective_interval = cycle_interval if cycle_interval is not None else 10
+    # Global max is the highest cycles needed (from tallest tree, after limit scaling)
+    global_max_cycles = int(forest_data["growth_cycles"].max())
+    # CLI max_cycles can further cap if specified
+    if max_cycles is not None:
+        global_max_cycles = min(global_max_cycles, max_cycles)
+
+    snapshot_cycles = list(
+        range(effective_interval, global_max_cycles + 1, effective_interval)
+    )
+
+    print(f"\n{'='*60}")
+    print("MULTI-STAGE FOREST GENERATION")
+    print(f"{'='*60}")
+    print(f"  Trees: {len(forest_data)}")
+    print(
+        f"  Height range: {forest_data['height'].min():.1f}m - {forest_data['height'].max():.1f}m"
+    )
+    print(f"  Cycle range: {forest_data['growth_cycles'].min()} - {global_max_cycles}")
+    print(f"  Interval: {effective_interval}")
+    print(f"  Snapshots: {len(snapshot_cycles)} stages {snapshot_cycles}")
+    print(f"{'='*60}")
+
+    # Create forest (groves by species)
+    # For cycle mode, we don't use delay - all trees start at cycle 0
+    forest_data["delay"] = 0
+
+    with timer.track("create_forest"):
+        forest = create_forest(forest_data)
+
+    # Get quality settings
+    quality_params = get_quality_preset(quality)
+    quality_params["skeleton_bias"] = 0.5
+    quality_params["skeleton_connected"] = True
+    quality_params["minimal_export"] = True
+    quality_params["include_grove_attributes"] = include_grove_attributes
+    quality_params["skip_pve_json"] = skip_pve_json
+    quality_params["include_static"] = include_static
+    quality_params["skip_validation"] = skip_validation
+
+    # Run simulation with snapshots
+    with timer.track("simulate_with_snapshots"):
+        snapshots = simulate_forest_growth_with_snapshots(
+            forest,
+            max_cycles=global_max_cycles,
+            snapshot_cycles=snapshot_cycles,
+            smooth_iterations=smooth_iterations,
+            preset_overrides=preset_overrides,
+            quality_params=quality_params,
+        )
+
+    if not snapshots:
+        if verbose:
+            print("Error: No snapshots captured during simulation")
+        return
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Export each snapshot
+    print(f"\n{'='*60}")
+    print(f"PHASE 3: EXPORTING STAGES ({len(snapshots)} cycles)")
+    print(f"{'='*60}")
+
+    exported_files = []
+    for cycle, species_snapshots in tqdm(snapshots.items(), desc="Exporting stages"):
+        for species_name, tree_data_list in species_snapshots.items():
+            # Get fids and max cycles for this species from forest data
+            species_rows = forest_data[forest_data["species"] == species_name]
+
+            for tree_idx, (model, skeleton, bones_info, height, dbh) in enumerate(
+                tree_data_list
+            ):
+                if model is None:
+                    continue
+
+                # Get tree's max cycles from height calculation
+                if tree_idx < len(species_rows):
+                    tree_row = species_rows.iloc[tree_idx]
+                    fid = int(tree_row["fid"])
+                    tree_max_cycles = int(tree_row["growth_cycles"])
+                else:
+                    fid = tree_idx + 1
+                    tree_max_cycles = global_max_cycles
+
+                # Skip this snapshot if cycle exceeds tree's calculated max
+                if cycle > tree_max_cycles:
+                    continue
+
+                # Generate filename with metadata
+                species_clean = (
+                    "".join(
+                        c for c in species_name if c.isalnum() or c in (" ", "-", "_")
+                    )
+                    .strip()
+                    .replace(" ", "_")
+                    .lower()
+                )
+                height_str = format_height_for_filename(height)
+                dbh_str = format_dbh_for_filename(dbh)
+                tree_id = f"{fid:04d}_c{cycle:03d}_{height_str}_{dbh_str}"
+
+                # Create output directory: species/tree_####/
+                tree_dir = output_dir / species_clean / f"tree_{fid:04d}"
+                tree_dir.mkdir(parents=True, exist_ok=True)
+
+                # Assembly name includes cycle/height/dbh for unique identification
+                assembly_name = f"{species_clean}_c{cycle:03d}_{height_str}_{dbh_str}"
+                usd_path = tree_dir / f"{assembly_name}.usda"
+
+                # Get twig USD paths
+                twig_usd_map = get_twig_usd_map_for_species(
+                    species_name, config, prefer_skeletal=True, prefer_static=False
+                )
+
+                # Triangulate model before export
+                try:
+                    model.triangulate()
+                except Exception:
+                    pass
+
+                # Export as Nanite Assembly
+                export_success = export_tree_as_nanite_assembly(
+                    model=model,
+                    skeleton=skeleton,
+                    bones_info=bones_info,
+                    output_path=usd_path,
+                    species_name=species_name,
+                    tree_id=tree_id,
+                    twig_usd_paths=twig_usd_map,
+                    include_twigs=True,
+                    use_skeletal_mesh=True,
+                    use_static_mesh=False,
+                    include_grove_attributes=include_grove_attributes,
+                    validate=not skip_validation,
+                    timer=timer,
+                )
+
+                if export_success:
+                    exported_files.append(str(usd_path))
+                    if verbose:
+                        print(f"  Exported: {usd_path.name}")
+
+    print(f"\nExported {len(exported_files)} tree stage files")
 
 
 def generate_forest_exports(
@@ -1182,6 +1524,20 @@ Unreal Engine Integration:
         action="store_true",
         help="Generate static mesh assemblies in addition to skeletal (disabled by default)",
     )
+    # Multi-stage export: generate trees at multiple growth stages from a single position
+    parser.add_argument(
+        "--cycle-interval",
+        type=int,
+        default=None,
+        help="Export trees at cycle intervals (e.g., 10 = export at cycles 10, 20, 30...). "
+        "Enables multi-stage mode. Overrides CSV cycle_interval column if present.",
+    )
+    parser.add_argument(
+        "--max-cycles",
+        type=int,
+        default=None,
+        help="Maximum cycles for multi-stage export. Overrides CSV max_cycles column if present.",
+    )
 
     args = parser.parse_args()
 
@@ -1234,22 +1590,46 @@ Unreal Engine Integration:
         # --fast also disables static (redundant since already default, but explicit)
         include_static = args.include_static and not args.fast
 
+        # Detect cycle-based mode via CLI args (--cycle-interval enables multi-stage mode)
+        is_cycle_mode = args.cycle_interval is not None
+
         with timer.track("total_forest_generation"):
-            generate_forest_exports(
-                csv_path,
-                args.output_dir,
-                config,
-                args.quality,
-                args.growth_cycle_limit,
-                args.smooth_iterations,
-                include_grove_attributes=args.include_grove_attributes,
-                verbose=args.verbose,
-                preset_overrides=preset_overrides,
-                timer=timer,
-                skip_pve_json=skip_pve_json,
-                include_static=include_static,
-                skip_validation=skip_validation,
-            )
+            if is_cycle_mode:
+                # Multi-stage export mode: generate trees at different growth stages
+                generate_forest_stages(
+                    csv_path,
+                    args.output_dir,
+                    config,
+                    args.quality,
+                    cycle_interval=args.cycle_interval,
+                    max_cycles=args.max_cycles,
+                    growth_cycle_limit=args.growth_cycle_limit,
+                    smooth_iterations=args.smooth_iterations,
+                    include_grove_attributes=args.include_grove_attributes,
+                    verbose=args.verbose,
+                    preset_overrides=preset_overrides,
+                    timer=timer,
+                    skip_pve_json=skip_pve_json,
+                    include_static=include_static,
+                    skip_validation=skip_validation,
+                )
+            else:
+                # Standard height-based export mode
+                generate_forest_exports(
+                    csv_path,
+                    args.output_dir,
+                    config,
+                    args.quality,
+                    args.growth_cycle_limit,
+                    args.smooth_iterations,
+                    include_grove_attributes=args.include_grove_attributes,
+                    verbose=args.verbose,
+                    preset_overrides=preset_overrides,
+                    timer=timer,
+                    skip_pve_json=skip_pve_json,
+                    include_static=include_static,
+                    skip_validation=skip_validation,
+                )
 
         # Print profiling report if enabled
         if args.profile:
