@@ -25,7 +25,11 @@ Example:
         print(f"{species}: {len(grove.all_trees)} trees")
 """
 
-from .forest import create_forest, simulate_forest_growth
+from .forest import (
+    create_forest,
+    simulate_forest_growth,
+    simulate_forest_growth_with_snapshots,
+)
 from .grove import create_grove
 from .skeleton import (
     UNREAL_MAX_BONE_INDEX,
@@ -37,7 +41,12 @@ from .skeleton import (
     filter_bones_for_mesh,
     get_bone_data_from_grove,
 )
-from .tree import calculate_growth_cycles_from_height
+from .tree import (
+    calculate_dbh_at_height,
+    calculate_growth_cycles_from_height,
+    calculate_tree_height,
+    extract_tree_measurements,
+)
 from .twig import (
     TwigPlacement,
     extract_twig_placements_from_model,
@@ -51,6 +60,11 @@ __all__ = [
     "calculate_growth_cycles_from_height",
     "create_forest",
     "simulate_forest_growth",
+    "simulate_forest_growth_with_snapshots",
+    # Tree measurement functions
+    "calculate_tree_height",
+    "calculate_dbh_at_height",
+    "extract_tree_measurements",
     # Skeleton
     "Vector3",
     "JointTransform",
