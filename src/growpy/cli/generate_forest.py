@@ -14,7 +14,7 @@ Quick Start (copy-paste ready with all defaults shown):
     # Full forest generation with all flags (recommended for production)
     python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 10 --smooth-iterations 10 --output-dir data/output/forest --preset-override drop_decay=0.1 --skip-pve-json
 
-    # Multi-stage mode: Generate 5 fir trees at different ages from one position
+    # Multi-stage mode: Generate trees at different growth stages from one position
     python src/growpy/cli/generate_forest.py data/input/test_stages.csv --cycle-interval 10 --max-cycles 60
 
     # Generate with Unreal import script for one-click import
@@ -23,14 +23,17 @@ Quick Start (copy-paste ready with all defaults shown):
     # Include Grove metadata for debugging/analysis (age, mass, vigor - increases size ~70%)
     python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 10 --smooth-iterations 10 --output-dir data/output/forest --include-grove-attributes
 
-    # Fast preview (skip wind/PVE JSON, skeletal only)
+    # Fast preview (skip PVE JSON and validation - skeletal only)
     python src/growpy/cli/generate_forest.py data/input/test.csv --quality medium --growth-cycle-limit 5 --smooth-iterations 5 --output-dir data/output/forest --fast
 
     # Include static mesh assemblies (for material-rich static placement)
     python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --include-static
 
-    # Prevent tree death at high cycle counts by reducing decay
-    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 100 --preset-override drop_decay=0.1
+    # Prevent tree death at high cycle counts with longevity mode
+    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 100 --longevity-mode
+
+    # Ultra mesh quality with simplified skeleton for Unreal bone limit compatibility
+    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --skeleton-length 3.0 --skeleton-reduce 0.6
 
 Common Flags:
     [csv_file]                                     Input CSV with tree positions (default: data/input/test.csv)
@@ -70,6 +73,35 @@ Common Flags:
                                                    Prints detailed timing report showing bottlenecks
                                                    Useful for identifying slow processing steps
 
+    -v, --verbose                                  Enable verbose output for PVE preset generation
+
+Skeleton Simplification Flags (independent of mesh quality):
+    Use these to reduce bone count while keeping ultra mesh resolution.
+    Critical for Unreal Engine's 32,767 bone limit.
+
+    --skeleton-length FLOAT                        Bone length multiplier (0.0-5.0, default: from quality preset)
+                                                   Higher = fewer, longer bones
+                                                   - 0.1 = maximum bones (ultra default)
+                                                   - 2.0 = balanced (medium default)
+                                                   - 4.0 = minimal bones (performance default)
+
+    --skeleton-reduce FLOAT                        Bone thickness threshold (0.0-1.0, default: from quality preset)
+                                                   Higher = skip thinner branches (fewer bones)
+                                                   - 0.1 = keep thin branches (ultra default)
+                                                   - 0.4 = balanced (medium default)
+                                                   - 0.8 = only thick branches (performance default)
+
+    --skeleton-bias FLOAT                          Bone distribution bias (0.0-1.0, default: 0.5)
+                                                   0.0 = more bones near trunk
+                                                   1.0 = more bones near branch tips
+
+    --skeleton-connected {true,false}              Use connected bone chains (default: true)
+                                                   true = connected chains (more bones, smoother animation)
+                                                   false = disconnected (fewer bones)
+
+    Example: Ultra mesh with simplified skeleton (reduces 30k bones to ~8 bones)
+        python src/growpy/cli/generate_forest.py --quality ultra --skeleton-length 3.0 --skeleton-reduce 0.6
+
 Multi-Stage Export Flags (generate trees at different growth stages):
     --cycle-interval INT                           Export trees every N cycles (e.g., 10 = cycles 10, 20, 30...)
                                                    Enables multi-stage mode. Required for multi-stage export.
@@ -97,12 +129,14 @@ Performance Flags (skip optional generation steps):
     --skip-pve-json                                Skip PVE preset JSON generation (saves ~3% export time)
                                                    PVE presets only needed for Unreal Procedural Vegetation Editor
 
+    --skip-validation                              Skip assembly validation (saves ~5-10% export time)
+
     --include-static                               Also generate static mesh assemblies (disabled by default)
                                                    Static meshes have full PBR materials but no animation
                                                    Saves ~7% export time when disabled
 
-    --fast                                         Fast mode: skip PVE JSON and static meshes
-                                                   Equivalent to --skip-pve-json (static already off)
+    --fast                                         Fast mode: skip PVE JSON, validation, and static meshes
+                                                   Equivalent to --skip-pve-json --skip-validation
 
     Note: DynamicWind data is exported as separate JSON files (*_DynamicWind.json)
           Import in Unreal using ImportDynamicWindSkeletalDataFromFile after USD import
@@ -124,10 +158,6 @@ Preset Override Flags (prevent tree death at high cycle counts):
 
     Note: For cycle-based interpolation, use _curve definitions in seed.json files.
           See docs/grove-preset-reference.md for format details.
-
-    -v, --verbose                                  Enable verbose output for PVE preset generation
-
-Note: PVE preset JSON files are generated by default for each tree (use --skip-pve-json to disable)
 
 Assembly Types:
     skeletal (default): Skeletal mesh assemblies with animation support
@@ -170,7 +200,7 @@ if hasattr(bpy.utils, "expose_bundled_modules"):
 import sys
 from itertools import groupby
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import pandas as pd
 from tqdm import tqdm
@@ -572,6 +602,7 @@ def generate_forest_stages(
     skip_pve_json: bool = False,
     include_static: bool = False,
     skip_validation: bool = False,
+    skeleton_overrides: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Generate trees at multiple growth stages with height-based cycle calculation.
 
@@ -731,6 +762,13 @@ def generate_forest_stages(
     quality_params["include_static"] = include_static
     quality_params["skip_validation"] = skip_validation
 
+    # Apply skeleton overrides (allows simplified skeleton with ultra mesh)
+    if skeleton_overrides:
+        for key, value in skeleton_overrides.items():
+            quality_params[key] = value
+        if verbose:
+            print(f"[Skeleton Overrides] Applied: {skeleton_overrides}")
+
     # Run simulation with snapshots
     with timer.track("simulate_with_snapshots"):
         snapshots = simulate_forest_growth_with_snapshots(
@@ -850,6 +888,7 @@ def generate_forest_exports(
     skip_pve_json: bool = False,
     include_static: bool = False,
     skip_validation: bool = False,
+    skeleton_overrides: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Generate forest from CSV data and export as Nanite Assembly USD files.
 
@@ -983,6 +1022,13 @@ def generate_forest_exports(
     # Hardcode skeleton parameters
     quality_params["skeleton_bias"] = 0.5
     quality_params["skeleton_connected"] = True
+
+    # Apply skeleton overrides (allows simplified skeleton with ultra mesh)
+    if skeleton_overrides:
+        for key, value in skeleton_overrides.items():
+            quality_params[key] = value
+        if verbose:
+            print(f"[Skeleton Overrides] Applied: {skeleton_overrides}")
 
     # CRITICAL: Force minimal export for Nanite compatibility
     # Skeletal meshes: geometry + skeleton only (no materials/textures/attributes)
@@ -1464,6 +1510,32 @@ Unreal Engine Integration:
         default=SMOOTH_ITERATIONS,
         help=f"Number of branch smoothing iterations (default: {SMOOTH_ITERATIONS}, range: 0-20). Higher values produce smoother branches with less sharp angles. Set to 0 to disable smoothing",
     )
+    # Skeleton simplification parameters (independent of mesh quality)
+    parser.add_argument(
+        "--skeleton-length",
+        type=float,
+        default=None,
+        help="Bone length multiplier (0.0-5.0). Higher = fewer, longer bones. Overrides quality preset. Default from preset (ultra=0.1, medium=2.0, performance=4.0)",
+    )
+    parser.add_argument(
+        "--skeleton-reduce",
+        type=float,
+        default=None,
+        help="Bone thickness threshold (0.0-1.0). Higher = skip thinner branches (fewer bones). Overrides quality preset. Default from preset (ultra=0.1, medium=0.4, performance=0.8)",
+    )
+    parser.add_argument(
+        "--skeleton-bias",
+        type=float,
+        default=None,
+        help="Bone distribution bias (0.0-1.0). 0=more bones near trunk, 1=more near tips. Default: 0.5",
+    )
+    parser.add_argument(
+        "--skeleton-connected",
+        type=str,
+        default=None,
+        choices=["true", "false"],
+        help="Use connected bone chains (true=more bones, false=fewer bones). Default: true",
+    )
     parser.add_argument(
         "--import-to-unreal",
         action="store_true",
@@ -1590,6 +1662,20 @@ Unreal Engine Integration:
         # --fast also disables static (redundant since already default, but explicit)
         include_static = args.include_static and not args.fast
 
+        # Build skeleton overrides from CLI args (allows simplified skeleton with ultra mesh)
+        skeleton_overrides = {}
+        if args.skeleton_length is not None:
+            skeleton_overrides["skeleton_length"] = args.skeleton_length
+        if args.skeleton_reduce is not None:
+            skeleton_overrides["skeleton_reduce"] = args.skeleton_reduce
+        if args.skeleton_bias is not None:
+            skeleton_overrides["skeleton_bias"] = args.skeleton_bias
+        if args.skeleton_connected is not None:
+            skeleton_overrides["skeleton_connected"] = (
+                args.skeleton_connected.lower() == "true"
+            )
+        skeleton_overrides = skeleton_overrides if skeleton_overrides else None
+
         # Detect cycle-based mode via CLI args (--cycle-interval enables multi-stage mode)
         is_cycle_mode = args.cycle_interval is not None
 
@@ -1612,6 +1698,7 @@ Unreal Engine Integration:
                     skip_pve_json=skip_pve_json,
                     include_static=include_static,
                     skip_validation=skip_validation,
+                    skeleton_overrides=skeleton_overrides,
                 )
             else:
                 # Standard height-based export mode
@@ -1629,6 +1716,7 @@ Unreal Engine Integration:
                     skip_pve_json=skip_pve_json,
                     include_static=include_static,
                     skip_validation=skip_validation,
+                    skeleton_overrides=skeleton_overrides,
                 )
 
         # Print profiling report if enabled
