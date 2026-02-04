@@ -12,8 +12,8 @@ Two Export Modes:
 
 Quick Start (copy-paste ready with all defaults shown):
     # Full forest generation with all flags (recommended for production)
-    
-    
+
+
 
 Common Flags:
     [csv_file]                                     Input CSV with tree positions (default: data/input/test.csv)
@@ -58,29 +58,31 @@ Common Flags:
 Skeleton Simplification Flags (independent of mesh quality):
     Use these to reduce bone count while keeping ultra mesh resolution.
     Critical for Unreal Engine's 32,767 bone limit.
+    Both parameters independently reduce bone count - use whichever fits your needs.
 
-    --skeleton-length FLOAT                        Bone length multiplier (0.0-5.0, default: from quality preset)
-                                                   Higher = fewer, longer bones
-                                                   - 0.1 = maximum bones (ultra default)
+    --skeleton-length FLOAT                        Merge nodes along branches into longer bones (0.0-5.0)
+                                                   Higher values create fewer, longer bones along branch length.
+                                                   - 0.1 = one bone per node (ultra default, most bones)
                                                    - 2.0 = balanced (medium default)
-                                                   - 4.0 = minimal bones (performance default)
+                                                   - 4.0 = very long bones (performance default, fewest bones)
 
-    --skeleton-reduce FLOAT                        Bone thickness threshold (0.0-1.0, default: from quality preset)
-                                                   Higher = skip thinner branches (fewer bones)
-                                                   - 0.1 = keep thin branches (ultra default)
-                                                   - 0.4 = balanced (medium default)
-                                                   - 0.8 = only thick branches (performance default)
+    --skeleton-reduce FLOAT                        Skip thin side branches entirely (0.0-1.0)
+                                                   Higher values filter out more thin branches from having any bones.
+                                                   This is typically the most effective for reducing bone count.
+                                                   - 0.1 = keep all branches (ultra default, most bones)
+                                                   - 0.4 = skip thin branches (medium default)
+                                                   - 0.8 = only thick main branches (performance default, fewest bones)
 
     --skeleton-bias FLOAT                          Bone distribution bias (0.0-1.0, default: 0.5)
                                                    0.0 = more bones near trunk
                                                    1.0 = more bones near branch tips
 
     --skeleton-connected {true,false}              Use connected bone chains (default: true)
-                                                   true = connected chains (more bones, smoother animation)
-                                                   false = disconnected (fewer bones)
+                                                   true = connected chains (required by some programs, more bones)
+                                                   false = floating bones (fewer bones)
 
-    Example: Ultra mesh with simplified skeleton (reduces 30k bones to ~8 bones)
-        python src/growpy/cli/generate_forest.py --quality ultra --skeleton-length 3.0 --skeleton-reduce 0.6
+    Example: Ultra mesh with simplified skeleton
+        python src/growpy/cli/generate_forest.py --quality ultra --skeleton-reduce 0.5
 
 Multi-Stage Export Flags (generate trees at different growth stages):
     --cycle-interval INT                           Export trees every N cycles (e.g., 10 = cycles 10, 20, 30...)
@@ -1522,17 +1524,24 @@ Unreal Engine Integration:
         help=f"Number of branch smoothing iterations (default: {SMOOTH_ITERATIONS}, range: 0-20). Higher values produce smoother branches with less sharp angles. Set to 0 to disable smoothing",
     )
     # Skeleton simplification parameters (independent of mesh quality)
+    # See Grove documentation: each parameter independently reduces bone count
     parser.add_argument(
         "--skeleton-length",
         type=float,
         default=None,
-        help="Bone length multiplier (0.0-5.0). Higher = fewer, longer bones. Overrides quality preset. Default from preset (ultra=0.1, medium=2.0, performance=4.0)",
+        help="Create longer bones by merging nodes along branches (0.0-5.0). "
+        "Higher values merge more nodes into single bones, reducing total bone count. "
+        "Affects bone granularity along branch length. "
+        "Default from preset (ultra=0.1, medium=2.0, performance=4.0)",
     )
     parser.add_argument(
         "--skeleton-reduce",
         type=float,
         default=None,
-        help="Bone thickness threshold (0.0-1.0). Higher = skip thinner branches (fewer bones). Overrides quality preset. Default from preset (ultra=0.1, medium=0.4, performance=0.8)",
+        help="Skip thin side branches entirely to reduce bone count (0.0-1.0). "
+        "Higher values filter out more thin branches from having any bones. "
+        "This is typically the most effective parameter for reducing bone count. "
+        "Default from preset (ultra=0.1, medium=0.4, performance=0.8)",
     )
     parser.add_argument(
         "--skeleton-bias",
