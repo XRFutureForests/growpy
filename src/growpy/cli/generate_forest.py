@@ -12,28 +12,8 @@ Two Export Modes:
 
 Quick Start (copy-paste ready with all defaults shown):
     # Full forest generation with all flags (recommended for production)
-    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 10 --smooth-iterations 10 --output-dir data/output/forest --preset-override drop_decay=0.1 --skip-pve-json
-
-    # Multi-stage mode: Generate trees at different growth stages from one position
-    python src/growpy/cli/generate_forest.py data/input/test_stages.csv --cycle-interval 10 --max-cycles 60
-
-    # Generate with Unreal import script for one-click import
-    python src/growpy/cli/generate_forest.py data/input/test.csv --quality high --growth-cycle-limit 100 --smooth-iterations 10 --output-dir data/output/forest --import-to-unreal --unreal-project-path /Game/GrowPy/Trees --preset-override drop_decay=0.1 --profile
-
-    # Include Grove metadata for debugging/analysis (age, mass, vigor - increases size ~70%)
-    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 10 --smooth-iterations 10 --output-dir data/output/forest --include-grove-attributes
-
-    # Fast preview (skip PVE JSON and validation - skeletal only)
-    python src/growpy/cli/generate_forest.py data/input/test.csv --quality medium --growth-cycle-limit 5 --smooth-iterations 5 --output-dir data/output/forest --fast
-
-    # Include static mesh assemblies (for material-rich static placement)
-    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --include-static
-
-    # Prevent tree death at high cycle counts with longevity mode
-    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --growth-cycle-limit 100 --longevity-mode
-
-    # Ultra mesh quality with simplified skeleton for Unreal bone limit compatibility
-    python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --skeleton-length 3.0 --skeleton-reduce 0.6
+    
+    
 
 Common Flags:
     [csv_file]                                     Input CSV with tree positions (default: data/input/test.csv)
@@ -1703,10 +1683,16 @@ Unreal Engine Integration:
         export_tree_ids = None
         if args.export_trees:
             try:
-                export_tree_ids = set(int(x.strip()) for x in args.export_trees.split(","))
-                print(f"\n[Export Filter] Only exporting trees with fid: {sorted(export_tree_ids)}")
+                export_tree_ids = set(
+                    int(x.strip()) for x in args.export_trees.split(",")
+                )
+                print(
+                    f"\n[Export Filter] Only exporting trees with fid: {sorted(export_tree_ids)}"
+                )
             except ValueError:
-                print(f"Error: --export-trees must be comma-separated integers, got: {args.export_trees}")
+                print(
+                    f"Error: --export-trees must be comma-separated integers, got: {args.export_trees}"
+                )
                 return
 
         # Build skeleton overrides from CLI args (allows simplified skeleton with ultra mesh)
