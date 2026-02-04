@@ -125,6 +125,15 @@ Multi-Stage Export Flags (generate trees at different growth stages):
         norway_spruce_c030_h12m5_d32cm.usda
         Format: {species}_c{cycle:03d}_h{meters}m{tenths}_d{dbh_cm}cm
 
+Tree Selection Flags:
+    --export-trees IDs                             Comma-separated list of tree fids to export
+                                                   Example: --export-trees 1,2,5
+                                                   Other trees still participate in growth simulation for
+                                                   correct light competition, but only specified trees are exported.
+                                                   Useful for exporting only trees of interest (e.g., central tree
+                                                   growing under competition without exporting all competitors).
+                                                   If not specified, all trees are exported.
+
 Performance Flags (skip optional generation steps):
     --skip-pve-json                                Skip PVE preset JSON generation (saves ~3% export time)
                                                    PVE presets only needed for Unreal Procedural Vegetation Editor
@@ -329,6 +338,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         # Export each model/skeleton/bones triplet (each is a separate tree)
         # Process one tree at a time and immediately release memory to reduce peak RAM
         num_trees = len(models)
+        export_tree_ids = quality_params.get("export_tree_ids", None)
         for model_idx in range(num_trees):
             # Get current tree's data
             model = models[model_idx]
@@ -339,6 +349,15 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             tree_fid = fids[model_idx]
             tree_id = f"{tree_fid:04d}"
             tree_name = f"{species_clean}_tree_{tree_id}"
+
+            # Skip trees not in export filter (they still participated in growth simulation)
+            if export_tree_ids is not None and tree_fid not in export_tree_ids:
+                # Clear memory for skipped tree
+                models[model_idx] = None
+                skeletons[model_idx] = None
+                tree_bones[model_idx] = None
+                del model, skeleton, bones_for_tree
+                continue
 
             # Use appropriate twig type based on mesh_type
             use_skeletal = mesh_type == "skeletal"
@@ -603,6 +622,7 @@ def generate_forest_stages(
     include_static: bool = False,
     skip_validation: bool = False,
     skeleton_overrides: Optional[Dict[str, Any]] = None,
+    export_tree_ids: Optional[set] = None,
 ) -> None:
     """Generate trees at multiple growth stages with height-based cycle calculation.
 
@@ -761,6 +781,7 @@ def generate_forest_stages(
     quality_params["skip_pve_json"] = skip_pve_json
     quality_params["include_static"] = include_static
     quality_params["skip_validation"] = skip_validation
+    quality_params["export_tree_ids"] = export_tree_ids
 
     # Apply skeleton overrides (allows simplified skeleton with ultra mesh)
     if skeleton_overrides:
@@ -815,6 +836,10 @@ def generate_forest_stages(
 
                 # Skip this snapshot if cycle exceeds tree's calculated max
                 if cycle > tree_max_cycles:
+                    continue
+
+                # Skip trees not in export filter (they still participated in growth simulation)
+                if export_tree_ids is not None and fid not in export_tree_ids:
                     continue
 
                 # Generate filename with metadata
@@ -889,6 +914,7 @@ def generate_forest_exports(
     include_static: bool = False,
     skip_validation: bool = False,
     skeleton_overrides: Optional[Dict[str, Any]] = None,
+    export_tree_ids: Optional[set] = None,
 ) -> None:
     """Generate forest from CSV data and export as Nanite Assembly USD files.
 
@@ -1046,6 +1072,7 @@ def generate_forest_exports(
     quality_params["profile_pve"] = (
         timer.enabled
     )  # Enable PVE profiling when --profile is set
+    quality_params["export_tree_ids"] = export_tree_ids
 
     try:
         # Twigs are copied to each tree folder by assembly_export
@@ -1073,6 +1100,7 @@ def generate_unreal_import_script(
     output_dir: Path,
     project_path: str = "/Game/GrowPy/Trees",
     forest_data: Optional[pd.DataFrame] = None,
+    export_tree_ids: Optional[set] = None,
 ) -> Path:
     """
     Generate a standalone Unreal Python script for importing forest USD files.
@@ -1090,6 +1118,7 @@ def generate_unreal_import_script(
         output_dir: Directory containing exported USD files
         project_path: Unreal project Content path
         forest_data: Optional DataFrame with tree positions (must have fid, x, y, z columns)
+        export_tree_ids: Optional set of tree IDs to include (if None, includes all)
 
     Returns:
         Path to generated script file
@@ -1138,6 +1167,9 @@ def generate_unreal_import_script(
     if forest_data is not None:
         for _, row in forest_data.iterrows():
             fid = int(row["fid"])
+            # Skip trees not in export filter
+            if export_tree_ids is not None and fid not in export_tree_ids:
+                continue
             x = float(row["x"])
             y = float(row["y"])
             z = float(row.get("z", 0.0))  # Default to 0 if z not present
@@ -1609,6 +1641,12 @@ Unreal Engine Integration:
         default=None,
         help="Maximum cycles for multi-stage export. Overrides CSV max_cycles column if present.",
     )
+    parser.add_argument(
+        "--export-trees",
+        type=str,
+        default=None,
+        help="Comma-separated list of tree IDs (fid) to export. Other trees still participate in growth simulation but are not exported. Example: --export-trees 1,2,5",
+    )
 
     args = parser.parse_args()
 
@@ -1661,6 +1699,16 @@ Unreal Engine Integration:
         # --fast also disables static (redundant since already default, but explicit)
         include_static = args.include_static and not args.fast
 
+        # Parse --export-trees filter
+        export_tree_ids = None
+        if args.export_trees:
+            try:
+                export_tree_ids = set(int(x.strip()) for x in args.export_trees.split(","))
+                print(f"\n[Export Filter] Only exporting trees with fid: {sorted(export_tree_ids)}")
+            except ValueError:
+                print(f"Error: --export-trees must be comma-separated integers, got: {args.export_trees}")
+                return
+
         # Build skeleton overrides from CLI args (allows simplified skeleton with ultra mesh)
         skeleton_overrides = {}
         if args.skeleton_length is not None:
@@ -1698,6 +1746,7 @@ Unreal Engine Integration:
                     include_static=include_static,
                     skip_validation=skip_validation,
                     skeleton_overrides=skeleton_overrides,
+                    export_tree_ids=export_tree_ids,
                 )
             else:
                 # Standard height-based export mode
@@ -1716,6 +1765,7 @@ Unreal Engine Integration:
                     include_static=include_static,
                     skip_validation=skip_validation,
                     skeleton_overrides=skeleton_overrides,
+                    export_tree_ids=export_tree_ids,
                 )
 
         # Print profiling report if enabled
@@ -1738,6 +1788,7 @@ Unreal Engine Integration:
                 args.output_dir,
                 args.unreal_project_path,
                 forest_data=forest_data,
+                export_tree_ids=export_tree_ids,
             )
 
             cleanup_script = generate_unreal_cleanup_script(
