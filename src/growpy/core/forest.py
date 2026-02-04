@@ -268,11 +268,14 @@ def simulate_forest_growth_with_snapshots(
                 # Note: tag_bone_id() takes positional args: (length, reduce, bias, connected)
                 skeleton_length = quality_params.get("skeleton_length", 2.0)
                 skeleton_reduce = quality_params.get("skeleton_reduce", 0.4)
+                skeleton_bias = quality_params.get("skeleton_bias", 0.5)
+                skeleton_connected = quality_params.get("skeleton_connected", True)
+
                 all_bones = grove.tag_bone_id(
                     skeleton_length,
                     skeleton_reduce**2,  # Squared like Grove UI does
-                    quality_params.get("skeleton_bias", 0.5),
-                    quality_params.get("skeleton_connected", True),
+                    skeleton_bias,
+                    skeleton_connected,
                 )
                 tree_bones = _split_bones_by_tree(all_bones, len(grove.trees))
 
