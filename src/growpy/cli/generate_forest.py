@@ -12,7 +12,7 @@ Two Export Modes:
 
 Quick Start (copy-paste ready with all defaults shown):
     # Full forest generation with all flags (recommended for production)
-
+python src/growpy/cli/generate_forest.py data/input/test.csv --quality ultra --cycle-interval 10 --growth-cycle-limit 40 --smooth-iterations 10 --output-dir data/output/forest --import-to-unreal --unreal-project-path /Game/GrowPy/Trees --skeleton-length 2.5 --skeleton-reduce 0.5 --profile -v --export-trees 1
 
 
 Common Flags:
