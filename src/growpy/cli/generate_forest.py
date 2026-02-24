@@ -104,8 +104,8 @@ Multi-Stage Export Flags (generate trees at different growth stages):
         python src/growpy/cli/generate_forest.py data/input/test.csv --cycle-interval 10
 
     Output naming includes metadata for easy selection:
-        norway_spruce_c030_h12m5_d32cm.usda
-        Format: {species}_c{cycle:03d}_h{meters}m{tenths}_d{dbh_cm}cm
+        norway_spruce_c030_h12m5_d32cm_assembly.usda
+        Format: {species}_c{cycle:03d}_h{meters}m{tenths}_d{dbh_cm}cm_assembly
 
 Tree Selection Flags:
     --export-trees IDs                             Comma-separated list of tree fids to export
@@ -129,7 +129,7 @@ Performance Flags (skip optional generation steps):
     --fast                                         Fast mode: skip PVE JSON, validation, and static meshes
                                                    Equivalent to --skip-pve-json --skip-validation
 
-    Note: DynamicWind data is exported as separate JSON files (*_DynamicWind.json)
+    Note: Wind data is exported as separate JSON files (*_stems_unreal_wind.json)
           Import in Unreal using ImportDynamicWindSkeletalDataFromFile after USD import
 
 Preset Override Flags (prevent tree death at high cycle counts):
@@ -164,13 +164,13 @@ Assembly Types:
 
 Output:
     Height mode:
-        data/output/forest/{species}/tree_####/                           Per-tree directories
-        data/output/forest/{species}/tree_####/{species}.usda             Nanite assembly
-        data/output/forest/{species}/tree_####/{species}_{tree_id}_skeletal.usda  Tree mesh with skeleton
+        data/output/forest/{species}/tree_####/                                    Per-tree directories
+        data/output/forest/{species}/tree_####/{species}_assembly.usda              Nanite assembly
+        data/output/forest/{species}/tree_####/{species}_stems_skeletal.usda        Stems mesh with skeleton
 
     Multi-stage mode:
-        data/output/forest/{species}/tree_####/{species}_c{cycle}_h{height}_d{dbh}.usda
-        Example: data/output/forest/norway_spruce/tree_0001/norway_spruce_c030_h12m5_d32cm.usda
+        data/output/forest/{species}/tree_####/{species}_c{cycle}_h{height}_d{dbh}_assembly.usda
+        Example: data/output/forest/norway_spruce/tree_0001/norway_spruce_c030_h12m5_d32cm_assembly.usda
 
 Note:
     Run prepare_assets.py and convert_twigs.py first to prepare species assets.
@@ -330,7 +330,6 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             # Use original CSV fid for naming (with leading zeros)
             tree_fid = fids[model_idx]
             tree_id = f"{tree_fid:04d}"
-            tree_name = f"{species_clean}_tree_{tree_id}"
 
             # Skip trees not in export filter (they still participated in growth simulation)
             if export_tree_ids is not None and tree_fid not in export_tree_ids:
@@ -346,11 +345,10 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             use_static = mesh_type == "static"
 
             # Create tree-specific subfolder with tree ID
-            # Assembly uses species name (shared), tree mesh uses tree_id (unique)
             mesh_suffix = "skeletal" if use_skeletal else "static"
             tree_dir = output_dir / species_clean / f"tree_{tree_id}"
             tree_dir.mkdir(parents=True, exist_ok=True)
-            usd_path = tree_dir / f"{species_clean}.usda"
+            usd_path = tree_dir / f"{species_clean}_assembly.usda"
 
             # CRITICAL: Always use skeletal twigs for both skeletal and static assemblies
             # Static twig variants don't exist, and skeletal twigs work as point instances
@@ -392,12 +390,13 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 if use_skeletal:
                     from growpy.io.wind_json import generate_wind_json
 
-                    # Path to the skeletal USD file (tree mesh with skeleton)
+                    # Path to the skeletal USD file (stems mesh with skeleton)
                     skeletal_usd_path = (
-                        tree_dir / f"{species_clean}_{tree_id}_skeletal.usda"
+                        tree_dir / f"{species_clean}_stems_skeletal.usda"
                     )
-                    wind_json_name = f"{tree_name}_DynamicWind.json"
-                    wind_json_path = tree_dir / wind_json_name
+                    wind_json_path = (
+                        tree_dir / f"{species_clean}_stems_unreal_wind.json"
+                    )
                     try:
                         with timer.track("generate_wind_json", parent="grove_export"):
                             generate_wind_json(
@@ -410,7 +409,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         import traceback
 
                         print(
-                            f"Warning: Failed to generate wind JSON for {tree_name}: {wind_error}"
+                            f"Warning: Failed to generate wind JSON for tree {tree_id}: {wind_error}"
                         )
                         if verbose:
                             traceback.print_exc()
@@ -422,9 +421,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 if use_skeletal and not skip_pve:
                     from growpy.io.pve_grove_mapper import generate_pve_from_grove
 
-                    # Use Unreal PVE naming convention: species_tree_####.json (using fid)
-                    pve_variation_name = f"{tree_name}.json"
-                    pve_json_path = tree_dir / pve_variation_name
+                    pve_json_path = tree_dir / f"{species_clean}_stems_unreal_pve.json"
                     pve_config_dir = Path("data/assets/pve_configs")
 
                     try:
@@ -445,7 +442,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         import traceback
 
                         print(
-                            f"Warning: Failed to generate PVE preset JSON for {tree_name}: {pve_error}"
+                            f"Warning: Failed to generate PVE preset JSON for tree {tree_id}: {pve_error}"
                         )
                         if verbose:
                             traceback.print_exc()
@@ -621,8 +618,8 @@ def generate_forest_stages(
         1,Norway spruce,0,0,0,15.0
 
     Output naming:
-        {species}_c{cycle:03d}_{height}_{dbh}.usda
-        e.g., norway_spruce_c030_h12m5_d32cm.usda
+        {species}_c{cycle:03d}_{height}_{dbh}_assembly.usda
+        e.g., norway_spruce_c030_h12m5_d32cm_assembly.usda
 
     Args:
         csv_path: Path to CSV file with forest data (requires: species, x, y, height)
@@ -842,7 +839,9 @@ def generate_forest_stages(
                 tree_dir.mkdir(parents=True, exist_ok=True)
 
                 # Assembly name includes cycle/height/dbh for unique identification
-                assembly_name = f"{species_clean}_c{cycle:03d}_{height_str}_{dbh_str}"
+                assembly_name = (
+                    f"{species_clean}_c{cycle:03d}_{height_str}_{dbh_str}_assembly"
+                )
                 usd_path = tree_dir / f"{assembly_name}.usda"
 
                 # Get twig USD paths
@@ -1112,22 +1111,10 @@ def generate_unreal_import_script(
     script_path = script_dir / "import_forest.py"
 
     # Find all tree assemblies in species/tree_{id}/ folders
-    # Structure: species/tree_0001/{species}.usda (assembly references {species}_{tree_id}_skeletal.usda)
-    nanite_files = list(output_dir.glob("*/tree_*/*.usda")) + list(
-        output_dir.glob("*/tree_*/*.usd")
+    # Structure: species/tree_0001/{species}_assembly.usda (references {species}_stems_skeletal.usda)
+    nanite_files = list(output_dir.glob("*/tree_*/*_assembly.usda")) + list(
+        output_dir.glob("*/tree_*/*_assembly.usd")
     )
-
-    # Filter to only include assembly files (exclude tree mesh and twig files)
-    # Tree mesh files have _skeletal or _static suffix
-    # Twig files contain "twig" in the name
-    # Assembly files include cycle/height metadata but NOT _skeletal/_static suffix
-    nanite_files = [
-        f
-        for f in nanite_files
-        if not f.stem.endswith("_skeletal")
-        and not f.stem.endswith("_static")
-        and "twig" not in f.stem.lower()
-    ]
 
     # Group trees by species (parent of tree_XXXX folder)
     trees_by_species = {}
@@ -1434,6 +1421,108 @@ else:
     return script_path
 
 
+def _run_obj_export(
+    output_dir: Path,
+    csv_path: Path,
+    decimate_ratio: float = 0.3,
+    generate_scene_xml: bool = False,
+    verbose: bool = False,
+) -> None:
+    """Convert exported USDA trees to OBJ/MTL for Helios++ and optionally generate scene XML."""
+    from growpy.io.obj_export import clear_twig_decimate_cache, convert_tree_to_obj
+
+    clear_twig_decimate_cache()
+
+    # Find all assembly USDA files (exclude skeletal/static/twig files)
+    assembly_files = []
+    for usda in output_dir.glob("*/tree_*/*.usda"):
+        if usda.stem.endswith("_skeletal") or usda.stem.endswith("_static"):
+            continue
+        if "twig" in usda.stem.lower():
+            continue
+        assembly_files.append(usda)
+
+    if not assembly_files:
+        print("OBJ export: No assembly USDA files found")
+        return
+
+    print(f"\n{'='*60}")
+    print(f"HELIOS OBJ EXPORT ({len(assembly_files)} trees)")
+    print(f"{'='*60}")
+
+    # Load CSV for species info and positions
+    forest_data = pd.read_csv(csv_path)
+    if "fid" not in forest_data.columns:
+        forest_data["fid"] = range(1, len(forest_data) + 1)
+    if "z" not in forest_data.columns:
+        forest_data["z"] = 0.0
+
+    # Infer leaf spectra from species name (simple heuristic)
+    conifer_keywords = [
+        "spruce",
+        "pine",
+        "fir",
+        "cedar",
+        "cypress",
+        "juniper",
+        "larch",
+        "hemlock",
+        "yew",
+        "redwood",
+        "sequoia",
+        "thuja",
+    ]
+
+    obj_files = []
+    for assembly_path in sorted(assembly_files):
+        # Extract tree_id from directory name (tree_0001 -> 0001)
+        tree_dir_name = assembly_path.parent.name
+        tree_id_str = tree_dir_name.replace("tree_", "")
+
+        # Infer species from directory structure (species_clean/tree_xxxx/)
+        species_dir = assembly_path.parent.parent.name
+        species_name = species_dir.replace("_", " ").title()
+
+        is_conifer = any(kw in species_dir.lower() for kw in conifer_keywords)
+        spectra = "conifer" if is_conifer else "deciduous"
+
+        obj_path = convert_tree_to_obj(
+            assembly_usda_path=assembly_path,
+            species_name=species_name,
+            decimate_ratio=decimate_ratio,
+            helios_spectra_leaves=spectra,
+        )
+
+        if obj_path:
+            # Match to CSV row for position data
+            try:
+                fid = int(tree_id_str)
+                row = forest_data[forest_data["fid"] == fid].iloc[0]
+                obj_files.append(
+                    (
+                        obj_path,
+                        float(row["x"]),
+                        float(row["y"]),
+                        float(row["z"]),
+                        species_name,
+                    )
+                )
+            except (ValueError, IndexError):
+                obj_files.append((obj_path, 0.0, 0.0, 0.0, species_name))
+
+    # Generate Helios scene XML
+    if generate_scene_xml and obj_files:
+        from growpy.io.helios_scene import generate_helios_scene
+
+        scene_path = output_dir / "helios_scene.xml"
+        generate_helios_scene(
+            tree_entries=obj_files,
+            output_path=scene_path,
+        )
+
+    print(f"\nOBJ export complete: {len(obj_files)} trees converted")
+
+
 def main():
     """Main forest generation function."""
     import argparse
@@ -1636,6 +1725,23 @@ Unreal Engine Integration:
         default=None,
         help="Comma-separated list of tree IDs (fid) to export. Other trees still participate in growth simulation but are not exported. Example: --export-trees 1,2,5",
     )
+    # Helios++ OBJ/MTL export
+    parser.add_argument(
+        "--export-obj",
+        action="store_true",
+        help="Export OBJ/MTL files for Helios++ LiDAR simulation (post-processes USDA files)",
+    )
+    parser.add_argument(
+        "--obj-decimate-ratio",
+        type=float,
+        default=0.3,
+        help="Twig decimation ratio for OBJ export (0.0-1.0, lower = fewer polygons, default: 0.3)",
+    )
+    parser.add_argument(
+        "--helios-scene",
+        action="store_true",
+        help="Generate Helios++ scene XML placing all tree OBJs at CSV positions (implies --export-obj)",
+    )
 
     args = parser.parse_args()
 
@@ -1761,6 +1867,18 @@ Unreal Engine Integration:
                     skip_validation=skip_validation,
                     skeleton_overrides=skeleton_overrides,
                     export_tree_ids=export_tree_ids,
+                )
+
+        # OBJ/MTL export for Helios++ (post-processes USDA output)
+        export_obj = args.export_obj or args.helios_scene
+        if export_obj:
+            with timer.track("obj_export"):
+                _run_obj_export(
+                    output_dir=args.output_dir,
+                    csv_path=csv_path,
+                    decimate_ratio=args.obj_decimate_ratio,
+                    generate_scene_xml=args.helios_scene,
+                    verbose=args.verbose,
                 )
 
         # Print profiling report if enabled

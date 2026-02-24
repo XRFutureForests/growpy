@@ -171,12 +171,13 @@ def build_tree_mesh(
         if clean_export:
             stage.SetMetadata("customLayerData", {"clean_export": True})
 
-        # Generate prim names from species and tree_id for unique Unreal assets
-        if species_name and tree_id:
+        # Generate prim names from species for consistent naming convention
+        # Uses {species}_stems pattern to match file naming convention
+        if species_name:
             sanitized_species = species_name.replace(" ", "_").replace("-", "_").lower()
-            root_name = f"{sanitized_species}_{tree_id}"
-            mesh_name = f"{sanitized_species}_{tree_id}_mesh"
-            skel_name = f"{sanitized_species}_{tree_id}_skel"
+            root_name = f"{sanitized_species}_stems"
+            mesh_name = f"{sanitized_species}_stems_mesh"
+            skel_name = f"{sanitized_species}_stems_skel"
         else:
             root_name = "tree"
             mesh_name = "TreeMesh"
@@ -1508,11 +1509,11 @@ def get_twig_usd_map_for_species(
     twig_usd_map = {}
 
     # Map Grove attribute names to twig file types with priority order
-    # Earlier keywords have higher priority (e.g., "apical" preferred over "var_a")
+    # Earlier keywords have higher priority (e.g., "apical" preferred over variant letter)
     type_mapping = {
-        "twig_long": ["apical", "long", "end", "terminal", "var_a", "var_c"],
-        "twig_short": ["lateral", "short", "side", "var_b", "var_d"],
-        "twig_upward": ["upward", "up", "var_e"],
+        "twig_long": ["apical", "long", "end", "terminal", "foliage_a_", "foliage_c_"],
+        "twig_short": ["lateral", "short", "side", "foliage_b_", "foliage_d_"],
+        "twig_upward": ["upward", "up", "foliage_e_"],
         "twig_dead": ["dead", "fall", "winter"],
     }
 
@@ -1520,7 +1521,7 @@ def get_twig_usd_map_for_species(
     for grove_type, keywords in type_mapping.items():
         matched = False
 
-        # Try keywords in priority order (specific names like "apical" before generic "var_a")
+        # Try keywords in priority order (specific names like "apical" before variant letters)
         for keyword in keywords:
             if matched:
                 break
@@ -1591,7 +1592,7 @@ def get_twig_usd_map_for_species(
     # Fallback: If no variant-specific twigs found, use base twig file for all types
     # This handles species like Pacific Silver Fir that only have one twig file
     if not twig_usd_map and twig_files_by_type:
-        # Look for base twig file (species_name_twig_skeletal.usda or species_name_twig_static.usda)
+        # Look for base twig file (species_name_foliage_skeletal.usda or species_name_foliage_static.usda)
         for twig_type, twig_paths in twig_files_by_type.items():
             if twig_paths:
                 twig_file = twig_paths[0]
@@ -1601,11 +1602,11 @@ def get_twig_usd_map_for_species(
                 has_variant = any(
                     v in stem_lower
                     for v in [
-                        "var_a",
-                        "var_b",
-                        "var_c",
-                        "var_d",
-                        "var_e",
+                        "foliage_a_",
+                        "foliage_b_",
+                        "foliage_c_",
+                        "foliage_d_",
+                        "foliage_e_",
                         "apical",
                         "lateral",
                         "upward",
@@ -1750,9 +1751,9 @@ def bundle_twigs_for_species(
                 texture_count = 0
                 for texture_file in source_texture_dir.glob("*"):
                     if texture_file.is_file():
-                        # CRITICAL: Only copy standardized textures (contain _twig_)
+                        # CRITICAL: Only copy standardized textures (contain _foliage_)
                         # Skip original Grove textures like BeechDiffuse.jpg
-                        if "_twig_" not in texture_file.stem:
+                        if "_foliage_" not in texture_file.stem:
                             continue
 
                         # Classify texture type
