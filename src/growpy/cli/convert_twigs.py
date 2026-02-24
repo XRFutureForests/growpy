@@ -79,8 +79,8 @@ Alpha Trimming:
     (Uses 'all' method: delete only if ALL samples < threshold)
 
 Output per twig:
-    - {species}_twig_{type}_skeletal.usda  # Skeletal mesh with skeleton
-    - {species}_twig_{type}_static.usda    # Static mesh with materials
+    - {species}_foliage_{type}_skeletal.usda  # Skeletal mesh with skeleton
+    - {species}_foliage_{type}_static.usda    # Static mesh with materials
 
 Usage:
     python src/growpy/cli/convert_twigs.py <path> [options]
@@ -142,7 +142,7 @@ def standardize_twig_name(original_name: str, species_name: str) -> Tuple[str, D
 
     Examples:
         "BeechApicalTwig" -> ("beech_apical", {"type": "apical", "species": "beech"})
-        "ScotsPineVariationCLateralTwig" -> ("scots_pine_lateral_var_c", {...})
+        "ScotsPineVariationCLateralTwig" -> ("scots_pine_lateral_c", {...})
         "OakEuropeanLongTwig" -> ("european_oak_apical", {"type": "apical"})
     """
     name_lower = original_name.lower()
@@ -193,7 +193,7 @@ def standardize_twig_name(original_name: str, species_name: str) -> Tuple[str, D
 
     # Variation
     if metadata["variation"]:
-        parts.append(f"var_{metadata['variation']}")
+        parts.append(metadata["variation"])
 
     # Season modifier
     if metadata["season"] and metadata["season"] != metadata["type"]:
@@ -437,10 +437,10 @@ def main():
 Examples:
     # Convert twigs for 5 species from forest placement CSV (auto-extracts from data/input/test.csv)
     # Creates both skeletal and static variants:
-    #   - aspen_twig_apical_skeletal.usda (no materials, with skeleton)
-    #   - aspen_twig_apical_static.usda (with materials, no skeleton)
-    #   - aspen_twig_lateral_skeletal.usda
-    #   - aspen_twig_lateral_static.usda
+    #   - aspen_foliage_apical_skeletal.usda (no materials, with skeleton)
+    #   - aspen_foliage_apical_static.usda (with materials, no skeleton)
+    #   - aspen_foliage_lateral_skeletal.usda
+    #   - aspen_foliage_lateral_static.usda
     python src/growpy/cli/convert_twigs.py data/assets/twigs --formats usda
 
     # Convert specific species twig directory (no CSV filtering)
