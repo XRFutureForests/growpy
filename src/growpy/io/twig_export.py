@@ -166,8 +166,9 @@ def _add_twig_material(
         # Define leaf green color as fallback
         LEAF_GREEN = Gf.Vec3f(0.3, 0.6, 0.2)
 
-        # Create materials path under Twig root
-        materials_path = "/Twig/Materials"
+        # Create materials path under the mesh's parent (SkelRoot)
+        root_path = mesh_path.GetParentPath()
+        materials_path = str(root_path.AppendChild("Materials"))
         UsdGeom.Scope.Define(stage, materials_path)
 
         # Determine material name
@@ -426,12 +427,16 @@ def clean_static_usd_file(usd_path):
         if not points or len(points) == 0:
             return False
 
-        # Create Twig root Xform (non-skeletal)
-        root_path = Sdf.Path("/Twig")
+        # Derive prim name from output filename to follow naming convention
+        # e.g., european_beech_foliage_a_static.usda -> european_beech_foliage_a
+        prim_name = Path(usd_path).stem.replace("_skeletal", "").replace("_static", "")
+
+        # Create root Xform with species-specific name
+        root_path = Sdf.Path(f"/{prim_name}")
         root_xform = UsdGeom.Xform.Define(stage, root_path)
 
-        # Re-parent mesh under /Twig as TwigMesh
-        new_mesh_path = root_path.AppendChild("TwigMesh")
+        # Re-parent mesh under root as {prim_name}_mesh
+        new_mesh_path = root_path.AppendChild(f"{prim_name}_mesh")
         old_mesh_path = mesh_prim.GetPath()
 
         # Copy mesh to new location
@@ -494,10 +499,10 @@ def clean_static_usd_file(usd_path):
         if root_prim and root_prim.IsValid():
             stage.RemovePrim(root_prim.GetPath())
 
-        # Set Twig as default prim so it's the primary reference target
-        twig_prim = stage.GetPrimAtPath("/Twig")
-        if twig_prim and twig_prim.IsValid():
-            stage.SetDefaultPrim(twig_prim)
+        # Set as default prim so it's the primary reference target
+        foliage_prim = stage.GetPrimAtPath(f"/{prim_name}")
+        if foliage_prim and foliage_prim.IsValid():
+            stage.SetDefaultPrim(foliage_prim)
 
         # Save stage
         stage.Save()
@@ -581,8 +586,9 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), minimal_export=Tru
         if not points or len(points) == 0:
             return False
 
-        # Create skeleton root (CamelCase naming)
-        root_path = Sdf.Path("/Twig")
+        # Derive prim name from output filename to follow naming convention
+        prim_name = Path(usd_path).stem.replace("_skeletal", "").replace("_static", "")
+        root_path = Sdf.Path(f"/{prim_name}")
         skel_root = UsdSkel.Root.Define(stage, root_path)
         # Explicitly set typeName for validation
         skel_root.GetPrim().SetTypeName("SkelRoot")
@@ -606,8 +612,7 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), minimal_export=Tru
         # Only the assembly root should have NaniteAssemblyRootAPI.
 
         # Create skeleton with single root joint
-        # Use "TwigSkel" naming to match Nanite Assembly requirements
-        skel_path = root_path.AppendChild("TwigSkel")
+        skel_path = root_path.AppendChild(f"{prim_name}_skel")
         skel = UsdSkel.Skeleton.Define(stage, skel_path)
 
         # Create single root joint at pivot point
@@ -646,9 +651,9 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), minimal_export=Tru
                 custom=False,
                 variability=Sdf.VariabilityUniform,
             )
-            joint_indices_attr.Set(Vt.IntArray([-1]))  # Re-parent mesh under SkelRoot
-        # Use "TwigMesh" naming to match Nanite Assembly requirements
-        new_mesh_path = root_path.AppendChild("TwigMesh")
+            joint_indices_attr.Set(Vt.IntArray([-1]))
+        # Re-parent mesh under SkelRoot
+        new_mesh_path = root_path.AppendChild(f"{prim_name}_mesh")
         old_mesh_path = mesh_prim.GetPath()
 
         # Copy mesh to new location
@@ -844,17 +849,15 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), minimal_export=Tru
                                 UsdShade.Material(mat_prim)
                             )
 
-        # CRITICAL: Remove the old /root prim that Blender created
-        # We've already copied everything we need (/TwigMesh and /_materials) to /Twig
-        # Leaving /root in the file confuses Unreal - it should only see /Twig (SkelRoot)
+        # Remove the old /root prim that Blender created
         root_prim = stage.GetPrimAtPath("/root")
         if root_prim and root_prim.IsValid():
             stage.RemovePrim(root_prim.GetPath())
 
-        # Set Twig as default prim so it's the primary reference target
-        twig_prim = stage.GetPrimAtPath("/Twig")
-        if twig_prim and twig_prim.IsValid():
-            stage.SetDefaultPrim(twig_prim)
+        # Set as default prim so it's the primary reference target
+        foliage_prim = stage.GetPrimAtPath(f"/{prim_name}")
+        if foliage_prim and foliage_prim.IsValid():
+            stage.SetDefaultPrim(foliage_prim)
 
         # Save stage
         stage.Save()
@@ -918,7 +921,7 @@ def standardize_twig_name(original_name, species_name):
         parts.append(metadata["type"])
 
     if metadata["variation"]:
-        parts.append(f"var_{metadata['variation']}")
+        parts.append(metadata["variation"])
 
     if metadata["season"] and metadata["season"] != metadata["type"]:
         parts.append(metadata["season"])
@@ -1052,11 +1055,13 @@ def copy_opaque_textures_for_skeletal(
         base_name_parts = []
         for part in standardized_name.split("_"):
             base_name_parts.append(part)
-            if part == "twig":
+            if part == "foliage":
                 break
 
-        if not any(p == "twig" for p in base_name_parts):
-            base_name = metadata.get("species", "").lower().replace(" ", "_") + "_twig"
+        if not any(p == "foliage" for p in base_name_parts):
+            base_name = (
+                metadata.get("species", "").lower().replace(" ", "_") + "_foliage"
+            )
         else:
             base_name = "_".join(base_name_parts)
 
@@ -3002,21 +3007,23 @@ def setup_materials_with_textures(
         for tex_type, tex_path in texture_map.items():
             try:
                 # CRITICAL: Copy texture with standardized naming to textures/ subfolder
-                # Format: textures/{species_twig}_{texture_type}{ext}
-                # Remove variant suffixes (_var_a, _var_b, etc.) from texture names
+                # Format: textures/{species_foliage}_{texture_type}{ext}
+                # Remove variant suffixes (a, b, etc.) from texture names
                 tex_ext = tex_path.suffix
-                # Extract base species name (everything up to and including 'twig')
+                # Extract base species name (everything up to and including 'foliage')
                 base_name_parts = []
-                found_twig = False
+                found_foliage = False
                 for part in standardized_name.split("_"):
                     base_name_parts.append(part)
-                    if part == "twig":
-                        found_twig = True
+                    if part == "foliage":
+                        found_foliage = True
                         break
 
-                # If 'twig' not found, use species name from metadata
-                if not found_twig:
-                    base_name = metadata["species"].lower().replace(" ", "_") + "_twig"
+                # If 'foliage' not found, use species name from metadata
+                if not found_foliage:
+                    base_name = (
+                        metadata["species"].lower().replace(" ", "_") + "_foliage"
+                    )
                 else:
                     base_name = "_".join(base_name_parts)
 
@@ -3257,22 +3264,24 @@ def process_twig_file(
                 original_name, species_name
             )
 
-            # Insert _twig after species name but before variant/type
-            # Example: western_red_cedar_twig_apical (not western_red_cedar_apical_twig)
+            # Insert _foliage after species name but before variant/type
+            # Example: western_red_cedar_foliage_apical (not western_red_cedar_apical)
             parts = standardized_name.split("_")
 
-            # Find species name end (before type keywords)
+            # Find species name end (before type keywords or variant letters)
             species_parts = []
             for i, part in enumerate(parts):
-                if part in ["apical", "lateral", "var", "upward", "dead", "summer"]:
-                    # Insert twig before this position
-                    species_parts.append("twig")
+                if part in ["apical", "lateral", "upward", "dead", "summer"] or (
+                    len(part) == 1 and part in "abcde"
+                ):
+                    # Insert foliage before this position
+                    species_parts.append("foliage")
                     species_parts.extend(parts[i:])
                     break
                 species_parts.append(part)
             else:
-                # No type found, append twig at end
-                species_parts.append("twig")
+                # No type found, append foliage at end
+                species_parts.append("foliage")
 
             standardized_name = "_".join(species_parts)
 
@@ -3330,6 +3339,7 @@ def process_twig_file(
 
             # Optional geometry processing for enhanced leaf detail
             # Restrict to leaf materials to avoid artifacts on twigs/bark
+            interior_decimate = False
             if densify or alpha_trim_threshold > 0.0 or interior_decimate:
                 # Validate textures before geometry processing
                 # Textures should have been standardized during asset preparation
@@ -3623,7 +3633,7 @@ def process_twig_file(
         # Remove original source texture files ONLY if standardized copies exist
         # This allows running skeletal-only export without breaking future static exports
         # Original files use CamelCase or species-specific naming (e.g., BeechAlpha.jpg)
-        # Standardized files use snake_case with full standardized name (e.g., european_beech_twig_alpha.jpg)
+        # Standardized files use snake_case with full standardized name (e.g., european_beech_foliage_alpha.jpg)
         textures_dir = output_dir / "textures"
         if textures_dir.exists() and not include_skeleton:
             # Only clean up non-standardized textures if we just created standardized ones
@@ -3632,14 +3642,15 @@ def process_twig_file(
                     continue
 
                 # Keep only files matching standardized naming pattern
-                # Format: {species_name}_twig_{texture_type}.{ext}
+                # Format: {species_name}_foliage_{texture_type}.{ext}
                 # Remove files with CamelCase or non-standardized names
                 filename = tex_file.stem
 
-                # Check if this is a standardized name (contains species + _twig_)
+                # Check if this is a standardized name (contains species + _foliage_)
                 species_lower = species_name.lower().replace(" ", "_")
                 is_standardized = (
-                    filename.startswith(species_lower) and "_twig_" in filename.lower()
+                    filename.startswith(species_lower)
+                    and "_foliage_" in filename.lower()
                 )
 
                 if not is_standardized:
