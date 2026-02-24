@@ -87,7 +87,7 @@ def get_twig_name_for_species(
         variant_name: Optional variant name from twig data
 
     Returns:
-        Asset name (e.g., "SM_European_Oak_Twig_Apical")
+        Asset name (e.g., "SM_European_Oak_Foliage_Apical")
     """
     # Format species name for asset naming
     species_formatted = species_name.replace("_", " ").title().replace(" ", "_")
@@ -95,10 +95,10 @@ def get_twig_name_for_species(
     # Try to use variant name if available (apical, lateral, etc.)
     if variant_name:
         variant_formatted = variant_name.replace("_", " ").title().replace(" ", "_")
-        return f"SM_{species_formatted}_Twig_{variant_formatted}"
+        return f"SM_{species_formatted}_Foliage_{variant_formatted}"
 
     # Fallback to type ID
-    return f"SM_{species_formatted}_Twig_{twig_type_id:02d}"
+    return f"SM_{species_formatted}_Foliage_{twig_type_id:02d}"
 
 
 def extract_foliage_data(
@@ -237,18 +237,18 @@ def extract_foliage_data(
 
                 # Build twig filename to match our USD export naming convention
                 # Map twig_type to variant name that matches our exported files
-                # twig_long → var_a/var_c, twig_upward → var_c, twig_short → var_b, twig_dead → var_b
+                # twig_long -> a, twig_upward -> c, twig_short -> b, twig_dead -> b
                 variant_map = {
-                    "twig_long": "var_a",
-                    "twig_short": "var_b",
-                    "twig_upward": "var_c",
-                    "twig_dead": "var_b",
+                    "twig_long": "a",
+                    "twig_short": "b",
+                    "twig_upward": "c",
+                    "twig_dead": "b",
                 }
-                variant = variant_map.get(twig_type, "var_a")
+                variant = variant_map.get(twig_type, "a")
 
                 # Construct full twig filename (without _skeletal.usda extension)
                 species_clean = species_name.replace(" ", "_").lower()
-                twig_name = f"{species_clean}_twig_{variant}"
+                twig_name = f"{species_clean}_foliage_{variant}"
 
                 # Convert to PVE format (Y-up centimeters)
                 pve_pos = grove_to_pve_position(position)

@@ -461,7 +461,6 @@ def _extract_skeleton_attrs_from_grove(
 
 def generate_wind_json_for_species(
     species_output_dir: Path,
-    tree_prefix: str = "tree",
 ) -> List[Path]:
     """
     Generate wind JSON files for all skeletal trees in a species output directory.
@@ -471,22 +470,21 @@ def generate_wind_json_for_species(
 
     Args:
         species_output_dir: Directory containing tree USD files (e.g., data/output/forest/european_beech/)
-        tree_prefix: Prefix for tree files (default: "tree")
 
     Returns:
         List of generated wind JSON file paths
     """
     generated_files = []
 
-    # Find all skeletal USD files
-    skeletal_usds = list(species_output_dir.glob(f"*{tree_prefix}_*_skeletal.usda"))
+    # Find all stems skeletal USD files
+    skeletal_usds = list(species_output_dir.glob("*_stems_skeletal.usda"))
 
     for skeletal_usd in skeletal_usds:
-        # Extract tree identifier (e.g., "tree_0000" from "european_beech_tree_0000_skeletal.usda")
+        # Derive wind JSON path from stems skeletal path
         stem = skeletal_usd.stem.replace("_skeletal", "")
 
         # Generate output path for wind JSON
-        wind_json_path = skeletal_usd.parent / f"{stem}_DynamicWind.json"
+        wind_json_path = skeletal_usd.parent / f"{stem}_unreal_wind.json"
 
         # Generate wind JSON (no Grove data available, will use hierarchy fallback)
         try:

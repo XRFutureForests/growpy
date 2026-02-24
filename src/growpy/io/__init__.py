@@ -38,6 +38,25 @@ except ImportError:
     ASSEMBLY_AVAILABLE = False
     create_assembly = None
     validate_assembly = None
+
+# OBJ/MTL export for Helios++ (requires USD)
+try:
+    from .obj_export import convert_tree_to_obj
+
+    OBJ_EXPORT_AVAILABLE = True
+except ImportError:
+    OBJ_EXPORT_AVAILABLE = False
+    convert_tree_to_obj = None
+
+# Helios++ scene XML generation
+try:
+    from .helios_scene import generate_helios_scene
+
+    HELIOS_SCENE_AVAILABLE = True
+except ImportError:
+    HELIOS_SCENE_AVAILABLE = False
+    generate_helios_scene = None
+
 __all__ = [
     # Config
     "get_quality_preset",
@@ -50,4 +69,10 @@ __all__ = [
     "create_assembly",
     "validate_assembly",
     "ASSEMBLY_AVAILABLE",
+    # Helios OBJ/MTL
+    "convert_tree_to_obj",
+    "OBJ_EXPORT_AVAILABLE",
+    # Helios scene XML
+    "generate_helios_scene",
+    "HELIOS_SCENE_AVAILABLE",
 ]
