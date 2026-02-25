@@ -52,8 +52,8 @@ Generated: 2026-02-25
 
 | ID | Status | Task | Source | Target |
 |----|--------|------|--------|--------|
-| T16 | TODO | extract_grove_attributes() | the-grove-output-complete.py:247-263 | core/tree.py |
-| T17 | TODO | grow_roots()/build_roots() wrappers | the-grove-output-complete.py:206-225 | core/grove.py |
-| T18 | TODO | compare_smoothing_effect() | the-grove-output-complete.py:106-178 | utils/analysis.py |
-| T19 | TODO | dump_grove_data() diagnostic | the-grove-output-complete.py:382-754 | utils/diagnostics.py |
-| T20 | TODO | Deprecate calculate_tree_heights.py | calculate_tree_heights.py | core/tree.py docs |
+| T16 | DONE | extract_grove_attributes() | the-grove-output-complete.py:247-263 | core/tree.py |
+| T17 | DONE | grow_roots()/build_roots() wrappers | the-grove-output-complete.py:206-225 | core/grove.py |
+| T18 | DONE | compare_smoothing_effect() | the-grove-output-complete.py:106-178 | utils/analysis.py |
+| T19 | DONE | dump_grove_data() diagnostic | the-grove-output-complete.py:382-754 | utils/diagnostics.py |
+| T20 | DONE | Deprecate calculate_tree_heights.py | calculate_tree_heights.py | core/tree.py docs |
