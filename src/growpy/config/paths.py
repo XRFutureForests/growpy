@@ -1,5 +1,6 @@
 """Asset path resolution for GrowPy."""
 
+import os
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -12,7 +13,16 @@ _GBIF_ENABLED = True  # Can be disabled if pygbif not available or API issues
 
 
 def _get_project_root() -> Path:
-    """Get project root directory."""
+    """Get project root directory.
+
+    Resolution order:
+    1. GROWPY_PROJECT_ROOT env var (explicit override, survives wheel installs)
+    2. Traverse up from this file's location (works for editable installs only)
+    """
+    env_root = os.environ.get("GROWPY_PROJECT_ROOT")
+    if env_root:
+        return Path(env_root)
+    # Editable-install assumption: src/growpy/config/paths.py -> project root is 4 levels up
     return Path(__file__).parent.parent.parent.parent
 
 
