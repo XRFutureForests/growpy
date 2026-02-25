@@ -30,7 +30,7 @@ from .forest import (
     simulate_forest_growth,
     simulate_forest_growth_with_snapshots,
 )
-from .grove import create_grove
+from .grove import create_grove, grow_and_build_roots
 from .skeleton import (
     UNREAL_MAX_BONE_INDEX,
     JointTransform,
@@ -45,6 +45,7 @@ from .tree import (
     calculate_dbh_at_height,
     calculate_growth_cycles_from_height,
     calculate_tree_height,
+    extract_grove_attributes,
     extract_tree_measurements,
 )
 from .twig import (
@@ -65,6 +66,9 @@ __all__ = [
     "calculate_tree_height",
     "calculate_dbh_at_height",
     "extract_tree_measurements",
+    "extract_grove_attributes",
+    # Grove helpers
+    "grow_and_build_roots",
     # Skeleton
     "Vector3",
     "JointTransform",
