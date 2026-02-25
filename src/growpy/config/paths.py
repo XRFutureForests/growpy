@@ -1,5 +1,7 @@
 """Asset path resolution for GrowPy."""
 
+import re
+from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -14,6 +16,7 @@ def _get_project_root() -> Path:
     return Path(__file__).parent.parent.parent.parent
 
 
+@lru_cache(maxsize=1)
 def _get_lookup_table() -> pd.DataFrame:
     """Load tree asset lookup table.
 
@@ -211,8 +214,6 @@ def get_bark_texture_path(species: str) -> Optional[Path]:
         # Convert CamelCase Grove name to snake_case with _bark suffix
         # Examples: "Beech60.jpg" -> "beech_60_bark.jpg"
         #           "BaldCypress80.jpg" -> "bald_cypress_80_bark.jpg"
-        import re
-
         texture_stem = Path(texture_name).stem
         texture_ext = Path(texture_name).suffix
 
@@ -261,8 +262,6 @@ def get_bark_normal_texture_path(species: str) -> Optional[Path]:
         # Convert CamelCase Grove name to snake_case with _bark_normal suffix
         # Examples: "Beech60.jpg" -> "beech_60_bark_normal.jpg"
         #           "BaldCypress80.jpg" -> "bald_cypress_80_bark_normal.jpg"
-        import re
-
         texture_stem = Path(texture_name).stem
         texture_ext = Path(texture_name).suffix
 
@@ -311,8 +310,6 @@ def get_twig_files_by_type(species: str) -> Dict[str, List[Path]]:
 
         # Convert CamelCase Grove name to snake_case (e.g., EuropeanBeechTwig -> european_beech_twig)
         # Insert underscore before uppercase letters, convert to lowercase
-        import re
-
         twig_name_std = (
             re.sub(r"([A-Z])", r"_\1", str(twig_name).strip()).lower().lstrip("_")
         )
@@ -332,7 +329,7 @@ def get_twig_files_by_type(species: str) -> Dict[str, List[Path]]:
             return {}
 
         # Organize twig files by type
-        twig_files = {}
+        twig_files: Dict[str, List[Path]] = {}
         for usd_file in twig_dir.glob("*.usd*"):
             file_type = usd_file.stem.lower()
             if file_type not in twig_files:
