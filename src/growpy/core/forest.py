@@ -254,12 +254,6 @@ def simulate_forest_growth_with_snapshots(
             snapshots[cycle] = {}
 
             for grove, species_name, tree_count, fids in forest:
-                # Apply minimal smoothing before building snapshot
-                grove.smooth_minimal()
-                for _ in range(min(smooth_iterations, 5)):  # Quick smooth for snapshots
-                    grove.smooth()
-                grove.weigh_and_bend()
-
                 # CRITICAL BUILD ORDER: skeleton -> bones -> models
                 # 1. Build skeletons first
                 skeletons = grove.build_skeletons()
@@ -312,6 +306,29 @@ def simulate_forest_growth_with_snapshots(
     print(
         f"\nGrowth simulation complete ({growth_elapsed:.1f}s) - {len(snapshots)} snapshots captured"
     )
+
+    # Apply smoothing AFTER simulation (same as simulate_forest_growth).
+    # Smoothing must NOT run inside the snapshot loop - it permanently modifies
+    # grove state and would corrupt geometry for all subsequent growth cycles.
+    if smooth_iterations > 0:
+        print(f"\n{'='*60}")
+        print(f"PHASE 2: BRANCH SMOOTHING ({smooth_iterations} iterations)")
+        print(f"{'='*60}")
+
+        smooth_start = time.time()
+        for grove, species_name, _, _ in forest:
+            grove.smooth_minimal()
+            for i in tqdm(
+                range(smooth_iterations),
+                desc=f"Smoothing {species_name}",
+                unit="iter",
+            ):
+                grove.smooth()
+            grove.weigh_and_bend()
+            print(f"[Smoothing] Completed for {species_name}")
+
+        smooth_elapsed = time.time() - smooth_start
+        print(f"\nBranch smoothing complete ({smooth_elapsed:.1f}s)")
 
     return snapshots
 
