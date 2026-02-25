@@ -380,6 +380,10 @@ def calculate_vertex_weights(
     branch_root_count = 0
     branch_root_bones = []
 
+    # Build reverse map once (joint_local_idx -> OLD global bone ID) for O(1) lookups.
+    # bone_to_joint_map maps OLD global bone ID -> NEW local joint index.
+    joint_to_global: Dict[int, int] = {lidx: gid for gid, lidx in bone_to_joint_map.items()}
+
     # Debug: examine first few bones
     if debug_blend and len(bones_info) > 0:
         print(f"[Junction Blending DEBUG] First 5 bones from bones_info:")
@@ -390,13 +394,7 @@ def calculate_vertex_weights(
             )
 
     for local_idx, bone in enumerate(bones_info):
-        # Find the OLD global bone ID for this NEW local index
-        global_bone_id = None
-        for gid, lidx in bone_to_joint_map.items():
-            if lidx == local_idx:
-                global_bone_id = gid
-                break
-
+        global_bone_id = joint_to_global.get(local_idx)
         if global_bone_id is None:
             continue  # Skip bones not in map
 
@@ -406,15 +404,8 @@ def calculate_vertex_weights(
         tail_pos = bone[3].as_tuple() if hasattr(bone[3], "as_tuple") else (0, 0, 0)
 
         # CRITICAL: After bone filtering, bones_info contains NEW local parent indices, not global!
-        # We need to convert the NEW local parent index back to the OLD global bone ID
-        # because vertex bone_ids and branch_info keys use OLD global bone IDs
-        parent_global_id = None
-        if parent_local_idx >= 0:
-            # Reverse lookup: NEW local parent index → OLD global bone ID
-            for gid, lidx in bone_to_joint_map.items():
-                if lidx == parent_local_idx:
-                    parent_global_id = gid
-                    break
+        # Convert the NEW local parent index back to OLD global bone ID using the reverse map.
+        parent_global_id = joint_to_global.get(parent_local_idx) if parent_local_idx >= 0 else None
 
         branch_info[global_bone_id] = (
             is_branch_root,
