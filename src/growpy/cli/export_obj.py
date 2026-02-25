@@ -12,6 +12,7 @@ Usage:
 """
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -34,9 +35,9 @@ CONIFER_KEYWORDS = [
 
 
 def main():
-    script_dir = Path(__file__).parent.parent.parent.parent
-    default_csv = script_dir / "data" / "input" / "test.csv"
-    default_output = script_dir / "data" / "output" / "forest"
+    project_root = Path(os.environ.get("GROWPY_PROJECT_ROOT", Path(__file__).parent.parent.parent.parent))
+    default_csv = project_root / "data" / "input" / "test.csv"
+    default_output = project_root / "data" / "output" / "forest"
 
     parser = argparse.ArgumentParser(
         description="Export USDA tree assemblies to OBJ/MTL for Helios++ LiDAR simulation",
