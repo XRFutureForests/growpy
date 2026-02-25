@@ -124,6 +124,27 @@ def extract_tree_measurements(grove: gc.Grove) -> List[Tuple[float, float]]:
     return measurements
 
 
+def extract_grove_attributes(grove: gc.Grove) -> Dict[str, Any]:
+    """Extract grove-level summary attributes after simulation.
+
+    Wraps the grove attribute access pattern from direct Grove API usage,
+    providing safe defaults when attributes are unavailable.
+
+    Args:
+        grove: Simulated Grove instance
+
+    Returns:
+        Dict with keys: total_mass, number_of_branches, height, age, has_roots
+    """
+    return {
+        "total_mass": getattr(grove, "total_mass", None),
+        "number_of_branches": getattr(grove, "number_of_branches", None),
+        "height": getattr(grove, "height", None),
+        "age": getattr(grove, "age", None),
+        "has_roots": getattr(grove, "roots", None) is not None,
+    }
+
+
 def calculate_growth_cycles_from_height(forest_data: pd.DataFrame) -> None:
     """Calculate growth cycles and delays from tree heights using pre-computed growth models.
 
