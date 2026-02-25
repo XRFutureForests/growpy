@@ -193,6 +193,15 @@ def extract_twig_placements_from_model(
     # Calculate number of twigs from flat array length
     num_twigs = len(twig_locations) // 3
 
+    # Validate all arrays have matching lengths — a mismatch means the Grove API
+    # returned inconsistent data, which would cause silent wrong placements.
+    num_directions = len(twig_directions) // 3
+    if num_directions != num_twigs:
+        raise ValueError(
+            f"Twig array length mismatch: twig_locations has {num_twigs} twigs "
+            f"but twig_directions has {num_directions}. Grove API returned inconsistent data."
+        )
+
     if verbose:
         print(f"\n=== TWIG EXTRACTION DEBUG ===")
         print(f"Total twigs in Grove API arrays: {num_twigs}")

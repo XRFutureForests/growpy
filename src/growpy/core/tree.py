@@ -137,11 +137,15 @@ def calculate_growth_cycles_from_height(forest_data: pd.DataFrame) -> None:
     config = get_config()
     forest_data["growth_cycles"] = 0
 
+    model_cache: Dict[str, Any] = {}
     for i, tree in forest_data.iterrows():
-        growth_model_path = config.get_growth_model_path(tree["species"])
-        model_path = growth_model_path / "growth_model.pkl"
-        with open(model_path, "rb") as f:
-            model = pickle.load(f)
+        species = tree["species"]
+        if species not in model_cache:
+            growth_model_path = config.get_growth_model_path(species)
+            model_path = growth_model_path / "growth_model.pkl"
+            with open(model_path, "rb") as f:
+                model_cache[species] = pickle.load(f)
+        model = model_cache[species]
         forest_data.at[i, "growth_cycles"] = int(model.predict([[tree["height"]]])[0])
 
     max_cycles = forest_data["growth_cycles"].max()
