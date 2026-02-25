@@ -40,6 +40,7 @@ CLI Usage (overrides JSON settings):
 """
 
 import json
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -117,6 +118,10 @@ class PresetOverrides:
 
     static_overrides: Dict[str, float] = field(default_factory=dict)
     interpolated_overrides: List[InterpolatedOverride] = field(default_factory=list)
+    # Memoized lookup table: {total_cycles: [overrides_at_cycle_0, ..., overrides_at_cycle_N]}
+    _lookup_table: Dict[int, List[Dict[str, float]]] = field(
+        default_factory=dict, compare=False, repr=False
+    )
 
     def add_static(self, param: str, value: float) -> "PresetOverrides":
         """Add a static override.
@@ -129,6 +134,7 @@ class PresetOverrides:
             Self for chaining
         """
         self.static_overrides[param] = value
+        self._lookup_table.clear()  # Invalidate cache
         return self
 
     def add_interpolated(
@@ -152,6 +158,7 @@ class PresetOverrides:
         self.interpolated_overrides.append(
             InterpolatedOverride(param=param, start=start, end=end, easing=easing)
         )
+        self._lookup_table.clear()  # Invalidate cache
         return self
 
     def get_value_at_cycle(
@@ -218,8 +225,6 @@ class PresetOverrides:
                         )
                     )
                     # Simplified: calculate power from transition_point
-                    import math
-
                     if 0 < transition_point < 1:
                         power = math.log(0.5) / math.log(transition_point)
                         power = max(0.5, min(10.0, power))  # Clamp to reasonable range
@@ -231,8 +236,6 @@ class PresetOverrides:
                 # Adjust power so that at transition_point, we're at 50% of the transition
                 # For 1-(1-t)^p = 0.5 at t=transition_point: (1-t)^p = 0.5
                 # p = log(0.5) / log(1-transition_point)
-                import math
-
                 if 0 < transition_point < 1:
                     power = math.log(0.5) / math.log(1 - transition_point)
                     power = max(0.5, min(10.0, power))  # Clamp to reasonable range
@@ -262,6 +265,9 @@ class PresetOverrides:
     ) -> Dict[str, float]:
         """Get all override values for a specific cycle.
 
+        Results are memoized per total_cycles to avoid recomputing easing math
+        on every call during the simulation inner loop.
+
         Args:
             current_cycle: Current simulation cycle
             total_cycles: Total number of cycles
@@ -269,14 +275,21 @@ class PresetOverrides:
         Returns:
             Dict of param -> value for all overrides at this cycle
         """
-        result = dict(self.static_overrides)
+        if not self.interpolated_overrides:
+            return dict(self.static_overrides)
 
-        for override in self.interpolated_overrides:
-            result[override.param] = self.get_value_at_cycle(
-                override, current_cycle, total_cycles
-            )
+        # Build lookup table for this total_cycles value if not cached
+        if total_cycles not in self._lookup_table:
+            table = []
+            for c in range(total_cycles):
+                entry = dict(self.static_overrides)
+                for override in self.interpolated_overrides:
+                    entry[override.param] = self.get_value_at_cycle(override, c, total_cycles)
+                table.append(entry)
+            self._lookup_table[total_cycles] = table
 
-        return result
+        idx = max(0, min(current_cycle, total_cycles - 1))
+        return self._lookup_table[total_cycles][idx]
 
     def apply_to_grove(
         self,
