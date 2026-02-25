@@ -96,12 +96,14 @@ def _find_species_row(species: str, use_gbif: bool = True) -> pd.Series:
         if not match.empty:
             return match.iloc[0]
 
-    # Try Aliases
+    # Try Aliases (vectorized: no iterrows loop)
     if "Aliases" in lookup_df.columns:
-        for _, row in lookup_df.iterrows():
-            aliases = str(row.get("Aliases", "")).lower()
-            if species_lower in [a.strip() for a in aliases.split(",")]:
-                return row
+        mask = lookup_df["Aliases"].fillna("").str.lower().str.split(",").apply(
+            lambda parts: species_lower in [a.strip() for a in parts]
+        )
+        match = lookup_df[mask]
+        if not match.empty:
+            return match.iloc[0]
 
     # GBIF fallback - resolves synonyms, misspellings, alternative names
     if use_gbif and _GBIF_ENABLED:
