@@ -91,4 +91,3 @@ def test_pve_generation():
 if __name__ == "__main__":
     success = test_pve_generation()
     sys.exit(0 if success else 1)
-    sys.exit(0 if success else 1)
