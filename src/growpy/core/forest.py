@@ -1,7 +1,10 @@
 """Forest simulation functions with Grove API integration."""
 
+import logging
 import time
 from typing import Any, Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 import pandas as pd
 import the_grove_22_core as gc
@@ -85,9 +88,7 @@ def _apply_smoothing(
     if smooth_iterations <= 0:
         return
 
-    print(f"\n{'='*60}")
-    print(f"PHASE 2: BRANCH SMOOTHING ({smooth_iterations} iterations)")
-    print(f"{'='*60}")
+    logger.info("PHASE 2: BRANCH SMOOTHING (%d iterations)", smooth_iterations)
 
     smooth_start = time.time()
     for grove, species_name, _, _ in forest:
@@ -95,9 +96,9 @@ def _apply_smoothing(
         for _ in tqdm(range(smooth_iterations), desc=f"Smoothing {species_name}", unit="iter"):
             grove.smooth()
         grove.weigh_and_bend()
-        print(f"[Smoothing] Completed for {species_name}")
+        logger.info("[Smoothing] Completed for %s", species_name)
 
-    print(f"\nBranch smoothing complete ({time.time() - smooth_start:.1f}s)")
+    logger.info("Branch smoothing complete (%.1fs)", time.time() - smooth_start)
 
 
 def simulate_forest_growth(
@@ -138,23 +139,21 @@ def simulate_forest_growth(
             if not species_ov.is_empty():
                 species_overrides[species_name] = species_ov
 
-    print(f"\n{'='*60}")
-    print(f"PHASE 1: GROWTH SIMULATION ({cycles} cycles)")
+    logger.info("PHASE 1: GROWTH SIMULATION (%d cycles)", cycles)
     if preset_overrides and not preset_overrides.is_empty():
-        print(
-            f"  CLI overrides: {len(preset_overrides.static_overrides)} static, "
-            f"{len(preset_overrides.interpolated_overrides)} interpolated"
+        logger.info(
+            "  CLI overrides: %d static, %d interpolated",
+            len(preset_overrides.static_overrides),
+            len(preset_overrides.interpolated_overrides),
         )
-    if species_overrides:
-        for sp, ov in species_overrides.items():
-            print(f"  {sp} curves: {len(ov.interpolated_overrides)} from seed.json")
-    print(f"{'='*60}")
+    for sp, ov in species_overrides.items():
+        logger.info("  %s curves: %d from seed.json", sp, len(ov.interpolated_overrides))
 
     growth_start = time.time()
     for cycle in tqdm(range(cycles), desc="Simulating growth cycles", unit="cycle"):
         _run_single_growth_cycle(forest, groves, cycle, cycles, species_overrides, preset_overrides)
 
-    print(f"\nGrowth simulation complete ({time.time() - growth_start:.1f}s)")
+    logger.info("Growth simulation complete (%.1fs)", time.time() - growth_start)
 
     _apply_smoothing(forest, smooth_iterations)
 
@@ -192,7 +191,7 @@ def simulate_forest_growth_with_snapshots(
     # Validate and sort snapshot cycles
     snapshot_cycles = sorted([c for c in snapshot_cycles if 0 < c <= max_cycles])
     if not snapshot_cycles:
-        print("Warning: No valid snapshot cycles provided")
+        logger.warning("No valid snapshot cycles provided")
         return snapshots
 
     if quality_params is None:
@@ -206,15 +205,14 @@ def simulate_forest_growth_with_snapshots(
             if not species_ov.is_empty():
                 species_overrides[species_name] = species_ov
 
-    print(f"\n{'='*60}")
-    print(f"PHASE 1: GROWTH SIMULATION WITH SNAPSHOTS ({max_cycles} cycles)")
-    print(f"  Snapshots at cycles: {snapshot_cycles}")
+    logger.info("PHASE 1: GROWTH SIMULATION WITH SNAPSHOTS (%d cycles)", max_cycles)
+    logger.info("  Snapshots at cycles: %s", snapshot_cycles)
     if preset_overrides and not preset_overrides.is_empty():
-        print(
-            f"  CLI overrides: {len(preset_overrides.static_overrides)} static, "
-            f"{len(preset_overrides.interpolated_overrides)} interpolated"
+        logger.info(
+            "  CLI overrides: %d static, %d interpolated",
+            len(preset_overrides.static_overrides),
+            len(preset_overrides.interpolated_overrides),
         )
-    print(f"{'='*60}")
 
     growth_start = time.time()
     next_snapshot_idx = 0
@@ -230,7 +228,7 @@ def simulate_forest_growth_with_snapshots(
             next_snapshot_idx < len(snapshot_cycles)
             and cycle == snapshot_cycles[next_snapshot_idx]
         ):
-            print(f"\n  [Snapshot] Capturing cycle {cycle}...")
+            logger.info("[Snapshot] Capturing cycle %d", cycle)
             snapshots[cycle] = {}
 
             for grove, species_name, tree_count, fids in forest:
@@ -265,16 +263,20 @@ def simulate_forest_growth_with_snapshots(
                     tree_snapshots.append((model, skeleton, bones, height, dbh))
 
                 snapshots[cycle][species_name] = tree_snapshots
-                print(
-                    f"    {species_name}: {len(tree_snapshots)} trees "
-                    f"(h={measurements[0][0]:.1f}m, d={measurements[0][1]*100:.1f}cm)"
+                logger.info(
+                    "  %s: %d trees (h=%.1fm, d=%.1fcm)",
+                    species_name,
+                    len(tree_snapshots),
+                    measurements[0][0],
+                    measurements[0][1] * 100,
                 )
 
             next_snapshot_idx += 1
 
-    print(
-        f"\nGrowth simulation complete ({time.time() - growth_start:.1f}s) - "
-        f"{len(snapshots)} snapshots captured"
+    logger.info(
+        "Growth simulation complete (%.1fs) - %d snapshots captured",
+        time.time() - growth_start,
+        len(snapshots),
     )
 
     # Smoothing must run AFTER the snapshot loop - it permanently modifies grove state
