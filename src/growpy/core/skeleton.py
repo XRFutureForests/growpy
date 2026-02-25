@@ -120,26 +120,26 @@ def calculate_rotation_to_align(
         return [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
 
     axis = axis / axis_len
-    angle = (1 - dot**2) ** 0.5  # sin(angle) from cross product magnitude
-    cos_angle = dot
+    sin_angle = (1 - dot**2) ** 0.5  # sin(θ) derived from cross product magnitude
+    cos_angle = dot                   # dot product of unit vectors == cos(θ)
     one_minus_cos = 1 - cos_angle
 
-    # Build rotation matrix
+    # Rodrigues' rotation formula: R = I·cos(θ) + (1-cos(θ))·n⊗n + sin(θ)·[n]×
     x, y, z = axis.x, axis.y, axis.z
     matrix = [
         [
             cos_angle + x * x * one_minus_cos,
-            x * y * one_minus_cos - z * angle,
-            x * z * one_minus_cos + y * angle,
+            x * y * one_minus_cos - z * sin_angle,
+            x * z * one_minus_cos + y * sin_angle,
         ],
         [
-            y * x * one_minus_cos + z * angle,
+            y * x * one_minus_cos + z * sin_angle,
             cos_angle + y * y * one_minus_cos,
-            y * z * one_minus_cos - x * angle,
+            y * z * one_minus_cos - x * sin_angle,
         ],
         [
-            z * x * one_minus_cos - y * angle,
-            z * y * one_minus_cos + x * angle,
+            z * x * one_minus_cos - y * sin_angle,
+            z * y * one_minus_cos + x * sin_angle,
             cos_angle + z * z * one_minus_cos,
         ],
     ]
@@ -366,32 +366,16 @@ def calculate_vertex_weights(
     bone_ids = model.point_attribute_bone_id
     vertices = [(p.x, p.y, p.z) for p in model.points]
 
-    # Diagnostic output (can be disabled in production)
-    debug_blend = False  # Set to True for detailed diagnostics
-
     # Build branch topology: identify branch root bones and their parents
     # Store both head (junction) and tail positions for distance-along-bone calculation
     # CRITICAL: bone_to_joint_map uses OLD global bone IDs as keys (from vertex bone_id attributes)
     # and maps them to NEW local joint indices after bone filtering
 
-    branch_info = (
-        {}
-    )  # {OLD_GLOBAL_bone_id: (is_branch_root, parent_OLD_GLOBAL_bone_id, head_pos, tail_pos)}
-    branch_root_count = 0
-    branch_root_bones = []
+    branch_info: Dict[int, tuple] = {}  # {OLD_GLOBAL_bone_id: (is_branch_root, parent_OLD_GLOBAL_bone_id, head_pos, tail_pos)}
 
     # Build reverse map once (joint_local_idx -> OLD global bone ID) for O(1) lookups.
     # bone_to_joint_map maps OLD global bone ID -> NEW local joint index.
     joint_to_global: Dict[int, int] = {lidx: gid for gid, lidx in bone_to_joint_map.items()}
-
-    # Debug: examine first few bones
-    if debug_blend and len(bones_info) > 0:
-        print(f"[Junction Blending DEBUG] First 5 bones from bones_info:")
-        for i in range(min(5, len(bones_info))):
-            bone = bones_info[i]
-            print(
-                f"  Bone {i}: is_tree_root={bone[0]}, parent_idx={bone[1]}, is_branch_root={bone[6] if len(bone) > 6 else 'N/A'}"
-            )
 
     for local_idx, bone in enumerate(bones_info):
         global_bone_id = joint_to_global.get(local_idx)
@@ -413,38 +397,7 @@ def calculate_vertex_weights(
             head_pos,
             tail_pos,
         )
-        if is_branch_root:
-            branch_root_count += 1
-            branch_root_bones.append(global_bone_id)
-
-    # Print diagnostics after building branch_info
-    if debug_blend:
-        print(
-            f"[Junction Blending] Found {branch_root_count} branch root bones out of {len(bones_info)} total bones"
-        )
-        print(
-            f"[Junction Blending] Branch root bone IDs: {branch_root_bones[:10]}{'...' if len(branch_root_bones) > 10 else ''}"
-        )
-        print(
-            f"[Junction Blending] Blend distance: {junction_blend_distance}m, Mode: {blend_mode}"
-        )
-        # Show vertex bone ID range for debugging
-        if len(bone_ids) > 0:
-            unique_vertex_bones = set(bone_ids)
-            print(
-                f"[Junction Blending] Vertex bone IDs range: {min(unique_vertex_bones)} to {max(unique_vertex_bones)}, {len(unique_vertex_bones)} unique"
-            )
-            # Check overlap with branch_info
-            overlap = unique_vertex_bones.intersection(set(branch_info.keys()))
-            print(
-                f"[Junction Blending] Overlap with branch_info: {len(overlap)} bone IDs"
-            )
-
     # Process each vertex
-    reduced_weight_count = 0
-    full_weight_count = 0
-    branch_verts_checked = 0
-    branch_verts_in_range = 0
 
     for vert_idx, vertex_bone_id in enumerate(bone_ids):
         vertex_pos = vertices[vert_idx]
@@ -456,21 +409,12 @@ def calculate_vertex_weights(
                 vertex_bone_id
             ]
 
-            # Debug: Track why vertices aren't being processed
-            if is_branch_root and (branch_verts_checked == 0 and vert_idx < 10):
-                if debug_blend:
-                    print(
-                        f"  [DEBUG] Vert {vert_idx}: bone={vertex_bone_id}, is_branch={is_branch_root}, parent={parent_global_bone_id}, in_map={parent_global_bone_id in bone_to_joint_map if parent_global_bone_id is not None else 'None'}"
-                    )
-
             if (
                 is_branch_root
                 and parent_global_bone_id is not None
                 and parent_global_bone_id >= 0
                 and parent_global_bone_id in bone_to_joint_map
             ):
-                branch_verts_checked += 1
-
                 # Calculate distance along the bone from junction (head) to vertex
                 # This is more accurate than pure 3D distance as vertices follow the bone
                 bone_vector = (
@@ -501,7 +445,6 @@ def calculate_vertex_weights(
                     dist_along_bone = _distance_3d(vertex_pos, head_pos)
 
                 if dist_along_bone < junction_blend_distance:
-                    branch_verts_in_range += 1
                     # Within blend radius: use reduced weight (0.5 at junction, 1.0 at blend_distance)
                     branch_joint_idx = bone_to_joint_map.get(vertex_bone_id, 0)
 
@@ -529,7 +472,6 @@ def calculate_vertex_weights(
                         joint_indices_array.append(0)
                         joint_weights_array.append(0.0)
 
-                    reduced_weight_count += 1
                     continue
         # Default case: single bone binding with full weight (dual bone format)
         joint_idx = bone_to_joint_map.get(vertex_bone_id, 0)
@@ -544,24 +486,6 @@ def calculate_vertex_weights(
         for _ in range(element_size - 2):
             joint_indices_array.append(0)
             joint_weights_array.append(0.0)
-
-        full_weight_count += 1
-
-    if debug_blend or reduced_weight_count > 0:
-        print(
-            f"[Junction Blending] Branch root vertices checked: {branch_verts_checked}"
-        )
-        print(
-            f"[Junction Blending] Branch verts with reduced weight: {branch_verts_in_range}"
-        )
-        print(
-            f"[Junction Blending] Vertices with full weight (1.0): {full_weight_count}"
-        )
-        print(f"[Junction Blending] Total vertices: {len(bone_ids)}")
-        if branch_verts_checked > 0:
-            print(
-                f"[Junction Blending] Weight reduction coverage: {100.0 * branch_verts_in_range / branch_verts_checked:.1f}% of branch root verts"
-            )
 
     # Validate joint indices are within Unreal's 16-bit signed integer limit
     max_joint_idx = max(joint_indices_array) if joint_indices_array else 0
