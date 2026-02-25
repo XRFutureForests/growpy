@@ -20,10 +20,11 @@ def set_global_config(config: "GrowPyConfig") -> None:
 
 
 def get_config() -> "GrowPyConfig":
-    """Get config instance with automatic fallback."""
-    if _global_config is not None:
-        return _global_config
-    return GrowPyConfig()
+    """Get config instance, creating and registering a default one if none has been set."""
+    global _global_config
+    if _global_config is None:
+        _global_config = GrowPyConfig()
+    return _global_config
 
 
 @dataclass
@@ -33,12 +34,6 @@ class GrowPyConfig:
     random_seed: Optional[int] = 42
     output_dir: Path = Path("output")
     lod_levels: List[str] = field(default_factory=lambda: ["all"])
-
-    def __post_init__(self):
-        """Automatically register this config as global if none exists."""
-        global _global_config
-        if _global_config is None:
-            _global_config = self
 
     @classmethod
     def from_config_file(
