@@ -196,8 +196,13 @@ def get_growth_model_path(species: str) -> Path:
     # Fallback: derive from Common Name
     common_name = str(row["Common Name"]).lower().replace(" ", "_").replace("/", "_")
     model_path = models_dir / common_name
+    if model_path.exists():
+        return model_path
 
-    return model_path
+    raise FileNotFoundError(
+        f"Growth model not found for species '{species}'. "
+        f"Tried: {standardized_name}, {model_name}, {common_name} under {models_dir}"
+    )
 
 
 def _normalize_grove_texture_name(texture_name: str) -> tuple:

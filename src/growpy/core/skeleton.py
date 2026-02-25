@@ -274,23 +274,43 @@ def filter_bones_for_mesh(
     if len(bones_info) > 0:
         referenced_bones.add(bone_id_offset)
 
-    # Build filtered list maintaining relative order
-    filtered_bones = []
+    # Build original parent map (global_id -> parent_global_id) for ancestor walk
+    original_parent_map: Dict[int, int] = {
+        bone_id_offset + local_idx: int(bone[1])
+        for local_idx, bone in enumerate(bones_info)
+    }
+
+    def find_surviving_ancestor(global_bone_id: int) -> int:
+        """Walk up the parent chain to find the nearest surviving ancestor's new index."""
+        visited: set = set()
+        current = original_parent_map.get(global_bone_id, -1)
+        while current >= 0 and current != global_bone_id:
+            if current in old_to_new_map:
+                return old_to_new_map[current]
+            if current in visited:
+                break  # Cycle guard
+            visited.add(current)
+            current = original_parent_map.get(current, -1)
+        return 0  # Fall back to skeleton root
+
+    # Build filtered list maintaining relative order; track global IDs alongside bones
+    filtered_bones = []        # bone tuples that survived filtering
+    filtered_global_ids = []   # corresponding global IDs (parallel list)
     old_to_new_map = {}
     new_idx = 0
 
     for local_idx, bone in enumerate(bones_info):
         global_id = bone_id_offset + local_idx
         if global_id in referenced_bones:
-            # Update parent_bone_id in the bone tuple to use new index
             # bone format: (is_tree_root, parent_bone_id, start, end, radius, mass, is_branch_root, branch_id)
             old_to_new_map[global_id] = new_idx
             filtered_bones.append(bone)
+            filtered_global_ids.append(global_id)
             new_idx += 1
 
     # Second pass: update parent references in filtered bones
     updated_filtered_bones = []
-    for bone in filtered_bones:
+    for bone, global_id in zip(filtered_bones, filtered_global_ids):
         (
             is_tree_root,
             parent_bone_id,
@@ -302,12 +322,12 @@ def filter_bones_for_mesh(
             branch_id,
         ) = bone
 
-        # Remap parent to new index
+        # Remap parent to new index; walk up the chain if direct parent was filtered out
         if parent_bone_id in old_to_new_map:
             new_parent = old_to_new_map[parent_bone_id]
         else:
-            # Parent was filtered out, use root (0)
-            new_parent = 0
+            # Direct parent was filtered — find nearest surviving ancestor
+            new_parent = find_surviving_ancestor(global_id)
 
         updated_bone = (
             is_tree_root,
@@ -323,8 +343,8 @@ def filter_bones_for_mesh(
 
     # Validate bone count is within Unreal's 16-bit signed integer limit
     if len(updated_filtered_bones) > UNREAL_MAX_BONE_INDEX:
-        print(
-            f"WARNING: Tree has {len(updated_filtered_bones)} bones, exceeding Unreal's "
+        raise ValueError(
+            f"Tree has {len(updated_filtered_bones)} bones, exceeding Unreal's "
             f"limit of {UNREAL_MAX_BONE_INDEX}. This will cause integer overflow crashes. "
             f"Use higher build_cutoff_age/build_cutoff_thickness to reduce bone count."
         )
@@ -492,14 +512,14 @@ def calculate_vertex_weights(
     min_joint_idx = min(joint_indices_array) if joint_indices_array else 0
 
     if max_joint_idx > UNREAL_MAX_BONE_INDEX:
-        print(
-            f"ERROR: Joint index {max_joint_idx} exceeds Unreal's 16-bit limit of {UNREAL_MAX_BONE_INDEX}. "
+        raise ValueError(
+            f"Joint index {max_joint_idx} exceeds Unreal's 16-bit limit of {UNREAL_MAX_BONE_INDEX}. "
             f"This will cause integer overflow crashes. Reduce bone count or increase cutoff."
         )
 
     if min_joint_idx < 0:
-        print(
-            f"ERROR: Negative joint index {min_joint_idx} detected. "
+        raise ValueError(
+            f"Negative joint index {min_joint_idx} detected. "
             f"This indicates a bone ID mapping error that will crash Unreal."
         )
 
