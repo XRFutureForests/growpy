@@ -336,12 +336,16 @@ def simulate_forest_growth_with_snapshots(
 def _split_bones_by_tree(all_bones: List, num_trees: int) -> List[List]:
     """Split combined bone list into per-tree bone lists.
 
-    Grove's tag_bone_id() returns bones for all trees combined.
-    This function splits them based on tree count.
+    Grove's tag_bone_id() returns bones for all trees combined, ordered by
+    tree. Each tree's first bone has is_tree_root=True (bone[0]), which is
+    used to detect tree boundaries. Trees with different ages or species can
+    have very different bone counts, so even-division is not reliable.
 
     Args:
         all_bones: Combined list of bone tuples from grove.tag_bone_id()
-        num_trees: Number of trees in the grove
+                   Format: (is_tree_root, parent_bone_id, start, end, radius,
+                            mass, is_branch_root, branch_id)
+        num_trees: Expected number of trees (used only for padding)
 
     Returns:
         List of bone lists, one per tree
@@ -349,16 +353,19 @@ def _split_bones_by_tree(all_bones: List, num_trees: int) -> List[List]:
     if not all_bones or num_trees == 0:
         return [[] for _ in range(num_trees)]
 
-    # Simple split - assumes bones are ordered by tree
-    bones_per_tree = len(all_bones) // num_trees if num_trees > 0 else 0
+    # Split on is_tree_root flag (bone[0] == True marks first bone of each tree)
+    tree_bones: List[List] = []
+    current: List = []
+    for bone in all_bones:
+        if bone[0] and current:  # is_tree_root and already have bones
+            tree_bones.append(current)
+            current = []
+        current.append(bone)
+    if current:
+        tree_bones.append(current)
 
-    if bones_per_tree == 0:
-        return [all_bones] + [[] for _ in range(num_trees - 1)]
-
-    tree_bones = []
-    for i in range(num_trees):
-        start = i * bones_per_tree
-        end = start + bones_per_tree if i < num_trees - 1 else len(all_bones)
-        tree_bones.append(all_bones[start:end])
+    # Pad with empty lists if Grove returned fewer trees than expected
+    while len(tree_bones) < num_trees:
+        tree_bones.append([])
 
     return tree_bones
