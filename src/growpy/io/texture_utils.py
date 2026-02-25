@@ -647,35 +647,29 @@ def ensure_normal_from_bump(twig_dir: Path) -> Optional[Path]:
     if not textures_dir.exists():
         textures_dir = twig_dir
 
-    # Find bump maps
     bump_keywords = ["bump", "height", "displacement"]
+    normal_keywords = ["normal", "normals", "nrm"]
     bump_file = None
+    existing_normal = None
 
+    # Single pass: find bump map and check for existing normal simultaneously
     for tex_file in textures_dir.iterdir():
-        if tex_file.is_file() and tex_file.suffix.lower() in [".png", ".jpg", ".jpeg"]:
-            name_lower = tex_file.stem.lower()
-            if any(k in name_lower for k in bump_keywords):
-                bump_file = tex_file
-                break
+        if not tex_file.is_file() or tex_file.suffix.lower() not in [".png", ".jpg", ".jpeg"]:
+            continue
+        name_lower = tex_file.stem.lower()
+        if any(k in name_lower for k in normal_keywords):
+            return tex_file  # Normal already exists — no conversion needed
+        if bump_file is None and any(k in name_lower for k in bump_keywords):
+            bump_file = tex_file
 
     if not bump_file:
         return None
 
-    # Check if normal map already exists (don't regenerate)
-    # Look for existing normal maps
-    for tex_file in textures_dir.iterdir():
-        if tex_file.is_file() and tex_file.suffix.lower() in [".png", ".jpg", ".jpeg"]:
-            name_lower = tex_file.stem.lower()
-            if any(k in name_lower for k in ["normal", "normals", "nrm"]):
-                return tex_file  # Normal already exists
-
-    # Generate standardized normal map name
     twig_name = twig_dir.name.lower()
     if not twig_name.endswith("_twig"):
         twig_name = f"{twig_name}_twig"
     normal_path = textures_dir / f"{twig_name}_normal.png"
 
-    # Convert bump to normal
     return bump_to_normal(bump_file, normal_path)
 
 
@@ -962,16 +956,11 @@ def process_twig_textures(twig_dir: Path) -> dict:
     if alpha_path:
         results["alpha_path"] = alpha_path
 
-    # Step 3: Collect all standardized diffuse paths
-    textures_dir = twig_dir / "textures"
-    if not textures_dir.exists():
-        textures_dir = twig_dir
-
-    for tex_file in textures_dir.iterdir():
-        if tex_file.is_file() and tex_file.suffix.lower() in [".png", ".jpg", ".jpeg"]:
-            name_lower = tex_file.stem.lower()
-            if any(k in name_lower for k in ["diffuse"]):
-                results["diffuse_paths"].append(tex_file)
+    # Step 3: Collect diffuse paths from standardize_results — no re-scan needed
+    for key in ("diffuse", "diffuse_top", "diffuse_bottom", "diffuse_bark"):
+        path = standardize_results.get(key)
+        if path is not None:
+            results["diffuse_paths"].append(path)
 
     # Step 4: Validate all required textures
     is_valid, validation_msg = validate_twig_textures(twig_dir)

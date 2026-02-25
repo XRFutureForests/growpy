@@ -1,5 +1,6 @@
 """Forest simulation functions with Grove API integration."""
 
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -49,6 +50,56 @@ def create_forest(
     return forest
 
 
+def _run_single_growth_cycle(
+    forest: List[Tuple[gc.Grove, str, int, List[int]]],
+    groves: List[gc.Grove],
+    cycle: int,
+    total_cycles: int,
+    species_overrides: Dict[str, PresetOverrides],
+    preset_overrides: Optional[PresetOverrides],
+) -> None:
+    """Run one growth cycle: apply overrides, shade competition, simulate."""
+    for grove, species_name, _, _ in forest:
+        if species_name in species_overrides:
+            species_overrides[species_name].apply_to_grove(grove, cycle, total_cycles)
+        if preset_overrides and not preset_overrides.is_empty():
+            preset_overrides.apply_to_grove(grove, cycle, total_cycles)
+
+    if len(groves) > 1:
+        all_coords = []
+        for grove in groves:
+            all_coords.extend(grove.create_shade_geometry_coords())
+        for grove in groves:
+            grove.calculate_shade_together(all_coords)
+
+    for grove, _, _, _ in forest:
+        grove.weigh_and_bend()
+        grove.simulate(1)
+
+
+def _apply_smoothing(
+    forest: List[Tuple[gc.Grove, str, int, List[int]]],
+    smooth_iterations: int,
+) -> None:
+    """Apply branch smoothing to all groves after simulation."""
+    if smooth_iterations <= 0:
+        return
+
+    print(f"\n{'='*60}")
+    print(f"PHASE 2: BRANCH SMOOTHING ({smooth_iterations} iterations)")
+    print(f"{'='*60}")
+
+    smooth_start = time.time()
+    for grove, species_name, _, _ in forest:
+        grove.smooth_minimal()
+        for _ in tqdm(range(smooth_iterations), desc=f"Smoothing {species_name}", unit="iter"):
+            grove.smooth()
+        grove.weigh_and_bend()
+        print(f"[Smoothing] Completed for {species_name}")
+
+    print(f"\nBranch smoothing complete ({time.time() - smooth_start:.1f}s)")
+
+
 def simulate_forest_growth(
     forest: List[Tuple[gc.Grove, str, int, List[int]]],
     cycles: int,
@@ -77,8 +128,6 @@ def simulate_forest_growth(
         preset_overrides: Optional PresetOverrides for dynamic parameter adjustment (overrides species curves)
         use_species_curves: Load curves from species seed.json files (default: True)
     """
-    import time
-
     groves = [grove for grove, _, _, _ in forest]
 
     # Load per-species overrides from their seed.json files
@@ -103,57 +152,11 @@ def simulate_forest_growth(
 
     growth_start = time.time()
     for cycle in tqdm(range(cycles), desc="Simulating growth cycles", unit="cycle"):
-        # Apply preset overrides at each cycle (for dynamic parameter adjustment)
-        for grove, species_name, _, _ in forest:
-            # First apply species-specific curves from seed.json
-            if species_name in species_overrides:
-                species_overrides[species_name].apply_to_grove(grove, cycle, cycles)
+        _run_single_growth_cycle(forest, groves, cycle, cycles, species_overrides, preset_overrides)
 
-            # Then apply CLI overrides (these take priority)
-            if preset_overrides and not preset_overrides.is_empty():
-                preset_overrides.apply_to_grove(grove, cycle, cycles)
+    print(f"\nGrowth simulation complete ({time.time() - growth_start:.1f}s)")
 
-        if len(groves) > 1:
-            all_coords = []
-            for grove in groves:
-                coords = grove.create_shade_geometry_coords()
-                all_coords.extend(coords)
-
-            for grove in groves:
-                grove.calculate_shade_together(all_coords)
-
-        for grove, species_name, tree_count, fids in forest:
-            grove.weigh_and_bend()
-            grove.simulate(1)
-
-    growth_elapsed = time.time() - growth_start
-    print(f"\nGrowth simulation complete ({growth_elapsed:.1f}s)")
-
-    # Apply smoothing AFTER simulation but BEFORE building
-    # This reduces sharp branch angles for smoother geometry
-    if smooth_iterations > 0:
-        print(f"\n{'='*60}")
-        print(f"PHASE 2: BRANCH SMOOTHING ({smooth_iterations} iterations)")
-        print(f"{'='*60}")
-
-        smooth_start = time.time()
-        for grove, species_name, _, _ in forest:
-            grove.smooth_minimal()
-            # Show progress for smoothing iterations
-            for i in tqdm(
-                range(smooth_iterations),
-                desc=f"Smoothing {species_name}",
-                unit="iter",
-            ):
-                grove.smooth()
-
-            # CRITICAL: Re-calculate branch bending after smoothing
-            # This applies the smoothed angles to actual branch positions
-            grove.weigh_and_bend()
-            print(f"[Smoothing] Completed for {species_name}")
-
-        smooth_elapsed = time.time() - smooth_start
-        print(f"\nBranch smoothing complete ({smooth_elapsed:.1f}s)")
+    _apply_smoothing(forest, smooth_iterations)
 
 
 def simulate_forest_growth_with_snapshots(
@@ -183,8 +186,6 @@ def simulate_forest_growth_with_snapshots(
         SnapshotData: Dict[cycle, Dict[species, List[(model, skeleton, bones_info, height, dbh)]]]
         Each snapshot contains built models with measurements for all trees in each species grove.
     """
-    import time
-
     groves = [grove for grove, _, _, _ in forest]
     snapshots: SnapshotData = {}
 
@@ -194,7 +195,6 @@ def simulate_forest_growth_with_snapshots(
         print("Warning: No valid snapshot cycles provided")
         return snapshots
 
-    # Default quality params if not provided
     if quality_params is None:
         quality_params = {"vertices": 16}
 
@@ -219,31 +219,11 @@ def simulate_forest_growth_with_snapshots(
     growth_start = time.time()
     next_snapshot_idx = 0
 
-    for cycle in tqdm(
-        range(1, max_cycles + 1), desc="Simulating growth cycles", unit="cycle"
-    ):
-        # Apply preset overrides at each cycle
-        for grove, species_name, _, _ in forest:
-            if species_name in species_overrides:
-                species_overrides[species_name].apply_to_grove(
-                    grove, cycle - 1, max_cycles
-                )
-            if preset_overrides and not preset_overrides.is_empty():
-                preset_overrides.apply_to_grove(grove, cycle - 1, max_cycles)
-
-        # Light competition for multi-species forests
-        if len(groves) > 1:
-            all_coords = []
-            for grove in groves:
-                coords = grove.create_shade_geometry_coords()
-                all_coords.extend(coords)
-            for grove in groves:
-                grove.calculate_shade_together(all_coords)
-
-        # Simulate one cycle
-        for grove, species_name, tree_count, fids in forest:
-            grove.weigh_and_bend()
-            grove.simulate(1)
+    for cycle in tqdm(range(1, max_cycles + 1), desc="Simulating growth cycles", unit="cycle"):
+        # cycle - 1 maps 1-based loop counter to 0-based override index
+        _run_single_growth_cycle(
+            forest, groves, cycle - 1, max_cycles, species_overrides, preset_overrides
+        )
 
         # Capture snapshot if this is a snapshot cycle
         if (
@@ -255,11 +235,8 @@ def simulate_forest_growth_with_snapshots(
 
             for grove, species_name, tree_count, fids in forest:
                 # CRITICAL BUILD ORDER: skeleton -> bones -> models
-                # 1. Build skeletons first
                 skeletons = grove.build_skeletons()
 
-                # 2. Tag bone IDs with reduction parameters
-                # Note: tag_bone_id() takes positional args: (length, reduce, bias, connected)
                 skeleton_length = quality_params.get("skeleton_length", 2.0)
                 skeleton_reduce = quality_params.get("skeleton_reduce", 0.4)
                 skeleton_bias = quality_params.get("skeleton_bias", 0.5)
@@ -267,68 +244,41 @@ def simulate_forest_growth_with_snapshots(
 
                 all_bones = grove.tag_bone_id(
                     skeleton_length,
-                    skeleton_reduce**2,  # Squared like Grove UI does
+                    skeleton_reduce**2,
                     skeleton_bias,
                     skeleton_connected,
                 )
                 tree_bones = _split_bones_by_tree(all_bones, len(grove.trees))
 
-                # 3. NOW build models (with bone_id attributes already tagged)
                 build_options = {"vertices": quality_params.get("vertices", 16)}
                 models = grove.build_models(build_options)
-
-                # Extract measurements for each tree
                 measurements = extract_tree_measurements(grove)
 
-                # Store snapshot data for each tree
                 tree_snapshots = []
                 for tree_idx in range(len(grove.trees)):
                     model = models[tree_idx] if tree_idx < len(models) else None
-                    skeleton = (
-                        skeletons[tree_idx] if tree_idx < len(skeletons) else None
-                    )
+                    skeleton = skeletons[tree_idx] if tree_idx < len(skeletons) else None
                     bones = tree_bones[tree_idx] if tree_idx < len(tree_bones) else []
                     height, dbh = (
-                        measurements[tree_idx]
-                        if tree_idx < len(measurements)
-                        else (0.0, 0.0)
+                        measurements[tree_idx] if tree_idx < len(measurements) else (0.0, 0.0)
                     )
                     tree_snapshots.append((model, skeleton, bones, height, dbh))
 
                 snapshots[cycle][species_name] = tree_snapshots
                 print(
-                    f"    {species_name}: {len(tree_snapshots)} trees (h={measurements[0][0]:.1f}m, d={measurements[0][1]*100:.1f}cm)"
+                    f"    {species_name}: {len(tree_snapshots)} trees "
+                    f"(h={measurements[0][0]:.1f}m, d={measurements[0][1]*100:.1f}cm)"
                 )
 
             next_snapshot_idx += 1
 
-    growth_elapsed = time.time() - growth_start
     print(
-        f"\nGrowth simulation complete ({growth_elapsed:.1f}s) - {len(snapshots)} snapshots captured"
+        f"\nGrowth simulation complete ({time.time() - growth_start:.1f}s) - "
+        f"{len(snapshots)} snapshots captured"
     )
 
-    # Apply smoothing AFTER simulation (same as simulate_forest_growth).
-    # Smoothing must NOT run inside the snapshot loop - it permanently modifies
-    # grove state and would corrupt geometry for all subsequent growth cycles.
-    if smooth_iterations > 0:
-        print(f"\n{'='*60}")
-        print(f"PHASE 2: BRANCH SMOOTHING ({smooth_iterations} iterations)")
-        print(f"{'='*60}")
-
-        smooth_start = time.time()
-        for grove, species_name, _, _ in forest:
-            grove.smooth_minimal()
-            for i in tqdm(
-                range(smooth_iterations),
-                desc=f"Smoothing {species_name}",
-                unit="iter",
-            ):
-                grove.smooth()
-            grove.weigh_and_bend()
-            print(f"[Smoothing] Completed for {species_name}")
-
-        smooth_elapsed = time.time() - smooth_start
-        print(f"\nBranch smoothing complete ({smooth_elapsed:.1f}s)")
+    # Smoothing must run AFTER the snapshot loop - it permanently modifies grove state
+    _apply_smoothing(forest, smooth_iterations)
 
     return snapshots
 
