@@ -12,6 +12,7 @@ Virtual Texture Requirements (Unreal Engine):
     - See: https://dev.epicgames.com/community/learning/knowledge-base/jB8v/unreal-engine-usd-ue-format-support
 """
 
+import logging
 import math
 import shutil
 from pathlib import Path
@@ -19,6 +20,15 @@ from typing import Optional, Tuple
 
 import numpy as np
 from PIL import Image
+
+logger = logging.getLogger(__name__)
+
+# Threshold (0-255) above which corner pixels are considered "bright background",
+# indicating an inverted alpha convention (white=opaque needs to be flipped).
+_ALPHA_INVERSION_THRESHOLD = 155
+
+# Size (in pixels) of the corner patch used to sample background colour.
+_CORNER_PATCH_SIZE = 10
 
 
 def next_power_of_2(value: int) -> int:
@@ -306,7 +316,7 @@ def bump_to_normal(
         return output_path
 
     except Exception as e:
-        # Silently fail - conversion is optional
+        logger.warning("bump_to_normal failed for %s: %s", bump_path, e)
         return None
 
 
@@ -468,9 +478,7 @@ def normalize_alpha_texture(alpha_path: Path) -> bool:
         pixels_array = np.array(img, dtype=np.float32)
         h, w = pixels_array.shape
 
-        # Sample corners: 10x10 patches at each corner
-        # (actual texture content doesn't extend to edges)
-        patch_size = min(10, h // 4, w // 4)
+        patch_size = min(_CORNER_PATCH_SIZE, h // 4, w // 4)
         if patch_size < 2:
             # Image too small to reliably detect corners
             return False
@@ -489,7 +497,7 @@ def normalize_alpha_texture(alpha_path: Path) -> bool:
         # If corners are dark (< 100), background is black = transparent (standard)
         # If corners are bright (> 155), background is white = opaque (inverted!)
         # Threshold: 127 is midpoint
-        if corner_mean > 155:  # Corners are bright (> ~60%)
+        if corner_mean > _ALPHA_INVERSION_THRESHOLD:
             # Bright corners = inverted convention (white=opaque, black=transparent)
             # Invert the image to make white=opaque standard
             inverted = Image.eval(img, lambda x: 255 - x)
@@ -827,9 +835,7 @@ def standardize_twig_textures(twig_dir: Path) -> dict:
                 elif texture_type == "normal":
                     results["normal"] = new_path
             except Exception as e:
-                # Log error for debugging
-                import sys
-                print(f"  Warning: Could not process {tex_file.name} to {new_name}: {e}", file=sys.stderr)
+                logger.warning("Could not process %s to %s: %s", tex_file.name, new_name, e)
 
     return results
 

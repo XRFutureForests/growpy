@@ -5,9 +5,12 @@ Grove models and calculating transforms - as pure Python functions without
 any USD or Blender I/O dependencies.
 """
 
+import logging
 import math
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -203,19 +206,12 @@ def extract_twig_placements_from_model(
         )
 
     if verbose:
-        print(f"\n=== TWIG EXTRACTION DEBUG ===")
-        print(f"Total twigs in Grove API arrays: {num_twigs}")
-        print(
-            f"  twig_locations length: {len(twig_locations)} "
-            f"({len(twig_locations)//3} twigs)"
-        )
-        print(
-            f"  twig_directions length: {len(twig_directions)} "
-            f"({len(twig_directions)//3} twigs)"
-        )
-        print(
-            f"  twig_orientations length: {len(twig_orientations)} "
-            f"({len(twig_orientations)//3} twigs)"
+        logger.debug("TWIG EXTRACTION: %d twigs in Grove API arrays", num_twigs)
+        logger.debug(
+            "  twig_locations=%d  twig_directions=%d  twig_orientations=%d",
+            len(twig_locations) // 3,
+            len(twig_directions) // 3,
+            len(twig_orientations) // 3,
         )
 
     # Extract bone IDs for binding - prefer branch-based approach if available
@@ -228,9 +224,9 @@ def extract_twig_placements_from_model(
     if hasattr(model, "face_attribute_branch_id"):
         face_branch_ids = model.face_attribute_branch_id
         if verbose:
-            print(f"  Using direct face_attribute_branch_id (fast path)")
+            logger.debug("  Using direct face_attribute_branch_id (fast path)")
     elif verbose:
-        print(f"  Using vertex voting fallback (slow path)")
+        logger.debug("  Using vertex voting fallback (slow path)")
 
     # Build branch_id → branch_root_bone_id mapping using is_branch_root flag
     # bones_info format: (is_tree_root, parent_bone_id, start_point, end_point, radius, mass, is_branch_root, branch_id)
@@ -282,9 +278,8 @@ def extract_twig_placements_from_model(
         if hasattr(model, attr_name):
             twig_type_attrs[twig_type] = getattr(model, attr_name)
             if verbose:
-                # Count faces with this twig type
                 twig_count = sum(1 for val in getattr(model, attr_name) if val > 0)
-                print(f"  {twig_type}: {twig_count} faces marked")
+                logger.debug("  %s: %d faces marked", twig_type, twig_count)
 
     # Track which twig index we're processing across ALL types
     twig_idx = 0
@@ -369,29 +364,25 @@ def extract_twig_placements_from_model(
 
     # Report results
     total_extracted = sum(len(p) for p in placements.values())
-    if verbose or total_extracted > 0:
-        print(f"\nTwig extraction complete:")
-        for twig_type in twig_types:
-            count = len(placements[twig_type])
-            print(f"  {twig_type}: {count} placements extracted")
-        print(f"Total twigs extracted: {total_extracted}")
-        print(f"Total twigs processed from arrays: {twig_idx}/{num_twigs}")
+    for twig_type in twig_types:
+        logger.debug("  %s: %d placements", twig_type, len(placements[twig_type]))
+    logger.info(
+        "Twig extraction: %d total (%d/%d array slots used)",
+        total_extracted, twig_idx, num_twigs,
+    )
 
-        # Show bone_id statistics
-        all_bone_ids = [
-            p.bone_id
-            for plist in placements.values()
-            for p in plist
-            if p.bone_id is not None
-        ]
-        if all_bone_ids:
-            print(
-                f"Bone IDs: {len(all_bone_ids)} twigs with bone_id, range {min(all_bone_ids)} to {max(all_bone_ids)}"
-            )
-        else:
-            print("⚠️  WARNING: No twigs have bone_id set!")
-
-        if verbose:
-            print("=== END TWIG EXTRACTION DEBUG ===\n")
+    all_bone_ids = [
+        p.bone_id
+        for plist in placements.values()
+        for p in plist
+        if p.bone_id is not None
+    ]
+    if all_bone_ids:
+        logger.debug(
+            "Bone IDs: %d twigs assigned, range %d-%d",
+            len(all_bone_ids), min(all_bone_ids), max(all_bone_ids),
+        )
+    else:
+        logger.warning("No twigs have bone_id set")
 
     return placements
