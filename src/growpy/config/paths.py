@@ -200,6 +200,23 @@ def get_growth_model_path(species: str) -> Path:
     return model_path
 
 
+def _normalize_grove_texture_name(texture_name: str) -> tuple:
+    """Convert a CamelCase Grove texture filename to a snake_case stem + extension.
+
+    Examples:
+        "Beech60.jpg"       -> ("beech_60", ".jpg")
+        "BaldCypress80.jpg" -> ("bald_cypress_80", ".jpg")
+    """
+    stem = Path(texture_name).stem
+    ext = Path(texture_name).suffix
+    # Insert underscore before uppercase letters, then before digit-after-letter
+    standardized = (
+        re.sub(r"([A-Z])", r"_\1", stem).lower().lstrip("_").replace("__", "_")
+    )
+    standardized = re.sub(r"([a-z])(\d)", r"\1_\2", standardized)
+    return standardized, ext
+
+
 def get_bark_texture_path(species: str) -> Optional[Path]:
     """Get bark texture file path for species.
 
@@ -220,24 +237,8 @@ def get_bark_texture_path(species: str) -> Optional[Path]:
             return None
 
         textures_dir = get_assets_directory() / "textures"
-
-        # Convert CamelCase Grove name to snake_case with _bark suffix
-        # Examples: "Beech60.jpg" -> "beech_60_bark.jpg"
-        #           "BaldCypress80.jpg" -> "bald_cypress_80_bark.jpg"
-        texture_stem = Path(texture_name).stem
-        texture_ext = Path(texture_name).suffix
-
-        # Insert underscore before uppercase letters and numbers, convert to lowercase
-        standardized_name = (
-            re.sub(r"([A-Z])", r"_\1", texture_stem)
-            .lower()
-            .lstrip("_")
-            .replace("__", "_")
-        )
-        # Insert underscore before numbers
-        standardized_name = re.sub(r"([a-z])(\d)", r"\1_\2", standardized_name)
-
-        texture_path = textures_dir / f"{standardized_name}_bark{texture_ext}"
+        standardized_name, ext = _normalize_grove_texture_name(texture_name)
+        texture_path = textures_dir / f"{standardized_name}_bark{ext}"
 
         if texture_path.exists():
             return texture_path
@@ -268,24 +269,8 @@ def get_bark_normal_texture_path(species: str) -> Optional[Path]:
             return None
 
         textures_dir = get_assets_directory() / "textures"
-
-        # Convert CamelCase Grove name to snake_case with _bark_normal suffix
-        # Examples: "Beech60.jpg" -> "beech_60_bark_normal.jpg"
-        #           "BaldCypress80.jpg" -> "bald_cypress_80_bark_normal.jpg"
-        texture_stem = Path(texture_name).stem
-        texture_ext = Path(texture_name).suffix
-
-        # Insert underscore before uppercase letters and numbers, convert to lowercase
-        standardized_name = (
-            re.sub(r"([A-Z])", r"_\1", texture_stem)
-            .lower()
-            .lstrip("_")
-            .replace("__", "_")
-        )
-        # Insert underscore before numbers
-        standardized_name = re.sub(r"([a-z])(\d)", r"\1_\2", standardized_name)
-
-        texture_path = textures_dir / f"{standardized_name}_bark_normal{texture_ext}"
+        standardized_name, ext = _normalize_grove_texture_name(texture_name)
+        texture_path = textures_dir / f"{standardized_name}_bark_normal{ext}"
 
         if texture_path.exists():
             return texture_path
