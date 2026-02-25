@@ -1,6 +1,6 @@
 """Grove operations for forest simulation."""
 
-from typing import Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import the_grove_22_core as gc
 
@@ -31,6 +31,27 @@ def create_grove(species: Optional[str] = None) -> gc.Grove:
         grove.set_properties(properties)
 
     return grove
+
+
+def grow_and_build_roots(
+    grove: gc.Grove,
+    build_params: Optional[Dict[str, Any]] = None,
+) -> List[Any]:
+    """Simulate root growth and build root meshes for all trees.
+
+    Combines grove.grow_roots() and grove.build_roots() into a single call,
+    matching the pattern from the Grove API exploration scripts.
+
+    Args:
+        grove: Grove instance (must have been simulated first)
+        build_params: Build parameters dict (same keys as build_models()).
+                      Defaults to empty dict (Grove API defaults).
+
+    Returns:
+        List of root model objects, one per tree in the grove
+    """
+    grove.grow_roots()
+    return grove.build_roots(build_params or {})
 
 
 def add_tree_to_grove(

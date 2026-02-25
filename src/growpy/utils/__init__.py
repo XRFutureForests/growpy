@@ -4,20 +4,24 @@ Provides growth analysis, plotting, and profiling.
 """
 
 try:
-    from .analysis import SpeciesGrowthAnalyzer
+    from .analysis import SpeciesGrowthAnalyzer, compare_smoothing_effect
 except ImportError:
     SpeciesGrowthAnalyzer = None
+    compare_smoothing_effect = None
 
 try:
     from .plotting import plot_growth_curves
 except ImportError:
     plot_growth_curves = None
 
+from .diagnostics import dump_grove_data
 from .profiling import ProfileTimer, get_timer, init_profiler
 
 __all__ = [
     "SpeciesGrowthAnalyzer",
+    "compare_smoothing_effect",
     "plot_growth_curves",
+    "dump_grove_data",
     "ProfileTimer",
     "get_timer",
     "init_profiler",

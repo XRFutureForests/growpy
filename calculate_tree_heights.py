@@ -1,7 +1,15 @@
 """Calculate tree heights from USDA files in the output folder.
 
-This script scans the data/output directory for tree USDA files and calculates
-their height based on the Z coordinates of mesh points.
+DEPRECATED: This script is superseded by growpy.core.extract_tree_measurements(),
+which computes height and DBH directly from Grove tree objects during simulation
+(before export) without requiring USDA file parsing.
+
+    from growpy.core import extract_tree_measurements
+    measurements = extract_tree_measurements(grove)  # [(height, dbh), ...]
+
+This script remains as a post-export diagnostic for verifying exported USDA geometry.
+It scans the data/output directory for tree USDA files and calculates their height
+based on the Z coordinates of mesh points.
 """
 
 import re
