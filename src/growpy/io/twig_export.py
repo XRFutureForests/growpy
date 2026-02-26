@@ -193,20 +193,20 @@ def _add_twig_material(
             OPAQUE_TEXTURE_TYPES = ["diffuse", "diffuse_top", "bark", "normal"]
 
             # Build standardized texture name base
-            # Extract base name (everything up to and including 'twig')
+            # Extract base name (everything up to and including 'foliage')
             base_name_parts = []
             if standardized_name:
                 for part in standardized_name.split("_"):
                     base_name_parts.append(part)
-                    if part == "twig":
+                    if part == "foliage":
                         break
 
-            if not base_name_parts or "twig" not in base_name_parts:
-                # Fallback to species_twig
+            if not any(p == "foliage" for p in base_name_parts):
+                # Fallback to species_foliage
                 base_name = (
-                    species_name.lower().replace(" ", "_") + "_twig"
+                    species_name.lower().replace(" ", "_") + "_foliage"
                     if species_name
-                    else "twig"
+                    else "foliage"
                 )
             else:
                 base_name = "_".join(base_name_parts)
