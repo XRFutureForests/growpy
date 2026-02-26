@@ -1,4 +1,4 @@
-# The Grove to Unreal - Procedural Forest Generation
+# GrowPy - Procedural Forest Generation
 
 Clean, simplified tree generation system using The Grove 2.2 optimized for **Unreal Engine 5 Nanite workflows**.
 
@@ -144,7 +144,7 @@ This reveals additional debug information for procedural vegetation assets. See 
 ## Project Structure
 
 ```
-the-grove-to-unreal/
+growpy/
 ├── src/
 │   ├── growpy/                    # Main Python package
 │   │   ├── cli/                   # Command-line scripts
