@@ -19,7 +19,10 @@ def get_icons_directory():
     """ Check the theme to see the brightness of the panel background.
         Use either bright or dark icons to contrast the background. """
 
-    background = bpy.context.preferences.themes['Default'].view_3d.space.panelcolors.back
+    try:
+        background = bpy.context.preferences.themes['Default'].view_3d.space.panelcolors.back
+    except AttributeError:
+        background = bpy.context.preferences.themes['Default'].user_interface.wcol_regular.inner
 
     if background[0] < 0.4:
         return join(join(dirname(__file__), "Resources"), "IconsBright")
