@@ -1,68 +1,7 @@
 #!/usr/bin/env python3
-"""
-Create growth models for Grove species.
+"""Create growth models for Grove species with automatic plateau detection.
 
-Generates height curves and age prediction models with intelligent early termination.
-Features automatic plateau detection to stop simulation when trees stop growing.
-
-Supports two CSV formats:
-  1. Forest placement CSV (x, y, species, height) - auto-extracts unique species
-  2. Asset lookup CSV (Common Name, Preset, Twig, Bark Texture) - direct asset reference
-
-Quick Start (copy-paste ready with all defaults shown):
-    # Full analysis with all flags (recommended for production)
-    python src/growpy/cli/create_growth_models.py --csv data/input/test.csv --cycles 125 --seeds 1 --height-threshold 0.05 --max-cycles-without-growth 3 --timeout 300
-
-    # Quick test run (fewer cycles, faster)
-    python src/growpy/cli/create_growth_models.py --csv data/input/test.csv --cycles 35 --seeds 1 --height-threshold 0.05 --max-cycles-without-growth 3 --timeout 60
-
-    # Analyze specific species with multiple seeds for robust curves
-    python src/growpy/cli/create_growth_models.py --species "European oak" --cycles 125 --seeds 3 --height-threshold 0.05 --max-cycles-without-growth 3 --timeout 300
-
-    # Analyze all 57 species (full lookup table)
-    python src/growpy/cli/create_growth_models.py --csv src/growpy/config/tree_asset_lookup.csv --cycles 125 --seeds 1 --height-threshold 0.05 --max-cycles-without-growth 3 --timeout 300
-
-Common Flags:
-    --csv PATH                          Species CSV filter (default: data/input/test.csv)
-                                        Accepts forest placement CSV (x,y,species,height) or asset lookup CSV
-
-    --cycles INT                        Maximum growth cycles to simulate (default: 125, range: 1-250)
-                                        Effect: More cycles = more complete growth curve data
-                                        Automatically stops early when growth plateaus
-
-    --seeds INT                         Random seeds to average for robust curves (default: 1, range: 1-10)
-                                        Effect: Multiple seeds average out growth variation
-                                        Use 3+ for production, 1 for quick tests
-
-    --height-threshold FLOAT            Minimum height increase to consider growth (default: 0.05, range: 0.001-0.5)
-                                        Effect: Lower values = more sensitive plateau detection
-                                        Unit: meters per cycle
-
-    --max-cycles-without-growth INT     Stop after N consecutive flat cycles (default: 3, range: 1-20)
-                                        Effect: Prevents wasting time on plateaued trees
-                                        Lower values = earlier termination
-
-    --timeout INT                       Maximum simulation time per seed in seconds (default: 300, range: 10-3600)
-                                        Effect: Prevents infinite loops or stuck simulations
-                                        Increase for complex species
-
-    --species TEXT                      Analyze a single specific species (optional)
-                                        Example: "European oak" or "Norway spruce"
-                                        If omitted, analyzes all species from CSV
-
-Output:
-    data/assets/growth_models/{species}_growth_model.json  Growth curve data
-    data/assets/growth_models/{species}_height_curve.png   Visualization plot
-
-Note:
-    Run prepare_assets.py first to copy species presets from Grove installation.
-    This is Step 3 of the pipeline (after prepare_assets.py and convert_twigs.py).
-
-Full Documentation:
-    See docs/archive/cli-reference.md for complete flag reference and examples
-
-Usage:
-    python src/growpy/cli/create_growth_models.py [options]
+Step 3 of the pipeline. Defaults from growpy.toml [growth_models]. See docs/growpy/cli-reference.md.
 """
 
 import argparse
