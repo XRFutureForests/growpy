@@ -90,7 +90,7 @@ def get_pve_schema() -> Dict[str, Any]:
                 # budDevelopment: 6-element int array per point [gen, cycle, age, 0, 0, max_age]
                 # Required by PVMaterialSettings.cpp: BudDevelopment[0]=gen, BudDevelopment[2]=age
                 "budDevelopment": {"isArray": True, "size": 1, "type": "int"},
-                "budDirection": {"isArray": False, "size": 3, "type": "float"},
+                "budDirection": {"isArray": True, "size": 3, "type": "float"},
                 "budHormoneLevels": {"isArray": False, "size": 2, "type": "float"},
                 "budLateralMeristem": {"isArray": False, "size": 1, "type": "int"},
                 "budLightDetected": {"isArray": False, "size": 1, "type": "float"},
@@ -131,13 +131,13 @@ def get_pve_schema() -> Dict[str, Any]:
                 # Parent/child relationships
                 "children": {"isArray": True, "size": 1, "type": "int"},
                 "parents": {"isArray": True, "size": 1, "type": "int"},
-                # Instancer data (for twigs/leaves)
-                "instancer_LFR": {"isArray": False, "size": 1, "type": "float"},
-                "instancer_N": {"isArray": False, "size": 3, "type": "float"},
-                "instancer_UP": {"isArray": False, "size": 3, "type": "float"},
-                "instancer_name": {"isArray": False, "size": 1, "type": "string"},
-                "instancer_pivot": {"isArray": False, "size": 3, "type": "float"},
-                "instancer_scale": {"isArray": False, "size": 3, "type": "float"},
+                # Instancer data (for twigs/leaves) - isArray=True, per-branch variable-length arrays
+                "instancer_LFR": {"isArray": True, "size": 1, "type": "float"},
+                "instancer_N": {"isArray": True, "size": 3, "type": "float"},
+                "instancer_UP": {"isArray": True, "size": 3, "type": "float"},
+                "instancer_name": {"isArray": True, "size": 1, "type": "string"},
+                "instancer_pivot": {"isArray": True, "size": 3, "type": "float"},
+                "instancer_scale": {"isArray": True, "size": 1, "type": "float"},
                 # Metadata
                 "path": {"isArray": False, "size": 1, "type": "string"},
                 "pivotPointLocation": {"isArray": False, "size": 1, "type": "float"},
@@ -185,7 +185,7 @@ def create_empty_pve_preset() -> Dict[str, Any]:
             "isArray": spec["isArray"],
             "size": spec["size"],
             "type": spec["type"],
-            "value": [],
+            "values": [],
         }
 
     # Fill in primitive attributes
@@ -194,7 +194,7 @@ def create_empty_pve_preset() -> Dict[str, Any]:
             "isArray": spec["isArray"],
             "size": spec["size"],
             "type": spec["type"],
-            "value": [],
+            "values": [],
         }
 
     return preset

@@ -378,19 +378,6 @@ Common oak,CommonOak.seed.json,Common_Oak,CommonOakTwig
 
 Quality presets are defined in `src/growpy/config/quality.py` with 5 LOD levels controlling resolution, skeleton detail, and build cutoffs.
 
-## Documentation
-
-- **[docs/GROWPY_FUNCTIONAL_DESCRIPTION.md](docs/GROWPY_FUNCTIONAL_DESCRIPTION.md)** - Complete functional description of all modules and data flow
-- **[docs/GROWPY_OPTIMIZATION_RECOMMENDATIONS.md](docs/GROWPY_OPTIMIZATION_RECOMMENDATIONS.md)** - Optimization and refactoring recommendations
-- **[docs/PVE_PRESET_WORKFLOW.md](docs/PVE_PRESET_WORKFLOW.md)** - PVE preset generation and Unreal import workflow
-- **[docs/PVE_ATTRIBUTE_REFERENCE.md](docs/PVE_ATTRIBUTE_REFERENCE.md)** - Detailed PVE attribute documentation
-- **[docs/grove-preset-reference.md](docs/grove-preset-reference.md)** - Grove 2.2 preset parameter reference
-- **[docs/the_grove/](docs/the_grove/)** - Grove 2.2 API documentation
-- **[docs/growpy/audit-summary.md](docs/growpy/audit-summary.md)** - Package audit summary
-- **[docs/growpy/refactoring-plan.md](docs/growpy/refactoring-plan.md)** - Refactoring roadmap
-
-Historical reference documentation is available in `docs/archive/`.
-
 ## Key Features
 
 ### Forest/Grove/Tree/Twig Hierarchy

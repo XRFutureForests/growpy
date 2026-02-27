@@ -3,6 +3,7 @@
 /data/assets/
 /data/sandbox/
 /data/ProceduralVegetationEditor/
+/data/tmp/
 
 # Conda environment
 /.conda
