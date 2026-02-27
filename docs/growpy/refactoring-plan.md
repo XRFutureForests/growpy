@@ -31,26 +31,26 @@ The growpy package produces USD Nanite assemblies for Unreal Engine 5.7+ from Th
 
 ### 1.2 Archive Stale Docs
 
-**Status**: NOT STARTED
+**Status**: COMPLETED ✓
 
-Move outdated documentation to `docs/archive/historical/`:
+Completed 2026-02-27:
 
-- Multiple `CLEANUP_*.md` files documenting past refactoring iterations
-- Duplicate analysis files (DEPENDENCY_ANALYSIS.md vs DEPENDENCY_ANALYSIS_FINAL.md)
-- Fixed bug reports (SKELETAL_MESH_FIX_*.md series)
-- Migration strategy docs (BLENDER_EXPORT_MIGRATION_STRATEGY.md)
-
-**Rationale**: Keep `docs/archive/` focused on reference material, archive historical notes separately.
+- PVE_JSON_FIXES_IMPLEMENTED.md, PVE_JSON_FIXES_SUMMARY.md, PVE_JSON_ISSUES_AND_FIXES.md → `docs/archive/`
+- TODO_PERFORMANCE_OPTIMIZATIONS.md → `docs/archive/`
+- PVE_QUICK_START.md → `docs/archive/` (content merged into PVE_PRESET_WORKFLOW.md)
 
 ### 1.3 Consolidate Active Docs
 
-**Status**: NOT STARTED
+**Status**: PARTIAL
 
-Create unified reference docs in `docs/growpy/`:
+Completed:
 
-- **cli-reference.md**: Complete CLI flag reference (current location: `docs/archive/`)
+- PVE_PRESET_WORKFLOW.md updated with specific PVE Data Asset configuration properties
+- Broken See Also links in PVE_PRESET_WORKFLOW.md fixed
+
+Remaining (optional):
+
 - **api-reference.md**: Python API for programmatic use
-- **assembly-guide.md**: Nanite assembly structure and Unreal import
 - **troubleshooting.md**: Common issues and solutions
 
 ---
@@ -59,7 +59,7 @@ Create unified reference docs in `docs/growpy/`:
 
 ### 2.1 Deprecated Parameter Cleanup
 
-**Status**: NOT STARTED  
+**Status**: COMPLETED ✓
 **Risk**: LOW (parameters are ignored, not used in logic)
 
 **Files to update**:
@@ -105,7 +105,7 @@ Create unified reference docs in `docs/growpy/`:
 
 ### 2.2 Dead Code Removal
 
-**Status**: NOT STARTED  
+**Status**: COMPLETED ✓
 **Risk**: LOW (code is explicitly disabled)
 
 **File**: twig_export.py (line 580)
@@ -126,7 +126,7 @@ if False:  # Disabled - clean_export always True for Nanite compatibility
 
 ### 3.1 CLI Script Simplification
 
-**Status**: NOT STARTED  
+**Status**: COMPLETED ✓ (logging, constants, error handling refactored)
 **Risk**: MEDIUM (logic changes must preserve behavior)
 
 **Target**: generate_forest.py (~800 lines)
@@ -153,7 +153,7 @@ if False:  # Disabled - clean_export always True for Nanite compatibility
 
 ### 3.2 Import Cleanup
 
-**Status**: NOT STARTED  
+**Status**: COMPLETED ✓
 **Risk**: LOW (automated tooling available)
 
 **Action**: Use VS Code "Organize Imports" on all Python files in `src/growpy/`
@@ -341,5 +341,5 @@ For any refactoring that breaks exports:
 - **Testing Critical**: USD output must be byte-identical (or semantically equivalent via USD diff)
 - **Documentation First**: Update docs before code to clarify intent
 
-**Last Updated**: 2025-11-15  
-**Status**: Phase 1 CLI docstrings completed, rest pending
+**Last Updated**: 2026-02-27
+**Status**: Phase 1 (documentation + CLI docstrings), Phase 2 (deprecated code), Phase 3 (code structure — logging, constants, error handling) all completed. Phase 4 (function complexity reduction) not started — marked optional.
