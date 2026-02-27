@@ -172,6 +172,7 @@ def map_grove_to_pve(
         skeleton,
         use_default_growth_params,
         custom_growth_params,
+        species_name=species_name,
     )
 
     # Rebuild globalAttributes dict in template order to preserve Hazel ordering
@@ -234,9 +235,15 @@ def _map_global_attributes(
     skeleton: Optional[Any] = None,
     use_default_growth_params: bool = True,
     custom_growth_params: Optional[Dict] = None,
+    species_name: str = "",
 ) -> Dict:
     """
     Map Grove properties to PVE globalAttributes with default growth curves.
+
+    Applies three levels of attribute generation:
+    1. Hazel defaults as baseline
+    2. Skeleton-derived geometric values (trunkGrowth, axialElongation, etc.)
+    3. Species ratio scaling using Grove seed.json parameters
 
     Args:
         grove: Grove object
@@ -245,6 +252,7 @@ def _map_global_attributes(
         skeleton: Optional pre-built skeleton to avoid redundant API calls
         use_default_growth_params: If True, use Hazel defaults
         custom_growth_params: Optional overrides
+        species_name: Species name for seed.json ratio scaling
 
     Returns:
         Global attributes with populated growth curves
@@ -281,7 +289,355 @@ def _map_global_attributes(
             if key in global_attrs:
                 global_attrs[key] = value
 
+    # Compute metadata attributes from actual skeleton data
+    if skeleton is not None:
+        _compute_global_metadata_from_skeleton(global_attrs, skeleton)
+        _compute_skeleton_derived_growth_params(global_attrs, skeleton, properties)
+
+    # Scale growth curves using species-specific Grove parameter ratios
+    if species_name:
+        _scale_growth_params_by_species(global_attrs, species_name)
+
     return global_attrs
+
+
+def _compute_global_metadata_from_skeleton(global_attrs: Dict, skeleton: Any) -> None:
+    """Compute globalAttributes metadata from actual skeleton data."""
+    num_branches = len(skeleton.poly_lines)
+    pscales = list(skeleton.point_attribute_radius)
+    num_points = len(skeleton.points)
+
+    if "maxBranchNumber" in global_attrs:
+        global_attrs["maxBranchNumber"]["value"] = num_branches
+
+    if "maxBudNumber" in global_attrs:
+        global_attrs["maxBudNumber"]["value"] = num_points
+
+    if pscales:
+        max_ps = max(pscales)
+        min_ps = min(pscales)
+        if "maxPscale" in global_attrs:
+            global_attrs["maxPscale"]["value"] = max_ps
+        if "max_pscale" in global_attrs:
+            global_attrs["max_pscale"]["value"] = max_ps
+        if "minPscale" in global_attrs:
+            global_attrs["minPscale"]["value"] = min_ps
+
+    # maxPscales: per-plant max pscale array (single plant = single element)
+    if "maxPscales" in global_attrs and pscales:
+        global_attrs["maxPscales"]["value"] = [max(pscales)]
+
+    # maxDavinciPscales: da Vinci pipe model - use trunk base radius
+    if "maxDavinciPscales" in global_attrs and pscales:
+        global_attrs["maxDavinciPscales"]["value"] = [max(pscales)]
+
+    # max_curve_length: longest branch path length
+    if "max_curve_length" in global_attrs:
+        max_len = 0.0
+        points = skeleton.points
+        for poly_line in skeleton.poly_lines:
+            branch_len = 0.0
+            for i in range(1, len(poly_line)):
+                p0 = points[poly_line[i - 1]]
+                p1 = points[poly_line[i]]
+                dx = p1[0] - p0[0]
+                dy = p1[1] - p0[1]
+                dz = p1[2] - p0[2]
+                branch_len += (dx * dx + dy * dy + dz * dz) ** 0.5
+            max_len = max(max_len, branch_len)
+        global_attrs["max_curve_length"]["value"] = max_len
+
+    # compoundMaxBranchGeneration: max branch depth
+    if "compoundMaxBranchGeneration" in global_attrs:
+        max_gen = _max_branch_generation(skeleton)
+        global_attrs["compoundMaxBranchGeneration"]["value"] = max_gen
+
+    # compoundMaxBranchNumber: same as branch count for now
+    if "compoundMaxBranchNumber" in global_attrs:
+        global_attrs["compoundMaxBranchNumber"]["value"] = num_branches
+
+    if "photogrammetryTrunk" in global_attrs:
+        global_attrs["photogrammetryTrunk"]["value"] = 0
+
+
+def _compute_skeleton_derived_growth_params(
+    global_attrs: Dict, skeleton: Any, properties: Any
+) -> None:
+    """Compute growth curve values from actual skeleton geometry.
+
+    Derives values that are measurable from the simulated tree rather than
+    using Hazel defaults. This covers geometric properties like trunk height,
+    branch segment lengths, and branch angle variance.
+    """
+    import math
+
+    points = skeleton.points
+    poly_lines = skeleton.poly_lines
+    if not points or not poly_lines:
+        return
+
+    # trunkGrowth[0]: actual trunk height in meters (max Z in Grove coords)
+    origin = points[poly_lines[0][0]] if poly_lines[0] else points[0]
+    max_height = 0.0
+    for p in points:
+        height = p[2] - origin[2]  # Grove Z-up
+        max_height = max(max_height, height)
+    if "trunkGrowth" in global_attrs:
+        vals = global_attrs["trunkGrowth"]["value"]
+        if isinstance(vals, list) and len(vals) >= 1:
+            vals[0] = max_height
+
+    # axialElongation[0]: mean branch segment length in meters
+    segment_lengths = []
+    for poly_line in poly_lines:
+        for i in range(1, len(poly_line)):
+            p0 = points[poly_line[i - 1]]
+            p1 = points[poly_line[i]]
+            dx, dy, dz = p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]
+            segment_lengths.append((dx * dx + dy * dy + dz * dz) ** 0.5)
+
+    if segment_lengths:
+        mean_seg = sum(segment_lengths) / len(segment_lengths)
+        for attr in ("axialElongation", "axialElongationChild"):
+            if attr in global_attrs:
+                vals = global_attrs[attr]["value"]
+                if isinstance(vals, list) and len(vals) >= 1:
+                    vals[0] = mean_seg
+
+    # lateralElongation[0]: mean lateral branch length / cycles
+    # Lateral branches = all except the first (trunk)
+    if len(poly_lines) > 1 and segment_lengths:
+        lateral_lengths = []
+        for poly_line in poly_lines[1:]:
+            branch_len = 0.0
+            for i in range(1, len(poly_line)):
+                p0 = points[poly_line[i - 1]]
+                p1 = points[poly_line[i]]
+                dx, dy, dz = p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]
+                branch_len += (dx * dx + dy * dy + dz * dz) ** 0.5
+            lateral_lengths.append(branch_len)
+
+        if lateral_lengths:
+            cycles = getattr(properties, "simulation_steps", 30)
+            cycles = max(cycles, 1)
+            mean_lateral = sum(lateral_lengths) / len(lateral_lengths)
+            lateral_rate = mean_lateral / cycles
+            for attr in ("lateralElongation", "lateralElongationChild"):
+                if attr in global_attrs:
+                    vals = global_attrs[attr]["value"]
+                    if isinstance(vals, list) and len(vals) >= 1:
+                        vals[0] = lateral_rate
+
+    # randomAngle[0,1]: branch angle standard deviation in degrees
+    # Measure angle between parent direction and child first segment
+    branch_angles = []
+    for poly_line in poly_lines[1:]:
+        if len(poly_line) < 2:
+            continue
+        p0 = points[poly_line[0]]
+        p1 = points[poly_line[1]]
+        dx, dy, dz = p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]
+        seg_len = (dx * dx + dy * dy + dz * dz) ** 0.5
+        if seg_len > 1e-8:
+            # Angle from vertical (Z-up in Grove)
+            angle_from_vertical = math.degrees(math.acos(min(1.0, abs(dz / seg_len))))
+            branch_angles.append(angle_from_vertical)
+
+    if len(branch_angles) >= 2:
+        mean_angle = sum(branch_angles) / len(branch_angles)
+        variance = sum((a - mean_angle) ** 2 for a in branch_angles) / len(branch_angles)
+        stddev = variance ** 0.5
+        for attr in ("randomAngle", "randomAngleChild"):
+            if attr in global_attrs:
+                vals = global_attrs[attr]["value"]
+                if isinstance(vals, list) and len(vals) >= 2:
+                    vals[0] = stddev
+                    vals[1] = stddev * 1.2  # Slightly wider for secondary spread
+
+    # plantProfile_1-5: crown silhouette from skeleton points
+    _compute_plant_profiles(global_attrs, points, origin, max_height)
+
+
+def _compute_plant_profiles(
+    global_attrs: Dict,
+    points: List,
+    origin: tuple,
+    max_height: float,
+) -> None:
+    """Compute plantProfile_1-5 from crown geometry.
+
+    Each profile is a 100-value radial silhouette at a different height slice.
+    The 5 profiles correspond to 5 equally spaced height bands.
+    Values are normalized radial distances (0-1) at 100 angular samples.
+    """
+    import math
+
+    NUM_SAMPLES = 100
+    NUM_PROFILES = 5
+
+    if max_height < 0.01 or len(points) < 3:
+        return
+
+    # Group points into 5 height bands
+    band_height = max_height / NUM_PROFILES
+    bands = [[] for _ in range(NUM_PROFILES)]
+    for p in points:
+        rel_z = p[2] - origin[2]
+        band_idx = min(int(rel_z / band_height), NUM_PROFILES - 1)
+        if band_idx >= 0:
+            bands[band_idx].append(p)
+
+    for profile_idx in range(NUM_PROFILES):
+        attr_name = f"plantProfile_{profile_idx + 1}"
+        if attr_name not in global_attrs:
+            continue
+
+        band_points = bands[profile_idx]
+        if len(band_points) < 2:
+            continue
+
+        # Compute radial distances from vertical axis at each angular sample
+        # Center is the mean XY position of trunk points (use origin XY)
+        cx, cy = origin[0], origin[1]
+
+        # Bin points by angle (100 bins covering 360 degrees)
+        angle_bins = [0.0] * NUM_SAMPLES
+        bin_counts = [0] * NUM_SAMPLES
+
+        for p in band_points:
+            dx, dy = p[0] - cx, p[1] - cy
+            r = (dx * dx + dy * dy) ** 0.5
+            angle = math.atan2(dy, dx)  # -pi to pi
+            bin_idx = int(((angle + math.pi) / (2 * math.pi)) * NUM_SAMPLES) % NUM_SAMPLES
+            angle_bins[bin_idx] = max(angle_bins[bin_idx], r)
+            bin_counts[bin_idx] += 1
+
+        # Fill empty bins by interpolation from neighbors
+        for i in range(NUM_SAMPLES):
+            if bin_counts[i] == 0:
+                left = right = 0.0
+                for offset in range(1, NUM_SAMPLES // 2):
+                    li = (i - offset) % NUM_SAMPLES
+                    ri = (i + offset) % NUM_SAMPLES
+                    if bin_counts[li] > 0 and left == 0:
+                        left = angle_bins[li]
+                    if bin_counts[ri] > 0 and right == 0:
+                        right = angle_bins[ri]
+                    if left > 0 and right > 0:
+                        break
+                angle_bins[i] = (left + right) / 2 if (left + right) > 0 else 0.0
+
+        # Normalize to 0-1 range
+        max_r = max(angle_bins) if angle_bins else 1.0
+        if max_r > 0:
+            profile_values = [min(1.0, r / max_r) for r in angle_bins]
+        else:
+            profile_values = [0.85] * NUM_SAMPLES
+
+        # Clamp minimum to avoid zero values (PVE expects non-zero profiles)
+        profile_values = [max(0.75, v) for v in profile_values]
+
+        global_attrs[attr_name]["value"] = profile_values
+
+
+# Hazel Grove seed.json reference values for ratio-based scaling
+_HAZEL_GROVE_PARAMS = {
+    "grow_length": 0.5,
+    "add_horizontal": 0.53,
+    "add_angle": 0.79,
+    "turn_random": 0.12,
+    "turn_to_light": 1.0,
+    "bend_mass": 0.5,
+}
+
+
+def _scale_growth_params_by_species(global_attrs: Dict, species_name: str) -> None:
+    """Scale Hazel-baseline growth curves using Grove seed.json parameter ratios.
+
+    For attributes where a plausible Grove counterpart exists, scales the
+    Hazel default value by (species_param / hazel_param). This provides
+    species differentiation without needing per-species PVE reference files.
+    """
+    seed_params = _load_species_seed_params(species_name)
+    if not seed_params:
+        return
+
+    hazel = _HAZEL_GROVE_PARAMS
+
+    # phyllotaxy[2] and phyllotaxyChild[2]: branching angle, scales with add_horizontal
+    # Hazel: add_horizontal=0.53, phyll[2]=32.52 deg (from Hazel_04 reference)
+    if hazel["add_horizontal"] > 0:
+        ratio = seed_params.get("add_horizontal", hazel["add_horizontal"]) / hazel["add_horizontal"]
+        for attr in ("phyllotaxy", "phyllotaxyChild"):
+            if attr in global_attrs:
+                vals = global_attrs[attr]["value"]
+                if isinstance(vals, list) and len(vals) >= 3:
+                    vals[2] *= ratio
+
+    # phyllotaxyLeaf[2]: same branching angle for leaf phyllotaxy
+    if hazel["add_horizontal"] > 0 and "phyllotaxyLeaf" in global_attrs:
+        ratio = seed_params.get("add_horizontal", hazel["add_horizontal"]) / hazel["add_horizontal"]
+        vals = global_attrs["phyllotaxyLeaf"]["value"]
+        if isinstance(vals, list) and len(vals) >= 3:
+            vals[2] *= ratio
+
+    # randomAngle[0,1] and randomAngleChild: already set by skeleton derivation,
+    # but if skeleton wasn't available, scale from defaults
+    # (skeleton-derived values take precedence since they run first)
+
+    # phototropism[1,3] and phototropismChild: light response intensity
+    # Scales with turn_to_light (Hazel=1.0, so ratio = species value directly)
+    if hazel["turn_to_light"] > 0:
+        ratio = seed_params.get("turn_to_light", hazel["turn_to_light"]) / hazel["turn_to_light"]
+        for attr in ("phototropism", "phototropismChild"):
+            if attr in global_attrs:
+                vals = global_attrs[attr]["value"]
+                if isinstance(vals, list) and len(vals) >= 4:
+                    vals[1] *= ratio
+                    vals[3] *= ratio
+
+
+def _load_species_seed_params(species_name: str) -> Optional[Dict]:
+    """Load growth parameters from species seed.json file.
+
+    Returns a flat dict of parameter name -> value, or None if unavailable.
+    """
+    import json
+
+    try:
+        from ..config.paths import get_preset_path
+
+        preset_path = get_preset_path(species_name)
+        with open(preset_path, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, ImportError, KeyError):
+        return None
+
+
+def _max_branch_generation(skeleton: Any) -> int:
+    """Calculate maximum branch generation depth from skeleton topology."""
+    poly_lines = skeleton.poly_lines
+    if not poly_lines:
+        return 0
+
+    # Build parent map: for each branch, find which branch shares its first point
+    num_branches = len(poly_lines)
+    first_points = {poly_lines[i][0]: i for i in range(num_branches)}
+    generation = [0] * num_branches
+
+    for i in range(num_branches):
+        if len(poly_lines[i]) < 2:
+            continue
+        first_pt = poly_lines[i][0]
+        # Check if this branch's first point appears in another branch
+        for j in range(num_branches):
+            if i == j:
+                continue
+            if first_pt in poly_lines[j]:
+                generation[i] = generation[j] + 1
+                break
+
+    return max(generation) if generation else 0
 
 
 def _map_points_from_skeleton(skeleton: Any, template: Dict) -> Dict:

@@ -230,9 +230,10 @@ def extract_foliage_data(
             lfrs = []
 
             for twig_type, placement in branch_twigs:
-                # TwigPlacement has: type, position, normal, scale, bone_id, branch_id
+                # TwigPlacement has: type, position, normal, orientation, scale, bone_id, branch_id
                 position = placement.position  # Tuple (x, y, z)
-                normal = placement.normal  # Tuple (x, y, z) - direction vector
+                normal = placement.normal  # Tuple (x, y, z) - facing direction
+                orientation = placement.orientation  # Tuple (x, y, z) - up vector
                 scale_value = placement.scale
 
                 # Build twig filename to match our USD export naming convention
@@ -250,25 +251,36 @@ def extract_foliage_data(
                 species_clean = species_name.replace(" ", "_").lower()
                 twig_name = f"{species_clean}_foliage_{variant}"
 
-                # Convert to PVE format (Y-up centimeters)
+                # Convert to PVE format (Y-up, meters for positions; Y-up for vectors)
                 pve_pos = grove_to_pve_position(position)
-                pve_normal = grove_to_pve_position(normal)
 
-                # Fast vector normalization (avoid tuple/list overhead)
+                # Convert direction vectors (no scaling, just axis swap)
+                pve_normal = grove_to_pve_vector(normal)
+                pve_up = grove_to_pve_vector(orientation)
+
+                # Normalize the normal (facing direction) for instancer_N
                 nx, ny, nz = pve_normal
                 mag_sq = nx * nx + ny * ny + nz * nz
                 if mag_sq > 1e-10:
                     inv_mag = 1.0 / math.sqrt(mag_sq)
-                    up = (nx * inv_mag, ny * inv_mag, nz * inv_mag)
+                    pve_normal = (nx * inv_mag, ny * inv_mag, nz * inv_mag)
                 else:
-                    up = (0.0, 1.0, 0.0)  # Default up if zero vector
-                pve_normal_out = up
+                    pve_normal = (0.0, 0.0, 1.0)
+
+                # Normalize the up vector for instancer_UP
+                ux, uy, uz = pve_up
+                mag_sq = ux * ux + uy * uy + uz * uz
+                if mag_sq > 1e-10:
+                    inv_mag = 1.0 / math.sqrt(mag_sq)
+                    pve_up = (ux * inv_mag, uy * inv_mag, uz * inv_mag)
+                else:
+                    pve_up = (0.0, 1.0, 0.0)  # Default Y-up in PVE space
 
                 # Append to arrays
                 names.append(twig_name)
                 pivots.extend(pve_pos)  # Flatten xyz
-                ups.extend(up)  # Flatten xyz
-                normals.extend(pve_normal_out)  # Flatten xyz
+                ups.extend(pve_up)  # Flatten xyz - UP vector
+                normals.extend(pve_normal)  # Flatten xyz - Normal/facing vector
                 scales.append(scale_value)
                 lfrs.append(
                     0.0

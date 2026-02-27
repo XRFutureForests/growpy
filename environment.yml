@@ -1,4 +1,4 @@
-name: the-grove
+name: growpy
 channels:
   - conda-forge
   - defaults
@@ -17,6 +17,3 @@ dependencies:
 
 variables:
   PYTHONPATH: ./src:./src/the_grove_22/modules
-  # Ensure Unreal's USD schemas are discoverable by pxr/USD
-  # On macOS, multiple plugin paths are colon-separated
-  PXR_PLUGINPATH_NAME: ./data/unreal_schema/linux
