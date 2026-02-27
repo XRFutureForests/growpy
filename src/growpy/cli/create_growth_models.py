@@ -69,11 +69,14 @@ import argparse
 import sys
 from pathlib import Path
 
+from growpy.config import get_config
 from growpy.utils.analysis import SpeciesGrowthAnalyzer
 
 
 def main():
     """Main function for command line usage."""
+    config = get_config()
+
     parser = argparse.ArgumentParser(
         description=(
             "Generate growth models for Grove species from prepared assets. "
@@ -117,35 +120,35 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
     parser.add_argument(
         "--csv",
         type=Path,
-        default=script_dir / "data" / "input" / "test.csv",
-        help="Path to species CSV (default: data/input/test.csv)",
+        default=None,
+        help="Path to species CSV (default: from config)",
     )
     parser.add_argument(
-        "--cycles", type=int, default=125, help="Number of growth cycles for analysis"
+        "--cycles", type=int, default=None, help="Number of growth cycles for analysis (default: from config)"
     )
     parser.add_argument(
         "--seeds",
         type=int,
-        default=1,
-        help="Number of random seeds to average for robust curves",
+        default=None,
+        help="Number of random seeds to average for robust curves (default: from config)",
     )
     parser.add_argument(
         "--height-threshold",
         type=float,
-        default=0.05,
-        help="Minimum height increase to consider as growth (default: 0.05)",
+        default=None,
+        help="Minimum height increase to consider as growth (default: from config)",
     )
     parser.add_argument(
         "--max-cycles-without-growth",
         type=int,
-        default=3,
-        help="Number of cycles without growth before stopping (default: 3)",
+        default=None,
+        help="Number of cycles without growth before stopping (default: from config)",
     )
     parser.add_argument(
         "--timeout",
         type=int,
-        default=300,
-        help="Maximum time in seconds for growth simulation per seed (default: 300)",
+        default=None,
+        help="Maximum time in seconds for growth simulation per seed (default: from config)",
     )
     parser.add_argument(
         "--species",
@@ -154,6 +157,16 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
     )
 
     args = parser.parse_args()
+
+    # Resolve config: TOML defaults + CLI overrides
+    config.resolve(args)
+
+    # Resolve CSV path
+    csv_path = config.csv_file
+    if args.csv is not None:
+        csv_path = args.csv
+    elif not csv_path.is_absolute():
+        csv_path = script_dir / csv_path
 
     # Check assets directory
     if not default_assets_dir.exists():
@@ -167,11 +180,11 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
     # Create analyzer
     analyzer = SpeciesGrowthAnalyzer(
         default_assets_dir,
-        args.cycles,
-        args.seeds,
-        args.height_threshold,
-        args.max_cycles_without_growth,
-        args.timeout,
+        config.growth_models_cycles,
+        config.growth_models_seeds,
+        config.growth_models_height_threshold,
+        config.growth_models_max_cycles_without_growth,
+        config.growth_models_timeout,
     )
 
     if args.species:
@@ -210,7 +223,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         import pandas as pd
 
         try:
-            df = pd.read_csv(args.csv)
+            df = pd.read_csv(csv_path)
 
             # Check if this is a forest placement CSV (has "species" column)
             if "species" in df.columns and "Common Name" not in df.columns:

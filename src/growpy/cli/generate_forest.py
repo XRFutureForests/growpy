@@ -1584,33 +1584,33 @@ Unreal Engine Integration:
         "csv_file",
         type=Path,
         nargs="?",
-        default=default_csv,
-        help="Path to CSV file with forest data (default: data/input/test.csv)",
+        default=None,
+        help="Path to CSV file with forest data (default: from config)",
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("data/output/forest"),
-        help="Directory to save export files (default: data/output/forest)",
+        default=None,
+        help="Directory to save export files (default: from config)",
     )
     parser.add_argument(
         "--quality",
         type=str,
-        default="ultra",
+        default=None,
         choices=["ultra", "high", "medium", "low", "performance"],
-        help="Quality preset (default: ultra). Controls resolution, detail level, and geometry complexity",
+        help="Quality preset (default: from config). Controls resolution, detail level, and geometry complexity",
     )
     parser.add_argument(
         "--growth-cycle-limit",
         type=int,
-        default=GROWTH_CYCLE_LIMIT,
-        help=f"Maximum growth cycles per tree (default: {GROWTH_CYCLE_LIMIT}). Trees exceeding this will be scaled down proportionally",
+        default=None,
+        help="Maximum growth cycles per tree (default: from config). Trees exceeding this will be scaled down proportionally",
     )
     parser.add_argument(
         "--smooth-iterations",
         type=int,
-        default=SMOOTH_ITERATIONS,
-        help=f"Number of branch smoothing iterations (default: {SMOOTH_ITERATIONS}, range: 0-20). Higher values produce smoother branches with less sharp angles. Set to 0 to disable smoothing",
+        default=None,
+        help="Number of branch smoothing iterations (default: from config, range: 0-20). Higher values produce smoother branches with less sharp angles. Set to 0 to disable smoothing",
     )
     # Skeleton simplification parameters (independent of mesh quality)
     # See Grove documentation: each parameter independently reduces bone count
@@ -1648,13 +1648,14 @@ Unreal Engine Integration:
     parser.add_argument(
         "--import-to-unreal",
         action="store_true",
+        default=None,
         help="Generate Unreal Python script for importing trees (execute in Unreal via VSCode extension)",
     )
     parser.add_argument(
         "--unreal-project-path",
         type=str,
-        default="/Game/GrowPy/Trees",
-        help="Unreal project Content path for imports (default: /Game/GrowPy/Trees)",
+        default=None,
+        help="Unreal project Content path for imports (default: from config)",
     )
     parser.add_argument(
         "--include-grove-attributes",
@@ -1734,8 +1735,8 @@ Unreal Engine Integration:
     parser.add_argument(
         "--obj-decimate-ratio",
         type=float,
-        default=0.3,
-        help="Twig decimation ratio for OBJ export (0.0-1.0, lower = fewer polygons, default: 0.3)",
+        default=None,
+        help="Twig decimation ratio for OBJ export (0.0-1.0, lower = fewer polygons, default: from config)",
     )
     parser.add_argument(
         "--helios-scene",
@@ -1745,36 +1746,29 @@ Unreal Engine Integration:
 
     args = parser.parse_args()
 
+    # Resolve config: TOML defaults + CLI overrides
+    config = get_config()
+    config.resolve(args)
+
     # Initialize profiler
-    timer = init_profiler(enabled=args.profile)
+    timer = init_profiler(enabled=config.profile)
 
     try:
-        # Determine CSV path
-        if args.csv_file:
-            csv_path = args.csv_file
-        else:
-            # Look for common CSV file locations
-            project_root = Path(__file__).parent.parent.parent.parent
-            possible_csvs = [
-                project_root / "data" / "forest.csv",
-                project_root / "forest_data.csv",
-                Path("forest.csv"),
-            ]
+        csv_path = config.csv_file
+        if not csv_path.is_absolute():
+            csv_path = script_dir / csv_path
 
-            csv_path = None
-            for path in possible_csvs:
-                if path.exists():
-                    csv_path = path
-                    break
+        if not csv_path.exists():
+            print(f"Error: CSV file not found: {csv_path}")
+            return
 
-            if csv_path is None:
-                return
-
-        config = get_config()
+        output_dir = config.output_dir
+        if not output_dir.is_absolute():
+            output_dir = script_dir / output_dir
 
         # Build preset overrides from CLI arguments
         preset_overrides = None
-        if args.longevity_mode:
+        if config.forest_longevity_mode:
             preset_overrides = LONGEVITY_OVERRIDES
             print(
                 "\n[Longevity Mode] Using pre-configured overrides to prevent tree death:"
@@ -1788,11 +1782,11 @@ Unreal Engine Integration:
 
         # Handle --fast flag (skip pve json, validation, and static meshes)
         # Note: DynamicWind JSON is always generated for skeletal meshes
-        skip_pve_json = args.skip_pve_json or args.fast
-        skip_validation = args.skip_validation or args.fast
+        skip_pve_json = config.export_skip_pve_json or config.export_fast
+        skip_validation = config.export_skip_validation or config.export_fast
         # Static meshes disabled by default, enable with --include-static
         # --fast also disables static (redundant since already default, but explicit)
-        include_static = args.include_static and not args.fast
+        include_static = config.export_include_static and not config.export_fast
 
         # Parse --export-trees filter
         export_tree_ids = None
@@ -1810,18 +1804,16 @@ Unreal Engine Integration:
                 )
                 return
 
-        # Build skeleton overrides from CLI args (allows simplified skeleton with ultra mesh)
+        # Build skeleton overrides from config (CLI args already resolved into config)
         skeleton_overrides = {}
-        if args.skeleton_length is not None:
-            skeleton_overrides["skeleton_length"] = args.skeleton_length
-        if args.skeleton_reduce is not None:
-            skeleton_overrides["skeleton_reduce"] = args.skeleton_reduce
-        if args.skeleton_bias is not None:
-            skeleton_overrides["skeleton_bias"] = args.skeleton_bias
-        if args.skeleton_connected is not None:
-            skeleton_overrides["skeleton_connected"] = (
-                args.skeleton_connected.lower() == "true"
-            )
+        if config.forest_skeleton_length is not None:
+            skeleton_overrides["skeleton_length"] = config.forest_skeleton_length
+        if config.forest_skeleton_reduce is not None:
+            skeleton_overrides["skeleton_reduce"] = config.forest_skeleton_reduce
+        if config.forest_skeleton_bias is not None:
+            skeleton_overrides["skeleton_bias"] = config.forest_skeleton_bias
+        if config.forest_skeleton_connected is not None:
+            skeleton_overrides["skeleton_connected"] = config.forest_skeleton_connected
         skeleton_overrides = skeleton_overrides if skeleton_overrides else None
 
         # Detect cycle-based mode via CLI args (--cycle-interval enables multi-stage mode)
@@ -1832,15 +1824,15 @@ Unreal Engine Integration:
                 # Multi-stage export mode: generate trees at different growth stages
                 generate_forest_stages(
                     csv_path,
-                    args.output_dir,
+                    output_dir,
                     config,
-                    args.quality,
+                    config.forest_quality,
                     cycle_interval=args.cycle_interval,
                     max_cycles=args.max_cycles,
-                    growth_cycle_limit=args.growth_cycle_limit,
-                    smooth_iterations=args.smooth_iterations,
-                    include_grove_attributes=args.include_grove_attributes,
-                    verbose=args.verbose,
+                    growth_cycle_limit=config.forest_growth_cycle_limit,
+                    smooth_iterations=config.forest_smooth_iterations,
+                    include_grove_attributes=config.forest_include_grove_attributes,
+                    verbose=config.verbose,
                     preset_overrides=preset_overrides,
                     timer=timer,
                     skip_pve_json=skip_pve_json,
@@ -1853,13 +1845,13 @@ Unreal Engine Integration:
                 # Standard height-based export mode
                 generate_forest_exports(
                     csv_path,
-                    args.output_dir,
+                    output_dir,
                     config,
-                    args.quality,
-                    args.growth_cycle_limit,
-                    args.smooth_iterations,
-                    include_grove_attributes=args.include_grove_attributes,
-                    verbose=args.verbose,
+                    config.forest_quality,
+                    config.forest_growth_cycle_limit,
+                    config.forest_smooth_iterations,
+                    include_grove_attributes=config.forest_include_grove_attributes,
+                    verbose=config.verbose,
                     preset_overrides=preset_overrides,
                     timer=timer,
                     skip_pve_json=skip_pve_json,
@@ -1870,23 +1862,23 @@ Unreal Engine Integration:
                 )
 
         # OBJ/MTL export for Helios++ (post-processes USDA output)
-        export_obj = args.export_obj or args.helios_scene
-        if export_obj:
+        do_export_obj = config.helios_export_obj or config.helios_helios_scene
+        if do_export_obj:
             with timer.track("obj_export"):
                 _run_obj_export(
-                    output_dir=args.output_dir,
+                    output_dir=output_dir,
                     csv_path=csv_path,
-                    decimate_ratio=args.obj_decimate_ratio,
-                    generate_scene_xml=args.helios_scene,
-                    verbose=args.verbose,
+                    decimate_ratio=config.helios_decimate_ratio,
+                    generate_scene_xml=config.helios_helios_scene,
+                    verbose=config.verbose,
                 )
 
         # Print profiling report if enabled
-        if args.profile:
+        if config.profile:
             timer.print_report()
 
         # Generate Unreal scripts if requested
-        if args.import_to_unreal:
+        if config.unreal_import_to_unreal:
             # Load forest data for tree positions
             try:
                 forest_data = pd.read_csv(csv_path)
@@ -1898,15 +1890,15 @@ Unreal Engine Integration:
                 forest_data = None
 
             import_script = generate_unreal_import_script(
-                args.output_dir,
-                args.unreal_project_path,
+                output_dir,
+                config.unreal_project_path,
                 forest_data=forest_data,
                 export_tree_ids=export_tree_ids,
             )
 
             cleanup_script = generate_unreal_cleanup_script(
-                args.output_dir,
-                args.unreal_project_path,
+                output_dir,
+                config.unreal_project_path,
                 dry_run=True,  # Default to dry-run mode for safety
             )
 
