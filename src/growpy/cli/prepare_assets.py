@@ -1,56 +1,7 @@
 #!/usr/bin/env python3
-"""
-Prepare Grove 2.2 assets for GrowPy.
+"""Copy Grove 2.2 assets (presets, twigs, textures) for species in CSV.
 
-CSV-driven asset preparation: only copies assets for species listed in input CSV
-- Species presets (.seed.json files)
-- Twig directories (converted from CamelCase to snake_case)
-- Bark texture files
-
-Supports two CSV formats:
-  1. Forest placement CSV (x, y, species, height) - auto-extracts unique species
-  2. Asset lookup CSV (Common Name, Preset, Twig, Bark Texture) - direct asset reference
-
-Quick Start (copy-paste ready with all defaults shown):
-    # Prepare assets for species in CSV (recommended)
-    python src/growpy/cli/prepare_assets.py --csv data/input/test.csv --grove-dir src/the_grove_22
-
-    # Prepare ALL 57 Grove species (ignores CSV filter)
-    python src/growpy/cli/prepare_assets.py --all --grove-dir src/the_grove_22
-
-    # Enable texture resizing for Unreal compatibility (slow, adds processing time)
-    python src/growpy/cli/prepare_assets.py --csv data/input/test.csv --resize-textures
-
-Common Flags:
-    --grove-dir PATH        Source Grove 2.2 installation directory (default: src/the_grove_22)
-                            Must contain presets/, twigs/, and textures/ subdirectories
-
-    --csv PATH              Species CSV filter (default: data/input/test.csv)
-                            Accepts forest placement CSV (x,y,species,height) or asset lookup CSV
-                            Only assets for species in CSV are copied
-
-    --all                   Copy ALL 57 Grove assets (ignores --csv filter)
-                            Uses src/growpy/config/tree_asset_lookup.csv for comprehensive asset list
-                            Effect: Copies complete asset library (~1-2GB)
-
-    --resize-textures       Resize textures to power-of-2 dimensions for Unreal Engine (default: disabled)
-                            Effect: Adds significant processing time, ensures GPU compatibility
-                            Only needed if Grove textures are not already power-of-2
-
-Output:
-    data/assets/presets/     Species .seed.json preset files
-    data/assets/twigs/       Twig .blend files (snake_case directories)
-    data/assets/textures/    Bark texture files
-    data/assets/pve_configs/ PVE placeholder configs
-
-Note:
-    This is Step 1 of the pipeline. Run this before convert_twigs.py or generate_forest.py.
-
-Full Documentation:
-    See docs/archive/cli-reference.md for complete flag reference and examples
-
-Usage:
-    python src/growpy/cli/prepare_assets.py [options]
+Step 1 of the pipeline. Defaults from growpy.toml [assets]. See docs/growpy/cli-reference.md.
 """
 import argparse
 

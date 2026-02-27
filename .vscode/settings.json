@@ -28,4 +28,5 @@
     "python-envs.workspaceSearchPaths": [
         "./**/.venv",
     ],
+    "python.defaultInterpreterPath": "C:\\Users\\Max\\miniconda3\\envs\\the-grove\\python.exe",
 }
