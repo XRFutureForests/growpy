@@ -19,7 +19,8 @@ class TwigPlacement:
 
     type: str  # 'twig_long', 'twig_short', 'twig_upward', 'twig_dead'
     position: Tuple[float, float, float]
-    normal: Tuple[float, float, float]
+    normal: Tuple[float, float, float]  # Facing direction (from get_twig_directions)
+    orientation: Tuple[float, float, float] = (0.0, 0.0, 1.0)  # Up vector (from get_twig_orientations)
     scale: float = 1.0
     bone_id: Optional[int] = None  # Direct bone ID from point_attribute_bone_id
     branch_id: Optional[int] = None  # Branch ID for binding to branch_X joints
@@ -30,6 +31,7 @@ class TwigPlacement:
             "type": self.type,
             "position": self.position,
             "normal": self.normal,
+            "orientation": self.orientation,
             "scale": self.scale,
             "bone_id": self.bone_id,
             "branch_id": self.branch_id,
@@ -349,10 +351,20 @@ def extract_twig_placements_from_model(
                 local_bone_id = twig_bone_id - bone_id_offset
                 branch_id_for_twig = bone_to_branch.get(local_bone_id)
 
+            # Extract orientation (up vector) from twig_orientations
+            orientation = (0.0, 0.0, 1.0)  # Default Z-up in Grove space
+            if twig_orientations and base_idx + 2 < len(twig_orientations):
+                orientation = (
+                    twig_orientations[base_idx],
+                    twig_orientations[base_idx + 1],
+                    twig_orientations[base_idx + 2],
+                )
+
             placement = TwigPlacement(
                 type=current_twig_type,
                 position=position,
                 normal=normal,
+                orientation=orientation,
                 scale=1.0,
                 bone_id=twig_bone_id,
                 branch_id=branch_id_for_twig,
