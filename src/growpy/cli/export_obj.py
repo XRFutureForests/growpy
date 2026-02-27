@@ -1,14 +1,7 @@
 #!/usr/bin/env python3
 """Export USDA tree assemblies to OBJ/MTL for Helios++ LiDAR simulation.
 
-Converts previously generated USDA assemblies (from generate_forest.py) to
-Wavefront OBJ with baked twig instances and Helios++ material extensions.
-Optionally generates a Helios++ scene XML with tree positions from the CSV.
-
-Usage:
-    python src/growpy/cli/export_obj.py data/input/test_single.csv
-    python src/growpy/cli/export_obj.py data/input/test.csv --decimate-ratio 0.5
-    python src/growpy/cli/export_obj.py data/input/test.csv --helios-scene
+Step 5 of the pipeline. Defaults from growpy.toml [helios]. See docs/growpy/cli-reference.md.
 """
 
 import argparse
