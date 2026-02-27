@@ -86,6 +86,7 @@ Usage:
     python src/growpy/cli/convert_twigs.py <path> [options]
 """
 
+import re
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -93,6 +94,17 @@ from typing import Dict, List, Optional, Tuple
 from tqdm import tqdm
 
 # USD validation removed - was only for development/testing
+
+
+def _standardize_species_name(name: str) -> str:
+    """Convert species common name to standardized snake_case.
+
+    Mirrors prepare_assets.py:standardize_species_name so names match across pipeline.
+    """
+    name = re.sub(r"[^\w\s-]", "", name.lower())
+    name = re.sub(r"[-\s]+", "_", name)
+    return name.strip("_")
+
 
 # Standardized twig type mapping
 TWIG_NAME_MAPPINGS = {
@@ -324,6 +336,7 @@ def process_twig_directory(
     twig_filter: Optional[List[str]] = None,
     include_skeleton: bool = True,
     *,
+    twig_to_species_map: Optional[Dict[str, List[str]]] = None,
     densify: bool = True,
     alpha_trim_threshold: float = 0.5,
     alpha_trim_method: str = "all",
@@ -342,6 +355,10 @@ def process_twig_directory(
         twig_dir: Directory containing .blend twig files
         formats: Export formats to create
         twig_filter: Optional list of twig directory names to process (snake_case)
+        twig_to_species_map: Optional mapping from twig dir name to species name list.
+            When provided, output files are named after the species from the CSV
+            rather than the twig directory (fixes shared-twig naming, e.g. Norway
+            spruce borrowing PacificSilverFirTwig).
         densify: Enable boundary densification (default: True)
         alpha_trim_threshold: Alpha threshold for silhouette trimming (default: 0.5)
         boundary_edge_mm: Target edge as fraction of avg edge (default: 0.5)
@@ -359,9 +376,6 @@ def process_twig_directory(
         for twig in twig_filter:
             # Check if CamelCase (contains uppercase) and convert
             if any(c.isupper() for c in twig):
-                # Import camel_to_snake function from prepare_assets
-                import re
-
                 s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", twig)
                 s2 = re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1)
                 twig_filter_snake.append(s2.lower())
@@ -386,33 +400,40 @@ def process_twig_directory(
 
     for blend_file in tqdm(blend_files, desc="Converting twigs"):
         try:
-            # Determine species name from directory (already in snake_case from prepare_assets)
-            # Example: aspen_twig -> aspen
-            species_name = blend_file.parent.name.replace("_twig", "").replace("_", " ")
+            twig_dir_name = blend_file.parent.name
             output_dir = blend_file.parent
 
-            # Call process_twig_file directly
-            exported_files = process_twig_file(
-                blend_file=blend_file,
-                output_dir=output_dir,
-                formats=formats,
-                species_name=species_name,
-                minimal_export=minimal_export,
-                include_skeleton=include_skeleton,
-                densify=densify,
-                alpha_trim_threshold=alpha_trim_threshold,
-                alpha_trim_method=alpha_trim_method,
-                smooth_boundary=smooth_boundary,
-                smooth_iterations=smooth_iterations,
-                smooth_factor=smooth_factor,
-                boundary_edge_mm=boundary_edge_mm,
-            )
+            # Use CSV-derived species names when available so that shared twigs
+            # (e.g. PacificSilverFirTwig used by Norway spruce) produce files
+            # named after the actual species, not the donor twig species.
+            if twig_to_species_map and twig_dir_name in twig_to_species_map:
+                species_names = twig_to_species_map[twig_dir_name]
+            else:
+                # Fall back to deriving name from directory
+                fallback = twig_dir_name.replace("_twig", "").replace("_", " ")
+                species_names = [fallback]
 
-            # Collect results
-            if exported_files:
-                if species_name not in results:
-                    results[species_name] = []
-                results[species_name].extend(exported_files)
+            for species_name in species_names:
+                exported_files = process_twig_file(
+                    blend_file=blend_file,
+                    output_dir=output_dir,
+                    formats=formats,
+                    species_name=species_name,
+                    minimal_export=minimal_export,
+                    include_skeleton=include_skeleton,
+                    densify=densify,
+                    alpha_trim_threshold=alpha_trim_threshold,
+                    alpha_trim_method=alpha_trim_method,
+                    smooth_boundary=smooth_boundary,
+                    smooth_iterations=smooth_iterations,
+                    smooth_factor=smooth_factor,
+                    boundary_edge_mm=boundary_edge_mm,
+                )
+
+                if exported_files:
+                    if species_name not in results:
+                        results[species_name] = []
+                    results[species_name].extend(exported_files)
 
         except Exception as e:
             print(f"  [ERROR] Failed to process {blend_file.name}: {e}")
@@ -426,9 +447,12 @@ def process_twig_directory(
 def main():
     import argparse
 
+    from growpy.config import get_config
+
     # Get script directory for default paths
     script_dir = Path(__file__).parent.parent.parent.parent
-    default_csv = script_dir / "data" / "input" / "test.csv"
+
+    config = get_config()
 
     parser = argparse.ArgumentParser(
         description="Convert Grove twig files with robust texture handling and standardized naming",
@@ -463,8 +487,8 @@ Output per twig:
     parser.add_argument(
         "--csv",
         type=Path,
-        default=default_csv,
-        help="Path to species CSV - only twigs for CSV species will be converted (default: data/input/test.csv)",
+        default=None,
+        help="Path to species CSV - only twigs for CSV species will be converted (default: from config)",
     )
     # Geometry processing flags (enabled by default for Nanite-friendly high poly twigs)
     parser.add_argument(
@@ -475,48 +499,57 @@ Output per twig:
     parser.add_argument(
         "--alpha-trim",
         type=float,
-        default=0.5,
-        help="Alpha threshold for trimming (default: 0.5). "
+        default=None,
+        help="Alpha threshold for trimming (default: from config). "
         "0.1-0.3=minimal (~0.3%% faces), 0.5=moderate (~7%%), 0.7=aggressive (~12-65%%).",
     )
     parser.add_argument(
         "--smooth-boundary",
         action="store_true",
-        help="Smooth boundary edges to follow texture curves more naturally (default: off)",
+        default=None,
+        help="Smooth boundary edges to follow texture curves more naturally (default: from config)",
     )
     parser.add_argument(
         "--smooth-iterations",
         type=int,
-        default=3,
-        help="Number of Laplacian smoothing passes for boundary edges (default: 3)",
+        default=None,
+        help="Number of Laplacian smoothing passes for boundary edges (default: from config)",
     )
     parser.add_argument(
         "--smooth-factor",
         type=float,
-        default=0.5,
-        help="Smoothing strength per iteration (0.0-1.0, default: 0.5)",
+        default=None,
+        help="Smoothing strength per iteration (0.0-1.0, default: from config)",
     )
     # Edge densification parameters
     parser.add_argument(
         "--boundary-edge-mm",
         type=float,
-        default=0.5,
-        help="Target edge as fraction of avg edge (default: 0.5). "
+        default=None,
+        help="Target edge as fraction of avg edge (default: from config). "
         "1.0=no subdivision, 0.5=50%% of avg, 0.25=25%%. "
         "Only transition edges (opaque->transparent) are subdivided.",
     )
     args = parser.parse_args()
+
+    # Resolve config: TOML defaults + CLI overrides
+    config.resolve(args)
+
+    # Resolve CSV path
+    csv_path = config.csv_file
+    if not csv_path.is_absolute():
+        csv_path = script_dir / csv_path
 
     if not args.path.exists():
         return 1
 
     # Load CSV filter if provided
     twig_filter = None
-    if args.csv and str(args.csv) != "":
-        if not args.csv.exists():
+    twig_to_species_map: Dict[str, List[str]] = {}
+    if csv_path and str(csv_path) != "":
+        if not csv_path.exists():
             # If using default CSV and it doesn't exist, skip filtering
-            if args.csv != default_csv:
-                return 1
+            pass
         else:
             import pandas as pd
 
@@ -540,13 +573,17 @@ Output per twig:
 
                     lookup_df = pd.read_csv(asset_lookup_path)
 
-                    # Filter lookup table by species names and extract twig names
+                    # Filter lookup table by species names and extract twig names.
+                    # Also build twig_to_species_map so shared twigs produce
+                    # correctly named output files for each species that uses them.
                     twig_filter = []
                     for species in unique_species:
                         # Try matching Common Name
                         match = lookup_df[
                             lookup_df["Common Name"].str.lower() == species.lower()
                         ]
+
+                        twig_name = None
 
                         # Try matching aliases if no direct match
                         if match.empty and "Aliases" in lookup_df.columns:
@@ -555,20 +592,33 @@ Output per twig:
                                 if species.lower() in [
                                     a.strip() for a in aliases.split(",")
                                 ]:
-                                    twig_name = str(row.get("Twig", ""))
-                                    if twig_name not in [
+                                    candidate = str(row.get("Twig", ""))
+                                    if candidate not in [
                                         "—",
                                         "",
                                         "nan",
-                                    ] and not pd.isna(twig_name):
-                                        twig_filter.append(twig_name.strip())
+                                    ] and not pd.isna(candidate):
+                                        twig_name = candidate.strip()
                                     break
                         elif not match.empty:
-                            twig_name = str(match.iloc[0].get("Twig", ""))
-                            if twig_name not in ["—", "", "nan"] and not pd.isna(
-                                twig_name
+                            candidate = str(match.iloc[0].get("Twig", ""))
+                            if candidate not in ["—", "", "nan"] and not pd.isna(
+                                candidate
                             ):
-                                twig_filter.append(twig_name.strip())
+                                twig_name = candidate.strip()
+
+                        if twig_name:
+                            twig_filter.append(twig_name)
+                            # Map twig directory name → species so output files
+                            # are named after the species, not the donor twig.
+                            s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", twig_name)
+                            s2 = re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1)
+                            twig_dir_key = s2.lower()
+                            species_std = _standardize_species_name(species)
+                            if twig_dir_key not in twig_to_species_map:
+                                twig_to_species_map[twig_dir_key] = []
+                            if species_std not in twig_to_species_map[twig_dir_key]:
+                                twig_to_species_map[twig_dir_key].append(species_std)
 
                     twig_filter = list(set(twig_filter))  # Remove duplicates
                 else:
@@ -592,12 +642,13 @@ Output per twig:
             True,
             twig_filter,
             include_skeleton=True,
-            densify=(not args.no_densify),
-            alpha_trim_threshold=min(max(0.0, args.alpha_trim), 1.0),
-            smooth_boundary=args.smooth_boundary,
-            smooth_iterations=max(1, int(args.smooth_iterations)),
-            smooth_factor=min(max(0.0, float(args.smooth_factor)), 1.0),
-            boundary_edge_mm=max(0.1, float(args.boundary_edge_mm)),
+            twig_to_species_map=twig_to_species_map or None,
+            densify=config.twigs_densify,
+            alpha_trim_threshold=min(max(0.0, config.twigs_alpha_trim), 1.0),
+            smooth_boundary=config.twigs_smooth_boundary,
+            smooth_iterations=max(1, config.twigs_smooth_iterations),
+            smooth_factor=min(max(0.0, config.twigs_smooth_factor), 1.0),
+            boundary_edge_mm=max(0.1, config.twigs_boundary_edge_mm),
         )
     elif args.path.is_dir():
         # Directory
@@ -607,12 +658,13 @@ Output per twig:
             True,
             twig_filter,
             include_skeleton=True,
-            densify=(not args.no_densify),
-            alpha_trim_threshold=min(max(0.0, args.alpha_trim), 1.0),
-            smooth_boundary=args.smooth_boundary,
-            smooth_iterations=max(1, int(args.smooth_iterations)),
-            smooth_factor=min(max(0.0, float(args.smooth_factor)), 1.0),
-            boundary_edge_mm=max(0.1, float(args.boundary_edge_mm)),
+            twig_to_species_map=twig_to_species_map or None,
+            densify=config.twigs_densify,
+            alpha_trim_threshold=min(max(0.0, config.twigs_alpha_trim), 1.0),
+            smooth_boundary=config.twigs_smooth_boundary,
+            smooth_iterations=max(1, config.twigs_smooth_iterations),
+            smooth_factor=min(max(0.0, config.twigs_smooth_factor), 1.0),
+            boundary_edge_mm=max(0.1, config.twigs_boundary_edge_mm),
         )
     else:
         return 1

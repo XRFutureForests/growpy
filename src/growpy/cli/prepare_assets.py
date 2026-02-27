@@ -90,6 +90,12 @@ _pve_overrides = _import_module_directly(
 )
 create_null_placeholder_config = _pve_overrides.create_null_placeholder_config
 
+# Import config core directly (only needs tomllib, pathlib)
+_config_core = _import_module_directly(
+    "config_core", _src_dir / "growpy" / "config" / "core.py"
+)
+get_config = _config_core.get_config
+
 
 def camel_to_snake(name: str) -> str:
     """Convert CamelCase to snake_case with number separation.
@@ -285,21 +291,19 @@ CSV Format Support:
 
     # Default paths
     script_dir = Path(__file__).parent.parent.parent.parent
-    default_grove = script_dir / "src" / "the_grove_22"
     default_assets = script_dir / "data" / "assets"
-    default_csv = script_dir / "data" / "input" / "test.csv"
 
     parser.add_argument(
         "--grove-dir",
         type=Path,
-        default=default_grove,
-        help=f"Path to The Grove 2.2 directory (default: {default_grove})",
+        default=None,
+        help="Path to The Grove 2.2 directory (default: from config)",
     )
     parser.add_argument(
         "--csv",
         type=Path,
-        default=default_csv,
-        help=f"Path to species CSV (default: {default_csv})",
+        default=None,
+        help="Path to species CSV (default: from config)",
     )
     parser.add_argument(
         "--all",
@@ -309,25 +313,46 @@ CSV Format Support:
     parser.add_argument(
         "--resize-textures",
         action="store_true",
+        default=None,
         help="Resize textures to power-of-2 for Unreal (slow, skip by default)",
     )
 
     args = parser.parse_args()
 
+    # Resolve config: TOML defaults + CLI overrides
+    config = get_config()
+    config.resolve(args)
+
+    # Resolve grove_dir
+    grove_dir = config.grove_dir
+    if args.grove_dir is not None:
+        grove_dir = args.grove_dir
+    elif not grove_dir.is_absolute():
+        grove_dir = script_dir / grove_dir
+
+    # Resolve CSV path
+    csv_path = config.csv_file
+    if args.csv is not None:
+        csv_path = args.csv
+    elif not csv_path.is_absolute():
+        csv_path = script_dir / csv_path
+
+    resize_textures = config.resize_textures
+
     # Validate paths
-    if not args.grove_dir.exists():
+    if not grove_dir.exists():
         return 1
 
     # Override CSV if --all flag is set
     if args.all:
-        args.csv = script_dir / "src" / "growpy" / "config" / "tree_asset_lookup.csv"
+        csv_path = script_dir / "src" / "growpy" / "config" / "tree_asset_lookup.csv"
 
-    if not args.csv.exists():
+    if not csv_path.exists():
         return 1
 
     # Load species CSV
     try:
-        df = load_species_csv(args.csv, script_dir)
+        df = load_species_csv(csv_path, script_dir)
     except Exception as e:
         return 1
 
@@ -354,7 +379,7 @@ CSV Format Support:
     }
 
     # Copy presets with standardized naming
-    src_presets = args.grove_dir / "presets"
+    src_presets = grove_dir / "presets"
     dst_presets = assets_dir / "presets"
 
     for _, row in df.iterrows():
@@ -376,7 +401,7 @@ CSV Format Support:
             stats["presets_missing"] += 1
 
     # Copy twigs (with CamelCase -> snake_case conversion)
-    src_twigs = args.grove_dir / "twigs"
+    src_twigs = grove_dir / "twigs"
     dst_twigs = assets_dir / "twigs"
 
     for _, row in df.iterrows():
@@ -416,7 +441,7 @@ CSV Format Support:
 
             # Optional: Resize twig textures to power-of-2 for Unreal virtual texture support
             # This is slow for large textures, so skip by default
-            if args.resize_textures:
+            if resize_textures:
                 twig_textures_dir = dst_twig_dir / "textures"
                 if twig_textures_dir.exists():
                     ensure_power_of_2_textures(twig_textures_dir)
@@ -448,7 +473,7 @@ CSV Format Support:
             stats["twigs_missing"] += 1
 
     # Copy bark textures with CamelCase -> snake_case conversion (preserves age numbers)
-    src_textures = args.grove_dir / "textures"
+    src_textures = grove_dir / "textures"
     dst_textures = assets_dir / "textures"
 
     for _, row in df.iterrows():
@@ -470,7 +495,7 @@ CSV Format Support:
         dst_file = dst_textures / f"{standardized_name}_bark{file_ext}"
 
         if src_file.exists():
-            if args.resize_textures:
+            if resize_textures:
                 # Resize to power-of-2 for Unreal virtual texture support (slow)
                 if copy_and_resize_texture(src_file, dst_file):
                     stats["textures_copied"] += 1

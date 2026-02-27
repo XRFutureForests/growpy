@@ -1,13 +1,27 @@
 # GrowPy Configuration Module
 
-> **📖 Full Documentation: [docs/growpy/CONFIGURATION.md](../../../docs/growpy/CONFIGURATION.md)**
-
 This module handles configuration for the GrowPy pipeline.
+
+## Central Configuration: growpy.toml
+
+All pipeline defaults are defined in `src/growpy/growpy.toml` (co-located with the package). CLI arguments override TOML values.
+
+**Resolution order:** dataclass defaults -> growpy.toml -> CLI arguments
+
+**TOML file discovery:**
+
+1. `GROWPY_CONFIG` environment variable
+2. `src/growpy/growpy.toml` (package directory)
+3. `./growpy.toml` (current working directory fallback)
 
 ## Files
 
-### settings.py
-Core configuration class (`GrowPyConfig`) providing:
+### core.py
+
+Central configuration class (`GrowPyConfig`) providing:
+
+- TOML loading via `from_toml(path)`
+- CLI argument merging via `resolve(args)`
 - Species lookup functionality
 - Asset path resolution
 - Growth model access
@@ -15,11 +29,13 @@ Core configuration class (`GrowPyConfig`) providing:
 - LOD configurations
 
 ### tree_asset_lookup.csv
+
 **Master species lookup table** mapping tree species to their assets and configurations.
 
 **Location**: This file should be placed here (`src/growpy/config/tree_asset_lookup.csv`) as the default configuration.
 
 **Why Here?**
+
 - ✅ **Packaged with Code** - Distributed as part of the module
 - ✅ **Co-located** - Lives with the config code that uses it
 - ✅ **Default Config** - Provides out-of-the-box functionality
@@ -27,6 +43,7 @@ Core configuration class (`GrowPyConfig`) providing:
 
 **Override Locations:**
 Users can override this file by placing a custom version at:
+
 1. `config/tree_asset_lookup.csv` (project root)
 2. `data/tree_asset_lookup.csv` (legacy)
 
@@ -40,6 +57,7 @@ European beech,Fagus sylvatica,Fagaceae - Beech.seed.json,EuropeanBeechTwig,Faga
 ```
 
 **Columns:**
+
 - `Common Name` - Human-readable species name for API calls
 - `Scientific Name` - Scientific nomenclature
 - `Preset` - Grove preset JSON filename
@@ -83,7 +101,8 @@ To add a new species to the lookup table:
 Douglas fir,Pseudotsuga menziesii,Pinaceae - Douglas fir.seed.json,DouglasFirTwig,Pinaceae_Douglas_fir,#6b5447,#2d6b28
 ```
 
-4. Run growth model creation:
+1. Run growth model creation:
+
 ```bash
 python src/growpy/cli/create_growth_models.py --species "Douglas fir"
 ```
@@ -97,6 +116,7 @@ The `create_growth_models.py` script automatically updates the `Growth Model` co
 ## Fuzzy Matching
 
 The config supports fuzzy species name matching:
+
 ```python
 # All of these work:
 config.get_preset_path("European beech")  # Exact
@@ -114,6 +134,7 @@ Colors are stored as hex strings but returned as RGB tuples (0-1 range) for use 
 ```
 
 This format is compatible with:
+
 - Blender materials
 - Grove color settings
 - Most 3D engines
