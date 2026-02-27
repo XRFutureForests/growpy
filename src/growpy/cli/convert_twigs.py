@@ -1,89 +1,7 @@
 #!/usr/bin/env python3
-"""
-Convert Grove twig .blend files to USD with skeletal or static mesh variants.
+"""Convert Grove twig .blend files to USD with skeletal and static mesh variants.
 
-This is a pure Blender-to-format conversion that produces mesh assets for
-Unreal Engine in USD format. No Grove functions are required - only Blender
-Python API (bpy).
-
-Key Features:
-    - Dual export modes: skeletal (with skeleton) or static (with materials)
-    - Interleaved densify+trim: subdivides transition and transparent faces
-    - Relative edge targets for consistent density across species
-    - Alpha-based silhouette trimming with configurable methods
-    - Coordinate system: Z-up (Blender to Unreal)
-
-Algorithm (Interleaved Densify+Trim):
-    1. Build vertex alpha map by sampling texture at UV coordinates
-    2. Identify working faces:
-       - Transition faces: have BOTH opaque and transparent vertices
-       - Transparent faces: ALL vertices transparent with long edges
-       - Boundary faces: have at least one mesh boundary edge
-    3. Delete small fully-transparent faces (all edges <= target)
-    4. Subdivide long edges in working faces (edge_split affects neighbors)
-    5. Repeat steps 1-4 until no more changes
-
-    Key advantages:
-    - Transition faces (the actual silhouette) get densified first
-    - Transparent faces subdivided only to make them small enough to delete
-    - edge_split naturally propagates to neighboring faces sharing edges
-    - Auto-detects inverted alpha masks (black=opaque convention)
-
-Export Variants (both created by default):
-    Skeletal (_skeletal.usda):
-        - Single root joint skeleton for animation support
-        - Minimal export: geometry only (no materials/textures/attributes)
-        - Used in skeletal Nanite assemblies
-
-    Static (_static.usda):
-        - Full PBR materials with textures from The Grove 2.2
-        - No skeleton (static geometry)
-        - Used in static Nanite assemblies
-
-Quick Start:
-    # Full conversion with all defaults (recommended for production)
-    python src/growpy/cli/convert_twigs.py data/assets/twigs --csv data/input/test.csv --alpha-trim 0.5 --boundary-edge-mm 0.5 --smooth-boundary --smooth-iterations 3 --smooth-factor 0.5
-
-    # Recommended: default settings work well for most species
-    python src/growpy/cli/convert_twigs.py data/assets/twigs
-
-    # With boundary smoothing for natural curves
-    python src/growpy/cli/convert_twigs.py data/assets/twigs --smooth-boundary
-
-    # Skip densification (export original low-poly mesh)
-    python src/growpy/cli/convert_twigs.py data/assets/twigs --no-densify
-
-    # Convert ALL species from asset lookup table
-    python src/growpy/cli/convert_twigs.py data/assets/twigs --csv src/growpy/config/tree_asset_lookup.csv
-
-All Flags:
-    path                        Path to twig directory or .blend file (required)
-    --csv PATH                  Species CSV filter (default: data/input/test.csv)
-    --no-densify                Disable mesh densification
-    --boundary-edge-mm FLOAT    Target edge as fraction of avg edge (default: 0.5)
-    --alpha-trim FLOAT          Alpha threshold for trimming (default: 0.5)
-    --smooth-boundary           Enable boundary smoothing
-    --smooth-iterations INT     Smoothing passes (default: 3)
-    --smooth-factor FLOAT       Smoothing strength 0.0-1.0 (default: 0.5)
-
-Edge Densification (RELATIVE sizing - robust to any mesh scale):
-    --boundary-edge-mm 1.0      No subdivision (original mesh)
-    --boundary-edge-mm 0.5      Subdivide to 50% of avg edge (RECOMMENDED)
-    --boundary-edge-mm 0.25     Subdivide to 25% (very dense)
-    --boundary-edge-mm 0.1      Very fine (10%, high poly count)
-
-Alpha Trimming:
-    --alpha-trim 0.05-0.3       Minimal trimming (conservative)
-    --alpha-trim 0.5            Moderate trimming (RECOMMENDED)
-    --alpha-trim 0.7            Aggressive trimming
-    (Uses 'all' method: delete only if ALL samples < threshold)
-
-Output per twig:
-    - {species}_foliage_{type}_skeletal.usda  # Skeletal mesh with skeleton
-    - {species}_foliage_{type}_static.usda    # Static mesh with materials
-
-Usage:
-    python src/growpy/cli/convert_twigs.py <path> [options]
+Step 2 of the pipeline. Defaults from growpy.toml [twigs]. See docs/growpy/cli-reference.md.
 """
 
 import re
@@ -482,7 +400,11 @@ Output per twig:
         """,
     )
     parser.add_argument(
-        "path", type=Path, help="Path to twig directory or single .blend file"
+        "path",
+        type=Path,
+        nargs="?",
+        default=None,
+        help="Path to twig directory or single .blend file (default: from config)",
     )
     parser.add_argument(
         "--csv",
@@ -535,12 +457,18 @@ Output per twig:
     # Resolve config: TOML defaults + CLI overrides
     config.resolve(args)
 
+    # Resolve twig path: CLI arg or config default
+    twig_path = args.path if args.path is not None else config.twigs_path
+    if not twig_path.is_absolute():
+        twig_path = script_dir / twig_path
+
     # Resolve CSV path
     csv_path = config.csv_file
     if not csv_path.is_absolute():
         csv_path = script_dir / csv_path
 
-    if not args.path.exists():
+    if not twig_path.exists():
+        print(f"Path not found: {twig_path}")
         return 1
 
     # Load CSV filter if provided
@@ -554,7 +482,7 @@ Output per twig:
             import pandas as pd
 
             try:
-                df = pd.read_csv(args.csv)
+                df = pd.read_csv(csv_path)
 
                 # Check if this is a forest placement CSV (has "species" column)
                 if "species" in df.columns and "Twig" not in df.columns:
@@ -634,10 +562,10 @@ Output per twig:
                 print(f"Error processing CSV file: {e}")
                 return 1
 
-    if args.path.is_file() and args.path.suffix == ".blend":
+    if twig_path.is_file() and twig_path.suffix == ".blend":
         # Single file
         results = process_twig_directory(
-            args.path.parent,
+            twig_path.parent,
             ["usda"],
             True,
             twig_filter,
@@ -650,10 +578,10 @@ Output per twig:
             smooth_factor=min(max(0.0, config.twigs_smooth_factor), 1.0),
             boundary_edge_mm=max(0.1, config.twigs_boundary_edge_mm),
         )
-    elif args.path.is_dir():
+    elif twig_path.is_dir():
         # Directory
         results = process_twig_directory(
-            args.path,
+            twig_path,
             ["usda"],
             True,
             twig_filter,

@@ -1,9 +1,0 @@
-fid,species,x,y,dbh,height,z
-1,Norway spruce,0,0,0.25,15,0
-2,Norway spruce,50,0,0.5,30,0
-3,European beech,0,50,0.25,15,0
-4,European beech,50,50,0.5,30,0
-5,European oak,0,100,0.25,15,0
-6,European oak,50,100,0.5,30,0
-7,Common ash,0,150,0.25,15,0
-8,Common ash,50,150,0.5,30,0

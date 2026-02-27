@@ -86,6 +86,7 @@ class GrowPyConfig:
     resize_textures: bool = False
 
     # [twigs]
+    twigs_path: Path = field(default_factory=lambda: Path("data/assets/twigs"))
     twigs_densify: bool = True
     twigs_alpha_trim: float = 0.5
     twigs_smooth_boundary: bool = False
@@ -166,6 +167,8 @@ class GrowPyConfig:
 
         # [twigs]
         twigs = data.get("twigs", {})
+        if "path" in twigs:
+            kwargs["twigs_path"] = Path(twigs["path"])
         if "densify" in twigs:
             kwargs["twigs_densify"] = twigs["densify"]
         if "alpha_trim" in twigs:
