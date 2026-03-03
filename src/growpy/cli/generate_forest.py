@@ -84,7 +84,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         .lower()
     )
 
-    exported = []
+    exported: list[str] = []
 
     try:
         # Export directly from already-simulated grove (from forest simulation phase)
@@ -156,9 +156,9 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             # Skip trees not in export filter (they still participated in growth simulation)
             if export_tree_ids is not None and tree_fid not in export_tree_ids:
                 # Clear memory for skipped tree
-                models[model_idx] = None
-                skeletons[model_idx] = None
-                tree_bones[model_idx] = None
+                models[model_idx] = None  # type: ignore[call-overload]
+                skeletons[model_idx] = None  # type: ignore[call-overload]
+                tree_bones[model_idx] = None  # type: ignore[call-overload]
                 del model, skeleton, bones_for_tree
                 continue
 
@@ -271,9 +271,9 @@ def _export_single_tree_from_forest(args: tuple) -> list:
 
             # MEMORY OPTIMIZATION: Clear this tree's data immediately after export
             # This releases large mesh/skeleton data before processing next tree
-            models[model_idx] = None
-            skeletons[model_idx] = None
-            tree_bones[model_idx] = None
+            models[model_idx] = None  # type: ignore[call-overload]
+            skeletons[model_idx] = None  # type: ignore[call-overload]
+            tree_bones[model_idx] = None  # type: ignore[call-overload]
             del model, skeleton, bones_for_tree
             _gc_module.collect()
 
@@ -371,7 +371,7 @@ def export_individual_trees(
 
         # MEMORY OPTIMIZATION: Clear grove reference after export to free RAM
         # The grove object holds all simulation data which is no longer needed
-        grove_tasks[task_idx] = None
+        grove_tasks[task_idx] = None  # type: ignore[call-overload]
 
     # PVE JSON generation now happens inline during tree export
     # No separate batch generation needed
@@ -939,12 +939,12 @@ def generate_unreal_import_script(
     )
 
     # Group trees by species (parent of tree_XXXX folder)
-    trees_by_species = {}
+    trees_by_species: Dict[str, list] = {}
     for usd_file in nanite_files:
         # Structure: species_dir/tree_XXXX/assembly.usda
         tree_folder = usd_file.parent
-        species_folder = tree_folder.parent
-        species_name = species_folder.name
+        species_parent = tree_folder.parent
+        species_name = species_parent.name
 
         if species_name not in trees_by_species:
             trees_by_species[species_name] = []
@@ -1032,10 +1032,10 @@ print("Importing {species_folder}...")
             usd_path = str(usd_file.resolve()).replace("\\", "/")
 
             # Extract tree ID from folder name (tree_0001, tree_0002, etc.)
-            tree_folder = usd_file.parent.name
+            tree_folder_name = usd_file.parent.name
             tree_number = (
-                tree_folder.replace("tree_", "")
-                if tree_folder.startswith("tree_")
+                tree_folder_name.replace("tree_", "")
+                if tree_folder_name.startswith("tree_")
                 else "0000"
             )
 
