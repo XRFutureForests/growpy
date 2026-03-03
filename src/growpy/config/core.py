@@ -124,9 +124,13 @@ class GrowPyConfig:
     unreal_import_to_unreal: bool = False
     unreal_project_path: str = "/Game/GrowPy/Trees"
 
+    # [twigs] - interior decimation
+    twigs_interior_decimate_ratio: float = 0.0
+
     # [helios]
     helios_export_obj: bool = False
     helios_decimate_ratio: float = 0.3
+    helios_stem_decimate_ratio: float = 0.1
     helios_helios_scene: bool = False
     helios_combined_obj: bool = False
 
@@ -182,6 +186,8 @@ class GrowPyConfig:
             kwargs["twigs_smooth_factor"] = twigs["smooth_factor"]
         if "boundary_edge_mm" in twigs:
             kwargs["twigs_boundary_edge_mm"] = twigs["boundary_edge_mm"]
+        if "interior_decimate_ratio" in twigs:
+            kwargs["twigs_interior_decimate_ratio"] = twigs["interior_decimate_ratio"]
 
         # [growth_models]
         gm = data.get("growth_models", {})
@@ -242,8 +248,10 @@ class GrowPyConfig:
         helios = data.get("helios", {})
         if "export_obj" in helios:
             kwargs["helios_export_obj"] = helios["export_obj"]
-        if "decimate_ratio" in helios:
-            kwargs["helios_decimate_ratio"] = helios["decimate_ratio"]
+        if "twig_decimate_ratio" in helios:
+            kwargs["helios_decimate_ratio"] = helios["twig_decimate_ratio"]
+        if "stem_decimate_ratio" in helios:
+            kwargs["helios_stem_decimate_ratio"] = helios["stem_decimate_ratio"]
         if "helios_scene" in helios:
             kwargs["helios_helios_scene"] = helios["helios_scene"]
         if "combined_obj" in helios:
@@ -320,8 +328,8 @@ class GrowPyConfig:
             "unreal_project_path": "unreal_project_path",
             # [helios]
             "export_obj": "helios_export_obj",
-            "decimate_ratio": "helios_decimate_ratio",
-            "obj_decimate_ratio": "helios_decimate_ratio",
+            "twig_decimate_ratio": "helios_decimate_ratio",
+            "stem_decimate_ratio": "helios_stem_decimate_ratio",
             "helios_scene": "helios_helios_scene",
             "combined_obj": "helios_combined_obj",
         }

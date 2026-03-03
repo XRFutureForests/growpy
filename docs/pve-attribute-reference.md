@@ -483,3 +483,41 @@ Key implementation files:
 - `PVPointFacade.cpp` - Point data access patterns
 - `PVBranchFacade.cpp` - Branch data access patterns
 - `PVJSONHelper.h` - JSON parsing and required paths validation
+
+---
+
+## Grove to PVE Mapping
+
+GrowPy converts Grove 2.2 seed.json parameters to PVE attributes. The key challenge is that Grove uses simple scalar parameters while PVE uses curve-based arrays.
+
+### Compatibility Matrix
+
+| PVE Attribute | Grove Source | Mapping Type | Status |
+|---------------|--------------|--------------|--------|
+| cycle | Simulation count | Direct | Working |
+| cycleTime | Fixed value | Direct | Working |
+| randomSeed | grove.set_random_seed() | Direct | Working |
+| gravitationalForce | bend_reaction | Approximate | Needs scaling |
+| phototropism | turn_to_light, favor_bright | Curve conversion | Needs implementation |
+| phyllotaxy | add_angle | Complex | Use reference values |
+| axialElongation | grow_length | Curve conversion | Needs implementation |
+| lateralElongation | grow_length | Complex curve | Use reference values |
+| branchingCondition | add_chance | Complex curve | Use reference values |
+| leafGrowth | twig_density | No equivalent | Use reference values |
+| lightDetection | shade_area | Approximate | Needs implementation |
+| maxBranchNumber | skeleton.poly_lines | Calculate | Working |
+| maxBudNumber | skeleton estimate | Calculate | Needs improvement |
+| compoundMaxBranchGeneration | skeleton hierarchy | Calculate | Needs improvement |
+| compoundMaxBranchNumber | Species data | Config file | Working |
+| maxPscale | skeleton.radius | Calculate | Needs implementation |
+| max_curve_length | skeleton length | Calculate | Needs implementation |
+| plantProfile_1-5 | None | Config file | Working |
+| photogrammetryTrunk | None | Fixed (0) | Working |
+
+### Mapping Strategy
+
+- **Direct extraction**: cycle, randomSeed, maxBranchNumber
+- **Calculate from simulation**: maxBudNumber, maxPscale, max_curve_length, compoundMaxBranchGeneration
+- **Curve conversion possible**: phototropism, axialElongation, lightDetection, gravitationalForce
+- **Use species reference values**: phyllotaxy, lateralElongation, branchingCondition, leafGrowth
+- **Config files required**: plantProfiles, compoundMaxBranchNumber, photogrammetryTrunk
