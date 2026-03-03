@@ -65,6 +65,8 @@ This document catalogs all available attributes from The Grove 2.2 API and docum
 
 **All point and face attributes are automatically exported to USD as primvars** with PascalCase naming (e.g., `point_attribute_thickness` → `Thickness` primvar).
 
+**Naming note**: Both Model and Skeleton use `face_attribute_branch_id`. The Grove type stubs (`__init__.pyi`) and HTML docs incorrectly list these as `face_attribute_branch_index` / `face_attribute_tree_index`, but the runtime compiled module uses `_id` variants. Verified with `dir()` on actual Model objects.
+
 The twig placement methods (`get_twig_locations`, `get_twig_orientations`, `get_twig_directions`) provide an alternative to the face attribute approach. Currently, growpy uses face attributes for twig placement extraction, which is more reliable.
 
 ---

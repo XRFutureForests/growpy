@@ -1102,30 +1102,23 @@ def copy_opaque_textures_for_skeletal(
 def _detect_leaf_material_indices(obj):
     """Return a set of material indices that likely correspond to leaves/foliage.
 
-    For twig meshes, if no explicit leaf materials are found, returns ALL material
-    indices since twigs are typically entirely foliage geometry that needs processing.
+    Twig assets are primarily leaf/needle geometry. Any material NOT explicitly
+    tagged as bark/branch/wood/dead is assumed to be a leaf and eligible for
+    geometry processing (alpha trim, densify, interior decimate).
     """
-    leaf_kw = ("leaf", "leaves", "foliage", "needle")
-    bark_kw = ("bark", "branch", "twig", "wood")
-    idxs = set()
+    exclude_kw = ("bark", "branch", "wood", "dead")
     mats = getattr(obj.data, "materials", []) or []
 
-    # First pass: look for explicit leaf materials
+    if not mats:
+        return {0}
+
+    idxs = set()
     for i, mat in enumerate(mats):
         name = (mat.name if mat else "").lower()
-        if any(k in name for k in leaf_kw) and not any(k in name for k in bark_kw):
+        if not any(k in name for k in exclude_kw):
             idxs.add(i)
 
-    # CRITICAL: For twigs, if no leaf materials found, treat entire mesh as foliage
-    # This ensures geometry processing (alpha trim, densify, decimate) runs on all faces
-    # Twig meshes are typically 100% leaf/foliage geometry without bark segments
-    if not idxs:
-        # Return all material indices (or {0} if no materials assigned)
-        if mats:
-            idxs = set(range(len(mats)))
-        else:
-            idxs = {0}  # Default to material slot 0 for unmaterialized meshes
-
+    # If all materials were excluded, return empty set (skip processing)
     return idxs
 
 
@@ -2360,28 +2353,22 @@ def _cleanup_boundary_spikes(
 
 def _apply_interior_decimate(
     obj,
-    leaf_material_indices: Set[int],
-    alpha_img,
-    threshold: float,
     ratio: float = 0.5,
     boundary_rings: int = 1,
-    use_mesh_boundary: bool = True,
 ):
-    """Apply edge-protected interior decimation on leaf regions.
+    """Apply topology-based interior decimation on leaf/needle geometry.
 
-    After alpha trimming, the mesh boundary IS the leaf silhouette. This function
-    protects the actual mesh perimeter (edges with 1 adjacent face) rather than
-    relying on alpha-threshold crossings which can be noisy with gradient textures.
+    Classifies mesh faces by connected component topology:
+    - Tube components (no boundary edges) = branch cylinders -> protected
+    - Plane components (has boundary edges) = leaves/needles -> interior decimated
+
+    Boundary vertices (leaf silhouette edges) are also protected, so only the
+    interior of leaf planes gets simplified.
 
     Args:
         obj: Blender mesh object (should be called AFTER alpha trimming)
-        leaf_material_indices: Set of material indices for leaf geometry
-        alpha_img: Alpha texture (used only if use_mesh_boundary=False)
-        threshold: Alpha threshold (used only if use_mesh_boundary=False)
         ratio: Decimation ratio (0.0-1.0, lower = more reduction)
         boundary_rings: Number of vertex rings to protect around boundary
-        use_mesh_boundary: If True, use actual mesh boundary detection (recommended
-            after alpha trimming). If False, use alpha-threshold crossing detection.
     """
     if ratio <= 0.0 or ratio >= 1.0:
         return
@@ -2396,129 +2383,98 @@ def _apply_interior_decimate(
     bm.from_mesh(mesh)
     bm.verts.ensure_lookup_table()
 
-    # Collect leaf faces and all leaf vertices
-    leaf_faces = set()
-    leaf_verts = set()
-    for face in bm.faces:
-        if face.material_index in leaf_material_indices:
-            leaf_faces.add(face)
-            for vert in face.verts:
-                leaf_verts.add(vert)
+    # Classify faces topologically: tube (closed manifold) vs plane (open sheet)
+    # Tube components have no boundary edges -> branch/twig cylinders (protect)
+    # Plane components have boundary edges -> leaf/needle geometry (decimate interior)
 
-    if not leaf_faces:
+    # Find boundary edges (edges with exactly 1 adjacent face)
+    boundary_edge_set = set()
+    for edge in bm.edges:
+        if len(edge.link_faces) == 1:
+            boundary_edge_set.add(edge)
+
+    # Find connected face components and classify each
+    visited = set()
+    tube_verts = set()
+    plane_faces = set()
+    plane_verts = set()
+
+    for start_face in bm.faces:
+        if start_face in visited:
+            continue
+        component = set()
+        stack = [start_face]
+        while stack:
+            face = stack.pop()
+            if face in visited:
+                continue
+            visited.add(face)
+            component.add(face)
+            for edge in face.edges:
+                for neighbor in edge.link_faces:
+                    if neighbor not in visited:
+                        stack.append(neighbor)
+
+        has_boundary = any(e in boundary_edge_set for f in component for e in f.edges)
+        if has_boundary:
+            plane_faces.update(component)
+            for f in component:
+                for v in f.verts:
+                    plane_verts.add(v)
+        else:
+            for f in component:
+                for v in f.verts:
+                    tube_verts.add(v)
+
+    if not plane_faces:
         bm.free()
         return
 
-    # Find boundary vertices
+    # Find boundary vertices on plane components (leaf silhouette edges)
     boundary_verts = set()
-
-    if use_mesh_boundary:
-        # Use actual mesh boundary: edges with exactly 1 adjacent leaf face
-        # This is the TRUE leaf edge after alpha trimming
-        for edge in bm.edges:
-            adjacent_leaf_faces = sum(1 for f in edge.link_faces if f in leaf_faces)
-            if adjacent_leaf_faces == 1:
-                for vert in edge.verts:
-                    boundary_verts.add(vert)
-
-        # Diagnostic: check if we found reasonable boundary
-        boundary_ratio = len(boundary_verts) / len(leaf_verts) if leaf_verts else 0
-        if boundary_ratio < 0.005:
-            # Less than 0.5% boundary vertices - mesh boundary detection likely failed
-            # Fall back to alpha-threshold crossing
-            print(
-                f"  [DEBUG] Mesh boundary found only {len(boundary_verts)} verts "
-                f"({boundary_ratio:.1%}) - falling back to alpha detection"
-            )
-            boundary_verts.clear()
-            use_mesh_boundary = False
-        elif boundary_ratio > 0.9:
-            # More than 90% boundary - likely a thin plane/cylinder with poor classification
-            # Skip decimation entirely to avoid destroying geometry
-            print(
-                f"  [DEBUG] Boundary ratio too high ({boundary_ratio:.1%}) - "
-                f"skipping decimation (likely branch classified as leaf)"
-            )
-            bm.free()
-            return
-
-    if not use_mesh_boundary:
-        # Fallback: use alpha-threshold crossing (legacy behavior)
-        if not mesh.uv_layers.active:
-            bm.free()
-            return
-        v_alpha = _build_vertex_alpha_map(mesh, alpha_img)
-        if not v_alpha:
-            bm.free()
-            return
-
-        for face in leaf_faces:
-            for i, vert in enumerate(face.verts):
-                next_vert = face.verts[(i + 1) % len(face.verts)]
-                a0 = v_alpha.get(vert.index)
-                a1 = v_alpha.get(next_vert.index)
-                if a0 is None or a1 is None:
-                    continue
-                if (a0 - threshold) * (a1 - threshold) < 0.0:
-                    boundary_verts.add(vert)
-                    boundary_verts.add(next_vert)
-
-    # Log boundary detection results
-    if boundary_verts:
-        print(
-            f"  [DEBUG] Boundary detection: {len(boundary_verts)} verts protected "
-            f"({len(boundary_verts)/len(leaf_verts)*100:.1f}% of leaf verts)"
-        )
+    for edge in boundary_edge_set:
+        for vert in edge.verts:
+            boundary_verts.add(vert)
 
     if not boundary_verts:
         bm.free()
         return
 
-    # Calculate average boundary edge length for diagnostics
-    boundary_edge_lengths = []
-    for v in boundary_verts:
-        for edge in v.link_edges:
-            if edge.verts[0] in boundary_verts and edge.verts[1] in boundary_verts:
-                boundary_edge_lengths.append(edge.calc_length())
-    avg_edge_len = (
-        sum(boundary_edge_lengths) / len(boundary_edge_lengths)
-        if boundary_edge_lengths
-        else 0.001
-    )
-
-    # Expand boundary by boundary_rings
-    initial_boundary_count = len(boundary_verts)
+    # Expand boundary protection by boundary_rings
     current = set(boundary_verts)
     for _ in range(max(0, int(boundary_rings))):
         grow = set()
         for v in current:
             for edge in v.link_edges:
                 for nb in edge.verts:
-                    if nb in leaf_verts and nb not in boundary_verts:
+                    if nb in plane_verts and nb not in boundary_verts:
                         grow.add(nb)
         if not grow:
             break
         boundary_verts.update(grow)
         current = grow
 
-    # Log expansion results
-    protection_width_mm = avg_edge_len * boundary_rings * 1000
-    print(
-        f"  [DEBUG] Boundary expanded: {initial_boundary_count} -> {len(boundary_verts)} verts "
-        f"({len(boundary_verts)/len(leaf_verts)*100:.1f}%), "
-        f"edge ~{avg_edge_len*1000:.2f}mm, width ~{protection_width_mm:.1f}mm"
-    )
-
-    # Convert to vertex indices for vertex group
+    # Protect: boundary verts (silhouette) + tube verts (branches) + non-mesh verts
     preserve_indices = {v.index for v in boundary_verts}
+    preserve_indices.update(v.index for v in tube_verts)
 
-    # Also preserve all non-leaf vertices (twig/bark geometry)
-    all_verts = set(range(len(bm.verts)))
-    leaf_vert_indices = {v.index for v in leaf_verts}
-    non_leaf_indices = all_verts - leaf_vert_indices
-    preserve_indices.update(non_leaf_indices)
+    total = len(bm.verts)
+    decimatable = total - len(preserve_indices)
 
     bm.free()
+
+    if decimatable <= 0:
+        print(
+            f"  Interior decimate: skipped (no interior verts to decimate, "
+            f"{len(tube_verts)} tube + {len(boundary_verts)} boundary = all verts protected)"
+        )
+        return
+
+    print(
+        f"  Interior decimate: {len(tube_verts)} tube verts protected, "
+        f"{len(boundary_verts)} boundary verts protected, "
+        f"{decimatable} verts decimatable"
+    )
 
     # Create/replace vertex group
     vg_name = "edge_protect"
@@ -3212,6 +3168,7 @@ def process_twig_file(
     smooth_factor=0.5,
     boundary_edge_mm=0.5,
     boundary_band_mm=1.0,
+    interior_decimate_ratio=0.0,
 ):
     """Process a single twig blend file.
 
@@ -3339,7 +3296,7 @@ def process_twig_file(
 
             # Optional geometry processing for enhanced leaf detail
             # Restrict to leaf materials to avoid artifacts on twigs/bark
-            interior_decimate = False
+            interior_decimate = 0.0 < interior_decimate_ratio < 1.0
             if densify or alpha_trim_threshold > 0.0 or interior_decimate:
                 # Validate textures before geometry processing
                 # Textures should have been standardized during asset preparation
@@ -3434,6 +3391,17 @@ def process_twig_file(
                             )
                         except Exception:
                             pass
+
+                # 5) Interior decimation - simplify leaf interiors, protect branches
+                if interior_decimate:
+                    try:
+                        _apply_interior_decimate(
+                            obj,
+                            ratio=interior_decimate_ratio,
+                            boundary_rings=1,
+                        )
+                    except Exception:
+                        pass
 
                 # Recalculate normals
                 bpy.context.view_layer.objects.active = obj

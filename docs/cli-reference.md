@@ -9,7 +9,7 @@ Run all scripts without arguments to use TOML defaults:
 python src/growpy/cli/prepare_assets.py
 python src/growpy/cli/convert_twigs.py
 python src/growpy/cli/create_growth_models.py
-I. python src/growpy/cli/generate_forest.py
+python src/growpy/cli/generate_forest.py
 python src/growpy/cli/export_obj.py
 ```
 

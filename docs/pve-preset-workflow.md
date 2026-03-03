@@ -88,7 +88,7 @@ generated = generate_pve_preset_for_species(
 
 The generated JSON follows the Quixel Megaplants format with three main sections.
 
-**For detailed attribute documentation, see [PVE_ATTRIBUTE_REFERENCE.md](PVE_ATTRIBUTE_REFERENCE.md).**
+**For detailed attribute documentation, see [PVE Attribute Reference](pve-attribute-reference.md).**
 
 ### 1. globalAttributes
 
@@ -754,7 +754,7 @@ PVE presets can work with Dynamic Wind in Unreal:
 
 ## See Also
 
-- [PVE Attribute Reference](PVE_ATTRIBUTE_REFERENCE.md) - Detailed explanation of all PVE attributes (maxBranchNumber, compound leaves, pscale, etc.)
+- [PVE Attribute Reference](pve-attribute-reference.md) - Detailed explanation of all PVE attributes (maxBranchNumber, compound leaves, pscale, etc.)
 - [Grove Preset Reference](grove-preset-reference.md) - Grove 2.2 preset parameter reference
-- [GrowPy Functional Description](GROWPY_FUNCTIONAL_DESCRIPTION.md) - Complete package architecture and data flow
-- [CLI Reference](archive/cli-reference.md) - Complete command reference
+- [GrowPy Functional Description](growpy-functional-description.md) - Complete package architecture and data flow
+- [CLI Reference](cli-reference.md) - Complete command reference

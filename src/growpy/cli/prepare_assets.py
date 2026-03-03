@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Copy Grove 2.2 assets (presets, twigs, textures) for species in CSV.
 
-Step 1 of the pipeline. Defaults from growpy.toml [assets]. See docs/growpy/cli-reference.md.
+Step 1 of the pipeline. Defaults from growpy.toml [assets]. See docs/cli-reference.md.
 """
 import argparse
 
