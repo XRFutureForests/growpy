@@ -512,6 +512,111 @@ def _write_obj(
                     f.write(f"f {v0} {v1} {v2}\n")
 
 
+def write_combined_obj(
+    tree_entries: List[Tuple[Path, float, float, float, str]],
+    output_path: Path,
+    helios_spectra_leaves: str = "deciduous",
+) -> Path:
+    """Merge all individual tree OBJs into a single combined OBJ at CSV positions.
+
+    Reads each per-tree OBJ, translates vertices by (x, y, z) from the CSV,
+    and writes one combined OBJ + MTL with bark/leaves material groups.
+
+    Args:
+        tree_entries: List of (obj_path, x, y, z, species_name) tuples
+        output_path: Path to write the combined OBJ file
+        helios_spectra_leaves: Helios spectra type for leaves material
+
+    Returns:
+        Path to generated combined OBJ file
+    """
+    mtl_name = output_path.stem + ".mtl"
+    mtl_path = output_path.with_suffix(".mtl")
+
+    vert_offset = 0
+    uv_offset = 0
+    bark_faces_all: List[str] = []
+    leaves_faces_all: List[str] = []
+    verts_all: List[str] = []
+    uvs_all: List[str] = []
+
+    for obj_path, x, y, z, _species in tree_entries:
+        if not obj_path.exists():
+            continue
+
+        local_verts = 0
+        local_uvs = 0
+        current_mtl = "bark"
+
+        with open(obj_path, "r") as f:
+            for line in f:
+                if line.startswith("v "):
+                    parts = line.split()
+                    vx = float(parts[1]) + x
+                    vy = float(parts[2]) + y
+                    vz = float(parts[3]) + z
+                    verts_all.append(f"v {vx:.6f} {vy:.6f} {vz:.6f}\n")
+                    local_verts += 1
+                elif line.startswith("vt "):
+                    uvs_all.append(line)
+                    local_uvs += 1
+                elif line.startswith("usemtl "):
+                    current_mtl = line.strip().split()[1]
+                elif line.startswith("f "):
+                    new_face = _offset_face_line(line, vert_offset, uv_offset)
+                    if current_mtl == "leaves":
+                        leaves_faces_all.append(new_face)
+                    else:
+                        bark_faces_all.append(new_face)
+
+        vert_offset += local_verts
+        uv_offset += local_uvs
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(output_path, "w") as f:
+        f.write("# Helios++ combined forest mesh\n")
+        f.write(f"mtllib {mtl_name}\n\n")
+
+        for v in verts_all:
+            f.write(v)
+        f.write("\n")
+        for uv in uvs_all:
+            f.write(uv)
+        f.write("\n")
+
+        f.write("usemtl bark\n")
+        for face in bark_faces_all:
+            f.write(face)
+
+        if leaves_faces_all:
+            f.write("\nusemtl leaves\n")
+            for face in leaves_faces_all:
+                f.write(face)
+
+    _write_helios_mtl(mtl_path, bark_texture=None, helios_spectra_leaves=helios_spectra_leaves)
+
+    total_verts = len(verts_all)
+    total_faces = len(bark_faces_all) + len(leaves_faces_all)
+    print(f"  Combined OBJ: {output_path.name} ({total_verts} verts, {total_faces} faces, {len(tree_entries)} trees)")
+    return output_path
+
+
+def _offset_face_line(line: str, vert_offset: int, uv_offset: int) -> str:
+    """Offset vertex/UV indices in an OBJ face line by global offsets."""
+    parts = line.strip().split()
+    new_parts = ["f"]
+    for token in parts[1:]:
+        components = token.split("/")
+        vi = int(components[0]) + vert_offset
+        if len(components) >= 2 and components[1]:
+            ti = int(components[1]) + uv_offset
+            new_parts.append(f"{vi}/{ti}")
+        else:
+            new_parts.append(str(vi))
+    return " ".join(new_parts) + "\n"
+
+
 def _write_helios_mtl(
     mtl_path: Path,
     bark_texture: Optional[Path],

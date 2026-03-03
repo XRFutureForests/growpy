@@ -122,6 +122,8 @@ export_obj = false
 decimate_ratio = 0.3
 # Generate Helios++ scene XML placing all tree OBJs at CSV positions
 helios_scene = false
+# Export a single combined OBJ with all trees positioned at CSV coordinates
+combined_obj = false
 
 [build]
 # LOD levels to export: "all" or comma-separated list
