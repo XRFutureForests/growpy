@@ -55,7 +55,6 @@ TEXTURE_MODIFIERS = {
     "top": ["top", "upper", "face"],
     "bottom": ["bottom", "lower", "back", "underside"],
 }
-I. 
 
 def standardize_twig_name(original_name: str, species_name: str) -> Tuple[str, Dict]:
     """Convert Grove's CamelCase .blend filenames to snake_case USD output names.
