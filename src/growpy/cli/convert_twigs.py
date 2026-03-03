@@ -119,15 +119,15 @@ def standardize_twig_name(original_name: str, species_name: str) -> Tuple[str, D
 
     # Twig type
     if metadata["type"] != "generic":
-        parts.append(metadata["type"])
+        parts.append(str(metadata["type"]))
 
     # Variation
     if metadata["variation"]:
-        parts.append(metadata["variation"])
+        parts.append(str(metadata["variation"]))
 
     # Season modifier
     if metadata["season"] and metadata["season"] != metadata["type"]:
-        parts.append(metadata["season"])
+        parts.append(str(metadata["season"]))
 
     standardized = "_".join(parts)
 
@@ -177,7 +177,7 @@ def find_textures_for_material(
         e.g., {'diffuse': Path(...), 'alpha': Path(...), 'normal': Path(...)}
     """
     texture_extensions = [".png", ".jpg", ".jpeg", ".tiff", ".exr", ".bmp"]
-    texture_map = {}
+    scored_map: Dict[str, Tuple[Path, int]] = {}
 
     # Search locations
     search_dirs = [blend_dir / "textures", blend_dir]
@@ -185,7 +185,7 @@ def find_textures_for_material(
         search_dirs.extend([blend_dir.parent / "textures", blend_dir.parent])
 
     # Find all textures
-    available_textures = []
+    available_textures: List[Path] = []
     for search_dir in search_dirs:
         if not search_dir.exists():
             continue
@@ -202,7 +202,7 @@ def find_textures_for_material(
     ]
 
     if not available_textures:
-        return texture_map
+        return {}
 
     # Match textures to material
     material_lower = material_name.lower()
@@ -236,13 +236,13 @@ def find_textures_for_material(
         # Accept if reasonable match
         if match_score > 0:
             # Keep best match for each type
-            if tex_type not in texture_map:
-                texture_map[tex_type] = (texture, match_score)
-            elif match_score > texture_map[tex_type][1]:
-                texture_map[tex_type] = (texture, match_score)
+            if tex_type not in scored_map:
+                scored_map[tex_type] = (texture, match_score)
+            elif match_score > scored_map[tex_type][1]:
+                scored_map[tex_type] = (texture, match_score)
 
     # Extract paths from (path, score) tuples
-    texture_map = {k: v[0] for k, v in texture_map.items()}
+    texture_map: Dict[str, Path] = {k: v[0] for k, v in scored_map.items()}
 
     return texture_map
 
@@ -314,7 +314,7 @@ def process_twig_directory(
     # Import twig_export module directly
     from growpy.io.twig_export import process_twig_file
 
-    results = {}
+    results: Dict[str, List[Path]] = {}
 
     for blend_file in tqdm(blend_files, desc="Converting twigs"):
         try:

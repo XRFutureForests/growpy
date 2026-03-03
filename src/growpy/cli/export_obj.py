@@ -62,6 +62,12 @@ def main():
         default=None,
         help="Generate Helios++ scene XML placing all tree OBJs at CSV positions",
     )
+    parser.add_argument(
+        "--combined-obj",
+        action="store_true",
+        default=None,
+        help="Export a single combined OBJ with all trees positioned at CSV coordinates",
+    )
 
     args = parser.parse_args()
 
@@ -83,6 +89,7 @@ def main():
 
     decimate_ratio = config.helios_decimate_ratio
     do_helios_scene = config.helios_helios_scene
+    do_combined_obj = config.helios_combined_obj
 
     if not csv_path.exists():
         print(f"Error: CSV file not found: {csv_path}")
@@ -152,6 +159,21 @@ def main():
 
         scene_path = output_dir / "helios_scene.xml"
         generate_helios_scene(tree_entries=obj_files, output_path=scene_path)
+
+    if do_combined_obj and obj_files:
+        from growpy.io.obj_export import write_combined_obj
+
+        is_conifer_forest = any(
+            any(kw in sp.lower() for kw in CONIFER_KEYWORDS)
+            for _, _, _, _, sp in obj_files
+        )
+        spectra = "conifer" if is_conifer_forest else "deciduous"
+        combined_path = output_dir / "forest_combined.obj"
+        write_combined_obj(
+            tree_entries=obj_files,
+            output_path=combined_path,
+            helios_spectra_leaves=spectra,
+        )
 
     print(f"\nOBJ export complete: {len(obj_files)} trees converted")
 

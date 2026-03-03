@@ -128,6 +128,7 @@ class GrowPyConfig:
     helios_export_obj: bool = False
     helios_decimate_ratio: float = 0.3
     helios_helios_scene: bool = False
+    helios_combined_obj: bool = False
 
     # [build]
     lod_levels: List[str] = field(default_factory=lambda: ["all"])
@@ -245,6 +246,8 @@ class GrowPyConfig:
             kwargs["helios_decimate_ratio"] = helios["decimate_ratio"]
         if "helios_scene" in helios:
             kwargs["helios_helios_scene"] = helios["helios_scene"]
+        if "combined_obj" in helios:
+            kwargs["helios_combined_obj"] = helios["combined_obj"]
 
         # [build]
         build = data.get("build", {})
@@ -320,6 +323,7 @@ class GrowPyConfig:
             "decimate_ratio": "helios_decimate_ratio",
             "obj_decimate_ratio": "helios_decimate_ratio",
             "helios_scene": "helios_helios_scene",
+            "combined_obj": "helios_combined_obj",
         }
 
         for cli_name, config_name in cli_mappings.items():
