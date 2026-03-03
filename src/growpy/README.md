@@ -1,8 +1,8 @@
 # GrowPy - Grove API Integration for Unreal Engine 5
 
-> **📖 Complete Documentation: [`docs/growpy/`](../../docs/growpy/)**
+> **📖 Complete Documentation: [`docs/`](../../docs/)**
 >
-> **[User Guide](../../docs/growpy/USER_GUIDE.md)** | **[Module Overview](../../docs/growpy/MODULE_OVERVIEW.md)** | **[Unreal Engine Nanite](../../docs/growpy/UNREAL_ENGINE_NANITE.md)**
+> **[Functional Description](../../docs/growpy-functional-description.md)** | **[CLI Reference](../../docs/cli-reference.md)** | **[Grove Preset Reference](../../docs/grove-preset-reference.md)**
 
 Clean Grove API integration for forest creation and export, optimized for Unreal Engine 5 Nanite foliage with simplified single high-quality output and USD export.
 
@@ -19,18 +19,19 @@ Clean Grove API integration for forest creation and export, optimized for Unreal
 
 ```
 growpy/
-├── config.py          # Configuration management
-├── forest.py          # Forest-level operations
-├── grove.py           # Grove-level operations
-├── tree.py            # Tree model functions
-├── export.py          # USD export functionality
-├── common.py          # Shared utilities
-└── utils/
-    ├── export_trees.py      # Export trees as USD
-    ├── export_twigs.py      # Export twigs from blend files
-    ├── generate_forest.py   # Forest generation with USD
-    ├── prepare_assets.py    # Asset preparation
-    └── create_growth_models.py # Growth model creation
+├── __init__.py        # Package entry point and public API
+├── growpy.toml        # Central configuration (all CLI defaults)
+├── config/            # Configuration management, quality presets, species lookup
+├── core/              # Forest/Grove/Tree/Skeleton simulation
+├── io/                # USD export, OBJ export, wind data, PVE mapping
+├── cli/               # Pipeline CLI scripts
+│   ├── prepare_assets.py         # Step 1: Copy Grove 2.2 assets
+│   ├── convert_twigs.py          # Step 2: Convert twigs to USD
+│   ├── create_growth_models.py   # Step 3: Generate height models
+│   ├── generate_forest.py        # Step 4: Forest from CSV
+│   └── export_obj.py             # Optional: OBJ/MTL for Helios++
+├── utils/             # Analysis, profiling, plotting
+└── tests/             # Test suite
 ```
 
 ## Quick Start
@@ -56,7 +57,7 @@ export_tree_as_usd(
 )
 ```
 
-**📖 See [Unreal Engine Nanite Guide](../../docs/growpy/UNREAL_ENGINE_NANITE.md) for complete import and setup instructions.**
+**📖 See the [root README](../../README.md#import-to-unreal-engine) for complete Unreal Engine import and setup instructions.**
 
 ### Export Twigs from Blend Files
 
@@ -72,8 +73,10 @@ exported_files = export_twigs_from_blend(blend_file, output_dir)
 
 ### Generate Forest from CSV
 
+All CLI scripts read defaults from `growpy.toml`. Run without arguments:
+
 ```bash
-python src/growpy/cli/generate_forest.py forest_data.csv --formats usda
+python src/growpy/cli/generate_forest.py
 ```
 
 ## Requirements
@@ -117,13 +120,14 @@ GrowPy exports are optimized for UE5 Nanite foliage:
 5. **Paint forests** using Foliage Mode
 6. **Add wind animation** using skeleton/armature
 
-**📖 Complete workflow: [Unreal Engine Nanite Guide](../../docs/growpy/UNREAL_ENGINE_NANITE.md)**
+**📖 Complete workflow: see the [root README](../../README.md#import-to-unreal-engine).**
 
 ## Usage Examples
 
 See the CLI scripts for complete workflows:
 
-- `generate_forest.py`: Full forest generation pipeline with USD output
-- `convert_twigs.py`: Process all twig blend files to USD
-- `prepare_assets.py`: Copy assets from Grove 2.2
-- `create_growth_models.py`: Generate species growth models
+- `cli/prepare_assets.py`: Copy assets from Grove 2.2
+- `cli/convert_twigs.py`: Process all twig blend files to USD
+- `cli/create_growth_models.py`: Generate species growth models
+- `cli/generate_forest.py`: Full forest generation pipeline with USD output
+- `cli/export_obj.py`: Export USDA assemblies to OBJ/MTL for Helios++

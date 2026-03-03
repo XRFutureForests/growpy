@@ -445,8 +445,10 @@ def _compute_skeleton_derived_growth_params(
 
     if len(branch_angles) >= 2:
         mean_angle = sum(branch_angles) / len(branch_angles)
-        variance = sum((a - mean_angle) ** 2 for a in branch_angles) / len(branch_angles)
-        stddev = variance ** 0.5
+        variance = sum((a - mean_angle) ** 2 for a in branch_angles) / len(
+            branch_angles
+        )
+        stddev = variance**0.5
         for attr in ("randomAngle", "randomAngleChild"):
             if attr in global_attrs:
                 vals = global_attrs[attr]["value"]
@@ -508,7 +510,9 @@ def _compute_plant_profiles(
             dx, dy = p[0] - cx, p[1] - cy
             r = (dx * dx + dy * dy) ** 0.5
             angle = math.atan2(dy, dx)  # -pi to pi
-            bin_idx = int(((angle + math.pi) / (2 * math.pi)) * NUM_SAMPLES) % NUM_SAMPLES
+            bin_idx = (
+                int(((angle + math.pi) / (2 * math.pi)) * NUM_SAMPLES) % NUM_SAMPLES
+            )
             angle_bins[bin_idx] = max(angle_bins[bin_idx], r)
             bin_counts[bin_idx] += 1
 
@@ -567,7 +571,10 @@ def _scale_growth_params_by_species(global_attrs: Dict, species_name: str) -> No
     # phyllotaxy[2] and phyllotaxyChild[2]: branching angle, scales with add_horizontal
     # Hazel: add_horizontal=0.53, phyll[2]=32.52 deg (from Hazel_04 reference)
     if hazel["add_horizontal"] > 0:
-        ratio = seed_params.get("add_horizontal", hazel["add_horizontal"]) / hazel["add_horizontal"]
+        ratio = (
+            seed_params.get("add_horizontal", hazel["add_horizontal"])
+            / hazel["add_horizontal"]
+        )
         for attr in ("phyllotaxy", "phyllotaxyChild"):
             if attr in global_attrs:
                 vals = global_attrs[attr]["value"]
@@ -576,7 +583,10 @@ def _scale_growth_params_by_species(global_attrs: Dict, species_name: str) -> No
 
     # phyllotaxyLeaf[2]: same branching angle for leaf phyllotaxy
     if hazel["add_horizontal"] > 0 and "phyllotaxyLeaf" in global_attrs:
-        ratio = seed_params.get("add_horizontal", hazel["add_horizontal"]) / hazel["add_horizontal"]
+        ratio = (
+            seed_params.get("add_horizontal", hazel["add_horizontal"])
+            / hazel["add_horizontal"]
+        )
         vals = global_attrs["phyllotaxyLeaf"]["value"]
         if isinstance(vals, list) and len(vals) >= 3:
             vals[2] *= ratio
@@ -588,7 +598,10 @@ def _scale_growth_params_by_species(global_attrs: Dict, species_name: str) -> No
     # phototropism[1,3] and phototropismChild: light response intensity
     # Scales with turn_to_light (Hazel=1.0, so ratio = species value directly)
     if hazel["turn_to_light"] > 0:
-        ratio = seed_params.get("turn_to_light", hazel["turn_to_light"]) / hazel["turn_to_light"]
+        ratio = (
+            seed_params.get("turn_to_light", hazel["turn_to_light"])
+            / hazel["turn_to_light"]
+        )
         for attr in ("phototropism", "phototropismChild"):
             if attr in global_attrs:
                 vals = global_attrs[attr]["value"]

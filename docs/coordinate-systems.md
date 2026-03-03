@@ -187,6 +187,62 @@ When exporting a tree, verify:
 - [ ] No 90° rotations visible in Unreal transform properties
 - [ ] Nanite LOD transitions smoothly (no orientation pops)
 
+## PVE Coordinate System (Y-up)
+
+The Procedural Vegetation Editor plugin uses a **different** coordinate system from both Grove and Unreal's native system.
+
+### Why PVE Uses Y-up
+
+PVE was developed by Quixel for their Megaplants asset pack, which uses:
+
+- **Y-up coordinate system** (common in game asset pipelines)
+- **Centimeters** as unit
+
+This is different from Unreal's native Z-up system.
+
+### The Three Systems Compared
+
+| System | Up Axis | Unit | Handedness |
+|--------|---------|------|------------|
+| Grove | Z-up | Meters | Right-handed |
+| PVE Plugin | Y-up | Centimeters | Inherited from Quixel |
+| Unreal Engine | Z-up | Centimeters | Left-handed |
+
+### Grove to PVE Conversion
+
+```python
+def grove_to_pve_position(grove_pos):
+    x, y, z = grove_pos
+    return [x * 100.0, z * 100.0, y * 100.0]
+```
+
+This transformation:
+
+1. **Swaps Y and Z** (Z-up to Y-up)
+2. **Scales by 100** (meters to centimeters)
+
+The PVE plugin then internally handles display in Unreal's Z-up space:
+
+```
+Grove (Z-up, meters)
+    → [GrowPy conversion]
+PVE Format (Y-up, centimeters)
+    → [PVE plugin handles internally]
+Unreal Display (Z-up, centimeters)
+```
+
+### Verification
+
+The Hazel reference PVE JSON confirms Y-up format - positions grow along +Y axis:
+
+```json
+"positions": [
+  [0.0, 0.0, 0.0],
+  [-0.0007, 0.0057, 0.0003],
+  [-0.0014, 0.0114, 0.0007]
+]
+```
+
 ## References
 
 ### Internal Code
@@ -198,6 +254,7 @@ When exporting a tree, verify:
 ### External Documentation
 
 - **Grove Coordinate Systems**: <https://www.thegrove3d.com/learn-more/plays-well-with-others/>
+- **Unreal Coordinate System**: <https://dev.epicgames.com/documentation/en-us/unreal-engine/coordinate-system-and-spaces-in-unreal-engine>
   - Documents required rotations for different software
   - Confirms twig orientation varies by target application
   - Examples: 3DS Max (X:-90, Y:-90, Z:0), LightWave (Heading:-90, Pitch:180, Banking:-90)

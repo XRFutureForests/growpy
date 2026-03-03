@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Export USDA tree assemblies to OBJ/MTL for Helios++ LiDAR simulation.
 
-Step 5 of the pipeline. Defaults from growpy.toml [helios]. See docs/growpy/cli-reference.md.
+Step 5 of the pipeline. Defaults from growpy.toml [helios]. See docs/cli-reference.md.
 """
 
 import argparse
@@ -32,7 +32,11 @@ def main():
 
     config = get_config()
 
-    project_root = Path(os.environ.get("GROWPY_PROJECT_ROOT", Path(__file__).parent.parent.parent.parent))
+    project_root = Path(
+        os.environ.get(
+            "GROWPY_PROJECT_ROOT", Path(__file__).parent.parent.parent.parent
+        )
+    )
 
     parser = argparse.ArgumentParser(
         description="Export USDA tree assemblies to OBJ/MTL for Helios++ LiDAR simulation",
@@ -51,10 +55,16 @@ def main():
         help="Forest output directory containing USDA assemblies (default: from config)",
     )
     parser.add_argument(
-        "--decimate-ratio",
+        "--twig-decimate-ratio",
         type=float,
         default=None,
         help="Twig decimation ratio (0.0-1.0, lower = fewer polygons, default: from config)",
+    )
+    parser.add_argument(
+        "--stem-decimate-ratio",
+        type=float,
+        default=None,
+        help="Stem/branch decimation ratio (0.0-1.0, lower = fewer polygons, default: from config)",
     )
     parser.add_argument(
         "--helios-scene",
@@ -88,6 +98,9 @@ def main():
         output_dir = project_root / output_dir
 
     decimate_ratio = config.helios_decimate_ratio
+    stem_decimate_ratio = config.helios_stem_decimate_ratio
+    if args.stem_decimate_ratio is not None:
+        stem_decimate_ratio = args.stem_decimate_ratio
     do_helios_scene = config.helios_helios_scene
     do_combined_obj = config.helios_combined_obj
 
@@ -135,6 +148,7 @@ def main():
             assembly_usda_path=assembly_path,
             species_name=species_name,
             decimate_ratio=decimate_ratio,
+            stem_decimate_ratio=stem_decimate_ratio,
             helios_spectra_leaves=spectra,
         )
 

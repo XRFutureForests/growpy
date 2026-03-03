@@ -4,10 +4,11 @@ Clean, simplified tree generation system using The Grove 2.2 optimized for **Unr
 
 **Documentation:**
 
-- **[Functional Description](docs/GROWPY_FUNCTIONAL_DESCRIPTION.md)** - Complete package architecture and data flow
-- **[PVE Preset Workflow](docs/PVE_PRESET_WORKFLOW.md)** - Procedural Vegetation Editor integration
-- **[PVE Attribute Reference](docs/PVE_ATTRIBUTE_REFERENCE.md)** - Detailed PVE attribute documentation
-- **[Optimization Recommendations](docs/GROWPY_OPTIMIZATION_RECOMMENDATIONS.md)** - Performance and refactoring guidance
+- **[Functional Description](docs/growpy-functional-description.md)** - Complete package architecture and data flow
+- **[Coordinate Systems](docs/coordinate-systems.md)** - Grove, Blender, Unreal, and PVE coordinate transforms
+- **[Naming Conventions](docs/naming-conventions.md)** - Species, file, and directory naming standards
+- **[PVE Preset Workflow](docs/pve-preset-workflow.md)** - Procedural Vegetation Editor integration
+- **[PVE Attribute Reference](docs/pve-attribute-reference.md)** - PVE attributes and Grove mapping
 - **[Grove 2.2 API](docs/the_grove/)** - Grove core API documentation
 
 ## Quick Start
@@ -29,23 +30,32 @@ pip install -e .
 
 ### Pipeline Workflow
 
+All CLI scripts read defaults from the central config file [`src/growpy/growpy.toml`](src/growpy/growpy.toml). CLI arguments override config values when provided. Resolution order: dataclass defaults -> growpy.toml -> CLI arguments.
+
 The pipeline has 4 sequential steps. Run them in order:
 
 ```bash
 # Step 1: Copy and standardize Grove 2.2 assets (presets, twigs, textures)
-python src/growpy/cli/prepare_assets.py --csv data/input/test.csv
+python src/growpy/cli/prepare_assets.py
 
 # Step 2: Convert twig .blend files to USD format
-python src/growpy/cli/convert_twigs.py data/assets/twigs --csv data/input/test.csv
+python src/growpy/cli/convert_twigs.py
 
 # Step 3: Generate species growth models (height-to-age curves)
-python src/growpy/cli/create_growth_models.py --csv data/input/test.csv --cycles 125 --seeds 1
+python src/growpy/cli/create_growth_models.py
 
 # Step 4: Generate forest from CSV inventory data
-python src/growpy/cli/generate_forest.py data/input/test.csv
+python src/growpy/cli/generate_forest.py
 ```
 
 Steps 1-3 only need to run once per species set. Step 4 is the main generation step.
+
+OBJ export for Helios++ LiDAR simulation runs automatically in Step 4 when `helios.export_obj = true` in growpy.toml. It can also be run standalone:
+
+```bash
+# Optional: Re-export OBJ/MTL without regenerating the forest
+python src/growpy/cli/export_obj.py
+```
 
 **CSV Format Required**: `x`, `y`, `species`, `height` columns (optional: `z`, `fid`)
 
@@ -125,7 +135,7 @@ To see hidden PVE attributes in the editor:
 PV.DebugMode.Enabled 1
 ```
 
-This reveals additional debug information for procedural vegetation assets. See [PVE Preset Workflow](docs/PVE_PRESET_WORKFLOW.md) for the full PVE integration guide.
+This reveals additional debug information for procedural vegetation assets. See [PVE Preset Workflow](docs/pve-preset-workflow.md) for the full PVE integration guide.
 
 ### USD Import Tips
 
@@ -151,7 +161,8 @@ growpy/
 │   │   │   ├── prepare_assets.py         # Step 1: Copy Grove 2.2 assets
 │   │   │   ├── convert_twigs.py          # Step 2: Convert twigs to USD
 │   │   │   ├── create_growth_models.py   # Step 3: Generate height models
-│   │   │   └── generate_forest.py        # Step 4: Forest from CSV
+│   │   │   ├── generate_forest.py        # Step 4: Forest from CSV
+│   │   │   └── export_obj.py             # Optional: OBJ/MTL for Helios++
 │   │   ├── config/                # Configuration and quality presets
 │   │   ├── core/                  # Forest/Grove/Tree/Skeleton simulation
 │   │   ├── io/                    # USD export, wind JSON, PVE mapping
@@ -166,40 +177,42 @@ growpy/
 │   ├── input/                     # Your CSV files
 │   └── output/                    # Generated forests
 ├── docs/                          # Project documentation
-│   ├── growpy/                   # Package audit and refactoring plans
 │   └── the_grove/                # Grove 2.2 API reference
+│   (+ cli-reference, coordinate systems, naming conventions, PVE guides)
 ├── pyproject.toml                 # Python package configuration
 └── environment.yml                # Conda environment definition
 ```
 
 ## Core Pipeline Steps
 
-The pipeline consists of 4 independent CLI scripts that produce output consumed by subsequent steps:
+The pipeline consists of 4 sequential CLI scripts that produce output consumed by subsequent steps, plus an optional standalone export:
 
 ```
 prepare_assets.py --> convert_twigs.py --> create_growth_models.py --> generate_forest.py
+                                                                          └── (export_obj.py)
 ```
 
 1. **Prepare Assets** - Copy and standardize presets, textures, and twigs from Grove 2.2
 2. **Convert Twigs** - Convert .blend twig files to USD with silhouette-optimized mesh densification
 3. **Create Growth Models** - Simulate growth curves and generate height-to-age prediction models
 4. **Generate Forest** - Multi-species forest simulation with USD Nanite assembly export
+5. **Export OBJ** *(optional)* - Convert USDA assemblies to OBJ/MTL for Helios++ LiDAR simulation (also runs automatically in Step 4 when `helios.export_obj = true`)
 
-Each step is independently re-runnable and produces deterministic output.
+All scripts read defaults from [`src/growpy/growpy.toml`](src/growpy/growpy.toml) and can be run without arguments. Each step is independently re-runnable and produces deterministic output.
 
 ## CLI Scripts Reference
 
 ### Step 1: Prepare Assets
 
 ```bash
-# Copy assets for species in CSV
-python src/growpy/cli/prepare_assets.py --csv data/input/test.csv
+# Copy assets for species in CSV (uses csv_file from growpy.toml)
+python src/growpy/cli/prepare_assets.py
 
 # Copy ALL 57 available species (ignores CSV filter)
 python src/growpy/cli/prepare_assets.py --all
 
 # Resize textures to power-of-2 for GPU compatibility
-python src/growpy/cli/prepare_assets.py --csv data/input/test.csv --resize-textures
+python src/growpy/cli/prepare_assets.py --resize-textures
 ```
 
 **Flags**: `--grove-dir PATH`, `--csv PATH`, `--all`, `--resize-textures`
@@ -207,17 +220,17 @@ python src/growpy/cli/prepare_assets.py --csv data/input/test.csv --resize-textu
 ### Step 2: Convert Twigs
 
 ```bash
-# Convert twigs with default settings (densification + alpha trimming enabled)
-python src/growpy/cli/convert_twigs.py data/assets/twigs --csv data/input/test.csv
+# Convert twigs with default settings from growpy.toml (densification + alpha trimming enabled)
+python src/growpy/cli/convert_twigs.py
 
 # Skip mesh densification (raw export)
-python src/growpy/cli/convert_twigs.py data/assets/twigs --no-densify
+python src/growpy/cli/convert_twigs.py --no-densify
 
 # Adjust alpha trimming threshold
-python src/growpy/cli/convert_twigs.py data/assets/twigs --alpha-trim 0.3
+python src/growpy/cli/convert_twigs.py --alpha-trim 0.3
 
 # Enable boundary smoothing
-python src/growpy/cli/convert_twigs.py data/assets/twigs --smooth-boundary --smooth-iterations 3
+python src/growpy/cli/convert_twigs.py --smooth-boundary --smooth-iterations 3
 ```
 
 **Flags**: `--csv PATH`, `--no-densify`, `--alpha-trim FLOAT`, `--smooth-boundary`, `--smooth-iterations INT`, `--smooth-factor FLOAT`, `--boundary-edge-mm FLOAT`
@@ -225,17 +238,17 @@ python src/growpy/cli/convert_twigs.py data/assets/twigs --smooth-boundary --smo
 ### Step 3: Create Growth Models
 
 ```bash
-# Generate growth models for species in CSV
-python src/growpy/cli/create_growth_models.py --csv data/input/test.csv --cycles 125 --seeds 1
+# Generate growth models for species in CSV (uses defaults from growpy.toml)
+python src/growpy/cli/create_growth_models.py
 
 # Production quality (more seeds = more robust curves)
-python src/growpy/cli/create_growth_models.py --csv data/input/test.csv --cycles 125 --seeds 3
+python src/growpy/cli/create_growth_models.py --seeds 3
 
 # Quick test with fewer cycles
-python src/growpy/cli/create_growth_models.py --csv data/input/test.csv --cycles 35 --seeds 1
+python src/growpy/cli/create_growth_models.py --cycles 35
 
 # Single species
-python src/growpy/cli/create_growth_models.py --species "European beech" --cycles 125 --seeds 1
+python src/growpy/cli/create_growth_models.py --species "European beech"
 ```
 
 **Flags**: `--csv PATH`, `--cycles INT`, `--seeds INT`, `--height-threshold FLOAT`, `--max-cycles-without-growth INT`, `--timeout INT`, `--species TEXT`
@@ -243,27 +256,27 @@ python src/growpy/cli/create_growth_models.py --species "European beech" --cycle
 ### Step 4: Generate Forest
 
 ```bash
-# Default generation (ultra quality, 10 growth cycles)
-python src/growpy/cli/generate_forest.py data/input/test.csv
+# Default generation (uses quality, cycles, etc. from growpy.toml)
+python src/growpy/cli/generate_forest.py
 
 # Production quality with profiling
-python src/growpy/cli/generate_forest.py data/input/forest.csv \
+python src/growpy/cli/generate_forest.py \
   --quality ultra --growth-cycle-limit 20 --smooth-iterations 15 --profile
 
 # Fast preview
-python src/growpy/cli/generate_forest.py data/input/test.csv --quality medium --fast
+python src/growpy/cli/generate_forest.py --quality medium --fast
 
 # Multi-stage export (trees at different growth stages)
-python src/growpy/cli/generate_forest.py data/input/test.csv --cycle-interval 10 --growth-cycle-limit 40
+python src/growpy/cli/generate_forest.py --cycle-interval 10 --growth-cycle-limit 40
 
 # Export only specific trees (others still participate in growth simulation)
-python src/growpy/cli/generate_forest.py data/input/test.csv --export-trees 1,2,5
+python src/growpy/cli/generate_forest.py --export-trees 1,2,5
 
 # Generate Unreal import scripts
-python src/growpy/cli/generate_forest.py data/input/test.csv --import-to-unreal
+python src/growpy/cli/generate_forest.py --import-to-unreal
 
 # Skeleton simplification (reduce bone count independently of mesh quality)
-python src/growpy/cli/generate_forest.py data/input/test.csv \
+python src/growpy/cli/generate_forest.py \
   --quality ultra --skeleton-length 2.5 --skeleton-reduce 0.5
 ```
 
@@ -304,17 +317,37 @@ python src/growpy/cli/generate_forest.py data/input/test.csv \
 | `--profile` | Print detailed timing report |
 | `-v, --verbose` | Verbose output |
 
+### Optional: Export OBJ for Helios++
+
+OBJ export runs automatically in Step 4 when `helios.export_obj = true` in growpy.toml. For standalone re-export without regenerating the forest:
+
+```bash
+# Re-export OBJ/MTL from existing USDA assemblies
+python src/growpy/cli/export_obj.py
+
+# With Helios++ scene XML generation
+python src/growpy/cli/export_obj.py --helios-scene
+
+# Export a single combined OBJ with all trees positioned
+python src/growpy/cli/export_obj.py --combined-obj
+
+# Custom decimation ratio (lower = fewer polygons)
+python src/growpy/cli/export_obj.py --decimate-ratio 0.2
+```
+
+**Flags**: `csv_file PATH`, `--output-dir PATH`, `--decimate-ratio FLOAT`, `--helios-scene`, `--combined-obj`
+
 ### Performance Optimization
 
 ```bash
 # Fast mode - skip PVE JSON, validation, static meshes
-python src/growpy/cli/generate_forest.py data/input/test.csv --fast
+python src/growpy/cli/generate_forest.py --fast
 
 # Profile to identify bottlenecks
-python src/growpy/cli/generate_forest.py data/input/test.csv --profile
+python src/growpy/cli/generate_forest.py --profile
 
 # Skip individual optional steps
-python src/growpy/cli/generate_forest.py data/input/test.csv --skip-pve-json --skip-validation
+python src/growpy/cli/generate_forest.py --skip-pve-json --skip-validation
 ```
 
 **Performance Flags**:
@@ -325,9 +358,33 @@ python src/growpy/cli/generate_forest.py data/input/test.csv --skip-pve-json --s
 - `--include-static` - Also generate static mesh assemblies (adds ~7% time)
 - `--profile` - Print timing report to identify bottlenecks
 
+## Data Folders
+
+The `data/` directory holds all pipeline inputs and outputs:
+
+```
+data/
+├── input/                     # Your CSV files with tree positions and species
+│   └── test.csv              # Default input (configured in growpy.toml: csv_file)
+├── assets/                    # Generated by Step 1 (prepare_assets.py)
+│   ├── presets/              # Species .seed.json files (growth parameters)
+│   ├── textures/             # Bark and leaf textures
+│   ├── twigs/                # Twig .blend files and converted .usda files
+│   ├── growth_models/        # Generated by Step 3 (height-to-age curves)
+│   └── pve_configs/          # PVE preset overrides per species
+└── output/                    # Generated by Step 4 (forest output)
+    └── forest/               # Default output (configured in growpy.toml: output_dir)
+```
+
+### Customizing Species Presets
+
+After Step 1 copies the presets from The Grove 2.2, you can edit the `.seed.json` files in `data/assets/presets/` to adjust growth behavior per species. Each preset contains approximately 60 parameters controlling branch structure, growth dimensions, environmental responses, pruning, and twig placement.
+
+See the [Grove Preset Reference](docs/grove-preset-reference.md) for a complete description of all parameters and GrowPy's cycle-based curve extensions.
+
 ## Output Structure
 
-Forest generation creates organized output folders ready for Unreal import:
+Forest generation (Step 4) creates organized output folders ready for Unreal import:
 
 ```
 data/output/forest/
@@ -488,7 +545,7 @@ pip install bpy
 Run prepare_assets.py to copy assets from Grove 2.2:
 
 ```bash
-python src/growpy/cli/prepare_assets.py --csv data/input/test.csv
+python src/growpy/cli/prepare_assets.py
 ```
 
 ### Bone Count Exceeds Unreal Limit
@@ -496,7 +553,7 @@ python src/growpy/cli/prepare_assets.py --csv data/input/test.csv
 Unreal Engine has a 32,767 bone limit. Use skeleton simplification flags:
 
 ```bash
-python src/growpy/cli/generate_forest.py data/input/test.csv \
+python src/growpy/cli/generate_forest.py \
   --skeleton-length 2.5 --skeleton-reduce 0.5
 ```
 

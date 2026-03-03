@@ -144,8 +144,12 @@ print(f"  Points AFTER smoothing: {points_after}")
 print(f"  Faces AFTER smoothing: {faces_after}")
 
 print(f"\nDifference:")
-print(f"  Points changed: {points_after - points_before} ({((points_after - points_before) / points_before * 100):.2f}%)")
-print(f"  Faces changed: {faces_after - faces_before} ({((faces_after - faces_before) / faces_before * 100):.2f}%)")
+print(
+    f"  Points changed: {points_after - points_before} ({((points_after - points_before) / points_before * 100):.2f}%)"
+)
+print(
+    f"  Faces changed: {faces_after - faces_before} ({((faces_after - faces_before) / faces_before * 100):.2f}%)"
+)
 
 # Check if vertex POSITIONS actually changed
 if points_before == points_after and points_before > 0:
@@ -157,9 +161,11 @@ if points_before == points_after and points_before > 0:
         p_before = models_before[0].points[i]
         p_after = models_after[0].points[i]
 
-        distance = ((p_after.x - p_before.x)**2 +
-                   (p_after.y - p_before.y)**2 +
-                   (p_after.z - p_before.z)**2)**0.5
+        distance = (
+            (p_after.x - p_before.x) ** 2
+            + (p_after.y - p_before.y) ** 2
+            + (p_after.z - p_before.z) ** 2
+        ) ** 0.5
 
         if distance > 0.0001:  # Threshold for "changed"
             position_changes += 1

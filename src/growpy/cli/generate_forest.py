@@ -2,7 +2,7 @@
 """Generate multi-species forests from CSV with USD export for Unreal Engine.
 
 Step 4 of the pipeline. Defaults from growpy.toml [forest], [export], [unreal].
-See docs/growpy/cli-reference.md.
+See docs/cli-reference.md.
 """
 
 import bpy
@@ -38,6 +38,28 @@ from growpy.config.preset_overrides import (
 from growpy.config.quality import get_quality_preset
 from growpy.core.forest import simulate_forest_growth_with_snapshots
 from growpy.utils.profiling import ProfileTimer, get_timer, init_profiler
+
+
+def _handle_bone_limit_error(error: ValueError) -> None:
+    """Print actionable guidance for bone limit errors and exit."""
+    print(f"\nERROR: {error}")
+    print("\nTo reduce bone count, try one or more of:")
+    print("  CLI arguments:")
+    print(
+        "    --skeleton-reduce 0.6    (skip thin branches, most effective, range 0.0-1.0)"
+    )
+    print("    --skeleton-length 3.0    (merge nodes into longer bones, range 0.0-5.0)")
+    print("    --quality performance    (use a lower quality preset)")
+    print("  Config (growpy.toml [forest.skeleton]):")
+    print("    reduce = 0.6")
+    print("    length = 3.0")
+    raise SystemExit(1) from error
+
+
+def _is_bone_limit_error(error: ValueError) -> bool:
+    """Check if a ValueError is about exceeding Unreal's bone limit."""
+    msg = str(error)
+    return "bones" in msg and "limit" in msg
 
 
 def _export_single_tree_from_forest(args: tuple) -> list:
@@ -279,6 +301,11 @@ def _export_single_tree_from_forest(args: tuple) -> list:
 
         # Clear remaining references
         del models, skeletons, tree_bones
+
+    except ValueError as e:
+        if _is_bone_limit_error(e):
+            _handle_bone_limit_error(e)
+        raise
 
     except Exception as e:
         import traceback
@@ -678,21 +705,26 @@ def generate_forest_stages(
                     pass
 
                 # Export as Nanite Assembly
-                export_success = export_tree_as_nanite_assembly(
-                    model=model,
-                    skeleton=skeleton,
-                    bones_info=bones_info,
-                    output_path=usd_path,
-                    species_name=species_name,
-                    tree_id=tree_id,
-                    twig_usd_paths=twig_usd_map,
-                    include_twigs=True,
-                    use_skeletal_mesh=True,
-                    use_static_mesh=False,
-                    include_grove_attributes=include_grove_attributes,
-                    validate=not skip_validation,
-                    timer=timer,
-                )
+                try:
+                    export_success = export_tree_as_nanite_assembly(
+                        model=model,
+                        skeleton=skeleton,
+                        bones_info=bones_info,
+                        output_path=usd_path,
+                        species_name=species_name,
+                        tree_id=tree_id,
+                        twig_usd_paths=twig_usd_map,
+                        include_twigs=True,
+                        use_skeletal_mesh=True,
+                        use_static_mesh=False,
+                        include_grove_attributes=include_grove_attributes,
+                        validate=not skip_validation,
+                        timer=timer,
+                    )
+                except ValueError as e:
+                    if _is_bone_limit_error(e):
+                        _handle_bone_limit_error(e)
+                    raise
 
                 if export_success:
                     exported_files.append(str(usd_path))
@@ -893,6 +925,11 @@ def generate_forest_exports(
                 verbose=verbose,
                 timer=timer,
             )
+
+    except ValueError as e:
+        if _is_bone_limit_error(e):
+            _handle_bone_limit_error(e)
+        raise
 
     except Exception as e:
         if verbose:
