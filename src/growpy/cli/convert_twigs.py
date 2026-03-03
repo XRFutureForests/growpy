@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Convert Grove twig .blend files to USD with skeletal and static mesh variants.
 
-Step 2 of the pipeline. Defaults from growpy.toml [twigs]. See docs/growpy/cli-reference.md.
+Step 2 of the pipeline. Defaults from growpy.toml [twigs]. See docs/cli-reference.md.
 """
 
 import re
@@ -55,7 +55,7 @@ TEXTURE_MODIFIERS = {
     "top": ["top", "upper", "face"],
     "bottom": ["bottom", "lower", "back", "underside"],
 }
-
+I. 
 
 def standardize_twig_name(original_name: str, species_name: str) -> Tuple[str, Dict]:
     """Convert Grove's CamelCase .blend filenames to snake_case USD output names.
@@ -262,6 +262,7 @@ def process_twig_directory(
     smooth_iterations: int = 3,
     smooth_factor: float = 0.5,
     boundary_edge_mm: float = 0.5,
+    interior_decimate_ratio: float = 0.0,
 ) -> Dict[str, List[Path]]:
     """Process all twig blend files in a directory.
 
@@ -346,6 +347,7 @@ def process_twig_directory(
                     smooth_iterations=smooth_iterations,
                     smooth_factor=smooth_factor,
                     boundary_edge_mm=boundary_edge_mm,
+                    interior_decimate_ratio=interior_decimate_ratio,
                 )
 
                 if exported_files:
@@ -577,6 +579,7 @@ Output per twig:
             smooth_iterations=max(1, config.twigs_smooth_iterations),
             smooth_factor=min(max(0.0, config.twigs_smooth_factor), 1.0),
             boundary_edge_mm=max(0.1, config.twigs_boundary_edge_mm),
+            interior_decimate_ratio=min(max(0.0, config.twigs_interior_decimate_ratio), 1.0),
         )
     elif twig_path.is_dir():
         # Directory
@@ -593,6 +596,7 @@ Output per twig:
             smooth_iterations=max(1, config.twigs_smooth_iterations),
             smooth_factor=min(max(0.0, config.twigs_smooth_factor), 1.0),
             boundary_edge_mm=max(0.1, config.twigs_boundary_edge_mm),
+            interior_decimate_ratio=min(max(0.0, config.twigs_interior_decimate_ratio), 1.0),
         )
     else:
         return 1

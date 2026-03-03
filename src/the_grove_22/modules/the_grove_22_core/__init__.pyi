@@ -191,14 +191,14 @@ class Model:
     def triangulate(self) -> None: ...
 
     # Attribute layers (face attributes)
-    face_attribute_tree_index: List[int]
+    face_attribute_tree_id: List[int]
     face_attribute_twig_long: List[bool]
     face_attribute_twig_short: List[bool]
     face_attribute_twig_upward: List[bool]
     face_attribute_twig_dead: List[bool]
     face_attribute_dead: List[bool]
-    face_attribute_branch_index: List[int]
-    face_attribute_branch_index_parent: List[int]
+    face_attribute_branch_id: List[int]
+    face_attribute_branch_id_parent: List[int]
     face_attribute_end: List[bool]
     face_attribute_direction: List[Tuple[float, float, float]]
 

@@ -17,9 +17,9 @@ csv_file = "data/input/test.csv"
 # Output directory for generated trees (species subdirectories created automatically)
 output_dir = "data/output/forest"
 # Enable verbose output for PVE preset generation
-verbose = false
+verbose = true
 # Enable profiling to track execution time of each pipeline step
-profile = false
+profile = true
 
 [assets]
 # Path to The Grove 2.2 installation directory
@@ -47,11 +47,14 @@ smooth_factor = 0.25
 # Target edge as fraction of average edge (0.1-1.0, lower = denser)
 # 1.0 = no subdivision, 0.5 = 50% of avg (recommended), 0.1 = very fine
 boundary_edge_mm = 0.025
+# Interior decimation ratio for leaf meshes (0.0 = disabled, 0.3 = keep 30%)
+# Simplifies interior triangles while preserving alpha-trimmed silhouette edges
+interior_decimate_ratio = 0.3
 
 [growth_models]
 # Maximum growth cycles to simulate (1-250)
 # Automatically stops early when growth plateaus
-cycles = 50
+cycles = 35
 # Random seeds to average for robust curves (1-10)
 # Use 3+ for production, 1 for quick tests
 seeds = 1
@@ -117,13 +120,16 @@ project_path = "/Game/GrowPy/Trees"
 [helios]
 # Export OBJ/MTL files for Helios++ LiDAR simulation
 # Converts USDA assemblies to Wavefront OBJ with baked twig instances
-export_obj = false
+export_obj = true
+# Stem/branch decimation ratio (0.0-1.0, lower = fewer polygons)
+# For LiDAR, twig positions matter more than stem detail
+stem_decimate_ratio = 0.1
 # Twig decimation ratio for OBJ export (0.0-1.0, lower = fewer polygons)
-decimate_ratio = 0.3
+twig_decimate_ratio = 0.3
 # Generate Helios++ scene XML placing all tree OBJs at CSV positions
-helios_scene = false
+helios_scene = true
 # Export a single combined OBJ with all trees positioned at CSV coordinates
-combined_obj = false
+combined_obj = true
 
 [build]
 # LOD levels to export: "all" or comma-separated list

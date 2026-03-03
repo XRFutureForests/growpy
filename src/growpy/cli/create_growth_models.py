@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Create growth models for Grove species with automatic plateau detection.
 
-Step 3 of the pipeline. Defaults from growpy.toml [growth_models]. See docs/growpy/cli-reference.md.
+Step 3 of the pipeline. Defaults from growpy.toml [growth_models]. See docs/cli-reference.md.
 """
 
 import argparse
@@ -63,7 +63,10 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         help="Path to species CSV (default: from config)",
     )
     parser.add_argument(
-        "--cycles", type=int, default=None, help="Number of growth cycles for analysis (default: from config)"
+        "--cycles",
+        type=int,
+        default=None,
+        help="Number of growth cycles for analysis (default: from config)",
     )
     parser.add_argument(
         "--seeds",

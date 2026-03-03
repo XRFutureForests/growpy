@@ -40,6 +40,7 @@ def convert_tree_to_obj(
     assembly_usda_path: Path,
     species_name: str,
     decimate_ratio: float = 0.3,
+    stem_decimate_ratio: float = 0.1,
     helios_spectra_leaves: str = "deciduous",
 ) -> Optional[Path]:
     """Convert a tree's USDA assembly to OBJ with baked twigs.
@@ -52,6 +53,7 @@ def convert_tree_to_obj(
         assembly_usda_path: Path to the Nanite Assembly USDA file
         species_name: Species name for texture/material lookup
         decimate_ratio: Twig decimation ratio (0.0-1.0, lower = fewer polygons)
+        stem_decimate_ratio: Stem/branch decimation ratio (0.0-1.0, lower = fewer polygons)
         helios_spectra_leaves: Helios spectra type for leaves ("conifer" or "deciduous")
 
     Returns:
@@ -75,6 +77,12 @@ def convert_tree_to_obj(
     if trunk_verts is None:
         print(f"  OBJ export: Failed to read tree mesh from {skeletal_path}")
         return None
+
+    # Decimate stem/branch geometry (Helios cares about twig positions, not stem detail)
+    if 0.0 < stem_decimate_ratio < 1.0:
+        orig_faces = len(trunk_faces)
+        trunk_verts, trunk_faces = _decimate_mesh(trunk_verts, trunk_faces, stem_decimate_ratio)
+        trunk_uvs = None  # UVs invalidated by decimation; Helios uses spectra, not textures
 
     # Read twig instance data from assembly USDA
     instancer_data = _read_twig_instancer(assembly_usda_path)
