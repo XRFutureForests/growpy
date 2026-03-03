@@ -1,7 +1,7 @@
 # Type stub for the_grove_22_core module
 # This file provides type information for the compiled Grove library
 
-from typing import List, Dict, Any, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 class Vector:
     """An (X, Y, Z) vector class with all the math needed to grow trees."""
@@ -290,6 +290,9 @@ class io:
 class tree_math:
     """Functions for planting groups of trees in clumps, islands, rings and rows."""
 
+    PI: float
+    TAU: float
+
     @staticmethod
     def phyllotaxis_samples(number: int) -> List[Vector]: ...
     @staticmethod
@@ -298,6 +301,35 @@ class tree_math:
     ) -> List[Vector]: ...
     @staticmethod
     def plant_clump(number: int, space: float, clearing: float) -> List[Vector]: ...
+    @staticmethod
+    def plant_islands(
+        islands_number: int,
+        islands_space: float,
+        trees_number: int,
+        trees_space: float,
+        randomize_number: int,
+        random_shift: float,
+        clearing: float,
+        seed: int,
+    ) -> List[Vector]: ...
+    @staticmethod
+    def plant_rows(
+        trees_number: int,
+        tree_space: float,
+        rows_number: int,
+        rows_space: float,
+        diamond: bool,
+    ) -> List[Vector]: ...
+    @staticmethod
+    def plant_ring(number: int, radius: float) -> List[Vector]: ...
+    @staticmethod
+    def add_variation(
+        positions: List[Vector],
+        random_shift: float,
+        diverge: float,
+        delay: int,
+        seed: int,
+    ) -> Tuple[List[Vector], List[Vector], List[int]]: ...
     @staticmethod
     def plant_islands(
         islands_number: int,
