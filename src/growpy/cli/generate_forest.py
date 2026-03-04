@@ -1281,7 +1281,6 @@ else:
 
 
 def main():
-def main():
     """Main forest generation function."""
     import argparse
 

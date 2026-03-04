@@ -335,11 +335,15 @@ def _compute_global_metadata_from_skeleton(global_attrs: Dict, skeleton: Any) ->
     if "max_curve_length" in global_attrs:
         max_len = 0.0
         points = skeleton.points
+        # Rebase poly_line indices: Grove uses global indices across all skeletons,
+        # but each skeleton's points array is 0-indexed.
+        all_indices = [idx for pl in skeleton.poly_lines for idx in pl]
+        offset = min(all_indices) if all_indices else 0
         for poly_line in skeleton.poly_lines:
             branch_len = 0.0
             for i in range(1, len(poly_line)):
-                p0 = points[poly_line[i - 1]]
-                p1 = points[poly_line[i]]
+                p0 = points[poly_line[i - 1] - offset]
+                p1 = points[poly_line[i] - offset]
                 dx = p1[0] - p0[0]
                 dy = p1[1] - p0[1]
                 dz = p1[2] - p0[2]
@@ -376,8 +380,14 @@ def _compute_skeleton_derived_growth_params(
     if not points or not poly_lines:
         return
 
+    # Rebase poly_line indices: Grove uses global indices across all skeletons,
+    # but each skeleton's points array is 0-indexed.
+    all_indices = [idx for pl in poly_lines for idx in pl]
+    offset = min(all_indices) if all_indices else 0
+
     # trunkGrowth[0]: actual trunk height in meters (max Z in Grove coords)
-    origin = points[poly_lines[0][0]] if poly_lines[0] else points[0]
+    first_idx = poly_lines[0][0] - offset if poly_lines[0] else 0
+    origin = points[first_idx]
     max_height = 0.0
     for p in points:
         height = p[2] - origin[2]  # Grove Z-up
@@ -391,8 +401,8 @@ def _compute_skeleton_derived_growth_params(
     segment_lengths = []
     for poly_line in poly_lines:
         for i in range(1, len(poly_line)):
-            p0 = points[poly_line[i - 1]]
-            p1 = points[poly_line[i]]
+            p0 = points[poly_line[i - 1] - offset]
+            p1 = points[poly_line[i] - offset]
             dx, dy, dz = p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]
             segment_lengths.append((dx * dx + dy * dy + dz * dz) ** 0.5)
 
@@ -411,8 +421,8 @@ def _compute_skeleton_derived_growth_params(
         for poly_line in poly_lines[1:]:
             branch_len = 0.0
             for i in range(1, len(poly_line)):
-                p0 = points[poly_line[i - 1]]
-                p1 = points[poly_line[i]]
+                p0 = points[poly_line[i - 1] - offset]
+                p1 = points[poly_line[i] - offset]
                 dx, dy, dz = p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]
                 branch_len += (dx * dx + dy * dy + dz * dz) ** 0.5
             lateral_lengths.append(branch_len)
@@ -434,8 +444,8 @@ def _compute_skeleton_derived_growth_params(
     for poly_line in poly_lines[1:]:
         if len(poly_line) < 2:
             continue
-        p0 = points[poly_line[0]]
-        p1 = points[poly_line[1]]
+        p0 = points[poly_line[0] - offset]
+        p1 = points[poly_line[1] - offset]
         dx, dy, dz = p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]
         seg_len = (dx * dx + dy * dy + dz * dz) ** 0.5
         if seg_len > 1e-8:
