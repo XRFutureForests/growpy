@@ -2390,7 +2390,10 @@ def _is_likely_tube_component(component, boundary_edge_set):
             boundary_visited.add(edge)
             for v in edge.verts:
                 for linked_edge in v.link_edges:
-                    if linked_edge in comp_boundary and linked_edge not in boundary_visited:
+                    if (
+                        linked_edge in comp_boundary
+                        and linked_edge not in boundary_visited
+                    ):
                         stack.append(linked_edge)
 
     comp_boundary_verts = set()

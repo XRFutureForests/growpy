@@ -14,7 +14,7 @@ This project is **The Grove** - a simplified tree generation system using The Gr
 - **`src/growpy/`**: Main Python package with modular structure (config/, core/, io/, cli/, utils/)
 - **`src/the_grove_22/`**: The Grove 2.2 Python API integration (external dependency)
 - **`data/assets/`**: Tree assets (presets/, textures/, twigs/, growth_models/)
-- **Pipeline Scripts**: Five-step workflow in `src/growpy/cli/`
+- **Pipeline Scripts**: Four-step workflow in `src/growpy/cli/`
 
 ### Critical Dependencies
 - **The Grove 2.2**: Commercial 3D tree modeling software with Python API
@@ -31,14 +31,13 @@ This project is **The Grove** - a simplified tree generation system using The Gr
 
 ## Essential Workflows
 
-### The Five-Step Pipeline
+### The Four-Step Pipeline
 Always run from conda environment (`conda activate the-grove`):
 
 1. **Asset Preparation**: `python src/growpy/cli/prepare_assets.py` - Copy assets from Grove 2.2
-2. **Twig Export**: `python src/growpy/cli/export_twigs.py data/assets/twigs` - Convert .blend to FBX
+2. **Twig Export**: `python src/growpy/cli/convert_twigs.py` - Convert .blend to USD
 3. **Growth Models**: `python src/growpy/cli/create_growth_models.py` - Generate height prediction models
-4. **Forest Generation**: `python src/growpy/cli/generate_forest.py forest.csv` - Multi-species simulation
-5. **Tree Export**: `python src/growpy/cli/export_trees.py` - Individual species FBX export
+4. **Forest Generation**: `python src/growpy/cli/generate_forest.py` - Multi-species simulation with export
 
 **Complete Pipeline**: `python src/growpy/cli/run_pipeline.py` (runs steps 1-3)
 
@@ -124,7 +123,7 @@ the-grove/
 │   ├── config/             # Species configuration & lookup
 │   ├── core/               # Forest/Grove/Tree simulation  
 │   ├── io/                 # FBX/USD export functionality
-│   ├── cli/                # Five pipeline scripts
+│   ├── cli/                # Four pipeline scripts
 │   └── utils/              # Shared utilities & dependencies
 ├── src/the_grove_22/        # Grove 2.2 API (external)
 │   └── modules/            # Python API modules
