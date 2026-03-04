@@ -28,8 +28,7 @@ growpy/
 │   ├── prepare_assets.py         # Step 1: Copy Grove 2.2 assets
 │   ├── convert_twigs.py          # Step 2: Convert twigs to USD
 │   ├── create_growth_models.py   # Step 3: Generate height models
-│   ├── generate_forest.py        # Step 4: Forest from CSV
-│   └── export_obj.py             # Optional: OBJ/MTL for Helios++
+│   └── generate_forest.py        # Step 4: Forest from CSV (includes OBJ export)
 ├── utils/             # Analysis, profiling, plotting
 └── tests/             # Test suite
 ```
@@ -130,4 +129,4 @@ See the CLI scripts for complete workflows:
 - `cli/convert_twigs.py`: Process all twig blend files to USD
 - `cli/create_growth_models.py`: Generate species growth models
 - `cli/generate_forest.py`: Full forest generation pipeline with USD output
-- `cli/export_obj.py`: Export USDA assemblies to OBJ/MTL for Helios++
+- `io/obj_export.py`: OBJ/MTL export for Helios++ (called from generate_forest.py)
