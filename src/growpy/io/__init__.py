@@ -41,12 +41,13 @@ except ImportError:
 
 # OBJ/MTL export for Helios++ (requires USD)
 try:
-    from .obj_export import convert_tree_to_obj
+    from .obj_export import convert_tree_to_obj, export_forest_obj
 
     OBJ_EXPORT_AVAILABLE = True
 except ImportError:
     OBJ_EXPORT_AVAILABLE = False
     convert_tree_to_obj = None
+    export_forest_obj = None
 
 # Helios++ scene XML generation
 try:

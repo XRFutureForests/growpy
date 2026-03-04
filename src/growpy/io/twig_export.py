@@ -2351,6 +2351,66 @@ def _cleanup_boundary_spikes(
     mesh.update()
 
 
+def _is_likely_tube_component(component, boundary_edge_set):
+    """Check if a component with boundary edges is an open-ended cylinder.
+
+    Open-ended cylinders have boundary edges only at their uncapped ends,
+    forming small closed rings. Leaves have boundary edges around their
+    entire perimeter (large single loop after alpha trimming).
+
+    Uses two signals:
+    - Boundary loop count: tubes have 2 loops (both ends open) or 1 (one end capped)
+    - Boundary vertex ratio: tubes have few boundary verts (just the end rings)
+      relative to total verts, while leaves have many (the entire silhouette)
+    """
+    comp_boundary = set()
+    comp_verts = set()
+    for f in component:
+        for e in f.edges:
+            if e in boundary_edge_set:
+                comp_boundary.add(e)
+        for v in f.verts:
+            comp_verts.add(v)
+
+    if not comp_boundary or len(comp_verts) < 8:
+        return False
+
+    # Count boundary loops (connected components of boundary edges)
+    boundary_visited = set()
+    loop_count = 0
+    for start_edge in comp_boundary:
+        if start_edge in boundary_visited:
+            continue
+        loop_count += 1
+        stack = [start_edge]
+        while stack:
+            edge = stack.pop()
+            if edge in boundary_visited:
+                continue
+            boundary_visited.add(edge)
+            for v in edge.verts:
+                for linked_edge in v.link_edges:
+                    if linked_edge in comp_boundary and linked_edge not in boundary_visited:
+                        stack.append(linked_edge)
+
+    comp_boundary_verts = set()
+    for e in comp_boundary:
+        for v in e.verts:
+            comp_boundary_verts.add(v)
+
+    boundary_vert_ratio = len(comp_boundary_verts) / len(comp_verts)
+
+    # 2+ boundary loops (both ends open) with moderate boundary ratio -> tube
+    if loop_count >= 2 and boundary_vert_ratio < 0.5:
+        return True
+
+    # Single open end (one end capped): very low boundary ratio -> tube
+    if loop_count == 1 and boundary_vert_ratio < 0.15:
+        return True
+
+    return False
+
+
 def _apply_interior_decimate(
     obj,
     ratio: float = 0.5,
@@ -2360,6 +2420,7 @@ def _apply_interior_decimate(
 
     Classifies mesh faces by connected component topology:
     - Tube components (no boundary edges) = branch cylinders -> protected
+    - Open-ended tube components (boundary at uncapped ends) -> protected
     - Plane components (has boundary edges) = leaves/needles -> interior decimated
 
     Boundary vertices (leaf silhouette edges) are also protected, so only the
@@ -2382,10 +2443,6 @@ def _apply_interior_decimate(
     bm = bmesh.new()
     bm.from_mesh(mesh)
     bm.verts.ensure_lookup_table()
-
-    # Classify faces topologically: tube (closed manifold) vs plane (open sheet)
-    # Tube components have no boundary edges -> branch/twig cylinders (protect)
-    # Plane components have boundary edges -> leaf/needle geometry (decimate interior)
 
     # Find boundary edges (edges with exactly 1 adjacent face)
     boundary_edge_set = set()
@@ -2416,15 +2473,15 @@ def _apply_interior_decimate(
                         stack.append(neighbor)
 
         has_boundary = any(e in boundary_edge_set for f in component for e in f.edges)
-        if has_boundary:
+        if not has_boundary or _is_likely_tube_component(component, boundary_edge_set):
+            for f in component:
+                for v in f.verts:
+                    tube_verts.add(v)
+        else:
             plane_faces.update(component)
             for f in component:
                 for v in f.verts:
                     plane_verts.add(v)
-        else:
-            for f in component:
-                for v in f.verts:
-                    tube_verts.add(v)
 
     if not plane_faces:
         bm.free()
