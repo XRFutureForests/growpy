@@ -1,6 +1,6 @@
 # GrowPy CLI Reference
 
-Five-step pipeline for generating tree assets from The Grove 2.2 for Unreal Engine.
+Four-step pipeline for generating tree assets from The Grove 2.2 for Unreal Engine.
 
 All scripts read defaults from `src/growpy/growpy.toml`. CLI arguments override TOML values.
 Run all scripts without arguments to use TOML defaults:
@@ -9,8 +9,7 @@ Run all scripts without arguments to use TOML defaults:
 python src/growpy/cli/prepare_assets.py
 python src/growpy/cli/convert_twigs.py
 python src/growpy/cli/create_growth_models.py
-I. python src/growpy/cli/generate_forest.py
-python src/growpy/cli/export_obj.py
+python src/growpy/cli/generate_forest.py
 ```
 
 ## Step 1: prepare_assets.py
@@ -55,6 +54,7 @@ Pure Blender-to-USD conversion -- no Grove API required, only Blender Python API
 5. Repeat steps 1-4 until no more changes
 
 Key advantages:
+
 - Transition faces (the actual silhouette) get densified first
 - Transparent faces subdivided only to make them small enough to delete
 - `edge_split` naturally propagates to neighboring faces sharing edges
@@ -134,6 +134,7 @@ Both `length` and `reduce` independently reduce bone count.
 - **connected** (true/false): Connected chains required for animation; floating bones = fewer bones.
 
 Example: ultra mesh with simplified skeleton:
+
 ```bash
 python src/growpy/cli/generate_forest.py --quality ultra --skeleton-reduce 0.5
 ```
@@ -149,15 +150,18 @@ Common: `drop_decay`, `drop_weak`, `drop_shaded`, `drop_obsolete` (0.0-1.0, lowe
 ### Output Structure
 
 **Height mode:**
+
 ```
 data/output/forest/{species}/tree_####/{species}_assembly.usda
 data/output/forest/{species}/tree_####/{species}_stems_skeletal.usda
 ```
 
 **Multi-stage mode:**
+
 ```
 data/output/forest/{species}/tree_####/{species}_c{cycle}_h{height}_d{dbh}_assembly.usda
 ```
+
 Format: `{species}_c{cycle:03d}_h{meters}m{tenths}_d{dbh_cm}cm_assembly`
 
 **CLI-only flags:**
@@ -173,17 +177,11 @@ Format: `{species}_c{cycle:03d}_h{meters}m{tenths}_d{dbh_cm}cm_assembly`
 `smooth_iterations`, `include_grove_attributes`, `longevity_mode`, skeleton parameters,
 export flags, unreal settings (see `[forest]`, `[export]`, `[unreal]`).
 
-## Step 5: export_obj.py
+## Helios++ OBJ Export
 
-Export USDA tree assemblies to OBJ/MTL for Helios++ LiDAR simulation.
-Converts previously generated assemblies (from generate_forest.py) to Wavefront OBJ
-with baked twig instances and Helios++ material extensions.
+OBJ/MTL export for Helios++ LiDAR simulation runs automatically in Step 4
+when `helios.export_obj = true` in growpy.toml. Configuration is in the `[helios]`
+section of growpy.toml.
 
-**CLI-only flags:**
-
-| Flag | Description |
-|---|---|
-| `--helios-scene` | Generate Helios++ scene XML with tree positions from CSV |
-
-**TOML-configurable:** `csv_file`, `export_obj`, `decimate_ratio`, `helios_scene`
-(see `[helios]`).
+**TOML-configurable:** `export_obj`, `stem_decimate_ratio`, `twig_decimate_ratio`,
+`helios_scene`, `combined_obj` (see `[helios]`).

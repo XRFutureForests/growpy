@@ -81,8 +81,12 @@ def convert_tree_to_obj(
     # Decimate stem/branch geometry (Helios cares about twig positions, not stem detail)
     if 0.0 < stem_decimate_ratio < 1.0:
         orig_faces = len(trunk_faces)
-        trunk_verts, trunk_faces = _decimate_mesh(trunk_verts, trunk_faces, stem_decimate_ratio)
-        trunk_uvs = None  # UVs invalidated by decimation; Helios uses spectra, not textures
+        trunk_verts, trunk_faces = _decimate_mesh(
+            trunk_verts, trunk_faces, stem_decimate_ratio
+        )
+        trunk_uvs = (
+            None  # UVs invalidated by decimation; Helios uses spectra, not textures
+        )
 
     # Read twig instance data from assembly USDA
     instancer_data = _read_twig_instancer(assembly_usda_path)
@@ -602,11 +606,15 @@ def write_combined_obj(
             for face in leaves_faces_all:
                 f.write(face)
 
-    _write_helios_mtl(mtl_path, bark_texture=None, helios_spectra_leaves=helios_spectra_leaves)
+    _write_helios_mtl(
+        mtl_path, bark_texture=None, helios_spectra_leaves=helios_spectra_leaves
+    )
 
     total_verts = len(verts_all)
     total_faces = len(bark_faces_all) + len(leaves_faces_all)
-    print(f"  Combined OBJ: {output_path.name} ({total_verts} verts, {total_faces} faces, {len(tree_entries)} trees)")
+    print(
+        f"  Combined OBJ: {output_path.name} ({total_verts} verts, {total_faces} faces, {len(tree_entries)} trees)"
+    )
     return output_path
 
 
@@ -658,3 +666,129 @@ def _write_helios_mtl(
         f.write("Ks 0.2 0.2 0.2\n")
         f.write(f"helios_spectra {helios_spectra_leaves}\n")
         f.write("helios_classification 4\n")
+
+
+CONIFER_KEYWORDS = [
+    "spruce",
+    "pine",
+    "fir",
+    "cedar",
+    "cypress",
+    "juniper",
+    "larch",
+    "hemlock",
+    "yew",
+    "redwood",
+    "sequoia",
+    "thuja",
+]
+
+
+def export_forest_obj(
+    output_dir: Path,
+    csv_path: Path,
+    decimate_ratio: float = 0.3,
+    stem_decimate_ratio: float = 0.1,
+    generate_scene_xml: bool = False,
+    generate_combined_obj: bool = False,
+) -> List[Tuple[Path, float, float, float, str]]:
+    """Export all USDA tree assemblies in a forest directory to OBJ/MTL.
+
+    Post-processes USDA output from generate_forest into Wavefront OBJ
+    for Helios++ LiDAR simulation. Optionally generates a Helios++ scene
+    XML and/or a single combined OBJ with all trees positioned.
+
+    Args:
+        output_dir: Forest output directory containing species/tree_* subdirs.
+        csv_path: Input CSV with tree positions (x, y, z, fid columns).
+        decimate_ratio: Twig decimation ratio (0.0-1.0, lower = fewer polygons).
+        stem_decimate_ratio: Stem/branch decimation ratio (0.0-1.0).
+        generate_scene_xml: Generate Helios++ scene XML with tree positions.
+        generate_combined_obj: Export a single combined OBJ with all trees.
+
+    Returns:
+        List of (obj_path, x, y, z, species_name) tuples for exported trees.
+    """
+    import pandas as pd
+
+    clear_twig_decimate_cache()
+
+    # Find all assembly USDA files (exclude skeletal/static/twig files)
+    assembly_files = []
+    for usda in output_dir.glob("*/tree_*/*.usda"):
+        if usda.stem.endswith("_skeletal") or usda.stem.endswith("_static"):
+            continue
+        if "twig" in usda.stem.lower():
+            continue
+        assembly_files.append(usda)
+
+    if not assembly_files:
+        print("OBJ export: No assembly USDA files found")
+        return []
+
+    print(f"\n{'='*60}")
+    print(f"HELIOS OBJ EXPORT ({len(assembly_files)} trees)")
+    print(f"{'='*60}")
+
+    forest_data = pd.read_csv(csv_path)
+    if "fid" not in forest_data.columns:
+        forest_data["fid"] = range(1, len(forest_data) + 1)
+    if "z" not in forest_data.columns:
+        forest_data["z"] = 0.0
+
+    obj_files: List[Tuple[Path, float, float, float, str]] = []
+    for assembly_path in sorted(assembly_files):
+        tree_dir_name = assembly_path.parent.name
+        tree_id_str = tree_dir_name.replace("tree_", "")
+
+        species_dir = assembly_path.parent.parent.name
+        species_name = species_dir.replace("_", " ").title()
+
+        is_conifer = any(kw in species_dir.lower() for kw in CONIFER_KEYWORDS)
+        spectra = "conifer" if is_conifer else "deciduous"
+
+        obj_path = convert_tree_to_obj(
+            assembly_usda_path=assembly_path,
+            species_name=species_name,
+            decimate_ratio=decimate_ratio,
+            stem_decimate_ratio=stem_decimate_ratio,
+            helios_spectra_leaves=spectra,
+        )
+
+        if obj_path:
+            try:
+                fid = int(tree_id_str)
+                row = forest_data[forest_data["fid"] == fid].iloc[0]
+                obj_files.append(
+                    (
+                        obj_path,
+                        float(row["x"]),
+                        float(row["y"]),
+                        float(row["z"]),
+                        species_name,
+                    )
+                )
+            except (ValueError, IndexError):
+                obj_files.append((obj_path, 0.0, 0.0, 0.0, species_name))
+
+    if generate_scene_xml and obj_files:
+        from growpy.io.helios_scene import generate_helios_scene
+
+        scene_path = output_dir / "helios_scene.xml"
+        generate_helios_scene(tree_entries=obj_files, output_path=scene_path)
+
+    if generate_combined_obj and obj_files:
+        is_conifer_forest = any(
+            any(kw in sp.lower() for kw in CONIFER_KEYWORDS)
+            for _, _, _, _, sp in obj_files
+        )
+        spectra = "conifer" if is_conifer_forest else "deciduous"
+        combined_path = output_dir / "forest_combined.obj"
+        write_combined_obj(
+            tree_entries=obj_files,
+            output_path=combined_path,
+            helios_spectra_leaves=spectra,
+        )
+
+    print(f"\nOBJ export complete: {len(obj_files)} trees converted")
+    return obj_files
