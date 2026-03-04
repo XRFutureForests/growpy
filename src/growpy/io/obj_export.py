@@ -65,8 +65,11 @@ def convert_tree_to_obj(
     mtl_name = f"{helios_name}.mtl"
     mtl_path = tree_dir / mtl_name
 
-    # Find skeletal USDA in same directory
-    skeletal_files = list(tree_dir.glob("*_skeletal.usda"))
+    # Find the stems skeletal USDA (not twig/foliage skeletal files)
+    skeletal_files = list(tree_dir.glob("*_stems_skeletal.usda"))
+    if not skeletal_files:
+        # Fallback to any skeletal USDA
+        skeletal_files = list(tree_dir.glob("*_skeletal.usda"))
     if not skeletal_files:
         print(f"  OBJ export: No skeletal USDA found in {tree_dir}")
         return None
