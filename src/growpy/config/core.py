@@ -8,7 +8,7 @@ import os
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 _global_config: Optional["GrowPyConfig"] = None
 
@@ -134,13 +134,8 @@ class GrowPyConfig:
     helios_helios_scene: bool = False
     helios_combined_obj: bool = False
 
-    # [build]
-    lod_levels: List[str] = field(default_factory=lambda: ["all"])
-
     @classmethod
-    def from_toml(
-        cls, toml_path: Path, set_as_global: bool = True
-    ) -> "GrowPyConfig":
+    def from_toml(cls, toml_path: Path, set_as_global: bool = True) -> "GrowPyConfig":
         """Create config from a TOML file.
 
         Only keys present in the TOML override the dataclass defaults.
@@ -198,7 +193,9 @@ class GrowPyConfig:
         if "height_threshold" in gm:
             kwargs["growth_models_height_threshold"] = gm["height_threshold"]
         if "max_cycles_without_growth" in gm:
-            kwargs["growth_models_max_cycles_without_growth"] = gm["max_cycles_without_growth"]
+            kwargs["growth_models_max_cycles_without_growth"] = gm[
+                "max_cycles_without_growth"
+            ]
         if "timeout" in gm:
             kwargs["growth_models_timeout"] = gm["timeout"]
 
@@ -211,7 +208,9 @@ class GrowPyConfig:
         if "smooth_iterations" in forest:
             kwargs["forest_smooth_iterations"] = forest["smooth_iterations"]
         if "include_grove_attributes" in forest:
-            kwargs["forest_include_grove_attributes"] = forest["include_grove_attributes"]
+            kwargs["forest_include_grove_attributes"] = forest[
+                "include_grove_attributes"
+            ]
         if "longevity_mode" in forest:
             kwargs["forest_longevity_mode"] = forest["longevity_mode"]
 
@@ -256,18 +255,6 @@ class GrowPyConfig:
             kwargs["helios_helios_scene"] = helios["helios_scene"]
         if "combined_obj" in helios:
             kwargs["helios_combined_obj"] = helios["combined_obj"]
-
-        # [build]
-        build = data.get("build", {})
-        if "lod_levels" in build:
-            lod_val = build["lod_levels"]
-            if isinstance(lod_val, str):
-                if lod_val.lower().strip() == "all":
-                    kwargs["lod_levels"] = ["all"]
-                else:
-                    kwargs["lod_levels"] = [l.strip() for l in lod_val.split(",")]
-            elif isinstance(lod_val, list):
-                kwargs["lod_levels"] = lod_val
 
         instance = cls(**kwargs)
         if set_as_global:
@@ -361,15 +348,18 @@ class GrowPyConfig:
     def get_preset_path(self, species: str) -> Path:
         """Get preset path for species."""
         from .paths import get_preset_path
+
         return get_preset_path(species)
 
     def get_growth_model_path(self, species: str) -> Path:
         """Get growth model path for species."""
         from .paths import get_growth_model_path
+
         return get_growth_model_path(species)
 
     @staticmethod
     def get_twig_files_by_type(species: str):
         """Get twig files organized by type."""
         from .paths import get_twig_files_by_type
+
         return get_twig_files_by_type(species)
