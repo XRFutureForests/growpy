@@ -71,7 +71,7 @@ timeout = 300
 [forest]
 # Quality preset: ultra, high, medium, low, performance
 # See [quality.*] sections below for per-preset parameters
-quality = "ultra"
+quality = "helios"
 # Maximum growth cycles per tree (1-125)
 # Trees exceeding this are scaled down proportionally
 growth_cycle_limit = 50
@@ -131,14 +131,10 @@ helios_scene = true
 # Export a single combined OBJ with all trees positioned at CSV coordinates
 combined_obj = true
 
-[build]
-# LOD levels to export: "all" or comma-separated list
-lod_levels = "all"
-
-# Quality Presets
-# Each preset defines mesh resolution, skeleton simplification, and build options.
-# The [forest] quality setting selects which preset to use.
-# You can customize any preset below; changes take effect when that preset is active.
+# Quality Presets (single source of truth)
+# Define any number of named presets below as [quality.<name>] sections.
+# The [forest] quality setting selects which preset to use by name.
+# Any omitted key falls back to the built-in default in quality.py.
 #
 # Mesh Parameters:
 #   resolution          - Branch cross-section vertices (8-32)
@@ -218,4 +214,17 @@ build_end_cap = false
 skeleton_length = 4.0
 skeleton_reduce = 0.8
 skeleton_bias = 0.5
-skeleton_connected = false
+skeleton_connected = true
+
+[quality.helios]
+resolution = 8
+resolution_reduce = 0.9
+texture_repeat = 2
+build_cutoff_age = 0
+build_cutoff_thickness = 0.01
+build_blend = false
+build_end_cap = false
+skeleton_length = 4.0
+skeleton_reduce = 0.8
+skeleton_bias = 0.5
+skeleton_connected = true
