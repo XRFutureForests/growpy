@@ -1280,108 +1280,7 @@ else:
     return script_path
 
 
-def _run_obj_export(
-    output_dir: Path,
-    csv_path: Path,
-    decimate_ratio: float = 0.3,
-    generate_scene_xml: bool = False,
-    verbose: bool = False,
-) -> None:
-    """Convert exported USDA trees to OBJ/MTL for Helios++ and optionally generate scene XML."""
-    from growpy.io.obj_export import clear_twig_decimate_cache, convert_tree_to_obj
-
-    clear_twig_decimate_cache()
-
-    # Find all assembly USDA files (exclude skeletal/static/twig files)
-    assembly_files = []
-    for usda in output_dir.glob("*/tree_*/*.usda"):
-        if usda.stem.endswith("_skeletal") or usda.stem.endswith("_static"):
-            continue
-        if "twig" in usda.stem.lower():
-            continue
-        assembly_files.append(usda)
-
-    if not assembly_files:
-        print("OBJ export: No assembly USDA files found")
-        return
-
-    print(f"\n{'='*60}")
-    print(f"HELIOS OBJ EXPORT ({len(assembly_files)} trees)")
-    print(f"{'='*60}")
-
-    # Load CSV for species info and positions
-    forest_data = pd.read_csv(csv_path)
-    if "fid" not in forest_data.columns:
-        forest_data["fid"] = range(1, len(forest_data) + 1)
-    if "z" not in forest_data.columns:
-        forest_data["z"] = 0.0
-
-    # Infer leaf spectra from species name (simple heuristic)
-    conifer_keywords = [
-        "spruce",
-        "pine",
-        "fir",
-        "cedar",
-        "cypress",
-        "juniper",
-        "larch",
-        "hemlock",
-        "yew",
-        "redwood",
-        "sequoia",
-        "thuja",
-    ]
-
-    obj_files = []
-    for assembly_path in sorted(assembly_files):
-        # Extract tree_id from directory name (tree_0001 -> 0001)
-        tree_dir_name = assembly_path.parent.name
-        tree_id_str = tree_dir_name.replace("tree_", "")
-
-        # Infer species from directory structure (species_clean/tree_xxxx/)
-        species_dir = assembly_path.parent.parent.name
-        species_name = species_dir.replace("_", " ").title()
-
-        is_conifer = any(kw in species_dir.lower() for kw in conifer_keywords)
-        spectra = "conifer" if is_conifer else "deciduous"
-
-        obj_path = convert_tree_to_obj(
-            assembly_usda_path=assembly_path,
-            species_name=species_name,
-            decimate_ratio=decimate_ratio,
-            helios_spectra_leaves=spectra,
-        )
-
-        if obj_path:
-            # Match to CSV row for position data
-            try:
-                fid = int(tree_id_str)
-                row = forest_data[forest_data["fid"] == fid].iloc[0]
-                obj_files.append(
-                    (
-                        obj_path,
-                        float(row["x"]),
-                        float(row["y"]),
-                        float(row["z"]),
-                        species_name,
-                    )
-                )
-            except (ValueError, IndexError):
-                obj_files.append((obj_path, 0.0, 0.0, 0.0, species_name))
-
-    # Generate Helios scene XML
-    if generate_scene_xml and obj_files:
-        from growpy.io.helios_scene import generate_helios_scene
-
-        scene_path = output_dir / "helios_scene.xml"
-        generate_helios_scene(
-            tree_entries=obj_files,
-            output_path=scene_path,
-        )
-
-    print(f"\nOBJ export complete: {len(obj_files)} trees converted")
-
-
+def main():
 def main():
     """Main forest generation function."""
     import argparse
@@ -1723,13 +1622,16 @@ Unreal Engine Integration:
         # OBJ/MTL export for Helios++ (post-processes USDA output)
         do_export_obj = config.helios_export_obj or config.helios_helios_scene
         if do_export_obj:
+            from growpy.io.obj_export import export_forest_obj
+
             with timer.track("obj_export"):
-                _run_obj_export(
+                export_forest_obj(
                     output_dir=output_dir,
                     csv_path=csv_path,
                     decimate_ratio=config.helios_decimate_ratio,
+                    stem_decimate_ratio=config.helios_stem_decimate_ratio,
                     generate_scene_xml=config.helios_helios_scene,
-                    verbose=config.verbose,
+                    generate_combined_obj=config.helios_combined_obj,
                 )
 
         # Print profiling report if enabled

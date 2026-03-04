@@ -50,12 +50,7 @@ python src/growpy/cli/generate_forest.py
 
 Steps 1-3 only need to run once per species set. Step 4 is the main generation step.
 
-OBJ export for Helios++ LiDAR simulation runs automatically in Step 4 when `helios.export_obj = true` in growpy.toml. It can also be run standalone:
-
-```bash
-# Optional: Re-export OBJ/MTL without regenerating the forest
-python src/growpy/cli/export_obj.py
-```
+OBJ export for Helios++ LiDAR simulation runs automatically in Step 4 when `helios.export_obj = true` in growpy.toml. Configure decimation ratios, scene XML, and combined OBJ in the `[helios]` section.
 
 **CSV Format Required**: `x`, `y`, `species`, `height` columns (optional: `z`, `fid`)
 
@@ -161,11 +156,10 @@ growpy/
 │   │   │   ├── prepare_assets.py         # Step 1: Copy Grove 2.2 assets
 │   │   │   ├── convert_twigs.py          # Step 2: Convert twigs to USD
 │   │   │   ├── create_growth_models.py   # Step 3: Generate height models
-│   │   │   ├── generate_forest.py        # Step 4: Forest from CSV
-│   │   │   └── export_obj.py             # Optional: OBJ/MTL for Helios++
+│   │   │   └── generate_forest.py        # Step 4: Forest from CSV (includes OBJ export)
 │   │   ├── config/                # Configuration and quality presets
 │   │   ├── core/                  # Forest/Grove/Tree/Skeleton simulation
-│   │   ├── io/                    # USD export, wind JSON, PVE mapping
+│   │   ├── io/                    # USD export, OBJ export, wind JSON, PVE mapping
 │   │   └── utils/                 # Analysis, profiling, plotting
 │   └── the_grove_22/              # Grove 2.2 Python API
 ├── data/
@@ -189,14 +183,12 @@ The pipeline consists of 4 sequential CLI scripts that produce output consumed b
 
 ```
 prepare_assets.py --> convert_twigs.py --> create_growth_models.py --> generate_forest.py
-                                                                          └── (export_obj.py)
 ```
 
 1. **Prepare Assets** - Copy and standardize presets, textures, and twigs from Grove 2.2
 2. **Convert Twigs** - Convert .blend twig files to USD with silhouette-optimized mesh densification
 3. **Create Growth Models** - Simulate growth curves and generate height-to-age prediction models
-4. **Generate Forest** - Multi-species forest simulation with USD Nanite assembly export
-5. **Export OBJ** *(optional)* - Convert USDA assemblies to OBJ/MTL for Helios++ LiDAR simulation (also runs automatically in Step 4 when `helios.export_obj = true`)
+4. **Generate Forest** - Multi-species forest simulation with USD Nanite assembly export (includes OBJ/MTL for Helios++ when `helios.export_obj = true`)
 
 All scripts read defaults from [`src/growpy/growpy.toml`](src/growpy/growpy.toml) and can be run without arguments. Each step is independently re-runnable and produces deterministic output.
 
@@ -316,26 +308,6 @@ python src/growpy/cli/generate_forest.py \
 | `--fast` | Skip PVE JSON, validation, and static meshes |
 | `--profile` | Print detailed timing report |
 | `-v, --verbose` | Verbose output |
-
-### Optional: Export OBJ for Helios++
-
-OBJ export runs automatically in Step 4 when `helios.export_obj = true` in growpy.toml. For standalone re-export without regenerating the forest:
-
-```bash
-# Re-export OBJ/MTL from existing USDA assemblies
-python src/growpy/cli/export_obj.py
-
-# With Helios++ scene XML generation
-python src/growpy/cli/export_obj.py --helios-scene
-
-# Export a single combined OBJ with all trees positioned
-python src/growpy/cli/export_obj.py --combined-obj
-
-# Custom decimation ratio (lower = fewer polygons)
-python src/growpy/cli/export_obj.py --decimate-ratio 0.2
-```
-
-**Flags**: `csv_file PATH`, `--output-dir PATH`, `--decimate-ratio FLOAT`, `--helios-scene`, `--combined-obj`
 
 ### Performance Optimization
 
