@@ -1500,6 +1500,18 @@ Unreal Engine Integration:
         action="store_true",
         help="Generate Helios++ scene XML placing all tree OBJs at CSV positions (implies --export-obj)",
     )
+    parser.add_argument(
+        "--individual-obj",
+        action="store_true",
+        help="Also write individual per-tree OBJ files (default: only combined OBJ)",
+    )
+    parser.add_argument(
+        "--obj-up-axis",
+        type=str,
+        default=None,
+        choices=["y", "z"],
+        help="OBJ coordinate up axis: 'y' (standard, default) or 'z' (matches USD)",
+    )
 
     args = parser.parse_args()
 
@@ -1630,7 +1642,9 @@ Unreal Engine Integration:
                     decimate_ratio=config.helios_decimate_ratio,
                     stem_decimate_ratio=config.helios_stem_decimate_ratio,
                     generate_scene_xml=config.helios_helios_scene,
-                    generate_combined_obj=config.helios_combined_obj,
+                    individual_obj=config.helios_individual_obj,
+                    up_axis=config.helios_obj_up_axis,
+                    classify_twigs=config.helios_classify_twig_materials,
                 )
 
         # Print profiling report if enabled

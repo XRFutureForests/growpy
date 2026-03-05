@@ -132,7 +132,9 @@ class GrowPyConfig:
     helios_decimate_ratio: float = 0.3
     helios_stem_decimate_ratio: float = 0.1
     helios_helios_scene: bool = False
-    helios_combined_obj: bool = False
+    helios_individual_obj: bool = False
+    helios_obj_up_axis: str = "y"
+    helios_classify_twig_materials: bool = False
 
     @classmethod
     def from_toml(cls, toml_path: Path, set_as_global: bool = True) -> "GrowPyConfig":
@@ -253,8 +255,12 @@ class GrowPyConfig:
             kwargs["helios_stem_decimate_ratio"] = helios["stem_decimate_ratio"]
         if "helios_scene" in helios:
             kwargs["helios_helios_scene"] = helios["helios_scene"]
-        if "combined_obj" in helios:
-            kwargs["helios_combined_obj"] = helios["combined_obj"]
+        if "individual_obj" in helios:
+            kwargs["helios_individual_obj"] = helios["individual_obj"]
+        if "obj_up_axis" in helios:
+            kwargs["helios_obj_up_axis"] = helios["obj_up_axis"]
+        if "classify_twig_materials" in helios:
+            kwargs["helios_classify_twig_materials"] = helios["classify_twig_materials"]
 
         instance = cls(**kwargs)
         if set_as_global:
@@ -318,7 +324,9 @@ class GrowPyConfig:
             "twig_decimate_ratio": "helios_decimate_ratio",
             "stem_decimate_ratio": "helios_stem_decimate_ratio",
             "helios_scene": "helios_helios_scene",
-            "combined_obj": "helios_combined_obj",
+            "individual_obj": "helios_individual_obj",
+            "obj_up_axis": "helios_obj_up_axis",
+            "classify_twig_materials": "helios_classify_twig_materials",
         }
 
         for cli_name, config_name in cli_mappings.items():
