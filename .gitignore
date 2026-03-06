@@ -4,6 +4,11 @@
 /data/sandbox/
 /data/ProceduralVegetationEditor/
 /data/tmp/
+/data/megaplant/
+
+# Grove commercial assets (twigs and textures are large binary files)
+src/the_grove_*/twigs/
+src/the_grove_*/textures/
 
 # Conda environment
 /.conda
