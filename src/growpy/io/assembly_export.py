@@ -279,6 +279,12 @@ def create_assembly(
                     # This ensures the assembly can find its twigs using ./filename.usda
                     _copy_twig_file_cached(twig_ref_path, output_path.parent)
 
+                    # Copy face material sidecar JSON for OBJ export leaf/wood split
+                    sidecar_stem = twig_ref_path.stem.replace("_skeletal", "").replace("_static", "")
+                    sidecar_src = twig_ref_path.parent / f"{sidecar_stem}_face_materials.json"
+                    if sidecar_src.exists():
+                        _copy_twig_file_cached(sidecar_src, output_path.parent)
+
                     # Copy twig textures (base color and normal maps)
                     # Both skeletal and static assemblies now include textures
                     # Use source path (in assets) to find textures
@@ -892,6 +898,11 @@ def export_tree_as_nanite_assembly(
                 for twig_type, twig_path in twig_usd_paths.items():
                     if twig_path.exists():
                         _copy_twig_file_cached(twig_path, dest_dir)
+                        # Also copy face material sidecar JSON
+                        sidecar_stem = twig_path.stem.replace("_skeletal", "").replace("_static", "")
+                        sidecar_src = twig_path.parent / f"{sidecar_stem}_face_materials.json"
+                        if sidecar_src.exists():
+                            _copy_twig_file_cached(sidecar_src, dest_dir)
 
         # Create Assembly USD
         with _track("create_assembly"):

@@ -10,9 +10,11 @@ are auto-decimated to reduce polygon count.
 
 Material groups:
     bark   - Trunk and branch geometry (helios_spectra wood)
-    Per-twig materials with original diffuse textures from twig USD files
+    Per-twig materials split into leaf and wood sub-materials using
+    original Blender material assignments from sidecar JSON files.
 """
 
+import json
 import math
 import shutil
 from pathlib import Path
@@ -27,7 +29,11 @@ if hasattr(bpy.utils, "expose_bundled_modules"):
 from pxr import Gf, Sdf, Usd, UsdGeom
 
 # Cache decimated twig meshes per (twig_file, ratio) to avoid re-decimation
-_decimated_twig_cache: Dict[Tuple[str, float], Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]] = {}
+# Stores (verts, faces, uvs, face_mat_indices) - face_mat_indices may be None
+_decimated_twig_cache: Dict[
+    Tuple[str, float],
+    Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]],
+] = {}
 
 
 def clear_twig_decimate_cache() -> None:
@@ -97,14 +103,15 @@ def convert_tree_to_obj(
     twig_verts = np.empty((0, 3), dtype=np.float64)
     per_proto_faces: Dict[int, np.ndarray] = {}
     per_proto_uvs: Dict[int, np.ndarray] = {}
-    # Map prototype index -> material info (name, diffuse texture path)
-    proto_materials: Dict[int, Tuple[str, Optional[Path]]] = {}
+    per_proto_face_mats: Dict[int, np.ndarray] = {}
+    # Map prototype index -> material info (name, diffuse texture path, sidecar material names)
+    proto_materials: Dict[int, Tuple[str, Optional[Path], Optional[List[str]]]] = {}
 
     if instancer_data is not None:
         positions, orientations, scales, proto_indices, proto_files = instancer_data
 
         # Read and decimate each unique twig prototype
-        proto_meshes: Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]] = {}
+        proto_meshes: Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]] = {}
         for idx, twig_file in proto_files.items():
             twig_path = tree_dir / twig_file
             if not twig_path.exists():
@@ -117,21 +124,23 @@ def convert_tree_to_obj(
                 twig_result = _read_twig_mesh(twig_path)
                 if twig_result[0] is None or twig_result[1] is None:
                     continue
-                raw_verts, raw_faces, raw_uvs = twig_result
+                raw_verts, raw_faces, raw_uvs, raw_face_mats = twig_result
 
                 if 0.0 < decimate_ratio < 1.0:
                     dec_verts, dec_faces = _decimate_mesh(
                         raw_verts, raw_faces, decimate_ratio
                     )
-                    # UVs invalidated by decimation
+                    # UVs and per-face materials invalidated by decimation
                     dec_uvs = None
+                    dec_face_mats = None
                 else:
                     dec_verts, dec_faces, dec_uvs = raw_verts, raw_faces, raw_uvs
+                    dec_face_mats = raw_face_mats
 
-                proto_meshes[idx] = (dec_verts, dec_faces, dec_uvs)
-                _decimated_twig_cache[cache_key] = (dec_verts, dec_faces, dec_uvs)
+                proto_meshes[idx] = (dec_verts, dec_faces, dec_uvs, dec_face_mats)
+                _decimated_twig_cache[cache_key] = (dec_verts, dec_faces, dec_uvs, dec_face_mats)
 
-            # Extract material info from twig USD
+            # Extract material info from twig USD and sidecar
             diffuse_rel = _read_twig_material(twig_path)
             mat_name = Path(twig_file).stem.replace("_skeletal", "").replace("_static", "")
             diffuse_path = None
@@ -146,11 +155,14 @@ def convert_tree_to_obj(
                     candidate = tree_dir / "textures" / tex_name
                     if candidate.exists():
                         diffuse_path = candidate
-            proto_materials[idx] = (mat_name, diffuse_path)
+
+            # Read sidecar material names for leaf/wood classification
+            sidecar_mat_names = _read_face_material_names(twig_path)
+            proto_materials[idx] = (mat_name, diffuse_path, sidecar_mat_names)
 
         # Bake all twig instances grouped by prototype
         if proto_meshes:
-            twig_verts, per_proto_faces, per_proto_uvs = _bake_twig_instances(
+            twig_verts, per_proto_faces, per_proto_uvs, per_proto_face_mats = _bake_twig_instances(
                 proto_meshes, positions, orientations, scales, proto_indices
             )
 
@@ -162,10 +174,12 @@ def convert_tree_to_obj(
     bark_texture = _find_bark_texture(tree_dir)
     _write_obj(
         obj_path, trunk_verts, trunk_faces, trunk_uvs,
-        twig_verts, per_proto_faces, per_proto_uvs, proto_materials, mtl_name,
+        twig_verts, per_proto_faces, per_proto_uvs, per_proto_face_mats,
+        proto_materials, mtl_name,
     )
     _write_helios_mtl(
-        mtl_path, bark_texture, helios_spectra_leaves, proto_materials, tree_dir,
+        mtl_path, bark_texture, helios_spectra_leaves, proto_materials,
+        per_proto_face_mats, tree_dir,
     )
 
     trunk_face_count = len(trunk_faces)
@@ -328,18 +342,37 @@ def _read_twig_material(twig_path: Path) -> Optional[str]:
     return None
 
 
+def _read_face_material_names(twig_path: Path) -> Optional[List[str]]:
+    """Read sidecar face material names for a twig USD file.
+
+    Looks for a `*_face_materials.json` sidecar alongside the twig USD file.
+    Returns the list of Blender material names, or None if no sidecar found.
+    """
+    stem = twig_path.stem.replace("_skeletal", "").replace("_static", "")
+    sidecar_path = twig_path.parent / f"{stem}_face_materials.json"
+    if not sidecar_path.exists():
+        return None
+    try:
+        with open(sidecar_path, "r") as f:
+            data = json.load(f)
+        return data.get("materials")
+    except Exception:
+        return None
+
+
 def _read_twig_mesh(
     twig_path: Path,
-) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]:
-    """Read twig mesh geometry and UVs from USDA file.
+) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]:
+    """Read twig mesh geometry, UVs, and per-face material indices from USDA file.
 
     Returns:
-        Tuple of (vertices[N,3], faces[M,3], uvs[K,2]) or (None, None, None)
-        UVs are face-varying (one per face-vertex).
+        Tuple of (vertices[N,3], faces[M,3], uvs[K,2], face_mat_indices[M])
+        or (None, None, None, None). face_mat_indices maps each face to
+        its Blender material index (from sidecar JSON), or None if unavailable.
     """
     stage = Usd.Stage.Open(str(twig_path))
     if not stage:
-        return None, None, None
+        return None, None, None, None
 
     # Find first mesh prim
     mesh_prim = None
@@ -349,7 +382,7 @@ def _read_twig_mesh(
             break
 
     if mesh_prim is None:
-        return None, None, None
+        return None, None, None, None
 
     mesh = UsdGeom.Mesh(mesh_prim)
     points = mesh.GetPointsAttr().Get()
@@ -357,7 +390,7 @@ def _read_twig_mesh(
     face_counts = mesh.GetFaceVertexCountsAttr().Get()
 
     if not points or not face_indices:
-        return None, None, None
+        return None, None, None, None
 
     vertices = np.array([[p[0], p[1], p[2]] for p in points], dtype=np.float64)
 
@@ -389,7 +422,7 @@ def _read_twig_mesh(
         idx += count
 
     if not faces:
-        return None, None, None
+        return None, None, None, None
 
     # Remap UVs to match triangulated face order
     if uvs is not None and len(tri_uv_indices) > 0:
@@ -398,7 +431,33 @@ def _read_twig_mesh(
         else:
             uvs = None
 
-    return vertices, np.array(faces, dtype=np.int64), uvs
+    # Load per-face material indices from sidecar JSON
+    face_mat_indices = None
+    stem = twig_path.stem.replace("_skeletal", "").replace("_static", "")
+    sidecar_path = twig_path.parent / f"{stem}_face_materials.json"
+    if sidecar_path.exists():
+        try:
+            with open(sidecar_path, "r") as f_json:
+                sidecar = json.load(f_json)
+            raw_indices = sidecar.get("face_material_indices", [])
+            if len(raw_indices) == len(face_counts):
+                # Sidecar matches original (pre-triangulation) face count.
+                # Expand to match triangulated faces: quads produce 2 triangles.
+                expanded = []
+                for fi, count in enumerate(face_counts):
+                    mat_idx = raw_indices[fi] if fi < len(raw_indices) else 0
+                    if count == 3:
+                        expanded.append(mat_idx)
+                    elif count == 4:
+                        expanded.extend([mat_idx, mat_idx])
+                face_mat_indices = np.array(expanded, dtype=np.int32)
+            elif len(raw_indices) == len(faces):
+                # Already triangulated (sidecar saved post-triangulation)
+                face_mat_indices = np.array(raw_indices, dtype=np.int32)
+        except Exception:
+            pass
+
+    return vertices, np.array(faces, dtype=np.int64), uvs, face_mat_indices
 
 
 def _decimate_mesh(
@@ -477,22 +536,24 @@ def _quat_to_rotation_matrix(w: float, x: float, y: float, z: float) -> np.ndarr
 
 
 def _bake_twig_instances(
-    proto_meshes: Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]],
+    proto_meshes: Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]],
     positions: np.ndarray,
     orientations: np.ndarray,
     scales: np.ndarray,
     proto_indices: np.ndarray,
-) -> Tuple[np.ndarray, Dict[int, np.ndarray], Dict[int, np.ndarray]]:
+) -> Tuple[np.ndarray, Dict[int, np.ndarray], Dict[int, np.ndarray], Dict[int, np.ndarray]]:
     """Transform and merge all twig instances grouped by prototype index.
 
     Returns:
         Tuple of (combined_vertices[N,3],
                   per_proto_faces: {proto_idx: faces[M,3]},
-                  per_proto_uvs: {proto_idx: uvs[M*3,2]})
+                  per_proto_uvs: {proto_idx: uvs[M*3,2]},
+                  per_proto_face_mats: {proto_idx: face_mat_indices[M]})
     """
     all_verts = []
     per_proto_faces: Dict[int, List[np.ndarray]] = {}
     per_proto_uvs: Dict[int, List[np.ndarray]] = {}
+    per_proto_face_mats: Dict[int, List[np.ndarray]] = {}
     vert_offset = 0
 
     for i in range(len(positions)):
@@ -500,7 +561,7 @@ def _bake_twig_instances(
         if proto_idx not in proto_meshes:
             continue
 
-        proto_verts, proto_faces, proto_uvs = proto_meshes[proto_idx]
+        proto_verts, proto_faces, proto_uvs, proto_face_mats = proto_meshes[proto_idx]
         if len(proto_verts) == 0:
             continue
 
@@ -518,25 +579,31 @@ def _bake_twig_instances(
         if proto_idx not in per_proto_faces:
             per_proto_faces[proto_idx] = []
             per_proto_uvs[proto_idx] = []
+            per_proto_face_mats[proto_idx] = []
 
         per_proto_faces[proto_idx].append(proto_faces + vert_offset)
         if proto_uvs is not None:
             per_proto_uvs[proto_idx].append(proto_uvs)
+        if proto_face_mats is not None:
+            per_proto_face_mats[proto_idx].append(proto_face_mats)
 
         vert_offset += len(proto_verts)
 
     if not all_verts:
-        return np.empty((0, 3), dtype=np.float64), {}, {}
+        return np.empty((0, 3), dtype=np.float64), {}, {}, {}
 
-    # Stack face and UV arrays per prototype
+    # Stack face, UV, and material arrays per prototype
     stacked_faces = {}
     stacked_uvs = {}
+    stacked_face_mats = {}
     for idx in per_proto_faces:
         stacked_faces[idx] = np.vstack(per_proto_faces[idx])
         if per_proto_uvs.get(idx):
             stacked_uvs[idx] = np.vstack(per_proto_uvs[idx])
+        if per_proto_face_mats.get(idx):
+            stacked_face_mats[idx] = np.concatenate(per_proto_face_mats[idx])
 
-    return np.vstack(all_verts), stacked_faces, stacked_uvs
+    return np.vstack(all_verts), stacked_faces, stacked_uvs, stacked_face_mats
 
 
 def _find_bark_texture(tree_dir: Path) -> Optional[Path]:
@@ -560,10 +627,11 @@ def _write_obj(
     twig_verts: np.ndarray,
     per_proto_faces: Dict[int, np.ndarray],
     per_proto_uvs: Dict[int, np.ndarray],
-    proto_materials: Dict[int, Tuple[str, Optional[Path]]],
+    per_proto_face_mats: Dict[int, np.ndarray],
+    proto_materials: Dict[int, Tuple[str, Optional[Path], Optional[List[str]]]],
     mtl_name: str,
 ) -> None:
-    """Write Wavefront OBJ file with bark and per-twig material groups."""
+    """Write Wavefront OBJ file with bark and per-twig leaf/wood material groups."""
     has_trunk_uvs = trunk_uvs is not None and len(trunk_uvs) > 0
     trunk_vert_count = len(trunk_verts)
 
@@ -612,32 +680,73 @@ def _write_obj(
             for face in trunk_faces:
                 f.write(f"f {face[0]+1} {face[1]+1} {face[2]+1}\n")
 
-        # Twig faces grouped by prototype with original materials
+        # Twig faces grouped by prototype, split by leaf/wood sub-materials
         for proto_idx in sorted(per_proto_faces.keys()):
             faces = per_proto_faces[proto_idx]
             if len(faces) == 0:
                 continue
 
-            mat_name, _ = proto_materials.get(proto_idx, (f"leaves_{proto_idx}", None))
-            f.write(f"\nusemtl {mat_name}\n")
-
+            mat_name, _, sidecar_mat_names = proto_materials.get(
+                proto_idx, (f"leaves_{proto_idx}", None, None)
+            )
+            face_mats = per_proto_face_mats.get(proto_idx)
             has_twig_uvs = proto_idx in proto_uv_starts
-            if has_twig_uvs:
-                uv_base = proto_uv_starts[proto_idx]
-                for fi, face in enumerate(faces):
-                    v0 = face[0] + trunk_vert_count + 1
-                    v1 = face[1] + trunk_vert_count + 1
-                    v2 = face[2] + trunk_vert_count + 1
-                    uv0 = uv_base + fi * 3 + 1
-                    uv1 = uv_base + fi * 3 + 2
-                    uv2 = uv_base + fi * 3 + 3
-                    f.write(f"f {v0}/{uv0} {v1}/{uv1} {v2}/{uv2}\n")
+
+            if face_mats is not None and sidecar_mat_names and len(face_mats) == len(faces):
+                # Split faces by sub-material (leaf vs wood)
+                unique_mat_ids = sorted(set(face_mats.tolist()))
+                for mat_id in unique_mat_ids:
+                    blend_mat_name = (
+                        sidecar_mat_names[mat_id]
+                        if mat_id < len(sidecar_mat_names)
+                        else f"material_{mat_id}"
+                    )
+                    sub_mat_name = f"{mat_name}:{blend_mat_name}"
+                    mask = face_mats == mat_id
+                    sub_faces = faces[mask]
+                    if len(sub_faces) == 0:
+                        continue
+
+                    f.write(f"\nusemtl {sub_mat_name}\n")
+
+                    if has_twig_uvs:
+                        uv_base_start = proto_uv_starts[proto_idx]
+                        # Get original face indices for this sub-material
+                        face_indices_in_proto = np.where(mask)[0]
+                        for local_fi, face in zip(face_indices_in_proto, sub_faces):
+                            v0 = face[0] + trunk_vert_count + 1
+                            v1 = face[1] + trunk_vert_count + 1
+                            v2 = face[2] + trunk_vert_count + 1
+                            uv0 = uv_base_start + local_fi * 3 + 1
+                            uv1 = uv_base_start + local_fi * 3 + 2
+                            uv2 = uv_base_start + local_fi * 3 + 3
+                            f.write(f"f {v0}/{uv0} {v1}/{uv1} {v2}/{uv2}\n")
+                    else:
+                        for face in sub_faces:
+                            v0 = face[0] + trunk_vert_count + 1
+                            v1 = face[1] + trunk_vert_count + 1
+                            v2 = face[2] + trunk_vert_count + 1
+                            f.write(f"f {v0} {v1} {v2}\n")
             else:
-                for face in faces:
-                    v0 = face[0] + trunk_vert_count + 1
-                    v1 = face[1] + trunk_vert_count + 1
-                    v2 = face[2] + trunk_vert_count + 1
-                    f.write(f"f {v0} {v1} {v2}\n")
+                # No sub-material info: single material for all faces
+                f.write(f"\nusemtl {mat_name}\n")
+
+                if has_twig_uvs:
+                    uv_base = proto_uv_starts[proto_idx]
+                    for fi, face in enumerate(faces):
+                        v0 = face[0] + trunk_vert_count + 1
+                        v1 = face[1] + trunk_vert_count + 1
+                        v2 = face[2] + trunk_vert_count + 1
+                        uv0 = uv_base + fi * 3 + 1
+                        uv1 = uv_base + fi * 3 + 2
+                        uv2 = uv_base + fi * 3 + 3
+                        f.write(f"f {v0}/{uv0} {v1}/{uv1} {v2}/{uv2}\n")
+                else:
+                    for face in faces:
+                        v0 = face[0] + trunk_vert_count + 1
+                        v1 = face[1] + trunk_vert_count + 1
+                        v2 = face[2] + trunk_vert_count + 1
+                        f.write(f"f {v0} {v1} {v2}\n")
 
 
 def write_combined_obj(
@@ -762,18 +871,23 @@ def _write_helios_mtl(
     mtl_path: Path,
     bark_texture: Optional[Path],
     helios_spectra_leaves: str = "deciduous",
-    proto_materials: Optional[Dict[int, Tuple[str, Optional[Path]]]] = None,
+    proto_materials: Optional[Dict[int, Tuple[str, Optional[Path], Optional[List[str]]]]] = None,
+    per_proto_face_mats: Optional[Dict[int, np.ndarray]] = None,
     tree_dir: Optional[Path] = None,
 ) -> None:
-    """Write Helios-compatible MTL file with per-twig materials.
+    """Write Helios-compatible MTL file with per-twig leaf/wood materials.
 
-    Creates a named material for each twig prototype, referencing the
-    original diffuse texture from the twig USD when available.
+    When sidecar material data is available, creates separate sub-materials
+    for leaf and wood face groups (e.g. `twig_name:BeechLeaves` and
+    `twig_name:BeechTwigs`). Wood sub-materials use helios_spectra "wood",
+    leaf sub-materials use the configured leaf spectra type.
 
     Helios++ uses custom MTL properties:
         helios_spectra  - ECOSTRESS spectral library identifier
         helios_classification - ASPRS point classification (4 = high vegetation)
     """
+    WOOD_KEYWORDS = ("twig", "bark", "branch", "wood", "stem")
+
     with open(mtl_path, "w") as f:
         f.write("# Helios++ compatible material\n\n")
 
@@ -791,22 +905,53 @@ def _write_helios_mtl(
         # Per-twig materials
         if proto_materials:
             for proto_idx in sorted(proto_materials.keys()):
-                mat_name, diffuse_path = proto_materials[proto_idx]
-                f.write(f"\nnewmtl {mat_name}\n")
-                f.write("Ka 0.1 0.15 0.05\n")
-                f.write("Kd 0.8 0.8 0.8\n")
-                f.write("Ks 0.2 0.2 0.2\n")
-                if diffuse_path and diffuse_path.exists():
-                    # Copy texture to tree output textures dir if needed
-                    if tree_dir:
-                        tex_out_dir = tree_dir / "textures"
-                        tex_out_dir.mkdir(exist_ok=True)
-                        dest = tex_out_dir / diffuse_path.name
-                        if not dest.exists():
-                            shutil.copy2(diffuse_path, dest)
-                    f.write(f"map_Kd textures/{diffuse_path.name}\n")
-                f.write(f"helios_spectra {helios_spectra_leaves}\n")
-                f.write("helios_classification 4\n")
+                mat_name, diffuse_path, sidecar_mat_names = proto_materials[proto_idx]
+                face_mats = (per_proto_face_mats or {}).get(proto_idx)
+
+                # Copy diffuse texture to output if needed
+                if diffuse_path and diffuse_path.exists() and tree_dir:
+                    tex_out_dir = tree_dir / "textures"
+                    tex_out_dir.mkdir(exist_ok=True)
+                    dest = tex_out_dir / diffuse_path.name
+                    if not dest.exists():
+                        shutil.copy2(diffuse_path, dest)
+
+                if face_mats is not None and sidecar_mat_names:
+                    # Write sub-materials for each Blender material
+                    unique_mat_ids = sorted(set(face_mats.tolist()))
+                    for mat_id in unique_mat_ids:
+                        blend_mat_name = (
+                            sidecar_mat_names[mat_id]
+                            if mat_id < len(sidecar_mat_names)
+                            else f"material_{mat_id}"
+                        )
+                        sub_mat_name = f"{mat_name}:{blend_mat_name}"
+                        is_wood = any(kw in blend_mat_name.lower() for kw in WOOD_KEYWORDS)
+
+                        f.write(f"\nnewmtl {sub_mat_name}\n")
+                        if is_wood:
+                            f.write("Ka 0.1 0.1 0.1\n")
+                            f.write("Kd 0.4 0.3 0.2\n")
+                            f.write("Ks 0.05 0.05 0.05\n")
+                            f.write("helios_spectra wood\n")
+                        else:
+                            f.write("Ka 0.1 0.15 0.05\n")
+                            f.write("Kd 0.8 0.8 0.8\n")
+                            f.write("Ks 0.2 0.2 0.2\n")
+                            if diffuse_path and diffuse_path.exists():
+                                f.write(f"map_Kd textures/{diffuse_path.name}\n")
+                            f.write(f"helios_spectra {helios_spectra_leaves}\n")
+                        f.write("helios_classification 4\n")
+                else:
+                    # No sub-material info: single material
+                    f.write(f"\nnewmtl {mat_name}\n")
+                    f.write("Ka 0.1 0.15 0.05\n")
+                    f.write("Kd 0.8 0.8 0.8\n")
+                    f.write("Ks 0.2 0.2 0.2\n")
+                    if diffuse_path and diffuse_path.exists():
+                        f.write(f"map_Kd textures/{diffuse_path.name}\n")
+                    f.write(f"helios_spectra {helios_spectra_leaves}\n")
+                    f.write("helios_classification 4\n")
         else:
             # Fallback: single generic leaves material
             f.write("\nnewmtl leaves\n")
