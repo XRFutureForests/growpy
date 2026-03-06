@@ -6,9 +6,8 @@
 /data/tmp/
 /data/megaplant/
 
-# Grove commercial assets (twigs and textures are large binary files)
-src/the_grove_*/twigs/
-src/the_grove_*/textures/
+# Grove commercial software (requires separate license from thegrove3d.com)
+/src/the_grove_*/
 
 # Conda environment
 /.conda
