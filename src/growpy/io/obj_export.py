@@ -10,7 +10,7 @@ are auto-decimated to reduce polygon count.
 
 Material groups:
     bark   - Trunk and branch geometry (helios_spectra wood)
-    leaves - All baked twig geometry (helios_spectra conifer or deciduous)
+    Per-twig materials with original diffuse textures from twig USD files
 """
 
 import math
@@ -27,7 +27,7 @@ if hasattr(bpy.utils, "expose_bundled_modules"):
 from pxr import Gf, Sdf, Usd, UsdGeom
 
 # Cache decimated twig meshes per (twig_file, ratio) to avoid re-decimation
-_decimated_twig_cache: Dict[Tuple[str, float], Tuple[np.ndarray, np.ndarray]] = {}
+_decimated_twig_cache: Dict[Tuple[str, float], Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]] = {}
 
 
 def clear_twig_decimate_cache() -> None:
@@ -95,13 +95,16 @@ def convert_tree_to_obj(
     instancer_data = _read_twig_instancer(assembly_usda_path)
 
     twig_verts = np.empty((0, 3), dtype=np.float64)
-    twig_faces = np.empty((0, 3), dtype=np.int64)
+    per_proto_faces: Dict[int, np.ndarray] = {}
+    per_proto_uvs: Dict[int, np.ndarray] = {}
+    # Map prototype index -> material info (name, diffuse texture path)
+    proto_materials: Dict[int, Tuple[str, Optional[Path]]] = {}
 
     if instancer_data is not None:
         positions, orientations, scales, proto_indices, proto_files = instancer_data
 
         # Read and decimate each unique twig prototype
-        proto_meshes = {}
+        proto_meshes: Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]] = {}
         for idx, twig_file in proto_files.items():
             twig_path = tree_dir / twig_file
             if not twig_path.exists():
@@ -110,26 +113,44 @@ def convert_tree_to_obj(
             cache_key = (str(twig_path), decimate_ratio)
             if cache_key in _decimated_twig_cache:
                 proto_meshes[idx] = _decimated_twig_cache[cache_key]
-                continue
-
-            twig_result = _read_twig_mesh(twig_path)
-            if twig_result[0] is None or twig_result[1] is None:
-                continue
-            raw_verts, raw_faces = twig_result[0], twig_result[1]
-
-            if 0.0 < decimate_ratio < 1.0:
-                dec_verts, dec_faces = _decimate_mesh(
-                    raw_verts, raw_faces, decimate_ratio
-                )
             else:
-                dec_verts, dec_faces = raw_verts, raw_faces
+                twig_result = _read_twig_mesh(twig_path)
+                if twig_result[0] is None or twig_result[1] is None:
+                    continue
+                raw_verts, raw_faces, raw_uvs = twig_result
 
-            proto_meshes[idx] = (dec_verts, dec_faces)
-            _decimated_twig_cache[cache_key] = (dec_verts, dec_faces)
+                if 0.0 < decimate_ratio < 1.0:
+                    dec_verts, dec_faces = _decimate_mesh(
+                        raw_verts, raw_faces, decimate_ratio
+                    )
+                    # UVs invalidated by decimation
+                    dec_uvs = None
+                else:
+                    dec_verts, dec_faces, dec_uvs = raw_verts, raw_faces, raw_uvs
 
-        # Bake all twig instances into combined mesh
+                proto_meshes[idx] = (dec_verts, dec_faces, dec_uvs)
+                _decimated_twig_cache[cache_key] = (dec_verts, dec_faces, dec_uvs)
+
+            # Extract material info from twig USD
+            diffuse_rel = _read_twig_material(twig_path)
+            mat_name = Path(twig_file).stem.replace("_skeletal", "").replace("_static", "")
+            diffuse_path = None
+            if diffuse_rel:
+                # Resolve relative texture path against twig location
+                candidate = twig_path.parent / diffuse_rel
+                if candidate.exists():
+                    diffuse_path = candidate
+                else:
+                    # Try textures dir in tree output
+                    tex_name = Path(diffuse_rel).name
+                    candidate = tree_dir / "textures" / tex_name
+                    if candidate.exists():
+                        diffuse_path = candidate
+            proto_materials[idx] = (mat_name, diffuse_path)
+
+        # Bake all twig instances grouped by prototype
         if proto_meshes:
-            twig_verts, twig_faces = _bake_twig_instances(
+            twig_verts, per_proto_faces, per_proto_uvs = _bake_twig_instances(
                 proto_meshes, positions, orientations, scales, proto_indices
             )
 
@@ -140,12 +161,15 @@ def convert_tree_to_obj(
     # Write OBJ + MTL
     bark_texture = _find_bark_texture(tree_dir)
     _write_obj(
-        obj_path, trunk_verts, trunk_faces, trunk_uvs, twig_verts, twig_faces, mtl_name
+        obj_path, trunk_verts, trunk_faces, trunk_uvs,
+        twig_verts, per_proto_faces, per_proto_uvs, proto_materials, mtl_name,
     )
-    _write_helios_mtl(mtl_path, bark_texture, helios_spectra_leaves)
+    _write_helios_mtl(
+        mtl_path, bark_texture, helios_spectra_leaves, proto_materials, tree_dir,
+    )
 
     trunk_face_count = len(trunk_faces)
-    twig_face_count = len(twig_faces)
+    twig_face_count = sum(len(f) for f in per_proto_faces.values())
     print(
         f"  OBJ export: {obj_path.name} ({trunk_face_count} trunk + {twig_face_count} twig faces)"
     )
@@ -272,17 +296,50 @@ def _read_twig_instancer(
     return positions, orientations, scales, proto_indices, proto_files
 
 
-def _read_twig_mesh(
-    twig_path: Path,
-) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
-    """Read twig mesh geometry from USDA file.
+def _read_twig_material(twig_path: Path) -> Optional[str]:
+    """Extract diffuse texture filename from twig USD material.
 
     Returns:
-        Tuple of (vertices[N,3], faces[M,3]) or (None, None)
+        Relative texture path (e.g. './textures/species_foliage_diffuse.png') or None
+    """
+    try:
+        from pxr import UsdShade
+
+        stage = Usd.Stage.Open(str(twig_path))
+        if not stage:
+            return None
+
+        for prim in stage.Traverse():
+            if not prim.IsA(UsdShade.Shader):
+                continue
+            shader = UsdShade.Shader(prim)
+            if shader.GetIdAttr().Get() != "UsdUVTexture":
+                continue
+            # Check if this texture connects to diffuseColor
+            if "DiffuseTexture" not in str(prim.GetPath()):
+                continue
+            file_input = shader.GetInput("file")
+            if file_input:
+                val = file_input.Get()
+                if val:
+                    return str(val.resolvedPath or val.path)
+    except Exception:
+        pass
+    return None
+
+
+def _read_twig_mesh(
+    twig_path: Path,
+) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]:
+    """Read twig mesh geometry and UVs from USDA file.
+
+    Returns:
+        Tuple of (vertices[N,3], faces[M,3], uvs[K,2]) or (None, None, None)
+        UVs are face-varying (one per face-vertex).
     """
     stage = Usd.Stage.Open(str(twig_path))
     if not stage:
-        return None, None
+        return None, None, None
 
     # Find first mesh prim
     mesh_prim = None
@@ -292,7 +349,7 @@ def _read_twig_mesh(
             break
 
     if mesh_prim is None:
-        return None, None
+        return None, None, None
 
     mesh = UsdGeom.Mesh(mesh_prim)
     points = mesh.GetPointsAttr().Get()
@@ -300,27 +357,48 @@ def _read_twig_mesh(
     face_counts = mesh.GetFaceVertexCountsAttr().Get()
 
     if not points or not face_indices:
-        return None, None
+        return None, None, None
 
     vertices = np.array([[p[0], p[1], p[2]] for p in points], dtype=np.float64)
 
+    # Read UVs (face-varying)
+    uvs = None
+    primvars_api = UsdGeom.PrimvarsAPI(mesh)
+    st_primvar = primvars_api.GetPrimvar("st")
+    if st_primvar and st_primvar.IsDefined():
+        uv_data = st_primvar.Get()
+        if uv_data:
+            uvs = np.array([[uv[0], uv[1]] for uv in uv_data], dtype=np.float64)
+
     # Handle mixed face sizes (triangles and quads)
     faces = []
+    # Track which original face-vertex indices map to output triangles
+    tri_uv_indices = []
     idx = 0
     for count in face_counts:
         if count == 3:
             faces.append(face_indices[idx : idx + 3])
+            tri_uv_indices.extend([idx, idx + 1, idx + 2])
         elif count == 4:
             # Triangulate quad
             a, b, c, d = face_indices[idx : idx + 4]
             faces.append([a, b, c])
+            tri_uv_indices.extend([idx, idx + 1, idx + 2])
             faces.append([a, c, d])
+            tri_uv_indices.extend([idx, idx + 2, idx + 3])
         idx += count
 
     if not faces:
-        return None, None
+        return None, None, None
 
-    return vertices, np.array(faces, dtype=np.int64)
+    # Remap UVs to match triangulated face order
+    if uvs is not None and len(tri_uv_indices) > 0:
+        if max(tri_uv_indices) < len(uvs):
+            uvs = uvs[tri_uv_indices]
+        else:
+            uvs = None
+
+    return vertices, np.array(faces, dtype=np.int64), uvs
 
 
 def _decimate_mesh(
@@ -399,19 +477,22 @@ def _quat_to_rotation_matrix(w: float, x: float, y: float, z: float) -> np.ndarr
 
 
 def _bake_twig_instances(
-    proto_meshes: Dict[int, Tuple[np.ndarray, np.ndarray]],
+    proto_meshes: Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]],
     positions: np.ndarray,
     orientations: np.ndarray,
     scales: np.ndarray,
     proto_indices: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Transform and merge all twig instances into a single combined mesh.
+) -> Tuple[np.ndarray, Dict[int, np.ndarray], Dict[int, np.ndarray]]:
+    """Transform and merge all twig instances grouped by prototype index.
 
     Returns:
-        Tuple of (combined_vertices[N,3], combined_faces[M,3])
+        Tuple of (combined_vertices[N,3],
+                  per_proto_faces: {proto_idx: faces[M,3]},
+                  per_proto_uvs: {proto_idx: uvs[M*3,2]})
     """
     all_verts = []
-    all_faces = []
+    per_proto_faces: Dict[int, List[np.ndarray]] = {}
+    per_proto_uvs: Dict[int, List[np.ndarray]] = {}
     vert_offset = 0
 
     for i in range(len(positions)):
@@ -419,7 +500,7 @@ def _bake_twig_instances(
         if proto_idx not in proto_meshes:
             continue
 
-        proto_verts, proto_faces = proto_meshes[proto_idx]
+        proto_verts, proto_faces, proto_uvs = proto_meshes[proto_idx]
         if len(proto_verts) == 0:
             continue
 
@@ -433,13 +514,29 @@ def _bake_twig_instances(
         transformed = (rot @ scaled.T).T + pos
 
         all_verts.append(transformed)
-        all_faces.append(proto_faces + vert_offset)
+
+        if proto_idx not in per_proto_faces:
+            per_proto_faces[proto_idx] = []
+            per_proto_uvs[proto_idx] = []
+
+        per_proto_faces[proto_idx].append(proto_faces + vert_offset)
+        if proto_uvs is not None:
+            per_proto_uvs[proto_idx].append(proto_uvs)
+
         vert_offset += len(proto_verts)
 
     if not all_verts:
-        return np.empty((0, 3), dtype=np.float64), np.empty((0, 3), dtype=np.int64)
+        return np.empty((0, 3), dtype=np.float64), {}, {}
 
-    return np.vstack(all_verts), np.vstack(all_faces)
+    # Stack face and UV arrays per prototype
+    stacked_faces = {}
+    stacked_uvs = {}
+    for idx in per_proto_faces:
+        stacked_faces[idx] = np.vstack(per_proto_faces[idx])
+        if per_proto_uvs.get(idx):
+            stacked_uvs[idx] = np.vstack(per_proto_uvs[idx])
+
+    return np.vstack(all_verts), stacked_faces, stacked_uvs
 
 
 def _find_bark_texture(tree_dir: Path) -> Optional[Path]:
@@ -461,11 +558,13 @@ def _write_obj(
     trunk_faces: np.ndarray,
     trunk_uvs: Optional[np.ndarray],
     twig_verts: np.ndarray,
-    twig_faces: np.ndarray,
+    per_proto_faces: Dict[int, np.ndarray],
+    per_proto_uvs: Dict[int, np.ndarray],
+    proto_materials: Dict[int, Tuple[str, Optional[Path]]],
     mtl_name: str,
 ) -> None:
-    """Write Wavefront OBJ file with bark and leaves material groups."""
-    has_uvs = trunk_uvs is not None and len(trunk_uvs) > 0
+    """Write Wavefront OBJ file with bark and per-twig material groups."""
+    has_trunk_uvs = trunk_uvs is not None and len(trunk_uvs) > 0
     trunk_vert_count = len(trunk_verts)
 
     with open(obj_path, "w") as f:
@@ -482,25 +581,28 @@ def _write_obj(
 
         f.write("\n")
 
-        # Write UVs
-        if has_uvs:
+        # Write trunk UVs
+        uv_offset = 0
+        if has_trunk_uvs:
             for uv in trunk_uvs:
                 f.write(f"vt {uv[0]:.6f} {uv[1]:.6f}\n")
+            uv_offset = len(trunk_uvs)
 
-        # Dummy UVs for twig vertices (one per face-vertex)
-        twig_face_vert_count = len(twig_faces) * 3
-        if twig_face_vert_count > 0:
-            f.write(f"vt 0.0 0.0\n")
-            twig_uv_start = len(trunk_uvs) + 1 if has_uvs else 1
-        else:
-            twig_uv_start = 0
+        # Write per-prototype twig UVs and record their start offsets
+        proto_uv_starts: Dict[int, int] = {}
+        for proto_idx in sorted(per_proto_faces.keys()):
+            proto_uvs = per_proto_uvs.get(proto_idx)
+            if proto_uvs is not None and len(proto_uvs) > 0:
+                proto_uv_starts[proto_idx] = uv_offset
+                for uv in proto_uvs:
+                    f.write(f"vt {uv[0]:.6f} {uv[1]:.6f}\n")
+                uv_offset += len(proto_uvs)
 
         f.write("\n")
 
         # Trunk faces (bark material)
         f.write("usemtl bark\n")
-        if has_uvs:
-            # UVs are face-varying: UV index i maps to face-vertex i
+        if has_trunk_uvs:
             for fi, face in enumerate(trunk_faces):
                 uv_base = fi * 3
                 f.write(
@@ -510,20 +612,31 @@ def _write_obj(
             for face in trunk_faces:
                 f.write(f"f {face[0]+1} {face[1]+1} {face[2]+1}\n")
 
-        # Twig faces (leaves material)
-        if len(twig_faces) > 0:
-            f.write("\nusemtl leaves\n")
-            for face in twig_faces:
-                # Offset vertex indices by trunk vertex count
-                v0 = face[0] + trunk_vert_count + 1
-                v1 = face[1] + trunk_vert_count + 1
-                v2 = face[2] + trunk_vert_count + 1
-                if has_uvs:
-                    # All twig faces share single dummy UV
-                    f.write(
-                        f"f {v0}/{twig_uv_start} {v1}/{twig_uv_start} {v2}/{twig_uv_start}\n"
-                    )
-                else:
+        # Twig faces grouped by prototype with original materials
+        for proto_idx in sorted(per_proto_faces.keys()):
+            faces = per_proto_faces[proto_idx]
+            if len(faces) == 0:
+                continue
+
+            mat_name, _ = proto_materials.get(proto_idx, (f"leaves_{proto_idx}", None))
+            f.write(f"\nusemtl {mat_name}\n")
+
+            has_twig_uvs = proto_idx in proto_uv_starts
+            if has_twig_uvs:
+                uv_base = proto_uv_starts[proto_idx]
+                for fi, face in enumerate(faces):
+                    v0 = face[0] + trunk_vert_count + 1
+                    v1 = face[1] + trunk_vert_count + 1
+                    v2 = face[2] + trunk_vert_count + 1
+                    uv0 = uv_base + fi * 3 + 1
+                    uv1 = uv_base + fi * 3 + 2
+                    uv2 = uv_base + fi * 3 + 3
+                    f.write(f"f {v0}/{uv0} {v1}/{uv1} {v2}/{uv2}\n")
+            else:
+                for face in faces:
+                    v0 = face[0] + trunk_vert_count + 1
+                    v1 = face[1] + trunk_vert_count + 1
+                    v2 = face[2] + trunk_vert_count + 1
                     f.write(f"f {v0} {v1} {v2}\n")
 
 
@@ -550,10 +663,12 @@ def write_combined_obj(
 
     vert_offset = 0
     uv_offset = 0
-    bark_faces_all: List[str] = []
-    leaves_faces_all: List[str] = []
+    # Group faces by material name to preserve per-twig materials
+    material_faces: Dict[str, List[str]] = {}
     verts_all: List[str] = []
     uvs_all: List[str] = []
+    # Collect all MTL files to merge material definitions
+    mtl_files: List[Path] = []
 
     for obj_path, x, y, z, _species in tree_entries:
         if not obj_path.exists():
@@ -562,6 +677,11 @@ def write_combined_obj(
         local_verts = 0
         local_uvs = 0
         current_mtl = "bark"
+
+        # Collect associated MTL file for material merging
+        obj_mtl = obj_path.with_suffix(".mtl")
+        if obj_mtl.exists():
+            mtl_files.append(obj_mtl)
 
         with open(obj_path, "r") as f:
             for line in f:
@@ -576,13 +696,12 @@ def write_combined_obj(
                     uvs_all.append(line)
                     local_uvs += 1
                 elif line.startswith("usemtl "):
-                    current_mtl = line.strip().split()[1]
+                    current_mtl = line.strip().split(maxsplit=1)[1]
                 elif line.startswith("f "):
                     new_face = _offset_face_line(line, vert_offset, uv_offset)
-                    if current_mtl == "leaves":
-                        leaves_faces_all.append(new_face)
-                    else:
-                        bark_faces_all.append(new_face)
+                    if current_mtl not in material_faces:
+                        material_faces[current_mtl] = []
+                    material_faces[current_mtl].append(new_face)
 
         vert_offset += local_verts
         uv_offset += local_uvs
@@ -600,21 +719,24 @@ def write_combined_obj(
             f.write(uv)
         f.write("\n")
 
-        f.write("usemtl bark\n")
-        for face in bark_faces_all:
-            f.write(face)
-
-        if leaves_faces_all:
-            f.write("\nusemtl leaves\n")
-            for face in leaves_faces_all:
+        # Write bark first, then all other materials
+        if "bark" in material_faces:
+            f.write("usemtl bark\n")
+            for face in material_faces["bark"]:
                 f.write(face)
 
-    _write_helios_mtl(
-        mtl_path, bark_texture=None, helios_spectra_leaves=helios_spectra_leaves
-    )
+        for mat_name in sorted(material_faces.keys()):
+            if mat_name == "bark":
+                continue
+            f.write(f"\nusemtl {mat_name}\n")
+            for face in material_faces[mat_name]:
+                f.write(face)
+
+    # Merge material definitions from all individual MTL files
+    _write_combined_mtl(mtl_path, mtl_files, helios_spectra_leaves)
 
     total_verts = len(verts_all)
-    total_faces = len(bark_faces_all) + len(leaves_faces_all)
+    total_faces = sum(len(faces) for faces in material_faces.values())
     print(
         f"  Combined OBJ: {output_path.name} ({total_verts} verts, {total_faces} faces, {len(tree_entries)} trees)"
     )
@@ -640,8 +762,13 @@ def _write_helios_mtl(
     mtl_path: Path,
     bark_texture: Optional[Path],
     helios_spectra_leaves: str = "deciduous",
+    proto_materials: Optional[Dict[int, Tuple[str, Optional[Path]]]] = None,
+    tree_dir: Optional[Path] = None,
 ) -> None:
-    """Write Helios-compatible MTL file.
+    """Write Helios-compatible MTL file with per-twig materials.
+
+    Creates a named material for each twig prototype, referencing the
+    original diffuse texture from the twig USD when available.
 
     Helios++ uses custom MTL properties:
         helios_spectra  - ECOSTRESS spectral library identifier
@@ -660,15 +787,81 @@ def _write_helios_mtl(
             f.write(f"map_Kd {rel_texture}\n")
         f.write("helios_spectra wood\n")
         f.write("helios_classification 4\n")
-        f.write("\n")
 
-        # Leaves material
-        f.write("newmtl leaves\n")
-        f.write("Ka 0.1 0.15 0.05\n")
-        f.write("Kd 0.3 0.5 0.15\n")
-        f.write("Ks 0.2 0.2 0.2\n")
-        f.write(f"helios_spectra {helios_spectra_leaves}\n")
-        f.write("helios_classification 4\n")
+        # Per-twig materials
+        if proto_materials:
+            for proto_idx in sorted(proto_materials.keys()):
+                mat_name, diffuse_path = proto_materials[proto_idx]
+                f.write(f"\nnewmtl {mat_name}\n")
+                f.write("Ka 0.1 0.15 0.05\n")
+                f.write("Kd 0.8 0.8 0.8\n")
+                f.write("Ks 0.2 0.2 0.2\n")
+                if diffuse_path and diffuse_path.exists():
+                    # Copy texture to tree output textures dir if needed
+                    if tree_dir:
+                        tex_out_dir = tree_dir / "textures"
+                        tex_out_dir.mkdir(exist_ok=True)
+                        dest = tex_out_dir / diffuse_path.name
+                        if not dest.exists():
+                            shutil.copy2(diffuse_path, dest)
+                    f.write(f"map_Kd textures/{diffuse_path.name}\n")
+                f.write(f"helios_spectra {helios_spectra_leaves}\n")
+                f.write("helios_classification 4\n")
+        else:
+            # Fallback: single generic leaves material
+            f.write("\nnewmtl leaves\n")
+            f.write("Ka 0.1 0.15 0.05\n")
+            f.write("Kd 0.3 0.5 0.15\n")
+            f.write("Ks 0.2 0.2 0.2\n")
+            f.write(f"helios_spectra {helios_spectra_leaves}\n")
+            f.write("helios_classification 4\n")
+
+
+def _write_combined_mtl(
+    mtl_path: Path,
+    source_mtl_files: List[Path],
+    helios_spectra_leaves: str = "deciduous",
+) -> None:
+    """Merge material definitions from individual tree MTL files into one combined MTL.
+
+    Deduplicates materials by name, keeping the first definition encountered.
+    """
+    seen_materials: Dict[str, List[str]] = {}
+
+    for src_mtl in source_mtl_files:
+        if not src_mtl.exists():
+            continue
+        current_name = None
+        current_lines: List[str] = []
+        with open(src_mtl, "r") as f:
+            for line in f:
+                if line.startswith("newmtl "):
+                    if current_name and current_name not in seen_materials:
+                        seen_materials[current_name] = current_lines
+                    current_name = line.strip().split(maxsplit=1)[1]
+                    current_lines = [line]
+                elif current_name is not None:
+                    current_lines.append(line)
+        if current_name and current_name not in seen_materials:
+            seen_materials[current_name] = current_lines
+
+    with open(mtl_path, "w") as f:
+        f.write("# Helios++ combined forest material\n\n")
+        # Write bark first
+        if "bark" in seen_materials:
+            for line in seen_materials["bark"]:
+                f.write(line)
+            f.write("\n")
+        for mat_name in sorted(seen_materials.keys()):
+            if mat_name == "bark":
+                continue
+            for line in seen_materials[mat_name]:
+                f.write(line)
+            f.write("\n")
+
+    if not seen_materials:
+        # Fallback if no MTL files found
+        _write_helios_mtl(mtl_path, None, helios_spectra_leaves)
 
 
 CONIFER_KEYWORDS = [
