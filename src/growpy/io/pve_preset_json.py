@@ -475,7 +475,7 @@ def _get_num_branches(grove: Any, skeleton: Optional[Any] = None) -> int:
     try:
         if skeleton is not None:
             return len(skeleton.poly_lines)
-        skeletons = grove.build_skeletons()
+        skeletons = grove.build_skeletons(True)
         if skeletons and len(skeletons) > 0:
             return len(skeletons[0].poly_lines)
         return 1
@@ -494,7 +494,7 @@ def _get_num_buds(grove: Any, skeleton: Optional[Any] = None) -> int:
         if skeleton is not None:
             # Estimate: each branch has at least one bud at the end
             return len(skeleton.poly_lines)
-        skeletons = grove.build_skeletons()
+        skeletons = grove.build_skeletons(True)
         if skeletons and len(skeletons) > 0:
             return len(skeletons[0].poly_lines)
         return 1
@@ -518,7 +518,7 @@ def _get_max_generation(grove: Any, skeleton: Optional[Any] = None) -> int:
             import math
 
             return max(1, int(math.log2(len(poly_lines) + 1)))
-        skeletons = grove.build_skeletons()
+        skeletons = grove.build_skeletons(True)
         if skeletons and len(skeletons) > 0:
             poly_lines = skeletons[0].poly_lines
             import math

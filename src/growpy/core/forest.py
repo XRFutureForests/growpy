@@ -71,7 +71,7 @@ def _run_single_growth_cycle(
     if len(groves) > 1:
         all_coords = []
         for grove in groves:
-            all_coords.extend(grove.create_shade_geometry_coords())
+            all_coords.extend(grove.build_shade_geometry_flat())
         for grove in groves:
             grove.calculate_shade_together(all_coords)
 
@@ -92,8 +92,9 @@ def _apply_smoothing(
 
     smooth_start = time.time()
     for grove, species_name, _, _ in forest:
-        grove.smooth_minimal()
-        for _ in tqdm(range(smooth_iterations), desc=f"Smoothing {species_name}", unit="iter"):
+        for _ in tqdm(
+            range(smooth_iterations), desc=f"Smoothing {species_name}", unit="iter"
+        ):
             grove.smooth()
         grove.weigh_and_bend()
         logger.info("[Smoothing] Completed for %s", species_name)
@@ -111,11 +112,10 @@ def simulate_forest_growth(
     """Simulate forest growth with inter-species light competition and optional smoothing.
 
     The smoothing workflow (applied if smooth_iterations > 0):
-    1. grove.smooth_minimal() - Fixes ugly kinks on thick branches (one-time operation)
-    2. grove.smooth() - Reduces sharp corner angles (called smooth_iterations times)
-    3. grove.weigh_and_bend() - Re-calculates branch positions based on smoothed angles
+    1. grove.smooth() - Reduces sharp corner angles (called smooth_iterations times)
+    2. grove.weigh_and_bend() - Re-calculates branch positions based on smoothed angles
 
-    Without step 3 (weigh_and_bend), smoothing has no effect on the final geometry!
+    Without step 2 (weigh_and_bend), smoothing has no effect on the final geometry!
 
     Preset Overrides (applied in order of priority):
         1. Species curves from seed.json files (if use_species_curves=True)
@@ -147,11 +147,15 @@ def simulate_forest_growth(
             len(preset_overrides.interpolated_overrides),
         )
     for sp, ov in species_overrides.items():
-        logger.info("  %s curves: %d from seed.json", sp, len(ov.interpolated_overrides))
+        logger.info(
+            "  %s curves: %d from seed.json", sp, len(ov.interpolated_overrides)
+        )
 
     growth_start = time.time()
     for cycle in tqdm(range(cycles), desc="Simulating growth cycles", unit="cycle"):
-        _run_single_growth_cycle(forest, groves, cycle, cycles, species_overrides, preset_overrides)
+        _run_single_growth_cycle(
+            forest, groves, cycle, cycles, species_overrides, preset_overrides
+        )
 
     logger.info("Growth simulation complete (%.1fs)", time.time() - growth_start)
 
@@ -217,7 +221,9 @@ def simulate_forest_growth_with_snapshots(
     growth_start = time.time()
     next_snapshot_idx = 0
 
-    for cycle in tqdm(range(1, max_cycles + 1), desc="Simulating growth cycles", unit="cycle"):
+    for cycle in tqdm(
+        range(1, max_cycles + 1), desc="Simulating growth cycles", unit="cycle"
+    ):
         # cycle - 1 maps 1-based loop counter to 0-based override index
         _run_single_growth_cycle(
             forest, groves, cycle - 1, max_cycles, species_overrides, preset_overrides
@@ -233,12 +239,12 @@ def simulate_forest_growth_with_snapshots(
 
             for grove, species_name, tree_count, fids in forest:
                 # CRITICAL BUILD ORDER: skeleton -> bones -> models
-                skeletons = grove.build_skeletons()
+                skeleton_connected = quality_params.get("skeleton_connected", True)
+                skeletons = grove.build_skeletons(skeleton_connected)
 
                 skeleton_length = quality_params.get("skeleton_length", 2.0)
                 skeleton_reduce = quality_params.get("skeleton_reduce", 0.4)
                 skeleton_bias = quality_params.get("skeleton_bias", 0.5)
-                skeleton_connected = quality_params.get("skeleton_connected", True)
 
                 all_bones = grove.tag_bone_id(
                     skeleton_length,
@@ -255,10 +261,14 @@ def simulate_forest_growth_with_snapshots(
                 tree_snapshots = []
                 for tree_idx in range(len(grove.trees)):
                     model = models[tree_idx] if tree_idx < len(models) else None
-                    skeleton = skeletons[tree_idx] if tree_idx < len(skeletons) else None
+                    skeleton = (
+                        skeletons[tree_idx] if tree_idx < len(skeletons) else None
+                    )
                     bones = tree_bones[tree_idx] if tree_idx < len(tree_bones) else []
                     height, dbh = (
-                        measurements[tree_idx] if tree_idx < len(measurements) else (0.0, 0.0)
+                        measurements[tree_idx]
+                        if tree_idx < len(measurements)
+                        else (0.0, 0.0)
                     )
                     tree_snapshots.append((model, skeleton, bones, height, dbh))
 

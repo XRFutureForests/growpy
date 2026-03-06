@@ -19,7 +19,7 @@
             ],
             "cwd": "${workspaceFolder}",
             "env": {
-                "PYTHONPATH": "${workspaceFolder}/src:${workspaceFolder}/src/the_grove_22/modules"
+                "PYTHONPATH": "${workspaceFolder}/src;${workspaceFolder}/src/the_grove_23/modules"
             }
         },
     ]

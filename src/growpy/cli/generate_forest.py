@@ -117,7 +117,9 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         # CRITICAL BUILD ORDER: skeleton -> bones -> models
         # 1. Build skeletons first
         with timer.track("build_skeletons", parent="grove_export"):
-            skeletons = grove.build_skeletons()
+            skeletons = grove.build_skeletons(
+                quality_params.get("skeleton_connected", True)
+            )
 
         # 2. Tag bone IDs with reduction parameters from quality preset
         # Higher skeleton_length and skeleton_reduce = fewer bones
@@ -141,7 +143,6 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 {
                     "resolution": quality_params["resolution"],
                     "resolution_reduce": quality_params["resolution_reduce"],
-                    "texture_repeat": quality_params["texture_repeat"],
                     "build_cutoff_age": quality_params["build_cutoff_age"],
                     "build_cutoff_thickness": quality_params["build_cutoff_thickness"],
                     "build_blend": quality_params["build_blend"],

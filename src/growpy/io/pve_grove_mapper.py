@@ -148,7 +148,7 @@ def map_grove_to_pve(
     # Build skeleton for branch hierarchy (if not provided)
     t0 = time.perf_counter() if profile else 0
     if skeleton is None:
-        skeletons = grove.build_skeletons()
+        skeletons = grove.build_skeletons(True)
         if tree_index < len(skeletons):
             skeleton = skeletons[tree_index]
     if profile:

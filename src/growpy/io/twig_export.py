@@ -3242,7 +3242,8 @@ def process_twig_file(
         species_name: Name of species
         minimal_export: If True, creates minimal USD without materials/textures/attributes
         include_skeleton: If True, creates skeletal variant with skeleton
-        densify: If True, densify boundary edges (default: False)
+        densify: Master switch for geometry processing. When False, export .blend
+            mesh as-is. When True, enables alpha trim, smoothing, and decimation.
         alpha_trim_threshold: Alpha threshold for geometry trimming (0.0 = disabled)
         alpha_trim_method: Trimming method (default: 'all' - conservative)
         smooth_boundary: Enable boundary edge smoothing
@@ -3356,8 +3357,9 @@ def process_twig_file(
 
             # Optional geometry processing for enhanced leaf detail
             # Restrict to leaf materials to avoid artifacts on twigs/bark
+            # densify acts as master switch: when False, export original .blend mesh as-is
             interior_decimate = 0.0 < interior_decimate_ratio < 1.0
-            if densify or alpha_trim_threshold > 0.0 or interior_decimate:
+            if densify:
                 # Validate textures before geometry processing
                 # Textures should have been standardized during asset preparation
                 from growpy.io.texture_utils import validate_twig_textures

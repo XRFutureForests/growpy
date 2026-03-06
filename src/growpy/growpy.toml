@@ -27,14 +27,16 @@ profile = true
 grove_dir = "src/the_grove_23"
 # Resize textures to power-of-2 for Unreal Engine virtual textures
 # Adds significant processing time; only needed if Grove textures are not already power-of-2
-resize_textures = true
+resize_textures = false
 
 [twigs]
 # Path to twig directory containing .blend files
 # Used as default when convert_twigs.py is run without a positional argument
 path = "data/assets/twigs"
-# Enable mesh densification (subdivision for Nanite-friendly high-poly silhouettes)
-densify = true
+# Master switch for all mesh geometry processing (alpha trim, smoothing, decimation)
+# When false, .blend twig meshes are exported to USD as-is without any modification
+# When true, enables the sub-options below for Nanite-friendly high-poly silhouettes
+densify = false
 # Alpha threshold for silhouette trimming
 # 0.05-0.3 = minimal (conservative), 0.5 = moderate (recommended), 0.7 = aggressive
 alpha_trim = 0.75
@@ -71,10 +73,10 @@ timeout = 300
 [forest]
 # Quality preset: ultra, high, medium, low, performance
 # See [quality.*] sections below for per-preset parameters
-quality = "helios"
+quality = "high"
 # Maximum growth cycles per tree (1-125)
 # Trees exceeding this are scaled down proportionally
-growth_cycle_limit = 20
+growth_cycle_limit = 50
 # Branch smoothing iterations (0-20, 0 = disabled)
 # Higher values = smoother, more organic branches
 smooth_iterations = 10
@@ -83,7 +85,7 @@ smooth_iterations = 10
 include_grove_attributes = false
 # Apply longevity overrides to prevent tree death at high cycle counts
 # Sets drop_decay, drop_weak etc. to low values
-longevity_mode = true
+longevity_mode = false
 
 [forest.skeleton]
 # Skeleton simplification parameters (independent of mesh quality).
@@ -120,7 +122,7 @@ project_path = "/Game/GrowPy/Trees"
 [helios]
 # Export OBJ/MTL files for Helios++ LiDAR simulation
 # Converts USDA assemblies to Wavefront OBJ with baked twig instances
-export_obj = true
+export_obj = false
 # Stem/branch decimation ratio (0.0-1.0, lower = fewer polygons)
 # For LiDAR, twig positions matter more than stem detail
 stem_decimate_ratio = 0.75
@@ -144,7 +146,6 @@ classify_twig_materials = false
 # Mesh Parameters:
 #   resolution          - Branch cross-section vertices (8-32)
 #   resolution_reduce   - Vertex reduction on thinner branches (0.0-1.0)
-#   texture_repeat      - Bark texture tiling count (1-4)
 #   build_cutoff_age    - Skip branches younger than N years (0 = keep all)
 #   build_cutoff_thickness - Skip branches thinner than this (meters, 0.0 = keep all)
 #   build_blend         - Smooth branch junctions
@@ -159,7 +160,6 @@ classify_twig_materials = false
 [quality.ultra]
 resolution = 32
 resolution_reduce = 0.75
-texture_repeat = 4
 build_cutoff_age = 0
 build_cutoff_thickness = 0.0
 build_blend = true
@@ -172,7 +172,6 @@ skeleton_connected = true
 [quality.high]
 resolution = 24
 resolution_reduce = 0.8
-texture_repeat = 3
 build_cutoff_age = 0
 build_cutoff_thickness = 0.01
 build_blend = true
@@ -185,7 +184,6 @@ skeleton_connected = true
 [quality.medium]
 resolution = 16
 resolution_reduce = 0.8
-texture_repeat = 3
 build_cutoff_age = 1
 build_cutoff_thickness = 0.01
 build_blend = true
@@ -198,7 +196,6 @@ skeleton_connected = true
 [quality.low]
 resolution = 12
 resolution_reduce = 0.85
-texture_repeat = 2
 build_cutoff_age = 1
 build_cutoff_thickness = 0.05
 build_blend = true
@@ -211,7 +208,6 @@ skeleton_connected = true
 [quality.performance]
 resolution = 8
 resolution_reduce = 0.9
-texture_repeat = 2
 build_cutoff_age = 2
 build_cutoff_thickness = 0.05
 build_blend = false
@@ -224,7 +220,6 @@ skeleton_connected = true
 [quality.helios]
 resolution = 9
 resolution_reduce = 0.75
-texture_repeat = 2
 build_cutoff_age = 0
 build_cutoff_thickness = 0
 build_blend = false

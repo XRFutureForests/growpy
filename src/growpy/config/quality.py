@@ -11,7 +11,6 @@ from typing import Any, Dict
 _DEFAULT = {
     "resolution": 24,
     "resolution_reduce": 0.8,
-    "texture_repeat": 3,
     "build_cutoff_age": 0,
     "build_cutoff_thickness": 0.01,
     "build_blend": True,

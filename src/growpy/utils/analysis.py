@@ -910,7 +910,6 @@ def compare_smoothing_effect(
     faces_before = len(models_before[0].faces) if models_before else 0
 
     grove_smooth = _make_grove()
-    grove_smooth.smooth_minimal()
     for _ in range(smooth_iterations):
         grove_smooth.smooth()
     grove_smooth.weigh_and_bend()
@@ -943,7 +942,11 @@ def compare_smoothing_effect(
 
     logger.info(
         "Smoothing comparison: pts %d->%d, faces %d->%d, %d vertices moved (max %.4f)",
-        pts_before, pts_after, faces_before, faces_after,
-        vertices_changed, max_displacement,
+        pts_before,
+        pts_after,
+        faces_before,
+        faces_after,
+        vertices_changed,
+        max_displacement,
     )
     return result
