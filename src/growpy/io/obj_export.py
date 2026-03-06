@@ -875,15 +875,11 @@ def write_combined_obj(
     )
     tw_verts = np.vstack(all_tw_verts) if all_tw_verts else np.empty((0, 3))
     tw_faces = (
-        np.vstack(all_tw_faces)
-        if all_tw_faces
-        else np.empty((0, 3), dtype=np.int64)
+        np.vstack(all_tw_faces) if all_tw_faces else np.empty((0, 3), dtype=np.int64)
     )
     tl_verts = np.vstack(all_tl_verts) if all_tl_verts else np.empty((0, 3))
     tl_faces = (
-        np.vstack(all_tl_faces)
-        if all_tl_faces
-        else np.empty((0, 3), dtype=np.int64)
+        np.vstack(all_tl_faces) if all_tl_faces else np.empty((0, 3), dtype=np.int64)
     )
 
     total_bark_verts = len(bark_verts)
@@ -1088,9 +1084,7 @@ def export_forest_obj(
             f"  Extracted: {assembly_path.parent.name} "
             f"({len(trunk_faces)} trunk + {len(tw_f)} twig_wood + {len(tl_f)} twig_leaf faces)"
         )
-        tree_meshes.append(
-            (trunk_verts, trunk_faces, tw_v, tw_f, tl_v, tl_f, x, y, z)
-        )
+        tree_meshes.append((trunk_verts, trunk_faces, tw_v, tw_f, tl_v, tl_f, x, y, z))
 
         if individual_obj:
             tree_dir = assembly_path.parent
