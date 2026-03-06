@@ -128,7 +128,7 @@ def map_grove_to_pve(
     Returns:
         Filled PVE preset dictionary
     """
-    import the_grove_22_core as gc
+    import the_grove_23_core as gc
 
     timings = {} if profile else None
 

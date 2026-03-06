@@ -1,6 +1,6 @@
 # Grove Core API Overview (From Blender Addon Analysis)
 
-Based on analysis of the Blender addon code at `src/the_grove_22/addons/the_grove_22_in_blender/`, this document outlines key Grove Core API usage patterns.
+Based on analysis of the Blender addon code at `src/the_grove_23/addons/the_grove_23_in_blender/`, this document outlines key Grove Core API usage patterns.
 
 ## Core Module Import Pattern
 
@@ -14,7 +14,7 @@ The addon uses a core import function that handles platform-specific module load
 ```python
 def import_core():
     try:
-        return __import__("the_grove_22_core")
+        return __import__("the_grove_23_core")
     except ImportError:
         return import_module(".Fallback", package=__package__)
 ```

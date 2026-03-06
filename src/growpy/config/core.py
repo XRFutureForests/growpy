@@ -82,7 +82,7 @@ class GrowPyConfig:
     profile: bool = False
 
     # [assets]
-    grove_dir: Path = field(default_factory=lambda: Path("src/the_grove_22"))
+    grove_dir: Path = field(default_factory=lambda: Path("src/the_grove_23"))
     resize_textures: bool = False
 
     # [twigs]

@@ -25,7 +25,7 @@ growpy/
 ├── core/              # Forest/Grove/Tree/Skeleton simulation
 ├── io/                # USD export, OBJ export, wind data, PVE mapping
 ├── cli/               # Pipeline CLI scripts
-│   ├── prepare_assets.py         # Step 1: Copy Grove 2.2 assets
+│   ├── prepare_assets.py         # Step 1: Copy Grove 2.3 assets
 │   ├── convert_twigs.py          # Step 2: Convert twigs to USD
 │   ├── create_growth_models.py   # Step 3: Generate height models
 │   └── generate_forest.py        # Step 4: Forest from CSV (includes OBJ export)
@@ -86,7 +86,7 @@ python src/growpy/cli/generate_forest.py
   conda install -c conda-forge bpy
   ```
 
-- **Grove API**: The Grove 2.2 Python bindings
+- **Grove API**: The Grove 2.3 Python bindings
 - **pandas**: For CSV forest data processing
 - **Unreal Engine 5.0+**: For Nanite foliage (5.7+ for Nanite Assemblies)
 
@@ -125,7 +125,7 @@ GrowPy exports are optimized for UE5 Nanite foliage:
 
 See the CLI scripts for complete workflows:
 
-- `cli/prepare_assets.py`: Copy assets from Grove 2.2
+- `cli/prepare_assets.py`: Copy assets from Grove 2.3
 - `cli/convert_twigs.py`: Process all twig blend files to USD
 - `cli/create_growth_models.py`: Generate species growth models
 - `cli/generate_forest.py`: Full forest generation pipeline with USD output

@@ -1,6 +1,6 @@
 # Grove API Attributes - Complete Reference
 
-This document catalogs all available attributes from The Grove 2.2 API and documents which ones are exported by growpy.
+This document catalogs all available attributes from The Grove 2.3 API and documents which ones are exported by growpy.
 
 ## Tree Model Attributes (from `grove.build_models()`)
 
@@ -217,7 +217,7 @@ face_attrs = [attr for attr in dir(model) if attr.startswith("face_attribute_")]
 point_attrs = [attr for attr in dir(model) if attr.startswith("point_attribute_")]
 ```
 
-This means **any new attributes added by Grove 2.2 updates will be automatically exported** without code changes.
+This means **any new attributes added by Grove 2.3 updates will be automatically exported** without code changes.
 
 ---
 
@@ -226,7 +226,7 @@ This means **any new attributes added by Grove 2.2 updates will be automatically
 ### Export with All Attributes
 
 ```python
-import the_grove_22_core as gc
+import the_grove_23_core as gc
 from growpy.io.tree_export import export_tree
 
 grove = gc.Grove()

@@ -3,7 +3,7 @@ import os
 from itertools import groupby
 from pathlib import Path
 
-import the_grove_22_core as gc
+import the_grove_23_core as gc
 
 # Set working directory to script location
 os.chdir(Path(__file__).parent)
@@ -788,5 +788,105 @@ print(f"Grove-level attributes exported to {grove_output_dir / 'grove_attributes
 if enable_smooth:
     print(f"Smoothing applied: {smooth_iterations} iteration(s)")
 
-# %%
+# %% GROVE 2.3 NEW API: SHADE GEOMETRY
+# build_shade_geometry() creates a stylized foliage representation for shade casting.
+# Each 3 vectors form a triangle. Geometry is non-shared (no shared vertices).
+# Three variants: Vector objects, flat floats, or tuples.
+
+print("\n--- Grove 2.3: Shade Geometry ---")
+shade_geo = grove.build_shade_geometry()
+shade_geo_flat = grove.build_shade_geometry_flat()
+shade_geo_tuples = grove.build_shade_geometry_as_tuples()
+
+shade_triangle_count = len(shade_geo) // 3 if shade_geo else 0
+print(f"  Shade geometry: {len(shade_geo)} vectors ({shade_triangle_count} triangles)")
+print(f"  Shade geometry flat: {len(shade_geo_flat)} floats")
+print(f"  Shade geometry tuples: {len(shade_geo_tuples)} tuples")
+
+with open(grove_output_dir / "shade_geometry.txt", "w") as f:
+    f.write("# Shade Geometry (stylized foliage for shade casting)\n")
+    f.write(f"# {shade_triangle_count} triangles, {len(shade_geo)} vectors\n\n")
+    f.write("## Vectors (each 3 form a triangle)\n")
+    for i, v in enumerate(shade_geo[:30]):
+        f.write(f"{i}: ({v.x}, {v.y}, {v.z})\n")
+    if len(shade_geo) > 30:
+        f.write(f"... ({len(shade_geo) - 30} more vectors)\n")
+
+# %% GROVE 2.3 NEW API: SURROUND PREVIEW
+# build_surround_preview() returns line segments for 3D preview of surround objects.
+# Each line is a tuple with two 3D coordinates.
+
+print("\n--- Grove 2.3: Surround Preview ---")
+surround_lines = grove.build_surround_preview()
+print(f"  Surround preview lines: {len(surround_lines)}")
+
+with open(grove_output_dir / "surround_preview.txt", "w") as f:
+    f.write("# Surround Preview (3D line segments)\n")
+    f.write(f"# {len(surround_lines)} lines\n\n")
+    for i, line in enumerate(surround_lines[:20]):
+        f.write(f"{i}: {line}\n")
+    if len(surround_lines) > 20:
+        f.write(f"... ({len(surround_lines) - 20} more lines)\n")
+
+# %% GROVE 2.3 NEW API: GROVE SERIALIZATION
+# grove_to_json_string() / grove_from_json_string() for simulation persistence.
+# The JSON contains the full tree structure (nodes, radii, properties).
+
+print("\n--- Grove 2.3: Grove Serialization ---")
+import json
+
+grove_json_string = gc.io.grove_to_json_string(grove)
+grove_dict = json.loads(grove_json_string)
+
+print(f"  Serialized grove JSON: {len(grove_json_string)} chars")
+print(f"  Trees in serialized grove: {len(grove_dict.get('trees', []))}")
+print(f"  Top-level keys: {list(grove_dict.keys())}")
+
+# Demonstrate round-trip: load back from JSON
+grove_restored = gc.io.grove_from_json_string(grove_json_string)
+print(f"  Round-trip restore: success")
+
+with open(grove_output_dir / "grove_serialized_sample.json", "w") as f:
+    # Write a truncated sample (first 10000 chars) for inspection
+    f.write(grove_json_string[:10000])
+    if len(grove_json_string) > 10000:
+        f.write(f"\n\n... truncated ({len(grove_json_string)} total chars)")
+
+# %% GROVE 2.3 NEW API: SVG EXPORT
+# grove_to_svg_string() renders a 2D sketch of the trees as SVG.
+# Experimental feature - renders from flat front view.
+
+print("\n--- Grove 2.3: SVG Export ---")
+svg_string = gc.io.grove_to_svg_string(grove)
+print(f"  SVG string: {len(svg_string)} chars")
+
+with open(grove_output_dir / "grove_sketch.svg", "w") as f:
+    f.write(svg_string)
+print(f"  SVG exported to {grove_output_dir / 'grove_sketch.svg'}")
+
+# %% GROVE 2.3 NEW API: USD EXPORT (via API)
+# model_to_usda_string() converts a single Model to USDA with twig PointInstancer.
+# The USDA contains mesh, UVs, attributes, and twig instancers.
+# Twig prototype structure expected: /Twigs/{LongTwigs,ShortTwigs,UpwardTwigs,DeadTwigs}/
+
+print("\n--- Grove 2.3: USDA Export via API ---")
+for tree_idx, tree_model in enumerate(models):
+    usda_string = gc.io.model_to_usda_string(tree_model)
+    usda_path = grove_output_dir / f"tree_{tree_idx}" / "tree_api_export.usda"
+    usda_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(usda_path, "w") as f:
+        f.write(usda_string)
+    print(f"  Tree {tree_idx} USDA: {len(usda_string)} chars -> {usda_path}")
+
+# OBJ export via API
+print("\n--- Grove 2.3: OBJ Export via API ---")
+for tree_idx, tree_model in enumerate(models):
+    obj_string = gc.io.model_to_obj_string(tree_model)
+    obj_path = grove_output_dir / f"tree_{tree_idx}" / "tree_api_export.obj"
+    with open(obj_path, "w") as f:
+        f.write(obj_string)
+    print(f"  Tree {tree_idx} OBJ: {len(obj_string)} chars -> {obj_path}")
+
+print("\n\nGrove 2.3 API exploration complete!")
+
 # %%

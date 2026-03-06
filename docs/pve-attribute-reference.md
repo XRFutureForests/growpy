@@ -488,7 +488,7 @@ Key implementation files:
 
 ## Grove to PVE Mapping
 
-GrowPy converts Grove 2.2 seed.json parameters to PVE attributes. The key challenge is that Grove uses simple scalar parameters while PVE uses curve-based arrays.
+GrowPy converts Grove 2.3 seed.json parameters to PVE attributes. The key challenge is that Grove uses simple scalar parameters while PVE uses curve-based arrays.
 
 ### Compatibility Matrix
 

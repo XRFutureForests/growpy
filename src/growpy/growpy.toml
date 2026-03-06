@@ -22,9 +22,9 @@ verbose = true
 profile = true
 
 [assets]
-# Path to The Grove 2.2 installation directory
+# Path to The Grove 2.3 installation directory
 # Must contain presets/, twigs/, and textures/ subdirectories
-grove_dir = "src/the_grove_22"
+grove_dir = "src/the_grove_23"
 # Resize textures to power-of-2 for Unreal Engine virtual textures
 # Adds significant processing time; only needed if Grove textures are not already power-of-2
 resize_textures = true

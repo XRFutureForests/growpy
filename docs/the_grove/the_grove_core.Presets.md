@@ -5,13 +5,13 @@ For presets, The Grove uses the ubiquitous file format JSON. This standard forma
 Here’s how to write presets:
 
 ```python
-import the_grove_22_core
+import the_grove_23_core
 import json
 
 preset_file = open('Ash.seed.json'), 'w')
 preset_dictionary = {}
 
-grove = the_grove_22_core.Grove()
+grove = the_grove_23_core.Grove()
 props = grove.get_properties()
 
 for prop in dir(props):
@@ -33,14 +33,14 @@ grove.set_properties(props)
 Or if you want to do it the manual way that is the opposite of the example of writing presets:
 
 ```python
-import the_grove_22_core
+import the_grove_23_core
 import json
 
 path = dirname(__file__)
 path = join(path, 'Ash.seed.json')
 preset_dictionary = {}
 
-grove = the_grove_22_core.Grove()
+grove = the_grove_23_core.Grove()
 props = grove.get_properties() # Beware, this makes a copy!
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Copy Grove 2.2 assets (presets, twigs, textures) for species in CSV.
+"""Copy Grove assets (presets, twigs, textures) for species in CSV.
 
 Step 1 of the pipeline. Defaults from growpy.toml [assets]. See docs/cli-reference.md.
 """
@@ -216,7 +216,7 @@ def load_species_csv(
 def main():
     """CSV-driven asset preparation - only copy assets for species in CSV."""
     parser = argparse.ArgumentParser(
-        description="Copy assets from The Grove 2.2 to GrowPy assets directory (CSV-driven)",
+        description="Copy assets from The Grove 2.3 to GrowPy assets directory (CSV-driven)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -250,7 +250,7 @@ CSV Format Support:
         "--grove-dir",
         type=Path,
         default=None,
-        help="Path to The Grove 2.2 directory (default: from config)",
+        help="Path to The Grove 2.3 directory (default: from config)",
     )
     parser.add_argument(
         "--csv",

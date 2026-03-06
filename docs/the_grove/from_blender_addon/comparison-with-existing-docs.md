@@ -9,7 +9,7 @@ This document compares the insights gathered from the Blender addon analysis wit
 ```python
 def import_core():
     try:
-        return __import__("the_grove_22_core")  
+        return __import__("the_grove_23_core")  
     except ImportError:
         return import_module(".Fallback", package=__package__)
 ```

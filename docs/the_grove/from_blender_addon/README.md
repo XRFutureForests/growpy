@@ -1,6 +1,6 @@
 # Grove API Insights from Blender Addon Analysis
 
-This directory contains documentation extracted from the analysis of The Grove 2.2 Blender addon source code. These documents reveal production-level API usage patterns, advanced features, and implementation details not found in the basic Grove Core documentation.
+This directory contains documentation extracted from the analysis of The Grove 2.3 Blender addon source code. These documents reveal production-level API usage patterns, advanced features, and implementation details not found in the basic Grove Core documentation.
 
 ## Documents in this Collection
 

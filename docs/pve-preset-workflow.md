@@ -755,6 +755,6 @@ PVE presets can work with Dynamic Wind in Unreal:
 ## See Also
 
 - [PVE Attribute Reference](pve-attribute-reference.md) - Detailed explanation of all PVE attributes (maxBranchNumber, compound leaves, pscale, etc.)
-- [Grove Preset Reference](grove-preset-reference.md) - Grove 2.2 preset parameter reference
+- [Grove Preset Reference](grove-preset-reference.md) - Grove 2.3 preset parameter reference
 - [GrowPy Functional Description](growpy-functional-description.md) - Complete package architecture and data flow
 - [CLI Reference](cli-reference.md) - Complete command reference

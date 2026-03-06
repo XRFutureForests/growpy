@@ -81,11 +81,11 @@ The file system integrates with Blender's file browser:
 ```python
 # File import operator
 elif action == 'import':
-    bpy.ops.the_grove_22.import_grove("INVOKE_DEFAULT")
+    bpy.ops.the_grove_23.import_grove("INVOKE_DEFAULT")
 
 # File export operator  
 elif action == 'export':
-    bpy.ops.the_grove_22.export_grove("INVOKE_DEFAULT")
+    bpy.ops.the_grove_23.export_grove("INVOKE_DEFAULT")
 
 # Recent file access
 elif action == 'import_recent_1':

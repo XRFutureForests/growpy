@@ -13,7 +13,7 @@ Narrow-leaved ash,narrow_leaved_ash,Fraxinus angustifolia,Oleaceae - Narrow-leav
 One-leaved ash,one_leaved_ash,Fraxinus excelsior 'Diversifolia',Oleaceae - One-leaved ash.seed.json,OneLeavedAshTwig,Oleaceae_One-leaved_ash,#7f7266,#54af49,,Ash70.jpg
 Downy birch,downy_birch,Betula pubescens,Betulaceae - Downy birch.seed.json,PaperBirchTwig,Betulaceae_Downy_birch,#e5e5d8,#66bf59,,Birch70.jpg
 Silver birch,silver_birch,Betula pendula,Betulaceae - Silver birch.seed.json,PaperBirchTwig,Betulaceae_Silver_birch,#f2f2e5,#6bc660,"Birch,White birch",Birch70.jpg
-Paper birch,paper_birch,Betula papyrifera,Betulaceae - Paper birch.seed.json,PaperBirchTwig,Betulaceae_Paper_birch,#eaeae0,#60b751,,Birch70.jpg
+Paper birch,paper_birch,Betula papyrifera,Betulaceae - Paper Birch.seed.json,PaperBirchTwig,Betulaceae_Paper_birch,#eaeae0,#60b751,,Birch70.jpg
 Black alder,black_alder,Alnus glutinosa,Betulaceae - Alder.seed.json,BlackAlderTwig,Betulaceae_Alder,#4c3f33,#59a53f,,BlackAlder35.jpg
 Hornbeam,hornbeam,Carpinus betulus,Betulaceae - Hornbeam.seed.json,HazelTwig,Betulaceae_Hornbeam,#8c7f72,#4c9938,,Beech60.jpg
 Hazel,hazel,Corylus avellana,Betulaceae - Hazel.seed.json,HazelTwig,Betulaceae_Hazel,#7f7266,#51a547,,Beech60.jpg
@@ -38,7 +38,7 @@ Lodgepole pine,lodgepole_pine,Pinus contorta,Pinaceae - Lodgepole pine.seed.json
 Longleaf pine,longleaf_pine,Pinus palustris,Pinaceae - Longleaf pine.seed.json,ScotsPineTwig,Pinaceae_Longleaf_pine,#997259,#38662d,,Fir70.jpg
 Monterey pine,monterey_pine,Pinus radiata,Pinaceae - Monterey pine.seed.json,ScotsPineTwig,Pinaceae_Monterey_pine,#7f664c,#336626,,Fir70.jpg
 Ponderosa pine,ponderosa_pine,Pinus ponderosa,Pinaceae - Ponderosa pine.seed.json,ScotsPineTwig,Pinaceae_Ponderosa_pine,#a57f59,#3f7233,,Fir70.jpg
-Stone pine,stone_pine,Pinus pinea,Pinaceae - Stone pine.seed.json,ScotsPineTwig,Pinaceae_Stone_pine,#7f664c,#336626,,Fir70.jpg
+Stone pine,stone_pine,Pinus pinea,Pinaceae - Mediterranean stone pine.seed.json,ScotsPineTwig,Pinaceae_Stone_pine,#7f664c,#336626,,Fir70.jpg
 Western hemlock,western_hemlock,Tsuga heterophylla,Pinaceae - Western hemlock.seed.json,PacificSilverFirTwig,Pinaceae_Western_hemlock,#7f6659,#265919,,Fir70.jpg
 Western redcedar,western_redcedar,Thuja plicata,Cupressaceae - Western redcedar.seed.json,WesternRedCedarTwig,Cupressaceae_Western_redcedar,#99664c,#1e4c14,,BaldCypress80.jpg
 Swamp cypress,swamp_cypress,Taxodium distichum,Cupressaceae - Swamp cypress.seed.json,—,Cupressaceae_Swamp_cypress,#7f664c,#4c9933,,BaldCypress80.jpg
@@ -54,4 +54,4 @@ Magnolia,magnolia,Magnolia x soulangeana,Magnoliaceae - Magnolia.seed.json,Sauce
 Blue gum,blue_gum,Eucalyptus globulus,Myrtaceae - Blue gum.seed.json,BlueGumTwig,Myrtaceae_Blue_gum,#d8ccbf,#4c9933,,SpottedGum50.jpg
 Manna gum,manna_gum,Eucalyptus viminalis,Myrtaceae - Manna gum.seed.json,MannaGumTwig,Myrtaceae_Manna_gum,#ccbfb2,#47932d,,RedGum70.jpg
 Black tupelo,black_tupelo,Nyssa sylvatica,Nyssaceae - Black tupelo.seed.json,—,Nyssaceae_Black_tupelo,#4c3f33,#4c9938,,Ash70.jpg
-London plane tree,london_plane_tree,Platanus x acerifolia,Platanaceae - London plane tree.seed.json,—,Platanaceae_London_plane_tree,#998c7f,#59b24c,,PlaneTree21.jpg
+London plane tree,london_plane_tree,Platanus x acerifolia,Platanaceae - London plane.seed.json,—,Platanaceae_London_plane_tree,#998c7f,#59b24c,,PlaneTree21.jpg

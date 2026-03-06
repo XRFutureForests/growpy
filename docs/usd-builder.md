@@ -176,7 +176,7 @@ All Grove attributes are preserved as USD primvars:
 **Before (using Grove's USDA string):**
 
 ```python
-from the_grove_22_core import grove_core as gc
+from the_grove_23_core import grove_core as gc
 
 models = grove.build_models(build_params)
 model = models[0]
@@ -357,7 +357,7 @@ Potential enhancements to the USD builder:
 
 ## References
 
-- Grove 2.2 API documentation
+- Grove 2.3 API documentation
 - USD (Universal Scene Description) documentation
 - UsdSkel (USD Skeleton) specification
 - Unreal Engine USD import guidelines

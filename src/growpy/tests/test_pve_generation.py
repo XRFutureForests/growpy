@@ -20,7 +20,7 @@ def test_pve_generation():
     print()
 
     try:
-        import the_grove_22_core as gc
+        import the_grove_23_core as gc
 
         from growpy import create_grove
         from growpy.io.pve_grove_mapper import generate_pve_from_grove

@@ -1,7 +1,7 @@
 """
 GrowPy - Grove API Integration for Unreal Engine 5 Nanite.
 
-A Python package for generating procedural forests using The Grove 2.2 API
+A Python package for generating procedural forests using The Grove 2.3 API
 and exporting to USD/USDA formats optimized for Unreal Engine 5 Nanite.
 
 Quick Start:
@@ -26,7 +26,7 @@ Main Components:
     Config:     GrowPyConfig, get_config
 
 CLI Tools:
-    prepare_assets.py          - Copy assets from Grove 2.2
+    prepare_assets.py          - Copy assets from Grove 2.3
     convert_twigs.py           - Convert .blend twigs to USD
     create_growth_models.py    - Generate species growth models
     generate_forest.py         - Full forest generation pipeline
@@ -37,13 +37,13 @@ Documentation:
     See docs/GETTING_STARTED.md for quick setup
 
 Requirements:
-    - The Grove 2.2 (commercial license required)
+    - The Grove 2.3 (commercial license required)
     - Python 3.8+
     - bpy module (conda install -c conda-forge bpy)
     - pandas, numpy, scikit-learn, matplotlib
 """
 
-# Pre-import bpy if available to avoid DLL conflicts with the_grove_22_core
+# Pre-import bpy if available to avoid DLL conflicts with the_grove_23_core
 try:
     import bpy as _bpy_preload
 except (ImportError, OSError):

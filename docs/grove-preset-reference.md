@@ -1,6 +1,6 @@
-# The Grove 2.2 Preset Settings Reference
+# The Grove 2.3 Preset Settings Reference
 
-This document provides a comprehensive reference for all preset parameters used in The Grove 2.2 tree generation system. These parameters are stored in `.seed.json` files and define the natural growth characteristics of different tree species.
+This document provides a comprehensive reference for all preset parameters used in The Grove 2.3 tree generation system. These parameters are stored in `.seed.json` files and define the natural growth characteristics of different tree species.
 
 ## Overview
 
@@ -536,6 +536,6 @@ grove.simulate(flushes=15)
 
 ## References
 
-- The Grove 2.2 Python API Documentation
+- The Grove 2.3 Python API Documentation
 - The Grove Blender Add-on Properties System
 - The Grove Houdini Digital Asset Documentation

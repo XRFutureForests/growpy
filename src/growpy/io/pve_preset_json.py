@@ -38,7 +38,7 @@ def generate_pve_preset_json(
         ```python
         from growpy import create_grove
         from growpy.io.pve_preset_json import generate_pve_preset_json
-        import the_grove_22_core as gc
+        import the_grove_23_core as gc
 
         grove = create_grove("European Beech")
         grove.add_new_tree(gc.Vector(0,0,0), gc.Vector(0,0,1), 0)
@@ -51,7 +51,7 @@ def generate_pve_preset_json(
         )
         ```
     """
-    import the_grove_22_core as gc
+    import the_grove_23_core as gc
 
     # Get Grove properties (growth parameters)
     properties = grove.get_properties()
@@ -96,7 +96,7 @@ def _extract_global_attributes(
         properties: Grove properties
         skeleton: Optional pre-built skeleton to avoid redundant API calls
     """
-    import the_grove_22_core as gc
+    import the_grove_23_core as gc
 
     # Note: Many of these are Grove-specific and may need adjustment for PVE
     # Some parameters are curves (arrays), others are single values
@@ -569,7 +569,7 @@ def generate_pve_preset_for_species(
     Returns:
         List of generated JSON file paths
     """
-    import the_grove_22_core as gc
+    import the_grove_23_core as gc
 
     from growpy import create_grove
 

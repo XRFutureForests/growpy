@@ -25,7 +25,7 @@
 
 ## Package Overview
 
-GrowPy is a Python package that converts The Grove 2.2 procedural tree generation assets into Unreal Engine 5-compatible USD (Universal Scene Description) format with Nanite mesh support. It provides a complete 4-step pipeline for:
+GrowPy is a Python package that converts The Grove 2.3 procedural tree generation assets into Unreal Engine 5-compatible USD (Universal Scene Description) format with Nanite mesh support. It provides a complete 4-step pipeline for:
 
 1. **Asset Preparation**: Copying and standardizing Grove assets
 2. **Twig Conversion**: Converting Blender twig meshes to USD format
@@ -82,7 +82,7 @@ prepare_assets.py → convert_twigs.py → create_growth_models.py → generate_
 
 ### 4. External API Integration
 
-- **The Grove 2.2 Core**: C++ library via Python bindings (the_grove_22_core)
+- **The Grove 2.3 Core**: C++ library via Python bindings (the_grove_23_core)
 - **Blender Python API**: Direct mesh manipulation and USD export
 - **Pixar USD**: Universal Scene Description file format
 
@@ -92,7 +92,7 @@ prepare_assets.py → convert_twigs.py → create_growth_models.py → generate_
 
 ### Script 1: prepare_assets.py
 
-**Purpose**: Copy and standardize Grove 2.2 assets for GrowPy processing
+**Purpose**: Copy and standardize Grove 2.3 assets for GrowPy processing
 
 #### Processing Steps
 
@@ -974,7 +974,7 @@ Input CSV (x, y, species, height)
 ```
 config/ (independent, no internal dependencies)
     ↓
-core/ (depends on config, the_grove_22_core)
+core/ (depends on config, the_grove_23_core)
     ↓
 io/ (depends on config, core, pxr USD, bpy)
     ↓
@@ -982,7 +982,7 @@ cli/ (orchestrates all layers)
 ```
 
 **External Dependencies**:
-- `the_grove_22_core`: C++ Grove API (Python bindings)
+- `the_grove_23_core`: C++ Grove API (Python bindings)
 - `bpy`: Blender Python API
 - `pxr`: Pixar USD
 - `pandas`: CSV and DataFrame
@@ -1150,7 +1150,7 @@ def apply_to_grove(grove, current_cycle, total_cycles):
 
 ## External Dependencies
 
-### The Grove 2.2 Core (the_grove_22_core)
+### The Grove 2.3 Core (the_grove_23_core)
 
 **Type**: C++ library with Python bindings (CFFI or ctypes)
 

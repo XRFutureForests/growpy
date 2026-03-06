@@ -37,7 +37,7 @@ The first line in the example imports `the_grove_core_macos`, which works on App
 
 
 Alternatively, you can copy the library for your OS and rename it to `the_grove_core.so` (or `the_grove_core.pyd` on Windows). Now you can simply `import the_grove_core`.
-  * From release 2.2, the separate modules are now wrapped in a parent module that makes it easy to import the module across system architectures and operating systems, simply `import the_grove_22_core` and the appropriate module is dynamically loaded.
+  * From release 2.2, the separate modules are now wrapped in a parent module that makes it easy to import the module across system architectures and operating systems, simply `import the_grove_23_core` and the appropriate module is dynamically loaded.
 
 
 

@@ -1,7 +1,7 @@
 """
 Core simulation logic for GrowPy.
 
-Forest/Grove/Tree hierarchy for multi-species tree generation using The Grove 2.2 API.
+Forest/Grove/Tree hierarchy for multi-species tree generation using The Grove 2.3 API.
 
 Key Functions:
     create_forest()              Create forest from CSV data

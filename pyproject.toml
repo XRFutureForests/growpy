@@ -25,11 +25,11 @@ export = [
 ]
 
 [tool.setuptools]
-packages = ["growpy", "the_grove_22_core"]
-package-dir = {"" = "src", "the_grove_22_core" = "src/the_grove_22/modules/the_grove_22_core"}
+packages = ["growpy", "the_grove_23_core"]
+package-dir = {"" = "src", "the_grove_23_core" = "src/the_grove_23/modules/the_grove_23_core"}
 
 [tool.setuptools.package-data]
 growpy = ["config/*.csv"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src", "src/the_grove_22/modules"]
+pythonpath = ["src", "src/the_grove_23/modules"]

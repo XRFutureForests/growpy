@@ -4,7 +4,7 @@ import pickle
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
-import the_grove_22_core as gc
+import the_grove_23_core as gc
 
 from ..config import get_config
 

@@ -102,11 +102,54 @@ When the tree object gets moved around by the user in a target application, the 
 
 ### add_new_tree(position, direction, delay)
 
-Add a new tree to the current grove.
-  * position (Vector) - Where to plant the new tree.
-  * direction (Vector) - Add an initial direction to the new tree.
-  * delay (int) - The number of years to wait before growing.
+Add a new tree to the current grove. **Note**: creating a new Grove already creates a new tree at the origin, you can delete this tree with `Grove.clear_trees()` before adding a new tree at a specific location.
+  * position (Vector) - Where to plant the new tree, for example: `the_grove_23_core.Vector(0.0, 0.0, 0.0)`.
+  * direction (Vector) - Add an initial direction to the new tree. Very important is that this **direction also determines the length** of the first internode. A length of 0.1 is a good default for this. Do not use a normalized direction vector, because this will create a 1.0 meter internode that will collapse the tree. Here's an example for a tree growing straight up: `the_grove_23_core.Vector(0.0, 0.0, 0.1)`.
+  * delay (int) - The number of years to wait before growing. Use 0 to start growing immediately.
 
 
+
+### build_shade_geometry -> [Vector]
+
+*New in Grove 2.3.*
+Create a stylized representation of the tree's foliage for casting shade.
+Returns a list of vectors, where each 3 vectors form a triangle. The shade geometry consists of only triangles, and these do not share points.
+
+### build_shade_geometry_flat -> [Float]
+
+*New in Grove 2.3.*
+Same as above. Returns a flat list of floating point values.
+
+### build_shade_geometry_as_tuples -> [(Float, Float, Float)]
+
+*New in Grove 2.3.*
+Same as above. Returns a list of tuples.
+
+### remember_orig_pos()
+
+*New in Grove 2.3.*
+Very specific function used by the Blender add-on to prevent twigs from flipping during wind animation. For an example of its usage, check OperatorAnimateWind.py of the Blender add-on.
+
+### build_surround_preview() -> [((Float, Float, Float), (Float, Float, Float))]
+
+*New in Grove 2.3.*
+Build a preview of the surround object. Returns a list of lines, where each line is a tuple with two 3D coordinates, where each coordinate is a tuple of 3 floats.
+
+### build_surround_preview_2d(surround_height, perspective_matrix, view_width, view_height)
+
+*New in Grove 2.3.*
+Create a 2D sketch of the surround object for the current view.
+Parameters:
+  * surround_height (Float)
+  * perspective_matrix - 4x4 tuple of floats
+  * view_width (Float)
+  * view_height (Float)
+
+Returns a tuple with a list of 2D coordinate tuples (points) and a list of triangle index tuples (indices).
+
+### manual_prune([coords: float])
+
+*Changed in Grove 2.3.* (was `manual_prune(RayTree)` in 2.2)
+Prune every branch where it intersects with the provided geometry. The geometry provided must consist of triangles only, represented by a flat list of floating point numbers. Where each 3 numbers are a 3D coordinate, and each 9 values create a triangle.
 
 #the grove/the grove core/python api#

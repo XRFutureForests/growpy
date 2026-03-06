@@ -71,7 +71,18 @@ Parameters:
 ### model_to_usda_string(Model)  String
 
 studio edition feature
-Convert a single tree model to a USD model. You can write the returned string directly to a .usda file. The USD model contains the mesh, UV maps and attributes. When you import a USD file in Houdini, be sure to unpack the geometry to polygons upon import, to see the attributes. Also, at the time of writing, Blender 3.5.0’s USD importer does not import custom attributes other than the UV map.
+Convert a single tree model to a USD model. You can write the returned string directly to a .usda file. This USD file contains the mesh, UV maps, attributes and twig instancers. When you import a USD file in Houdini, be sure to unpack the geometry to polygons upon import, to see the attributes.
+
+The USDA exporter sets up a pointInstancer to duplicate twigs as lightweight instances with positions and orientation quaternions. The exporter writes text-based `.usda` format. The instancer looks for twig prototypes in `./twig.usda` with the following structure:
+
+```
+root/
+    Twigs/
+        LongTwigs/
+        ShortTwigs/
+        UpwardTwigs/
+        DeadTwigs/
+```
 
 Note that while `Grove.build` returns a list of all built tree models in the current grove, this function only takes one tree model at a time. Here’s an example of how to write each tree to a separate .usda files:
 

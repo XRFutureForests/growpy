@@ -1,6 +1,6 @@
 # GitHub Copilot Custom Instructions - The Grove Project
 
-This project is **The Grove** - a simplified tree generation system using The Grove 2.2 with FBX export workflow for Unreal Engine 5 Nanite integration.
+This project is **The Grove** - a simplified tree generation system using The Grove 2.3 with FBX export workflow for Unreal Engine 5 Nanite integration.
 
 ## Project-Specific Context
 
@@ -12,14 +12,14 @@ This project is **The Grove** - a simplified tree generation system using The Gr
 
 ### Key Components
 - **`src/growpy/`**: Main Python package with modular structure (config/, core/, io/, cli/, utils/)
-- **`src/the_grove_22/`**: The Grove 2.2 Python API integration (external dependency)
+- **`src/the_grove_23/`**: The Grove 2.3 Python API integration (external dependency)
 - **`data/assets/`**: Tree assets (presets/, textures/, twigs/, growth_models/)
 - **Pipeline Scripts**: Four-step workflow in `src/growpy/cli/`
 
 ### Critical Dependencies
-- **The Grove 2.2**: Commercial 3D tree modeling software with Python API
+- **The Grove 2.3**: Commercial 3D tree modeling software with Python API
 - **bpy module**: Blender Python API for FBX export (install via conda-forge)
-- **Environment**: `environment.yml` with PYTHONPATH set to `./src:./src/the_grove_22/modules`
+- **Environment**: `environment.yml` with PYTHONPATH set to `./src:./src/the_grove_23/modules`
 
 ## Development Environment
 
@@ -34,7 +34,7 @@ This project is **The Grove** - a simplified tree generation system using The Gr
 ### The Four-Step Pipeline
 Always run from conda environment (`conda activate the-grove`):
 
-1. **Asset Preparation**: `python src/growpy/cli/prepare_assets.py` - Copy assets from Grove 2.2
+1. **Asset Preparation**: `python src/growpy/cli/prepare_assets.py` - Copy assets from Grove 2.3
 2. **Twig Export**: `python src/growpy/cli/convert_twigs.py` - Convert .blend to USD
 3. **Growth Models**: `python src/growpy/cli/create_growth_models.py` - Generate height prediction models
 4. **Forest Generation**: `python src/growpy/cli/generate_forest.py` - Multi-species simulation with export
@@ -51,15 +51,15 @@ conda install -c conda-forge bpy pandas numpy scikit-learn matplotlib tqdm
 pip install -e .
 
 # Check dependencies
-python -c "import the_grove_22_core.grove_core as gc; print('Grove API ready')"
+python -c "import the_grove_23_core.grove_core as gc; print('Grove API ready')"
 ```
 
-## Grove 2.2 Integration Patterns
+## Grove 2.3 Integration Patterns
 
 ### Importing Grove API
 ```python
 # Always use this import pattern
-from growpy.utils.dependencies import gc  # Grove core (the_grove_22_core.grove_core)
+from growpy.utils.dependencies import gc  # Grove core (the_grove_23_core.grove_core)
 
 # Grove API key methods
 grove = gc.Grove()
@@ -110,11 +110,11 @@ export_twigs_from_blend(blend_file, output_dir)
 - **Template Compliance**: This project follows a strict template structure - NEVER deviate from it
 - **Standard Folders**: `data/`, `src/`, `docs/`, `.config/`, `.vscode/`, `.github/`
 - **Source Code**: Package-style structure in `src/growpy/` (modular: config/, core/, io/, cli/, utils/)
-- **Grove 2.2 Integration**: External API at `src/the_grove_22/modules/` (PYTHONPATH configured)
+- **Grove 2.3 Integration**: External API at `src/the_grove_23/modules/` (PYTHONPATH configured)
 - **Asset Management**: `data/assets/` contains species presets, textures, twigs, growth_models
 - **Environment**: Project-specific conda environment named `the-grove`
 - **Configuration Files**: Species lookup in `src/growpy/config/tree_asset_lookup.csv`
-- **PYTHONPATH Critical**: Environment sets `./src:./src/the_grove_22/modules` for Grove API access
+- **PYTHONPATH Critical**: Environment sets `./src:./src/the_grove_23/modules` for Grove API access
 
 ### Key Directory Structure
 ```
@@ -125,9 +125,9 @@ the-grove/
 │   ├── io/                 # FBX/USD export functionality
 │   ├── cli/                # Four pipeline scripts
 │   └── utils/              # Shared utilities & dependencies
-├── src/the_grove_22/        # Grove 2.2 API (external)
+├── src/the_grove_23/        # Grove 2.3 API (external)
 │   └── modules/            # Python API modules
-├── data/assets/            # Tree assets from Grove 2.2
+├── data/assets/            # Tree assets from Grove 2.3
 │   ├── presets/           # Species .seed.json files
 │   ├── textures/          # Bark/leaf textures  
 │   ├── twigs/             # .blend twig files

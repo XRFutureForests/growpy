@@ -1,4 +1,4 @@
-"""Species growth analysis for The Grove 2.2 species presets.
+"""Species growth analysis for The Grove 2.3 species presets.
 
 This module provides the SpeciesGrowthAnalyzer class for generating height curves
 and growth prediction models from Grove species presets.
@@ -22,9 +22,9 @@ from tqdm import tqdm
 # Add src to path for Grove imports
 src_path = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(src_path))
-sys.path.insert(0, str(src_path / "the_grove_22" / "modules"))
+sys.path.insert(0, str(src_path / "the_grove_23" / "modules"))
 
-import the_grove_22_core as gc
+import the_grove_23_core as gc
 
 from .plotting import plot_growth_curves
 

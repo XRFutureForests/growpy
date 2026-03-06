@@ -139,7 +139,7 @@ python src/growpy/cli/generate_forest.py forest.csv --formats usda --no-nanite-a
 from pathlib import Path
 from growpy import create_grove
 from growpy.io.blender_export import export_grove_tree_as_usda_native
-import the_grove_22_core as gc
+import the_grove_23_core as gc
 
 # Create and simulate grove
 grove = create_grove("European Beech")

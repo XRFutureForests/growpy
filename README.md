@@ -1,6 +1,6 @@
 # GrowPy - Procedural Forest Generation
 
-Clean, simplified tree generation system using The Grove 2.2 optimized for **Unreal Engine 5 Nanite workflows**.
+Clean, simplified tree generation system using The Grove 2.3 optimized for **Unreal Engine 5 Nanite workflows**.
 
 **Documentation:**
 
@@ -9,7 +9,7 @@ Clean, simplified tree generation system using The Grove 2.2 optimized for **Unr
 - **[Naming Conventions](docs/naming-conventions.md)** - Species, file, and directory naming standards
 - **[PVE Preset Workflow](docs/pve-preset-workflow.md)** - Procedural Vegetation Editor integration
 - **[PVE Attribute Reference](docs/pve-attribute-reference.md)** - PVE attributes and Grove mapping
-- **[Grove 2.2 API](docs/the_grove/)** - Grove core API documentation
+- **[Grove 2.3 API](docs/the_grove/)** - Grove core API documentation
 
 ## Quick Start
 
@@ -35,7 +35,7 @@ All CLI scripts read defaults from the central config file [`src/growpy/growpy.t
 The pipeline has 4 sequential steps. Run them in order:
 
 ```bash
-# Step 1: Copy and standardize Grove 2.2 assets (presets, twigs, textures)
+# Step 1: Copy and standardize Grove 2.3 assets (presets, twigs, textures)
 python src/growpy/cli/prepare_assets.py
 
 # Step 2: Convert twig .blend files to USD format
@@ -153,7 +153,7 @@ growpy/
 ├── src/
 │   ├── growpy/                    # Main Python package
 │   │   ├── cli/                   # Command-line scripts
-│   │   │   ├── prepare_assets.py         # Step 1: Copy Grove 2.2 assets
+│   │   │   ├── prepare_assets.py         # Step 1: Copy Grove 2.3 assets
 │   │   │   ├── convert_twigs.py          # Step 2: Convert twigs to USD
 │   │   │   ├── create_growth_models.py   # Step 3: Generate height models
 │   │   │   └── generate_forest.py        # Step 4: Forest from CSV (includes OBJ export)
@@ -161,9 +161,9 @@ growpy/
 │   │   ├── core/                  # Forest/Grove/Tree/Skeleton simulation
 │   │   ├── io/                    # USD export, OBJ export, wind JSON, PVE mapping
 │   │   └── utils/                 # Analysis, profiling, plotting
-│   └── the_grove_22/              # Grove 2.2 Python API
+│   └── the_grove_23/              # Grove 2.3 Python API
 ├── data/
-│   ├── assets/                    # Copied from Grove 2.2 (step 1-3 output)
+│   ├── assets/                    # Copied from Grove 2.3 (step 1-3 output)
 │   │   ├── presets/              # Species .seed.json files
 │   │   ├── textures/             # Bark and leaf textures
 │   │   ├── twigs/                # Twig .blend and converted .usda files
@@ -171,7 +171,7 @@ growpy/
 │   ├── input/                     # Your CSV files
 │   └── output/                    # Generated forests
 ├── docs/                          # Project documentation
-│   └── the_grove/                # Grove 2.2 API reference
+│   └── the_grove/                # Grove 2.3 API reference
 │   (+ cli-reference, coordinate systems, naming conventions, PVE guides)
 ├── pyproject.toml                 # Python package configuration
 └── environment.yml                # Conda environment definition
@@ -185,7 +185,7 @@ The pipeline consists of 4 sequential CLI scripts that produce output consumed b
 prepare_assets.py --> convert_twigs.py --> create_growth_models.py --> generate_forest.py
 ```
 
-1. **Prepare Assets** - Copy and standardize presets, textures, and twigs from Grove 2.2
+1. **Prepare Assets** - Copy and standardize presets, textures, and twigs from Grove 2.3
 2. **Convert Twigs** - Convert .blend twig files to USD with silhouette-optimized mesh densification
 3. **Create Growth Models** - Simulate growth curves and generate height-to-age prediction models
 4. **Generate Forest** - Multi-species forest simulation with USD Nanite assembly export (includes OBJ/MTL for Helios++ when `helios.export_obj = true`)
@@ -350,7 +350,7 @@ data/
 
 ### Customizing Species Presets
 
-After Step 1 copies the presets from The Grove 2.2, you can edit the `.seed.json` files in `data/assets/presets/` to adjust growth behavior per species. Each preset contains approximately 60 parameters controlling branch structure, growth dimensions, environmental responses, pruning, and twig placement.
+After Step 1 copies the presets from The Grove 2.3, you can edit the `.seed.json` files in `data/assets/presets/` to adjust growth behavior per species. Each preset contains approximately 60 parameters controlling branch structure, growth dimensions, environmental responses, pruning, and twig placement.
 
 See the [Grove Preset Reference](docs/grove-preset-reference.md) for a complete description of all parameters and GrowPy's cycle-based curve extensions.
 
@@ -376,8 +376,8 @@ data/output/forest/
 
 ## Requirements
 
-- **The Grove 2.2** - Commercial tree modeling software with Python API
-- **Python 3.11** - Via conda/mamba environment
+- **The Grove 2.3** - Commercial tree modeling software with Python API
+- **Python 3.9-3.13** - Via conda/mamba environment
 - **bpy module** - Blender Python API (bundled USD, MaterialX, OpenImageIO)
 
 ### Key Dependencies
@@ -473,7 +473,7 @@ For direct grove-level control:
 
 ```python
 from growpy import create_grove
-import the_grove_22_core as gc
+import the_grove_23_core as gc
 
 # Create grove for a single species
 grove = create_grove("European beech")
@@ -492,14 +492,14 @@ models = grove.build_models({"resolution": 16})
 
 ### Grove API Import Issues
 
-Ensure `PYTHONPATH` includes both `./src` and `./src/the_grove_22/modules`:
+Ensure `PYTHONPATH` includes both `./src` and `./src/the_grove_23/modules`:
 
 ```bash
 # Windows PowerShell
-$env:PYTHONPATH=".\src;.\src\the_grove_22\modules"
+$env:PYTHONPATH=".\src;.\src\the_grove_23\modules"
 
 # Linux/Mac
-export PYTHONPATH="./src:./src/the_grove_22/modules"
+export PYTHONPATH="./src:./src/the_grove_23/modules"
 ```
 
 Or use `pip install -e .` which handles path resolution automatically.
@@ -514,7 +514,7 @@ pip install bpy
 
 ### Missing Assets
 
-Run prepare_assets.py to copy assets from Grove 2.2:
+Run prepare_assets.py to copy assets from Grove 2.3:
 
 ```bash
 python src/growpy/cli/prepare_assets.py
@@ -533,7 +533,7 @@ Higher `--skeleton-reduce` values are the most effective for reducing bone count
 
 ## License
 
-This project uses The Grove 2.2, a commercial product. Ensure you have proper licensing for The Grove 2.2 before use.
+This project uses The Grove 2.3, a commercial product. Ensure you have proper licensing for The Grove 2.3 before use.
 
 ## Contributing
 

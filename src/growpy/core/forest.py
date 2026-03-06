@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 import pandas as pd
-import the_grove_22_core as gc
+import the_grove_23_core as gc
 from tqdm import tqdm
 
 from ..config.preset_overrides import PresetOverrides, get_species_overrides
