@@ -1,10 +1,14 @@
 Common Name,Standardized Name,Scientific Name,Preset,Twig,Growth Model,Branch Color,Leaf Color,Aliases,Bark Texture
+Selected European beech,selected_european_beech,Fagus sylvatica,Fagaceae - Beech.seed.json,SelectedEuropeanBeechTwig,Fagaceae_Beech,#b2a599,#4c9933,"Beech,Common beech",Beech60.jpg
 European beech,european_beech,Fagus sylvatica,Fagaceae - Beech.seed.json,EuropeanBeechTwig,Fagaceae_Beech,#b2a599,#4c9933,"Beech,Common beech",Beech60.jpg
 Norway spruce,norway_spruce,Picea abies,Pinaceae - Fir.seed.json,PacificSilverFirTwig,Pinaceae_Fir,#664c3f,#265919,Spruce,Fir70.jpg
 Scots pine,scots_pine,Pinus sylvestris,Pinaceae - Scots pine.seed.json,ScotsPineTwig,Pinaceae_Scots_pine,#99664c,#336626,"Pine,Scotch pine",Fir70.jpg
+Selected Scots pine,selected_scots_pine,Pinus sylvestris,Pinaceae - Scots pine.seed.json,SelectedScotsPineTwig,Pinaceae_Scots_pine,#99664c,#336626,"Pine,Scotch pine",Fir70.jpg
 Silver fir,silver_fir,Abies alba,Pinaceae - Fir.seed.json,PacificSilverFirTwig,Pinaceae_Fir,#72594c,#26661e,Fir,Fir70.jpg
+Selected Silver fir,selected_silver_fir,Abies alba,Pinaceae - Fir.seed.json,SelectedPacificSilverFirTwigTom,Pinaceae_Fir,#72594c,#26661e,Fir,Fir70.jpg
 Grand fir,grand_fir,Abies grandis,Pinaceae - Grand fir.seed.json,PacificSilverFirTwig,Pinaceae_Grand_fir,#7f6659,#2d6b23,,Fir70.jpg
 European oak,european_oak,Quercus robur,Fagaceae - European oak.seed.json,EuropeanOakTwig,Fagaceae_European_oak,#594c3f,#3f8c26,"Oak,Common oak,Pedunculate oak,English oak",NorthernRedOak60.jpg
+Selected European oak,selected_european_oak,Quercus robur,Fagaceae - European oak.seed.json,SelectedEuropeanOakTwigTom,Fagaceae_European_oak,#594c3f,#3f8c26,"Oak,Common oak,Pedunculate oak,English oak",NorthernRedOak60.jpg
 Red oak,red_oak,Quercus rubra,Fagaceae - Red oak.seed.json,RedOakTwig,Fagaceae_Red_oak,#66594c,#4c9933,Northern red oak,NorthernRedOak60.jpg
 White oak,white_oak,Quercus alba,Fagaceae - White oak.seed.json,EuropeanOakTwig,Fagaceae_White_oak,#998c7f,#47932d,,NorthernRedOak60.jpg
 Sweet chestnut,sweet_chestnut,Castanea sativa,Fagaceae - Sweet chestnut.seed.json,—,Fagaceae_Sweet_chestnut,#66594c,#4ca53f,,SweetChestnut40.jpg
@@ -14,11 +18,13 @@ One-leaved ash,one_leaved_ash,Fraxinus excelsior 'Diversifolia',Oleaceae - One-l
 Downy birch,downy_birch,Betula pubescens,Betulaceae - Downy birch.seed.json,PaperBirchTwig,Betulaceae_Downy_birch,#e5e5d8,#66bf59,,Birch70.jpg
 Silver birch,silver_birch,Betula pendula,Betulaceae - Silver birch.seed.json,PaperBirchTwig,Betulaceae_Silver_birch,#f2f2e5,#6bc660,"Birch,White birch",Birch70.jpg
 Paper birch,paper_birch,Betula papyrifera,Betulaceae - Paper birch.seed.json,PaperBirchTwig,Betulaceae_Paper_birch,#eaeae0,#60b751,,Birch70.jpg
+Selected Paper birch,selected_paper_birch,Betula papyrifera,Betulaceae - Paper birch.seed.json,SelectedPaparBirchVarATwig,Betulaceae_Paper_birch,#eaeae0,#60b751,,Birch70.jpg
 Black alder,black_alder,Alnus glutinosa,Betulaceae - Alder.seed.json,BlackAlderTwig,Betulaceae_Alder,#4c3f33,#59a53f,,BlackAlder35.jpg
 Hornbeam,hornbeam,Carpinus betulus,Betulaceae - Hornbeam.seed.json,HazelTwig,Betulaceae_Hornbeam,#8c7f72,#4c9938,,Beech60.jpg
 Hazel,hazel,Corylus avellana,Betulaceae - Hazel.seed.json,HazelTwig,Betulaceae_Hazel,#7f7266,#51a547,,Beech60.jpg
 Field maple,field_maple,Acer campestre,Sapindaceae - Field maple.seed.json,FieldMapleTwig,Sapindaceae_Field_maple,#726659,#3f8c2d,Maple,MapleC65.jpg
 Sycamore maple,sycamore_maple,Acer pseudoplatanus,Sapindaceae - Maple.seed.json,SycamoreMapleFallTwig,Sapindaceae_Maple,#7f7266,#479338,"Maple,Sycamore",MapleA60.jpg
+Selected Sycamore maple,selected_sycamore_maple,Acer pseudoplatanus,Sapindaceae - Maple.seed.json,SelectedSycamoreMapleTwig,Sapindaceae_Maple,#7f7266,#479338,"Maple,Sycamore",MapleA60.jpg
 Japanese maple,japanese_maple,Acer palmatum,Sapindaceae - Japanese maple.seed.json,JapeneseMapleAtropurpureumTwig,Sapindaceae_Japanese_maple,#66594c,#993326,,MapleD40.jpg
 Horse chestnut,horse_chestnut,Aesculus hippocastanum,Sapindaceae - Horse chestnut.seed.json,—,Sapindaceae_Horse_chestnut,#8c7f72,#59b24c,,HorseChestnut55.jpg
 Small-leaved linden,small_leaved_linden,Tilia cordata,Malvaceae - Linden.seed.json,SmallLeavedLindenTwig,Malvaceae_Linden,#7f7266,#60b751,,LargeLeavedLinden60.jpg

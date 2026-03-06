@@ -294,6 +294,8 @@ CSV Format Support:
 
     # Validate paths
     if not grove_dir.exists():
+        print(f"ERROR: Grove directory not found: {grove_dir}")
+        print(f"Please ensure The Grove 2.2 is installed at this location.")
         return 1
 
     # Override CSV if --all flag is set
@@ -301,12 +303,16 @@ CSV Format Support:
         csv_path = script_dir / "src" / "growpy" / "config" / "tree_asset_lookup.csv"
 
     if not csv_path.exists():
+        print(f"ERROR: CSV file not found: {csv_path}")
+        print(f"Please ensure the file exists or specify a different CSV with --csv")
         return 1
 
     # Load species CSV
     try:
         df = load_species_csv(csv_path, script_dir)
     except Exception as e:
+        print(f"ERROR: Failed to load CSV file: {csv_path}")
+        print(f"Error details: {e}")
         return 1
 
     # Hardcode assets directory
