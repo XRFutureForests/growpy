@@ -43,10 +43,16 @@ Requirements:
     - pandas, numpy, scikit-learn, matplotlib
 """
 
-# Pre-import bpy if available to avoid DLL conflicts with the_grove_22_core
-try:
-    import bpy as _bpy_preload
-except (ImportError, OSError):
+# Pre-import bpy on Windows only to avoid DLL conflicts with the_grove_22_core.
+# On Linux, importing bpy first can force the system libstdc++ and break scipy/sklearn.
+import platform
+
+if platform.system() == "Windows":
+    try:
+        import bpy as _bpy_preload
+    except (ImportError, OSError):
+        _bpy_preload = None
+else:
     _bpy_preload = None
 
 # Import from new structure
