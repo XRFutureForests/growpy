@@ -22,10 +22,30 @@ conda env create -f environment.yml
 conda activate the-grove
 ```
 
-1. Install package in development mode:
+2. Install package in development mode:
 
 ```bash
 pip install -e .
+```
+
+3. Add The Grove (commercial, not included in repo):
+
+```bash
+# Copy or symlink your licensed Grove 2.3 installation into src/
+cp -r /path/to/the_grove_23 src/the_grove_23
+# or on Windows: mklink /D src\the_grove_23 C:\path\to\the_grove_23
+```
+
+The `src/the_grove_23/` directory is excluded from git because The Grove is proprietary software requiring a [separate license](https://www.thegrove3d.com). After cloning, you must place or symlink your licensed Grove installation there. The expected structure is:
+
+```text
+src/the_grove_23/
+├── addons/          # Blender/Houdini add-ons
+├── documentation/   # API reference HTML
+├── modules/         # Python API (the_grove_23_core)
+├── presets/         # Species .seed.json files
+├── textures/        # Bark textures
+└── twigs/           # Twig .blend files
 ```
 
 ### Pipeline Workflow
@@ -161,7 +181,7 @@ growpy/
 │   │   ├── core/                  # Forest/Grove/Tree/Skeleton simulation
 │   │   ├── io/                    # USD export, OBJ export, wind JSON, PVE mapping
 │   │   └── utils/                 # Analysis, profiling, plotting
-│   └── the_grove_23/              # Grove 2.3 Python API
+│   └── the_grove_23/              # Grove 2.3 (not in repo, add after clone)
 ├── data/
 │   ├── assets/                    # Copied from Grove 2.3 (step 1-3 output)
 │   │   ├── presets/              # Species .seed.json files
@@ -376,7 +396,7 @@ data/output/forest/
 
 ## Requirements
 
-- **The Grove 2.3** - Commercial tree modeling software with Python API
+- **The Grove 2.3** - Commercial tree modeling software ([thegrove3d.com](https://www.thegrove3d.com)), not included in repo — see [Installation](#installation)
 - **Python 3.9-3.13** - Via conda/mamba environment
 - **bpy module** - Blender Python API (bundled USD, MaterialX, OpenImageIO)
 
