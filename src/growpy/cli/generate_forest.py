@@ -193,7 +193,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             mesh_suffix = "skeletal" if use_skeletal else "static"
             tree_dir = output_dir / species_clean / f"tree_{tree_id}"
             tree_dir.mkdir(parents=True, exist_ok=True)
-            usd_path = tree_dir / f"{species_clean}_assembly.usda"
+            usd_path = tree_dir / f"{species_clean}_assembly_{mesh_suffix}.usda"
 
             # CRITICAL: Always use skeletal twigs for both skeletal and static assemblies
             # Static twig variants don't exist, and skeletal twigs work as point instances

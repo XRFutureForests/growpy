@@ -16,8 +16,22 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import LinearRegression
 from tqdm import tqdm
+
+
+class SimpleLinearModel:
+    """Linear regression using numpy polyfit (avoids sklearn BLAS conflicts)."""
+
+    def __init__(self):
+        self.coefficients = None
+
+    def fit(self, X, y):
+        self.coefficients = np.polyfit(np.asarray(X).flatten(), np.asarray(y), deg=1)
+        return self
+
+    def predict(self, X):
+        return np.polyval(self.coefficients, np.asarray(X).flatten())
+
 
 # Add src to path for Grove imports
 src_path = Path(__file__).parent.parent.parent
@@ -507,7 +521,7 @@ class SpeciesGrowthAnalyzer:
 
     def create_growth_model_for_species(
         self, species: str, height_curve: List[float]
-    ) -> LinearRegression:
+    ) -> SimpleLinearModel:
         """Create linear regression model to predict required cycles from target height.
 
         Args:
@@ -515,7 +529,7 @@ class SpeciesGrowthAnalyzer:
             height_curve: List of heights per cycle
 
         Returns:
-            Fitted sklearn LinearRegression model
+            Fitted SimpleLinearModel
         """
         if not height_curve:
             raise ValueError(f"Empty height curve for {species}")
@@ -531,7 +545,7 @@ class SpeciesGrowthAnalyzer:
         if len(heights) < 2:
             raise ValueError(f"Insufficient growth data for {species}")
 
-        model = LinearRegression()
+        model = SimpleLinearModel()
         model.fit(heights, cycles)
 
         return model
@@ -559,8 +573,17 @@ class SpeciesGrowthAnalyzer:
             self.save_species_results(species)
             return True
 
+        except SystemExit as e:
+            tqdm.write(
+                f"FATAL: Grove module called sys.exit({e.code}) during {species}"
+            )
+            raise
         except Exception as e:
             logger.error(f"Failed to analyze species {species}: {e}")
+            tqdm.write(f"ERROR analyzing {species}: {e}")
+            import traceback
+
+            traceback.print_exc()
             return False
 
     def analyze_all_species(

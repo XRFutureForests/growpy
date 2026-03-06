@@ -5,6 +5,7 @@ Step 3 of the pipeline. Defaults from growpy.toml [growth_models]. See docs/cli-
 """
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 
@@ -14,6 +15,10 @@ from growpy.utils.analysis import SpeciesGrowthAnalyzer
 
 def main():
     """Main function for command line usage."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s: %(message)s",
+    )
     config = get_config()
 
     parser = argparse.ArgumentParser(
@@ -112,11 +117,13 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
     # Check assets directory
     if not default_assets_dir.exists():
+        print(f"ERROR: Assets directory not found: {default_assets_dir}")
         sys.exit(1)
 
     # Check for presets directory
     presets_dir = default_assets_dir / "presets"
     if not presets_dir.exists():
+        print(f"ERROR: Presets directory not found: {presets_dir}")
         sys.exit(1)
 
     # Create analyzer
@@ -134,6 +141,9 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
         available_species = analyzer.get_available_species()
         if args.species not in available_species:
+            print(
+                f"ERROR: Species '{args.species}' not found. Available: {available_species}"
+            )
             sys.exit(1)
 
         # Generate height and DBH curves
@@ -176,6 +186,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
                     script_dir / "src" / "growpy" / "config" / "tree_asset_lookup.csv"
                 )
                 if not asset_lookup_path.exists():
+                    print(f"ERROR: Asset lookup table not found: {asset_lookup_path}")
                     sys.exit(1)
 
                 lookup_df = pd.read_csv(asset_lookup_path)
@@ -206,6 +217,9 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
                             csv_species.append(standardized)
 
                 if not csv_species:
+                    print(
+                        f"ERROR: No matching species found in CSV for forest placement"
+                    )
                     sys.exit(1)
 
             else:
@@ -233,6 +247,9 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         species_to_process = [s for s in csv_species if s in available_species]
 
         if not species_to_process:
+            print(
+                f"ERROR: No available species to process. CSV species: {csv_species}, Available presets: {available_species}"
+            )
             sys.exit(1)
 
         # Analyze filtered species
