@@ -332,16 +332,15 @@ def export_individual_trees(
     light competition in the forest simulation phase. This is significantly faster than
     re-simulating individual trees.
 
-    By default, only skeletal mesh assemblies are generated. Static mesh assemblies
-    are only generated if quality_params['include_static'] is True.
+    Both skeletal and static mesh assemblies are always generated.
 
     Args:
         forest: List of (grove, species_name, tree_count, fid_list) from create_forest() + simulate_forest_growth()
         forest_data: DataFrame with tree data including species, growth_cycles
         output_dir: Directory to save export files
         config: GrowPy configuration
-        quality_params: Quality parameters dict (include_static=True enables static mesh generation)
-        mesh_type: Ignored - mesh types are determined by include_static in quality_params
+        quality_params: Quality parameters dict
+        mesh_type: Ignored - both skeletal and static are always created
         verbose: Print detailed progress information
         timer: Optional ProfileTimer for tracking execution times
 
@@ -375,20 +374,19 @@ def export_individual_trees(
                 timer,
             )
         )
-        # Only create static mesh task if explicitly requested (--include-static)
-        if quality_params.get("include_static", False):
-            grove_tasks.append(
-                (
-                    fids,
-                    grove,
-                    species_name,
-                    output_dir,
-                    quality_params,
-                    "static",
-                    verbose,
-                    timer,
-                )
+        # Always create static mesh task (needed for material bindings in OBJ/Helios)
+        grove_tasks.append(
+            (
+                fids,
+                grove,
+                species_name,
+                output_dir,
+                quality_params,
+                "static",
+                verbose,
+                timer,
             )
+        )
 
     # Always use sequential processing (bpy/USD not compatible with multiprocessing)
     for task_idx, task in enumerate(tqdm(grove_tasks, desc="Exporting groves")):
@@ -448,7 +446,6 @@ def generate_forest_stages(
     preset_overrides: Optional[PresetOverrides] = None,
     timer: Optional["ProfileTimer"] = None,
     skip_pve_json: bool = False,
-    include_static: bool = False,
     skip_validation: bool = False,
     skeleton_overrides: Optional[Dict[str, Any]] = None,
     export_tree_ids: Optional[set] = None,
@@ -485,7 +482,6 @@ def generate_forest_stages(
         preset_overrides: Optional PresetOverrides for dynamic parameter adjustment
         timer: Optional ProfileTimer for tracking execution times
         skip_pve_json: If True, skip PVE preset JSON generation
-        include_static: If True, also generate static mesh assemblies
         skip_validation: If True, skip assembly validation
     """
     from growpy.io.assembly_export import export_tree_as_nanite_assembly
@@ -608,7 +604,7 @@ def generate_forest_stages(
     quality_params["minimal_export"] = True
     quality_params["include_grove_attributes"] = include_grove_attributes
     quality_params["skip_pve_json"] = skip_pve_json
-    quality_params["include_static"] = include_static
+    quality_params["include_static"] = True
     quality_params["skip_validation"] = skip_validation
     quality_params["export_tree_ids"] = export_tree_ids
 
@@ -747,15 +743,14 @@ def generate_forest_exports(
     preset_overrides: Optional[PresetOverrides] = None,
     timer: Optional["ProfileTimer"] = None,
     skip_pve_json: bool = False,
-    include_static: bool = False,
     skip_validation: bool = False,
     skeleton_overrides: Optional[Dict[str, Any]] = None,
     export_tree_ids: Optional[set] = None,
 ) -> None:
     """Generate forest from CSV data and export as Nanite Assembly USD files.
 
-    By default, only skeletal mesh assemblies are generated (optimized for wind animation).
-    Static mesh assemblies can be optionally generated with include_static=True.
+    Both skeletal and static mesh assemblies are always generated.
+    Static meshes retain material bindings needed for OBJ/Helios export.
 
     DynamicWind attributes are now embedded directly in the USD skeleton prim
     (unreal:dynamicWind:jointNames, unreal:dynamicWind:jointSimulationGroups).
@@ -773,7 +768,6 @@ def generate_forest_exports(
         preset_overrides: Optional PresetOverrides for dynamic parameter adjustment during simulation
         timer: Optional ProfileTimer for tracking execution times
         skip_pve_json: If True, skip PVE preset JSON generation (saves ~3% export time)
-        include_static: If True, also generate static mesh assemblies (disabled by default, saves ~7% time)
         skip_validation: If True, skip assembly validation (saves ~5-10% export time)
     """
     from growpy.utils.profiling import ProfileTimer
@@ -903,7 +897,7 @@ def generate_forest_exports(
     # Skip optional JSON generation (passed via quality_params for simplicity)
     # Note: DynamicWind JSON is always generated for skeletal meshes
     quality_params["skip_pve_json"] = skip_pve_json
-    quality_params["include_static"] = include_static
+    quality_params["include_static"] = True
     quality_params["skip_validation"] = skip_validation
     quality_params["profile_pve"] = (
         timer.enabled
@@ -1454,16 +1448,7 @@ Unreal Engine Integration:
         action="store_true",
         help="Skip assembly validation (saves ~5-10%% of export time)",
     )
-    parser.add_argument(
-        "--fast",
-        action="store_true",
-        help="Fast mode: skip PVE JSON, validation, and static mesh generation",
-    )
-    parser.add_argument(
-        "--include-static",
-        action="store_true",
-        help="Generate static mesh assemblies in addition to skeletal (disabled by default)",
-    )
+
     # Multi-stage export: generate trees at multiple growth stages from a single position
     parser.add_argument(
         "--cycle-interval",
@@ -1550,13 +1535,8 @@ Unreal Engine Integration:
             )
             print(f"\n[Preset Overrides] Static: {preset_overrides.static_overrides}")
 
-        # Handle --fast flag (skip pve json, validation, and static meshes)
-        # Note: DynamicWind JSON is always generated for skeletal meshes
-        skip_pve_json = config.export_skip_pve_json or config.export_fast
-        skip_validation = config.export_skip_validation or config.export_fast
-        # Static meshes disabled by default, enable with --include-static
-        # --fast also disables static (redundant since already default, but explicit)
-        include_static = config.export_include_static and not config.export_fast
+        skip_pve_json = config.export_skip_pve_json
+        skip_validation = config.export_skip_validation
 
         # Parse --export-trees filter
         export_tree_ids = None
@@ -1606,7 +1586,6 @@ Unreal Engine Integration:
                     preset_overrides=preset_overrides,
                     timer=timer,
                     skip_pve_json=skip_pve_json,
-                    include_static=include_static,
                     skip_validation=skip_validation,
                     skeleton_overrides=skeleton_overrides,
                     export_tree_ids=export_tree_ids,
@@ -1625,7 +1604,6 @@ Unreal Engine Integration:
                     preset_overrides=preset_overrides,
                     timer=timer,
                     skip_pve_json=skip_pve_json,
-                    include_static=include_static,
                     skip_validation=skip_validation,
                     skeleton_overrides=skeleton_overrides,
                     export_tree_ids=export_tree_ids,
@@ -1645,7 +1623,6 @@ Unreal Engine Integration:
                     generate_scene_xml=config.helios_helios_scene,
                     individual_obj=config.helios_individual_obj,
                     up_axis=config.helios_obj_up_axis,
-                    classify_twigs=config.helios_classify_twig_materials,
                 )
 
         # Print profiling report if enabled

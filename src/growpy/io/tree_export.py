@@ -1412,8 +1412,11 @@ def get_twig_usd_map_for_species(
     prefer_nanite_assembly: bool = False,
     prefer_skeletal: bool = False,
     prefer_static: bool = False,
-) -> Dict[str, Path]:
+) -> Dict[str, List[Path]]:
     """Get mapping of twig types to USD file paths for a species.
+
+    Returns ALL matching twig variants per grove type so that the assembly
+    can randomly alternate between them for visual variety.
 
     NOTE: Twig references should NEVER use Nanite Assembly USD files.
     Nanite Assembly is only for the top-level tree assembly, not individual twigs.
@@ -1427,8 +1430,8 @@ def get_twig_usd_map_for_species(
         prefer_static: If True, prefer static twig variants (_static.usda)
 
     Returns:
-        Dict mapping twig types to USD file paths:
-        {'twig_long': Path, 'twig_short': Path, ...}
+        Dict mapping grove twig types to lists of USD file paths:
+        {'twig_long': [Path, Path], 'twig_short': [Path], ...}
     """
     if config is None:
         from growpy import get_config
@@ -1442,10 +1445,9 @@ def get_twig_usd_map_for_species(
     if not twig_files_by_type:
         pass
 
-    twig_usd_map = {}
+    twig_usd_map: Dict[str, List[Path]] = {}
 
-    # Map Grove attribute names to twig file types with priority order
-    # Earlier keywords have higher priority (e.g., "apical" preferred over variant letter)
+    # Map Grove attribute names to twig file keywords
     type_mapping = {
         "twig_long": ["apical", "long", "end", "terminal", "foliage_a_", "foliage_c_"],
         "twig_short": ["lateral", "short", "side", "foliage_b_", "foliage_d_"],
@@ -1453,132 +1455,64 @@ def get_twig_usd_map_for_species(
         "twig_dead": ["dead", "fall", "winter"],
     }
 
-    # Priority-based matching: try each keyword in order for each grove type
+    def _resolve_usd_path(twig_paths):
+        """Find a valid USD file path from a list of twig paths."""
+        for twig_file in twig_paths:
+            for ext in [".usda", ".usd"]:
+                usd_file = twig_file.with_suffix(ext)
+                if "_nanite_assembly" in usd_file.name:
+                    continue
+                is_skeletal = "_skeletal" in usd_file.stem
+                is_static = "_static" in usd_file.stem
+                if prefer_static:
+                    if is_static and usd_file.exists():
+                        return usd_file
+                    if not is_static:
+                        static_file = (
+                            usd_file.parent / f"{usd_file.stem}_static{usd_file.suffix}"
+                        )
+                        if static_file.exists():
+                            return static_file
+                elif prefer_skeletal:
+                    if is_skeletal and usd_file.exists():
+                        return usd_file
+                    if not is_skeletal:
+                        skeletal_file = (
+                            usd_file.parent
+                            / f"{usd_file.stem}_skeletal{usd_file.suffix}"
+                        )
+                        if skeletal_file.exists():
+                            return skeletal_file
+                else:
+                    if is_skeletal or is_static:
+                        continue
+                    if usd_file.exists():
+                        return usd_file
+        return None
+
+    # Collect ALL matching twig files per grove type
     for grove_type, keywords in type_mapping.items():
-        matched = False
-
-        # Try keywords in priority order (specific names like "apical" before variant letters)
+        matched_paths = []
         for keyword in keywords:
-            if matched:
-                break
-
             for twig_type, twig_paths in twig_files_by_type.items():
-                twig_type_lower = twig_type.lower()
+                if keyword in twig_type.lower():
+                    resolved = _resolve_usd_path(twig_paths)
+                    if resolved and resolved not in matched_paths:
+                        matched_paths.append(resolved)
+        if matched_paths:
+            twig_usd_map[grove_type] = matched_paths
 
-                # Check for exact or substring match
-                if keyword in twig_type_lower:
-                    if twig_paths:
-                        twig_file = twig_paths[0]
-
-                        # CRITICAL: ALWAYS use regular USD files for twigs
-                        for ext in [".usda", ".usd"]:
-                            usd_file = twig_file.with_suffix(ext)
-
-                            if "_nanite_assembly" in usd_file.name:
-                                continue
-
-                            # Check for skeletal or static variants
-                            is_skeletal = "_skeletal" in usd_file.stem
-                            is_static = "_static" in usd_file.stem
-
-                            if prefer_static:
-                                # Look for static variant
-                                if not is_static:
-                                    static_file = (
-                                        usd_file.parent
-                                        / f"{usd_file.stem}_static{usd_file.suffix}"
-                                    )
-                                    if static_file.exists():
-                                        twig_usd_map[grove_type] = static_file
-                                        matched = True
-                                        break
-                                    continue
-                                if is_static and usd_file.exists():
-                                    twig_usd_map[grove_type] = usd_file
-                                    matched = True
-                                    break
-                            elif prefer_skeletal:
-                                # Look for skeletal variant
-                                if not is_skeletal:
-                                    skeletal_file = (
-                                        usd_file.parent
-                                        / f"{usd_file.stem}_skeletal{usd_file.suffix}"
-                                    )
-                                    if skeletal_file.exists():
-                                        twig_usd_map[grove_type] = skeletal_file
-                                        matched = True
-                                        break
-                                    continue
-                                if is_skeletal and usd_file.exists():
-                                    twig_usd_map[grove_type] = usd_file
-                                    matched = True
-                                    break
-                            else:
-                                # No preference - skip variants
-                                if is_skeletal or is_static:
-                                    continue
-                                if usd_file.exists():
-                                    twig_usd_map[grove_type] = usd_file
-                                    matched = True
-                                    break
-
-                        if matched:
-                            break
-
-    # Fallback: If no variant-specific twigs found, use base twig file for all types
-    # This handles species like Pacific Silver Fir that only have one twig file
+    # If no type-specific matches found, assign all available twigs to all grove types
+    # randomly. This handles species with non-standard naming.
     if not twig_usd_map and twig_files_by_type:
-        # Look for base twig file (species_name_foliage_skeletal.usda or species_name_foliage_static.usda)
+        all_paths = []
         for twig_type, twig_paths in twig_files_by_type.items():
-            if twig_paths:
-                twig_file = twig_paths[0]
-
-                # Check if this is a base twig file (not a variant)
-                stem_lower = twig_file.stem.lower()
-                has_variant = any(
-                    v in stem_lower
-                    for v in [
-                        "foliage_a_",
-                        "foliage_b_",
-                        "foliage_c_",
-                        "foliage_d_",
-                        "foliage_e_",
-                        "apical",
-                        "lateral",
-                        "upward",
-                    ]
-                )
-
-                if not has_variant:
-                    # This is a base twig file - use it for all twig types
-                    for ext in [".usda", ".usd"]:
-                        usd_file = twig_file.with_suffix(ext)
-
-                        if "_nanite_assembly" in usd_file.name:
-                            continue
-
-                        is_skeletal = "_skeletal" in usd_file.stem
-                        is_static = "_static" in usd_file.stem
-
-                        if prefer_static and is_static and usd_file.exists():
-                            # Use this file for all twig types
-                            for grove_type in type_mapping.keys():
-                                twig_usd_map[grove_type] = usd_file
-                            break
-                        elif prefer_skeletal and is_skeletal and usd_file.exists():
-                            # Use this file for all twig types
-                            for grove_type in type_mapping.keys():
-                                twig_usd_map[grove_type] = usd_file
-                            break
-                        elif not prefer_static and not prefer_skeletal:
-                            if not is_skeletal and not is_static and usd_file.exists():
-                                # Use this file for all twig types
-                                for grove_type in type_mapping.keys():
-                                    twig_usd_map[grove_type] = usd_file
-                                break
-
-                    if twig_usd_map:
-                        break
+            resolved = _resolve_usd_path(twig_paths)
+            if resolved and resolved not in all_paths:
+                all_paths.append(resolved)
+        if all_paths:
+            for grove_type in type_mapping:
+                twig_usd_map[grove_type] = list(all_paths)
 
     return twig_usd_map
 

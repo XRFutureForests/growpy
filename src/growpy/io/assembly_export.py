@@ -81,7 +81,7 @@ def create_assembly(
     output_path: Path,
     species_name: str,
     tree_id: Optional[str] = None,
-    twig_usd_paths: Optional[Dict[str, Path]] = None,
+    twig_usd_paths: Optional[Dict[str, List[Path]]] = None,
     use_skeletal_mesh: bool = False,
     skeleton_source_usd: Optional[Path] = None,
     twig_placements: Optional[Dict[str, List]] = None,
@@ -108,7 +108,7 @@ def create_assembly(
         tree_usd_path: Path to tree USD (skeletal for skeletal assemblies, static for static)
         output_path: Output path for Nanite Assembly USDA
         species_name: Tree species name
-        twig_usd_paths: Optional dict mapping twig types to USD paths (skeletal or static matching assembly type)
+        twig_usd_paths: Dict mapping grove twig types to lists of USD paths
         use_skeletal_mesh: Whether to use skeletal mesh type
         skeleton_source_usd: Deprecated - skeleton is now embedded in tree_usd_path
         twig_placements: Optional dict of twig placements extracted from Grove model
@@ -222,21 +222,26 @@ def create_assembly(
 
             if placements and any(placements.values()):
                 # Remap twig paths from source assets to output directory copies
-                # Twigs already have "_twig" suffix from convert_twigs.py step
-                # Nanite Assembly must reference these copies for Unreal import to work
                 output_dir = output_path.parent
                 species_twigs_dir = output_dir
 
-                remapped_twig_paths = {}
-                for twig_type, source_twig_path in twig_usd_paths.items():
-                    # Twig files already have _twig suffix from convert_twigs.py
-                    # Just look for the file by name in the output directory
-                    output_twig_path = species_twigs_dir / source_twig_path.name
-                    if output_twig_path.exists():
-                        remapped_twig_paths[twig_type] = output_twig_path
-                    else:
-                        # Fall back to source path if copy doesn't exist yet
-                        remapped_twig_paths[twig_type] = source_twig_path
+                # Flatten all twig variants into a single prototype list.
+                # twig_type_to_proto_indices maps grove type -> list of proto indices
+                # so each placement can randomly pick among them.
+                remapped_twig_paths: List[Tuple[str, Path, Path]] = (
+                    []
+                )  # (grove_type, output_path, source_path)
+                for grove_type, source_paths in twig_usd_paths.items():
+                    for source_twig_path in source_paths:
+                        output_twig_path = species_twigs_dir / source_twig_path.name
+                        if output_twig_path.exists():
+                            remapped_twig_paths.append(
+                                (grove_type, output_twig_path, source_twig_path)
+                            )
+                        else:
+                            remapped_twig_paths.append(
+                                (grove_type, source_twig_path, source_twig_path)
+                            )
 
                 # Create prototypes group
                 prototypes_group = stage.DefinePrim(
@@ -247,24 +252,42 @@ def create_assembly(
                 # - Skeletal assemblies: prototypes MUST be visible for Unreal to import them
                 # - Static assemblies: prototypes MUST be invisible to prevent duplicate rendering at origin
                 if not use_skeletal_mesh:
-                    # Static assembly: hide prototypes to prevent rendering at tree base
                     prototypes_imageable = UsdGeom.Imageable(prototypes_group)
                     if prototypes_imageable:
                         prototypes_imageable.MakeInvisible()
 
-                # Map twig types to prototype indices
-                twig_type_to_proto_idx = {}
+                # Create a prototype for each unique twig file
+                # twig_type_to_proto_indices: grove_type -> [proto_idx, proto_idx, ...]
+                twig_type_to_proto_indices: Dict[str, List[int]] = {}
                 prototype_paths = []
+                seen_files: Dict[str, int] = {}  # twig filename -> proto_idx (dedup)
 
-                for idx, (twig_type, twig_path) in enumerate(
-                    sorted(remapped_twig_paths.items())
-                ):
-                    # VIDEO REQUIREMENT: Skeletal assemblies MUST use skeletal twigs
-                    # Each twig must have its own root bone for wind/animation
-                    twig_ref_path = twig_path
+                from .texture_utils import copy_and_resize_texture
+                from .twig_export import classify_texture_from_name
 
-                    # Get original source path for texture copying
-                    source_twig_path = twig_usd_paths.get(twig_type, twig_path)
+                ALLOWED_TEXTURE_TYPES = [
+                    "diffuse",
+                    "diffuse_top",
+                    "diffuse_bottom",
+                    "normal",
+                ]
+
+                for grove_type, twig_ref_path, source_twig_path in remapped_twig_paths:
+                    if not twig_ref_path.exists():
+                        continue
+
+                    # Dedup: if same file already has a prototype, reuse its index
+                    file_key = twig_ref_path.name
+                    if file_key in seen_files:
+                        proto_idx = seen_files[file_key]
+                        twig_type_to_proto_indices.setdefault(grove_type, []).append(
+                            proto_idx
+                        )
+                        continue
+
+                    idx = len(prototype_paths)
+                    seen_files[file_key] = idx
+                    twig_type_to_proto_indices.setdefault(grove_type, []).append(idx)
 
                     # Validate skeletal twigs for skeletal assemblies
                     if use_skeletal_mesh:
@@ -272,114 +295,79 @@ def create_assembly(
                         if not is_skeletal_twig:
                             pass
 
-                    if not twig_ref_path.exists():
-                        continue
-
-                    # Copy twig file to output directory for relative references (with caching)
-                    # This ensures the assembly can find its twigs using ./filename.usda
+                    # Copy twig file to output directory for relative references
                     _copy_twig_file_cached(twig_ref_path, output_path.parent)
+                    # Also copy static variant for OBJ/Helios export
+                    static_name = twig_ref_path.name.replace(
+                        "_skeletal.usda", "_static.usda"
+                    )
+                    static_ref = twig_ref_path.parent / static_name
+                    if static_ref.exists() and static_ref != twig_ref_path:
+                        _copy_twig_file_cached(static_ref, output_path.parent)
 
-                    # Copy twig textures (base color and normal maps)
-                    # Both skeletal and static assemblies now include textures
-                    # Use source path (in assets) to find textures
+                    # Copy twig textures
                     twig_dir = source_twig_path.parent
-                    # Twigs store textures in a textures/ subdirectory
                     source_textures_dir = twig_dir / "textures"
 
                     if source_textures_dir.exists():
-                        # Create output textures subdirectory
                         output_textures_dir = output_path.parent / "textures"
                         output_textures_dir.mkdir(exist_ok=True)
-
-                        # CRITICAL: Only copy standardized twig textures (diffuse/normal)
-                        # Skip original Grove textures - only copy renamed versions with _foliage_ naming
-                        # Alpha/translucent/mask textures are NOT copied (used for geometry only)
-                        from .texture_utils import copy_and_resize_texture
-                        from .twig_export import classify_texture_from_name
-
-                        ALLOWED_TEXTURE_TYPES = [
-                            "diffuse",
-                            "diffuse_top",
-                            "diffuse_bottom",
-                            "normal",
-                        ]
 
                         for texture_ext in [".png", ".jpg", ".jpeg", ".exr"]:
                             for texture_file in source_textures_dir.glob(
                                 f"*{texture_ext}"
                             ):
-                                # CRITICAL: Only copy standardized textures (contain _foliage_)
-                                # Skip original Grove textures like BeechDiffuse.jpg
                                 if "_foliage_" not in texture_file.stem:
                                     continue
-
-                                # Filter to only diffuse and normal textures
                                 tex_type = classify_texture_from_name(texture_file.stem)
                                 if tex_type not in ALLOWED_TEXTURE_TYPES:
                                     continue
-
                                 output_texture = output_textures_dir / texture_file.name
                                 if not output_texture.exists():
                                     copy_and_resize_texture(
                                         texture_file, output_texture
                                     )
 
-                    twig_type_to_proto_idx[twig_type] = idx
-
-                    # Create prototype with ExternalRef
-                    proto_name = twig_type.replace("_", "")
-
                     # Extract twig name from file for unique Unreal asset names
-                    # e.g., one_leaved_ash_foliage_apical_d_skeletal -> one_leaved_ash_foliage_apical_d
                     twig_asset_name = twig_ref_path.stem.replace(
                         "_skeletal", ""
                     ).replace("_static", "")
 
-                    # CRITICAL: For skeletal twigs, use Xform wrapper with SkelRoot child
-                    # This matches the demo structure and properly isolates the twig skeleton
-                    # from the tree skeleton, preventing cross-skeleton interference
+                    # Unique proto prim name based on file stem (not grove type)
+                    proto_name = twig_asset_name.replace("_", "")
+
                     if use_skeletal_mesh:
-                        # Create Xform wrapper (instanceable)
                         proto_xform = UsdGeom.Xform.Define(
                             stage, f"/{assembly_name}/TwigPrototypes/{proto_name}"
                         )
                         proto_prim = proto_xform.GetPrim()
                         proto_prim.SetInstanceable(True)
 
-                        # Create SkelRoot child with twig-specific name for unique Unreal assets
                         skel_root_path = f"/{assembly_name}/TwigPrototypes/{proto_name}/{twig_asset_name}"
                         skel_root_prim = stage.DefinePrim(skel_root_path, "SkelRoot")
-
-                        # Reference twig USD from SkelRoot child (not the wrapper)
-                        # Use twig_asset_name to match the twig file's defaultPrim
                         skel_root_prim.GetReferences().AddReference(
                             f"./{twig_ref_path.name}", f"/{twig_asset_name}"
                         )
-
                     else:
-                        # Static twigs: use Xform wrapper like skeletal to isolate reference
-                        # CRITICAL: This wrapper pattern prevents prototypes from rendering at root
                         proto_xform = UsdGeom.Xform.Define(
                             stage, f"/{assembly_name}/TwigPrototypes/{proto_name}"
                         )
                         proto_prim = proto_xform.GetPrim()
                         proto_prim.SetInstanceable(True)
 
-                        # Create child Xform with twig-specific name for unique Unreal assets
-                        # Using child prim isolates the reference from direct rendering
                         twig_child_path = f"/{assembly_name}/TwigPrototypes/{proto_name}/{twig_asset_name}"
                         twig_child_prim = stage.DefinePrim(twig_child_path, "Xform")
-
-                        # Reference twig USD from child (not the wrapper)
                         twig_child_prim.GetReferences().AddReference(
                             f"./{twig_ref_path.name}", f"/{twig_asset_name}"
                         )
 
                     prototype_paths.append(Sdf.Path(proto_prim.GetPath()))
 
+                # Collect all proto indices for random fallback
+                all_proto_indices_pool = list(range(len(prototype_paths)))
+
                 if prototype_paths:
                     # Create PointInstancer as sibling to TreeMesh
-                    # Reference assembly shows PointInstancer at same level as TreeMesh (SkelRoot)
                     instancer_prim = stage.DefinePrim(
                         f"/{assembly_name}/TwigInstances", "PointInstancer"
                     )
@@ -394,46 +382,33 @@ def create_assembly(
                     all_scales = []
                     all_proto_indices = []
 
+                    import random as _rng
+
+                    _rng.seed(42)  # Reproducible twig variant selection
+
                     for twig_type, placement_list in placements.items():
                         if not placement_list:
                             print(f"  Skipping {twig_type}: empty placement_list")
                             continue
 
-                        # Map twig type to prototype index with fallback logic
-                        # If this twig type has no matching prototype, use a fallback:
-                        # Fallback mapping for twig types without dedicated prototypes:
-                        # - twig_upward → twig_long (upward growth uses apical/terminal twigs)
-                        # - twig_dead: NO MAPPING - dead branches have no foliage
-                        fallback_map = {
-                            "twig_upward": "twig_long",  # Upward twigs → apical/long
-                            # twig_dead intentionally excluded - dead branches shouldn't have foliage
-                        }
-
-                        if twig_type in twig_type_to_proto_idx:
-                            proto_idx = twig_type_to_proto_idx[twig_type]
-                            mapped_type = twig_type
-                        elif (
-                            twig_type in fallback_map
-                            and fallback_map[twig_type] in twig_type_to_proto_idx
-                        ):
-                            # Use fallback mapping
-                            mapped_type = fallback_map[twig_type]
-                            proto_idx = twig_type_to_proto_idx[mapped_type]
+                        # Get prototype indices for this grove type.
+                        # Fallback: use any available prototype (random selection).
+                        if twig_type in twig_type_to_proto_indices:
+                            type_proto_indices = twig_type_to_proto_indices[twig_type]
+                        elif all_proto_indices_pool:
+                            type_proto_indices = all_proto_indices_pool
                             print(
-                                f"  Mapping {twig_type} -> {mapped_type} (proto_idx={proto_idx})"
+                                f"  Mapping {twig_type} -> random from all prototypes"
                             )
                         else:
-                            # No mapping available - skip
-                            print(
-                                f"  Skipping {twig_type}: no matching prototype or fallback"
-                            )
+                            print(f"  Skipping {twig_type}: no prototypes available")
                             continue
 
                         print(
-                            f"  Adding {len(placement_list)} instances of {twig_type} (proto_idx={proto_idx})"
+                            f"  Adding {len(placement_list)} instances of {twig_type} "
+                            f"({len(type_proto_indices)} prototype(s))"
                         )
 
-                        # Import rotation functions once outside the loop for performance
                         from growpy.core.twig import (
                             normal_to_rotation_matrix,
                             rotation_matrix_to_quaternion,
@@ -443,16 +418,12 @@ def create_assembly(
                             pos = placement["position"]
                             normal = placement["normal"]
 
-                            # CRITICAL: Positions from Grove API are already in the correct coordinate space
-                            # The bindJoints attribute tells Unreal which skeleton joint each instance follows
-
-                            # Create rotation matrix from normal
                             rot_matrix = normal_to_rotation_matrix(normal)
-
-                            # Convert to quaternion
                             quat = rotation_matrix_to_quaternion(rot_matrix)
 
-                            # Add to arrays
+                            # Randomly select among available prototypes for this type
+                            proto_idx = _rng.choice(type_proto_indices)
+
                             all_positions.append(Gf.Vec3f(pos[0], pos[1], pos[2]))
                             all_orientations.append(
                                 Gf.Quath(quat[0], quat[1], quat[2], quat[3])
@@ -506,23 +477,12 @@ def create_assembly(
                             if not placement_list:
                                 continue
 
-                            # Apply same fallback mapping as instance creation
-                            # twig_dead intentionally excluded - dead branches have no foliage
-                            fallback_map = {
-                                "twig_upward": "twig_long",
-                            }
-
-                            if twig_type in twig_type_to_proto_idx:
-                                # Direct mapping exists
-                                pass
-                            elif (
-                                twig_type in fallback_map
-                                and fallback_map[twig_type] in twig_type_to_proto_idx
+                            # Apply same fallback as instance creation:
+                            # skip only if no prototypes at all
+                            if (
+                                twig_type not in twig_type_to_proto_indices
+                                and not all_proto_indices_pool
                             ):
-                                # Use fallback mapping
-                                pass
-                            else:
-                                # No mapping - skip
                                 continue
 
                             for placement in placement_list:
@@ -658,7 +618,7 @@ def export_tree_as_nanite_assembly(
     species_name: str,
     tree_id: Optional[str] = None,
     bones_info: Optional[List] = None,
-    twig_usd_paths: Optional[Dict[str, Path]] = None,
+    twig_usd_paths: Optional[Dict[str, List[Path]]] = None,
     include_twigs: bool = True,
     use_skeletal_mesh: bool = False,
     use_static_mesh: bool = False,
@@ -686,7 +646,7 @@ def export_tree_as_nanite_assembly(
         species_name: Tree species name
         tree_id: Optional tree ID for unique prim names (e.g., "0007")
         bones_info: Optional list of bone tuples from grove.tag_bone_id() for this specific tree
-        twig_usd_paths: Dict mapping twig types to USD paths
+        twig_usd_paths: Dict mapping grove twig types to lists of USD paths
         include_twigs: Whether to include twig instances
         use_skeletal_mesh: Use skeletal mesh type (for animation)
         use_static_mesh: Use static mesh type (with materials/textures, no skeleton)
@@ -889,9 +849,17 @@ def export_tree_as_nanite_assembly(
             with _track("copy_twig_files"):
                 dest_dir = output_path.parent
 
-                for twig_type, twig_path in twig_usd_paths.items():
-                    if twig_path.exists():
-                        _copy_twig_file_cached(twig_path, dest_dir)
+                for twig_type, twig_path_list in twig_usd_paths.items():
+                    for twig_path in twig_path_list:
+                        if twig_path.exists():
+                            _copy_twig_file_cached(twig_path, dest_dir)
+                            # Also copy static variant for OBJ/Helios export
+                            static_name = twig_path.name.replace(
+                                "_skeletal.usda", "_static.usda"
+                            )
+                            static_path = twig_path.parent / static_name
+                            if static_path.exists() and static_path != twig_path:
+                                _copy_twig_file_cached(static_path, dest_dir)
 
         # Create Assembly USD
         with _track("create_assembly"):

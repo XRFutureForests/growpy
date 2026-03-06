@@ -117,8 +117,6 @@ class GrowPyConfig:
     # [export]
     export_skip_pve_json: bool = False
     export_skip_validation: bool = False
-    export_include_static: bool = False
-    export_fast: bool = False
 
     # [unreal]
     unreal_import_to_unreal: bool = False
@@ -134,7 +132,6 @@ class GrowPyConfig:
     helios_helios_scene: bool = False
     helios_individual_obj: bool = False
     helios_obj_up_axis: str = "y"
-    helios_classify_twig_materials: bool = False
 
     @classmethod
     def from_toml(cls, toml_path: Path, set_as_global: bool = True) -> "GrowPyConfig":
@@ -233,10 +230,6 @@ class GrowPyConfig:
             kwargs["export_skip_pve_json"] = export["skip_pve_json"]
         if "skip_validation" in export:
             kwargs["export_skip_validation"] = export["skip_validation"]
-        if "include_static" in export:
-            kwargs["export_include_static"] = export["include_static"]
-        if "fast" in export:
-            kwargs["export_fast"] = export["fast"]
 
         # [unreal]
         unreal = data.get("unreal", {})
@@ -259,8 +252,6 @@ class GrowPyConfig:
             kwargs["helios_individual_obj"] = helios["individual_obj"]
         if "obj_up_axis" in helios:
             kwargs["helios_obj_up_axis"] = helios["obj_up_axis"]
-        if "classify_twig_materials" in helios:
-            kwargs["helios_classify_twig_materials"] = helios["classify_twig_materials"]
 
         instance = cls(**kwargs)
         if set_as_global:
@@ -314,8 +305,6 @@ class GrowPyConfig:
             # [export]
             "skip_pve_json": "export_skip_pve_json",
             "skip_validation": "export_skip_validation",
-            "include_static": "export_include_static",
-            "fast": "export_fast",
             # [unreal]
             "import_to_unreal": "unreal_import_to_unreal",
             "unreal_project_path": "unreal_project_path",
@@ -326,7 +315,6 @@ class GrowPyConfig:
             "helios_scene": "helios_helios_scene",
             "individual_obj": "helios_individual_obj",
             "obj_up_axis": "helios_obj_up_axis",
-            "classify_twig_materials": "helios_classify_twig_materials",
         }
 
         for cli_name, config_name in cli_mappings.items():

@@ -106,12 +106,8 @@ longevity_mode = false
 skip_pve_json = false
 # Skip assembly validation (saves ~5-10% export time)
 skip_validation = true
-# Generate static mesh assemblies alongside skeletal
-# Static meshes have full PBR materials but no animation support
-include_static = false
-# Fast mode: skip PVE JSON, validation, and static meshes
-# Equivalent to skip_pve_json + skip_validation combined
-fast = false
+# Static mesh assemblies are always generated alongside skeletal
+# Static meshes retain full PBR material bindings (needed for OBJ/Helios export)
 
 [unreal]
 # Generate Unreal Python import script (unreal_import_trees.py / unreal_cleanup_trees.py)
@@ -122,7 +118,7 @@ project_path = "/Game/GrowPy/Trees"
 [helios]
 # Export OBJ/MTL files for Helios++ LiDAR simulation
 # Converts USDA assemblies to Wavefront OBJ with baked twig instances
-export_obj = false
+export_obj = true
 # Stem/branch decimation ratio (0.0-1.0, lower = fewer polygons)
 # For LiDAR, twig positions matter more than stem detail
 stem_decimate_ratio = 0.75
@@ -131,12 +127,9 @@ twig_decimate_ratio = 0.5
 # Generate Helios++ scene XML placing all tree OBJs at CSV positions
 helios_scene = true
 # Also export individual per-tree OBJ files (default: false, only combined OBJ)
-individual_obj = false
+individual_obj = true
 # OBJ coordinate up axis: "y" (standard OBJ/Blender) or "z" (matches USD/Helios)
 obj_up_axis = "y"
-# Classify twig faces into wood (branch) and leaf materials by topology
-# Splits twig geometry: tube components = twig_wood, plane components = twig_leaf
-classify_twig_materials = false
 
 # Quality Presets (single source of truth)
 # Define any number of named presets below as [quality.<name>] sections.

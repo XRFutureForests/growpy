@@ -20,7 +20,11 @@ class TwigPlacement:
     type: str  # 'twig_long', 'twig_short', 'twig_upward', 'twig_dead'
     position: Tuple[float, float, float]
     normal: Tuple[float, float, float]  # Facing direction (from get_twig_directions)
-    orientation: Tuple[float, float, float] = (0.0, 0.0, 1.0)  # Up vector (from get_twig_orientations)
+    orientation: Tuple[float, float, float] = (
+        0.0,
+        0.0,
+        1.0,
+    )  # Up vector (from get_twig_orientations)
     scale: float = 1.0
     bone_id: Optional[int] = None  # Direct bone ID from point_attribute_bone_id
     branch_id: Optional[int] = None  # Branch ID for binding to branch_X joints
@@ -182,9 +186,7 @@ def extract_twig_placements_from_model(
         Dictionary mapping twig type to list of TwigPlacement objects
     """
     if twig_types is None:
-        # Only extract living twig types - dead branches have no foliage
-        # twig_dead is intentionally excluded to save memory
-        twig_types = ["twig_long", "twig_short", "twig_upward"]
+        twig_types = ["twig_long", "twig_short", "twig_upward", "twig_dead"]
 
     placements = {twig_type: [] for twig_type in twig_types}
 
@@ -336,7 +338,11 @@ def extract_twig_placements_from_model(
                     twig_bone_id = global_bone_id
 
             # FALLBACK: If vertex voting failed, try branch lookup
-            if twig_bone_id is None and face_branch_ids is not None and face_idx < len(face_branch_ids):
+            if (
+                twig_bone_id is None
+                and face_branch_ids is not None
+                and face_idx < len(face_branch_ids)
+            ):
                 global_branch_id = face_branch_ids[face_idx]
                 branch_id_for_twig = global_branch_id - branch_id_offset
 
@@ -380,7 +386,9 @@ def extract_twig_placements_from_model(
         logger.debug("  %s: %d placements", twig_type, len(placements[twig_type]))
     logger.info(
         "Twig extraction: %d total (%d/%d array slots used)",
-        total_extracted, twig_idx, num_twigs,
+        total_extracted,
+        twig_idx,
+        num_twigs,
     )
 
     all_bone_ids = [
@@ -392,7 +400,9 @@ def extract_twig_placements_from_model(
     if all_bone_ids:
         logger.debug(
             "Bone IDs: %d twigs assigned, range %d-%d",
-            len(all_bone_ids), min(all_bone_ids), max(all_bone_ids),
+            len(all_bone_ids),
+            min(all_bone_ids),
+            max(all_bone_ids),
         )
     else:
         logger.warning("No twigs have bone_id set")
