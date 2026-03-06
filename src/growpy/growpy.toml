@@ -34,7 +34,7 @@ resize_textures = true
 # Used as default when convert_twigs.py is run without a positional argument
 path = "data/assets/twigs"
 # Enable mesh densification (subdivision for Nanite-friendly high-poly silhouettes)
-densify = true
+densify = false
 # Alpha threshold for silhouette trimming
 # 0.05-0.3 = minimal (conservative), 0.5 = moderate (recommended), 0.7 = aggressive
 alpha_trim = 0.75
@@ -123,9 +123,9 @@ project_path = "/Game/GrowPy/Trees"
 export_obj = true
 # Stem/branch decimation ratio (0.0-1.0, lower = fewer polygons)
 # For LiDAR, twig positions matter more than stem detail
-stem_decimate_ratio = 0.1
+stem_decimate_ratio = 1.0
 # Twig decimation ratio for OBJ export (0.0-1.0, lower = fewer polygons)
-twig_decimate_ratio = 0.3
+twig_decimate_ratio = 1.0
 # Generate Helios++ scene XML placing all tree OBJs at CSV positions
 helios_scene = true
 # Export a single combined OBJ with all trees positioned at CSV coordinates
@@ -221,7 +221,7 @@ resolution = 8
 resolution_reduce = 0.9
 texture_repeat = 2
 build_cutoff_age = 0
-build_cutoff_thickness = 0.01
+build_cutoff_thickness = 0
 build_blend = false
 build_end_cap = false
 skeleton_length = 4.0
