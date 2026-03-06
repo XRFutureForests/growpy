@@ -1122,6 +1122,31 @@ def _detect_leaf_material_indices(obj):
     return idxs
 
 
+def _save_face_material_sidecar(obj, output_dir, standardized_name):
+    """Save per-face material assignment from Blender mesh as JSON sidecar.
+
+    Enables downstream OBJ export to split faces into leaf/wood groups
+    for leaf area index calculation. Saved after all geometry processing
+    so face indices match the exported USD.
+    """
+    mesh = obj.data
+    mats = getattr(mesh, "materials", []) or []
+    if not mats or len(mats) < 2:
+        return
+
+    mat_names = [mat.name if mat else f"material_{i}" for i, mat in enumerate(mats)]
+    face_mat_indices = [p.material_index for p in mesh.polygons]
+
+    sidecar = {
+        "materials": mat_names,
+        "face_material_indices": face_mat_indices,
+    }
+
+    sidecar_path = output_dir / f"{standardized_name}_face_materials.json"
+    with open(sidecar_path, "w") as f:
+        json.dump(sidecar, f)
+
+
 def smooth_leaf_mesh(
     obj,
     iterations: int = 10,
@@ -3469,6 +3494,10 @@ def process_twig_file(
                 bpy.ops.mesh.select_all(action="SELECT")
                 bpy.ops.mesh.normals_make_consistent(inside=False)
                 bpy.ops.object.mode_set(mode="OBJECT")
+
+            # Save per-face material mapping for downstream OBJ export (LAI calculation)
+            # Must happen AFTER all geometry processing so face indices match exported USD
+            _save_face_material_sidecar(obj, output_dir, standardized_name)
 
             bpy.ops.object.select_all(action="DESELECT")
             mount_point.select_set(True)
