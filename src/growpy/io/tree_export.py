@@ -1406,6 +1406,66 @@ def _build_usdskel_from_bones(
                     print(f"  Converted BranchIdParent: {len(local_parent_ids)} faces")
 
 
+def _resolve_twig_usd(
+    twig_file: Path,
+    prefer_skeletal: bool = False,
+    prefer_static: bool = False,
+) -> Optional[Path]:
+    """Resolve a twig file path to the appropriate USD variant.
+
+    Returns the correct USD file (skeletal, static, or plain) for the given
+    twig file, or None if no suitable file exists.
+    """
+    for ext in [".usda", ".usd"]:
+        usd_file = twig_file.with_suffix(ext)
+
+        if "_nanite_assembly" in usd_file.name:
+            continue
+
+        is_skeletal = "_skeletal" in usd_file.stem
+        is_static = "_static" in usd_file.stem
+
+        if prefer_static:
+            if is_static and usd_file.exists():
+                return usd_file
+            if not is_static:
+                # Try sibling variant: replace _skeletal with _static, or append _static
+                if is_skeletal:
+                    static_file = usd_file.parent / Path(
+                        usd_file.name.replace("_skeletal", "_static")
+                    )
+                else:
+                    static_file = (
+                        usd_file.parent
+                        / f"{usd_file.stem}_static{usd_file.suffix}"
+                    )
+                if static_file.exists():
+                    return static_file
+        elif prefer_skeletal:
+            if is_skeletal and usd_file.exists():
+                return usd_file
+            if not is_skeletal:
+                # Try sibling variant: replace _static with _skeletal, or append _skeletal
+                if is_static:
+                    skeletal_file = usd_file.parent / Path(
+                        usd_file.name.replace("_static", "_skeletal")
+                    )
+                else:
+                    skeletal_file = (
+                        usd_file.parent
+                        / f"{usd_file.stem}_skeletal{usd_file.suffix}"
+                    )
+                if skeletal_file.exists():
+                    return skeletal_file
+        else:
+            if is_skeletal or is_static:
+                continue
+            if usd_file.exists():
+                return usd_file
+
+    return None
+
+
 def get_twig_usd_map_for_species(
     species_name: str,
     config: Optional[Any] = None,
@@ -1427,7 +1487,8 @@ def get_twig_usd_map_for_species(
         prefer_static: If True, prefer static twig variants (_static.usda)
 
     Returns:
-        Dict mapping twig types to USD file paths:
+        Dict mapping twig types to USD file paths. Multiple foliage variants
+        are included with _varN suffix keys (e.g. twig_long, twig_long_var1):
         {'twig_long': Path, 'twig_short': Path, ...}
     """
     if config is None:
@@ -1453,77 +1514,33 @@ def get_twig_usd_map_for_species(
         "twig_dead": ["dead", "fall", "winter"],
     }
 
-    # Priority-based matching: try each keyword in order for each grove type
+    # Collect ALL matching variants per grove type for visual diversity.
+    # Each keyword that matches a unique file becomes a separate prototype
+    # (e.g., twig_long, twig_long_var1) so instances can cycle through them.
     for grove_type, keywords in type_mapping.items():
-        matched = False
+        variant_count = 0
+        seen_file_paths = set()
 
-        # Try keywords in priority order (specific names like "apical" before variant letters)
         for keyword in keywords:
-            if matched:
-                break
-
             for twig_type, twig_paths in twig_files_by_type.items():
                 twig_type_lower = twig_type.lower()
 
-                # Check for exact or substring match
                 if keyword in twig_type_lower:
                     if twig_paths:
                         twig_file = twig_paths[0]
-
-                        # CRITICAL: ALWAYS use regular USD files for twigs
-                        for ext in [".usda", ".usd"]:
-                            usd_file = twig_file.with_suffix(ext)
-
-                            if "_nanite_assembly" in usd_file.name:
-                                continue
-
-                            # Check for skeletal or static variants
-                            is_skeletal = "_skeletal" in usd_file.stem
-                            is_static = "_static" in usd_file.stem
-
-                            if prefer_static:
-                                # Look for static variant
-                                if not is_static:
-                                    static_file = (
-                                        usd_file.parent
-                                        / f"{usd_file.stem}_static{usd_file.suffix}"
-                                    )
-                                    if static_file.exists():
-                                        twig_usd_map[grove_type] = static_file
-                                        matched = True
-                                        break
-                                    continue
-                                if is_static and usd_file.exists():
-                                    twig_usd_map[grove_type] = usd_file
-                                    matched = True
-                                    break
-                            elif prefer_skeletal:
-                                # Look for skeletal variant
-                                if not is_skeletal:
-                                    skeletal_file = (
-                                        usd_file.parent
-                                        / f"{usd_file.stem}_skeletal{usd_file.suffix}"
-                                    )
-                                    if skeletal_file.exists():
-                                        twig_usd_map[grove_type] = skeletal_file
-                                        matched = True
-                                        break
-                                    continue
-                                if is_skeletal and usd_file.exists():
-                                    twig_usd_map[grove_type] = usd_file
-                                    matched = True
-                                    break
-                            else:
-                                # No preference - skip variants
-                                if is_skeletal or is_static:
-                                    continue
-                                if usd_file.exists():
-                                    twig_usd_map[grove_type] = usd_file
-                                    matched = True
-                                    break
-
-                        if matched:
-                            break
+                        resolved = _resolve_twig_usd(
+                            twig_file, prefer_skeletal, prefer_static
+                        )
+                        if resolved and str(resolved) not in seen_file_paths:
+                            seen_file_paths.add(str(resolved))
+                            key = (
+                                grove_type
+                                if variant_count == 0
+                                else f"{grove_type}_var{variant_count}"
+                            )
+                            twig_usd_map[key] = resolved
+                            variant_count += 1
+                    break  # One twig_type per keyword, move to next keyword
 
     # Fallback: If no variant-specific twigs found, use base twig file for all types
     # This handles species like Pacific Silver Fir that only have one twig file
