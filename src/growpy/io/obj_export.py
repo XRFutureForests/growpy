@@ -721,7 +721,7 @@ def write_combined_obj(
 ) -> Path:
     """Merge all tree meshes into a single combined OBJ at CSV positions.
 
-    Works directly from numpy arrays -- no individual OBJ files needed.
+    Streams data per-tree in chunks to avoid OOM from np.vstack on large forests.
 
     Args:
         tree_meshes: List of tuples:
@@ -736,95 +736,93 @@ def write_combined_obj(
     mtl_path = output_path.with_suffix(".mtl")
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    all_bark_verts: List[np.ndarray] = []
-    all_bark_faces: List[np.ndarray] = []
-    bark_vert_offset = 0
-
-    all_tw_verts: List[np.ndarray] = []
-    all_tw_faces: List[np.ndarray] = []
-    all_tl_verts: List[np.ndarray] = []
-    all_tl_faces: List[np.ndarray] = []
-    tw_vert_offset = 0
-    tl_vert_offset = 0
-
-    for entry in tree_meshes:
-        trunk_verts, trunk_faces, tw_v, tw_f, tl_v, tl_f, x, y, z = entry
-        offset = np.array([x, y, z], dtype=np.float64)
-
-        all_bark_verts.append(trunk_verts + offset)
-        all_bark_faces.append(trunk_faces + bark_vert_offset)
-        bark_vert_offset += len(trunk_verts)
-
-        if len(tw_v) > 0:
-            all_tw_verts.append(tw_v + offset)
-            all_tw_faces.append(tw_f + tw_vert_offset)
-            tw_vert_offset += len(tw_v)
-
-        if len(tl_v) > 0:
-            all_tl_verts.append(tl_v + offset)
-            all_tl_faces.append(tl_f + tl_vert_offset)
-            tl_vert_offset += len(tl_v)
-
-    bark_verts = np.vstack(all_bark_verts) if all_bark_verts else np.empty((0, 3))
-    bark_faces = (
-        np.vstack(all_bark_faces)
-        if all_bark_faces
-        else np.empty((0, 3), dtype=np.int64)
-    )
-    tw_verts = np.vstack(all_tw_verts) if all_tw_verts else np.empty((0, 3))
-    tw_faces = (
-        np.vstack(all_tw_faces) if all_tw_faces else np.empty((0, 3), dtype=np.int64)
-    )
-    tl_verts = np.vstack(all_tl_verts) if all_tl_verts else np.empty((0, 3))
-    tl_faces = (
-        np.vstack(all_tl_faces) if all_tl_faces else np.empty((0, 3), dtype=np.int64)
-    )
-
-    total_bark_verts = len(bark_verts)
-    total_tw_verts = len(tw_verts)
+    # Pre-scan vertex counts for face offset calculation
+    bark_counts = [len(e[0]) for e in tree_meshes]
+    tw_counts = [len(e[2]) for e in tree_meshes]
+    tl_counts = [len(e[4]) for e in tree_meshes]
+    total_bark = sum(bark_counts)
+    total_tw = sum(tw_counts)
+    total_tl = sum(tl_counts)
+    chunk = 500_000
 
     with open(output_path, "w") as f:
         f.write("# Helios++ combined forest mesh\n")
         f.write(f"mtllib {mtl_name}\n\n")
 
-        for v in bark_verts:
-            f.write(_fmt_vert(v, up_axis))
-        for v in tw_verts:
-            f.write(_fmt_vert(v, up_axis))
-        for v in tl_verts:
-            f.write(_fmt_vert(v, up_axis))
+        # Vertices streamed per-tree in chunks: bark, twig_wood, twig_leaf
+        for trunk_verts, _, _, _, _, _, x, y, z in tree_meshes:
+            offset = np.array([x, y, z], dtype=np.float64)
+            for s in range(0, len(trunk_verts), chunk):
+                for v in trunk_verts[s : s + chunk] + offset:
+                    f.write(_fmt_vert(v, up_axis))
+
+        for _, _, tw_v, _, _, _, x, y, z in tree_meshes:
+            if len(tw_v) == 0:
+                continue
+            offset = np.array([x, y, z], dtype=np.float64)
+            for s in range(0, len(tw_v), chunk):
+                for v in tw_v[s : s + chunk] + offset:
+                    f.write(_fmt_vert(v, up_axis))
+
+        for _, _, _, _, tl_v, _, x, y, z in tree_meshes:
+            if len(tl_v) == 0:
+                continue
+            offset = np.array([x, y, z], dtype=np.float64)
+            for s in range(0, len(tl_v), chunk):
+                for v in tl_v[s : s + chunk] + offset:
+                    f.write(_fmt_vert(v, up_axis))
 
         f.write("\n")
 
+        # Faces: bark
         f.write("usemtl bark\n")
-        for face in bark_faces:
-            f.write(f"f {face[0]+1} {face[1]+1} {face[2]+1}\n")
+        cum = 0
+        for i, (_, trunk_faces, _, _, _, _, _, _, _) in enumerate(tree_meshes):
+            base = cum + 1
+            for face in trunk_faces:
+                idx = face + base
+                f.write(f"f {idx[0]} {idx[1]} {idx[2]}\n")
+            cum += bark_counts[i]
 
-        if len(tw_faces) > 0:
+        # Faces: twig_wood
+        if total_tw > 0:
             f.write("\nusemtl twig_wood\n")
-            for face in tw_faces:
-                v0 = face[0] + total_bark_verts + 1
-                v1 = face[1] + total_bark_verts + 1
-                v2 = face[2] + total_bark_verts + 1
-                f.write(f"f {v0} {v1} {v2}\n")
+            cum = 0
+            for i, (_, _, _, tw_f, _, _, _, _, _) in enumerate(tree_meshes):
+                if len(tw_f) == 0:
+                    continue
+                base = total_bark + cum + 1
+                for face in tw_f:
+                    idx = face + base
+                    f.write(f"f {idx[0]} {idx[1]} {idx[2]}\n")
+                cum += tw_counts[i]
 
-        if len(tl_faces) > 0:
+        # Faces: twig_leaf
+        if total_tl > 0:
             f.write("\nusemtl twig_leaf\n")
-            for face in tl_faces:
-                v0 = face[0] + total_bark_verts + total_tw_verts + 1
-                v1 = face[1] + total_bark_verts + total_tw_verts + 1
-                v2 = face[2] + total_bark_verts + total_tw_verts + 1
-                f.write(f"f {v0} {v1} {v2}\n")
+            cum = 0
+            for i, (_, _, _, _, _, tl_f, _, _, _) in enumerate(tree_meshes):
+                if len(tl_f) == 0:
+                    continue
+                base = total_bark + total_tw + cum + 1
+                for face in tl_f:
+                    idx = face + base
+                    f.write(f"f {idx[0]} {idx[1]} {idx[2]}\n")
+                cum += tl_counts[i]
 
-    total_verts = len(bark_verts) + len(tw_verts) + len(tl_verts)
-    total_faces = len(bark_faces) + len(tw_faces) + len(tl_faces)
+    total_verts = total_bark + total_tw + total_tl
+    total_faces = (
+        sum(len(e[1]) for e in tree_meshes)
+        + sum(len(e[3]) for e in tree_meshes)
+        + sum(len(e[5]) for e in tree_meshes)
+    )
     logger.info(
         "Combined OBJ: %s (%d verts, %d faces, %d twig_wood + %d twig_leaf, %d trees)",
         output_path.name,
         total_verts,
         total_faces,
-        len(tw_faces),
-        len(tl_faces),
+        sum(len(e[3]) for e in tree_meshes),
+        sum(len(e[5]) for e in tree_meshes),
         len(tree_meshes),
     )
 
@@ -904,11 +902,12 @@ def export_forest_obj(
     up_axis: str = "y",
     timer=None,
 ) -> List[Tuple[Path, float, float, float, str]]:
-    """Export all USDA tree assemblies to a combined OBJ for Helios++.
+    """Export USDA tree assemblies to OBJ for Helios++ LiDAR simulation.
 
-    Extracts mesh data from USDA assemblies and writes a single combined
-    OBJ with all trees positioned at their CSV coordinates. Optionally
-    also writes individual per-tree OBJ files.
+    Two mutually exclusive output modes:
+    - Combined OBJ (default): Single file with all trees, positions baked in.
+    - Scene XML (helios_scene=True): Individual per-tree OBJs referenced by
+      a Helios scene XML with translate offsets per tree position.
 
     Twig geometry is classified into wood/leaf using material bindings
     from static USDA files (sourced from .blend originals).
@@ -937,14 +936,8 @@ def export_forest_obj(
 
     clear_twig_cache()
 
-    # Find all assembly USDA files (exclude skeletal/static/twig files)
-    assembly_files = []
-    for usda in output_dir.glob("*/tree_*/*.usda"):
-        if usda.stem.endswith("_skeletal") or usda.stem.endswith("_static"):
-            continue
-        if "twig" in usda.stem.lower():
-            continue
-        assembly_files.append(usda)
+    # Find static assembly USDA files (OBJ export uses static mesh data)
+    assembly_files = sorted(output_dir.glob("*/tree_*/*_assembly_static.usda"))
 
     if not assembly_files:
         logger.warning("OBJ export: No assembly USDA files found")
@@ -1020,8 +1013,23 @@ def export_forest_obj(
         else:
             obj_files.append((Path(""), x, y, z, species_name))
 
-    # Always write combined OBJ
-    if tree_meshes:
+    if generate_scene_xml and tree_meshes:
+        # Scene XML references individual OBJs positioned via translate filters
+        if not individual_obj:
+            logger.warning(
+                "helios_scene requires individual_obj=true; skipping scene XML"
+            )
+        else:
+            with _track("generate_helios_scene"):
+                from growpy.io.helios_scene import generate_helios_scene
+
+                scene_path = output_dir / "helios_scene.xml"
+                generate_helios_scene(
+                    tree_entries=obj_files,
+                    output_path=scene_path,
+                )
+    elif tree_meshes:
+        # Combined OBJ as standalone alternative (positions baked into vertices)
         is_conifer_forest = any(
             any(kw in sp.lower() for kw in CONIFER_KEYWORDS)
             for _, _, _, _, sp in obj_files
@@ -1036,17 +1044,5 @@ def export_forest_obj(
                 up_axis=up_axis,
             )
 
-    if generate_scene_xml and tree_meshes:
-        with _track("generate_helios_scene"):
-            from growpy.io.helios_scene import generate_helios_scene
-
-            combined_path = output_dir / "forest_combined.obj"
-            scene_path = output_dir / "helios_scene.xml"
-            generate_helios_scene(
-                tree_entries=[(combined_path, 0.0, 0.0, 0.0, "forest")],
-                output_path=scene_path,
-            )
-
     logger.info("OBJ export complete: %d trees", len(tree_meshes))
-    return obj_files
     return obj_files
