@@ -5,10 +5,13 @@ Converts Grove twig instances to PVE instancer format with proper
 coordinate system conversion and grouping by branch.
 """
 
+import logging
 import math
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 def grove_to_pve_position(grove_pos: Tuple[float, float, float]) -> List[float]:
@@ -154,26 +157,25 @@ def extract_foliage_data(
             num_branches = len(set(model.face_attribute_branch_id))
         else:
             num_branches = 0
-            if verbose:
-                print("  Warning: Model has no branch IDs, cannot extract foliage")
+            logger.warning("Model has no branch IDs, cannot extract foliage")
             return _create_empty_instancer_arrays(0)
 
     if num_branches == 0:
-        if verbose:
-            print("  Warning: num_branches is 0, cannot extract foliage")
+        logger.warning("num_branches is 0, cannot extract foliage")
         return _create_empty_instancer_arrays(0)
 
     if total_twigs == 0:
-        if verbose:
-            print(
-                f"  Warning: No twigs extracted, returning empty arrays for {num_branches} branches"
-            )
+        logger.warning(
+            "No twigs extracted, returning empty arrays for %d branches",
+            num_branches,
+        )
         return _create_empty_instancer_arrays(num_branches)
 
-    if verbose:
-        print(
-            f"  Extracting foliage from model with {total_twigs} twigs for {num_branches} branches"
-        )
+    logger.info(
+        "Extracting foliage from model with %d twigs for %d branches",
+        total_twigs,
+        num_branches,
+    )
 
     # Group twigs by branch_id - flatten all twig types into one list
     # CRITICAL: Handle None branch_ids (assign to branch 0 as fallback)
@@ -198,12 +200,17 @@ def extract_foliage_data(
         timings["group_by_branch"] = time.perf_counter() - t0
 
     if skipped_none_branch > 0:
-        print(
-            f"  PVE: Warning: {skipped_none_branch} twigs had None/invalid branch_id, assigned to branch 0"
+        logger.warning(
+            "PVE: %d twigs had None/invalid branch_id, assigned to branch 0",
+            skipped_none_branch,
         )
-    print(f"  PVE: Grouped {total_twigs} twigs into {len(twigs_by_branch)} branches")
-    print(
-        f"  PVE: num_branches={num_branches}, branch_ids in data: {sorted(list(twigs_by_branch.keys()))[:10]}"
+    logger.info(
+        "PVE: Grouped %d twigs into %d branches", total_twigs, len(twigs_by_branch)
+    )
+    logger.info(
+        "PVE: num_branches=%d, branch_ids in data: %s",
+        num_branches,
+        sorted(list(twigs_by_branch.keys()))[:10],
     )
 
     # Build instancer arrays
@@ -304,10 +311,10 @@ def extract_foliage_data(
     if profile:
         timings["build_instancer_arrays"] = time.perf_counter() - t0
         total = sum(timings.values())
-        print(f"        extract_foliage_data breakdown ({total:.3f}s):")
+        logger.debug("extract_foliage_data breakdown (%.3fs):", total)
         for step, elapsed in sorted(timings.items(), key=lambda x: -x[1]):
             pct = (elapsed / total * 100) if total > 0 else 0
-            print(f"          {step}: {elapsed:.3f}s ({pct:.1f}%)")
+            logger.debug("  %s: %.3fs (%.1f%%)", step, elapsed, pct)
 
     return {
         "instancer_name": {

@@ -5,8 +5,7 @@ and Helios-compatible MTL materials. Post-processing step that runs after
 USDA export without modifying the existing pipeline.
 
 Each tree produces one OBJ file with trunk/branch geometry plus all twig
-instances baked (transformed and merged) into the mesh. Twig prototypes
-are auto-decimated to reduce polygon count.
+instances baked (transformed and merged) into the mesh.
 
 Twig geometry is classified into wood and leaf using material bindings
 from static USDA files (sourced from .blend originals).
@@ -17,6 +16,7 @@ Material groups:
     twig_leaf - Twig leaf/needle planes (helios_spectra conifer or deciduous)
 """
 
+import logging
 import math
 import shutil
 from pathlib import Path
@@ -25,6 +25,8 @@ from typing import Dict, List, Optional, Tuple
 import bpy
 import numpy as np
 
+logger = logging.getLogger(__name__)
+
 if hasattr(bpy.utils, "expose_bundled_modules"):
     bpy.utils.expose_bundled_modules()
 
@@ -32,14 +34,12 @@ from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade
 
 WOOD_MATERIAL_KEYWORDS = ("bark", "branch", "wood", "dead", "stem", "twig")
 
-# Cache classified twig meshes per (twig_file, ratio)
+# Cache classified twig meshes per twig file path
 # Values: (verts, wood_faces, leaf_faces)
-_classified_twig_cache: Dict[
-    Tuple[str, float], Tuple[np.ndarray, np.ndarray, np.ndarray]
-] = {}
+_classified_twig_cache: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
 
 
-def clear_twig_decimate_cache() -> None:
+def clear_twig_cache() -> None:
     """Clear the classified twig mesh cache. Call at start of new export session."""
     global _classified_twig_cache
     _classified_twig_cache.clear()
@@ -157,8 +157,6 @@ def _read_twig_mesh_classified(
 
 def _extract_tree_mesh(
     assembly_usda_path: Path,
-    decimate_ratio: float = 0.3,
-    stem_decimate_ratio: float = 0.1,
 ) -> Optional[tuple]:
     """Extract tree mesh data from USDA assembly without writing files.
 
@@ -168,8 +166,6 @@ def _extract_tree_mesh(
 
     Args:
         assembly_usda_path: Path to the Nanite Assembly USDA file
-        decimate_ratio: Twig decimation ratio (0.0-1.0, lower = fewer polygons)
-        stem_decimate_ratio: Stem/branch decimation ratio (0.0-1.0)
 
     Returns:
         (trunk_verts, trunk_faces, twig_wood_verts, twig_wood_faces,
@@ -187,28 +183,22 @@ def _extract_tree_mesh(
     if not stem_files:
         stem_files = list(tree_dir.glob("*_skeletal.usda"))
     if not stem_files:
-        print(f"  OBJ export: No stem USDA found in {tree_dir}")
+        logger.warning("OBJ export: No stem USDA found in %s", tree_dir)
         return None
     # Filter out twig/foliage files from matches
     stem_files = [
         f for f in stem_files if "foliage" not in f.stem and "twig" not in f.stem
     ]
     if not stem_files:
-        print(f"  OBJ export: No stem USDA found in {tree_dir}")
+        logger.warning("OBJ export: No stem USDA found in %s", tree_dir)
         return None
     stem_path = stem_files[0]
 
     # Read trunk/branch mesh from USDA
     trunk_verts, trunk_faces, _trunk_uvs = _read_tree_mesh(stem_path)
     if trunk_verts is None:
-        print(f"  OBJ export: Failed to read tree mesh from {stem_path}")
+        logger.warning("OBJ export: Failed to read tree mesh from %s", stem_path)
         return None
-
-    # Decimate stem/branch geometry
-    if 0.0 < stem_decimate_ratio < 1.0:
-        trunk_verts, trunk_faces = _decimate_mesh(
-            trunk_verts, trunk_faces, stem_decimate_ratio
-        )
 
     # Read twig instance data from assembly USDA
     instancer_data = _read_twig_instancer(assembly_usda_path)
@@ -233,7 +223,7 @@ def _extract_tree_mesh(
             if not twig_path.exists():
                 continue
 
-            cache_key = (str(twig_path), decimate_ratio)
+            cache_key = str(twig_path)
             if cache_key in _classified_twig_cache:
                 classified_protos[idx] = _classified_twig_cache[cache_key]
                 continue
@@ -245,31 +235,7 @@ def _extract_tree_mesh(
             if raw_verts is None:
                 continue
 
-            if 0.0 < decimate_ratio < 1.0 and (
-                len(raw_wood_faces) > 0 or len(raw_leaf_faces) > 0
-            ):
-                # Decimate wood and leaf parts separately to preserve classification
-                if len(raw_wood_faces) > 0:
-                    dec_wood_v, dec_wood_f = _decimate_mesh(
-                        raw_verts, raw_wood_faces, decimate_ratio
-                    )
-                else:
-                    dec_wood_v = raw_verts
-                    dec_wood_f = raw_wood_faces
-                if len(raw_leaf_faces) > 0:
-                    dec_leaf_v, dec_leaf_f = _decimate_mesh(
-                        raw_verts, raw_leaf_faces, decimate_ratio
-                    )
-                else:
-                    dec_leaf_v = raw_verts
-                    dec_leaf_f = raw_leaf_faces
-                classified_protos[idx] = (
-                    raw_verts,
-                    dec_wood_f,
-                    dec_leaf_f,
-                )
-            else:
-                classified_protos[idx] = (raw_verts, raw_wood_faces, raw_leaf_faces)
+            classified_protos[idx] = (raw_verts, raw_wood_faces, raw_leaf_faces)
             _classified_twig_cache[cache_key] = classified_protos[idx]
 
         if classified_protos:
@@ -296,8 +262,6 @@ def _extract_tree_mesh(
 def convert_tree_to_obj(
     assembly_usda_path: Path,
     species_name: str,
-    decimate_ratio: float = 0.3,
-    stem_decimate_ratio: float = 0.1,
     helios_spectra_leaves: str = "deciduous",
 ) -> Optional[Path]:
     """Convert a tree's USDA assembly to an individual OBJ file with baked twigs.
@@ -305,18 +269,12 @@ def convert_tree_to_obj(
     Args:
         assembly_usda_path: Path to the Nanite Assembly USDA file
         species_name: Species name for texture/material lookup
-        decimate_ratio: Twig decimation ratio (0.0-1.0, lower = fewer polygons)
-        stem_decimate_ratio: Stem/branch decimation ratio (0.0-1.0)
         helios_spectra_leaves: Helios spectra type for leaves ("conifer" or "deciduous")
 
     Returns:
         Path to generated OBJ file, or None on failure
     """
-    mesh_data = _extract_tree_mesh(
-        assembly_usda_path,
-        decimate_ratio,
-        stem_decimate_ratio,
-    )
+    mesh_data = _extract_tree_mesh(assembly_usda_path)
     if mesh_data is None:
         return None
 
@@ -340,9 +298,12 @@ def convert_tree_to_obj(
         twig_leaf_faces=tl_faces,
     )
     _write_helios_mtl(mtl_path, bark_texture, helios_spectra_leaves)
-    print(
-        f"  OBJ export: {obj_path.name} ({len(trunk_faces)} trunk + "
-        f"{len(tw_faces)} twig_wood + {len(tl_faces)} twig_leaf faces)"
+    logger.info(
+        "OBJ export: %s (%d trunk + %d twig_wood + %d twig_leaf faces)",
+        obj_path.name,
+        len(trunk_faces),
+        len(tw_faces),
+        len(tl_faces),
     )
 
     return obj_path
@@ -516,69 +477,6 @@ def _read_twig_mesh(
         return None, None
 
     return vertices, np.array(faces, dtype=np.int64)
-
-
-def _decimate_mesh(
-    vertices: np.ndarray,
-    faces: np.ndarray,
-    ratio: float,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Decimate mesh using Blender's DECIMATE modifier.
-
-    Args:
-        vertices: (N, 3) vertex positions
-        faces: (M, 3) triangle indices
-        ratio: Decimation ratio (0.0-1.0, lower = more reduction)
-
-    Returns:
-        Tuple of (decimated_vertices, decimated_faces)
-    """
-    import bpy
-
-    # Create temporary mesh in Blender
-    mesh_data = bpy.data.meshes.new("_helios_decimate_temp")
-    mesh_data.from_pydata(
-        vertices.tolist(),
-        [],
-        faces.tolist(),
-    )
-    mesh_data.update()
-
-    obj = bpy.data.objects.new("_helios_decimate_temp", mesh_data)
-    bpy.context.collection.objects.link(obj)
-    bpy.context.view_layer.objects.active = obj
-    obj.select_set(True)
-
-    # Add and apply DECIMATE modifier
-    mod = obj.modifiers.new("Decimate", "DECIMATE")
-    mod.decimate_type = "COLLAPSE"
-    mod.ratio = ratio
-
-    # Apply modifier using depsgraph evaluation (avoids bpy.ops context issues)
-    depsgraph = bpy.context.evaluated_depsgraph_get()
-    eval_obj = obj.evaluated_get(depsgraph)
-    eval_mesh = eval_obj.data
-
-    result_verts = np.array(
-        [[v.co.x, v.co.y, v.co.z] for v in eval_mesh.vertices], dtype=np.float64
-    )
-    result_faces = np.array(
-        [
-            [p.vertices[0], p.vertices[1], p.vertices[2]]
-            for p in eval_mesh.polygons
-            if len(p.vertices) == 3
-        ],
-        dtype=np.int64,
-    )
-
-    # Clean up Blender objects
-    bpy.data.objects.remove(obj, do_unlink=True)
-    bpy.data.meshes.remove(mesh_data, do_unlink=True)
-
-    if len(result_verts) == 0 or len(result_faces) == 0:
-        return vertices, faces
-
-    return result_verts, result_faces
 
 
 def _quat_to_rotation_matrix(w: float, x: float, y: float, z: float) -> np.ndarray:
@@ -920,9 +818,14 @@ def write_combined_obj(
 
     total_verts = len(bark_verts) + len(tw_verts) + len(tl_verts)
     total_faces = len(bark_faces) + len(tw_faces) + len(tl_faces)
-    print(
-        f"  Combined OBJ: {output_path.name} ({total_verts} verts, {total_faces} faces, "
-        f"{len(tw_faces)} twig_wood + {len(tl_faces)} twig_leaf, {len(tree_meshes)} trees)"
+    logger.info(
+        "Combined OBJ: %s (%d verts, %d faces, %d twig_wood + %d twig_leaf, %d trees)",
+        output_path.name,
+        total_verts,
+        total_faces,
+        len(tw_faces),
+        len(tl_faces),
+        len(tree_meshes),
     )
 
     _write_helios_mtl(
@@ -996,11 +899,10 @@ CONIFER_KEYWORDS = [
 def export_forest_obj(
     output_dir: Path,
     csv_path: Path,
-    decimate_ratio: float = 0.3,
-    stem_decimate_ratio: float = 0.1,
     generate_scene_xml: bool = False,
     individual_obj: bool = False,
     up_axis: str = "y",
+    timer=None,
 ) -> List[Tuple[Path, float, float, float, str]]:
     """Export all USDA tree assemblies to a combined OBJ for Helios++.
 
@@ -1014,8 +916,6 @@ def export_forest_obj(
     Args:
         output_dir: Forest output directory containing species/tree_* subdirs.
         csv_path: Input CSV with tree positions (x, y, z, fid columns).
-        decimate_ratio: Twig decimation ratio (0.0-1.0, lower = fewer polygons).
-        stem_decimate_ratio: Stem/branch decimation ratio (0.0-1.0).
         generate_scene_xml: Generate Helios++ scene XML with tree positions.
         individual_obj: Also write individual per-tree OBJ files (default: False).
         up_axis: Coordinate up axis for OBJ output ("y" or "z").
@@ -1023,9 +923,19 @@ def export_forest_obj(
     Returns:
         List of (obj_path, x, y, z, species_name) tuples for exported trees.
     """
+    from contextlib import nullcontext
+
     import pandas as pd
 
-    clear_twig_decimate_cache()
+    from growpy.utils.profiling import ProfileTimer
+
+    if timer is None:
+        timer = ProfileTimer(enabled=False)
+
+    def _track(name):
+        return timer.track(name) if timer.enabled else nullcontext()
+
+    clear_twig_cache()
 
     # Find all assembly USDA files (exclude skeletal/static/twig files)
     assembly_files = []
@@ -1037,12 +947,10 @@ def export_forest_obj(
         assembly_files.append(usda)
 
     if not assembly_files:
-        print("OBJ export: No assembly USDA files found")
+        logger.warning("OBJ export: No assembly USDA files found")
         return []
 
-    print(f"\n{'='*60}")
-    print(f"HELIOS OBJ EXPORT ({len(assembly_files)} trees)")
-    print(f"{'='*60}")
+    logger.info("HELIOS OBJ EXPORT (%d trees)", len(assembly_files))
 
     forest_data = pd.read_csv(csv_path)
     if "fid" not in forest_data.columns:
@@ -1063,11 +971,8 @@ def export_forest_obj(
         is_conifer = any(kw in species_dir.lower() for kw in CONIFER_KEYWORDS)
         spectra = "conifer" if is_conifer else "deciduous"
 
-        mesh_data = _extract_tree_mesh(
-            assembly_usda_path=assembly_path,
-            decimate_ratio=decimate_ratio,
-            stem_decimate_ratio=stem_decimate_ratio,
-        )
+        with _track("extract_tree_mesh"):
+            mesh_data = _extract_tree_mesh(assembly_usda_path=assembly_path)
         if mesh_data is None:
             continue
 
@@ -1080,9 +985,12 @@ def export_forest_obj(
             x, y, z = 0.0, 0.0, 0.0
 
         trunk_verts, trunk_faces, tw_v, tw_f, tl_v, tl_f = mesh_data
-        print(
-            f"  Extracted: {assembly_path.parent.name} "
-            f"({len(trunk_faces)} trunk + {len(tw_f)} twig_wood + {len(tl_f)} twig_leaf faces)"
+        logger.info(
+            "Extracted: %s (%d trunk + %d twig_wood + %d twig_leaf faces)",
+            assembly_path.parent.name,
+            len(trunk_faces),
+            len(tw_f),
+            len(tl_f),
         )
         tree_meshes.append((trunk_verts, trunk_faces, tw_v, tw_f, tl_v, tl_f, x, y, z))
 
@@ -1107,7 +1015,7 @@ def export_forest_obj(
             )
             bark_texture = _find_bark_texture(tree_dir)
             _write_helios_mtl(mtl_path, bark_texture, spectra)
-            print(f"  OBJ export: {obj_path.name}")
+            logger.info("OBJ export: %s", obj_path.name)
             obj_files.append((obj_path, x, y, z, species_name))
         else:
             obj_files.append((Path(""), x, y, z, species_name))
@@ -1120,22 +1028,25 @@ def export_forest_obj(
         )
         spectra = "conifer" if is_conifer_forest else "deciduous"
         combined_path = output_dir / "forest_combined.obj"
-        write_combined_obj(
-            tree_meshes=tree_meshes,
-            output_path=combined_path,
-            helios_spectra_leaves=spectra,
-            up_axis=up_axis,
-        )
+        with _track("write_combined_obj"):
+            write_combined_obj(
+                tree_meshes=tree_meshes,
+                output_path=combined_path,
+                helios_spectra_leaves=spectra,
+                up_axis=up_axis,
+            )
 
     if generate_scene_xml and tree_meshes:
-        from growpy.io.helios_scene import generate_helios_scene
+        with _track("generate_helios_scene"):
+            from growpy.io.helios_scene import generate_helios_scene
 
-        combined_path = output_dir / "forest_combined.obj"
-        scene_path = output_dir / "helios_scene.xml"
-        generate_helios_scene(
-            tree_entries=[(combined_path, 0.0, 0.0, 0.0, "forest")],
-            output_path=scene_path,
-        )
+            combined_path = output_dir / "forest_combined.obj"
+            scene_path = output_dir / "helios_scene.xml"
+            generate_helios_scene(
+                tree_entries=[(combined_path, 0.0, 0.0, 0.0, "forest")],
+                output_path=scene_path,
+            )
 
-    print(f"\nOBJ export complete: {len(tree_meshes)} trees")
+    logger.info("OBJ export complete: %d trees", len(tree_meshes))
+    return obj_files
     return obj_files

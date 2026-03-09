@@ -183,5 +183,4 @@ OBJ/MTL export for Helios++ LiDAR simulation runs automatically in Step 4
 when `helios.export_obj = true` in growpy.toml. Configuration is in the `[helios]`
 section of growpy.toml.
 
-**TOML-configurable:** `export_obj`, `stem_decimate_ratio`, `twig_decimate_ratio`,
-`helios_scene`, `combined_obj` (see `[helios]`).
+**TOML-configurable:** `export_obj`, `helios_scene`, `combined_obj` (see `[helios]`).

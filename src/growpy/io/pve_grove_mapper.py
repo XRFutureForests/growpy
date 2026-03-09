@@ -6,9 +6,12 @@ Quixel Megaplants PVE format, avoiding Houdini entirely.
 """
 
 import json
+import logging
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 from ..config.pve_species_overrides import apply_species_overrides
 from .pve_foliage_extractor import extract_foliage_data
@@ -220,10 +223,10 @@ def map_grove_to_pve(
 
     if profile and verbose:
         total = sum(timings.values())
-        print(f"    map_grove_to_pve breakdown ({total:.3f}s):")
+        logger.debug("map_grove_to_pve breakdown (%.3fs):", total)
         for step, elapsed in sorted(timings.items(), key=lambda x: -x[1]):
             pct = (elapsed / total * 100) if total > 0 else 0
-            print(f"      {step}: {elapsed:.3f}s ({pct:.1f}%)")
+            logger.debug("  %s: %.3fs (%.1f%%)", step, elapsed, pct)
 
     return pve_data
 
@@ -743,7 +746,7 @@ def _map_points_from_skeleton(skeleton: Any, template: Dict) -> Dict:
 
         # Validate
         if max(pscales) == 0:
-            print("    WARNING: All pscale values were 0, applied minimum threshold")
+            logger.warning("All pscale values were 0, applied minimum threshold")
 
         value_key = (
             "values" if "values" in points_data["attributes"]["pscale"] else "value"
@@ -1196,12 +1199,13 @@ def _map_primitives_from_skeleton(
         unaccounted = total_elapsed - accounted
         if unaccounted > 0.001:
             timings["other_untracked"] = unaccounted
-        print(
-            f"      _map_primitives_from_skeleton breakdown ({total_elapsed:.3f}s total):"
+        logger.debug(
+            "_map_primitives_from_skeleton breakdown (%.3fs total):",
+            total_elapsed,
         )
         for step, elapsed in sorted(timings.items(), key=lambda x: -x[1]):
             pct = (elapsed / total_elapsed * 100) if total_elapsed > 0 else 0
-            print(f"        {step}: {elapsed:.3f}s ({pct:.1f}%)")
+            logger.debug("  %s: %.3fs (%.1f%%)", step, elapsed, pct)
 
     return primitives_data
 
@@ -1706,7 +1710,7 @@ def generate_pve_from_grove(
 
     # Load Hazel JSON as template
     if verbose:
-        print(f"  Creating PVE preset from Grove data with foliage...")
+        logger.info("Creating PVE preset from Grove data with foliage...")
 
     # Find Hazel reference file
     project_root = Path(__file__).parent.parent.parent.parent
@@ -1725,8 +1729,9 @@ def generate_pve_from_grove(
     t0 = time.perf_counter() if profile else 0
     if not hazel_reference.exists():
         if verbose:
-            print(
-                f"  Warning: Hazel reference not found at {hazel_reference}, using schema"
+            logger.info(
+                "Hazel reference not found at %s, using schema",
+                hazel_reference,
             )
         template = create_empty_pve_preset()
     else:
@@ -1764,11 +1769,11 @@ def generate_pve_from_grove(
 
     if profile and verbose:
         total = sum(timings.values())
-        print(f"  PVE Generation Timing (total: {total:.3f}s):")
+        logger.debug("PVE Generation Timing (total: %.3fs):", total)
         for step, elapsed in sorted(timings.items(), key=lambda x: -x[1]):
             pct = (elapsed / total * 100) if total > 0 else 0
-            print(f"    {step}: {elapsed:.3f}s ({pct:.1f}%)")
+            logger.debug("  %s: %.3fs (%.1f%%)", step, elapsed, pct)
 
     if verbose:
-        print(f"  [OK] PVE preset with foliage: {output_path.name}")
+        logger.info("[OK] PVE preset with foliage: %s", output_path.name)
     return pve_data

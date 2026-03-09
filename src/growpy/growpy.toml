@@ -119,11 +119,6 @@ project_path = "/Game/GrowPy/Trees"
 # Export OBJ/MTL files for Helios++ LiDAR simulation
 # Converts USDA assemblies to Wavefront OBJ with baked twig instances
 export_obj = true
-# Stem/branch decimation ratio (0.0-1.0, lower = fewer polygons)
-# For LiDAR, twig positions matter more than stem detail
-stem_decimate_ratio = 0.75
-# Twig decimation ratio for OBJ export (0.0-1.0, lower = fewer polygons)
-twig_decimate_ratio = 0.5
 # Generate Helios++ scene XML placing all tree OBJs at CSV positions
 helios_scene = true
 # Also export individual per-tree OBJ files (default: false, only combined OBJ)
@@ -166,7 +161,7 @@ skeleton_connected = true
 resolution = 24
 resolution_reduce = 0.8
 build_cutoff_age = 0
-build_cutoff_thickness = 0.01
+build_cutoff_thickness = 0
 build_blend = true
 build_end_cap = true
 skeleton_length = 0.25

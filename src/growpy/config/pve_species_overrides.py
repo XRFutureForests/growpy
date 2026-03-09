@@ -6,8 +6,11 @@ attributes not available from the Grove API.
 """
 
 import json
+import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 def load_species_pve_config(
@@ -46,7 +49,7 @@ def load_species_pve_config(
                     config = json.load(f)
                 return config
             except Exception as e:
-                print(f"Warning: Failed to load PVE config from {config_path}: {e}")
+                logger.warning("Failed to load PVE config from %s: %s", config_path, e)
 
     return None
 
@@ -143,7 +146,7 @@ def create_example_pve_config(
     with open(output_path, "w", indent=2) as f:
         json.dump(example_config, f, indent=2)
 
-    print(f"Created example PVE config at {output_path}")
+    logger.info("Created example PVE config at %s", output_path)
 
 
 def apply_species_overrides(
@@ -169,8 +172,7 @@ def apply_species_overrides(
     config = load_species_pve_config(species_name, config_dir)
 
     if not config:
-        if verbose:
-            print(f"No PVE config found for {species_name}, using defaults")
+        logger.info("No PVE config found for %s, using defaults", species_name)
         return pve_preset
 
     # Merge globalAttributes overrides
@@ -190,10 +192,11 @@ def apply_species_overrides(
                 pve_preset["globalAttributes"][key] = value
                 override_count += 1
 
-        if verbose:
-            print(
-                f"Applied {override_count} attribute overrides from config for {species_name}"
-            )
+        logger.info(
+            "Applied %d attribute overrides from config for %s",
+            override_count,
+            species_name,
+        )
 
     return pve_preset
 
@@ -451,5 +454,5 @@ def extract_pve_overrides_from_reference(
     with open(output_path, "w") as f:
         json.dump(config, f, indent=2)
 
-    print(f"Extracted PVE overrides to {output_path}")
-    print(f"  Extracted {len(config['globalAttributes'])} attributes")
+    logger.info("Extracted PVE overrides to %s", output_path)
+    logger.info("Extracted %d attributes", len(config["globalAttributes"]))

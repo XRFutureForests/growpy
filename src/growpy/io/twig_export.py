@@ -470,29 +470,36 @@ def clean_static_usd_file(usd_path):
                     new_mat_path,
                 )
 
-            # Update mesh material binding to point to new location
+            # Update material bindings (direct mesh binding + GeomSubset bindings)
             new_mesh_prim = stage.GetPrimAtPath(new_mesh_path)
-            mat_binding_api = UsdShade.MaterialBindingAPI(new_mesh_prim)
-            mat_binding = mat_binding_api.GetDirectBinding()
-            if mat_binding:
-                mat_path = mat_binding.GetMaterialPath()
-                if mat_path and "/root/_materials/" in str(mat_path):
-                    new_mat_path_str = str(mat_path).replace(
-                        "/root/_materials/", str(new_materials_path) + "/"
-                    )
-                    # Also update for cleaned material name
-                    path_parts = new_mat_path_str.split("/")
-                    if path_parts:
-                        mat_name = path_parts[-1].split(".")[0]
-                        path_parts[-1] = mat_name
-                        new_mat_path_str = "/".join(path_parts)
 
-                    new_mat_path = Sdf.Path(new_mat_path_str)
-                    mat_prim = stage.GetPrimAtPath(new_mat_path)
-                    if mat_prim and mat_prim.IsValid():
-                        UsdShade.MaterialBindingAPI.Apply(new_mesh_prim).Bind(
-                            UsdShade.Material(mat_prim)
-                        )
+            def _remap_material_binding(prim):
+                mat_binding_api = UsdShade.MaterialBindingAPI(prim)
+                mat_binding = mat_binding_api.GetDirectBinding()
+                if not mat_binding:
+                    return
+                mat_path = mat_binding.GetMaterialPath()
+                if not mat_path or "/root/_materials/" not in str(mat_path):
+                    return
+                new_mat_path_str = str(mat_path).replace(
+                    "/root/_materials/", str(new_materials_path) + "/"
+                )
+                path_parts = new_mat_path_str.split("/")
+                if path_parts:
+                    mat_name = path_parts[-1].split(".")[0]
+                    path_parts[-1] = mat_name
+                    new_mat_path_str = "/".join(path_parts)
+                new_mat_path = Sdf.Path(new_mat_path_str)
+                mat_prim = stage.GetPrimAtPath(new_mat_path)
+                if mat_prim and mat_prim.IsValid():
+                    UsdShade.MaterialBindingAPI.Apply(prim).Bind(
+                        UsdShade.Material(mat_prim)
+                    )
+
+            _remap_material_binding(new_mesh_prim)
+            for child in new_mesh_prim.GetChildren():
+                if child.IsA(UsdGeom.Subset):
+                    _remap_material_binding(child)
 
         # CRITICAL: Remove the old /root prim that Blender created
         root_prim = stage.GetPrimAtPath("/root")
@@ -2849,24 +2856,37 @@ def setup_materials_with_textures(
     if not available_textures:
         return False
 
+    # Save original material info for face-material index remapping
+    bark_keywords = ["twig", "bark", "wood", "branch", "stem"]
+    original_bark_indices = set()
+    if obj.data.materials:
+        for i, mat in enumerate(obj.data.materials):
+            if mat and any(kw in mat.name.lower() for kw in bark_keywords):
+                original_bark_indices.add(i)
+    saved_face_indices = [poly.material_index for poly in obj.data.polygons]
+    had_multiple_materials = len(obj.data.materials) > 1
+
     # Clear existing materials
     obj.data.materials.clear()
 
-    # Group textures by material and season with proper preferences
-    # Preferred order: material type -> season (summer > fall > winter > spring)
+    # Group textures by material affinity and season.
+    # Material EXISTENCE is determined by mesh structure (bark/leaf face regions
+    # from joined twig objects), NOT by texture filenames.
+    # Texture ASSIGNMENT uses filename affinity to route textures to the
+    # correct material (bark-related textures -> bark material, etc.).
+    bark_tex_keywords = ["bark", "twig", "branch", "wood", "stem"]
     material_groups = {}
 
     for texture in available_textures:
-        # Classify texture
         tex_type = classify_texture_from_name(texture.stem)
-
-        # Determine material base name and seasonal preference
         tex_lower = texture.stem.lower()
 
-        # Identify material type (leaf is default, bark if explicitly marked)
-        material_part = "bark" if "bark" in tex_lower else "leaf"
+        # Route texture to bark or leaf group by filename affinity
+        material_part = (
+            "bark" if any(kw in tex_lower for kw in bark_tex_keywords) else "leaf"
+        )
 
-        # Identify season (summer preferred, fall/winter/spring deprioritized)
+        # Detect season
         season = None
         if "summer" in tex_lower:
             season = "summer"
@@ -2877,18 +2897,12 @@ def setup_materials_with_textures(
         elif "spring" in tex_lower:
             season = "spring"
 
-        # Build material group key: material_part + season
-        if season:
-            mat_group_key = f"{material_part}_{season}"
-        else:
-            mat_group_key = material_part
-
+        mat_group_key = f"{material_part}_{season}" if season else material_part
         if mat_group_key not in material_groups:
             material_groups[mat_group_key] = []
         material_groups[mat_group_key].append(texture)
 
     # Consolidate season variants: if summer exists, prefer it
-    # Remove fall/winter/spring variants if summer is available
     season_prioritization = {
         "leaf": [],
         "bark": [],
@@ -2900,7 +2914,6 @@ def setup_materials_with_textures(
             season_prioritization[material_type] = material_groups.pop(group_key)
         elif "fall" in group_key or "winter" in group_key or "spring" in group_key:
             material_type = group_key.split("_")[0]
-            # Only use if summer variant doesn't exist
             if f"{material_type}_summer" not in material_groups:
                 if not season_prioritization[material_type]:
                     season_prioritization[material_type] = material_groups.pop(
@@ -2911,12 +2924,11 @@ def setup_materials_with_textures(
             else:
                 material_groups.pop(group_key)
         elif material_groups[group_key]:
-            # No season in this group, use as base
             material_type = group_key.split("_")[0]
             if not season_prioritization[material_type]:
                 season_prioritization[material_type] = material_groups.pop(group_key)
 
-    # Rename groups with proper species prefix
+    # Build final material groups with species prefix
     final_material_groups = {}
     for material_type, textures in season_prioritization.items():
         if textures:
@@ -2929,7 +2941,16 @@ def setup_materials_with_textures(
         final_material_groups if final_material_groups else material_groups
     )
 
-    # If no good grouping, use all textures for single material
+    # Ensure bark material exists when mesh has bark faces (from joined objects).
+    # Material existence is driven by mesh structure, not texture filenames.
+    if had_multiple_materials and original_bark_indices:
+        has_bark_group = any(
+            any(kw in name.lower() for kw in bark_keywords)
+            for name in material_groups.keys()
+        )
+        if not has_bark_group:
+            material_groups[f"{species_name}_bark"] = []
+
     if not material_groups:
         material_groups[species_name] = available_textures
 
@@ -3023,25 +3044,35 @@ def setup_materials_with_textures(
         for tex_type, tex_path in texture_map.items():
             try:
                 # CRITICAL: Copy texture with standardized naming to textures/ subfolder
-                # Format: textures/{species_foliage}_{texture_type}{ext}
-                # Remove variant suffixes (a, b, etc.) from texture names
+                # Bark materials use {species}_twig_{type} naming;
+                # leaf materials use {species}_foliage_{type} naming.
                 tex_ext = tex_path.suffix
-                # Extract base species name (everything up to and including 'foliage')
-                base_name_parts = []
-                found_foliage = False
-                for part in standardized_name.split("_"):
-                    base_name_parts.append(part)
-                    if part == "foliage":
-                        found_foliage = True
-                        break
+                species_base = (
+                    metadata["species"].lower().replace(" ", "_")
+                    if metadata
+                    else species_name.lower().replace(" ", "_")
+                )
 
-                # If 'foliage' not found, use species name from metadata
-                if not found_foliage:
-                    base_name = (
-                        metadata["species"].lower().replace(" ", "_") + "_foliage"
-                    )
+                # Choose base name depending on material type
+                is_bark_material = any(
+                    kw in final_mat_name.lower()
+                    for kw in ["bark", "twig", "wood", "branch", "stem"]
+                )
+                if is_bark_material:
+                    base_name = f"{species_base}_twig"
                 else:
-                    base_name = "_".join(base_name_parts)
+                    # Extract foliage base from standardized_name
+                    base_name_parts = []
+                    found_foliage = False
+                    for part in standardized_name.split("_"):
+                        base_name_parts.append(part)
+                        if part == "foliage":
+                            found_foliage = True
+                            break
+                    if found_foliage:
+                        base_name = "_".join(base_name_parts)
+                    else:
+                        base_name = f"{species_base}_foliage"
 
                 standardized_tex_name = f"{base_name}_{tex_type}{tex_ext}"
                 dest_tex = textures_dir / standardized_tex_name
@@ -3199,6 +3230,22 @@ def setup_materials_with_textures(
         obj.data.materials.append(material)
         materials_created += 1
 
+    # Remap face material indices to preserve bark/leaf assignment
+    if had_multiple_materials and materials_created > 1:
+        new_bark_idx = None
+        new_leaf_idx = None
+        for i, mat in enumerate(obj.data.materials):
+            if mat and any(kw in mat.name.lower() for kw in bark_keywords):
+                new_bark_idx = i
+            elif new_leaf_idx is None:
+                new_leaf_idx = i
+        if new_bark_idx is not None and new_leaf_idx is not None:
+            for i, old_idx in enumerate(saved_face_indices):
+                if old_idx in original_bark_indices:
+                    obj.data.polygons[i].material_index = new_bark_idx
+                else:
+                    obj.data.polygons[i].material_index = new_leaf_idx
+
     # Return texture map for geometry processing
     if material_groups and materials_created > 0:
         # Merge all texture groups into single map for first material
@@ -3265,6 +3312,97 @@ def process_twig_file(
 
     if not mesh_objects:
         return []
+
+    # --- Pre-process: join sibling meshes per twig variant ---
+    # Each .blend file contains twig variants (e.g., BeechTwigC, BeechTwigD).
+    # Each variant has child meshes: BeechTwigs (bark) + BeechLeaves (leaves).
+    # Join siblings into a single mesh with bark/leaf material distinction
+    # so that the exported USDA preserves both material bindings.
+    from collections import defaultdict
+
+    _BARK_OBJ_KW = ["twig", "bark", "wood", "branch", "stem"]
+
+    # Separate leaf-level meshes (no mesh children) from parent containers
+    leaf_meshes = []
+    parents_with_children = set()
+    for obj in mesh_objects:
+        if any(c.type == "MESH" for c in obj.children):
+            parents_with_children.add(obj.name)
+        else:
+            leaf_meshes.append(obj)
+
+    # Build collection type lookup (End -> apical, Side -> lateral, etc.)
+    _TYPE_KEYWORDS = {
+        "End": ["end", "apical", "long", "terminal", "tip"],
+        "Side": ["side", "lateral", "short"],
+        "Upward": ["upward", "up"],
+        "Dead": ["dead", "fall", "winter", "bare"],
+    }
+    obj_collection_type = {}
+    for coll in bpy.data.collections:
+        coll_lower = coll.name.lower()
+        coll_type = ""
+        for type_label, keywords in _TYPE_KEYWORDS.items():
+            if any(kw in coll_lower for kw in keywords):
+                coll_type = type_label
+                break
+        if coll_type:
+            for o in coll.all_objects:
+                obj_collection_type[o.name] = coll_type
+
+    # Group leaf meshes by direct parent
+    parent_groups = defaultdict(list)
+    for obj in leaf_meshes:
+        key = obj.parent.name if obj.parent else obj.name
+        parent_groups[key].append(obj)
+
+    joined_objects = []
+    for parent_name, siblings in parent_groups.items():
+        if len(siblings) <= 1:
+            obj = siblings[0]
+            # Rename to parent for variant letter detection
+            if obj.parent:
+                coll_type = obj_collection_type.get(
+                    obj.parent.name, obj_collection_type.get(obj.name, "")
+                )
+                new_name = obj.parent.name
+                if coll_type and "Twig" in new_name:
+                    new_name = new_name.replace("Twig", f"{coll_type}Twig", 1)
+                obj.name = new_name
+            joined_objects.append(obj)
+            continue
+
+        # Multiple siblings: assign bark/leaf materials from object names, then join
+        species_lower = species_name.lower().replace(" ", "_")
+        bark_mat = bpy.data.materials.new(name=f"{species_lower}_bark")
+        leaf_mat = bpy.data.materials.new(name=f"{species_lower}_leaf")
+
+        for sib in siblings:
+            sib.data.materials.clear()
+            if any(kw in sib.name.lower() for kw in _BARK_OBJ_KW):
+                sib.data.materials.append(bark_mat)
+            else:
+                sib.data.materials.append(leaf_mat)
+            for poly in sib.data.polygons:
+                poly.material_index = 0
+
+        bpy.ops.object.select_all(action="DESELECT")
+        for sib in siblings:
+            sib.select_set(True)
+        bpy.context.view_layer.objects.active = siblings[0]
+        bpy.ops.object.join()
+
+        joined = bpy.context.view_layer.objects.active
+
+        # Inject collection type into name for standardization
+        coll_type = obj_collection_type.get(parent_name, "")
+        new_name = parent_name
+        if coll_type and "Twig" in new_name:
+            new_name = new_name.replace("Twig", f"{coll_type}Twig", 1)
+        joined.name = new_name
+        joined_objects.append(joined)
+
+    mesh_objects = joined_objects
 
     exported_files = []
     texture_manifest = {}

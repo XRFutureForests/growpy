@@ -4,12 +4,15 @@
 Step 2 of the pipeline. Defaults from growpy.toml [twigs]. See docs/cli-reference.md.
 """
 
+import logging
 import re
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
 
 # USD validation removed - was only for development/testing
 
@@ -55,6 +58,7 @@ TEXTURE_MODIFIERS = {
     "top": ["top", "upper", "face"],
     "bottom": ["bottom", "lower", "back", "underside"],
 }
+
 
 def standardize_twig_name(original_name: str, species_name: str) -> Tuple[str, Dict]:
     """Convert Grove's CamelCase .blend filenames to snake_case USD output names.
@@ -355,10 +359,7 @@ def process_twig_directory(
                     results[species_name].extend(exported_files)
 
         except Exception as e:
-            print(f"  [ERROR] Failed to process {blend_file.name}: {e}")
-            import traceback
-
-            traceback.print_exc()
+            logger.error("Failed to process %s: %s", blend_file.name, e, exc_info=True)
 
     return results
 
@@ -367,6 +368,7 @@ def main():
     import argparse
 
     from growpy.config import get_config
+    from growpy.utils.log import setup_logging
 
     # Get script directory for default paths
     script_dir = Path(__file__).parent.parent.parent.parent
@@ -457,6 +459,7 @@ Output per twig:
 
     # Resolve config: TOML defaults + CLI overrides
     config.resolve(args)
+    setup_logging(verbose=config.verbose)
 
     # Resolve twig path: CLI arg or config default
     twig_path = args.path if args.path is not None else config.twigs_path
@@ -469,7 +472,7 @@ Output per twig:
         csv_path = script_dir / csv_path
 
     if not twig_path.exists():
-        print(f"Path not found: {twig_path}")
+        logger.error("Path not found: %s", twig_path)
         return 1
 
     # Load CSV filter if provided
@@ -560,7 +563,7 @@ Output per twig:
                     twig_filter = list(set(twig_filter))  # Remove duplicates
 
             except Exception as e:
-                print(f"Error processing CSV file: {e}")
+                logger.error("Error processing CSV file: %s", e)
                 return 1
 
     if twig_path.is_file() and twig_path.suffix == ".blend":
@@ -578,7 +581,9 @@ Output per twig:
             smooth_iterations=max(1, config.twigs_smooth_iterations),
             smooth_factor=min(max(0.0, config.twigs_smooth_factor), 1.0),
             boundary_edge_mm=max(0.1, config.twigs_boundary_edge_mm),
-            interior_decimate_ratio=min(max(0.0, config.twigs_interior_decimate_ratio), 1.0),
+            interior_decimate_ratio=min(
+                max(0.0, config.twigs_interior_decimate_ratio), 1.0
+            ),
         )
     elif twig_path.is_dir():
         # Directory
@@ -595,7 +600,9 @@ Output per twig:
             smooth_iterations=max(1, config.twigs_smooth_iterations),
             smooth_factor=min(max(0.0, config.twigs_smooth_factor), 1.0),
             boundary_edge_mm=max(0.1, config.twigs_boundary_edge_mm),
-            interior_decimate_ratio=min(max(0.0, config.twigs_interior_decimate_ratio), 1.0),
+            interior_decimate_ratio=min(
+                max(0.0, config.twigs_interior_decimate_ratio), 1.0
+            ),
         )
     else:
         return 1

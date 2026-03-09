@@ -22,6 +22,8 @@ GROWTH_CYCLE_LIMIT = 10
 HEIGHT_SCALE = 1
 SMOOTH_ITERATIONS = 10  # Default: 10 iterations for natural smoothing (range: 0-20)
 
+import logging
+
 from growpy import (
     TREE_EXPORT_AVAILABLE,
     GrowPyConfig,
@@ -39,20 +41,22 @@ from growpy.config.quality import get_quality_preset
 from growpy.core.forest import simulate_forest_growth_with_snapshots
 from growpy.utils.profiling import ProfileTimer, get_timer, init_profiler
 
+logger = logging.getLogger(__name__)
+
 
 def _handle_bone_limit_error(error: ValueError) -> None:
     """Print actionable guidance for bone limit errors and exit."""
-    print(f"\nERROR: {error}")
-    print("\nTo reduce bone count, try one or more of:")
-    print("  CLI arguments:")
-    print(
-        "    --skeleton-reduce 0.6    (skip thin branches, most effective, range 0.0-1.0)"
+    logger.error("\nERROR: %s", error)
+    logger.error(
+        "\nTo reduce bone count, try one or more of:\n"
+        "  CLI arguments:\n"
+        "    --skeleton-reduce 0.6    (skip thin branches, most effective, range 0.0-1.0)\n"
+        "    --skeleton-length 3.0    (merge nodes into longer bones, range 0.0-5.0)\n"
+        "    --quality performance    (use a lower quality preset)\n"
+        "  Config (growpy.toml [forest.skeleton]):\n"
+        "    reduce = 0.6\n"
+        "    length = 3.0"
     )
-    print("    --skeleton-length 3.0    (merge nodes into longer bones, range 0.0-5.0)")
-    print("    --quality performance    (use a lower quality preset)")
-    print("  Config (growpy.toml [forest.skeleton]):")
-    print("    reduce = 0.6")
-    print("    length = 3.0")
     raise SystemExit(1) from error
 
 
@@ -116,7 +120,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
 
         # CRITICAL BUILD ORDER: skeleton -> bones -> models
         # 1. Build skeletons first
-        with timer.track("build_skeletons", parent="grove_export"):
+        with timer.track("build_skeletons"):
             skeletons = grove.build_skeletons(
                 quality_params.get("skeleton_connected", True)
             )
@@ -125,7 +129,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         # Higher skeleton_length and skeleton_reduce = fewer bones
         # CRITICAL: Unreal Engine has 32,767 bone limit (16-bit signed int)
         # Note: tag_bone_id() takes positional args: (length, reduce, bias, connected)
-        with timer.track("tag_bone_id", parent="grove_export"):
+        with timer.track("tag_bone_id"):
             skeleton_length = quality_params.get("skeleton_length", 2.0)
             skeleton_reduce = quality_params.get("skeleton_reduce", 0.4)
             bones = grove.tag_bone_id(
@@ -138,7 +142,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         # 3. NOW build models (with bone_id attributes already tagged)
         # Cutoff is allowed for skeletal meshes - bone filtering happens during export
         # to ensure skeleton only includes bones referenced by the mesh geometry
-        with timer.track("build_models", parent="grove_export"):
+        with timer.track("build_models"):
             models = grove.build_models(
                 {
                     "resolution": quality_params["resolution"],
@@ -154,7 +158,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             return exported
 
         # Slice bones list for each tree in grove
-        with timer.track("slice_bones", parent="grove_export"):
+        with timer.track("slice_bones"):
             bones_grouped = [list(g) for k, g in groupby(bones, lambda x: x[0])]
             tree_bones = [
                 bones_grouped[i]
@@ -198,16 +202,14 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             # CRITICAL: Always use skeletal twigs for both skeletal and static assemblies
             # Static twig variants don't exist, and skeletal twigs work as point instances
             # in both assembly types (assembly type only affects tree mesh, not twig references)
-            with timer.track("get_twig_usd_map", parent="grove_export"):
+            with timer.track("get_twig_usd_map"):
                 twig_usd_map = get_twig_usd_map_for_species(
                     species, config, prefer_skeletal=True, prefer_static=False
                 )
 
             # Export as Nanite Assembly with specified mesh type
             # tree_id in prim name ensures unique Unreal assets
-            with timer.track(
-                f"export_nanite_assembly_{mesh_suffix}", parent="grove_export"
-            ):
+            with timer.track(f"export_nanite_assembly_{mesh_suffix}"):
                 export_success = export_tree_as_nanite_assembly(
                     model=model,
                     skeleton=skeleton if use_skeletal else None,
@@ -243,7 +245,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         tree_dir / f"{species_clean}_stems_unreal_wind.json"
                     )
                     try:
-                        with timer.track("generate_wind_json", parent="grove_export"):
+                        with timer.track("generate_wind_json"):
                             generate_wind_json(
                                 tree_usd_path=skeletal_usd_path,
                                 skeleton=skeleton,
@@ -251,13 +253,12 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                                 output_path=wind_json_path,
                             )
                     except Exception as wind_error:
-                        import traceback
-
-                        print(
-                            f"Warning: Failed to generate wind JSON for tree {tree_id}: {wind_error}"
+                        logger.warning(
+                            "Failed to generate wind JSON for tree %s: %s",
+                            tree_id,
+                            wind_error,
                         )
-                        if verbose:
-                            traceback.print_exc()
+                        logger.debug("Wind JSON traceback:", exc_info=True)
 
                 # Generate PVE preset JSON (optional, skip with --skip-pve-json)
                 # Only generate once per tree (skeletal mesh export, not static)
@@ -270,7 +271,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                     pve_config_dir = Path("data/assets/pve_configs")
 
                     try:
-                        with timer.track("generate_pve_json", parent="grove_export"):
+                        with timer.track("generate_pve_json"):
                             generate_pve_from_grove(
                                 grove=grove,
                                 output_path=pve_json_path,
@@ -284,13 +285,12 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                                 profile=profile_pve,
                             )
                     except Exception as pve_error:
-                        import traceback
-
-                        print(
-                            f"Warning: Failed to generate PVE preset JSON for tree {tree_id}: {pve_error}"
+                        logger.warning(
+                            "Failed to generate PVE preset JSON for tree %s: %s",
+                            tree_id,
+                            pve_error,
                         )
-                        if verbose:
-                            traceback.print_exc()
+                        logger.debug("PVE JSON traceback:", exc_info=True)
 
             # MEMORY OPTIMIZATION: Clear this tree's data immediately after export
             # This releases large mesh/skeleton data before processing next tree
@@ -309,9 +309,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         raise
 
     except Exception as e:
-        import traceback
-
-        traceback.print_exc()
+        logger.error("Export failed for grove: %s", e, exc_info=True)
 
     return exported
 
@@ -390,7 +388,10 @@ def export_individual_trees(
 
     # Always use sequential processing (bpy/USD not compatible with multiprocessing)
     for task_idx, task in enumerate(tqdm(grove_tasks, desc="Exporting groves")):
-        with timer.track("grove_export"):
+        _fids, _grove, _species, _outdir, _qp, _mesh_type, _verbose, _timer = task
+        species_short = _species.replace(" ", "_").lower()
+        track_name = f"grove_export ({species_short} {_mesh_type})"
+        with timer.track(track_name):
             result = _export_single_tree_from_forest(task)
             if result:
                 exported_files.extend([Path(p) for p in result])
@@ -501,13 +502,11 @@ def generate_forest_stages(
         smooth_iterations = SMOOTH_ITERATIONS
 
     if not TREE_EXPORT_AVAILABLE:
-        if verbose:
-            print("Error: Tree export not available (missing dependencies)")
+        logger.error("Tree export not available (missing dependencies)")
         return
 
     if not csv_path.exists():
-        if verbose:
-            print(f"Error: CSV file not found: {csv_path}")
+        logger.error("CSV file not found: %s", csv_path)
         return
 
     # Load forest data
@@ -521,11 +520,10 @@ def generate_forest_stages(
                 col for col in required_columns if col not in forest_data.columns
             ]
             if missing_cols:
-                if verbose:
-                    print(f"Error: Missing required columns: {missing_cols}")
-                    print(
-                        "  Multi-stage mode requires height to calculate growth cycles"
-                    )
+                logger.error("Missing required columns: %s", missing_cols)
+                logger.error(
+                    "  Multi-stage mode requires height to calculate growth cycles"
+                )
                 return
 
             # Ensure fid column exists
@@ -537,8 +535,7 @@ def generate_forest_stages(
                 forest_data["z"] = 0.0
 
     except Exception as e:
-        if verbose:
-            print(f"Error loading CSV: {e}")
+        logger.error("Error loading CSV: %s", e)
         return
 
     # Calculate growth cycles from height using growth models
@@ -546,11 +543,10 @@ def generate_forest_stages(
         try:
             calculate_growth_cycles_from_height(forest_data)
         except Exception as e:
-            if verbose:
-                print(f"Error: Could not calculate growth cycles from height: {e}")
-                print(
-                    "  Ensure growth models exist (run create_growth_models.py first)"
-                )
+            logger.error("Could not calculate growth cycles from height: %s", e)
+            logger.error(
+                "  Ensure growth models exist (run create_growth_models.py first)"
+            )
             return
 
         # Apply growth_cycle_limit scaling (same as height-based mode)
@@ -578,17 +574,23 @@ def generate_forest_stages(
         range(effective_interval, global_max_cycles + 1, effective_interval)
     )
 
-    print(f"\n{'='*60}")
-    print("MULTI-STAGE FOREST GENERATION")
-    print(f"{'='*60}")
-    print(f"  Trees: {len(forest_data)}")
-    print(
-        f"  Height range: {forest_data['height'].min():.1f}m - {forest_data['height'].max():.1f}m"
+    logger.info("\n%s", "=" * 60)
+    logger.info("MULTI-STAGE FOREST GENERATION")
+    logger.info("%s", "=" * 60)
+    logger.info("  Trees: %d", len(forest_data))
+    logger.info(
+        "  Height range: %.1fm - %.1fm",
+        forest_data["height"].min(),
+        forest_data["height"].max(),
     )
-    print(f"  Cycle range: {forest_data['growth_cycles'].min()} - {global_max_cycles}")
-    print(f"  Interval: {effective_interval}")
-    print(f"  Snapshots: {len(snapshot_cycles)} stages {snapshot_cycles}")
-    print(f"{'='*60}")
+    logger.info(
+        "  Cycle range: %d - %d",
+        forest_data["growth_cycles"].min(),
+        global_max_cycles,
+    )
+    logger.info("  Interval: %d", effective_interval)
+    logger.info("  Snapshots: %d stages %s", len(snapshot_cycles), snapshot_cycles)
+    logger.info("%s", "=" * 60)
 
     # Create forest (groves by species)
     # For cycle mode, we don't use delay - all trees start at cycle 0
@@ -612,8 +614,7 @@ def generate_forest_stages(
     if skeleton_overrides:
         for key, value in skeleton_overrides.items():
             quality_params[key] = value
-        if verbose:
-            print(f"[Skeleton Overrides] Applied: {skeleton_overrides}")
+        logger.info("[Skeleton Overrides] Applied: %s", skeleton_overrides)
 
     # Run simulation with snapshots
     with timer.track("simulate_with_snapshots"):
@@ -627,16 +628,15 @@ def generate_forest_stages(
         )
 
     if not snapshots:
-        if verbose:
-            print("Error: No snapshots captured during simulation")
+        logger.error("No snapshots captured during simulation")
         return
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Export each snapshot
-    print(f"\n{'='*60}")
-    print(f"PHASE 3: EXPORTING STAGES ({len(snapshots)} cycles)")
-    print(f"{'='*60}")
+    logger.info("\n%s", "=" * 60)
+    logger.info("PHASE 3: EXPORTING STAGES (%d cycles)", len(snapshots))
+    logger.info("%s", "=" * 60)
 
     exported_files = []
     for cycle, species_snapshots in tqdm(snapshots.items(), desc="Exporting stages"):
@@ -725,10 +725,9 @@ def generate_forest_stages(
 
                 if export_success:
                     exported_files.append(str(usd_path))
-                    if verbose:
-                        print(f"  Exported: {usd_path.name}")
+                    logger.info("  Exported: %s", usd_path.name)
 
-    print(f"\nExported {len(exported_files)} tree stage files")
+    logger.info("\nExported %d tree stage files", len(exported_files))
 
 
 def generate_forest_exports(
@@ -788,13 +787,11 @@ def generate_forest_exports(
     height_scale = HEIGHT_SCALE  # Hardcoded height scale
 
     if not TREE_EXPORT_AVAILABLE:
-        if verbose:
-            print("Error: Tree export not available (missing dependencies)")
+        logger.error("Tree export not available (missing dependencies)")
         return
 
     if not csv_path.exists():
-        if verbose:
-            print(f"Error: CSV file not found: {csv_path}")
+        logger.error("CSV file not found: %s", csv_path)
         return
 
     # Load forest data
@@ -808,24 +805,21 @@ def generate_forest_exports(
                 col for col in required_columns if col not in forest_data.columns
             ]
             if missing_cols:
-                if verbose:
-                    print(f"Error: Missing required columns: {missing_cols}")
+                logger.error("Missing required columns: %s", missing_cols)
                 return
 
             # Z column will be added by create_forest if missing
 
     except Exception as e:
-        if verbose:
-            print(f"Error loading CSV: {e}")
+        logger.error("Error loading CSV: %s", e)
         return
 
     with timer.track("calculate_growth_cycles"):
         try:
             calculate_growth_cycles_from_height(forest_data)
         except Exception as e:
-            if verbose:
-                print(f"Warning: Could not calculate growth cycles from height: {e}")
-                print("  Using default: growth_cycles=10, delay=0")
+            logger.warning("Could not calculate growth cycles from height: %s", e)
+            logger.warning("  Using default: growth_cycles=10, delay=0")
             forest_data["growth_cycles"] = 10
             forest_data["delay"] = 0
 
@@ -866,8 +860,7 @@ def generate_forest_exports(
                 preset_overrides=preset_overrides,
             )
     except Exception as e:
-        if verbose:
-            print(f"Error creating/simulating forest: {e}")
+        logger.error("Error creating/simulating forest: %s", e)
         return
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -883,8 +876,7 @@ def generate_forest_exports(
     if skeleton_overrides:
         for key, value in skeleton_overrides.items():
             quality_params[key] = value
-        if verbose:
-            print(f"[Skeleton Overrides] Applied: {skeleton_overrides}")
+        logger.info("[Skeleton Overrides] Applied: %s", skeleton_overrides)
 
     # CRITICAL: Force minimal export for Nanite compatibility
     # Skeletal meshes: geometry + skeleton only (no materials/textures/attributes)
@@ -927,8 +919,7 @@ def generate_forest_exports(
         raise
 
     except Exception as e:
-        if verbose:
-            print(f"Warning: Export failed: {e}")
+        logger.warning("Export failed: %s", e)
 
 
 def generate_unreal_import_script(
@@ -1476,12 +1467,6 @@ Unreal Engine Integration:
         help="Export OBJ/MTL files for Helios++ LiDAR simulation (post-processes USDA files)",
     )
     parser.add_argument(
-        "--obj-decimate-ratio",
-        type=float,
-        default=None,
-        help="Twig decimation ratio for OBJ export (0.0-1.0, lower = fewer polygons, default: from config)",
-    )
-    parser.add_argument(
         "--helios-scene",
         action="store_true",
         help="Generate Helios++ scene XML placing all tree OBJs at CSV positions (implies --export-obj)",
@@ -1505,6 +1490,11 @@ Unreal Engine Integration:
     config = get_config()
     config.resolve(args)
 
+    # Configure logging based on verbose flag
+    from growpy.utils.log import setup_logging
+
+    setup_logging(verbose=config.verbose)
+
     # Initialize profiler
     timer = init_profiler(enabled=config.profile)
 
@@ -1514,7 +1504,7 @@ Unreal Engine Integration:
             csv_path = script_dir / csv_path
 
         if not csv_path.exists():
-            print(f"Error: CSV file not found: {csv_path}")
+            logger.error("CSV file not found: %s", csv_path)
             return
 
         output_dir = config.output_dir
@@ -1525,15 +1515,18 @@ Unreal Engine Integration:
         preset_overrides = None
         if config.forest_longevity_mode:
             preset_overrides = LONGEVITY_OVERRIDES
-            print(
+            logger.info(
                 "\n[Longevity Mode] Using pre-configured overrides to prevent tree death:"
             )
-            print(f"  Static: {preset_overrides.static_overrides}")
+            logger.info("  Static: %s", preset_overrides.static_overrides)
         elif args.preset_override:
             preset_overrides = create_overrides_from_args(
                 static_args=args.preset_override,
             )
-            print(f"\n[Preset Overrides] Static: {preset_overrides.static_overrides}")
+            logger.info(
+                "\n[Preset Overrides] Static: %s",
+                preset_overrides.static_overrides,
+            )
 
         skip_pve_json = config.export_skip_pve_json
         skip_validation = config.export_skip_validation
@@ -1545,12 +1538,14 @@ Unreal Engine Integration:
                 export_tree_ids = set(
                     int(x.strip()) for x in args.export_trees.split(",")
                 )
-                print(
-                    f"\n[Export Filter] Only exporting trees with fid: {sorted(export_tree_ids)}"
+                logger.info(
+                    "\n[Export Filter] Only exporting trees with fid: %s",
+                    sorted(export_tree_ids),
                 )
             except ValueError:
-                print(
-                    f"Error: --export-trees must be comma-separated integers, got: {args.export_trees}"
+                logger.error(
+                    "--export-trees must be comma-separated integers, got: %s",
+                    args.export_trees,
                 )
                 return
 
@@ -1618,11 +1613,10 @@ Unreal Engine Integration:
                 export_forest_obj(
                     output_dir=output_dir,
                     csv_path=csv_path,
-                    decimate_ratio=config.helios_decimate_ratio,
-                    stem_decimate_ratio=config.helios_stem_decimate_ratio,
                     generate_scene_xml=config.helios_helios_scene,
                     individual_obj=config.helios_individual_obj,
                     up_axis=config.helios_obj_up_axis,
+                    timer=timer,
                 )
 
         # Print profiling report if enabled
@@ -1638,7 +1632,7 @@ Unreal Engine Integration:
                 if "fid" not in forest_data.columns:
                     forest_data["fid"] = range(1, len(forest_data) + 1)
             except Exception as e:
-                print(f"Warning: Could not load CSV for position data: {e}")
+                logger.warning("Could not load CSV for position data: %s", e)
                 forest_data = None
 
             import_script = generate_unreal_import_script(
@@ -1654,22 +1648,22 @@ Unreal Engine Integration:
                 dry_run=True,  # Default to dry-run mode for safety
             )
 
-            print("\n" + "=" * 60)
-            print("UNREAL SCRIPTS GENERATED")
-            print("=" * 60)
-            print(f"Import script: {import_script}")
-            print(f"Cleanup script: {cleanup_script}")
-            print("\nTo import trees to Unreal Engine:")
-            print("1. Open import_forest.py in VSCode")
-            print("2. Right-click > 'Execute Python File in Unreal'")
-            print("\nTo cleanup assets:")
-            print("1. Open clean_assets.py in VSCode")
-            print("2. Review DRY_RUN setting (True = preview, False = delete)")
-            print("3. Right-click > 'Execute Python File in Unreal'")
-            print("\nRequirements:")
-            print("- Unreal Engine must be running")
-            print("- USD Importer plugin enabled")
-            print("- Editor Scripting Utilities plugin enabled")
+            logger.info("\n%s", "=" * 60)
+            logger.info("UNREAL SCRIPTS GENERATED")
+            logger.info("%s", "=" * 60)
+            logger.info("Import script: %s", import_script)
+            logger.info("Cleanup script: %s", cleanup_script)
+            logger.info("\nTo import trees to Unreal Engine:")
+            logger.info("1. Open import_forest.py in VSCode")
+            logger.info("2. Right-click > 'Execute Python File in Unreal'")
+            logger.info("\nTo cleanup assets:")
+            logger.info("1. Open clean_assets.py in VSCode")
+            logger.info("2. Review DRY_RUN setting (True = preview, False = delete)")
+            logger.info("3. Right-click > 'Execute Python File in Unreal'")
+            logger.info("\nRequirements:")
+            logger.info("- Unreal Engine must be running")
+            logger.info("- USD Importer plugin enabled")
+            logger.info("- Editor Scripting Utilities plugin enabled")
 
     except Exception:
         # Silently fail - allows script to be used in various contexts

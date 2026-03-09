@@ -127,8 +127,6 @@ class GrowPyConfig:
 
     # [helios]
     helios_export_obj: bool = False
-    helios_decimate_ratio: float = 0.3
-    helios_stem_decimate_ratio: float = 0.1
     helios_helios_scene: bool = False
     helios_individual_obj: bool = False
     helios_obj_up_axis: str = "y"
@@ -242,10 +240,6 @@ class GrowPyConfig:
         helios = data.get("helios", {})
         if "export_obj" in helios:
             kwargs["helios_export_obj"] = helios["export_obj"]
-        if "twig_decimate_ratio" in helios:
-            kwargs["helios_decimate_ratio"] = helios["twig_decimate_ratio"]
-        if "stem_decimate_ratio" in helios:
-            kwargs["helios_stem_decimate_ratio"] = helios["stem_decimate_ratio"]
         if "helios_scene" in helios:
             kwargs["helios_helios_scene"] = helios["helios_scene"]
         if "individual_obj" in helios:
@@ -310,8 +304,6 @@ class GrowPyConfig:
             "unreal_project_path": "unreal_project_path",
             # [helios]
             "export_obj": "helios_export_obj",
-            "twig_decimate_ratio": "helios_decimate_ratio",
-            "stem_decimate_ratio": "helios_stem_decimate_ratio",
             "helios_scene": "helios_helios_scene",
             "individual_obj": "helios_individual_obj",
             "obj_up_axis": "helios_obj_up_axis",

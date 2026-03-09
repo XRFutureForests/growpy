@@ -8,12 +8,15 @@ import argparse
 # Direct imports using importlib to avoid circular import through growpy package __init__.py
 # These modules only depend on numpy/PIL, not the heavy sklearn/bpy imports
 import importlib.util
+import logging
 import re
 import shutil
 import sys
 from pathlib import Path
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 def _import_module_directly(module_name: str, file_path: Path):
@@ -48,6 +51,10 @@ _config_core = _import_module_directly(
     "config_core", _src_dir / "growpy" / "config" / "core.py"
 )
 get_config = _config_core.get_config
+
+# Import log module directly
+_log_module = _import_module_directly("log", _src_dir / "growpy" / "utils" / "log.py")
+setup_logging = _log_module.setup_logging
 
 
 def camel_to_snake(name: str) -> str:
@@ -194,7 +201,7 @@ def load_species_csv(
                     unmatched.append(species)
 
         if unmatched:
-            print(f"WARNING: Could not match {len(unmatched)} species: {unmatched}")
+            logger.warning("Could not match %d species: %s", len(unmatched), unmatched)
 
         if not filtered_rows:
             raise ValueError(
@@ -275,6 +282,7 @@ CSV Format Support:
     # Resolve config: TOML defaults + CLI overrides
     config = get_config()
     config.resolve(args)
+    setup_logging(verbose=config.verbose)
 
     # Resolve grove_dir
     grove_dir = config.grove_dir
@@ -412,13 +420,16 @@ CSV Format Support:
 
             # Log texture validation result
             if tex_results.get("copied_count", 0) > 0:
-                print(f"  Standardized {tex_results['copied_count']} texture files")
+                logger.info(
+                    "Standardized %d texture files", tex_results["copied_count"]
+                )
 
             if tex_results.get("is_valid"):
-                print(f"  ✓ {tex_results.get('validation_message', '')}")
+                logger.info("%s", tex_results.get("validation_message", ""))
             else:
-                print(
-                    f"  ✗ {tex_results.get('validation_message', 'Texture validation failed')}"
+                logger.warning(
+                    "%s",
+                    tex_results.get("validation_message", "Texture validation failed"),
                 )
 
             stats["twigs_copied"] += 1

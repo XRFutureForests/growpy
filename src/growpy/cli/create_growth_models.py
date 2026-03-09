@@ -11,15 +11,15 @@ from pathlib import Path
 
 from growpy.config import get_config
 from growpy.utils.analysis import SpeciesGrowthAnalyzer
+from growpy.utils.log import setup_logging
+
+logger = logging.getLogger(__name__)
 
 
 def main():
     """Main function for command line usage."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(levelname)s: %(message)s",
-    )
     config = get_config()
+    setup_logging(verbose=config.verbose)
 
     parser = argparse.ArgumentParser(
         description=(
@@ -117,13 +117,13 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
     # Check assets directory
     if not default_assets_dir.exists():
-        print(f"ERROR: Assets directory not found: {default_assets_dir}")
+        logger.error("Assets directory not found: %s", default_assets_dir)
         sys.exit(1)
 
     # Check for presets directory
     presets_dir = default_assets_dir / "presets"
     if not presets_dir.exists():
-        print(f"ERROR: Presets directory not found: {presets_dir}")
+        logger.error("Presets directory not found: %s", presets_dir)
         sys.exit(1)
 
     # Create analyzer
@@ -141,8 +141,10 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
         available_species = analyzer.get_available_species()
         if args.species not in available_species:
-            print(
-                f"ERROR: Species '{args.species}' not found. Available: {available_species}"
+            logger.error(
+                "Species '%s' not found. Available: %s",
+                args.species,
+                available_species,
             )
             sys.exit(1)
 
@@ -186,7 +188,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
                     script_dir / "src" / "growpy" / "config" / "tree_asset_lookup.csv"
                 )
                 if not asset_lookup_path.exists():
-                    print(f"ERROR: Asset lookup table not found: {asset_lookup_path}")
+                    logger.error("Asset lookup table not found: %s", asset_lookup_path)
                     sys.exit(1)
 
                 lookup_df = pd.read_csv(asset_lookup_path)
@@ -217,8 +219,8 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
                             csv_species.append(standardized)
 
                 if not csv_species:
-                    print(
-                        f"ERROR: No matching species found in CSV for forest placement"
+                    logger.error(
+                        "No matching species found in CSV for forest placement"
                     )
                     sys.exit(1)
 
@@ -239,7 +241,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
                     ]
 
         except Exception as e:
-            print(f"Error processing CSV file: {e}")
+            logger.error("Error processing CSV file: %s", e)
             sys.exit(1)
 
         # Get available species and filter to CSV species only
@@ -247,8 +249,10 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         species_to_process = [s for s in csv_species if s in available_species]
 
         if not species_to_process:
-            print(
-                f"ERROR: No available species to process. CSV species: {csv_species}, Available presets: {available_species}"
+            logger.error(
+                "No available species to process. CSV species: %s, Available presets: %s",
+                csv_species,
+                available_species,
             )
             sys.exit(1)
 

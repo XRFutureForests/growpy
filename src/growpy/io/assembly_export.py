@@ -33,9 +33,12 @@ Based on:
 - https://www.artstation.com/blogs/liamwedge/mpygZ/nanite-assemblies-in-unreal-engine-57-from-dcc-to-ue-import
 """
 
+import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 from ..utils.pxr_init import ensure_pxr_with_unreal_schema
 
@@ -213,12 +216,12 @@ def create_assembly(
                             for p in placement_list
                         ]
                 total_twigs = sum(len(p) for p in placements.values())
-                print(f"  Creating assembly with {total_twigs} twig instances:")
+                logger.info("Creating assembly with %d twig instances:", total_twigs)
                 for twig_type, p_list in placements.items():
-                    print(f"    {twig_type}: {len(p_list)} instances")
+                    logger.info("  %s: %d instances", twig_type, len(p_list))
             else:
                 placements = {}
-                print("  WARNING: No twig placements available!")
+                logger.warning("No twig placements available!")
 
             if placements and any(placements.values()):
                 # Remap twig paths from source assets to output directory copies
@@ -317,7 +320,10 @@ def create_assembly(
                             for texture_file in source_textures_dir.glob(
                                 f"*{texture_ext}"
                             ):
-                                if "_foliage_" not in texture_file.stem:
+                                if (
+                                    "_foliage_" not in texture_file.stem
+                                    and "_twig_" not in texture_file.stem
+                                ):
                                     continue
                                 tex_type = classify_texture_from_name(texture_file.stem)
                                 if tex_type not in ALLOWED_TEXTURE_TYPES:
@@ -388,7 +394,7 @@ def create_assembly(
 
                     for twig_type, placement_list in placements.items():
                         if not placement_list:
-                            print(f"  Skipping {twig_type}: empty placement_list")
+                            logger.debug("Skipping %s: empty placement_list", twig_type)
                             continue
 
                         # Get prototype indices for this grove type.
@@ -397,16 +403,21 @@ def create_assembly(
                             type_proto_indices = twig_type_to_proto_indices[twig_type]
                         elif all_proto_indices_pool:
                             type_proto_indices = all_proto_indices_pool
-                            print(
-                                f"  Mapping {twig_type} -> random from all prototypes"
+                            logger.info(
+                                "Mapping %s -> random from all prototypes",
+                                twig_type,
                             )
                         else:
-                            print(f"  Skipping {twig_type}: no prototypes available")
+                            logger.warning(
+                                "Skipping %s: no prototypes available", twig_type
+                            )
                             continue
 
-                        print(
-                            f"  Adding {len(placement_list)} instances of {twig_type} "
-                            f"({len(type_proto_indices)} prototype(s))"
+                        logger.info(
+                            "Adding %d instances of %s (%d prototype(s))",
+                            len(placement_list),
+                            twig_type,
+                            len(type_proto_indices),
                         )
 
                         from growpy.core.twig import (
@@ -516,25 +527,34 @@ def create_assembly(
                                         )
 
                         # Debug output
-                        print(f"\n  BindJoints creation:")
-                        print(f"    Total joint_names in skeleton: {len(joint_names)}")
-                        print(f"    Total bind_joints created: {len(bind_joints)}")
-                        print(f"    Unique bone_ids used: {len(bone_id_usage)}")
+                        logger.debug("BindJoints creation:")
+                        logger.debug(
+                            "  Total joint_names in skeleton: %d", len(joint_names)
+                        )
+                        logger.debug(
+                            "  Total bind_joints created: %d", len(bind_joints)
+                        )
+                        logger.debug("  Unique bone_ids used: %d", len(bone_id_usage))
                         if bone_id_usage:
                             # Show distribution of bone_id usage
                             sorted_usage = sorted(bone_id_usage.items())
-                            print(
-                                f"    Bone ID range: {sorted_usage[0][0]} to {sorted_usage[-1][0]}"
+                            logger.debug(
+                                "  Bone ID range: %d to %d",
+                                sorted_usage[0][0],
+                                sorted_usage[-1][0],
                             )
                             if len(sorted_usage) <= 10:
-                                print(f"    Bone ID usage: {dict(sorted_usage)}")
+                                logger.debug("  Bone ID usage: %s", dict(sorted_usage))
                         if invalid_bone_ids:
-                            print(
-                                f"    ⚠️  {len(invalid_bone_ids)} invalid bone_ids (bone_id, joint_count):"
+                            logger.warning(
+                                "%d invalid bone_ids (bone_id, joint_count):",
+                                len(invalid_bone_ids),
                             )
                             for bid, jcount in invalid_bone_ids:
-                                print(
-                                    f"       bone_id={bid}, joint_names length={jcount}"
+                                logger.warning(
+                                    "  bone_id=%d, joint_names length=%d",
+                                    bid,
+                                    jcount,
                                 )
 
                         # Validate all bindJoints exist in skeleton
@@ -543,11 +563,12 @@ def create_assembly(
                             j for j in set(bind_joints) if j not in skeleton_joints
                         ]
                         if missing_joints:
-                            print(
-                                f"\n    ⚠️  WARNING: {len(missing_joints)} bindJoints not found in skeleton:"
+                            logger.warning(
+                                "%d bindJoints not found in skeleton:",
+                                len(missing_joints),
                             )
                             for mj in missing_joints[:5]:
-                                print(f"       - {mj}")
+                                logger.warning("  - %s", mj)
 
                         # Create bindJoints primvar with uniform variability and interpolation
                         bind_joints_attr = instancer_prim.CreateAttribute(
@@ -814,13 +835,16 @@ def export_tree_as_nanite_assembly(
                                         missing_bones.append((old_bone_id, nearest))
                                     placement.bone_id = nearest
 
-                    print(
-                        f"  Twig bone remapping: {remapped_count} direct, "
-                        f"{parent_fallback_count} parent fallback, {root_fallback_count} root fallback"
+                    logger.info(
+                        "Twig bone remapping: %d direct, %d parent fallback, %d root fallback",
+                        remapped_count,
+                        parent_fallback_count,
+                        root_fallback_count,
                     )
                     if missing_bones:
-                        print(
-                            f"    Sample fallbacks (old_bone_id -> new_bone_id): {missing_bones}"
+                        logger.info(
+                            "Sample fallbacks (old_bone_id -> new_bone_id): %s",
+                            missing_bones,
                         )
 
         # Auto-lookup twigs if include_twigs=True and none provided
@@ -1235,7 +1259,7 @@ def _add_dynamic_wind_to_assembly(
         return True
 
     except Exception as e:
-        print(f"  Warning: Failed to add DynamicWind to assembly: {e}")
+        logger.warning("Failed to add DynamicWind to assembly: %s", e)
         return False
 
 
@@ -1357,5 +1381,5 @@ def create_species_assembly(
         return True
 
     except Exception as e:
-        print(f"Error creating species assembly: {e}")
+        logger.error("Error creating species assembly: %s", e)
         return False

@@ -266,10 +266,12 @@ class ProfileTimer:
         return insights
 
     def print_report(self, show_hierarchy: bool = True) -> None:
-        """Print the profiling report to stdout."""
+        """Print the profiling report to stderr."""
+        import sys
+
         report = self.report(show_hierarchy)
         if report:
-            print(report)
+            print(report, file=sys.stderr)
 
 
 # Global timer instance for convenience

@@ -1621,9 +1621,12 @@ def bundle_twigs_for_species(
                 texture_count = 0
                 for texture_file in source_texture_dir.glob("*"):
                     if texture_file.is_file():
-                        # CRITICAL: Only copy standardized textures (contain _foliage_)
+                        # CRITICAL: Only copy standardized textures (contain _foliage_ or _twig_)
                         # Skip original Grove textures like BeechDiffuse.jpg
-                        if "_foliage_" not in texture_file.stem:
+                        if (
+                            "_foliage_" not in texture_file.stem
+                            and "_twig_" not in texture_file.stem
+                        ):
                             continue
 
                         # Classify texture type
