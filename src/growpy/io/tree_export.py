@@ -1542,6 +1542,18 @@ def get_twig_usd_map_for_species(
                             variant_count += 1
                     break  # One twig_type per keyword, move to next keyword
 
+    # Gap-fill: if some grove types matched but others didn't (e.g. pine has
+    # only foliage_e mapping to twig_upward), fill empty types with an existing
+    # prototype so instances of twig_long/twig_short don't get dropped.
+    foliage_types = ["twig_long", "twig_short", "twig_upward"]
+    matched_foliage = [t for t in foliage_types if t in twig_usd_map]
+    if twig_usd_map and matched_foliage:
+        # Use the first matched foliage prototype as gap-filler
+        filler_path = twig_usd_map[matched_foliage[0]]
+        for grove_type in foliage_types:
+            if grove_type not in twig_usd_map:
+                twig_usd_map[grove_type] = filler_path
+
     # Fallback: If no variant-specific twigs found, use base twig file for all types
     # This handles species like Pacific Silver Fir that only have one twig file
     if not twig_usd_map and twig_files_by_type:
