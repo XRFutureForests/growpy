@@ -1071,11 +1071,22 @@ def export_forest_obj(
     print(f"HELIOS OBJ EXPORT ({len(assembly_files)} trees)")
     print(f"{'='*60}")
 
+    if decimate_ratio >= 1.0 and stem_decimate_ratio >= 1.0:
+        print(
+            "  Decimate ratios = 1.0: no OBJ decimation applied.\n"
+            "  NOTE: Twig mesh geometry reflects [twigs] conversion settings\n"
+            "  (alpha_trim, smooth_boundary, interior_decimate_ratio)."
+        )
+
     forest_data = pd.read_csv(csv_path)
     if "fid" not in forest_data.columns:
         forest_data["fid"] = range(1, len(forest_data) + 1)
     if "z" not in forest_data.columns:
         forest_data["z"] = 0.0
+
+    import time
+
+    t_trees_start = time.perf_counter()
 
     obj_files: List[Tuple[Path, float, float, float, str]] = []
     for assembly_path in sorted(assembly_files):
@@ -1112,6 +1123,12 @@ def export_forest_obj(
             except (ValueError, IndexError):
                 obj_files.append((obj_path, 0.0, 0.0, 0.0, species_name))
 
+    t_trees_end = time.perf_counter()
+    print(
+        f"\n  Individual OBJ export: {len(obj_files)} trees in "
+        f"{t_trees_end - t_trees_start:.1f}s"
+    )
+
     if generate_scene_xml and obj_files:
         from growpy.io.helios_scene import generate_helios_scene
 
@@ -1119,6 +1136,8 @@ def export_forest_obj(
         generate_helios_scene(tree_entries=obj_files, output_path=scene_path)
 
     if generate_combined_obj and obj_files:
+        t_combined_start = time.perf_counter()
+
         is_conifer_forest = any(
             any(kw in sp.lower() for kw in CONIFER_KEYWORDS)
             for _, _, _, _, sp in obj_files
@@ -1129,6 +1148,11 @@ def export_forest_obj(
             tree_entries=obj_files,
             output_path=combined_path,
             helios_spectra_leaves=spectra,
+        )
+
+        t_combined_end = time.perf_counter()
+        print(
+            f"  Combined OBJ assembly: {t_combined_end - t_combined_start:.1f}s"
         )
 
     print(f"\nOBJ export complete: {len(obj_files)} trees converted")

@@ -400,6 +400,15 @@ def create_assembly(
                     all_scales = []
                     all_proto_indices = []
 
+                    # Build variant groups: base_type -> [proto_idx, ...]
+                    # Supports keys like "twig_long", "twig_long_var1", "twig_long_var2"
+                    variant_groups = {}
+                    for key, pidx in twig_type_to_proto_idx.items():
+                        base = key.split("_var")[0]
+                        if base not in variant_groups:
+                            variant_groups[base] = []
+                        variant_groups[base].append(pidx)
+
                     for twig_type, placement_list in placements.items():
                         if not placement_list:
                             print(f"  Skipping {twig_type}: empty placement_list")
@@ -415,18 +424,15 @@ def create_assembly(
                             # twig_dead intentionally excluded - dead branches shouldn't have foliage
                         }
 
-                        if twig_type in twig_type_to_proto_idx:
-                            proto_idx = twig_type_to_proto_idx[twig_type]
+                        if twig_type in variant_groups:
                             mapped_type = twig_type
                         elif (
                             twig_type in fallback_map
-                            and fallback_map[twig_type] in twig_type_to_proto_idx
+                            and fallback_map[twig_type] in variant_groups
                         ):
-                            # Use fallback mapping
                             mapped_type = fallback_map[twig_type]
-                            proto_idx = twig_type_to_proto_idx[mapped_type]
                             print(
-                                f"  Mapping {twig_type} -> {mapped_type} (proto_idx={proto_idx})"
+                                f"  Mapping {twig_type} -> {mapped_type}"
                             )
                         else:
                             # No mapping available - skip
@@ -435,8 +441,10 @@ def create_assembly(
                             )
                             continue
 
+                        proto_indices_for_type = variant_groups[mapped_type]
                         print(
-                            f"  Adding {len(placement_list)} instances of {twig_type} (proto_idx={proto_idx})"
+                            f"  Adding {len(placement_list)} instances of {twig_type} "
+                            f"(proto_indices={proto_indices_for_type})"
                         )
 
                         # Import rotation functions once outside the loop for performance
@@ -445,7 +453,7 @@ def create_assembly(
                             rotation_matrix_to_quaternion,
                         )
 
-                        for placement in placement_list:
+                        for inst_i, placement in enumerate(placement_list):
                             pos = placement["position"]
                             normal = placement["normal"]
 
@@ -457,6 +465,11 @@ def create_assembly(
 
                             # Convert to quaternion
                             quat = rotation_matrix_to_quaternion(rot_matrix)
+
+                            # Cycle through variant prototypes for visual diversity
+                            proto_idx = proto_indices_for_type[
+                                inst_i % len(proto_indices_for_type)
+                            ]
 
                             # Add to arrays
                             all_positions.append(Gf.Vec3f(pos[0], pos[1], pos[2]))
@@ -518,17 +531,14 @@ def create_assembly(
                                 "twig_upward": "twig_long",
                             }
 
-                            if twig_type in twig_type_to_proto_idx:
-                                # Direct mapping exists
+                            if twig_type in variant_groups:
                                 pass
                             elif (
                                 twig_type in fallback_map
-                                and fallback_map[twig_type] in twig_type_to_proto_idx
+                                and fallback_map[twig_type] in variant_groups
                             ):
-                                # Use fallback mapping
                                 pass
                             else:
-                                # No mapping - skip
                                 continue
 
                             for placement in placement_list:
