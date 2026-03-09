@@ -15,7 +15,7 @@ random_seed = 42
 # Multi-stage mode columns: x, y, species, cycle_interval, max_cycles
 csv_file = "data/input/test.csv"
 # Output directory for generated trees (species subdirectories created automatically)
-output_dir = "data/output/forest"
+output_dir = "data/output/forest_test"
 # Enable verbose output for PVE preset generation
 verbose = true
 # Enable profiling to track execution time of each pipeline step
@@ -37,9 +37,9 @@ path = "data/assets/twigs"
 densify = false
 # Alpha threshold for silhouette trimming
 # 0.05-0.3 = minimal (conservative), 0.5 = moderate (recommended), 0.7 = aggressive
-alpha_trim = 0.75
+alpha_trim = 0.0 #0.75
 # Enable boundary edge smoothing for natural silhouette curves
-smooth_boundary = true
+smooth_boundary = false #true
 # Number of Laplacian smoothing passes (1-10)
 smooth_iterations = 10
 # Smoothing strength per iteration (0.0-1.0)
@@ -49,7 +49,7 @@ smooth_factor = 0.25
 boundary_edge_mm = 0.025
 # Interior decimation ratio for leaf meshes (0.0 = disabled, 0.3 = keep 30%)
 # Simplifies interior triangles while preserving alpha-trimmed silhouette edges
-interior_decimate_ratio = 0.3
+interior_decimate_ratio = 0.0 #0.3
 
 [growth_models]
 # Maximum growth cycles to simulate (1-250)
