@@ -2993,10 +2993,13 @@ def setup_materials_with_textures(
 
         links.new(bsdf.outputs["BSDF"], output.inputs["Surface"])
 
-        # Classify and add textures
+        # Classify and add textures (Nanite-compatible: no alpha/translucent/mask)
+        EXCLUDED_TEXTURE_TYPES = {"alpha", "translucent", "mask", "opacity"}
         texture_map = {}
         for tex in textures:
             tex_type = classify_texture_from_name(tex.stem)
+            if tex_type in EXCLUDED_TEXTURE_TYPES:
+                continue
             if tex_type not in texture_map:
                 texture_map[tex_type] = tex
 
