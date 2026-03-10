@@ -7,6 +7,7 @@ any USD or Blender I/O dependencies.
 
 import logging
 import math
+import random
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -169,6 +170,7 @@ def extract_twig_placements_from_model(
     twig_types: Optional[List[str]] = None,
     bones_info: Optional[List] = None,
     verbose: bool = False,
+    twig_density: float = 1.0,
 ) -> Dict[str, List[TwigPlacement]]:
     """Extract twig placement data from Grove model.
 
@@ -177,6 +179,9 @@ def extract_twig_placements_from_model(
         twig_types: List of twig types to extract (default: living twig types only)
         bones_info: Optional skeleton bones list for branch-based binding
         verbose: If True, print debug information during extraction
+        twig_density: Fraction of twigs to keep (0.0-1.0). Matches Blender's
+            Geometry Nodes density parameter. Values below 1.0 probabilistically
+            cull twig instances using a deterministic seed for reproducibility.
 
     Returns:
         Dictionary mapping twig type to list of TwigPlacement objects
@@ -373,6 +378,21 @@ def extract_twig_placements_from_model(
 
             # Increment twig index for ALL types (they share the same sequential array)
             twig_idx += 1
+
+    # Apply twig density filtering (matches Blender Geometry Nodes density parameter)
+    twig_density = max(0.0, min(1.0, twig_density))
+    if twig_density < 1.0:
+        rng = random.Random(42)  # Deterministic seed for reproducibility
+        total_before = sum(len(p) for p in placements.values())
+        for twig_type in list(placements.keys()):
+            placements[twig_type] = [
+                p for p in placements[twig_type] if rng.random() < twig_density
+            ]
+        total_after = sum(len(p) for p in placements.values())
+        logger.info(
+            "Twig density filter: %.1f%% kept %d of %d twigs",
+            twig_density * 100, total_after, total_before,
+        )
 
     # Report results
     total_extracted = sum(len(p) for p in placements.values())
