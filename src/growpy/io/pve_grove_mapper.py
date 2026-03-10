@@ -206,6 +206,7 @@ def map_grove_to_pve(
             species_name,
             num_branches,
             profile=profile,
+            twig_density=twig_density,
         )
     if profile:
         timings["map_primitives"] = time.perf_counter() - t0
@@ -939,6 +940,7 @@ def _map_primitives_from_skeleton(
     species_name: str,
     num_branches: int,
     profile: bool = False,
+    twig_density: float = 1.0,
 ) -> Dict:
     """
     Map Grove skeleton poly_lines to PVE primitives with foliage and hierarchy.
@@ -1181,6 +1183,7 @@ def _map_primitives_from_skeleton(
         num_branches=num_branches,
         verbose=False,
         profile=profile,
+        twig_density=twig_density,
     )
     if profile:
         timings["extract_foliage"] = time.perf_counter() - t0
