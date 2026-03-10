@@ -107,8 +107,10 @@ class GrowPyConfig:
     forest_smooth_iterations: int = 10
     forest_include_grove_attributes: bool = False
     forest_longevity_mode: bool = False
+    forest_cycle_interval: int = 0
+    forest_export_trees: list = field(default_factory=list)
 
-    # [forest.skeleton] - None means inherit from quality preset
+    # Skeleton overrides - None means inherit from quality preset (CLI-only)
     forest_skeleton_length: Optional[float] = None
     forest_skeleton_reduce: Optional[float] = None
     forest_skeleton_bias: Optional[float] = None
@@ -210,17 +212,10 @@ class GrowPyConfig:
             ]
         if "longevity_mode" in forest:
             kwargs["forest_longevity_mode"] = forest["longevity_mode"]
-
-        # [forest.skeleton]
-        skeleton = forest.get("skeleton", {})
-        if "length" in skeleton:
-            kwargs["forest_skeleton_length"] = skeleton["length"]
-        if "reduce" in skeleton:
-            kwargs["forest_skeleton_reduce"] = skeleton["reduce"]
-        if "bias" in skeleton:
-            kwargs["forest_skeleton_bias"] = skeleton["bias"]
-        if "connected" in skeleton:
-            kwargs["forest_skeleton_connected"] = skeleton["connected"]
+        if "cycle_interval" in forest:
+            kwargs["forest_cycle_interval"] = forest["cycle_interval"]
+        if "export_trees" in forest:
+            kwargs["forest_export_trees"] = forest["export_trees"]
 
         # [export]
         export = data.get("export", {})
@@ -267,16 +262,16 @@ class GrowPyConfig:
         cli_mappings = {
             # [general]
             "csv_file": "csv_file",
+            "csv": "csv_file",
             "output_dir": "output_dir",
             "verbose": "verbose",
             "profile": "profile",
             # [assets]
             "grove_dir": "grove_dir",
             "resize_textures": "resize_textures",
-            # [twigs]
+            # [twigs] - uses "smooth_iterations" from convert_twigs.py argparse
             "alpha_trim": "twigs_alpha_trim",
             "smooth_boundary": "twigs_smooth_boundary",
-            "smooth_iterations": "twigs_smooth_iterations",
             "smooth_factor": "twigs_smooth_factor",
             "boundary_edge_mm": "twigs_boundary_edge_mm",
             # [growth_models]
@@ -288,9 +283,9 @@ class GrowPyConfig:
             # [forest]
             "quality": "forest_quality",
             "growth_cycle_limit": "forest_growth_cycle_limit",
-            "smooth_iterations": "forest_smooth_iterations",
             "include_grove_attributes": "forest_include_grove_attributes",
             "longevity_mode": "forest_longevity_mode",
+            "cycle_interval": "forest_cycle_interval",
             # [forest.skeleton]
             "skeleton_length": "forest_skeleton_length",
             "skeleton_reduce": "forest_skeleton_reduce",
@@ -320,6 +315,17 @@ class GrowPyConfig:
                 else:
                     setattr(self, config_name, cli_val)
 
+        # Special handling: --smooth-iterations is used by both convert_twigs.py
+        # and generate_forest.py. Resolve to the correct config field based on
+        # which script is calling (detected by presence of script-specific args).
+        si = getattr(args, "smooth_iterations", None)
+        if si is not None:
+            # generate_forest.py defines --quality; convert_twigs.py does not
+            if hasattr(args, "quality"):
+                self.forest_smooth_iterations = si
+            else:
+                self.twigs_smooth_iterations = si
+
         # Special handling: --no-densify inverts the flag
         no_densify = getattr(args, "no_densify", None)
         if no_densify:
@@ -329,6 +335,11 @@ class GrowPyConfig:
         sc = getattr(args, "skeleton_connected", None)
         if sc is not None and isinstance(sc, str):
             self.forest_skeleton_connected = sc.lower() == "true"
+
+        # Special handling: --export-trees is a comma-separated string from CLI
+        et = getattr(args, "export_trees", None)
+        if et is not None and isinstance(et, str):
+            self.forest_export_trees = [int(x.strip()) for x in et.split(",")]
 
         return self
 

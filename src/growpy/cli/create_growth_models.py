@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 def main():
     """Main function for command line usage."""
     config = get_config()
-    setup_logging(verbose=config.verbose)
 
     parser = argparse.ArgumentParser(
         description=(
@@ -107,6 +106,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
     # Resolve config: TOML defaults + CLI overrides
     config.resolve(args)
+    setup_logging(verbose=config.verbose)
 
     # Resolve CSV path
     csv_path = config.csv_file
@@ -118,13 +118,13 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
     # Check assets directory
     if not default_assets_dir.exists():
         logger.error("Assets directory not found: %s", default_assets_dir)
-        sys.exit(1)
+        return 1
 
     # Check for presets directory
     presets_dir = default_assets_dir / "presets"
     if not presets_dir.exists():
         logger.error("Presets directory not found: %s", presets_dir)
-        sys.exit(1)
+        return 1
 
     # Create analyzer
     analyzer = SpeciesGrowthAnalyzer(
@@ -146,7 +146,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
                 args.species,
                 available_species,
             )
-            sys.exit(1)
+            return 1
 
         # Generate height and DBH curves
         height_curve, dbh_curve, metadata = analyzer.generate_height_curve_for_species(
@@ -189,7 +189,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
                 )
                 if not asset_lookup_path.exists():
                     logger.error("Asset lookup table not found: %s", asset_lookup_path)
-                    sys.exit(1)
+                    return 1
 
                 lookup_df = pd.read_csv(asset_lookup_path)
 
@@ -222,7 +222,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
                     logger.error(
                         "No matching species found in CSV for forest placement"
                     )
-                    sys.exit(1)
+                    return 1
 
             else:
                 # Direct asset lookup CSV - use Standardized Name column
@@ -242,7 +242,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
         except Exception as e:
             logger.error("Error processing CSV file: %s", e)
-            sys.exit(1)
+            return 1
 
         # Get available species and filter to CSV species only
         available_species = analyzer.get_available_species()
@@ -254,7 +254,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
                 csv_species,
                 available_species,
             )
-            sys.exit(1)
+            return 1
 
         # Analyze filtered species
         results = analyzer.analyze_all_species(
@@ -268,4 +268,4 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

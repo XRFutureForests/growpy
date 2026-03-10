@@ -11,8 +11,7 @@
 # Random seed for reproducible tree generation (remove to randomize)
 random_seed = 42
 # Default input CSV with tree positions and species
-# Height mode columns: x, y, species, height (optional: z, fid)
-# Multi-stage mode columns: x, y, species, cycle_interval, max_cycles
+# CSV columns: x, y, species, height (optional: z, fid, dbh)
 csv_file = "data/input/test.csv"
 # Output directory for generated trees (species subdirectories created automatically)
 output_dir = "data/output/forest"
@@ -86,19 +85,17 @@ include_grove_attributes = false
 # Apply longevity overrides to prevent tree death at high cycle counts
 # Sets drop_decay, drop_weak etc. to low values
 longevity_mode = false
-
-[forest.skeleton]
-# Skeleton simplification parameters (independent of mesh quality).
-# Critical for Unreal Engine's 32,767 bone limit on large trees.
-# When not set, values are inherited from the active quality preset.
-# Both length and reduce independently reduce bone count.
-#
-# length = 0.1       # Merge nodes into longer bones (0.0-5.0)
-#                    # 0.1 = one bone per node (most), 4.0 = very long bones (fewest)
-# reduce = 0.1       # Skip thin side branches (0.0-1.0, most effective reducer)
-#                    # 0.1 = keep all, 0.4 = skip thin, 0.8 = only thick main branches
-# bias = 0.5         # Bone distribution: 0 = trunk-heavy, 1 = tip-heavy
-# connected = true   # Connected bone chains (required for animation, more bones)
+# Multi-stage export: generate tree models at cycle intervals for growth history
+# Exports snapshots at every N cycles (e.g., 10 = cycles 10, 20, 30...)
+# Each snapshot includes height and DBH in the filename for easy asset selection
+# 0 = disabled (standard single height-based export)
+cycle_interval = 0
+# Only export specific trees by fid (integer array)
+# Other trees still participate in growth simulation (light competition, shading)
+# but only the listed trees produce output files
+# Useful for studying a single tree growing among neighbors
+# Empty array = export all trees
+export_trees = []
 
 [export]
 # Skip PVE preset JSON generation (saves ~3% export time)

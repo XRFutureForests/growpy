@@ -439,7 +439,6 @@ def generate_forest_stages(
     config: GrowPyConfig,
     quality: str = "high",
     cycle_interval: Optional[int] = None,
-    max_cycles: Optional[int] = None,
     growth_cycle_limit: Optional[int] = None,
     smooth_iterations: Optional[int] = None,
     include_grove_attributes: bool = False,
@@ -475,7 +474,6 @@ def generate_forest_stages(
         config: GrowPy configuration
         quality: Quality preset name
         cycle_interval: Export every N cycles (default: 10)
-        max_cycles: Cap maximum cycles (default: use height-derived cycles)
         growth_cycle_limit: Scale down cycles if they exceed this limit (like height mode)
         smooth_iterations: Number of smoothing iterations for branches
         include_grove_attributes: If True, include Grove metadata in USD files
@@ -566,9 +564,6 @@ def generate_forest_stages(
     effective_interval = cycle_interval if cycle_interval is not None else 10
     # Global max is the highest cycles needed (from tallest tree, after limit scaling)
     global_max_cycles = int(forest_data["growth_cycles"].max())
-    # CLI max_cycles can further cap if specified
-    if max_cycles is not None:
-        global_max_cycles = min(global_max_cycles, max_cycles)
 
     snapshot_cycles = list(
         range(effective_interval, global_max_cycles + 1, effective_interval)
@@ -1449,12 +1444,6 @@ Unreal Engine Integration:
         "Enables multi-stage mode. Overrides CSV cycle_interval column if present.",
     )
     parser.add_argument(
-        "--max-cycles",
-        type=int,
-        default=None,
-        help="Maximum cycles for multi-stage export. Overrides CSV max_cycles column if present.",
-    )
-    parser.add_argument(
         "--export-trees",
         type=str,
         default=None,
@@ -1531,23 +1520,14 @@ Unreal Engine Integration:
         skip_pve_json = config.export_skip_pve_json
         skip_validation = config.export_skip_validation
 
-        # Parse --export-trees filter
+        # Export-trees filter (config value already merged with CLI by resolve())
         export_tree_ids = None
-        if args.export_trees:
-            try:
-                export_tree_ids = set(
-                    int(x.strip()) for x in args.export_trees.split(",")
-                )
-                logger.info(
-                    "\n[Export Filter] Only exporting trees with fid: %s",
-                    sorted(export_tree_ids),
-                )
-            except ValueError:
-                logger.error(
-                    "--export-trees must be comma-separated integers, got: %s",
-                    args.export_trees,
-                )
-                return
+        if config.forest_export_trees:
+            export_tree_ids = set(config.forest_export_trees)
+            logger.info(
+                "\n[Export Filter] Only exporting trees with fid: %s",
+                sorted(export_tree_ids),
+            )
 
         # Build skeleton overrides from config (CLI args already resolved into config)
         skeleton_overrides = {}
@@ -1561,8 +1541,8 @@ Unreal Engine Integration:
             skeleton_overrides["skeleton_connected"] = config.forest_skeleton_connected
         skeleton_overrides = skeleton_overrides if skeleton_overrides else None
 
-        # Detect cycle-based mode via CLI args (--cycle-interval enables multi-stage mode)
-        is_cycle_mode = args.cycle_interval is not None
+        # Detect cycle-based mode (config value already merged with CLI by resolve())
+        is_cycle_mode = config.forest_cycle_interval > 0
 
         with timer.track("total_forest_generation"):
             if is_cycle_mode:
@@ -1572,8 +1552,7 @@ Unreal Engine Integration:
                     output_dir,
                     config,
                     config.forest_quality,
-                    cycle_interval=args.cycle_interval,
-                    max_cycles=args.max_cycles,
+                    cycle_interval=config.forest_cycle_interval,
                     growth_cycle_limit=config.forest_growth_cycle_limit,
                     smooth_iterations=config.forest_smooth_iterations,
                     include_grove_attributes=config.forest_include_grove_attributes,
@@ -1665,9 +1644,9 @@ Unreal Engine Integration:
             logger.info("- USD Importer plugin enabled")
             logger.info("- Editor Scripting Utilities plugin enabled")
 
-    except Exception:
-        # Silently fail - allows script to be used in various contexts
-        pass
+    except Exception as e:
+        logger.error("Forest generation failed: %s", e)
+        logger.debug("Traceback:", exc_info=True)
 
 
 if __name__ == "__main__":
