@@ -38,16 +38,8 @@ logger = logging.getLogger(__name__)
 SPECIES_YIELD_TABLE_MAP = {
     "Norway spruce": {"search": "Fichte", "tree_type": "coniferous"},
     "European beech": {"search": "Buche", "tree_type": "deciduous"},
-    "Scots pine": {"search": "Kiefer", "tree_type": "coniferous"},
     "Silver fir": {"search": "Tanne", "tree_type": "coniferous"},
     "European oak": {"search": "Eiche", "tree_type": "deciduous"},
-    "Silver birch": {"search": "Birke", "tree_type": "deciduous"},
-    "Sycamore maple": {"search": "Ahorn", "tree_type": "deciduous"},
-    "Common ash": {"search": "Esche", "tree_type": "deciduous"},
-    "Linden": {"search": "Linde", "tree_type": "deciduous"},
-    "Hornbeam": {"search": "Hainbuche", "tree_type": "deciduous"},
-    "Alder": {"search": "Erle", "tree_type": "deciduous"},
-    "Robinia": {"search": "Robinie", "tree_type": "deciduous"},
 }
 
 
@@ -188,9 +180,9 @@ def compute_grow_length_curve(
         scale_factors = uniform_filter1d(scale_factors, size=3)
 
     grow_lengths = base_grow_length * scale_factors
-    # Absolute cap: long segments cause structural failure in many species
-    # Cap at 1.4x base AND absolute 0.50m (whichever is lower)
-    max_gl = min(base_grow_length * 1.4, 0.50)
+    # Absolute cap: long segments cause structural failure in some species
+    # Cap at 2x base AND absolute 0.65m (whichever is lower)
+    max_gl = min(base_grow_length * 2.0, 0.65)
     grow_lengths = np.clip(grow_lengths, base_grow_length * 0.5, max_gl)
     # Prepend first value for cycle 0
     grow_lengths = np.insert(grow_lengths, 0, grow_lengths[0])
@@ -465,15 +457,18 @@ def compute_dbh_static_overrides(
     target_dbhs: np.ndarray,
     base_thicken_base_scale: float,
     base_thicken_base_buttress: float,
+    base_grow_nodes: int = 3,
 ) -> Dict[str, float]:
-    """Compute static overrides for thicken_base_scale and thicken_base_buttress.
+    """Compute static overrides to reduce DBH toward yield table targets.
 
-    When thicken_tips per-cycle calibration alone cannot reduce DBH enough
-    (values clamped at floor), we reduce these base parameters to bring
-    overall trunk diameter down.
+    Uses multiple levers:
+    1. Reduce grow_nodes (fewer internodes = fewer thickening events per cycle).
+       The caller must compensate grow_length per-cycle values proportionally.
+    2. Reduce thicken_base_scale (trunk base multiplier, min 1.0).
+    3. Reduce thicken_base_buttress (basal flare).
 
-    Strategy: compute final DBH ratio and scale thicken_base_scale accordingly.
-    Also reduce thicken_base_buttress proportionally since basal flare inflates DBH.
+    The grow_nodes reduction is the primary lever since it directly reduces
+    the number of radial thickening events without affecting height.
     """
     n = min(len(grove_dbhs), len(target_dbhs))
     if n < 2:
@@ -490,12 +485,20 @@ def compute_dbh_static_overrides(
     overrides = {}
 
     if dbh_ratio < 0.9:
-        # DBH is significantly too high even after thicken_tips calibration
-        # Scale thicken_base_scale down (but not below 1.0)
+        # Primary lever: reduce grow_nodes
+        # Each node adds a thickening event, so fewer nodes = less thickening.
+        # Cap reduction at 50% of original to preserve tree architecture
+        # (branching density, crown shape). Use sqrt of ratio for partial correction.
+        node_factor = max(0.5, dbh_ratio ** 0.5)
+        new_nodes = max(2, round(base_grow_nodes * node_factor))
+        if new_nodes < base_grow_nodes:
+            overrides["grow_nodes"] = new_nodes
+
+        # Secondary lever: reduce thicken_base_scale (min 1.0)
         new_base_scale = max(1.0, base_thicken_base_scale * dbh_ratio)
         overrides["thicken_base_scale"] = round(new_base_scale, 4)
 
-        # Reduce buttress proportionally (buttress inflates base diameter)
+        # Tertiary lever: reduce buttress
         if base_thicken_base_buttress > 0:
             new_buttress = max(0.0, base_thicken_base_buttress * dbh_ratio)
             overrides["thicken_base_buttress"] = round(new_buttress, 4)
@@ -688,14 +691,29 @@ def run_comparison(
             print(f"  Grove:       {grove_dbh_rate * 100:.3f} cm/cycle")
             print(f"  Yield table: {yt_dbh_rate * 100:.3f} cm/year")
 
-        # Compute static DBH overrides (thicken_base_scale, thicken_base_buttress)
+        # Compute static DBH overrides (grow_nodes, thicken_base_scale, etc.)
         dbh_static_overrides = {}
         if grove_dbhs and target_dbhs_interp is not None:
             base_scale = preset.get("thicken_base_scale", 1.2)
             base_buttress = preset.get("thicken_base_buttress", 2.0)
+            base_nodes = preset.get("grow_nodes", 3)
             dbh_static_overrides = compute_dbh_static_overrides(
-                grove_dbhs, target_dbhs_interp, base_scale, base_buttress
+                grove_dbhs,
+                target_dbhs_interp,
+                base_scale,
+                base_buttress,
+                base_grow_nodes=base_nodes,
             )
+
+            # If grow_nodes was reduced, do NOT rescale grow_length here.
+            # The node reduction changes the baseline growth — the per-cycle
+            # grow_length values will be recalibrated after re-growing with
+            # reduced nodes. The grow_length values written here are from the
+            # original calibration and will be overwritten on the next iteration.
+            if "grow_nodes" in dbh_static_overrides:
+                new_nodes = dbh_static_overrides["grow_nodes"]
+                print(f"\n  grow_nodes reduced {base_nodes} -> {new_nodes} "
+                      f"(fewer thickening events per cycle)")
 
         # Cap thicken_tips_reduce to prevent branch thinning instability
         base_reduce = preset.get("thicken_tips_reduce", 0.0)
@@ -723,11 +741,11 @@ def run_comparison(
         )
 
         # Detect structurally fragile species: if grow_length was heavily capped
-        # (average calibrated GL close to cap), skip GL and static overrides
+        # for a large fraction of cycles, skip GL and static overrides
         # to avoid structural instability (thin trunk + long segments = death)
-        avg_gl = np.mean(grow_lengths) if grow_lengths else base_grow_length
-        max_gl = min(base_grow_length * 1.4, 0.50)
-        gl_capped = avg_gl >= max_gl * 0.95
+        actual_max_gl = min(base_grow_length * 2.0, 0.65)
+        n_at_cap = sum(1 for gl in grow_lengths if gl >= actual_max_gl * 0.98)
+        gl_capped = n_at_cap > len(grow_lengths) * 0.3  # >30% of cycles at cap
 
         write_grow_lengths = None if gl_capped else grow_lengths
         write_static = None if gl_capped else (
@@ -735,7 +753,8 @@ def run_comparison(
         )
 
         if gl_capped:
-            print(f"\n  [!] grow_length heavily capped for {species_name} — "
+            print(f"\n  [!] grow_length at cap for {n_at_cap}/{len(grow_lengths)} "
+                  f"cycles (cap={actual_max_gl:.3f}) for {species_name} — "
                   "skipping GL + static overrides (structural safety)")
 
         # Write to seed.json
@@ -831,11 +850,7 @@ def main():
                 "Norway Spruce": "Norway spruce",
                 "European Beech": "European beech",
                 "European Oak": "European oak",
-                "Scots Pine": "Scots pine",
-                "Silver Birch": "Silver birch",
                 "Silver Fir": "Silver fir",
-                "Common Ash": "Common ash",
-                "Sycamore Maple": "Sycamore maple",
             }
             species_name = name_map.get(species_name, species_name)
             print(f"\n{'=' * 60}")
