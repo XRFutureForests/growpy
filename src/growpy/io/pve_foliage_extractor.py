@@ -108,6 +108,7 @@ def extract_foliage_data(
     num_branches: Optional[int] = None,
     verbose: bool = False,
     profile: bool = False,
+    twig_density: float = 1.0,
 ) -> Dict[str, Dict]:
     """
     Extract foliage instancer data from a Grove model.
@@ -137,7 +138,7 @@ def extract_foliage_data(
     # CRITICAL: Pass bones_info so branch_id is correctly calculated
     t0 = time.perf_counter() if profile else 0
     twig_placements_by_type = extract_twig_placements_from_model(
-        model, bones_info=bones_info
+        model, bones_info=bones_info, twig_density=twig_density,
     )
     if profile:
         timings["extract_twig_placements"] = time.perf_counter() - t0

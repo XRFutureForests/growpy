@@ -681,6 +681,7 @@ def export_tree_as_nanite_assembly(
     include_grove_attributes: bool = False,
     validate: bool = True,
     timer: Optional[Any] = None,
+    twig_density: float = 1.0,
 ) -> bool:
     """Export Grove tree as Unreal Engine Nanite Assembly.
 
@@ -791,7 +792,9 @@ def export_tree_as_nanite_assembly(
             with _track("extract_twig_placements"):
                 try:
                     twig_placements = extract_twig_placements_from_model(
-                        model, bones_info=bones_info if not use_static_mesh else None
+                        model,
+                        bones_info=bones_info if not use_static_mesh else None,
+                        twig_density=twig_density,
                     )
                     total_twigs = sum(len(p) for p in twig_placements.values())
                     if total_twigs > 0:

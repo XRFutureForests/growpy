@@ -152,6 +152,9 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         if not models:
             return exported
 
+        # Read twig_density from grove properties for density filtering during export
+        twig_density = grove.get_properties().twig_density
+
         # Slice bones list for each tree in grove
         with timer.track("slice_bones", parent="grove_export"):
             bones_grouped = [list(g) for k, g in groupby(bones, lambda x: x[0])]
@@ -223,6 +226,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                     ),
                     validate=not quality_params.get("skip_validation", False),
                     timer=timer,
+                    twig_density=twig_density,
                 )
 
             if export_success:
@@ -281,6 +285,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                                 verbose=True,
                                 pve_config_dir=pve_config_dir,
                                 profile=profile_pve,
+                                twig_density=twig_density,
                             )
                     except Exception as pve_error:
                         import traceback
@@ -641,6 +646,19 @@ def generate_forest_stages(
     print(f"PHASE 3: EXPORTING STAGES ({len(snapshots)} cycles)")
     print(f"{'='*60}")
 
+    # Pre-load twig_density per species from presets
+    import json
+
+    species_twig_density = {}
+    for species_name in forest_data["species"].unique():
+        try:
+            preset_path = config.get_preset_path(str(species_name))
+            with open(preset_path, "r") as f:
+                preset = json.load(f)
+            species_twig_density[str(species_name)] = preset.get("twig_density", 1.0)
+        except Exception:
+            species_twig_density[str(species_name)] = 1.0
+
     exported_files = []
     for cycle, species_snapshots in tqdm(snapshots.items(), desc="Exporting stages"):
         for species_name, tree_data_list in species_snapshots.items():
@@ -720,6 +738,7 @@ def generate_forest_stages(
                         include_grove_attributes=include_grove_attributes,
                         validate=not skip_validation,
                         timer=timer,
+                        twig_density=species_twig_density.get(species_name, 1.0),
                     )
                 except ValueError as e:
                     if _is_bone_limit_error(e):
