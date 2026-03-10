@@ -104,20 +104,38 @@ class InterpolatedOverride:
 
 
 @dataclass
+class CycleArrayOverride:
+    """A per-cycle override with explicit values for each cycle.
+
+    Used for yield-table calibration where grow_length (or other parameters)
+    needs arbitrary per-cycle values that don't fit a simple easing curve.
+
+    If the simulation runs more cycles than values provided, the last value
+    is repeated. If fewer, extra values are ignored.
+    """
+
+    param: str
+    values: List[float]
+
+
+@dataclass
 class PresetOverrides:
     """Container for preset overrides applied during simulation.
 
-    Supports two types of overrides:
+    Supports three types of overrides:
     - Static: Fixed value replacement
-    - Interpolated: Value transitions over growth cycles
+    - Interpolated: Value transitions over growth cycles (easing curves)
+    - Cycle arrays: Explicit per-cycle values (from yield table calibration)
 
     Attributes:
         static_overrides: Dict of param -> value for static overrides
         interpolated_overrides: List of InterpolatedOverride for cycle-based values
+        cycle_array_overrides: List of CycleArrayOverride for per-cycle values
     """
 
     static_overrides: Dict[str, float] = field(default_factory=dict)
     interpolated_overrides: List[InterpolatedOverride] = field(default_factory=list)
+    cycle_array_overrides: List[CycleArrayOverride] = field(default_factory=list)
     # Memoized lookup table: {total_cycles: [overrides_at_cycle_0, ..., overrides_at_cycle_N]}
     _lookup_table: Dict[int, List[Dict[str, float]]] = field(
         default_factory=dict, compare=False, repr=False
@@ -258,6 +276,24 @@ class PresetOverrides:
 
         return override.start + (override.end - override.start) * t
 
+    def add_cycle_array(
+        self, param: str, values: List[float]
+    ) -> "PresetOverrides":
+        """Add a per-cycle array override (e.g., from yield table calibration).
+
+        Args:
+            param: Preset parameter name (e.g., 'grow_length')
+            values: List of values, one per cycle
+
+        Returns:
+            Self for chaining
+        """
+        self.cycle_array_overrides.append(
+            CycleArrayOverride(param=param, values=values)
+        )
+        self._lookup_table.clear()
+        return self
+
     def get_all_overrides_at_cycle(
         self,
         current_cycle: int,
@@ -268,6 +304,8 @@ class PresetOverrides:
         Results are memoized per total_cycles to avoid recomputing easing math
         on every call during the simulation inner loop.
 
+        Priority (last wins): static < interpolated < cycle_array
+
         Args:
             current_cycle: Current simulation cycle
             total_cycles: Total number of cycles
@@ -275,7 +313,7 @@ class PresetOverrides:
         Returns:
             Dict of param -> value for all overrides at this cycle
         """
-        if not self.interpolated_overrides:
+        if not self.interpolated_overrides and not self.cycle_array_overrides:
             return dict(self.static_overrides)
 
         # Build lookup table for this total_cycles value if not cached
@@ -285,6 +323,9 @@ class PresetOverrides:
                 entry = dict(self.static_overrides)
                 for override in self.interpolated_overrides:
                     entry[override.param] = self.get_value_at_cycle(override, c, total_cycles)
+                for arr_override in self.cycle_array_overrides:
+                    idx = min(c, len(arr_override.values) - 1)
+                    entry[arr_override.param] = arr_override.values[idx]
                 table.append(entry)
             self._lookup_table[total_cycles] = table
 
@@ -320,7 +361,11 @@ class PresetOverrides:
 
     def is_empty(self) -> bool:
         """Check if any overrides are defined."""
-        return not self.static_overrides and not self.interpolated_overrides
+        return (
+            not self.static_overrides
+            and not self.interpolated_overrides
+            and not self.cycle_array_overrides
+        )
 
 
 def parse_override_arg(arg: str) -> Tuple[str, float]:
@@ -481,6 +526,27 @@ def load_curves_from_preset(preset_path: Path) -> PresetOverrides:
                     transition_cycle=transition_cycle,
                 )
             )
+
+    # Load yield table calibration data (per-cycle arrays + static overrides)
+    calibration = preset_data.get("_yield_table_calibration")
+    if calibration and isinstance(calibration, dict):
+        grow_length_per_cycle = calibration.get("grow_length_per_cycle")
+        if grow_length_per_cycle and isinstance(grow_length_per_cycle, list):
+            overrides.cycle_array_overrides.append(
+                CycleArrayOverride(param="grow_length", values=grow_length_per_cycle)
+            )
+        thicken_tips_per_cycle = calibration.get("thicken_tips_per_cycle")
+        if thicken_tips_per_cycle and isinstance(thicken_tips_per_cycle, list):
+            overrides.cycle_array_overrides.append(
+                CycleArrayOverride(
+                    param="thicken_tips", values=thicken_tips_per_cycle
+                )
+            )
+        # Load static calibration overrides (e.g. thicken_base_scale)
+        static_cal = calibration.get("static_overrides")
+        if static_cal and isinstance(static_cal, dict):
+            for param, value in static_cal.items():
+                overrides.static_overrides[param] = value
 
     return overrides
 

@@ -325,6 +325,29 @@ class SpeciesGrowthAnalyzer:
             disable=False,
         )
 
+        # Load species-specific overrides (includes yield table calibration)
+        from growpy.config.preset_overrides import (
+            LONGEVITY_OVERRIDES,
+            get_species_overrides,
+        )
+
+        species_overrides = get_species_overrides(species)
+        # Always apply longevity overrides during growth model generation
+        # to prevent branch death at high cycle counts (structural stability)
+        for param, value in LONGEVITY_OVERRIDES.static_overrides.items():
+            if param not in species_overrides.static_overrides:
+                species_overrides.static_overrides[param] = value
+        has_overrides = not species_overrides.is_empty()
+        if has_overrides:
+            logger.info(
+                "  [%s] Applying %d cycle array overrides, %d interpolated overrides, "
+                "%d static overrides",
+                species,
+                len(species_overrides.cycle_array_overrides),
+                len(species_overrides.interpolated_overrides),
+                len(species_overrides.static_overrides),
+            )
+
         for seed in seed_progress:
             try:
                 grove = gc.Grove()
@@ -352,6 +375,11 @@ class SpeciesGrowthAnalyzer:
             simulation_start_time = time.time()
 
             for cycle in range(self.height_model_flushes):
+                # Apply per-cycle overrides (yield table calibration, longevity curves)
+                if has_overrides:
+                    species_overrides.apply_to_grove(
+                        grove, cycle, self.height_model_flushes
+                    )
                 grove.simulate(1)
 
                 elapsed_time = time.time() - simulation_start_time
