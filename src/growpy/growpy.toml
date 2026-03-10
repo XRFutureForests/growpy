@@ -35,7 +35,7 @@ path = "data/assets/twigs"
 # Master switch for all mesh geometry processing (alpha trim, smoothing, decimation)
 # When false, .blend twig meshes are exported to USD as-is without any modification
 # When true, enables the sub-options below for Nanite-friendly high-poly silhouettes
-densify = false
+densify = true
 # Alpha threshold for silhouette trimming
 # 0.05-0.3 = minimal (conservative), 0.5 = moderate (recommended), 0.7 = aggressive
 alpha_trim = 0.75
@@ -75,7 +75,7 @@ timeout = 300
 quality = "high"
 # Maximum growth cycles per tree (1-125)
 # Trees exceeding this are scaled down proportionally
-growth_cycle_limit = 35
+growth_cycle_limit = 60
 # Branch smoothing iterations (0-20, 0 = disabled)
 # Higher values = smoother, more organic branches
 smooth_iterations = 10
@@ -84,12 +84,12 @@ smooth_iterations = 10
 include_grove_attributes = false
 # Apply longevity overrides to prevent tree death at high cycle counts
 # Sets drop_decay, drop_weak etc. to low values
-longevity_mode = false
+longevity_mode = true
 # Multi-stage export: generate tree models at cycle intervals for growth history
 # Exports snapshots at every N cycles (e.g., 10 = cycles 10, 20, 30...)
 # Each snapshot includes height and DBH in the filename for easy asset selection
 # 0 = disabled (standard single height-based export)
-cycle_interval = 0
+cycle_interval = 20
 # Only export specific trees by fid (integer array)
 # Other trees still participate in growth simulation (light competition, shading)
 # but only the listed trees produce output files
@@ -110,16 +110,16 @@ skip_validation = true
 # Generate Unreal Python import script (unreal_import_trees.py / unreal_cleanup_trees.py)
 import_to_unreal = true
 # Unreal content path for imported assets in Content Browser
-project_path = "/Game/GrowPy/Trees"
+project_path = "/Game/GrowPy"
 
 [helios]
 # Export OBJ/MTL files for Helios++ LiDAR simulation
 # Converts USDA assemblies to Wavefront OBJ with baked twig instances
-export_obj = true
+export_obj = false
 # Generate Helios++ scene XML placing all tree OBJs at CSV positions
-helios_scene = true
+helios_scene = false
 # Also export individual per-tree OBJ files (default: false, only combined OBJ)
-individual_obj = true
+individual_obj = false
 # OBJ coordinate up axis: "y" (standard OBJ/Blender) or "z" (matches USD/Helios)
 obj_up_axis = "y"
 
@@ -158,7 +158,7 @@ skeleton_connected = true
 resolution = 24
 resolution_reduce = 0.8
 build_cutoff_age = 0
-build_cutoff_thickness = 0
+build_cutoff_thickness = 0.0
 build_blend = true
 build_end_cap = true
 skeleton_length = 0.25

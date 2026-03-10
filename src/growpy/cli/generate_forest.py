@@ -639,13 +639,10 @@ def generate_forest_stages(
             # Get fids and max cycles for this species from forest data
             species_rows = forest_data[forest_data["species"] == species_name]
 
-            for tree_idx, (model, skeleton, bones_info, height, dbh) in enumerate(
+            for tree_idx, (model, skeleton, bones_info, height, _dbh) in enumerate(
                 tree_data_list
             ):
-                if model is None:
-                    continue
-
-                # Get tree's max cycles from height calculation
+                # Get tree's fid and max cycles before skip checks
                 if tree_idx < len(species_rows):
                     tree_row = species_rows.iloc[tree_idx]
                     fid = int(tree_row["fid"])
@@ -653,6 +650,13 @@ def generate_forest_stages(
                 else:
                     fid = tree_idx + 1
                     tree_max_cycles = global_max_cycles
+
+                if model is None:
+                    logger.warning(
+                        "  Skipping %s tree %d (fid=%d) at cycle %d: model is None",
+                        species_name, tree_idx, fid, cycle,
+                    )
+                    continue
 
                 # Skip this snapshot if cycle exceeds tree's calculated max
                 if cycle > tree_max_cycles:
@@ -662,7 +666,7 @@ def generate_forest_stages(
                 if export_tree_ids is not None and fid not in export_tree_ids:
                     continue
 
-                # Generate filename with metadata
+                # Generate filename with height only (tree ID is in folder name)
                 species_clean = (
                     "".join(
                         c for c in species_name if c.isalnum() or c in (" ", "-", "_")
@@ -672,17 +676,13 @@ def generate_forest_stages(
                     .lower()
                 )
                 height_str = format_height_for_filename(height)
-                dbh_str = format_dbh_for_filename(dbh)
-                tree_id = f"{fid:04d}_c{cycle:03d}_{height_str}_{dbh_str}"
 
                 # Create output directory: species/tree_####/
                 tree_dir = output_dir / species_clean / f"tree_{fid:04d}"
                 tree_dir.mkdir(parents=True, exist_ok=True)
 
-                # Assembly name includes cycle/height/dbh for unique identification
-                assembly_name = (
-                    f"{species_clean}_c{cycle:03d}_{height_str}_{dbh_str}_assembly"
-                )
+                # Assembly name uses height only for unique identification
+                assembly_name = f"{species_clean}_{height_str}_assembly"
                 usd_path = tree_dir / f"{assembly_name}.usda"
 
                 # Get twig USD paths
@@ -697,6 +697,7 @@ def generate_forest_stages(
                     pass
 
                 # Export as Nanite Assembly
+                # stems_file_suffix ensures each stage gets its own stems file
                 try:
                     export_success = export_tree_as_nanite_assembly(
                         model=model,
@@ -704,7 +705,7 @@ def generate_forest_stages(
                         bones_info=bones_info,
                         output_path=usd_path,
                         species_name=species_name,
-                        tree_id=tree_id,
+                        tree_id=None,
                         twig_usd_paths=twig_usd_map,
                         include_twigs=True,
                         use_skeletal_mesh=True,
@@ -712,6 +713,7 @@ def generate_forest_stages(
                         include_grove_attributes=include_grove_attributes,
                         validate=not skip_validation,
                         timer=timer,
+                        stems_file_suffix=height_str,
                     )
                 except ValueError as e:
                     if _is_bone_limit_error(e):
@@ -721,6 +723,11 @@ def generate_forest_stages(
                 if export_success:
                     exported_files.append(str(usd_path))
                     logger.info("  Exported: %s", usd_path.name)
+                else:
+                    logger.warning(
+                        "  Export failed for tree %d (%s) at cycle %d (h=%.1fm)",
+                        fid, species_name, cycle, height,
+                    )
 
     logger.info("\nExported %d tree stage files", len(exported_files))
 
@@ -1057,11 +1064,13 @@ print("Importing {species_folder}...")
                 else "0000"
             )
 
+            # Import to per-tree subfolder: species/tree_XXXX/
+            # This prevents asset name collisions between trees of the same species
             script_content += f"""
 try:
     import_task = unreal.AssetImportTask()
     import_task.filename = "{usd_path}"
-    import_task.destination_path = IMPORT_PATH + "/{species_display}"
+    import_task.destination_path = IMPORT_PATH + "/{species_display}/{tree_folder_name}"
     import_task.automated = True
     import_task.save = True
     import_task.replace_existing = True
@@ -1108,7 +1117,7 @@ if failed_count > 0:
     unreal.log_warning("Some imports failed. Check that USD Importer plugin is enabled.")
 else:
     print(f"\\nAssets imported to Content Browser: {IMPORT_PATH}")
-    print("Each species folder contains trees and shared twigs")
+    print("Assets organized by: species/tree_XXXX/ (one folder per tree)")
     print("")
     print("=" * 60)
     print("TREE PLACEMENT")
@@ -1118,7 +1127,7 @@ else:
     print("")
     print("Example placement code:")
     print("  # Get tree mesh from Content Browser")
-    print("  tree_asset = unreal.EditorAssetLibrary.load_asset(IMPORT_PATH + '/species/SK_species_tree_0001')")
+    print("  tree_asset = unreal.EditorAssetLibrary.load_asset(IMPORT_PATH + '/species/tree_0001/SK_species_stems')")
     print("  # Get position for this tree")
     print("  pos = TREE_POSITIONS.get('species_0001', (0,0,0))")
     print("  # Place in level")

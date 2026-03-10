@@ -646,6 +646,7 @@ def export_tree_as_nanite_assembly(
     include_grove_attributes: bool = False,
     validate: bool = True,
     timer: Optional[Any] = None,
+    stems_file_suffix: Optional[str] = None,
 ) -> bool:
     """Export Grove tree as Unreal Engine Nanite Assembly.
 
@@ -674,6 +675,8 @@ def export_tree_as_nanite_assembly(
         include_grove_attributes: If True, include Grove metadata in USD (increases size ~70%)
         validate: If True, validate assembly structure after creation (default: True)
         timer: Optional ProfileTimer for sub-step profiling
+        stems_file_suffix: Optional suffix for stems filename (e.g., "h4m4" produces
+            {species}_h4m4_stems_skeletal.usda). Prevents overwrite in cycle mode.
 
     Returns:
         bool: Success status
@@ -702,9 +705,13 @@ def export_tree_as_nanite_assembly(
         from .tree_export import build_tree_mesh
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        # Generate tree mesh filename: {species}_stems (tree_id only used for USD prim names)
+        # Generate tree mesh filename: {species}_stems or {species}_{suffix}_stems
+        # In cycle mode, suffix (e.g., "h4m4") prevents stages from overwriting each other
         sanitized_species = species_name.replace(" ", "_").replace("-", "_").lower()
-        base_name = f"{sanitized_species}_stems"
+        if stems_file_suffix:
+            file_base = f"{sanitized_species}_{stems_file_suffix}_stems"
+        else:
+            file_base = f"{sanitized_species}_stems"
 
         # Triangulate model before building USD (CRITICAL for proper face/attribute matching)
         with _track("triangulate"):
@@ -717,7 +724,7 @@ def export_tree_as_nanite_assembly(
         # Skeletal mesh (with skeleton) is preferred for Nanite performance
         if use_static_mesh:
             # Static mesh export (no skeleton)
-            temp_tree_path = output_path.parent / f"{base_name}_static.usda"
+            temp_tree_path = output_path.parent / f"{file_base}_static.usda"
             with _track("build_tree_mesh"):
                 if not build_tree_mesh(
                     model=model,
@@ -734,7 +741,7 @@ def export_tree_as_nanite_assembly(
                     return False
         else:
             # Skeletal mesh export (default - preferred for performance)
-            temp_tree_path = output_path.parent / f"{base_name}_skeletal.usda"
+            temp_tree_path = output_path.parent / f"{file_base}_skeletal.usda"
             with _track("build_tree_mesh"):
                 if not build_tree_mesh(
                     model=model,
