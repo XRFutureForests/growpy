@@ -202,6 +202,39 @@ skeleton_reduce = 0.8
 skeleton_bias = 0.5
 skeleton_connected = true
 
+[calibration]
+# Calibrate growth models against real-world yield tables from openyieldtables.org
+# Runs after create_growth_models.py to adjust grow_length per cycle
+enabled = false
+# Output directory for comparison plots
+output_dir = "data/output/growth_comparison"
+# Generate comparison plots (even without calibration)
+plot = true
+
+# Per-species yield table configuration
+# Each entry maps a species (Common Name) to a yield table ID and yield class
+# Find table IDs at https://openyieldtables.org or use --list-tables
+# Only species listed here will be calibrated; others keep their default growth models
+[calibration.species."Norway spruce"]
+table_id = 2
+yield_class = 12
+search = "Fichte"
+
+[calibration.species."Silver fir"]
+table_id = 5
+yield_class = 12
+search = "Tanne"
+
+[calibration.species."European beech"]
+table_id = 10
+yield_class = 8
+search = "Buche"
+
+[calibration.species."European oak"]
+table_id = 11
+yield_class = 6
+search = "Eiche"
+
 [quality.helios]
 resolution = 9
 resolution_reduce = 0.75

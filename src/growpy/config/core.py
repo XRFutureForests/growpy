@@ -133,6 +133,15 @@ class GrowPyConfig:
     helios_individual_obj: bool = False
     helios_obj_up_axis: str = "y"
 
+    # [calibration]
+    calibration_enabled: bool = False
+    calibration_output_dir: Path = field(
+        default_factory=lambda: Path("data/output/growth_comparison")
+    )
+    calibration_plot: bool = True
+    # Species yield table config: {species_name: {table_id, yield_class}}
+    calibration_species: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+
     @classmethod
     def from_toml(cls, toml_path: Path, set_as_global: bool = True) -> "GrowPyConfig":
         """Create config from a TOML file.
@@ -242,6 +251,21 @@ class GrowPyConfig:
         if "obj_up_axis" in helios:
             kwargs["helios_obj_up_axis"] = helios["obj_up_axis"]
 
+        # [calibration]
+        cal = data.get("calibration", {})
+        if "enabled" in cal:
+            kwargs["calibration_enabled"] = cal["enabled"]
+        if "output_dir" in cal:
+            kwargs["calibration_output_dir"] = Path(cal["output_dir"])
+        if "plot" in cal:
+            kwargs["calibration_plot"] = cal["plot"]
+        # [calibration.species."Species Name"] -> {table_id, yield_class}
+        cal_species = cal.get("species", {})
+        if cal_species:
+            kwargs["calibration_species"] = {
+                name: dict(cfg) for name, cfg in cal_species.items()
+            }
+
         instance = cls(**kwargs)
         if set_as_global:
             set_global_config(instance)
@@ -302,6 +326,10 @@ class GrowPyConfig:
             "helios_scene": "helios_helios_scene",
             "individual_obj": "helios_individual_obj",
             "obj_up_axis": "helios_obj_up_axis",
+            # [calibration]
+            "calibrate": "calibration_enabled",
+            "output_dir_cal": "calibration_output_dir",
+            "plot": "calibration_plot",
         }
 
         for cli_name, config_name in cli_mappings.items():
