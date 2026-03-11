@@ -55,19 +55,19 @@ interior_decimate_ratio = 0.3
 [growth_models]
 # Maximum growth cycles to simulate (1-250)
 # Automatically stops early when growth plateaus
-cycles = 50
+cycles = 75
 # Random seeds to average for robust curves (1-10)
 # Use 3+ for production, 1 for quick tests
-seeds = 1
+seeds = 3
 # Minimum height increase per cycle to consider as growth (meters)
 # Lower values = more sensitive plateau detection
-height_threshold = 0.05
+height_threshold = 0.1
 # Stop after N consecutive cycles without significant growth (1-20)
 # Lower values = earlier termination, prevents wasting time on plateaued trees
-max_cycles_without_growth = 3
+max_cycles_without_growth = 10
 # Maximum simulation time per seed in seconds (10-3600)
 # Increase for complex species; prevents stuck simulations
-timeout = 300
+timeout = 600
 
 [forest]
 # Quality preset: ultra, high, medium, low, performance
@@ -75,7 +75,7 @@ timeout = 300
 quality = "high"
 # Maximum growth cycles per tree (1-125)
 # Trees exceeding this are scaled down proportionally
-growth_cycle_limit = 50
+growth_cycle_limit = 100
 # Branch smoothing iterations (0-20, 0 = disabled)
 # Higher values = smoother, more organic branches
 smooth_iterations = 10
@@ -89,7 +89,7 @@ longevity_mode = true
 # Exports snapshots at every N cycles (e.g., 10 = cycles 10, 20, 30...)
 # Each snapshot includes height and DBH in the filename for easy asset selection
 # 0 = disabled (standard single height-based export)
-cycle_interval = 10
+cycle_interval = 25
 # Only export specific trees by fid (integer array)
 # Other trees still participate in growth simulation (light competition, shading)
 # but only the listed trees produce output files
