@@ -646,22 +646,24 @@ def _max_branch_generation(skeleton: Any) -> int:
     if not poly_lines:
         return 0
 
-    # Build parent map: for each branch, find which branch shares its first point
     num_branches = len(poly_lines)
-    first_points = {poly_lines[i][0]: i for i in range(num_branches)}
+
+    # Build point-to-branch index: map each point to the branch(es) containing it
+    point_to_branch = {}
+    for j in range(num_branches):
+        for pt in poly_lines[j]:
+            if pt not in point_to_branch:
+                point_to_branch[pt] = j
+
     generation = [0] * num_branches
 
     for i in range(num_branches):
         if len(poly_lines[i]) < 2:
             continue
         first_pt = poly_lines[i][0]
-        # Check if this branch's first point appears in another branch
-        for j in range(num_branches):
-            if i == j:
-                continue
-            if first_pt in poly_lines[j]:
-                generation[i] = generation[j] + 1
-                break
+        parent = point_to_branch.get(first_pt)
+        if parent is not None and parent != i:
+            generation[i] = generation[parent] + 1
 
     return max(generation) if generation else 0
 
