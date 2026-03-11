@@ -67,7 +67,7 @@ height_threshold = 0.1
 max_cycles_without_growth = 10
 # Maximum simulation time per seed in seconds (10-3600)
 # Increase for complex species; prevents stuck simulations
-timeout = 600
+timeout = 900
 
 [forest]
 # Quality preset: ultra, high, medium, low, performance
@@ -205,7 +205,7 @@ skeleton_connected = true
 [calibration]
 # Calibrate growth models against real-world yield tables from openyieldtables.org
 # Runs after create_growth_models.py to adjust grow_length per cycle
-enabled = false
+enabled = true
 # Output directory for comparison plots
 output_dir = "data/output/growth_comparison"
 # Generate comparison plots (even without calibration)
