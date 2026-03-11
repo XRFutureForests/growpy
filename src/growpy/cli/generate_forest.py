@@ -170,9 +170,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
 
         # Load target DBH curve for post-hoc radial scaling
         # This corrects Grove's inflated DBH to match yield table targets
-        target_dbh_curve = load_target_dbh_from_preset(
-            config.get_preset_path(species)
-        )
+        target_dbh_curve = load_target_dbh_from_preset(config.get_preset_path(species))
 
         # Export each model/skeleton/bones triplet (each is a separate tree)
         # Process one tree at a time and immediately release memory to reduce peak RAM
@@ -229,8 +227,10 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                             logger.debug(
                                 "  Tree %s radial scale: %.3f "
                                 "(target DBH=%.1fcm, grove DBH=%.1fcm)",
-                                tree_id, tree_radial_scale,
-                                target_dbh * 100, grove_dbh * 100,
+                                tree_id,
+                                tree_radial_scale,
+                                target_dbh * 100,
+                                grove_dbh * 100,
                             )
 
             # Export as Nanite Assembly with specified mesh type
@@ -434,17 +434,15 @@ def export_individual_trees(
 
 
 def format_height_for_filename(height_m: float) -> str:
-    """Format height in meters for filename: h12m5 = 12.5m.
+    """Format height in meters for filename: h15 = 15m (rounded).
 
     Args:
         height_m: Height in meters
 
     Returns:
-        Formatted string like 'h12m5' for 12.5 meters
+        Formatted string like 'h15' for 15 meters
     """
-    meters = int(height_m)
-    tenths = int((height_m - meters) * 10)
-    return f"h{meters}m{tenths}"
+    return f"h{round(height_m)}"
 
 
 def format_dbh_for_filename(dbh_m: float) -> str:
@@ -685,7 +683,10 @@ def generate_forest_stages(
                 if model is None:
                     logger.warning(
                         "  Skipping %s tree %d (fid=%d) at cycle %d: model is None",
-                        species_name, tree_idx, fid, cycle,
+                        species_name,
+                        tree_idx,
+                        fid,
+                        cycle,
                     )
                     continue
 
@@ -773,7 +774,10 @@ def generate_forest_stages(
                 else:
                     logger.warning(
                         "  Export failed for tree %d (%s) at cycle %d (h=%.1fm)",
-                        fid, species_name, cycle, height,
+                        fid,
+                        species_name,
+                        cycle,
+                        height,
                     )
 
     logger.info("\nExported %d tree stage files", len(exported_files))

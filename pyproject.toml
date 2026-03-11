@@ -24,12 +24,20 @@ export = [
     "usd-core>=23.11",
 ]
 
+[project.scripts]
+growpy-prepare-assets = "growpy.cli.prepare_assets:main"
+growpy-convert-twigs = "growpy.cli.convert_twigs:main"
+growpy-create-models = "growpy.cli.create_growth_models:main"
+growpy-calibrate = "growpy.cli.calibrate_growth:main"
+growpy-generate-forest = "growpy.cli.generate_forest:main"
+growpy-sweep-dbh = "growpy.cli.sweep_dbh_params:main"
+
 [tool.setuptools]
 packages = ["growpy", "the_grove_23_core"]
 package-dir = {"" = "src", "the_grove_23_core" = "src/the_grove_23/modules/the_grove_23_core"}
 
 [tool.setuptools.package-data]
-growpy = ["config/*.csv"]
+growpy = ["config/*.csv", "*.toml"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "src/the_grove_23/modules"]

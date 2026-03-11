@@ -55,7 +55,7 @@ interior_decimate_ratio = 0.3
 [growth_models]
 # Maximum growth cycles to simulate (1-250)
 # Automatically stops early when growth plateaus
-cycles = 75
+cycles = 35
 # Random seeds to average for robust curves (1-10)
 # Use 3+ for production, 1 for quick tests
 seeds = 3
@@ -75,7 +75,7 @@ timeout = 900
 quality = "high"
 # Maximum growth cycles per tree (1-125)
 # Trees exceeding this are scaled down proportionally
-growth_cycle_limit = 100
+growth_cycle_limit = 65
 # Branch smoothing iterations (0-20, 0 = disabled)
 # Higher values = smoother, more organic branches
 smooth_iterations = 10
@@ -89,7 +89,7 @@ longevity_mode = true
 # Exports snapshots at every N cycles (e.g., 10 = cycles 10, 20, 30...)
 # Each snapshot includes height and DBH in the filename for easy asset selection
 # 0 = disabled (standard single height-based export)
-cycle_interval = 25
+cycle_interval = 0
 # Only export specific trees by fid (integer array)
 # Other trees still participate in growth simulation (light competition, shading)
 # but only the listed trees produce output files
@@ -202,9 +202,22 @@ skeleton_reduce = 0.8
 skeleton_bias = 0.5
 skeleton_connected = true
 
+[quality.helios]
+resolution = 9
+resolution_reduce = 0.75
+build_cutoff_age = 0
+build_cutoff_thickness = 0
+build_blend = false
+build_end_cap = false
+skeleton_length = 2.0
+skeleton_reduce = 0.8
+skeleton_bias = 0.5
+skeleton_connected = true
+
 [calibration]
 # Calibrate growth models against real-world yield tables from openyieldtables.org
-# Runs after create_growth_models.py to adjust grow_length per cycle
+# Run calibrate_growth.py between two runs of create_growth_models.py:
+#   create_growth_models.py -> calibrate_growth.py -> create_growth_models.py (re-run)
 enabled = true
 # Output directory for comparison plots
 output_dir = "data/output/growth_comparison"
@@ -237,15 +250,3 @@ table_id = 11
 yield_class = 6
 search = "Eiche"
 flushes_per_year = 1.0
-
-[quality.helios]
-resolution = 9
-resolution_reduce = 0.75
-build_cutoff_age = 0
-build_cutoff_thickness = 0
-build_blend = false
-build_end_cap = false
-skeleton_length = 2.0
-skeleton_reduce = 0.8
-skeleton_bias = 0.5
-skeleton_connected = true

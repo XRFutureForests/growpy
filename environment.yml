@@ -13,6 +13,7 @@ dependencies:
   - ipykernel
   - pillow
   - pip:
+      - openyieldtables # For real-world yield data calibration
       - bpy # Blender Python API with bundled USD, MaterialX, OpenImageIO, etc.
 
 variables:

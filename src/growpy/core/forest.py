@@ -150,6 +150,12 @@ def simulate_forest_growth(
         logger.info(
             "  %s curves: %d from seed.json", sp, len(ov.interpolated_overrides)
         )
+        if ov.cycle_array_overrides:
+            logger.info(
+                "  %s cycle arrays: %d from seed.json (calibration)",
+                sp,
+                len(ov.cycle_array_overrides),
+            )
 
     growth_start = time.time()
     for cycle in tqdm(range(cycles), desc="Simulating growth cycles", unit="cycle"):
@@ -217,6 +223,16 @@ def simulate_forest_growth_with_snapshots(
             len(preset_overrides.static_overrides),
             len(preset_overrides.interpolated_overrides),
         )
+    for sp, ov in species_overrides.items():
+        logger.info(
+            "  %s curves: %d from seed.json", sp, len(ov.interpolated_overrides)
+        )
+        if ov.cycle_array_overrides:
+            logger.info(
+                "  %s cycle arrays: %d from seed.json (calibration)",
+                sp,
+                len(ov.cycle_array_overrides),
+            )
 
     growth_start = time.time()
     next_snapshot_idx = 0
