@@ -8,21 +8,11 @@ version = "0.1.0"
 description = "Grove API Integration for Unreal Engine 5 Nanite"
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = [
-    "numpy>=1.20.0",
-    "pandas>=1.3.0",
-    "tqdm>=4.60.0",
-]
+dependencies = ["numpy>=1.20.0", "pandas>=1.3.0", "tqdm>=4.60.0"]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=7.0.0",
-    "black>=22.0.0",
-    "ruff>=0.0.250",
-]
-export = [
-    "usd-core>=23.11",
-]
+dev = ["pytest>=7.0.0", "black>=22.0.0", "ruff>=0.0.250"]
+export = ["usd-core>=23.11"]
 
 [project.scripts]
 growpy-prepare-assets = "growpy.cli.prepare_assets:main"
@@ -30,11 +20,10 @@ growpy-convert-twigs = "growpy.cli.convert_twigs:main"
 growpy-create-models = "growpy.cli.create_growth_models:main"
 growpy-calibrate = "growpy.cli.calibrate_growth:main"
 growpy-generate-forest = "growpy.cli.generate_forest:main"
-growpy-sweep-dbh = "growpy.cli.sweep_dbh_params:main"
 
 [tool.setuptools]
 packages = ["growpy", "the_grove_23_core"]
-package-dir = {"" = "src", "the_grove_23_core" = "src/the_grove_23/modules/the_grove_23_core"}
+package-dir = { "" = "src", "the_grove_23_core" = "src/the_grove_23/modules/the_grove_23_core" }
 
 [tool.setuptools.package-data]
 growpy = ["config/*.csv", "*.toml"]

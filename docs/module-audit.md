@@ -72,14 +72,15 @@ Pipeline order: 1 -> 2 -> 3 -> 3b -> 3 (re-run) -> 4
 
 These files have `if __name__ == "__main__"` blocks but are **not imported** by any
 pipeline module. They are useful for development and debugging but are not required
-for production runs.
+for production runs. Relocated to `src/scripts/` to keep the growpy package clean.
 
-| Script | Purpose | Recommendation |
-|--------|---------|----------------|
-| `cli/sweep_dbh_params.py` | Parameter sweep for DBH calibration levers | Keep -- useful for calibration research |
-| `io/create_minimal_pve_test.py` | Create minimal PVE JSON for Unreal testing | Keep -- useful for PVE debugging |
-| `io/validate_pve_json.py` | Validate PVE JSON against Unreal requirements | Keep -- useful for PVE debugging |
-| `utils/extract_pve_config.py` | Extract PVE overrides from reference JSON | Keep -- useful for PVE schema exploration |
+| Script | Purpose |
+|--------|----------|
+| `src/scripts/sweep_dbh_params.py` | Parameter sweep for DBH calibration levers |
+| `src/scripts/create_minimal_pve_test.py` | Create minimal PVE JSON for Unreal testing |
+| `src/scripts/validate_pve_json.py` | Validate PVE JSON against Unreal requirements |
+| `src/scripts/extract_pve_config.py` | Extract PVE overrides from reference JSON |
+| `src/scripts/the-grove-output-complete.py` | Grove output analysis |
 
 ## Removed Modules
 
@@ -89,6 +90,10 @@ for production runs.
 | `utils/unreal_schema_env.py` | Redundant with `utils/pxr_init.py` | 2026-03-11 |
 | `tests/test_obj_export.py` | Manual test, not imported by any module | 2026-03-11 |
 | `tests/test_pve_generation.py` | Manual test, not imported by any module | 2026-03-11 |
+| `cli/sweep_dbh_params.py` | Moved to `src/scripts/` -- standalone research tool, not a pipeline step | 2026-03-11 |
+| `io/create_minimal_pve_test.py` | Moved to `src/scripts/` -- standalone PVE test tool | 2026-03-11 |
+| `io/validate_pve_json.py` | Moved to `src/scripts/` -- standalone PVE validator | 2026-03-11 |
+| `utils/extract_pve_config.py` | Moved to `src/scripts/` -- standalone PVE config extractor | 2026-03-11 |
 
 ## Console Entry Points
 
@@ -102,7 +107,6 @@ commands after `pip install -e .`:
 | `growpy-create-models` | `cli/create_growth_models.py` |
 | `growpy-calibrate` | `cli/calibrate_growth.py` |
 | `growpy-generate-forest` | `cli/generate_forest.py` |
-| `growpy-sweep-dbh` | `cli/sweep_dbh_params.py` |
 
 ## Configuration Notes
 
