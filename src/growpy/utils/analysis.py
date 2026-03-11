@@ -741,6 +741,16 @@ class SpeciesGrowthAnalyzer:
             with open(model_path, "wb") as f:
                 pickle.dump(self.growth_models[species], f)
 
+            # Save coefficients as JSON for runtime use (avoids sklearn/bpy ABI conflict)
+            model = self.growth_models[species]
+            coeffs_path = species_dir / "growth_model.json"
+            with open(coeffs_path, "w") as f:
+                json.dump(
+                    {"coef": float(model.coef_[0]), "intercept": float(model.intercept_)},
+                    f,
+                    indent=2,
+                )
+
         if species in self.analysis_metadata:
             metadata_path = species_dir / "metadata.json"
             with open(metadata_path, "w") as f:
