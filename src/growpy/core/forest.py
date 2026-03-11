@@ -274,7 +274,9 @@ def simulate_forest_growth_with_snapshots(
                     "resolution": quality_params.get("resolution", 24),
                     "resolution_reduce": quality_params.get("resolution_reduce", 0.8),
                     "build_cutoff_age": quality_params.get("build_cutoff_age", 0),
-                    "build_cutoff_thickness": quality_params.get("build_cutoff_thickness", 0.01),
+                    "build_cutoff_thickness": quality_params.get(
+                        "build_cutoff_thickness", 0.01
+                    ),
                     "build_blend": quality_params.get("build_blend", True),
                     "build_end_cap": quality_params.get("build_end_cap", True),
                 }
@@ -284,7 +286,10 @@ def simulate_forest_growth_with_snapshots(
                 if len(models) < len(grove.trees):
                     logger.warning(
                         "  %s: build_models returned %d models for %d trees at cycle %d",
-                        species_name, len(models), len(grove.trees), cycle,
+                        species_name,
+                        len(models),
+                        len(grove.trees),
+                        cycle,
                     )
 
                 tree_snapshots = []
@@ -302,7 +307,9 @@ def simulate_forest_growth_with_snapshots(
                     if model is None:
                         logger.warning(
                             "  %s tree %d: model is None at cycle %d",
-                            species_name, tree_idx, cycle,
+                            species_name,
+                            tree_idx,
+                            cycle,
                         )
                     tree_snapshots.append((model, skeleton, bones, height, dbh))
 
