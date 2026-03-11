@@ -86,7 +86,6 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     import gc as _gc_module
 
     from growpy import get_config
-    from growpy.io.assembly_export import export_tree_as_nanite_assembly
     from growpy.io.tree_export import get_twig_usd_map_for_species
     from growpy.utils.profiling import ProfileTimer
 
@@ -107,205 +106,263 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     )
 
     exported: list[str] = []
+    is_helios_mode = config.export_mode == "helios"
 
     try:
-        # Export directly from already-simulated grove (from forest simulation phase)
-        # This grove was grown with inter-species light competition and is ready to export
-        # No re-simulation needed - much faster!
-        # Note: Smoothing is applied during simulate_forest_growth(), not here
+        if is_helios_mode:
+            # HELIOS MODE: Skip skeleton/bones entirely, export OBJ directly from model
+            # No bone limit applies - models can have unlimited complexity
+            with timer.track("build_models", parent="grove_export"):
+                models = grove.build_models(
+                    {
+                        "resolution": quality_params["resolution"],
+                        "resolution_reduce": quality_params["resolution_reduce"],
+                        "texture_repeat": quality_params["texture_repeat"],
+                        "build_cutoff_age": quality_params["build_cutoff_age"],
+                        "build_cutoff_thickness": quality_params["build_cutoff_thickness"],
+                        "build_blend": quality_params["build_blend"],
+                        "build_end_cap": quality_params["build_end_cap"],
+                    }
+                )
 
-        # CRITICAL BUILD ORDER: skeleton -> bones -> models
-        # 1. Build skeletons first
-        with timer.track("build_skeletons", parent="grove_export"):
-            skeletons = grove.build_skeletons()
+            if not models:
+                return exported
 
-        # 2. Tag bone IDs with reduction parameters from quality preset
-        # Higher skeleton_length and skeleton_reduce = fewer bones
-        # CRITICAL: Unreal Engine has 32,767 bone limit (16-bit signed int)
-        # Note: tag_bone_id() takes positional args: (length, reduce, bias, connected)
-        with timer.track("tag_bone_id", parent="grove_export"):
-            skeleton_length = quality_params.get("skeleton_length", 2.0)
-            skeleton_reduce = quality_params.get("skeleton_reduce", 0.4)
-            bones = grove.tag_bone_id(
-                skeleton_length,
-                skeleton_reduce**2,  # Squared like Grove UI does
-                quality_params.get("skeleton_bias", 0.5),
-                quality_params.get("skeleton_connected", True),
-            )
+            twig_density = grove.get_properties().twig_density
 
-        # 3. NOW build models (with bone_id attributes already tagged)
-        # Cutoff is allowed for skeletal meshes - bone filtering happens during export
-        # to ensure skeleton only includes bones referenced by the mesh geometry
-        with timer.track("build_models", parent="grove_export"):
-            models = grove.build_models(
-                {
-                    "resolution": quality_params["resolution"],
-                    "resolution_reduce": quality_params["resolution_reduce"],
-                    "texture_repeat": quality_params["texture_repeat"],
-                    "build_cutoff_age": quality_params["build_cutoff_age"],
-                    "build_cutoff_thickness": quality_params["build_cutoff_thickness"],
-                    "build_blend": quality_params["build_blend"],
-                    "build_end_cap": quality_params["build_end_cap"],
-                }
-            )
+            num_trees = len(models)
+            export_tree_ids = quality_params.get("export_tree_ids", None)
+            for model_idx in range(num_trees):
+                model = models[model_idx]
+                tree_fid = fids[model_idx]
+                tree_id = f"{tree_fid:04d}"
 
-        if not models:
-            return exported
+                if export_tree_ids is not None and tree_fid not in export_tree_ids:
+                    models[model_idx] = None  # type: ignore[call-overload]
+                    del model
+                    continue
 
-        # Read twig_density from grove properties for density filtering during export
-        twig_density = grove.get_properties().twig_density
+                tree_dir = output_dir / species_clean / f"tree_{tree_id}"
+                tree_dir.mkdir(parents=True, exist_ok=True)
 
-        # Slice bones list for each tree in grove
-        with timer.track("slice_bones", parent="grove_export"):
-            bones_grouped = [list(g) for k, g in groupby(bones, lambda x: x[0])]
-            tree_bones = [
-                bones_grouped[i]
-                + (bones_grouped[i + 1] if i + 1 < len(bones_grouped) else [])
-                for i in range(0, len(bones_grouped), 2)
-            ]
+                # Triangulate for OBJ export
+                model.triangulate()
 
-        # Export each model/skeleton/bones triplet (each is a separate tree)
-        # Process one tree at a time and immediately release memory to reduce peak RAM
-        num_trees = len(models)
-        export_tree_ids = quality_params.get("export_tree_ids", None)
-        for model_idx in range(num_trees):
-            # Get current tree's data
-            model = models[model_idx]
-            skeleton = skeletons[model_idx]
-            bones_for_tree = tree_bones[model_idx]
+                # Get twig USD paths for prototype meshes
+                with timer.track("get_twig_usd_map", parent="grove_export"):
+                    twig_usd_map = get_twig_usd_map_for_species(
+                        species, config, prefer_skeletal=True, prefer_static=False
+                    )
 
-            # Use original CSV fid for naming (with leading zeros)
-            tree_fid = fids[model_idx]
-            tree_id = f"{tree_fid:04d}"
+                # Extract twig placements directly from model (no bones needed)
+                with timer.track("extract_twig_placements", parent="grove_export"):
+                    from growpy.core.twig import extract_twig_placements_from_model
 
-            # Skip trees not in export filter (they still participated in growth simulation)
-            if export_tree_ids is not None and tree_fid not in export_tree_ids:
-                # Clear memory for skipped tree
+                    twig_placements = extract_twig_placements_from_model(
+                        model,
+                        twig_types=["twig_long", "twig_short", "twig_upward"],
+                        bones_info=None,
+                        verbose=verbose,
+                        twig_density=twig_density,
+                    )
+
+                # Export OBJ directly from model
+                is_conifer = any(
+                    kw in species_clean for kw in [
+                        "spruce", "pine", "fir", "cedar", "cypress",
+                        "juniper", "larch", "hemlock", "yew",
+                    ]
+                )
+                spectra = "conifer" if is_conifer else "deciduous"
+
+                with timer.track("export_obj_direct", parent="grove_export"):
+                    from growpy.io.obj_export import convert_tree_to_obj_direct
+
+                    obj_path = convert_tree_to_obj_direct(
+                        model=model,
+                        twig_placements=twig_placements,
+                        twig_usd_map=twig_usd_map,
+                        output_dir=tree_dir,
+                        species_name=species,
+                        tree_id=tree_id,
+                        decimate_ratio=config.helios_decimate_ratio,
+                        stem_decimate_ratio=config.helios_stem_decimate_ratio,
+                        helios_spectra_leaves=spectra,
+                    )
+
+                if obj_path:
+                    exported.append(str(obj_path))
+
+                models[model_idx] = None  # type: ignore[call-overload]
+                del model
+                _gc_module.collect()
+
+            del models
+
+        else:
+            # UNREAL MODE: Full skeleton/bone/USD pipeline
+            from growpy.io.assembly_export import export_tree_as_nanite_assembly
+
+            # CRITICAL BUILD ORDER: skeleton -> bones -> models
+            with timer.track("build_skeletons", parent="grove_export"):
+                skeletons = grove.build_skeletons()
+
+            with timer.track("tag_bone_id", parent="grove_export"):
+                skeleton_length = quality_params.get("skeleton_length", 2.0)
+                skeleton_reduce = quality_params.get("skeleton_reduce", 0.4)
+                bones = grove.tag_bone_id(
+                    skeleton_length,
+                    skeleton_reduce**2,
+                    quality_params.get("skeleton_bias", 0.5),
+                    quality_params.get("skeleton_connected", True),
+                )
+
+            with timer.track("build_models", parent="grove_export"):
+                models = grove.build_models(
+                    {
+                        "resolution": quality_params["resolution"],
+                        "resolution_reduce": quality_params["resolution_reduce"],
+                        "texture_repeat": quality_params["texture_repeat"],
+                        "build_cutoff_age": quality_params["build_cutoff_age"],
+                        "build_cutoff_thickness": quality_params["build_cutoff_thickness"],
+                        "build_blend": quality_params["build_blend"],
+                        "build_end_cap": quality_params["build_end_cap"],
+                    }
+                )
+
+            if not models:
+                return exported
+
+            twig_density = grove.get_properties().twig_density
+
+            with timer.track("slice_bones", parent="grove_export"):
+                bones_grouped = [list(g) for k, g in groupby(bones, lambda x: x[0])]
+                tree_bones = [
+                    bones_grouped[i]
+                    + (bones_grouped[i + 1] if i + 1 < len(bones_grouped) else [])
+                    for i in range(0, len(bones_grouped), 2)
+                ]
+
+            num_trees = len(models)
+            export_tree_ids = quality_params.get("export_tree_ids", None)
+            for model_idx in range(num_trees):
+                model = models[model_idx]
+                skeleton = skeletons[model_idx]
+                bones_for_tree = tree_bones[model_idx]
+
+                tree_fid = fids[model_idx]
+                tree_id = f"{tree_fid:04d}"
+
+                if export_tree_ids is not None and tree_fid not in export_tree_ids:
+                    models[model_idx] = None  # type: ignore[call-overload]
+                    skeletons[model_idx] = None  # type: ignore[call-overload]
+                    tree_bones[model_idx] = None  # type: ignore[call-overload]
+                    del model, skeleton, bones_for_tree
+                    continue
+
+                use_skeletal = mesh_type == "skeletal"
+                use_static = mesh_type == "static"
+
+                mesh_suffix = "skeletal" if use_skeletal else "static"
+                tree_dir = output_dir / species_clean / f"tree_{tree_id}"
+                tree_dir.mkdir(parents=True, exist_ok=True)
+                usd_path = tree_dir / f"{species_clean}_assembly.usda"
+
+                with timer.track("get_twig_usd_map", parent="grove_export"):
+                    twig_usd_map = get_twig_usd_map_for_species(
+                        species, config, prefer_skeletal=True, prefer_static=False
+                    )
+
+                with timer.track(
+                    f"export_nanite_assembly_{mesh_suffix}", parent="grove_export"
+                ):
+                    export_success = export_tree_as_nanite_assembly(
+                        model=model,
+                        skeleton=skeleton if use_skeletal else None,
+                        bones_info=bones_for_tree if use_skeletal else None,
+                        output_path=usd_path,
+                        species_name=species,
+                        tree_id=tree_id,
+                        twig_usd_paths=twig_usd_map,
+                        include_twigs=True,
+                        use_skeletal_mesh=use_skeletal,
+                        use_static_mesh=use_static,
+                        include_grove_attributes=quality_params.get(
+                            "include_grove_attributes", False
+                        ),
+                        validate=not quality_params.get("skip_validation", False),
+                        timer=timer,
+                        twig_density=twig_density,
+                    )
+
+                if export_success:
+                    exported.append(str(usd_path))
+
+                    if use_skeletal:
+                        from growpy.io.wind_json import generate_wind_json
+
+                        skeletal_usd_path = (
+                            tree_dir / f"{species_clean}_stems_skeletal.usda"
+                        )
+                        wind_json_path = (
+                            tree_dir / f"{species_clean}_stems_unreal_wind.json"
+                        )
+                        try:
+                            with timer.track("generate_wind_json", parent="grove_export"):
+                                generate_wind_json(
+                                    tree_usd_path=skeletal_usd_path,
+                                    skeleton=skeleton,
+                                    bones_info=bones_for_tree,
+                                    output_path=wind_json_path,
+                                )
+                        except Exception as wind_error:
+                            import traceback
+
+                            print(
+                                f"Warning: Failed to generate wind JSON for tree {tree_id}: {wind_error}"
+                            )
+                            if verbose:
+                                traceback.print_exc()
+
+                    skip_pve = quality_params.get("skip_pve_json", False)
+                    profile_pve = quality_params.get("profile_pve", False)
+                    if use_skeletal and not skip_pve:
+                        from growpy.io.pve_grove_mapper import generate_pve_from_grove
+
+                        pve_json_path = tree_dir / f"{species_clean}_stems_unreal_pve.json"
+                        pve_config_dir = Path("data/assets/pve_configs")
+
+                        try:
+                            with timer.track("generate_pve_json", parent="grove_export"):
+                                generate_pve_from_grove(
+                                    grove=grove,
+                                    output_path=pve_json_path,
+                                    species_name=species,
+                                    tree_index=model_idx,
+                                    model=model,
+                                    skeleton=skeleton,
+                                    bones_info=bones_for_tree,
+                                    verbose=True,
+                                    pve_config_dir=pve_config_dir,
+                                    profile=profile_pve,
+                                    twig_density=twig_density,
+                                )
+                        except Exception as pve_error:
+                            import traceback
+
+                            print(
+                                f"Warning: Failed to generate PVE preset JSON for tree {tree_id}: {pve_error}"
+                            )
+                            if verbose:
+                                traceback.print_exc()
+
                 models[model_idx] = None  # type: ignore[call-overload]
                 skeletons[model_idx] = None  # type: ignore[call-overload]
                 tree_bones[model_idx] = None  # type: ignore[call-overload]
                 del model, skeleton, bones_for_tree
-                continue
+                _gc_module.collect()
 
-            # Use appropriate twig type based on mesh_type
-            use_skeletal = mesh_type == "skeletal"
-            use_static = mesh_type == "static"
-
-            # Create tree-specific subfolder with tree ID
-            mesh_suffix = "skeletal" if use_skeletal else "static"
-            tree_dir = output_dir / species_clean / f"tree_{tree_id}"
-            tree_dir.mkdir(parents=True, exist_ok=True)
-            usd_path = tree_dir / f"{species_clean}_assembly.usda"
-
-            # CRITICAL: Always use skeletal twigs for both skeletal and static assemblies
-            # Static twig variants don't exist, and skeletal twigs work as point instances
-            # in both assembly types (assembly type only affects tree mesh, not twig references)
-            with timer.track("get_twig_usd_map", parent="grove_export"):
-                twig_usd_map = get_twig_usd_map_for_species(
-                    species, config, prefer_skeletal=True, prefer_static=False
-                )
-
-            # Export as Nanite Assembly with specified mesh type
-            # tree_id in prim name ensures unique Unreal assets
-            with timer.track(
-                f"export_nanite_assembly_{mesh_suffix}", parent="grove_export"
-            ):
-                export_success = export_tree_as_nanite_assembly(
-                    model=model,
-                    skeleton=skeleton if use_skeletal else None,
-                    bones_info=bones_for_tree if use_skeletal else None,
-                    output_path=usd_path,
-                    species_name=species,
-                    tree_id=tree_id,
-                    twig_usd_paths=twig_usd_map,
-                    include_twigs=True,
-                    use_skeletal_mesh=use_skeletal,
-                    use_static_mesh=use_static,
-                    include_grove_attributes=quality_params.get(
-                        "include_grove_attributes", False
-                    ),
-                    validate=not quality_params.get("skip_validation", False),
-                    timer=timer,
-                    twig_density=twig_density,
-                )
-
-            if export_success:
-                exported.append(str(usd_path))
-
-                # Generate DynamicWind JSON for Unreal import
-                # CRITICAL: Unreal currently requires separate JSON import, not USD attributes
-                # Use ImportDynamicWindSkeletalDataFromFile in Unreal after USD import
-                if use_skeletal:
-                    from growpy.io.wind_json import generate_wind_json
-
-                    # Path to the skeletal USD file (stems mesh with skeleton)
-                    skeletal_usd_path = (
-                        tree_dir / f"{species_clean}_stems_skeletal.usda"
-                    )
-                    wind_json_path = (
-                        tree_dir / f"{species_clean}_stems_unreal_wind.json"
-                    )
-                    try:
-                        with timer.track("generate_wind_json", parent="grove_export"):
-                            generate_wind_json(
-                                tree_usd_path=skeletal_usd_path,
-                                skeleton=skeleton,
-                                bones_info=bones_for_tree,
-                                output_path=wind_json_path,
-                            )
-                    except Exception as wind_error:
-                        import traceback
-
-                        print(
-                            f"Warning: Failed to generate wind JSON for tree {tree_id}: {wind_error}"
-                        )
-                        if verbose:
-                            traceback.print_exc()
-
-                # Generate PVE preset JSON (optional, skip with --skip-pve-json)
-                # Only generate once per tree (skeletal mesh export, not static)
-                skip_pve = quality_params.get("skip_pve_json", False)
-                profile_pve = quality_params.get("profile_pve", False)
-                if use_skeletal and not skip_pve:
-                    from growpy.io.pve_grove_mapper import generate_pve_from_grove
-
-                    pve_json_path = tree_dir / f"{species_clean}_stems_unreal_pve.json"
-                    pve_config_dir = Path("data/assets/pve_configs")
-
-                    try:
-                        with timer.track("generate_pve_json", parent="grove_export"):
-                            generate_pve_from_grove(
-                                grove=grove,
-                                output_path=pve_json_path,
-                                species_name=species,
-                                tree_index=model_idx,
-                                model=model,  # Pass current model (has twigs)
-                                skeleton=skeleton,
-                                bones_info=bones_for_tree,
-                                verbose=True,
-                                pve_config_dir=pve_config_dir,
-                                profile=profile_pve,
-                                twig_density=twig_density,
-                            )
-                    except Exception as pve_error:
-                        import traceback
-
-                        print(
-                            f"Warning: Failed to generate PVE preset JSON for tree {tree_id}: {pve_error}"
-                        )
-                        if verbose:
-                            traceback.print_exc()
-
-            # MEMORY OPTIMIZATION: Clear this tree's data immediately after export
-            # This releases large mesh/skeleton data before processing next tree
-            models[model_idx] = None  # type: ignore[call-overload]
-            skeletons[model_idx] = None  # type: ignore[call-overload]
-            tree_bones[model_idx] = None  # type: ignore[call-overload]
-            del model, skeleton, bones_for_tree
-            _gc_module.collect()
-
-        # Clear remaining references
-        del models, skeletons, tree_bones
+            del models, skeletons, tree_bones
 
     except ValueError as e:
         if _is_bone_limit_error(e):
@@ -1637,27 +1694,69 @@ Unreal Engine Integration:
                     export_tree_ids=export_tree_ids,
                 )
 
-        # OBJ/MTL export for Helios++ (post-processes USDA output)
-        do_export_obj = config.helios_export_obj or config.helios_helios_scene
-        if do_export_obj:
-            from growpy.io.obj_export import export_forest_obj
+        # OBJ/MTL export for Helios++
+        if config.export_mode == "helios":
+            # In helios mode, individual OBJ files are already written during export.
+            # Only need post-processing for combined OBJ and scene XML.
+            if config.helios_helios_scene or config.helios_combined_obj:
+                # Gather already-exported OBJ files with positions from CSV
+                forest_data = pd.read_csv(csv_path)
+                if "fid" not in forest_data.columns:
+                    forest_data["fid"] = range(1, len(forest_data) + 1)
+                if "z" not in forest_data.columns:
+                    forest_data["z"] = 0.0
 
-            with timer.track("obj_export"):
-                export_forest_obj(
-                    output_dir=output_dir,
-                    csv_path=csv_path,
-                    decimate_ratio=config.helios_decimate_ratio,
-                    stem_decimate_ratio=config.helios_stem_decimate_ratio,
-                    generate_scene_xml=config.helios_helios_scene,
-                    generate_combined_obj=config.helios_combined_obj,
-                )
+                obj_files = []
+                for obj_path in sorted(output_dir.glob("*/tree_*/*_helios.obj")):
+                    tree_dir_name = obj_path.parent.name
+                    tree_id_str = tree_dir_name.replace("tree_", "")
+                    species_dir = obj_path.parent.parent.name
+                    species_name = species_dir.replace("_", " ").title()
+                    try:
+                        fid = int(tree_id_str)
+                        row = forest_data[forest_data["fid"] == fid].iloc[0]
+                        obj_files.append((obj_path, float(row["x"]), float(row["y"]), float(row["z"]), species_name))
+                    except (ValueError, IndexError):
+                        obj_files.append((obj_path, 0.0, 0.0, 0.0, species_name))
+
+                if obj_files:
+                    if config.helios_helios_scene:
+                        from growpy.io.helios_scene import generate_helios_scene
+                        scene_path = output_dir / "helios_scene.xml"
+                        generate_helios_scene(tree_entries=obj_files, output_path=scene_path)
+
+                    if config.helios_combined_obj:
+                        from growpy.io.obj_export import write_combined_obj
+                        from growpy.io.obj_export import CONIFER_KEYWORDS
+                        is_conifer = any(
+                            any(kw in sp.lower() for kw in CONIFER_KEYWORDS)
+                            for _, _, _, _, sp in obj_files
+                        )
+                        spectra = "conifer" if is_conifer else "deciduous"
+                        combined_path = output_dir / "forest_combined.obj"
+                        write_combined_obj(tree_entries=obj_files, output_path=combined_path, helios_spectra_leaves=spectra)
+        else:
+            # In unreal mode, OBJ export post-processes USDA output
+            do_export_obj = config.helios_export_obj or config.helios_helios_scene
+            if do_export_obj:
+                from growpy.io.obj_export import export_forest_obj
+
+                with timer.track("obj_export"):
+                    export_forest_obj(
+                        output_dir=output_dir,
+                        csv_path=csv_path,
+                        decimate_ratio=config.helios_decimate_ratio,
+                        stem_decimate_ratio=config.helios_stem_decimate_ratio,
+                        generate_scene_xml=config.helios_helios_scene,
+                        generate_combined_obj=config.helios_combined_obj,
+                    )
 
         # Print profiling report if enabled
         if config.profile:
             timer.print_report()
 
-        # Generate Unreal scripts if requested
-        if config.unreal_import_to_unreal:
+        # Generate Unreal scripts if requested (only in unreal mode)
+        if config.export_mode != "helios" and config.unreal_import_to_unreal:
             # Load forest data for tree positions
             try:
                 forest_data = pd.read_csv(csv_path)

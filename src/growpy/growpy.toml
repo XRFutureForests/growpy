@@ -99,6 +99,10 @@ longevity_mode = true
 # connected = true   # Connected bone chains (required for animation, more bones)
 
 [export]
+# Export mode: "unreal" (full USD+skeleton pipeline) or "helios" (direct OBJ, no bone limit)
+# "helios" mode skips skeleton building, bone tagging, USD generation, and all Unreal outputs.
+# Trees are exported directly from Grove models to OBJ - significantly faster and no bone count limit.
+mode = "helios"
 # Skip PVE preset JSON generation (saves ~3% export time)
 # PVE presets only needed for Unreal Procedural Vegetation Editor
 skip_pve_json = false
