@@ -647,6 +647,7 @@ def export_tree_as_nanite_assembly(
     validate: bool = True,
     timer: Optional[Any] = None,
     stems_file_suffix: Optional[str] = None,
+    radial_scale: float = 1.0,
 ) -> bool:
     """Export Grove tree as Unreal Engine Nanite Assembly.
 
@@ -737,6 +738,7 @@ def export_tree_as_nanite_assembly(
                     include_grove_attributes=include_grove_attributes,
                     species_name=species_name,
                     tree_id=tree_id,
+                    radial_scale=radial_scale,
                 ):
                     return False
         else:
@@ -754,6 +756,7 @@ def export_tree_as_nanite_assembly(
                     include_grove_attributes=include_grove_attributes,
                     species_name=species_name,
                     tree_id=tree_id,
+                    radial_scale=radial_scale,
                 ):
                     return False
 

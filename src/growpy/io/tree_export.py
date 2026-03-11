@@ -46,6 +46,7 @@ Main Functions:
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -120,6 +121,7 @@ def build_tree_mesh(
     tree_id: Optional[str] = None,
     include_skeleton: bool = True,
     include_grove_attributes: bool = False,
+    radial_scale: float = 1.0,
 ) -> bool:
     """Build USD file directly from Grove model using API geometry data.
 
@@ -205,8 +207,87 @@ def build_tree_mesh(
         faces = model.faces  # List of face definitions (point indices)
         uvs = model.uvs  # UV coordinates for texturing
 
-        # Convert points to USD format
-        usd_points = [Gf.Vec3f(p.x, p.y, p.z) for p in points]
+        # Convert points to USD format, applying height-aware radial scaling.
+        # Full radial_scale at breast height, blending to 1.0 at the crown.
+        # When bones_info is available, scaling is perpendicular to each bone's
+        # axis so branches thicken correctly without stretching along their length.
+        # Falls back to XZ-plane scaling when no bone data is present.
+        if radial_scale != 1.0 and hasattr(model, "location") and model.location:
+            tree_height = max((p.y for p in points), default=0.0)
+            breast_height = 1.3
+            blend_start = breast_height
+            blend_end = max(breast_height + 1.0, tree_height * 0.4)
+            blend_range = blend_end - blend_start
+
+            # Build per-bone axis lookup when skeleton data is available
+            bone_axes = None
+            bone_starts = None
+            bone_id_offset = 0
+            vertex_bone_ids = getattr(model, "point_attribute_bone_id", None)
+            if bones_info and vertex_bone_ids:
+                bone_id_offset = min(vertex_bone_ids)
+                bone_axes = []
+                bone_starts = []
+                for bone in bones_info:
+                    sp, ep = bone[2], bone[3]
+                    dx = ep.x - sp.x
+                    dy = ep.y - sp.y
+                    dz = ep.z - sp.z
+                    length = math.sqrt(dx * dx + dy * dy + dz * dz)
+                    if length > 1e-6:
+                        inv = 1.0 / length
+                        bone_axes.append((dx * inv, dy * inv, dz * inv))
+                    else:
+                        bone_axes.append((0.0, 1.0, 0.0))
+                    bone_starts.append((sp.x, sp.y, sp.z))
+
+            usd_points = []
+            for i, p in enumerate(points):
+                if p.y <= blend_start:
+                    s = radial_scale
+                elif p.y >= blend_end:
+                    s = 1.0
+                else:
+                    t = (p.y - blend_start) / blend_range
+                    t = t * t * (3.0 - 2.0 * t)
+                    s = radial_scale + (1.0 - radial_scale) * t
+
+                if s == 1.0:
+                    usd_points.append(Gf.Vec3f(p.x, p.y, p.z))
+                    continue
+
+                if bone_axes is not None and vertex_bone_ids is not None:
+                    # Scale perpendicular to bone axis
+                    local_idx = vertex_bone_ids[i] - bone_id_offset
+                    local_idx = max(0, min(local_idx, len(bone_axes) - 1))
+                    ax, ay, az = bone_axes[local_idx]
+                    bx, by, bz = bone_starts[local_idx]
+                    # Vector from bone start to vertex
+                    vx, vy, vz = p.x - bx, p.y - by, p.z - bz
+                    # Axial projection length
+                    dot = vx * ax + vy * ay + vz * az
+                    # Perpendicular component
+                    px, py, pz = vx - dot * ax, vy - dot * ay, vz - dot * az
+                    usd_points.append(
+                        Gf.Vec3f(
+                            p.x + (s - 1.0) * px,
+                            p.y + (s - 1.0) * py,
+                            p.z + (s - 1.0) * pz,
+                        )
+                    )
+                else:
+                    # Fallback: scale in XZ plane from tree center
+                    cx = model.location.x
+                    cz = model.location.z
+                    usd_points.append(
+                        Gf.Vec3f(
+                            cx + (p.x - cx) * s,
+                            p.y,
+                            cz + (p.z - cz) * s,
+                        )
+                    )
+        else:
+            usd_points = [Gf.Vec3f(p.x, p.y, p.z) for p in points]
 
         # Convert faces to USD format
         face_vertex_counts = [len(face) for face in faces]

@@ -90,6 +90,8 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     import gc as _gc_module
 
     from growpy import get_config
+    from growpy.config.preset_overrides import load_target_dbh_from_preset
+    from growpy.core.tree import calculate_dbh_at_height
     from growpy.io.assembly_export import export_tree_as_nanite_assembly
     from growpy.io.tree_export import get_twig_usd_map_for_species
     from growpy.utils.profiling import ProfileTimer
@@ -166,6 +168,12 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 for i in range(0, len(bones_grouped), 2)
             ]
 
+        # Load target DBH curve for post-hoc radial scaling
+        # This corrects Grove's inflated DBH to match yield table targets
+        target_dbh_curve = load_target_dbh_from_preset(
+            config.get_preset_path(species)
+        )
+
         # Export each model/skeleton/bones triplet (each is a separate tree)
         # Process one tree at a time and immediately release memory to reduce peak RAM
         num_trees = len(models)
@@ -207,6 +215,24 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                     species, config, prefer_skeletal=True, prefer_static=False
                 )
 
+            # Compute radial scale from yield table target DBH vs actual grove DBH
+            tree_radial_scale = 1.0
+            if target_dbh_curve and grove.trees and model_idx < len(grove.trees):
+                cycle_idx = min(grove.age - 1, len(target_dbh_curve) - 1)
+                if cycle_idx >= 0:
+                    target_dbh = target_dbh_curve[cycle_idx]
+                    grove_dbh = calculate_dbh_at_height(grove.trees[model_idx])
+                    if grove_dbh > 0.001 and target_dbh > 0.001:
+                        tree_radial_scale = target_dbh / grove_dbh
+                        tree_radial_scale = max(0.1, min(tree_radial_scale, 2.0))
+                        if abs(tree_radial_scale - 1.0) > 0.01:
+                            logger.debug(
+                                "  Tree %s radial scale: %.3f "
+                                "(target DBH=%.1fcm, grove DBH=%.1fcm)",
+                                tree_id, tree_radial_scale,
+                                target_dbh * 100, grove_dbh * 100,
+                            )
+
             # Export as Nanite Assembly with specified mesh type
             # tree_id in prim name ensures unique Unreal assets
             with timer.track(f"export_nanite_assembly_{mesh_suffix}"):
@@ -226,6 +252,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                     ),
                     validate=not quality_params.get("skip_validation", False),
                     timer=timer,
+                    radial_scale=tree_radial_scale,
                 )
 
             if export_success:
@@ -483,6 +510,7 @@ def generate_forest_stages(
         skip_pve_json: If True, skip PVE preset JSON generation
         skip_validation: If True, skip assembly validation
     """
+    from growpy.config.preset_overrides import load_target_dbh_from_preset
     from growpy.io.assembly_export import export_tree_as_nanite_assembly
     from growpy.io.tree_export import get_twig_usd_map_for_species
     from growpy.utils.profiling import ProfileTimer
@@ -633,6 +661,9 @@ def generate_forest_stages(
     logger.info("PHASE 3: EXPORTING STAGES (%d cycles)", len(snapshots))
     logger.info("%s", "=" * 60)
 
+    # Cache target DBH curves per species for radial scaling
+    target_dbh_cache: Dict[str, list] = {}
+
     exported_files = []
     for cycle, species_snapshots in tqdm(snapshots.items(), desc="Exporting stages"):
         for species_name, tree_data_list in species_snapshots.items():
@@ -696,6 +727,21 @@ def generate_forest_stages(
                 except Exception:
                     pass
 
+                # Compute radial scale from yield table target DBH
+                tree_radial_scale = 1.0
+                if species_name not in target_dbh_cache:
+                    target_dbh_cache[species_name] = load_target_dbh_from_preset(
+                        config.get_preset_path(species_name)
+                    )
+                target_dbh_curve = target_dbh_cache[species_name]
+                if target_dbh_curve and _dbh and _dbh > 0.001:
+                    cycle_idx = min(cycle - 1, len(target_dbh_curve) - 1)
+                    if cycle_idx >= 0:
+                        target_dbh = target_dbh_curve[cycle_idx]
+                        if target_dbh > 0.001:
+                            tree_radial_scale = target_dbh / _dbh
+                            tree_radial_scale = max(0.1, min(tree_radial_scale, 2.0))
+
                 # Export as Nanite Assembly
                 # stems_file_suffix ensures each stage gets its own stems file
                 try:
@@ -714,6 +760,7 @@ def generate_forest_stages(
                         validate=not skip_validation,
                         timer=timer,
                         stems_file_suffix=height_str,
+                        radial_scale=tree_radial_scale,
                     )
                 except ValueError as e:
                     if _is_bone_limit_error(e):

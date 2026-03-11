@@ -31,6 +31,11 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
+# Add src to path for Grove imports
+src_path = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(src_path))
+sys.path.insert(0, str(src_path / "the_grove_23" / "modules"))
+
 import matplotlib.pyplot as plt
 import matplotlib.style as mplstyle
 import numpy as np
@@ -102,17 +107,25 @@ def interpolate_yield_table(
     ages: List[float],
     heights: List[float],
     max_cycles: int,
+    flushes_per_year: float = 1.0,
 ) -> tuple:
-    """Interpolate yield table to per-cycle (per-year) resolution using PCHIP."""
+    """Interpolate yield table to per-cycle resolution using PCHIP.
+
+    When flushes_per_year != 1.0, cycle numbers are converted to calendar
+    years before looking up the yield table. For example, with
+    flushes_per_year=0.5, cycle 25 maps to age 50 in the yield table.
+    """
     from scipy.interpolate import PchipInterpolator
 
     extended_ages = [0] + list(ages)
     extended_heights = [0.5] + list(heights)
 
     interp = PchipInterpolator(extended_ages, extended_heights)
-    yearly_ages = np.arange(1, max_cycles + 1)
-    yearly_heights = np.maximum(interp(yearly_ages), 0.1)
-    return yearly_ages, yearly_heights
+    # Convert cycle indices to calendar years for yield table lookup
+    cycle_indices = np.arange(1, max_cycles + 1)
+    calendar_ages = cycle_indices / flushes_per_year
+    yearly_heights = np.maximum(interp(calendar_ages), 0.1)
+    return cycle_indices, yearly_heights
 
 
 def compute_grow_length_curve(
@@ -164,7 +177,7 @@ def compute_thicken_tips_curve(
         scale_factors = uniform_filter1d(scale_factors, size=5)
 
     thicken_tips_values = base_thicken_tips * scale_factors
-    floor = max(0.001, base_thicken_tips * 0.4)
+    floor = 0.0005
     thicken_tips_values = np.clip(thicken_tips_values, floor, 0.05)
     thicken_tips_values = np.insert(thicken_tips_values, 0, thicken_tips_values[0])
 
@@ -174,13 +187,18 @@ def compute_thicken_tips_curve(
 def compute_dbh_static_overrides(
     grove_dbhs: List[float],
     target_dbhs: np.ndarray,
-    base_thicken_base_scale: float,
-    base_thicken_base_buttress: float,
     base_grow_nodes: int = 3,
+    base_thicken_deadwood: float = 0.0,
 ) -> Dict[str, float]:
     """Compute static overrides to reduce DBH toward yield table targets.
 
-    Uses multiple levers: grow_nodes reduction, thicken_base_scale, buttress.
+    Uses levers that affect DBH at breast height (1.3m):
+    - grow_nodes: fewer nodes = less cumulative radial thickening
+    - thicken_deadwood: set to 0 to eliminate dead branch thickening
+
+    Note: thicken_base_scale, thicken_base_buttress, and thicken_base_shape
+    have zero effect on DBH at 1.3m (they only affect the trunk base below
+    breast height). They are intentionally excluded.
     """
     n = min(len(grove_dbhs), len(target_dbhs))
     if n < 2:
@@ -201,12 +219,9 @@ def compute_dbh_static_overrides(
         if new_nodes < base_grow_nodes:
             overrides["grow_nodes"] = new_nodes
 
-        new_base_scale = max(1.0, base_thicken_base_scale * dbh_ratio)
-        overrides["thicken_base_scale"] = round(new_base_scale, 4)
-
-        if base_thicken_base_buttress > 0:
-            new_buttress = max(0.0, base_thicken_base_buttress * dbh_ratio)
-            overrides["thicken_base_buttress"] = round(new_buttress, 4)
+    # Always disable dead branch thickening for DBH reduction
+    if base_thicken_deadwood > 0:
+        overrides["thicken_deadwood"] = 0.0
 
     return overrides
 
@@ -419,6 +434,8 @@ def write_calibration_to_seed_json(
     presets_dir: Path,
     thicken_tips_per_cycle: Optional[List[float]] = None,
     static_overrides: Optional[Dict[str, float]] = None,
+    target_dbh_per_cycle: Optional[List[float]] = None,
+    flushes_per_year: float = 1.0,
 ) -> Optional[Path]:
     """Write calibration data to the species seed.json."""
     species_dir = species_name.lower().replace(" ", "_")
@@ -447,6 +464,12 @@ def write_calibration_to_seed_json(
         ]
     if static_overrides:
         calibration["static_overrides"] = static_overrides
+    if target_dbh_per_cycle:
+        calibration["target_dbh_per_cycle"] = [
+            round(v, 6) for v in target_dbh_per_cycle
+        ]
+    if flushes_per_year != 1.0:
+        calibration["flushes_per_year"] = flushes_per_year
     preset["_yield_table_calibration"] = calibration
 
     with open(preset_path, "w") as f:
@@ -465,6 +488,7 @@ def run_calibration(
     output_dir: Path,
     calibrate: bool = True,
     plot: bool = True,
+    flushes_per_year: float = 1.0,
 ) -> Optional[List[float]]:
     """Run comparison and optional calibration for a single species.
 
@@ -497,10 +521,11 @@ def run_calibration(
     grove_heights = grove_data["height_curve"]
     yc_data = yield_curves[selected_yc]
 
+    fpy_info = f", flushes/yr={flushes_per_year}" if flushes_per_year != 1.0 else ""
     logger.info(
-        "%s: %d cycles, height %.1fm -> %.1fm | Yield table: %s",
+        "%s: %d cycles, height %.1fm -> %.1fm | Yield table: %s%s",
         species_name, len(grove_heights),
-        grove_heights[0], grove_heights[-1], table_title,
+        grove_heights[0], grove_heights[-1], table_title, fpy_info,
     )
 
     species_clean = species_name.lower().replace(" ", "_")
@@ -511,7 +536,7 @@ def run_calibration(
         max_cycles = len(grove_heights)
 
         yearly_ages, yearly_heights = interpolate_yield_table(
-            yc_data["ages"], yc_data["heights"], max_cycles
+            yc_data["ages"], yc_data["heights"], max_cycles, flushes_per_year
         )
         calibrated_heights = yearly_heights
 
@@ -537,7 +562,7 @@ def run_calibration(
 
         if grove_dbhs and yc_data["dbhs"]:
             _, target_dbhs_interp = interpolate_yield_table(
-                yc_data["ages"], yc_data["dbhs"], max_cycles
+                yc_data["ages"], yc_data["dbhs"], max_cycles, flushes_per_year
             )
 
             base_thicken_tips = preset.get("thicken_tips", 0.007)
@@ -553,15 +578,13 @@ def run_calibration(
         # Static DBH overrides
         dbh_static_overrides = {}
         if grove_dbhs and target_dbhs_interp is not None:
-            base_scale = preset.get("thicken_base_scale", 1.2)
-            base_buttress = preset.get("thicken_base_buttress", 2.0)
             base_nodes = preset.get("grow_nodes", 3)
+            base_deadwood = preset.get("thicken_deadwood", 0.0)
             dbh_static_overrides = compute_dbh_static_overrides(
                 grove_dbhs,
                 target_dbhs_interp,
-                base_scale,
-                base_buttress,
                 base_grow_nodes=base_nodes,
+                base_thicken_deadwood=base_deadwood,
             )
 
             if "grow_nodes" in dbh_static_overrides:
@@ -612,6 +635,11 @@ def run_calibration(
                 n_at_cap, len(grow_lengths),
             )
 
+        # Build target DBH per cycle for radial scaling at export time
+        write_target_dbh = None
+        if target_dbhs_interp is not None and len(target_dbhs_interp) > 0:
+            write_target_dbh = list(target_dbhs_interp[:len(grove_heights)])
+
         write_calibration_to_seed_json(
             species_name,
             write_grow_lengths or [base_grow_length] * len(grove_heights),
@@ -621,6 +649,8 @@ def run_calibration(
             presets_dir,
             thicken_tips_per_cycle=thicken_tips_values,
             static_overrides=write_static,
+            target_dbh_per_cycle=write_target_dbh,
+            flushes_per_year=flushes_per_year,
         )
 
     # Comparison plot
@@ -712,6 +742,15 @@ Note: Requires growth models from create_growth_models.py.
         action="store_true",
         help="List available yield tables for --species and exit",
     )
+    parser.add_argument(
+        "--flushes-per-year",
+        type=float,
+        default=None,
+        help=(
+            "Growth flushes per calendar year (default: from config, fallback 1.0). "
+            "Controls cycle-to-age mapping: 0.5 means 1 cycle = 2 years."
+        ),
+    )
 
     args = parser.parse_args()
     config.resolve(args)
@@ -769,9 +808,13 @@ Note: Requires growth models from create_growth_models.py.
         else:
             table_id = args.table_id
             yield_class = args.yield_class
+        toml_fpy = config.calibration_species.get(args.species, {}).get(
+            "flushes_per_year", 1.0
+        )
         species_configs[args.species] = {
             "table_id": table_id,
             "yield_class": yield_class,
+            "flushes_per_year": args.flushes_per_year or toml_fpy,
         }
     else:
         # All species from toml config
@@ -803,6 +846,8 @@ Note: Requires growth models from create_growth_models.py.
         logger.info("  %s (table %d, YC %s)", species_name, table_id, yield_class)
         logger.info("=" * 60)
 
+        fpy = float(cfg.get("flushes_per_year", 1.0))
+
         result = run_calibration(
             species_name=species_name,
             table_id=table_id,
@@ -812,6 +857,7 @@ Note: Requires growth models from create_growth_models.py.
             output_dir=output_dir,
             calibrate=do_calibrate,
             plot=do_plot,
+            flushes_per_year=fpy,
         )
 
         if result is not None or not do_calibrate:

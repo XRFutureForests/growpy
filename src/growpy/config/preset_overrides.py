@@ -551,6 +551,31 @@ def load_curves_from_preset(preset_path: Path) -> PresetOverrides:
     return overrides
 
 
+def load_target_dbh_from_preset(preset_path: Path) -> List[float]:
+    """Load target DBH per cycle from yield table calibration in a seed.json.
+
+    Used at export time to compute radial scale for stem mesh correction.
+
+    Args:
+        preset_path: Path to the seed.json file
+
+    Returns:
+        List of target DBH values (meters) per cycle, or empty list if none
+    """
+    if not preset_path.exists():
+        return []
+
+    with open(preset_path, "r") as f:
+        preset_data = json.load(f)
+
+    calibration = preset_data.get("_yield_table_calibration")
+    if calibration and isinstance(calibration, dict):
+        target_dbh = calibration.get("target_dbh_per_cycle")
+        if target_dbh and isinstance(target_dbh, list):
+            return target_dbh
+    return []
+
+
 def get_species_overrides(species_name: str) -> PresetOverrides:
     """Get preset overrides for a species from its seed.json file.
 

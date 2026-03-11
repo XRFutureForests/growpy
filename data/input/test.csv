@@ -1,5 +1,4 @@
-fid,species,x,y,dbh,height,z
-1,Norway spruce,0,0,0.128,14.8,0
-2,European beech,10,0,0.100,14.2,0
-3,European oak,20,0,0.100,12.2,0
-4,Silver fir,30,0,0.127,16.1,0
+fid,species,x,y,z,dbh,height
+1,Norway spruce,0,0,0,0.128,14.8
+2,European beech,10,0,0,0.100,14.2
+3,European oak,20,0,0,0.100,12.2
