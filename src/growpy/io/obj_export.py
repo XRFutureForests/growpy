@@ -18,7 +18,7 @@ import json
 import math
 import shutil
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import bpy
 import numpy as np
@@ -40,6 +40,207 @@ def clear_twig_decimate_cache() -> None:
     """Clear the decimated twig mesh cache. Call at start of new export session."""
     global _decimated_twig_cache
     _decimated_twig_cache.clear()
+
+
+def convert_tree_to_obj_direct(
+    model: Any,
+    twig_placements: Dict[str, List],
+    twig_usd_map: Dict[str, Path],
+    output_dir: Path,
+    species_name: str,
+    tree_id: str,
+    decimate_ratio: float = 0.3,
+    stem_decimate_ratio: float = 0.1,
+    helios_spectra_leaves: str = "deciduous",
+) -> Optional[Path]:
+    """Convert a Grove model directly to OBJ without USD/skeleton intermediate.
+
+    Reads mesh data from the Grove model object and twig placements,
+    bypassing the entire skeleton/bone/USD pipeline. This removes the
+    Unreal bone limit constraint entirely.
+
+    Args:
+        model: Grove model from grove.build_models() (must be triangulated)
+        twig_placements: Dict of twig type -> list of TwigPlacement objects
+        twig_usd_map: Dict of twig type -> Path to twig USD files (for prototype meshes)
+        output_dir: Directory to write OBJ/MTL files
+        species_name: Species name for material lookup
+        tree_id: Tree identifier for file naming
+        decimate_ratio: Twig decimation ratio (0.0-1.0)
+        stem_decimate_ratio: Stem decimation ratio (0.0-1.0)
+        helios_spectra_leaves: Helios spectra type ("conifer" or "deciduous")
+
+    Returns:
+        Path to generated OBJ file, or None on failure
+    """
+    from ..core.twig import normal_to_rotation_matrix, rotation_matrix_to_quaternion
+
+    species_clean = species_name.replace(" ", "_").replace("-", "_").lower()
+    helios_name = f"{species_clean}_tree_{tree_id}_helios"
+    obj_path = output_dir / f"{helios_name}.obj"
+    mtl_name = f"{helios_name}.mtl"
+    mtl_path = output_dir / mtl_name
+
+    # Extract trunk mesh from model
+    points_flat = model.get_points_flat()
+    num_verts = len(points_flat) // 3
+    trunk_verts = np.array(points_flat, dtype=np.float64).reshape(-1, 3)
+
+    faces_raw = model.faces
+    trunk_faces = np.array([list(f) for f in faces_raw], dtype=np.int64)
+    if trunk_faces.shape[1] != 3:
+        print(f"  OBJ direct: Non-triangulated faces found, skipping")
+        return None
+
+    # Extract UVs
+    trunk_uvs = None
+    if hasattr(model, "uvs") and model.uvs:
+        uvs_raw = model.uvs
+        trunk_uvs = np.array([[uv[0], uv[1]] for uv in uvs_raw], dtype=np.float64)
+
+    # Decimate stem geometry
+    if 0.0 < stem_decimate_ratio < 1.0:
+        trunk_verts, trunk_faces = _decimate_mesh(trunk_verts, trunk_faces, stem_decimate_ratio)
+        trunk_uvs = None
+
+    # Build twig instance arrays from TwigPlacement objects
+    # Map twig types to prototype indices (matching assembly_export logic)
+    twig_type_to_proto_idx = {}
+    variant_groups = {}
+    sorted_twig_types = sorted(twig_usd_map.keys())
+    for idx, twig_type in enumerate(sorted_twig_types):
+        twig_type_to_proto_idx[twig_type] = idx
+        base = twig_type.split("_var")[0]
+        if base not in variant_groups:
+            variant_groups[base] = []
+        variant_groups[base].append(idx)
+
+    # Read and decimate twig prototypes from USD files
+    proto_meshes = {}
+    proto_materials = {}
+    for idx, twig_type in enumerate(sorted_twig_types):
+        twig_path = twig_usd_map[twig_type]
+        if not twig_path.exists():
+            continue
+
+        cache_key = (str(twig_path), decimate_ratio)
+        if cache_key in _decimated_twig_cache:
+            proto_meshes[idx] = _decimated_twig_cache[cache_key]
+        else:
+            twig_result = _read_twig_mesh(twig_path)
+            if twig_result[0] is None or twig_result[1] is None:
+                continue
+            raw_verts, raw_faces, raw_uvs, raw_face_mats = twig_result
+
+            if 0.0 < decimate_ratio < 1.0:
+                dec_verts, dec_faces = _decimate_mesh(raw_verts, raw_faces, decimate_ratio)
+                dec_uvs = None
+                dec_face_mats = None
+            else:
+                dec_verts, dec_faces, dec_uvs = raw_verts, raw_faces, raw_uvs
+                dec_face_mats = raw_face_mats
+
+            proto_meshes[idx] = (dec_verts, dec_faces, dec_uvs, dec_face_mats)
+            _decimated_twig_cache[cache_key] = (dec_verts, dec_faces, dec_uvs, dec_face_mats)
+
+        # Extract material info
+        diffuse_rel = _read_twig_material(twig_path)
+        mat_name = twig_path.stem.replace("_skeletal", "").replace("_static", "")
+        diffuse_path = None
+        if diffuse_rel:
+            candidate = twig_path.parent / diffuse_rel
+            if candidate.exists():
+                diffuse_path = candidate
+            else:
+                tex_name = Path(diffuse_rel).name
+                candidate = output_dir / "textures" / tex_name
+                if candidate.exists():
+                    diffuse_path = candidate
+
+        sidecar_mat_names = _read_face_material_names(twig_path)
+        proto_materials[idx] = (mat_name, diffuse_path, sidecar_mat_names)
+
+    # Convert TwigPlacement objects to numpy arrays for _bake_twig_instances
+    fallback_map = {"twig_upward": "twig_long"}
+    all_positions = []
+    all_orientations = []
+    all_scales = []
+    all_proto_indices = []
+
+    for twig_type, placement_list in twig_placements.items():
+        if not placement_list:
+            continue
+
+        if twig_type in variant_groups:
+            mapped_type = twig_type
+        elif twig_type in fallback_map and fallback_map[twig_type] in variant_groups:
+            mapped_type = fallback_map[twig_type]
+        else:
+            continue
+
+        proto_indices_for_type = variant_groups[mapped_type]
+
+        for inst_i, p in enumerate(placement_list):
+            pos = p.position
+            normal = p.normal
+            rot_matrix = normal_to_rotation_matrix(normal)
+            quat = rotation_matrix_to_quaternion(rot_matrix)
+            proto_idx = proto_indices_for_type[inst_i % len(proto_indices_for_type)]
+
+            all_positions.append([pos[0], pos[1], pos[2]])
+            all_orientations.append([quat[0], quat[1], quat[2], quat[3]])
+            all_scales.append([1.0, 1.0, 1.0])
+            all_proto_indices.append(proto_idx)
+
+    # Bake twig instances
+    twig_verts = np.empty((0, 3), dtype=np.float64)
+    per_proto_faces = {}
+    per_proto_uvs = {}
+    per_proto_face_mats = {}
+
+    if all_positions and proto_meshes:
+        positions = np.array(all_positions, dtype=np.float64)
+        orientations = np.array(all_orientations, dtype=np.float64)
+        scales = np.array(all_scales, dtype=np.float64)
+        proto_indices = np.array(all_proto_indices, dtype=np.int64)
+
+        twig_verts, per_proto_faces, per_proto_uvs, per_proto_face_mats = _bake_twig_instances(
+            proto_meshes, positions, orientations, scales, proto_indices
+        )
+
+    # Copy twig textures to output
+    textures_dir = output_dir / "textures"
+    for twig_type in sorted_twig_types:
+        twig_path = twig_usd_map[twig_type]
+        source_textures_dir = twig_path.parent / "textures"
+        if source_textures_dir.exists():
+            textures_dir.mkdir(exist_ok=True)
+            for tex_file in source_textures_dir.glob("*_foliage_*"):
+                dest = textures_dir / tex_file.name
+                if not dest.exists():
+                    shutil.copy2(tex_file, dest)
+
+    # Write OBJ + MTL
+    bark_texture = _find_bark_texture(output_dir)
+    _write_obj(
+        obj_path, trunk_verts, trunk_faces, trunk_uvs,
+        twig_verts, per_proto_faces, per_proto_uvs, per_proto_face_mats,
+        proto_materials, mtl_name,
+    )
+    _write_helios_mtl(
+        mtl_path, bark_texture, helios_spectra_leaves, proto_materials,
+        per_proto_face_mats, output_dir,
+    )
+
+    trunk_face_count = len(trunk_faces)
+    twig_face_count = sum(len(f) for f in per_proto_faces.values())
+    total_twigs = sum(len(pl) for pl in twig_placements.values() if pl)
+    print(
+        f"  OBJ direct: {obj_path.name} "
+        f"({trunk_face_count} trunk + {twig_face_count} twig faces, {total_twigs} instances)"
+    )
+
+    return obj_path
 
 
 def convert_tree_to_obj(

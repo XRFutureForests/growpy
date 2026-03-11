@@ -119,6 +119,7 @@ class GrowPyConfig:
     export_skip_validation: bool = False
     export_include_static: bool = False
     export_fast: bool = False
+    export_mode: str = "unreal"  # "unreal" (full USD+skeleton) or "helios" (direct OBJ, no bone limit)
 
     # [unreal]
     unreal_import_to_unreal: bool = False
@@ -235,6 +236,8 @@ class GrowPyConfig:
             kwargs["export_include_static"] = export["include_static"]
         if "fast" in export:
             kwargs["export_fast"] = export["fast"]
+        if "mode" in export:
+            kwargs["export_mode"] = export["mode"]
 
         # [unreal]
         unreal = data.get("unreal", {})
@@ -310,6 +313,7 @@ class GrowPyConfig:
             "skip_validation": "export_skip_validation",
             "include_static": "export_include_static",
             "fast": "export_fast",
+            "export_mode": "export_mode",
             # [unreal]
             "import_to_unreal": "unreal_import_to_unreal",
             "unreal_project_path": "unreal_project_path",
