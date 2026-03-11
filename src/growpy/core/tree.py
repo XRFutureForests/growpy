@@ -1,6 +1,6 @@
 """Tree model functions for forest generation."""
 
-import pickle
+import json
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -145,6 +145,30 @@ def extract_grove_attributes(grove: gc.Grove) -> Dict[str, Any]:
     }
 
 
+def _load_growth_model(growth_model_dir) -> Tuple[float, float]:
+    """Load growth model coefficients from JSON (preferred) or pickle fallback.
+
+    Returns:
+        Tuple of (coef, intercept) for the linear model: cycles = coef * height + intercept
+    """
+    from pathlib import Path
+
+    growth_model_dir = Path(growth_model_dir)
+    json_path = growth_model_dir / "growth_model.json"
+    if json_path.exists():
+        with open(json_path, "r") as f:
+            data = json.load(f)
+        return data["coef"], data["intercept"]
+
+    # Fallback to pickle (requires sklearn, may fail with bpy loaded)
+    import pickle
+
+    pkl_path = growth_model_dir / "growth_model.pkl"
+    with open(pkl_path, "rb") as f:
+        model = pickle.load(f)
+    return float(model.coef_[0]), float(model.intercept_)
+
+
 def calculate_growth_cycles_from_height(forest_data: pd.DataFrame) -> None:
     """Calculate growth cycles and delays from tree heights using pre-computed growth models.
 
@@ -163,11 +187,10 @@ def calculate_growth_cycles_from_height(forest_data: pd.DataFrame) -> None:
         species = tree["species"]
         if species not in model_cache:
             growth_model_path = config.get_growth_model_path(species)
-            model_path = growth_model_path / "growth_model.pkl"
-            with open(model_path, "rb") as f:
-                model_cache[species] = pickle.load(f)
-        model = model_cache[species]
-        forest_data.at[i, "growth_cycles"] = int(model.predict([[tree["height"]]])[0])
+            model_cache[species] = _load_growth_model(growth_model_path)
+        coef, intercept = model_cache[species]
+        predicted_cycles = coef * tree["height"] + intercept
+        forest_data.at[i, "growth_cycles"] = max(1, int(predicted_cycles))
 
     max_cycles = forest_data["growth_cycles"].max()
     forest_data["delay"] = max_cycles - forest_data["growth_cycles"]

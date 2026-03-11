@@ -18,7 +18,7 @@ from typing import Any, Dict, Optional
 import pandas as pd
 from tqdm import tqdm
 
-GROWTH_CYCLE_LIMIT = 10
+GROWTH_CYCLE_LIMIT = 200
 HEIGHT_SCALE = 1
 SMOOTH_ITERATIONS = 10  # Default: 10 iterations for natural smoothing (range: 0-20)
 
