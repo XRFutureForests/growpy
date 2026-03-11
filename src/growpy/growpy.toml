@@ -15,7 +15,7 @@ random_seed = 42
 # Multi-stage mode columns: x, y, species, cycle_interval, max_cycles
 csv_file = "data/input/test.csv"
 # Output directory for generated trees (species subdirectories created automatically)
-output_dir = "data/output/forest_test_dens000"
+output_dir = "data/output/forest_test_dens000_new10m"
 # Enable verbose output for PVE preset generation
 verbose = true
 # Enable profiling to track execution time of each pipeline step
@@ -54,7 +54,7 @@ interior_decimate_ratio = 0.0 #0.3
 [growth_models]
 # Maximum growth cycles to simulate (1-250)
 # Automatically stops early when growth plateaus
-cycles = 35
+cycles = 50
 # Random seeds to average for robust curves (1-10)
 # Use 3+ for production, 1 for quick tests
 seeds = 1
@@ -74,7 +74,7 @@ timeout = 300
 quality = "ultra"
 # Maximum growth cycles per tree (1-125)
 # Trees exceeding this are scaled down proportionally
-growth_cycle_limit = 50
+growth_cycle_limit = 200
 # Branch smoothing iterations (0-20, 0 = disabled)
 # Higher values = smoother, more organic branches
 smooth_iterations = 10
@@ -226,5 +226,18 @@ build_blend = false
 build_end_cap = false
 skeleton_length = 4.0
 skeleton_reduce = 0.8
+skeleton_bias = 0.5
+skeleton_connected = true
+
+[quality.tom]
+resolution = 8
+resolution_reduce = 0.75
+texture_repeat = 2
+build_cutoff_age = 0
+build_cutoff_thickness = 0.0
+build_blend = true
+build_end_cap = true
+skeleton_length = 0.1
+skeleton_reduce = 0.1
 skeleton_bias = 0.5
 skeleton_connected = true
