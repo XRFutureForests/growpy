@@ -226,9 +226,6 @@ class GrowPyConfig:
             kwargs["forest_longevity_mode"] = forest["longevity_mode"]
         if "cycle_interval" in forest:
             kwargs["forest_cycle_interval"] = forest["cycle_interval"]
-        if "export_trees" in forest:
-            kwargs["forest_export_trees"] = forest["export_trees"]
-
         # [export]
         export = data.get("export", {})
         if "skeletal" in export:
@@ -241,6 +238,8 @@ class GrowPyConfig:
             kwargs["export_skip_validation"] = export["skip_validation"]
         if "radial_scale" in export:
             kwargs["export_radial_scale"] = export["radial_scale"]
+        if "export_trees" in export:
+            kwargs["forest_export_trees"] = export["export_trees"]
 
         # [unreal]
         unreal = data.get("unreal", {})
