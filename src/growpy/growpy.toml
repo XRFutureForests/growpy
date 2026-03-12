@@ -75,7 +75,7 @@ timeout = 900
 quality = "high"
 # Maximum growth cycles per tree (1-125)
 # Trees exceeding this are scaled down proportionally
-growth_cycle_limit = 65
+growth_cycle_limit = 35
 # Branch smoothing iterations (0-20, 0 = disabled)
 # Higher values = smoother, more organic branches
 smooth_iterations = 10
@@ -161,7 +161,7 @@ skeleton_connected = true
 resolution = 24
 resolution_reduce = 0.8
 build_cutoff_age = 0
-build_cutoff_thickness = 0.0
+build_cutoff_thickness = 0.01
 build_blend = true
 build_end_cap = true
 skeleton_length = 0.5
