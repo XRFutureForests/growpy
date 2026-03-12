@@ -177,7 +177,7 @@ class SpeciesGrowthAnalyzer:
             )
             return True
 
-        except Exception as e:
+        except (FileNotFoundError, json.JSONDecodeError, KeyError, RuntimeError) as e:
             logger.error(f"Failed to apply species preset {species}: {e}")
             return False
 
@@ -203,7 +203,7 @@ class SpeciesGrowthAnalyzer:
             )
             return sorted(species_list)
 
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Failed to get available species from directory: {e}")
             return []
 
@@ -352,7 +352,7 @@ class SpeciesGrowthAnalyzer:
                     )
                     continue
 
-            except Exception as e:
+            except (RuntimeError, AttributeError, MemoryError) as e:
                 logger.error(f"Failed to create grove with species {species}: {e}")
                 continue
 
@@ -796,7 +796,7 @@ class SpeciesGrowthAnalyzer:
                 self.analysis_metadata[species],
                 species_dir,
             )
-        except Exception as e:
+        except (ImportError, ValueError, OSError, TypeError) as e:
             tqdm.write(f"Warning: Failed to generate plots for {species}: {e}")
 
         return species_dir
@@ -863,7 +863,7 @@ class SpeciesGrowthAnalyzer:
             else:
                 logger.warning("No updates were made to the lookup table")
 
-        except Exception as e:
+        except (FileNotFoundError, PermissionError, pd.errors.ParserError, KeyError, OSError) as e:
             logger.error(f"Failed to update lookup table: {e}")
 
     def generate_lookup_table_summary(self):
@@ -902,7 +902,7 @@ class SpeciesGrowthAnalyzer:
             logger.info(f"Generated species analysis summary: {summary_path}")
             logger.info(f"Summary contains {len(summary_data)} analyzed species")
 
-        except Exception as e:
+        except (KeyError, OSError) as e:
             logger.error(f"Failed to generate lookup table summary: {e}")
 
 

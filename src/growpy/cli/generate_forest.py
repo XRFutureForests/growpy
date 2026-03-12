@@ -66,6 +66,57 @@ def _is_bone_limit_error(error: ValueError) -> bool:
     return "bones" in msg and "limit" in msg
 
 
+def _derive_static_from_skeletal(
+    tree_dir: Path,
+    species_clean: str,
+    species_name: str,
+    tree_id,
+    model,
+    twig_usd_map: dict,
+    skip_validation: bool = False,
+    stems_suffix: str = "",
+) -> str | None:
+    """Derive a static mesh assembly from an existing skeletal one.
+
+    Strips skeleton prims from a copy of the skeletal stems file,
+    then creates a static assembly referencing the stripped stems.
+    Returns the static assembly path string, or None on failure.
+    """
+    from growpy.core.twig import extract_twig_placements_from_model
+    from growpy.io.assembly_export import create_assembly
+    from growpy.io.tree_export import strip_skeleton_from_usd
+
+    suffix = f"_{stems_suffix}" if stems_suffix else ""
+    skeletal_stems = tree_dir / f"{species_clean}{suffix}_stems_skeletal.usda"
+    static_stems = tree_dir / f"{species_clean}{suffix}_stems_static.usda"
+
+    if not skeletal_stems.exists():
+        logger.warning("Cannot derive static: skeletal stems not found: %s", skeletal_stems)
+        return None
+
+    if not strip_skeleton_from_usd(skeletal_stems, static_stems):
+        return None
+
+    twig_placements = None
+    try:
+        twig_placements = extract_twig_placements_from_model(model)
+    except Exception as e:
+        logger.warning("Failed to extract twig placements for static derivation: %s", e)
+
+    static_assembly = tree_dir / f"{species_clean}{suffix}_assembly_static.usda"
+    create_assembly(
+        tree_usd_path=static_stems,
+        output_path=static_assembly,
+        species_name=species_name,
+        tree_id=tree_id,
+        twig_usd_paths=twig_usd_map,
+        use_skeletal_mesh=False,
+        twig_placements=twig_placements,
+        validate=not skip_validation,
+    )
+    return str(static_assembly)
+
+
 def _export_single_tree_from_forest(args: tuple) -> list:
     """Export all trees from an already-simulated grove (forest simulation phase).
 
@@ -322,45 +373,19 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 # Derive static mesh from skeletal when both export types enabled
                 if use_skeletal and config.export_static:
                     with timer.track("derive_static_from_skeletal"):
-                        from growpy.core.twig import extract_twig_placements_from_model
-                        from growpy.io.assembly_export import create_assembly
-                        from growpy.io.tree_export import strip_skeleton_from_usd
-
-                        skeletal_stems = (
-                            tree_dir / f"{species_clean}_stems_skeletal.usda"
+                        static_path = _derive_static_from_skeletal(
+                            tree_dir=tree_dir,
+                            species_clean=species_clean,
+                            species_name=species,
+                            tree_id=tree_id,
+                            model=model,
+                            twig_usd_map=twig_usd_map,
+                            skip_validation=quality_params.get(
+                                "skip_validation", False
+                            ),
                         )
-                        static_stems = (
-                            tree_dir / f"{species_clean}_stems_static.usda"
-                        )
-                        if skeletal_stems.exists() and strip_skeleton_from_usd(
-                            skeletal_stems, static_stems
-                        ):
-                            # Extract twig placements (cheap, no geometry recomputation)
-                            static_twig_placements = None
-                            try:
-                                static_twig_placements = (
-                                    extract_twig_placements_from_model(model)
-                                )
-                            except Exception:
-                                pass
-
-                            static_assembly_path = (
-                                tree_dir
-                                / f"{species_clean}_assembly_static.usda"
-                            )
-                            create_assembly(
-                                tree_usd_path=static_stems,
-                                output_path=static_assembly_path,
-                                species_name=species,
-                                tree_id=tree_id,
-                                twig_usd_paths=twig_usd_map,
-                                use_skeletal_mesh=False,
-                                twig_placements=static_twig_placements,
-                                validate=not quality_params.get(
-                                    "skip_validation", False
-                                ),
-                            )
-                            exported.append(str(static_assembly_path))
+                        if static_path:
+                            exported.append(static_path)
 
             # MEMORY OPTIMIZATION: Clear this tree's data immediately after export
             # This releases large mesh/skeleton data before processing next tree
@@ -822,44 +847,18 @@ def generate_forest_stages(
 
                     # Derive static from skeletal when both enabled
                     if use_skeletal and config.export_static:
-                        from growpy.core.twig import (
-                            extract_twig_placements_from_model,
+                        static_path = _derive_static_from_skeletal(
+                            tree_dir=tree_dir,
+                            species_clean=species_clean,
+                            species_name=species_name,
+                            tree_id=None,
+                            model=model,
+                            twig_usd_map=twig_usd_map,
+                            skip_validation=skip_validation,
+                            stems_suffix=height_str,
                         )
-                        from growpy.io.assembly_export import create_assembly
-                        from growpy.io.tree_export import strip_skeleton_from_usd
-
-                        skel_stems = tree_dir / (
-                            f"{species_clean}_{height_str}"
-                            f"_stems_skeletal.usda"
-                        )
-                        stat_stems = tree_dir / (
-                            f"{species_clean}_{height_str}"
-                            f"_stems_static.usda"
-                        )
-                        if skel_stems.exists() and strip_skeleton_from_usd(
-                            skel_stems, stat_stems
-                        ):
-                            static_twig_placements = None
-                            try:
-                                static_twig_placements = (
-                                    extract_twig_placements_from_model(model)
-                                )
-                            except Exception:
-                                pass
-                            static_asm = tree_dir / (
-                                f"{species_clean}_{height_str}"
-                                f"_assembly_static.usda"
-                            )
-                            create_assembly(
-                                tree_usd_path=stat_stems,
-                                output_path=static_asm,
-                                species_name=species_name,
-                                twig_usd_paths=twig_usd_map,
-                                use_skeletal_mesh=False,
-                                twig_placements=static_twig_placements,
-                                validate=not skip_validation,
-                            )
-                            exported_files.append(str(static_asm))
+                        if static_path:
+                            exported_files.append(static_path)
                 else:
                     logger.warning(
                         "  Export failed for tree %d (%s) at cycle %d (h=%.1fm)",
