@@ -19,7 +19,7 @@ Clean, simplified tree generation system using The Grove 2.3 optimized for **Unr
 
 ```bash
 conda env create -f environment.yml
-conda activate the-grove
+conda activate growpy
 ```
 
 2. Install package in development mode:

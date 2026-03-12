@@ -163,7 +163,7 @@ Run the test script to validate the integration:
 
 ```bash
 # Make sure environment is activated
-conda activate the-grove
+conda activate growpy
 
 # Set schema path
 export PXR_PLUGINPATH_NAME="$(pwd)/data/unreal_schema"

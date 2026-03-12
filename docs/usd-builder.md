@@ -243,7 +243,7 @@ build_tree_usd(model, temp_tree_path, up_axis="Z", triangulated=False)
 Run the test script to verify the implementation:
 
 ```bash
-conda activate the-grove
+conda activate growpy
 python test_usd_builder.py
 ```
 

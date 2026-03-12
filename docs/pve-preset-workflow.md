@@ -9,7 +9,7 @@ The Procedural Vegetation Editor (PVE) in Unreal Engine allows parametric contro
 ## Prerequisites
 
 - Unreal Engine 5.x with Procedural Vegetation Editor plugin
-- GrowPy environment activated (`conda activate the-grove`)
+- GrowPy environment activated (`conda activate growpy`)
 - Tree species configured in GrowPy
 
 ## Generating PVE Preset JSON Files

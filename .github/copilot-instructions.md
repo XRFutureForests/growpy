@@ -32,7 +32,7 @@ This project is **The Grove** - a simplified tree generation system using The Gr
 ## Essential Workflows
 
 ### The Four-Step Pipeline
-Always run from conda environment (`conda activate the-grove`):
+Always run from conda environment (`conda activate growpy`):
 
 1. **Asset Preparation**: `python src/growpy/cli/prepare_assets.py` - Copy assets from Grove 2.3
 2. **Twig Export**: `python src/growpy/cli/convert_twigs.py` - Convert .blend to USD
@@ -44,7 +44,7 @@ Always run from conda environment (`conda activate the-grove`):
 ### Critical Commands
 ```bash
 # Environment setup
-conda activate the-grove
+conda activate growpy
 conda install -c conda-forge bpy pandas numpy scikit-learn matplotlib tqdm
 
 # Development install (enables imports)
@@ -112,7 +112,7 @@ export_twigs_from_blend(blend_file, output_dir)
 - **Source Code**: Package-style structure in `src/growpy/` (modular: config/, core/, io/, cli/, utils/)
 - **Grove 2.3 Integration**: External API at `src/the_grove_23/modules/` (PYTHONPATH configured)
 - **Asset Management**: `data/assets/` contains species presets, textures, twigs, growth_models
-- **Environment**: Project-specific conda environment named `the-grove`
+- **Environment**: Project-specific conda environment named `growpy`
 - **Configuration Files**: Species lookup in `src/growpy/config/tree_asset_lookup.csv`
 - **PYTHONPATH Critical**: Environment sets `./src:./src/the_grove_23/modules` for Grove API access
 

@@ -21,7 +21,7 @@
                 "ms-vscode.vscode-json"
             ],
             "settings": {
-                "python.defaultInterpreterPath": "/opt/conda/envs/the-grove/bin/python",
+                "python.defaultInterpreterPath": "/opt/conda/envs/growpy/bin/python",
                 "python.terminal.activateEnvironment": true,
                 "python.formatting.provider": "black",
                 "editor.formatOnSave": true,
@@ -39,5 +39,5 @@
     ],
 
     "remoteUser": "root",
-    "postCreateCommand": "mamba env create -f environment.yml -n the-grove || mamba env update -f environment.yml -n the-grove"
+    "postCreateCommand": "mamba env create -f environment.yml -n growpy || mamba env update -f environment.yml -n growpy"
 }
