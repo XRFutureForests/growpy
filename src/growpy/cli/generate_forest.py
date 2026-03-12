@@ -1009,15 +1009,15 @@ def generate_unreal_import_script(
     script_path = script_dir / "import_forest.py"
 
     # Find all tree assemblies in species/tree_{id}/ folders
-    # Structure: species/tree_0001/{species}_assembly.usda (references {species}_stems_skeletal.usda)
-    nanite_files = list(output_dir.glob("*/tree_*/*_assembly.usda")) + list(
-        output_dir.glob("*/tree_*/*_assembly.usd")
+    # Structure: species/tree_0001/{species}_assembly_skeletal.usda
+    nanite_files = list(output_dir.glob("*/tree_*/*_assembly_skeletal.usda")) + list(
+        output_dir.glob("*/tree_*/*_assembly_skeletal.usd")
     )
 
     # Group trees by species (parent of tree_XXXX folder)
     trees_by_species: Dict[str, list] = {}
     for usd_file in nanite_files:
-        # Structure: species_dir/tree_XXXX/assembly.usda
+        # Structure: species_dir/tree_XXXX/assembly_skeletal.usda
         tree_folder = usd_file.parent
         species_parent = tree_folder.parent
         species_name = species_parent.name
