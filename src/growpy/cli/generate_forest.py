@@ -178,6 +178,14 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 with timer.track("export_obj_direct", parent="grove_export"):
                     from growpy.io.obj_export import convert_tree_to_obj_direct
 
+                    simplification_ratios = None
+                    if config.helios_simplify:
+                        simplification_ratios = {
+                            "bark": config.helios_simplify_bark,
+                            "wood": config.helios_simplify_wood,
+                            "leaf": config.helios_simplify_leaf,
+                        }
+
                     obj_path = convert_tree_to_obj_direct(
                         model=model,
                         twig_placements=twig_placements,
@@ -188,6 +196,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         decimate_ratio=config.helios_decimate_ratio,
                         stem_decimate_ratio=config.helios_stem_decimate_ratio,
                         helios_spectra_leaves=spectra,
+                        simplification_ratios=simplification_ratios,
                     )
 
                 if obj_path:
@@ -1742,6 +1751,14 @@ Unreal Engine Integration:
                 from growpy.io.obj_export import export_forest_obj
 
                 with timer.track("obj_export"):
+                    simplification_ratios = None
+                    if config.helios_simplify:
+                        simplification_ratios = {
+                            "bark": config.helios_simplify_bark,
+                            "wood": config.helios_simplify_wood,
+                            "leaf": config.helios_simplify_leaf,
+                        }
+
                     export_forest_obj(
                         output_dir=output_dir,
                         csv_path=csv_path,
@@ -1749,6 +1766,7 @@ Unreal Engine Integration:
                         stem_decimate_ratio=config.helios_stem_decimate_ratio,
                         generate_scene_xml=config.helios_helios_scene,
                         generate_combined_obj=config.helios_combined_obj,
+                        simplification_ratios=simplification_ratios,
                     )
 
         # Print profiling report if enabled

@@ -135,6 +135,12 @@ class GrowPyConfig:
     helios_helios_scene: bool = False
     helios_combined_obj: bool = False
 
+    # [helios.simplification]
+    helios_simplify: bool = False
+    helios_simplify_bark: float = 1.0
+    helios_simplify_wood: float = 1.0
+    helios_simplify_leaf: float = 1.0
+
     @classmethod
     def from_toml(cls, toml_path: Path, set_as_global: bool = True) -> "GrowPyConfig":
         """Create config from a TOML file.
@@ -258,6 +264,17 @@ class GrowPyConfig:
             kwargs["helios_helios_scene"] = helios["helios_scene"]
         if "combined_obj" in helios:
             kwargs["helios_combined_obj"] = helios["combined_obj"]
+
+        # [helios.simplification]
+        simplification = helios.get("simplification", {})
+        if "enabled" in simplification:
+            kwargs["helios_simplify"] = simplification["enabled"]
+        if "bark" in simplification:
+            kwargs["helios_simplify_bark"] = simplification["bark"]
+        if "wood" in simplification:
+            kwargs["helios_simplify_wood"] = simplification["wood"]
+        if "leaf" in simplification:
+            kwargs["helios_simplify_leaf"] = simplification["leaf"]
 
         instance = cls(**kwargs)
         if set_as_global:
