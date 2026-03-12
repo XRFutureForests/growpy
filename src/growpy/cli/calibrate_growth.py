@@ -100,27 +100,32 @@ def load_grove_curves(species_name: str, growth_models_dir: Path) -> Optional[di
 
 def interpolate_yield_table(
     ages: List[float],
-    heights: List[float],
+    values: List[float],
     max_cycles: int,
     flushes_per_year: float = 1.0,
+    initial_value: float = 0.5,
 ) -> tuple:
     """Interpolate yield table to per-cycle resolution using PCHIP.
 
     When flushes_per_year != 1.0, cycle numbers are converted to calendar
     years before looking up the yield table. For example, with
     flushes_per_year=0.5, cycle 25 maps to age 50 in the yield table.
+
+    Args:
+        initial_value: Value at age 0. Use 0.5 for heights (sapling),
+            0.0 for DBH (no trunk diameter at birth).
     """
     from scipy.interpolate import PchipInterpolator
 
     extended_ages = [0] + list(ages)
-    extended_heights = [0.5] + list(heights)
+    extended_values = [initial_value] + list(values)
 
-    interp = PchipInterpolator(extended_ages, extended_heights)
+    interp = PchipInterpolator(extended_ages, extended_values)
     # Convert cycle indices to calendar years for yield table lookup
     cycle_indices = np.arange(1, max_cycles + 1)
     calendar_ages = cycle_indices / flushes_per_year
-    yearly_heights = np.maximum(interp(calendar_ages), 0.1)
-    return cycle_indices, yearly_heights
+    interpolated = np.maximum(interp(calendar_ages), 0.0)
+    return cycle_indices, interpolated
 
 
 def compute_grow_length_curve(
@@ -557,7 +562,8 @@ def run_calibration(
 
         if grove_dbhs and yc_data["dbhs"]:
             _, target_dbhs_interp = interpolate_yield_table(
-                yc_data["ages"], yc_data["dbhs"], max_cycles, flushes_per_year
+                yc_data["ages"], yc_data["dbhs"], max_cycles, flushes_per_year,
+                initial_value=0.0,
             )
 
             base_thicken_tips = preset.get("thicken_tips", 0.007)

@@ -55,10 +55,10 @@ interior_decimate_ratio = 0.3
 [growth_models]
 # Maximum growth cycles to simulate (1-250)
 # Automatically stops early when growth plateaus
-cycles = 35
+cycles = 50
 # Random seeds to average for robust curves (1-10)
 # Use 3+ for production, 1 for quick tests
-seeds = 3
+seeds = 1
 # Minimum height increase per cycle to consider as growth (meters)
 # Lower values = more sensitive plateau detection
 height_threshold = 0.1
@@ -75,7 +75,7 @@ timeout = 900
 quality = "high"
 # Maximum growth cycles per tree (1-125)
 # Trees exceeding this are scaled down proportionally
-growth_cycle_limit = 35
+growth_cycle_limit = 50
 # Branch smoothing iterations (0-20, 0 = disabled)
 # Higher values = smoother, more organic branches
 smooth_iterations = 10

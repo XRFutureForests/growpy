@@ -142,7 +142,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
 
     from growpy import get_config
     from growpy.config.preset_overrides import load_target_dbh_from_preset
-    from growpy.core.tree import calculate_dbh_at_height
+    from growpy.core.tree import calculate_dbh_at_height, calculate_tree_height
     from growpy.io.assembly_export import export_tree_as_nanite_assembly
     from growpy.io.tree_export import get_twig_usd_map_for_species
     from growpy.utils.profiling import ProfileTimer
@@ -246,6 +246,21 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 del model, skeleton, bones_for_tree
                 continue
 
+            # Compute height and DBH for filename suffix
+            # Use yield table target DBH when available (Grove's pipe model inflates DBH)
+            tree_height_m = 0.0
+            tree_dbh_m = 0.0
+            if grove.trees and model_idx < len(grove.trees):
+                tree_height_m = calculate_tree_height(grove.trees[model_idx])
+                tree_dbh_m = calculate_dbh_at_height(grove.trees[model_idx])
+            if target_dbh_curve:
+                cycle_idx = min(grove.age - 1, len(target_dbh_curve) - 1)
+                if cycle_idx >= 0:
+                    tree_dbh_m = target_dbh_curve[cycle_idx]
+            h_str = format_height_for_filename(tree_height_m)
+            d_str = format_dbh_for_filename(tree_dbh_m)
+            dims_suffix = f"{h_str}_{d_str}"
+
             # Use appropriate twig type based on mesh_type
             use_skeletal = mesh_type == "skeletal"
             use_static = mesh_type == "static"
@@ -254,7 +269,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             mesh_suffix = "skeletal" if use_skeletal else "static"
             tree_dir = output_dir / species_clean / f"tree_{tree_id}"
             tree_dir.mkdir(parents=True, exist_ok=True)
-            usd_path = tree_dir / f"{species_clean}_assembly_{mesh_suffix}.usda"
+            usd_path = tree_dir / f"{species_clean}_{dims_suffix}_assembly_{mesh_suffix}.usda"
 
             # CRITICAL: Always use skeletal twigs for both skeletal and static assemblies
             # Static twig variants don't exist, and skeletal twigs work as point instances
@@ -264,25 +279,11 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                     species, config, prefer_skeletal=True, prefer_static=False
                 )
 
-            # Compute radial scale from yield table target DBH vs actual grove DBH
+            # Radial scaling disabled: Grove's pipe model produces DBH values
+            # 2-4x larger than yield tables, causing extreme scale factors (0.2-0.5)
+            # that warp the geometry beyond recognition. The yield table target DBH
+            # is used in filenames instead.
             tree_radial_scale = 1.0
-            if target_dbh_curve and grove.trees and model_idx < len(grove.trees):
-                cycle_idx = min(grove.age - 1, len(target_dbh_curve) - 1)
-                if cycle_idx >= 0:
-                    target_dbh = target_dbh_curve[cycle_idx]
-                    grove_dbh = calculate_dbh_at_height(grove.trees[model_idx])
-                    if grove_dbh > 0.001 and target_dbh > 0.001:
-                        tree_radial_scale = target_dbh / grove_dbh
-                        tree_radial_scale = max(0.1, min(tree_radial_scale, 2.0))
-                        if abs(tree_radial_scale - 1.0) > 0.01:
-                            logger.debug(
-                                "  Tree %s radial scale: %.3f "
-                                "(target DBH=%.1fcm, grove DBH=%.1fcm)",
-                                tree_id,
-                                tree_radial_scale,
-                                target_dbh * 100,
-                                grove_dbh * 100,
-                            )
 
             # Export as Nanite Assembly with specified mesh type
             # tree_id in prim name ensures unique Unreal assets
@@ -303,6 +304,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                     ),
                     validate=not quality_params.get("skip_validation", False),
                     timer=timer,
+                    stems_file_suffix=dims_suffix,
                     radial_scale=tree_radial_scale,
                 )
 
@@ -317,10 +319,10 @@ def _export_single_tree_from_forest(args: tuple) -> list:
 
                     # Path to the skeletal USD file (stems mesh with skeleton)
                     skeletal_usd_path = (
-                        tree_dir / f"{species_clean}_stems_skeletal.usda"
+                        tree_dir / f"{species_clean}_{dims_suffix}_stems_skeletal.usda"
                     )
                     wind_json_path = (
-                        tree_dir / f"{species_clean}_stems_unreal_wind.json"
+                        tree_dir / f"{species_clean}_{dims_suffix}_stems_unreal_wind.json"
                     )
                     try:
                         with timer.track("generate_wind_json"):
@@ -345,7 +347,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 if use_skeletal and not skip_pve:
                     from growpy.io.pve_grove_mapper import generate_pve_from_grove
 
-                    pve_json_path = tree_dir / f"{species_clean}_stems_unreal_pve.json"
+                    pve_json_path = tree_dir / f"{species_clean}_{dims_suffix}_stems_unreal_pve.json"
                     pve_config_dir = Path("data/assets/pve_configs")
 
                     try:
@@ -383,6 +385,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                             skip_validation=quality_params.get(
                                 "skip_validation", False
                             ),
+                            stems_suffix=dims_suffix,
                         )
                         if static_path:
                             exported.append(static_path)
@@ -518,16 +521,16 @@ def format_height_for_filename(height_m: float) -> str:
 
 
 def format_dbh_for_filename(dbh_m: float) -> str:
-    """Format DBH in meters for filename: d32cm = 0.32m.
+    """Format DBH in meters for filename: d32 = 0.32m (32cm).
 
     Args:
         dbh_m: DBH in meters
 
     Returns:
-        Formatted string like 'd32cm' for 32 centimeters
+        Formatted string like 'd32' for 32 centimeters
     """
-    cm = int(dbh_m * 100)
-    return f"d{cm}cm"
+    cm = int(round(dbh_m * 100))
+    return f"d{cm}"
 
 
 def generate_forest_stages(
@@ -769,7 +772,7 @@ def generate_forest_stages(
                 if export_tree_ids is not None and fid not in export_tree_ids:
                     continue
 
-                # Generate filename with height only (tree ID is in folder name)
+                # Generate filename with height and DBH (tree ID is in folder name)
                 species_clean = (
                     "".join(
                         c for c in species_name if c.isalnum() or c in (" ", "-", "_")
@@ -779,13 +782,25 @@ def generate_forest_stages(
                     .lower()
                 )
                 height_str = format_height_for_filename(height)
+                # Use yield table target DBH when available
+                filename_dbh = _dbh if _dbh else 0.0
+                if species_name not in target_dbh_cache:
+                    target_dbh_cache[species_name] = load_target_dbh_from_preset(
+                        config.get_preset_path(species_name)
+                    )
+                if target_dbh_cache[species_name]:
+                    cidx = min(cycle - 1, len(target_dbh_cache[species_name]) - 1)
+                    if cidx >= 0:
+                        filename_dbh = target_dbh_cache[species_name][cidx]
+                dbh_str = format_dbh_for_filename(filename_dbh)
+                dims_suffix = f"{height_str}_{dbh_str}"
 
                 # Create output directory: species/tree_####/
                 tree_dir = output_dir / species_clean / f"tree_{fid:04d}"
                 tree_dir.mkdir(parents=True, exist_ok=True)
 
-                # Assembly name uses height only for unique identification
-                assembly_name = f"{species_clean}_{height_str}_assembly"
+                # Assembly name uses height and dbh for unique identification
+                assembly_name = f"{species_clean}_{dims_suffix}_assembly"
                 usd_path = tree_dir / f"{assembly_name}.usda"
 
                 # Get twig USD paths
@@ -799,20 +814,8 @@ def generate_forest_stages(
                 except Exception:
                     pass
 
-                # Compute radial scale from yield table target DBH
+                # Radial scaling disabled (see non-cycle export path comment)
                 tree_radial_scale = 1.0
-                if species_name not in target_dbh_cache:
-                    target_dbh_cache[species_name] = load_target_dbh_from_preset(
-                        config.get_preset_path(species_name)
-                    )
-                target_dbh_curve = target_dbh_cache[species_name]
-                if target_dbh_curve and _dbh and _dbh > 0.001:
-                    cycle_idx = min(cycle - 1, len(target_dbh_curve) - 1)
-                    if cycle_idx >= 0:
-                        target_dbh = target_dbh_curve[cycle_idx]
-                        if target_dbh > 0.001:
-                            tree_radial_scale = target_dbh / _dbh
-                            tree_radial_scale = max(0.1, min(tree_radial_scale, 2.0))
 
                 # Export as Nanite Assembly
                 # stems_file_suffix ensures each stage gets its own stems file
@@ -833,7 +836,7 @@ def generate_forest_stages(
                         include_grove_attributes=include_grove_attributes,
                         validate=not skip_validation,
                         timer=timer,
-                        stems_file_suffix=height_str,
+                        stems_file_suffix=dims_suffix,
                         radial_scale=tree_radial_scale,
                     )
                 except ValueError as e:
@@ -855,7 +858,7 @@ def generate_forest_stages(
                             model=model,
                             twig_usd_map=twig_usd_map,
                             skip_validation=skip_validation,
-                            stems_suffix=height_str,
+                            stems_suffix=dims_suffix,
                         )
                         if static_path:
                             exported_files.append(static_path)
