@@ -43,34 +43,46 @@ Requirements:
     - pandas, numpy, scikit-learn, matplotlib
 """
 
-# Pre-import bpy if available to avoid DLL conflicts with the_grove_23_core
-try:
-    import bpy as _bpy_preload
-except (ImportError, OSError):
-    _bpy_preload = None
-
-# Import from new structure
+# Lightweight imports (no heavy dependencies)
 from .config import GrowPyConfig, get_config
-from .core import (
-    calculate_growth_cycles_from_height,
-    create_forest,
-    create_grove,
-    simulate_forest_growth,
-)
-from .io import ASSEMBLY_AVAILABLE, TREE_EXPORT_AVAILABLE
 
 __all__ = [
     # Core configuration
     "GrowPyConfig",
     "get_config",
-    # Forest creation and simulation
+    # Forest creation and simulation (lazy)
     "create_forest",
     "simulate_forest_growth",
-    # Grove operations
+    # Grove operations (lazy)
     "create_grove",
-    # Tree model building
+    # Tree model building (lazy)
     "calculate_growth_cycles_from_height",
-    # Export availability flags
+    # Export availability flags (lazy)
     "TREE_EXPORT_AVAILABLE",
     "ASSEMBLY_AVAILABLE",
 ]
+
+
+def __getattr__(name):
+    """Lazy import for heavy dependencies (bpy, the_grove_23_core)."""
+    if name in (
+        "create_forest",
+        "simulate_forest_growth",
+        "create_grove",
+        "calculate_growth_cycles_from_height",
+    ):
+        from .core import (
+            calculate_growth_cycles_from_height,
+            create_forest,
+            create_grove,
+            simulate_forest_growth,
+        )
+
+        return locals()[name]
+
+    if name in ("TREE_EXPORT_AVAILABLE", "ASSEMBLY_AVAILABLE"):
+        from .io import ASSEMBLY_AVAILABLE, TREE_EXPORT_AVAILABLE
+
+        return locals()[name]
+
+    raise AttributeError(f"module 'growpy' has no attribute {name!r}")

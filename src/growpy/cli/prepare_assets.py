@@ -4,10 +4,6 @@
 Step 1 of the pipeline. Defaults from growpy.toml [assets]. See docs/cli-reference.md.
 """
 import argparse
-
-# Direct imports using importlib to avoid circular import through growpy package __init__.py
-# These modules only depend on numpy/PIL, not the heavy sklearn/bpy imports
-import importlib.util
 import logging
 import re
 import shutil
@@ -16,45 +12,16 @@ from pathlib import Path
 
 import pandas as pd
 
+from growpy.config import get_config
+from growpy.config.pve_species_overrides import create_null_placeholder_config
+from growpy.io.texture_utils import (
+    copy_and_resize_texture,
+    ensure_power_of_2_textures,
+    process_twig_textures,
+)
+from growpy.utils.log import setup_logging
+
 logger = logging.getLogger(__name__)
-
-
-def _import_module_directly(module_name: str, file_path: Path):
-    """Import a module directly from file path, bypassing package __init__.py."""
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load module {module_name} from {file_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-# Get the src directory
-_src_dir = Path(__file__).parent.parent.parent
-
-# Import texture_utils directly (only needs numpy, PIL)
-_texture_utils = _import_module_directly(
-    "texture_utils", _src_dir / "growpy" / "io" / "texture_utils.py"
-)
-ensure_power_of_2_textures = _texture_utils.ensure_power_of_2_textures
-copy_and_resize_texture = _texture_utils.copy_and_resize_texture
-process_twig_textures = _texture_utils.process_twig_textures
-
-# Import pve_species_overrides directly (only needs json, pathlib)
-_pve_overrides = _import_module_directly(
-    "pve_species_overrides", _src_dir / "growpy" / "config" / "pve_species_overrides.py"
-)
-create_null_placeholder_config = _pve_overrides.create_null_placeholder_config
-
-# Import config core directly (only needs tomllib, pathlib)
-_config_core = _import_module_directly(
-    "config_core", _src_dir / "growpy" / "config" / "core.py"
-)
-get_config = _config_core.get_config
-
-# Import log module directly
-_log_module = _import_module_directly("log", _src_dir / "growpy" / "utils" / "log.py")
-setup_logging = _log_module.setup_logging
 
 
 def camel_to_snake(name: str) -> str:

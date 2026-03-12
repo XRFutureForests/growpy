@@ -1,8 +1,8 @@
 """Tree model functions for forest generation."""
 
-import pickle
 from typing import Any, Dict, List, Optional, Tuple
 
+import joblib
 import pandas as pd
 import the_grove_23_core as gc
 
@@ -164,8 +164,7 @@ def calculate_growth_cycles_from_height(forest_data: pd.DataFrame) -> None:
         if species not in model_cache:
             growth_model_path = config.get_growth_model_path(species)
             model_path = growth_model_path / "growth_model.pkl"
-            with open(model_path, "rb") as f:
-                model_cache[species] = pickle.load(f)
+            model_cache[species] = joblib.load(model_path)
         model = model_cache[species]
         forest_data.at[i, "growth_cycles"] = int(model.predict([[tree["height"]]])[0])
 

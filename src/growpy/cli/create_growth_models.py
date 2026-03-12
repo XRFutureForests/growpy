@@ -6,13 +6,7 @@ Step 3 of the pipeline. Defaults from growpy.toml [growth_models]. See docs/cli-
 
 import argparse
 import logging
-import sys
 from pathlib import Path
-
-# Add src to path for Grove imports
-src_path = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(src_path))
-sys.path.insert(0, str(src_path / "the_grove_23" / "modules"))
 
 from growpy.config import get_config
 from growpy.utils.analysis import SpeciesGrowthAnalyzer

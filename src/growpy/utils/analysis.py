@@ -7,15 +7,15 @@ and growth prediction models from Grove species presets.
 import json
 import logging
 import multiprocessing as mp
-import pickle
-import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import joblib
 import numpy as np
 import pandas as pd
+import the_grove_23_core as gc
 from tqdm import tqdm
 
 
@@ -31,14 +31,6 @@ class SimpleLinearModel:
 
     def predict(self, X):
         return np.polyval(self.coefficients, np.asarray(X).flatten())
-
-
-# Add src to path for Grove imports
-src_path = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(src_path))
-sys.path.insert(0, str(src_path / "the_grove_23" / "modules"))
-
-import the_grove_23_core as gc
 
 from .plotting import plot_growth_curves
 
@@ -789,8 +781,7 @@ class SpeciesGrowthAnalyzer:
 
         if species in self.growth_models:
             model_path = species_dir / "growth_model.pkl"
-            with open(model_path, "wb") as f:
-                pickle.dump(self.growth_models[species], f)
+            joblib.dump(self.growth_models[species], model_path)
 
         if species in self.analysis_metadata:
             metadata_path = species_dir / "metadata.json"

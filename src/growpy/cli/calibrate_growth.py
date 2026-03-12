@@ -27,14 +27,8 @@ Usage:
 import argparse
 import json
 import logging
-import sys
 from pathlib import Path
 from typing import Dict, List, Optional
-
-# Add src to path for Grove imports
-src_path = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(src_path))
-sys.path.insert(0, str(src_path / "the_grove_23" / "modules"))
 
 import matplotlib.pyplot as plt
 import matplotlib.style as mplstyle
