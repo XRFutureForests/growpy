@@ -6,6 +6,7 @@ Step 3 of the pipeline. Defaults from growpy.toml [growth_models]. See docs/cli-
 
 import argparse
 import logging
+import sys
 from pathlib import Path
 
 from growpy.config import get_config
