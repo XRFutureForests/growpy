@@ -98,13 +98,16 @@ cycle_interval = 0
 export_trees = []
 
 [export]
+# Export skeletal mesh assemblies (required for Unreal animation/wind)
+skeletal = true
+# Export static mesh assemblies (geometry only, no skeleton)
+# When both skeletal and static are enabled, static is derived from skeletal
+static = false
 # Skip PVE preset JSON generation (saves ~3% export time)
 # PVE presets only needed for Unreal Procedural Vegetation Editor
 skip_pve_json = false
 # Skip assembly validation (saves ~5-10% export time)
 skip_validation = true
-# Static mesh assemblies are always generated alongside skeletal
-# Static meshes retain full PBR material bindings (needed for OBJ/Helios export)
 
 [unreal]
 # Generate Unreal Python import script (unreal_import_trees.py / unreal_cleanup_trees.py)

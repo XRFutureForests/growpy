@@ -117,6 +117,8 @@ class GrowPyConfig:
     forest_skeleton_connected: Optional[bool] = None
 
     # [export]
+    export_skeletal: bool = True
+    export_static: bool = False
     export_skip_pve_json: bool = False
     export_skip_validation: bool = False
 
@@ -228,6 +230,10 @@ class GrowPyConfig:
 
         # [export]
         export = data.get("export", {})
+        if "skeletal" in export:
+            kwargs["export_skeletal"] = export["skeletal"]
+        if "static" in export:
+            kwargs["export_static"] = export["static"]
         if "skip_pve_json" in export:
             kwargs["export_skip_pve_json"] = export["skip_pve_json"]
         if "skip_validation" in export:
@@ -316,6 +322,8 @@ class GrowPyConfig:
             "skeleton_bias": "forest_skeleton_bias",
             "skeleton_connected": "forest_skeleton_connected",
             # [export]
+            "skeletal": "export_skeletal",
+            "static": "export_static",
             "skip_pve_json": "export_skip_pve_json",
             "skip_validation": "export_skip_validation",
             # [unreal]
@@ -358,6 +366,12 @@ class GrowPyConfig:
         no_densify = getattr(args, "no_densify", None)
         if no_densify:
             self.twigs_densify = False
+
+        # Special handling: --no-skeletal / --no-static invert flags
+        if getattr(args, "no_skeletal", None):
+            self.export_skeletal = False
+        if getattr(args, "no_static", None):
+            self.export_static = False
 
         # Special handling: --skeleton-connected comes as string "true"/"false" from CLI
         sc = getattr(args, "skeleton_connected", None)

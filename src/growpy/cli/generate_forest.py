@@ -319,6 +319,49 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         )
                         logger.debug("PVE JSON traceback:", exc_info=True)
 
+                # Derive static mesh from skeletal when both export types enabled
+                if use_skeletal and config.export_static:
+                    with timer.track("derive_static_from_skeletal"):
+                        from growpy.core.twig import extract_twig_placements_from_model
+                        from growpy.io.assembly_export import create_assembly
+                        from growpy.io.tree_export import strip_skeleton_from_usd
+
+                        skeletal_stems = (
+                            tree_dir / f"{species_clean}_stems_skeletal.usda"
+                        )
+                        static_stems = (
+                            tree_dir / f"{species_clean}_stems_static.usda"
+                        )
+                        if skeletal_stems.exists() and strip_skeleton_from_usd(
+                            skeletal_stems, static_stems
+                        ):
+                            # Extract twig placements (cheap, no geometry recomputation)
+                            static_twig_placements = None
+                            try:
+                                static_twig_placements = (
+                                    extract_twig_placements_from_model(model)
+                                )
+                            except Exception:
+                                pass
+
+                            static_assembly_path = (
+                                tree_dir
+                                / f"{species_clean}_assembly_static.usda"
+                            )
+                            create_assembly(
+                                tree_usd_path=static_stems,
+                                output_path=static_assembly_path,
+                                species_name=species,
+                                tree_id=tree_id,
+                                twig_usd_paths=twig_usd_map,
+                                use_skeletal_mesh=False,
+                                twig_placements=static_twig_placements,
+                                validate=not quality_params.get(
+                                    "skip_validation", False
+                                ),
+                            )
+                            exported.append(str(static_assembly_path))
+
             # MEMORY OPTIMIZATION: Clear this tree's data immediately after export
             # This releases large mesh/skeleton data before processing next tree
             models[model_idx] = None  # type: ignore[call-overload]
@@ -357,7 +400,8 @@ def export_individual_trees(
     light competition in the forest simulation phase. This is significantly faster than
     re-simulating individual trees.
 
-    Both skeletal and static mesh assemblies are always generated.
+    Export types are controlled by config flags (export_skeletal, export_static).
+    When both are enabled, static is derived from skeletal by stripping skeleton prims.
 
     Args:
         forest: List of (grove, species_name, tree_count, fid_list) from create_forest() + simulate_forest_growth()
@@ -365,18 +409,20 @@ def export_individual_trees(
         output_dir: Directory to save export files
         config: GrowPy configuration
         quality_params: Quality parameters dict
-        mesh_type: Ignored - both skeletal and static are always created
+        mesh_type: Ignored - export types determined by config flags
         verbose: Print detailed progress information
         timer: Optional ProfileTimer for tracking execution times
 
     Returns:
         List of exported file paths
     """
+    from growpy import get_config
     from growpy.utils.profiling import ProfileTimer
 
     if timer is None:
         timer = ProfileTimer(enabled=False)
 
+    cfg = get_config()
     exported_files = []
 
     # Build tree export tasks from forest groves
@@ -385,33 +431,34 @@ def export_individual_trees(
     grove_tasks = []
 
     for grove, species_name, tree_count, fids in forest:
-        # Always create skeletal mesh task
-        # Pass fids list so each tree can be named with its original CSV fid
-        grove_tasks.append(
-            (
-                fids,
-                grove,
-                species_name,
-                output_dir,
-                quality_params,
-                "skeletal",
-                verbose,
-                timer,
+        if cfg.export_skeletal:
+            # Skeletal task; static derivation happens inline when both enabled
+            grove_tasks.append(
+                (
+                    fids,
+                    grove,
+                    species_name,
+                    output_dir,
+                    quality_params,
+                    "skeletal",
+                    verbose,
+                    timer,
+                )
             )
-        )
-        # Always create static mesh task (needed for material bindings in OBJ/Helios)
-        grove_tasks.append(
-            (
-                fids,
-                grove,
-                species_name,
-                output_dir,
-                quality_params,
-                "static",
-                verbose,
-                timer,
+        elif cfg.export_static:
+            # Static-only: generate directly (no skeletal to derive from)
+            grove_tasks.append(
+                (
+                    fids,
+                    grove,
+                    species_name,
+                    output_dir,
+                    quality_params,
+                    "static",
+                    verbose,
+                    timer,
+                )
             )
-        )
 
     # Always use sequential processing (bpy/USD not compatible with multiprocessing)
     for task_idx, task in enumerate(tqdm(grove_tasks, desc="Exporting groves")):
@@ -627,7 +674,6 @@ def generate_forest_stages(
     quality_params["minimal_export"] = True
     quality_params["include_grove_attributes"] = include_grove_attributes
     quality_params["skip_pve_json"] = skip_pve_json
-    quality_params["include_static"] = True
     quality_params["skip_validation"] = skip_validation
     quality_params["export_tree_ids"] = export_tree_ids
 
@@ -745,18 +791,20 @@ def generate_forest_stages(
 
                 # Export as Nanite Assembly
                 # stems_file_suffix ensures each stage gets its own stems file
+                use_skeletal = config.export_skeletal
+                use_static_only = not use_skeletal and config.export_static
                 try:
                     export_success = export_tree_as_nanite_assembly(
                         model=model,
-                        skeleton=skeleton,
-                        bones_info=bones_info,
+                        skeleton=skeleton if use_skeletal else None,
+                        bones_info=bones_info if use_skeletal else None,
                         output_path=usd_path,
                         species_name=species_name,
                         tree_id=None,
                         twig_usd_paths=twig_usd_map,
                         include_twigs=True,
-                        use_skeletal_mesh=True,
-                        use_static_mesh=False,
+                        use_skeletal_mesh=use_skeletal,
+                        use_static_mesh=use_static_only,
                         include_grove_attributes=include_grove_attributes,
                         validate=not skip_validation,
                         timer=timer,
@@ -771,6 +819,47 @@ def generate_forest_stages(
                 if export_success:
                     exported_files.append(str(usd_path))
                     logger.info("  Exported: %s", usd_path.name)
+
+                    # Derive static from skeletal when both enabled
+                    if use_skeletal and config.export_static:
+                        from growpy.core.twig import (
+                            extract_twig_placements_from_model,
+                        )
+                        from growpy.io.assembly_export import create_assembly
+                        from growpy.io.tree_export import strip_skeleton_from_usd
+
+                        skel_stems = tree_dir / (
+                            f"{species_clean}_{height_str}"
+                            f"_stems_skeletal.usda"
+                        )
+                        stat_stems = tree_dir / (
+                            f"{species_clean}_{height_str}"
+                            f"_stems_static.usda"
+                        )
+                        if skel_stems.exists() and strip_skeleton_from_usd(
+                            skel_stems, stat_stems
+                        ):
+                            static_twig_placements = None
+                            try:
+                                static_twig_placements = (
+                                    extract_twig_placements_from_model(model)
+                                )
+                            except Exception:
+                                pass
+                            static_asm = tree_dir / (
+                                f"{species_clean}_{height_str}"
+                                f"_assembly_static.usda"
+                            )
+                            create_assembly(
+                                tree_usd_path=stat_stems,
+                                output_path=static_asm,
+                                species_name=species_name,
+                                twig_usd_paths=twig_usd_map,
+                                use_skeletal_mesh=False,
+                                twig_placements=static_twig_placements,
+                                validate=not skip_validation,
+                            )
+                            exported_files.append(str(static_asm))
                 else:
                     logger.warning(
                         "  Export failed for tree %d (%s) at cycle %d (h=%.1fm)",
@@ -801,8 +890,7 @@ def generate_forest_exports(
 ) -> None:
     """Generate forest from CSV data and export as Nanite Assembly USD files.
 
-    Both skeletal and static mesh assemblies are always generated.
-    Static meshes retain material bindings needed for OBJ/Helios export.
+    Export types are controlled by config flags (export_skeletal, export_static).
 
     DynamicWind attributes are now embedded directly in the USD skeleton prim
     (unreal:dynamicWind:jointNames, unreal:dynamicWind:jointSimulationGroups).
@@ -942,7 +1030,6 @@ def generate_forest_exports(
     # Skip optional JSON generation (passed via quality_params for simplicity)
     # Note: DynamicWind JSON is always generated for skeletal meshes
     quality_params["skip_pve_json"] = skip_pve_json
-    quality_params["include_static"] = True
     quality_params["skip_validation"] = skip_validation
     quality_params["profile_pve"] = (
         timer.enabled
@@ -953,7 +1040,7 @@ def generate_forest_exports(
         # Twigs are copied to each tree folder by assembly_export
         # No need for species-level bundling
 
-        # mesh_type parameter ignored - both skeletal and static are always created
+        # Export types controlled by config.export_skeletal / config.export_static
         with timer.track("export_trees"):
             export_individual_trees(
                 forest,
@@ -961,7 +1048,6 @@ def generate_forest_exports(
                 output_dir,
                 config,
                 quality_params,
-                mesh_type="skeletal",  # Ignored - both types are created
                 verbose=verbose,
                 timer=timer,
             )
@@ -1495,6 +1581,32 @@ Unreal Engine Integration:
         help="Skip assembly validation (saves ~5-10%% of export time)",
     )
 
+    # Mesh type export flags (independent, any combination works)
+    parser.add_argument(
+        "--skeletal",
+        action="store_true",
+        default=None,
+        help="Enable skeletal mesh export (default: from config, typically True)",
+    )
+    parser.add_argument(
+        "--no-skeletal",
+        action="store_true",
+        default=None,
+        help="Disable skeletal mesh export",
+    )
+    parser.add_argument(
+        "--static",
+        action="store_true",
+        default=None,
+        help="Enable static mesh export (default: from config, typically False)",
+    )
+    parser.add_argument(
+        "--no-static",
+        action="store_true",
+        default=None,
+        help="Disable static mesh export",
+    )
+
     # Multi-stage export: generate trees at multiple growth stages from a single position
     parser.add_argument(
         "--cycle-interval",
@@ -1543,6 +1655,21 @@ Unreal Engine Integration:
     from growpy.utils.log import setup_logging
 
     setup_logging(verbose=config.verbose)
+
+    # Validate export flags
+    do_export_obj = config.helios_export_obj or config.helios_helios_scene
+    if do_export_obj and not config.export_skeletal and not config.export_static:
+        logger.warning(
+            "OBJ export requires mesh generation, enabling static mesh export"
+        )
+        config.export_static = True
+
+    if not config.export_skeletal and not config.export_static:
+        logger.error(
+            "No mesh export types enabled. "
+            "Enable at least one of: --skeletal, --static, or --export-obj"
+        )
+        return
 
     # Initialize profiler
     timer = init_profiler(enabled=config.profile)

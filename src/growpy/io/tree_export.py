@@ -370,6 +370,77 @@ def build_tree_mesh(
         return False
 
 
+def strip_skeleton_from_usd(skeletal_path: Path, static_path: Path) -> bool:
+    """Derive a static mesh USDA from a skeletal USDA by removing skeleton prims.
+
+    Copies the skeletal file and strips all UsdSkel-related prims, properties,
+    and API schemas. Much faster than re-running build_tree_mesh() since it only
+    manipulates the USD scene graph without recomputing geometry.
+
+    Args:
+        skeletal_path: Path to source skeletal USDA file
+        static_path: Path for output static USDA file
+    """
+    import shutil
+
+    shutil.copy2(skeletal_path, static_path)
+
+    layer = Sdf.Layer.FindOrOpen(str(static_path))
+    if not layer or not layer.rootPrims:
+        logger.warning("strip_skeleton: cannot open %s", static_path)
+        return False
+
+    root_spec = layer.rootPrims[0]
+
+    # Change root type from SkelRoot to Xform
+    if root_spec.typeName == "SkelRoot":
+        root_spec.typeName = "Xform"
+
+    # Remove SkelBindingAPI from root apiSchemas
+    _remove_api_schema(root_spec, "SkelBindingAPI")
+
+    # Find and remove skeleton child prim, strip skel properties from mesh
+    skel_child = None
+    mesh_child = None
+    for child in root_spec.nameChildren:
+        child_spec = root_spec.nameChildren[child]
+        if child_spec.typeName == "Skeleton":
+            skel_child = child
+        elif child_spec.typeName == "Mesh":
+            mesh_child = child_spec
+
+    if skel_child:
+        del root_spec.nameChildren[skel_child]
+
+    if mesh_child:
+        _remove_api_schema(mesh_child, "SkelBindingAPI")
+        for prop_name in list(mesh_child.properties.keys()):
+            if prop_name.startswith("skel:"):
+                del mesh_child.properties[prop_name]
+
+    # Remove skel:skeleton relationship from root if present
+    for prop_name in list(root_spec.properties.keys()):
+        if prop_name.startswith("skel:"):
+            del root_spec.properties[prop_name]
+
+    layer.Save()
+    logger.debug("Derived static mesh: %s", static_path.name)
+    return True
+
+
+def _remove_api_schema(prim_spec, schema_name: str) -> None:
+    """Remove an API schema from a PrimSpec's apiSchemas metadata."""
+    api_schemas = prim_spec.GetInfo("apiSchemas")
+    if not api_schemas:
+        return
+    prepended = list(api_schemas.prependedItems)
+    if schema_name in prepended:
+        prepended.remove(schema_name)
+        new_schemas = Sdf.TokenListOp()
+        new_schemas.prependedItems = prepended
+        prim_spec.SetInfo("apiSchemas", new_schemas)
+
+
 # Helper functions for internal use
 
 
