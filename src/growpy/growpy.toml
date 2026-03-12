@@ -231,30 +231,7 @@ enabled = true
 output_dir = "data/output/growth_comparison"
 # Generate comparison plots (even without calibration)
 plot = true
-
-# Per-species yield table configuration
-# Each entry maps a species (Common Name) to a yield table ID and yield class
-# Find table IDs at https://openyieldtables.org or use --list-tables
-# Only species listed here will be calibrated; others keep their default growth models
-#
-# flushes_per_year: How many Grove growth cycles correspond to one calendar year.
-# Default 1.0 (1 cycle = 1 year). Set to 0.5 if 1 cycle = 2 years,
-# or 2.0 if 2 cycles = 1 year. This controls how cycle indices map to
-# yield table ages during calibration.
-[calibration.species."Norway spruce"]
-table_id = 2
-yield_class = 12
-search = "Fichte"
-flushes_per_year = 1.0
-
-[calibration.species."European beech"]
-table_id = 10
-yield_class = 8
-search = "Buche"
-flushes_per_year = 1.0
-
-[calibration.species."European oak"]
-table_id = 11
-yield_class = 6
-search = "Eiche"
-flushes_per_year = 1.0
+# Yield table discovery uses the Yield Search column in tree_asset_lookup.csv.
+# Auto-selects the first matching table and middle yield class.
+# Override per species with CLI: --species "Name" --table-id N --yield-class N
+# Or add optional [calibration.species."Name"] sections here to pin specific tables.

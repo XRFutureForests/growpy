@@ -29,7 +29,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import matplotlib.pyplot as plt
 import matplotlib.style as mplstyle
@@ -669,6 +669,59 @@ def run_calibration(
     return grow_lengths
 
 
+def load_lookup_table(script_dir: Path) -> Dict[str, Dict[str, str]]:
+    """Load tree_asset_lookup.csv and return a dict keyed by Common Name.
+
+    Returns:
+        {common_name: {"standardized": ..., "yield_search": ..., ...}}
+    """
+    import pandas as pd
+
+    lookup_path = script_dir / "src" / "growpy" / "config" / "tree_asset_lookup.csv"
+    if not lookup_path.exists():
+        logger.error("Asset lookup table not found: %s", lookup_path)
+        return {}
+
+    df = pd.read_csv(lookup_path)
+    result = {}
+    for _, row in df.iterrows():
+        name = row["Common Name"]
+        result[name] = {
+            "standardized": row.get("Standardized Name", ""),
+            "yield_search": str(row.get("Yield Search", "")).strip(),
+        }
+    return result
+
+
+def auto_discover_yield_table(
+    species_name: str, search_term: str
+) -> Optional[Dict[str, Any]]:
+    """Auto-discover the best yield table for a species.
+
+    Searches openyieldtables.org using the search term, picks the first
+    matching table and its middle yield class.
+
+    Returns:
+        {"table_id": int, "yield_class": float} or None if no match.
+    """
+    matches = find_yield_tables_for_species(species_name, search_term=search_term)
+    if not matches:
+        return None
+
+    table = matches[0]
+    yield_curves, _ = load_yield_table_curves(table.id)
+    if not yield_curves:
+        return None
+
+    # Pick middle yield class
+    yc_values = sorted(
+        float(yc_data["yield_class"]) for yc_data in yield_curves.values()
+    )
+    middle_yc = yc_values[len(yc_values) // 2]
+
+    return {"table_id": table.id, "yield_class": middle_yc}
+
+
 def main():
     """Main function for command line usage."""
     from growpy.config import get_config
@@ -680,13 +733,13 @@ def main():
     parser = argparse.ArgumentParser(
         description=(
             "Calibrate growth models against yield tables from openyieldtables.org. "
-            "Runs after create_growth_models.py. Species yield table mappings are "
-            "configured in growpy.toml [calibration.species]."
+            "Runs after create_growth_models.py. Auto-discovers yield tables using "
+            "the Yield Search column in tree_asset_lookup.csv."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    # Calibrate all configured species
+    # Calibrate all species with existing growth models and yield table search terms
     python src/growpy/cli/calibrate_growth.py
 
     # Compare only (no calibration, just plots)
@@ -699,7 +752,8 @@ Examples:
     python src/growpy/cli/calibrate_growth.py --species "Norway spruce" --list-tables
 
 Note: Requires growth models from create_growth_models.py.
-      Yield table config is in growpy.toml [calibration.species].
+      Yield table search terms are in the Yield Search column of tree_asset_lookup.csv.
+      TOML [calibration.species] entries override auto-discovery if present.
         """,
     )
 
@@ -707,19 +761,19 @@ Note: Requires growth models from create_growth_models.py.
         "--species",
         type=str,
         default=None,
-        help="Single species to calibrate (default: all configured in toml)",
+        help="Single species to calibrate (default: all with growth models)",
     )
     parser.add_argument(
         "--table-id",
         type=int,
         default=None,
-        help="Yield table ID (overrides toml config for --species)",
+        help="Yield table ID (overrides auto-discovery for --species)",
     )
     parser.add_argument(
         "--yield-class",
         type=float,
         default=None,
-        help="Yield class (overrides toml config for --species)",
+        help="Yield class (overrides auto-discovery for --species)",
     )
     parser.add_argument(
         "--compare-only",
@@ -748,7 +802,7 @@ Note: Requires growth models from create_growth_models.py.
         type=float,
         default=None,
         help=(
-            "Growth flushes per calendar year (default: from config, fallback 1.0). "
+            "Growth flushes per calendar year (default: 1.0). "
             "Controls cycle-to-age mapping: 0.5 means 1 cycle = 2 years."
         ),
     )
@@ -767,12 +821,18 @@ Note: Requires growth models from create_growth_models.py.
     do_calibrate = not args.compare_only
     do_plot = config.calibration_plot and not args.no_plot
 
+    # Load lookup table for search terms
+    lookup = load_lookup_table(script_dir)
+
     # List tables mode
     if args.list_tables:
         species = args.species or "Norway spruce"
-        # Use search term from toml config if available
-        search = config.calibration_species.get(species, {}).get("search")
-        matches = find_yield_tables_for_species(species, search_term=search)
+        search = lookup.get(species, {}).get("yield_search", "")
+        # TOML override
+        toml_search = config.calibration_species.get(species, {}).get("search")
+        if toml_search:
+            search = toml_search
+        matches = find_yield_tables_for_species(species, search_term=search or None)
         term_info = f" (search: '{search}')" if search else ""
         print(f"\nYield tables matching '{species}'{term_info}:")
         for m in matches:
@@ -788,59 +848,121 @@ Note: Requires growth models from create_growth_models.py.
         logger.error("Run create_growth_models.py first.")
         return 1
 
+    # Find species with existing growth models
+    available_models = {
+        d.name
+        for d in growth_models_dir.iterdir()
+        if d.is_dir() and (d / "height_curve.json").exists()
+    }
+
     # Build species list to process
-    species_configs = {}
+    species_configs: Dict[str, Dict[str, Any]] = {}
 
     if args.species:
         # Single species from CLI
-        if args.table_id is None or args.yield_class is None:
-            # Try to get from toml config
+        species_dir = args.species.lower().replace(" ", "_")
+        if species_dir not in available_models:
+            logger.error(
+                "No growth model for '%s'. Run create_growth_models.py first.",
+                args.species,
+            )
+            return 1
+
+        table_id = args.table_id
+        yield_class = args.yield_class
+
+        # Try TOML override, then auto-discover
+        if table_id is None or yield_class is None:
             toml_cfg = config.calibration_species.get(args.species, {})
-            table_id = args.table_id or toml_cfg.get("table_id")
-            yield_class = args.yield_class or toml_cfg.get("yield_class")
-            if table_id is None or yield_class is None:
-                logger.error(
-                    "No yield table configured for '%s'. "
-                    "Provide --table-id and --yield-class, or add to "
-                    "[calibration.species] in growpy.toml.",
-                    args.species,
-                )
-                return 1
-        else:
-            table_id = args.table_id
-            yield_class = args.yield_class
-        toml_fpy = config.calibration_species.get(args.species, {}).get(
-            "flushes_per_year", 1.0
-        )
+            table_id = table_id or toml_cfg.get("table_id")
+            yield_class = yield_class or toml_cfg.get("yield_class")
+
+        if table_id is None or yield_class is None:
+            search = lookup.get(args.species, {}).get("yield_search", "")
+            if search:
+                logger.info("Auto-discovering yield table for %s...", args.species)
+                discovered = auto_discover_yield_table(args.species, search)
+                if discovered:
+                    table_id = table_id or discovered["table_id"]
+                    yield_class = yield_class or discovered["yield_class"]
+
+        if table_id is None or yield_class is None:
+            logger.error(
+                "No yield table found for '%s'. "
+                "Provide --table-id and --yield-class, or add a "
+                "Yield Search term to tree_asset_lookup.csv.",
+                args.species,
+            )
+            return 1
+
+        fpy = args.flushes_per_year or config.calibration_species.get(
+            args.species, {}
+        ).get("flushes_per_year", 1.0)
+
         species_configs[args.species] = {
             "table_id": table_id,
             "yield_class": yield_class,
-            "flushes_per_year": args.flushes_per_year or toml_fpy,
+            "flushes_per_year": fpy,
         }
     else:
-        # All species from toml config
-        species_configs = config.calibration_species
-        if not species_configs:
-            logger.error(
-                "No species configured in [calibration.species]. "
-                "Add entries to growpy.toml or use --species with --table-id/--yield-class."
-            )
-            return 1
+        # Auto-discover for all species with growth models
+        # Reverse lookup: standardized name -> common name
+        std_to_common = {
+            v["standardized"]: name for name, v in lookup.items()
+        }
+
+        for model_dir in sorted(available_models):
+            common_name = std_to_common.get(model_dir)
+            if not common_name:
+                logger.debug("No lookup entry for model %s", model_dir)
+                continue
+
+            # Check TOML override first
+            toml_cfg = config.calibration_species.get(common_name, {})
+            if toml_cfg.get("table_id") and toml_cfg.get("yield_class"):
+                species_configs[common_name] = {
+                    "table_id": toml_cfg["table_id"],
+                    "yield_class": toml_cfg["yield_class"],
+                    "flushes_per_year": toml_cfg.get("flushes_per_year", 1.0),
+                }
+                continue
+
+            # Auto-discover from Yield Search column
+            search = lookup[common_name].get("yield_search", "")
+            if not search:
+                logger.debug(
+                    "No Yield Search term for %s — skipping calibration",
+                    common_name,
+                )
+                continue
+
+            discovered = auto_discover_yield_table(common_name, search)
+            if discovered:
+                species_configs[common_name] = {
+                    "table_id": discovered["table_id"],
+                    "yield_class": discovered["yield_class"],
+                    "flushes_per_year": toml_cfg.get("flushes_per_year", 1.0),
+                }
+            else:
+                logger.warning(
+                    "No yield table found for %s (search: '%s')",
+                    common_name, search,
+                )
+
+    if not species_configs:
+        logger.error(
+            "No species to calibrate. Ensure growth models exist and species "
+            "have Yield Search terms in tree_asset_lookup.csv."
+        )
+        return 1
 
     # Process each species
     n_ok = 0
     n_total = len(species_configs)
 
     for species_name, cfg in species_configs.items():
-        table_id = cfg.get("table_id")
-        yield_class = cfg.get("yield_class")
-
-        if table_id is None or yield_class is None:
-            logger.warning(
-                "Skipping %s: missing table_id or yield_class in config",
-                species_name,
-            )
-            continue
+        table_id = cfg["table_id"]
+        yield_class = cfg["yield_class"]
 
         logger.info("")
         logger.info("=" * 60)

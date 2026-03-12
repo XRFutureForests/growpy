@@ -317,7 +317,7 @@ class SpeciesGrowthAnalyzer:
             seeds_to_test,
             desc=f"Testing seeds for {species[:25]}",
             leave=False,
-            disable=False,
+            disable=self.num_seeds <= 1,
         )
 
         # Load species-specific overrides (includes yield table calibration)
@@ -369,7 +369,15 @@ class SpeciesGrowthAnalyzer:
             cycles_without_growth = 0
             simulation_start_time = time.time()
 
-            for cycle in range(self.height_model_flushes):
+            cycle_progress = tqdm(
+                range(self.height_model_flushes),
+                desc=f"  {species[:20]} seed={seed}",
+                leave=False,
+                unit="cy",
+                bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
+            )
+
+            for cycle in cycle_progress:
                 # Apply per-cycle overrides (yield table calibration, longevity curves)
                 if has_overrides:
                     species_overrides.apply_to_grove(
@@ -426,6 +434,10 @@ class SpeciesGrowthAnalyzer:
                     heights_this_seed.append(max_height_achieved)
                     dbh_this_seed.append(max_dbh_achieved)
 
+                cycle_progress.set_postfix_str(
+                    f"h={max_height_achieved:.1f}m dbh={max_dbh_achieved:.1f}cm"
+                )
+
                 height_increase = max_height_achieved - previous_max_height
 
                 if height_increase < self.height_growth_threshold:
@@ -448,6 +460,7 @@ class SpeciesGrowthAnalyzer:
                     )
                     break
 
+            cycle_progress.close()
             all_height_curves.append(heights_this_seed)
             all_dbh_curves.append(dbh_this_seed)
             actual_cycles = len(heights_this_seed)
