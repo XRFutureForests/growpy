@@ -22,13 +22,13 @@ conda env create -f environment.yml
 conda activate growpy
 ```
 
-2. Install package in development mode:
+1. Install package in development mode:
 
 ```bash
 pip install -e .
 ```
 
-3. Add The Grove (commercial, not included in repo):
+1. Add The Grove (commercial, not included in repo):
 
 ```bash
 # Copy or symlink your licensed Grove 2.3 installation into src/

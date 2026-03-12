@@ -3,12 +3,10 @@
     "image": "condaforge/miniforge3:latest",
     "workspaceFolder": "/workspace",
     "shutdownAction": "stopContainer",
-
     "features": {
         "ghcr.io/devcontainers/features/git:1": {},
         "ghcr.io/devcontainers/features/github-cli:1": {}
     },
-
     "customizations": {
         "vscode": {
             "extensions": [
@@ -33,11 +31,9 @@
             }
         }
     },
-
     "mounts": [
         "source=${localWorkspaceFolder},target=/workspace,type=bind"
     ],
-
     "remoteUser": "root",
     "postCreateCommand": "mamba env create -f environment.yml -n growpy || mamba env update -f environment.yml -n growpy"
 }
