@@ -108,7 +108,7 @@ def simplify_twig_meshes(
 
         if face_mats is not None and sidecar_mat_names:
             # Split faces by material classification (leaf vs wood)
-            result_faces, result_face_mats, result_verts = _simplify_proto_by_material(
+            result_verts, result_faces, result_face_mats = _simplify_proto_by_material(
                 twig_verts, faces, face_mats, sidecar_mat_names,
                 wood_ratio, leaf_ratio, vert_offset,
             )
