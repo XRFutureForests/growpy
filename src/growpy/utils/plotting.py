@@ -1,7 +1,7 @@
-"""Growth curve plotting utilities for species analysis."""
+"""Growth curve plotting utilities for species analysis and calibration."""
 
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 import matplotlib.pyplot as plt
 import matplotlib.style as mplstyle
@@ -273,4 +273,181 @@ def _plot_height_dbh_correlation(
     plt.savefig(
         correlation_plot_path, dpi=300, bbox_inches="tight", facecolor="white"
     )
+    plt.close()
+
+
+def _init_plot_style():
+    """Initialize matplotlib style for calibration plots."""
+    mplstyle.use("default")
+    style = "seaborn-v0_8" if "seaborn-v0_8" in plt.style.available else "default"
+    plt.style.use(style)
+
+
+def plot_calibration_comparison(
+    species_name: str,
+    grove_heights: List[float],
+    grove_dbhs: List[float],
+    yield_ages: List[float],
+    yield_heights: List[float],
+    yield_dbhs: List[float],
+    table_title: str,
+    output_path: Optional[Path] = None,
+    calibrated_heights: Optional[np.ndarray] = None,
+) -> None:
+    """Plot Grove curves vs yield table curves side by side."""
+    _init_plot_style()
+
+    fig, axes = plt.subplots(1, 2, figsize=(16, 7))
+    fig.suptitle(
+        f"{species_name}: Grove vs Yield Table ({table_title})",
+        fontsize=14,
+        fontweight="bold",
+    )
+
+    # Height comparison
+    ax1 = axes[0]
+    grove_cycles = list(range(1, len(grove_heights) + 1))
+    ax1.plot(grove_cycles, grove_heights, "b-", linewidth=2.5, label="Grove (cycles)")
+
+    if calibrated_heights is not None:
+        cal_cycles = list(range(1, len(calibrated_heights) + 1))
+        ax1.plot(
+            cal_cycles, calibrated_heights, "g--", linewidth=2, label="Calibrated target"
+        )
+
+    ax1.plot(
+        yield_ages, yield_heights,
+        "r-", alpha=1.0, linewidth=2.0, label="Yield table",
+    )
+    ax1.set_xlabel("Age (years) / Grove cycles")
+    ax1.set_ylabel("Height (m)")
+    ax1.set_title("Height over Age")
+    ax1.legend(loc="upper left")
+    ax1.grid(True, alpha=0.3)
+
+    # DBH comparison
+    ax2 = axes[1]
+    if grove_dbhs:
+        dbh_cycles = list(range(1, len(grove_dbhs) + 1))
+        ax2.plot(
+            dbh_cycles,
+            [d * 100 for d in grove_dbhs],
+            "b-", linewidth=2.5, label="Grove (cycles)",
+        )
+
+    ax2.plot(
+        yield_ages, [d * 100 for d in yield_dbhs],
+        "r-", alpha=1.0, linewidth=2.0, label="Yield table",
+    )
+    ax2.set_xlabel("Age (years) / Grove cycles")
+    ax2.set_ylabel("DBH (cm)")
+    ax2.set_title("Diameter at Breast Height over Age")
+    ax2.legend(loc="upper left")
+    ax2.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+
+    if output_path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    else:
+        plt.show()
+    plt.close()
+
+
+def plot_calibration_detail(
+    species_name: str,
+    grove_heights: List[float],
+    target_heights: np.ndarray,
+    grow_lengths: List[float],
+    base_grow_length: float,
+    output_path: Optional[Path] = None,
+    grove_dbhs: Optional[List[float]] = None,
+    target_dbhs: Optional[np.ndarray] = None,
+    thicken_tips_values: Optional[List[float]] = None,
+    base_thicken_tips: Optional[float] = None,
+) -> None:
+    """Plot calibration details: height + DBH targets and parameter curves."""
+    _init_plot_style()
+
+    has_dbh = grove_dbhs and target_dbhs is not None and thicken_tips_values
+    n_rows = 4 if has_dbh else 2
+    fig, axes = plt.subplots(n_rows, 1, figsize=(14, 5 * n_rows))
+    fig.suptitle(
+        f"{species_name}: Growth Rate Calibration",
+        fontsize=14,
+        fontweight="bold",
+    )
+
+    n = min(len(grove_heights), len(target_heights))
+    cycles = list(range(1, n + 1))
+
+    ax1 = axes[0]
+    ax1.plot(cycles, grove_heights[:n], "b-", linewidth=2, label="Grove (uncalibrated)")
+    ax1.plot(cycles, target_heights[:n], "r--", linewidth=2, label="Yield table target")
+    ax1.set_xlabel("Cycle / Year")
+    ax1.set_ylabel("Height (m)")
+    ax1.set_title("Height Trajectory")
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+
+    ax2 = axes[1]
+    gl_cycles = list(range(1, len(grow_lengths) + 1))
+    ax2.plot(gl_cycles, grow_lengths, "g-", linewidth=2, label="Calibrated grow_length")
+    ax2.axhline(
+        y=base_grow_length, color="b", linestyle=":", alpha=0.7,
+        label=f"Original ({base_grow_length})",
+    )
+    ax2.set_xlabel("Cycle / Year")
+    ax2.set_ylabel("grow_length (m)")
+    ax2.set_title("grow_length per Cycle (applied via PresetOverrides)")
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+
+    if has_dbh and grove_dbhs is not None and target_dbhs is not None:
+        assert thicken_tips_values is not None
+        n_dbh = min(len(grove_dbhs), len(target_dbhs))
+        dbh_cycles = list(range(1, n_dbh + 1))
+
+        ax3 = axes[2]
+        ax3.plot(
+            dbh_cycles,
+            [d * 100 for d in grove_dbhs[:n_dbh]],
+            "b-", linewidth=2, label="Grove (uncalibrated)",
+        )
+        ax3.plot(
+            dbh_cycles,
+            [d * 100 for d in target_dbhs[:n_dbh]],
+            "r--", linewidth=2, label="Yield table target",
+        )
+        ax3.set_xlabel("Cycle / Year")
+        ax3.set_ylabel("DBH (cm)")
+        ax3.set_title("DBH Trajectory")
+        ax3.legend()
+        ax3.grid(True, alpha=0.3)
+
+        ax4 = axes[3]
+        tt_cycles = list(range(1, len(thicken_tips_values) + 1))
+        ax4.plot(
+            tt_cycles, thicken_tips_values, "g-", linewidth=2,
+            label="Calibrated thicken_tips",
+        )
+        if base_thicken_tips is not None:
+            ax4.axhline(
+                y=base_thicken_tips, color="b", linestyle=":", alpha=0.7,
+                label=f"Original ({base_thicken_tips})",
+            )
+        ax4.set_xlabel("Cycle / Year")
+        ax4.set_ylabel("thicken_tips (m)")
+        ax4.set_title("thicken_tips per Cycle (applied via PresetOverrides)")
+        ax4.legend()
+        ax4.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+
+    if output_path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    else:
+        plt.show()
     plt.close()

@@ -208,84 +208,121 @@ def build_tree_mesh(
         uvs = model.uvs  # UV coordinates for texturing
 
         # Convert points to USD format, applying height-aware radial scaling.
-        # Full radial_scale at breast height, blending to 1.0 at the crown.
-        # When bones_info is available, scaling is perpendicular to each bone's
-        # axis so branches thicken correctly without stretching along their length.
-        # Falls back to XZ-plane scaling when no bone data is present.
-        if radial_scale != 1.0 and hasattr(model, "location") and model.location:
+        # Corrects Grove's inflated DBH to match yield table targets.
+        # Scaling is perpendicular to the trunk bone axis so cross-sections
+        # stay round. Only trunk (order 0) bones are scaled — branches are
+        # left untouched to preserve natural shape.
+        # Requires bones_info + vertex bone IDs; skipped otherwise.
+        if (
+            radial_scale != 1.0
+            and bones_info
+            and getattr(model, "point_attribute_bone_id", None)
+        ):
+            vertex_bone_ids = model.point_attribute_bone_id
             tree_height = max((p.y for p in points), default=0.0)
             breast_height = 1.3
             blend_start = breast_height
             blend_end = max(breast_height + 1.0, tree_height * 0.4)
             blend_range = blend_end - blend_start
 
-            # Build per-bone axis lookup when skeleton data is available
-            bone_axes = None
-            bone_starts = None
-            bone_id_offset = 0
-            vertex_bone_ids = getattr(model, "point_attribute_bone_id", None)
-            if bones_info and vertex_bone_ids:
-                bone_id_offset = min(vertex_bone_ids)
-                bone_axes = []
-                bone_starts = []
-                for bone in bones_info:
-                    sp, ep = bone[2], bone[3]
-                    dx = ep.x - sp.x
-                    dy = ep.y - sp.y
-                    dz = ep.z - sp.z
-                    length = math.sqrt(dx * dx + dy * dy + dz * dz)
-                    if length > 1e-6:
-                        inv = 1.0 / length
-                        bone_axes.append((dx * inv, dy * inv, dz * inv))
-                    else:
-                        bone_axes.append((0.0, 1.0, 0.0))
-                    bone_starts.append((sp.x, sp.y, sp.z))
+            bone_id_offset = min(vertex_bone_ids)
+
+            # Trunk branch_id = first bone's branch_id (bone index 7)
+            trunk_branch_id = (
+                int(bones_info[0][7]) if len(bones_info[0]) >= 8 else -1
+            )
+
+            # Build per-bone data and compute branch order (depth from trunk).
+            # Trunk bones = order 0, first branches off trunk = order 1, etc.
+            bone_axes = []
+            bone_starts = []
+            bone_branch_ids = []
+            for bone in bones_info:
+                sp, ep = bone[2], bone[3]
+                dx = ep.x - sp.x
+                dy = ep.y - sp.y
+                dz = ep.z - sp.z
+                length = math.sqrt(dx * dx + dy * dy + dz * dz)
+                if length > 1e-6:
+                    inv = 1.0 / length
+                    bone_axes.append((dx * inv, dy * inv, dz * inv))
+                else:
+                    bone_axes.append((0.0, 1.0, 0.0))
+                bone_starts.append((sp.x, sp.y, sp.z))
+                bone_branch_ids.append(
+                    int(bone[7]) if len(bone) >= 8 else trunk_branch_id
+                )
+
+            # Compute branch order per bone via parent traversal
+            # Order 0 = trunk, increments each time branch_id changes along
+            # the parent chain
+            bone_order = [0] * len(bones_info)
+            for idx in range(len(bones_info)):
+                if bone_branch_ids[idx] == trunk_branch_id:
+                    bone_order[idx] = 0
+                    continue
+                order = 0
+                cur = idx
+                visited = set()
+                while cur >= 0 and cur not in visited:
+                    visited.add(cur)
+                    parent_global = bones_info[cur][1]
+                    parent_local = parent_global - bone_id_offset
+                    if parent_local < 0 or parent_local >= len(bones_info):
+                        break
+                    if bone_branch_ids[parent_local] != bone_branch_ids[cur]:
+                        order += 1
+                    cur = parent_local
+                    if bone_branch_ids[cur] == trunk_branch_id:
+                        break
+                bone_order[idx] = order
+
+            max_order = max(bone_order) if bone_order else 1
 
             usd_points = []
             for i, p in enumerate(points):
+                local_idx = vertex_bone_ids[i] - bone_id_offset
+                local_idx = max(0, min(local_idx, len(bone_axes) - 1))
+
+                order = bone_order[local_idx]
+
+                # Smooth blend: trunk gets full radial_scale, branches fade
+                # toward 1.0 with increasing order. Order 0 (trunk) = full
+                # scale, order 1 = ~half correction, higher orders = near 1.0.
+                if max_order > 0 and order > 0:
+                    # Exponential decay: each order halves the correction
+                    order_blend = 0.5 ** order
+                    s_base = radial_scale + (1.0 - radial_scale) * (1.0 - order_blend)
+                else:
+                    s_base = radial_scale
+
+                # Height-based blend on top: fade to 1.0 toward the crown
                 if p.y <= blend_start:
-                    s = radial_scale
+                    s = s_base
                 elif p.y >= blend_end:
                     s = 1.0
                 else:
                     t = (p.y - blend_start) / blend_range
                     t = t * t * (3.0 - 2.0 * t)
-                    s = radial_scale + (1.0 - radial_scale) * t
+                    s = s_base + (1.0 - s_base) * t
 
-                if s == 1.0:
+                if abs(s - 1.0) < 1e-6:
                     usd_points.append(Gf.Vec3f(p.x, p.y, p.z))
                     continue
 
-                if bone_axes is not None and vertex_bone_ids is not None:
-                    # Scale perpendicular to bone axis
-                    local_idx = vertex_bone_ids[i] - bone_id_offset
-                    local_idx = max(0, min(local_idx, len(bone_axes) - 1))
-                    ax, ay, az = bone_axes[local_idx]
-                    bx, by, bz = bone_starts[local_idx]
-                    # Vector from bone start to vertex
-                    vx, vy, vz = p.x - bx, p.y - by, p.z - bz
-                    # Axial projection length
-                    dot = vx * ax + vy * ay + vz * az
-                    # Perpendicular component
-                    px, py, pz = vx - dot * ax, vy - dot * ay, vz - dot * az
-                    usd_points.append(
-                        Gf.Vec3f(
-                            p.x + (s - 1.0) * px,
-                            p.y + (s - 1.0) * py,
-                            p.z + (s - 1.0) * pz,
-                        )
+                # Scale perpendicular to bone axis
+                ax, ay, az = bone_axes[local_idx]
+                bx, by, bz = bone_starts[local_idx]
+                vx, vy, vz = p.x - bx, p.y - by, p.z - bz
+                dot = vx * ax + vy * ay + vz * az
+                px, py, pz = vx - dot * ax, vy - dot * ay, vz - dot * az
+                usd_points.append(
+                    Gf.Vec3f(
+                        p.x + (s - 1.0) * px,
+                        p.y + (s - 1.0) * py,
+                        p.z + (s - 1.0) * pz,
                     )
-                else:
-                    # Fallback: scale in XZ plane from tree center
-                    cx = model.location.x
-                    cz = model.location.z
-                    usd_points.append(
-                        Gf.Vec3f(
-                            cx + (p.x - cx) * s,
-                            p.y,
-                            cz + (p.z - cz) * s,
-                        )
-                    )
+                )
         else:
             usd_points = [Gf.Vec3f(p.x, p.y, p.z) for p in points]
 

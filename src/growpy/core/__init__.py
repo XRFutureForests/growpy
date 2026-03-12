@@ -50,6 +50,7 @@ from .tree import (
 )
 from .twig import (
     TwigPlacement,
+    densify_twig_placements,
     extract_twig_placements_from_model,
     get_face_center_and_normal,
     normal_to_rotation_matrix,
@@ -80,6 +81,7 @@ __all__ = [
     "get_bone_data_from_grove",
     # Twig
     "TwigPlacement",
+    "densify_twig_placements",
     "extract_twig_placements_from_model",
     "get_face_center_and_normal",
     "normal_to_rotation_matrix",

@@ -774,6 +774,23 @@ def export_tree_as_nanite_assembly(
                 except Exception as e:
                     twig_placements = None
 
+            # Adjust twig count: density > 1.0 adds synthetic placements on
+            # non-twig faces; density < 1.0 randomly thins existing placements
+            if twig_placements:
+                from ..config import get_config
+
+                cfg = get_config()
+                if cfg.export_twig_density != 1.0:
+                    with _track("adjust_twig_density"):
+                        from ..core.twig import densify_twig_placements
+
+                        twig_placements = densify_twig_placements(
+                            model,
+                            twig_placements,
+                            density=cfg.export_twig_density,
+                            bones_info=bones_info if not use_static_mesh else None,
+                        )
+
             # CRITICAL: Remap twig bone_ids from UNFILTERED to FILTERED indices
             # After filter_bones_for_mesh in tree export, bone indices are renumbered
             # Twig bone_ids are GLOBAL bone IDs that need to be mapped to NEW joint indices

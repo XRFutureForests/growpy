@@ -58,7 +58,7 @@ interior_decimate_ratio = 0.5
 [growth_models]
 # Maximum growth cycles to simulate (1-250)
 # Automatically stops early when growth plateaus
-cycles = 35
+cycles = 25
 # Random seeds to average for robust curves (1-10)
 # Use 3+ for production, 1 for quick tests
 seeds = 1
@@ -72,18 +72,24 @@ max_cycles_without_growth = 10
 # Increase for complex species; prevents stuck simulations
 timeout = 900
 
-# --- Step 4: calibrate_growth.py ---
+# --- Step 3b: Yield table calibration (integrated into create_growth_models.py) ---
 [calibration]
-# Calibrate growth models against real-world yield tables from openyieldtables.org
-# Run calibrate_growth.py between two runs of create_growth_models.py:
-#   create_growth_models.py -> calibrate_growth.py -> create_growth_models.py (re-run)
+# When enabled, create_growth_models.py automatically calibrates against yield tables
+# after the initial simulation, then re-simulates with calibration applied.
+# No need to run calibrate_growth.py separately.
 enabled = true
+# Directory for local yield table CSVs (checked before openyieldtables.org API).
+# Format: age,height,dbh (age in years, height in meters, dbh in centimeters)
+# File naming: <standardized_species_name>.csv (e.g., norway_spruce.csv)
+yield_tables_dir = "data/input/yield_tables"
 # Output directory for comparison plots
 output_dir = "data/output/growth_comparison"
 # Generate comparison plots (even without calibration)
 plot = true
-# Yield table discovery uses the Yield Search column in tree_asset_lookup.csv.
-# Auto-selects the first matching table and middle yield class.
+# Yield table resolution order per species:
+#   1. Local CSV in yield_tables_dir (by standardized name)
+#   2. TOML override below ([calibration.species."Name"])
+#   3. openyieldtables.org auto-discovery (via Yield Search column in tree_asset_lookup.csv)
 # Override per species with CLI: --species "Name" --table-id N --yield-class N
 # Or add optional [calibration.species."Name"] sections here to pin specific tables.
 
@@ -103,7 +109,7 @@ smooth_iterations = 10
 include_grove_attributes = false
 # Apply longevity overrides to prevent tree death at high cycle counts
 # Sets drop_decay, drop_weak etc. to low values
-longevity_mode = true
+longevity_mode = false
 # Multi-stage export: generate tree models at cycle intervals for growth history
 # Exports snapshots at every N cycles (e.g., 10 = cycles 10, 20, 30...)
 # Each snapshot includes height and DBH in the filename for easy asset selection
@@ -132,7 +138,7 @@ cycle_interval = 20
 [quality.high]
 resolution = 24
 resolution_reduce = 0.8
-build_cutoff_age = 0
+build_cutoff_age = 1
 build_cutoff_thickness = 0.01
 build_blend = true
 build_end_cap = true
@@ -165,6 +171,12 @@ static = false
 # blending smoothly to 1.0 at the crown. Requires calibrated seed.json files.
 # false = export Grove geometry as-is (trunk will be thicker than yield table)
 radial_scale = true
+# Twig density multiplier. 1.0 = Grove placements only. Values > 1.0 add
+# synthetic twigs on non-twig faces, weighted by branch youth (younger branches
+# get more twigs). Values < 1.0 randomly thin existing placements (e.g. 0.5 =
+# keep half). Compensates for twig loss when using build_cutoff settings.
+# Range: 0.0 (no twigs) to 2.0+ (dense canopy)
+twig_density = 1.0
 # Skip PVE preset JSON generation (saves ~3% export time)
 # PVE presets only needed for Unreal Procedural Vegetation Editor
 skip_pve_json = true

@@ -11,11 +11,10 @@ These are the entry points invoked directly from the command line.
 |--------|------|---------|
 | `cli/prepare_assets.py` | 1 | Copy Grove assets (presets, twigs, textures) to `data/assets/` |
 | `cli/convert_twigs.py` | 2 | Convert `.blend` twig meshes to `.usda` foliage files |
-| `cli/create_growth_models.py` | 3 | Simulate Grove growth and fit height-to-cycle prediction models |
-| `cli/calibrate_growth.py` | 3b | Calibrate grow_length / thicken_tips per cycle against yield tables |
+| `cli/create_growth_models.py` | 3 | Simulate Grove growth, calibrate against yield tables, fit prediction models |
 | `cli/generate_forest.py` | 4 | Grow forest from CSV, export USD assemblies with radial scaling |
 
-Pipeline order: 1 -> 2 -> 3 -> 3b -> 3 (re-run) -> 4
+Pipeline order: 1 -> 2 -> 3 -> 4
 
 ## Active Modules (used by pipeline)
 
@@ -105,7 +104,6 @@ commands after `pip install -e .`:
 | `growpy-prepare-assets` | `cli/prepare_assets.py` |
 | `growpy-convert-twigs` | `cli/convert_twigs.py` |
 | `growpy-create-models` | `cli/create_growth_models.py` |
-| `growpy-calibrate` | `cli/calibrate_growth.py` |
 | `growpy-generate-forest` | `cli/generate_forest.py` |
 
 ## Configuration Notes

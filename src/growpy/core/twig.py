@@ -7,6 +7,7 @@ any USD or Blender I/O dependencies.
 
 import logging
 import math
+import random
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -407,4 +408,201 @@ def extract_twig_placements_from_model(
     else:
         logger.warning("No twigs have bone_id set")
 
+    return placements
+
+
+def densify_twig_placements(
+    model: Any,
+    placements: Dict[str, List[TwigPlacement]],
+    density: float = 1.0,
+    bones_info: Optional[List] = None,
+    seed: int = 42,
+) -> Dict[str, List[TwigPlacement]]:
+    """Adjust twig placement count to match a target density multiplier.
+
+    density > 1.0: adds synthetic twigs on non-twig faces, weighted by branch
+    youth (younger branches get more twigs).
+    density < 1.0: randomly removes existing placements to thin the canopy.
+    density == 1.0: no change.
+
+    Args:
+        model: Grove model with faces, points, and per-vertex attributes.
+        placements: Existing Grove placements from extract_twig_placements_from_model.
+        density: Target multiplier. 0.5 = keep half, 1.0 = no change, 2.0 = double.
+        bones_info: Optional bone list for bone/branch assignment.
+        seed: Random seed for reproducibility.
+
+    Returns:
+        The same placements dict, modified in-place.
+    """
+    if density == 1.0:
+        return placements
+
+    total_existing = sum(len(p) for p in placements.values())
+    if total_existing == 0:
+        return placements
+
+    # Thin existing placements when density < 1.0
+    if density < 1.0:
+        keep_ratio = max(0.0, density)
+        rng = random.Random(seed)
+        removed = 0
+        for twig_type, plist in placements.items():
+            if not plist:
+                continue
+            keep_count = max(0, int(len(plist) * keep_ratio + 0.5))
+            if keep_count >= len(plist):
+                continue
+            rng.shuffle(plist)
+            removed += len(plist) - keep_count
+            placements[twig_type] = plist[:keep_count]
+        logger.info(
+            "Twig thinning: removed %d placements (density=%.2f, remaining=%d)",
+            removed,
+            density,
+            total_existing - removed,
+        )
+        return placements
+
+    target_total = int(total_existing * density)
+    num_to_add = target_total - total_existing
+    if num_to_add <= 0:
+        return placements
+
+    rng = random.Random(seed)
+
+    faces = model.faces
+    points = model.points
+    num_faces = len(faces)
+
+    # Build set of faces that already carry a Grove twig
+    existing_twig_faces = set()
+    twig_type_attrs = {}
+    for twig_type in ["twig_long", "twig_short", "twig_upward", "twig_dead"]:
+        attr = getattr(model, f"face_attribute_{twig_type}", None)
+        if attr:
+            twig_type_attrs[twig_type] = attr
+            for fi in range(min(len(attr), num_faces)):
+                if attr[fi] > 0:
+                    existing_twig_faces.add(fi)
+
+    # Per-vertex age (lower = younger)
+    vertex_ages = getattr(model, "point_attribute_age", None)
+
+    # Compute per-face youth weight: mean(max_age - vertex_age) for the face
+    max_age = max(vertex_ages) if vertex_ages else 1.0
+    if max_age < 1e-6:
+        max_age = 1.0
+
+    candidate_faces = []
+    candidate_weights = []
+    for fi in range(num_faces):
+        if fi in existing_twig_faces:
+            continue
+        face = faces[fi]
+        if vertex_ages:
+            ages = [vertex_ages[vi] for vi in face if vi < len(vertex_ages)]
+            if ages:
+                mean_age = sum(ages) / len(ages)
+                youth = (max_age - mean_age) / max_age  # 0..1, 1 = youngest
+            else:
+                youth = 0.0
+        else:
+            youth = 0.5
+        # Skip very old faces (trunk base, etc.)
+        if youth < 0.01:
+            continue
+        candidate_faces.append(fi)
+        candidate_weights.append(youth)
+
+    if not candidate_faces:
+        logger.debug("densify: no candidate faces available")
+        return placements
+
+    # Normalise weights for random.choices
+    total_weight = sum(candidate_weights)
+    if total_weight < 1e-12:
+        return placements
+
+    # Twig type distribution from existing placements
+    living_types = ["twig_long", "twig_short", "twig_upward"]
+    type_counts = {t: len(placements.get(t, [])) for t in living_types}
+    total_living = sum(type_counts.values())
+    if total_living == 0:
+        type_dist = {t: 1.0 / len(living_types) for t in living_types}
+    else:
+        type_dist = {t: type_counts[t] / total_living for t in living_types}
+
+    # Pre-compute vertex coords as tuples for face center calculation
+    verts = [(p.x, p.y, p.z) if hasattr(p, "x") else (p[0], p[1], p[2]) for p in points]
+
+    # Bone assignment helpers
+    bone_ids = getattr(model, "point_attribute_bone_id", None)
+    bone_id_offset = 0
+    bone_to_branch = {}
+    if bones_info:
+        if bone_ids:
+            bone_id_offset = min(bone_ids)
+        branch_id_offset = int(bones_info[0][7]) if len(bones_info[0]) >= 8 else 0
+        for bone_idx, bone in enumerate(bones_info):
+            if len(bone) >= 8:
+                bone_to_branch[bone_idx] = int(bone[7]) - branch_id_offset
+
+    # Sample faces and create synthetic placements
+    chosen_faces = rng.choices(candidate_faces, weights=candidate_weights, k=num_to_add)
+
+    added = 0
+    for fi in chosen_faces:
+        face = faces[fi]
+
+        # Choose twig type following existing distribution
+        r = rng.random()
+        cumulative = 0.0
+        chosen_type = living_types[-1]
+        for t in living_types:
+            cumulative += type_dist[t]
+            if r <= cumulative:
+                chosen_type = t
+                break
+
+        # Compute face center and normal
+        center, normal = get_face_center_and_normal(verts, face)
+
+        # Bone assignment via vertex voting (same as extract_twig_placements_from_model)
+        twig_bone_id = None
+        branch_id_for_twig = None
+        if bone_ids:
+            bone_counts: Dict[int, int] = {}
+            for vi in face:
+                if vi < len(bone_ids):
+                    bid = bone_ids[vi]
+                    bone_counts[bid] = bone_counts.get(bid, 0) + 1
+            if bone_counts:
+                twig_bone_id = max(bone_counts, key=bone_counts.get)
+
+        if twig_bone_id is not None and bones_info:
+            local_bone = twig_bone_id - bone_id_offset
+            branch_id_for_twig = bone_to_branch.get(local_bone)
+
+        # Orientation: default Z-up in Grove space
+        orientation = (0.0, 0.0, 1.0)
+
+        placement = TwigPlacement(
+            type=chosen_type,
+            position=center,
+            normal=normal,
+            orientation=orientation,
+            scale=1.0,
+            bone_id=twig_bone_id,
+            branch_id=branch_id_for_twig,
+        )
+        placements[chosen_type].append(placement)
+        added += 1
+
+    logger.info(
+        "Twig densification: added %d synthetic twigs (density=%.1f, total=%d)",
+        added,
+        density,
+        total_existing + added,
+    )
     return placements

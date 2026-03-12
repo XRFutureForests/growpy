@@ -122,6 +122,7 @@ class GrowPyConfig:
     export_skip_pve_json: bool = False
     export_skip_validation: bool = False
     export_radial_scale: bool = True
+    export_twig_density: float = 1.0
 
     # [unreal]
     unreal_import_to_unreal: bool = False
@@ -142,6 +143,9 @@ class GrowPyConfig:
         default_factory=lambda: Path("data/output/growth_comparison")
     )
     calibration_plot: bool = True
+    calibration_yield_tables_dir: Path = field(
+        default_factory=lambda: Path("data/input/yield_tables")
+    )
     # Species yield table config: {species_name: {table_id, yield_class}}
     calibration_species: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
@@ -238,6 +242,8 @@ class GrowPyConfig:
             kwargs["export_skip_validation"] = export["skip_validation"]
         if "radial_scale" in export:
             kwargs["export_radial_scale"] = export["radial_scale"]
+        if "twig_density" in export:
+            kwargs["export_twig_density"] = export["twig_density"]
         if "export_trees" in export:
             kwargs["forest_export_trees"] = export["export_trees"]
 
@@ -267,6 +273,8 @@ class GrowPyConfig:
             kwargs["calibration_output_dir"] = Path(cal["output_dir"])
         if "plot" in cal:
             kwargs["calibration_plot"] = cal["plot"]
+        if "yield_tables_dir" in cal:
+            kwargs["calibration_yield_tables_dir"] = Path(cal["yield_tables_dir"])
         # [calibration.species."Species Name"] -> {table_id, yield_class}
         cal_species = cal.get("species", {})
         if cal_species:
