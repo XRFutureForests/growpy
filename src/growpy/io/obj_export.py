@@ -52,6 +52,7 @@ def convert_tree_to_obj_direct(
     decimate_ratio: float = 0.3,
     stem_decimate_ratio: float = 0.1,
     helios_spectra_leaves: str = "deciduous",
+    simplification_ratios: Optional[Dict[str, float]] = None,
 ) -> Optional[Path]:
     """Convert a Grove model directly to OBJ without USD/skeleton intermediate.
 
@@ -69,6 +70,8 @@ def convert_tree_to_obj_direct(
         decimate_ratio: Twig decimation ratio (0.0-1.0)
         stem_decimate_ratio: Stem decimation ratio (0.0-1.0)
         helios_spectra_leaves: Helios spectra type ("conifer" or "deciduous")
+        simplification_ratios: Per-material simplification ratios
+            {'bark': 0.3, 'wood': 0.3, 'leaf': 1.0}. None disables.
 
     Returns:
         Path to generated OBJ file, or None on failure
@@ -220,6 +223,19 @@ def convert_tree_to_obj_direct(
                 if not dest.exists():
                     shutil.copy2(tex_file, dest)
 
+    # Material-aware simplification (before writing OBJ)
+    if simplification_ratios:
+        from .mesh_simplify import simplify_tree_mesh
+
+        (
+            trunk_verts, trunk_faces, trunk_uvs,
+            twig_verts, per_proto_faces, per_proto_uvs, per_proto_face_mats,
+        ) = simplify_tree_mesh(
+            trunk_verts, trunk_faces, trunk_uvs,
+            twig_verts, per_proto_faces, per_proto_uvs, per_proto_face_mats,
+            proto_materials, simplification_ratios,
+        )
+
     # Write OBJ + MTL
     bark_texture = _find_bark_texture(output_dir)
     _write_obj(
@@ -249,6 +265,7 @@ def convert_tree_to_obj(
     decimate_ratio: float = 0.3,
     stem_decimate_ratio: float = 0.1,
     helios_spectra_leaves: str = "deciduous",
+    simplification_ratios: Optional[Dict[str, float]] = None,
 ) -> Optional[Path]:
     """Convert a tree's USDA assembly to OBJ with baked twigs.
 
@@ -370,6 +387,19 @@ def convert_tree_to_obj(
     if trunk_verts is None or trunk_faces is None:
         print(f"  OBJ export: No valid tree mesh data")
         return None
+
+    # Material-aware simplification (before writing OBJ)
+    if simplification_ratios:
+        from .mesh_simplify import simplify_tree_mesh
+
+        (
+            trunk_verts, trunk_faces, trunk_uvs,
+            twig_verts, per_proto_faces, per_proto_uvs, per_proto_face_mats,
+        ) = simplify_tree_mesh(
+            trunk_verts, trunk_faces, trunk_uvs,
+            twig_verts, per_proto_faces, per_proto_uvs, per_proto_face_mats,
+            proto_materials, simplification_ratios,
+        )
 
     # Write OBJ + MTL
     bark_texture = _find_bark_texture(tree_dir)
@@ -1233,6 +1263,7 @@ def export_forest_obj(
     stem_decimate_ratio: float = 0.1,
     generate_scene_xml: bool = False,
     generate_combined_obj: bool = False,
+    simplification_ratios: Optional[Dict[str, float]] = None,
 ) -> List[Tuple[Path, float, float, float, str]]:
     """Export all USDA tree assemblies in a forest directory to OBJ/MTL.
 
@@ -1306,6 +1337,7 @@ def export_forest_obj(
             decimate_ratio=decimate_ratio,
             stem_decimate_ratio=stem_decimate_ratio,
             helios_spectra_leaves=spectra,
+            simplification_ratios=simplification_ratios,
         )
 
         if obj_path:
