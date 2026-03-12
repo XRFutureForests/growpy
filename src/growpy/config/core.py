@@ -121,6 +121,7 @@ class GrowPyConfig:
     export_static: bool = False
     export_skip_pve_json: bool = False
     export_skip_validation: bool = False
+    export_radial_scale: bool = True
 
     # [unreal]
     unreal_import_to_unreal: bool = False
@@ -238,6 +239,8 @@ class GrowPyConfig:
             kwargs["export_skip_pve_json"] = export["skip_pve_json"]
         if "skip_validation" in export:
             kwargs["export_skip_validation"] = export["skip_validation"]
+        if "radial_scale" in export:
+            kwargs["export_radial_scale"] = export["radial_scale"]
 
         # [unreal]
         unreal = data.get("unreal", {})

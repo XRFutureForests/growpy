@@ -246,19 +246,23 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 del model, skeleton, bones_for_tree
                 continue
 
-            # Compute height and DBH for filename suffix
-            # Use yield table target DBH when available (Grove's pipe model inflates DBH)
+            # Compute height and DBH
             tree_height_m = 0.0
-            tree_dbh_m = 0.0
+            grove_dbh_m = 0.0
             if grove.trees and model_idx < len(grove.trees):
                 tree_height_m = calculate_tree_height(grove.trees[model_idx])
-                tree_dbh_m = calculate_dbh_at_height(grove.trees[model_idx])
+                grove_dbh_m = calculate_dbh_at_height(grove.trees[model_idx])
+
+            # Use yield table target DBH for filename when available
+            filename_dbh = grove_dbh_m
+            target_dbh_m = None
             if target_dbh_curve:
                 cycle_idx = min(grove.age - 1, len(target_dbh_curve) - 1)
                 if cycle_idx >= 0:
-                    tree_dbh_m = target_dbh_curve[cycle_idx]
+                    target_dbh_m = target_dbh_curve[cycle_idx]
+                    filename_dbh = target_dbh_m
             h_str = format_height_for_filename(tree_height_m)
-            d_str = format_dbh_for_filename(tree_dbh_m)
+            d_str = format_dbh_for_filename(filename_dbh)
             dims_suffix = f"{h_str}_{d_str}"
 
             # Use appropriate twig type based on mesh_type
@@ -279,11 +283,11 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                     species, config, prefer_skeletal=True, prefer_static=False
                 )
 
-            # Radial scaling disabled: Grove's pipe model produces DBH values
-            # 2-4x larger than yield tables, causing extreme scale factors (0.2-0.5)
-            # that warp the geometry beyond recognition. The yield table target DBH
-            # is used in filenames instead.
+            # Radial scaling: correct Grove's inflated trunk to yield table target
             tree_radial_scale = 1.0
+            if config.export_radial_scale and target_dbh_m and grove_dbh_m > 0.001:
+                tree_radial_scale = target_dbh_m / grove_dbh_m
+                tree_radial_scale = max(0.1, min(tree_radial_scale, 2.0))
 
             # Export as Nanite Assembly with specified mesh type
             # tree_id in prim name ensures unique Unreal assets
@@ -783,7 +787,9 @@ def generate_forest_stages(
                 )
                 height_str = format_height_for_filename(height)
                 # Use yield table target DBH when available
-                filename_dbh = _dbh if _dbh else 0.0
+                grove_dbh = _dbh if _dbh else 0.0
+                filename_dbh = grove_dbh
+                target_dbh_m = None
                 if species_name not in target_dbh_cache:
                     target_dbh_cache[species_name] = load_target_dbh_from_preset(
                         config.get_preset_path(species_name)
@@ -791,7 +797,8 @@ def generate_forest_stages(
                 if target_dbh_cache[species_name]:
                     cidx = min(cycle - 1, len(target_dbh_cache[species_name]) - 1)
                     if cidx >= 0:
-                        filename_dbh = target_dbh_cache[species_name][cidx]
+                        target_dbh_m = target_dbh_cache[species_name][cidx]
+                        filename_dbh = target_dbh_m
                 dbh_str = format_dbh_for_filename(filename_dbh)
                 dims_suffix = f"{height_str}_{dbh_str}"
 
@@ -814,8 +821,11 @@ def generate_forest_stages(
                 except Exception:
                     pass
 
-                # Radial scaling disabled (see non-cycle export path comment)
+                # Radial scaling: correct Grove's inflated trunk to yield table target
                 tree_radial_scale = 1.0
+                if config.export_radial_scale and target_dbh_m and grove_dbh > 0.001:
+                    tree_radial_scale = target_dbh_m / grove_dbh
+                    tree_radial_scale = max(0.1, min(tree_radial_scale, 2.0))
 
                 # Export as Nanite Assembly
                 # stems_file_suffix ensures each stage gets its own stems file

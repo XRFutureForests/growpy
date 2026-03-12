@@ -16,9 +16,9 @@ csv_file = "data/input/test.csv"
 # Output directory for generated trees (species subdirectories created automatically)
 output_dir = "data/output/forest"
 # Enable verbose output for PVE preset generation
-verbose = true
+verbose = false
 # Enable profiling to track execution time of each pipeline step
-profile = true
+profile = false
 
 [assets]
 # Path to The Grove 2.3 installation directory
@@ -47,15 +47,15 @@ smooth_iterations = 10
 smooth_factor = 0.25
 # Target edge as fraction of average edge (0.1-1.0, lower = denser)
 # 1.0 = no subdivision, 0.5 = 50% of avg (recommended), 0.1 = very fine
-boundary_edge_mm = 0.025
+boundary_edge_mm = 0.01
 # Interior decimation ratio for leaf meshes (0.0 = disabled, 0.3 = keep 30%)
 # Simplifies interior triangles while preserving alpha-trimmed silhouette edges
-interior_decimate_ratio = 0.3
+interior_decimate_ratio = 0.5
 
 [growth_models]
 # Maximum growth cycles to simulate (1-250)
 # Automatically stops early when growth plateaus
-cycles = 50
+cycles = 35
 # Random seeds to average for robust curves (1-10)
 # Use 3+ for production, 1 for quick tests
 seeds = 1
@@ -75,7 +75,7 @@ timeout = 900
 quality = "high"
 # Maximum growth cycles per tree (1-125)
 # Trees exceeding this are scaled down proportionally
-growth_cycle_limit = 50
+growth_cycle_limit = 35
 # Branch smoothing iterations (0-20, 0 = disabled)
 # Higher values = smoother, more organic branches
 smooth_iterations = 10
@@ -89,7 +89,7 @@ longevity_mode = true
 # Exports snapshots at every N cycles (e.g., 10 = cycles 10, 20, 30...)
 # Each snapshot includes height and DBH in the filename for easy asset selection
 # 0 = disabled (standard single height-based export)
-cycle_interval = 0
+cycle_interval = 4
 # Only export specific trees by fid (integer array)
 # Other trees still participate in growth simulation (light competition, shading)
 # but only the listed trees produce output files
@@ -103,6 +103,11 @@ skeletal = true
 # Export static mesh assemblies (geometry only, no skeleton)
 # When both skeletal and static are enabled, static is derived from skeletal
 static = false
+# Apply radial scaling to match yield table target DBH
+# Scales trunk/branch mesh perpendicular to bone axes at breast height (1.3m),
+# blending smoothly to 1.0 at the crown. Requires calibrated seed.json files.
+# false = export Grove geometry as-is (trunk will be thicker than yield table)
+radial_scale = true
 # Skip PVE preset JSON generation (saves ~3% export time)
 # PVE presets only needed for Unreal Procedural Vegetation Editor
 skip_pve_json = false

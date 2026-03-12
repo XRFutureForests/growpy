@@ -165,8 +165,11 @@ class SpeciesGrowthAnalyzer:
             with open(preset_file, "r") as f:
                 preset_data = json.load(f)
 
-            # Override drop_decay to prevent trees from dying off at high cycle counts
-            preset_data["drop_decay"] = 0.0
+            # Performance: disable twig placement (not needed for height/DBH curves)
+            # In Blender, growing without twigs selected is equivalent
+            preset_data["twig_density"] = 0.0
+            # Allow moderate branch shedding to reduce node count over time
+            preset_data["drop_decay"] = 0.1
 
             preset_json = json.dumps(preset_data)
             properties = gc.io.properties_from_json_string(preset_json)
