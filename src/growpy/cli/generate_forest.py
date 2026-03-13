@@ -73,11 +73,11 @@ def _generate_preview_image(
     skeleton,
     timer,
 ) -> None:
-    """Draw branch structure from skeleton polylines and save as PNG.
+    """Draw branch structure from skeleton polylines as 3-axis preview.
 
-    Uses radial projection (horizontal distance from trunk vs height) to show
-    full 3D crown spread regardless of viewing angle. Filters out the thinnest
-    twigs to reveal main branch architecture.
+    Renders front (X vs Z), side (Y vs Z), and top (X vs Y) orthogonal
+    projections with origin crosshairs to reveal offset and asymmetry.
+    Filters out the thinnest twigs to reveal main branch architecture.
     """
     if skeleton is None:
         return
@@ -115,51 +115,64 @@ def _generate_preview_image(
             all_seg_radii = np.array(all_seg_radii)
             radius_threshold = max(np.percentile(all_seg_radii, 25), 0.001)
 
-            # Compute trunk center (median X/Y at base) for radial projection
-            base_mask = points[:, 2] < (points[:, 2].min() + 0.5)
-            trunk_x = np.median(points[base_mask, 0]) if base_mask.any() else np.median(points[:, 0])
-            trunk_y = np.median(points[base_mask, 1]) if base_mask.any() else np.median(points[:, 1])
-
-            segments = []
-            widths = []
+            # Build filtered segments with 3D coordinates
+            filtered = []
             for idx0, idx1, r in seg_data:
                 if r < radius_threshold:
                     continue
-                p0, p1 = points[idx0], points[idx1]
-                # Radial projection: signed horizontal distance from trunk center
-                dx0, dy0 = p0[0] - trunk_x, p0[1] - trunk_y
-                dx1, dy1 = p1[0] - trunk_x, p1[1] - trunk_y
-                r0 = np.sqrt(dx0**2 + dy0**2)
-                r1 = np.sqrt(dx1**2 + dy1**2)
-                # Preserve left/right using dominant horizontal direction
-                angle0 = np.arctan2(dy0, dx0)
-                angle1 = np.arctan2(dy1, dx1)
-                r0 = r0 if abs(angle0) < np.pi / 2 else -r0
-                r1 = r1 if abs(angle1) < np.pi / 2 else -r1
+                filtered.append((points[idx0], points[idx1], r))
 
-                segments.append([(r0, p0[2]), (r1, p1[2])])
-                widths.append(max(r * 150, 0.4))
-
-            if not segments:
+            if not filtered:
                 return
 
-            fig, ax = plt.subplots(1, 1, figsize=(8, 8))
-            lc = LineCollection(
-                segments,
-                linewidths=widths,
-                colors="#3b2a1a",
-                alpha=0.85,
-            )
-            ax.add_collection(lc)
-            ax.set_aspect("equal")
-            ax.autoscale()
-            ax.set_xlabel("Distance from trunk (m)")
-            ax.set_ylabel("Height (m)")
             title = species_clean.replace("_", " ").title()
             height = points[:, 2].max() - points[:, 2].min()
-            ax.set_title(f"{title} ({height:.1f}m)")
-            ax.grid(True, alpha=0.2)
+            base_z = points[:, 2].min()
 
+            # 3 views: front (X,Z), side (Y,Z), top (X,Y)
+            views = [
+                ("Front (X vs Z)", 0, 2, "X (m)", "Z height (m)"),
+                ("Side (Y vs Z)", 1, 2, "Y (m)", "Z height (m)"),
+                ("Top (X vs Y)", 0, 1, "X (m)", "Y (m)"),
+            ]
+
+            fig, axes = plt.subplots(1, 3, figsize=(18, 7))
+            fig.suptitle(f"{title} ({height:.1f}m)", fontsize=14, fontweight="bold")
+
+            # Scale: convert diameter in meters to line width in points
+            # 7 inches * 72 pt/inch = 504 pt for full axis height
+            ax_points = 7 * 72
+            data_range = max(height, 0.1)
+            pts_per_meter = ax_points / data_range
+
+            for ax, (view_name, ax_h, ax_v, xlabel, ylabel) in zip(axes, views):
+                segs = []
+                ws = []
+                for p0, p1, r in filtered:
+                    segs.append([(p0[ax_h], p0[ax_v]), (p1[ax_h], p1[ax_v])])
+                    ws.append(r * 2 * pts_per_meter)
+
+                lc = LineCollection(
+                    segs, linewidths=ws, colors="#3b2a1a", alpha=0.85
+                )
+                ax.add_collection(lc)
+                ax.set_aspect("equal")
+                ax.autoscale()
+                # Origin crosshairs
+                ax.axvline(0, color="red", linewidth=0.5, alpha=0.4, linestyle="--")
+                ax.axhline(
+                    0 if ax_v != 2 else base_z,
+                    color="red",
+                    linewidth=0.5,
+                    alpha=0.4,
+                    linestyle="--",
+                )
+                ax.set_xlabel(xlabel)
+                ax.set_ylabel(ylabel)
+                ax.set_title(view_name)
+                ax.grid(True, alpha=0.2)
+
+            plt.tight_layout()
             suffix = f"_{dims_suffix}" if dims_suffix else ""
             png_path = tree_dir / f"{species_clean}{suffix}_preview.png"
             fig.savefig(png_path, dpi=150, bbox_inches="tight", facecolor="white")
