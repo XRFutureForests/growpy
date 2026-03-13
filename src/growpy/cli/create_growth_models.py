@@ -181,6 +181,10 @@ def _run_calibration_pass(
             _, target_heights = interpolate_yield_table(
                 yield_data.ages, yield_data.heights, max_cycles, plot_fpy
             )
+            _, target_dbhs = interpolate_yield_table(
+                yield_data.ages, yield_data.dbhs, max_cycles, plot_fpy,
+                initial_value=0.0,
+            )
 
             plot_calibration_comparison(
                 species_name=common_name,
@@ -192,6 +196,7 @@ def _run_calibration_pass(
                 table_title=yield_data.title,
                 output_path=plot_dir / f"{species_std}_comparison.png",
                 calibrated_heights=target_heights,
+                calibrated_dbhs=target_dbhs,
             )
             logger.info("  Plot saved to %s", plot_dir / f"{species_std}_comparison.png")
 

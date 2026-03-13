@@ -40,16 +40,16 @@ path = "data/assets/twigs"
 densify = true
 # Alpha threshold for silhouette trimming
 # 0.05-0.3 = minimal (conservative), 0.5 = moderate (recommended), 0.7 = aggressive
-alpha_trim = 0.75
+alpha_trim = 0.5
 # Enable boundary edge smoothing for natural silhouette curves
 smooth_boundary = true
 # Number of Laplacian smoothing passes (1-10)
-smooth_iterations = 10
+smooth_iterations = 20
 # Smoothing strength per iteration (0.0-1.0)
-smooth_factor = 0.25
+smooth_factor = 0.125
 # Target edge as fraction of average edge (0.1-1.0, lower = denser)
 # 1.0 = no subdivision, 0.5 = 50% of avg (recommended), 0.1 = very fine
-boundary_edge_mm = 0.01
+boundary_edge_mm = 0.005
 # Interior decimation ratio for leaf meshes (0.0 = disabled, 0.3 = keep 30%)
 # Simplifies interior triangles while preserving alpha-trimmed silhouette edges
 interior_decimate_ratio = 0.5
@@ -58,7 +58,7 @@ interior_decimate_ratio = 0.5
 [growth_models]
 # Maximum growth cycles to simulate (1-250)
 # Automatically stops early when growth plateaus
-cycles = 35
+cycles = 50
 # Random seeds to average for robust curves (1-10)
 # Use 3+ for production, 1 for quick tests
 seeds = 1
@@ -78,6 +78,18 @@ timeout = 900
 # after the initial simulation, then re-simulates with calibration applied.
 # No need to run calibrate_growth.py separately.
 enabled = true
+# Align grove height growth to yield table height curve.
+# Applies per-cycle grow_length multipliers from calibrated seed.json files during
+# simulation (step 4). Only affects overall growth speed, not branch shape.
+# When cycles exceed the calibration array length, the last value is held.
+# false = use original Grove grow_length values from seed.json (no height alignment)
+align_height = true
+# Align grove trunk DBH to yield table DBH curve.
+# Applies radial scaling at export to match target DBH from calibrated seed.json files.
+# Scales trunk mesh perpendicular to bone axes at breast height (1.3m), blending
+# smoothly to 1.0 at the crown. Only affects trunk thickness, not branch shape.
+# false = export Grove geometry as-is (trunk may be thicker/thinner than yield table)
+align_dbh = true
 # Directory for local yield table CSVs (checked before openyieldtables.org API).
 # Format: age,height,dbh (age in years, height in meters, dbh in centimeters)
 # File naming: <standardized_species_name>.csv (e.g., norway_spruce.csv)
@@ -100,7 +112,7 @@ plot = true
 quality = "high"
 # Maximum growth cycles per tree (1-125)
 # Trees exceeding this are scaled down proportionally
-growth_cycle_limit = 35
+growth_cycle_limit = 50
 # Branch smoothing iterations (0-20, 0 = disabled)
 # Higher values = smoother, more organic branches
 smooth_iterations = 10
@@ -179,17 +191,12 @@ skeletal = true
 # Export static mesh assemblies (geometry only, no skeleton)
 # When both skeletal and static are enabled, static is derived from skeletal
 static = false
-# Apply radial scaling to match yield table target DBH
-# Scales trunk/branch mesh perpendicular to bone axes at breast height (1.3m),
-# blending smoothly to 1.0 at the crown. Requires calibrated seed.json files.
-# false = export Grove geometry as-is (trunk will be thicker/thinner than yield table)
-radial_scale = true
 # Twig density multiplier. 1.0 = Grove placements only. Values > 1.0 add
 # synthetic twigs on non-twig faces, weighted by branch youth (younger branches
 # get more twigs). Values < 1.0 randomly thin existing placements (e.g. 0.5 =
 # keep half). Compensates for twig loss when using build_cutoff settings.
 # Range: 0.0 (no twigs) to 2.0+ (dense canopy)
-twig_density = 2.0
+twig_density = 1.5
 # Skip PVE preset JSON generation (saves ~3% export time)
 # PVE presets only needed for Unreal Procedural Vegetation Editor
 skip_pve_json = true

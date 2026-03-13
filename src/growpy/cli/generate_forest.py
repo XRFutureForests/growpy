@@ -555,7 +555,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
 
             # Radial scaling: correct Grove's inflated trunk to yield table target
             tree_radial_scale = 1.0
-            if config.export_radial_scale and target_dbh_m and grove_dbh_m > 0.001:
+            if config.calibration_align_dbh and target_dbh_m and grove_dbh_m > 0.001:
                 tree_radial_scale = target_dbh_m / grove_dbh_m
                 tree_radial_scale = max(0.5, min(tree_radial_scale, 2.0))
 
@@ -995,6 +995,7 @@ def generate_forest_stages(
             snapshot_cycles=snapshot_cycles,
             smooth_iterations=smooth_iterations,
             preset_overrides=preset_overrides,
+            use_species_curves=config.calibration_align_height,
             quality_params=quality_params,
         )
 
@@ -1002,9 +1003,11 @@ def generate_forest_stages(
         logger.error("No snapshots captured during simulation")
         return
 
-    # Clean stale output files from previous runs
+    # Clean stale species tree exports (preserve unreal_scripts etc.)
     if output_dir.exists():
-        shutil.rmtree(output_dir)
+        for d in output_dir.iterdir():
+            if d.is_dir() and d.name != "unreal_scripts":
+                shutil.rmtree(d)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Export each snapshot
@@ -1098,7 +1101,7 @@ def generate_forest_stages(
 
                 # Radial scaling: correct Grove's inflated trunk to yield table target
                 tree_radial_scale = 1.0
-                if config.export_radial_scale and target_dbh_m and grove_dbh > 0.001:
+                if config.calibration_align_dbh and target_dbh_m and grove_dbh > 0.001:
                     tree_radial_scale = target_dbh_m / grove_dbh
                     tree_radial_scale = max(0.5, min(tree_radial_scale, 2.0))
 
@@ -1290,6 +1293,7 @@ def generate_forest_exports(
                 max_cycles,
                 smooth_iterations=smooth_iterations,
                 preset_overrides=preset_overrides,
+                use_species_curves=config.calibration_align_height,
             )
     except Exception as e:
         logger.error("Error creating/simulating forest: %s", e)
@@ -2133,8 +2137,8 @@ Unreal Engine Integration:
 
         # Pipeline completion summary (always visible, even in quiet mode)
         total_time = timer.get_total_time() if timer.enabled else 0
-        tree_count = len(list(output_dir.glob("*/tree_*/*_assembly.usda")))
-        species_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name != "unreal_scripts"]
+        tree_count = len(list(output_dir.glob("*/tree_*/*_assembly.usda"))) if output_dir.exists() else 0
+        species_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name != "unreal_scripts"] if output_dir.exists() else []
         summary_parts = [
             f"{tree_count} assemblies",
             f"{len(species_dirs)} species",

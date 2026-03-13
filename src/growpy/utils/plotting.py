@@ -293,6 +293,7 @@ def plot_calibration_comparison(
     table_title: str,
     output_path: Optional[Path] = None,
     calibrated_heights: Optional[np.ndarray] = None,
+    calibrated_dbhs: Optional[np.ndarray] = None,
 ) -> None:
     """Plot Grove curves vs yield table curves side by side."""
     _init_plot_style()
@@ -333,6 +334,14 @@ def plot_calibration_comparison(
             dbh_cycles,
             [d * 100 for d in grove_dbhs],
             "b-", linewidth=2.5, label="Grove (cycles)",
+        )
+
+    if calibrated_dbhs is not None:
+        cal_dbh_cycles = list(range(1, len(calibrated_dbhs) + 1))
+        ax2.plot(
+            cal_dbh_cycles,
+            [d * 100 for d in calibrated_dbhs],
+            "g--", linewidth=2, label="Calibrated target",
         )
 
     ax2.plot(

@@ -121,7 +121,6 @@ class GrowPyConfig:
     export_static: bool = False
     export_skip_pve_json: bool = True
     export_skip_validation: bool = True
-    export_radial_scale: bool = True
     export_twig_density: float = 1.0
 
     # [unreal]
@@ -139,6 +138,8 @@ class GrowPyConfig:
 
     # [calibration]
     calibration_enabled: bool = True
+    calibration_align_height: bool = True
+    calibration_align_dbh: bool = True
     calibration_output_dir: Path = field(
         default_factory=lambda: Path("data/output/growth_comparison")
     )
@@ -240,8 +241,9 @@ class GrowPyConfig:
             kwargs["export_skip_pve_json"] = export["skip_pve_json"]
         if "skip_validation" in export:
             kwargs["export_skip_validation"] = export["skip_validation"]
+        # Backward compat: export.radial_scale -> calibration_align_dbh
         if "radial_scale" in export:
-            kwargs["export_radial_scale"] = export["radial_scale"]
+            kwargs["calibration_align_dbh"] = export["radial_scale"]
         if "twig_density" in export:
             kwargs["export_twig_density"] = export["twig_density"]
         if "export_trees" in export:
@@ -269,6 +271,10 @@ class GrowPyConfig:
         cal = data.get("calibration", {})
         if "enabled" in cal:
             kwargs["calibration_enabled"] = cal["enabled"]
+        if "align_height" in cal:
+            kwargs["calibration_align_height"] = cal["align_height"]
+        if "align_dbh" in cal:
+            kwargs["calibration_align_dbh"] = cal["align_dbh"]
         if "output_dir" in cal:
             kwargs["calibration_output_dir"] = Path(cal["output_dir"])
         if "plot" in cal:

@@ -769,9 +769,13 @@ def export_tree_as_nanite_assembly(
                         model, bones_info=bones_info if not use_static_mesh else None
                     )
                     total_twigs = sum(len(p) for p in twig_placements.values())
-                    if total_twigs > 0:
-                        pass
-                except Exception as e:
+                    logger.info(
+                        "Extracted %d twig placements: %s",
+                        total_twigs,
+                        {k: len(v) for k, v in twig_placements.items() if v},
+                    )
+                except Exception:
+                    logger.exception("Twig extraction failed")
                     twig_placements = None
 
             # Adjust twig count: density > 1.0 adds synthetic placements on
