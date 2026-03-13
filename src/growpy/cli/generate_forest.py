@@ -184,6 +184,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                             "bark": config.helios_simplify_bark,
                             "wood": config.helios_simplify_wood,
                             "leaf": config.helios_simplify_leaf,
+                            "fruit": config.helios_simplify_fruit,
                         }
 
                     obj_path = convert_tree_to_obj_direct(
@@ -1757,6 +1758,7 @@ Unreal Engine Integration:
                             "bark": config.helios_simplify_bark,
                             "wood": config.helios_simplify_wood,
                             "leaf": config.helios_simplify_leaf,
+                            "fruit": config.helios_simplify_fruit,
                         }
 
                     export_forest_obj(

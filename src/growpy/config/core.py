@@ -140,6 +140,7 @@ class GrowPyConfig:
     helios_simplify_bark: float = 1.0
     helios_simplify_wood: float = 1.0
     helios_simplify_leaf: float = 1.0
+    helios_simplify_fruit: float = 1.0
 
     @classmethod
     def from_toml(cls, toml_path: Path, set_as_global: bool = True) -> "GrowPyConfig":
@@ -275,6 +276,8 @@ class GrowPyConfig:
             kwargs["helios_simplify_wood"] = simplification["wood"]
         if "leaf" in simplification:
             kwargs["helios_simplify_leaf"] = simplification["leaf"]
+        if "fruit" in simplification:
+            kwargs["helios_simplify_fruit"] = simplification["fruit"]
 
         instance = cls(**kwargs)
         if set_as_global:
