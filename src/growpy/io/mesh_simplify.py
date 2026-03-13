@@ -6,7 +6,8 @@ twigs) get reduced while leaf materials preserve shape for LAI accuracy.
 
 Material classification uses the same WOOD_KEYWORDS as the MTL writer:
 material names containing "twig", "bark", "branch", "wood", or "stem"
-are classified as wood. Everything else is treated as leaf geometry.
+are classified as wood. Names containing "fruit" are classified as fruit.
+Everything else is treated as leaf geometry.
 """
 
 import time
@@ -15,20 +16,24 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 WOOD_KEYWORDS = ("twig", "bark", "branch", "wood", "stem")
+FRUIT_KEYWORDS = ("fruit",)
 
 
 def classify_material(material_name: str) -> str:
-    """Classify a material name as 'bark', 'wood', or 'leaf'.
+    """Classify a material name as 'bark', 'wood', 'fruit', or 'leaf'.
 
     'bark' is the literal trunk/branch material.
     'wood' covers twig wood sub-materials.
-    'leaf' is everything else (leaves, fruits, etc.).
+    'fruit' covers fruit sub-materials (e.g. EuropeanOakFruits).
+    'leaf' is everything else (leaves, etc.).
     """
     if material_name == "bark":
         return "bark"
     lower = material_name.lower()
     if any(kw in lower for kw in WOOD_KEYWORDS):
         return "wood"
+    if any(kw in lower for kw in FRUIT_KEYWORDS):
+        return "fruit"
     return "leaf"
 
 
@@ -76,7 +81,7 @@ def simplify_twig_meshes(
         per_proto_uvs: {proto_idx: uvs[K, 2]}
         per_proto_face_mats: {proto_idx: face_mat_indices[M]}
         proto_materials: {proto_idx: (mat_name, diffuse_path, sidecar_mat_names)}
-        simplification_ratios: {'bark': r, 'wood': r, 'leaf': r}
+        simplification_ratios: {'bark': r, 'wood': r, 'leaf': r, 'fruit': r}
 
     Returns:
         Tuple of (new_twig_verts, new_per_proto_faces, new_per_proto_uvs, new_per_proto_face_mats)
@@ -86,9 +91,10 @@ def simplify_twig_meshes(
 
     wood_ratio = simplification_ratios.get("wood", 1.0)
     leaf_ratio = simplification_ratios.get("leaf", 1.0)
+    fruit_ratio = simplification_ratios.get("fruit", 1.0)
 
     # If nothing to simplify, return as-is
-    if wood_ratio >= 1.0 and leaf_ratio >= 1.0:
+    if wood_ratio >= 1.0 and leaf_ratio >= 1.0 and fruit_ratio >= 1.0:
         return twig_verts, per_proto_faces, per_proto_uvs, per_proto_face_mats
 
     new_verts_list = []
@@ -107,10 +113,10 @@ def simplify_twig_meshes(
         _, _, sidecar_mat_names = proto_materials.get(proto_idx, ("", None, None))
 
         if face_mats is not None and sidecar_mat_names:
-            # Split faces by material classification (leaf vs wood)
+            # Split faces by material classification (leaf vs wood vs fruit)
             result_verts, result_faces, result_face_mats = _simplify_proto_by_material(
                 twig_verts, faces, face_mats, sidecar_mat_names,
-                wood_ratio, leaf_ratio, vert_offset,
+                wood_ratio, leaf_ratio, fruit_ratio, vert_offset,
             )
         else:
             # No sub-material info: apply leaf ratio (preserve by default)
@@ -141,9 +147,10 @@ def _simplify_proto_by_material(
     sidecar_mat_names: List[str],
     wood_ratio: float,
     leaf_ratio: float,
+    fruit_ratio: float,
     global_offset: int,
 ) -> Tuple[np.ndarray, Optional[np.ndarray], np.ndarray]:
-    """Simplify a single prototype's faces split by wood/leaf material.
+    """Simplify a single prototype's faces split by wood/leaf/fruit material.
 
     Returns:
         (combined_verts, combined_faces_with_offset, combined_face_mats)
@@ -157,7 +164,12 @@ def _simplify_proto_by_material(
     for mat_id in unique_mat_ids:
         blend_name = sidecar_mat_names[mat_id] if mat_id < len(sidecar_mat_names) else ""
         mat_class = classify_material(blend_name)
-        ratio = wood_ratio if mat_class in ("bark", "wood") else leaf_ratio
+        if mat_class in ("bark", "wood"):
+            ratio = wood_ratio
+        elif mat_class == "fruit":
+            ratio = fruit_ratio
+        else:
+            ratio = leaf_ratio
 
         mask = face_mats == mat_id
         sub_faces = faces[mask]
@@ -285,7 +297,7 @@ def simplify_tree_mesh(
         trunk_verts, trunk_faces, trunk_uvs: Trunk/bark geometry
         twig_verts, per_proto_faces, per_proto_uvs, per_proto_face_mats: Twig geometry
         proto_materials: Material metadata per prototype
-        simplification_ratios: {'bark': 0.3, 'wood': 0.3, 'leaf': 1.0}
+        simplification_ratios: {'bark': 0.3, 'wood': 0.3, 'leaf': 1.0, 'fruit': 0.3}
 
     Returns:
         Simplified versions of all input arrays.
@@ -295,6 +307,7 @@ def simplify_tree_mesh(
         bark_ratio < 1.0
         or simplification_ratios.get("wood", 1.0) < 1.0
         or simplification_ratios.get("leaf", 1.0) < 1.0
+        or simplification_ratios.get("fruit", 1.0) < 1.0
     )
     if not has_work:
         return (
