@@ -10,6 +10,7 @@ import bpy
 if hasattr(bpy.utils, "expose_bundled_modules"):
     bpy.utils.expose_bundled_modules()
 
+import shutil
 import sys
 from itertools import groupby
 from pathlib import Path
@@ -180,6 +181,159 @@ def _generate_preview_image(
             logger.info("  Preview: %s", png_path.name)
     except Exception as e:
         logger.debug("Preview generation failed: %s", e)
+
+
+def _generate_export_control_image(
+    tree_dir: Path,
+    species_clean: str,
+    dims_suffix: str,
+    timer,
+) -> None:
+    """Render control image from exported USDA stems mesh and skeleton.
+
+    Reads back the actual exported files to verify what Unreal will import.
+    Shows mesh edges (green) and skeleton joints (red) in 3 orthogonal views.
+    """
+    try:
+        import matplotlib.pyplot as plt
+        import numpy as np
+        from matplotlib.collections import LineCollection
+
+        with timer.track("generate_export_control"):
+            suffix = f"_{dims_suffix}" if dims_suffix else ""
+            stems_path = tree_dir / f"{species_clean}{suffix}_stems_skeletal.usda"
+            if not stems_path.exists():
+                stems_path = tree_dir / f"{species_clean}{suffix}_stems_static.usda"
+            if not stems_path.exists():
+                return
+
+            content = stems_path.read_text(encoding="utf-8")
+
+            # Parse mesh points
+            import re
+
+            match = re.search(r"point3f\[\] points\s*=\s*\[", content)
+            if not match:
+                return
+            start = match.end()
+            depth, pos = 1, start
+            while depth > 0 and pos < len(content):
+                if content[pos] == "[":
+                    depth += 1
+                elif content[pos] == "]":
+                    depth -= 1
+                pos += 1
+            coords = re.findall(r"\(\s*([^)]+)\)", content[start : pos - 1])
+            if not coords:
+                return
+            mesh_points = np.array(
+                [[float(v.strip()) for v in c.split(",")[:3]] for c in coords]
+            )
+
+            # Parse face indices for edge rendering
+            face_match = re.search(
+                r"int\[\] faceVertexIndices\s*=\s*\[([^\]]+)\]", content
+            )
+            edges = set()
+            if face_match:
+                indices = [int(x.strip()) for x in face_match.group(1).split(",")]
+                for i in range(0, len(indices) - 2, 3):
+                    for a, b in [(0, 1), (1, 2), (2, 0)]:
+                        edges.add(tuple(sorted([indices[i + a], indices[i + b]])))
+
+            # Parse skeleton joint positions from bindTransforms
+            skel_points = []
+            bt_match = re.search(
+                r"matrix4d\[\] bindTransforms\s*=\s*\[", content
+            )
+            if bt_match:
+                bt_start = bt_match.end()
+                bt_depth, bt_pos = 1, bt_start
+                while bt_depth > 0 and bt_pos < len(content):
+                    if content[bt_pos] == "[":
+                        bt_depth += 1
+                    elif content[bt_pos] == "]":
+                        bt_depth -= 1
+                    bt_pos += 1
+                matrices = re.findall(
+                    r"\(\s*\([^)]*\)[^)]*\([^)]*\)[^)]*\([^)]*\)[^)]*\(([^)]*)\)\s*\)",
+                    content[bt_start : bt_pos - 1],
+                )
+                for m in matrices:
+                    vals = [float(v.strip()) for v in m.split(",")]
+                    if len(vals) >= 3:
+                        skel_points.append(vals[:3])
+            skel_points = np.array(skel_points) if skel_points else np.empty((0, 3))
+
+            title = species_clean.replace("_", " ").title()
+            z_vals = mesh_points[:, 2]
+            height = z_vals.max() - z_vals.min()
+
+            views = [
+                ("Front (X vs Z)", 0, 2, "X (m)", "Z height (m)"),
+                ("Side (Y vs Z)", 1, 2, "Y (m)", "Z height (m)"),
+                ("Top (X vs Y)", 0, 1, "X (m)", "Y (m)"),
+            ]
+
+            fig, axes = plt.subplots(1, 3, figsize=(18, 7))
+            fig.suptitle(
+                f"{title} Export Control ({height:.1f}m) -- "
+                f"{len(mesh_points):,} verts, {len(skel_points)} joints",
+                fontsize=12,
+                fontweight="bold",
+            )
+
+            # Subsample edges for performance
+            edge_list = list(edges)
+            max_edges = 50000
+            if len(edge_list) > max_edges:
+                rng = np.random.default_rng(42)
+                idx = rng.choice(len(edge_list), max_edges, replace=False)
+                edge_list = [edge_list[i] for i in idx]
+
+            for ax, (view_name, ax_h, ax_v, xlabel, ylabel) in zip(axes, views):
+                # Mesh edges
+                segs = []
+                for e0, e1 in edge_list:
+                    if e0 < len(mesh_points) and e1 < len(mesh_points):
+                        p0, p1 = mesh_points[e0], mesh_points[e1]
+                        segs.append([(p0[ax_h], p0[ax_v]), (p1[ax_h], p1[ax_v])])
+                if segs:
+                    lc = LineCollection(
+                        segs, linewidths=0.15, colors="#2d5016", alpha=0.4
+                    )
+                    ax.add_collection(lc)
+
+                # Skeleton joints
+                if len(skel_points) > 0:
+                    ax.scatter(
+                        skel_points[:, ax_h],
+                        skel_points[:, ax_v],
+                        c="red",
+                        s=4,
+                        zorder=5,
+                        alpha=0.7,
+                        label=f"{len(skel_points)} joints",
+                    )
+
+                ax.set_aspect("equal")
+                ax.autoscale()
+                ax.axvline(0, color="blue", linewidth=0.5, alpha=0.4, linestyle="--")
+                ax.axhline(0, color="blue", linewidth=0.5, alpha=0.4, linestyle="--")
+                ax.set_xlabel(xlabel)
+                ax.set_ylabel(ylabel)
+                ax.set_title(view_name)
+                ax.grid(True, alpha=0.2)
+                if len(skel_points) > 0:
+                    ax.legend(fontsize=8, loc="upper right")
+
+            plt.tight_layout()
+            png_path = tree_dir / f"{species_clean}{suffix}_export_control.png"
+            fig.savefig(png_path, dpi=150, bbox_inches="tight", facecolor="white")
+            plt.close(fig)
+            logger.info("  Export control: %s", png_path.name)
+    except Exception as e:
+        logger.debug("Export control image failed: %s", e)
 
 
 def _derive_static_from_skeletal(
@@ -403,7 +557,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             tree_radial_scale = 1.0
             if config.export_radial_scale and target_dbh_m and grove_dbh_m > 0.001:
                 tree_radial_scale = target_dbh_m / grove_dbh_m
-                tree_radial_scale = max(0.1, min(tree_radial_scale, 2.0))
+                tree_radial_scale = max(0.5, min(tree_radial_scale, 2.0))
 
             # Export as Nanite Assembly with specified mesh type
             # tree_id in prim name ensures unique Unreal assets
@@ -512,6 +666,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
 
                 # Generate 2D preview image for quick visual assessment
                 _generate_preview_image(tree_dir, species_clean, dims_suffix, skeleton, timer)
+                _generate_export_control_image(tree_dir, species_clean, dims_suffix, timer)
 
             # MEMORY OPTIMIZATION: Clear this tree's data immediately after export
             # This releases large mesh/skeleton data before processing next tree
@@ -771,18 +926,16 @@ def generate_forest_stages(
             )
             return
 
-        # Apply growth_cycle_limit scaling (same as height-based mode)
-        # This scales all tree cycles proportionally to fit within the limit
+        # Cap each tree's cycles individually at the limit
+        # (Proportional scaling would compress faster-growing species too much)
         if growth_cycle_limit is not None:
-            max_growth_cycles = forest_data["growth_cycles"].max()
-            if max_growth_cycles > growth_cycle_limit:
-                scale_factor = growth_cycle_limit / max_growth_cycles
-                forest_data["growth_cycles"] = (
-                    forest_data["growth_cycles"] * scale_factor
-                ).astype(int)
-                forest_data["growth_cycles"] = forest_data["growth_cycles"].clip(
-                    lower=1
-                )
+            forest_data["growth_cycles"] = forest_data["growth_cycles"].clip(
+                upper=growth_cycle_limit, lower=1
+            )
+
+        # Recalculate delay from (possibly capped) growth cycles
+        max_after_cap = forest_data["growth_cycles"].max()
+        forest_data["delay"] = max_after_cap - forest_data["growth_cycles"]
 
     # Use CLI interval, calculate max from height-derived cycles (after scaling)
     effective_interval = cycle_interval if cycle_interval is not None else 10
@@ -849,6 +1002,9 @@ def generate_forest_stages(
         logger.error("No snapshots captured during simulation")
         return
 
+    # Clean stale output files from previous runs
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Export each snapshot
@@ -944,7 +1100,7 @@ def generate_forest_stages(
                 tree_radial_scale = 1.0
                 if config.export_radial_scale and target_dbh_m and grove_dbh > 0.001:
                     tree_radial_scale = target_dbh_m / grove_dbh
-                    tree_radial_scale = max(0.1, min(tree_radial_scale, 2.0))
+                    tree_radial_scale = max(0.5, min(tree_radial_scale, 2.0))
 
                 # Export as Nanite Assembly
                 # stems_file_suffix ensures each stage gets its own stems file
@@ -979,6 +1135,7 @@ def generate_forest_stages(
 
                     # Generate 2D preview image for quick visual assessment
                     _generate_preview_image(tree_dir, species_clean, dims_suffix, skeleton, timer)
+                    _generate_export_control_image(tree_dir, species_clean, dims_suffix, timer)
 
                     # Derive static from skeletal when both enabled
                     if use_skeletal and config.export_static:

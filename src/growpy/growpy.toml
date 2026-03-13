@@ -100,7 +100,7 @@ plot = true
 quality = "high"
 # Maximum growth cycles per tree (1-125)
 # Trees exceeding this are scaled down proportionally
-growth_cycle_limit = 50
+growth_cycle_limit = 35
 # Branch smoothing iterations (0-20, 0 = disabled)
 # Higher values = smoother, more organic branches
 smooth_iterations = 10
@@ -115,7 +115,7 @@ longevity_mode = false
 # Exports snapshots at every N cycles (e.g., 10 = cycles 10, 20, 30...)
 # Each snapshot includes height and DBH in the filename for easy asset selection
 # 0 = disabled (standard single height-based export)
-cycle_interval = 0
+cycle_interval = 10
 
 # Quality Presets (single source of truth)
 # Define any number of named presets below as [quality.<name>] sections.
@@ -140,7 +140,7 @@ cycle_interval = 0
 resolution = 12
 resolution_reduce = 0.5
 build_cutoff_age = 0
-build_cutoff_thickness = 0.05
+build_cutoff_thickness = 0.005
 build_blend = true
 build_end_cap = true
 skeleton_length = 0.5
@@ -183,13 +183,13 @@ static = false
 # Scales trunk/branch mesh perpendicular to bone axes at breast height (1.3m),
 # blending smoothly to 1.0 at the crown. Requires calibrated seed.json files.
 # false = export Grove geometry as-is (trunk will be thicker/thinner than yield table)
-radial_scale = false
+radial_scale = true
 # Twig density multiplier. 1.0 = Grove placements only. Values > 1.0 add
 # synthetic twigs on non-twig faces, weighted by branch youth (younger branches
 # get more twigs). Values < 1.0 randomly thin existing placements (e.g. 0.5 =
 # keep half). Compensates for twig loss when using build_cutoff settings.
 # Range: 0.0 (no twigs) to 2.0+ (dense canopy)
-twig_density = 1.0
+twig_density = 2.0
 # Skip PVE preset JSON generation (saves ~3% export time)
 # PVE presets only needed for Unreal Procedural Vegetation Editor
 skip_pve_json = true

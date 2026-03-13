@@ -253,6 +253,20 @@ def build_tree_mesh(
                     int(bone[7]) if len(bone) >= 8 else trunk_branch_id
                 )
 
+            # Normalize bone_starts to local space.
+            # bones_info positions may be in grove world coordinates (e.g.
+            # tree placed at X=10) while model.points are always local.
+            # Find the trunk base bone (lowest height) and subtract its
+            # horizontal position so bones match the model's local frame.
+            min_z_idx = min(range(len(bone_starts)), key=lambda i: bone_starts[i][2])
+            origin_x = bone_starts[min_z_idx][0]
+            origin_y = bone_starts[min_z_idx][1]
+            origin_z = bone_starts[min_z_idx][2]
+            bone_starts = [
+                (bx - origin_x, by - origin_y, bz - origin_z)
+                for bx, by, bz in bone_starts
+            ]
+
             # Compute branch order per bone via parent traversal
             # Order 0 = trunk, increments each time branch_id changes along
             # the parent chain

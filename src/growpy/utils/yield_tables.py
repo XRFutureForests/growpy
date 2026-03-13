@@ -350,16 +350,17 @@ def compute_grow_length_curve(
     target_increments = np.diff(target_heights[:n_cycles])
     grove_increments = np.where(grove_increments < 0.001, 0.001, grove_increments)
 
-    scale_factors = np.clip(target_increments / grove_increments, 0.5, 1.8)
+    scale_factors = np.clip(target_increments / grove_increments, 0.5, 1.5)
 
     if len(scale_factors) > 5:
         scale_factors = uniform_filter1d(scale_factors, size=3)
 
     grow_lengths = base_grow_length * scale_factors
-    max_gl = min(base_grow_length * 2.0, 0.65)
-    # Floor at base_grow_length: never reduce below the seed's own value,
-    # which was designed to sustain growth with its original drop values.
-    grow_lengths = np.clip(grow_lengths, base_grow_length, max_gl)
+    max_gl = min(base_grow_length * 1.5, 0.65)
+    # Allow modest reduction below base to slow height growth when needed.
+    # This prevents the tree from growing taller than yield table targets,
+    # which combined with constrained thicken_tips would distort shape.
+    grow_lengths = np.clip(grow_lengths, base_grow_length * 0.7, max_gl)
     grow_lengths = np.insert(grow_lengths, 0, grow_lengths[0])
 
     return grow_lengths.tolist()
@@ -381,17 +382,18 @@ def compute_thicken_tips_curve(
         np.abs(grove_increments) < 0.0001, 0.0001, grove_increments
     )
 
-    scale_factors = np.clip(target_increments / grove_increments, 0.3, 3.0)
+    scale_factors = np.clip(target_increments / grove_increments, 0.7, 1.5)
 
     if len(scale_factors) > 5:
         scale_factors = uniform_filter1d(scale_factors, size=5)
 
     thicken_tips_values = base_thicken_tips * scale_factors
-    # Keep thicken_tips within a conservative range around the base value.
-    # Large deviations disrupt tree growth balance (especially without longevity).
+    # Keep thicken_tips close to the base value to preserve tree shape.
+    # thicken_tips controls ALL radial growth (trunk + branches), so large
+    # deviations distort the entire crown, not just trunk diameter.
     # Remaining DBH correction is handled by radial scaling at export.
-    ceiling = min(base_thicken_tips * 3.0, 0.03)
-    thicken_tips_values = np.clip(thicken_tips_values, base_thicken_tips * 0.3, ceiling)
+    ceiling = min(base_thicken_tips * 1.5, 0.03)
+    thicken_tips_values = np.clip(thicken_tips_values, base_thicken_tips * 0.7, ceiling)
     thicken_tips_values = np.insert(thicken_tips_values, 0, thicken_tips_values[0])
 
     return thicken_tips_values.tolist()
