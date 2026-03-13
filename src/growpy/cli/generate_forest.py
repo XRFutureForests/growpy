@@ -395,10 +395,11 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     the old approach of recreating and re-simulating each tree individually.
 
     Args:
-        args: Tuple of (fids, grove_instance, species_name, output_dir, quality_params, mesh_type, verbose, timer)
+        args: Tuple of (fids, grove_instance, species_name, output_dir, quality_params, mesh_type, verbose, timer, twig_densities)
               fids is a list of original CSV fid values for each tree in the grove
               verbose is boolean for verbose output
               timer is optional ProfileTimer instance
+              twig_densities is a dict mapping fid -> twig_density float (or empty dict)
 
     Returns:
         List of exported file paths
@@ -417,7 +418,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     from growpy.io.tree_export import get_twig_usd_map_for_species
     from growpy.utils.profiling import ProfileTimer
 
-    (fids, grove, species, output_dir, quality_params, mesh_type, verbose, timer) = args
+    (fids, grove, species, output_dir, quality_params, mesh_type, verbose, timer, twig_densities) = args
 
     # Use provided timer or create disabled one
     if timer is None:
@@ -580,6 +581,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                     timer=timer,
                     stems_file_suffix=dims_suffix,
                     radial_scale=tree_radial_scale,
+                    twig_density=twig_densities.get(tree_fid),
                 )
 
             if export_success:
@@ -736,6 +738,14 @@ def export_individual_trees(
     # Trees are named using their original CSV fid values
     grove_tasks = []
 
+    # Build per-tree twig_density map from input CSV (if column exists)
+    twig_density_map: Dict[int, float] = {}
+    if "twig_density" in forest_data.columns:
+        for _, row in forest_data.iterrows():
+            val = row["twig_density"]
+            if pd.notna(val):
+                twig_density_map[int(row["fid"])] = float(val)
+
     for grove, species_name, tree_count, fids in forest:
         if cfg.export_skeletal:
             # Skeletal task; static derivation happens inline when both enabled
@@ -749,6 +759,7 @@ def export_individual_trees(
                     "skeletal",
                     verbose,
                     timer,
+                    twig_density_map,
                 )
             )
         elif cfg.export_static:
@@ -763,12 +774,13 @@ def export_individual_trees(
                     "static",
                     verbose,
                     timer,
+                    twig_density_map,
                 )
             )
 
     # Always use sequential processing (bpy/USD not compatible with multiprocessing)
     for task_idx, task in enumerate(tqdm(grove_tasks, desc="Exporting groves")):
-        _fids, _grove, _species, _outdir, _qp, _mesh_type, _verbose, _timer = task
+        _fids, _grove, _species, _outdir, _qp, _mesh_type, _verbose, _timer, _td = task
         species_short = _species.replace(" ", "_").lower()
         track_name = f"grove_export ({species_short} {_mesh_type})"
         with timer.track(track_name):
@@ -1032,9 +1044,15 @@ def generate_forest_stages(
                     tree_row = species_rows.iloc[tree_idx]
                     fid = int(tree_row["fid"])
                     tree_max_cycles = int(tree_row["growth_cycles"])
+                    tree_twig_density = (
+                        float(tree_row["twig_density"])
+                        if "twig_density" in tree_row.index and pd.notna(tree_row.get("twig_density"))
+                        else None
+                    )
                 else:
                     fid = tree_idx + 1
                     tree_max_cycles = global_max_cycles
+                    tree_twig_density = None
 
                 if model is None:
                     logger.warning(
@@ -1126,6 +1144,7 @@ def generate_forest_stages(
                         timer=timer,
                         stems_file_suffix=dims_suffix,
                         radial_scale=tree_radial_scale,
+                        twig_density=tree_twig_density,
                     )
                 except ValueError as e:
                     if _is_bone_limit_error(e):
