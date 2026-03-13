@@ -15,7 +15,7 @@ random_seed = 42
 # Multi-stage mode columns: x, y, species, cycle_interval, max_cycles
 csv_file = "data/input/test.csv"
 # Output directory for generated trees (species subdirectories created automatically)
-output_dir = "data/output/forest_test_dens100_10m"
+output_dir = "data/output/forest_test_dens100_3m_new_fruits"
 # Enable verbose output for PVE preset generation
 verbose = true
 # Enable profiling to track execution time of each pipeline step
@@ -148,7 +148,7 @@ wood = 0.3
 # Leaf simplification ratio (1.0 = keep all faces, critical for LAI accuracy)
 leaf = 1.0
 # Fruit simplification ratio (0.0-1.0, e.g. EuropeanOakFruits)
-fruit = 0.3
+fruit = 0.2
 
 # Quality Presets (single source of truth)
 # Define any number of named presets below as [quality.<name>] sections.
