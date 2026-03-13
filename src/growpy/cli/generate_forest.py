@@ -183,7 +183,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         simplification_ratios = {
                             "bark": config.helios_simplify_bark,
                             "wood": config.helios_simplify_wood,
-                            "leaf": config.helios_simplify_leaf,
+                            "leaf": config.get_leaf_ratio(species_clean),
                             "fruit": config.helios_simplify_fruit,
                         }
 
@@ -1753,6 +1753,7 @@ Unreal Engine Integration:
 
                 with timer.track("obj_export"):
                     simplification_ratios = None
+                    leaf_per_species = None
                     if config.helios_simplify:
                         simplification_ratios = {
                             "bark": config.helios_simplify_bark,
@@ -1760,6 +1761,8 @@ Unreal Engine Integration:
                             "leaf": config.helios_simplify_leaf,
                             "fruit": config.helios_simplify_fruit,
                         }
+                        if config.helios_simplify_leaf_per_species:
+                            leaf_per_species = config.helios_simplify_leaf_per_species
 
                     export_forest_obj(
                         output_dir=output_dir,
@@ -1769,6 +1772,7 @@ Unreal Engine Integration:
                         generate_scene_xml=config.helios_helios_scene,
                         generate_combined_obj=config.helios_combined_obj,
                         simplification_ratios=simplification_ratios,
+                        leaf_per_species=leaf_per_species,
                     )
 
         # Print profiling report if enabled

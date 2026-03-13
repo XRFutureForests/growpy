@@ -15,7 +15,7 @@ random_seed = 42
 # Multi-stage mode columns: x, y, species, cycle_interval, max_cycles
 csv_file = "data/input/test.csv"
 # Output directory for generated trees (species subdirectories created automatically)
-output_dir = "data/output/forest_test_dens100_3m_new_fruits"
+output_dir = "data/output/forest_test_dens100_3m_leaf_flexible"
 # Enable verbose output for PVE preset generation
 verbose = true
 # Enable profiling to track execution time of each pipeline step
@@ -145,10 +145,23 @@ enabled = true
 bark = 0.3
 # Twig wood simplification ratio (0.0-1.0, 0.3 = keep 30% of faces)
 wood = 0.3
-# Leaf simplification ratio (1.0 = keep all faces, critical for LAI accuracy)
-leaf = 1.0
+# Leaf simplification ratio - global default (1.0 = keep all, critical for LAI accuracy)
+# Override per species in [helios.simplification.leaf_per_species] below.
+leaf = 0.5
 # Fruit simplification ratio (0.0-1.0, e.g. EuropeanOakFruits)
 fruit = 0.2
+
+# Per-species leaf simplification overrides.
+# Keys are species_clean names (lowercase, underscores). Species not listed
+# here fall back to the global "leaf" value above.
+# Ratios chosen to keep LAI deviation < 1% (validated against compute_voxelized_leaf_areas.py).
+[helios.simplification.leaf_per_species]
+selected_european_beech = 0.3    # -0.4% LAI, -28.6% OBJ
+selected_european_oak = 0.5      # -0.3% LAI, -18.5% OBJ
+selected_paper_birch = 0.3       # -0.1% LAI, -62.8% OBJ
+selected_scots_pine = 0.3        # -0.1% LAI, -62.0% OBJ
+selected_silver_fir = 0.5        # -0.2% LAI, -39.3% OBJ
+selected_sycamore_maple = 1.0    # -1.7% LAI (borderline), -5.9% OBJ
 
 # Quality Presets (single source of truth)
 # Define any number of named presets below as [quality.<name>] sections.
@@ -237,10 +250,10 @@ skeleton_connected = true
 
 [quality.helios]
 resolution = 8
-resolution_reduce = 0.9
+resolution_reduce = 0.85
 texture_repeat = 2
 build_cutoff_age = 0
-build_cutoff_thickness = 0
+build_cutoff_thickness = 0.00
 build_blend = false
 build_end_cap = false
 skeleton_length = 4.0
