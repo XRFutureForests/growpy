@@ -1264,6 +1264,7 @@ def export_forest_obj(
     generate_scene_xml: bool = False,
     generate_combined_obj: bool = False,
     simplification_ratios: Optional[Dict[str, float]] = None,
+    leaf_per_species: Optional[Dict[str, float]] = None,
 ) -> List[Tuple[Path, float, float, float, str]]:
     """Export all USDA tree assemblies in a forest directory to OBJ/MTL.
 
@@ -1331,13 +1332,18 @@ def export_forest_obj(
         is_conifer = any(kw in species_dir.lower() for kw in CONIFER_KEYWORDS)
         spectra = "conifer" if is_conifer else "deciduous"
 
+        # Resolve per-species leaf ratio if configured
+        tree_ratios = simplification_ratios
+        if tree_ratios and leaf_per_species and species_dir in leaf_per_species:
+            tree_ratios = {**tree_ratios, "leaf": leaf_per_species[species_dir]}
+
         obj_path = convert_tree_to_obj(
             assembly_usda_path=assembly_path,
             species_name=species_name,
             decimate_ratio=decimate_ratio,
             stem_decimate_ratio=stem_decimate_ratio,
             helios_spectra_leaves=spectra,
-            simplification_ratios=simplification_ratios,
+            simplification_ratios=tree_ratios,
         )
 
         if obj_path:
