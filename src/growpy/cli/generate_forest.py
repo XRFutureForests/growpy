@@ -1390,9 +1390,9 @@ def generate_unreal_import_script(
     script_path = script_dir / "import_forest.py"
 
     # Find all tree assemblies in species/tree_{id}/ folders
-    # Structure: species/tree_0001/{species}_{dims}_assembly.usda
-    nanite_files = list(output_dir.glob("*/tree_*/*_assembly.usda")) + list(
-        output_dir.glob("*/tree_*/*_assembly.usd")
+    # Structure: species/tree_0001/{species}_{dims}_assembly_skeletal.usda
+    nanite_files = list(output_dir.glob("*/tree_*/*_assembly*.usda")) + list(
+        output_dir.glob("*/tree_*/*_assembly*.usd")
     )
 
     # Group trees by species (parent of tree_XXXX folder)
@@ -2137,7 +2137,7 @@ Unreal Engine Integration:
 
         # Pipeline completion summary (always visible, even in quiet mode)
         total_time = timer.get_total_time() if timer.enabled else 0
-        tree_count = len(list(output_dir.glob("*/tree_*/*_assembly.usda"))) if output_dir.exists() else 0
+        tree_count = len(list(output_dir.glob("*/tree_*/*_assembly*.usda"))) if output_dir.exists() else 0
         species_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name != "unreal_scripts"] if output_dir.exists() else []
         summary_parts = [
             f"{tree_count} assemblies",

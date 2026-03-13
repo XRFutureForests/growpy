@@ -191,12 +191,11 @@ skeletal = true
 # Export static mesh assemblies (geometry only, no skeleton)
 # When both skeletal and static are enabled, static is derived from skeletal
 static = false
-# Twig density multiplier. 1.0 = Grove placements only. Values > 1.0 add
-# synthetic twigs on non-twig faces, weighted by branch youth (younger branches
-# get more twigs). Values < 1.0 randomly thin existing placements (e.g. 0.5 =
-# keep half). Compensates for twig loss when using build_cutoff settings.
+# Twig density multiplier. Values > 1.0 add synthetic twigs;
+# Values < 1.0 thin existing placements. Compensates for twig loss from build_cutoff.
+# Override per-tree via twig_density column in input CSV.
 # Range: 0.0 (no twigs) to 2.0+ (dense canopy)
-twig_density = 1.5
+twig_density = 1
 # Skip PVE preset JSON generation (saves ~3% export time)
 # PVE presets only needed for Unreal Procedural Vegetation Editor
 skip_pve_json = true
@@ -214,7 +213,7 @@ export_trees = []
 # Generate Unreal Python import script (unreal_import_trees.py / unreal_cleanup_trees.py)
 import_to_unreal = true
 # Unreal content path for imported assets in Content Browser
-project_path = "/Game/GrowPy"
+project_path = "/Game/Assets/TheGrove"
 
 # --- Post-export: Helios++ LiDAR ---
 [helios]

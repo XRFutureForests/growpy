@@ -648,6 +648,7 @@ def export_tree_as_nanite_assembly(
     timer: Optional[Any] = None,
     stems_file_suffix: Optional[str] = None,
     radial_scale: float = 1.0,
+    twig_density: Optional[float] = None,
 ) -> bool:
     """Export Grove tree as Unreal Engine Nanite Assembly.
 
@@ -678,6 +679,9 @@ def export_tree_as_nanite_assembly(
         timer: Optional ProfileTimer for sub-step profiling
         stems_file_suffix: Optional suffix for stems filename (e.g., "h4m4" produces
             {species}_h4m4_stems_skeletal.usda). Prevents overwrite in cycle mode.
+        radial_scale: Radial scale factor for trunk mesh
+        twig_density: Twig density multiplier. When provided, overrides the global
+            config value (from input CSV twig_density column).
 
     Returns:
         bool: Success status
@@ -784,14 +788,15 @@ def export_tree_as_nanite_assembly(
                 from ..config import get_config
 
                 cfg = get_config()
-                if cfg.export_twig_density != 1.0:
+                effective_density = twig_density if twig_density is not None else cfg.export_twig_density
+                if effective_density != 1.0:
                     with _track("adjust_twig_density"):
                         from ..core.twig import densify_twig_placements
 
                         twig_placements = densify_twig_placements(
                             model,
                             twig_placements,
-                            density=cfg.export_twig_density,
+                            density=effective_density,
                             bones_info=bones_info if not use_static_mesh else None,
                         )
 
