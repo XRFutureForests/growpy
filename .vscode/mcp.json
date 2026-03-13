@@ -1,0 +1,17 @@
+{
+    "servers": {
+        "image_summarization": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@jettoblack/image_mcp",
+                "--base-url",
+                "http://localhost:11434/v1",
+                "--model",
+                "gemma3:4b-it-qat",
+                "--api-key",
+                "unused"
+            ]
+        }
+    }
+}

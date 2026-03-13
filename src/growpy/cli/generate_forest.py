@@ -73,7 +73,12 @@ def _generate_preview_image(
     skeleton,
     timer,
 ) -> None:
-    """Draw branch structure from skeleton polylines and save as PNG."""
+    """Draw branch structure from skeleton polylines and save as PNG.
+
+    Uses radial projection (horizontal distance from trunk vs height) to show
+    full 3D crown spread regardless of viewing angle. Filters out the thinnest
+    twigs to reveal main branch architecture.
+    """
     if skeleton is None:
         return
     try:
@@ -90,25 +95,57 @@ def _generate_preview_image(
             if hasattr(skeleton, "point_attribute_radius"):
                 radii = np.array(skeleton.point_attribute_radius)
 
-            segments_xz = []
-            widths = []
+            # Collect all segment radii first to compute filter threshold
+            all_seg_radii = []
+            seg_data = []  # (idx0, idx1, avg_radius) per segment
             for polyline in skeleton.poly_lines:
                 for i in range(len(polyline) - 1):
                     idx0, idx1 = polyline[i], polyline[i + 1]
-                    p0, p1 = points[idx0], points[idx1]
-                    segments_xz.append([(p0[0], p0[2]), (p1[0], p1[2])])
                     if radii is not None:
-                        w = (radii[idx0] + radii[idx1]) * 0.5
-                        widths.append(max(w * 100, 0.3))
+                        r = (radii[idx0] + radii[idx1]) * 0.5
                     else:
-                        widths.append(0.5)
+                        r = 0.005
+                    all_seg_radii.append(r)
+                    seg_data.append((idx0, idx1, r))
 
-            if not segments_xz:
+            if not seg_data:
+                return
+
+            # Filter: keep segments with radius >= 25th percentile (structural branches)
+            all_seg_radii = np.array(all_seg_radii)
+            radius_threshold = max(np.percentile(all_seg_radii, 25), 0.001)
+
+            # Compute trunk center (median X/Y at base) for radial projection
+            base_mask = points[:, 2] < (points[:, 2].min() + 0.5)
+            trunk_x = np.median(points[base_mask, 0]) if base_mask.any() else np.median(points[:, 0])
+            trunk_y = np.median(points[base_mask, 1]) if base_mask.any() else np.median(points[:, 1])
+
+            segments = []
+            widths = []
+            for idx0, idx1, r in seg_data:
+                if r < radius_threshold:
+                    continue
+                p0, p1 = points[idx0], points[idx1]
+                # Radial projection: signed horizontal distance from trunk center
+                dx0, dy0 = p0[0] - trunk_x, p0[1] - trunk_y
+                dx1, dy1 = p1[0] - trunk_x, p1[1] - trunk_y
+                r0 = np.sqrt(dx0**2 + dy0**2)
+                r1 = np.sqrt(dx1**2 + dy1**2)
+                # Preserve left/right using dominant horizontal direction
+                angle0 = np.arctan2(dy0, dx0)
+                angle1 = np.arctan2(dy1, dx1)
+                r0 = r0 if abs(angle0) < np.pi / 2 else -r0
+                r1 = r1 if abs(angle1) < np.pi / 2 else -r1
+
+                segments.append([(r0, p0[2]), (r1, p1[2])])
+                widths.append(max(r * 150, 0.4))
+
+            if not segments:
                 return
 
             fig, ax = plt.subplots(1, 1, figsize=(8, 8))
             lc = LineCollection(
-                segments_xz,
+                segments,
                 linewidths=widths,
                 colors="#3b2a1a",
                 alpha=0.85,
@@ -116,8 +153,8 @@ def _generate_preview_image(
             ax.add_collection(lc)
             ax.set_aspect("equal")
             ax.autoscale()
-            ax.set_xlabel("X (m)")
-            ax.set_ylabel("Z / Height (m)")
+            ax.set_xlabel("Distance from trunk (m)")
+            ax.set_ylabel("Height (m)")
             title = species_clean.replace("_", " ").title()
             height = points[:, 2].max() - points[:, 2].min()
             ax.set_title(f"{title} ({height:.1f}m)")
