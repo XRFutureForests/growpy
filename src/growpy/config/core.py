@@ -141,6 +141,14 @@ class GrowPyConfig:
     helios_simplify_wood: float = 1.0
     helios_simplify_leaf: float = 1.0
     helios_simplify_fruit: float = 1.0
+    # [helios.simplification.leaf_per_species] - species_clean -> ratio
+    helios_simplify_leaf_per_species: Dict[str, float] = field(default_factory=dict)
+
+    def get_leaf_ratio(self, species_clean: str) -> float:
+        """Return species-specific leaf ratio, falling back to global."""
+        return self.helios_simplify_leaf_per_species.get(
+            species_clean, self.helios_simplify_leaf
+        )
 
     @classmethod
     def from_toml(cls, toml_path: Path, set_as_global: bool = True) -> "GrowPyConfig":
@@ -278,6 +286,11 @@ class GrowPyConfig:
             kwargs["helios_simplify_leaf"] = simplification["leaf"]
         if "fruit" in simplification:
             kwargs["helios_simplify_fruit"] = simplification["fruit"]
+        leaf_per_species = simplification.get("leaf_per_species", {})
+        if leaf_per_species:
+            kwargs["helios_simplify_leaf_per_species"] = {
+                k: float(v) for k, v in leaf_per_species.items()
+            }
 
         instance = cls(**kwargs)
         if set_as_global:
