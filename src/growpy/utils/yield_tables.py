@@ -238,6 +238,79 @@ def resolve_yield_table(
 # --- Calibration math (moved from calibrate_growth.py) ---
 
 
+def estimate_flushes_per_year(
+    grove_heights: List[float],
+    yield_ages: List[float],
+    yield_heights: List[float],
+) -> float:
+    """Estimate how many Grove growth cycles correspond to 1 calendar year.
+
+    Compares the uncalibrated Grove height trajectory against the yield table
+    to find the time-scaling factor. If Grove grows faster per cycle than real
+    trees grow per year, fpy > 1 (multiple cycles per year). If slower, fpy < 1.
+
+    Method:
+        1. Find the Grove height at ~80% of its max (avoids noisy early/late growth).
+        2. Find the age in the yield table where trees reach that same height.
+        3. fpy = grove_cycle_at_reference / yield_age_at_reference.
+
+    Returns:
+        Estimated flushes_per_year, clamped to [0.3, 3.0].
+    """
+    from scipy.interpolate import PchipInterpolator
+
+    if len(grove_heights) < 5 or len(yield_ages) < 2 or len(yield_heights) < 2:
+        return 1.0
+
+    grove_max = max(grove_heights)
+    if grove_max < 1.0:
+        return 1.0
+
+    # Reference height: 60% of Grove max (avoids plateau and seedling phases)
+    ref_height = grove_max * 0.6
+
+    # Find Grove cycle where it reaches ref_height
+    grove_cycle = None
+    for i, h in enumerate(grove_heights):
+        if h >= ref_height:
+            grove_cycle = i + 1  # 1-based
+            break
+    if grove_cycle is None:
+        return 1.0
+
+    # Find yield table age where trees reach ref_height
+    extended_ages = [0.0] + list(yield_ages)
+    extended_heights = [0.5] + list(yield_heights)
+
+    yield_max = max(yield_heights)
+    if ref_height > yield_max:
+        # Grove grows taller than yield table — use yield table max instead
+        ref_height = yield_max * 0.6
+        for i, h in enumerate(grove_heights):
+            if h >= ref_height:
+                grove_cycle = i + 1
+                break
+
+    interp = PchipInterpolator(extended_heights, extended_ages)
+    try:
+        yield_age = float(interp(ref_height))
+    except Exception:
+        return 1.0
+
+    if yield_age <= 0.5:
+        return 1.0
+
+    fpy = grove_cycle / yield_age
+    fpy = max(0.3, min(3.0, fpy))
+
+    logger.info(
+        "  flushes_per_year: %.2f (Grove cycle %d = yield age %.1f yr at h=%.1fm)",
+        fpy, grove_cycle, yield_age, ref_height,
+    )
+
+    return fpy
+
+
 def interpolate_yield_table(
     ages: List[float],
     values: List[float],
@@ -284,7 +357,9 @@ def compute_grow_length_curve(
 
     grow_lengths = base_grow_length * scale_factors
     max_gl = min(base_grow_length * 2.0, 0.65)
-    grow_lengths = np.clip(grow_lengths, base_grow_length * 0.5, max_gl)
+    # Floor at base_grow_length: never reduce below the seed's own value,
+    # which was designed to sustain growth with its original drop values.
+    grow_lengths = np.clip(grow_lengths, base_grow_length, max_gl)
     grow_lengths = np.insert(grow_lengths, 0, grow_lengths[0])
 
     return grow_lengths.tolist()
@@ -306,14 +381,17 @@ def compute_thicken_tips_curve(
         np.abs(grove_increments) < 0.0001, 0.0001, grove_increments
     )
 
-    scale_factors = np.clip(target_increments / grove_increments, 0.05, 20.0)
+    scale_factors = np.clip(target_increments / grove_increments, 0.3, 3.0)
 
     if len(scale_factors) > 5:
         scale_factors = uniform_filter1d(scale_factors, size=5)
 
     thicken_tips_values = base_thicken_tips * scale_factors
-    floor = 0.0005
-    thicken_tips_values = np.clip(thicken_tips_values, floor, 0.05)
+    # Keep thicken_tips within a conservative range around the base value.
+    # Large deviations disrupt tree growth balance (especially without longevity).
+    # Remaining DBH correction is handled by radial scaling at export.
+    ceiling = min(base_thicken_tips * 3.0, 0.03)
+    thicken_tips_values = np.clip(thicken_tips_values, base_thicken_tips * 0.3, ceiling)
     thicken_tips_values = np.insert(thicken_tips_values, 0, thicken_tips_values[0])
 
     return thicken_tips_values.tolist()
@@ -325,25 +403,17 @@ def compute_dbh_static_overrides(
     base_grow_nodes: int = 3,
     base_thicken_deadwood: float = 0.0,
 ) -> Dict[str, float]:
-    """Compute static overrides to reduce DBH toward yield table targets."""
+    """Compute static overrides to reduce DBH toward yield table targets.
+
+    Note: grow_nodes is NOT modified here. Reducing grow_nodes weakens the
+    tree and can cause death when longevity mode is off. DBH is better
+    controlled via thicken_tips_per_cycle and radial scaling at export.
+    """
     n = min(len(grove_dbhs), len(target_dbhs))
     if n < 2:
         return {}
 
-    grove_final_dbh = grove_dbhs[n - 1]
-    target_final_dbh = target_dbhs[n - 1]
-
-    if grove_final_dbh < 0.001 or target_final_dbh < 0.001:
-        return {}
-
-    dbh_ratio = target_final_dbh / grove_final_dbh
     overrides = {}
-
-    if dbh_ratio < 0.9:
-        node_factor = max(0.5, dbh_ratio ** 0.5)
-        new_nodes = max(2, round(base_grow_nodes * node_factor))
-        if new_nodes < base_grow_nodes:
-            overrides["grow_nodes"] = new_nodes
 
     if base_thicken_deadwood > 0:
         overrides["thicken_deadwood"] = 0.0
@@ -396,8 +466,7 @@ def write_calibration_to_seed_json(
         calibration["target_dbh_per_cycle"] = [
             round(v, 6) for v in target_dbh_per_cycle
         ]
-    if flushes_per_year != 1.0:
-        calibration["flushes_per_year"] = flushes_per_year
+    calibration["flushes_per_year"] = flushes_per_year
     preset["_yield_table_calibration"] = calibration
 
     with open(preset_path, "w") as f:
@@ -413,7 +482,7 @@ def calibrate_species(
     grove_dbhs: List[float],
     yield_data: YieldTableData,
     presets_dir: Path,
-    flushes_per_year: float = 1.0,
+    flushes_per_year: Optional[float] = None,
 ) -> bool:
     """Run full calibration for a single species and write results to seed.json.
 
@@ -424,6 +493,7 @@ def calibrate_species(
         yield_data: Resolved yield table data.
         presets_dir: Path to presets directory.
         flushes_per_year: Growth flushes per calendar year.
+            None = auto-estimate from height curves (recommended).
 
     Returns:
         True if calibration was written successfully.
@@ -441,6 +511,12 @@ def calibrate_species(
         preset = json.load(f)
 
     base_grow_length = preset.get("grow_length", 0.3)
+
+    # Auto-estimate flushes_per_year from height curves if not specified
+    if flushes_per_year is None:
+        flushes_per_year = estimate_flushes_per_year(
+            grove_heights, yield_data.ages, yield_data.heights,
+        )
 
     # Height calibration
     _, yearly_heights = interpolate_yield_table(

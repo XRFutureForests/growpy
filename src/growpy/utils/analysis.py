@@ -146,8 +146,8 @@ class SpeciesGrowthAnalyzer:
     def apply_species_preset(self, grove, species: str) -> bool:
         """Apply a species preset to a grove using direct file loading.
 
-        Automatically sets drop_decay=0.0 to prevent trees from dying off
-        during long growth simulations (around 100+ cycles).
+        Uses the original drop_decay/drop_weak values from the seed.json preset
+        so that calibration matches what generate_forest.py will produce.
 
         Args:
             grove: Grove object to apply preset to
@@ -168,8 +168,6 @@ class SpeciesGrowthAnalyzer:
             # Performance: disable twig placement (not needed for height/DBH curves)
             # In Blender, growing without twigs selected is equivalent
             preset_data["twig_density"] = 0.0
-            # Allow moderate branch shedding to reduce node count over time
-            preset_data["drop_decay"] = 0.1
 
             preset_json = json.dumps(preset_data)
             properties = gc.io.properties_from_json_string(preset_json)
@@ -321,14 +319,16 @@ class SpeciesGrowthAnalyzer:
         )
 
         # Load species-specific overrides (includes yield table calibration)
-        from growpy.config.preset_overrides import (
-            LONGEVITY_OVERRIDES,
-            get_species_overrides,
-        )
+        from growpy.config.preset_overrides import get_species_overrides
 
         species_overrides = get_species_overrides(species)
-        # Always apply longevity overrides during growth model generation
-        # to prevent branch death at high cycle counts (structural stability)
+
+        # Always apply longevity overrides during initial simulation (data collection).
+        # The tree must survive long enough to produce usable height/DBH curves
+        # for calibration, regardless of the longevity_mode setting.
+        # Forest generation will respect longevity_mode independently.
+        from growpy.config.preset_overrides import LONGEVITY_OVERRIDES
+
         for param, value in LONGEVITY_OVERRIDES.static_overrides.items():
             if param not in species_overrides.static_overrides:
                 species_overrides.static_overrides[param] = value

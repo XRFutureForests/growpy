@@ -15,8 +15,11 @@ Schema: src/DynamicWind/Resources/UsdResources/Plugins/unrealDynamicWind/resourc
 """
 
 import json
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 def extract_joint_names_from_bones_info(bones_info: List) -> List[str]:
@@ -233,9 +236,11 @@ def _classify_joint(
         # Debug first joint only
         if joint_index == 0:
             unique_ages = sorted(set(all_ages), reverse=True)
-            print(
-                f"[Wind JSON Classification] Using age-based grouping: "
-                f"max_age={max_age}, unique_ages={unique_ages}"
+            logger.debug(
+                "[Wind JSON Classification] Using age-based grouping: "
+                "max_age=%s, unique_ages=%s",
+                max_age,
+                unique_ages,
             )
 
         # Classification based on age tiers
@@ -254,8 +259,8 @@ def _classify_joint(
 
     # Strategy 2: Hierarchy depth from joint name (fallback when no skeleton data)
     if joint_index == 0:
-        print(
-            f"[Wind JSON Classification] Using hierarchy fallback (no skeleton attrs)"
+        logger.debug(
+            "[Wind JSON Classification] Using hierarchy fallback (no skeleton attrs)"
         )
     return _classify_by_hierarchy_depth(joint_name)
 

@@ -88,26 +88,26 @@ class GrowPyConfig:
     # [twigs]
     twigs_path: Path = field(default_factory=lambda: Path("data/assets/twigs"))
     twigs_densify: bool = True
-    twigs_alpha_trim: float = 0.5
-    twigs_smooth_boundary: bool = False
-    twigs_smooth_iterations: int = 3
-    twigs_smooth_factor: float = 0.5
-    twigs_boundary_edge_mm: float = 0.5
+    twigs_alpha_trim: float = 0.75
+    twigs_smooth_boundary: bool = True
+    twigs_smooth_iterations: int = 10
+    twigs_smooth_factor: float = 0.25
+    twigs_boundary_edge_mm: float = 0.01
 
     # [growth_models]
-    growth_models_cycles: int = 125
+    growth_models_cycles: int = 25
     growth_models_seeds: int = 1
-    growth_models_height_threshold: float = 0.05
-    growth_models_max_cycles_without_growth: int = 3
-    growth_models_timeout: int = 300
+    growth_models_height_threshold: float = 0.1
+    growth_models_max_cycles_without_growth: int = 10
+    growth_models_timeout: int = 900
 
     # [forest]
-    forest_quality: str = "ultra"
-    forest_growth_cycle_limit: int = 10
+    forest_quality: str = "high"
+    forest_growth_cycle_limit: int = 65
     forest_smooth_iterations: int = 10
     forest_include_grove_attributes: bool = False
     forest_longevity_mode: bool = False
-    forest_cycle_interval: int = 0
+    forest_cycle_interval: int = 20
     forest_export_trees: list = field(default_factory=list)
 
     # Skeleton overrides - None means inherit from quality preset (CLI-only)
@@ -119,17 +119,17 @@ class GrowPyConfig:
     # [export]
     export_skeletal: bool = True
     export_static: bool = False
-    export_skip_pve_json: bool = False
-    export_skip_validation: bool = False
+    export_skip_pve_json: bool = True
+    export_skip_validation: bool = True
     export_radial_scale: bool = True
     export_twig_density: float = 1.0
 
     # [unreal]
-    unreal_import_to_unreal: bool = False
-    unreal_project_path: str = "/Game/GrowPy/Trees"
+    unreal_import_to_unreal: bool = True
+    unreal_project_path: str = "/Game/GrowPy"
 
     # [twigs] - interior decimation
-    twigs_interior_decimate_ratio: float = 0.0
+    twigs_interior_decimate_ratio: float = 0.5
 
     # [helios]
     helios_export_obj: bool = False
@@ -138,7 +138,7 @@ class GrowPyConfig:
     helios_obj_up_axis: str = "y"
 
     # [calibration]
-    calibration_enabled: bool = False
+    calibration_enabled: bool = True
     calibration_output_dir: Path = field(
         default_factory=lambda: Path("data/output/growth_comparison")
     )

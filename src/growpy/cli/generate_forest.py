@@ -66,6 +66,72 @@ def _is_bone_limit_error(error: ValueError) -> bool:
     return "bones" in msg and "limit" in msg
 
 
+def _generate_preview_image(
+    tree_dir: Path,
+    species_clean: str,
+    dims_suffix: str,
+    skeleton,
+    timer,
+) -> None:
+    """Draw branch structure from skeleton polylines and save as PNG."""
+    if skeleton is None:
+        return
+    try:
+        import matplotlib.pyplot as plt
+        import numpy as np
+        from matplotlib.collections import LineCollection
+
+        with timer.track("generate_preview"):
+            points = np.array(skeleton.points)
+            if len(points) == 0:
+                return
+
+            radii = None
+            if hasattr(skeleton, "point_attribute_radius"):
+                radii = np.array(skeleton.point_attribute_radius)
+
+            segments_xz = []
+            widths = []
+            for polyline in skeleton.poly_lines:
+                for i in range(len(polyline) - 1):
+                    idx0, idx1 = polyline[i], polyline[i + 1]
+                    p0, p1 = points[idx0], points[idx1]
+                    segments_xz.append([(p0[0], p0[2]), (p1[0], p1[2])])
+                    if radii is not None:
+                        w = (radii[idx0] + radii[idx1]) * 0.5
+                        widths.append(max(w * 100, 0.3))
+                    else:
+                        widths.append(0.5)
+
+            if not segments_xz:
+                return
+
+            fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+            lc = LineCollection(
+                segments_xz,
+                linewidths=widths,
+                colors="#3b2a1a",
+                alpha=0.85,
+            )
+            ax.add_collection(lc)
+            ax.set_aspect("equal")
+            ax.autoscale()
+            ax.set_xlabel("X (m)")
+            ax.set_ylabel("Z / Height (m)")
+            title = species_clean.replace("_", " ").title()
+            height = points[:, 2].max() - points[:, 2].min()
+            ax.set_title(f"{title} ({height:.1f}m)")
+            ax.grid(True, alpha=0.2)
+
+            suffix = f"_{dims_suffix}" if dims_suffix else ""
+            png_path = tree_dir / f"{species_clean}{suffix}_preview.png"
+            fig.savefig(png_path, dpi=150, bbox_inches="tight", facecolor="white")
+            plt.close(fig)
+            logger.info("  Preview: %s", png_path.name)
+    except Exception as e:
+        logger.debug("Preview generation failed: %s", e)
+
+
 def _derive_static_from_skeletal(
     tree_dir: Path,
     species_clean: str,
@@ -393,6 +459,9 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         )
                         if static_path:
                             exported.append(static_path)
+
+                # Generate 2D preview image for quick visual assessment
+                _generate_preview_image(tree_dir, species_clean, dims_suffix, skeleton, timer)
 
             # MEMORY OPTIMIZATION: Clear this tree's data immediately after export
             # This releases large mesh/skeleton data before processing next tree
@@ -857,6 +926,9 @@ def generate_forest_stages(
                 if export_success:
                     exported_files.append(str(usd_path))
                     logger.info("  Exported: %s", usd_path.name)
+
+                    # Generate 2D preview image for quick visual assessment
+                    _generate_preview_image(tree_dir, species_clean, dims_suffix, skeleton, timer)
 
                     # Derive static from skeletal when both enabled
                     if use_skeletal and config.export_static:
@@ -1574,7 +1646,13 @@ Unreal Engine Integration:
         "-v",
         "--verbose",
         action="store_true",
-        help="Enable verbose output for PVE preset generation",
+        help="Enable verbose output (INFO-level logging)",
+    )
+    parser.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Suppress INFO-level logging (only show warnings and errors)",
     )
     parser.add_argument(
         "--profile",
@@ -1663,7 +1741,10 @@ Unreal Engine Integration:
     config = get_config()
     config.resolve(args)
 
-    # Configure logging based on verbose flag
+    # --quiet overrides --verbose and config
+    if args.quiet:
+        config.verbose = False
+
     from growpy.utils.log import setup_logging
 
     setup_logging(verbose=config.verbose)
@@ -1842,6 +1923,21 @@ Unreal Engine Integration:
             logger.info("- Unreal Engine must be running")
             logger.info("- USD Importer plugin enabled")
             logger.info("- Editor Scripting Utilities plugin enabled")
+
+        # Pipeline completion summary (always visible, even in quiet mode)
+        total_time = timer.get_total_time() if timer.enabled else 0
+        tree_count = len(list(output_dir.glob("*/tree_*/*_assembly.usda")))
+        species_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name != "unreal_scripts"]
+        summary_parts = [
+            f"{tree_count} assemblies",
+            f"{len(species_dirs)} species",
+        ]
+        if total_time > 0:
+            summary_parts.append(f"{total_time:.1f}s")
+        print(
+            f"\nPipeline complete: {', '.join(summary_parts)} -> {output_dir}",
+            file=sys.stderr,
+        )
 
     except Exception as e:
         logger.error("Forest generation failed: %s", e)

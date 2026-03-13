@@ -146,8 +146,9 @@ def _run_calibration_pass(
             logger.debug("No yield table for %s — skipping calibration", common_name)
             continue
 
+        # Use explicit fpy from TOML override, or None for auto-estimation
         fpy = config.calibration_species.get(common_name, {}).get(
-            "flushes_per_year", 1.0
+            "flushes_per_year"
         )
 
         ok = calibrate_species(
@@ -166,9 +167,19 @@ def _run_calibration_pass(
         if do_plot:
             from growpy.utils.plotting import plot_calibration_comparison
 
+            # Read back the fpy that was actually used (auto-estimated or explicit)
+            import json as _json
+
+            _preset = presets_dir / f"{species_std}.seed.json"
+            _cal = {}
+            if _preset.exists():
+                with open(_preset) as _f:
+                    _cal = _json.load(_f).get("_yield_table_calibration", {})
+            plot_fpy = _cal.get("flushes_per_year", fpy or 1.0)
+
             max_cycles = len(height_curve)
             _, target_heights = interpolate_yield_table(
-                yield_data.ages, yield_data.heights, max_cycles, fpy
+                yield_data.ages, yield_data.heights, max_cycles, plot_fpy
             )
 
             plot_calibration_comparison(

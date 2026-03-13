@@ -15,8 +15,8 @@ random_seed = 42
 csv_file = "data/input/test.csv"
 # Output directory for generated trees (species subdirectories created automatically)
 output_dir = "data/output/forest"
-# Enable verbose output for PVE preset generation
-verbose = true
+# Enable verbose output (INFO-level logging). Use --verbose / --quiet to override.
+verbose = false
 # Enable profiling to track execution time of each pipeline step
 profile = false
 
@@ -93,7 +93,7 @@ plot = true
 # Override per species with CLI: --species "Name" --table-id N --yield-class N
 # Or add optional [calibration.species."Name"] sections here to pin specific tables.
 
-# --- Step 5: generate_forest.py ---
+# --- Step 4: generate_forest.py ---
 [forest]
 # Quality preset: ultra, high, medium, low, performance
 # See [quality.*] sections below for per-preset parameters
@@ -109,6 +109,7 @@ smooth_iterations = 10
 include_grove_attributes = false
 # Apply longevity overrides to prevent tree death at high cycle counts
 # Sets drop_decay, drop_weak etc. to low values
+# When false, uses original seed.json drop values (calibration must match)
 longevity_mode = false
 # Multi-stage export: generate tree models at cycle intervals for growth history
 # Exports snapshots at every N cycles (e.g., 10 = cycles 10, 20, 30...)
@@ -159,7 +160,19 @@ skeleton_reduce = 0.8
 skeleton_bias = 0.5
 skeleton_connected = true
 
-# --- Step 5 (cont.): Export options ---
+[quality.debug]
+resolution = 8
+resolution_reduce = 0.5
+build_cutoff_age = 0
+build_cutoff_thickness = 0.0
+build_blend = true
+build_end_cap = true
+skeleton_length = 2.0
+skeleton_reduce = 0.5
+skeleton_bias = 0.5
+skeleton_connected = true
+
+# --- Step 4 (cont.): Export options ---
 [export]
 # Export skeletal mesh assemblies (required for Unreal animation/wind)
 skeletal = true
@@ -169,7 +182,7 @@ static = false
 # Apply radial scaling to match yield table target DBH
 # Scales trunk/branch mesh perpendicular to bone axes at breast height (1.3m),
 # blending smoothly to 1.0 at the crown. Requires calibrated seed.json files.
-# false = export Grove geometry as-is (trunk will be thicker than yield table)
+# false = export Grove geometry as-is (trunk will be thicker/thinner than yield table)
 radial_scale = true
 # Twig density multiplier. 1.0 = Grove placements only. Values > 1.0 add
 # synthetic twigs on non-twig faces, weighted by branch youth (younger branches
