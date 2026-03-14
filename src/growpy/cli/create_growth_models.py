@@ -22,6 +22,24 @@ from growpy.utils.log import setup_logging
 logger = logging.getLogger(__name__)
 
 
+def _strip_previous_calibration(presets_dir: Path, species_list: List[str]) -> None:
+    """Remove _yield_table_calibration from seed.json files for a clean baseline."""
+    import json
+
+    for species in species_list:
+        species_clean = species.lower().replace(" ", "_")
+        preset_path = presets_dir / f"{species_clean}.seed.json"
+        if not preset_path.exists():
+            continue
+        with open(preset_path) as f:
+            preset = json.load(f)
+        if "_yield_table_calibration" in preset:
+            del preset["_yield_table_calibration"]
+            with open(preset_path, "w") as f:
+                json.dump(preset, f, indent=4)
+            logger.info("Stripped previous calibration from %s", species)
+
+
 def _resolve_species_from_csv(
     csv_path: Path, script_dir: Path
 ) -> Optional[List[str]]:
@@ -345,6 +363,10 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
             )
             return 1
 
+        # Strip previous calibration for a clean baseline
+        if do_calibrate:
+            _strip_previous_calibration(presets_dir, [args.species])
+
         # Generate height and DBH curves
         height_curve, dbh_curve, metadata = analyzer.generate_height_curve_for_species(
             args.species
@@ -419,6 +441,10 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
                 available_species,
             )
             return 1
+
+        # Strip previous calibration for a clean baseline
+        if do_calibrate:
+            _strip_previous_calibration(presets_dir, species_to_process)
 
         # Pass 1: initial simulation (uncalibrated)
         logger.info("=" * 60)

@@ -188,6 +188,7 @@ def _generate_export_control_image(
     species_clean: str,
     dims_suffix: str,
     timer,
+    view_bounds: Optional[list] = None,
 ) -> None:
     """Render control image from exported USDA stems mesh and skeleton.
 
@@ -324,6 +325,12 @@ def _generate_export_control_image(
                 ax.grid(True, alpha=0.2)
                 if len(skel_points) > 0:
                     ax.legend(fontsize=8, loc="upper right")
+
+            # Match axis bounds from preview image if available
+            if view_bounds and len(view_bounds) == len(axes):
+                for ax, (xlim, ylim) in zip(axes, view_bounds):
+                    ax.set_xlim(xlim)
+                    ax.set_ylim(ylim)
 
             plt.tight_layout()
             png_path = tree_dir / f"{species_clean}{suffix}_export_control.png"
@@ -665,8 +672,8 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                             exported.append(static_path)
 
                 # Generate 2D preview image for quick visual assessment
-                _generate_preview_image(tree_dir, species_clean, dims_suffix, skeleton, timer)
-                _generate_export_control_image(tree_dir, species_clean, dims_suffix, timer)
+                preview_bounds = _generate_preview_image(tree_dir, species_clean, dims_suffix, skeleton, timer)
+                _generate_export_control_image(tree_dir, species_clean, dims_suffix, timer, view_bounds=preview_bounds)
 
             # MEMORY OPTIMIZATION: Clear this tree's data immediately after export
             # This releases large mesh/skeleton data before processing next tree
@@ -1154,8 +1161,8 @@ def generate_forest_stages(
                     logger.info("  Exported: %s", usd_path.name)
 
                     # Generate 2D preview image for quick visual assessment
-                    _generate_preview_image(tree_dir, species_clean, dims_suffix, skeleton, timer)
-                    _generate_export_control_image(tree_dir, species_clean, dims_suffix, timer)
+                    preview_bounds = _generate_preview_image(tree_dir, species_clean, dims_suffix, skeleton, timer)
+                    _generate_export_control_image(tree_dir, species_clean, dims_suffix, timer, view_bounds=preview_bounds)
 
                     # Derive static from skeletal when both enabled
                     if use_skeletal and config.export_static:

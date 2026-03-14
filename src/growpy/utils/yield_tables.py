@@ -535,23 +535,12 @@ def calibrate_species(
     )
 
     # DBH calibration
-    thicken_tips_values = None
     target_dbhs_interp = None
 
     if grove_dbhs and yield_data.dbhs:
         _, target_dbhs_interp = interpolate_yield_table(
             yield_data.ages, yield_data.dbhs, max_cycles, flushes_per_year,
             initial_value=0.0,
-        )
-
-        base_thicken_tips = preset.get("thicken_tips", 0.007)
-        thicken_tips_values = compute_thicken_tips_curve(
-            grove_dbhs, target_dbhs_interp, base_thicken_tips
-        )
-
-        logger.info(
-            "  thicken_tips: base=%.4f, range=%.6f-%.6f",
-            base_thicken_tips, min(thicken_tips_values), max(thicken_tips_values),
         )
 
     # Static DBH overrides
@@ -610,7 +599,6 @@ def calibrate_species(
         presets_dir,
         yield_class=yield_data.yield_class,
         table_id=yield_data.table_id,
-        thicken_tips_per_cycle=thicken_tips_values,
         static_overrides=write_static,
         target_dbh_per_cycle=write_target_dbh,
         flushes_per_year=flushes_per_year,
