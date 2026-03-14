@@ -73,15 +73,17 @@ def _generate_preview_image(
     dims_suffix: str,
     skeleton,
     timer,
-) -> None:
+) -> Optional[list]:
     """Draw branch structure from skeleton polylines as 3-axis preview.
 
     Renders front (X vs Z), side (Y vs Z), and top (X vs Y) orthogonal
-    projections with origin crosshairs to reveal offset and asymmetry.
-    Filters out the thinnest twigs to reveal main branch architecture.
+    projections. Filters out the thinnest twigs to reveal main branch
+    architecture.
+
+    Returns list of (xlim, ylim) tuples per view for axis matching, or None.
     """
     if skeleton is None:
-        return
+        return None
     try:
         import matplotlib.pyplot as plt
         import numpy as np
@@ -90,7 +92,7 @@ def _generate_preview_image(
         with timer.track("generate_preview"):
             points = np.array(skeleton.points)
             if len(points) == 0:
-                return
+                return None
 
             radii = None
             if hasattr(skeleton, "point_attribute_radius"):
@@ -110,7 +112,7 @@ def _generate_preview_image(
                     seg_data.append((idx0, idx1, r))
 
             if not seg_data:
-                return
+                return None
 
             # Filter: keep segments with radius >= 25th percentile (structural branches)
             all_seg_radii = np.array(all_seg_radii)
@@ -124,11 +126,10 @@ def _generate_preview_image(
                 filtered.append((points[idx0], points[idx1], r))
 
             if not filtered:
-                return
+                return None
 
             title = species_clean.replace("_", " ").title()
             height = points[:, 2].max() - points[:, 2].min()
-            base_z = points[:, 2].min()
 
             # 3 views: front (X,Z), side (Y,Z), top (X,Y)
             views = [
@@ -140,11 +141,11 @@ def _generate_preview_image(
             fig, axes = plt.subplots(1, 3, figsize=(18, 7))
             fig.suptitle(f"{title} ({height:.1f}m)", fontsize=14, fontweight="bold")
 
-            # Scale: convert diameter in meters to line width in points
-            # 7 inches * 72 pt/inch = 504 pt for full axis height
-            ax_points = 7 * 72
-            data_range = max(height, 0.1)
-            pts_per_meter = ax_points / data_range
+            # Scale: convert diameter in meters to line width in points.
+            # Use a fixed 30m reference so all species are comparable.
+            ax_points = 7 * 72  # 7 inches * 72 pt/inch
+            reference_height = 30.0
+            pts_per_meter = ax_points / reference_height
 
             for ax, (view_name, ax_h, ax_v, xlabel, ylabel) in zip(axes, views):
                 segs = []
@@ -159,15 +160,6 @@ def _generate_preview_image(
                 ax.add_collection(lc)
                 ax.set_aspect("equal")
                 ax.autoscale()
-                # Origin crosshairs
-                ax.axvline(0, color="red", linewidth=0.5, alpha=0.4, linestyle="--")
-                ax.axhline(
-                    0 if ax_v != 2 else base_z,
-                    color="red",
-                    linewidth=0.5,
-                    alpha=0.4,
-                    linestyle="--",
-                )
                 ax.set_xlabel(xlabel)
                 ax.set_ylabel(ylabel)
                 ax.set_title(view_name)
@@ -177,10 +169,18 @@ def _generate_preview_image(
             suffix = f"_{dims_suffix}" if dims_suffix else ""
             png_path = tree_dir / f"{species_clean}{suffix}_preview.png"
             fig.savefig(png_path, dpi=150, bbox_inches="tight", facecolor="white")
+
+            # Capture axis bounds for matching with export control
+            view_bounds = [
+                (ax.get_xlim(), ax.get_ylim()) for ax in axes
+            ]
+
             plt.close(fig)
             logger.info("  Preview: %s", png_path.name)
+            return view_bounds
     except Exception as e:
         logger.debug("Preview generation failed: %s", e)
+        return None
 
 
 def _generate_export_control_image(
@@ -318,8 +318,6 @@ def _generate_export_control_image(
 
                 ax.set_aspect("equal")
                 ax.autoscale()
-                ax.axvline(0, color="blue", linewidth=0.5, alpha=0.4, linestyle="--")
-                ax.axhline(0, color="blue", linewidth=0.5, alpha=0.4, linestyle="--")
                 ax.set_xlabel(xlabel)
                 ax.set_ylabel(ylabel)
                 ax.set_title(view_name)

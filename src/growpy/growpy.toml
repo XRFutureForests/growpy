@@ -16,7 +16,7 @@ csv_file = "data/input/test.csv"
 # Output directory for generated trees (species subdirectories created automatically)
 output_dir = "data/output/forest"
 # Enable verbose output (INFO-level logging). Use --verbose / --quiet to override.
-verbose = false
+verbose = true
 # Enable profiling to track execution time of each pipeline step
 profile = false
 
@@ -40,13 +40,13 @@ path = "data/assets/twigs"
 densify = true
 # Alpha threshold for silhouette trimming
 # 0.05-0.3 = minimal (conservative), 0.5 = moderate (recommended), 0.7 = aggressive
-alpha_trim = 0.5
+alpha_trim = 0.75
 # Enable boundary edge smoothing for natural silhouette curves
 smooth_boundary = true
 # Number of Laplacian smoothing passes (1-10)
-smooth_iterations = 20
+smooth_iterations = 3
 # Smoothing strength per iteration (0.0-1.0)
-smooth_factor = 0.125
+smooth_factor = 0.25
 # Target edge as fraction of average edge (0.1-1.0, lower = denser)
 # 1.0 = no subdivision, 0.5 = 50% of avg (recommended), 0.1 = very fine
 boundary_edge_mm = 0.005
@@ -58,7 +58,7 @@ interior_decimate_ratio = 0.5
 [growth_models]
 # Maximum growth cycles to simulate (1-250)
 # Automatically stops early when growth plateaus
-cycles = 50
+cycles = 150
 # Random seeds to average for robust curves (1-10)
 # Use 3+ for production, 1 for quick tests
 seeds = 1
@@ -67,7 +67,7 @@ seeds = 1
 height_threshold = 0.1
 # Stop after N consecutive cycles without significant growth (1-20)
 # Lower values = earlier termination, prevents wasting time on plateaued trees
-max_cycles_without_growth = 10
+max_cycles_without_growth = 5
 # Maximum simulation time per seed in seconds (10-3600)
 # Increase for complex species; prevents stuck simulations
 timeout = 900
@@ -112,7 +112,7 @@ plot = true
 quality = "high"
 # Maximum growth cycles per tree (1-125)
 # Trees exceeding this are scaled down proportionally
-growth_cycle_limit = 100
+growth_cycle_limit = 125
 # Branch smoothing iterations (0-20, 0 = disabled)
 # Higher values = smoother, more organic branches
 smooth_iterations = 10

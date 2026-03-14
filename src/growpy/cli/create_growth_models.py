@@ -120,13 +120,13 @@ def _run_calibration_pass(
     for species_std in species_list:
         common_name = std_to_common.get(species_std)
         if not common_name:
-            logger.debug("No lookup entry for %s — skipping calibration", species_std)
+            logger.warning("No lookup entry for %s — skipping calibration", species_std)
             continue
 
         height_curve = analyzer.height_curves.get(species_std)
         dbh_curve = analyzer.dbh_curves.get(species_std)
         if not height_curve:
-            logger.debug("No height curve for %s — skipping calibration", species_std)
+            logger.warning("No height curve for %s — skipping calibration", species_std)
             continue
 
         yield_search = lookup.get(common_name, {}).get("yield_search", "")
@@ -143,7 +143,7 @@ def _run_calibration_pass(
         )
 
         if yield_data is None:
-            logger.debug("No yield table for %s — skipping calibration", common_name)
+            logger.warning("No yield table for %s — skipping calibration", common_name)
             continue
 
         # Use explicit fpy from TOML override, or None for auto-estimation
