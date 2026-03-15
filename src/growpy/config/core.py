@@ -106,7 +106,7 @@ class GrowPyConfig:
     forest_growth_cycle_limit: int = 65
     forest_smooth_iterations: int = 10
     forest_include_grove_attributes: bool = False
-    forest_longevity_mode: bool = False
+    forest_longevity_mode: bool = True
     forest_cycle_interval: int = 20
     forest_export_trees: list = field(default_factory=list)
 

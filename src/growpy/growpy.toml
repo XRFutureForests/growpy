@@ -119,10 +119,13 @@ smooth_iterations = 10
 # Include Grove metadata (age, mass, vigor) in USD files
 # Increases file size by ~70%; useful for analysis
 include_grove_attributes = false
-# Apply longevity overrides to prevent tree death at high cycle counts
-# Sets drop_decay, drop_weak etc. to low values
-# When false, uses original seed.json drop values (calibration must match)
-longevity_mode = false
+# Apply longevity overrides to prevent tree death at high cycle counts.
+# Sets drop_decay, drop_weak etc. to low values.
+# Must be enabled when using calibrated growth models, since growth model
+# training always applies longevity overrides to prevent tree death during
+# data collection. Disabling this causes trees to die before reaching the
+# predicted cycle count, producing shorter trees than the CSV target height.
+longevity_mode = true
 # Multi-stage export: generate tree models at cycle intervals for growth history
 # Exports snapshots at every N cycles (e.g., 10 = cycles 10, 20, 30...)
 # Each snapshot includes height and DBH in the filename for easy asset selection

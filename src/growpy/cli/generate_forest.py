@@ -400,11 +400,12 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     the old approach of recreating and re-simulating each tree individually.
 
     Args:
-        args: Tuple of (fids, grove_instance, species_name, output_dir, quality_params, mesh_type, verbose, timer, twig_densities)
+        args: Tuple of (fids, grove_instance, species_name, output_dir, quality_params, mesh_type, verbose, timer, twig_densities, csv_dbh_map)
               fids is a list of original CSV fid values for each tree in the grove
               verbose is boolean for verbose output
               timer is optional ProfileTimer instance
               twig_densities is a dict mapping fid -> twig_density float (or empty dict)
+              csv_dbh_map is a dict mapping fid -> dbh in meters (or empty dict)
 
     Returns:
         List of exported file paths
@@ -423,7 +424,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     from growpy.io.tree_export import get_twig_usd_map_for_species
     from growpy.utils.profiling import ProfileTimer
 
-    (fids, grove, species, output_dir, quality_params, mesh_type, verbose, timer, twig_densities) = args
+    (fids, grove, species, output_dir, quality_params, mesh_type, verbose, timer, twig_densities, csv_dbh_map) = args
 
     # Use provided timer or create disabled one
     if timer is None:
@@ -537,6 +538,16 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 if cycle_idx >= 0:
                     target_dbh_m = target_dbh_curve[cycle_idx]
                     filename_dbh = target_dbh_m
+
+            # CSV DBH override: when the input CSV specifies a non-zero DBH,
+            # use that as the target instead of the yield table value
+            csv_dbh_for_tree = csv_dbh_map.get(tree_fid)
+            dbh_from_csv = False
+            if csv_dbh_for_tree and csv_dbh_for_tree > 0:
+                target_dbh_m = csv_dbh_for_tree
+                filename_dbh = csv_dbh_for_tree
+                dbh_from_csv = True
+
             h_str = format_height_for_filename(tree_height_m)
             d_str = format_dbh_for_filename(filename_dbh)
             dims_suffix = f"{h_str}_{d_str}"
@@ -559,11 +570,17 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                     species, config, prefer_skeletal=True, prefer_static=False
                 )
 
-            # Radial scaling: correct Grove's inflated trunk to yield table target
+            # Radial scaling: correct Grove's trunk to target DBH
+            # CSV-specified DBH allows wider scaling range since the user
+            # explicitly chose the diameter; yield-table values use a tighter
+            # clamp to avoid visual artifacts from extreme scaling
             tree_radial_scale = 1.0
             if config.calibration_align_dbh and target_dbh_m and grove_dbh_m > 0.001:
                 tree_radial_scale = target_dbh_m / grove_dbh_m
-                tree_radial_scale = max(0.5, min(tree_radial_scale, 2.0))
+                if dbh_from_csv:
+                    tree_radial_scale = max(0.1, min(tree_radial_scale, 5.0))
+                else:
+                    tree_radial_scale = max(0.5, min(tree_radial_scale, 2.0))
 
             # Export as Nanite Assembly with specified mesh type
             # tree_id in prim name ensures unique Unreal assets
@@ -751,6 +768,15 @@ def export_individual_trees(
             if pd.notna(val):
                 twig_density_map[int(row["fid"])] = float(val)
 
+    # Build per-tree CSV DBH map (fid -> dbh in meters) for custom diameter scaling.
+    # When a tree has dbh > 0 in the CSV, that value overrides the yield table target.
+    csv_dbh_map: Dict[int, float] = {}
+    if "dbh" in forest_data.columns:
+        for _, row in forest_data.iterrows():
+            val = row["dbh"]
+            if pd.notna(val) and float(val) > 0:
+                csv_dbh_map[int(row["fid"])] = float(val) / 100.0  # cm -> m
+
     for grove, species_name, tree_count, fids in forest:
         if cfg.export_skeletal:
             # Skeletal task; static derivation happens inline when both enabled
@@ -765,6 +791,7 @@ def export_individual_trees(
                     verbose,
                     timer,
                     twig_density_map,
+                    csv_dbh_map,
                 )
             )
         elif cfg.export_static:
@@ -780,12 +807,13 @@ def export_individual_trees(
                     verbose,
                     timer,
                     twig_density_map,
+                    csv_dbh_map,
                 )
             )
 
     # Always use sequential processing (bpy/USD not compatible with multiprocessing)
     for task_idx, task in enumerate(tqdm(grove_tasks, desc="Exporting groves")):
-        _fids, _grove, _species, _outdir, _qp, _mesh_type, _verbose, _timer, _td = task
+        _fids, _grove, _species, _outdir, _qp, _mesh_type, _verbose, _timer, _td, _dbh = task
         species_short = _species.replace(" ", "_").lower()
         track_name = f"grove_export ({species_short} {_mesh_type})"
         with timer.track(track_name):
@@ -1035,6 +1063,14 @@ def generate_forest_stages(
     # Cache target DBH curves per species for radial scaling
     target_dbh_cache: Dict[str, list] = {}
 
+    # Build per-tree CSV DBH map (fid -> dbh in meters) for custom diameter scaling
+    csv_dbh_map: Dict[int, float] = {}
+    if "dbh" in forest_data.columns:
+        for _, row in forest_data.iterrows():
+            val = row["dbh"]
+            if pd.notna(val) and float(val) > 0:
+                csv_dbh_map[int(row["fid"])] = float(val) / 100.0  # cm -> m
+
     exported_files = []
     for cycle, species_snapshots in tqdm(snapshots.items(), desc="Exporting stages"):
         for species_name, tree_data_list in species_snapshots.items():
@@ -1100,6 +1136,16 @@ def generate_forest_stages(
                     if cidx >= 0:
                         target_dbh_m = target_dbh_cache[species_name][cidx]
                         filename_dbh = target_dbh_m
+
+                # CSV DBH override: when the input CSV specifies a non-zero DBH,
+                # use that as the target instead of the yield table value
+                csv_dbh_for_tree = csv_dbh_map.get(fid)
+                dbh_from_csv = False
+                if csv_dbh_for_tree and csv_dbh_for_tree > 0:
+                    target_dbh_m = csv_dbh_for_tree
+                    filename_dbh = csv_dbh_for_tree
+                    dbh_from_csv = True
+
                 dbh_str = format_dbh_for_filename(filename_dbh)
                 dims_suffix = f"{height_str}_{dbh_str}"
 
@@ -1122,11 +1168,14 @@ def generate_forest_stages(
                 except Exception:
                     pass
 
-                # Radial scaling: correct Grove's inflated trunk to yield table target
+                # Radial scaling: correct Grove's trunk to target DBH
                 tree_radial_scale = 1.0
                 if config.calibration_align_dbh and target_dbh_m and grove_dbh > 0.001:
                     tree_radial_scale = target_dbh_m / grove_dbh
-                    tree_radial_scale = max(0.5, min(tree_radial_scale, 2.0))
+                    if dbh_from_csv:
+                        tree_radial_scale = max(0.1, min(tree_radial_scale, 5.0))
+                    else:
+                        tree_radial_scale = max(0.5, min(tree_radial_scale, 2.0))
 
                 # Export as Nanite Assembly
                 # stems_file_suffix ensures each stage gets its own stems file

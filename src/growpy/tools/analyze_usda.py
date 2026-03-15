@@ -8,8 +8,8 @@ Parses USDA text files without USD libraries, extracting key metrics:
 - Radial profile at breast height (1.3m)
 
 Usage:
-    python src/growpy/cli/analyze_usda.py data/output/forest/norway_spruce/tree_0001/
-    python src/growpy/cli/analyze_usda.py path/to/specific_stems_skeletal.usda
+    python src/growpy/tools/analyze_usda.py data/output/forest/norway_spruce/tree_0001/
+    python src/growpy/tools/analyze_usda.py path/to/specific_stems_skeletal.usda
 """
 
 import re

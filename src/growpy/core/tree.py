@@ -1,10 +1,11 @@
 """Tree model functions for forest generation."""
 
-import json
 import logging
+import math
 from typing import Any, Dict, List, Optional, Tuple
 
 import joblib
+import numpy as np
 import pandas as pd
 import the_grove_23_core as gc
 
@@ -166,41 +167,17 @@ def calculate_growth_cycles_from_height(forest_data: pd.DataFrame) -> None:
     forest_data["growth_cycles"] = 0
 
     model_cache: Dict[str, Any] = {}
-    metadata_cache: Dict[str, Dict] = {}
     for i, tree in forest_data.iterrows():
         species = tree["species"]
         if species not in model_cache:
             growth_model_path = config.get_growth_model_path(species)
             model_path = growth_model_path / "growth_model.pkl"
             model_cache[species] = joblib.load(model_path)
-            meta_path = growth_model_path / "metadata.json"
-            if meta_path.exists():
-                metadata_cache[species] = json.loads(meta_path.read_text())
-            else:
-                metadata_cache[species] = {}
 
         model = model_cache[species]
         target_height = tree["height"]
-        meta = metadata_cache.get(species, {})
-        max_height = meta.get("max_height")
-        actual_max_cycles = meta.get("actual_max_cycles")
-
-        if max_height and target_height > max_height and actual_max_cycles:
-            logger.warning(
-                "%s: target %.1fm exceeds growth model max %.1fm (%d cycles). "
-                "Using %d cycles. Increase [growth_models] timeout/cycles and "
-                "re-run create_growth_models.py, or enable [calibration].",
-                species,
-                target_height,
-                max_height,
-                actual_max_cycles,
-                actual_max_cycles,
-            )
-            forest_data.at[i, "growth_cycles"] = actual_max_cycles
-        else:
-            forest_data.at[i, "growth_cycles"] = int(
-                model.predict([[target_height]])[0]
-            )
+        predicted = float(model.predict([[target_height]])[0])
+        forest_data.at[i, "growth_cycles"] = math.ceil(predicted)
 
     max_cycles = forest_data["growth_cycles"].max()
     forest_data["delay"] = max_cycles - forest_data["growth_cycles"]

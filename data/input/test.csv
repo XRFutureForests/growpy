@@ -1,7 +1,8 @@
 fid,species,x,y,z,dbh,height,twig_density
-1,European beech,0,0,0,0,27,1
-2,Silver fir,20,0,0,0,27,1
-3,European oak,10,17.32050808,0,0,27,1
-4,Grand fir,30,17.32050808,0,0,27,1
-5,Field maple,0,34.64101616,0,0,27,1
-6,Scots pine,20,34.64101616,0,0,27,1
+1,European beech,0,0,0,10,15,1
+2,Silver fir,20,0,0,11,15,1
+3,European oak,10,17.32050808,0,13,15,1
+4,Grand fir,30,17.32050808,0,0,15,1
+5,Field maple,0,34.64101616,0,0,15,1
+6,Norway spruce,20,34.64101616,0,8,15,1
+7,Scots pine,10,51.96152424,0,13,15,1

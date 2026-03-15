@@ -5,9 +5,9 @@ Reads exported USDA stems files and renders branch structure as 2D projections
 for quick visual evaluation without Unreal Engine.
 
 Usage:
-    python src/growpy/cli/visualize_tree.py                     # All trees in output dir
-    python src/growpy/cli/visualize_tree.py data/output/forest   # Specific output dir
-    python src/growpy/cli/visualize_tree.py path/to/stems.usda   # Single file
+    python src/growpy/tools/visualize_tree.py                     # All trees in output dir
+    python src/growpy/tools/visualize_tree.py data/output/forest   # Specific output dir
+    python src/growpy/tools/visualize_tree.py path/to/stems.usda   # Single file
 """
 
 import re

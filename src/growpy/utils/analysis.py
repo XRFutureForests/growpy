@@ -19,18 +19,39 @@ import the_grove_23_core as gc
 from tqdm import tqdm
 
 
-class SimpleLinearModel:
-    """Linear regression using numpy polyfit (avoids sklearn BLAS conflicts)."""
+class PiecewiseLinearModel:
+    """Piecewise linear model on the height curve.
+
+    Interpolates within training range, extrapolates the last segment's
+    slope for heights beyond what was trained.
+    """
 
     def __init__(self):
-        self.coefficients = None
+        self.heights = None
+        self.cycles = None
 
-    def fit(self, X, y):
-        self.coefficients = np.polyfit(np.asarray(X).flatten(), np.asarray(y), deg=1)
+    def fit(self, heights, cycles):
+        self.heights = np.asarray(heights).flatten()
+        self.cycles = np.asarray(cycles).flatten()
         return self
 
     def predict(self, X):
-        return np.polyval(self.coefficients, np.asarray(X).flatten())
+        targets = np.asarray(X).flatten()
+        results = np.empty_like(targets, dtype=float)
+        for i, t in enumerate(targets):
+            if t <= self.heights[-1]:
+                results[i] = np.interp(t, self.heights, self.cycles)
+            else:
+                # Extrapolate using slope of last two distinct points
+                dh = self.heights[-1] - self.heights[-2]
+                dc = self.cycles[-1] - self.cycles[-2]
+                slope = dc / dh if dh > 0 else 0.0
+                results[i] = self.cycles[-1] + slope * (t - self.heights[-1])
+        return results
+
+
+# Backward-compatible alias for loading old .pkl files
+SimpleLinearModel = PiecewiseLinearModel
 
 from .plotting import plot_growth_curves
 
@@ -557,23 +578,27 @@ class SpeciesGrowthAnalyzer:
 
     def create_growth_model_for_species(
         self, species: str, height_curve: List[float]
-    ) -> SimpleLinearModel:
-        """Create linear regression model to predict required cycles from target height.
+    ) -> PiecewiseLinearModel:
+        """Create piecewise linear model to predict required cycles from target height.
+
+        Stores the full height curve for accurate interpolation within the
+        training range, and extrapolates using the last segment's slope for
+        heights beyond what was trained.
 
         Args:
             species: Species name
             height_curve: List of heights per cycle
 
         Returns:
-            Fitted SimpleLinearModel
+            Fitted PiecewiseLinearModel
         """
         if not height_curve:
             raise ValueError(f"Empty height curve for {species}")
 
-        heights = np.array(height_curve).reshape(-1, 1)
-        cycles = np.array(range(len(height_curve)))
+        heights = np.array(height_curve)
+        cycles = np.arange(len(height_curve))
 
-        non_zero_mask = heights.flatten() > 0.01
+        non_zero_mask = heights > 0.01
         if np.any(non_zero_mask):
             heights = heights[non_zero_mask]
             cycles = cycles[non_zero_mask]
@@ -581,7 +606,7 @@ class SpeciesGrowthAnalyzer:
         if len(heights) < 2:
             raise ValueError(f"Insufficient growth data for {species}")
 
-        model = SimpleLinearModel()
+        model = PiecewiseLinearModel()
         model.fit(heights, cycles)
 
         return model

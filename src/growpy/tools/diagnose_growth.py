@@ -6,7 +6,7 @@ vertex count, and bounding box at each cycle to identify where
 growth stalls or geometry gets mangled.
 
 Usage:
-    conda run -n growpy python src/growpy/cli/diagnose_growth.py [species] [cycles] [--raw]
+    conda run -n growpy python src/growpy/tools/diagnose_growth.py [species] [cycles] [--raw]
 
     --raw    Use raw preset without calibration overrides
 """
