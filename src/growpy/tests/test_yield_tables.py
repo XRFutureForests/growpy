@@ -267,9 +267,10 @@ class TestWriteCalibrationToSeedJson:
 
 
 class TestEstimateFlushesWarningLogs:
-    """Tests verifying warning logs on interpolation failure."""
+    """Tests verifying fallback behavior on fit failure."""
 
-    def test_interpolation_failure_logs_warning(self, caplog):
+    def test_both_fits_fail_logs_warning(self, caplog):
+        """When both Chapman-Richards and PCHIP fail, return 1.0."""
         root = logging.getLogger("growpy")
         root.addHandler(caplog.handler)
         caplog.set_level(logging.DEBUG)
@@ -277,6 +278,9 @@ class TestEstimateFlushesWarningLogs:
         heights = [5.0, 12.0, 18.0, 22.0, 24.0]
         grove = [0.5 + i * 0.47 for i in range(50)]
         with patch(
+            "growpy.utils.analysis.fit_chapman_richards",
+            side_effect=RuntimeError("fit failed"),
+        ), patch(
             "scipy.interpolate.PchipInterpolator",
             side_effect=Exception("interpolation error"),
         ):
@@ -284,3 +288,47 @@ class TestEstimateFlushesWarningLogs:
         assert result == 1.0
         assert "Interpolation failed" in caplog.text
         root.removeHandler(caplog.handler)
+
+    def test_cr_failure_falls_back_to_pchip(self):
+        """When Chapman-Richards fails, PCHIP fallback should still work."""
+        ages = [10, 20, 30, 40, 50]
+        heights = [5.0, 12.0, 18.0, 22.0, 24.0]
+        grove = [0.5 + i * 0.47 for i in range(50)]
+        with patch(
+            "growpy.utils.analysis.fit_chapman_richards",
+            side_effect=RuntimeError("fit failed"),
+        ):
+            fpy = estimate_flushes_per_year(grove, ages, heights)
+        assert 0.3 <= fpy <= 3.0
+
+
+class TestInterpolateYieldTableFallback:
+    """Test that interpolate_yield_table falls back to PCHIP when CR fit fails."""
+
+    def test_fallback_on_cr_failure(self):
+        ages = [10, 20, 30]
+        heights = [5.0, 12.0, 18.0]
+        with patch(
+            "growpy.utils.analysis.fit_chapman_richards",
+            side_effect=RuntimeError("fit failed"),
+        ):
+            cycles, values = interpolate_yield_table(ages, heights, max_cycles=30)
+        assert len(cycles) == 30
+        assert all(v >= 0 for v in values)
+
+    def test_monotonic_output(self):
+        """Interpolated values should be monotonically non-decreasing for height."""
+        ages = [10, 20, 30, 40, 50, 60, 80, 100]
+        heights = [4.0, 11.0, 18.0, 23.0, 27.0, 29.5, 32.0, 33.5]
+        _, vals = interpolate_yield_table(ages, heights, max_cycles=100)
+        assert all(vals[i + 1] >= vals[i] - 0.01 for i in range(len(vals) - 1))
+
+    def test_extrapolation_beyond_table_range(self):
+        """Values beyond max yield table age should plateau, not overshoot."""
+        ages = [10, 20, 30, 40, 50]
+        heights = [5.0, 12.0, 18.0, 22.0, 24.0]
+        _, vals = interpolate_yield_table(ages, heights, max_cycles=100)
+        # At cycle 100 (age 100), height should be between max yield height and
+        # a reasonable asymptote, not exploding
+        assert vals[-1] < 50.0
+        assert vals[-1] >= 24.0

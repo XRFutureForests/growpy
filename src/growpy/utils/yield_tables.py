@@ -249,16 +249,12 @@ def estimate_flushes_per_year(
     to find the time-scaling factor. If Grove grows faster per cycle than real
     trees grow per year, fpy > 1 (multiple cycles per year). If slower, fpy < 1.
 
-    Method:
-        1. Find the Grove height at ~80% of its max (avoids noisy early/late growth).
-        2. Find the age in the yield table where trees reach that same height.
-        3. fpy = grove_cycle_at_reference / yield_age_at_reference.
+    Uses Chapman-Richards parametric fit for the yield table height-to-age
+    inversion. Falls back to PCHIP spline if the parametric fit fails.
 
     Returns:
         Estimated flushes_per_year, clamped to [0.3, 3.0].
     """
-    from scipy.interpolate import PchipInterpolator
-
     if len(grove_heights) < 5 or len(yield_ages) < 2 or len(yield_heights) < 2:
         return 1.0
 
@@ -279,8 +275,8 @@ def estimate_flushes_per_year(
         return 1.0
 
     # Find yield table age where trees reach ref_height
-    extended_ages = [0.0] + list(yield_ages)
-    extended_heights = [0.5] + list(yield_heights)
+    extended_ages = np.array([0.0] + list(yield_ages))
+    extended_heights = np.array([0.5] + list(yield_heights))
 
     yield_max = max(yield_heights)
     if ref_height > yield_max:
@@ -292,11 +288,23 @@ def estimate_flushes_per_year(
                 break
 
     try:
-        interp = PchipInterpolator(extended_heights, extended_ages)
-        yield_age = float(interp(ref_height))
+        from growpy.utils.analysis import fit_chapman_richards
+
+        A, k, p, _ = fit_chapman_richards(extended_ages, extended_heights, y0=0.5)
+        # Analytic inverse: age = -ln(1 - ((h - y0)/(A - y0))^(1/p)) / k
+        ratio = np.clip((ref_height - 0.5) / (A - 0.5), 1e-12, 1.0 - 1e-12)
+        yield_age = float(-np.log(1.0 - ratio ** (1.0 / p)) / k)
     except Exception:
-        logger.warning("Interpolation failed for ref_height=%.2f", ref_height)
-        return 1.0
+        try:
+            from scipy.interpolate import PchipInterpolator
+
+            interp = PchipInterpolator(extended_heights, extended_ages)
+            yield_age = float(interp(ref_height))
+        except Exception:
+            logger.warning(
+                "Interpolation failed for ref_height=%.2f", ref_height
+            )
+            return 1.0
 
     if yield_age <= 0.5:
         return 1.0
@@ -319,21 +327,50 @@ def interpolate_yield_table(
     flushes_per_year: float = 1.0,
     initial_value: float = 0.5,
 ) -> tuple:
-    """Interpolate yield table to per-cycle resolution using PCHIP.
+    """Interpolate yield table to per-cycle resolution.
+
+    Uses Chapman-Richards parametric fit for smooth interpolation with natural
+    extrapolation beyond the yield table age range. Falls back to PCHIP
+    spline if the parametric fit fails.
 
     Args:
         initial_value: Value at age 0. Use 0.5 for heights (sapling),
             0.0 for DBH (no trunk diameter at birth).
     """
-    from scipy.interpolate import PchipInterpolator
+    from growpy.utils.analysis import (
+        _chapman_richards,
+        _chapman_richards_with_baseline,
+        fit_chapman_richards,
+    )
 
-    extended_ages = [0] + list(ages)
-    extended_values = [initial_value] + list(values)
+    extended_ages = np.array([0.0] + list(ages))
+    extended_values = np.array([initial_value] + list(values))
 
-    interp = PchipInterpolator(extended_ages, extended_values)
     cycle_indices = np.arange(1, max_cycles + 1)
     calendar_ages = cycle_indices / flushes_per_year
-    interpolated = np.maximum(interp(calendar_ages), 0.0)
+
+    try:
+        A, k, p, r_sq = fit_chapman_richards(
+            extended_ages, extended_values, y0=initial_value
+        )
+        if initial_value > 0:
+            interpolated = _chapman_richards_with_baseline(
+                calendar_ages, A, k, p, initial_value
+            )
+        else:
+            interpolated = _chapman_richards(calendar_ages, A, k, p)
+        interpolated = np.maximum(interpolated, 0.0)
+        logger.debug(
+            "  Yield table CR fit: A=%.2f, k=%.4f, p=%.2f, R²=%.4f",
+            A, k, p, r_sq,
+        )
+    except (RuntimeError, ValueError) as e:
+        logger.debug("  Yield table CR fit failed (%s), using PCHIP fallback", e)
+        from scipy.interpolate import PchipInterpolator
+
+        interp = PchipInterpolator(extended_ages, extended_values)
+        interpolated = np.maximum(interp(calendar_ages), 0.0)
+
     return cycle_indices, interpolated
 
 

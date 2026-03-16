@@ -16,7 +16,199 @@ import joblib
 import numpy as np
 import pandas as pd
 import the_grove_23_core as gc
+from scipy.optimize import curve_fit
 from tqdm import tqdm
+
+
+def _chapman_richards(t, A, k, p):
+    """Chapman-Richards growth function: h(t) = A * (1 - exp(-k*t))^p."""
+    return A * (1.0 - np.exp(-k * t)) ** p
+
+
+def _chapman_richards_with_baseline(t, A, k, p, y0):
+    """Chapman-Richards with baseline: h(t) = y0 + (A - y0) * (1 - exp(-k*t))^p."""
+    return y0 + (A - y0) * (1.0 - np.exp(-k * t)) ** p
+
+
+def fit_chapman_richards(
+    x: np.ndarray,
+    y: np.ndarray,
+    y0: float = 0.0,
+) -> Tuple[float, float, float, float]:
+    """Fit Chapman-Richards growth function to (x, y) data.
+
+    Fits h(t) = y0 + (A - y0) * (1 - exp(-k*t))^p when y0 > 0,
+    or    h(t) = A * (1 - exp(-k*t))^p              when y0 == 0.
+
+    Args:
+        x: Independent variable (ages or cycles).
+        y: Dependent variable (heights or DBH).
+        y0: Baseline value at t=0. Use 0.0 for standard form.
+
+    Returns:
+        Tuple of (A, k, p, r_squared).
+
+    Raises:
+        RuntimeError: If fewer than 4 data points or curve_fit fails.
+    """
+    x = np.asarray(x, dtype=float).flatten()
+    y = np.asarray(y, dtype=float).flatten()
+
+    if len(x) < 4:
+        raise RuntimeError(
+            f"Need >= 4 data points for Chapman-Richards, got {len(x)}"
+        )
+
+    y_max = float(np.max(y))
+    if y_max <= 0:
+        raise RuntimeError("All y values <= 0, cannot fit growth model")
+
+    A_init = y_max * 1.3
+    k_init = 0.03
+    p_init = 1.5
+
+    A_lo = y_max * 1.01
+    A_hi = y_max * 5.0
+
+    if y0 > 0:
+
+        def _model(t, A, k, p):
+            return _chapman_richards_with_baseline(t, A, k, p, y0)
+
+    else:
+        _model = _chapman_richards
+
+    popt, _ = curve_fit(
+        _model,
+        x,
+        y,
+        p0=[A_init, k_init, p_init],
+        bounds=([A_lo, 1e-4, 0.1], [A_hi, 1.0, 10.0]),
+        maxfev=10000,
+    )
+
+    A, k, p = popt
+    y_pred = _model(x, A, k, p)
+    ss_res = np.sum((y - y_pred) ** 2)
+    ss_tot = np.sum((y - np.mean(y)) ** 2)
+    r_squared = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
+
+    return float(A), float(k), float(p), float(r_squared)
+
+
+class ChapmanRichardsModel:
+    """Parametric growth model using the Chapman-Richards function.
+
+    Forward:  h(t) = A * (1 - exp(-k*t))^p
+    Inverse:  t(h) = -ln(1 - (h/A)^(1/p)) / k   for 0 <= h < A
+
+    For heights near or beyond the asymptote A, the inverse extrapolates
+    linearly using the slope at h = 0.98*A.
+    """
+
+    EXTRAP_THRESHOLD = 0.98
+
+    def __init__(self):
+        self.A = None
+        self.k = None
+        self.p = None
+        self.r_squared = None
+        self.heights = None
+        self.cycles = None
+        self._extrap_t = None
+        self._extrap_slope = None
+
+    def fit(self, heights, cycles):
+        """Fit Chapman-Richards to a height curve (cycles -> heights).
+
+        Args:
+            heights: Observed heights (y-axis).
+            cycles: Corresponding cycle indices (x-axis).
+
+        Returns:
+            self
+        """
+        self.heights = np.asarray(heights, dtype=float).flatten()
+        self.cycles = np.asarray(cycles, dtype=float).flatten()
+
+        self.A, self.k, self.p, self.r_squared = fit_chapman_richards(
+            self.cycles, self.heights
+        )
+
+        self._compute_extrapolation_constants()
+        return self
+
+    def _compute_extrapolation_constants(self):
+        """Pre-compute constants for linear extrapolation beyond the asymptote."""
+        h_boundary = self.A * self.EXTRAP_THRESHOLD
+        self._extrap_t = self._raw_inverse(h_boundary)
+        dh_dt = (
+            self.A
+            * self.k
+            * self.p
+            * np.exp(-self.k * self._extrap_t)
+            * (1.0 - np.exp(-self.k * self._extrap_t)) ** (self.p - 1.0)
+        )
+        self._extrap_slope = 1.0 / dh_dt if dh_dt > 1e-12 else 0.0
+
+    def _raw_inverse(self, h):
+        """Analytic inverse: t = -ln(1 - (h/A)^(1/p)) / k."""
+        ratio = np.clip(h / self.A, 1e-12, 1.0 - 1e-12)
+        return -np.log(1.0 - ratio ** (1.0 / self.p)) / self.k
+
+    def forward(self, t):
+        """Evaluate h(t) = A * (1 - exp(-k*t))^p."""
+        t = np.asarray(t, dtype=float)
+        return self.A * (1.0 - np.exp(-self.k * t)) ** self.p
+
+    def predict(self, X):
+        """Predict cycles from target heights (inverse of the growth curve).
+
+        Interface-compatible with PiecewiseLinearModel.predict().
+
+        Args:
+            X: Target heights, any shape (will be flattened).
+
+        Returns:
+            Array of predicted cycle counts.
+        """
+        targets = np.asarray(X, dtype=float).flatten()
+        results = np.empty_like(targets, dtype=float)
+
+        h_boundary = self.A * self.EXTRAP_THRESHOLD
+
+        for i, h in enumerate(targets):
+            if h <= 0:
+                results[i] = 0.0
+            elif h < h_boundary:
+                results[i] = self._raw_inverse(h)
+            else:
+                results[i] = self._extrap_t + self._extrap_slope * (h - h_boundary)
+
+        return results
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize model parameters to a JSON-compatible dict."""
+        return {
+            "model_type": "chapman_richards",
+            "A": self.A,
+            "k": self.k,
+            "p": self.p,
+            "r_squared": self.r_squared,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "ChapmanRichardsModel":
+        """Reconstruct model from a parameter dict."""
+        model = cls()
+        model.A = d["A"]
+        model.k = d["k"]
+        model.p = d["p"]
+        model.r_squared = d.get("r_squared")
+        model.heights = None
+        model.cycles = None
+        model._compute_extrapolation_constants()
+        return model
 
 
 class PiecewiseLinearModel:
@@ -576,21 +768,18 @@ class SpeciesGrowthAnalyzer:
 
         return max_heights, max_dbhs, metadata
 
-    def create_growth_model_for_species(
-        self, species: str, height_curve: List[float]
-    ) -> PiecewiseLinearModel:
-        """Create piecewise linear model to predict required cycles from target height.
+    def create_growth_model_for_species(self, species: str, height_curve: List[float]):
+        """Create a growth model to predict required cycles from target height.
 
-        Stores the full height curve for accurate interpolation within the
-        training range, and extrapolates using the last segment's slope for
-        heights beyond what was trained.
+        Tries Chapman-Richards parametric fit first (better extrapolation).
+        Falls back to PiecewiseLinearModel if the fit fails or is poor.
 
         Args:
             species: Species name
             height_curve: List of heights per cycle
 
         Returns:
-            Fitted PiecewiseLinearModel
+            Fitted ChapmanRichardsModel or PiecewiseLinearModel
         """
         if not height_curve:
             raise ValueError(f"Empty height curve for {species}")
@@ -606,10 +795,33 @@ class SpeciesGrowthAnalyzer:
         if len(heights) < 2:
             raise ValueError(f"Insufficient growth data for {species}")
 
-        model = PiecewiseLinearModel()
-        model.fit(heights, cycles)
-
-        return model
+        try:
+            model = ChapmanRichardsModel()
+            model.fit(heights, cycles)
+            if model.r_squared < 0.9:
+                logger.warning(
+                    "  Chapman-Richards poor fit (R²=%.3f) for %s, using piecewise",
+                    model.r_squared,
+                    species,
+                )
+                raise RuntimeError("Poor fit")
+            logger.info(
+                "  Chapman-Richards fit: A=%.2f, k=%.4f, p=%.2f, R²=%.4f",
+                model.A,
+                model.k,
+                model.p,
+                model.r_squared,
+            )
+            return model
+        except (RuntimeError, ValueError) as e:
+            logger.warning(
+                "  Chapman-Richards fit failed for %s (%s), falling back to piecewise",
+                species,
+                e,
+            )
+            model = PiecewiseLinearModel()
+            model.fit(heights, cycles)
+            return model
 
     def _analyze_single_species(self, species: str) -> bool:
         """Core analysis logic for a single species.
@@ -823,6 +1035,12 @@ class SpeciesGrowthAnalyzer:
         if species in self.growth_models:
             model_path = species_dir / "growth_model.pkl"
             joblib.dump(self.growth_models[species], model_path)
+
+            model = self.growth_models[species]
+            if hasattr(model, "to_dict"):
+                params_path = species_dir / "growth_model_params.json"
+                with open(params_path, "w") as f:
+                    json.dump(model.to_dict(), f, indent=2)
 
         if species in self.analysis_metadata:
             metadata_path = species_dir / "metadata.json"
