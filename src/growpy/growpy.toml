@@ -15,7 +15,7 @@ random_seed = 42
 # Multi-stage mode columns: x, y, species, cycle_interval, max_cycles
 csv_file = "data/input/test.csv"
 # Output directory for generated trees (species subdirectories created automatically)
-output_dir = "data/output/forest_test_dens100_3m_leaf_flexible"
+output_dir = "data/output/forest_test_dens100_3m"
 # Enable verbose output for PVE preset generation
 verbose = true
 # Enable profiling to track execution time of each pipeline step
@@ -156,12 +156,12 @@ fruit = 0.2
 # here fall back to the global "leaf" value above.
 # Ratios chosen to keep LAI deviation < 1% (validated against compute_voxelized_leaf_areas.py).
 [helios.simplification.leaf_per_species]
-selected_european_beech = 0.3    # -0.4% LAI, -28.6% OBJ
-selected_european_oak = 0.5      # -0.3% LAI, -18.5% OBJ
-selected_paper_birch = 0.3       # -0.1% LAI, -62.8% OBJ
-selected_scots_pine = 0.3        # -0.1% LAI, -62.0% OBJ
-selected_silver_fir = 0.5        # -0.2% LAI, -39.3% OBJ
-selected_sycamore_maple = 1.0    # -1.7% LAI (borderline), -5.9% OBJ
+selected_european_beech = 0.3
+selected_european_oak = 0.5
+selected_paper_birch = 0.3
+selected_scots_pine = 0.3
+selected_silver_fir = 0.5
+selected_sycamore_maple = 1.0
 
 # Quality Presets (single source of truth)
 # Define any number of named presets below as [quality.<name>] sections.
