@@ -59,30 +59,41 @@ class TestCaplogIntegration:
         logger = logging.getLogger("growpy")
         logger.handlers.clear()
 
+    def _attach_caplog(self, caplog):
+        """Attach caplog handler to growpy logger (propagate=False blocks default capture)."""
+        root = logging.getLogger("growpy")
+        root.addHandler(caplog.handler)
+        caplog.set_level(logging.DEBUG)
+        return root
+
     def test_info_captured_when_verbose(self, caplog):
         setup_logging(verbose=True)
+        root = self._attach_caplog(caplog)
         logger = logging.getLogger("growpy.test_caplog")
-        with caplog.at_level(logging.DEBUG, logger="growpy"):
-            logger.info("visible info message")
+        logger.info("visible info message")
         assert "visible info message" in caplog.text
+        root.removeHandler(caplog.handler)
 
     def test_info_suppressed_when_quiet(self, caplog):
         setup_logging(verbose=False)
+        root = self._attach_caplog(caplog)
         logger = logging.getLogger("growpy.test_caplog")
-        with caplog.at_level(logging.DEBUG, logger="growpy"):
-            logger.info("hidden info message")
+        logger.info("hidden info message")
         assert "hidden info message" not in caplog.text
+        root.removeHandler(caplog.handler)
 
     def test_warning_captured_when_quiet(self, caplog):
         setup_logging(verbose=False)
+        root = self._attach_caplog(caplog)
         logger = logging.getLogger("growpy.test_caplog")
-        with caplog.at_level(logging.DEBUG, logger="growpy"):
-            logger.warning("warning message")
+        logger.warning("warning message")
         assert "warning message" in caplog.text
+        root.removeHandler(caplog.handler)
 
     def test_child_logger_inherits_level(self, caplog):
         setup_logging(verbose=True)
+        root = self._attach_caplog(caplog)
         child = logging.getLogger("growpy.some.module")
-        with caplog.at_level(logging.DEBUG, logger="growpy"):
-            child.info("child info")
+        child.info("child info")
         assert "child info" in caplog.text
+        root.removeHandler(caplog.handler)

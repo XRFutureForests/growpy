@@ -263,26 +263,35 @@ class TestNormalizeAlphaTexture:
 class TestTextureWarningLogs:
     """Tests verifying warning messages on failure paths."""
 
+    def _attach_caplog(self, caplog):
+        root = logging.getLogger("growpy")
+        root.addHandler(caplog.handler)
+        caplog.set_level(logging.DEBUG)
+        return root
+
     def test_extract_alpha_logs_warning_on_corrupt_file(self, tmp_path, caplog):
+        root = self._attach_caplog(caplog)
         p = tmp_path / "corrupt.png"
         p.write_bytes(b"not a real image")
-        with caplog.at_level(logging.WARNING, logger="growpy.io.texture_utils"):
-            result = extract_alpha_from_diffuse(p)
+        result = extract_alpha_from_diffuse(p)
         assert result is None
         assert "Failed to extract alpha" in caplog.text
+        root.removeHandler(caplog.handler)
 
     def test_strip_alpha_logs_warning_on_corrupt_file(self, tmp_path, caplog):
+        root = self._attach_caplog(caplog)
         p = tmp_path / "corrupt.png"
         p.write_bytes(b"not a real image")
-        with caplog.at_level(logging.WARNING, logger="growpy.io.texture_utils"):
-            result = strip_alpha_from_diffuse(p)
+        result = strip_alpha_from_diffuse(p)
         assert result is False
         assert "Failed to strip alpha" in caplog.text
+        root.removeHandler(caplog.handler)
 
     def test_normalize_alpha_logs_warning_on_corrupt_file(self, tmp_path, caplog):
+        root = self._attach_caplog(caplog)
         p = tmp_path / "corrupt.png"
         p.write_bytes(b"not a real image")
-        with caplog.at_level(logging.WARNING, logger="growpy.io.texture_utils"):
-            result = normalize_alpha_texture(p)
+        result = normalize_alpha_texture(p)
         assert result is False
         assert "Failed to normalize alpha" in caplog.text
+        root.removeHandler(caplog.handler)

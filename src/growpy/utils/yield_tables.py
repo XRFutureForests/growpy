@@ -291,8 +291,8 @@ def estimate_flushes_per_year(
                 grove_cycle = i + 1
                 break
 
-    interp = PchipInterpolator(extended_heights, extended_ages)
     try:
+        interp = PchipInterpolator(extended_heights, extended_ages)
         yield_age = float(interp(ref_height))
     except Exception:
         logger.warning("Interpolation failed for ref_height=%.2f", ref_height)
