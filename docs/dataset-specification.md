@@ -8,7 +8,9 @@ This document defines the target tree asset dataset for a VR forest simulation i
 
 **Target engine**: Unreal Engine 5.5+ with Nanite and Procedural Vegetation Editor (PVE).
 
-**Estimated total models**: ~576 (16 species x 2 individuals x ~6 stages x 3 densities).
+**Estimated total models**: ~522 (16 species x 2 individuals x 4--7 stages x 3 densities). See [Asset Count Estimate](#asset-count-estimate) for breakdown.
+
+**Dataset overview**: See [dataset-overview.md](dataset-overview.md) for production status and preview images.
 
 ## Species Selection
 
@@ -113,23 +115,47 @@ Each individual is exported at multiple heights using multi-stage export (`cycle
 
 | Species Group | Height Range | Increment | Stages |
 |---|---|---|---|
-| Tall conifers (spruce, fir, pine) | 5 m -- 35 m | 5 m | 7 |
+| Tall conifers (spruce, fir) | 5 m -- 35 m | 5 m | 7 |
+| Scots pine | 5 m -- 30 m | 5 m | 6 |
 | Medium conifers (Austrian pine, redcedar) | 5 m -- 25 m | 5 m | 5 |
 | Tall broadleaf (beech, oak, ash) | 5 m -- 30 m | 5 m | 6 |
 | Medium broadleaf (maple, birch, linden) | 5 m -- 25 m | 5 m | 5 |
 | Small broadleaf (hornbeam, cherry, field maple) | 5 m -- 20 m | 5 m | 4 |
 
-The target height in the input CSV is set to the species maximum. Multi-stage export produces snapshots at the cycle intervals corresponding to each height milestone.
+The target height in the input CSV is set to the species maximum. Multi-stage export produces snapshots at the cycle intervals corresponding to each height milestone. Per-species max heights in the Species Catalog below are authoritative when they differ from the group ranges above.
 
 ### Level 4: Density Variant
 
-Each growth stage is exported with three foliage density levels, controlled by the `twig_density` CSV column:
+Each growth stage is exported with three foliage density levels. Density variants are produced automatically from a single growth simulation -- the pipeline exports all three variants per stage without re-simulating.
 
-| Variant | `twig_density` | Description | Use Case |
-|---|---|---|---|
-| `full` | 1.0 | All twigs and foliage attached | Healthy tree in full leaf |
-| `reduced` | 0.5 | 50% of twigs removed | Stressed tree, partial defoliation |
-| `bare` | 0.0 | No twigs, branch structure only | Dead tree, winter deciduous, or LOD |
+| Variant | `twig_density` | `build_cutoff_thickness` | Description | Use Case |
+|---|---|---|---|---|
+| `full` | 1.0 | (from quality preset) | All twigs and foliage attached | Healthy tree in full leaf |
+| `reduced` | 0.5 | 0.01 | 50% of twigs removed, thinner branches pruned | Stressed tree, partial defoliation |
+| `bare` | 0.0 | 0.02 | No twigs, only thicker branch skeleton | Dead tree, winter deciduous, or LOD |
+
+**Configuration**: Density variants are controlled via `growpy.toml`, not the CSV `twig_density` column:
+
+```toml
+# In [export] section:
+density_variants = ["full", "reduced", "bare"]
+
+# Per-variant overrides:
+[density_variant.full]
+twig_density = 1.0
+
+[density_variant.reduced]
+twig_density = 0.5
+build_cutoff_thickness = 0.01
+
+[density_variant.bare]
+twig_density = 0.0
+build_cutoff_thickness = 0.02
+```
+
+When `density_variants` is active, the CSV `twig_density` column is ignored. Each variant can override `twig_density` and `build_cutoff_thickness` from the active quality preset. The `reduced` and `bare` variants use higher `build_cutoff_thickness` to also prune thin branches, producing visibly distinct silhouettes beyond just removing twigs.
+
+Preview images are generated only for the first variant (typically `full`), since the branch structure is identical across density levels.
 
 Seasonal leaf color (spring green, summer, autumn, winter) is handled at runtime in Unreal Engine via material parameter changes, not via separate asset variants.
 
@@ -137,12 +163,13 @@ Seasonal leaf color (spring green, summer, autumn, winter) is handled at runtime
 
 | Species Group | Species | Individuals | Stages | Densities | Subtotal |
 |---|---|---|---|---|---|
-| Tall conifers | 3 | 2 | 7 | 3 | 126 |
-| Medium conifers | 3 | 2 | 5 | 3 | 90 |
+| Tall conifers (spruce, fir) | 3 | 2 | 7 | 3 | 126 |
+| Scots pine | 1 | 2 | 6 | 3 | 36 |
+| Medium conifers | 2 | 2 | 5 | 3 | 60 |
 | Tall broadleaf | 3 | 2 | 6 | 3 | 108 |
 | Medium broadleaf | 4 | 2 | 5 | 3 | 120 |
 | Small broadleaf | 3 | 2 | 4 | 3 | 72 |
-| **Total** | **16** | | | | **516** |
+| **Total** | **16** | | | | **522** |
 
 ## Naming Convention
 
@@ -192,23 +219,36 @@ data/output/dataset/
 
 ## Production Pipeline
 
-### Prerequisites
+### Prerequisites (run once)
 
 1. Run steps 1--3 of the GrowPy pipeline for all 16 species:
 
    ```
+   conda activate growpy
    python src/growpy/cli/prepare_assets.py --csv data/input/dataset/all_species.csv
    python src/growpy/cli/convert_twigs.py
    python src/growpy/cli/create_growth_models.py --csv data/input/dataset/all_species.csv
    ```
 
-2. Verify growth models and yield table calibration exist for each species.
+2. Verify growth models exist in `data/assets/growth_models/` for each species.
+3. Verify yield table calibration was applied (check log output from step 3).
+
+### Activate Density Variants
+
+Edit `src/growpy/growpy.toml` to enable multi-density export:
+
+```toml
+[export]
+density_variants = ["full", "reduced", "bare"]
+```
+
+This produces all three density variants from each simulation run automatically. No separate re-runs needed.
 
 ### Production Workflow Per Species
 
-For each species, two export runs are needed (open_grown + competition):
+For each species, two export runs produce all growth stages and all density variants:
 
-**Step 1: Open-grown individual**
+**Run 1: Open-grown individual**
 
 ```
 python src/growpy/cli/generate_forest.py \
@@ -218,7 +258,7 @@ python src/growpy/cli/generate_forest.py \
     --quality high
 ```
 
-**Step 2: Competition individual**
+**Run 2: Competition individual**
 
 ```
 python src/growpy/cli/generate_forest.py \
@@ -229,33 +269,193 @@ python src/growpy/cli/generate_forest.py \
     --export-trees 1
 ```
 
-**Step 3: Density variants**
+With `density_variants` active, each run exports `full`, `reduced`, and `bare` variants at every cycle interval snapshot. The `--export-trees 1` flag ensures only the center tree is exported in competition mode (neighbors participate in growth simulation for light competition but are not exported).
 
-Re-run steps 1--2 with `twig_density` set to 0.5 and 0.0 in the CSV, or implement a post-processing step that re-exports twig placements at different densities from the same growth simulation.
+**Batch helper**: `produce_dataset.py` automates both runs for one or more species:
+
+```
+python src/growpy/cli/produce_dataset.py --species "European beech"
+python src/growpy/cli/produce_dataset.py --all
+python src/growpy/cli/produce_dataset.py --pilot    # beech + spruce only
+python src/growpy/cli/produce_dataset.py --dry-run   # print commands without executing
+```
 
 ### CSV Input Templates
 
-Templates are stored in `data/input/dataset/`. Each species has two CSVs:
+Templates are stored in `data/input/dataset/`. Each species has two CSVs plus a shared `all_species.csv`.
+
+**`all_species.csv`** -- one row per species, used only for steps 1--3 (asset preparation, twig conversion, growth models). Not used for forest generation (positions are all 0,0,0).
 
 **`{species}_open.csv`** -- single tree, open-grown:
 
 ```csv
-fid,species,x,y,z,height,twig_density
-1,{Common Name},0,0,0,{max_height},1.0
+fid,species,x,y,z,height,twig_density,individual_type
+1,{Common Name},0,0,0,{max_height},1.0,open_grown
 ```
 
 **`{species}_competition.csv`** -- center tree + 6 neighbors:
 
 ```csv
-fid,species,x,y,z,height,twig_density
-1,{Common Name},0,0,0,{max_height},1.0
-101,{Common Name},{s},0,0,{max_height},1.0
-102,{Common Name},{-s},0,0,{max_height},1.0
-103,{Common Name},{s/2},{s*0.866},0,{max_height},1.0
-104,{Common Name},{-s/2},{s*0.866},0,{max_height},1.0
-105,{Common Name},{s/2},{-s*0.866},0,{max_height},1.0
-106,{Common Name},{-s/2},{-s*0.866},0,{max_height},1.0
+fid,species,x,y,z,height,twig_density,individual_type
+1,{Common Name},0,0,0,{max_height},1.0,competition
+101,{Common Name},{s},0,0,{max_height},1.0,competition
+102,{Common Name},{-s},0,0,{max_height},1.0,competition
+103,{Common Name},{s/2},{s*0.866},0,{max_height},1.0,competition
+104,{Common Name},{-s/2},{s*0.866},0,{max_height},1.0,competition
+105,{Common Name},{s/2},{-s*0.866},0,{max_height},1.0,competition
+106,{Common Name},{-s/2},{-s*0.866},0,{max_height},1.0,competition
 ```
+
+The `individual_type` column controls output subdirectory naming and filename prefixes (`open` / `comp`). When `density_variants` is active in growpy.toml, the `twig_density` column in these CSVs is ignored.
+
+## Step-by-Step Production Guide
+
+This section provides the complete workflow for producing the dataset, including review checkpoints and troubleshooting guidance.
+
+### Phase 0: Environment Setup
+
+```
+conda activate growpy
+pip install -e .  # editable install if not already done
+python -c "import the_grove_23_core.grove_core as gc; print('Grove API ready')"
+```
+
+Verify The Grove 2.3 is installed at `src/the_grove_23/`.
+
+### Phase 1: Prerequisites (run once for all species)
+
+```
+python src/growpy/cli/prepare_assets.py --csv data/input/dataset/all_species.csv
+python src/growpy/cli/convert_twigs.py
+python src/growpy/cli/create_growth_models.py --csv data/input/dataset/all_species.csv
+```
+
+After this phase, verify:
+
+- `data/assets/presets/` contains 16 `{species}.seed.json` files
+- `data/assets/twigs/` contains converted `.usda` twig files
+- `data/assets/growth_models/` contains 16 growth model JSON files
+- Calibration plots in `data/output/growth_comparison/` look reasonable
+
+### Phase 2: Configuration
+
+Edit `src/growpy/growpy.toml`:
+
+```toml
+[export]
+density_variants = ["full", "reduced", "bare"]
+skeletal = true
+skip_pve_json = true
+skip_validation = true
+
+[forest]
+quality = "high"
+cycle_interval = 25
+growth_cycle_limit = 125
+longevity_mode = true
+```
+
+### Phase 3: Pilot Run (2 species)
+
+Start with one broadleaf and one conifer to validate the full pipeline before committing to all 16 species.
+
+**European beech (broadleaf pilot)**:
+
+```
+python src/growpy/cli/produce_dataset.py --species "European beech"
+```
+
+Or manually:
+
+```
+python src/growpy/cli/generate_forest.py \
+    --csv data/input/dataset/european_beech_open.csv \
+    --output data/output/dataset/european_beech/open_grown \
+    --cycle-interval 25 --quality high
+
+python src/growpy/cli/generate_forest.py \
+    --csv data/input/dataset/european_beech_competition.csv \
+    --output data/output/dataset/european_beech/competition \
+    --cycle-interval 25 --quality high --export-trees 1
+```
+
+**Review checkpoint 1** -- inspect European beech output:
+
+- Check preview images in `data/output/dataset/european_beech/open_grown/`
+- Verify height stages match the expected 5, 10, 15, 20, 25, 30 m
+- Confirm all three density variants exported per stage
+- Compare open-grown vs competition crown silhouettes
+
+**Norway spruce (conifer pilot)**:
+
+```
+python src/growpy/cli/produce_dataset.py --species "Norway spruce"
+```
+
+**Review checkpoint 2** -- compare broadleaf vs conifer:
+
+- Conifer crown should be conical, broadleaf should be rounded
+- Height increments should be consistent
+- Bare variant should show branch skeleton without twigs
+- Adjust `cycle_interval`, `skeleton_reduce`, or competition spacing if needed
+
+### Phase 4: Full Batch (remaining 14 species)
+
+Once pilots look good:
+
+```
+python src/growpy/cli/produce_dataset.py --all
+```
+
+Or run species individually if you prefer to review each one.
+
+**Review checkpoint 3** -- spot-check 2--3 species from each group:
+
+- One shade-tolerant broadleaf (e.g., hornbeam)
+- One shade-intolerant conifer (e.g., Scots pine)
+- One small broadleaf (e.g., field maple)
+
+### Review Checklist
+
+Apply at each review checkpoint:
+
+**Visual checks (preview images)**:
+
+- Crown silhouette is plausible for the species
+- Open-grown: wide, spreading crown with lower branches retained
+- Competition: narrow, tall crown with clean trunk and suppressed lower branches
+- Height progression looks natural across stages (no sudden jumps or shrinkage)
+- Bare variant: no visible twigs, only branch skeleton
+
+**Quantitative checks**:
+
+- Exported height matches target height per stage (within ~10%)
+- DBH increases monotonically with height
+- File count per species: stages x 3 densities x 2 mesh types (assembly + stems)
+- Bone count under Unreal limit (65,535 bones per skeletal mesh)
+- Preview images generated for each stage (one per stage, showing full variant)
+
+**Naming checks**:
+
+- Files follow `{Species}_{individual}_{height}_{dbh}_{density}_assembly.usda` pattern
+- Subdirectories: `{species}/open_grown/` and `{species}/competition/`
+
+### Troubleshooting and Adjustments
+
+| Issue | Likely Cause | Fix |
+|---|---|---|
+| Height too short at max stage | Growth plateaus early; calibration mismatch | Increase `growth_cycle_limit`; re-run `create_growth_models.py` with `--cycles` override; check yield table calibration |
+| Height overshoots target | Calibration scaling too aggressive | Re-check yield table alignment; adjust calibration parameters in growpy.toml |
+| Crown too narrow (open-grown) | Possible competition from absent neighbors detected | Verify CSV has only 1 tree at origin; check preset's natural form |
+| Crown too wide (competition) | Neighbor spacing too large | Decrease spacing `s` in `{species}_competition.csv` |
+| Crown too narrow (competition) | Neighbor spacing too small | Increase spacing `s` in `{species}_competition.csv` |
+| Bone limit exceeded | Too many fine branches | Increase `skeleton_reduce` (e.g., 0.4--0.6) or `skeleton_length` (e.g., 2.0--3.0) in growpy.toml or via `--skeleton-reduce` CLI arg |
+| Missing growth stages | `cycle_interval` too large | Reduce `cycle_interval` (e.g., from 25 to 15) |
+| `bare` variant still shows twigs | Density threshold misconfigured | Check `[density_variant.bare]` has `twig_density = 0.0` in growpy.toml |
+| `reduced` variant looks identical to `full` | `build_cutoff_thickness` not distinct enough | Increase `build_cutoff_thickness` in `[density_variant.reduced]` (e.g., 0.015) |
+| Export takes very long | High mesh resolution | Use `--quality debug` for test runs; switch to `high` for final production |
+| Calibration mismatch for a species | Wrong yield table matched | Override with `--table-id` or `--yield-class` in `create_growth_models.py`; see [yield-table-calibration.md](yield-table-calibration.md) |
+| Tree dies before reaching target height | `longevity_mode` disabled | Ensure `longevity_mode = true` in growpy.toml `[forest]` section |
 
 ## Species Catalog
 
@@ -304,6 +504,7 @@ Each species section below contains a properties summary and a preview image gri
 | BWI share | ~15% |
 | Max height | 30 m |
 | Growth stages | 5, 10, 15, 20, 25, 30 m |
+| Height group | Scots pine (own group, see height table) |
 | Preset | Pinaceae - Scots pine |
 | Twig | ScotsPineTwig |
 | Yield table | Kiefer |
@@ -787,7 +988,7 @@ Each species section below contains a properties summary and a preview image gri
 
 ## Open Questions and Future Work
 
-1. **Stems reuse across density variants**: Currently each density variant requires a full re-simulation. An optimization would export stems geometry once and only vary twig PointInstancer density. This would cut production time by ~60% but requires pipeline changes.
+1. ~~**Stems reuse across density variants**~~: **Implemented.** The `density_variants` feature in growpy.toml produces all density variants from a single growth simulation. Stems geometry is shared; only `twig_density` and `build_cutoff_thickness` vary per variant. This eliminates the need for 3x re-simulation per species.
 
 2. **European larch and Douglas fir**: Together ~4% of southern German forests, increasing through active planting. Both require custom Grove presets and custom twigs. Priority for phase 2.
 
@@ -796,3 +997,5 @@ Each species section below contains a properties summary and a preview image gri
 4. **Dead/damaged trees**: Beyond the `bare` density variant, specific damage patterns (broken crown, hollow trunk, lightning strike) could be valuable for ecological realism. Out of scope for initial production.
 
 5. **Understory vegetation**: Shrubs, ground cover, and young regeneration are not covered by this specification. They would need separate asset categories using different source tools.
+
+6. **Max height verification**: Per-species max heights should be cross-checked against literature (yield tables, BWI data). The current values are based on BWI typical ranges for southern Germany but may need adjustment for individual site quality classes.

@@ -30,7 +30,7 @@ growpy/
 │   ├── create_growth_models.py   # Step 3: Generate height models
 │   └── generate_forest.py        # Step 4: Forest from CSV (includes OBJ export)
 ├── utils/             # Analysis, profiling, plotting
-└── tests/             # Test suite
+└── tests/             # Test suite (pytest, 209 tests)
 ```
 
 ## Quick Start

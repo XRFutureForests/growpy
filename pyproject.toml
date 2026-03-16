@@ -38,3 +38,4 @@ growpy = ["config/*.csv", "*.toml"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "src/the_grove_23/modules"]
+testpaths = ["src/growpy/tests"]

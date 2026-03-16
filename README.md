@@ -9,6 +9,8 @@ Clean, simplified tree generation system using The Grove 2.3 optimized for **Unr
 - **[Naming Conventions](docs/naming-conventions.md)** - Species, file, and directory naming standards
 - **[PVE Preset Workflow](docs/pve-preset-workflow.md)** - Procedural Vegetation Editor integration
 - **[PVE Attribute Reference](docs/pve-attribute-reference.md)** - PVE attributes and Grove mapping
+- **[Dataset Specification](docs/dataset-specification.md)** - Tree asset dataset for VR forest simulation
+- **[Dataset Overview](docs/dataset-overview.md)** - Production status and preview gallery
 - **[Grove 2.3 API](docs/the_grove/)** - Grove core API documentation
 
 ## Quick Start
@@ -180,6 +182,7 @@ growpy/
 │   │   ├── config/                # Configuration and quality presets
 │   │   ├── core/                  # Forest/Grove/Tree/Skeleton simulation
 │   │   ├── io/                    # USD export, OBJ export, wind JSON, PVE mapping
+│   │   ├── tests/                 # Test suite (pytest)
 │   │   └── utils/                 # Analysis, profiling, plotting
 │   └── the_grove_23/              # Grove 2.3 (not in repo, add after clone)
 ├── data/
@@ -196,6 +199,24 @@ growpy/
 ├── pyproject.toml                 # Python package configuration
 └── environment.yml                # Conda environment definition
 ```
+
+## Testing
+
+Tests live alongside the source code in `src/growpy/tests/`.
+
+```bash
+# Run all tests
+conda activate growpy
+python -m pytest src/growpy/tests/ -v
+
+# Run a specific test module
+python -m pytest src/growpy/tests/test_skeleton.py -v
+
+# Run with short tracebacks
+python -m pytest src/growpy/tests/ --tb=short
+```
+
+Test modules cover configuration, skeleton math, twig geometry, preset overrides, quality presets, texture utilities, PVE coordinate transforms, profiling, and naming conventions. See the [test suite README](src/growpy/tests/README.md) for coverage details.
 
 ## Core Pipeline Steps
 
