@@ -948,7 +948,7 @@ def generate_forest_stages(
                 try:
                     model.triangulate()
                 except Exception:
-                    pass
+                    logger.warning("Model triangulation failed for %s", species_name)
 
                 tree_radial_scale = 1.0
                 if config.calibration_align_dbh and target_dbh_m and grove_dbh > 0.001:

@@ -2,6 +2,8 @@
 
 import logging
 
+import pytest
+
 import growpy.utils.log as log_module
 from growpy.utils.log import setup_logging
 
@@ -47,3 +49,40 @@ class TestSetupLogging:
         setup_logging()
         logger = logging.getLogger("growpy")
         assert logger.propagate is False
+
+
+class TestCaplogIntegration:
+    """Tests verifying log messages appear at expected levels via caplog."""
+
+    def setup_method(self):
+        log_module._configured = False
+        logger = logging.getLogger("growpy")
+        logger.handlers.clear()
+
+    def test_info_captured_when_verbose(self, caplog):
+        setup_logging(verbose=True)
+        logger = logging.getLogger("growpy.test_caplog")
+        with caplog.at_level(logging.DEBUG, logger="growpy"):
+            logger.info("visible info message")
+        assert "visible info message" in caplog.text
+
+    def test_info_suppressed_when_quiet(self, caplog):
+        setup_logging(verbose=False)
+        logger = logging.getLogger("growpy.test_caplog")
+        with caplog.at_level(logging.DEBUG, logger="growpy"):
+            logger.info("hidden info message")
+        assert "hidden info message" not in caplog.text
+
+    def test_warning_captured_when_quiet(self, caplog):
+        setup_logging(verbose=False)
+        logger = logging.getLogger("growpy.test_caplog")
+        with caplog.at_level(logging.DEBUG, logger="growpy"):
+            logger.warning("warning message")
+        assert "warning message" in caplog.text
+
+    def test_child_logger_inherits_level(self, caplog):
+        setup_logging(verbose=True)
+        child = logging.getLogger("growpy.some.module")
+        with caplog.at_level(logging.DEBUG, logger="growpy"):
+            child.info("child info")
+        assert "child info" in caplog.text

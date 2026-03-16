@@ -40,10 +40,13 @@ CLI Usage (overrides JSON settings):
 """
 
 import json
+import logging
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 # Grove Properties parameters that require int type (not float)
 INT_PARAMS = {
@@ -592,6 +595,7 @@ def get_species_overrides(species_name: str) -> PresetOverrides:
         preset_path = config.get_preset_path(species_name)
         return load_curves_from_preset(preset_path)
     except Exception:
+        logger.warning("Failed to load preset overrides for %s", species_name)
         return PresetOverrides()
 
 

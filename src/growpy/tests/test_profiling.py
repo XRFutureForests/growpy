@@ -137,3 +137,38 @@ class TestProfileTimer:
         with timer.track("leaf", parent="root"):
             pass
         assert timer.entries["leaf"].parent == "root"
+
+    def test_track_records_timing_when_body_raises(self):
+        timer = ProfileTimer(enabled=True)
+        with pytest.raises(ValueError):
+            with timer.track("failing_step"):
+                raise ValueError("boom")
+        assert "failing_step" in timer.entries
+        assert timer.entries["failing_step"].call_count == 1
+
+    def test_track_cleans_stack_when_body_raises(self):
+        timer = ProfileTimer(enabled=True)
+        with pytest.raises(RuntimeError):
+            with timer.track("error_step"):
+                raise RuntimeError("oops")
+        assert timer._active_stack == []
+
+    def test_nested_track_exception_in_child_preserves_parent(self):
+        timer = ProfileTimer(enabled=True)
+        with pytest.raises(ZeroDivisionError):
+            with timer.track("outer"):
+                with timer.track("inner"):
+                    1 / 0
+        assert "outer" in timer.entries
+        assert "inner" in timer.entries
+        assert timer._active_stack == []
+
+    def test_track_exception_does_not_corrupt_subsequent_tracking(self):
+        timer = ProfileTimer(enabled=True)
+        with pytest.raises(ValueError):
+            with timer.track("bad"):
+                raise ValueError("fail")
+        with timer.track("good"):
+            pass
+        assert timer.entries["good"].call_count == 1
+        assert timer.entries["good"].parent is None

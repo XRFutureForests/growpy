@@ -1,5 +1,6 @@
 """Asset path resolution for GrowPy."""
 
+import logging
 import os
 import re
 from functools import lru_cache
@@ -9,6 +10,8 @@ from typing import Dict, List, Optional
 import pandas as pd
 
 from growpy.utils.naming import camel_to_snake
+
+logger = logging.getLogger(__name__)
 
 # GBIF integration for species name resolution
 _GBIF_ENABLED = True  # Can be disabled if pygbif not available or API issues
@@ -255,6 +258,7 @@ def get_bark_texture_path(species: str) -> Optional[Path]:
         return None
 
     except (ValueError, KeyError):
+        logger.warning("Failed to resolve bark texture for %s", species)
         return None
 
 
@@ -287,6 +291,7 @@ def get_bark_normal_texture_path(species: str) -> Optional[Path]:
         return None
 
     except (ValueError, KeyError):
+        logger.warning("Failed to resolve bark normal texture for %s", species)
         return None
 
 
@@ -339,4 +344,5 @@ def get_twig_files_by_type(species: str) -> Dict[str, List[Path]]:
         return twig_files
 
     except (ValueError, KeyError):
+        logger.warning("Failed to resolve twig files for %s", species)
         return {}

@@ -411,6 +411,7 @@ def extract_alpha_from_diffuse(
         return output_path
 
     except Exception:
+        logger.warning("Failed to extract alpha from %s", diffuse_path)
         return None
 
 
@@ -445,6 +446,7 @@ def strip_alpha_from_diffuse(diffuse_path: Path) -> bool:
         return True
 
     except Exception:
+        logger.warning("Failed to strip alpha from %s", diffuse_path)
         return False
 
 
@@ -508,6 +510,7 @@ def normalize_alpha_texture(alpha_path: Path) -> bool:
         return False
 
     except Exception:
+        logger.warning("Failed to normalize alpha texture %s", alpha_path)
         return False
 
 
@@ -881,7 +884,7 @@ def validate_twig_textures(twig_dir: Path) -> Tuple[bool, str]:
                 else:
                     diffuse_found = True
             except Exception:
-                pass
+                logger.debug("Could not verify texture %s", tex_file)
 
         elif any(k in name_lower for k in ["alpha", "opacity", "mask", "cutout"]):
             # Verify it's grayscale
@@ -890,7 +893,7 @@ def validate_twig_textures(twig_dir: Path) -> Tuple[bool, str]:
                 if img.mode == "L" or len(img.getbands()) == 1:
                     alpha_found = True
             except Exception:
-                pass
+                logger.debug("Could not verify texture %s", tex_file)
 
         elif any(k in name_lower for k in ["normal", "norm", "nrm"]):
             normal_found = True

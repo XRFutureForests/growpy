@@ -1,6 +1,8 @@
 """Tests for growpy.io.texture_utils module."""
 
+import logging
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -256,3 +258,31 @@ class TestNormalizeAlphaTexture:
         p = tmp_path / "tiny.png"
         img.save(p)
         assert normalize_alpha_texture(p) is False
+
+
+class TestTextureWarningLogs:
+    """Tests verifying warning messages on failure paths."""
+
+    def test_extract_alpha_logs_warning_on_corrupt_file(self, tmp_path, caplog):
+        p = tmp_path / "corrupt.png"
+        p.write_bytes(b"not a real image")
+        with caplog.at_level(logging.WARNING, logger="growpy.io.texture_utils"):
+            result = extract_alpha_from_diffuse(p)
+        assert result is None
+        assert "Failed to extract alpha" in caplog.text
+
+    def test_strip_alpha_logs_warning_on_corrupt_file(self, tmp_path, caplog):
+        p = tmp_path / "corrupt.png"
+        p.write_bytes(b"not a real image")
+        with caplog.at_level(logging.WARNING, logger="growpy.io.texture_utils"):
+            result = strip_alpha_from_diffuse(p)
+        assert result is False
+        assert "Failed to strip alpha" in caplog.text
+
+    def test_normalize_alpha_logs_warning_on_corrupt_file(self, tmp_path, caplog):
+        p = tmp_path / "corrupt.png"
+        p.write_bytes(b"not a real image")
+        with caplog.at_level(logging.WARNING, logger="growpy.io.texture_utils"):
+            result = normalize_alpha_texture(p)
+        assert result is False
+        assert "Failed to normalize alpha" in caplog.text

@@ -1365,7 +1365,7 @@ def create_species_assembly(
                                 if twig_name not in twig_refs:
                                     twig_refs[twig_name] = ref_path
             except Exception:
-                pass
+                logger.warning("Failed to parse twig reference path")
 
         # Create shared TwigPrototypes scope
         if twig_refs:

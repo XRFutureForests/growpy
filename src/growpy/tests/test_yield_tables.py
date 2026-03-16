@@ -1,7 +1,9 @@
 """Tests for growpy.utils.yield_tables module."""
 
 import json
+import logging
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -262,3 +264,20 @@ class TestWriteCalibrationToSeedJson:
         assert cal["static_overrides"] == {"thicken_deadwood": 0.0}
         assert cal["target_dbh_per_cycle"] == [0.05]
         assert cal["flushes_per_year"] == 1.2
+
+
+class TestEstimateFlushesWarningLogs:
+    """Tests verifying warning logs on interpolation failure."""
+
+    def test_interpolation_failure_logs_warning(self, caplog):
+        ages = [10, 20, 30, 40, 50]
+        heights = [5.0, 12.0, 18.0, 22.0, 24.0]
+        grove = [0.5 + i * 0.47 for i in range(50)]
+        with patch(
+            "growpy.utils.yield_tables.PchipInterpolator",
+            side_effect=Exception("interpolation error"),
+        ):
+            with caplog.at_level(logging.WARNING, logger="growpy.utils.yield_tables"):
+                result = estimate_flushes_per_year(grove, ages, heights)
+        assert result == 1.0
+        assert "Interpolation failed" in caplog.text

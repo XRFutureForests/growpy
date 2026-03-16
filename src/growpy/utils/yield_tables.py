@@ -295,6 +295,7 @@ def estimate_flushes_per_year(
     try:
         yield_age = float(interp(ref_height))
     except Exception:
+        logger.warning("Interpolation failed for ref_height=%.2f", ref_height)
         return 1.0
 
     if yield_age <= 0.5:

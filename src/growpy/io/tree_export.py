@@ -46,6 +46,7 @@ Main Functions:
 from __future__ import annotations
 
 import json
+import logging
 import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -54,6 +55,8 @@ import bpy
 import the_grove_23_core as gc
 
 from ..utils.pxr_init import ensure_pxr_with_unreal_schema
+
+logger = logging.getLogger(__name__)
 
 ensure_pxr_with_unreal_schema()
 
@@ -540,9 +543,7 @@ def _add_skeleton_to_stage_inline(
         return True
 
     except Exception as e:
-        import traceback
-
-        traceback.print_exc()
+        logger.warning("Tree USD export failed: %s", e)
         return False
 
 
@@ -581,6 +582,7 @@ def add_nanite_attributes_to_usd(usd_path: Path, is_foliage: bool = False) -> bo
         return True
 
     except Exception as e:
+        logger.warning("Failed to add Nanite attributes to %s: %s", usd_path, e)
         return False
 
 
@@ -656,8 +658,7 @@ def _add_model_attributes(mesh: UsdGeom.Mesh, model: Any) -> None:
             primvar.Set(attr_value)
 
         except Exception as e:
-            # Skip attributes that fail to convert
-            pass
+            logger.debug("Skipped face attribute %s: %s", attr_name, e)
 
     # Process point attributes (per-vertex, vertex interpolation)
     point_attrs = [attr for attr in model_attrs if attr.startswith("point_attribute_")]
@@ -690,8 +691,7 @@ def _add_model_attributes(mesh: UsdGeom.Mesh, model: Any) -> None:
             primvar.Set(attr_value)
 
         except Exception as e:
-            # Skip attributes that fail to convert
-            pass
+            logger.debug("Skipped point attribute %s: %s", attr_name, e)
 
 
 def _add_usd_materials(
@@ -1097,8 +1097,7 @@ def _add_mesh_normals(
             mesh.SetNormalsInterpolation(UsdGeom.Tokens.uniform)
 
     except Exception:
-        # Silently fail - USD material addition is optional
-        pass
+        logger.warning("USD material/normal addition failed")
 
 
 def _add_dynamic_wind_attributes(
@@ -1848,8 +1847,7 @@ def bundle_twigs_for_species(
                             copied_textures.add(texture_file.name)
 
     except Exception:
-        # Silently fail - twig bundling is optional
-        pass
+        logger.warning("Twig bundling failed")
 
     return results
 

@@ -28,10 +28,13 @@ Usage:
 
 import argparse
 import json
+import logging
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 try:
     from pygbif import species as gbif_species
@@ -178,6 +181,7 @@ def get_vernacular_names(taxon_key: int, language: str = "eng") -> list:
         return [n for n in vernacular if n]
 
     except Exception:
+        logger.warning("GBIF vernacular lookup failed for taxon_key=%s", taxon_key)
         return []
 
 
@@ -385,6 +389,7 @@ def match_species_via_gbif(
         return None
 
     except Exception:
+        logger.warning("GBIF species matching failed for query=%s", query)
         return None
 
 
