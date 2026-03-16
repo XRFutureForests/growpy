@@ -140,6 +140,53 @@ def simplify_twig_meshes(
     return new_twig_verts, new_per_proto_faces, new_per_proto_uvs, new_per_proto_face_mats
 
 
+def simplify_prototype(
+    verts: np.ndarray,
+    faces: np.ndarray,
+    uvs: Optional[np.ndarray],
+    face_mats: Optional[np.ndarray],
+    sidecar_mat_names: Optional[List[str]],
+    simplification_ratios: Dict[str, float],
+) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]:
+    """Simplify a single twig prototype mesh by material classification.
+
+    Applied BEFORE baking instances so memory savings scale with instance count.
+    For 100k instances, simplifying the 1 prototype is far cheaper than
+    simplifying 100k baked copies.
+
+    Args:
+        verts: (N, 3) prototype vertices
+        faces: (M, 3) prototype faces
+        uvs: Optional (K, 2) per-face-vertex UVs
+        face_mats: Optional (M,) per-face material indices
+        sidecar_mat_names: Optional list of material names from sidecar JSON
+        simplification_ratios: {'bark': r, 'wood': r, 'leaf': r, 'fruit': r}
+
+    Returns:
+        (simplified_verts, simplified_faces, simplified_uvs, simplified_face_mats)
+    """
+    wood_ratio = simplification_ratios.get("wood", 1.0)
+    leaf_ratio = simplification_ratios.get("leaf", 1.0)
+    fruit_ratio = simplification_ratios.get("fruit", 1.0)
+
+    if wood_ratio >= 1.0 and leaf_ratio >= 1.0 and fruit_ratio >= 1.0:
+        return verts, faces, uvs, face_mats
+
+    if len(faces) == 0:
+        return verts, faces, uvs, face_mats
+
+    if face_mats is not None and sidecar_mat_names:
+        result_verts, result_faces, result_face_mats = _simplify_proto_by_material(
+            verts, faces, face_mats, sidecar_mat_names,
+            wood_ratio, leaf_ratio, fruit_ratio, 0,
+        )
+        return result_verts, result_faces, None, result_face_mats
+
+    # No sub-material info: apply leaf ratio
+    result_verts, result_faces = _extract_and_simplify(verts, faces, leaf_ratio)
+    return result_verts, result_faces, None, face_mats
+
+
 def _simplify_proto_by_material(
     all_verts: np.ndarray,
     faces: np.ndarray,
