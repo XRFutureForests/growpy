@@ -203,6 +203,8 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 if obj_path:
                     exported.append(str(obj_path))
 
+                # Explicit cleanup of large objects before next tree
+                del twig_placements, twig_usd_map
                 models[model_idx] = None  # type: ignore[call-overload]
                 del model
                 _gc_module.collect()

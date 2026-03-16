@@ -28,12 +28,33 @@ if hasattr(bpy.utils, "expose_bundled_modules"):
 
 from pxr import Gf, Sdf, Usd, UsdGeom
 
-# Cache decimated twig meshes per (twig_file, ratio) to avoid re-decimation
-# Stores (verts, faces, uvs, face_mat_indices) - face_mat_indices may be None
-_decimated_twig_cache: Dict[
-    Tuple[str, float],
-    Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]],
-] = {}
+# Cache decimated twig meshes per (twig_file, ratio, simplification) to avoid re-processing
+_decimated_twig_cache: Dict = {}
+
+
+# Skip numpy trunk conversion for meshes larger than this (Blender DECIMATE
+# cannot handle meshes this large and fails silently).
+TRUNK_DIRECT_THRESHOLD = 5_000_000  # 5M faces
+
+
+def _log_memory(label: str) -> None:
+    """Log current and peak process RSS memory usage."""
+    try:
+        current_gb = None
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    current_gb = int(line.split()[1]) / (1024 * 1024)
+                    break
+        import resource
+
+        peak_gb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / (1024 * 1024)
+        if current_gb is not None:
+            print(f"  [Memory] {label}: {current_gb:.1f} GB current, {peak_gb:.1f} GB peak RSS")
+        else:
+            print(f"  [Memory] {label}: {peak_gb:.1f} GB peak RSS")
+    except Exception:
+        pass
 
 
 def clear_twig_decimate_cache() -> None:
@@ -56,9 +77,9 @@ def convert_tree_to_obj_direct(
 ) -> Optional[Path]:
     """Convert a Grove model directly to OBJ without USD/skeleton intermediate.
 
-    Reads mesh data from the Grove model object and twig placements,
-    bypassing the entire skeleton/bone/USD pipeline. This removes the
-    Unreal bone limit constraint entirely.
+    Memory-optimized: simplifies twig prototypes BEFORE baking instances and
+    streams twig geometry directly to OBJ file to avoid holding all instances
+    in RAM simultaneously.
 
     Args:
         model: Grove model from grove.build_models() (must be triangulated)
@@ -76,6 +97,8 @@ def convert_tree_to_obj_direct(
     Returns:
         Path to generated OBJ file, or None on failure
     """
+    import gc as gc_module
+
     from ..core.twig import normal_to_rotation_matrix, rotation_matrix_to_quaternion
 
     species_clean = species_name.replace(" ", "_").replace("-", "_").lower()
@@ -84,30 +107,67 @@ def convert_tree_to_obj_direct(
     mtl_name = f"{helios_name}.mtl"
     mtl_path = output_dir / mtl_name
 
-    # Extract trunk mesh from model
-    points_flat = model.get_points_flat()
-    num_verts = len(points_flat) // 3
-    trunk_verts = np.array(points_flat, dtype=np.float64).reshape(-1, 3)
+    _log_memory(f"Start export {species_clean} tree_{tree_id}")
 
+    # Probe trunk size to decide processing strategy.
+    # For huge meshes (>5M faces) we stream directly from model data,
+    # avoiding multi-GB numpy allocations and Blender decimation (which
+    # silently fails and returns the original mesh on inputs this large).
     faces_raw = model.faces
-    trunk_faces = np.array([list(f) for f in faces_raw], dtype=np.int64)
-    if trunk_faces.shape[1] != 3:
-        print(f"  OBJ direct: Non-triangulated faces found, skipping")
-        return None
+    num_trunk_faces = len(faces_raw)
+    large_trunk = num_trunk_faces > TRUNK_DIRECT_THRESHOLD
 
-    # Extract UVs
-    trunk_uvs = None
-    if hasattr(model, "uvs") and model.uvs:
-        uvs_raw = model.uvs
-        trunk_uvs = np.array([[uv[0], uv[1]] for uv in uvs_raw], dtype=np.float64)
-
-    # Decimate stem geometry
-    if 0.0 < stem_decimate_ratio < 1.0:
-        trunk_verts, trunk_faces = _decimate_mesh(trunk_verts, trunk_faces, stem_decimate_ratio)
+    if large_trunk:
+        points_flat = model.get_points_flat()
+        num_trunk_verts = len(points_flat) // 3
+        print(f"  Trunk: {num_trunk_verts:,} verts, {num_trunk_faces:,} faces (direct streaming)")
+        print(f"  NOTE: Trunk > {TRUNK_DIRECT_THRESHOLD:,} faces -- skipping Blender decimation.")
+        print(f"        To reduce trunk size at generation time, increase build_cutoff_thickness")
+        print(f"        in [quality.ultra] (e.g. 0.005 skips branches < 5 mm).")
+        # Keep raw model data for direct streaming (no numpy conversion)
+        trunk_data_raw = (points_flat, faces_raw, num_trunk_verts, num_trunk_faces)
+        trunk_verts = None
+        trunk_faces = None
         trunk_uvs = None
+    else:
+        points_flat = model.get_points_flat()
+        trunk_verts = np.array(points_flat, dtype=np.float64).reshape(-1, 3)
+        del points_flat
 
-    # Build twig instance arrays from TwigPlacement objects
-    # Map twig types to prototype indices (matching assembly_export logic)
+        # Memory-efficient face conversion (avoid [list(f) for f in faces_raw])
+        faces_flat: List[int] = []
+        for f in faces_raw:
+            faces_flat.extend(f)
+        del faces_raw
+        trunk_faces = np.array(faces_flat, dtype=np.int64).reshape(-1, 3)
+        del faces_flat
+
+        if trunk_faces.shape[1] != 3:
+            print(f"  OBJ direct: Non-triangulated faces found, skipping")
+            return None
+
+        # Extract UVs
+        trunk_uvs = None
+        if hasattr(model, "uvs") and model.uvs:
+            uvs_raw = model.uvs
+            trunk_uvs = np.array([[uv[0], uv[1]] for uv in uvs_raw], dtype=np.float64)
+
+        # Simplify trunk (bark)
+        if simplification_ratios:
+            bark_ratio = simplification_ratios.get("bark", 1.0)
+            if 0.0 < bark_ratio < 1.0:
+                orig = len(trunk_faces)
+                trunk_verts, trunk_faces = _decimate_mesh(trunk_verts, trunk_faces, bark_ratio)
+                trunk_uvs = None
+                print(f"  Trunk decimated: {orig:,} -> {len(trunk_faces):,} faces (ratio {bark_ratio})")
+        elif 0.0 < stem_decimate_ratio < 1.0:
+            trunk_verts, trunk_faces = _decimate_mesh(trunk_verts, trunk_faces, stem_decimate_ratio)
+            trunk_uvs = None
+
+        print(f"  Trunk: {len(trunk_verts):,} verts, {len(trunk_faces):,} faces")
+        trunk_data_raw = None
+
+    # Map twig types to prototype indices
     twig_type_to_proto_idx = {}
     variant_groups = {}
     sorted_twig_types = sorted(twig_usd_map.keys())
@@ -118,7 +178,9 @@ def convert_tree_to_obj_direct(
             variant_groups[base] = []
         variant_groups[base].append(idx)
 
-    # Read and decimate twig prototypes from USD files
+    # Read twig prototypes, apply decimation AND material-aware simplification upfront.
+    # This is the key optimization: simplify the prototype ONCE instead of
+    # simplifying N baked copies. For 100k instances this saves ~100x the RAM.
     proto_meshes = {}
     proto_materials = {}
     for idx, twig_type in enumerate(sorted_twig_types):
@@ -126,7 +188,9 @@ def convert_tree_to_obj_direct(
         if not twig_path.exists():
             continue
 
-        cache_key = (str(twig_path), decimate_ratio)
+        # Build a cache key that includes simplification ratios
+        simpl_key = tuple(sorted(simplification_ratios.items())) if simplification_ratios else ()
+        cache_key = (str(twig_path), decimate_ratio, simpl_key)
         if cache_key in _decimated_twig_cache:
             proto_meshes[idx] = _decimated_twig_cache[cache_key]
         else:
@@ -135,16 +199,24 @@ def convert_tree_to_obj_direct(
                 continue
             raw_verts, raw_faces, raw_uvs, raw_face_mats = twig_result
 
+            # Step 1: Geometric decimation (decimate_ratio)
             if 0.0 < decimate_ratio < 1.0:
-                dec_verts, dec_faces = _decimate_mesh(raw_verts, raw_faces, decimate_ratio)
-                dec_uvs = None
-                dec_face_mats = None
-            else:
-                dec_verts, dec_faces, dec_uvs = raw_verts, raw_faces, raw_uvs
-                dec_face_mats = raw_face_mats
+                raw_verts, raw_faces = _decimate_mesh(raw_verts, raw_faces, decimate_ratio)
+                raw_uvs = None
+                raw_face_mats = None
 
-            proto_meshes[idx] = (dec_verts, dec_faces, dec_uvs, dec_face_mats)
-            _decimated_twig_cache[cache_key] = (dec_verts, dec_faces, dec_uvs, dec_face_mats)
+            # Step 2: Material-aware simplification on the prototype itself
+            if simplification_ratios:
+                sidecar_mat_names = _read_face_material_names(twig_path)
+                from .mesh_simplify import simplify_prototype
+
+                raw_verts, raw_faces, raw_uvs, raw_face_mats = simplify_prototype(
+                    raw_verts, raw_faces, raw_uvs, raw_face_mats,
+                    sidecar_mat_names, simplification_ratios,
+                )
+
+            proto_meshes[idx] = (raw_verts, raw_faces, raw_uvs, raw_face_mats)
+            _decimated_twig_cache[cache_key] = (raw_verts, raw_faces, raw_uvs, raw_face_mats)
 
         # Extract material info
         diffuse_rel = _read_twig_material(twig_path)
@@ -163,13 +235,14 @@ def convert_tree_to_obj_direct(
         sidecar_mat_names = _read_face_material_names(twig_path)
         proto_materials[idx] = (mat_name, diffuse_path, sidecar_mat_names)
 
-    # Convert TwigPlacement objects to numpy arrays for _bake_twig_instances
-    fallback_map = {"twig_upward": "twig_long"}
-    all_positions = []
-    all_orientations = []
-    all_scales = []
-    all_proto_indices = []
+    for idx, (v, f, _, _) in proto_meshes.items():
+        print(f"  Twig proto {idx}: {len(v)} verts, {len(f)} faces (after simplification)")
 
+    # Build instance lists per twig type
+    fallback_map = {"twig_upward": "twig_long"}
+    instance_data: List[Tuple[int, List[float], List[float]]] = []
+
+    total_twigs = 0
     for twig_type, placement_list in twig_placements.items():
         if not placement_list:
             continue
@@ -182,34 +255,14 @@ def convert_tree_to_obj_direct(
             continue
 
         proto_indices_for_type = variant_groups[mapped_type]
-
         for inst_i, p in enumerate(placement_list):
-            pos = p.position
-            normal = p.normal
-            rot_matrix = normal_to_rotation_matrix(normal)
-            quat = rotation_matrix_to_quaternion(rot_matrix)
             proto_idx = proto_indices_for_type[inst_i % len(proto_indices_for_type)]
+            if proto_idx not in proto_meshes:
+                continue
+            instance_data.append((proto_idx, p.position, p.normal))
+            total_twigs += 1
 
-            all_positions.append([pos[0], pos[1], pos[2]])
-            all_orientations.append([quat[0], quat[1], quat[2], quat[3]])
-            all_scales.append([1.0, 1.0, 1.0])
-            all_proto_indices.append(proto_idx)
-
-    # Bake twig instances
-    twig_verts = np.empty((0, 3), dtype=np.float64)
-    per_proto_faces = {}
-    per_proto_uvs = {}
-    per_proto_face_mats = {}
-
-    if all_positions and proto_meshes:
-        positions = np.array(all_positions, dtype=np.float64)
-        orientations = np.array(all_orientations, dtype=np.float64)
-        scales = np.array(all_scales, dtype=np.float64)
-        proto_indices = np.array(all_proto_indices, dtype=np.int64)
-
-        twig_verts, per_proto_faces, per_proto_uvs, per_proto_face_mats = _bake_twig_instances(
-            proto_meshes, positions, orientations, scales, proto_indices
-        )
+    _log_memory(f"Before streaming write ({total_twigs} twig instances)")
 
     # Copy twig textures to output
     textures_dir = output_dir / "textures"
@@ -223,38 +276,48 @@ def convert_tree_to_obj_direct(
                 if not dest.exists():
                     shutil.copy2(tex_file, dest)
 
-    # Material-aware simplification (before writing OBJ)
-    if simplification_ratios:
-        from .mesh_simplify import simplify_tree_mesh
-
-        (
-            trunk_verts, trunk_faces, trunk_uvs,
-            twig_verts, per_proto_faces, per_proto_uvs, per_proto_face_mats,
-        ) = simplify_tree_mesh(
-            trunk_verts, trunk_faces, trunk_uvs,
-            twig_verts, per_proto_faces, per_proto_uvs, per_proto_face_mats,
-            proto_materials, simplification_ratios,
-        )
-
-    # Write OBJ + MTL
+    # Streaming OBJ write
     bark_texture = _find_bark_texture(output_dir)
-    _write_obj(
-        obj_path, trunk_verts, trunk_faces, trunk_uvs,
-        twig_verts, per_proto_faces, per_proto_uvs, per_proto_face_mats,
-        proto_materials, mtl_name,
-    )
+
+    if large_trunk:
+        # LARGE TRUNK PATH: write directly from model data, no numpy
+        points_flat, faces_raw, num_trunk_verts, num_trunk_faces = trunk_data_raw
+        trunk_face_count = num_trunk_faces
+        twig_face_count = _write_obj_streaming_direct(
+            obj_path, points_flat, faces_raw, num_trunk_verts,
+            instance_data, proto_meshes, proto_materials,
+            mtl_name,
+        )
+        del points_flat, faces_raw, trunk_data_raw
+    else:
+        # NORMAL PATH: numpy arrays, already decimated
+        trunk_face_count = len(trunk_faces)
+        twig_face_count = _write_obj_streaming(
+            obj_path, trunk_verts, trunk_faces, trunk_uvs,
+            instance_data, proto_meshes, proto_materials,
+            mtl_name,
+        )
+        del trunk_verts, trunk_faces, trunk_uvs
+
+    # Write MTL
+    per_proto_face_mats_for_mtl = {}
+    for idx, (_, faces, _, face_mats) in proto_meshes.items():
+        if face_mats is not None:
+            per_proto_face_mats_for_mtl[idx] = face_mats
+
     _write_helios_mtl(
         mtl_path, bark_texture, helios_spectra_leaves, proto_materials,
-        per_proto_face_mats, output_dir,
+        per_proto_face_mats_for_mtl, output_dir,
     )
 
-    trunk_face_count = len(trunk_faces)
-    twig_face_count = sum(len(f) for f in per_proto_faces.values())
-    total_twigs = sum(len(pl) for pl in twig_placements.values() if pl)
     print(
         f"  OBJ direct: {obj_path.name} "
-        f"({trunk_face_count} trunk + {twig_face_count} twig faces, {total_twigs} instances)"
+        f"({trunk_face_count:,} trunk + {twig_face_count:,} twig faces, {total_twigs:,} instances)"
     )
+    _log_memory(f"Export complete {species_clean} tree_{tree_id}")
+
+    del instance_data
+    gc_module.collect()
 
     return obj_path
 
@@ -848,6 +911,198 @@ def _find_bark_texture(tree_dir: Path) -> Optional[Path]:
             return f
 
     return None
+
+
+def _stream_twig_vertices(
+    f,
+    initial_vert_offset: int,
+    instance_data: List[Tuple[int, List[float], List[float]]],
+    proto_meshes: Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]],
+) -> Tuple[Dict[int, List[int]], int]:
+    """Stream twig instance vertices to an open OBJ file handle.
+
+    Returns (proto_instance_offsets, final_vert_offset) for use by
+    _write_twig_faces.
+    """
+    from ..core.twig import normal_to_rotation_matrix, rotation_matrix_to_quaternion
+    from collections import defaultdict
+
+    instances_by_proto: Dict[int, List[Tuple[List[float], List[float]]]] = defaultdict(list)
+    for proto_idx, position, normal in instance_data:
+        instances_by_proto[proto_idx].append((position, normal))
+
+    vert_offset = initial_vert_offset
+    proto_instance_offsets: Dict[int, List[int]] = defaultdict(list)
+
+    for proto_idx in sorted(instances_by_proto.keys()):
+        if proto_idx not in proto_meshes:
+            continue
+        proto_verts = proto_meshes[proto_idx][0]
+        num_proto_verts = len(proto_verts)
+        if num_proto_verts == 0:
+            continue
+
+        for position, normal in instances_by_proto[proto_idx]:
+            rot_matrix = normal_to_rotation_matrix(normal)
+            quat = rotation_matrix_to_quaternion(rot_matrix)
+            w, x, y, z = quat
+            rot = _quat_to_rotation_matrix(w, x, y, z)
+
+            transformed = (rot @ proto_verts.T).T + np.array(position)
+            for v in transformed:
+                f.write(f"v {v[0]:.6f} {v[1]:.6f} {v[2]:.6f}\n")
+
+            proto_instance_offsets[proto_idx].append(vert_offset)
+            vert_offset += num_proto_verts
+
+    return proto_instance_offsets, vert_offset
+
+
+def _write_twig_faces(
+    f,
+    proto_instance_offsets: Dict[int, List[int]],
+    proto_meshes: Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]],
+    proto_materials: Dict[int, Tuple[str, Optional[Path], Optional[List[str]]]],
+) -> int:
+    """Write twig faces grouped by prototype and sub-material. Returns face count."""
+    twig_face_count = 0
+    for proto_idx in sorted(proto_instance_offsets.keys()):
+        if proto_idx not in proto_meshes:
+            continue
+        _, proto_faces, _, proto_face_mats = proto_meshes[proto_idx]
+        if len(proto_faces) == 0:
+            continue
+
+        mat_name, _, sidecar_mat_names = proto_materials.get(
+            proto_idx, (f"leaves_{proto_idx}", None, None)
+        )
+        offsets = proto_instance_offsets[proto_idx]
+
+        if proto_face_mats is not None and sidecar_mat_names:
+            unique_mat_ids = sorted(set(proto_face_mats.tolist()))
+            for mat_id in unique_mat_ids:
+                blend_mat_name = (
+                    sidecar_mat_names[mat_id]
+                    if mat_id < len(sidecar_mat_names)
+                    else f"material_{mat_id}"
+                )
+                sub_mat_name = f"{mat_name}:{blend_mat_name}"
+                mask = proto_face_mats == mat_id
+                sub_faces = proto_faces[mask]
+                if len(sub_faces) == 0:
+                    continue
+
+                f.write(f"\nusemtl {sub_mat_name}\n")
+                for base_offset in offsets:
+                    for face in sub_faces:
+                        f.write(f"f {face[0]+base_offset+1} {face[1]+base_offset+1} {face[2]+base_offset+1}\n")
+                        twig_face_count += 1
+        else:
+            f.write(f"\nusemtl {mat_name}\n")
+            for base_offset in offsets:
+                for face in proto_faces:
+                    f.write(f"f {face[0]+base_offset+1} {face[1]+base_offset+1} {face[2]+base_offset+1}\n")
+                    twig_face_count += 1
+
+    return twig_face_count
+
+
+def _write_obj_streaming_direct(
+    obj_path: Path,
+    points_flat: List[float],
+    faces_raw: list,
+    num_trunk_verts: int,
+    instance_data: List[Tuple[int, List[float], List[float]]],
+    proto_meshes: Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]],
+    proto_materials: Dict[int, Tuple[str, Optional[Path], Optional[List[str]]]],
+    mtl_name: str,
+) -> int:
+    """Write OBJ file for large trunk meshes without any numpy conversion.
+
+    Trunk vertices are read directly from the flat float list returned by
+    model.get_points_flat() and trunk faces from model.faces.  This avoids
+    allocating multi-GB numpy arrays for 30M+ vertex meshes.
+    """
+    with open(obj_path, "w") as f:
+        f.write(f"# Helios++ tree mesh (direct streaming export)\n")
+        f.write(f"mtllib {mtl_name}\n\n")
+
+        # -- All vertices first (trunk + twigs) --
+        for i in range(0, len(points_flat), 3):
+            f.write(f"v {points_flat[i]:.6f} {points_flat[i+1]:.6f} {points_flat[i+2]:.6f}\n")
+
+        proto_offsets, _ = _stream_twig_vertices(
+            f, num_trunk_verts, instance_data, proto_meshes,
+        )
+        f.write("\n")
+
+        # -- All faces (trunk then twigs) --
+        f.write("usemtl bark\n")
+        for face in faces_raw:
+            f.write(f"f {face[0]+1} {face[1]+1} {face[2]+1}\n")
+
+        twig_face_count = _write_twig_faces(
+            f, proto_offsets, proto_meshes, proto_materials,
+        )
+
+    return twig_face_count
+
+
+def _write_obj_streaming(
+    obj_path: Path,
+    trunk_verts: np.ndarray,
+    trunk_faces: np.ndarray,
+    trunk_uvs: Optional[np.ndarray],
+    instance_data: List[Tuple[int, List[float], List[float]]],
+    proto_meshes: Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]],
+    proto_materials: Dict[int, Tuple[str, Optional[Path], Optional[List[str]]]],
+    mtl_name: str,
+) -> int:
+    """Write OBJ file by streaming twig instances directly to disk.
+
+    For normal-sized trunk meshes that fit in numpy arrays (and may have
+    been decimated). Peak RAM = trunk numpy arrays + 1 twig prototype.
+    """
+    has_trunk_uvs = trunk_uvs is not None and len(trunk_uvs) > 0
+    trunk_vert_count = len(trunk_verts)
+
+    with open(obj_path, "w") as f:
+        f.write(f"# Helios++ tree mesh (streaming export)\n")
+        f.write(f"mtllib {mtl_name}\n\n")
+
+        # -- All vertices (trunk + twigs) --
+        for v in trunk_verts:
+            f.write(f"v {v[0]:.6f} {v[1]:.6f} {v[2]:.6f}\n")
+
+        proto_offsets, _ = _stream_twig_vertices(
+            f, trunk_vert_count, instance_data, proto_meshes,
+        )
+
+        # -- UVs (trunk only) --
+        if has_trunk_uvs:
+            f.write("\n")
+            for uv in trunk_uvs:
+                f.write(f"vt {uv[0]:.6f} {uv[1]:.6f}\n")
+
+        f.write("\n")
+
+        # -- All faces (trunk then twigs) --
+        f.write("usemtl bark\n")
+        if has_trunk_uvs:
+            for fi, face in enumerate(trunk_faces):
+                uv_base = fi * 3
+                f.write(
+                    f"f {face[0]+1}/{uv_base+1} {face[1]+1}/{uv_base+2} {face[2]+1}/{uv_base+3}\n"
+                )
+        else:
+            for face in trunk_faces:
+                f.write(f"f {face[0]+1} {face[1]+1} {face[2]+1}\n")
+
+        twig_face_count = _write_twig_faces(
+            f, proto_offsets, proto_meshes, proto_materials,
+        )
+
+    return twig_face_count
 
 
 def _write_obj(
