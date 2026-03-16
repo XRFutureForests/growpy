@@ -1,7 +1,7 @@
 # Module Audit
 
 Inventory of all Python modules in `src/growpy/`, their role in the CLI pipeline,
-and cleanup recommendations. Last updated 2026-03-11.
+and cleanup recommendations. Last updated 2026-03-16.
 
 ## CLI Pipeline Scripts
 
@@ -13,8 +13,12 @@ These are the entry points invoked directly from the command line.
 | `cli/convert_twigs.py` | 2 | Convert `.blend` twig meshes to `.usda` foliage files |
 | `cli/create_growth_models.py` | 3 | Simulate Grove growth, calibrate against yield tables, fit prediction models |
 | `cli/generate_forest.py` | 4 | Grow forest from CSV, export USD assemblies with radial scaling |
+| `cli/generate_dataset_csvs.py` | -- | Generate per-species open/competition CSV templates for dataset production |
+| `cli/produce_dataset.py` | -- | Batch wrapper: runs `generate_forest.py` for each species' CSV pair |
 
 Pipeline order: 1 -> 2 -> 3 -> 4
+
+Dataset production: `generate_dataset_csvs.py` -> `produce_dataset.py` (calls step 4 per species)
 
 ## Active Modules (used by pipeline)
 
@@ -66,6 +70,17 @@ Pipeline order: 1 -> 2 -> 3 -> 4
 | `utils/gbif_species.py` | `prepare_assets.py` (species name resolution) |
 | `utils/diagnostics.py` | `generate_forest.py` (Grove data dump for debugging) |
 | `utils/plotting.py` | `analysis.py` (growth curve visualization) |
+| `utils/naming.py` | `generate_dataset_csvs.py`, `produce_dataset.py` (species name standardization) |
+| `utils/export_naming.py` | `assembly_export.py` (height/DBH/density filename formatting) |
+| `utils/yield_tables.py` | `create_growth_models.py` (yield table loading, Chapman-Richards interpolation) |
+
+### Tools
+
+| Module | Imported By |
+|--------|-------------|
+| `tools/analyze_usda.py` | Standalone CLI (USDA assembly analysis) |
+| `tools/diagnose_growth.py` | Standalone CLI (growth simulation diagnostics) |
+| `tools/visualize_tree.py` | Standalone CLI (tree mesh side-view rendering) |
 
 ## Standalone / Development Scripts
 
@@ -105,6 +120,10 @@ commands after `pip install -e .`:
 | `growpy-convert-twigs` | `cli/convert_twigs.py` |
 | `growpy-create-models` | `cli/create_growth_models.py` |
 | `growpy-generate-forest` | `cli/generate_forest.py` |
+| `growpy-generate-dataset-csvs` | `cli/generate_dataset_csvs.py` |
+| `growpy-analyze-usda` | `tools/analyze_usda.py` |
+| `growpy-diagnose-growth` | `tools/diagnose_growth.py` |
+| `growpy-visualize-tree` | `tools/visualize_tree.py` |
 
 ## Configuration Notes
 
