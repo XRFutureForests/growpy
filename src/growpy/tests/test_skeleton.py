@@ -1,14 +1,20 @@
 """Tests for growpy.core.skeleton module."""
 
 import math
+from types import SimpleNamespace
 
 import pytest
 
 from growpy.core.skeleton import (
+    UNREAL_MAX_BONE_INDEX,
     JointTransform,
     SkeletonHierarchy,
     Vector3,
+    _apply_falloff,
+    _distance_3d,
+    build_skeleton_hierarchy,
     calculate_rotation_to_align,
+    filter_bones_for_mesh,
 )
 
 
@@ -159,3 +165,183 @@ class TestSkeletonHierarchy:
         assert skel.joint_parents[0] == -1
         assert skel.joint_parents[1] == 0
         assert skel.bone_to_joint_map[0] == 1
+
+
+def _make_grove_vector(x, y, z):
+    """Helper to create a mock Grove vector with as_tuple() method."""
+    return SimpleNamespace(x=x, y=y, z=z, as_tuple=lambda: (x, y, z))
+
+
+class TestBuildSkeletonHierarchy:
+    """Tests for build_skeleton_hierarchy function."""
+
+    def test_single_bone(self):
+        bones = [
+            (0, -1, _make_grove_vector(0, 0, 0), _make_grove_vector(0, 0, 1), 0.1),
+        ]
+        skel = build_skeleton_hierarchy(bones)
+        assert skel.joint_names[0] == "root"
+        assert skel.joint_names[1] == "joint_1"
+        assert skel.joint_parents[0] == -1
+        assert skel.joint_parents[1] == 0
+
+    def test_two_bone_chain(self):
+        bones = [
+            (0, -1, _make_grove_vector(0, 0, 0), _make_grove_vector(0, 0, 1), 0.1),
+            (1, 0, _make_grove_vector(0, 0, 1), _make_grove_vector(0, 0, 2), 0.05),
+        ]
+        skel = build_skeleton_hierarchy(bones)
+        assert len(skel.joint_names) == 3  # root + 2 joints
+        assert skel.joint_parents[2] == 1  # second bone parents to first
+
+    def test_branching_skeleton(self):
+        bones = [
+            (0, -1, _make_grove_vector(0, 0, 0), _make_grove_vector(0, 0, 2), 0.2),
+            (1, 0, _make_grove_vector(0, 0, 2), _make_grove_vector(1, 0, 3), 0.1),
+            (2, 0, _make_grove_vector(0, 0, 2), _make_grove_vector(-1, 0, 3), 0.1),
+        ]
+        skel = build_skeleton_hierarchy(bones)
+        assert len(skel.joint_names) == 4
+        # Both branches should parent to the trunk joint
+        assert skel.joint_parents[2] == 1
+        assert skel.joint_parents[3] == 1
+
+    def test_bone_to_joint_map_populated(self):
+        bones = [
+            (0, -1, _make_grove_vector(0, 0, 0), _make_grove_vector(0, 0, 1), 0.1),
+        ]
+        skel = build_skeleton_hierarchy(bones)
+        assert 0 in skel.bone_to_joint_map
+        assert skel.bone_to_joint_map[0] == 1
+
+    def test_zero_length_bone_gets_identity_rotation(self):
+        bones = [
+            (0, -1, _make_grove_vector(0, 0, 0), _make_grove_vector(0, 0, 0), 0.1),
+        ]
+        skel = build_skeleton_hierarchy(bones)
+        # Zero-length bone should have identity rotation
+        transform = skel.bind_transforms[1]
+        assert transform.is_identity_rotation()
+
+    def test_empty_bones_returns_root_only(self):
+        skel = build_skeleton_hierarchy([])
+        assert skel.joint_names == ["root"]
+        assert skel.joint_parents == [-1]
+
+
+class TestFilterBonesForMesh:
+    """Tests for filter_bones_for_mesh function."""
+
+    def _make_model(self, bone_ids):
+        """Create a mock model with point_attribute_bone_id."""
+        return SimpleNamespace(point_attribute_bone_id=bone_ids)
+
+    def _make_bone(self, parent_id=0, is_root=False, is_branch_root=False, branch_id=0):
+        """Create a bone tuple matching Grove format."""
+        return (
+            is_root,      # is_tree_root
+            parent_id,    # parent_bone_id
+            (0, 0, 0),   # start_point
+            (0, 0, 1),   # end_point
+            0.1,          # radius
+            1.0,          # mass
+            is_branch_root,  # is_branch_root
+            branch_id,   # branch_id
+        )
+
+    def test_all_bones_referenced(self):
+        bones = [self._make_bone(parent_id=-1, is_root=True), self._make_bone(parent_id=0)]
+        model = self._make_model([0, 1])
+        filtered, bone_map = filter_bones_for_mesh(model, bones)
+        assert len(filtered) == 2
+
+    def test_unreferenced_bones_removed(self):
+        bones = [
+            self._make_bone(parent_id=-1, is_root=True),
+            self._make_bone(parent_id=0),
+            self._make_bone(parent_id=1),  # bone idx 2: not referenced by any vertex
+        ]
+        model = self._make_model([0, 1])
+        filtered, bone_map = filter_bones_for_mesh(model, bones)
+        assert len(filtered) == 2
+        assert 2 not in bone_map
+
+    def test_root_always_included(self):
+        bones = [self._make_bone(parent_id=-1, is_root=True), self._make_bone(parent_id=0)]
+        model = self._make_model([1])  # only references bone 1
+        filtered, bone_map = filter_bones_for_mesh(model, bones)
+        assert 0 in bone_map  # root must be present
+
+    def test_parent_chain_included(self):
+        bones = [
+            self._make_bone(parent_id=-1, is_root=True),
+            self._make_bone(parent_id=0),
+            self._make_bone(parent_id=1),
+        ]
+        model = self._make_model([2])  # only references leaf bone
+        filtered, bone_map = filter_bones_for_mesh(model, bones)
+        # All three bones should be kept (root + parent chain to referenced bone)
+        assert len(filtered) == 3
+
+    def test_no_bone_id_attribute_returns_original(self):
+        model = SimpleNamespace()  # no point_attribute_bone_id
+        bones = [self._make_bone(parent_id=-1, is_root=True)]
+        filtered, bone_map = filter_bones_for_mesh(model, bones)
+        assert len(filtered) == 1
+
+    def test_bone_map_remaps_ids_correctly(self):
+        bones = [
+            self._make_bone(parent_id=-1, is_root=True),
+            self._make_bone(parent_id=0),
+            self._make_bone(parent_id=0),  # bone 2: not referenced
+            self._make_bone(parent_id=0),  # bone 3: referenced
+        ]
+        model = self._make_model([0, 1, 3])
+        filtered, bone_map = filter_bones_for_mesh(model, bones)
+        # bone 3 should be remapped to a lower index
+        assert bone_map[3] < 4
+
+
+class TestDistanceAndFalloff:
+    """Tests for _distance_3d and _apply_falloff helpers."""
+
+    def test_distance_same_point(self):
+        assert _distance_3d((0, 0, 0), (0, 0, 0)) == 0.0
+
+    def test_distance_unit(self):
+        assert _distance_3d((0, 0, 0), (1, 0, 0)) == pytest.approx(1.0)
+
+    def test_distance_3d(self):
+        assert _distance_3d((1, 2, 3), (4, 6, 3)) == pytest.approx(5.0)
+
+    def test_falloff_linear_zero(self):
+        assert _apply_falloff(0.0, "linear") == pytest.approx(0.0)
+
+    def test_falloff_linear_one(self):
+        assert _apply_falloff(1.0, "linear") == pytest.approx(1.0)
+
+    def test_falloff_linear_mid(self):
+        assert _apply_falloff(0.5, "linear") == pytest.approx(0.5)
+
+    def test_falloff_smooth_endpoints(self):
+        assert _apply_falloff(0.0, "smooth") == pytest.approx(0.0)
+        assert _apply_falloff(1.0, "smooth") == pytest.approx(1.0)
+
+    def test_falloff_smooth_midpoint(self):
+        # Smoothstep at 0.5: 0.5^2 * (3 - 2*0.5) = 0.25 * 2 = 0.5
+        assert _apply_falloff(0.5, "smooth") == pytest.approx(0.5)
+
+    def test_falloff_cosine_endpoints(self):
+        assert _apply_falloff(0.0, "cosine") == pytest.approx(0.0)
+        assert _apply_falloff(1.0, "cosine") == pytest.approx(1.0)
+
+    def test_falloff_cosine_midpoint(self):
+        assert _apply_falloff(0.5, "cosine") == pytest.approx(0.5)
+
+    def test_falloff_smooth_monotonic(self):
+        prev = 0.0
+        for i in range(1, 11):
+            t = i / 10.0
+            val = _apply_falloff(t, "smooth")
+            assert val >= prev
+            prev = val

@@ -8,6 +8,7 @@ from growpy.core.twig import (
     TwigPlacement,
     get_face_center_and_normal,
     normal_to_rotation_matrix,
+    rotation_matrix_to_quaternion,
 )
 
 
@@ -127,3 +128,44 @@ class TestNormalToRotationMatrix:
         assert dot_01 == pytest.approx(0.0, abs=1e-4)
         assert dot_02 == pytest.approx(0.0, abs=1e-4)
         assert dot_12 == pytest.approx(0.0, abs=1e-4)
+
+
+class TestRotationMatrixToQuaternion:
+    """Tests for rotation_matrix_to_quaternion conversion."""
+
+    def test_identity_matrix(self):
+        identity = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+        w, x, y, z = rotation_matrix_to_quaternion(identity)
+        assert w == pytest.approx(1.0, abs=1e-6)
+        assert x == pytest.approx(0.0, abs=1e-6)
+        assert y == pytest.approx(0.0, abs=1e-6)
+        assert z == pytest.approx(0.0, abs=1e-6)
+
+    def test_90_degree_z_rotation(self):
+        # 90 degrees around Z axis
+        matrix = [[0, -1, 0], [1, 0, 0], [0, 0, 1]]
+        w, x, y, z = rotation_matrix_to_quaternion(matrix)
+        # q = (cos(45), 0, 0, sin(45))
+        assert w == pytest.approx(math.cos(math.pi / 4), abs=1e-4)
+        assert z == pytest.approx(math.sin(math.pi / 4), abs=1e-4)
+
+    def test_quaternion_is_normalized(self):
+        matrix = [[0, 0, 1], [1, 0, 0], [0, 1, 0]]
+        w, x, y, z = rotation_matrix_to_quaternion(matrix)
+        length = math.sqrt(w * w + x * x + y * y + z * z)
+        assert length == pytest.approx(1.0, abs=1e-6)
+
+    def test_180_degree_rotation(self):
+        # 180 degrees around Z: negate x and y
+        matrix = [[-1, 0, 0], [0, -1, 0], [0, 0, 1]]
+        w, x, y, z = rotation_matrix_to_quaternion(matrix)
+        length = math.sqrt(w * w + x * x + y * y + z * z)
+        assert length == pytest.approx(1.0, abs=1e-6)
+        assert w == pytest.approx(0.0, abs=1e-4)
+
+    def test_roundtrip_with_normal_to_rotation(self):
+        normal = (0.577, 0.577, 0.577)
+        matrix = normal_to_rotation_matrix(normal)
+        w, x, y, z = rotation_matrix_to_quaternion(matrix)
+        length = math.sqrt(w * w + x * x + y * y + z * z)
+        assert length == pytest.approx(1.0, abs=1e-6)

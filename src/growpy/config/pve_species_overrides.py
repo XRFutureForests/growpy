@@ -143,7 +143,7 @@ def create_example_pve_config(
     }
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "w", indent=2) as f:
+    with open(output_path, "w") as f:
         json.dump(example_config, f, indent=2)
 
     logger.info("Created example PVE config at %s", output_path)
