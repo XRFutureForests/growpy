@@ -18,6 +18,7 @@ from typing import List, Optional
 from growpy.config import get_config
 from growpy.utils.analysis import SpeciesGrowthAnalyzer
 from growpy.utils.log import setup_logging
+from growpy.utils.naming import standardize_species_name
 
 logger = logging.getLogger(__name__)
 
@@ -87,13 +88,7 @@ def _resolve_species_from_csv(
     if "Standardized Name" in df.columns:
         return df["Standardized Name"].tolist()
 
-    import re
-
-    def standardize_name(name):
-        name = re.sub(r"[^\w\s-]", "", name.lower())
-        return re.sub(r"[-\s]+", "_", name).strip("_")
-
-    return [standardize_name(s) for s in df["Common Name"].tolist()]
+    return [standardize_species_name(s) for s in df["Common Name"].tolist()]
 
 
 def _run_calibration_pass(

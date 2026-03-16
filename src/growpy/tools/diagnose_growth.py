@@ -28,10 +28,17 @@ from growpy.core.tree import extract_tree_measurements
 
 
 def main():
-    raw_mode = "--raw" in sys.argv
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    species = args[0] if len(args) > 0 else "Norway spruce"
-    max_cycles = int(args[1]) if len(args) > 1 else 15
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Diagnose growth per cycle for a species.")
+    parser.add_argument("species", nargs="?", default="Norway spruce", help="Species name")
+    parser.add_argument("max_cycles", nargs="?", type=int, default=15, help="Max growth cycles")
+    parser.add_argument("--raw", action="store_true", help="Use raw preset without calibration")
+    parsed = parser.parse_args()
+
+    raw_mode = parsed.raw
+    species = parsed.species
+    max_cycles = parsed.max_cycles
     config = get_config()
 
     grove = create_grove(species)

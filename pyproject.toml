@@ -24,6 +24,10 @@ growpy-prepare-assets = "growpy.cli.prepare_assets:main"
 growpy-convert-twigs = "growpy.cli.convert_twigs:main"
 growpy-create-models = "growpy.cli.create_growth_models:main"
 growpy-generate-forest = "growpy.cli.generate_forest:main"
+growpy-generate-dataset-csvs = "growpy.cli.generate_dataset_csvs:main"
+growpy-analyze-usda = "growpy.tools.analyze_usda:main"
+growpy-diagnose-growth = "growpy.tools.diagnose_growth:main"
+growpy-visualize-tree = "growpy.tools.visualize_tree:main"
 
 [tool.setuptools]
 packages = ["growpy", "the_grove_23_core"]

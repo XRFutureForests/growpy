@@ -8,6 +8,8 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 
+from growpy.utils.naming import camel_to_snake
+
 # GBIF integration for species name resolution
 _GBIF_ENABLED = True  # Can be disabled if pygbif not available or API issues
 
@@ -310,11 +312,7 @@ def get_twig_files_by_type(species: str) -> Dict[str, List[Path]]:
 
         twigs_dir = get_assets_directory() / "twigs"
 
-        # Convert CamelCase Grove name to snake_case (e.g., EuropeanBeechTwig -> european_beech_twig)
-        # Insert underscore before uppercase letters, convert to lowercase
-        twig_name_std = (
-            re.sub(r"([A-Z])", r"_\1", str(twig_name).strip()).lower().lstrip("_")
-        )
+        twig_name_std = camel_to_snake(str(twig_name).strip())
 
         # Try standardized name with _twig suffix
         twig_dir = twigs_dir / f"{twig_name_std}_twig"

@@ -5,7 +5,6 @@ Step 1 of the pipeline. Defaults from growpy.toml [assets]. See docs/cli-referen
 """
 import argparse
 import logging
-import re
 import shutil
 import sys
 from pathlib import Path
@@ -20,51 +19,9 @@ from growpy.io.texture_utils import (
     process_twig_textures,
 )
 from growpy.utils.log import setup_logging
+from growpy.utils.naming import camel_to_snake, standardize_species_name
 
 logger = logging.getLogger(__name__)
-
-
-def camel_to_snake(name: str) -> str:
-    """Convert CamelCase to snake_case with number separation.
-
-    Args:
-        name: CamelCase string
-
-    Returns:
-        snake_case string with numbers separated by underscores
-
-    Examples:
-        "Beech60" -> "beech_60"
-        "BaldCypress80" -> "bald_cypress_80"
-        "NorthernRedOak60" -> "northern_red_oak_60"
-    """
-    # Insert underscore before uppercase letters
-    s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
-    # Insert underscore before uppercase letters followed by lowercase
-    s2 = re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1)
-    # Insert underscore before numbers (after letters)
-    s3 = re.sub("([a-z])([0-9])", r"\1_\2", s2)
-    return s3.lower()
-
-
-def standardize_species_name(common_name: str) -> str:
-    """Convert species common name to standardized snake_case.
-
-    Args:
-        common_name: Species common name (e.g., "European beech", "Red oak")
-
-    Returns:
-        Standardized snake_case name (e.g., "european_beech", "red_oak")
-
-    Examples:
-        "European beech" -> "european_beech"
-        "Red oak" -> "red_oak"
-        "Norway spruce" -> "norway_spruce"
-    """
-    # Replace spaces and special characters with underscores
-    name = re.sub(r"[^\w\s-]", "", common_name.lower())
-    name = re.sub(r"[-\s]+", "_", name)
-    return name.strip("_")
 
 
 def load_species_csv(

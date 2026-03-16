@@ -5,136 +5,21 @@ Step 2 of the pipeline. Defaults from growpy.toml [twigs]. See docs/cli-referenc
 """
 
 import logging
-import re
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from tqdm import tqdm
 
+from growpy.utils.naming import (
+    TEXTURE_CLASSIFICATIONS,
+    TEXTURE_MODIFIERS,
+    camel_to_snake,
+    standardize_species_name as _standardize_species_name,
+    standardize_twig_name,
+)
+
 logger = logging.getLogger(__name__)
-
-# USD validation removed - was only for development/testing
-
-
-def _standardize_species_name(name: str) -> str:
-    """Convert species common name to standardized snake_case.
-
-    Mirrors prepare_assets.py:standardize_species_name so names match across pipeline.
-    """
-    name = re.sub(r"[^\w\s-]", "", name.lower())
-    name = re.sub(r"[-\s]+", "_", name)
-    return name.strip("_")
-
-
-# Standardized twig type mapping
-TWIG_NAME_MAPPINGS = {
-    # Apical/Terminal/End twigs (twig_long attribute)
-    "apical": ["apical", "end", "long", "terminal", "tip"],
-    # Lateral/Side twigs (twig_short attribute)
-    "lateral": ["lateral", "side", "short", "laterall"],  # note: typo in some files
-    # Upward-facing twigs (twig_upward attribute)
-    "upward": ["upward", "up"],
-    # Dead/Fall/Winter twigs (twig_dead attribute)
-    "dead": ["dead", "fall", "winter", "bare"],
-    # Summer/Spring variants
-    "summer": ["summer", "spring", "green"],
-}
-
-# Texture type classifications with extended keywords
-TEXTURE_CLASSIFICATIONS = {
-    "diffuse": ["diffuse", "albedo", "color", "basecolor", "base", "diff", "col"],
-    "alpha": ["alpha", "opacity", "mask", "transparent", "cutout"],
-    "normal": ["normal", "norm", "nrm", "bump", "height"],
-    "translucent": ["translucent", "translucency", "transmission", "sss", "subsurface"],
-    "roughness": ["roughness", "rough", "gloss", "glossiness"],
-    "metallic": ["metallic", "metal", "metalness"],
-    "ao": ["ao", "ambient", "occlusion", "ambientocclusion"],
-    "emissive": ["emissive", "emission", "glow"],
-}
-
-# Special texture patterns (top/bottom for leaves)
-TEXTURE_MODIFIERS = {
-    "top": ["top", "upper", "face"],
-    "bottom": ["bottom", "lower", "back", "underside"],
-}
-
-
-def standardize_twig_name(original_name: str, species_name: str) -> Tuple[str, Dict]:
-    """Convert Grove's CamelCase .blend filenames to snake_case USD output names.
-
-    Parses semantic meaning from Grove's .blend file naming (e.g., type, variation)
-    and combines with clean species name to produce standardized output names.
-
-    Args:
-        original_name: Original .blend filename (e.g., 'BeechApicalTwig.blend')
-        species_name: Clean species name from directory (e.g., 'beech')
-
-    Returns:
-        (standardized_name, metadata_dict)
-
-    Examples:
-        "BeechApicalTwig" -> ("beech_apical", {"type": "apical", "species": "beech"})
-        "ScotsPineVariationCLateralTwig" -> ("scots_pine_lateral_c", {...})
-        "OakEuropeanLongTwig" -> ("european_oak_apical", {"type": "apical"})
-    """
-    name_lower = original_name.lower()
-
-    # Extract metadata
-    metadata = {
-        "original_name": original_name,
-        "species": species_name,
-        "type": "generic",  # Default
-        "variation": None,
-        "season": None,
-        "is_standardized": True,
-    }
-
-    # Detect twig type
-    for standard_type, keywords in TWIG_NAME_MAPPINGS.items():
-        if any(kw in name_lower for kw in keywords):
-            metadata["type"] = standard_type
-            break
-
-    # Detect variation (A, B, C, Var, Variation)
-    for letter in ["a", "b", "c", "d", "e"]:
-        if f"var{letter}" in name_lower or f"variation{letter}" in name_lower:
-            metadata["variation"] = letter
-            break
-        # Single letter patterns like "TwigA", "TwigB"
-        if name_lower.endswith(f"twig{letter}") or name_lower.endswith(f"{letter}twig"):
-            metadata["variation"] = letter
-            break
-
-    # Detect season
-    for season_type, keywords in TWIG_NAME_MAPPINGS.items():
-        if season_type in ["summer", "dead"] and any(
-            kw in name_lower for kw in keywords
-        ):
-            metadata["season"] = season_type
-
-    # Build standardized name
-    parts = []
-
-    # Species name (clean)
-    species_clean = species_name.lower().replace(" ", "_")
-    parts.append(species_clean)
-
-    # Twig type
-    if metadata["type"] != "generic":
-        parts.append(str(metadata["type"]))
-
-    # Variation
-    if metadata["variation"]:
-        parts.append(str(metadata["variation"]))
-
-    # Season modifier
-    if metadata["season"] and metadata["season"] != metadata["type"]:
-        parts.append(str(metadata["season"]))
-
-    standardized = "_".join(parts)
-
-    return standardized, metadata
 
 
 def classify_texture_type(texture_path: Path, material_name: str = "") -> str:
@@ -298,9 +183,7 @@ def process_twig_directory(
         for twig in twig_filter:
             # Check if CamelCase (contains uppercase) and convert
             if any(c.isupper() for c in twig):
-                s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", twig)
-                s2 = re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1)
-                twig_filter_snake.append(s2.lower())
+                twig_filter_snake.append(camel_to_snake(twig))
             else:
                 twig_filter_snake.append(twig)
 
@@ -543,9 +426,7 @@ Output per twig:
                             twig_filter.append(twig_name)
                             # Map twig directory name → species so output files
                             # are named after the species, not the donor twig.
-                            s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", twig_name)
-                            s2 = re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1)
-                            twig_dir_key = s2.lower()
+                            twig_dir_key = camel_to_snake(twig_name)
                             species_std = _standardize_species_name(species)
                             if twig_dir_key not in twig_to_species_map:
                                 twig_to_species_map[twig_dir_key] = []

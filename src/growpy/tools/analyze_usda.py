@@ -217,11 +217,13 @@ def analyze_tree_dir(tree_dir: Path) -> None:
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python analyze_usda.py <path_to_tree_dir_or_usda_file>")
-        sys.exit(1)
+    import argparse
 
-    target = Path(sys.argv[1])
+    parser = argparse.ArgumentParser(description="Analyze USDA tree export files.")
+    parser.add_argument("target", type=Path, help="Path to tree dir or USDA file")
+    args = parser.parse_args()
+
+    target = args.target
 
     if target.is_dir():
         # Could be a tree dir or a species dir with multiple trees

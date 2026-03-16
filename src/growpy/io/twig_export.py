@@ -874,66 +874,7 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), minimal_export=Tru
         return False
 
 
-def standardize_twig_name(original_name, species_name):
-    """Convert Grove's CamelCase .blend filenames to snake_case USD output names.
-
-    Args:
-        original_name: Original .blend filename (e.g., 'AspenApicalTwig.blend')
-        species_name: Clean species name from directory (e.g., 'aspen')
-
-    Returns:
-        (standardized_name, metadata) tuple
-        e.g., ('aspen_apical', {'type': 'apical', ...})
-    """
-    name_lower = original_name.lower()
-
-    metadata = {
-        "original_name": original_name,
-        "species": species_name,
-        "type": "generic",
-        "variation": None,
-        "season": None,
-    }
-
-    # Detect type
-    if any(kw in name_lower for kw in ["apical", "end", "long", "terminal", "tip"]):
-        metadata["type"] = "apical"
-    elif any(kw in name_lower for kw in ["lateral", "side", "short", "laterall"]):
-        metadata["type"] = "lateral"
-    elif any(kw in name_lower for kw in ["upward", "up"]):
-        metadata["type"] = "upward"
-    elif any(kw in name_lower for kw in ["dead", "fall", "winter", "bare"]):
-        metadata["type"] = "dead"
-    elif any(kw in name_lower for kw in ["summer", "spring", "green"]):
-        metadata["season"] = "summer"
-
-    # Detect variation
-    for letter in ["a", "b", "c", "d", "e"]:
-        if any(
-            pat in name_lower
-            for pat in [
-                f"var{letter}",
-                f"variation{letter}",
-                f"twig{letter}",
-                f"{letter}twig",
-            ]
-        ):
-            metadata["variation"] = letter
-            break
-
-    # Build name
-    parts = [species_name.lower().replace(" ", "_")]
-
-    if metadata["type"] != "generic":
-        parts.append(metadata["type"])
-
-    if metadata["variation"]:
-        parts.append(metadata["variation"])
-
-    if metadata["season"] and metadata["season"] != metadata["type"]:
-        parts.append(metadata["season"])
-
-    return "_".join(parts), metadata
+from growpy.utils.naming import standardize_twig_name  # noqa: E402
 
 
 def classify_texture_from_name(name):

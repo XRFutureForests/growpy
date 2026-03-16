@@ -1,0 +1,8 @@
+fid,species,x,y,z,height,twig_density,individual_type
+1,European oak,0.0,0.0,0.0,30,1.0,competition
+101,European oak,6.0,0.0,0.0,30,1.0,competition
+102,European oak,-6.0,0.0,0.0,30,1.0,competition
+103,European oak,3.0,5.196,0.0,30,1.0,competition
+104,European oak,-3.0,5.196,0.0,30,1.0,competition
+105,European oak,3.0,-5.196,0.0,30,1.0,competition
+106,European oak,-3.0,-5.196,0.0,30,1.0,competition

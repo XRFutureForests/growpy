@@ -210,6 +210,11 @@ skip_validation = true
 # Useful for studying a single tree growing among neighbors
 # Empty array = export all trees
 export_trees = []
+# Density variants: export multiple density levels from a single simulation.
+# Each simulation produces one file per variant without re-simulating.
+# Empty list (default) = single export using CSV/config twig_density.
+# When active, CSV twig_density column is ignored.
+density_variants = []  # e.g., ["full", "reduced", "bare"]
 
 # --- Post-export: Unreal import ---
 [unreal]
@@ -229,3 +234,19 @@ helios_scene = false
 individual_obj = false
 # OBJ coordinate up axis: "y" (standard OBJ/Blender) or "z" (matches USD/Helios)
 obj_up_axis = "y"
+
+# --- Density Variant Definitions ---
+# Each variant can override build_cutoff and twig_density from the quality preset.
+# Only keys listed here override; others inherited from active [quality.*] preset.
+# Referenced by name in export.density_variants list above.
+
+[density_variant.full]
+twig_density = 1.0
+
+[density_variant.reduced]
+twig_density = 0.5
+build_cutoff_thickness = 0.01
+
+[density_variant.bare]
+twig_density = 0.0
+build_cutoff_thickness = 0.02

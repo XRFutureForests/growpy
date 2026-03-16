@@ -15,6 +15,7 @@ except ImportError:
     plot_growth_curves = None
 
 from .diagnostics import dump_grove_data
+from .naming import camel_to_snake, standardize_species_name, standardize_twig_name
 from .profiling import ProfileTimer, get_timer, init_profiler
 
 __all__ = [
@@ -22,6 +23,9 @@ __all__ = [
     "compare_smoothing_effect",
     "plot_growth_curves",
     "dump_grove_data",
+    "camel_to_snake",
+    "standardize_species_name",
+    "standardize_twig_name",
     "ProfileTimer",
     "get_timer",
     "init_profiler",

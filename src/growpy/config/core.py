@@ -8,7 +8,7 @@ import os
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 _global_config: Optional["GrowPyConfig"] = None
 
@@ -122,6 +122,8 @@ class GrowPyConfig:
     export_skip_pve_json: bool = True
     export_skip_validation: bool = True
     export_twig_density: float = 1.0
+    export_density_variants: list = field(default_factory=list)
+    density_variant_defs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
     # [unreal]
     unreal_import_to_unreal: bool = True
@@ -248,6 +250,15 @@ class GrowPyConfig:
             kwargs["export_twig_density"] = export["twig_density"]
         if "export_trees" in export:
             kwargs["forest_export_trees"] = export["export_trees"]
+        if "density_variants" in export:
+            kwargs["export_density_variants"] = export["density_variants"]
+
+        # [density_variant.*] sections
+        dv_section = data.get("density_variant", {})
+        if dv_section:
+            kwargs["density_variant_defs"] = {
+                name: dict(cfg) for name, cfg in dv_section.items()
+            }
 
         # [unreal]
         unreal = data.get("unreal", {})
@@ -400,6 +411,20 @@ class GrowPyConfig:
             self.forest_export_trees = [int(x.strip()) for x in et.split(",")]
 
         return self
+
+    def get_density_variants(self) -> List[Tuple[str, Dict[str, Any]]]:
+        """Return [(variant_name, config_dict)] when active, else empty list."""
+        if not self.export_density_variants:
+            return []
+        result = []
+        for name in self.export_density_variants:
+            if name not in self.density_variant_defs:
+                raise ValueError(
+                    f"Density variant '{name}' not defined "
+                    f"in [density_variant.{name}]"
+                )
+            result.append((name, self.density_variant_defs[name]))
+        return result
 
     # Delegator methods to module-level functions
     def get_preset_path(self, species: str) -> Path:

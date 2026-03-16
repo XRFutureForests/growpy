@@ -1,0 +1,8 @@
+fid,species,x,y,z,height,twig_density,individual_type
+1,Austrian pine,0.0,0.0,0.0,25,1.0,competition
+101,Austrian pine,8.0,0.0,0.0,25,1.0,competition
+102,Austrian pine,-8.0,0.0,0.0,25,1.0,competition
+103,Austrian pine,4.0,6.928,0.0,25,1.0,competition
+104,Austrian pine,-4.0,6.928,0.0,25,1.0,competition
+105,Austrian pine,4.0,-6.928,0.0,25,1.0,competition
+106,Austrian pine,-4.0,-6.928,0.0,25,1.0,competition

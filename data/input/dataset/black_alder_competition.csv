@@ -1,0 +1,8 @@
+fid,species,x,y,z,height,twig_density,individual_type
+1,Black alder,0.0,0.0,0.0,25,1.0,competition
+101,Black alder,8.0,0.0,0.0,25,1.0,competition
+102,Black alder,-8.0,0.0,0.0,25,1.0,competition
+103,Black alder,4.0,6.928,0.0,25,1.0,competition
+104,Black alder,-4.0,6.928,0.0,25,1.0,competition
+105,Black alder,4.0,-6.928,0.0,25,1.0,competition
+106,Black alder,-4.0,-6.928,0.0,25,1.0,competition

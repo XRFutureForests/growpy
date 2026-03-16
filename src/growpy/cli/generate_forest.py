@@ -40,6 +40,14 @@ from growpy.config.preset_overrides import (
 )
 from growpy.config.quality import get_quality_preset
 from growpy.core.forest import simulate_forest_growth_with_snapshots
+from growpy.io.preview import generate_preview_image as _generate_preview_image
+from growpy.io.preview import (
+    generate_export_control_image as _generate_export_control_image,
+)
+from growpy.io.unreal_scripts import (
+    generate_unreal_cleanup_script,
+    generate_unreal_import_script,
+)
 from growpy.utils.profiling import ProfileTimer, get_timer, init_profiler
 
 logger = logging.getLogger(__name__)
@@ -65,280 +73,6 @@ def _is_bone_limit_error(error: ValueError) -> bool:
     """Check if a ValueError is about exceeding Unreal's bone limit."""
     msg = str(error)
     return "bones" in msg and "limit" in msg
-
-
-def _generate_preview_image(
-    tree_dir: Path,
-    species_clean: str,
-    dims_suffix: str,
-    skeleton,
-    timer,
-) -> Optional[list]:
-    """Draw branch structure from skeleton polylines as 3-axis preview.
-
-    Renders front (X vs Z), side (Y vs Z), and top (X vs Y) orthogonal
-    projections. Filters out the thinnest twigs to reveal main branch
-    architecture.
-
-    Returns list of (xlim, ylim) tuples per view for axis matching, or None.
-    """
-    if skeleton is None:
-        return None
-    try:
-        import matplotlib.pyplot as plt
-        import numpy as np
-        from matplotlib.collections import LineCollection
-
-        with timer.track("generate_preview"):
-            points = np.array(skeleton.points)
-            if len(points) == 0:
-                return None
-
-            radii = None
-            if hasattr(skeleton, "point_attribute_radius"):
-                radii = np.array(skeleton.point_attribute_radius)
-
-            # Collect all segment radii first to compute filter threshold
-            all_seg_radii = []
-            seg_data = []  # (idx0, idx1, avg_radius) per segment
-            for polyline in skeleton.poly_lines:
-                for i in range(len(polyline) - 1):
-                    idx0, idx1 = polyline[i], polyline[i + 1]
-                    if radii is not None:
-                        r = (radii[idx0] + radii[idx1]) * 0.5
-                    else:
-                        r = 0.005
-                    all_seg_radii.append(r)
-                    seg_data.append((idx0, idx1, r))
-
-            if not seg_data:
-                return None
-
-            # Filter: keep segments with radius >= 25th percentile (structural branches)
-            all_seg_radii = np.array(all_seg_radii)
-            radius_threshold = max(np.percentile(all_seg_radii, 25), 0.001)
-
-            # Build filtered segments with 3D coordinates
-            filtered = []
-            for idx0, idx1, r in seg_data:
-                if r < radius_threshold:
-                    continue
-                filtered.append((points[idx0], points[idx1], r))
-
-            if not filtered:
-                return None
-
-            title = species_clean.replace("_", " ").title()
-            height = points[:, 2].max() - points[:, 2].min()
-
-            # 3 views: front (X,Z), side (Y,Z), top (X,Y)
-            views = [
-                ("Front (X vs Z)", 0, 2, "X (m)", "Z height (m)"),
-                ("Side (Y vs Z)", 1, 2, "Y (m)", "Z height (m)"),
-                ("Top (X vs Y)", 0, 1, "X (m)", "Y (m)"),
-            ]
-
-            fig, axes = plt.subplots(1, 3, figsize=(18, 7))
-            fig.suptitle(f"{title} ({height:.1f}m)", fontsize=14, fontweight="bold")
-
-            # Scale: convert diameter in meters to line width in points.
-            # Use a fixed 30m reference so all species are comparable.
-            ax_points = 7 * 72  # 7 inches * 72 pt/inch
-            reference_height = 30.0
-            pts_per_meter = ax_points / reference_height
-
-            for ax, (view_name, ax_h, ax_v, xlabel, ylabel) in zip(axes, views):
-                segs = []
-                ws = []
-                for p0, p1, r in filtered:
-                    segs.append([(p0[ax_h], p0[ax_v]), (p1[ax_h], p1[ax_v])])
-                    ws.append(r * 2 * pts_per_meter)
-
-                lc = LineCollection(
-                    segs, linewidths=ws, colors="#3b2a1a", alpha=0.85
-                )
-                ax.add_collection(lc)
-                ax.set_aspect("equal")
-                ax.autoscale()
-                ax.set_xlabel(xlabel)
-                ax.set_ylabel(ylabel)
-                ax.set_title(view_name)
-                ax.grid(True, alpha=0.2)
-
-            plt.tight_layout()
-            suffix = f"_{dims_suffix}" if dims_suffix else ""
-            png_path = tree_dir / f"{species_clean}{suffix}_preview.png"
-            fig.savefig(png_path, dpi=150, bbox_inches="tight", facecolor="white")
-
-            # Capture axis bounds for matching with export control
-            view_bounds = [
-                (ax.get_xlim(), ax.get_ylim()) for ax in axes
-            ]
-
-            plt.close(fig)
-            logger.info("  Preview: %s", png_path.name)
-            return view_bounds
-    except Exception as e:
-        logger.debug("Preview generation failed: %s", e)
-        return None
-
-
-def _generate_export_control_image(
-    tree_dir: Path,
-    species_clean: str,
-    dims_suffix: str,
-    timer,
-    view_bounds: Optional[list] = None,
-) -> None:
-    """Render control image from exported USDA stems mesh and skeleton.
-
-    Reads back the actual exported files to verify what Unreal will import.
-    Shows mesh edges (green) and skeleton joints (red) in 3 orthogonal views.
-    """
-    try:
-        import matplotlib.pyplot as plt
-        import numpy as np
-        from matplotlib.collections import LineCollection
-
-        with timer.track("generate_export_control"):
-            suffix = f"_{dims_suffix}" if dims_suffix else ""
-            stems_path = tree_dir / f"{species_clean}{suffix}_stems_skeletal.usda"
-            if not stems_path.exists():
-                stems_path = tree_dir / f"{species_clean}{suffix}_stems_static.usda"
-            if not stems_path.exists():
-                return
-
-            content = stems_path.read_text(encoding="utf-8")
-
-            # Parse mesh points
-            import re
-
-            match = re.search(r"point3f\[\] points\s*=\s*\[", content)
-            if not match:
-                return
-            start = match.end()
-            depth, pos = 1, start
-            while depth > 0 and pos < len(content):
-                if content[pos] == "[":
-                    depth += 1
-                elif content[pos] == "]":
-                    depth -= 1
-                pos += 1
-            coords = re.findall(r"\(\s*([^)]+)\)", content[start : pos - 1])
-            if not coords:
-                return
-            mesh_points = np.array(
-                [[float(v.strip()) for v in c.split(",")[:3]] for c in coords]
-            )
-
-            # Parse face indices for edge rendering
-            face_match = re.search(
-                r"int\[\] faceVertexIndices\s*=\s*\[([^\]]+)\]", content
-            )
-            edges = set()
-            if face_match:
-                indices = [int(x.strip()) for x in face_match.group(1).split(",")]
-                for i in range(0, len(indices) - 2, 3):
-                    for a, b in [(0, 1), (1, 2), (2, 0)]:
-                        edges.add(tuple(sorted([indices[i + a], indices[i + b]])))
-
-            # Parse skeleton joint positions from bindTransforms
-            skel_points = []
-            bt_match = re.search(
-                r"matrix4d\[\] bindTransforms\s*=\s*\[", content
-            )
-            if bt_match:
-                bt_start = bt_match.end()
-                bt_depth, bt_pos = 1, bt_start
-                while bt_depth > 0 and bt_pos < len(content):
-                    if content[bt_pos] == "[":
-                        bt_depth += 1
-                    elif content[bt_pos] == "]":
-                        bt_depth -= 1
-                    bt_pos += 1
-                matrices = re.findall(
-                    r"\(\s*\([^)]*\)[^)]*\([^)]*\)[^)]*\([^)]*\)[^)]*\(([^)]*)\)\s*\)",
-                    content[bt_start : bt_pos - 1],
-                )
-                for m in matrices:
-                    vals = [float(v.strip()) for v in m.split(",")]
-                    if len(vals) >= 3:
-                        skel_points.append(vals[:3])
-            skel_points = np.array(skel_points) if skel_points else np.empty((0, 3))
-
-            title = species_clean.replace("_", " ").title()
-            z_vals = mesh_points[:, 2]
-            height = z_vals.max() - z_vals.min()
-
-            views = [
-                ("Front (X vs Z)", 0, 2, "X (m)", "Z height (m)"),
-                ("Side (Y vs Z)", 1, 2, "Y (m)", "Z height (m)"),
-                ("Top (X vs Y)", 0, 1, "X (m)", "Y (m)"),
-            ]
-
-            fig, axes = plt.subplots(1, 3, figsize=(18, 7))
-            fig.suptitle(
-                f"{title} Export Control ({height:.1f}m) -- "
-                f"{len(mesh_points):,} verts, {len(skel_points)} joints",
-                fontsize=12,
-                fontweight="bold",
-            )
-
-            # Subsample edges for performance
-            edge_list = list(edges)
-            max_edges = 50000
-            if len(edge_list) > max_edges:
-                rng = np.random.default_rng(42)
-                idx = rng.choice(len(edge_list), max_edges, replace=False)
-                edge_list = [edge_list[i] for i in idx]
-
-            for ax, (view_name, ax_h, ax_v, xlabel, ylabel) in zip(axes, views):
-                # Mesh edges
-                segs = []
-                for e0, e1 in edge_list:
-                    if e0 < len(mesh_points) and e1 < len(mesh_points):
-                        p0, p1 = mesh_points[e0], mesh_points[e1]
-                        segs.append([(p0[ax_h], p0[ax_v]), (p1[ax_h], p1[ax_v])])
-                if segs:
-                    lc = LineCollection(
-                        segs, linewidths=0.15, colors="#2d5016", alpha=0.4
-                    )
-                    ax.add_collection(lc)
-
-                # Skeleton joints
-                if len(skel_points) > 0:
-                    ax.scatter(
-                        skel_points[:, ax_h],
-                        skel_points[:, ax_v],
-                        c="red",
-                        s=4,
-                        zorder=5,
-                        alpha=0.7,
-                        label=f"{len(skel_points)} joints",
-                    )
-
-                ax.set_aspect("equal")
-                ax.autoscale()
-                ax.set_xlabel(xlabel)
-                ax.set_ylabel(ylabel)
-                ax.set_title(view_name)
-                ax.grid(True, alpha=0.2)
-                if len(skel_points) > 0:
-                    ax.legend(fontsize=8, loc="upper right")
-
-            # Match axis bounds from preview image if available
-            if view_bounds and len(view_bounds) == len(axes):
-                for ax, (xlim, ylim) in zip(axes, view_bounds):
-                    ax.set_xlim(xlim)
-                    ax.set_ylim(ylim)
-
-            plt.tight_layout()
-            png_path = tree_dir / f"{species_clean}{suffix}_export_control.png"
-            fig.savefig(png_path, dpi=150, bbox_inches="tight", facecolor="white")
-            plt.close(fig)
-            logger.info("  Export control: %s", png_path.name)
-    except Exception as e:
-        logger.debug("Export control image failed: %s", e)
 
 
 def _derive_static_from_skeletal(
@@ -400,12 +134,13 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     the old approach of recreating and re-simulating each tree individually.
 
     Args:
-        args: Tuple of (fids, grove_instance, species_name, output_dir, quality_params, mesh_type, verbose, timer, twig_densities, csv_dbh_map)
+        args: Tuple of (fids, grove_instance, species_name, output_dir, quality_params, mesh_type, verbose, timer, twig_densities, csv_dbh_map, individual_type_map)
               fids is a list of original CSV fid values for each tree in the grove
               verbose is boolean for verbose output
               timer is optional ProfileTimer instance
               twig_densities is a dict mapping fid -> twig_density float (or empty dict)
               csv_dbh_map is a dict mapping fid -> dbh in meters (or empty dict)
+              individual_type_map is a dict mapping fid -> individual_type str (or empty dict)
 
     Returns:
         List of exported file paths
@@ -424,7 +159,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     from growpy.io.tree_export import get_twig_usd_map_for_species
     from growpy.utils.profiling import ProfileTimer
 
-    (fids, grove, species, output_dir, quality_params, mesh_type, verbose, timer, twig_densities, csv_dbh_map) = args
+    (fids, grove, species, output_dir, quality_params, mesh_type, verbose, timer, twig_densities, csv_dbh_map, individual_type_map) = args
 
     # Use provided timer or create disabled one
     if timer is None:
@@ -496,6 +231,33 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 for i in range(0, len(bones_grouped), 2)
             ]
 
+        # Build additional model sets for density variants with different cutoffs
+        density_variants = config.get_density_variants()
+        variant_model_sets: Dict[str, list] = {}
+        if density_variants:
+            base_cutoff = (
+                quality_params["build_cutoff_age"],
+                quality_params["build_cutoff_thickness"],
+            )
+            built_cutoffs: Dict[tuple, list] = {base_cutoff: models}
+            for vname, vcfg in density_variants:
+                cutoff_key = (
+                    vcfg.get("build_cutoff_age", base_cutoff[0]),
+                    vcfg.get("build_cutoff_thickness", base_cutoff[1]),
+                )
+                if cutoff_key not in built_cutoffs:
+                    variant_opts = {
+                        "resolution": quality_params["resolution"],
+                        "resolution_reduce": quality_params["resolution_reduce"],
+                        "build_cutoff_age": cutoff_key[0],
+                        "build_cutoff_thickness": cutoff_key[1],
+                        "build_blend": quality_params["build_blend"],
+                        "build_end_cap": quality_params["build_end_cap"],
+                    }
+                    with timer.track(f"build_models_{vname}"):
+                        built_cutoffs[cutoff_key] = grove.build_models(variant_opts)
+                variant_model_sets[vname] = built_cutoffs[cutoff_key]
+
         # Load target DBH curve for post-hoc radial scaling
         # This corrects Grove's inflated DBH to match yield table targets
         target_dbh_curve = load_target_dbh_from_preset(config.get_preset_path(species))
@@ -552,28 +314,17 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             d_str = format_dbh_for_filename(filename_dbh)
             dims_suffix = f"{h_str}_{d_str}"
 
-            # Use appropriate twig type based on mesh_type
+            # Shared per-tree work (independent of density variant)
             use_skeletal = mesh_type == "skeletal"
             use_static = mesh_type == "static"
-
-            # Create tree-specific subfolder with tree ID
             mesh_suffix = "skeletal" if use_skeletal else "static"
-            tree_dir = output_dir / species_clean / f"tree_{tree_id}"
-            tree_dir.mkdir(parents=True, exist_ok=True)
-            usd_path = tree_dir / f"{species_clean}_{dims_suffix}_assembly_{mesh_suffix}.usda"
+            individual_type = individual_type_map.get(tree_fid)
 
-            # CRITICAL: Always use skeletal twigs for both skeletal and static assemblies
-            # Static twig variants don't exist, and skeletal twigs work as point instances
-            # in both assembly types (assembly type only affects tree mesh, not twig references)
             with timer.track("get_twig_usd_map"):
                 twig_usd_map = get_twig_usd_map_for_species(
                     species, config, prefer_skeletal=True, prefer_static=False
                 )
 
-            # Radial scaling: correct Grove's trunk to target DBH
-            # CSV-specified DBH allows wider scaling range since the user
-            # explicitly chose the diameter; yield-table values use a tighter
-            # clamp to avoid visual artifacts from extreme scaling
             tree_radial_scale = 1.0
             if config.calibration_align_dbh and target_dbh_m and grove_dbh_m > 0.001:
                 tree_radial_scale = target_dbh_m / grove_dbh_m
@@ -582,118 +333,157 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 else:
                     tree_radial_scale = max(0.5, min(tree_radial_scale, 2.0))
 
-            # Export as Nanite Assembly with specified mesh type
-            # tree_id in prim name ensures unique Unreal assets
-            with timer.track(f"export_nanite_assembly_{mesh_suffix}"):
-                export_success = export_tree_as_nanite_assembly(
-                    model=model,
-                    skeleton=skeleton if use_skeletal else None,
-                    bones_info=bones_for_tree if use_skeletal else None,
-                    output_path=usd_path,
-                    species_name=species,
-                    tree_id=tree_id,
-                    twig_usd_paths=twig_usd_map,
-                    include_twigs=True,
-                    use_skeletal_mesh=use_skeletal,
-                    use_static_mesh=use_static,
-                    include_grove_attributes=quality_params.get(
-                        "include_grove_attributes", False
-                    ),
-                    validate=not quality_params.get("skip_validation", False),
-                    timer=timer,
-                    stems_file_suffix=dims_suffix,
-                    radial_scale=tree_radial_scale,
-                    twig_density=twig_densities.get(tree_fid),
-                )
+            # Build export iterations: one per density variant, or single default
+            if density_variants:
+                export_iterations = [
+                    (vname, vcfg["twig_density"],
+                     variant_model_sets.get(vname, models)[model_idx])
+                    for vname, vcfg in density_variants
+                ]
+            else:
+                export_iterations = [
+                    (None, twig_densities.get(tree_fid), model)
+                ]
 
-            if export_success:
-                exported.append(str(usd_path))
-
-                # Generate DynamicWind JSON for Unreal import
-                # CRITICAL: Unreal currently requires separate JSON import, not USD attributes
-                # Use ImportDynamicWindSkeletalDataFromFile in Unreal after USD import
-                if use_skeletal:
-                    from growpy.io.wind_json import generate_wind_json
-
-                    # Path to the skeletal USD file (stems mesh with skeleton)
-                    skeletal_usd_path = (
-                        tree_dir / f"{species_clean}_{dims_suffix}_stems_skeletal.usda"
+            for variant_idx, (variant_name, effective_twig_density, effective_model) in enumerate(
+                export_iterations
+            ):
+                # Build output directory and filename prefix
+                if individual_type:
+                    tree_dir = output_dir / species_clean / individual_type
+                    density_str = (
+                        variant_name
+                        if variant_name
+                        else format_density_for_filename(effective_twig_density)
                     )
-                    wind_json_path = (
-                        tree_dir / f"{species_clean}_{dims_suffix}_stems_unreal_wind.json"
+                    individual_short = (
+                        "comp" if "comp" in individual_type else "open"
                     )
-                    try:
-                        with timer.track("generate_wind_json"):
-                            generate_wind_json(
-                                tree_usd_path=skeletal_usd_path,
-                                skeleton=skeleton,
-                                bones_info=bones_for_tree,
-                                output_path=wind_json_path,
+                    species_title = (
+                        species_clean.replace("_", " ").title().replace(" ", "_")
+                    )
+                    file_prefix = f"{species_title}_{individual_short}_{dims_suffix}_{density_str}"
+                else:
+                    tree_dir = output_dir / species_clean / f"tree_{tree_id}"
+                    if variant_name:
+                        file_prefix = f"{species_clean}_{dims_suffix}_{variant_name}"
+                    else:
+                        file_prefix = f"{species_clean}_{dims_suffix}"
+                tree_dir.mkdir(parents=True, exist_ok=True)
+                usd_path = tree_dir / f"{file_prefix}_assembly_{mesh_suffix}.usda"
+
+                with timer.track(f"export_nanite_assembly_{mesh_suffix}"):
+                    export_success = export_tree_as_nanite_assembly(
+                        model=effective_model,
+                        skeleton=skeleton if use_skeletal else None,
+                        bones_info=bones_for_tree if use_skeletal else None,
+                        output_path=usd_path,
+                        species_name=species,
+                        tree_id=tree_id,
+                        twig_usd_paths=twig_usd_map,
+                        include_twigs=True,
+                        use_skeletal_mesh=use_skeletal,
+                        use_static_mesh=use_static,
+                        include_grove_attributes=quality_params.get(
+                            "include_grove_attributes", False
+                        ),
+                        validate=not quality_params.get("skip_validation", False),
+                        timer=timer,
+                        stems_file_suffix=dims_suffix,
+                        radial_scale=tree_radial_scale,
+                        twig_density=effective_twig_density,
+                    )
+
+                if export_success:
+                    exported.append(str(usd_path))
+
+                    # One-time artifacts: only for first variant
+                    if variant_idx == 0:
+                        # DynamicWind JSON for Unreal import
+                        if use_skeletal:
+                            from growpy.io.wind_json import generate_wind_json
+
+                            skeletal_usd_path = (
+                                tree_dir / f"{file_prefix}_stems_skeletal.usda"
                             )
-                    except Exception as wind_error:
-                        logger.warning(
-                            "Failed to generate wind JSON for tree %s: %s",
-                            tree_id,
-                            wind_error,
-                        )
-                        logger.debug("Wind JSON traceback:", exc_info=True)
-
-                # Generate PVE preset JSON (optional, skip with --skip-pve-json)
-                # Only generate once per tree (skeletal mesh export, not static)
-                skip_pve = quality_params.get("skip_pve_json", False)
-                profile_pve = quality_params.get("profile_pve", False)
-                if use_skeletal and not skip_pve:
-                    from growpy.io.pve_grove_mapper import generate_pve_from_grove
-
-                    pve_json_path = tree_dir / f"{species_clean}_{dims_suffix}_stems_unreal_pve.json"
-                    pve_config_dir = Path("data/assets/pve_configs")
-
-                    try:
-                        with timer.track("generate_pve_json"):
-                            generate_pve_from_grove(
-                                grove=grove,
-                                output_path=pve_json_path,
-                                species_name=species,
-                                tree_index=model_idx,
-                                model=model,  # Pass current model (has twigs)
-                                skeleton=skeleton,
-                                bones_info=bones_for_tree,
-                                verbose=True,
-                                pve_config_dir=pve_config_dir,
-                                profile=profile_pve,
+                            wind_json_path = (
+                                tree_dir / f"{file_prefix}_stems_unreal_wind.json"
                             )
-                    except Exception as pve_error:
-                        logger.warning(
-                            "Failed to generate PVE preset JSON for tree %s: %s",
-                            tree_id,
-                            pve_error,
-                        )
-                        logger.debug("PVE JSON traceback:", exc_info=True)
+                            try:
+                                with timer.track("generate_wind_json"):
+                                    generate_wind_json(
+                                        tree_usd_path=skeletal_usd_path,
+                                        skeleton=skeleton,
+                                        bones_info=bones_for_tree,
+                                        output_path=wind_json_path,
+                                    )
+                            except Exception as wind_error:
+                                logger.warning(
+                                    "Failed to generate wind JSON for tree %s: %s",
+                                    tree_id,
+                                    wind_error,
+                                )
+                                logger.debug("Wind JSON traceback:", exc_info=True)
 
-                # Derive static mesh from skeletal when both export types enabled
-                if use_skeletal and config.export_static:
-                    with timer.track("derive_static_from_skeletal"):
-                        static_path = _derive_static_from_skeletal(
-                            tree_dir=tree_dir,
-                            species_clean=species_clean,
-                            species_name=species,
-                            tree_id=tree_id,
-                            model=model,
-                            twig_usd_map=twig_usd_map,
-                            skip_validation=quality_params.get(
-                                "skip_validation", False
-                            ),
-                            stems_suffix=dims_suffix,
-                        )
-                        if static_path:
-                            exported.append(static_path)
+                        # PVE preset JSON (optional)
+                        skip_pve = quality_params.get("skip_pve_json", False)
+                        profile_pve = quality_params.get("profile_pve", False)
+                        if use_skeletal and not skip_pve:
+                            from growpy.io.pve_grove_mapper import generate_pve_from_grove
 
-                # Generate 2D preview image for quick visual assessment
-                preview_bounds = _generate_preview_image(tree_dir, species_clean, dims_suffix, skeleton, timer)
-                _generate_export_control_image(tree_dir, species_clean, dims_suffix, timer, view_bounds=preview_bounds)
+                            pve_json_path = tree_dir / f"{file_prefix}_stems_unreal_pve.json"
+                            pve_config_dir = Path("data/assets/pve_configs")
+
+                            try:
+                                with timer.track("generate_pve_json"):
+                                    generate_pve_from_grove(
+                                        grove=grove,
+                                        output_path=pve_json_path,
+                                        species_name=species,
+                                        tree_index=model_idx,
+                                        model=effective_model,
+                                        skeleton=skeleton,
+                                        bones_info=bones_for_tree,
+                                        verbose=True,
+                                        pve_config_dir=pve_config_dir,
+                                        profile=profile_pve,
+                                    )
+                            except Exception as pve_error:
+                                logger.warning(
+                                    "Failed to generate PVE preset JSON for tree %s: %s",
+                                    tree_id,
+                                    pve_error,
+                                )
+                                logger.debug("PVE JSON traceback:", exc_info=True)
+
+                        # Derive static mesh from skeletal
+                        if use_skeletal and config.export_static:
+                            with timer.track("derive_static_from_skeletal"):
+                                static_path = _derive_static_from_skeletal(
+                                    tree_dir=tree_dir,
+                                    species_clean=species_clean,
+                                    species_name=species,
+                                    tree_id=tree_id,
+                                    model=effective_model,
+                                    twig_usd_map=twig_usd_map,
+                                    skip_validation=quality_params.get(
+                                        "skip_validation", False
+                                    ),
+                                    stems_suffix=dims_suffix,
+                                )
+                                if static_path:
+                                    exported.append(static_path)
+
+                        # 2D preview image
+                        preview_bounds = _generate_preview_image(
+                            tree_dir, species_clean, file_prefix, skeleton, timer
+                        )
+                        _generate_export_control_image(
+                            tree_dir, species_clean, file_prefix, timer,
+                            view_bounds=preview_bounds,
+                        )
 
             # MEMORY OPTIMIZATION: Clear this tree's data immediately after export
-            # This releases large mesh/skeleton data before processing next tree
             models[model_idx] = None  # type: ignore[call-overload]
             skeletons[model_idx] = None  # type: ignore[call-overload]
             tree_bones[model_idx] = None  # type: ignore[call-overload]
@@ -777,6 +567,14 @@ def export_individual_trees(
             if pd.notna(val) and float(val) > 0:
                 csv_dbh_map[int(row["fid"])] = float(val) / 100.0  # cm -> m
 
+    # Build per-tree individual_type map for dataset naming
+    individual_type_map: Dict[int, str] = {}
+    if "individual_type" in forest_data.columns:
+        for _, row in forest_data.iterrows():
+            val = row["individual_type"]
+            if pd.notna(val) and str(val).strip():
+                individual_type_map[int(row["fid"])] = str(val).strip()
+
     for grove, species_name, tree_count, fids in forest:
         if cfg.export_skeletal:
             # Skeletal task; static derivation happens inline when both enabled
@@ -792,6 +590,7 @@ def export_individual_trees(
                     timer,
                     twig_density_map,
                     csv_dbh_map,
+                    individual_type_map,
                 )
             )
         elif cfg.export_static:
@@ -808,12 +607,13 @@ def export_individual_trees(
                     timer,
                     twig_density_map,
                     csv_dbh_map,
+                    individual_type_map,
                 )
             )
 
     # Always use sequential processing (bpy/USD not compatible with multiprocessing)
     for task_idx, task in enumerate(tqdm(grove_tasks, desc="Exporting groves")):
-        _fids, _grove, _species, _outdir, _qp, _mesh_type, _verbose, _timer, _td, _dbh = task
+        _fids, _grove, _species, _outdir, _qp, _mesh_type, _verbose, _timer, _td, _dbh, _it = task
         species_short = _species.replace(" ", "_").lower()
         track_name = f"grove_export ({species_short} {_mesh_type})"
         with timer.track(track_name):
@@ -831,29 +631,11 @@ def export_individual_trees(
     return exported_files
 
 
-def format_height_for_filename(height_m: float) -> str:
-    """Format height in meters for filename: h15 = 15m (rounded).
-
-    Args:
-        height_m: Height in meters
-
-    Returns:
-        Formatted string like 'h15' for 15 meters
-    """
-    return f"h{round(height_m)}"
-
-
-def format_dbh_for_filename(dbh_m: float) -> str:
-    """Format DBH in meters for filename: d32 = 0.32m (32cm).
-
-    Args:
-        dbh_m: DBH in meters
-
-    Returns:
-        Formatted string like 'd32' for 32 centimeters
-    """
-    cm = int(round(dbh_m * 100))
-    return f"d{cm}"
+from growpy.utils.export_naming import (  # noqa: E402
+    format_dbh_for_filename,
+    format_density_for_filename,
+    format_height_for_filename,
+)
 
 
 def generate_forest_stages(
@@ -1071,6 +853,10 @@ def generate_forest_stages(
             if pd.notna(val) and float(val) > 0:
                 csv_dbh_map[int(row["fid"])] = float(val) / 100.0  # cm -> m
 
+    density_variants = config.get_density_variants()
+    if density_variants and "twig_density" in forest_data.columns:
+        logger.info("Density variants active -- CSV twig_density column ignored")
+
     exported_files = []
     for cycle, species_snapshots in tqdm(snapshots.items(), desc="Exporting stages"):
         for species_name, tree_data_list in species_snapshots.items():
@@ -1090,10 +876,16 @@ def generate_forest_stages(
                         if "twig_density" in tree_row.index and pd.notna(tree_row.get("twig_density"))
                         else None
                     )
+                    tree_individual_type = (
+                        str(tree_row["individual_type"]).strip()
+                        if "individual_type" in tree_row.index and pd.notna(tree_row.get("individual_type"))
+                        else None
+                    )
                 else:
                     fid = tree_idx + 1
                     tree_max_cycles = global_max_cycles
                     tree_twig_density = None
+                    tree_individual_type = None
 
                 if model is None:
                     logger.warning(
@@ -1149,26 +941,15 @@ def generate_forest_stages(
                 dbh_str = format_dbh_for_filename(filename_dbh)
                 dims_suffix = f"{height_str}_{dbh_str}"
 
-                # Create output directory: species/tree_####/
-                tree_dir = output_dir / species_clean / f"tree_{fid:04d}"
-                tree_dir.mkdir(parents=True, exist_ok=True)
-
-                # Assembly name uses height and dbh for unique identification
-                assembly_name = f"{species_clean}_{dims_suffix}_assembly"
-                usd_path = tree_dir / f"{assembly_name}.usda"
-
-                # Get twig USD paths
+                # Shared per-tree work (independent of density variant)
                 twig_usd_map = get_twig_usd_map_for_species(
                     species_name, config, prefer_skeletal=True, prefer_static=False
                 )
-
-                # Triangulate model before export
                 try:
                     model.triangulate()
                 except Exception:
                     pass
 
-                # Radial scaling: correct Grove's trunk to target DBH
                 tree_radial_scale = 1.0
                 if config.calibration_align_dbh and target_dbh_m and grove_dbh > 0.001:
                     tree_radial_scale = target_dbh_m / grove_dbh
@@ -1177,64 +958,106 @@ def generate_forest_stages(
                     else:
                         tree_radial_scale = max(0.5, min(tree_radial_scale, 2.0))
 
-                # Export as Nanite Assembly
-                # stems_file_suffix ensures each stage gets its own stems file
                 use_skeletal = config.export_skeletal
                 use_static_only = not use_skeletal and config.export_static
-                try:
-                    export_success = export_tree_as_nanite_assembly(
-                        model=model,
-                        skeleton=skeleton if use_skeletal else None,
-                        bones_info=bones_info if use_skeletal else None,
-                        output_path=usd_path,
-                        species_name=species_name,
-                        tree_id=None,
-                        twig_usd_paths=twig_usd_map,
-                        include_twigs=True,
-                        use_skeletal_mesh=use_skeletal,
-                        use_static_mesh=use_static_only,
-                        include_grove_attributes=include_grove_attributes,
-                        validate=not skip_validation,
-                        timer=timer,
-                        stems_file_suffix=dims_suffix,
-                        radial_scale=tree_radial_scale,
-                        twig_density=tree_twig_density,
-                    )
-                except ValueError as e:
-                    if _is_bone_limit_error(e):
-                        _handle_bone_limit_error(e)
-                    raise
 
-                if export_success:
-                    exported_files.append(str(usd_path))
-                    logger.info("  Exported: %s", usd_path.name)
+                # Build export iterations: one per density variant, or single default
+                if density_variants:
+                    export_iterations = [
+                        (vname, vcfg["twig_density"])
+                        for vname, vcfg in density_variants
+                    ]
+                else:
+                    export_iterations = [(None, tree_twig_density)]
 
-                    # Generate 2D preview image for quick visual assessment
-                    preview_bounds = _generate_preview_image(tree_dir, species_clean, dims_suffix, skeleton, timer)
-                    _generate_export_control_image(tree_dir, species_clean, dims_suffix, timer, view_bounds=preview_bounds)
+                for variant_idx, (variant_name, effective_twig_density) in enumerate(
+                    export_iterations
+                ):
+                    # Build output directory and filename prefix
+                    if tree_individual_type:
+                        tree_dir = output_dir / species_clean / tree_individual_type
+                        density_str = (
+                            variant_name
+                            if variant_name
+                            else format_density_for_filename(effective_twig_density)
+                        )
+                        individual_short = (
+                            "comp" if "comp" in tree_individual_type else "open"
+                        )
+                        species_title = (
+                            species_clean.replace("_", " ").title().replace(" ", "_")
+                        )
+                        file_prefix = f"{species_title}_{individual_short}_{dims_suffix}_{density_str}"
+                    else:
+                        tree_dir = output_dir / species_clean / f"tree_{fid:04d}"
+                        if variant_name:
+                            file_prefix = f"{species_clean}_{dims_suffix}_{variant_name}"
+                        else:
+                            file_prefix = f"{species_clean}_{dims_suffix}"
+                    tree_dir.mkdir(parents=True, exist_ok=True)
 
-                    # Derive static from skeletal when both enabled
-                    if use_skeletal and config.export_static:
-                        static_path = _derive_static_from_skeletal(
-                            tree_dir=tree_dir,
-                            species_clean=species_clean,
+                    usd_path = tree_dir / f"{file_prefix}_assembly.usda"
+
+                    # Export as Nanite Assembly
+                    try:
+                        export_success = export_tree_as_nanite_assembly(
+                            model=model,
+                            skeleton=skeleton if use_skeletal else None,
+                            bones_info=bones_info if use_skeletal else None,
+                            output_path=usd_path,
                             species_name=species_name,
                             tree_id=None,
-                            model=model,
-                            twig_usd_map=twig_usd_map,
-                            skip_validation=skip_validation,
-                            stems_suffix=dims_suffix,
+                            twig_usd_paths=twig_usd_map,
+                            include_twigs=True,
+                            use_skeletal_mesh=use_skeletal,
+                            use_static_mesh=use_static_only,
+                            include_grove_attributes=include_grove_attributes,
+                            validate=not skip_validation,
+                            timer=timer,
+                            stems_file_suffix=dims_suffix,
+                            radial_scale=tree_radial_scale,
+                            twig_density=effective_twig_density,
                         )
-                        if static_path:
-                            exported_files.append(static_path)
-                else:
-                    logger.warning(
-                        "  Export failed for tree %d (%s) at cycle %d (h=%.1fm)",
-                        fid,
-                        species_name,
-                        cycle,
-                        height,
-                    )
+                    except ValueError as e:
+                        if _is_bone_limit_error(e):
+                            _handle_bone_limit_error(e)
+                        raise
+
+                    if export_success:
+                        exported_files.append(str(usd_path))
+                        logger.info("  Exported: %s", usd_path.name)
+
+                        # Preview and static derivation only for first variant
+                        if variant_idx == 0:
+                            preview_bounds = _generate_preview_image(
+                                tree_dir, species_clean, file_prefix, skeleton, timer
+                            )
+                            _generate_export_control_image(
+                                tree_dir, species_clean, file_prefix, timer,
+                                view_bounds=preview_bounds,
+                            )
+
+                            if use_skeletal and config.export_static:
+                                static_path = _derive_static_from_skeletal(
+                                    tree_dir=tree_dir,
+                                    species_clean=species_clean,
+                                    species_name=species_name,
+                                    tree_id=None,
+                                    model=model,
+                                    twig_usd_map=twig_usd_map,
+                                    skip_validation=skip_validation,
+                                    stems_suffix=dims_suffix,
+                                )
+                                if static_path:
+                                    exported_files.append(static_path)
+                    else:
+                        logger.warning(
+                            "  Export failed for tree %d (%s) at cycle %d (h=%.1fm)",
+                            fid,
+                            species_name,
+                            cycle,
+                            height,
+                        )
 
     logger.info("\nExported %d tree stage files", len(exported_files))
 
@@ -1427,352 +1250,6 @@ def generate_forest_exports(
 
     except Exception as e:
         logger.warning("Export failed: %s", e)
-
-
-def generate_unreal_import_script(
-    output_dir: Path,
-    project_path: str = "/Game/GrowPy/Trees",
-    forest_data: Optional[pd.DataFrame] = None,
-    export_tree_ids: Optional[set] = None,
-) -> Path:
-    """
-    Generate a standalone Unreal Python script for importing forest USD files.
-
-    Trees are organized as species/tree_{id}/{species}.usda (assembly)
-    Each assembly references {species}_{tree_id}_skeletal.usda (unique tree mesh).
-    Assembly filename is same per species (like twigs), tree mesh has unique tree_id.
-
-    This script can be executed directly in Unreal Engine using:
-    - VSCode Unreal Python extension (right-click > Execute in Unreal)
-    - Unreal Editor Python console
-    - Command line
-
-    Args:
-        output_dir: Directory containing exported USD files
-        project_path: Unreal project Content path
-        forest_data: Optional DataFrame with tree positions (must have fid, x, y, z columns)
-        export_tree_ids: Optional set of tree IDs to include (if None, includes all)
-
-    Returns:
-        Path to generated script file
-    """
-    # Create unreal_scripts directory in output
-    script_dir = output_dir / "unreal_scripts"
-    script_dir.mkdir(exist_ok=True)
-
-    script_path = script_dir / "import_forest.py"
-
-    # Find all tree assemblies in species/tree_{id}/ folders
-    # Structure: species/tree_0001/{species}_{dims}_assembly_skeletal.usda
-    nanite_files = list(output_dir.glob("*/tree_*/*_assembly*.usda")) + list(
-        output_dir.glob("*/tree_*/*_assembly*.usd")
-    )
-
-    # Group trees by species (parent of tree_XXXX folder)
-    trees_by_species: Dict[str, list] = {}
-    for usd_file in nanite_files:
-        # Structure: species_dir/tree_XXXX/{species}_{dims}_assembly.usda
-        tree_folder = usd_file.parent
-        species_parent = tree_folder.parent
-        species_name = species_parent.name
-
-        if species_name not in trees_by_species:
-            trees_by_species[species_name] = []
-        trees_by_species[species_name].append(usd_file)
-
-    num_species = len(trees_by_species)
-    total_trees = len(nanite_files)
-
-    # Build TREE_POSITIONS dictionary from forest_data if provided
-    tree_positions_dict = {}
-    if forest_data is not None:
-        for _, row in forest_data.iterrows():
-            fid = int(row["fid"])
-            # Skip trees not in export filter
-            if export_tree_ids is not None and fid not in export_tree_ids:
-                continue
-            x = float(row["x"])
-            y = float(row["y"])
-            z = float(row.get("z", 0.0))  # Default to 0 if z not present
-            species = row["species"]
-            # Format: "species_####" matching tree folder names
-            tree_key = f"{species}_{fid:04d}"
-            tree_positions_dict[tree_key] = (x, y, z)
-
-    # Format dictionary as Python code for the script
-    tree_positions_code = "TREE_POSITIONS = {\n"
-    for tree_key, (x, y, z) in sorted(tree_positions_dict.items()):
-        tree_positions_code += f"    '{tree_key}': ({x}, {y}, {z}),\n"
-    tree_positions_code += "}\n"
-
-    # Generate script content with forward slashes to avoid Unicode escape errors
-    script_path_str = str(script_path).replace("\\", "/")
-
-    script_content = f'''"""
-Unreal Engine script to import GrowPy forest - Auto-generated
-
-All trees of each species are imported to the same folder.
-Shared twigs are automatically deduplicated (overwritten on each import).
-
-Execute this script in Unreal Engine:
-1. Right-click this file in VSCode > "Execute Python File in Unreal"
-2. Or from Unreal Python console: exec(open(r'{script_path_str}').read())
-"""
-
-import unreal
-import gc
-import time
-
-print("=" * 60)
-print("GrowPy Forest Import to Unreal Engine")
-print("=" * 60)
-
-# Import configuration
-IMPORT_PATH = "{project_path}"
-
-# Delay between imports to prevent crashes (seconds)
-# Increase if you experience crashes
-IMPORT_DELAY = 0.5
-
-# Tree positions from CSV (in meters, multiply by 100 for Unreal units)
-{tree_positions_code}
-
-print(f"Destination: {{IMPORT_PATH}}")
-print(f"Found {num_species} species with {total_trees} trees\\n")
-
-# Get asset tools
-asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
-
-imported_count = 0
-failed_count = 0
-
-'''
-
-    # Generate import code for each species
-    for species_folder, species_trees in sorted(trees_by_species.items()):
-        # Use original folder name for Unreal path (matches USD file structure)
-        species_display = species_folder
-
-        script_content += f"""
-# --- {species_folder} ({len(species_trees)} trees) ---
-print("Importing {species_folder}...")
-"""
-
-        for usd_file in sorted(species_trees):
-            usd_path = str(usd_file.resolve()).replace("\\", "/")
-
-            # Extract tree ID from folder name (tree_0001, tree_0002, etc.)
-            tree_folder_name = usd_file.parent.name
-            tree_number = (
-                tree_folder_name.replace("tree_", "")
-                if tree_folder_name.startswith("tree_")
-                else "0000"
-            )
-
-            # Import to per-tree subfolder: species/tree_XXXX/
-            # This prevents asset name collisions between trees of the same species
-            script_content += f"""
-try:
-    import_task = unreal.AssetImportTask()
-    import_task.filename = "{usd_path}"
-    import_task.destination_path = IMPORT_PATH + "/{species_display}/{tree_folder_name}"
-    import_task.automated = True
-    import_task.save = True
-    import_task.replace_existing = True
-    
-    options = unreal.UsdStageImportOptions()
-    options.import_actors = False
-    options.import_geometry = True
-    options.import_materials = True
-    # Flatten folder structure - assets by type (Materials, StaticMeshes, etc)
-    options.set_editor_property('prim_path_folder_structure', False)
-    # Share identical assets (twigs, materials) between trees
-    options.set_editor_property('share_assets_for_identical_prims', True)
-    # Combine identical material slots
-    options.set_editor_property('merge_identical_material_slots', True)
-    import_task.options = options
-    
-    asset_tools.import_asset_tasks([import_task])
-    
-    if import_task.imported_object_paths:
-        imported_count += 1
-        print(f"  Imported tree #{tree_number}")
-    else:
-        failed_count += 1
-        unreal.log_warning("Failed to import tree_{tree_number}")
-    
-    # Cleanup and delay to prevent crashes
-    gc.collect()
-    unreal.SystemLibrary.collect_garbage()
-    time.sleep(IMPORT_DELAY)
-    
-except Exception as e:
-    failed_count += 1
-    unreal.log_error(f"Error importing tree_{tree_number}: {{e}}")
-"""
-
-    script_content += """
-
-print("")
-print("=" * 60)
-print(f"Import complete: {imported_count} trees imported, {failed_count} failed")
-print("=" * 60)
-
-if failed_count > 0:
-    unreal.log_warning("Some imports failed. Check that USD Importer plugin is enabled.")
-else:
-    print(f"\\nAssets imported to Content Browser: {IMPORT_PATH}")
-    print("Assets organized by: species/tree_XXXX/ (one folder per tree)")
-    print("")
-    print("=" * 60)
-    print("TREE PLACEMENT")
-    print("=" * 60)
-    print("Trees are exported at origin (0,0,0)")
-    print("Use TREE_POSITIONS dictionary to place trees at their CSV coordinates")
-    print("")
-    print("Example placement code:")
-    print("  # Get tree mesh from Content Browser")
-    print("  tree_asset = unreal.EditorAssetLibrary.load_asset(IMPORT_PATH + '/species/tree_0001/SK_species_stems')")
-    print("  # Get position for this tree")
-    print("  pos = TREE_POSITIONS.get('species_0001', (0,0,0))")
-    print("  # Place in level")
-    print("  actor = unreal.EditorLevelLibrary.spawn_actor_from_object(tree_asset, unreal.Vector(pos[0]*100, pos[1]*100, pos[2]*100))")
-    print("")
-    print(f"Available tree positions: {len(TREE_POSITIONS)}")
-"""
-
-    # Write script file
-    script_path.write_text(script_content, encoding="utf-8")
-
-    return script_path
-
-
-def generate_unreal_cleanup_script(
-    output_dir: Path,
-    project_path: str = "/Game/GrowPy/Trees",
-    dry_run: bool = True,
-) -> Path:
-    """
-    Generate a standalone Unreal Python script for cleaning GrowPy assets.
-
-    Args:
-        output_dir: Directory to save cleanup script (same as import script)
-        project_path: Unreal project Content path to clean
-        dry_run: If True, generates preview-only script
-
-    Returns:
-        Path to generated script file
-    """
-    # Save in same unreal_scripts directory as import script
-    script_dir = output_dir / "unreal_scripts"
-    script_dir.mkdir(exist_ok=True)
-
-    script_path = script_dir / "clean_assets.py"
-
-    # Generate script content with forward slashes to avoid Unicode escape errors
-    script_path_str = str(script_path).replace("\\", "/")
-
-    script_content = f'''"""
-Unreal Engine cleanup script for GrowPy assets - Auto-generated
-
-Execute this script in Unreal Engine:
-1. Right-click this file in VSCode > "Execute Python File in Unreal"
-2. Or from Unreal Python console: exec(open(r'{script_path_str}').read())
-"""
-
-import unreal
-
-print("=" * 60)
-print("GrowPy Asset Cleanup")
-print("=" * 60)
-
-# Cleanup configuration
-CLEANUP_PATH = "{project_path}"
-DRY_RUN = {str(dry_run)}
-
-print(f"Target path: {{CLEANUP_PATH}} (including all subfolders)")
-
-if DRY_RUN:
-    print("\\n*** DRY RUN MODE - No assets will be deleted ***\\n")
-else:
-    print("\\n*** LIVE MODE - Assets will be permanently deleted ***\\n")
-
-# Get asset registry
-asset_registry = unreal.AssetRegistryHelpers.get_asset_registry()
-
-# Find all assets in target path (recursive to include species subfolders)
-assets = asset_registry.get_assets_by_path(CLEANUP_PATH, recursive=True)
-
-if not assets:
-    print(f"No assets found at {{CLEANUP_PATH}}")
-else:
-    print(f"Found {{len(assets)}} assets at {{CLEANUP_PATH}}\\n")
-    
-    if DRY_RUN:
-        # Dry run - just list assets
-        print("Assets that would be deleted:\\n")
-        for asset in assets:
-            asset_path = str(asset.package_name)
-            asset_name = str(asset.asset_name)
-            asset_class = str(asset.asset_class_path.asset_name)
-            
-            print(f"  {{asset_class}}: {{asset_name}}")
-            print(f"    Path: {{asset_path}}")
-        
-        print("\\n" + "=" * 60)
-        print("DRY RUN COMPLETE")
-        print("=" * 60)
-        print("Set DRY_RUN = False in script to perform actual deletion")
-    
-    else:
-        # Real cleanup - delete assets
-        print("Deleting assets...\\n")
-        deleted_count = 0
-        failed_count = 0
-        
-        for asset in assets:
-            asset_path = str(asset.package_name)
-            asset_name = str(asset.asset_name)
-            
-            try:
-                if unreal.EditorAssetLibrary.delete_asset(asset_path):
-                    deleted_count += 1
-                    unreal.log(f"✓ Deleted {{asset_name}}")
-                else:
-                    failed_count += 1
-                    unreal.log_warning(f"✗ Failed to delete: {{asset_name}}")
-            except Exception as e:
-                failed_count += 1
-                unreal.log_error(f"✗ Error deleting {{asset_name}}: {{e}}")
-        
-        print("")
-        print("=" * 60)
-        print(f"Cleanup complete: {{deleted_count}} deleted, {{failed_count}} failed")
-        print("=" * 60)
-        
-        if failed_count > 0:
-            unreal.log_warning("Some assets could not be deleted. They may be in use.")
-        else:
-            print(f"\\nAll assets removed from: {{CLEANUP_PATH}}")
-            
-            # Try to delete empty folder after assets are removed
-            try:
-                if unreal.EditorAssetLibrary.does_directory_exist(CLEANUP_PATH):
-                    # Check if directory is empty
-                    remaining = asset_registry.get_assets_by_path(CLEANUP_PATH, recursive=True)
-                    if not remaining:
-                        if unreal.EditorAssetLibrary.delete_directory(CLEANUP_PATH):
-                            print(f"[OK] Removed empty directory: {{CLEANUP_PATH}}")
-                        else:
-                            unreal.log_warning(f"Could not remove directory: {{CLEANUP_PATH}}")
-            except Exception as e:
-                unreal.log_warning(f"Error removing directory: {{e}}")
-'''
-
-    # Write script file
-    script_path.write_text(script_content, encoding="utf-8")
-
-    return script_path
 
 
 def main():
