@@ -11,6 +11,7 @@ if hasattr(bpy.utils, "expose_bundled_modules"):
     bpy.utils.expose_bundled_modules()
 
 import sys
+from datetime import datetime
 from itertools import groupby
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -38,6 +39,26 @@ from growpy.config.preset_overrides import (
 from growpy.config.quality import get_quality_preset
 from growpy.core.forest import simulate_forest_growth_with_snapshots
 from growpy.utils.profiling import ProfileTimer, get_timer, init_profiler
+
+
+class TeeStream:
+    """Write to both a stream and a file simultaneously."""
+
+    def __init__(self, stream, log_file):
+        self.stream = stream
+        self.log_file = log_file
+
+    def write(self, data):
+        self.stream.write(data)
+        self.log_file.write(data)
+        self.log_file.flush()
+
+    def flush(self):
+        self.stream.flush()
+        self.log_file.flush()
+
+    def __getattr__(self, name):
+        return getattr(self.stream, name)
 
 
 def _handle_bone_limit_error(error: ValueError) -> None:
@@ -1598,6 +1619,11 @@ Unreal Engine Integration:
     # Initialize profiler
     timer = init_profiler(enabled=config.profile)
 
+    log_file = None
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+    log_path = None
+
     try:
         csv_path = config.csv_file
         if not csv_path.is_absolute():
@@ -1610,6 +1636,17 @@ Unreal Engine Integration:
         output_dir = config.output_dir
         if not output_dir.is_absolute():
             output_dir = script_dir / output_dir
+
+        # Set up log file to capture all terminal output
+        output_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_path = output_dir / f"forest_generation_{timestamp}.log"
+        log_file = open(log_path, "w")
+        original_stdout = sys.stdout
+        original_stderr = sys.stderr
+        sys.stdout = TeeStream(original_stdout, log_file)
+        sys.stderr = TeeStream(original_stderr, log_file)
+        print(f"Logging output to: {log_path}")
 
         # Build preset overrides from CLI arguments
         preset_overrides = None
@@ -1826,6 +1863,13 @@ Unreal Engine Integration:
     except Exception:
         # Silently fail - allows script to be used in various contexts
         pass
+    finally:
+        # Restore original stdout/stderr and close log file
+        if log_file is not None:
+            sys.stdout = original_stdout
+            sys.stderr = original_stderr
+            log_file.close()
+            print(f"Log saved to: {log_path}")
 
 
 if __name__ == "__main__":
