@@ -1242,8 +1242,9 @@ def write_combined_obj(
 ) -> Path:
     """Merge all individual tree OBJs into a single combined OBJ at CSV positions.
 
-    Reads each per-tree OBJ, translates vertices by (x, y, z) from the CSV,
-    and writes one combined OBJ + MTL with bark/leaves material groups.
+    Uses a two-pass streaming approach to avoid holding all geometry in RAM:
+    - Pass 1: Stream vertices and UVs directly to disk, collecting only face offsets
+    - Pass 2: Stream faces to disk, re-reading each source OBJ file
 
     Args:
         tree_entries: List of (obj_path, x, y, z, species_name) tuples
@@ -1253,85 +1254,99 @@ def write_combined_obj(
     Returns:
         Path to generated combined OBJ file
     """
+    import tempfile
+
+    _log_memory("Before combined OBJ")
+
     mtl_name = output_path.stem + ".mtl"
     mtl_path = output_path.with_suffix(".mtl")
-
-    vert_offset = 0
-    uv_offset = 0
-    # Group faces by material name to preserve per-twig materials
-    material_faces: Dict[str, List[str]] = {}
-    verts_all: List[str] = []
-    uvs_all: List[str] = []
-    # Collect all MTL files to merge material definitions
-    mtl_files: List[Path] = []
-
-    for obj_path, x, y, z, _species in tree_entries:
-        if not obj_path.exists():
-            continue
-
-        local_verts = 0
-        local_uvs = 0
-        current_mtl = "bark"
-
-        # Collect associated MTL file for material merging
-        obj_mtl = obj_path.with_suffix(".mtl")
-        if obj_mtl.exists():
-            mtl_files.append(obj_mtl)
-
-        with open(obj_path, "r") as f:
-            for line in f:
-                if line.startswith("v "):
-                    parts = line.split()
-                    vx = float(parts[1]) + x
-                    vy = float(parts[2]) + y
-                    vz = float(parts[3]) + z
-                    verts_all.append(f"v {vx:.6f} {vy:.6f} {vz:.6f}\n")
-                    local_verts += 1
-                elif line.startswith("vt "):
-                    uvs_all.append(line)
-                    local_uvs += 1
-                elif line.startswith("usemtl "):
-                    current_mtl = line.strip().split(maxsplit=1)[1]
-                elif line.startswith("f "):
-                    new_face = _offset_face_line(line, vert_offset, uv_offset)
-                    if current_mtl not in material_faces:
-                        material_faces[current_mtl] = []
-                    material_faces[current_mtl].append(new_face)
-
-        vert_offset += local_verts
-        uv_offset += local_uvs
-
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(output_path, "w") as f:
-        f.write("# Helios++ combined forest mesh\n")
-        f.write(f"mtllib {mtl_name}\n\n")
+    # Collect MTL files for material merging
+    mtl_files: List[Path] = []
 
-        for v in verts_all:
-            f.write(v)
-        f.write("\n")
-        for uv in uvs_all:
-            f.write(uv)
-        f.write("\n")
+    # Per-tree offsets: [(obj_path, x, y, z, vert_offset, uv_offset)]
+    tree_offsets: List[Tuple[Path, float, float, float, int, int]] = []
+    total_verts = 0
+    total_uvs = 0
+    total_faces = 0
 
-        # Write bark first, then all other materials
-        if "bark" in material_faces:
-            f.write("usemtl bark\n")
-            for face in material_faces["bark"]:
-                f.write(face)
+    # PASS 1: Stream vertices and UVs to a temp file, record offsets per tree
+    temp_geom = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".obj", dir=output_path.parent, delete=False
+    )
+    temp_geom_path = Path(temp_geom.name)
 
-        for mat_name in sorted(material_faces.keys()):
-            if mat_name == "bark":
+    try:
+        for obj_path, x, y, z, _species in tree_entries:
+            if not obj_path.exists():
                 continue
-            f.write(f"\nusemtl {mat_name}\n")
-            for face in material_faces[mat_name]:
-                f.write(face)
+
+            obj_mtl = obj_path.with_suffix(".mtl")
+            if obj_mtl.exists():
+                mtl_files.append(obj_mtl)
+
+            local_verts = 0
+            local_uvs = 0
+            vert_offset = total_verts
+            uv_offset = total_uvs
+
+            with open(obj_path, "r") as f:
+                for line in f:
+                    if line.startswith("v "):
+                        parts = line.split()
+                        vx = float(parts[1]) + x
+                        vy = float(parts[2]) + y
+                        vz = float(parts[3]) + z
+                        temp_geom.write(f"v {vx:.6f} {vy:.6f} {vz:.6f}\n")
+                        local_verts += 1
+                    elif line.startswith("vt "):
+                        temp_geom.write(line)
+                        local_uvs += 1
+
+            tree_offsets.append((obj_path, x, y, z, vert_offset, uv_offset))
+            total_verts += local_verts
+            total_uvs += local_uvs
+
+        temp_geom.close()
+
+        _log_memory("After pass 1 (vertices/UVs)")
+
+        # PASS 2: Write final OBJ by concatenating geometry + streaming faces
+        with open(output_path, "w") as out:
+            out.write("# Helios++ combined forest mesh\n")
+            out.write(f"mtllib {mtl_name}\n\n")
+
+            # Copy geometry from temp file
+            with open(temp_geom_path, "r") as geom:
+                for line in geom:
+                    out.write(line)
+            out.write("\n")
+
+            # Stream faces from each source OBJ, applying offsets
+            # Write per-tree with usemtl directives inline (valid OBJ format)
+            for obj_path, _, _, _, v_off, uv_off in tree_offsets:
+                current_mtl = None
+                with open(obj_path, "r") as f:
+                    for line in f:
+                        if line.startswith("usemtl "):
+                            mat = line.strip().split(maxsplit=1)[1]
+                            if mat != current_mtl:
+                                out.write(f"usemtl {mat}\n")
+                                current_mtl = mat
+                        elif line.startswith("f "):
+                            out.write(_offset_face_line(line, v_off, uv_off))
+                            total_faces += 1
+
+    finally:
+        # Clean up temp file
+        temp_geom_path.unlink(missing_ok=True)
 
     # Merge material definitions from all individual MTL files
     _write_combined_mtl(mtl_path, mtl_files, helios_spectra_leaves)
 
-    total_verts = len(verts_all)
-    total_faces = sum(len(faces) for faces in material_faces.values())
+    _log_memory("After combined OBJ complete")
+
     print(
         f"  Combined OBJ: {output_path.name} ({total_verts} verts, {total_faces} faces, {len(tree_entries)} trees)"
     )

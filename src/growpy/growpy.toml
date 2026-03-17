@@ -13,9 +13,9 @@ random_seed = 42
 # Default input CSV with tree positions and species
 # Height mode columns: x, y, species, height (optional: z, fid)
 # Multi-stage mode columns: x, y, species, cycle_interval, max_cycles
-csv_file = "data/input/test.csv"
+csv_file = "data/input/beech.csv"
 # Output directory for generated trees (species subdirectories created automatically)
-output_dir = "data/output/forest_test_dens100_3m"
+output_dir = "data/output/beech_dens100_10m"
 # Enable verbose output for PVE preset generation
 verbose = true
 # Enable profiling to track execution time of each pipeline step
@@ -159,7 +159,7 @@ fruit = 0.2
 selected_european_beech = 0.3
 selected_european_oak = 0.5
 selected_paper_birch = 0.3
-selected_scots_pine = 0.3
+selected_scots_pine = 1.0
 selected_silver_fir = 0.5
 selected_sycamore_maple = 1.0
 
