@@ -449,7 +449,7 @@ Output per twig:
 
     if twig_path.is_file() and twig_path.suffix == ".blend":
         # Single file
-        results = process_twig_directory(
+        process_twig_directory(
             twig_path.parent,
             ["usda"],
             True,
@@ -468,7 +468,7 @@ Output per twig:
         )
     elif twig_path.is_dir():
         # Directory
-        results = process_twig_directory(
+        process_twig_directory(
             twig_path,
             ["usda"],
             True,
@@ -487,12 +487,6 @@ Output per twig:
         )
     else:
         return 1
-
-    # Summary
-
-    total_files = sum(len(files) for files in results.values())
-
-    # Validation removed - no longer needed for production
 
     return 0
 

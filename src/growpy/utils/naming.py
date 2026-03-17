@@ -99,7 +99,7 @@ def standardize_twig_name(
 
     Examples:
         "BeechApicalTwig" -> ("beech_apical", {"type": "apical", "species": "beech"})
-        "ScotsPineVariationCLateralTwig" -> ("scots_pine_lateral_c", {...})
+        "ScotsPineVariationCLateralTwig" -> ("scots_pine_lateral", {...})
         "OakEuropeanLongTwig" -> ("european_oak_apical", {"type": "apical"})
     """
     name_lower = original_name.lower()
@@ -151,8 +151,8 @@ def standardize_twig_name(
 
     if metadata["type"] != "generic":
         parts.append(str(metadata["type"]))
-
-    if metadata["variation"]:
+    elif metadata["variation"]:
+        # Variation letter only when no type keyword — type already distinguishes
         parts.append(str(metadata["variation"]))
 
     if metadata["season"] and metadata["season"] != metadata["type"]:

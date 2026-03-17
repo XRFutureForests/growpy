@@ -243,14 +243,16 @@ def extract_foliage_data(
                 orientation = placement.orientation  # Tuple (x, y, z) - up vector
                 scale_value = placement.scale
 
+                # Skip dead twig placements — no dedicated dead twig assets
+                if twig_type == "twig_dead":
+                    continue
+
                 # Build twig filename to match our USD export naming convention
                 # Map twig_type to variant name that matches our exported files
-                # twig_long -> a, twig_upward -> c, twig_short -> b, twig_dead -> dead
                 variant_map = {
                     "twig_long": "a",
                     "twig_short": "b",
                     "twig_upward": "c",
-                    "twig_dead": "dead",
                 }
                 variant = variant_map.get(twig_type, "a")
 
