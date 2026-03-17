@@ -997,7 +997,11 @@ def generate_forest_stages(
                     .replace(" ", "_")
                     .lower()
                 )
-                height_str = format_height_for_filename(height)
+                # Use target milestone height for filename (clean 5m intervals)
+                milestone_height = height
+                if species_milestone_map and species_name in species_milestone_map:
+                    milestone_height = species_milestone_map[species_name].get(cycle, height)
+                height_str = format_height_for_filename(milestone_height)
                 # Use yield table target DBH when available
                 grove_dbh = _dbh if _dbh else 0.0
                 filename_dbh = grove_dbh

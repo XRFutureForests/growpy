@@ -75,6 +75,8 @@ def _build_command(csv_path: Path, max_height: float = 0) -> list:
     cmd = [sys.executable, str(GENERATE_SCRIPT), str(csv_path)]
     if max_height > 0:
         cmd.extend(["--max-height", str(max_height)])
+    if "_competition" in csv_path.stem:
+        cmd.extend(["--export-trees", "1"])
     return cmd
 
 
