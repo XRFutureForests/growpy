@@ -299,8 +299,8 @@ python src/growpy/cli/generate_forest.py \
 # Fast preview
 python src/growpy/cli/generate_forest.py --quality medium --fast
 
-# Multi-stage export (trees at different growth stages)
-python src/growpy/cli/generate_forest.py --cycle-interval 10 --growth-cycle-limit 40
+# Multi-stage export (trees at different growth stages, every 5m)
+python src/growpy/cli/generate_forest.py --height-interval 5 --growth-cycle-limit 125
 
 # Export only specific trees (others still participate in growth simulation)
 python src/growpy/cli/generate_forest.py --export-trees 1,2,5
@@ -335,7 +335,7 @@ python src/growpy/cli/generate_forest.py \
 | `--skeleton-reduce FLOAT` | Skip thin branches, 0-1 (default: from preset) |
 | `--skeleton-bias FLOAT` | Bone distribution, 0=trunk 1=tips (default: 0.5) |
 | `--skeleton-connected {true,false}` | Connected bone chains (default: true) |
-| `--cycle-interval INT` | Multi-stage export at cycle intervals |
+| `--height-interval FLOAT` | Multi-stage export at height intervals (meters) |
 | `--max-cycles INT` | Max cycles for multi-stage export |
 | `--export-trees IDS` | Comma-separated tree IDs to export |
 | `--import-to-unreal` | Generate Unreal Python import script |

@@ -3204,6 +3204,210 @@ def setup_materials_with_textures(
     return None
 
 
+def _generate_dead_twig_variant(
+    blend_file,
+    output_dir,
+    species_name,
+    fmt="usda",
+    minimal_export=True,
+):
+    """Auto-generate dead twig by stripping leaf geometry from a donor twig.
+
+    Re-opens the .blend file, selects a donor twig variant (preferring
+    lateral/short), removes all faces belonging to leaf materials to leave
+    only bark/branch geometry, and exports as the dead foliage variant.
+
+    Skips generation if a dead variant already exists on disk (e.g. from an
+    earlier .blend file or an explicit Dead collection in the Grove asset).
+
+    Args:
+        blend_file: Path to source .blend twig file
+        output_dir: Output directory (same twig dir)
+        species_name: Standardized species name
+        fmt: Export format (default: usda)
+        minimal_export: Clean export for Nanite compatibility
+
+    Returns:
+        List of exported dead twig file paths
+    """
+    import bpy
+
+    species_std = species_name.lower().replace(" ", "_")
+    dead_name = f"{species_std}_foliage_dead"
+
+    skel_path = output_dir / f"{dead_name}_skeletal.{fmt}"
+    if skel_path.exists():
+        return []
+
+    bpy.ops.wm.open_mainfile(filepath=str(blend_file))
+
+    mesh_objects = [obj for obj in bpy.context.scene.objects if obj.type == "MESH"]
+    if not mesh_objects:
+        return []
+
+    # -- Join siblings (same pre-processing as main pipeline) --
+    from collections import defaultdict
+
+    _BARK_OBJ_KW = ["twig", "bark", "wood", "branch", "stem"]
+
+    leaf_meshes = []
+    for obj in mesh_objects:
+        if not any(c.type == "MESH" for c in obj.children):
+            leaf_meshes.append(obj)
+
+    parent_groups = defaultdict(list)
+    for obj in leaf_meshes:
+        key = obj.parent.name if obj.parent else obj.name
+        parent_groups[key].append(obj)
+
+    if not parent_groups:
+        return []
+
+    # Pick donor: prefer lateral/short variant
+    donor_key = None
+    for key in parent_groups:
+        if any(kw in key.lower() for kw in ["side", "lateral", "short"]):
+            donor_key = key
+            break
+    if donor_key is None:
+        donor_key = next(iter(parent_groups))
+
+    siblings = parent_groups[donor_key]
+
+    if len(siblings) > 1:
+        bark_mat = bpy.data.materials.new(name=f"{species_std}_bark")
+        leaf_mat = bpy.data.materials.new(name=f"{species_std}_leaf")
+
+        for sib in siblings:
+            sib.data.materials.clear()
+            if any(kw in sib.name.lower() for kw in _BARK_OBJ_KW):
+                sib.data.materials.append(bark_mat)
+            else:
+                sib.data.materials.append(leaf_mat)
+            for poly in sib.data.polygons:
+                poly.material_index = 0
+
+        bpy.ops.object.select_all(action="DESELECT")
+        for sib in siblings:
+            sib.select_set(True)
+        bpy.context.view_layer.objects.active = siblings[0]
+        bpy.ops.object.join()
+        donor = bpy.context.view_layer.objects.active
+    else:
+        donor = siblings[0]
+
+    # Strip leaf geometry
+    leaf_mats = _detect_leaf_material_indices(donor)
+    if not leaf_mats:
+        return []
+
+    import bmesh
+
+    bm = bmesh.new()
+    bm.from_mesh(donor.data)
+    faces_to_delete = [f for f in bm.faces if f.material_index in leaf_mats]
+    if not faces_to_delete:
+        bm.free()
+        return []
+
+    remaining = len(bm.faces) - len(faces_to_delete)
+    bmesh.ops.delete(bm, geom=faces_to_delete, context="FACES")
+    bm.to_mesh(donor.data)
+    bm.free()
+    donor.data.update()
+
+    if remaining == 0 or len(donor.data.polygons) == 0:
+        return []
+
+    # Prepare geometry for export
+    donor.location = (0, 0, 0)
+    bpy.ops.object.select_all(action="DESELECT")
+    donor.select_set(True)
+    bpy.context.view_layer.objects.active = donor
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.mesh.quads_convert_to_tris(quad_method="BEAUTY", ngon_method="BEAUTY")
+    bpy.ops.mesh.normals_make_consistent(inside=False)
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+    for poly in donor.data.polygons:
+        poly.use_smooth = True
+
+    # Create mount point
+    mount_point = bpy.data.objects.new(f"{dead_name}_mount", None)
+    mount_point.location = (0, 0, 0)
+    mount_point.empty_display_type = "SPHERE"
+    mount_point.empty_display_size = 0.01
+    bpy.context.collection.objects.link(mount_point)
+    donor.parent = mount_point
+
+    bpy.ops.object.select_all(action="DESELECT")
+    mount_point.select_set(True)
+    donor.select_set(True)
+    bpy.context.view_layer.objects.active = mount_point
+
+    exported_files = []
+
+    # Export skeletal variant
+    try:
+        result = bpy.ops.wm.usd_export(
+            filepath=str(skel_path),
+            selected_objects_only=True,
+            export_materials=False,
+            export_uvmaps=True,
+            export_normals=True,
+            export_mesh_colors=False,
+            use_instancing=False,
+            evaluation_mode="RENDER",
+            generate_preview_surface=False,
+            relative_paths=True,
+            export_hair=False,
+            export_lights=False,
+        )
+        if result == {"FINISHED"}:
+            if add_skeleton_to_usd_file(
+                skel_path, pivot_point=(0, 0, 0), minimal_export=minimal_export
+            ):
+                exported_files.append(skel_path)
+    except Exception as e:
+        logger.warning("Dead twig skeletal export failed: %s", e)
+
+    # Export static variant
+    static_path = output_dir / f"{dead_name}_static.{fmt}"
+    try:
+        result = bpy.ops.wm.usd_export(
+            filepath=str(static_path),
+            selected_objects_only=True,
+            export_materials=True,
+            export_uvmaps=True,
+            export_normals=True,
+            export_mesh_colors=False,
+            use_instancing=False,
+            evaluation_mode="RENDER",
+            generate_preview_surface=True,
+            relative_paths=True,
+            export_hair=False,
+            export_lights=False,
+        )
+        if result == {"FINISHED"}:
+            clean_static_usd_file(static_path)
+            exported_files.append(static_path)
+    except Exception as e:
+        logger.warning("Dead twig static export failed: %s", e)
+
+    if exported_files:
+        logger.info(
+            "Auto-generated dead twig for %s (%d bark faces from %s)",
+            species_name,
+            remaining,
+            Path(blend_file).name,
+        )
+
+    return exported_files
+
+
 def process_twig_file(
     blend_file,
     output_dir,
@@ -3733,6 +3937,19 @@ def process_twig_file(
 
     # Note: Manifest file removed - not needed in output
     # Twig metadata is preserved in file naming and structure
+
+    # Auto-generate dead twig variant if none was exported from this .blend.
+    # Strips leaf geometry from a donor twig to create bark-only dead variant.
+    has_dead = any("_dead_" in f.name for f in exported_files)
+    if not has_dead:
+        dead_files = _generate_dead_twig_variant(
+            blend_file=blend_file,
+            output_dir=output_dir,
+            species_name=species_name,
+            fmt=formats[0] if formats else "usda",
+            minimal_export=minimal_export,
+        )
+        exported_files.extend(dead_files)
 
     # Cleanup: Keep original .blend file (preserve source assets)
     # Only remove auxiliary files that can be regenerated

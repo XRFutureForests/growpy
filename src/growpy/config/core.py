@@ -107,7 +107,7 @@ class GrowPyConfig:
     forest_smooth_iterations: int = 10
     forest_include_grove_attributes: bool = False
     forest_longevity_mode: bool = True
-    forest_cycle_interval: int = 20
+    forest_height_interval: float = 5.0
     forest_export_trees: list = field(default_factory=list)
 
     # Skeleton overrides - None means inherit from quality preset (CLI-only)
@@ -231,8 +231,8 @@ class GrowPyConfig:
             ]
         if "longevity_mode" in forest:
             kwargs["forest_longevity_mode"] = forest["longevity_mode"]
-        if "cycle_interval" in forest:
-            kwargs["forest_cycle_interval"] = forest["cycle_interval"]
+        if "height_interval" in forest:
+            kwargs["forest_height_interval"] = float(forest["height_interval"])
         # [export]
         export = data.get("export", {})
         if "skeletal" in export:
@@ -342,7 +342,7 @@ class GrowPyConfig:
             "growth_cycle_limit": "forest_growth_cycle_limit",
             "include_grove_attributes": "forest_include_grove_attributes",
             "longevity_mode": "forest_longevity_mode",
-            "cycle_interval": "forest_cycle_interval",
+            "height_interval": "forest_height_interval",
             # [forest.skeleton]
             "skeleton_length": "forest_skeleton_length",
             "skeleton_reduce": "forest_skeleton_reduce",

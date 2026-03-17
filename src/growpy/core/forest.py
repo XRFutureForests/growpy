@@ -176,8 +176,9 @@ def simulate_forest_growth_with_snapshots(
     preset_overrides: Optional[PresetOverrides] = None,
     use_species_curves: bool = True,
     quality_params: Optional[Dict] = None,
+    species_snapshot_cycles: Optional[Dict[str, Dict[int, float]]] = None,
 ) -> SnapshotData:
-    """Simulate forest growth and capture snapshots at specified cycle intervals.
+    """Simulate forest growth and capture snapshots at specified cycles.
 
     This function runs the growth simulation and builds models at each snapshot
     cycle, capturing geometry and measurements (height, DBH) for later export.
@@ -190,6 +191,10 @@ def simulate_forest_growth_with_snapshots(
         preset_overrides: Optional PresetOverrides for dynamic parameter adjustment
         use_species_curves: Load curves from species seed.json files (default: True)
         quality_params: Quality parameters for model building (vertices, etc.)
+        species_snapshot_cycles: Optional per-species cycle filter.
+            Dict of {species_name: {cycle: target_height}}. When provided, only
+            builds models for species that have a milestone at the current cycle.
+            Avoids unnecessary model builds when species have different milestone cycles.
 
     Returns:
         SnapshotData: Dict[cycle, Dict[species, List[(model, skeleton, bones_info, height, dbh)]]]
@@ -254,6 +259,11 @@ def simulate_forest_growth_with_snapshots(
             snapshots[cycle] = {}
 
             for grove, species_name, tree_count, fids in forest:
+                # Skip species that don't have a milestone at this cycle
+                if species_snapshot_cycles and species_name in species_snapshot_cycles:
+                    if cycle not in species_snapshot_cycles[species_name]:
+                        continue
+
                 # CRITICAL BUILD ORDER: skeleton -> bones -> models
                 skeleton_connected = quality_params.get("skeleton_connected", True)
                 skeletons = grove.build_skeletons(skeleton_connected)

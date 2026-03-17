@@ -245,12 +245,12 @@ def extract_foliage_data(
 
                 # Build twig filename to match our USD export naming convention
                 # Map twig_type to variant name that matches our exported files
-                # twig_long -> a, twig_upward -> c, twig_short -> b, twig_dead -> b
+                # twig_long -> a, twig_upward -> c, twig_short -> b, twig_dead -> dead
                 variant_map = {
                     "twig_long": "a",
                     "twig_short": "b",
                     "twig_upward": "c",
-                    "twig_dead": "b",
+                    "twig_dead": "dead",
                 }
                 variant = variant_map.get(twig_type, "a")
 

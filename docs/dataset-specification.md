@@ -109,7 +109,7 @@ Each species has at minimum two individuals representing different growing condi
 
 ### Level 3: Growth Stage
 
-Each individual is exported at multiple heights using multi-stage export (`cycle_interval` in growpy.toml).
+Each individual is exported at multiple heights using multi-stage export (`height_interval` in growpy.toml).
 
 **Height-based increments** (preferred over age-based):
 
@@ -122,7 +122,7 @@ Each individual is exported at multiple heights using multi-stage export (`cycle
 | Medium broadleaf (maple, birch, linden) | 5 m -- 25 m | 5 m | 5 |
 | Small broadleaf (hornbeam, cherry, field maple) | 5 m -- 20 m | 5 m | 4 |
 
-The target height in the input CSV is set to the species maximum. Multi-stage export produces snapshots at the cycle intervals corresponding to each height milestone. Per-species max heights in the Species Catalog below are authoritative when they differ from the group ranges above.
+The target height in the input CSV is set to the species maximum. Multi-stage export produces snapshots at each height milestone using growth models to determine the corresponding cycles. Per-species max heights in the Species Catalog below are authoritative when they differ from the group ranges above.
 
 ### Level 4: Density Variant
 
@@ -254,7 +254,7 @@ For each species, two export runs produce all growth stages and all density vari
 python src/growpy/cli/generate_forest.py \
     --csv data/input/dataset/{species}_open.csv \
     --output data/output/dataset/{species}/open_grown \
-    --cycle-interval 25 \
+    --height-interval 5 \
     --quality high
 ```
 
@@ -264,12 +264,12 @@ python src/growpy/cli/generate_forest.py \
 python src/growpy/cli/generate_forest.py \
     --csv data/input/dataset/{species}_competition.csv \
     --output data/output/dataset/{species}/competition \
-    --cycle-interval 25 \
+    --height-interval 5 \
     --quality high \
     --export-trees 1
 ```
 
-With `density_variants` active, each run exports `full`, `reduced`, and `bare` variants at every cycle interval snapshot. The `--export-trees 1` flag ensures only the center tree is exported in competition mode (neighbors participate in growth simulation for light competition but are not exported).
+With `density_variants` active, each run exports `full`, `reduced`, and `bare` variants at every height milestone snapshot. The `--export-trees 1` flag ensures only the center tree is exported in competition mode (neighbors participate in growth simulation for light competition but are not exported).
 
 **Batch helper**: `produce_dataset.py` automates both runs for one or more species:
 
@@ -350,7 +350,7 @@ skip_validation = true
 
 [forest]
 quality = "high"
-cycle_interval = 25
+height_interval = 5
 growth_cycle_limit = 125
 longevity_mode = true
 ```
@@ -371,12 +371,12 @@ Or manually:
 python src/growpy/cli/generate_forest.py \
     --csv data/input/dataset/european_beech_open.csv \
     --output data/output/dataset/european_beech/open_grown \
-    --cycle-interval 25 --quality high
+    --height-interval 5 --quality high
 
 python src/growpy/cli/generate_forest.py \
     --csv data/input/dataset/european_beech_competition.csv \
     --output data/output/dataset/european_beech/competition \
-    --cycle-interval 25 --quality high --export-trees 1
+    --height-interval 5 --quality high --export-trees 1
 ```
 
 **Review checkpoint 1** -- inspect European beech output:
@@ -397,7 +397,7 @@ python src/growpy/cli/produce_dataset.py --species "Norway spruce"
 - Conifer crown should be conical, broadleaf should be rounded
 - Height increments should be consistent
 - Bare variant should show branch skeleton without twigs
-- Adjust `cycle_interval`, `skeleton_reduce`, or competition spacing if needed
+- Adjust `height_interval`, `skeleton_reduce`, or competition spacing if needed
 
 ### Phase 4: Full Batch (remaining 14 species)
 
@@ -450,7 +450,7 @@ Apply at each review checkpoint:
 | Crown too wide (competition) | Neighbor spacing too large | Decrease spacing `s` in `{species}_competition.csv` |
 | Crown too narrow (competition) | Neighbor spacing too small | Increase spacing `s` in `{species}_competition.csv` |
 | Bone limit exceeded | Too many fine branches | Increase `skeleton_reduce` (e.g., 0.4--0.6) or `skeleton_length` (e.g., 2.0--3.0) in growpy.toml or via `--skeleton-reduce` CLI arg |
-| Missing growth stages | `cycle_interval` too large | Reduce `cycle_interval` (e.g., from 25 to 15) |
+| Missing growth stages | `height_interval` too large | Reduce `height_interval` (e.g., from 10 to 5) |
 | `bare` variant still shows twigs | Density threshold misconfigured | Check `[density_variant.bare]` has `twig_density = 0.0` in growpy.toml |
 | `reduced` variant looks identical to `full` | `build_cutoff_thickness` not distinct enough | Increase `build_cutoff_thickness` in `[density_variant.reduced]` (e.g., 0.015) |
 | Export takes very long | High mesh resolution | Use `--quality debug` for test runs; switch to `high` for final production |

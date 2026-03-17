@@ -398,9 +398,17 @@ def create_assembly(
                             continue
 
                         # Get prototype indices for this grove type.
-                        # Fallback: use any available prototype (random selection).
+                        # Dead twigs without a dedicated asset are skipped
+                        # rather than filled with random living foliage.
                         if twig_type in twig_type_to_proto_indices:
                             type_proto_indices = twig_type_to_proto_indices[twig_type]
+                        elif twig_type == "twig_dead":
+                            logger.info(
+                                "Skipping %d %s placements: no dead twig asset",
+                                len(placement_list),
+                                twig_type,
+                            )
+                            continue
                         elif all_proto_indices_pool:
                             type_proto_indices = all_proto_indices_pool
                             logger.info(
@@ -488,13 +496,10 @@ def create_assembly(
                             if not placement_list:
                                 continue
 
-                            # Apply same fallback as instance creation:
-                            # skip only if no prototypes at all
-                            if (
-                                twig_type not in twig_type_to_proto_indices
-                                and not all_proto_indices_pool
-                            ):
-                                continue
+                            # Must match instance creation skip logic exactly
+                            if twig_type not in twig_type_to_proto_indices:
+                                if twig_type == "twig_dead" or not all_proto_indices_pool:
+                                    continue
 
                             for placement in placement_list:
                                 # Get bone_id from placement - this is a direct index into joint_names

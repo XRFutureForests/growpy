@@ -111,9 +111,9 @@ Creates skeletal (animation-ready) Nanite assemblies by default.
 **Height-based (default):** Trees grown to target heights specified in CSV.
 CSV columns: `x, y, species, height` (optional: `z`, `fid`).
 
-**Multi-stage:** Multiple tree models at different growth cycles from single positions.
-Enabled with `--cycle-interval`. Each tree gets snapshots at `[interval, 2*interval, ...]`
-up to its height-derived cycle count. Shorter trees get fewer snapshots.
+**Multi-stage:** Multiple tree models at different heights from single positions.
+Enabled with `--height-interval`. Each species gets snapshots at height milestones
+(e.g., 5m, 10m, 15m...) using growth models to determine the corresponding cycles.
 
 ### Assembly Types
 
@@ -169,7 +169,7 @@ Format: `{species}_c{cycle:03d}_h{meters}m{tenths}_d{dbh_cm}cm_assembly`
 
 | Flag | Description |
 |---|---|
-| `--cycle-interval INT` | Export every N cycles (enables multi-stage mode) |
+| `--height-interval FLOAT` | Export every N meters of height (enables multi-stage mode) |
 | `--max-cycles INT` | Cap maximum cycles (default: height-derived) |
 | `--export-trees IDs` | Comma-separated fids to export (others still compete for light) |
 | `--preset-override P=V` | Override preset parameter (repeatable) |

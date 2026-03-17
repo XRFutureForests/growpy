@@ -126,11 +126,12 @@ include_grove_attributes = false
 # data collection. Disabling this causes trees to die before reaching the
 # predicted cycle count, producing shorter trees than the CSV target height.
 longevity_mode = true
-# Multi-stage export: generate tree models at cycle intervals for growth history
-# Exports snapshots at every N cycles (e.g., 10 = cycles 10, 20, 30...)
+# Multi-stage export: generate tree models at height intervals
+# Exports snapshots every N meters of height (e.g., 5 = 5m, 10m, 15m...)
+# Uses growth models to determine which cycle corresponds to each height milestone
 # Each snapshot includes height and DBH in the filename for easy asset selection
 # 0 = disabled (standard single height-based export)
-cycle_interval = 25
+height_interval = 5
 
 # Quality Presets (single source of truth)
 # Define any number of named presets below as [quality.<name>] sections.

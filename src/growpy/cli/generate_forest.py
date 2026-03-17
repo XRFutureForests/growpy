@@ -75,6 +75,65 @@ def _is_bone_limit_error(error: ValueError) -> bool:
     return "bones" in msg and "limit" in msg
 
 
+def _compute_height_milestones(forest_data, height_interval, config, cycle_limit=None):
+    """Compute snapshot cycles from height milestones per species.
+
+    Uses growth models to predict which cycle corresponds to each height
+    milestone (5m, 10m, 15m, ...) for each species in the forest.
+
+    Args:
+        forest_data: DataFrame with species and height columns
+        height_interval: Height spacing in meters (e.g., 5.0)
+        config: GrowPyConfig instance
+        cycle_limit: Optional max cycle to cap milestones at
+
+    Returns:
+        snapshot_cycles: Sorted list of unique cycle numbers
+        species_milestone_map: {species: {cycle: target_height}}
+    """
+    import math
+
+    import joblib
+
+    model_cache = {}
+    species_milestone_map = {}
+    all_cycles = set()
+
+    for species in forest_data["species"].unique():
+        if species not in model_cache:
+            growth_model_path = config.get_growth_model_path(species)
+            model_path = growth_model_path / "growth_model.pkl"
+            model_cache[species] = joblib.load(model_path)
+
+        model = model_cache[species]
+        max_height = forest_data[forest_data["species"] == species]["height"].max()
+
+        species_milestones = {}
+        h = height_interval
+        while h <= max_height + 0.01:
+            predicted_cycle = max(1, math.ceil(float(model.predict([[h]])[0])))
+            if cycle_limit and predicted_cycle > cycle_limit:
+                break
+            species_milestones[predicted_cycle] = float(h)
+            all_cycles.add(predicted_cycle)
+            h += height_interval
+
+        species_milestone_map[species] = species_milestones
+        heights = sorted(species_milestones.values())
+        cycles = sorted(species_milestones.keys())
+        logger.info(
+            "  %s: %d stages (%.0f-%.0fm every %.0fm) -> cycles %s",
+            species,
+            len(species_milestones),
+            heights[0] if heights else 0,
+            heights[-1] if heights else 0,
+            height_interval,
+            cycles,
+        )
+
+    return sorted(all_cycles), species_milestone_map
+
+
 def _derive_static_from_skeletal(
     tree_dir: Path,
     species_clean: str,
@@ -643,7 +702,7 @@ def generate_forest_stages(
     output_dir: Path,
     config: GrowPyConfig,
     quality: str = "high",
-    cycle_interval: Optional[int] = None,
+    height_interval: Optional[float] = None,
     growth_cycle_limit: Optional[int] = None,
     smooth_iterations: Optional[int] = None,
     include_grove_attributes: bool = False,
@@ -655,31 +714,26 @@ def generate_forest_stages(
     skeleton_overrides: Optional[Dict[str, Any]] = None,
     export_tree_ids: Optional[set] = None,
 ) -> None:
-    """Generate trees at multiple growth stages with height-based cycle calculation.
+    """Generate trees at multiple growth stages using height-based milestones.
 
-    This mode exports multiple tree models at different ages from a single tree position,
+    Exports multiple tree models at different heights from a single tree position,
     with height and DBH encoded in the filename for easy asset selection.
 
-    Height-to-Cycles Conversion:
-        - Each tree's target height is converted to growth cycles using pre-trained models
-        - Snapshots are exported at cycle intervals up to each tree's calculated max
-        - Shorter trees get fewer snapshots than taller trees
+    Height milestones (e.g., every 5m) are converted to growth cycles using
+    pre-trained growth models. Each species gets its own set of milestone
+    cycles, producing equal height spacing regardless of species growth rate.
 
     CSV Format (requires height column):
         fid,species,x,y,z,height
-        1,Norway spruce,0,0,0,15.0
-
-    Output naming:
-        {species}_c{cycle:03d}_{height}_{dbh}_assembly.usda
-        e.g., norway_spruce_c030_h12m5_d32cm_assembly.usda
+        1,Norway spruce,0,0,0,35.0
 
     Args:
         csv_path: Path to CSV file with forest data (requires: species, x, y, height)
         output_dir: Directory to save export files
         config: GrowPy configuration
         quality: Quality preset name
-        cycle_interval: Export every N cycles (default: 10)
-        growth_cycle_limit: Scale down cycles if they exceed this limit (like height mode)
+        height_interval: Export every N meters of height (default: 5.0)
+        growth_cycle_limit: Cap cycles at this limit
         smooth_iterations: Number of smoothing iterations for branches
         include_grove_attributes: If True, include Grove metadata in USD files
         verbose: Print detailed progress information
@@ -754,27 +808,28 @@ def generate_forest_stages(
             return
 
         # Cap each tree's cycles individually at the limit
-        # (Proportional scaling would compress faster-growing species too much)
         if growth_cycle_limit is not None:
             forest_data["growth_cycles"] = forest_data["growth_cycles"].clip(
                 upper=growth_cycle_limit, lower=1
             )
 
-        # Recalculate delay from (possibly capped) growth cycles
-        max_after_cap = forest_data["growth_cycles"].max()
-        forest_data["delay"] = max_after_cap - forest_data["growth_cycles"]
+    # Compute snapshot cycles from height milestones per species
+    effective_interval = height_interval if height_interval is not None else 5.0
+    limit = growth_cycle_limit if growth_cycle_limit is not None else None
 
-    # Use CLI interval, calculate max from height-derived cycles (after scaling)
-    effective_interval = cycle_interval if cycle_interval is not None else 10
-    # Global max is the highest cycles needed (from tallest tree, after limit scaling)
-    global_max_cycles = int(forest_data["growth_cycles"].max())
-
-    snapshot_cycles = list(
-        range(effective_interval, global_max_cycles + 1, effective_interval)
+    logger.info("\nComputing height milestones (every %.0fm):", effective_interval)
+    snapshot_cycles, species_milestone_map = _compute_height_milestones(
+        forest_data, effective_interval, config, cycle_limit=limit,
     )
 
+    if not snapshot_cycles:
+        logger.error("No height milestones could be computed")
+        return
+
+    global_max_cycles = max(snapshot_cycles)
+
     logger.info("\n%s", "=" * 60)
-    logger.info("MULTI-STAGE FOREST GENERATION")
+    logger.info("MULTI-STAGE FOREST GENERATION (height-based)")
     logger.info("%s", "=" * 60)
     logger.info("  Trees: %d", len(forest_data))
     logger.info(
@@ -782,17 +837,13 @@ def generate_forest_stages(
         forest_data["height"].min(),
         forest_data["height"].max(),
     )
+    logger.info("  Height interval: %.0fm", effective_interval)
     logger.info(
-        "  Cycle range: %d - %d",
-        forest_data["growth_cycles"].min(),
-        global_max_cycles,
+        "  Snapshot cycles: %d unique %s", len(snapshot_cycles), snapshot_cycles,
     )
-    logger.info("  Interval: %d", effective_interval)
-    logger.info("  Snapshots: %d stages %s", len(snapshot_cycles), snapshot_cycles)
     logger.info("%s", "=" * 60)
 
-    # Create forest (groves by species)
-    # For cycle mode, we don't use delay - all trees start at cycle 0
+    # All trees start at cycle 0 (no delay in multi-stage mode)
     forest_data["delay"] = 0
 
     with timer.track("create_forest"):
@@ -824,6 +875,7 @@ def generate_forest_stages(
             preset_overrides=preset_overrides,
             use_species_curves=config.calibration_align_height,
             quality_params=quality_params,
+            species_snapshot_cycles=species_milestone_map,
         )
 
     if not snapshots:
@@ -914,6 +966,11 @@ def generate_forest_stages(
                 # Skip this snapshot if cycle exceeds tree's calculated max
                 if cycle > tree_max_cycles:
                     continue
+
+                # Skip if this cycle is not a height milestone for this species
+                if species_milestone_map and species_name in species_milestone_map:
+                    if cycle not in species_milestone_map[species_name]:
+                        continue
 
                 # Skip trees not in export filter (they still participated in growth simulation)
                 if export_tree_ids is not None and fid not in export_tree_ids:
@@ -1474,11 +1531,11 @@ Unreal Engine Integration:
 
     # Multi-stage export: generate trees at multiple growth stages from a single position
     parser.add_argument(
-        "--cycle-interval",
-        type=int,
+        "--height-interval",
+        type=float,
         default=None,
-        help="Export trees at cycle intervals (e.g., 10 = export at cycles 10, 20, 30...). "
-        "Enables multi-stage mode. Overrides CSV cycle_interval column if present.",
+        help="Export trees at height intervals in meters (e.g., 5 = 5m, 10m, 15m...). "
+        "Uses growth models to determine cycles. Enables multi-stage mode.",
     )
     parser.add_argument(
         "--export-trees",
@@ -1596,18 +1653,18 @@ Unreal Engine Integration:
             skeleton_overrides["skeleton_connected"] = config.forest_skeleton_connected
         skeleton_overrides = skeleton_overrides if skeleton_overrides else None
 
-        # Detect cycle-based mode (config value already merged with CLI by resolve())
-        is_cycle_mode = config.forest_cycle_interval > 0
+        # Detect multi-stage mode (config value already merged with CLI by resolve())
+        is_multistage = config.forest_height_interval > 0
 
         with timer.track("total_forest_generation"):
-            if is_cycle_mode:
-                # Multi-stage export mode: generate trees at different growth stages
+            if is_multistage:
+                # Multi-stage export mode: generate trees at height milestones
                 generate_forest_stages(
                     csv_path,
                     output_dir,
                     config,
                     config.forest_quality,
-                    cycle_interval=config.forest_cycle_interval,
+                    height_interval=config.forest_height_interval,
                     growth_cycle_limit=config.forest_growth_cycle_limit,
                     smooth_iterations=config.forest_smooth_iterations,
                     include_grove_attributes=config.forest_include_grove_attributes,
