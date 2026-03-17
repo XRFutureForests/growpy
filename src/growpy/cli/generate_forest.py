@@ -796,6 +796,18 @@ def generate_forest_stages(
         logger.error("Error loading CSV: %s", e)
         return
 
+    # Cap tree heights if max_height is configured
+    if config.forest_max_height > 0:
+        original_max = forest_data["height"].max()
+        forest_data["height"] = forest_data["height"].clip(
+            upper=config.forest_max_height
+        )
+        logger.info(
+            "Max height cap: %.1fm (original max: %.1fm)",
+            config.forest_max_height,
+            original_max,
+        )
+
     # Calculate growth cycles from height using growth models
     with timer.track("calculate_growth_cycles"):
         try:
@@ -1216,6 +1228,18 @@ def generate_forest_exports(
         logger.error("Error loading CSV: %s", e)
         return
 
+    # Cap tree heights if max_height is configured
+    if config.forest_max_height > 0:
+        original_max = forest_data["height"].max()
+        forest_data["height"] = forest_data["height"].clip(
+            upper=config.forest_max_height
+        )
+        logger.info(
+            "Max height cap: %.1fm (original max: %.1fm)",
+            config.forest_max_height,
+            original_max,
+        )
+
     with timer.track("calculate_growth_cycles"):
         try:
             calculate_growth_cycles_from_height(forest_data)
@@ -1536,6 +1560,13 @@ Unreal Engine Integration:
         default=None,
         help="Export trees at height intervals in meters (e.g., 5 = 5m, 10m, 15m...). "
         "Uses growth models to determine cycles. Enables multi-stage mode.",
+    )
+    parser.add_argument(
+        "--max-height",
+        type=float,
+        default=None,
+        help="Cap tree heights at this value in meters (e.g., 15). "
+        "Trees taller than this in the CSV are clamped. 0 = no limit (default).",
     )
     parser.add_argument(
         "--export-trees",

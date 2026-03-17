@@ -70,12 +70,17 @@ def _check_environment() -> bool:
     return True
 
 
-def _build_command(csv_path: Path) -> list:
+def _build_command(csv_path: Path, max_height: float = 0) -> list:
     """Build the generate_forest.py command for a CSV file."""
-    return [sys.executable, str(GENERATE_SCRIPT), str(csv_path)]
+    cmd = [sys.executable, str(GENERATE_SCRIPT), str(csv_path)]
+    if max_height > 0:
+        cmd.extend(["--max-height", str(max_height)])
+    return cmd
 
 
-def run_species(species_name: str, dry_run: bool = False) -> bool:
+def run_species(
+    species_name: str, dry_run: bool = False, max_height: float = 0
+) -> bool:
     """Run generate_forest.py for both individual types of a species.
 
     Returns True if all runs succeeded (or dry_run).
@@ -87,7 +92,7 @@ def run_species(species_name: str, dry_run: bool = False) -> bool:
 
     success = True
     for csv_path in csvs:
-        cmd = _build_command(csv_path)
+        cmd = _build_command(csv_path, max_height=max_height)
         label = csv_path.stem
 
         if dry_run:
@@ -135,6 +140,13 @@ def main():
         action="store_true",
         help="Print commands without executing them",
     )
+    parser.add_argument(
+        "--max-height",
+        type=float,
+        default=0,
+        help="Cap tree heights at this value in meters (e.g., 15). "
+        "Reduces growth cycles for faster testing. 0 = no limit (default).",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     args = parser.parse_args()
 
@@ -163,9 +175,12 @@ def main():
     if not args.dry_run and not _check_environment():
         raise SystemExit(1)
 
+    if args.max_height > 0:
+        logger.info("Max height cap: %.1fm", args.max_height)
+
     failed = []
     for species in species_list:
-        if not run_species(species, dry_run=args.dry_run):
+        if not run_species(species, dry_run=args.dry_run, max_height=args.max_height):
             failed.append(species)
 
     if failed:

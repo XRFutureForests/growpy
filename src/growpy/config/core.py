@@ -108,6 +108,7 @@ class GrowPyConfig:
     forest_include_grove_attributes: bool = False
     forest_longevity_mode: bool = True
     forest_height_interval: float = 5.0
+    forest_max_height: float = 0.0  # 0 = no limit; >0 = cap tree heights (meters)
     forest_export_trees: list = field(default_factory=list)
 
     # Skeleton overrides - None means inherit from quality preset (CLI-only)
@@ -233,6 +234,8 @@ class GrowPyConfig:
             kwargs["forest_longevity_mode"] = forest["longevity_mode"]
         if "height_interval" in forest:
             kwargs["forest_height_interval"] = float(forest["height_interval"])
+        if "max_height" in forest:
+            kwargs["forest_max_height"] = float(forest["max_height"])
         # [export]
         export = data.get("export", {})
         if "skeletal" in export:
@@ -343,6 +346,7 @@ class GrowPyConfig:
             "include_grove_attributes": "forest_include_grove_attributes",
             "longevity_mode": "forest_longevity_mode",
             "height_interval": "forest_height_interval",
+            "max_height": "forest_max_height",
             # [forest.skeleton]
             "skeleton_length": "forest_skeleton_length",
             "skeleton_reduce": "forest_skeleton_reduce",
