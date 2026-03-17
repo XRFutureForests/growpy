@@ -54,6 +54,22 @@ def _list_all_species() -> list:
     return sorted(species)
 
 
+def _check_environment() -> bool:
+    """Verify that bpy is available in the current Python environment."""
+    result = subprocess.run(
+        [sys.executable, "-c", "import bpy"],
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        logger.error(
+            "bpy module not available in %s. "
+            "Activate the growpy conda environment first: conda activate growpy",
+            sys.executable,
+        )
+        return False
+    return True
+
+
 def _build_command(csv_path: Path) -> list:
     """Build the generate_forest.py command for a CSV file."""
     return [sys.executable, str(GENERATE_SCRIPT), str(csv_path)]
@@ -143,6 +159,9 @@ def main():
         len(species_list),
         " (dry run)" if args.dry_run else "",
     )
+
+    if not args.dry_run and not _check_environment():
+        raise SystemExit(1)
 
     failed = []
     for species in species_list:

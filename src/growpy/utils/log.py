@@ -23,18 +23,22 @@ def setup_logging(verbose: bool = False) -> None:
     global _configured
     if _configured:
         # Update level if already configured
-        logger = logging.getLogger("growpy")
-        logger.setLevel(logging.INFO if verbose else logging.WARNING)
+        level = logging.INFO if verbose else logging.WARNING
+        for name in ("growpy", "__main__"):
+            logging.getLogger(name).setLevel(level)
         return
 
-    logger = logging.getLogger("growpy")
-    logger.setLevel(logging.INFO if verbose else logging.WARNING)
+    level = logging.INFO if verbose else logging.WARNING
 
     handler = logging.StreamHandler(sys.stderr)
     handler.setLevel(logging.DEBUG)
     formatter = logging.Formatter("%(message)s")
     handler.setFormatter(formatter)
 
-    logger.addHandler(handler)
-    logger.propagate = False
+    for name in ("growpy", "__main__"):
+        lgr = logging.getLogger(name)
+        lgr.setLevel(level)
+        lgr.addHandler(handler)
+        lgr.propagate = False
+
     _configured = True

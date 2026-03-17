@@ -273,7 +273,7 @@ CSV Format Support:
     for _, row in df.iterrows():
         preset_file = row["Preset"]
         common_name = row["Common Name"]
-        if pd.isna(preset_file) or not preset_file.strip():
+        if pd.isna(preset_file) or str(preset_file).strip() in ["", "—"]:
             continue
 
         src_file = src_presets / preset_file
@@ -286,6 +286,7 @@ CSV Format Support:
             shutil.copy2(src_file, dst_file)
             stats["presets_copied"] += 1
         else:
+            logger.warning("Preset not found: %s (for %s)", preset_file, common_name)
             stats["presets_missing"] += 1
 
     # Copy twigs (with CamelCase -> snake_case conversion)
@@ -361,6 +362,7 @@ CSV Format Support:
 
             stats["twigs_copied"] += 1
         else:
+            logger.warning("Twig directory not found: %s", src_twig_dir)
             stats["twigs_missing"] += 1
 
     # Copy bark textures with CamelCase -> snake_case conversion (preserves age numbers)
@@ -398,6 +400,7 @@ CSV Format Support:
                 shutil.copy2(src_file, dst_file)
                 stats["textures_copied"] += 1
         else:
+            logger.warning("Bark texture not found: %s", src_file)
             stats["textures_missing"] += 1
 
     # Generate PVE config files with null placeholders for each species
@@ -414,15 +417,27 @@ CSV Format Support:
             create_null_placeholder_config(config_file, standardized_name, common_name)
             stats["pve_configs_created"] += 1
 
-    # Print summary
-
+    logger.info(
+        "Assets copied: %d presets, %d twigs, %d textures, %d PVE configs",
+        stats["presets_copied"],
+        stats["twigs_copied"],
+        stats["textures_copied"],
+        stats["pve_configs_created"],
+    )
     if (
         stats["presets_missing"] > 0
         or stats["twigs_missing"] > 0
         or stats["textures_missing"] > 0
     ):
+        logger.warning(
+            "Missing items: %d presets, %d twigs, %d textures",
+            stats["presets_missing"],
+            stats["twigs_missing"],
+            stats["textures_missing"],
+        )
         return 1
 
+    logger.info("All assets prepared successfully.")
     return 0
 
 

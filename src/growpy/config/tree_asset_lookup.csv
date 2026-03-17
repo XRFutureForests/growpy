@@ -32,7 +32,7 @@ Grey poplar,grey_poplar,Populus x canescens,Salicaceae - Grey poplar.seed.json,G
 Italian poplar,italian_poplar,Populus x canadensis,Salicaceae - Italian poplar.seed.json,GreyPoplarTwig,Salicaceae_Italian_poplar,#66594cff,#60b751ff,Poplar,BlackPoplar65.jpg,Pappel,,
 Aspen,aspen,Populus tremula,Salicaceae - Aspen.seed.json,AspenTwig,Salicaceae_Aspen,#bfb2a5ff,#66bf59ff,,Poplar16.jpg,,,
 Elm,elm,Ulmus minor,Ulmaceae - Elm.seed.json,FieldElmTwig,Ulmaceae_Elm,#7f7266ff,#4c9938ff,,Ash70.jpg,,,
-Yew,yew,Taxus baccata,Taxaceae - Yew.seed.json,—,Taxaceae_Yew,#99664cff,#194c14ff,,Fir70.jpg,,,
+Yew,yew,Taxus baccata,—,—,Taxaceae_Yew,#99664cff,#194c14ff,,Fir70.jpg,,,
 Austrian pine,austrian_pine,Pinus nigra,Pinaceae - Austrian pine.seed.json,ScotsPineTwig,Pinaceae_Austrian_pine,#aea59bff,#8f9c82f0,,Fir70.jpg,Schwarzkiefer,25,8
 Lodgepole pine,lodgepole_pine,Pinus contorta,Pinaceae - Lodgepole pine.seed.json,ScotsPineTwig,Pinaceae_Lodgepole_pine,#aea59bff,#97a381ed,,Fir70.jpg,,,
 Longleaf pine,longleaf_pine,Pinus palustris,Pinaceae - Longleaf pine.seed.json,ScotsPineTwig,Pinaceae_Longleaf_pine,#997259ff,#38662dff,,Fir70.jpg,,,

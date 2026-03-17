@@ -830,12 +830,26 @@ def generate_forest_stages(
         logger.error("No snapshots captured during simulation")
         return
 
-    # Clean stale species tree exports (preserve unreal_scripts etc.)
-    if output_dir.exists():
-        for d in output_dir.iterdir():
-            if d.is_dir() and d.name != "unreal_scripts":
-                shutil.rmtree(d)
+    # Clean stale exports (only subdirectories that this CSV will write to)
     output_dir.mkdir(parents=True, exist_ok=True)
+    has_individual_type = "individual_type" in forest_data.columns
+    for sp in forest_data["species"].unique():
+        sp_dir_name = (
+            "".join(c for c in sp if c.isalnum() or c in (" ", "-", "_"))
+            .strip()
+            .replace(" ", "_")
+            .lower()
+        )
+        sp_dir = output_dir / sp_dir_name
+        if has_individual_type:
+            for itype in forest_data.loc[
+                forest_data["species"] == sp, "individual_type"
+            ].unique():
+                sub = sp_dir / str(itype)
+                if sub.exists():
+                    shutil.rmtree(sub)
+        elif sp_dir.exists():
+            shutil.rmtree(sp_dir)
 
     # Export each snapshot
     logger.info("\n%s", "=" * 60)
