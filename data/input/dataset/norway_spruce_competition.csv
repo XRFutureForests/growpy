@@ -1,8 +1,0 @@
-fid,species,x,y,z,height,twig_density,individual_type
-1,Norway spruce,0.0,0.0,0.0,35,1.0,competition
-101,Norway spruce,6.0,0.0,0.0,35,1.0,competition
-102,Norway spruce,-6.0,0.0,0.0,35,1.0,competition
-103,Norway spruce,3.0,5.196,0.0,35,1.0,competition
-104,Norway spruce,-3.0,5.196,0.0,35,1.0,competition
-105,Norway spruce,3.0,-5.196,0.0,35,1.0,competition
-106,Norway spruce,-3.0,-5.196,0.0,35,1.0,competition

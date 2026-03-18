@@ -1,8 +1,0 @@
-fid,species,x,y,z,height,twig_density,individual_type
-1,Field maple,0.0,0.0,0.0,20,1.0,competition
-101,Field maple,6.0,0.0,0.0,20,1.0,competition
-102,Field maple,-6.0,0.0,0.0,20,1.0,competition
-103,Field maple,3.0,5.196,0.0,20,1.0,competition
-104,Field maple,-3.0,5.196,0.0,20,1.0,competition
-105,Field maple,3.0,-5.196,0.0,20,1.0,competition
-106,Field maple,-3.0,-5.196,0.0,20,1.0,competition
