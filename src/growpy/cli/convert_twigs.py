@@ -435,11 +435,27 @@ Output per twig:
 
                     twig_filter = list(set(twig_filter))  # Remove duplicates
                 else:
-                    # Direct asset lookup CSV - get unique twig names
+                    # Direct asset lookup CSV - get unique twig names AND build species map
+                    # CRITICAL: Build twig_to_species_map so shared twigs produce files
+                    # named after each species that uses them, not just the donor twig species.
                     twig_filter = []
-                    for twig_name in df["Twig"].dropna():
-                        if twig_name not in ["—", ""]:
-                            twig_filter.append(str(twig_name).strip())
+                    for _, row in df.iterrows():
+                        twig_name = str(row.get("Twig", ""))
+                        if twig_name in ["—", "", "nan"] or pd.isna(row.get("Twig")):
+                            continue
+
+                        twig_name = twig_name.strip()
+                        twig_filter.append(twig_name)
+
+                        # Build species map from Common Name or Standardized Name
+                        species = row.get("Common Name", row.get("Standardized Name", ""))
+                        if species and not pd.isna(species):
+                            twig_dir_key = camel_to_snake(twig_name)
+                            species_std = _standardize_species_name(str(species))
+                            if twig_dir_key not in twig_to_species_map:
+                                twig_to_species_map[twig_dir_key] = []
+                            if species_std not in twig_to_species_map[twig_dir_key]:
+                                twig_to_species_map[twig_dir_key].append(species_std)
 
                     twig_filter = list(set(twig_filter))  # Remove duplicates
 

@@ -44,6 +44,7 @@ from growpy.io.preview import generate_preview_image as _generate_preview_image
 from growpy.io.preview import (
     generate_export_control_image as _generate_export_control_image,
 )
+from growpy.io.preview import generate_icon_image as _generate_icon_image
 from growpy.io.unreal_scripts import (
     generate_unreal_cleanup_script,
     generate_unreal_import_script,
@@ -462,12 +463,13 @@ def _export_single_tree_from_forest(args: tuple) -> list:
 
                     # One-time artifacts: only for first variant
                     if variant_idx == 0:
+                        stems_base = f"{species_clean}_{dims_suffix}"
                         # DynamicWind JSON for Unreal import
                         if use_skeletal:
                             from growpy.io.wind_json import generate_wind_json
 
                             skeletal_usd_path = (
-                                tree_dir / f"{file_prefix}_stems_skeletal.usda"
+                                tree_dir / f"{stems_base}_stems_skeletal.usda"
                             )
                             wind_json_path = (
                                 tree_dir / f"{file_prefix}_stems_unreal_wind.json"
@@ -539,12 +541,17 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                                     exported.append(static_path)
 
                         # 2D preview image
+                        stems_base = f"{species_clean}_{dims_suffix}"
                         preview_bounds = _generate_preview_image(
                             tree_dir, species_clean, file_prefix, skeleton, timer
                         )
                         _generate_export_control_image(
                             tree_dir, species_clean, file_prefix, timer,
                             view_bounds=preview_bounds,
+                            stems_file_base=stems_base,
+                        )
+                        _generate_icon_image(
+                            tree_dir, file_prefix, skeleton, timer
                         )
 
             # MEMORY OPTIMIZATION: Clear this tree's data immediately after export
@@ -1123,12 +1130,17 @@ def generate_forest_stages(
 
                         # Preview and static derivation only for first variant
                         if variant_idx == 0:
+                            stems_base = f"{species_clean}_{dims_suffix}"
                             preview_bounds = _generate_preview_image(
                                 tree_dir, species_clean, file_prefix, skeleton, timer
                             )
                             _generate_export_control_image(
                                 tree_dir, species_clean, file_prefix, timer,
                                 view_bounds=preview_bounds,
+                                stems_file_base=stems_base,
+                            )
+                            _generate_icon_image(
+                                tree_dir, file_prefix, skeleton, timer
                             )
 
                             if use_skeletal and config.export_static:

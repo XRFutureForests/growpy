@@ -151,8 +151,10 @@ def standardize_twig_name(
 
     if metadata["type"] != "generic":
         parts.append(str(metadata["type"]))
-    elif metadata["variation"]:
-        # Variation letter only when no type keyword — type already distinguishes
+    
+    # Include variation to distinguish multiple .blend files with same type
+    # e.g., FieldElmTwig.blend vs FieldElmVarATwig.blend both with apical
+    if metadata["variation"]:
         parts.append(str(metadata["variation"]))
 
     if metadata["season"] and metadata["season"] != metadata["type"]:

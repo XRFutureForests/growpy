@@ -1730,6 +1730,10 @@ def bundle_twigs_for_species(
     Copies relevant twig meshes (USD) to species output folder
     for easier asset management in Unreal Engine.
 
+    IMPORTANT: Only copies files matching the species name, filtering out other
+    species that share the same twig directory (e.g., hornbeam vs hazel both
+    using hazel_twig directory).
+
     Args:
         species_name: Name of tree species
         output_dir: Output directory for this species
@@ -1745,8 +1749,12 @@ def bundle_twigs_for_species(
         config = get_config()
 
     import shutil
+    from growpy.utils.naming import standardize_species_name
 
     results = {"twig_files": [], "manifest": None}
+
+    # Standardize species name for file matching
+    species_std = standardize_species_name(species_name)
 
     try:
         twig_dir = output_dir
@@ -1768,6 +1776,11 @@ def bundle_twigs_for_species(
 
         for source_file in sorted(all_twig_files):
             if not source_file.exists():
+                continue
+
+            # CRITICAL: Filter to only copy files matching this species
+            # Shared twig directories contain files for multiple species
+            if not source_file.stem.lower().startswith(species_std):
                 continue
 
             source_base = source_file.parent / source_file.stem
@@ -1803,7 +1816,7 @@ def bundle_twigs_for_species(
 
         # Copy opaque-only textures for Nanite compatibility
         # CRITICAL: Filter out alpha/translucent/mask textures
-        # CRITICAL: Only copy standardized twig textures (contain _twig_)
+        # CRITICAL: Only copy textures matching this species (filter out other species in shared twig dir)
         source_texture_dir = None
         if all_twig_files:
             first_twig = next(iter(all_twig_files))
@@ -1829,6 +1842,11 @@ def bundle_twigs_for_species(
                             "_foliage_" not in texture_file.stem
                             and "_twig_" not in texture_file.stem
                         ):
+                            continue
+
+                        # CRITICAL: Filter to only copy textures matching this species
+                        # Shared twig directories contain textures for multiple species
+                        if not texture_file.stem.lower().startswith(species_std):
                             continue
 
                         # Classify texture type

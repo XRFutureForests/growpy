@@ -51,12 +51,37 @@ def generate_preview_image(
             if hasattr(skeleton, "point_attribute_radius"):
                 radii = np.array(skeleton.point_attribute_radius)
 
+            # Detect global polyline indices: Grove API may return global
+            # indices for per-tree skeletons in multi-tree groves.  Remap
+            # to local range when the max index exceeds the points array.
+            num_points = len(points)
+            offset = 0
+            all_indices = set()
+            for polyline in skeleton.poly_lines:
+                for idx in polyline:
+                    all_indices.add(idx)
+            if all_indices:
+                max_idx = max(all_indices)
+                min_idx = min(all_indices)
+                if max_idx >= num_points:
+                    offset = min_idx
+                    remapped_max = max_idx - offset
+                    if remapped_max >= num_points:
+                        logger.debug(
+                            "Polyline index range [%d-%d] exceeds points (%d) "
+                            "even after offset %d (remapped max=%d)",
+                            min_idx, max_idx, num_points, offset, remapped_max,
+                        )
+
             # Collect all segment radii first to compute filter threshold
             all_seg_radii = []
             seg_data = []
             for polyline in skeleton.poly_lines:
                 for i in range(len(polyline) - 1):
-                    idx0, idx1 = polyline[i], polyline[i + 1]
+                    idx0 = polyline[i] - offset
+                    idx1 = polyline[i + 1] - offset
+                    if idx0 < 0 or idx0 >= num_points or idx1 < 0 or idx1 >= num_points:
+                        continue
                     if radii is not None:
                         r = (radii[idx0] + radii[idx1]) * 0.5
                     else:
@@ -124,8 +149,120 @@ def generate_preview_image(
             logger.info("  Preview: %s", png_path.name)
             return view_bounds
     except Exception as e:
-        logger.debug("Preview generation failed: %s", e)
+        logger.warning("Preview generation failed for %s: %s", file_prefix, e)
         return None
+
+
+def generate_icon_image(
+    tree_dir: Path,
+    file_prefix: str,
+    skeleton,
+    timer,
+    size_px: int = 512,
+) -> None:
+    """Render a minimal side-view (Y vs Z) icon on a square canvas.
+
+    Produces a clean silhouette suitable for catalog thumbnails. No axis,
+    grid, title, or other annotations are drawn.
+
+    Args:
+        tree_dir: Directory to save icon image.
+        file_prefix: Base filename prefix.
+        skeleton: Grove skeleton object with points and polylines.
+        timer: ProfileTimer instance.
+        size_px: Icon size in pixels (square).
+    """
+    if skeleton is None:
+        return
+    try:
+        import matplotlib.pyplot as plt
+        import numpy as np
+        from matplotlib.collections import LineCollection
+
+        with timer.track("generate_icon"):
+            points = np.array(skeleton.points)
+            if len(points) == 0:
+                return
+
+            radii = None
+            if hasattr(skeleton, "point_attribute_radius"):
+                radii = np.array(skeleton.point_attribute_radius)
+
+            num_points = len(points)
+            offset = 0
+            all_indices = set()
+            for polyline in skeleton.poly_lines:
+                for idx in polyline:
+                    all_indices.add(idx)
+            if all_indices:
+                max_idx = max(all_indices)
+                min_idx = min(all_indices)
+                if max_idx >= num_points:
+                    offset = min_idx
+                    remapped_max = max_idx - offset
+                    if remapped_max >= num_points:
+                        logger.debug(
+                            "Icon polyline index range [%d-%d] exceeds points "
+                            "(%d) even after offset %d (remapped max=%d)",
+                            min_idx, max_idx, num_points, offset, remapped_max,
+                        )
+
+            all_seg_radii = []
+            seg_data = []
+            for polyline in skeleton.poly_lines:
+                for i in range(len(polyline) - 1):
+                    idx0 = polyline[i] - offset
+                    idx1 = polyline[i + 1] - offset
+                    if idx0 < 0 or idx0 >= num_points or idx1 < 0 or idx1 >= num_points:
+                        continue
+                    if radii is not None:
+                        r = (radii[idx0] + radii[idx1]) * 0.5
+                    else:
+                        r = 0.005
+                    all_seg_radii.append(r)
+                    seg_data.append((idx0, idx1, r))
+
+            if not seg_data:
+                return
+
+            all_seg_radii = np.array(all_seg_radii)
+            radius_threshold = max(np.percentile(all_seg_radii, 25), 0.001)
+
+            segs = []
+            ws = []
+            dpi = 150
+            fig_inches = size_px / dpi
+            ax_points = fig_inches * 72
+            reference_height = 30.0
+            pts_per_meter = ax_points / reference_height
+
+            for idx0, idx1, r in seg_data:
+                if r < radius_threshold:
+                    continue
+                p0, p1 = points[idx0], points[idx1]
+                segs.append([(p0[1], p0[2]), (p1[1], p1[2])])
+                ws.append(r * 2 * pts_per_meter)
+
+            if not segs:
+                return
+
+            fig, ax = plt.subplots(1, 1, figsize=(fig_inches, fig_inches))
+            lc = LineCollection(segs, linewidths=ws, colors="#3b2a1a", alpha=0.85)
+            ax.add_collection(lc)
+            ax.set_aspect("equal")
+            ax.autoscale()
+            ax.axis("off")
+            fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
+
+            png_path = tree_dir / f"{file_prefix}_icon.png"
+            fig.savefig(
+                png_path, dpi=dpi, bbox_inches="tight",
+                facecolor="white", pad_inches=0.02,
+            )
+            plt.close(fig)
+            logger.info("  Icon: %s", png_path.name)
+    except Exception as e:
+        logger.warning("Icon generation failed for %s: %s", file_prefix, e)
 
 
 def generate_export_control_image(
@@ -134,6 +271,7 @@ def generate_export_control_image(
     file_prefix: str,
     timer,
     view_bounds: Optional[list] = None,
+    stems_file_base: Optional[str] = None,
 ) -> None:
     """Render control image from exported USDA stems mesh and skeleton.
 
@@ -146,6 +284,9 @@ def generate_export_control_image(
         file_prefix: Base filename prefix (e.g., 'european_beech_h15m_d10cm').
         timer: ProfileTimer instance.
         view_bounds: Optional axis bounds from preview image for matching.
+        stems_file_base: Base name for stems file lookup. When provided, uses
+            this instead of file_prefix to locate stems USDA (e.g.,
+            'european_beech_h15m_d10cm' when file_prefix includes variant info).
     """
     try:
         import matplotlib.pyplot as plt
@@ -153,9 +294,10 @@ def generate_export_control_image(
         from matplotlib.collections import LineCollection
 
         with timer.track("generate_export_control"):
-            stems_path = tree_dir / f"{file_prefix}_stems_skeletal.usda"
+            base = stems_file_base if stems_file_base else file_prefix
+            stems_path = tree_dir / f"{base}_stems_skeletal.usda"
             if not stems_path.exists():
-                stems_path = tree_dir / f"{file_prefix}_stems_static.usda"
+                stems_path = tree_dir / f"{base}_stems_static.usda"
             if not stems_path.exists():
                 return
 
@@ -285,4 +427,4 @@ def generate_export_control_image(
             plt.close(fig)
             logger.info("  Export control: %s", png_path.name)
     except Exception as e:
-        logger.debug("Export control image failed: %s", e)
+        logger.warning("Export control image failed for %s: %s", file_prefix, e)
