@@ -357,6 +357,16 @@ def generate_export_control_image(
                         skel_points.append(vals[:3])
             skel_points = np.array(skel_points) if skel_points else np.empty((0, 3))
 
+            # Align skeleton joints to mesh coordinate space
+            # Skeleton bindTransforms may use world coordinates (e.g., X=100)
+            # while mesh vertices are in local/centered space (X~0)
+            if len(skel_points) > 0 and len(mesh_points) > 0:
+                mesh_center_xy = np.mean(mesh_points[:, :2], axis=0)
+                skel_center_xy = np.mean(skel_points[:, :2], axis=0)
+                offset = skel_center_xy - mesh_center_xy
+                if np.linalg.norm(offset) > 1.0:
+                    skel_points[:, :2] -= offset
+
             title = species_clean.replace("_", " ").title()
             z_vals = mesh_points[:, 2]
             height = z_vals.max() - z_vals.min()

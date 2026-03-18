@@ -15,7 +15,6 @@ from growpy.utils.naming import (
     TEXTURE_CLASSIFICATIONS,
     TEXTURE_MODIFIERS,
     camel_to_snake,
-    standardize_species_name as _standardize_species_name,
     standardize_twig_name,
 )
 
@@ -142,7 +141,6 @@ def process_twig_directory(
     twig_filter: Optional[List[str]] = None,
     include_skeleton: bool = True,
     *,
-    twig_to_species_map: Optional[Dict[str, List[str]]] = None,
     densify: bool = True,
     alpha_trim_threshold: float = 0.5,
     alpha_trim_method: str = "all",
@@ -154,18 +152,14 @@ def process_twig_directory(
 ) -> Dict[str, List[Path]]:
     """Process all twig blend files in a directory.
 
-    Uses boundary-only densification to preserve interior mesh topology while
-    creating high-detail silhouettes. Parameters are mm-based for consistency
-    across different leaf sizes.
+    Each .blend file is converted exactly once using the twig's native name
+    (derived from directory, e.g. pacific_silver_fir from pacific_silver_fir_twig).
+    Species that share a twig all reference the same converted files.
 
     Args:
         twig_dir: Directory containing .blend twig files
         formats: Export formats to create
         twig_filter: Optional list of twig directory names to process (snake_case)
-        twig_to_species_map: Optional mapping from twig dir name to species name list.
-            When provided, output files are named after the species from the CSV
-            rather than the twig directory (fixes shared-twig naming, e.g. Norway
-            spruce borrowing PacificSilverFirTwig).
         densify: Enable boundary densification (default: True)
         alpha_trim_threshold: Alpha threshold for silhouette trimming (default: 0.5)
         boundary_edge_mm: Target edge as fraction of avg edge (default: 0.5)
@@ -208,38 +202,32 @@ def process_twig_directory(
             twig_dir_name = blend_file.parent.name
             output_dir = blend_file.parent
 
-            # Use CSV-derived species names when available so that shared twigs
-            # (e.g. PacificSilverFirTwig used by Norway spruce) produce files
-            # named after the actual species, not the donor twig species.
-            if twig_to_species_map and twig_dir_name in twig_to_species_map:
-                species_names = twig_to_species_map[twig_dir_name]
-            else:
-                # Fall back to deriving name from directory
-                fallback = twig_dir_name.replace("_twig", "").replace("_", " ")
-                species_names = [fallback]
+            # Always use the twig's native name (directory without _twig suffix).
+            # Species that share a twig (e.g. Norway spruce using PacificSilverFirTwig)
+            # all reference the same converted files instead of creating duplicates.
+            species_name = twig_dir_name.replace("_twig", "").replace("_", " ")
 
-            for species_name in species_names:
-                exported_files = process_twig_file(
-                    blend_file=blend_file,
-                    output_dir=output_dir,
-                    formats=formats,
-                    species_name=species_name,
-                    minimal_export=minimal_export,
-                    include_skeleton=include_skeleton,
-                    densify=densify,
-                    alpha_trim_threshold=alpha_trim_threshold,
-                    alpha_trim_method=alpha_trim_method,
-                    smooth_boundary=smooth_boundary,
-                    smooth_iterations=smooth_iterations,
-                    smooth_factor=smooth_factor,
-                    boundary_edge_mm=boundary_edge_mm,
-                    interior_decimate_ratio=interior_decimate_ratio,
-                )
+            exported_files = process_twig_file(
+                blend_file=blend_file,
+                output_dir=output_dir,
+                formats=formats,
+                species_name=species_name,
+                minimal_export=minimal_export,
+                include_skeleton=include_skeleton,
+                densify=densify,
+                alpha_trim_threshold=alpha_trim_threshold,
+                alpha_trim_method=alpha_trim_method,
+                smooth_boundary=smooth_boundary,
+                smooth_iterations=smooth_iterations,
+                smooth_factor=smooth_factor,
+                boundary_edge_mm=boundary_edge_mm,
+                interior_decimate_ratio=interior_decimate_ratio,
+            )
 
-                if exported_files:
-                    if species_name not in results:
-                        results[species_name] = []
-                    results[species_name].extend(exported_files)
+            if exported_files:
+                if species_name not in results:
+                    results[species_name] = []
+                results[species_name].extend(exported_files)
 
         except Exception as e:
             logger.error("Failed to process %s: %s", blend_file.name, e, exc_info=True)
@@ -360,7 +348,6 @@ Output per twig:
 
     # Load CSV filter if provided
     twig_filter = None
-    twig_to_species_map: Dict[str, List[str]] = {}
     if csv_path and str(csv_path) != "":
         if not csv_path.exists():
             # If using default CSV and it doesn't exist, skip filtering
@@ -389,8 +376,7 @@ Output per twig:
                     lookup_df = pd.read_csv(asset_lookup_path)
 
                     # Filter lookup table by species names and extract twig names.
-                    # Also build twig_to_species_map so shared twigs produce
-                    # correctly named output files for each species that uses them.
+                    # Each twig is converted once using its native name.
                     twig_filter = []
                     for species in unique_species:
                         # Try matching Common Name
@@ -424,38 +410,17 @@ Output per twig:
 
                         if twig_name:
                             twig_filter.append(twig_name)
-                            # Map twig directory name → species so output files
-                            # are named after the species, not the donor twig.
-                            twig_dir_key = camel_to_snake(twig_name)
-                            species_std = _standardize_species_name(species)
-                            if twig_dir_key not in twig_to_species_map:
-                                twig_to_species_map[twig_dir_key] = []
-                            if species_std not in twig_to_species_map[twig_dir_key]:
-                                twig_to_species_map[twig_dir_key].append(species_std)
 
                     twig_filter = list(set(twig_filter))  # Remove duplicates
                 else:
-                    # Direct asset lookup CSV - get unique twig names AND build species map
-                    # CRITICAL: Build twig_to_species_map so shared twigs produce files
-                    # named after each species that uses them, not just the donor twig species.
+                    # Direct asset lookup CSV - get unique twig names
                     twig_filter = []
                     for _, row in df.iterrows():
                         twig_name = str(row.get("Twig", ""))
                         if twig_name in ["—", "", "nan"] or pd.isna(row.get("Twig")):
                             continue
 
-                        twig_name = twig_name.strip()
-                        twig_filter.append(twig_name)
-
-                        # Build species map from Common Name or Standardized Name
-                        species = row.get("Common Name", row.get("Standardized Name", ""))
-                        if species and not pd.isna(species):
-                            twig_dir_key = camel_to_snake(twig_name)
-                            species_std = _standardize_species_name(str(species))
-                            if twig_dir_key not in twig_to_species_map:
-                                twig_to_species_map[twig_dir_key] = []
-                            if species_std not in twig_to_species_map[twig_dir_key]:
-                                twig_to_species_map[twig_dir_key].append(species_std)
+                        twig_filter.append(twig_name.strip())
 
                     twig_filter = list(set(twig_filter))  # Remove duplicates
 
@@ -471,7 +436,6 @@ Output per twig:
             True,
             twig_filter,
             include_skeleton=True,
-            twig_to_species_map=twig_to_species_map or None,
             densify=config.twigs_densify,
             alpha_trim_threshold=min(max(0.0, config.twigs_alpha_trim), 1.0),
             smooth_boundary=config.twigs_smooth_boundary,
@@ -490,7 +454,6 @@ Output per twig:
             True,
             twig_filter,
             include_skeleton=True,
-            twig_to_species_map=twig_to_species_map or None,
             densify=config.twigs_densify,
             alpha_trim_threshold=min(max(0.0, config.twigs_alpha_trim), 1.0),
             smooth_boundary=config.twigs_smooth_boundary,

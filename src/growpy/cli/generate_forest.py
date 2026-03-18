@@ -240,6 +240,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         "".join(c for c in species if c.isalnum() or c in (" ", "-", "_"))
         .strip()
         .replace(" ", "_")
+        .replace("-", "_")
         .lower()
     )
 
@@ -1021,6 +1022,7 @@ def generate_forest_stages(
                     )
                     .strip()
                     .replace(" ", "_")
+                    .replace("-", "_")
                     .lower()
                 )
                 # Use target milestone height for filename (clean 5m intervals)
