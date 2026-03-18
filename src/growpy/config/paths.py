@@ -302,6 +302,9 @@ def get_twig_files_by_type(species: str) -> Dict[str, List[Path]]:
     (e.g., european_beech_twig) rather than the original Grove CamelCase names
     (e.g., EuropeanBeechTwig).
 
+    IMPORTANT: Only returns files matching the species name, filtering out
+    other species that share the same twig directory.
+
     Args:
         species: Species name
 
@@ -333,10 +336,20 @@ def get_twig_files_by_type(species: str) -> Dict[str, List[Path]]:
         if not twig_dir.exists():
             return {}
 
-        # Organize twig files by type
+        # Standardize species name for file matching
+        from growpy.utils.naming import standardize_species_name
+        species_std = standardize_species_name(species)
+
+        # Organize twig files by type, filtering by species name
         twig_files: Dict[str, List[Path]] = {}
         for usd_file in twig_dir.glob("*.usd*"):
             file_type = usd_file.stem.lower()
+            
+            # CRITICAL: Only include files matching this species
+            # Shared twig directories contain files for multiple species
+            if not file_type.startswith(species_std):
+                continue
+            
             if file_type not in twig_files:
                 twig_files[file_type] = []
             twig_files[file_type].append(usd_file)

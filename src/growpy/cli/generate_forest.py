@@ -145,6 +145,7 @@ def _derive_static_from_skeletal(
     skip_validation: bool = False,
     stems_suffix: str = "",
     twig_placements=None,
+    instances_dir: Path | None = None,
 ) -> str | None:
     """Derive a static mesh assembly from an existing skeletal one.
 
@@ -184,6 +185,7 @@ def _derive_static_from_skeletal(
         use_skeletal_mesh=False,
         twig_placements=twig_placements,
         validate=not skip_validation,
+        instances_dir=instances_dir,
     )
     return str(static_assembly)
 
@@ -226,6 +228,10 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     # Use provided timer or create disabled one
     if timer is None:
         timer = ProfileTimer(enabled=False)
+
+    # Shared twig/foliage instances directory (Megaplant-style)
+    instances_dir = output_dir / "Instances"
+    instances_dir.mkdir(parents=True, exist_ok=True)
 
     # Get config in worker process
     config = get_config()
@@ -456,6 +462,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         radial_scale=tree_radial_scale,
                         twig_density=effective_twig_density,
                         twig_placements_out=captured_twig_placements,
+                        instances_dir=instances_dir,
                     )
 
                 if export_success:
@@ -536,6 +543,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                                     ),
                                     stems_suffix=dims_suffix,
                                     twig_placements=captured_twig_placements or None,
+                                    instances_dir=instances_dir,
                                 )
                                 if static_path:
                                     exported.append(static_path)
@@ -767,6 +775,10 @@ def generate_forest_stages(
 
     clear_twig_copy_cache()
 
+    # Shared twig/foliage instances directory (Megaplant-style)
+    instances_dir = output_dir / "Instances"
+    instances_dir.mkdir(parents=True, exist_ok=True)
+
     # Use defaults if not specified
     if smooth_iterations is None:
         smooth_iterations = SMOOTH_ITERATIONS
@@ -908,6 +920,10 @@ def generate_forest_stages(
 
     # Clean stale exports (only subdirectories that this CSV will write to)
     output_dir.mkdir(parents=True, exist_ok=True)
+    # Clean shared instances directory
+    if instances_dir.exists():
+        shutil.rmtree(instances_dir)
+    instances_dir.mkdir(parents=True, exist_ok=True)
     has_individual_type = "individual_type" in forest_data.columns
     for sp in forest_data["species"].unique():
         sp_dir_name = (
@@ -1118,6 +1134,7 @@ def generate_forest_stages(
                             radial_scale=tree_radial_scale,
                             twig_density=effective_twig_density,
                             twig_placements_out=captured_twig_placements,
+                            instances_dir=instances_dir,
                         )
                     except ValueError as e:
                         if _is_bone_limit_error(e):
@@ -1154,6 +1171,7 @@ def generate_forest_stages(
                                     skip_validation=skip_validation,
                                     stems_suffix=dims_suffix,
                                     twig_placements=captured_twig_placements or None,
+                                    instances_dir=instances_dir,
                                 )
                                 if static_path:
                                     exported_files.append(static_path)
@@ -1347,8 +1365,12 @@ def generate_forest_exports(
     quality_params["export_tree_ids"] = export_tree_ids
 
     try:
-        # Twigs are copied to each tree folder by assembly_export
-        # No need for species-level bundling
+        # Twigs/foliage are copied to shared Instances/ directory by assembly_export
+        # Clean shared instances directory for fresh export
+        instances_dir = output_dir / "Instances"
+        if instances_dir.exists():
+            shutil.rmtree(instances_dir)
+        instances_dir.mkdir(parents=True, exist_ok=True)
 
         # Export types controlled by config.export_skeletal / config.export_static
         with timer.track("export_trees"):

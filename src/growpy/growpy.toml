@@ -44,7 +44,7 @@ alpha_trim = 0.75
 # Enable boundary edge smoothing for natural silhouette curves
 smooth_boundary = true
 # Number of Laplacian smoothing passes (1-10)
-smooth_iterations = 3
+smooth_iterations = 5
 # Smoothing strength per iteration (0.0-1.0)
 smooth_factor = 0.25
 # Target edge as fraction of average edge (0.1-1.0, lower = denser)
@@ -136,7 +136,7 @@ height_interval = 5
 # Trees taller than this in the input CSV are clamped to this height
 # Reduces growth cycles and number of height stages for faster runs
 # 0 = no limit (use full CSV heights)
-max_height = 27
+max_height = 17
 
 # Quality Presets (single source of truth)
 # Define any number of named presets below as [quality.<name>] sections.
@@ -220,7 +220,7 @@ export_trees = []
 # Each simulation produces one file per variant without re-simulating.
 # Empty list (default) = single export using CSV/config twig_density.
 # When active, CSV twig_density column is ignored.
-density_variants = ["full", "reduced"] # e.g., ["full", "reduced", "bare"]
+density_variants = ["full", "bare"] # e.g., ["full", "reduced", "bare"]
 
 # --- Post-export: Unreal import ---
 [unreal]
@@ -247,12 +247,12 @@ obj_up_axis = "y"
 # Referenced by name in export.density_variants list above.
 
 [density_variant.full]
-twig_density = 1.5
+twig_density = 1.25
 
 [density_variant.reduced]
-twig_density = 0.5
+twig_density = 0.75
 build_cutoff_thickness = 0.01
 
 [density_variant.bare]
-twig_density = 0.0
+twig_density = 0.25
 build_cutoff_thickness = 0.02

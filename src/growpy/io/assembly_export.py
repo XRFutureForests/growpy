@@ -89,6 +89,7 @@ def create_assembly(
     skeleton_source_usd: Optional[Path] = None,
     twig_placements: Optional[Dict[str, List]] = None,
     validate: bool = True,
+    instances_dir: Optional[Path] = None,
 ) -> bool:
     """Create an assembly USD file for Unreal Engine import.
 
@@ -225,8 +226,15 @@ def create_assembly(
 
             if placements and any(placements.values()):
                 # Remap twig paths from source assets to output directory copies
-                output_dir = output_path.parent
-                species_twigs_dir = output_dir
+                # When instances_dir is set, twig files live in a shared folder
+                twig_dest_dir = instances_dir if instances_dir else output_path.parent
+
+                # Compute relative path from assembly location to twig destination
+                import os
+                if instances_dir:
+                    rel_to_twigs = os.path.relpath(instances_dir, output_path.parent).replace("\\", "/")
+                else:
+                    rel_to_twigs = "."
 
                 # Flatten all twig variants into a single prototype list.
                 # twig_type_to_proto_indices maps grove type -> list of proto indices
@@ -236,7 +244,7 @@ def create_assembly(
                 )  # (grove_type, output_path, source_path)
                 for grove_type, source_paths in twig_usd_paths.items():
                     for source_twig_path in source_paths:
-                        output_twig_path = species_twigs_dir / source_twig_path.name
+                        output_twig_path = twig_dest_dir / source_twig_path.name
                         if output_twig_path.exists():
                             remapped_twig_paths.append(
                                 (grove_type, output_twig_path, source_twig_path)
@@ -298,22 +306,22 @@ def create_assembly(
                         if not is_skeletal_twig:
                             pass
 
-                    # Copy twig file to output directory for relative references
-                    _copy_twig_file_cached(twig_ref_path, output_path.parent)
+                    # Copy twig file to shared instances directory for relative references
+                    _copy_twig_file_cached(twig_ref_path, twig_dest_dir)
                     # Also copy static variant for OBJ/Helios export
                     static_name = twig_ref_path.name.replace(
                         "_skeletal.usda", "_static.usda"
                     )
                     static_ref = twig_ref_path.parent / static_name
                     if static_ref.exists() and static_ref != twig_ref_path:
-                        _copy_twig_file_cached(static_ref, output_path.parent)
+                        _copy_twig_file_cached(static_ref, twig_dest_dir)
 
-                    # Copy twig textures
+                    # Copy twig textures to textures/ inside instances dir
                     twig_dir = source_twig_path.parent
                     source_textures_dir = twig_dir / "textures"
 
                     if source_textures_dir.exists():
-                        output_textures_dir = output_path.parent / "textures"
+                        output_textures_dir = twig_dest_dir / "textures"
                         output_textures_dir.mkdir(exist_ok=True)
 
                         for texture_ext in [".png", ".jpg", ".jpeg", ".exr"]:
@@ -352,7 +360,7 @@ def create_assembly(
                         skel_root_path = f"/{assembly_name}/TwigPrototypes/{proto_name}/{twig_asset_name}"
                         skel_root_prim = stage.DefinePrim(skel_root_path, "SkelRoot")
                         skel_root_prim.GetReferences().AddReference(
-                            f"./{twig_ref_path.name}", f"/{twig_asset_name}"
+                            f"{rel_to_twigs}/{twig_ref_path.name}", f"/{twig_asset_name}"
                         )
                     else:
                         proto_xform = UsdGeom.Xform.Define(
@@ -364,7 +372,7 @@ def create_assembly(
                         twig_child_path = f"/{assembly_name}/TwigPrototypes/{proto_name}/{twig_asset_name}"
                         twig_child_prim = stage.DefinePrim(twig_child_path, "Xform")
                         twig_child_prim.GetReferences().AddReference(
-                            f"./{twig_ref_path.name}", f"/{twig_asset_name}"
+                            f"{rel_to_twigs}/{twig_ref_path.name}", f"/{twig_asset_name}"
                         )
 
                     prototype_paths.append(Sdf.Path(proto_prim.GetPath()))
@@ -655,6 +663,7 @@ def export_tree_as_nanite_assembly(
     radial_scale: float = 1.0,
     twig_density: Optional[float] = None,
     twig_placements_out: Optional[Dict] = None,
+    instances_dir: Optional[Path] = None,
 ) -> bool:
     """Export Grove tree as Unreal Engine Nanite Assembly.
 
@@ -688,6 +697,9 @@ def export_tree_as_nanite_assembly(
         radial_scale: Radial scale factor for trunk mesh
         twig_density: Twig density multiplier. When provided, overrides the global
             config value (from input CSV twig_density column).
+        instances_dir: Optional shared directory for twig USD files and textures.
+            When set, twig files are copied here instead of alongside the assembly,
+            and assembly references use relative paths to this directory.
 
     Returns:
         bool: Success status
@@ -914,10 +926,10 @@ def export_tree_as_nanite_assembly(
                 except Exception as e:
                     twig_usd_paths = None
 
-        # Copy twig USD files to output directory for relative references (with caching)
+        # Copy twig USD files to shared instances directory (with caching)
         if twig_usd_paths:
             with _track("copy_twig_files"):
-                dest_dir = output_path.parent
+                dest_dir = instances_dir if instances_dir else output_path.parent
 
                 for twig_type, twig_path_list in twig_usd_paths.items():
                     for twig_path in twig_path_list:
@@ -942,6 +954,7 @@ def export_tree_as_nanite_assembly(
                 use_skeletal_mesh=use_skeletal_mesh and not use_static_mesh,
                 twig_placements=twig_placements,
                 validate=validate,
+                instances_dir=instances_dir,
             )
 
         if success:

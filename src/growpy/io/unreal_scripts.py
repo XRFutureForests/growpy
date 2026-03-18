@@ -21,8 +21,8 @@ def generate_unreal_import_script(
 ) -> Path:
     """Generate a standalone Unreal Python script for importing forest USD files.
 
-    Trees are organized as species/tree_{id}/{species}.usda (assembly).
-    Each assembly references {species}_{tree_id}_skeletal.usda (unique tree mesh).
+    Trees are organized as species/{variant}/ where variant is competition/open_grown
+    or tree_{id}. Assembly USDs reference shared twig instances in ../Instances/.
 
     This script can be executed directly in Unreal Engine using:
     - VSCode Unreal Python extension (right-click > Execute in Unreal)
@@ -43,24 +43,43 @@ def generate_unreal_import_script(
 
     script_path = script_dir / "import_forest.py"
 
-    # Find all tree assemblies in species/tree_{id}/ folders
-    nanite_files = list(output_dir.glob("*/tree_*/*_assembly*.usda")) + list(
-        output_dir.glob("*/tree_*/*_assembly*.usd")
+    # Find all tree assemblies in species subdirectories
+    # Matches both species/competition/ and species/tree_XXXX/ patterns
+    nanite_files = list(output_dir.glob("*/*/*_assembly*.usda")) + list(
+        output_dir.glob("*/*/*_assembly*.usd")
+    )
+    # Exclude Instances/ and unreal_scripts/ directories
+    skip_dirs = {"Instances", "unreal_scripts"}
+    nanite_files = [
+        f
+        for f in nanite_files
+        if f.relative_to(output_dir).parts[0] not in skip_dirs
+    ]
+
+    # Find shared twig instances
+    instances_dir = output_dir / "Instances"
+    instance_files = (
+        list(instances_dir.glob("*.usda")) + list(instances_dir.glob("*.usd"))
+        if instances_dir.exists()
+        else []
     )
 
-    # Group trees by species (parent of tree_XXXX folder)
-    trees_by_species: Dict[str, list] = {}
+    # Group trees by species/variant (species_name -> variant_name -> files)
+    trees_by_species: Dict[str, Dict[str, list]] = {}
     for usd_file in nanite_files:
-        tree_folder = usd_file.parent
-        species_parent = tree_folder.parent
-        species_name = species_parent.name
+        rel_parts = usd_file.relative_to(output_dir).parts
+        species_name = rel_parts[0]
+        variant_name = rel_parts[1] if len(rel_parts) > 2 else ""
 
         if species_name not in trees_by_species:
-            trees_by_species[species_name] = []
-        trees_by_species[species_name].append(usd_file)
+            trees_by_species[species_name] = {}
+        if variant_name not in trees_by_species[species_name]:
+            trees_by_species[species_name][variant_name] = []
+        trees_by_species[species_name][variant_name].append(usd_file)
 
     num_species = len(trees_by_species)
     total_trees = len(nanite_files)
+    num_instances = len(instance_files)
 
     # Build TREE_POSITIONS dictionary from forest_data if provided
     tree_positions_dict = {}
@@ -87,8 +106,8 @@ def generate_unreal_import_script(
     script_content = f'''"""
 Unreal Engine script to import GrowPy forest - Auto-generated
 
-All trees of each species are imported to the same folder.
-Shared twigs are automatically deduplicated (overwritten on each import).
+Shared twig/foliage instances are imported once to Instances/ folder.
+Tree assemblies reference shared instances via relative USD paths.
 
 Execute this script in Unreal Engine:
 1. Right-click this file in VSCode > "Execute Python File in Unreal"
@@ -114,7 +133,7 @@ IMPORT_DELAY = 0.5
 {tree_positions_code}
 
 print(f"Destination: {{IMPORT_PATH}}")
-print(f"Found {num_species} species with {total_trees} trees\\n")
+print(f"Found {num_species} species with {total_trees} trees, {num_instances} shared instances\\n")
 
 # Get asset tools
 asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
@@ -124,27 +143,21 @@ failed_count = 0
 
 '''
 
-    # Generate import code for each species
-    for species_folder, species_trees in sorted(trees_by_species.items()):
+    # Generate import code for shared instances first
+    if instance_files:
         script_content += f"""
-# --- {species_folder} ({len(species_trees)} trees) ---
-print("Importing {species_folder}...")
+# === SHARED INSTANCES ({len(instance_files)} twig/foliage files) ===
+print("Importing shared twig/foliage instances...")
 """
-
-        for usd_file in sorted(species_trees):
-            usd_path = str(usd_file.resolve()).replace("\\", "/")
-            tree_folder_name = usd_file.parent.name
-            tree_number = (
-                tree_folder_name.replace("tree_", "")
-                if tree_folder_name.startswith("tree_")
-                else "0000"
-            )
+        for inst_file in sorted(instance_files):
+            inst_path = str(inst_file.resolve()).replace("\\", "/")
+            inst_name = inst_file.stem
 
             script_content += f"""
 try:
     import_task = unreal.AssetImportTask()
-    import_task.filename = "{usd_path}"
-    import_task.destination_path = IMPORT_PATH + "/{species_folder}/{tree_folder_name}"
+    import_task.filename = "{inst_path}"
+    import_task.destination_path = IMPORT_PATH + "/Instances"
     import_task.automated = True
     import_task.save = True
     import_task.replace_existing = True
@@ -153,11 +166,8 @@ try:
     options.import_actors = False
     options.import_geometry = True
     options.import_materials = True
-    # Flatten folder structure - assets by type (Materials, StaticMeshes, etc)
     options.set_editor_property('prim_path_folder_structure', False)
-    # Share identical assets (twigs, materials) between trees
     options.set_editor_property('share_assets_for_identical_prims', True)
-    # Combine identical material slots
     options.set_editor_property('merge_identical_material_slots', True)
     import_task.options = options
 
@@ -165,33 +175,82 @@ try:
 
     if import_task.imported_object_paths:
         imported_count += 1
-        print(f"  Imported tree #{tree_number}")
+        print(f"  Imported instance: {inst_name}")
     else:
         failed_count += 1
-        unreal.log_warning("Failed to import tree_{tree_number}")
+        unreal.log_warning("Failed to import instance: {inst_name}")
 
-    # Cleanup and delay to prevent crashes
     gc.collect()
     unreal.SystemLibrary.collect_garbage()
     time.sleep(IMPORT_DELAY)
 
 except Exception as e:
     failed_count += 1
-    unreal.log_error(f"Error importing tree_{tree_number}: {{e}}")
+    unreal.log_error(f"Error importing instance {inst_name}: {{e}}")
+"""
+
+    # Generate import code for each species
+    for species_folder, variants in sorted(trees_by_species.items()):
+        total_species_trees = sum(len(v) for v in variants.values())
+        script_content += f"""
+# --- {species_folder} ({total_species_trees} trees) ---
+print("Importing {species_folder}...")
+"""
+
+        for variant_name, variant_trees in sorted(variants.items()):
+            for usd_file in sorted(variant_trees):
+                usd_path = str(usd_file.resolve()).replace("\\", "/")
+                file_label = usd_file.stem
+                dest_subpath = f"{species_folder}/{variant_name}" if variant_name else species_folder
+
+                script_content += f"""
+try:
+    import_task = unreal.AssetImportTask()
+    import_task.filename = "{usd_path}"
+    import_task.destination_path = IMPORT_PATH + "/{dest_subpath}"
+    import_task.automated = True
+    import_task.save = True
+    import_task.replace_existing = True
+
+    options = unreal.UsdStageImportOptions()
+    options.import_actors = False
+    options.import_geometry = True
+    options.import_materials = True
+    options.set_editor_property('prim_path_folder_structure', False)
+    options.set_editor_property('share_assets_for_identical_prims', True)
+    options.set_editor_property('merge_identical_material_slots', True)
+    import_task.options = options
+
+    asset_tools.import_asset_tasks([import_task])
+
+    if import_task.imported_object_paths:
+        imported_count += 1
+        print(f"  Imported: {file_label}")
+    else:
+        failed_count += 1
+        unreal.log_warning("Failed to import: {file_label}")
+
+    gc.collect()
+    unreal.SystemLibrary.collect_garbage()
+    time.sleep(IMPORT_DELAY)
+
+except Exception as e:
+    failed_count += 1
+    unreal.log_error(f"Error importing {file_label}: {{e}}")
 """
 
     script_content += """
 
 print("")
 print("=" * 60)
-print(f"Import complete: {imported_count} trees imported, {failed_count} failed")
+print(f"Import complete: {imported_count} imported, {failed_count} failed")
 print("=" * 60)
 
 if failed_count > 0:
     unreal.log_warning("Some imports failed. Check that USD Importer plugin is enabled.")
 else:
     print(f"\\nAssets imported to Content Browser: {IMPORT_PATH}")
-    print("Assets organized by: species/tree_XXXX/ (one folder per tree)")
+    print("Structure: Instances/ (shared twigs) + species/variant/ (tree assemblies)")
     print("")
     print("=" * 60)
     print("TREE PLACEMENT")
