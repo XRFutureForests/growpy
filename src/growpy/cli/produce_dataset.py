@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Produce dataset models by running generate_forest.py for each species.
 
-Convenience wrapper that iterates per-species CSV files in data/input/dataset/
-and calls generate_forest.py for each open-grown and competition CSV.
+Convenience wrapper that iterates merged CSV files in data/input/dataset/
+and calls generate_forest.py for each species. Each merged CSV contains both
+the open-grown and competition individuals in a single simulation.
 
 Usage:
     python src/growpy/cli/produce_dataset.py --species "European Beech"
@@ -32,42 +33,22 @@ DATASET_DIR = Path("data/input/dataset")
 GENERATE_SCRIPT = Path("src/growpy/cli/generate_forest.py")
 
 
-def _find_species_csvs(species_name: str) -> list:
-    """Find CSV files for a species.
-
-    Prefers a single merged CSV (open + competition combined) if available.
-    Falls back to separate open and competition CSVs.
-    """
+def _find_species_csv(species_name: str) -> Path | None:
+    """Find the merged CSV file for a species."""
     std_name = standardize_species_name(species_name)
-
-    # Prefer merged CSV (single simulation for both individual types)
     merged = DATASET_DIR / f"{std_name}_merged.csv"
     if merged.exists():
-        return [merged]
-
-    csvs = []
-    for suffix in ("open", "competition"):
-        path = DATASET_DIR / f"{std_name}_{suffix}.csv"
-        if path.exists():
-            csvs.append(path)
-        else:
-            logger.warning("CSV not found: %s", path)
-    return csvs
+        return merged
+    logger.warning("Merged CSV not found: %s", merged)
+    return None
 
 
 def _list_all_species() -> list:
-    """List all species with CSV files in the dataset directory."""
-    species = set()
-    # Detect merged CSVs
+    """List all species with merged CSV files in the dataset directory."""
+    species = []
     for csv_path in sorted(DATASET_DIR.glob("*_merged.csv")):
-        species.add(csv_path.stem.replace("_merged", ""))
-    # Detect separate open+competition pairs
-    for csv_path in sorted(DATASET_DIR.glob("*_open.csv")):
-        name = csv_path.stem.replace("_open", "")
-        comp = DATASET_DIR / f"{name}_competition.csv"
-        if comp.exists():
-            species.add(name)
-    return sorted(species)
+        species.append(csv_path.stem.replace("_merged", ""))
+    return species
 
 
 def _check_environment() -> bool:
@@ -91,44 +72,38 @@ def _build_command(csv_path: Path, max_height: float = 0) -> list:
     cmd = [sys.executable, str(GENERATE_SCRIPT), str(csv_path)]
     if max_height > 0:
         cmd.extend(["--max-height", str(max_height)])
-    if "_merged" in csv_path.stem:
-        # Merged CSV: export open tree (fid=1) and competition center (fid=2)
-        cmd.extend(["--export-trees", "1,2"])
-    elif "_competition" in csv_path.stem:
-        cmd.extend(["--export-trees", "1"])
+    # Merged CSV: export open tree (fid=1) and competition center (fid=2)
+    cmd.extend(["--export-trees", "1,2"])
     return cmd
 
 
 def run_species(
     species_name: str, dry_run: bool = False, max_height: float = 0
 ) -> bool:
-    """Run generate_forest.py for both individual types of a species.
+    """Run generate_forest.py for a species using its merged CSV.
 
-    Returns True if all runs succeeded (or dry_run).
+    Returns True if the run succeeded (or dry_run).
     """
-    csvs = _find_species_csvs(species_name)
-    if not csvs:
-        logger.error("No CSV files found for species: %s", species_name)
+    csv_path = _find_species_csv(species_name)
+    if not csv_path:
+        logger.error("No merged CSV found for species: %s", species_name)
         return False
 
-    success = True
-    for csv_path in csvs:
-        cmd = _build_command(csv_path, max_height=max_height)
-        label = csv_path.stem
+    cmd = _build_command(csv_path, max_height=max_height)
+    label = csv_path.stem
 
-        if dry_run:
-            logger.info("[DRY RUN] %s", " ".join(str(c) for c in cmd))
-            continue
+    if dry_run:
+        logger.info("[DRY RUN] %s", " ".join(str(c) for c in cmd))
+        return True
 
-        logger.info("Running: %s", label)
-        result = subprocess.run(cmd, check=False)
-        if result.returncode != 0:
-            logger.error("FAILED: %s (exit code %d)", label, result.returncode)
-            success = False
-        else:
-            logger.info("OK: %s", label)
+    logger.info("Running: %s", label)
+    result = subprocess.run(cmd, check=False)
+    if result.returncode != 0:
+        logger.error("FAILED: %s (exit code %d)", label, result.returncode)
+        return False
 
-    return success
+    logger.info("OK: %s", label)
+    return True
 
 
 def _run_species_worker(args: tuple) -> tuple:

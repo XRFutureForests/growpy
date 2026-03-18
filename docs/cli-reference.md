@@ -215,8 +215,7 @@ python src/growpy/cli/generate_dataset_csvs.py --output-dir data/input/my_datase
 
 | File | Contents |
 |---|---|
-| `data/input/dataset/{species}_open.csv` | Single tree at origin (open-grown individual) |
-| `data/input/dataset/{species}_competition.csv` | Center tree + 6 hexagonal neighbors |
+| `data/input/dataset/{species}_merged.csv` | Open tree (fid=1) + competition cluster (fid=2 + neighbors) |
 | `data/input/dataset/all_species.csv` | One row per species (for steps 1-3) |
 
 **CLI flags:**

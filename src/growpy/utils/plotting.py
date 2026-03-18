@@ -285,17 +285,27 @@ def _init_plot_style():
 
 def plot_calibration_comparison(
     species_name: str,
-    grove_heights: List[float],
-    grove_dbhs: List[float],
+    uncalibrated_heights: List[float],
+    uncalibrated_dbhs: List[float],
     yield_ages: List[float],
     yield_heights: List[float],
     yield_dbhs: List[float],
     table_title: str,
+    flushes_per_year: float = 1.0,
+    calibrated_heights: Optional[List[float]] = None,
+    calibrated_dbhs: Optional[List[float]] = None,
     output_path: Optional[Path] = None,
-    calibrated_heights: Optional[np.ndarray] = None,
-    calibrated_dbhs: Optional[np.ndarray] = None,
 ) -> None:
-    """Plot Grove curves vs yield table curves side by side."""
+    """Plot Grove curves vs yield table with a consistent year-based x-axis.
+
+    Shows up to three curves per metric:
+    - Yield table (forestry reference data)
+    - Grove simulation before calibration
+    - Grove simulation after calibration (re-simulated with overrides)
+
+    All Grove data is converted from cycle indices to calendar years using
+    flushes_per_year, so every line shares the same time axis.
+    """
     _init_plot_style()
 
     fig, axes = plt.subplots(1, 2, figsize=(16, 7))
@@ -305,22 +315,32 @@ def plot_calibration_comparison(
         fontweight="bold",
     )
 
+    # Convert cycle indices to calendar years
+    uncal_years = [(i + 1) / flushes_per_year for i in range(len(uncalibrated_heights))]
+
     # Height comparison
     ax1 = axes[0]
-    grove_cycles = list(range(1, len(grove_heights) + 1))
-    ax1.plot(grove_cycles, grove_heights, "b-", linewidth=2.5, label="Grove (cycles)")
-
-    if calibrated_heights is not None:
-        cal_cycles = list(range(1, len(calibrated_heights) + 1))
-        ax1.plot(
-            cal_cycles, calibrated_heights, "g--", linewidth=2, label="Calibrated target"
-        )
 
     ax1.plot(
         yield_ages, yield_heights,
-        "r-", alpha=1.0, linewidth=2.0, label="Yield table",
+        "r-", linewidth=2.0, label="Yield table (reference)",
     )
-    ax1.set_xlabel("Age (years) / Grove cycles")
+
+    ax1.plot(
+        uncal_years, uncalibrated_heights,
+        "b-", linewidth=2.0, alpha=0.6, label="Grove (before calibration)",
+    )
+
+    if calibrated_heights is not None:
+        cal_years = [
+            (i + 1) / flushes_per_year for i in range(len(calibrated_heights))
+        ]
+        ax1.plot(
+            cal_years, calibrated_heights,
+            "g-", linewidth=2.5, label="Grove (after calibration)",
+        )
+
+    ax1.set_xlabel("Age (years)")
     ax1.set_ylabel("Height (m)")
     ax1.set_title("Height over Age")
     ax1.legend(loc="upper left")
@@ -328,31 +348,42 @@ def plot_calibration_comparison(
 
     # DBH comparison
     ax2 = axes[1]
-    if grove_dbhs:
-        dbh_cycles = list(range(1, len(grove_dbhs) + 1))
-        ax2.plot(
-            dbh_cycles,
-            [d * 100 for d in grove_dbhs],
-            "b-", linewidth=2.5, label="Grove (cycles)",
-        )
-
-    if calibrated_dbhs is not None:
-        cal_dbh_cycles = list(range(1, len(calibrated_dbhs) + 1))
-        ax2.plot(
-            cal_dbh_cycles,
-            [d * 100 for d in calibrated_dbhs],
-            "g--", linewidth=2, label="Calibrated target",
-        )
 
     ax2.plot(
         yield_ages, [d * 100 for d in yield_dbhs],
-        "r-", alpha=1.0, linewidth=2.0, label="Yield table",
+        "r-", linewidth=2.0, label="Yield table (reference)",
     )
-    ax2.set_xlabel("Age (years) / Grove cycles")
+
+    if uncalibrated_dbhs:
+        uncal_dbh_years = uncal_years[:len(uncalibrated_dbhs)]
+        ax2.plot(
+            uncal_dbh_years,
+            [d * 100 for d in uncalibrated_dbhs],
+            "b-", linewidth=2.0, alpha=0.6, label="Grove (before calibration)",
+        )
+
+    if calibrated_dbhs is not None:
+        cal_dbh_years = [
+            (i + 1) / flushes_per_year for i in range(len(calibrated_dbhs))
+        ]
+        ax2.plot(
+            cal_dbh_years,
+            [d * 100 for d in calibrated_dbhs],
+            "g-", linewidth=2.5, label="Grove (after calibration)",
+        )
+
+    ax2.set_xlabel("Age (years)")
     ax2.set_ylabel("DBH (cm)")
     ax2.set_title("Diameter at Breast Height over Age")
     ax2.legend(loc="upper left")
     ax2.grid(True, alpha=0.3)
+
+    # Annotate fpy so the conversion factor is visible
+    fig.text(
+        0.99, 0.01,
+        f"flushes_per_year = {flushes_per_year:.2f}",
+        ha="right", va="bottom", fontsize=9, color="gray",
+    )
 
     plt.tight_layout()
 

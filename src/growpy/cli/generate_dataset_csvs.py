@@ -2,7 +2,7 @@
 """Generate input CSV files for dataset production.
 
 Reads species metadata from tree_asset_lookup.csv (Max Height, Competition Spacing)
-and generates open-grown and competition CSV templates for each dataset species,
+and generates merged CSV files (open + competition combined) for each dataset species,
 plus an all-species CSV for pipeline steps 1-3.
 
 See docs/dataset-specification.md for the full dataset specification.
@@ -26,6 +26,8 @@ DENSITY_VARIANTS = {
     "reduced": 0.5,
     "bare": 0.0,
 }
+
+OPEN_TREE_X = 100.0
 
 
 def _get_dataset_species(config=None) -> pd.DataFrame:
@@ -62,36 +64,30 @@ def _hex_neighbors(spacing: float) -> list:
     ]
 
 
-def generate_open_csv(
-    species_name: str, max_height: int, twig_density: float = 1.0
-) -> pd.DataFrame:
-    """Generate open-grown CSV: single tree at origin."""
-    return pd.DataFrame(
-        [
-            {
-                "fid": 1,
-                "species": species_name,
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0,
-                "height": max_height,
-                "twig_density": twig_density,
-                "individual_type": "open_grown",
-            }
-        ]
-    )
-
-
-def generate_competition_csv(
+def generate_merged_csv(
     species_name: str,
     max_height: int,
     spacing: int,
     twig_density: float = 1.0,
 ) -> pd.DataFrame:
-    """Generate competition CSV: center tree + 6 hexagonal neighbors."""
+    """Generate merged CSV: open tree + competition cluster in one simulation.
+
+    The open-grown tree (fid=1) is placed at (OPEN_TREE_X, 0, 0) to avoid
+    light competition. The competition center tree is fid=2 at origin.
+    """
     rows = [
         {
             "fid": 1,
+            "species": species_name,
+            "x": OPEN_TREE_X,
+            "y": 0.0,
+            "z": 0.0,
+            "height": max_height,
+            "twig_density": twig_density,
+            "individual_type": "open_grown",
+        },
+        {
+            "fid": 2,
             "species": species_name,
             "x": 0.0,
             "y": 0.0,
@@ -99,7 +95,7 @@ def generate_competition_csv(
             "height": max_height,
             "twig_density": twig_density,
             "individual_type": "competition",
-        }
+        },
     ]
     for fid, x, y in _hex_neighbors(spacing):
         rows.append(
@@ -140,19 +136,14 @@ def generate_dataset_csvs(output_dir: Path, density: str = "full") -> list:
         max_height = row["Max Height"]
         spacing = row["Competition Spacing"]
 
-        # Open-grown CSV
-        open_df = generate_open_csv(species, max_height, twig_density)
-        open_path = output_dir / f"{std_name}_open.csv"
-        open_df.to_csv(open_path, index=False)
-        generated.append(open_path)
-        logger.info(f"  {open_path.name}")
-
-        # Competition CSV
-        comp_df = generate_competition_csv(species, max_height, spacing, twig_density)
-        comp_path = output_dir / f"{std_name}_competition.csv"
-        comp_df.to_csv(comp_path, index=False)
-        generated.append(comp_path)
-        logger.info(f"  {comp_path.name}")
+        # Merged CSV (open + competition in single simulation)
+        merged_df = generate_merged_csv(
+            species, max_height, spacing, twig_density
+        )
+        merged_path = output_dir / f"{std_name}_merged.csv"
+        merged_df.to_csv(merged_path, index=False)
+        generated.append(merged_path)
+        logger.info(f"  {merged_path.name}")
 
         # Collect unique species for all-species CSV
         all_species_rows.append(

@@ -13,7 +13,7 @@ import argparse
 import logging
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from growpy.config import get_config
 from growpy.utils.analysis import SpeciesGrowthAnalyzer
@@ -96,17 +96,18 @@ def _run_calibration_pass(
     species_list: List[str],
     config,
     script_dir: Path,
-) -> List[str]:
+) -> Tuple[List[str], Dict[str, Dict[str, Any]]]:
     """Run yield table calibration for species with available yield tables.
 
     Computes calibration from uncalibrated curves (already in analyzer) and
     writes per-cycle overrides to seed.json files.
 
-    Returns list of species that were calibrated (need re-simulation).
+    Returns:
+        Tuple of (calibrated_species, calibration_info) where calibration_info
+        maps standardized species names to {common_name, yield_data, fpy}.
     """
     from growpy.utils.yield_tables import (
         calibrate_species,
-        interpolate_yield_table,
         load_lookup_table,
         resolve_yield_table,
     )
@@ -118,17 +119,12 @@ def _run_calibration_pass(
     if not yield_tables_dir.is_absolute():
         yield_tables_dir = script_dir / yield_tables_dir
 
-    # Resolve plot output dir
-    do_plot = config.calibration_plot
-    plot_dir = config.calibration_output_dir
-    if not plot_dir.is_absolute():
-        plot_dir = script_dir / plot_dir
-
     # Load lookup table for common name <-> standardized name mapping
     lookup = load_lookup_table(script_dir)
     std_to_common = {v["standardized"]: name for name, v in lookup.items()}
 
     calibrated_species = []
+    calibration_info: Dict[str, Dict[str, Any]] = {}
 
     for species_std in species_list:
         common_name = std_to_common.get(species_std)
@@ -173,47 +169,77 @@ def _run_calibration_pass(
             flushes_per_year=fpy,
         )
 
+        # Read back fpy that was actually used (auto-estimated or explicit)
+        import json as _json
+
+        _preset = presets_dir / f"{species_std}.seed.json"
+        _cal = {}
+        if _preset.exists():
+            with open(_preset) as _f:
+                _cal = _json.load(_f).get("_yield_table_calibration", {})
+        resolved_fpy = _cal.get("flushes_per_year", fpy or 1.0)
+
+        calibration_info[species_std] = {
+            "common_name": common_name,
+            "yield_data": yield_data,
+            "fpy": resolved_fpy,
+        }
+
         if ok:
             calibrated_species.append(species_std)
 
-        # Generate comparison plot
-        if do_plot:
-            from growpy.utils.plotting import plot_calibration_comparison
+    return calibrated_species, calibration_info
 
-            # Read back the fpy that was actually used (auto-estimated or explicit)
-            import json as _json
 
-            _preset = presets_dir / f"{species_std}.seed.json"
-            _cal = {}
-            if _preset.exists():
-                with open(_preset) as _f:
-                    _cal = _json.load(_f).get("_yield_table_calibration", {})
-            plot_fpy = _cal.get("flushes_per_year", fpy or 1.0)
+def _generate_comparison_plots(
+    calibration_info: Dict[str, Dict[str, Any]],
+    uncalibrated_heights: Dict[str, List[float]],
+    uncalibrated_dbhs: Dict[str, List[float]],
+    calibrated_heights: Dict[str, List[float]],
+    calibrated_dbhs: Dict[str, List[float]],
+    config,
+    script_dir: Path,
+) -> None:
+    """Generate comparison plots for all calibrated species.
 
-            max_cycles = len(height_curve)
-            _, target_heights = interpolate_yield_table(
-                yield_data.ages, yield_data.heights, max_cycles, plot_fpy
-            )
-            _, target_dbhs = interpolate_yield_table(
-                yield_data.ages, yield_data.dbhs, max_cycles, plot_fpy,
-                initial_value=0.0,
-            )
+    Plots three lines per metric:
+    - Yield table reference (from forestry literature)
+    - Grove before calibration (raw simulation output)
+    - Grove after calibration (re-simulated with overrides applied)
+    """
+    from growpy.utils.plotting import plot_calibration_comparison
 
-            plot_calibration_comparison(
-                species_name=common_name,
-                grove_heights=height_curve,
-                grove_dbhs=dbh_curve or [],
-                yield_ages=yield_data.ages,
-                yield_heights=yield_data.heights,
-                yield_dbhs=yield_data.dbhs,
-                table_title=yield_data.title,
-                output_path=plot_dir / f"{species_std}_comparison.png",
-                calibrated_heights=target_heights,
-                calibrated_dbhs=target_dbhs,
-            )
-            logger.info("  Plot saved to %s", plot_dir / f"{species_std}_comparison.png")
+    plot_dir = config.calibration_output_dir
+    if not plot_dir.is_absolute():
+        plot_dir = script_dir / plot_dir
 
-    return calibrated_species
+    for species_std, info in calibration_info.items():
+        common_name = info["common_name"]
+        yield_data = info["yield_data"]
+        fpy = info["fpy"]
+
+        uncal_h = uncalibrated_heights.get(species_std)
+        uncal_d = uncalibrated_dbhs.get(species_std, [])
+        if not uncal_h:
+            continue
+
+        cal_h = calibrated_heights.get(species_std)
+        cal_d = calibrated_dbhs.get(species_std)
+
+        plot_calibration_comparison(
+            species_name=common_name,
+            uncalibrated_heights=uncal_h,
+            uncalibrated_dbhs=uncal_d,
+            yield_ages=yield_data.ages,
+            yield_heights=yield_data.heights,
+            yield_dbhs=yield_data.dbhs,
+            table_title=yield_data.title,
+            flushes_per_year=fpy,
+            calibrated_heights=cal_h,
+            calibrated_dbhs=cal_d,
+            output_path=plot_dir / f"{species_std}_comparison.png",
+        )
+        logger.info("  Plot saved to %s", plot_dir / f"{species_std}_comparison.png")
 
 
 def main():
@@ -383,12 +409,16 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
         # Calibration pass
         if do_calibrate:
+            # Snapshot uncalibrated curves before calibration overwrites them
+            uncal_heights = {args.species: list(height_curve)}
+            uncal_dbhs = {args.species: list(dbh_curve)}
+
             logger.info("")
             logger.info("=" * 60)
             logger.info("  Calibration pass")
             logger.info("=" * 60)
 
-            calibrated = _run_calibration_pass(
+            calibrated, cal_info = _run_calibration_pass(
                 analyzer, [args.species], config, script_dir
             )
 
@@ -410,6 +440,20 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
                 analyzer.dbh_curves[args.species] = dbh_curve
                 analyzer.growth_models[args.species] = growth_model
                 analyzer.analysis_metadata[args.species] = metadata
+
+            # Generate comparison plots after re-simulation
+            if config.calibration_plot and cal_info:
+                logger.info("")
+                logger.info("Generating comparison plots...")
+                _generate_comparison_plots(
+                    cal_info,
+                    uncal_heights,
+                    uncal_dbhs,
+                    dict(analyzer.height_curves),
+                    dict(analyzer.dbh_curves),
+                    config,
+                    script_dir,
+                )
 
         # Save final results
         analyzer.save_growth_models()
@@ -456,12 +500,18 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         if do_calibrate:
             successful = [s for s, ok in results.items() if ok]
 
+            # Snapshot uncalibrated curves before calibration overwrites them
+            uncal_heights = {s: list(analyzer.height_curves[s]) for s in successful
+                            if s in analyzer.height_curves}
+            uncal_dbhs = {s: list(analyzer.dbh_curves[s]) for s in successful
+                          if s in analyzer.dbh_curves}
+
             logger.info("")
             logger.info("=" * 60)
             logger.info("  Calibration pass")
             logger.info("=" * 60)
 
-            calibrated = _run_calibration_pass(
+            calibrated, cal_info = _run_calibration_pass(
                 analyzer, successful, config, script_dir
             )
 
@@ -482,6 +532,20 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
                 )
             else:
                 logger.info("No species calibrated — skipping re-simulation")
+
+            # Generate comparison plots after re-simulation
+            if config.calibration_plot and cal_info:
+                logger.info("")
+                logger.info("Generating comparison plots...")
+                _generate_comparison_plots(
+                    cal_info,
+                    uncal_heights,
+                    uncal_dbhs,
+                    dict(analyzer.height_curves),
+                    dict(analyzer.dbh_curves),
+                    config,
+                    script_dir,
+                )
 
         # Save final results
         analyzer.save_growth_models()

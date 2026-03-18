@@ -246,32 +246,19 @@ This produces all three density variants from each simulation run automatically.
 
 ### Production Workflow Per Species
 
-For each species, two export runs produce all growth stages and all density variants:
-
-**Run 1: Open-grown individual**
+For each species, a single simulation run produces both the open-grown and competition individuals. The merged CSV places the open tree at x=100 to avoid light competition with the competition cluster at origin.
 
 ```
 python src/growpy/cli/generate_forest.py \
-    --csv data/input/dataset/{species}_open.csv \
-    --output data/output/dataset/{species}/open_grown \
-    --height-interval 5 \
-    --quality high
-```
-
-**Run 2: Competition individual**
-
-```
-python src/growpy/cli/generate_forest.py \
-    --csv data/input/dataset/{species}_competition.csv \
-    --output data/output/dataset/{species}/competition \
+    --csv data/input/dataset/{species}_merged.csv \
     --height-interval 5 \
     --quality high \
-    --export-trees 1
+    --export-trees 1,2
 ```
 
-With `density_variants` active, each run exports `full`, `reduced`, and `bare` variants at every height milestone snapshot. The `--export-trees 1` flag ensures only the center tree is exported in competition mode (neighbors participate in growth simulation for light competition but are not exported).
+With `density_variants` active, the run exports `full`, `reduced`, and `bare` variants at every height milestone snapshot. The `--export-trees 1,2` flag exports the open tree (fid=1) and the competition center tree (fid=2); neighbors participate in growth simulation for light competition but are not exported.
 
-**Batch helper**: `produce_dataset.py` automates both runs for one or more species:
+**Batch helper**: `produce_dataset.py` automates this for one or more species:
 
 ```
 python src/growpy/cli/produce_dataset.py --species "European beech"
@@ -282,22 +269,16 @@ python src/growpy/cli/produce_dataset.py --dry-run   # print commands without ex
 
 ### CSV Input Templates
 
-Templates are stored in `data/input/dataset/`. Each species has two CSVs plus a shared `all_species.csv`.
+Templates are stored in `data/input/dataset/`. Each species has a merged CSV plus a shared `all_species.csv`.
 
 **`all_species.csv`** -- one row per species, used only for steps 1--3 (asset preparation, twig conversion, growth models). Not used for forest generation (positions are all 0,0,0).
 
-**`{species}_open.csv`** -- single tree, open-grown:
+**`{species}_merged.csv`** -- open tree + competition cluster in a single simulation:
 
 ```csv
 fid,species,x,y,z,height,twig_density,individual_type
-1,{Common Name},0,0,0,{max_height},1.0,open_grown
-```
-
-**`{species}_competition.csv`** -- center tree + 6 neighbors:
-
-```csv
-fid,species,x,y,z,height,twig_density,individual_type
-1,{Common Name},0,0,0,{max_height},1.0,competition
+1,{Common Name},100,0,0,{max_height},1.0,open_grown
+2,{Common Name},0,0,0,{max_height},1.0,competition
 101,{Common Name},{s},0,0,{max_height},1.0,competition
 102,{Common Name},{-s},0,0,{max_height},1.0,competition
 103,{Common Name},{s/2},{s*0.866},0,{max_height},1.0,competition
@@ -369,14 +350,8 @@ Or manually:
 
 ```
 python src/growpy/cli/generate_forest.py \
-    --csv data/input/dataset/european_beech_open.csv \
-    --output data/output/dataset/european_beech/open_grown \
-    --height-interval 5 --quality high
-
-python src/growpy/cli/generate_forest.py \
-    --csv data/input/dataset/european_beech_competition.csv \
-    --output data/output/dataset/european_beech/competition \
-    --height-interval 5 --quality high --export-trees 1
+    --csv data/input/dataset/european_beech_merged.csv \
+    --height-interval 5 --quality high --export-trees 1,2
 ```
 
 **Review checkpoint 1** -- inspect European beech output:
@@ -447,8 +422,8 @@ Apply at each review checkpoint:
 | Height too short at max stage | Growth plateaus early; calibration mismatch | Increase `growth_cycle_limit`; re-run `create_growth_models.py` with `--cycles` override; check yield table calibration |
 | Height overshoots target | Calibration scaling too aggressive | Re-check yield table alignment; adjust calibration parameters in growpy.toml |
 | Crown too narrow (open-grown) | Possible competition from absent neighbors detected | Verify CSV has only 1 tree at origin; check preset's natural form |
-| Crown too wide (competition) | Neighbor spacing too large | Decrease spacing `s` in `{species}_competition.csv` |
-| Crown too narrow (competition) | Neighbor spacing too small | Increase spacing `s` in `{species}_competition.csv` |
+| Crown too wide (competition) | Neighbor spacing too large | Decrease spacing `s` in `{species}_merged.csv` |
+| Crown too narrow (competition) | Neighbor spacing too small | Increase spacing `s` in `{species}_merged.csv` |
 | Bone limit exceeded | Too many fine branches | Increase `skeleton_reduce` (e.g., 0.4--0.6) or `skeleton_length` (e.g., 2.0--3.0) in growpy.toml or via `--skeleton-reduce` CLI arg |
 | Missing growth stages | `height_interval` too large | Reduce `height_interval` (e.g., from 10 to 5) |
 | `bare` variant still shows twigs | Density threshold misconfigured | Check `[density_variant.bare]` has `twig_density = 0.0` in growpy.toml |
