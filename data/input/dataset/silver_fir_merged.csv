@@ -1,0 +1,9 @@
+fid,species,x,y,z,height,twig_density,individual_type
+1,Silver fir,100.0,0.0,0.0,35,1.0,open_grown
+2,Silver fir,0.0,0.0,0.0,35,1.0,competition
+101,Silver fir,5.0,0.0,0.0,35,1.0,competition
+102,Silver fir,-5.0,0.0,0.0,35,1.0,competition
+103,Silver fir,2.5,4.33,0.0,35,1.0,competition
+104,Silver fir,-2.5,4.33,0.0,35,1.0,competition
+105,Silver fir,2.5,-4.33,0.0,35,1.0,competition
+106,Silver fir,-2.5,-4.33,0.0,35,1.0,competition

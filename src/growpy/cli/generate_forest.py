@@ -143,6 +143,7 @@ def _derive_static_from_skeletal(
     twig_usd_map: dict,
     skip_validation: bool = False,
     stems_suffix: str = "",
+    twig_placements=None,
 ) -> str | None:
     """Derive a static mesh assembly from an existing skeletal one.
 
@@ -150,7 +151,6 @@ def _derive_static_from_skeletal(
     then creates a static assembly referencing the stripped stems.
     Returns the static assembly path string, or None on failure.
     """
-    from growpy.core.twig import extract_twig_placements_from_model
     from growpy.io.assembly_export import create_assembly
     from growpy.io.tree_export import strip_skeleton_from_usd
 
@@ -165,11 +165,13 @@ def _derive_static_from_skeletal(
     if not strip_skeleton_from_usd(skeletal_stems, static_stems):
         return None
 
-    twig_placements = None
-    try:
-        twig_placements = extract_twig_placements_from_model(model)
-    except Exception as e:
-        logger.warning("Failed to extract twig placements for static derivation: %s", e)
+    if twig_placements is None:
+        from growpy.core.twig import extract_twig_placements_from_model
+
+        try:
+            twig_placements = extract_twig_placements_from_model(model)
+        except Exception as e:
+            logger.warning("Failed to extract twig placements for static derivation: %s", e)
 
     static_assembly = tree_dir / f"{species_clean}{suffix}_assembly_static.usda"
     create_assembly(
@@ -432,6 +434,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 usd_path = tree_dir / f"{file_prefix}_assembly_{mesh_suffix}.usda"
 
                 with timer.track(f"export_nanite_assembly_{mesh_suffix}"):
+                    captured_twig_placements = {}
                     export_success = export_tree_as_nanite_assembly(
                         model=effective_model,
                         skeleton=skeleton if use_skeletal else None,
@@ -451,6 +454,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         stems_file_suffix=dims_suffix,
                         radial_scale=tree_radial_scale,
                         twig_density=effective_twig_density,
+                        twig_placements_out=captured_twig_placements,
                     )
 
                 if export_success:
@@ -529,6 +533,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                                         "skip_validation", False
                                     ),
                                     stems_suffix=dims_suffix,
+                                    twig_placements=captured_twig_placements or None,
                                 )
                                 if static_path:
                                     exported.append(static_path)
@@ -1087,6 +1092,7 @@ def generate_forest_stages(
 
                     # Export as Nanite Assembly
                     try:
+                        captured_twig_placements = {}
                         export_success = export_tree_as_nanite_assembly(
                             model=model,
                             skeleton=skeleton if use_skeletal else None,
@@ -1104,6 +1110,7 @@ def generate_forest_stages(
                             stems_file_suffix=dims_suffix,
                             radial_scale=tree_radial_scale,
                             twig_density=effective_twig_density,
+                            twig_placements_out=captured_twig_placements,
                         )
                     except ValueError as e:
                         if _is_bone_limit_error(e):
@@ -1134,6 +1141,7 @@ def generate_forest_stages(
                                     twig_usd_map=twig_usd_map,
                                     skip_validation=skip_validation,
                                     stems_suffix=dims_suffix,
+                                    twig_placements=captured_twig_placements or None,
                                 )
                                 if static_path:
                                     exported_files.append(static_path)

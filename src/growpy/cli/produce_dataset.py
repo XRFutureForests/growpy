@@ -15,8 +15,10 @@ See docs/dataset-specification.md for the step-by-step production guide.
 
 import argparse
 import logging
+import os
 import subprocess
 import sys
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 from growpy.utils.log import setup_logging
@@ -31,8 +33,18 @@ GENERATE_SCRIPT = Path("src/growpy/cli/generate_forest.py")
 
 
 def _find_species_csvs(species_name: str) -> list:
-    """Find open and competition CSVs for a species."""
+    """Find CSV files for a species.
+
+    Prefers a single merged CSV (open + competition combined) if available.
+    Falls back to separate open and competition CSVs.
+    """
     std_name = standardize_species_name(species_name)
+
+    # Prefer merged CSV (single simulation for both individual types)
+    merged = DATASET_DIR / f"{std_name}_merged.csv"
+    if merged.exists():
+        return [merged]
+
     csvs = []
     for suffix in ("open", "competition"):
         path = DATASET_DIR / f"{std_name}_{suffix}.csv"
@@ -44,8 +56,12 @@ def _find_species_csvs(species_name: str) -> list:
 
 
 def _list_all_species() -> list:
-    """List all species with CSV pairs in the dataset directory."""
+    """List all species with CSV files in the dataset directory."""
     species = set()
+    # Detect merged CSVs
+    for csv_path in sorted(DATASET_DIR.glob("*_merged.csv")):
+        species.add(csv_path.stem.replace("_merged", ""))
+    # Detect separate open+competition pairs
     for csv_path in sorted(DATASET_DIR.glob("*_open.csv")):
         name = csv_path.stem.replace("_open", "")
         comp = DATASET_DIR / f"{name}_competition.csv"
@@ -75,7 +91,10 @@ def _build_command(csv_path: Path, max_height: float = 0) -> list:
     cmd = [sys.executable, str(GENERATE_SCRIPT), str(csv_path)]
     if max_height > 0:
         cmd.extend(["--max-height", str(max_height)])
-    if "_competition" in csv_path.stem:
+    if "_merged" in csv_path.stem:
+        # Merged CSV: export open tree (fid=1) and competition center (fid=2)
+        cmd.extend(["--export-trees", "1,2"])
+    elif "_competition" in csv_path.stem:
         cmd.extend(["--export-trees", "1"])
     return cmd
 
@@ -110,6 +129,39 @@ def run_species(
             logger.info("OK: %s", label)
 
     return success
+
+
+def _run_species_worker(args: tuple) -> tuple:
+    """Worker function for parallel execution (must be top-level for pickling)."""
+    species_name, max_height = args
+    ok = run_species(species_name, max_height=max_height)
+    return species_name, ok
+
+
+def _run_parallel(species_list: list, workers: int, max_height: float) -> list:
+    """Run species in parallel using subprocess workers.
+
+    Each species pair (open + competition) runs sequentially within a worker,
+    but multiple species run concurrently across workers.
+    """
+    failed = []
+
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(_run_species_worker, (species, max_height)): species
+            for species in species_list
+        }
+        for future in as_completed(futures):
+            species_name = futures[future]
+            try:
+                _, ok = future.result()
+                if not ok:
+                    failed.append(species_name)
+            except Exception:
+                logger.exception("Worker crashed for %s", species_name)
+                failed.append(species_name)
+
+    return failed
 
 
 def main():
@@ -149,6 +201,13 @@ def main():
         help="Cap tree heights at this value in meters (e.g., 15). "
         "Reduces growth cycles for faster testing. 0 = no limit (default).",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=min(4, os.cpu_count() or 1),
+        help="Max parallel species workers (default: min(4, cpu_count)). "
+        "Use 1 for sequential execution.",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     args = parser.parse_args()
 
@@ -180,10 +239,19 @@ def main():
     if args.max_height > 0:
         logger.info("Max height cap: %.1fm", args.max_height)
 
-    failed = []
-    for species in species_list:
-        if not run_species(species, dry_run=args.dry_run, max_height=args.max_height):
-            failed.append(species)
+    workers = max(1, args.workers)
+    use_parallel = workers > 1 and len(species_list) > 1 and not args.dry_run
+
+    if use_parallel:
+        logger.info("Parallel mode: %d workers", workers)
+        failed = _run_parallel(species_list, workers, args.max_height)
+    else:
+        failed = []
+        for species in species_list:
+            if not run_species(
+                species, dry_run=args.dry_run, max_height=args.max_height
+            ):
+                failed.append(species)
 
     if failed:
         logger.error("Failed species: %s", ", ".join(failed))

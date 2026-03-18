@@ -654,6 +654,7 @@ def export_tree_as_nanite_assembly(
     stems_file_suffix: Optional[str] = None,
     radial_scale: float = 1.0,
     twig_density: Optional[float] = None,
+    twig_placements_out: Optional[Dict] = None,
 ) -> bool:
     """Export Grove tree as Unreal Engine Nanite Assembly.
 
@@ -887,6 +888,10 @@ def export_tree_as_nanite_assembly(
                             "Sample fallbacks (old_bone_id -> new_bone_id): %s",
                             missing_bones,
                         )
+
+        # Capture processed twig placements for reuse (e.g., static derivation)
+        if twig_placements_out is not None and twig_placements:
+            twig_placements_out.update(twig_placements)
 
         # Auto-lookup twigs if include_twigs=True and none provided
         if include_twigs and twig_usd_paths is None:
