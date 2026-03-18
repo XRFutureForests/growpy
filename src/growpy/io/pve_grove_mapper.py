@@ -1423,59 +1423,6 @@ def _calculate_branch_parents_from_skeleton(
     return parents
 
 
-def _calculate_branch_parents_from_model(model: Any, num_branches: int) -> List[int]:
-    """
-    DEPRECATED: Calculate parent branch index for each branch using model face attributes.
-
-    NOTE: This function uses model.face_attribute_branch_id which only contains
-    branches passing cutoff. Use _calculate_branch_parents_from_skeleton instead.
-
-    PVE format: Root branch (0) has parent 0 (self-reference), not -1.
-
-    Args:
-        model: Grove model with face_attribute_branch_id and face_attribute_branch_id_parent
-        num_branches: Total number of branches (from skeleton poly_lines)
-
-    Returns:
-        List of parent indices per branch (0 for root = self-reference)
-    """
-    # Extract branch parent relationships from model face attributes
-    branch_ids = model.face_attribute_branch_id
-    parent_branch_ids = model.face_attribute_branch_id_parent
-
-    # Build branch->parent mapping using raw branch IDs
-    branch_to_parent_raw = {}
-    for branch_id, parent_id in zip(branch_ids, parent_branch_ids):
-        if branch_id not in branch_to_parent_raw:
-            branch_to_parent_raw[branch_id] = parent_id
-
-    # Build remapping from model branch IDs to skeleton indices (0 to num_branches-1)
-    unique_branch_ids = sorted(set(branch_ids))
-    branch_id_to_idx = {bid: idx for idx, bid in enumerate(unique_branch_ids)}
-
-    # Build parents list
-    parents = []
-    for branch_idx in range(num_branches):
-        # Get original branch ID for this index
-        if branch_idx < len(unique_branch_ids):
-            original_branch_id = unique_branch_ids[branch_idx]
-            parent_raw = branch_to_parent_raw.get(original_branch_id, -1)
-
-            # Remap parent to index
-            if parent_raw == -1 or parent_raw not in branch_id_to_idx:
-                # Root branch - use self-reference (branch_idx) for PVE format
-                parent_idx = branch_idx
-            else:
-                parent_idx = branch_id_to_idx[parent_raw]
-        else:
-            # Fallback - use self-reference
-            parent_idx = branch_idx
-
-        parents.append(parent_idx)
-
-    return parents
-
-
 def _calculate_bud_directions(skeleton: Any) -> List[List[float]]:
     """
     Calculate bud direction vectors from skeleton poly_lines.

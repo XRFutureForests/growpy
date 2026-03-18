@@ -538,13 +538,6 @@ def load_curves_from_preset(preset_path: Path) -> PresetOverrides:
             overrides.cycle_array_overrides.append(
                 CycleArrayOverride(param="grow_length", values=grow_length_per_cycle)
             )
-        thicken_tips_per_cycle = calibration.get("thicken_tips_per_cycle")
-        if thicken_tips_per_cycle and isinstance(thicken_tips_per_cycle, list):
-            overrides.cycle_array_overrides.append(
-                CycleArrayOverride(
-                    param="thicken_tips", values=thicken_tips_per_cycle
-                )
-            )
         # Load static calibration overrides (e.g. thicken_base_scale)
         static_cal = calibration.get("static_overrides")
         if static_cal and isinstance(static_cal, dict):

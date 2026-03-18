@@ -67,44 +67,6 @@ from ..config.quality import get_quality_preset
 from ..core.skeleton import calculate_vertex_weights
 
 
-def build_static_tree_mesh(
-    model: Any,
-    output_path: Path,
-    species_name: Optional[str] = None,
-    up_axis: str = "Z",
-    triangulated: bool = True,
-) -> bool:
-    """DEPRECATED: Use build_tree_mesh() with include_skeleton=False instead.
-
-    This function is maintained for backward compatibility but redirects to
-    the unified build_tree_mesh() implementation.
-
-    Args:
-        model: Grove tree model from grove.build_models()
-        output_path: Path where USD file will be saved
-        species_name: Species name for texture lookup
-        up_axis: Coordinate system up axis ("Y" or "Z")
-        triangulated: Whether the model has been triangulated
-
-    Returns:
-        bool: True if USD file was created successfully
-    """
-    # Redirect to unified function with skeleton disabled
-    return build_tree_mesh(
-        model=model,
-        skeleton=None,
-        output_path=output_path,
-        bones_info=None,
-        up_axis=up_axis,
-        triangulated=triangulated,
-        include_materials=True,
-        clean_export=False,
-        include_skeleton=False,
-        include_grove_attributes=False,
-        species_name=species_name,
-    )
-
-
 def build_tree_mesh(
     model: Any,
     skeleton: Optional[Any],
@@ -1611,7 +1573,6 @@ def _build_usdskel_from_bones(
 def get_twig_usd_map_for_species(
     species_name: str,
     config: Optional[Any] = None,
-    prefer_nanite_assembly: bool = False,
     prefer_skeletal: bool = False,
     prefer_static: bool = False,
 ) -> Dict[str, List[Path]]:
@@ -1627,7 +1588,6 @@ def get_twig_usd_map_for_species(
     Args:
         species_name: Name of tree species
         config: GrowPy configuration
-        prefer_nanite_assembly: DEPRECATED - always False, kept for compatibility
         prefer_skeletal: If True, prefer skeletal twig variants (_skeletal.usda)
         prefer_static: If True, prefer static twig variants (_static.usda)
 

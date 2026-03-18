@@ -32,10 +32,8 @@ Norway spruce, producing identical growth curves.
 
 ```
 create_growth_models.py   (Step 3)   Simulate uncalibrated Grove growth
-         |
-calibrate_growth.py       (Step 3b)  Compare vs yield tables, write overrides
-         |
-create_growth_models.py   (re-run)   Regenerate models with calibration applied
+         |                           Compare vs yield tables, write overrides
+         |                           Regenerate models with calibration applied
          |
 generate_forest.py        (Step 4)   Forest generation with per-cycle overrides
                                      + post-hoc radial scaling at export
@@ -49,7 +47,7 @@ behavior for each species.
 
 ### Step 2: Yield Table Comparison & Calibration
 
-`calibrate_growth.py` fetches yield table data via the `openyieldtables` Python
+`create_growth_models.py` fetches yield table data via the `openyieldtables` Python
 package, interpolates it to per-year resolution using PCHIP (preserving monotonicity),
 and computes per-cycle parameter overrides:
 
@@ -243,8 +241,7 @@ When not 1.0, the value is stored in the seed.json calibration block for referen
 
 | File | Role |
 |------|------|
-| `cli/calibrate_growth.py` | Calibration CLI (step 3b) |
-| `cli/create_growth_models.py` | Growth model generation (step 3) |
+| `cli/create_growth_models.py` | Growth model generation + calibration (step 3) |
 | `cli/generate_forest.py` | Forest pipeline with radial scaling |
 | `cli/sweep_dbh_params.py` | Parameter sweep tool |
 | `config/preset_overrides.py` | PresetOverrides system + `load_target_dbh_from_preset()` |

@@ -280,7 +280,7 @@ Calibration (when enabled in growpy.toml [calibration]):
     1. Simulates uncalibrated growth curves
     2. Calibrates against yield tables (local CSV in yield_tables_dir, or openyieldtables.org)
     3. Re-simulates calibrated species with overrides applied
-    All in a single run — no need to run calibrate_growth.py separately.
+    All in a single run.
 
 Note: Run prepare_assets.py first to copy species presets from Grove installation.
         """,

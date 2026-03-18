@@ -86,7 +86,6 @@ def create_assembly(
     tree_id: Optional[str] = None,
     twig_usd_paths: Optional[Dict[str, List[Path]]] = None,
     use_skeletal_mesh: bool = False,
-    skeleton_source_usd: Optional[Path] = None,
     twig_placements: Optional[Dict[str, List]] = None,
     validate: bool = True,
     instances_dir: Optional[Path] = None,
@@ -114,7 +113,6 @@ def create_assembly(
         species_name: Tree species name
         twig_usd_paths: Dict mapping grove twig types to lists of USD paths
         use_skeletal_mesh: Whether to use skeletal mesh type
-        skeleton_source_usd: Deprecated - skeleton is now embedded in tree_usd_path
         twig_placements: Optional dict of twig placements extracted from Grove model
         validate: If True, validate assembly structure after creation (default: True)
 

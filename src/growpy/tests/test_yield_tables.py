@@ -10,9 +10,7 @@ import pytest
 
 from growpy.utils.yield_tables import (
     YieldTableData,
-    compute_dbh_static_overrides,
     compute_grow_length_curve,
-    compute_thicken_tips_curve,
     estimate_flushes_per_year,
     interpolate_yield_table,
     load_local_yield_table,
@@ -164,53 +162,20 @@ class TestComputeGrowLengthCurve:
         for v in result:
             assert 0.2 <= v <= 0.5
 
-    def test_values_are_clamped(self):
+    def test_values_are_sigma_clamped(self):
         grove_h = [float(i) for i in range(1, 21)]
         # Target grows much faster
         target_h = np.array([float(i * 5) for i in range(1, 21)])
         result = compute_grow_length_curve(grove_h, target_h, base_grow_length=0.3)
+        # All values should be positive
         for v in result:
-            assert v <= 0.65  # max ceiling
+            assert v > 0
+        # With uniform 5x scaling, sigma is near zero so all values
+        # should cluster around base * 5 = 1.5
+        assert all(abs(v - 1.5) < 0.3 for v in result)
 
 
-class TestComputeThickenTipsCurve:
-    """Tests for compute_thicken_tips_curve."""
 
-    def test_output_length(self):
-        grove_dbh = [0.01 * i for i in range(1, 21)]
-        target_dbh = np.array([0.01 * i for i in range(1, 21)])
-        result = compute_thicken_tips_curve(grove_dbh, target_dbh, base_thicken_tips=0.01)
-        assert len(result) == 20
-
-    def test_values_clamped(self):
-        grove_dbh = [0.01 * i for i in range(1, 21)]
-        target_dbh = np.array([0.05 * i for i in range(1, 21)])
-        result = compute_thicken_tips_curve(grove_dbh, target_dbh, base_thicken_tips=0.01)
-        for v in result:
-            assert v <= 0.03  # ceiling
-
-
-class TestComputeDbhStaticOverrides:
-    """Tests for compute_dbh_static_overrides."""
-
-    def test_returns_empty_dict_normally(self):
-        result = compute_dbh_static_overrides(
-            [0.01, 0.02, 0.03],
-            np.array([0.01, 0.02, 0.03]),
-        )
-        assert result == {}
-
-    def test_returns_empty_for_short_data(self):
-        result = compute_dbh_static_overrides([0.01], np.array([0.01]))
-        assert result == {}
-
-    def test_zeroes_deadwood_if_present(self):
-        result = compute_dbh_static_overrides(
-            [0.01, 0.02, 0.03],
-            np.array([0.01, 0.02, 0.03]),
-            base_thicken_deadwood=0.5,
-        )
-        assert result.get("thicken_deadwood") == 0.0
 
 
 class TestWriteCalibrationToSeedJson:
@@ -251,8 +216,6 @@ class TestWriteCalibrationToSeedJson:
             tmp_path,
             yield_class=1.5,
             table_id=42,
-            thicken_tips_per_cycle=[0.01],
-            static_overrides={"thicken_deadwood": 0.0},
             target_dbh_per_cycle=[0.05],
             flushes_per_year=1.2,
         )
@@ -260,8 +223,6 @@ class TestWriteCalibrationToSeedJson:
         cal = data["_yield_table_calibration"]
         assert cal["yield_class"] == 1.5
         assert cal["table_id"] == 42
-        assert cal["thicken_tips_per_cycle"] == [0.01]
-        assert cal["static_overrides"] == {"thicken_deadwood": 0.0}
         assert cal["target_dbh_per_cycle"] == [0.05]
         assert cal["flushes_per_year"] == 1.2
 

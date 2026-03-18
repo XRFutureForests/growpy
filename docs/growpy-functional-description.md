@@ -1230,10 +1230,7 @@ Based on the comprehensive analysis, the following optimization opportunities ha
 - Unused parameter warnings
 
 **Identified Deprecated Code**:
-- `io/tree_export.py`: `export_tree_mesh()` marked DEPRECATED (line 72)
 - `io/tree_export.py`: Multiple deprecated skeleton parameters (lines 147-150)
-- `io/assembly_export.py`: `skeleton_source_usd` parameter deprecated (line 113)
-- `io/pve_grove_mapper.py`: Deprecated parent calculation method (line 1043)
 - `io/pve_hierarchy_builder.py`: Legacy model parameter kept for compatibility (lines 84, 164)
 
 **Recommendations**:

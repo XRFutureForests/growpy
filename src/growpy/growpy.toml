@@ -76,7 +76,6 @@ timeout = 300
 [calibration]
 # When enabled, create_growth_models.py automatically calibrates against yield tables
 # after the initial simulation, then re-simulates with calibration applied.
-# No need to run calibrate_growth.py separately.
 enabled = true
 # Align grove height growth to yield table height curve.
 # Applies per-cycle grow_length multipliers from calibrated seed.json files during

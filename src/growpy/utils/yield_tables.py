@@ -235,7 +235,7 @@ def resolve_yield_table(
     return None
 
 
-# --- Calibration math (moved from calibrate_growth.py) ---
+# --- Calibration math ---
 
 
 def estimate_flushes_per_year(
@@ -378,8 +378,13 @@ def compute_grow_length_curve(
     grove_heights: List[float],
     target_heights: np.ndarray,
     base_grow_length: float,
+    sigma_k: float = 2.0,
 ) -> List[float]:
-    """Compute per-cycle grow_length values to match target height trajectory."""
+    """Compute per-cycle grow_length values to match target height trajectory.
+
+    Outlier scale factors are clipped at k standard deviations from the mean,
+    producing species-adaptive bounds instead of fixed arbitrary limits.
+    """
     from scipy.ndimage import uniform_filter1d
 
     n_cycles = min(len(grove_heights), len(target_heights))
@@ -388,77 +393,24 @@ def compute_grow_length_curve(
     target_increments = np.diff(target_heights[:n_cycles])
     grove_increments = np.where(grove_increments < 0.001, 0.001, grove_increments)
 
-    scale_factors = np.clip(target_increments / grove_increments, 0.5, 1.5)
+    raw_scale_factors = target_increments / grove_increments
+
+    mu = np.mean(raw_scale_factors)
+    sigma = np.std(raw_scale_factors)
+    lower = max(mu - sigma_k * sigma, 0.1)
+    upper = mu + sigma_k * sigma
+
+    scale_factors = np.clip(raw_scale_factors, lower, upper)
 
     if len(scale_factors) > 5:
         scale_factors = uniform_filter1d(scale_factors, size=3)
 
     grow_lengths = base_grow_length * scale_factors
-    max_gl = min(base_grow_length * 1.5, 0.65)
-    # Allow modest reduction below base to slow height growth when needed.
-    # This prevents the tree from growing taller than yield table targets,
-    # which combined with constrained thicken_tips would distort shape.
-    grow_lengths = np.clip(grow_lengths, base_grow_length * 0.7, max_gl)
+    # Physical floor: grow_length must stay positive and meaningful
+    grow_lengths = np.maximum(grow_lengths, 0.01)
     grow_lengths = np.insert(grow_lengths, 0, grow_lengths[0])
 
     return grow_lengths.tolist()
-
-
-def compute_thicken_tips_curve(
-    grove_dbhs: List[float],
-    target_dbhs: np.ndarray,
-    base_thicken_tips: float,
-) -> List[float]:
-    """Compute per-cycle thicken_tips values to match target DBH trajectory."""
-    from scipy.ndimage import uniform_filter1d
-
-    n_cycles = min(len(grove_dbhs), len(target_dbhs))
-
-    grove_increments = np.diff(grove_dbhs[:n_cycles])
-    target_increments = np.diff(target_dbhs[:n_cycles])
-    grove_increments = np.where(
-        np.abs(grove_increments) < 0.0001, 0.0001, grove_increments
-    )
-
-    scale_factors = np.clip(target_increments / grove_increments, 0.7, 1.5)
-
-    if len(scale_factors) > 5:
-        scale_factors = uniform_filter1d(scale_factors, size=5)
-
-    thicken_tips_values = base_thicken_tips * scale_factors
-    # Keep thicken_tips close to the base value to preserve tree shape.
-    # thicken_tips controls ALL radial growth (trunk + branches), so large
-    # deviations distort the entire crown, not just trunk diameter.
-    # Remaining DBH correction is handled by radial scaling at export.
-    ceiling = min(base_thicken_tips * 1.5, 0.03)
-    thicken_tips_values = np.clip(thicken_tips_values, base_thicken_tips * 0.7, ceiling)
-    thicken_tips_values = np.insert(thicken_tips_values, 0, thicken_tips_values[0])
-
-    return thicken_tips_values.tolist()
-
-
-def compute_dbh_static_overrides(
-    grove_dbhs: List[float],
-    target_dbhs: np.ndarray,
-    base_grow_nodes: int = 3,
-    base_thicken_deadwood: float = 0.0,
-) -> Dict[str, float]:
-    """Compute static overrides to reduce DBH toward yield table targets.
-
-    Note: grow_nodes is NOT modified here. Reducing grow_nodes weakens the
-    tree and can cause death when longevity mode is off. DBH is better
-    controlled via thicken_tips_per_cycle and radial scaling at export.
-    """
-    n = min(len(grove_dbhs), len(target_dbhs))
-    if n < 2:
-        return {}
-
-    overrides = {}
-
-    if base_thicken_deadwood > 0:
-        overrides["thicken_deadwood"] = 0.0
-
-    return overrides
 
 
 def write_calibration_to_seed_json(
@@ -468,8 +420,6 @@ def write_calibration_to_seed_json(
     presets_dir: Path,
     yield_class: Optional[float] = None,
     table_id: Optional[int] = None,
-    thicken_tips_per_cycle: Optional[List[float]] = None,
-    static_overrides: Optional[Dict[str, float]] = None,
     target_dbh_per_cycle: Optional[List[float]] = None,
     flushes_per_year: float = 1.0,
 ) -> Optional[Path]:
@@ -496,12 +446,6 @@ def write_calibration_to_seed_json(
         calibration["table_id"] = table_id
     if yield_class is not None:
         calibration["yield_class"] = yield_class
-    if thicken_tips_per_cycle:
-        calibration["thicken_tips_per_cycle"] = [
-            round(v, 6) for v in thicken_tips_per_cycle
-        ]
-    if static_overrides:
-        calibration["static_overrides"] = static_overrides
     if target_dbh_per_cycle:
         calibration["target_dbh_per_cycle"] = [
             round(v, 6) for v in target_dbh_per_cycle
@@ -572,7 +516,22 @@ def calibrate_species(
         base_grow_length, min(grow_lengths), max(grow_lengths), np.mean(grow_lengths),
     )
 
-    # DBH calibration
+    # Structural safety: if calibrated grow_length has high coefficient of
+    # variation, the scale factors diverge too much for reliable calibration.
+    gl_arr = np.array(grow_lengths)
+    gl_cv = np.std(gl_arr) / np.mean(gl_arr) if np.mean(gl_arr) > 0 else 0.0
+    gl_unreliable = gl_cv > 0.5
+
+    write_grow_lengths = None if gl_unreliable else grow_lengths
+
+    if gl_unreliable:
+        logger.warning(
+            "  grow_length CV=%.2f (>0.5) — "
+            "skipping GL overrides (structural safety)",
+            gl_cv,
+        )
+
+    # Target DBH for radial scaling at export (no simulation-time DBH calibration)
     target_dbhs_interp = None
 
     if grove_dbhs and yield_data.dbhs:
@@ -581,51 +540,6 @@ def calibrate_species(
             initial_value=0.0,
         )
 
-    # Static DBH overrides
-    dbh_static_overrides: Dict[str, float] = {}
-    if grove_dbhs and target_dbhs_interp is not None:
-        base_nodes = preset.get("grow_nodes", 3)
-        base_deadwood = preset.get("thicken_deadwood", 0.0)
-        dbh_static_overrides = compute_dbh_static_overrides(
-            grove_dbhs, target_dbhs_interp,
-            base_grow_nodes=base_nodes,
-            base_thicken_deadwood=base_deadwood,
-        )
-
-        if "grow_nodes" in dbh_static_overrides:
-            logger.info(
-                "  grow_nodes: %d -> %d",
-                base_nodes, dbh_static_overrides["grow_nodes"],
-            )
-
-    # Cap thicken_tips_reduce
-    base_reduce = preset.get("thicken_tips_reduce", 0.0)
-    if base_reduce > 0.5:
-        dbh_static_overrides["thicken_tips_reduce"] = 0.5
-
-    if dbh_static_overrides:
-        for k, v in dbh_static_overrides.items():
-            if k != "grow_nodes":
-                logger.info("  %s: %s -> %s", k, preset.get(k, "?"), v)
-
-    # Structural safety check
-    actual_max_gl = min(base_grow_length * 2.0, 0.65)
-    n_at_cap = sum(1 for gl in grow_lengths if gl >= actual_max_gl * 0.98)
-    gl_capped = n_at_cap > len(grow_lengths) * 0.3
-
-    write_grow_lengths = None if gl_capped else grow_lengths
-    write_static = None if gl_capped else (
-        dbh_static_overrides if dbh_static_overrides else None
-    )
-
-    if gl_capped:
-        logger.warning(
-            "  grow_length at cap for %d/%d cycles — "
-            "skipping GL + static overrides (structural safety)",
-            n_at_cap, len(grow_lengths),
-        )
-
-    # Target DBH for radial scaling at export
     write_target_dbh = None
     if target_dbhs_interp is not None and len(target_dbhs_interp) > 0:
         write_target_dbh = list(target_dbhs_interp[:len(grove_heights)])
@@ -637,7 +551,6 @@ def calibrate_species(
         presets_dir,
         yield_class=yield_data.yield_class,
         table_id=yield_data.table_id,
-        static_overrides=write_static,
         target_dbh_per_cycle=write_target_dbh,
         flushes_per_year=flushes_per_year,
     )
