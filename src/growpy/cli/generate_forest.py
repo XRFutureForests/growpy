@@ -920,9 +920,7 @@ def generate_forest_stages(
 
     # Clean stale exports (only subdirectories that this CSV will write to)
     output_dir.mkdir(parents=True, exist_ok=True)
-    # Clean shared instances directory
-    if instances_dir.exists():
-        shutil.rmtree(instances_dir)
+    # Ensure shared instances directory exists (don't wipe -- other species may share it)
     instances_dir.mkdir(parents=True, exist_ok=True)
     has_individual_type = "individual_type" in forest_data.columns
     for sp in forest_data["species"].unique():
@@ -1366,10 +1364,8 @@ def generate_forest_exports(
 
     try:
         # Twigs/foliage are copied to shared Instances/ directory by assembly_export
-        # Clean shared instances directory for fresh export
+        # Ensure shared instances directory exists (don't wipe -- other species may share it)
         instances_dir = output_dir / "Instances"
-        if instances_dir.exists():
-            shutil.rmtree(instances_dir)
         instances_dir.mkdir(parents=True, exist_ok=True)
 
         # Export types controlled by config.export_skeletal / config.export_static
