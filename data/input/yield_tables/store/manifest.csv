@@ -35,14 +35,14 @@ european_beech_de_si5_moderate_thinning.csv,european_beech,Fagus sylvatica,DE,mo
 common_ash_de_si1_normal.csv,common_ash,Fraxinus excelsior,DE,normal,1.0,forest_elements,fe_ash_wimmenauer_1919_29_si1,11
 common_ash_de_si2_normal.csv,common_ash,Fraxinus excelsior,DE,normal,1.5,forest_elements,fe_ash_wimmenauer_1919_29_si1.5,11
 common_ash_de_si2_normal.csv,common_ash,Fraxinus excelsior,DE,normal,2.0,forest_elements,fe_ash_wimmenauer_1919_29_si2,11
-_de_si1_moderate_thinning.csv,,Larix decidua,DE,moderate_thinning,1.0,forest_elements,fe_larch_schober_moderate_1946_si1,25
-_de_si2_moderate_thinning.csv,,Larix decidua,DE,moderate_thinning,1.5,forest_elements,fe_larch_schober_moderate_1946_si1.5,25
-_de_si2_moderate_thinning.csv,,Larix decidua,DE,moderate_thinning,2.0,forest_elements,fe_larch_schober_moderate_1946_si2,25
-_de_si2_moderate_thinning.csv,,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,25
-_de_si3_moderate_thinning.csv,,Larix decidua,DE,moderate_thinning,3.0,forest_elements,fe_larch_schober_moderate_1946_si3,25
-_de_si1_moderate_thinning.csv,,Larix kaempferi,DE,moderate_thinning,1.0,forest_elements,fe_japanlarch_schober_moderate_1953_si1,10
-_de_si2_moderate_thinning.csv,,Larix kaempferi,DE,moderate_thinning,1.5,forest_elements,fe_japanlarch_schober_moderate_1953_si1.5,10
-_de_si2_moderate_thinning.csv,,Larix kaempferi,DE,moderate_thinning,2.0,forest_elements,fe_japanlarch_schober_moderate_1953_si2,10
+european_larch_de_si1_moderate_thinning.csv,european_larch,Larix decidua,DE,moderate_thinning,1.0,forest_elements,fe_larch_schober_moderate_1946_si1,25
+european_larch_de_si2_moderate_thinning.csv,european_larch,Larix decidua,DE,moderate_thinning,1.5,forest_elements,fe_larch_schober_moderate_1946_si1.5,25
+european_larch_de_si2_moderate_thinning.csv,european_larch,Larix decidua,DE,moderate_thinning,2.0,forest_elements,fe_larch_schober_moderate_1946_si2,25
+european_larch_de_si2_moderate_thinning.csv,european_larch,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,25
+european_larch_de_si3_moderate_thinning.csv,european_larch,Larix decidua,DE,moderate_thinning,3.0,forest_elements,fe_larch_schober_moderate_1946_si3,25
+japanese_larch_de_si1_moderate_thinning.csv,japanese_larch,Larix kaempferi,DE,moderate_thinning,1.0,forest_elements,fe_japanlarch_schober_moderate_1953_si1,10
+japanese_larch_de_si2_moderate_thinning.csv,japanese_larch,Larix kaempferi,DE,moderate_thinning,1.5,forest_elements,fe_japanlarch_schober_moderate_1953_si1.5,10
+japanese_larch_de_si2_moderate_thinning.csv,japanese_larch,Larix kaempferi,DE,moderate_thinning,2.0,forest_elements,fe_japanlarch_schober_moderate_1953_si2,10
 norway_spruce_de_si1_heavy_thinning.csv,norway_spruce,Picea abies,DE,heavy_thinning,1.0,forest_elements,fe_spruce_gehrhardt_moderate_1921_si1,12
 norway_spruce_de_si2_heavy_thinning.csv,norway_spruce,Picea abies,DE,heavy_thinning,1.5,forest_elements,fe_spruce_gehrhardt_moderate_1921_si1.5,11
 norway_spruce_de_si2_heavy_thinning.csv,norway_spruce,Picea abies,DE,heavy_thinning,2.0,forest_elements,fe_spruce_gehrhardt_moderate_1921_si2,11
@@ -106,11 +106,11 @@ grey_poplar_de_si2_normal.csv,grey_poplar,Populus x canescens,DE,normal,1.5,fore
 grey_poplar_de_si2_normal.csv,grey_poplar,Populus x canescens,DE,normal,2.0,forest_elements,fe_poplar_blume_1949_si2,10
 grey_poplar_de_si2_normal.csv,grey_poplar,Populus x canescens,DE,normal,2.5,forest_elements,fe_poplar_blume_1949_si2.5,9
 grey_poplar_de_si3_normal.csv,grey_poplar,Populus x canescens,DE,normal,3.0,forest_elements,fe_poplar_blume_1949_si3,9
-_de_si1_moderate_thinning.csv,,Pseudotsuga menziesii,DE,moderate_thinning,1.0,forest_elements,fe_douglas_schober_moderate_1956_si1,12
-_de_si2_moderate_thinning.csv,,Pseudotsuga menziesii,DE,moderate_thinning,1.5,forest_elements,fe_douglas_schober_moderate_1956_si1.5,12
-_de_si2_moderate_thinning.csv,,Pseudotsuga menziesii,DE,moderate_thinning,2.0,forest_elements,fe_douglas_schober_moderate_1956_si2,11
-_de_si2_moderate_thinning.csv,,Pseudotsuga menziesii,DE,moderate_thinning,2.5,forest_elements,fe_douglas_schober_moderate_1956_si2.5,11
-_de_si3_moderate_thinning.csv,,Pseudotsuga menziesii,DE,moderate_thinning,3.0,forest_elements,fe_douglas_schober_moderate_1956_si3,11
+douglas_fir_de_si1_moderate_thinning.csv,douglas_fir,Pseudotsuga menziesii,DE,moderate_thinning,1.0,forest_elements,fe_douglas_schober_moderate_1956_si1,12
+douglas_fir_de_si2_moderate_thinning.csv,douglas_fir,Pseudotsuga menziesii,DE,moderate_thinning,1.5,forest_elements,fe_douglas_schober_moderate_1956_si1.5,12
+douglas_fir_de_si2_moderate_thinning.csv,douglas_fir,Pseudotsuga menziesii,DE,moderate_thinning,2.0,forest_elements,fe_douglas_schober_moderate_1956_si2,11
+douglas_fir_de_si2_moderate_thinning.csv,douglas_fir,Pseudotsuga menziesii,DE,moderate_thinning,2.5,forest_elements,fe_douglas_schober_moderate_1956_si2.5,11
+douglas_fir_de_si3_moderate_thinning.csv,douglas_fir,Pseudotsuga menziesii,DE,moderate_thinning,3.0,forest_elements,fe_douglas_schober_moderate_1956_si3,11
 european_oak_de_si1_moderate_thinning.csv,european_oak,Quercus robur,DE,moderate_thinning,1.0,forest_elements,fe_oak_juettner_moderate_1955_si1,37
 european_oak_de_si2_moderate_thinning.csv,european_oak,Quercus robur,DE,moderate_thinning,1.5,forest_elements,fe_oak_juettner_moderate_1955_si1.5,36
 european_oak_de_si2_moderate_thinning.csv,european_oak,Quercus robur,DE,moderate_thinning,2.0,forest_elements,fe_oak_juettner_moderate_1955_si2,36
@@ -144,13 +144,13 @@ scots_pine_denw_si1_staggered_thinning.csv,scots_pine,Pinus sylvestris,DE-NW,sta
 scots_pine_denw_si2_staggered_thinning.csv,scots_pine,Pinus sylvestris,DE-NW,staggered_thinning,2.0,et_nwfva,nwfva_ki_bon2,29
 scots_pine_denw_si3_staggered_thinning.csv,scots_pine,Pinus sylvestris,DE-NW,staggered_thinning,3.0,et_nwfva,nwfva_ki_bon3,29
 scots_pine_denw_si4_staggered_thinning.csv,scots_pine,Pinus sylvestris,DE-NW,staggered_thinning,4.0,et_nwfva,nwfva_ki_bon4,29
-_denw_si-2_staggered_thinning.csv,,Pseudotsuga menziesii,DE-NW,staggered_thinning,-2.0,et_nwfva,nwfva_dgl_bon-2,29
-_denw_si-1_staggered_thinning.csv,,Pseudotsuga menziesii,DE-NW,staggered_thinning,-1.0,et_nwfva,nwfva_dgl_bon-1,29
-_denw_si0_staggered_thinning.csv,,Pseudotsuga menziesii,DE-NW,staggered_thinning,0.0,et_nwfva,nwfva_dgl_bon0,29
-_denw_si1_staggered_thinning.csv,,Pseudotsuga menziesii,DE-NW,staggered_thinning,1.0,et_nwfva,nwfva_dgl_bon1,29
-_denw_si2_staggered_thinning.csv,,Pseudotsuga menziesii,DE-NW,staggered_thinning,2.0,et_nwfva,nwfva_dgl_bon2,29
-_denw_si3_staggered_thinning.csv,,Pseudotsuga menziesii,DE-NW,staggered_thinning,3.0,et_nwfva,nwfva_dgl_bon3,29
-_denw_si4_staggered_thinning.csv,,Pseudotsuga menziesii,DE-NW,staggered_thinning,4.0,et_nwfva,nwfva_dgl_bon4,29
+douglas_fir_denw_si-2_staggered_thinning.csv,douglas_fir,Pseudotsuga menziesii,DE-NW,staggered_thinning,-2.0,et_nwfva,nwfva_dgl_bon-2,29
+douglas_fir_denw_si-1_staggered_thinning.csv,douglas_fir,Pseudotsuga menziesii,DE-NW,staggered_thinning,-1.0,et_nwfva,nwfva_dgl_bon-1,29
+douglas_fir_denw_si0_staggered_thinning.csv,douglas_fir,Pseudotsuga menziesii,DE-NW,staggered_thinning,0.0,et_nwfva,nwfva_dgl_bon0,29
+douglas_fir_denw_si1_staggered_thinning.csv,douglas_fir,Pseudotsuga menziesii,DE-NW,staggered_thinning,1.0,et_nwfva,nwfva_dgl_bon1,29
+douglas_fir_denw_si2_staggered_thinning.csv,douglas_fir,Pseudotsuga menziesii,DE-NW,staggered_thinning,2.0,et_nwfva,nwfva_dgl_bon2,29
+douglas_fir_denw_si3_staggered_thinning.csv,douglas_fir,Pseudotsuga menziesii,DE-NW,staggered_thinning,3.0,et_nwfva,nwfva_dgl_bon3,29
+douglas_fir_denw_si4_staggered_thinning.csv,douglas_fir,Pseudotsuga menziesii,DE-NW,staggered_thinning,4.0,et_nwfva,nwfva_dgl_bon4,29
 european_oak_denw_si-2_staggered_thinning.csv,european_oak,Quercus robur,DE-NW,staggered_thinning,-2.0,et_nwfva,nwfva_ei_bon-2,29
 european_oak_denw_si-1_staggered_thinning.csv,european_oak,Quercus robur,DE-NW,staggered_thinning,-1.0,et_nwfva,nwfva_ei_bon-1,29
 european_oak_denw_si0_staggered_thinning.csv,european_oak,Quercus robur,DE-NW,staggered_thinning,0.0,et_nwfva,nwfva_ei_bon0,29
@@ -158,11 +158,3 @@ european_oak_denw_si1_staggered_thinning.csv,european_oak,Quercus robur,DE-NW,st
 european_oak_denw_si2_staggered_thinning.csv,european_oak,Quercus robur,DE-NW,staggered_thinning,2.0,et_nwfva,nwfva_ei_bon2,29
 european_oak_denw_si3_staggered_thinning.csv,european_oak,Quercus robur,DE-NW,staggered_thinning,3.0,et_nwfva,nwfva_ei_bon3,29
 european_oak_denw_si4_staggered_thinning.csv,european_oak,Quercus robur,DE-NW,staggered_thinning,4.0,et_nwfva,nwfva_ei_bon4,29
-austrian_pine_decentral_si1_modeled.csv,austrian_pine,Pinus nigra,DE-Central,modeled,1.0,parametric_models,Halaj_1987_austrian_pine,29
-field_maple_decentral_si1_modeled.csv,field_maple,Acer campestre,DE-Central,modeled,1.0,parametric_models,Nagel_1999_minor_broadleaves,29
-grand_fir_euwest_si1_modeled.csv,grand_fir,Abies grandis,EU-West,modeled,1.0,parametric_models,Hein_2009_grand_fir_europe,31
-hornbeam_decentral_si1_modeled.csv,hornbeam,Carpinus betulus,DE-Central,modeled,1.0,parametric_models,Lockow_1998_hornbeam_growth,29
-small_leaved_linden_decentral_si1_modeled.csv,small_leaved_linden,Tilia cordata,DE-Central,modeled,1.0,parametric_models,Nagel_1999_linden,39
-sycamore_maple_decentral_si1_modeled.csv,sycamore_maple,Acer pseudoplatanus,DE-Central,modeled,1.0,parametric_models,Nagel_1999_sycamore,31
-western_redcedar_euwest_si1_modeled.csv,western_redcedar,Thuja plicata,EU-West,modeled,1.0,parametric_models,Christie_FC_yield_western_redcedar,31
-wild_cherry_euwest_si1_modeled.csv,wild_cherry,Prunus avium,EU-West,modeled,1.0,parametric_models,Pryor_1988_wild_cherry,19

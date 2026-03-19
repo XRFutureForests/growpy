@@ -1,25 +1,6 @@
 # GrowPy CLI Reference
 
-Four-step pipeline for generating tree assets from The Grove 2.3 for Unreal Engine,
-plus dataset production tools for batch generation of multi-species assets.
-
-All scripts read defaults from `src/growpy/growpy.toml`. CLI arguments override TOML values.
-Run all scripts without arguments to use TOML defaults:
-
-```bash
-python src/growpy/cli/prepare_assets.py
-python src/growpy/cli/convert_twigs.py
-python src/growpy/cli/create_growth_models.py
-python src/growpy/cli/generate_forest.py
-```
-
-## Step 1: prepare_assets.py
-
-Copy species assets (presets, twigs, textures) from The Grove 2.3 installation.
-
-CSV-driven: only copies assets for species listed in input CSV.
-Supports forest placement CSV (`x, y, species, height`) or asset lookup CSV
-(`Common Name, Preset, Twig, Bark Texture`).
+This document has moved to [docs/cli-reference.md](../cli-reference.md).
 
 **Output:**
 

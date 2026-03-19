@@ -1,142 +1,158 @@
-# GrowPy - Grove API Integration for Unreal Engine 5
+# GrowPy Package
 
-> **📖 Complete Documentation: [`docs/`](../../docs/)**
->
-> **[Functional Description](../../docs/growpy-functional-description.md)** | **[CLI Reference](../../docs/cli-reference.md)** | **[Grove Preset Reference](../../docs/grove-preset-reference.md)**
+Python package for procedural forest generation using The Grove 2.3 with USD export for Unreal Engine 5 Nanite workflows.
 
-Clean Grove API integration for forest creation and export, optimized for Unreal Engine 5 Nanite foliage with simplified single high-quality output and USD export.
+For installation, pipeline usage, and dataset production, see the [project README](../../README.md).
 
-## Key Features
-
-- **Single High-Quality Output**: No complex multi-LOD system (Nanite handles LOD)
-- **USD/USDA Export**: Universal Scene Description format for Unreal Engine 5
-- **UE5 Nanite Optimized**: Full geometry exports ready for Nanite virtualized geometry
-- **Skeleton Support**: Optional armature export for wind/physics animation
-- **Simplified Twig Processing**: Direct Blender export using bpy module
-- **Clean Architecture**: Straightforward export workflow
-
-## Structure
+## Package Structure
 
 ```text
 growpy/
-├── __init__.py        # Package entry point and public API
+├── __init__.py        # Public API (create_grove, create_forest, export functions)
 ├── growpy.toml        # Central configuration (all CLI defaults)
-├── config/            # Configuration management, quality presets, species lookup
-├── core/              # Forest/Grove/Tree/Skeleton simulation
-├── io/                # USD export, OBJ export, wind data, PVE mapping
-├── cli/               # Pipeline CLI scripts
-│   ├── prepare_assets.py         # Step 1: Copy Grove 2.3 assets
-│   ├── convert_twigs.py          # Step 2: Convert twigs to USD
-│   ├── create_growth_models.py   # Step 3: Generate height models
-│   ├── generate_forest.py        # Step 4: Forest from CSV (includes OBJ export)
-│   ├── ingest_yield_tables.py    # Yield table store ingestion (pylometree)
-│   ├── generate_dataset_csvs.py  # Generate dataset input CSVs from species metadata
-│   └── produce_dataset.py        # Batch dataset production (wraps generate_forest.py)
-├── tools/             # Diagnostic tools (not part of core pipeline)
-│   ├── analyze_usda.py           # Inspect USD assembly structure
-│   ├── diagnose_growth.py        # Debug growth simulation issues
-│   └── visualize_tree.py         # 2D side-view rendering of exported trees
-├── utils/             # Analysis, profiling, plotting
+├── config/            # Configuration management
+│   ├── core.py                  # GrowPyConfig dataclass, TOML loading
+│   ├── paths.py                 # Path resolution, twig lookup
+│   ├── preset_overrides.py      # Per-cycle overrides, target DBH loading
+│   ├── pve_species_overrides.py # PVE species-specific config
+│   └── quality.py               # Quality presets (ultra/high/medium/low/performance)
+├── core/              # Simulation logic
+│   ├── forest.py                # Forest creation, multi-species growth simulation
+│   └── grove.py                 # Grove API wrapper, single-species growth
+├── io/                # Export and file I/O
+│   ├── usd_builder.py           # USD assembly construction
+│   ├── usd_export.py            # Tree USD export with skeleton
+│   ├── obj_export.py            # OBJ/MTL export for Helios++ LiDAR
+│   ├── twig_export.py           # Twig .blend to USD conversion
+│   ├── preview.py               # Preview image generation
+│   ├── pve_grove_mapper.py      # PVE preset JSON generation
+│   ├── texture_utils.py         # Texture processing and resizing
+│   └── unreal_scripts.py        # Unreal import/cleanup script generation
+├── cli/               # Pipeline entry points
+│   ├── prepare_assets.py        # Step 1: Copy Grove assets
+│   ├── convert_twigs.py         # Step 2: Twig .blend to USD
+│   ├── create_growth_models.py  # Step 3: Growth models + calibration
+│   ├── generate_forest.py       # Step 4: Forest simulation + export
+│   ├── ingest_yield_tables.py   # Yield table store ingestion
+│   ├── generate_dataset_csvs.py # Dataset CSV generation
+│   └── produce_dataset.py       # Batch dataset production
+├── tools/             # Diagnostic utilities (not part of core pipeline)
+│   ├── analyze_usda.py          # USD assembly inspection
+│   ├── diagnose_growth.py       # Growth simulation debugging
+│   └── visualize_tree.py        # 2D tree rendering
+├── utils/             # Shared utilities
+│   ├── analysis.py              # SpeciesGrowthAnalyzer
+│   ├── naming.py                # Species/file name standardization
+│   ├── plotting.py              # Calibration comparison plots
+│   ├── profiling.py             # ProfileTimer for pipeline timing
+│   └── yield_tables.py          # Yield table loading and calibration
 └── tests/             # Test suite (pytest)
 ```
 
-## Quick Start
+## Python API
 
-### Export Trees for Unreal Engine 5 Nanite
-
-#### USD Export (For Nanite Assemblies in UE 5.7+)
+### Forest-level workflow
 
 ```python
-from growpy import create_grove, export_tree_as_usd
-from pathlib import Path
+from growpy import create_forest, simulate_forest_growth
+import pandas as pd
 
-# Create grove
-grove = create_grove("Beech")
+forest_data = pd.read_csv("data/input/test.csv")
+forest = create_forest(forest_data)
+simulate_forest_growth(forest, max_cycles=10)
+```
+
+### Grove-level control
+
+```python
+from growpy import create_grove
+from growpy.utils.dependencies import gc
+
+grove = create_grove("European beech")
 grove.add_new_tree(gc.Vector(0, 0, 0), gc.Vector(0, 0, 1), 0)
 grove.simulate(flushes=10)
 
-# Export as USD for Nanite workflows
+skeletons = grove.build_skeletons()
+bones = grove.tag_bone_id(2.0, 0.16, 0.5, True)
+models = grove.build_models({"resolution": 16})
+```
+
+### USD export
+
+```python
+from growpy import export_tree_as_usd
+from pathlib import Path
+
 export_tree_as_usd(
     grove=grove,
-    output_path=Path("output/Beech_nanite.usda"),
-    species_name="Beech"
+    output_path=Path("output/beech.usda"),
+    species_name="European beech",
 )
 ```
 
-**📖 See the [root README](../../README.md#import-to-unreal-engine) for complete Unreal Engine import and setup instructions.**
-
-### Export Twigs from Blend Files
+### Twig export
 
 ```python
 from growpy import export_twigs_from_blend
 from pathlib import Path
 
-# Export all twigs from a blend file
-blend_file = Path("assets/twigs/oak_twigs.blend")
-output_dir = Path("output/twigs/oak")
-exported_files = export_twigs_from_blend(blend_file, output_dir)
+exported = export_twigs_from_blend(
+    Path("data/assets/twigs/european_beech_twig/EuropeanBeechTwig.blend"),
+    Path("output/twigs/"),
+)
 ```
 
-### Generate Forest from CSV
+### Configuration
 
-All CLI scripts read defaults from `growpy.toml`. Run without arguments:
+```python
+from growpy import get_config
 
-```bash
-python src/growpy/cli/generate_forest.py
+config = get_config()  # Loads from growpy.toml
+print(config.csv_file, config.output_dir, config.verbose)
 ```
 
-## Requirements
+## Architecture
 
-- **bpy module**: For Blender operations and FBX/USD export
+### Pipeline data flow
 
-  ```bash
-  conda install -c conda-forge bpy
-  ```
+```
+Grove 2.3 installation
+    |
+    v
+prepare_assets.py --> data/assets/ (presets, textures, twigs)
+    |
+    v
+convert_twigs.py --> data/assets/twigs/*.usda
+    |
+    v
+create_growth_models.py --> data/assets/growth_models/*.json
+    |
+    v
+generate_forest.py --> data/output/forest/ (USD assemblies)
+```
 
-- **Grove API**: The Grove 2.3 Python bindings
-- **pandas**: For CSV forest data processing
-- **Unreal Engine 5.0+**: For Nanite foliage (5.7+ for Nanite Assemblies)
+### Key design decisions
 
-## Export Format
+- **Pipeline architecture**: Each step produces files consumed by later steps. Steps are independently re-runnable.
+- **Configuration over code**: `growpy.toml` centralizes all defaults. CLI args override TOML. Quality presets bundle related parameters.
+- **CSV-driven**: Species selection and forest layout defined in CSV files, not hardcoded.
+- **Separation of concerns**: CLI layer (orchestration) / core layer (simulation) / IO layer (export) / config layer (parameters).
 
-USD/USDA format provides:
+### External dependencies
 
-- **UE5 Compatibility**: Excellent support (5.7+)
-- **Nanite Support**: Full Nanite Assembly support
-- **Skeleton/Armature**: Complete skeleton export
-- **Materials**: Advanced material support
-- **File Size**: Efficient (USDA text format)
+- **The Grove 2.3** (`the_grove_23_core`): C++ tree simulation via Python bindings
+- **bpy**: Blender Python API for mesh manipulation and USD export
+- **pxr** (USD): Bundled with bpy, used for USD file construction
 
-## Unreal Engine 5 Integration
+## Detailed Documentation
 
-GrowPy exports are optimized for UE5 Nanite foliage:
-
-1. **Full Geometry**: No alpha-masked cards—Nanite handles detail efficiently
-2. **Opaque Materials**: Faster than masked materials with Nanite
-3. **Preserve Area**: Enabled to prevent thinning on foliage
-4. **Tangent Space Normals**: Correct lighting in Unreal Engine
-5. **Skeleton Support**: Wind animation using Control Rigs or Niagara
-
-### Workflow Summary
-
-1. **Export** trees using `export_tree_as_usd()`
-2. **Import** into UE5 Content Browser
-3. **Enable Nanite** in Static Mesh settings
-4. **Create Foliage Type** for painting
-5. **Paint forests** using Foliage Mode
-6. **Add wind animation** using skeleton/armature
-
-**📖 Complete workflow: see the [root README](../../README.md#import-to-unreal-engine).**
-
-## Usage Examples
-
-See the CLI scripts for complete workflows:
-
-- `cli/prepare_assets.py`: Copy assets from Grove 2.3
-- `cli/convert_twigs.py`: Process all twig blend files to USD
-- `cli/create_growth_models.py`: Generate species growth models
-- `cli/generate_forest.py`: Full forest generation pipeline with USD output
-- `cli/ingest_yield_tables.py`: Populate yield table store from pylometree providers
-- `cli/generate_dataset_csvs.py`: Generate per-species dataset input CSVs
-- `cli/produce_dataset.py`: Batch dataset production across all species
-- `io/obj_export.py`: OBJ/MTL export for Helios++ (called from generate_forest.py)
+| Document | Description |
+|----------|-------------|
+| [CLI Reference](../../docs/cli-reference.md) | Complete CLI flags for all scripts |
+| [Functional Description](../../docs/growpy-functional-description.md) | Architecture and data flow |
+| [Grove Preset Reference](../../docs/grove-preset-reference.md) | Growth parameters |
+| [Coordinate Systems](../../docs/coordinate-systems.md) | Grove/Blender/Unreal transforms |
+| [Naming Conventions](../../docs/naming-conventions.md) | Species and file naming |
+| [USD Builder](../../docs/usd-builder.md) | USD export internals |
+| [Module Audit](../../docs/module-audit.md) | Module inventory and dependencies |
+| [Grove API](../../docs/the_grove/) | Grove core API documentation |
