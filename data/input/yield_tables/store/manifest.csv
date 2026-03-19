@@ -158,8 +158,10 @@ european_oak_denw_si1_staggered_thinning.csv,european_oak,Quercus robur,DE-NW,st
 european_oak_denw_si2_staggered_thinning.csv,european_oak,Quercus robur,DE-NW,staggered_thinning,2.0,et_nwfva,nwfva_ei_bon2,29
 european_oak_denw_si3_staggered_thinning.csv,european_oak,Quercus robur,DE-NW,staggered_thinning,3.0,et_nwfva,nwfva_ei_bon3,29
 european_oak_denw_si4_staggered_thinning.csv,european_oak,Quercus robur,DE-NW,staggered_thinning,4.0,et_nwfva,nwfva_ei_bon4,29
+austrian_pine_decentral_si1_modeled.csv,austrian_pine,Pinus nigra,DE-Central,modeled,1.0,parametric_models,Halaj_1987_austrian_pine,29
 field_maple_decentral_si1_modeled.csv,field_maple,Acer campestre,DE-Central,modeled,1.0,parametric_models,Nagel_1999_minor_broadleaves,29
 grand_fir_euwest_si1_modeled.csv,grand_fir,Abies grandis,EU-West,modeled,1.0,parametric_models,Hein_2009_grand_fir_europe,31
+hornbeam_decentral_si1_modeled.csv,hornbeam,Carpinus betulus,DE-Central,modeled,1.0,parametric_models,Lockow_1998_hornbeam_growth,29
 small_leaved_linden_decentral_si1_modeled.csv,small_leaved_linden,Tilia cordata,DE-Central,modeled,1.0,parametric_models,Nagel_1999_linden,39
 sycamore_maple_decentral_si1_modeled.csv,sycamore_maple,Acer pseudoplatanus,DE-Central,modeled,1.0,parametric_models,Nagel_1999_sycamore,31
 western_redcedar_euwest_si1_modeled.csv,western_redcedar,Thuja plicata,EU-West,modeled,1.0,parametric_models,Christie_FC_yield_western_redcedar,31

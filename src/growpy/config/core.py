@@ -150,7 +150,7 @@ class GrowPyConfig:
     calibration_yield_tables_dir: Path = field(
         default_factory=lambda: Path("data/input/yield_tables")
     )
-    # Species yield table config: {species_name: {table_id, yield_class, site_index}}
+    # Per-species overrides: {species_name: {site_index, flushes_per_year, ...}}
     calibration_species: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
     # [yield_sources]
@@ -302,7 +302,7 @@ class GrowPyConfig:
             kwargs["calibration_plot"] = cal["plot"]
         if "yield_tables_dir" in cal:
             kwargs["calibration_yield_tables_dir"] = Path(cal["yield_tables_dir"])
-        # [calibration.species."Species Name"] -> {table_id, yield_class, site_index}
+        # [calibration.species."Species Name"] -> {site_index, flushes_per_year, ...}
         cal_species = cal.get("species", {})
         if cal_species:
             kwargs["calibration_species"] = {

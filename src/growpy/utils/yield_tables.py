@@ -1,18 +1,11 @@
 """Yield table calibration math for growpy.
 
-Loading, store management, and provider functionality have been moved to
-pylometree.yield_tables.  This module re-exports the key data types and
-loaders for backward compatibility and adds growpy-specific calibration
-functions on top.
+Loading, store management, and provider functionality live in pylometree.
+This module re-exports the key data types and loaders and adds
+growpy-specific calibration functions on top.
 
-Local CSV format (age in years, height in meters, dbh in centimeters):
-    age,height,dbh
-    0,0.5,0.0
-    10,5.2,4.5
-    20,12.3,10.2
-    30,18.7,16.8
-
-File naming: <standardized_species_name>.csv (e.g., norway_spruce.csv)
+Yield tables are resolved from pre-ingested local data only (no runtime API
+calls).  Use ``pylometree-ingest`` to populate the store beforehand.
 """
 
 import json
@@ -22,12 +15,9 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-# Re-export from pylometree for backward compatibility
 from pylometree.yield_tables import (  # noqa: F401
     YieldTableData,
     load_local_yield_table,
-    load_openyieldtables,
-    auto_discover_yield_table,
     load_store_yield_table,
     resolve_yield_table,
 )

@@ -551,6 +551,7 @@ def load_target_dbh_from_preset(preset_path: Path) -> List[float]:
     """Load target DBH per cycle from yield table calibration in a seed.json.
 
     Used at export time to compute radial scale for stem mesh correction.
+    Prefer load_height_dbh_model_from_preset() for height-driven DBH prediction.
 
     Args:
         preset_path: Path to the seed.json file
@@ -570,6 +571,55 @@ def load_target_dbh_from_preset(preset_path: Path) -> List[float]:
         if target_dbh and isinstance(target_dbh, list):
             return target_dbh
     return []
+
+
+def load_height_dbh_model_from_preset(
+    preset_path: Path,
+) -> Optional[Dict[str, float]]:
+    """Load height-DBH allometric model from yield table calibration in a seed.json.
+
+    The model is a power function DBH(cm) = a * H(m)^b fitted from the yield
+    table's height/DBH relationship. This is preferred over the age-indexed
+    target_dbh_per_cycle because it uses actual tree height (accurate after
+    calibration) rather than age alignment via flushes_per_year.
+
+    Args:
+        preset_path: Path to the seed.json file
+
+    Returns:
+        Dict with 'a', 'b' power model coefficients, or None if not available.
+    """
+    if not preset_path.exists():
+        return None
+
+    with open(preset_path, "r") as f:
+        preset_data = json.load(f)
+
+    calibration = preset_data.get("_yield_table_calibration")
+    if calibration and isinstance(calibration, dict):
+        model = calibration.get("height_dbh_model")
+        if model and isinstance(model, dict) and "a" in model and "b" in model:
+            return model
+    return None
+
+
+def predict_dbh_from_height_model(
+    height_m: float,
+    model: Dict[str, float],
+) -> float:
+    """Predict DBH in meters from height using the allometric power model.
+
+    Args:
+        height_m: Tree height in meters.
+        model: Dict with 'a' and 'b' coefficients (DBH_cm = a * H_m^b).
+
+    Returns:
+        Predicted DBH in meters.
+    """
+    if height_m <= 0:
+        return 0.0
+    dbh_cm = model["a"] * (height_m ** model["b"])
+    return max(0.0, dbh_cm / 100.0)
 
 
 def get_species_overrides(species_name: str) -> PresetOverrides:

@@ -217,7 +217,11 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     import gc as _gc_module
 
     from growpy import get_config
-    from growpy.config.preset_overrides import load_target_dbh_from_preset
+    from growpy.config.preset_overrides import (
+        load_height_dbh_model_from_preset,
+        load_target_dbh_from_preset,
+        predict_dbh_from_height_model,
+    )
     from growpy.core.tree import calculate_dbh_at_height, calculate_tree_height
     from growpy.io.assembly_export import export_tree_as_nanite_assembly
     from growpy.io.tree_export import get_twig_usd_map_for_species
@@ -327,9 +331,14 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         built_cutoffs[cutoff_key] = grove.build_models(variant_opts)
                 variant_model_sets[vname] = built_cutoffs[cutoff_key]
 
-        # Load target DBH curve for post-hoc radial scaling
-        # This corrects Grove's inflated DBH to match yield table targets
-        target_dbh_curve = load_target_dbh_from_preset(config.get_preset_path(species))
+        # Load height-DBH model for post-hoc radial scaling (preferred: height-driven)
+        # Falls back to age-indexed target_dbh_curve if model not available
+        h_dbh_model = load_height_dbh_model_from_preset(config.get_preset_path(species))
+        target_dbh_curve = (
+            load_target_dbh_from_preset(config.get_preset_path(species))
+            if not h_dbh_model
+            else []
+        )
 
         # Export each model/skeleton/bones triplet (each is a separate tree)
         # Process one tree at a time and immediately release memory to reduce peak RAM
@@ -362,9 +371,13 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 grove_dbh_m = calculate_dbh_at_height(grove.trees[model_idx])
 
             # Use yield table target DBH for filename when available
+            # Prefer height-DBH model (allometric, height-driven) over age-indexed curve
             filename_dbh = grove_dbh_m
             target_dbh_m = None
-            if target_dbh_curve:
+            if h_dbh_model and tree_height_m > 0:
+                target_dbh_m = predict_dbh_from_height_model(tree_height_m, h_dbh_model)
+                filename_dbh = target_dbh_m
+            elif target_dbh_curve:
                 cycle_idx = min(grove.age - 1, len(target_dbh_curve) - 1)
                 if cycle_idx >= 0:
                     target_dbh_m = target_dbh_curve[cycle_idx]
@@ -763,7 +776,11 @@ def generate_forest_stages(
         skip_pve_json: If True, skip PVE preset JSON generation
         skip_validation: If True, skip assembly validation
     """
-    from growpy.config.preset_overrides import load_target_dbh_from_preset
+    from growpy.config.preset_overrides import (
+        load_height_dbh_model_from_preset,
+        load_target_dbh_from_preset,
+        predict_dbh_from_height_model,
+    )
     from growpy.io.assembly_export import export_tree_as_nanite_assembly
     from growpy.io.tree_export import get_twig_usd_map_for_species
     from growpy.utils.profiling import ProfileTimer
@@ -947,7 +964,8 @@ def generate_forest_stages(
     logger.info("PHASE 3: EXPORTING STAGES (%d cycles)", len(snapshots))
     logger.info("%s", "=" * 60)
 
-    # Cache target DBH curves per species for radial scaling
+    # Cache height-DBH models and fallback curves per species for radial scaling
+    h_dbh_model_cache: Dict[str, Optional[Dict[str, float]]] = {}
     target_dbh_cache: Dict[str, list] = {}
 
     # Build per-tree CSV DBH map (fid -> dbh in meters) for custom diameter scaling
@@ -1031,14 +1049,23 @@ def generate_forest_stages(
                     milestone_height = species_milestone_map[species_name].get(cycle, height)
                 height_str = format_height_for_filename(milestone_height)
                 # Use yield table target DBH when available
+                # Prefer height-DBH model (allometric, height-driven) over age-indexed curve
                 grove_dbh = _dbh if _dbh else 0.0
                 filename_dbh = grove_dbh
                 target_dbh_m = None
-                if species_name not in target_dbh_cache:
-                    target_dbh_cache[species_name] = load_target_dbh_from_preset(
+                if species_name not in h_dbh_model_cache:
+                    h_dbh_model_cache[species_name] = load_height_dbh_model_from_preset(
                         config.get_preset_path(species_name)
                     )
-                if target_dbh_cache[species_name]:
+                    if not h_dbh_model_cache[species_name]:
+                        target_dbh_cache[species_name] = load_target_dbh_from_preset(
+                            config.get_preset_path(species_name)
+                        )
+                sp_h_dbh_model = h_dbh_model_cache[species_name]
+                if sp_h_dbh_model and height > 0:
+                    target_dbh_m = predict_dbh_from_height_model(height, sp_h_dbh_model)
+                    filename_dbh = target_dbh_m
+                elif target_dbh_cache.get(species_name):
                     cidx = min(cycle - 1, len(target_dbh_cache[species_name]) - 1)
                     if cidx >= 0:
                         target_dbh_m = target_dbh_cache[species_name][cidx]

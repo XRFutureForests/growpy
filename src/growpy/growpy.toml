@@ -89,7 +89,7 @@ align_height = true
 # smoothly to 1.0 at the crown. Only affects trunk thickness, not branch shape.
 # false = export Grove geometry as-is (trunk may be thicker/thinner than yield table)
 align_dbh = true
-# Directory for local yield table CSVs (checked before openyieldtables.org API).
+# Directory for local yield table CSVs.
 # Format: age,height,dbh (age in years, height in meters, dbh in centimeters)
 # File naming: <standardized_species_name>.csv (e.g., norway_spruce.csv)
 yield_tables_dir = "data/input/yield_tables"
@@ -99,19 +99,12 @@ output_dir = "data/output/growth_comparison"
 plot = true
 # Yield table resolution order per species:
 #   1. Local CSV in yield_tables_dir (by standardized name)
-#   2. TOML override below ([calibration.species."Name"])
-#   3. openyieldtables.org auto-discovery (via Yield Search column in tree_asset_lookup.csv)
-# Override per species with CLI: --species "Name" --table-id N --yield-class N
-# Or add optional [calibration.species."Name"] sections here to pin specific tables.
-# Example:
-# [calibration.species."Norway spruce"]
-# table_id = 5
-# yield_class = 32
-# site_index = 26.0    # Preferred site index (meters at reference age)
+#   2. Ingested store (pylometree-ingest output in yield_sources.store_dir)
+# Species without yield data use uncalibrated Grove output for both height and DBH.
 
 # --- Yield table store ---
-# Controls the multi-source yield table ingestion pipeline
-# Run: python src/growpy/cli/ingest_yield_tables.py
+# Pre-ingested yield tables from pylometree providers.
+# Run: pylometree-ingest --store-dir data/input/yield_tables/store
 [yield_sources]
 # Directory for the normalized yield table store (ingested CSVs + manifest)
 store_dir = "data/input/yield_tables/store"

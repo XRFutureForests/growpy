@@ -1,0 +1,22 @@
+{
+    "species_latin": "Carpinus betulus",
+    "region": "DE-Central",
+    "source_reference": "Lockow_1998_hornbeam_growth",
+    "height_model": {
+        "type": "chapman_richards",
+        "A": 22.0,
+        "k": 0.025,
+        "p": 1.2,
+        "y0": 0.5
+    },
+    "dbh_model": {
+        "type": "chapman_richards",
+        "A": 45.0,
+        "k": 0.020,
+        "p": 1.1,
+        "y0": 0.0
+    },
+    "age_range": [10, 150],
+    "age_step": 5,
+    "site_index": 1.0
+}

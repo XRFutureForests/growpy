@@ -4,9 +4,13 @@
 Step 3 of the pipeline. Defaults from growpy.toml [growth_models]. See docs/cli-reference.md.
 
 When [calibration] enabled = true in growpy.toml, this script also:
-- Calibrates against yield tables (local CSV or openyieldtables.org)
+- Calibrates against yield tables (local CSV or pylometree store)
 - Re-simulates with calibration applied
 - Produces final calibrated growth models in a single run
+
+Yield tables are resolved from pre-ingested local data only.  Use
+``pylometree-ingest`` to populate the store before running this script.
+Species without yield data are exported with uncalibrated Grove output.
 """
 
 import argparse
@@ -291,9 +295,9 @@ CSV Format Support:
 
 Calibration (when enabled in growpy.toml [calibration]):
     1. Simulates uncalibrated growth curves
-    2. Calibrates against yield tables (local CSV in yield_tables_dir, or openyieldtables.org)
+    2. Calibrates against yield tables (local CSV or pylometree store)
     3. Re-simulates calibrated species with overrides applied
-    All in a single run.
+    Species without yield data use uncalibrated Grove output.
 
 Note: Run prepare_assets.py first to copy species presets from Grove installation.
         """,

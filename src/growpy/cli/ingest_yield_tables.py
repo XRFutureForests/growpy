@@ -85,6 +85,10 @@ def main():
     species_csv = project_root / "src" / "growpy" / "config" / "tree_asset_lookup.csv"
     species_mapping = load_species_mapping(species_csv if species_csv.exists() else None)
 
+    # Provider config: point parametric_models at growpy's yield_models dir
+    models_dir = project_root / "data" / "input" / "yield_models"
+    provider_config = {"models_dir": str(models_dir.resolve())}
+
     total_tables = 0
     total_errors = 0
 
@@ -95,7 +99,7 @@ def main():
         count = 0
         errors = 0
         try:
-            for record in provider.iter_tables(species_mapping):
+            for record in provider.iter_tables(species_mapping, provider_config):
                 issues = record.validate()
                 if issues:
                     logger.warning(
