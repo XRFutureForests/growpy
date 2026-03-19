@@ -18,12 +18,13 @@ from pathlib import Path
 
 from growpy.config import get_config
 from growpy.utils.log import setup_logging
-from growpy.utils.yield_providers import (
+from pylometree.yield_tables import (
     StoreManifest,
     get_all_providers,
     get_available_providers,
     get_provider_by_name,
 )
+from pylometree.yield_tables.species import load_species_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +81,10 @@ def main():
     store_dir.mkdir(parents=True, exist_ok=True)
     manifest = StoreManifest.load(store_dir / "manifest.csv")
 
+    # Load species mapping from growpy's lookup CSV
+    species_csv = project_root / "src" / "growpy" / "config" / "tree_asset_lookup.csv"
+    species_mapping = load_species_mapping(species_csv if species_csv.exists() else None)
+
     total_tables = 0
     total_errors = 0
 
@@ -90,7 +95,7 @@ def main():
         count = 0
         errors = 0
         try:
-            for record in provider.iter_tables(project_root):
+            for record in provider.iter_tables(species_mapping):
                 issues = record.validate()
                 if issues:
                     logger.warning(

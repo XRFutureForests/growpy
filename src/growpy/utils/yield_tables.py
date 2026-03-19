@@ -1,9 +1,9 @@
-"""Unified yield table loading and calibration math.
+"""Yield table calibration math for growpy.
 
-Supports three yield table sources (checked in order):
-1. Local CSV files in the configured yield_tables_dir
-2. Ingested store CSVs from the provider system (data/input/yield_tables/store/)
-3. openyieldtables.org API (fallback, requires Yield Search term in lookup CSV)
+Loading, store management, and provider functionality have been moved to
+pylometree.yield_tables.  This module re-exports the key data types and
+loaders for backward compatibility and adds growpy-specific calibration
+functions on top.
 
 Local CSV format (age in years, height in meters, dbh in centimeters):
     age,height,dbh
@@ -17,145 +17,22 @@ File naming: <standardized_species_name>.csv (e.g., norway_spruce.csv)
 
 import json
 import logging
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 
+# Re-export from pylometree for backward compatibility
+from pylometree.yield_tables import (  # noqa: F401
+    YieldTableData,
+    load_local_yield_table,
+    load_openyieldtables,
+    auto_discover_yield_table,
+    load_store_yield_table,
+    resolve_yield_table,
+)
+
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class YieldTableData:
-    """Resolved yield table data for a single species and yield class."""
-
-    ages: List[float]
-    heights: List[float]
-    dbhs: List[float]
-    title: str
-    source: str
-    yield_class: Optional[float] = None
-    table_id: Optional[int] = None
-    species_latin: str = ""
-    region: str = ""
-    management: str = ""
-    site_index: Optional[float] = None
-
-
-def load_local_yield_table(
-    species_std: str, yield_tables_dir: Path
-) -> Optional[YieldTableData]:
-    """Load a yield table from a local CSV file.
-
-    Args:
-        species_std: Standardized species name (e.g., "norway_spruce").
-        yield_tables_dir: Directory containing yield table CSVs.
-
-    Returns:
-        YieldTableData if found, None otherwise.
-    """
-    csv_path = yield_tables_dir / f"{species_std}.csv"
-    if not csv_path.exists():
-        return None
-
-    import pandas as pd
-
-    df = pd.read_csv(csv_path)
-    required = {"age", "height", "dbh"}
-    if not required.issubset(df.columns):
-        logger.error(
-            "Local yield table %s missing columns: %s (has: %s)",
-            csv_path, required - set(df.columns), list(df.columns),
-        )
-        return None
-
-    df = df.sort_values("age").reset_index(drop=True)
-
-    return YieldTableData(
-        ages=df["age"].tolist(),
-        heights=df["height"].tolist(),
-        dbhs=[d / 100.0 for d in df["dbh"].tolist()],
-        title=f"Local: {csv_path.name}",
-        source="local",
-    )
-
-
-def load_openyieldtables(
-    table_id: int, yield_class: float
-) -> Optional[YieldTableData]:
-    """Load a yield table from the openyieldtables.org API.
-
-    Args:
-        table_id: Yield table ID from openyieldtables.org.
-        yield_class: Yield class to select.
-
-    Returns:
-        YieldTableData if found, None otherwise.
-    """
-    from openyieldtables.yieldtables import get_yield_table
-
-    table = get_yield_table(table_id)
-
-    for yc in table.data.yield_classes:
-        if float(yc.yield_class) != float(yield_class):
-            continue
-        ages, heights, dbhs = [], [], []
-        for row in yc.rows:
-            if row.dominant_height is not None:
-                ages.append(row.age)
-                heights.append(row.dominant_height)
-                dbhs.append(row.dbh / 100.0 if row.dbh else 0.0)
-
-        return YieldTableData(
-            ages=ages,
-            heights=heights,
-            dbhs=dbhs,
-            title=table.title,
-            source="openyieldtables",
-            yield_class=yield_class,
-            table_id=table_id,
-        )
-
-    logger.error(
-        "Yield class %s not found in table %d (%s)",
-        yield_class, table_id, table.title,
-    )
-    return None
-
-
-def auto_discover_yield_table(
-    species_name: str, search_term: str
-) -> Optional[Dict[str, Any]]:
-    """Auto-discover the best yield table from openyieldtables.org.
-
-    Returns:
-        {"table_id": int, "yield_class": float} or None.
-    """
-    from openyieldtables.yieldtables import get_yield_table, get_yield_tables_meta
-
-    meta = get_yield_tables_meta()
-    term = search_term.lower()
-    matches = [t for t in meta if term in t.title.lower()]
-    if not matches:
-        return None
-
-    table_meta = matches[0]
-    table = get_yield_table(table_meta.id)
-
-    yc_values = []
-    for yc in table.data.yield_classes:
-        has_data = any(row.dominant_height is not None for row in yc.rows)
-        if has_data:
-            yc_values.append(float(yc.yield_class))
-
-    if not yc_values:
-        return None
-
-    yc_values.sort()
-    middle_yc = yc_values[len(yc_values) // 2]
-
-    return {"table_id": table_meta.id, "yield_class": middle_yc}
 
 
 def load_lookup_table(project_root: Path) -> Dict[str, Dict[str, str]]:
@@ -180,135 +57,6 @@ def load_lookup_table(project_root: Path) -> Dict[str, Dict[str, str]]:
             "yield_search": str(row.get("Yield Search", "")).strip(),
         }
     return result
-
-
-def load_store_yield_table(
-    species_std: str,
-    store_dir: Path,
-    preferred_site_index: Optional[float] = None,
-    preferred_region: str = "",
-) -> Optional[YieldTableData]:
-    """Load a yield table from the ingested store.
-
-    Reads the manifest CSV to find tables for this species, selects the best
-    match, then loads the corresponding CSV.
-    """
-    manifest_path = store_dir / "manifest.csv"
-    if not manifest_path.exists():
-        return None
-
-    from growpy.utils.yield_providers import StoreManifest, select_best_table
-
-    manifest = StoreManifest.load(manifest_path)
-    tables = manifest.find_tables_for_species(species_std)
-    if not tables:
-        return None
-
-    best = select_best_table(tables, preferred_region, preferred_site_index)
-    if not best:
-        return None
-
-    csv_path = store_dir / best["filename"]
-    if not csv_path.exists():
-        logger.warning("Store manifest references missing file: %s", csv_path)
-        return None
-
-    import pandas as pd
-
-    df = pd.read_csv(csv_path)
-    if not {"age", "height", "dbh"}.issubset(df.columns):
-        logger.error("Store CSV missing required columns: %s", csv_path)
-        return None
-
-    df = df.sort_values("age").reset_index(drop=True)
-    first = df.iloc[0]
-
-    return YieldTableData(
-        ages=df["age"].tolist(),
-        heights=df["height"].tolist(),
-        dbhs=[d / 100.0 for d in df["dbh"].tolist()],
-        title=f"Store: {csv_path.name}",
-        source=str(first.get("source", "store")),
-        site_index=float(first.get("site_index", 0)),
-        species_latin=str(first.get("species_latin", "")),
-        region=str(first.get("region", "")),
-        management=str(first.get("management", "")),
-    )
-
-
-def resolve_yield_table(
-    species_common: str,
-    species_std: str,
-    yield_tables_dir: Optional[Path],
-    calibration_species: Dict[str, Dict[str, Any]],
-    yield_search: str = "",
-    store_dir: Optional[Path] = None,
-    preferred_site_index: Optional[float] = None,
-    preferred_region: str = "",
-) -> Optional[YieldTableData]:
-    """Resolve the best yield table for a species.
-
-    Priority:
-        1. Local CSV in yield_tables_dir (by standardized name)
-        2. TOML override (explicit table_id + yield_class)
-        3. Ingested store (provider-generated CSVs)
-        4. openyieldtables auto-discovery (via Yield Search term)
-
-    Args:
-        species_common: Common name (e.g., "Norway spruce").
-        species_std: Standardized name (e.g., "norway_spruce").
-        yield_tables_dir: Path to local yield table CSVs.
-        calibration_species: TOML [calibration.species] config.
-        yield_search: Search term for openyieldtables auto-discovery.
-        store_dir: Path to the ingested yield table store.
-        preferred_site_index: Preferred site index for store selection.
-        preferred_region: Preferred region for store selection.
-
-    Returns:
-        YieldTableData or None.
-    """
-    # 1. Try local CSV
-    if yield_tables_dir and yield_tables_dir.exists():
-        local = load_local_yield_table(species_std, yield_tables_dir)
-        if local:
-            logger.info("  Using local yield table: %s", local.title)
-            return local
-
-    # 2. Try TOML override
-    toml_cfg = calibration_species.get(species_common, {})
-    tid = toml_cfg.get("table_id")
-    yc = toml_cfg.get("yield_class")
-    if tid and yc:
-        result = load_openyieldtables(tid, yc)
-        if result:
-            logger.info("  Using TOML override: table %d, YC %s", tid, yc)
-            return result
-
-    # 3. Try ingested store
-    si = toml_cfg.get("site_index", preferred_site_index)
-    if store_dir and store_dir.exists():
-        store_result = load_store_yield_table(
-            species_std, store_dir, si, preferred_region
-        )
-        if store_result:
-            logger.info("  Using store yield table: %s", store_result.title)
-            return store_result
-
-    # 4. Auto-discover from openyieldtables
-    if yield_search:
-        discovered = auto_discover_yield_table(species_common, yield_search)
-        if discovered:
-            result = load_openyieldtables(
-                discovered["table_id"], discovered["yield_class"]
-            )
-            if result:
-                logger.info(
-                    "  Auto-discovered: %s (table %d, YC %s)",
-                    result.title, discovered["table_id"], discovered["yield_class"],
-                )
-                return result
-
-    return None
 
 
 # --- Calibration math ---
@@ -394,6 +142,68 @@ def estimate_flushes_per_year(
     )
 
     return fpy
+
+
+def fit_height_dbh_model(
+    yield_heights: List[float],
+    yield_dbhs: List[float],
+) -> Optional[Dict[str, float]]:
+    """Fit a power model DBH = a * H^b from yield table height/DBH pairs.
+
+    Uses the allometric relationship between tree height and stem diameter
+    to predict DBH from height, independent of age alignment.
+
+    Returns:
+        Dict with keys 'a', 'b', 'r_squared', or None if fit fails.
+    """
+    from scipy.optimize import curve_fit
+
+    h = np.array(yield_heights, dtype=float)
+    d = np.array(yield_dbhs, dtype=float)
+
+    # Filter to valid positive pairs
+    mask = (h > 0) & (d > 0)
+    h, d = h[mask], d[mask]
+
+    if len(h) < 3:
+        logger.warning("  Too few h/d pairs (%d) for height-DBH model", len(h))
+        return None
+
+    def power_func(x, a, b):
+        return a * np.power(x, b)
+
+    try:
+        # Initial guess from log-log linear regression
+        log_h, log_d = np.log(h), np.log(d)
+        b0 = np.polyfit(log_h, log_d, 1)
+        p0 = [np.exp(b0[1]), b0[0]]
+
+        popt, _ = curve_fit(power_func, h, d, p0=p0, maxfev=5000)
+        a, b = float(popt[0]), float(popt[1])
+
+        pred = power_func(h, a, b)
+        ss_res = np.sum((d - pred) ** 2)
+        ss_tot = np.sum((d - np.mean(d)) ** 2)
+        r_sq = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
+
+        logger.info(
+            "  height-DBH model: DBH = %.4f * H^%.4f, R²=%.4f",
+            a, b, r_sq,
+        )
+        return {"a": round(a, 6), "b": round(b, 6), "r_squared": round(r_sq, 6)}
+
+    except (RuntimeError, ValueError) as e:
+        logger.warning("  height-DBH model fit failed: %s", e)
+        return None
+
+
+def predict_dbh_from_height(
+    heights: List[float],
+    model: Dict[str, float],
+) -> List[float]:
+    """Predict DBH (cm) from heights (m) using a fitted power model."""
+    a, b = model["a"], model["b"]
+    return [max(0.0, a * (h ** b)) if h > 0 else 0.0 for h in heights]
 
 
 def interpolate_yield_table(
@@ -497,6 +307,7 @@ def write_calibration_to_seed_json(
     yield_class: Optional[float] = None,
     table_id: Optional[int] = None,
     target_dbh_per_cycle: Optional[List[float]] = None,
+    height_dbh_model: Optional[Dict[str, float]] = None,
     flushes_per_year: float = 1.0,
 ) -> Optional[Path]:
     """Write calibration data to the species seed.json."""
@@ -526,6 +337,8 @@ def write_calibration_to_seed_json(
         calibration["target_dbh_per_cycle"] = [
             round(v, 6) for v in target_dbh_per_cycle
         ]
+    if height_dbh_model:
+        calibration["height_dbh_model"] = height_dbh_model
     calibration["flushes_per_year"] = flushes_per_year
     preset["_yield_table_calibration"] = calibration
 
@@ -595,18 +408,18 @@ def calibrate_species(
         np.mean(grow_lengths), gl_cv,
     )
 
-    # Target DBH for radial scaling at export (no simulation-time DBH calibration)
-    target_dbhs_interp = None
-
-    if grove_dbhs and yield_data.dbhs:
-        _, target_dbhs_interp = interpolate_yield_table(
-            yield_data.ages, yield_data.dbhs, max_cycles, flushes_per_year,
-            initial_value=0.0,
-        )
-
+    # Target DBH via height-DBH allometric model (applied at export via radial scaling)
+    # Instead of age-interpolated DBH, we fit a power model DBH = a*H^b from the
+    # yield table and apply it to grove heights. This is height-driven, not age-driven.
+    h_dbh_model = None
     write_target_dbh = None
-    if target_dbhs_interp is not None and len(target_dbhs_interp) > 0:
-        write_target_dbh = list(target_dbhs_interp[:len(grove_heights)])
+
+    if grove_dbhs and yield_data.dbhs and yield_data.heights:
+        h_dbh_model = fit_height_dbh_model(yield_data.heights, yield_data.dbhs)
+        if h_dbh_model:
+            # Convert predicted DBH from cm to meters for storage
+            dbh_cm = predict_dbh_from_height(grove_heights, h_dbh_model)
+            write_target_dbh = [d / 100.0 for d in dbh_cm]
 
     result = write_calibration_to_seed_json(
         species_name,
@@ -616,6 +429,7 @@ def calibrate_species(
         yield_class=yield_data.yield_class,
         table_id=yield_data.table_id,
         target_dbh_per_cycle=write_target_dbh,
+        height_dbh_model=h_dbh_model,
         flushes_per_year=flushes_per_year,
     )
 
