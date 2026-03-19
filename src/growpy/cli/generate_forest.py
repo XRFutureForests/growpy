@@ -34,7 +34,6 @@ from growpy import (
     simulate_forest_growth,
 )
 from growpy.config.preset_overrides import (
-    LONGEVITY_OVERRIDES,
     PresetOverrides,
     create_overrides_from_args,
 )
@@ -1565,11 +1564,6 @@ Unreal Engine Integration:
         help="Override preset parameter with fixed value (e.g., --preset-override drop_decay=0.1). Can be specified multiple times.",
     )
     parser.add_argument(
-        "--longevity-mode",
-        action="store_true",
-        help="Apply pre-configured overrides to prevent tree death at high cycle counts (reduces drop_decay, drop_weak, etc.)",
-    )
-    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -1716,13 +1710,7 @@ Unreal Engine Integration:
 
         # Build preset overrides from CLI arguments
         preset_overrides = None
-        if config.forest_longevity_mode:
-            preset_overrides = LONGEVITY_OVERRIDES
-            logger.info(
-                "\n[Longevity Mode] Using pre-configured overrides to prevent tree death:"
-            )
-            logger.info("  Static: %s", preset_overrides.static_overrides)
-        elif args.preset_override:
+        if args.preset_override:
             preset_overrides = create_overrides_from_args(
                 static_args=args.preset_override,
             )

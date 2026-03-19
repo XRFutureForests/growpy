@@ -9,7 +9,7 @@
 
 [general]
 # Random seed for reproducible tree generation (remove to randomize)
-random_seed = 42
+random_seed = 23
 # Default input CSV with tree positions and species
 # CSV columns: x, y, species, height (optional: z, fid, dbh)
 csv_file = "data/input/test.csv"
@@ -18,7 +18,7 @@ output_dir = "data/output/forest"
 # Enable verbose output (INFO-level logging). Use --verbose / --quiet to override.
 verbose = true
 # Enable profiling to track execution time of each pipeline step
-profile = false
+profile = true
 
 # --- Step 1: prepare_assets.py ---
 [assets]
@@ -58,7 +58,7 @@ interior_decimate_ratio = 0.5
 [growth_models]
 # Maximum growth cycles to simulate (1-250)
 # Automatically stops early when growth plateaus
-cycles = 90
+cycles = 25
 # Random seeds to average for robust curves (1-10)
 # Use 3+ for production, 1 for quick tests
 seeds = 1
@@ -108,11 +108,9 @@ plot = true
 [yield_sources]
 # Directory for the normalized yield table store (ingested CSVs + manifest)
 store_dir = "data/input/yield_tables/store"
-# Enable/disable individual providers (all enabled by default)
-# Providers: forest_elements, et_nwfva, carbon_et_xlsx, forest_yield_pdf,
-#            pryor_pdf, nova_scotia_pdf, usda_stocking_pdf, parametric_model
-enabled_providers = []
-# Preferred region filter for table selection (empty = no filter)
+# Preferred region filter for table selection (case-insensitive exact match)
+# Current store regions: "DE", "DE-NW", "DE-Central", "EU-West"
+# Empty string = no filter (selects from all regions by best site index)
 preferred_region = ""
 
 # --- Step 4: generate_forest.py ---
@@ -122,20 +120,13 @@ preferred_region = ""
 quality = "high"
 # Maximum growth cycles per tree (1-250)
 # Trees exceeding this are scaled down proportionally
-growth_cycle_limit = 90
+growth_cycle_limit = 25
 # Branch smoothing iterations (0-20, 0 = disabled)
 # Higher values = smoother, more organic branches
 smooth_iterations = 10
 # Include Grove metadata (age, mass, vigor) in USD files
 # Increases file size by ~70%; useful for analysis
 include_grove_attributes = false
-# Apply longevity overrides to prevent tree death at high cycle counts.
-# Sets drop_decay, drop_weak etc. to low values.
-# Must be enabled when using calibrated growth models, since growth model
-# training always applies longevity overrides to prevent tree death during
-# data collection. Disabling this causes trees to die before reaching the
-# predicted cycle count, producing shorter trees than the CSV target height.
-longevity_mode = false
 # Multi-stage export: generate tree models at height intervals
 # Exports snapshots every N meters of height (e.g., 5 = 5m, 10m, 15m...)
 # Uses growth models to determine which cycle corresponds to each height milestone
@@ -146,7 +137,7 @@ height_interval = 5
 # Trees taller than this in the input CSV are clamped to this height
 # Reduces growth cycles and number of height stages for faster runs
 # 0 = no limit (use full CSV heights)
-max_height = 23
+max_height = 11
 
 # Quality Presets (single source of truth)
 # Define any number of named presets below as [quality.<name>] sections.

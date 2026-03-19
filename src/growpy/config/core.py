@@ -106,7 +106,6 @@ class GrowPyConfig:
     forest_growth_cycle_limit: int = 65
     forest_smooth_iterations: int = 10
     forest_include_grove_attributes: bool = False
-    forest_longevity_mode: bool = True
     forest_height_interval: float = 5.0
     forest_max_height: float = 0.0  # 0 = no limit; >0 = cap tree heights (meters)
     forest_export_trees: list = field(default_factory=list)
@@ -157,7 +156,6 @@ class GrowPyConfig:
     yield_sources_store_dir: Path = field(
         default_factory=lambda: Path("data/input/yield_tables/store")
     )
-    yield_sources_enabled_providers: List[str] = field(default_factory=list)
     yield_sources_preferred_region: str = ""
 
     @classmethod
@@ -237,8 +235,6 @@ class GrowPyConfig:
             kwargs["forest_include_grove_attributes"] = forest[
                 "include_grove_attributes"
             ]
-        if "longevity_mode" in forest:
-            kwargs["forest_longevity_mode"] = forest["longevity_mode"]
         if "height_interval" in forest:
             kwargs["forest_height_interval"] = float(forest["height_interval"])
         if "max_height" in forest:
@@ -313,8 +309,6 @@ class GrowPyConfig:
         ys = data.get("yield_sources", {})
         if "store_dir" in ys:
             kwargs["yield_sources_store_dir"] = Path(ys["store_dir"])
-        if "enabled_providers" in ys:
-            kwargs["yield_sources_enabled_providers"] = list(ys["enabled_providers"])
         if "preferred_region" in ys:
             kwargs["yield_sources_preferred_region"] = ys["preferred_region"]
 
@@ -360,7 +354,6 @@ class GrowPyConfig:
             "quality": "forest_quality",
             "growth_cycle_limit": "forest_growth_cycle_limit",
             "include_grove_attributes": "forest_include_grove_attributes",
-            "longevity_mode": "forest_longevity_mode",
             "height_interval": "forest_height_interval",
             "max_height": "forest_max_height",
             # [forest.skeleton]
