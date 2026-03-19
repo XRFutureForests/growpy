@@ -183,18 +183,22 @@ This reveals additional debug information for procedural vegetation assets. See 
 
 ## Project Structure
 
-```
+```text
 growpy/
 ├── src/
 │   ├── growpy/                    # Main Python package
-│   │   ├── cli/                   # Command-line scripts
+│   │   ├── cli/                   # Pipeline CLI scripts
 │   │   │   ├── prepare_assets.py         # Step 1: Copy Grove 2.3 assets
 │   │   │   ├── convert_twigs.py          # Step 2: Convert twigs to USD
 │   │   │   ├── create_growth_models.py   # Step 3: Generate height models
-│   │   │   └── generate_forest.py        # Step 4: Forest from CSV (includes OBJ export)
-│   │   ├── config/                # Configuration and quality presets
+│   │   │   ├── generate_forest.py        # Step 4: Forest from CSV (includes OBJ export)
+│   │   │   ├── ingest_yield_tables.py    # Yield table store ingestion
+│   │   │   ├── generate_dataset_csvs.py  # Generate dataset input CSVs
+│   │   │   └── produce_dataset.py        # Batch dataset production
+│   │   ├── config/                # Configuration, quality presets, species lookup
 │   │   ├── core/                  # Forest/Grove/Tree/Skeleton simulation
 │   │   ├── io/                    # USD export, OBJ export, wind JSON, PVE mapping
+│   │   ├── tools/                 # Diagnostic tools (analyze_usda, diagnose_growth, visualize_tree)
 │   │   ├── tests/                 # Test suite (pytest)
 │   │   └── utils/                 # Analysis, profiling, plotting
 │   └── the_grove_23/              # Grove 2.3 (not in repo, add after clone)
@@ -205,10 +209,10 @@ growpy/
 │   │   ├── twigs/                # Twig .blend and converted .usda files
 │   │   └── growth_models/        # Generated prediction models
 │   ├── input/                     # Your CSV files
+│   │   └── dataset/              # Dataset CSVs (from generate_dataset_csvs.py)
 │   └── output/                    # Generated forests
 ├── docs/                          # Project documentation
 │   └── the_grove/                # Grove 2.3 API reference
-│   (+ cli-reference, coordinate systems, naming conventions, PVE guides)
 ├── pyproject.toml                 # Python package configuration
 └── environment.yml                # Conda environment definition
 ```
@@ -248,82 +252,100 @@ All scripts read defaults from [`src/growpy/growpy.toml`](src/growpy/growpy.toml
 
 ## CLI Scripts Reference
 
-### Step 1: Prepare Assets
+### Step 1: Prepare Assets (`prepare_assets.py`)
+
+Copies and standardizes Grove 2.3 presets, textures, and twigs into `data/assets/`.
+
+**Requires**:
+
+- The Grove 2.3 installed at `src/the_grove_23/` (presets/, twigs/, textures/ subdirectories)
+- `src/growpy/config/tree_asset_lookup.csv` (species-to-asset mapping, included in repo)
+- Input CSV with species column (to filter which species to prepare), or `--all`
+
+**Reads from `growpy.toml`**: `[assets] grove_dir`, `[general] csv_file`
+
+**Produces**: `data/assets/presets/`, `data/assets/textures/`, `data/assets/twigs/` (raw .blend files)
 
 ```bash
-# Copy assets for species in CSV (uses csv_file from growpy.toml)
-python src/growpy/cli/prepare_assets.py
-
-# Copy ALL 57 available species (ignores CSV filter)
-python src/growpy/cli/prepare_assets.py --all
-
-# Resize textures to power-of-2 for GPU compatibility
-python src/growpy/cli/prepare_assets.py --resize-textures
+python src/growpy/cli/prepare_assets.py                # Species from default CSV
+python src/growpy/cli/prepare_assets.py --csv my.csv   # Species from custom CSV
+python src/growpy/cli/prepare_assets.py --all           # All 57 Grove species
+python src/growpy/cli/prepare_assets.py --resize-textures  # Power-of-2 textures for GPU
 ```
 
 **Flags**: `--grove-dir PATH`, `--csv PATH`, `--all`, `--resize-textures`
 
-### Step 2: Convert Twigs
+### Step 2: Convert Twigs (`convert_twigs.py`)
+
+Converts twig .blend files to USD format with optional mesh densification for Nanite silhouettes.
+
+**Requires**:
+
+- Step 1 completed (`data/assets/twigs/` contains .blend files)
+- `bpy` module (Blender Python API)
+- `src/growpy/config/tree_asset_lookup.csv` (twig-to-species mapping)
+
+**Reads from `growpy.toml`**: `[twigs]` section (densify, alpha_trim, smooth_*, boundary_edge_mm, interior_decimate_ratio)
+
+**Produces**: `.usda` twig files alongside .blend files in `data/assets/twigs/`
 
 ```bash
-# Convert twigs with default settings from growpy.toml (densification + alpha trimming enabled)
-python src/growpy/cli/convert_twigs.py
-
-# Skip mesh densification (raw export)
-python src/growpy/cli/convert_twigs.py --no-densify
-
-# Adjust alpha trimming threshold
-python src/growpy/cli/convert_twigs.py --alpha-trim 0.3
-
-# Enable boundary smoothing
+python src/growpy/cli/convert_twigs.py                  # Default settings from growpy.toml
+python src/growpy/cli/convert_twigs.py --no-densify     # Raw export without densification
+python src/growpy/cli/convert_twigs.py --alpha-trim 0.3 # Lower alpha trimming threshold
 python src/growpy/cli/convert_twigs.py --smooth-boundary --smooth-iterations 3
 ```
 
 **Flags**: `--csv PATH`, `--no-densify`, `--alpha-trim FLOAT`, `--smooth-boundary`, `--smooth-iterations INT`, `--smooth-factor FLOAT`, `--boundary-edge-mm FLOAT`
 
-### Step 3: Create Growth Models
+### Step 3: Create Growth Models (`create_growth_models.py`)
+
+Simulates growth curves and generates height-to-age prediction models. When calibration is enabled, aligns growth to yield tables and re-simulates with calibration applied.
+
+**Requires**:
+
+- Step 1 completed (`data/assets/presets/` contains `.seed.json` files)
+- The Grove 2.3 Python API (`the_grove_23_core`)
+- Optional: yield table store for calibration (`data/input/yield_tables/store/`, populated by `ingest_yield_tables.py`)
+- Optional: local yield table CSVs in `data/input/yield_tables/` (format: age,height,dbh)
+
+**Reads from `growpy.toml`**: `[growth_models]` (cycles, seeds, height_threshold, timeout), `[calibration]` (enabled, align_height, align_dbh, yield_tables_dir), `[yield_sources]` (store_dir)
+
+**Produces**: `data/assets/growth_models/` (JSON prediction models), calibration data in `.seed.json` files, comparison plots in `data/output/growth_comparison/`
 
 ```bash
-# Generate growth models for species in CSV (uses defaults from growpy.toml)
-python src/growpy/cli/create_growth_models.py
-
-# Production quality (more seeds = more robust curves)
-python src/growpy/cli/create_growth_models.py --seeds 3
-
-# Quick test with fewer cycles
-python src/growpy/cli/create_growth_models.py --cycles 35
-
-# Single species
-python src/growpy/cli/create_growth_models.py --species "European beech"
+python src/growpy/cli/create_growth_models.py           # Default from growpy.toml
+python src/growpy/cli/create_growth_models.py --seeds 3  # More seeds for robust curves
+python src/growpy/cli/create_growth_models.py --cycles 35 # Fewer cycles for quick test
+python src/growpy/cli/create_growth_models.py --species "European beech"  # Single species
 ```
 
 **Flags**: `--csv PATH`, `--cycles INT`, `--seeds INT`, `--height-threshold FLOAT`, `--max-cycles-without-growth INT`, `--timeout INT`, `--species TEXT`
 
-### Step 4: Generate Forest
+### Step 4: Generate Forest (`generate_forest.py`)
+
+Multi-species forest simulation from CSV inventory data with USD Nanite assembly export. Includes optional OBJ export for Helios++ LiDAR.
+
+**Requires**:
+
+- Steps 1-3 completed (presets, converted twigs, growth models all in `data/assets/`)
+- Input CSV with columns: `x`, `y`, `species`, `height` (optional: `z`, `fid`, `dbh`, `twig_density`, `individual_type`)
+- The Grove 2.3 Python API (`the_grove_23_core`)
+- `bpy` module for USD export
+
+**Reads from `growpy.toml`**: `[forest]` (quality, growth_cycle_limit, smooth_iterations, height_interval, max_height), `[export]` (skeletal, density_variants, export_trees, skip_pve_json), `[calibration]` (align_height, align_dbh), `[unreal]`, `[helios]`, `[quality.*]` presets
+
+**Produces**: `data/output/forest/` with per-species directories containing USD assemblies, skeletal meshes, wind JSON, twig USD files, preview images, and optional Unreal import scripts
 
 ```bash
-# Default generation (uses quality, cycles, etc. from growpy.toml)
-python src/growpy/cli/generate_forest.py
-
-# Production quality with profiling
+python src/growpy/cli/generate_forest.py                # Default from growpy.toml
+python src/growpy/cli/generate_forest.py --quality high --growth-cycle-limit 20
+python src/growpy/cli/generate_forest.py --quality medium --fast  # Fast preview
+python src/growpy/cli/generate_forest.py --height-interval 5     # Multi-stage export
+python src/growpy/cli/generate_forest.py --export-trees 1,2,5    # Selective export
+python src/growpy/cli/generate_forest.py --import-to-unreal       # With Unreal scripts
 python src/growpy/cli/generate_forest.py \
-  --quality ultra --growth-cycle-limit 20 --smooth-iterations 15 --profile
-
-# Fast preview
-python src/growpy/cli/generate_forest.py --quality medium --fast
-
-# Multi-stage export (trees at different growth stages, every 5m)
-python src/growpy/cli/generate_forest.py --height-interval 5 --growth-cycle-limit 125
-
-# Export only specific trees (others still participate in growth simulation)
-python src/growpy/cli/generate_forest.py --export-trees 1,2,5
-
-# Generate Unreal import scripts
-python src/growpy/cli/generate_forest.py --import-to-unreal
-
-# Skeleton simplification (reduce bone count independently of mesh quality)
-python src/growpy/cli/generate_forest.py \
-  --quality ultra --skeleton-length 2.5 --skeleton-reduce 0.5
+  --quality ultra --skeleton-length 2.5 --skeleton-reduce 0.5    # Skeleton tuning
 ```
 
 **Quality Presets**:
@@ -349,7 +371,7 @@ python src/growpy/cli/generate_forest.py \
 | `--skeleton-bias FLOAT` | Bone distribution, 0=trunk 1=tips (default: 0.5) |
 | `--skeleton-connected {true,false}` | Connected bone chains (default: true) |
 | `--height-interval FLOAT` | Multi-stage export at height intervals (meters) |
-| `--max-cycles INT` | Max cycles for multi-stage export |
+| `--max-height FLOAT` | Cap tree heights at this value in meters (0 = no limit) |
 | `--export-trees IDS` | Comma-separated tree IDs to export |
 | `--import-to-unreal` | Generate Unreal Python import script |
 | `--unreal-project-path PATH` | Unreal content path (default: /Game/GrowPy/Trees) |
@@ -362,6 +384,73 @@ python src/growpy/cli/generate_forest.py \
 | `--fast` | Skip PVE JSON, validation, and static meshes |
 | `--profile` | Print detailed timing report |
 | `-v, --verbose` | Verbose output |
+
+### Yield Table Ingestion (`ingest_yield_tables.py`)
+
+Populates the local yield table store from external providers (pylometree). Run once before Step 3 if you want calibration.
+
+**Requires**:
+
+- `pylometree` package installed (provides yield table providers)
+- Optional: parametric model JSON files in `data/input/yield_models/`
+- `src/growpy/config/tree_asset_lookup.csv` (species mapping)
+
+**Reads from `growpy.toml`**: `[yield_sources] store_dir`
+
+**Produces**: `data/input/yield_tables/store/` (normalized CSVs + manifest.csv)
+
+```bash
+python -m growpy.cli.ingest_yield_tables                # All available providers
+python -m growpy.cli.ingest_yield_tables --list-providers
+python -m growpy.cli.ingest_yield_tables --providers forest_elements et_nwfva
+python -m growpy.cli.ingest_yield_tables --clean         # Clear store first
+```
+
+**Flags**: `--list-providers`, `--providers NAME [NAME ...]`, `--clean`, `--verbose`
+
+### Generate Dataset CSVs (`generate_dataset_csvs.py`)
+
+Generates input CSV files for dataset production. Reads species metadata (Max Height, Competition Spacing) from `tree_asset_lookup.csv` and creates per-species merged CSVs plus an all-species CSV.
+
+**Requires**:
+
+- `src/growpy/config/tree_asset_lookup.csv` with `Max Height` and `Competition Spacing` columns populated for target species
+
+**Produces**: `data/input/dataset/` containing:
+- `all_species.csv` -- one row per species, for pipeline steps 1-3
+- `{species}_merged.csv` -- open-grown tree (fid=1 at x=100) + competition cluster (fid=2 at origin + 6 hex neighbors at fid=101-106)
+
+```bash
+python src/growpy/cli/generate_dataset_csvs.py                      # Default output dir
+python src/growpy/cli/generate_dataset_csvs.py --output-dir custom/  # Custom dir
+python src/growpy/cli/generate_dataset_csvs.py --density reduced     # 50% twig density
+```
+
+**Flags**: `--output-dir PATH`, `--density {full,reduced,bare}`, `-v`
+
+### Produce Dataset (`produce_dataset.py`)
+
+Batch runner that iterates merged CSV files and calls `generate_forest.py` for each species. Exports open-grown (fid=1) and competition center (fid=2) trees per species.
+
+**Requires**:
+
+- Steps 1-3 completed for all dataset species (using `all_species.csv`)
+- Merged CSV files in `data/input/dataset/` (from `generate_dataset_csvs.py`)
+- `bpy` module available in current environment
+- `growpy.toml` configured for dataset production (see [Dataset Production](#dataset-production))
+
+**Produces**: output in `data/output/forest/` (or configured output_dir) with per-species directories
+
+```bash
+python src/growpy/cli/produce_dataset.py --species "European Beech"  # Single species
+python src/growpy/cli/produce_dataset.py --pilot                      # Beech + Spruce
+python src/growpy/cli/produce_dataset.py --all                        # All 16 species
+python src/growpy/cli/produce_dataset.py --all --dry-run              # Preview commands
+python src/growpy/cli/produce_dataset.py --all --workers 2            # Limit parallelism
+python src/growpy/cli/produce_dataset.py --all --max-height 15        # Cap heights for testing
+```
+
+**Flags**: `--species TEXT`, `--pilot`, `--all`, `--list`, `--dry-run`, `--max-height FLOAT`, `--workers INT`, `-v`
 
 ### Performance Optimization
 
@@ -383,6 +472,106 @@ python src/growpy/cli/generate_forest.py --skip-pve-json --skip-validation
 - `--skip-validation` - Skip USD assembly validation (saves ~5-10% export time)
 - `--include-static` - Also generate static mesh assemblies (adds ~7% time)
 - `--profile` - Print timing report to identify bottlenecks
+
+### Diagnostic Tools
+
+Diagnostic and debugging scripts live in `src/growpy/tools/` (separate from the core pipeline):
+
+- `growpy-analyze-usda` -- inspect USD assembly structure and validate export
+- `growpy-diagnose-growth` -- debug growth simulation issues per species
+- `growpy-visualize-tree` -- render 2D side-view images of exported tree geometry
+
+## Dataset Production
+
+The dataset pipeline produces a systematic set of tree assets (16 species, 2 individuals each, multiple growth stages, 3 density variants). See [Dataset Specification](docs/dataset-specification.md) for the full specification and species catalog.
+
+### Prerequisites
+
+Before producing the dataset, ensure:
+
+- The Grove 2.3 is installed at `src/the_grove_23/`
+- The `growpy` conda environment is active with `pip install -e .`
+- `tree_asset_lookup.csv` has `Max Height` and `Competition Spacing` columns populated for target species
+- Yield table store is populated (optional but recommended for calibrated growth)
+
+### Step 0: Generate Dataset Input CSVs
+
+Generate the per-species merged CSVs and the all-species CSV from species metadata:
+
+```bash
+python src/growpy/cli/generate_dataset_csvs.py
+```
+
+This reads `Max Height` and `Competition Spacing` from `tree_asset_lookup.csv` and produces:
+- `data/input/dataset/all_species.csv` -- one row per species, used for steps 1-3
+- `data/input/dataset/{species}_merged.csv` -- per-species simulation layout (open-grown at x=100, competition cluster at origin with 6 hexagonal neighbors)
+
+### Step 1-3: Prepare All Species Assets
+
+Run the core pipeline steps for all dataset species using the generated `all_species.csv`:
+
+```bash
+python src/growpy/cli/prepare_assets.py --csv data/input/dataset/all_species.csv
+python src/growpy/cli/convert_twigs.py --csv data/input/dataset/all_species.csv
+python src/growpy/cli/create_growth_models.py --csv data/input/dataset/all_species.csv
+```
+
+After this, verify:
+- `data/assets/presets/` contains `.seed.json` files for all 16 species
+- `data/assets/twigs/` contains converted `.usda` twig files
+- `data/assets/growth_models/` contains growth model JSON files for all 16 species
+- Calibration plots in `data/output/growth_comparison/` look reasonable (if calibration enabled)
+
+### Step 4: Configure `growpy.toml` for Dataset
+
+Edit `src/growpy/growpy.toml` for dataset production settings:
+
+```toml
+[forest]
+quality = "high"
+height_interval = 5          # Export at 5m height increments
+growth_cycle_limit = 125     # Enough cycles for tallest species
+
+[export]
+density_variants = ["full", "reduced", "bare"]  # 3 density levels per stage
+skeletal = true
+skip_pve_json = true
+skip_validation = true
+```
+
+### Step 5: Produce the Dataset
+
+Run for all species (parallel by default):
+
+```bash
+python src/growpy/cli/produce_dataset.py --all
+```
+
+Or start with a pilot run (European beech + Norway spruce):
+
+```bash
+python src/growpy/cli/produce_dataset.py --pilot
+```
+
+**What `produce_dataset.py` does per species**: For each merged CSV, it runs `generate_forest.py` with `--export-trees 1,2`:
+- **fid=1** = open-grown tree (isolated at x=100, no light competition)
+- **fid=2** = competition center tree (surrounded by 6 hexagonal neighbors)
+- **fid=101-106** = neighbor trees that participate in growth simulation (light competition, shading) but are not exported
+
+With `density_variants` active, each exported tree gets `full`, `reduced`, and `bare` variants at every height milestone -- all from a single growth simulation.
+
+### Quick Reference
+
+```bash
+# Full dataset production from scratch:
+conda activate growpy
+python src/growpy/cli/generate_dataset_csvs.py           # Step 0: generate input CSVs
+python src/growpy/cli/prepare_assets.py --csv data/input/dataset/all_species.csv   # Step 1
+python src/growpy/cli/convert_twigs.py --csv data/input/dataset/all_species.csv    # Step 2
+python src/growpy/cli/create_growth_models.py --csv data/input/dataset/all_species.csv  # Step 3
+# Edit growpy.toml: set density_variants, height_interval, quality
+python src/growpy/cli/produce_dataset.py --all            # Step 4: produce all species
+```
 
 ## Data Folders
 

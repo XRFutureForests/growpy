@@ -17,7 +17,7 @@ Clean Grove API integration for forest creation and export, optimized for Unreal
 
 ## Structure
 
-```
+```text
 growpy/
 ├── __init__.py        # Package entry point and public API
 ├── growpy.toml        # Central configuration (all CLI defaults)
@@ -28,9 +28,16 @@ growpy/
 │   ├── prepare_assets.py         # Step 1: Copy Grove 2.3 assets
 │   ├── convert_twigs.py          # Step 2: Convert twigs to USD
 │   ├── create_growth_models.py   # Step 3: Generate height models
-│   └── generate_forest.py        # Step 4: Forest from CSV (includes OBJ export)
+│   ├── generate_forest.py        # Step 4: Forest from CSV (includes OBJ export)
+│   ├── ingest_yield_tables.py    # Yield table store ingestion (pylometree)
+│   ├── generate_dataset_csvs.py  # Generate dataset input CSVs from species metadata
+│   └── produce_dataset.py        # Batch dataset production (wraps generate_forest.py)
+├── tools/             # Diagnostic tools (not part of core pipeline)
+│   ├── analyze_usda.py           # Inspect USD assembly structure
+│   ├── diagnose_growth.py        # Debug growth simulation issues
+│   └── visualize_tree.py         # 2D side-view rendering of exported trees
 ├── utils/             # Analysis, profiling, plotting
-└── tests/             # Test suite (pytest, 209 tests)
+└── tests/             # Test suite (pytest)
 ```
 
 ## Quick Start
@@ -129,4 +136,7 @@ See the CLI scripts for complete workflows:
 - `cli/convert_twigs.py`: Process all twig blend files to USD
 - `cli/create_growth_models.py`: Generate species growth models
 - `cli/generate_forest.py`: Full forest generation pipeline with USD output
+- `cli/ingest_yield_tables.py`: Populate yield table store from pylometree providers
+- `cli/generate_dataset_csvs.py`: Generate per-species dataset input CSVs
+- `cli/produce_dataset.py`: Batch dataset production across all species
 - `io/obj_export.py`: OBJ/MTL export for Helios++ (called from generate_forest.py)
