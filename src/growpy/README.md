@@ -31,11 +31,9 @@ growpy/
 ├── cli/               # Pipeline entry points
 │   ├── prepare_assets.py        # Step 1: Copy Grove assets
 │   ├── convert_twigs.py         # Step 2: Twig .blend to USD
-│   ├── create_growth_models.py  # Step 3: Growth models + calibration
+│   ├── create_growth_models.py  # Step 3: Growth models + calibration (+ yield ingestion)
 │   ├── generate_forest.py       # Step 4: Forest simulation + export
-│   ├── ingest_yield_tables.py   # Yield table store ingestion
-│   ├── generate_dataset_csvs.py # Dataset CSV generation
-│   └── produce_dataset.py       # Batch dataset production
+│   └── dataset_pipeline.py      # Dataset orchestrator: all 4 steps + CSV generation
 ├── tools/             # Diagnostic utilities (not part of core pipeline)
 │   ├── analyze_usda.py          # USD assembly inspection
 │   ├── diagnose_growth.py       # Growth simulation debugging

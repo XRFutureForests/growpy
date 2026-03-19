@@ -171,8 +171,8 @@ The dataset pipeline produces a systematic set of tree assets: 16 species, 2 ind
 Generate input CSVs from species metadata in `tree_asset_lookup.csv`:
 
 ```bash
-python src/growpy/cli/ingest_yield_tables.py                         # Populate yield table store
-python src/growpy/cli/generate_dataset_csvs.py                       # Generate per-species CSVs
+python src/growpy/cli/create_growth_models.py --ingest-yield-tables  # Populate yield table store
+python src/growpy/cli/dataset_pipeline.py --generate-csvs             # Generate per-species CSVs
 ```
 
 This produces `data/input/dataset/all_species.csv` (one row per species for steps 1-3) and `{species}_merged.csv` files (open-grown + competition layout per species).
@@ -203,9 +203,9 @@ skip_validation = true
 ### Produce the dataset
 
 ```bash
-python src/growpy/cli/produce_dataset.py --pilot    # European Beech + Norway Spruce
-python src/growpy/cli/produce_dataset.py --all       # All 16 species
-python src/growpy/cli/produce_dataset.py --all --dry-run  # Preview commands only
+python src/growpy/cli/dataset_pipeline.py --pilot    # European Beech + Norway Spruce
+python src/growpy/cli/dataset_pipeline.py --all       # All 16 species
+python src/growpy/cli/dataset_pipeline.py --all --dry-run  # Preview commands only
 ```
 
 Each species produces two exported trees:
@@ -219,13 +219,13 @@ Neighbor trees (fid=101-106) participate in growth simulation but are not export
 
 ```bash
 conda activate growpy
-python src/growpy/cli/ingest_yield_tables.py
-python src/growpy/cli/generate_dataset_csvs.py
+python src/growpy/cli/create_growth_models.py --ingest-yield-tables
+python src/growpy/cli/dataset_pipeline.py --generate-csvs
 python src/growpy/cli/prepare_assets.py --csv data/input/dataset/all_species.csv
 python src/growpy/cli/convert_twigs.py --csv data/input/dataset/all_species.csv
 python src/growpy/cli/create_growth_models.py --csv data/input/dataset/all_species.csv
 # Configure growpy.toml (height_interval, density_variants, quality)
-python src/growpy/cli/produce_dataset.py --all
+python src/growpy/cli/dataset_pipeline.py --all
 ```
 
 ## Output Structure

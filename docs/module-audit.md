@@ -13,12 +13,19 @@ These are the entry points invoked directly from the command line.
 | `cli/convert_twigs.py` | 2 | Convert `.blend` twig meshes to `.usda` foliage files |
 | `cli/create_growth_models.py` | 3 | Simulate Grove growth, calibrate against yield tables, fit prediction models |
 | `cli/generate_forest.py` | 4 | Grow forest from CSV, export USD assemblies with radial scaling |
-| `cli/generate_dataset_csvs.py` | -- | Generate per-species open/competition CSV templates for dataset production |
-| `cli/produce_dataset.py` | -- | Batch wrapper: runs `generate_forest.py` for each species' CSV pair |
+| `cli/dataset_pipeline.py` | -- | Dataset orchestrator: runs all four steps, CSV generation, parallel step 4 |
 
 Pipeline order: 1 -> 2 -> 3 -> 4
 
-Dataset production: `generate_dataset_csvs.py` -> `produce_dataset.py` (calls step 4 per species)
+Dataset production: `dataset_pipeline.py --generate-csvs` -> `dataset_pipeline.py --all` (or `--steps all`)
+
+### Orchestration
+
+| Module | Imported By |
+|--------|-------------|
+| `core/orchestration/dataset_csv_planner.py` | `dataset_pipeline.py` (generate merged + all-species CSVs) |
+| `core/orchestration/dataset_job_planner.py` | `dataset_pipeline.py` (species selection, CSV path discovery) |
+| `core/orchestration/step_runner.py` | `dataset_pipeline.py` (subprocess invocation for all four steps) |
 
 ## Active Modules (used by pipeline)
 
@@ -70,7 +77,7 @@ Dataset production: `generate_dataset_csvs.py` -> `produce_dataset.py` (calls st
 | `utils/gbif_species.py` | `prepare_assets.py` (species name resolution) |
 | `utils/diagnostics.py` | `generate_forest.py` (Grove data dump for debugging) |
 | `utils/plotting.py` | `analysis.py` (growth curve visualization) |
-| `utils/naming.py` | `generate_dataset_csvs.py`, `produce_dataset.py` (species name standardization) |
+| `utils/naming.py` | `dataset_pipeline.py`, `core/orchestration/` (species name standardization) |
 | `utils/export_naming.py` | `assembly_export.py` (height/DBH/density filename formatting) |
 | `utils/yield_tables.py` | `create_growth_models.py` (yield table loading, Chapman-Richards interpolation) |
 

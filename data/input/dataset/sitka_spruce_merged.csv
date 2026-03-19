@@ -1,0 +1,9 @@
+fid,species,x,y,z,height,twig_density,individual_type
+1,Sitka spruce,100.0,0.0,0.0,40,1.0,open_grown
+2,Sitka spruce,0.0,0.0,0.0,40,1.0,competition
+101,Sitka spruce,6.0,0.0,0.0,40,1.0,competition
+102,Sitka spruce,-6.0,0.0,0.0,40,1.0,competition
+103,Sitka spruce,3.0,5.196,0.0,40,1.0,competition
+104,Sitka spruce,-3.0,5.196,0.0,40,1.0,competition
+105,Sitka spruce,3.0,-5.196,0.0,40,1.0,competition
+106,Sitka spruce,-3.0,-5.196,0.0,40,1.0,competition

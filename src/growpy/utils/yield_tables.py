@@ -191,7 +191,7 @@ def predict_dbh_from_height(
     heights: List[float],
     model: Dict[str, float],
 ) -> List[float]:
-    """Predict DBH (cm) from heights (m) using a fitted power model."""
+    """Predict DBH (m) from heights (m) using a fitted power model."""
     a, b = model["a"], model["b"]
     return [max(0.0, a * (h ** b)) if h > 0 else 0.0 for h in heights]
 
@@ -399,17 +399,19 @@ def calibrate_species(
     )
 
     # Target DBH via height-DBH allometric model (applied at export via radial scaling)
-    # Instead of age-interpolated DBH, we fit a power model DBH = a*H^b from the
-    # yield table and apply it to grove heights. This is height-driven, not age-driven.
+    # Fit a power model DBH = a*H^b from the yield table and apply it to the
+    # interpolated yield table heights for each cycle. This gives the expected
+    # DBH at the target height the calibrated tree should reach.
     h_dbh_model = None
     write_target_dbh = None
 
     if grove_dbhs and yield_data.dbhs and yield_data.heights:
         h_dbh_model = fit_height_dbh_model(yield_data.heights, yield_data.dbhs)
         if h_dbh_model:
-            # Convert predicted DBH from cm to meters for storage
-            dbh_cm = predict_dbh_from_height(grove_heights, h_dbh_model)
-            write_target_dbh = [d / 100.0 for d in dbh_cm]
+            # Predict target DBH from interpolated yield table heights (meters)
+            write_target_dbh = predict_dbh_from_height(
+                list(yearly_heights), h_dbh_model
+            )
 
     result = write_calibration_to_seed_json(
         species_name,

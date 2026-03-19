@@ -611,15 +611,15 @@ def predict_dbh_from_height_model(
 
     Args:
         height_m: Tree height in meters.
-        model: Dict with 'a' and 'b' coefficients (DBH_cm = a * H_m^b).
+        model: Dict with 'a' and 'b' coefficients (DBH_m = a * H_m^b).
 
     Returns:
         Predicted DBH in meters.
     """
     if height_m <= 0:
         return 0.0
-    dbh_cm = model["a"] * (height_m ** model["b"])
-    return max(0.0, dbh_cm / 100.0)
+    dbh_m = model["a"] * (height_m ** model["b"])
+    return max(0.0, dbh_m)
 
 
 def get_species_overrides(species_name: str) -> PresetOverrides:

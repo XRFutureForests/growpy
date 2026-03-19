@@ -258,13 +258,13 @@ python src/growpy/cli/generate_forest.py \
 
 With `density_variants` active, the run exports `full`, `reduced`, and `bare` variants at every height milestone snapshot. The `--export-trees 1,2` flag exports the open tree (fid=1) and the competition center tree (fid=2); neighbors participate in growth simulation for light competition but are not exported.
 
-**Batch helper**: `produce_dataset.py` automates this for one or more species:
+**Batch helper**: `dataset_pipeline.py` automates this for one or more species:
 
 ```
-python src/growpy/cli/produce_dataset.py --species "European beech"
-python src/growpy/cli/produce_dataset.py --all
-python src/growpy/cli/produce_dataset.py --pilot    # beech + spruce only
-python src/growpy/cli/produce_dataset.py --dry-run   # print commands without executing
+python src/growpy/cli/dataset_pipeline.py --species "European beech"
+python src/growpy/cli/dataset_pipeline.py --all
+python src/growpy/cli/dataset_pipeline.py --pilot    # beech + spruce only
+python src/growpy/cli/dataset_pipeline.py --dry-run   # print commands without executing
 ```
 
 ### CSV Input Templates
@@ -343,7 +343,7 @@ Start with one broadleaf and one conifer to validate the full pipeline before co
 **European beech (broadleaf pilot)**:
 
 ```
-python src/growpy/cli/produce_dataset.py --species "European beech"
+python src/growpy/cli/dataset_pipeline.py --species "European beech"
 ```
 
 Or manually:
@@ -364,7 +364,7 @@ python src/growpy/cli/generate_forest.py \
 **Norway spruce (conifer pilot)**:
 
 ```
-python src/growpy/cli/produce_dataset.py --species "Norway spruce"
+python src/growpy/cli/dataset_pipeline.py --species "Norway spruce"
 ```
 
 **Review checkpoint 2** -- compare broadleaf vs conifer:
@@ -379,7 +379,7 @@ python src/growpy/cli/produce_dataset.py --species "Norway spruce"
 Once pilots look good:
 
 ```
-python src/growpy/cli/produce_dataset.py --all
+python src/growpy/cli/dataset_pipeline.py --all
 ```
 
 Or run species individually if you prefer to review each one.

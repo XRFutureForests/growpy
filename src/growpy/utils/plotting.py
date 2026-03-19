@@ -344,6 +344,12 @@ def plot_calibration_comparison(
             "g-", linewidth=2.5, label="Grove (after calibration)",
         )
 
+    # Limit x-axis to the Grove data range so curves are clearly visible
+    grove_max_year = max(uncal_years[-1] if uncal_years else 0,
+                         cal_years[-1] if calibrated_heights is not None else 0)
+    if grove_max_year > 0:
+        ax1.set_xlim(0, grove_max_year * 1.15)
+
     ax1.set_xlabel("Age (years)")
     ax1.set_ylabel("Height (m)")
     ax1.set_title("Height over Age")
@@ -385,6 +391,13 @@ def plot_calibration_comparison(
             [d * 100 for d in target_dbh_per_cycle],
             "g--", linewidth=2.0, alpha=0.8, label="Export DBH (radial scaling)",
         )
+
+    # Match x-axis range to the height plot
+    grove_max_year = max(uncal_years[-1] if uncal_years else 0,
+                         (len(calibrated_dbhs) / flushes_per_year
+                          if calibrated_dbhs is not None else 0))
+    if grove_max_year > 0:
+        ax2.set_xlim(0, grove_max_year * 1.15)
 
     ax2.set_xlabel("Age (years)")
     ax2.set_ylabel("DBH (cm)")

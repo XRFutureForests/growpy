@@ -47,6 +47,11 @@ def generate_preview_image(
             if len(points) == 0:
                 return None
 
+            # Center XY at origin so open-grown trees at X=100 display cleanly
+            points = points.copy()
+            center_xy = np.mean(points[:, :2], axis=0)
+            points[:, :2] -= center_xy
+
             radii = None
             if hasattr(skeleton, "point_attribute_radius"):
                 radii = np.array(skeleton.point_attribute_radius)
@@ -251,13 +256,27 @@ def generate_icon_image(
             ax.add_collection(lc)
             ax.set_aspect("equal")
             ax.autoscale()
+
+            # Pad axes to fill the square canvas (tree is taller than wide)
+            xlo, xhi = ax.get_xlim()
+            ylo, yhi = ax.get_ylim()
+            xspan = xhi - xlo
+            yspan = yhi - ylo
+            span = max(xspan, yspan)
+            xcenter = (xlo + xhi) / 2
+            ycenter = (ylo + yhi) / 2
+            margin = span * 0.05
+            half = span / 2 + margin
+            ax.set_xlim(xcenter - half, xcenter + half)
+            ax.set_ylim(ycenter - half, ycenter + half)
+
             ax.axis("off")
             fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
 
             png_path = tree_dir / f"{file_prefix}_icon.png"
             fig.savefig(
-                png_path, dpi=dpi, bbox_inches="tight",
-                facecolor="white", pad_inches=0.02,
+                png_path, dpi=dpi,
+                facecolor="white",
             )
             plt.close(fig)
             logger.info("  Icon: %s", png_path.name)
@@ -357,15 +376,14 @@ def generate_export_control_image(
                         skel_points.append(vals[:3])
             skel_points = np.array(skel_points) if skel_points else np.empty((0, 3))
 
-            # Align skeleton joints to mesh coordinate space
-            # Skeleton bindTransforms may use world coordinates (e.g., X=100)
-            # while mesh vertices are in local/centered space (X~0)
-            if len(skel_points) > 0 and len(mesh_points) > 0:
-                mesh_center_xy = np.mean(mesh_points[:, :2], axis=0)
+            # Center everything at origin for clean plots.
+            # Mesh and skeleton may be in world coordinates (e.g., X=100
+            # for open-grown trees), which makes Front/Top views confusing.
+            mesh_center_xy = np.mean(mesh_points[:, :2], axis=0)
+            mesh_points[:, :2] -= mesh_center_xy
+            if len(skel_points) > 0:
                 skel_center_xy = np.mean(skel_points[:, :2], axis=0)
-                offset = skel_center_xy - mesh_center_xy
-                if np.linalg.norm(offset) > 1.0:
-                    skel_points[:, :2] -= offset
+                skel_points[:, :2] -= skel_center_xy
 
             title = species_clean.replace("_", " ").title()
             z_vals = mesh_points[:, 2]
