@@ -16,7 +16,10 @@
         "p": 1.1,
         "y0": 0.0
     },
-    "age_range": [10, 150],
+    "age_range": [
+        10,
+        150
+    ],
     "age_step": 5,
     "site_index": 1.0
 }
