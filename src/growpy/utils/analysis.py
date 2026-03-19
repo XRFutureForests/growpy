@@ -1047,12 +1047,23 @@ class SpeciesGrowthAnalyzer:
             with open(metadata_path, "w") as f:
                 json.dump(self.analysis_metadata[species], f, indent=2)
 
+        # Inject flushes_per_year from calibration data if available
+        metadata = self.analysis_metadata[species]
+        if "flushes_per_year" not in metadata:
+            preset_path = self.presets_dir / f"{species}.seed.json"
+            if preset_path.exists():
+                with open(preset_path) as f:
+                    cal = json.load(f).get("_yield_table_calibration", {})
+                fpy = cal.get("flushes_per_year")
+                if fpy:
+                    metadata["flushes_per_year"] = fpy
+
         try:
             plot_growth_curves(
                 species,
                 self.height_curves[species],
                 self.dbh_curves[species],
-                self.analysis_metadata[species],
+                metadata,
                 species_dir,
             )
         except (ImportError, ValueError, OSError, TypeError) as e:
