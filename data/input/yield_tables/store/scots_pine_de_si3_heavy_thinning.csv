@@ -1,0 +1,15 @@
+age,height,dbh,species_latin,region,management,site_index,source,table_id,volume
+10,2.05,,Pinus sylvestris,DE,heavy_thinning,3.0,forest_elements,fe_pine_gehrhardt_moderate_1921_si3,1.0
+20,5.5,5.7,Pinus sylvestris,DE,heavy_thinning,3.0,forest_elements,fe_pine_gehrhardt_moderate_1921_si3,25.0
+30,9.05,9.1,Pinus sylvestris,DE,heavy_thinning,3.0,forest_elements,fe_pine_gehrhardt_moderate_1921_si3,86.0
+40,12.0,12.4,Pinus sylvestris,DE,heavy_thinning,3.0,forest_elements,fe_pine_gehrhardt_moderate_1921_si3,143.0
+50,14.35,15.7,Pinus sylvestris,DE,heavy_thinning,3.0,forest_elements,fe_pine_gehrhardt_moderate_1921_si3,187.0
+60,16.3,18.9,Pinus sylvestris,DE,heavy_thinning,3.0,forest_elements,fe_pine_gehrhardt_moderate_1921_si3,224.0
+70,17.9,21.7,Pinus sylvestris,DE,heavy_thinning,3.0,forest_elements,fe_pine_gehrhardt_moderate_1921_si3,255.0
+80,19.2,24.2,Pinus sylvestris,DE,heavy_thinning,3.0,forest_elements,fe_pine_gehrhardt_moderate_1921_si3,280.0
+90,20.3,26.4,Pinus sylvestris,DE,heavy_thinning,3.0,forest_elements,fe_pine_gehrhardt_moderate_1921_si3,301.0
+100,21.2,28.5,Pinus sylvestris,DE,heavy_thinning,3.0,forest_elements,fe_pine_gehrhardt_moderate_1921_si3,318.0
+110,21.9,30.5,Pinus sylvestris,DE,heavy_thinning,3.0,forest_elements,fe_pine_gehrhardt_moderate_1921_si3,332.0
+120,22.5,32.3,Pinus sylvestris,DE,heavy_thinning,3.0,forest_elements,fe_pine_gehrhardt_moderate_1921_si3,344.0
+130,23.0,34.1,Pinus sylvestris,DE,heavy_thinning,3.0,forest_elements,fe_pine_gehrhardt_moderate_1921_si3,354.0
+140,23.45,35.6,Pinus sylvestris,DE,heavy_thinning,3.0,forest_elements,fe_pine_gehrhardt_moderate_1921_si3,363.0

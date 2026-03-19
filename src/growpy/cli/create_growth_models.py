@@ -149,6 +149,11 @@ def _run_calibration_pass(
             yield_tables_dir=yield_tables_dir,
             calibration_species=config.calibration_species,
             yield_search=yield_search,
+            store_dir=config.yield_sources_store_dir,
+            preferred_site_index=config.calibration_species.get(
+                common_name, {}
+            ).get("site_index"),
+            preferred_region=config.yield_sources_preferred_region,
         )
 
         if yield_data is None:
@@ -208,10 +213,13 @@ def _generate_comparison_plots(
     - Grove after calibration (re-simulated with overrides applied)
     """
     from growpy.utils.plotting import plot_calibration_comparison
+    from growpy.config.preset_overrides import load_target_dbh_from_preset
 
     plot_dir = config.calibration_output_dir
     if not plot_dir.is_absolute():
         plot_dir = script_dir / plot_dir
+
+    presets_dir = script_dir / "data" / "assets" / "presets"
 
     for species_std, info in calibration_info.items():
         common_name = info["common_name"]
@@ -226,6 +234,10 @@ def _generate_comparison_plots(
         cal_h = calibrated_heights.get(species_std)
         cal_d = calibrated_dbhs.get(species_std)
 
+        # Load target DBH from seed.json (applied at export via radial scaling)
+        preset_path = presets_dir / f"{species_std}.seed.json"
+        target_dbh = load_target_dbh_from_preset(preset_path)
+
         plot_calibration_comparison(
             species_name=common_name,
             uncalibrated_heights=uncal_h,
@@ -237,6 +249,7 @@ def _generate_comparison_plots(
             flushes_per_year=fpy,
             calibrated_heights=cal_h,
             calibrated_dbhs=cal_d,
+            target_dbh_per_cycle=target_dbh or None,
             output_path=plot_dir / f"{species_std}_comparison.png",
         )
         logger.info("  Plot saved to %s", plot_dir / f"{species_std}_comparison.png")

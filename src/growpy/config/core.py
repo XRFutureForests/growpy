@@ -150,8 +150,15 @@ class GrowPyConfig:
     calibration_yield_tables_dir: Path = field(
         default_factory=lambda: Path("data/input/yield_tables")
     )
-    # Species yield table config: {species_name: {table_id, yield_class}}
+    # Species yield table config: {species_name: {table_id, yield_class, site_index}}
     calibration_species: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+
+    # [yield_sources]
+    yield_sources_store_dir: Path = field(
+        default_factory=lambda: Path("data/input/yield_tables/store")
+    )
+    yield_sources_enabled_providers: List[str] = field(default_factory=list)
+    yield_sources_preferred_region: str = ""
 
     @classmethod
     def from_toml(cls, toml_path: Path, set_as_global: bool = True) -> "GrowPyConfig":
@@ -295,12 +302,21 @@ class GrowPyConfig:
             kwargs["calibration_plot"] = cal["plot"]
         if "yield_tables_dir" in cal:
             kwargs["calibration_yield_tables_dir"] = Path(cal["yield_tables_dir"])
-        # [calibration.species."Species Name"] -> {table_id, yield_class}
+        # [calibration.species."Species Name"] -> {table_id, yield_class, site_index}
         cal_species = cal.get("species", {})
         if cal_species:
             kwargs["calibration_species"] = {
                 name: dict(cfg) for name, cfg in cal_species.items()
             }
+
+        # [yield_sources]
+        ys = data.get("yield_sources", {})
+        if "store_dir" in ys:
+            kwargs["yield_sources_store_dir"] = Path(ys["store_dir"])
+        if "enabled_providers" in ys:
+            kwargs["yield_sources_enabled_providers"] = list(ys["enabled_providers"])
+        if "preferred_region" in ys:
+            kwargs["yield_sources_preferred_region"] = ys["preferred_region"]
 
         instance = cls(**kwargs)
         if set_as_global:

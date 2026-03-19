@@ -103,6 +103,24 @@ plot = true
 #   3. openyieldtables.org auto-discovery (via Yield Search column in tree_asset_lookup.csv)
 # Override per species with CLI: --species "Name" --table-id N --yield-class N
 # Or add optional [calibration.species."Name"] sections here to pin specific tables.
+# Example:
+# [calibration.species."Norway spruce"]
+# table_id = 5
+# yield_class = 32
+# site_index = 26.0    # Preferred site index (meters at reference age)
+
+# --- Yield table store ---
+# Controls the multi-source yield table ingestion pipeline
+# Run: python src/growpy/cli/ingest_yield_tables.py
+[yield_sources]
+# Directory for the normalized yield table store (ingested CSVs + manifest)
+store_dir = "data/input/yield_tables/store"
+# Enable/disable individual providers (all enabled by default)
+# Providers: forest_elements, et_nwfva, carbon_et_xlsx, forest_yield_pdf,
+#            pryor_pdf, nova_scotia_pdf, usda_stocking_pdf, parametric_model
+enabled_providers = []
+# Preferred region filter for table selection (empty = no filter)
+preferred_region = ""
 
 # --- Step 4: generate_forest.py ---
 [forest]

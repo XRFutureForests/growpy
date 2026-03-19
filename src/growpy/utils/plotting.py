@@ -294,6 +294,7 @@ def plot_calibration_comparison(
     flushes_per_year: float = 1.0,
     calibrated_heights: Optional[List[float]] = None,
     calibrated_dbhs: Optional[List[float]] = None,
+    target_dbh_per_cycle: Optional[List[float]] = None,
     output_path: Optional[Path] = None,
 ) -> None:
     """Plot Grove curves vs yield table with a consistent year-based x-axis.
@@ -302,6 +303,9 @@ def plot_calibration_comparison(
     - Yield table (forestry reference data)
     - Grove simulation before calibration
     - Grove simulation after calibration (re-simulated with overrides)
+
+    The DBH chart additionally shows the target DBH that will be applied
+    at export time via radial mesh scaling (from yield table interpolation).
 
     All Grove data is converted from cycle indices to calendar years using
     flushes_per_year, so every line shares the same time axis.
@@ -370,6 +374,16 @@ def plot_calibration_comparison(
             cal_dbh_years,
             [d * 100 for d in calibrated_dbhs],
             "g-", linewidth=2.5, label="Grove (after calibration)",
+        )
+
+    if target_dbh_per_cycle is not None:
+        target_dbh_years = [
+            (i + 1) / flushes_per_year for i in range(len(target_dbh_per_cycle))
+        ]
+        ax2.plot(
+            target_dbh_years,
+            [d * 100 for d in target_dbh_per_cycle],
+            "g--", linewidth=2.0, alpha=0.8, label="Export DBH (radial scaling)",
         )
 
     ax2.set_xlabel("Age (years)")

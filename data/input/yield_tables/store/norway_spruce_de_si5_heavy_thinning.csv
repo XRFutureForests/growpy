@@ -1,0 +1,11 @@
+age,height,dbh,species_latin,region,management,site_index,source,table_id,volume
+30,2.55,3.0,Picea abies,DE,heavy_thinning,5.0,forest_elements,fe_spruce_gehrhardt_moderate_1921_si5,
+40,4.6,5.3,Picea abies,DE,heavy_thinning,5.0,forest_elements,fe_spruce_gehrhardt_moderate_1921_si5,11.0
+50,6.95,7.7,Picea abies,DE,heavy_thinning,5.0,forest_elements,fe_spruce_gehrhardt_moderate_1921_si5,52.0
+60,9.25,10.2,Picea abies,DE,heavy_thinning,5.0,forest_elements,fe_spruce_gehrhardt_moderate_1921_si5,109.0
+70,11.6,12.7,Picea abies,DE,heavy_thinning,5.0,forest_elements,fe_spruce_gehrhardt_moderate_1921_si5,169.0
+80,13.55,15.0,Picea abies,DE,heavy_thinning,5.0,forest_elements,fe_spruce_gehrhardt_moderate_1921_si5,224.0
+90,15.3,16.9,Picea abies,DE,heavy_thinning,5.0,forest_elements,fe_spruce_gehrhardt_moderate_1921_si5,271.0
+100,16.55,18.7,Picea abies,DE,heavy_thinning,5.0,forest_elements,fe_spruce_gehrhardt_moderate_1921_si5,309.0
+110,17.5,20.3,Picea abies,DE,heavy_thinning,5.0,forest_elements,fe_spruce_gehrhardt_moderate_1921_si5,339.0
+120,18.4,21.8,Picea abies,DE,heavy_thinning,5.0,forest_elements,fe_spruce_gehrhardt_moderate_1921_si5,365.0

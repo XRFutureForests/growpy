@@ -1,0 +1,22 @@
+{
+    "species_latin": "Abies grandis",
+    "region": "EU-West",
+    "source_reference": "Hein_2009_grand_fir_europe",
+    "height_model": {
+        "type": "chapman_richards",
+        "A": 45.0,
+        "k": 0.030,
+        "p": 1.4,
+        "y0": 0.5
+    },
+    "dbh_model": {
+        "type": "chapman_richards",
+        "A": 70.0,
+        "k": 0.022,
+        "p": 1.2,
+        "y0": 0.0
+    },
+    "age_range": [10, 160],
+    "age_step": 5,
+    "site_index": 1.0
+}

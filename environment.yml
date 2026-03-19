@@ -13,9 +13,13 @@ dependencies:
   - joblib
   - ipykernel
   - pillow
+  # R for yield table extraction (ForestElementsR, et.nwfva)
+  - r-base>=4.3
+  - openpyxl # XLSX yield table parsing (Kohlenstoff-Ertragstafeln)
   - pip:
       - openyieldtables # For real-world yield data calibration
       - bpy # Blender Python API with bundled USD, MaterialX, OpenImageIO, etc.
+      - tabula-py # PDF yield table extraction (requires Java runtime)
 
 variables:
   PYTHONPATH: ./src:./src/the_grove_23/modules

@@ -1,8 +1,9 @@
 """Unified yield table loading and calibration math.
 
-Supports two yield table sources:
-1. Local CSV files in the configured yield_tables_dir (checked first)
-2. openyieldtables.org API (fallback, requires Yield Search term in lookup CSV)
+Supports three yield table sources (checked in order):
+1. Local CSV files in the configured yield_tables_dir
+2. Ingested store CSVs from the provider system (data/input/yield_tables/store/)
+3. openyieldtables.org API (fallback, requires Yield Search term in lookup CSV)
 
 Local CSV format (age in years, height in meters, dbh in centimeters):
     age,height,dbh
@@ -36,6 +37,10 @@ class YieldTableData:
     source: str
     yield_class: Optional[float] = None
     table_id: Optional[int] = None
+    species_latin: str = ""
+    region: str = ""
+    management: str = ""
+    site_index: Optional[float] = None
 
 
 def load_local_yield_table(
@@ -177,19 +182,77 @@ def load_lookup_table(project_root: Path) -> Dict[str, Dict[str, str]]:
     return result
 
 
+def load_store_yield_table(
+    species_std: str,
+    store_dir: Path,
+    preferred_site_index: Optional[float] = None,
+    preferred_region: str = "",
+) -> Optional[YieldTableData]:
+    """Load a yield table from the ingested store.
+
+    Reads the manifest CSV to find tables for this species, selects the best
+    match, then loads the corresponding CSV.
+    """
+    manifest_path = store_dir / "manifest.csv"
+    if not manifest_path.exists():
+        return None
+
+    from growpy.utils.yield_providers import StoreManifest, select_best_table
+
+    manifest = StoreManifest.load(manifest_path)
+    tables = manifest.find_tables_for_species(species_std)
+    if not tables:
+        return None
+
+    best = select_best_table(tables, preferred_region, preferred_site_index)
+    if not best:
+        return None
+
+    csv_path = store_dir / best["filename"]
+    if not csv_path.exists():
+        logger.warning("Store manifest references missing file: %s", csv_path)
+        return None
+
+    import pandas as pd
+
+    df = pd.read_csv(csv_path)
+    if not {"age", "height", "dbh"}.issubset(df.columns):
+        logger.error("Store CSV missing required columns: %s", csv_path)
+        return None
+
+    df = df.sort_values("age").reset_index(drop=True)
+    first = df.iloc[0]
+
+    return YieldTableData(
+        ages=df["age"].tolist(),
+        heights=df["height"].tolist(),
+        dbhs=[d / 100.0 for d in df["dbh"].tolist()],
+        title=f"Store: {csv_path.name}",
+        source=str(first.get("source", "store")),
+        site_index=float(first.get("site_index", 0)),
+        species_latin=str(first.get("species_latin", "")),
+        region=str(first.get("region", "")),
+        management=str(first.get("management", "")),
+    )
+
+
 def resolve_yield_table(
     species_common: str,
     species_std: str,
     yield_tables_dir: Optional[Path],
     calibration_species: Dict[str, Dict[str, Any]],
     yield_search: str = "",
+    store_dir: Optional[Path] = None,
+    preferred_site_index: Optional[float] = None,
+    preferred_region: str = "",
 ) -> Optional[YieldTableData]:
     """Resolve the best yield table for a species.
 
     Priority:
         1. Local CSV in yield_tables_dir (by standardized name)
         2. TOML override (explicit table_id + yield_class)
-        3. openyieldtables auto-discovery (via Yield Search term)
+        3. Ingested store (provider-generated CSVs)
+        4. openyieldtables auto-discovery (via Yield Search term)
 
     Args:
         species_common: Common name (e.g., "Norway spruce").
@@ -197,6 +260,9 @@ def resolve_yield_table(
         yield_tables_dir: Path to local yield table CSVs.
         calibration_species: TOML [calibration.species] config.
         yield_search: Search term for openyieldtables auto-discovery.
+        store_dir: Path to the ingested yield table store.
+        preferred_site_index: Preferred site index for store selection.
+        preferred_region: Preferred region for store selection.
 
     Returns:
         YieldTableData or None.
@@ -218,7 +284,17 @@ def resolve_yield_table(
             logger.info("  Using TOML override: table %d, YC %s", tid, yc)
             return result
 
-    # 3. Auto-discover from openyieldtables
+    # 3. Try ingested store
+    si = toml_cfg.get("site_index", preferred_site_index)
+    if store_dir and store_dir.exists():
+        store_result = load_store_yield_table(
+            species_std, store_dir, si, preferred_region
+        )
+        if store_result:
+            logger.info("  Using store yield table: %s", store_result.title)
+            return store_result
+
+    # 4. Auto-discover from openyieldtables
     if yield_search:
         discovered = auto_discover_yield_table(species_common, yield_search)
         if discovered:
@@ -511,25 +587,13 @@ def calibrate_species(
         grove_heights, yearly_heights, base_grow_length
     )
 
-    logger.info(
-        "  grow_length: base=%.3f, range=%.4f-%.4f, avg=%.4f",
-        base_grow_length, min(grow_lengths), max(grow_lengths), np.mean(grow_lengths),
-    )
-
-    # Structural safety: if calibrated grow_length has high coefficient of
-    # variation, the scale factors diverge too much for reliable calibration.
     gl_arr = np.array(grow_lengths)
     gl_cv = np.std(gl_arr) / np.mean(gl_arr) if np.mean(gl_arr) > 0 else 0.0
-    gl_unreliable = gl_cv > 0.5
-
-    write_grow_lengths = None if gl_unreliable else grow_lengths
-
-    if gl_unreliable:
-        logger.warning(
-            "  grow_length CV=%.2f (>0.5) — "
-            "skipping GL overrides (structural safety)",
-            gl_cv,
-        )
+    logger.info(
+        "  grow_length: base=%.3f, range=%.4f-%.4f, avg=%.4f, cv=%.3f",
+        base_grow_length, min(grow_lengths), max(grow_lengths),
+        np.mean(grow_lengths), gl_cv,
+    )
 
     # Target DBH for radial scaling at export (no simulation-time DBH calibration)
     target_dbhs_interp = None
@@ -546,7 +610,7 @@ def calibrate_species(
 
     result = write_calibration_to_seed_json(
         species_name,
-        write_grow_lengths or [base_grow_length] * len(grove_heights),
+        grow_lengths,
         yield_data.title,
         presets_dir,
         yield_class=yield_data.yield_class,

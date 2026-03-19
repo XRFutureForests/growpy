@@ -1,0 +1,16 @@
+age,height,dbh,species_latin,region,management,site_index,source,table_id,volume
+20,15.1,11.5,Alnus glutinosa,DE,heavy_thinning,1.0,forest_elements,fe_blackalder_mitscherlich_heavy_1945_si1,110.0
+25,17.2,14.1,Alnus glutinosa,DE,heavy_thinning,1.0,forest_elements,fe_blackalder_mitscherlich_heavy_1945_si1,154.0
+30,18.4,16.5,Alnus glutinosa,DE,heavy_thinning,1.0,forest_elements,fe_blackalder_mitscherlich_heavy_1945_si1,184.0
+35,19.75,18.7,Alnus glutinosa,DE,heavy_thinning,1.0,forest_elements,fe_blackalder_mitscherlich_heavy_1945_si1,208.0
+40,20.85,20.8,Alnus glutinosa,DE,heavy_thinning,1.0,forest_elements,fe_blackalder_mitscherlich_heavy_1945_si1,228.0
+45,21.95,22.9,Alnus glutinosa,DE,heavy_thinning,1.0,forest_elements,fe_blackalder_mitscherlich_heavy_1945_si1,245.0
+50,22.8,25.0,Alnus glutinosa,DE,heavy_thinning,1.0,forest_elements,fe_blackalder_mitscherlich_heavy_1945_si1,260.0
+55,23.75,27.0,Alnus glutinosa,DE,heavy_thinning,1.0,forest_elements,fe_blackalder_mitscherlich_heavy_1945_si1,272.0
+60,24.7,29.0,Alnus glutinosa,DE,heavy_thinning,1.0,forest_elements,fe_blackalder_mitscherlich_heavy_1945_si1,283.0
+65,25.5,30.9,Alnus glutinosa,DE,heavy_thinning,1.0,forest_elements,fe_blackalder_mitscherlich_heavy_1945_si1,292.0
+70,26.2,32.8,Alnus glutinosa,DE,heavy_thinning,1.0,forest_elements,fe_blackalder_mitscherlich_heavy_1945_si1,300.0
+75,26.9,34.7,Alnus glutinosa,DE,heavy_thinning,1.0,forest_elements,fe_blackalder_mitscherlich_heavy_1945_si1,307.0
+80,27.65,36.5,Alnus glutinosa,DE,heavy_thinning,1.0,forest_elements,fe_blackalder_mitscherlich_heavy_1945_si1,313.0
+85,28.25,38.3,Alnus glutinosa,DE,heavy_thinning,1.0,forest_elements,fe_blackalder_mitscherlich_heavy_1945_si1,319.0
+90,28.75,40.1,Alnus glutinosa,DE,heavy_thinning,1.0,forest_elements,fe_blackalder_mitscherlich_heavy_1945_si1,325.0

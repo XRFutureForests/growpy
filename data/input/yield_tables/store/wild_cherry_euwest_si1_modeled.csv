@@ -1,0 +1,20 @@
+age,height,dbh,species_latin,region,management,site_index,source,table_id
+10,5.518007847712236,8.179190183100529,Prunus avium,EU-West,modeled,1.0,parametric_models,Pryor_1988_wild_cherry
+15,8.149609045520897,12.391997859868892,Prunus avium,EU-West,modeled,1.0,parametric_models,Pryor_1988_wild_cherry
+20,10.53852121326301,16.32537180259938,Prunus avium,EU-West,modeled,1.0,parametric_models,Pryor_1988_wild_cherry
+25,12.65258902474114,19.935194019490115,Prunus avium,EU-West,modeled,1.0,parametric_models,Pryor_1988_wild_cherry
+30,14.496115438662702,23.215005244451014,Prunus avium,EU-West,modeled,1.0,parametric_models,Pryor_1988_wild_cherry
+35,16.088557444207176,26.17553689227079,Prunus avium,EU-West,modeled,1.0,parametric_models,Pryor_1988_wild_cherry
+40,17.455150931933147,28.83566044141231,Prunus avium,EU-West,modeled,1.0,parametric_models,Pryor_1988_wild_cherry
+45,18.622405786855527,31.21783532460692,Prunus avium,EU-West,modeled,1.0,parametric_models,Pryor_1988_wild_cherry
+50,19.615895055993526,33.34565661082861,Prunus avium,EU-West,modeled,1.0,parametric_models,Pryor_1988_wild_cherry
+55,20.459214610746518,35.242493018686424,Prunus avium,EU-West,modeled,1.0,parametric_models,Pryor_1988_wild_cherry
+60,21.173565308981434,36.930732176014054,Prunus avium,EU-West,modeled,1.0,parametric_models,Pryor_1988_wild_cherry
+65,21.777670251892367,38.43137996049973,Prunus avium,EU-West,modeled,1.0,parametric_models,Pryor_1988_wild_cherry
+70,22.287869215053803,39.76387216077429,Prunus avium,EU-West,modeled,1.0,parametric_models,Pryor_1988_wild_cherry
+75,22.718301086565116,40.94601509969416,Prunus avium,EU-West,modeled,1.0,parametric_models,Pryor_1988_wild_cherry
+80,23.0811234196009,41.99400441147235,Prunus avium,EU-West,modeled,1.0,parametric_models,Pryor_1988_wild_cherry
+85,23.3867402243835,42.92249020205706,Prunus avium,EU-West,modeled,1.0,parametric_models,Pryor_1988_wild_cherry
+90,23.644022060078903,43.74466839000376,Prunus avium,EU-West,modeled,1.0,parametric_models,Pryor_1988_wild_cherry
+95,23.860510168154534,44.47238526859651,Prunus avium,EU-West,modeled,1.0,parametric_models,Pryor_1988_wild_cherry
+100,24.04260095084495,45.116246972879885,Prunus avium,EU-West,modeled,1.0,parametric_models,Pryor_1988_wild_cherry

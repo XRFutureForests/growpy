@@ -1,0 +1,22 @@
+age,height,dbh,species_latin,region,management,site_index,source,table_id,volume
+20,4.85,,Picea abies,DE,normal,3.0,forest_elements,fe_spruce_vanselow_1951_si3,
+25,6.25,,Picea abies,DE,normal,3.0,forest_elements,fe_spruce_vanselow_1951_si3,
+30,8.0,6.1,Picea abies,DE,normal,3.0,forest_elements,fe_spruce_vanselow_1951_si3,49.0
+35,9.45,7.8,Picea abies,DE,normal,3.0,forest_elements,fe_spruce_vanselow_1951_si3,101.0
+40,11.05,9.6,Picea abies,DE,normal,3.0,forest_elements,fe_spruce_vanselow_1951_si3,157.0
+45,12.65,11.4,Picea abies,DE,normal,3.0,forest_elements,fe_spruce_vanselow_1951_si3,209.0
+50,14.25,13.2,Picea abies,DE,normal,3.0,forest_elements,fe_spruce_vanselow_1951_si3,259.0
+55,15.85,14.9,Picea abies,DE,normal,3.0,forest_elements,fe_spruce_vanselow_1951_si3,307.0
+60,17.4,16.6,Picea abies,DE,normal,3.0,forest_elements,fe_spruce_vanselow_1951_si3,355.0
+65,18.95,18.3,Picea abies,DE,normal,3.0,forest_elements,fe_spruce_vanselow_1951_si3,398.0
+70,20.55,20.0,Picea abies,DE,normal,3.0,forest_elements,fe_spruce_vanselow_1951_si3,438.0
+75,21.8,21.7,Picea abies,DE,normal,3.0,forest_elements,fe_spruce_vanselow_1951_si3,475.0
+80,23.05,23.4,Picea abies,DE,normal,3.0,forest_elements,fe_spruce_vanselow_1951_si3,512.0
+85,24.25,25.0,Picea abies,DE,normal,3.0,forest_elements,fe_spruce_vanselow_1951_si3,545.0
+90,25.5,26.5,Picea abies,DE,normal,3.0,forest_elements,fe_spruce_vanselow_1951_si3,574.0
+95,26.55,28.0,Picea abies,DE,normal,3.0,forest_elements,fe_spruce_vanselow_1951_si3,600.0
+100,27.55,29.4,Picea abies,DE,normal,3.0,forest_elements,fe_spruce_vanselow_1951_si3,623.0
+105,28.5,30.8,Picea abies,DE,normal,3.0,forest_elements,fe_spruce_vanselow_1951_si3,645.0
+110,29.25,32.1,Picea abies,DE,normal,3.0,forest_elements,fe_spruce_vanselow_1951_si3,663.0
+115,29.95,33.3,Picea abies,DE,normal,3.0,forest_elements,fe_spruce_vanselow_1951_si3,680.0
+120,30.65,34.4,Picea abies,DE,normal,3.0,forest_elements,fe_spruce_vanselow_1951_si3,695.0

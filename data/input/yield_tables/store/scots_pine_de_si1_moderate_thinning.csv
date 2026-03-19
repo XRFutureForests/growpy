@@ -1,0 +1,25 @@
+age,height,dbh,species_latin,region,management,site_index,source,table_id,volume
+25,10.3,9.3,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,99.0
+30,12.2,11.8,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,150.0
+35,14.1,13.9,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,190.0
+40,15.7,16.0,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,226.0
+45,17.3,18.2,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,257.0
+50,18.9,20.2,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,284.0
+55,20.2,22.1,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,308.0
+60,21.6,23.8,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,330.0
+65,22.7,25.5,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,349.0
+70,23.7,27.0,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,366.0
+75,24.6,28.4,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,379.0
+80,25.4,29.8,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,391.0
+85,26.1,31.2,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,402.0
+90,26.8,32.6,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,412.0
+95,27.4,34.0,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,421.0
+100,28.0,35.3,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,429.0
+105,28.6,36.5,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,436.0
+110,29.1,37.7,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,442.0
+115,29.6,38.8,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,447.0
+120,30.0,39.9,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,451.0
+125,30.5,40.8,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,454.0
+130,30.9,41.5,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,456.0
+135,31.2,42.3,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,458.0
+140,31.5,43.0,Pinus sylvestris,DE,moderate_thinning,1.0,forest_elements,fe_pine_wiedemann_moderate_1943_si1,459.0

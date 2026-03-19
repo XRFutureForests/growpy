@@ -1,0 +1,22 @@
+{
+    "species_latin": "Acer campestre",
+    "region": "DE-Central",
+    "source_reference": "Nagel_1999_minor_broadleaves",
+    "height_model": {
+        "type": "chapman_richards",
+        "A": 20.0,
+        "k": 0.025,
+        "p": 1.2,
+        "y0": 0.5
+    },
+    "dbh_model": {
+        "type": "chapman_richards",
+        "A": 40.0,
+        "k": 0.020,
+        "p": 1.1,
+        "y0": 0.0
+    },
+    "age_range": [10, 150],
+    "age_step": 5,
+    "site_index": 1.0
+}

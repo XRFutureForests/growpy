@@ -1,0 +1,22 @@
+{
+    "species_latin": "Thuja plicata",
+    "region": "EU-West",
+    "source_reference": "Christie_FC_yield_western_redcedar",
+    "height_model": {
+        "type": "chapman_richards",
+        "A": 40.0,
+        "k": 0.025,
+        "p": 1.3,
+        "y0": 0.5
+    },
+    "dbh_model": {
+        "type": "chapman_richards",
+        "A": 75.0,
+        "k": 0.018,
+        "p": 1.1,
+        "y0": 0.0
+    },
+    "age_range": [10, 160],
+    "age_step": 5,
+    "site_index": 1.0
+}

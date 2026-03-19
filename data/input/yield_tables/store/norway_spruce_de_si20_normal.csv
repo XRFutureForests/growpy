@@ -1,0 +1,22 @@
+age,height,dbh,species_latin,region,management,site_index,source,table_id,volume
+20,1.5,,Picea abies,DE,normal,20.0,forest_elements,fe_spruce_assmann_franz_mean_yield_level_1963_si20,
+25,2.6,,Picea abies,DE,normal,20.0,forest_elements,fe_spruce_assmann_franz_mean_yield_level_1963_si20,
+30,3.8,,Picea abies,DE,normal,20.0,forest_elements,fe_spruce_assmann_franz_mean_yield_level_1963_si20,
+35,5.0,,Picea abies,DE,normal,20.0,forest_elements,fe_spruce_assmann_franz_mean_yield_level_1963_si20,
+40,6.2,,Picea abies,DE,normal,20.0,forest_elements,fe_spruce_assmann_franz_mean_yield_level_1963_si20,
+45,7.5,6.3,Picea abies,DE,normal,20.0,forest_elements,fe_spruce_assmann_franz_mean_yield_level_1963_si20,35.0
+50,8.6,7.5,Picea abies,DE,normal,20.0,forest_elements,fe_spruce_assmann_franz_mean_yield_level_1963_si20,65.0
+55,9.8,8.6,Picea abies,DE,normal,20.0,forest_elements,fe_spruce_assmann_franz_mean_yield_level_1963_si20,94.0
+60,10.8,9.8,Picea abies,DE,normal,20.0,forest_elements,fe_spruce_assmann_franz_mean_yield_level_1963_si20,123.0
+65,11.9,11.0,Picea abies,DE,normal,20.0,forest_elements,fe_spruce_assmann_franz_mean_yield_level_1963_si20,151.0
+70,12.8,12.1,Picea abies,DE,normal,20.0,forest_elements,fe_spruce_assmann_franz_mean_yield_level_1963_si20,179.0
+75,13.7,13.3,Picea abies,DE,normal,20.0,forest_elements,fe_spruce_assmann_franz_mean_yield_level_1963_si20,205.0
+80,14.6,14.5,Picea abies,DE,normal,20.0,forest_elements,fe_spruce_assmann_franz_mean_yield_level_1963_si20,229.0
+85,15.4,15.6,Picea abies,DE,normal,20.0,forest_elements,fe_spruce_assmann_franz_mean_yield_level_1963_si20,252.0
+90,16.1,16.8,Picea abies,DE,normal,20.0,forest_elements,fe_spruce_assmann_franz_mean_yield_level_1963_si20,272.0
+95,16.8,17.9,Picea abies,DE,normal,20.0,forest_elements,fe_spruce_assmann_franz_mean_yield_level_1963_si20,290.0
+100,17.5,19.1,Picea abies,DE,normal,20.0,forest_elements,fe_spruce_assmann_franz_mean_yield_level_1963_si20,307.0
+105,18.1,20.2,Picea abies,DE,normal,20.0,forest_elements,fe_spruce_assmann_franz_mean_yield_level_1963_si20,321.0
+110,18.6,21.4,Picea abies,DE,normal,20.0,forest_elements,fe_spruce_assmann_franz_mean_yield_level_1963_si20,333.0
+115,19.1,22.5,Picea abies,DE,normal,20.0,forest_elements,fe_spruce_assmann_franz_mean_yield_level_1963_si20,343.0
+120,19.6,23.7,Picea abies,DE,normal,20.0,forest_elements,fe_spruce_assmann_franz_mean_yield_level_1963_si20,351.0
