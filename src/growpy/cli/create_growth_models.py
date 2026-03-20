@@ -259,6 +259,40 @@ def _generate_comparison_plots(
         logger.info("  Plot saved to %s", plot_dir / f"{species_std}_comparison.png")
 
 
+def _generate_grove_only_plots(
+    analyzer: "SpeciesGrowthAnalyzer",
+    calibration_info: Dict[str, Dict[str, Any]],
+    config,
+    script_dir: Path,
+) -> None:
+    """Generate grove-only growth plots for species without yield table data."""
+    from growpy.utils.plotting import plot_grove_curves_only
+
+    plot_dir = config.calibration_output_dir
+    if not plot_dir.is_absolute():
+        plot_dir = script_dir / plot_dir
+
+    calibrated_set = set(calibration_info.keys())
+    uncalibrated = set(analyzer.height_curves.keys()) - calibrated_set
+
+    if not uncalibrated:
+        return
+
+    logger.info("Generating grove-only plots for %d uncalibrated species...", len(uncalibrated))
+    for species_std in sorted(uncalibrated):
+        h = analyzer.height_curves.get(species_std)
+        d = analyzer.dbh_curves.get(species_std, [])
+        if not h:
+            continue
+        plot_grove_curves_only(
+            species_name=species_std.replace("_", " ").title(),
+            grove_heights=h,
+            grove_dbhs=d,
+            output_path=plot_dir / f"{species_std}_grove_only.png",
+        )
+        logger.info("  Plot saved to %s", plot_dir / f"{species_std}_grove_only.png")
+
+
 # ---------------------------------------------------------------------------
 # Yield table ingestion (merged from ingest_yield_tables.py)
 # ---------------------------------------------------------------------------
@@ -647,6 +681,12 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
                     script_dir,
                 )
 
+        # Generate grove-only plots for uncalibrated species
+        if config.calibration_plot:
+            _generate_grove_only_plots(
+                analyzer, cal_info if do_calibrate else {}, config, script_dir
+            )
+
         # Save final results
         analyzer.save_growth_models()
 
@@ -738,6 +778,12 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
                     config,
                     script_dir,
                 )
+
+        # Generate grove-only plots for uncalibrated species
+        if config.calibration_plot:
+            _generate_grove_only_plots(
+                analyzer, cal_info if do_calibrate else {}, config, script_dir
+            )
 
         # Save final results
         analyzer.save_growth_models()

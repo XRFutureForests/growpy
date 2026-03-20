@@ -281,6 +281,19 @@ def compute_grow_length_curve(
     if len(scale_factors) > 5:
         scale_factors = uniform_filter1d(scale_factors, size=3)
 
+    # Hard ceiling: prevent extreme scale factors that crash the Grove engine
+    MAX_SCALE_FACTOR = 10.0
+    n_capped = int(np.sum(scale_factors > MAX_SCALE_FACTOR))
+    scale_factors = np.minimum(scale_factors, MAX_SCALE_FACTOR)
+    if n_capped > 0:
+        logger.warning(
+            "  %d/%d scale factors capped at %.1fx (max grow_length=%.3f)",
+            n_capped,
+            len(scale_factors),
+            MAX_SCALE_FACTOR,
+            base_grow_length * MAX_SCALE_FACTOR,
+        )
+
     grow_lengths = base_grow_length * scale_factors
     # Physical floor: grow_length must stay positive and meaningful
     grow_lengths = np.maximum(grow_lengths, 0.01)

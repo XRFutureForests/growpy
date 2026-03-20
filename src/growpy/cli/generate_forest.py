@@ -189,6 +189,37 @@ def _derive_static_from_skeletal(
     return str(static_assembly)
 
 
+def _copy_comparison_plots_to_species_dirs(
+    forest_data, output_dir: Path, config
+) -> None:
+    """Copy comparison/grove-only plots to per-species export directories."""
+    import shutil
+
+    comparison_dir = config.calibration_output_dir
+    if not comparison_dir.is_absolute():
+        comparison_dir = Path(__file__).parent.parent.parent.parent / comparison_dir
+
+    if not comparison_dir.exists():
+        return
+
+    for sp in forest_data["species"].unique():
+        sp_clean = (
+            "".join(c for c in sp if c.isalnum() or c in (" ", "-", "_"))
+            .strip()
+            .replace(" ", "_")
+            .replace("-", "_")
+            .lower()
+        )
+        sp_dir = output_dir / sp_clean
+        if not sp_dir.exists():
+            continue
+        for suffix in ["_comparison.png", "_grove_only.png"]:
+            src = comparison_dir / f"{sp_clean}{suffix}"
+            if src.exists():
+                shutil.copy2(src, sp_dir / src.name)
+                logger.info("  Copied %s to %s/", src.name, sp_clean)
+
+
 def _export_single_tree_from_forest(args: tuple) -> list:
     """Export all trees from an already-simulated grove (forest simulation phase).
 
@@ -1046,7 +1077,25 @@ def generate_forest_stages(
                 milestone_height = height
                 if species_milestone_map and species_name in species_milestone_map:
                     milestone_height = species_milestone_map[species_name].get(cycle, height)
-                height_str = format_height_for_filename(milestone_height)
+
+                # When actual height deviates significantly from milestone,
+                # use actual height for truthful filenames. This happens for
+                # open-grown trees that lack competition-driven height growth.
+                height_for_filename = milestone_height
+                if height > 0 and milestone_height > 0:
+                    deviation = abs(height - milestone_height) / milestone_height
+                    if deviation > 0.3:
+                        height_for_filename = height
+                        logger.warning(
+                            "  %s fid=%d: actual h=%.1fm vs milestone %.0fm "
+                            "(%.0f%% off) -- using actual height in filename",
+                            species_name,
+                            fid,
+                            height,
+                            milestone_height,
+                            deviation * 100,
+                        )
+                height_str = format_height_for_filename(height_for_filename)
                 # Use yield table target DBH when available
                 # Prefer height-DBH model (allometric, height-driven) over age-indexed curve
                 grove_dbh = _dbh if _dbh else 0.0
@@ -1211,6 +1260,9 @@ def generate_forest_stages(
                         )
 
     logger.info("\nExported %d tree stage files", len(exported_files))
+
+    # Copy comparison/grove-only plots to per-species export directories
+    _copy_comparison_plots_to_species_dirs(forest_data, output_dir, config)
 
 
 def generate_forest_exports(
@@ -1407,6 +1459,9 @@ def generate_forest_exports(
                 verbose=verbose,
                 timer=timer,
             )
+
+        # Copy comparison plots to per-species export directories
+        _copy_comparison_plots_to_species_dirs(forest_data, output_dir, config)
 
     except ValueError as e:
         if _is_bone_limit_error(e):

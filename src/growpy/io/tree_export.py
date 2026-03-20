@@ -269,8 +269,8 @@ def build_tree_mesh(
                 # toward 1.0 with increasing order. Order 0 (trunk) = full
                 # scale, order 1 = ~half correction, higher orders = near 1.0.
                 if max_order > 0 and order > 0:
-                    # Exponential decay: each order halves the correction
-                    order_blend = 0.5 ** order
+                    # Exponential decay: higher = branches scale more with trunk
+                    order_blend = 0.7 ** order
                     s_base = radial_scale + (1.0 - radial_scale) * (1.0 - order_blend)
                 else:
                     s_base = radial_scale

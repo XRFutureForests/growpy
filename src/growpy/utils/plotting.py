@@ -587,3 +587,69 @@ def plot_calibration_comparison(
     else:
         plt.show()
     plt.close()
+
+
+def plot_grove_curves_only(
+    species_name: str,
+    grove_heights: List[float],
+    grove_dbhs: List[float],
+    flushes_per_year: float = 1.0,
+    output_path: Optional[Path] = None,
+) -> None:
+    """Plot Grove-only growth curves for species without yield table data.
+
+    Shows height and DBH over time from the uncalibrated Grove simulation,
+    without any yield table reference overlay.
+    """
+    _init_plot_style()
+
+    fig, axes = plt.subplots(1, 2, figsize=(16, 7))
+    fig.suptitle(
+        f"{species_name}: Grove Growth Curves (uncalibrated)",
+        fontsize=14,
+        fontweight="bold",
+    )
+
+    years = [(i + 1) / flushes_per_year for i in range(len(grove_heights))]
+
+    # Height
+    ax1 = axes[0]
+    ax1.plot(
+        years, grove_heights,
+        "b-", linewidth=2.0, label="Grove simulation",
+    )
+    ax1.set_xlabel("Age (years)")
+    ax1.set_ylabel("Height (m)")
+    ax1.set_title("Height over Age")
+    ax1.legend(loc="upper left")
+    ax1.grid(True, alpha=0.3)
+
+    # DBH
+    ax2 = axes[1]
+    if grove_dbhs:
+        dbh_years = years[:len(grove_dbhs)]
+        ax2.plot(
+            dbh_years,
+            [d * 100 for d in grove_dbhs],
+            "b-", linewidth=2.0, label="Grove simulation",
+        )
+    ax2.set_xlabel("Age (years)")
+    ax2.set_ylabel("DBH (cm)")
+    ax2.set_title("Diameter at Breast Height over Age")
+    ax2.legend(loc="upper left")
+    ax2.grid(True, alpha=0.3)
+
+    fig.text(
+        0.99, 0.01,
+        f"flushes_per_year = {flushes_per_year:.2f}",
+        ha="right", va="bottom", fontsize=9, color="gray",
+    )
+
+    plt.tight_layout()
+
+    if output_path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    else:
+        plt.show()
+    plt.close()
