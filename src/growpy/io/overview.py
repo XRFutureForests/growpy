@@ -2,7 +2,8 @@
 
 Scans the forest output directory for icon.png files and arranges them
 into a species x height-interval table with separate rows for competition
-and open-grown variants.
+and open-grown variants. Columns are determined by the configured
+height_interval from growpy.toml.
 """
 
 import logging
@@ -20,7 +21,7 @@ def _parse_icon_files(forest_dir: Path) -> dict:
     """Scan forest output and return structured icon data.
 
     Returns dict keyed by (species_clean, context) with values being
-    dicts of height_label -> relative icon path.
+    dicts of height_meters (int) -> relative icon path.
     """
     entries = {}
     for png in sorted(forest_dir.rglob("*_icon.png")):
@@ -33,18 +34,40 @@ def _parse_icon_files(forest_dir: Path) -> dict:
         rel_path = png.relative_to(forest_dir)
         species_clean = species_title.replace("_", " ").lower().replace(" ", "_")
         key = (species_clean, context)
-        entries.setdefault(key, {})[height_label] = str(rel_path).replace("\\", "/")
+        height_m = int(re.findall(r"\d+", height_label)[0])
+        entries.setdefault(key, {})[height_m] = str(rel_path).replace("\\", "/")
     return entries
 
 
-def _height_sort_key(label: str) -> int:
-    """Extract numeric value from height label like h05m -> 5."""
-    nums = re.findall(r"\d+", label)
-    return int(nums[0]) if nums else 0
+def _snap_to_interval(height_m: int, interval: int) -> int:
+    """Snap a height value to the nearest interval multiple."""
+    if interval <= 0:
+        return height_m
+    return round(height_m / interval) * interval
 
 
-def generate_overview_markdown(forest_dir: Path) -> Path:
+def _build_interval_columns(entries: dict, interval: int) -> list:
+    """Build sorted list of interval-aligned column heights from icon data."""
+    snapped = set()
+    for height_map in entries.values():
+        for h in height_map:
+            snapped.add(_snap_to_interval(h, interval))
+    return sorted(snapped)
+
+
+def _height_label(meters: int) -> str:
+    """Format height as label like h05m, h10m."""
+    return f"h{meters:02d}m"
+
+
+def generate_overview_markdown(
+    forest_dir: Path, height_interval: float = 5.0
+) -> Path:
     """Generate dataset_overview.md in the forest output directory.
+
+    Args:
+        forest_dir: Path to the forest output directory.
+        height_interval: Height interval in meters from growpy.toml config.
 
     Returns the path to the generated markdown file.
     """
@@ -53,22 +76,35 @@ def generate_overview_markdown(forest_dir: Path) -> Path:
         logger.warning("No icon files found in %s", forest_dir)
         return forest_dir / "dataset_overview.md"
 
-    all_heights = set()
-    for height_map in entries.values():
-        all_heights.update(height_map.keys())
-    sorted_heights = sorted(all_heights, key=_height_sort_key)
+    interval = max(1, int(height_interval))
+    columns = _build_interval_columns(entries, interval)
+    if not columns:
+        logger.warning("No height columns after interval alignment")
+        return forest_dir / "dataset_overview.md"
+
+    # Build lookup: (species, context) -> {snapped_height -> icon_path}
+    snapped_entries = {}
+    for key, height_map in entries.items():
+        snapped = {}
+        for h, path in height_map.items():
+            col = _snap_to_interval(h, interval)
+            snapped[col] = path
+        snapped_entries[key] = snapped
 
     all_species = sorted(set(sp for sp, _ in entries.keys()))
 
     lines = []
     lines.append("# Dataset Overview")
     lines.append("")
-    lines.append("Tree preview icons by species, growth context, and height interval.")
+    lines.append(
+        f"Tree preview icons by species, growth context, "
+        f"and height interval ({interval}m steps)."
+    )
     lines.append("")
 
-    height_headers = " | ".join(sorted_heights)
-    lines.append(f"| Species | Context | {height_headers} |")
-    separator = " | ".join(["---"] * (2 + len(sorted_heights)))
+    col_headers = " | ".join(_height_label(c) for c in columns)
+    lines.append(f"| Species | Context | {col_headers} |")
+    separator = " | ".join(["---"] * (2 + len(columns)))
     lines.append(f"| {separator} |")
 
     for species in all_species:
@@ -77,13 +113,13 @@ def generate_overview_markdown(forest_dir: Path) -> Path:
             ctx_short = "comp" if context == "competition" else "open"
             ctx_display = "Competition" if context == "competition" else "Open Grown"
             key = (species, ctx_short)
-            height_map = entries.get(key, {})
+            height_map = snapped_entries.get(key, {})
 
             cells = []
-            for h in sorted_heights:
-                if h in height_map:
-                    img_path = height_map[h]
-                    cells.append(f"![{h}]({img_path})")
+            for col in columns:
+                if col in height_map:
+                    img_path = height_map[col]
+                    cells.append(f"![{_height_label(col)}]({img_path})")
                 else:
                     cells.append("")
             row = " | ".join(cells)

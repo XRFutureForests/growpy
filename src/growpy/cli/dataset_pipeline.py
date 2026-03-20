@@ -16,7 +16,7 @@ Usage:
     python src/growpy/cli/dataset_pipeline.py --pilot
     python src/growpy/cli/dataset_pipeline.py --all
     python src/growpy/cli/dataset_pipeline.py --species "European Beech"
-    python src/growpy/cli/dataset_pipeline.py --all --steps all
+    python src/growpy/cli/dataset_pipeline.py --all --steps all --ingest-yield-tables
     python src/growpy/cli/dataset_pipeline.py --pilot --dry-run
 
     # Generate CSVs then run only step 4 for pilot species:
@@ -281,7 +281,9 @@ def main():
         from growpy.config.core import GrowPyConfig
 
         config = GrowPyConfig()
-        generate_overview_markdown(config.output_dir)
+        generate_overview_markdown(
+            config.output_dir, config.forest_height_interval
+        )
 
     logger.info("Done. %d step(s) completed.", len(steps))
 
