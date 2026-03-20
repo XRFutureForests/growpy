@@ -279,10 +279,15 @@ def main():
     # Generate dataset overview after step 4
     if 4 in steps and not args.dry_run:
         from growpy.config.core import GrowPyConfig
+        from growpy.config.paths import get_assets_directory
 
         config = GrowPyConfig()
+        assets_dir = get_assets_directory()
         generate_overview_markdown(
-            config.output_dir, config.forest_height_interval
+            config.output_dir,
+            config.forest_height_interval,
+            preset_dir=assets_dir / "presets",
+            models_dir=assets_dir / "growth_models",
         )
 
     logger.info("Done. %d step(s) completed.", len(steps))
