@@ -189,37 +189,6 @@ def _derive_static_from_skeletal(
     return str(static_assembly)
 
 
-def _copy_comparison_plots_to_species_dirs(
-    forest_data, output_dir: Path, config
-) -> None:
-    """Copy comparison/grove-only plots to per-species export directories."""
-    import shutil
-
-    comparison_dir = config.calibration_output_dir
-    if not comparison_dir.is_absolute():
-        comparison_dir = Path(__file__).parent.parent.parent.parent / comparison_dir
-
-    if not comparison_dir.exists():
-        return
-
-    for sp in forest_data["species"].unique():
-        sp_clean = (
-            "".join(c for c in sp if c.isalnum() or c in (" ", "-", "_"))
-            .strip()
-            .replace(" ", "_")
-            .replace("-", "_")
-            .lower()
-        )
-        sp_dir = output_dir / sp_clean
-        if not sp_dir.exists():
-            continue
-        for suffix in ["_comparison.png", "_grove_only.png"]:
-            src = comparison_dir / f"{sp_clean}{suffix}"
-            if src.exists():
-                shutil.copy2(src, sp_dir / src.name)
-                logger.info("  Copied %s to %s/", src.name, sp_clean)
-
-
 def _export_single_tree_from_forest(args: tuple) -> list:
     """Export all trees from an already-simulated grove (forest simulation phase).
 
@@ -1261,9 +1230,6 @@ def generate_forest_stages(
 
     logger.info("\nExported %d tree stage files", len(exported_files))
 
-    # Copy comparison/grove-only plots to per-species export directories
-    _copy_comparison_plots_to_species_dirs(forest_data, output_dir, config)
-
 
 def generate_forest_exports(
     csv_path: Path,
@@ -1459,9 +1425,6 @@ def generate_forest_exports(
                 verbose=verbose,
                 timer=timer,
             )
-
-        # Copy comparison plots to per-species export directories
-        _copy_comparison_plots_to_species_dirs(forest_data, output_dir, config)
 
     except ValueError as e:
         if _is_bone_limit_error(e):

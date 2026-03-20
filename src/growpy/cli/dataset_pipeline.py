@@ -47,6 +47,7 @@ from growpy.core.orchestration.step_runner import (
     run_species_step4,
     run_step123,
 )
+from growpy.io.overview import generate_overview_markdown
 from growpy.utils.log import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -274,6 +275,13 @@ def main():
             if failed:
                 logger.error("Step 4 failed for: %s", ", ".join(failed))
                 raise SystemExit(1)
+
+    # Generate dataset overview after step 4
+    if 4 in steps and not args.dry_run:
+        from growpy.config.core import GrowPyConfig
+
+        config = GrowPyConfig()
+        generate_overview_markdown(config.output_dir)
 
     logger.info("Done. %d step(s) completed.", len(steps))
 
