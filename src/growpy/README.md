@@ -18,13 +18,19 @@ growpy/
 │   └── quality.py               # Quality presets (ultra/high/medium/low/performance)
 ├── core/              # Simulation logic
 │   ├── forest.py                # Forest creation, multi-species growth simulation
-│   └── grove.py                 # Grove API wrapper, single-species growth
+│   ├── grove.py                 # Grove API wrapper, single-species growth
+│   ├── tree.py                  # Tree measurements (height, DBH, growth cycles)
+│   ├── skeleton.py              # Skeletal mesh hierarchy for animation
+│   ├── twig.py                  # Twig placement extraction and densification
+│   └── orchestration/           # Dataset pipeline orchestration
 ├── io/                # Export and file I/O
-│   ├── usd_builder.py           # USD assembly construction
-│   ├── usd_export.py            # Tree USD export with skeleton
+│   ├── tree_export.py           # Tree USD export with skeleton
+│   ├── assembly_export.py       # Nanite Assembly USD construction
 │   ├── obj_export.py            # OBJ/MTL export for Helios++ LiDAR
+│   ├── helios_scene.py          # Helios++ scene XML generation
 │   ├── twig_export.py           # Twig .blend to USD conversion
 │   ├── preview.py               # Preview image generation
+│   ├── wind_json.py             # Dynamic wind JSON for Unreal
 │   ├── pve_grove_mapper.py      # PVE preset JSON generation
 │   ├── texture_utils.py         # Texture processing and resizing
 │   └── unreal_scripts.py        # Unreal import/cleanup script generation
@@ -40,9 +46,13 @@ growpy/
 │   └── visualize_tree.py        # 2D tree rendering
 ├── utils/             # Shared utilities
 │   ├── analysis.py              # SpeciesGrowthAnalyzer
+│   ├── export_naming.py         # Height/DBH/density filename formatting
+│   ├── gbif_species.py          # GBIF species name resolution
+│   ├── log.py                   # Logging configuration
 │   ├── naming.py                # Species/file name standardization
 │   ├── plotting.py              # Calibration comparison plots
 │   ├── profiling.py             # ProfileTimer for pipeline timing
+│   ├── pxr_init.py              # USD/Pixar library initialization
 │   └── yield_tables.py          # Yield table loading and calibration
 └── tests/             # Test suite (pytest)
 ```
@@ -64,7 +74,7 @@ simulate_forest_growth(forest, max_cycles=10)
 
 ```python
 from growpy import create_grove
-from growpy.utils.dependencies import gc
+import the_grove_23_core as gc
 
 grove = create_grove("European beech")
 grove.add_new_tree(gc.Vector(0, 0, 0), gc.Vector(0, 0, 1), 0)
@@ -78,25 +88,15 @@ models = grove.build_models({"resolution": 16})
 ### USD export
 
 ```python
-from growpy import export_tree_as_usd
+from growpy.io.tree_export import build_tree_mesh
 from pathlib import Path
 
-export_tree_as_usd(
-    grove=grove,
+build_tree_mesh(
+    model=models[0],
+    skeleton=skeletons[0],
+    bones=bones[0],
     output_path=Path("output/beech.usda"),
-    species_name="European beech",
-)
-```
-
-### Twig export
-
-```python
-from growpy import export_twigs_from_blend
-from pathlib import Path
-
-exported = export_twigs_from_blend(
-    Path("data/assets/twigs/european_beech_twig/EuropeanBeechTwig.blend"),
-    Path("output/twigs/"),
+    species_name="european_beech",
 )
 ```
 

@@ -75,7 +75,6 @@ Dataset production: `dataset_pipeline.py --generate-csvs` -> `dataset_pipeline.p
 | `utils/analysis.py` | `create_growth_models.py` (SpeciesGrowthAnalyzer) |
 | `utils/pxr_init.py` | `twig_export.py`, `obj_export.py` (USD plugin path) |
 | `utils/gbif_species.py` | `prepare_assets.py` (species name resolution) |
-| `utils/diagnostics.py` | `generate_forest.py` (Grove data dump for debugging) |
 | `utils/plotting.py` | `analysis.py` (growth curve visualization) |
 | `utils/naming.py` | `dataset_pipeline.py`, `core/orchestration/` (species name standardization) |
 | `utils/export_naming.py` | `assembly_export.py` (height/DBH/density filename formatting) |

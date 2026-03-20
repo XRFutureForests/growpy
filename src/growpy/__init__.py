@@ -22,7 +22,7 @@ Key Features:
 
 Main Components:
     Core:       create_forest, simulate_forest_growth, create_grove
-    Export:     export_tree_as_usd, batch_export_trees_for_unreal
+    Export:     build_tree_mesh, create_assembly
     Config:     GrowPyConfig, get_config
 
 CLI Tools:
@@ -38,9 +38,9 @@ Documentation:
 
 Requirements:
     - The Grove 2.3 (commercial license required)
-    - Python 3.8+
+    - Python 3.9+
     - bpy module (conda install -c conda-forge bpy)
-    - pandas, numpy, scikit-learn, matplotlib
+    - pandas, numpy, joblib
 """
 
 # Lightweight imports (no heavy dependencies)
