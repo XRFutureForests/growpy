@@ -256,8 +256,6 @@ def build_tree_mesh(
                         break
                 bone_order[idx] = order
 
-            max_order = max(bone_order) if bone_order else 1
-
             usd_points = []
             for i, p in enumerate(points):
                 local_idx = vertex_bone_ids[i] - bone_id_offset
@@ -265,13 +263,11 @@ def build_tree_mesh(
 
                 order = bone_order[local_idx]
 
-                # Smooth blend: trunk gets full radial_scale, branches fade
-                # toward 1.0 with increasing order. Order 0 (trunk) = full
-                # scale, order 1 = ~half correction, higher orders = near 1.0.
-                if max_order > 0 and order > 0:
-                    # Exponential decay: higher = branches scale more with trunk
-                    order_blend = 0.7 ** order
-                    s_base = radial_scale + (1.0 - radial_scale) * (1.0 - order_blend)
+                # Only trunk (order 0) gets radial scaling. Branches are left
+                # at 1.0 to avoid junction discontinuities where trunk vertices
+                # and branch vertices meet at different scale factors.
+                if order > 0:
+                    s_base = 1.0
                 else:
                     s_base = radial_scale
 

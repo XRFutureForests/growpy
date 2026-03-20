@@ -134,7 +134,8 @@ def generate_preview_image(
                     ws.append(r * 2 * pts_per_meter)
 
                 lc = LineCollection(
-                    segs, linewidths=ws, colors="#3b2a1a", alpha=0.85
+                    segs, linewidths=ws, colors="#3b2a1a", alpha=0.85,
+                    capstyle="round", joinstyle="round",
                 )
                 ax.add_collection(lc)
                 ax.set_aspect("equal")
@@ -252,7 +253,10 @@ def generate_icon_image(
                 return
 
             fig, ax = plt.subplots(1, 1, figsize=(fig_inches, fig_inches))
-            lc = LineCollection(segs, linewidths=ws, colors="#3b2a1a", alpha=0.85)
+            lc = LineCollection(
+                segs, linewidths=ws, colors="#3b2a1a", alpha=0.85,
+                capstyle="round", joinstyle="round",
+            )
             ax.add_collection(lc)
             ax.set_aspect("equal")
             ax.autoscale()
