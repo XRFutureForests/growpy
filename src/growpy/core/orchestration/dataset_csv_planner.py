@@ -160,3 +160,61 @@ def generate_dataset_csvs(output_dir: Path, density: str = "full") -> list:
     logger.info("  %s", all_path.name)
 
     return generated
+
+
+def synchronize_dataset_csvs(dataset_dir: Path) -> None:
+    """Ensure all_species.csv and *_merged.csv files cover the same species.
+
+    Removes rows from all_species.csv for species without a merged CSV,
+    and deletes merged CSVs for species not listed in all_species.csv.
+    """
+    all_species_path = dataset_dir / "all_species.csv"
+    if not all_species_path.exists():
+        return
+
+    all_df = pd.read_csv(all_species_path)
+    if "species" not in all_df.columns:
+        return
+
+    # Species in all_species.csv (standardized name -> row index)
+    all_species_std = {
+        standardize_species_name(s): s for s in all_df["species"].tolist()
+    }
+
+    # Species with merged CSVs on disk
+    merged_std = {
+        p.stem.replace("_merged", "") for p in dataset_dir.glob("*_merged.csv")
+    }
+
+    common = set(all_species_std.keys()) & merged_std
+    only_in_all = set(all_species_std.keys()) - merged_std
+    only_in_merged = merged_std - set(all_species_std.keys())
+
+    if not only_in_all and not only_in_merged:
+        return
+
+    # Remove orphan merged CSVs
+    for std_name in sorted(only_in_merged):
+        orphan = dataset_dir / f"{std_name}_merged.csv"
+        if orphan.exists():
+            orphan.unlink()
+            logger.warning("Removed orphan merged CSV: %s", orphan.name)
+
+    # Filter all_species.csv to common species only
+    if only_in_all:
+        keep = all_df["species"].apply(
+            lambda s: standardize_species_name(s) in common
+        )
+        removed = all_df[~keep]["species"].tolist()
+        all_df = all_df[keep].reset_index(drop=True)
+        all_df["fid"] = range(1, len(all_df) + 1)
+        all_df.to_csv(all_species_path, index=False)
+        for name in removed:
+            logger.warning(
+                "Removed from all_species.csv (no merged CSV): %s", name
+            )
+
+    logger.info(
+        "Dataset synchronized: %d species in both all_species.csv and merged CSVs.",
+        len(common),
+    )

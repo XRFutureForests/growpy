@@ -32,7 +32,10 @@ import os
 import sys
 from pathlib import Path
 
-from growpy.core.orchestration.dataset_csv_planner import generate_dataset_csvs
+from growpy.core.orchestration.dataset_csv_planner import (
+    generate_dataset_csvs,
+    synchronize_dataset_csvs,
+)
 from growpy.core.orchestration.dataset_job_planner import (
     DATASET_DIR,
     list_all_species,
@@ -173,6 +176,11 @@ def main():
         help="Parallel workers for step 4 (default: min(4, cpu_count)). "
         "Use 1 for sequential execution.",
     )
+    parser.add_argument(
+        "--ingest-yield-tables",
+        action="store_true",
+        help="Ingest yield tables from external providers before step 3 calibration.",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output.")
 
     args = parser.parse_args()
@@ -202,6 +210,10 @@ def main():
 
     # Determine all_species CSV path (for steps 1-3)
     all_species_csv = args.csv or (DATASET_DIR / "all_species.csv")
+
+    # Synchronize all_species.csv and merged CSVs before running steps
+    if not args.dry_run:
+        synchronize_dataset_csvs(DATASET_DIR)
 
     # Guard: ensure all_species.csv exists if running steps 1-3
     steps_123 = [s for s in steps if s in (1, 2, 3)]
@@ -234,7 +246,8 @@ def main():
     # Execute steps in order
     for step in steps:
         if step in (1, 2, 3):
-            ok = run_step123(step, all_species_csv, dry_run=args.dry_run)
+            extra = ["--ingest-yield-tables"] if step == 3 and args.ingest_yield_tables else None
+            ok = run_step123(step, all_species_csv, dry_run=args.dry_run, extra_args=extra)
             if not ok:
                 logger.error("Pipeline aborted at step %d.", step)
                 raise SystemExit(1)
