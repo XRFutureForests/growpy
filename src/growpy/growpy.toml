@@ -9,7 +9,7 @@
 
 [general]
 # Random seed for reproducible tree generation (remove to randomize)
-random_seed = 7
+random_seed = 385
 # Default input CSV with tree positions and species
 # CSV columns: x, y, species, height (optional: z, fid, dbh)
 csv_file = "data/input/test.csv"
@@ -58,7 +58,7 @@ interior_decimate_ratio = 0.5
 [growth_models]
 # Maximum growth cycles to simulate (1-250)
 # Automatically stops early when growth plateaus
-cycles = 60
+cycles = 35
 # Random seeds to average for robust curves (1-10)
 # Use 3+ for production, 1 for quick tests
 seeds = 3
@@ -70,7 +70,7 @@ height_threshold = 0.01
 max_cycles_without_growth = 5
 # Maximum simulation time per seed in seconds (10-3600)
 # Increase for complex species; prevents stuck simulations
-timeout = 1200
+timeout = 25
 
 # --- Step 3b: Yield table calibration (integrated into create_growth_models.py) ---
 [calibration]
@@ -120,7 +120,7 @@ preferred_region = ""
 quality = "high"
 # Maximum growth cycles per tree (1-250)
 # Trees exceeding this are scaled down proportionally
-growth_cycle_limit = 75
+growth_cycle_limit = 35
 # Branch smoothing iterations (0-20, 0 = disabled)
 # Higher values = smoother, more organic branches
 smooth_iterations = 10
@@ -132,12 +132,12 @@ include_grove_attributes = false
 # Uses growth models to determine which cycle corresponds to each height milestone
 # Each snapshot includes height and DBH in the filename for easy asset selection
 # 0 = disabled (standard single height-based export)
-height_interval = 5
+height_interval = 2
 # Cap all tree heights at this value in meters (e.g., 15 for quick testing)
 # Trees taller than this in the input CSV are clamped to this height
 # Reduces growth cycles and number of height stages for faster runs
 # 0 = no limit (use full CSV heights)
-max_height = 21
+max_height = 15
 
 # Quality Presets (single source of truth)
 # Define any number of named presets below as [quality.<name>] sections.
