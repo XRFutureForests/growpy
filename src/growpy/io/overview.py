@@ -145,7 +145,9 @@ def _build_interval_columns(entries: dict, interval: int) -> list:
     snapped = set()
     for height_map in entries.values():
         for h in height_map:
-            snapped.add(_snap_to_interval(h, interval))
+            s = _snap_to_interval(h, interval)
+            if s >= interval:
+                snapped.add(s)
     return sorted(snapped)
 
 
@@ -220,7 +222,8 @@ def build_dataset_dataframe(
             snapped = {}
             for h, paths in height_map.items():
                 col = _snap_to_interval(h, interval)
-                snapped[col] = paths
+                if col >= interval:
+                    snapped[col] = paths
 
             row = {"species": species, "context": ctx_display}
 

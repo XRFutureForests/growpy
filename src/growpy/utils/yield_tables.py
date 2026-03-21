@@ -281,8 +281,10 @@ def compute_grow_length_curve(
     if len(scale_factors) > 5:
         scale_factors = uniform_filter1d(scale_factors, size=3)
 
-    # Hard ceiling: prevent extreme scale factors that crash the Grove engine
-    MAX_SCALE_FACTOR = 10.0
+    # Hard ceiling: prevent extreme scale factors that crash the Grove engine.
+    # Empirically, all well-behaved species stay below 3x; values above that
+    # cause destructive growth (e.g. Oak at 10x plateaus after 3 cycles).
+    MAX_SCALE_FACTOR = 3.0
     n_capped = int(np.sum(scale_factors > MAX_SCALE_FACTOR))
     scale_factors = np.minimum(scale_factors, MAX_SCALE_FACTOR)
     if n_capped > 0:

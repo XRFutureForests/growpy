@@ -177,37 +177,38 @@ def simulate_forest_growth_with_snapshots(
     use_species_curves: bool = True,
     quality_params: Optional[Dict] = None,
     species_snapshot_cycles: Optional[Dict[str, Dict[int, float]]] = None,
-) -> SnapshotData:
-    """Simulate forest growth and capture snapshots at specified cycles.
+    height_interval: float = 0.0,
+) -> Tuple[SnapshotData, Dict[int, Dict[str, Dict[int, float]]]]:
+    """Simulate forest growth and capture snapshots at height milestones.
 
-    This function runs the growth simulation and builds models at each snapshot
-    cycle, capturing geometry and measurements (height, DBH) for later export.
+    When height_interval > 0, uses height-threshold-based snapshots: measures
+    tree heights at every cycle (cheap) and builds models only when any tree
+    crosses a new height milestone (e.g. 5m, 10m, 15m). This handles trees
+    that grow at different rates (competition vs open-grown) correctly.
+
+    When height_interval == 0, falls back to cycle-based snapshots (legacy).
 
     Args:
         forest: List of (grove, species_name, tree_count, fid_list) tuples from create_forest()
         max_cycles: Maximum number of growth cycles to simulate
-        snapshot_cycles: List of cycle numbers at which to capture snapshots (e.g., [10, 20, 30])
+        snapshot_cycles: List of cycle numbers for cycle-based mode (used when height_interval==0)
         smooth_iterations: Number of smoothing iterations (default: 10)
         preset_overrides: Optional PresetOverrides for dynamic parameter adjustment
         use_species_curves: Load curves from species seed.json files (default: True)
         quality_params: Quality parameters for model building (vertices, etc.)
-        species_snapshot_cycles: Optional per-species cycle filter.
-            Dict of {species_name: {cycle: target_height}}. When provided, only
-            builds models for species that have a milestone at the current cycle.
-            Avoids unnecessary model builds when species have different milestone cycles.
+        species_snapshot_cycles: Optional per-species cycle filter (legacy, ignored in height mode)
+        height_interval: Height interval in meters for threshold-based snapshots (0 = legacy mode)
 
     Returns:
-        SnapshotData: Dict[cycle, Dict[species, List[(model, skeleton, bones_info, height, dbh)]]]
-        Each snapshot contains built models with measurements for all trees in each species grove.
+        Tuple of:
+        - SnapshotData: Dict[cycle, Dict[species, List[(model, skeleton, bones_info, height, dbh)]]]
+        - milestone_map: Dict[cycle, Dict[species, Dict[tree_idx, milestone_height]]]
+          Maps each snapshot to the milestone height each tree was captured at.
+          Empty dict in legacy mode.
     """
     groves = [grove for grove, _, _, _ in forest]
     snapshots: SnapshotData = {}
-
-    # Validate and sort snapshot cycles
-    snapshot_cycles = sorted([c for c in snapshot_cycles if 0 < c <= max_cycles])
-    if not snapshot_cycles:
-        logger.warning("No valid snapshot cycles provided")
-        return snapshots
+    milestone_map: Dict[int, Dict[str, Dict[int, float]]] = {}
 
     if quality_params is None:
         quality_params = {"vertices": 16}
@@ -220,8 +221,23 @@ def simulate_forest_growth_with_snapshots(
             if not species_ov.is_empty():
                 species_overrides[species_name] = species_ov
 
-    logger.info("PHASE 1: GROWTH SIMULATION WITH SNAPSHOTS (%d cycles)", max_cycles)
-    logger.info("  Snapshots at cycles: %s", snapshot_cycles)
+    use_height_mode = height_interval > 0
+
+    if use_height_mode:
+        logger.info(
+            "PHASE 1: GROWTH SIMULATION WITH HEIGHT MILESTONES (%d cycles, %.0fm interval)",
+            max_cycles,
+            height_interval,
+        )
+    else:
+        # Legacy: validate and sort snapshot cycles
+        snapshot_cycles = sorted([c for c in snapshot_cycles if 0 < c <= max_cycles])
+        if not snapshot_cycles:
+            logger.warning("No valid snapshot cycles provided")
+            return snapshots, milestone_map
+        logger.info("PHASE 1: GROWTH SIMULATION WITH SNAPSHOTS (%d cycles)", max_cycles)
+        logger.info("  Snapshots at cycles: %s", snapshot_cycles)
+
     if preset_overrides and not preset_overrides.is_empty():
         logger.info(
             "  CLI overrides: %d static, %d interpolated",
@@ -240,99 +256,18 @@ def simulate_forest_growth_with_snapshots(
             )
 
     growth_start = time.time()
-    next_snapshot_idx = 0
 
-    for cycle in tqdm(
-        range(1, max_cycles + 1), desc="Simulating growth cycles", unit="cycle"
-    ):
-        # cycle - 1 maps 1-based loop counter to 0-based override index
-        _run_single_growth_cycle(
-            forest, groves, cycle - 1, max_cycles, species_overrides, preset_overrides
+    if use_height_mode:
+        snapshots, milestone_map = _simulate_height_threshold_mode(
+            forest, groves, max_cycles, height_interval,
+            species_overrides, preset_overrides, quality_params,
         )
-
-        # Capture snapshot if this is a snapshot cycle
-        if (
-            next_snapshot_idx < len(snapshot_cycles)
-            and cycle == snapshot_cycles[next_snapshot_idx]
-        ):
-            logger.info("[Snapshot] Capturing cycle %d", cycle)
-            snapshots[cycle] = {}
-
-            for grove, species_name, tree_count, fids in forest:
-                # Skip species that don't have a milestone at this cycle
-                if species_snapshot_cycles and species_name in species_snapshot_cycles:
-                    if cycle not in species_snapshot_cycles[species_name]:
-                        continue
-
-                # CRITICAL BUILD ORDER: skeleton -> bones -> models
-                skeleton_connected = quality_params.get("skeleton_connected", True)
-                skeletons = grove.build_skeletons(skeleton_connected)
-
-                skeleton_length = quality_params.get("skeleton_length", 2.0)
-                skeleton_reduce = quality_params.get("skeleton_reduce", 0.4)
-                skeleton_bias = quality_params.get("skeleton_bias", 0.5)
-
-                all_bones = grove.tag_bone_id(
-                    skeleton_length,
-                    skeleton_reduce**2,
-                    skeleton_bias,
-                    skeleton_connected,
-                )
-                tree_bones = _split_bones_by_tree(all_bones, len(grove.trees))
-
-                build_options = {
-                    "resolution": quality_params.get("resolution", 24),
-                    "resolution_reduce": quality_params.get("resolution_reduce", 0.8),
-                    "build_cutoff_age": quality_params.get("build_cutoff_age", 0),
-                    "build_cutoff_thickness": quality_params.get(
-                        "build_cutoff_thickness", 0.01
-                    ),
-                    "build_blend": quality_params.get("build_blend", True),
-                    "build_end_cap": quality_params.get("build_end_cap", True),
-                }
-                models = grove.build_models(build_options)
-                measurements = extract_tree_measurements(grove)
-
-                if len(models) < len(grove.trees):
-                    logger.warning(
-                        "  %s: build_models returned %d models for %d trees at cycle %d",
-                        species_name,
-                        len(models),
-                        len(grove.trees),
-                        cycle,
-                    )
-
-                tree_snapshots = []
-                for tree_idx in range(len(grove.trees)):
-                    model = models[tree_idx] if tree_idx < len(models) else None
-                    skeleton = (
-                        skeletons[tree_idx] if tree_idx < len(skeletons) else None
-                    )
-                    bones = tree_bones[tree_idx] if tree_idx < len(tree_bones) else []
-                    height, dbh = (
-                        measurements[tree_idx]
-                        if tree_idx < len(measurements)
-                        else (0.0, 0.0)
-                    )
-                    if model is None:
-                        logger.warning(
-                            "  %s tree %d: model is None at cycle %d",
-                            species_name,
-                            tree_idx,
-                            cycle,
-                        )
-                    tree_snapshots.append((model, skeleton, bones, height, dbh))
-
-                snapshots[cycle][species_name] = tree_snapshots
-                logger.info(
-                    "  %s: %d trees (h=%.1fm, d=%.1fcm)",
-                    species_name,
-                    len(tree_snapshots),
-                    measurements[0][0] if measurements else 0.0,
-                    measurements[0][1] * 100 if measurements else 0.0,
-                )
-
-            next_snapshot_idx += 1
+    else:
+        snapshots = _simulate_cycle_based_mode(
+            forest, groves, max_cycles, snapshot_cycles,
+            species_overrides, preset_overrides, quality_params,
+            species_snapshot_cycles,
+        )
 
     logger.info(
         "Growth simulation complete (%.1fs) - %d snapshots captured",
@@ -343,7 +278,219 @@ def simulate_forest_growth_with_snapshots(
     # Smoothing must run AFTER the snapshot loop - it permanently modifies grove state
     _apply_smoothing(forest, smooth_iterations)
 
+    return snapshots, milestone_map
+
+
+def _simulate_height_threshold_mode(
+    forest: List[Tuple[gc.Grove, str, int, List[int]]],
+    groves: List[gc.Grove],
+    max_cycles: int,
+    height_interval: float,
+    species_overrides: Dict[str, PresetOverrides],
+    preset_overrides: Optional[PresetOverrides],
+    quality_params: Dict,
+) -> Tuple[SnapshotData, Dict[int, Dict[str, Dict[int, float]]]]:
+    """Run simulation with height-threshold-based snapshots.
+
+    Measures tree heights at every cycle (cheap). When any tree crosses a new
+    height milestone, builds models and captures a snapshot. This correctly
+    handles trees that grow at different rates due to competition effects.
+    """
+    import math
+
+    snapshots: SnapshotData = {}
+    milestone_map: Dict[int, Dict[str, Dict[int, float]]] = {}
+
+    # Track previous heights and captured milestones per tree
+    # Key: (species_name, tree_idx)
+    prev_heights: Dict[Tuple[str, int], float] = {}
+    captured: Dict[Tuple[str, int], set] = {}
+
+    # Count total milestone captures for progress reporting
+    total_captures = 0
+
+    for cycle in tqdm(
+        range(1, max_cycles + 1), desc="Simulating growth cycles", unit="cycle"
+    ):
+        _run_single_growth_cycle(
+            forest, groves, cycle - 1, max_cycles, species_overrides, preset_overrides
+        )
+
+        # Cheaply measure heights at every cycle
+        # Maps species -> tree_idx -> milestone height (lowest new crossing)
+        new_crossings: Dict[str, Dict[int, float]] = {}
+
+        for grove, species_name, tree_count, fids in forest:
+            measurements = extract_tree_measurements(grove)
+            for tree_idx, (height, _dbh) in enumerate(measurements):
+                key = (species_name, tree_idx)
+                prev_h = prev_heights.get(key, 0.0)
+                prev_heights[key] = height
+
+                # Find the lowest new milestone crossed since last cycle
+                prev_milestone = math.floor(prev_h / height_interval) * height_interval
+                curr_milestone = math.floor(height / height_interval) * height_interval
+
+                if curr_milestone > prev_milestone and curr_milestone >= height_interval:
+                    # Use lowest uncaptured milestone (closest to actual crossing)
+                    m = prev_milestone + height_interval
+                    while m <= curr_milestone:
+                        if m not in captured.get(key, set()):
+                            new_crossings.setdefault(species_name, {})[tree_idx] = m
+                            captured.setdefault(key, set()).add(m)
+                            break  # Only one milestone per tree per cycle
+                        m += height_interval
+
+        if not new_crossings:
+            continue
+
+        # Build models for species that have new milestone crossings
+        logger.info(
+            "[Height Milestone] Cycle %d: %s",
+            cycle,
+            ", ".join(
+                f"{sp} tree(s) {list(trees.keys())} -> {sorted(set(trees.values()))}m"
+                for sp, trees in new_crossings.items()
+            ),
+        )
+
+        snapshots[cycle] = {}
+        milestone_map[cycle] = {}
+
+        for grove, species_name, tree_count, fids in forest:
+            if species_name not in new_crossings:
+                continue
+
+            tree_data = _build_models_for_grove(grove, species_name, cycle, quality_params)
+            if tree_data:
+                snapshots[cycle][species_name] = tree_data
+                milestone_map[cycle][species_name] = new_crossings[species_name]
+                total_captures += len(new_crossings[species_name])
+
+    logger.info("  Height milestones captured: %d", total_captures)
+    return snapshots, milestone_map
+
+
+def _simulate_cycle_based_mode(
+    forest: List[Tuple[gc.Grove, str, int, List[int]]],
+    groves: List[gc.Grove],
+    max_cycles: int,
+    snapshot_cycles: List[int],
+    species_overrides: Dict[str, PresetOverrides],
+    preset_overrides: Optional[PresetOverrides],
+    quality_params: Dict,
+    species_snapshot_cycles: Optional[Dict[str, Dict[int, float]]],
+) -> SnapshotData:
+    """Run simulation with cycle-based snapshots (legacy mode)."""
+    snapshots: SnapshotData = {}
+    next_snapshot_idx = 0
+
+    for cycle in tqdm(
+        range(1, max_cycles + 1), desc="Simulating growth cycles", unit="cycle"
+    ):
+        _run_single_growth_cycle(
+            forest, groves, cycle - 1, max_cycles, species_overrides, preset_overrides
+        )
+
+        if (
+            next_snapshot_idx < len(snapshot_cycles)
+            and cycle == snapshot_cycles[next_snapshot_idx]
+        ):
+            logger.info("[Snapshot] Capturing cycle %d", cycle)
+            snapshots[cycle] = {}
+
+            for grove, species_name, tree_count, fids in forest:
+                if species_snapshot_cycles and species_name in species_snapshot_cycles:
+                    if cycle not in species_snapshot_cycles[species_name]:
+                        continue
+
+                tree_data = _build_models_for_grove(
+                    grove, species_name, cycle, quality_params
+                )
+                if tree_data:
+                    snapshots[cycle][species_name] = tree_data
+
+            next_snapshot_idx += 1
+
     return snapshots
+
+
+def _build_models_for_grove(
+    grove: gc.Grove,
+    species_name: str,
+    cycle: int,
+    quality_params: Dict,
+) -> List[Tuple[Any, Any, Any, float, float]]:
+    """Build skeleton, bones, and models for all trees in a grove.
+
+    Returns list of (model, skeleton, bones_info, height, dbh) per tree.
+    """
+    skeleton_connected = quality_params.get("skeleton_connected", True)
+    skeletons = grove.build_skeletons(skeleton_connected)
+
+    skeleton_length = quality_params.get("skeleton_length", 2.0)
+    skeleton_reduce = quality_params.get("skeleton_reduce", 0.4)
+    skeleton_bias = quality_params.get("skeleton_bias", 0.5)
+
+    all_bones = grove.tag_bone_id(
+        skeleton_length,
+        skeleton_reduce**2,
+        skeleton_bias,
+        skeleton_connected,
+    )
+    tree_bones = _split_bones_by_tree(all_bones, len(grove.trees))
+
+    build_options = {
+        "resolution": quality_params.get("resolution", 24),
+        "resolution_reduce": quality_params.get("resolution_reduce", 0.8),
+        "build_cutoff_age": quality_params.get("build_cutoff_age", 0),
+        "build_cutoff_thickness": quality_params.get(
+            "build_cutoff_thickness", 0.01
+        ),
+        "build_blend": quality_params.get("build_blend", True),
+        "build_end_cap": quality_params.get("build_end_cap", True),
+    }
+    models = grove.build_models(build_options)
+    measurements = extract_tree_measurements(grove)
+
+    if len(models) < len(grove.trees):
+        logger.warning(
+            "  %s: build_models returned %d models for %d trees at cycle %d",
+            species_name,
+            len(models),
+            len(grove.trees),
+            cycle,
+        )
+
+    tree_snapshots = []
+    for tree_idx in range(len(grove.trees)):
+        model = models[tree_idx] if tree_idx < len(models) else None
+        skeleton = skeletons[tree_idx] if tree_idx < len(skeletons) else None
+        bones = tree_bones[tree_idx] if tree_idx < len(tree_bones) else []
+        height, dbh = (
+            measurements[tree_idx]
+            if tree_idx < len(measurements)
+            else (0.0, 0.0)
+        )
+        if model is None:
+            logger.warning(
+                "  %s tree %d: model is None at cycle %d",
+                species_name,
+                tree_idx,
+                cycle,
+            )
+        tree_snapshots.append((model, skeleton, bones, height, dbh))
+
+    if tree_snapshots:
+        logger.info(
+            "  %s: %d trees (h=%.1fm, d=%.1fcm)",
+            species_name,
+            len(tree_snapshots),
+            measurements[0][0] if measurements else 0.0,
+            measurements[0][1] * 100 if measurements else 0.0,
+        )
+
+    return tree_snapshots
 
 
 def _split_bones_by_tree(all_bones: List, num_trees: int) -> List[List]:

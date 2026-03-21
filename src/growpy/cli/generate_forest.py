@@ -75,63 +75,39 @@ def _is_bone_limit_error(error: ValueError) -> bool:
     return "bones" in msg and "limit" in msg
 
 
-def _compute_height_milestones(forest_data, height_interval, config, cycle_limit=None):
-    """Compute snapshot cycles from height milestones per species.
+def _compute_max_cycles_for_species(forest_data, config, cycle_limit=None):
+    """Compute maximum simulation cycles needed per species.
 
-    Uses growth models to predict which cycle corresponds to each height
-    milestone (5m, 10m, 15m, ...) for each species in the forest.
+    Uses growth models to predict how many cycles are needed to reach the
+    maximum height in the forest data. Returns a conservative estimate
+    to ensure all trees (including slow-growing open-grown ones) have
+    enough cycles to reach their target milestones.
 
     Args:
         forest_data: DataFrame with species and height columns
-        height_interval: Height spacing in meters (e.g., 5.0)
         config: GrowPyConfig instance
-        cycle_limit: Optional max cycle to cap milestones at
+        cycle_limit: Optional max cycle cap
 
     Returns:
-        snapshot_cycles: Sorted list of unique cycle numbers
-        species_milestone_map: {species: {cycle: target_height}}
+        max_cycles: Maximum cycle count needed across all species
     """
     import math
 
     import joblib
 
-    model_cache = {}
-    species_milestone_map = {}
-    all_cycles = set()
-
+    max_cycles = 1
     for species in forest_data["species"].unique():
-        if species not in model_cache:
-            growth_model_path = config.get_growth_model_path(species)
-            model_path = growth_model_path / "growth_model.pkl"
-            model_cache[species] = joblib.load(model_path)
-
-        model = model_cache[species]
+        growth_model_path = config.get_growth_model_path(species)
+        model_path = growth_model_path / "growth_model.pkl"
+        model = joblib.load(model_path)
         max_height = forest_data[forest_data["species"] == species]["height"].max()
+        predicted = max(1, math.ceil(float(model.predict([[max_height]])[0])))
+        if cycle_limit:
+            predicted = min(predicted, cycle_limit)
+        logger.info("  %s: max_height=%.1fm -> ~%d cycles", species, max_height, predicted)
+        max_cycles = max(max_cycles, predicted)
 
-        species_milestones = {}
-        h = height_interval
-        while h <= max_height + 0.01:
-            predicted_cycle = max(1, math.ceil(float(model.predict([[h]])[0])))
-            if cycle_limit and predicted_cycle > cycle_limit:
-                break
-            species_milestones[predicted_cycle] = float(h)
-            all_cycles.add(predicted_cycle)
-            h += height_interval
-
-        species_milestone_map[species] = species_milestones
-        heights = sorted(species_milestones.values())
-        cycles = sorted(species_milestones.keys())
-        logger.info(
-            "  %s: %d stages (%.0f-%.0fm every %.0fm) -> cycles %s",
-            species,
-            len(species_milestones),
-            heights[0] if heights else 0,
-            heights[-1] if heights else 0,
-            height_interval,
-            cycles,
-        )
-
-    return sorted(all_cycles), species_milestone_map
+    return max_cycles
 
 
 def _derive_static_from_skeletal(
@@ -866,23 +842,21 @@ def generate_forest_stages(
                 upper=growth_cycle_limit, lower=1
             )
 
-    # Compute snapshot cycles from height milestones per species
+    # Compute max simulation cycles and height interval
     effective_interval = height_interval if height_interval is not None else 5.0
     limit = growth_cycle_limit if growth_cycle_limit is not None else None
 
-    logger.info("\nComputing height milestones (every %.0fm):", effective_interval)
-    snapshot_cycles, species_milestone_map = _compute_height_milestones(
-        forest_data, effective_interval, config, cycle_limit=limit,
+    logger.info("\nComputing max cycles per species:")
+    global_max_cycles = _compute_max_cycles_for_species(
+        forest_data, config, cycle_limit=limit,
     )
 
-    if not snapshot_cycles:
-        logger.error("No height milestones could be computed")
+    if global_max_cycles < 1:
+        logger.error("No valid cycles could be computed")
         return
 
-    global_max_cycles = max(snapshot_cycles)
-
     logger.info("\n%s", "=" * 60)
-    logger.info("MULTI-STAGE FOREST GENERATION (height-based)")
+    logger.info("MULTI-STAGE FOREST GENERATION (height-threshold mode)")
     logger.info("%s", "=" * 60)
     logger.info("  Trees: %d", len(forest_data))
     logger.info(
@@ -891,9 +865,7 @@ def generate_forest_stages(
         forest_data["height"].max(),
     )
     logger.info("  Height interval: %.0fm", effective_interval)
-    logger.info(
-        "  Snapshot cycles: %d unique %s", len(snapshot_cycles), snapshot_cycles,
-    )
+    logger.info("  Max simulation cycles: %d", global_max_cycles)
     logger.info("%s", "=" * 60)
 
     # All trees start at cycle 0 (no delay in multi-stage mode)
@@ -918,17 +890,17 @@ def generate_forest_stages(
             quality_params[key] = value
         logger.info("[Skeleton Overrides] Applied: %s", skeleton_overrides)
 
-    # Run simulation with snapshots
+    # Run simulation with height-threshold-based snapshots
     with timer.track("simulate_with_snapshots"):
-        snapshots = simulate_forest_growth_with_snapshots(
+        snapshots, milestone_map = simulate_forest_growth_with_snapshots(
             forest,
             max_cycles=global_max_cycles,
-            snapshot_cycles=snapshot_cycles,
+            snapshot_cycles=[],
             smooth_iterations=smooth_iterations,
             preset_overrides=preset_overrides,
             use_species_curves=config.calibration_align_height,
             quality_params=quality_params,
-            species_snapshot_cycles=species_milestone_map,
+            height_interval=effective_interval,
         )
 
     if not snapshots:
@@ -1023,9 +995,12 @@ def generate_forest_stages(
                 if cycle > tree_max_cycles:
                     continue
 
-                # Skip if this cycle is not a height milestone for this species
-                if species_milestone_map and species_name in species_milestone_map:
-                    if cycle not in species_milestone_map[species_name]:
+                # In height-threshold mode, only export trees that triggered
+                # a milestone crossing at this cycle. The milestone_map tells
+                # us which tree_idx crossed which milestone height.
+                cycle_milestones = milestone_map.get(cycle, {}).get(species_name, {})
+                if milestone_map:
+                    if tree_idx not in cycle_milestones:
                         continue
 
                 # Skip trees not in export filter (they still participated in growth simulation)
@@ -1042,28 +1017,10 @@ def generate_forest_stages(
                     .replace("-", "_")
                     .lower()
                 )
-                # Use target milestone height for filename (clean 5m intervals)
-                milestone_height = height
-                if species_milestone_map and species_name in species_milestone_map:
-                    milestone_height = species_milestone_map[species_name].get(cycle, height)
-
-                # When actual height deviates significantly from milestone,
-                # use actual height for truthful filenames. This happens for
-                # open-grown trees that lack competition-driven height growth.
-                height_for_filename = milestone_height
-                if height > 0 and milestone_height > 0:
-                    deviation = abs(height - milestone_height) / milestone_height
-                    if deviation > 0.3:
-                        height_for_filename = height
-                        logger.warning(
-                            "  %s fid=%d: actual h=%.1fm vs milestone %.0fm "
-                            "(%.0f%% off) -- using actual height in filename",
-                            species_name,
-                            fid,
-                            height,
-                            milestone_height,
-                            deviation * 100,
-                        )
+                # Use milestone height for clean filenames (e.g., h05m, h10m)
+                # In height-threshold mode, the milestone is the exact threshold
+                # the tree crossed. In legacy mode, use actual height.
+                height_for_filename = cycle_milestones.get(tree_idx, height)
                 height_str = format_height_for_filename(height_for_filename)
                 # Use yield table target DBH when available
                 # Prefer height-DBH model (allometric, height-driven) over age-indexed curve
