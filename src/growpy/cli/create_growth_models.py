@@ -115,6 +115,7 @@ def _run_calibration_pass(
         load_lookup_table,
         resolve_yield_table,
     )
+    from pylometree.yield_tables.store import REFERENCE_AGE, compute_h50
 
     presets_dir = analyzer.presets_dir
 
@@ -147,6 +148,16 @@ def _run_calibration_pass(
         logger.info("")
         logger.info("Calibrating %s...", common_name)
 
+        # Compute Grove's uncalibrated h50 (height at reference age, assuming
+        # 1 cycle ≈ 1 year).  Used to select the yield table whose growth
+        # trajectory best matches what the Grove engine naturally produces.
+        grove_h50 = None
+        if height_curve and len(height_curve) >= 3:
+            cycles = list(range(len(height_curve)))
+            grove_h50 = compute_h50(cycles, height_curve, REFERENCE_AGE)
+            if grove_h50 is not None:
+                logger.info("  Grove uncalibrated h50: %.1f m", grove_h50)
+
         yield_data = resolve_yield_table(
             species_common=common_name,
             species_std=species_std,
@@ -158,6 +169,7 @@ def _run_calibration_pass(
                 common_name, {}
             ).get("site_index"),
             preferred_region=config.yield_sources_preferred_region,
+            preferred_h50=grove_h50,
         )
 
         if yield_data is None:
