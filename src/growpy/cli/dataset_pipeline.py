@@ -245,6 +245,7 @@ def main():
         raise SystemExit(1)
 
     # Execute steps in order
+    failed = []
     for step in steps:
         if step in (1, 2, 3):
             extra = ["--ingest-yield-tables"] if step == 3 and args.ingest_yield_tables else None
@@ -274,9 +275,8 @@ def main():
 
             if failed:
                 logger.error("Step 4 failed for: %s", ", ".join(failed))
-                raise SystemExit(1)
 
-    # Generate dataset overview after step 4
+    # Generate dataset overview after step 4 (even if some species failed)
     if 4 in steps and not args.dry_run:
         from growpy.config.core import GrowPyConfig
         from growpy.config.paths import get_assets_directory
@@ -289,6 +289,9 @@ def main():
             preset_dir=assets_dir / "presets",
             models_dir=assets_dir / "growth_models",
         )
+
+    if 4 in steps and failed:
+        raise SystemExit(1)
 
     logger.info("Done. %d step(s) completed.", len(steps))
 

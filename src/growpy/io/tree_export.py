@@ -256,6 +256,33 @@ def build_tree_mesh(
                         break
                 bone_order[idx] = order
 
+            # Pre-compute junction bones: order-1 bones whose parent is
+            # trunk (order 0). These need scaling at their base to match
+            # the trunk diameter and blend to 1.0 along the branch.
+            branch_blend_dist = 0.05  # meters — just the junction ring
+            is_junction_bone = [False] * len(bones_info)
+            junction_trunk_scale = [1.0] * len(bones_info)
+            for idx in range(len(bones_info)):
+                if bone_order[idx] != 1:
+                    continue
+                parent_global = bones_info[idx][1]
+                parent_local = parent_global - bone_id_offset
+                if parent_local < 0 or parent_local >= len(bones_info):
+                    continue
+                if bone_order[parent_local] == 0:
+                    is_junction_bone[idx] = True
+                    jh = bone_starts[idx][1]
+                    if jh <= blend_start:
+                        junction_trunk_scale[idx] = radial_scale
+                    elif jh >= blend_end:
+                        junction_trunk_scale[idx] = 1.0
+                    else:
+                        t_h = (jh - blend_start) / blend_range
+                        t_h = t_h * t_h * (3.0 - 2.0 * t_h)
+                        junction_trunk_scale[idx] = (
+                            radial_scale + (1.0 - radial_scale) * t_h
+                        )
+
             usd_points = []
             for i, p in enumerate(points):
                 local_idx = vertex_bone_ids[i] - bone_id_offset
@@ -263,23 +290,40 @@ def build_tree_mesh(
 
                 order = bone_order[local_idx]
 
-                # Only trunk (order 0) gets radial scaling. Branches are left
-                # at 1.0 to avoid junction discontinuities where trunk vertices
-                # and branch vertices meet at different scale factors.
-                if order > 0:
-                    s_base = 1.0
-                else:
+                if order == 0:
+                    # Trunk: full radial scale with height blend
                     s_base = radial_scale
-
-                # Height-based blend on top: fade to 1.0 toward the crown
-                if p.y <= blend_start:
-                    s = s_base
-                elif p.y >= blend_end:
-                    s = 1.0
+                    if p.y <= blend_start:
+                        s = s_base
+                    elif p.y >= blend_end:
+                        s = 1.0
+                    else:
+                        t = (p.y - blend_start) / blend_range
+                        t = t * t * (3.0 - 2.0 * t)
+                        s = s_base + (1.0 - s_base) * t
+                elif is_junction_bone[local_idx]:
+                    # First bone off trunk: blend from trunk scale at
+                    # junction height to 1.0 along the branch
+                    trunk_s = junction_trunk_scale[local_idx]
+                    if abs(trunk_s - 1.0) < 1e-6:
+                        s = 1.0
+                    else:
+                        ax, ay, az = bone_axes[local_idx]
+                        bx, by, bz = bone_starts[local_idx]
+                        vx = p.x - bx
+                        vy = p.y - by
+                        vz = p.z - bz
+                        dist_along = max(
+                            0.0, vx * ax + vy * ay + vz * az
+                        )
+                        if dist_along >= branch_blend_dist:
+                            s = 1.0
+                        else:
+                            bt = dist_along / branch_blend_dist
+                            bt = bt * bt * (3.0 - 2.0 * bt)
+                            s = trunk_s + (1.0 - trunk_s) * bt
                 else:
-                    t = (p.y - blend_start) / blend_range
-                    t = t * t * (3.0 - 2.0 * t)
-                    s = s_base + (1.0 - s_base) * t
+                    s = 1.0
 
                 if abs(s - 1.0) < 1e-6:
                     usd_points.append(Gf.Vec3f(p.x, p.y, p.z))

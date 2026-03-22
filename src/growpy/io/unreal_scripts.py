@@ -2,15 +2,101 @@
 
 Generates standalone Python scripts that can be executed inside Unreal Engine
 to import USD tree assemblies and clean up previously imported assets.
+
+Imports are split into per-species batch scripts to avoid video memory crashes.
+A master script orchestrates running batches sequentially.
 """
 
 import logging
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
+def _build_import_block(file_path: str, dest_path: str, label: str) -> str:
+    """Build a single USD import try/except block."""
+    return f"""
+try:
+    import_task = unreal.AssetImportTask()
+    import_task.filename = "{file_path}"
+    import_task.destination_path = IMPORT_PATH + "/{dest_path}"
+    import_task.automated = True
+    import_task.save = True
+    import_task.replace_existing = True
+
+    options = unreal.UsdStageImportOptions()
+    options.import_actors = False
+    options.import_geometry = True
+    options.import_materials = True
+    options.set_editor_property('prim_path_folder_structure', False)
+    options.set_editor_property('share_assets_for_identical_prims', True)
+    options.set_editor_property('merge_identical_material_slots', True)
+    import_task.options = options
+
+    asset_tools.import_asset_tasks([import_task])
+
+    if import_task.imported_object_paths:
+        imported_count += 1
+        print(f"  Imported: {label}")
+    else:
+        failed_count += 1
+        unreal.log_warning("Failed to import: {label}")
+
+    gc.collect()
+    unreal.SystemLibrary.collect_garbage()
+    time.sleep(IMPORT_DELAY)
+
+except Exception as e:
+    failed_count += 1
+    unreal.log_error(f"Error importing {label}: {{e}}")
+"""
+
+
+def _write_batch_script(
+    script_path: Path,
+    project_path: str,
+    batch_label: str,
+    import_blocks: str,
+    file_count: int,
+) -> None:
+    """Write a single batch import script."""
+    script_path_str = str(script_path).replace("\\", "/")
+
+    content = f'''"""
+GrowPy batch import: {batch_label} ({file_count} files) - Auto-generated
+
+Execute in Unreal Engine:
+1. Right-click > "Execute Python File in Unreal"
+2. Or: exec(open(r'{script_path_str}').read())
+"""
+
+import unreal
+import gc
+import time
+
+print("=" * 60)
+print("GrowPy Batch Import: {batch_label}")
+print("=" * 60)
+
+IMPORT_PATH = "{project_path}"
+IMPORT_DELAY = 0.5
+
+asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
+imported_count = 0
+failed_count = 0
+
+{import_blocks}
+
+print("")
+print("=" * 60)
+print(f"Batch '{batch_label}' complete: {{imported_count}} imported, {{failed_count}} failed")
+print("=" * 60)
+'''
+
+    script_path.write_text(content, encoding="utf-8")
 
 
 def generate_unreal_import_script(
@@ -19,15 +105,10 @@ def generate_unreal_import_script(
     forest_data: Optional[pd.DataFrame] = None,
     export_tree_ids: Optional[set] = None,
 ) -> Path:
-    """Generate a standalone Unreal Python script for importing forest USD files.
+    """Generate batched Unreal Python scripts for importing forest USD files.
 
-    Trees are organized as species/{variant}/ where variant is competition/open_grown
-    or tree_{id}. Assembly USDs reference shared twig instances in ../Instances/.
-
-    This script can be executed directly in Unreal Engine using:
-    - VSCode Unreal Python extension (right-click > Execute in Unreal)
-    - Unreal Editor Python console
-    - Command line
+    Produces one batch script per species (plus one for shared instances) to
+    avoid video memory exhaustion. A master script runs each batch sequentially.
 
     Args:
         output_dir: Directory containing exported USD files.
@@ -36,19 +117,15 @@ def generate_unreal_import_script(
         export_tree_ids: Optional set of tree IDs to include (if None, includes all).
 
     Returns:
-        Path to generated script file.
+        Path to generated master script file.
     """
     script_dir = output_dir / "unreal_scripts"
     script_dir.mkdir(exist_ok=True)
 
-    script_path = script_dir / "import_forest.py"
-
     # Find all tree assemblies in species subdirectories
-    # Matches both species/competition/ and species/tree_XXXX/ patterns
     nanite_files = list(output_dir.glob("*/*/*_assembly*.usda")) + list(
         output_dir.glob("*/*/*_assembly*.usd")
     )
-    # Exclude Instances/ and unreal_scripts/ directories
     skip_dirs = {"Instances", "unreal_scripts"}
     nanite_files = [
         f
@@ -64,7 +141,7 @@ def generate_unreal_import_script(
         else []
     )
 
-    # Group trees by species/variant (species_name -> variant_name -> files)
+    # Group trees by species/variant
     trees_by_species: Dict[str, Dict[str, list]] = {}
     for usd_file in nanite_files:
         rel_parts = usd_file.relative_to(output_dir).parts
@@ -81,8 +158,8 @@ def generate_unreal_import_script(
     total_trees = len(nanite_files)
     num_instances = len(instance_files)
 
-    # Build TREE_POSITIONS dictionary from forest_data if provided
-    tree_positions_dict = {}
+    # Build TREE_POSITIONS from forest_data
+    tree_positions_dict: Dict[str, Tuple[float, float, float]] = {}
     if forest_data is not None:
         for _, row in forest_data.iterrows():
             fid = int(row["fid"])
@@ -95,26 +172,93 @@ def generate_unreal_import_script(
             tree_key = f"{species}_{fid:04d}"
             tree_positions_dict[tree_key] = (x, y, z)
 
-    # Format dictionary as Python code for the script
+    # Track batch scripts: (filename, label)
+    batch_scripts: List[Tuple[str, str]] = []
+
+    # Batch 0: Shared instances
+    if instance_files:
+        blocks = ""
+        blocks += 'print("Importing shared twig/foliage instances...")\n'
+        for inst_file in sorted(instance_files):
+            inst_path = str(inst_file.resolve()).replace("\\", "/")
+            blocks += _build_import_block(inst_path, "Instances", inst_file.stem)
+
+        batch_name = "import_batch_00_instances.py"
+        batch_label = f"Shared instances ({num_instances} files)"
+        _write_batch_script(
+            script_dir / batch_name,
+            project_path,
+            batch_label,
+            blocks,
+            num_instances,
+        )
+        batch_scripts.append((batch_name, batch_label))
+
+    # Batch per species
+    for idx, (species_folder, variants) in enumerate(
+        sorted(trees_by_species.items()), start=1
+    ):
+        species_tree_count = sum(len(v) for v in variants.values())
+        blocks = ""
+        blocks += f'print("Importing {species_folder}...")\n'
+
+        for variant_name, variant_trees in sorted(variants.items()):
+            for usd_file in sorted(variant_trees):
+                usd_path = str(usd_file.resolve()).replace("\\", "/")
+                dest_subpath = (
+                    f"{species_folder}/{variant_name}"
+                    if variant_name
+                    else species_folder
+                )
+                blocks += _build_import_block(
+                    usd_path, dest_subpath, usd_file.stem
+                )
+
+        batch_name = f"import_batch_{idx:02d}_{species_folder}.py"
+        batch_label = f"{species_folder} ({species_tree_count} trees)"
+        _write_batch_script(
+            script_dir / batch_name,
+            project_path,
+            batch_label,
+            blocks,
+            species_tree_count,
+        )
+        batch_scripts.append((batch_name, batch_label))
+
+    # Master script
+    master_path = script_dir / "import_forest.py"
+    master_path_str = str(master_path).replace("\\", "/")
+    scripts_dir_str = str(script_dir.resolve()).replace("\\", "/")
+
+    # Format tree positions
     tree_positions_code = "TREE_POSITIONS = {\n"
     for tree_key, (x, y, z) in sorted(tree_positions_dict.items()):
         tree_positions_code += f"    '{tree_key}': ({x}, {y}, {z}),\n"
     tree_positions_code += "}\n"
 
-    script_path_str = str(script_path).replace("\\", "/")
+    # Build batch list for the master script
+    batch_list_code = "BATCH_SCRIPTS = [\n"
+    for batch_name, batch_label in batch_scripts:
+        batch_list_code += f'    ("{batch_name}", "{batch_label}"),\n'
+    batch_list_code += "]\n"
 
-    script_content = f'''"""
-Unreal Engine script to import GrowPy forest - Auto-generated
+    master_content = f'''"""
+GrowPy Forest Import to Unreal Engine - Auto-generated master script
 
-Shared twig/foliage instances are imported once to Instances/ folder.
-Tree assemblies reference shared instances via relative USD paths.
+Imports are split into {len(batch_scripts)} batches (1 per species + shared instances)
+to avoid video memory exhaustion. Each batch triggers garbage collection
+before moving to the next.
 
 Execute this script in Unreal Engine:
 1. Right-click this file in VSCode > "Execute Python File in Unreal"
-2. Or from Unreal Python console: exec(open(r'{script_path_str}').read())
+2. Or from Unreal Python console: exec(open(r'{master_path_str}').read())
+
+To import a single species, run the individual batch script instead:
+  e.g. exec(open(r'{scripts_dir_str}/import_batch_01_species.py').read())
 """
 
 import unreal
+import os
 import gc
 import time
 
@@ -122,155 +266,70 @@ print("=" * 60)
 print("GrowPy Forest Import to Unreal Engine")
 print("=" * 60)
 
-# Import configuration
 IMPORT_PATH = "{project_path}"
+SCRIPTS_DIR = r"{scripts_dir_str}"
 
-# Delay between imports to prevent crashes (seconds)
-# Increase if you experience crashes
-IMPORT_DELAY = 0.5
+# Delay between batches (seconds) - increase if you still get VRAM crashes
+BATCH_DELAY = 3.0
 
 # Tree positions from CSV (in meters, multiply by 100 for Unreal units)
 {tree_positions_code}
 
+{batch_list_code}
+
 print(f"Destination: {{IMPORT_PATH}}")
-print(f"Found {num_species} species with {total_trees} trees, {num_instances} shared instances\\n")
+print(f"Found {num_species} species with {total_trees} trees, {num_instances} shared instances")
+print(f"Split into {{len(BATCH_SCRIPTS)}} batches\\n")
 
-# Get asset tools
-asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
+total_imported = 0
+total_failed = 0
+batches_completed = 0
 
-imported_count = 0
-failed_count = 0
+for batch_file, batch_label in BATCH_SCRIPTS:
+    batch_path = os.path.join(SCRIPTS_DIR, batch_file).replace("\\\\", "/")
+    print(f"\\n>>> Running batch {{batches_completed + 1}}/{{len(BATCH_SCRIPTS)}}: {{batch_label}}")
 
-'''
+    try:
+        exec(open(batch_path).read())
+        batches_completed += 1
+    except Exception as e:
+        unreal.log_error(f"Batch '{{batch_label}}' failed: {{e}}")
+        total_failed += 1
 
-    # Generate import code for shared instances first
-    if instance_files:
-        script_content += f"""
-# === SHARED INSTANCES ({len(instance_files)} twig/foliage files) ===
-print("Importing shared twig/foliage instances...")
-"""
-        for inst_file in sorted(instance_files):
-            inst_path = str(inst_file.resolve()).replace("\\", "/")
-            inst_name = inst_file.stem
-
-            script_content += f"""
-try:
-    import_task = unreal.AssetImportTask()
-    import_task.filename = "{inst_path}"
-    import_task.destination_path = IMPORT_PATH + "/Instances"
-    import_task.automated = True
-    import_task.save = True
-    import_task.replace_existing = True
-
-    options = unreal.UsdStageImportOptions()
-    options.import_actors = False
-    options.import_geometry = True
-    options.import_materials = True
-    options.set_editor_property('prim_path_folder_structure', False)
-    options.set_editor_property('share_assets_for_identical_prims', True)
-    options.set_editor_property('merge_identical_material_slots', True)
-    import_task.options = options
-
-    asset_tools.import_asset_tasks([import_task])
-
-    if import_task.imported_object_paths:
-        imported_count += 1
-        print(f"  Imported instance: {inst_name}")
-    else:
-        failed_count += 1
-        unreal.log_warning("Failed to import instance: {inst_name}")
-
+    # Aggressive cleanup between batches
     gc.collect()
     unreal.SystemLibrary.collect_garbage()
-    time.sleep(IMPORT_DELAY)
-
-except Exception as e:
-    failed_count += 1
-    unreal.log_error(f"Error importing instance {inst_name}: {{e}}")
-"""
-
-    # Generate import code for each species
-    for species_folder, variants in sorted(trees_by_species.items()):
-        total_species_trees = sum(len(v) for v in variants.values())
-        script_content += f"""
-# --- {species_folder} ({total_species_trees} trees) ---
-print("Importing {species_folder}...")
-"""
-
-        for variant_name, variant_trees in sorted(variants.items()):
-            for usd_file in sorted(variant_trees):
-                usd_path = str(usd_file.resolve()).replace("\\", "/")
-                file_label = usd_file.stem
-                dest_subpath = f"{species_folder}/{variant_name}" if variant_name else species_folder
-
-                script_content += f"""
-try:
-    import_task = unreal.AssetImportTask()
-    import_task.filename = "{usd_path}"
-    import_task.destination_path = IMPORT_PATH + "/{dest_subpath}"
-    import_task.automated = True
-    import_task.save = True
-    import_task.replace_existing = True
-
-    options = unreal.UsdStageImportOptions()
-    options.import_actors = False
-    options.import_geometry = True
-    options.import_materials = True
-    options.set_editor_property('prim_path_folder_structure', False)
-    options.set_editor_property('share_assets_for_identical_prims', True)
-    options.set_editor_property('merge_identical_material_slots', True)
-    import_task.options = options
-
-    asset_tools.import_asset_tasks([import_task])
-
-    if import_task.imported_object_paths:
-        imported_count += 1
-        print(f"  Imported: {file_label}")
-    else:
-        failed_count += 1
-        unreal.log_warning("Failed to import: {file_label}")
-
-    gc.collect()
-    unreal.SystemLibrary.collect_garbage()
-    time.sleep(IMPORT_DELAY)
-
-except Exception as e:
-    failed_count += 1
-    unreal.log_error(f"Error importing {file_label}: {{e}}")
-"""
-
-    script_content += """
+    time.sleep(BATCH_DELAY)
 
 print("")
 print("=" * 60)
-print(f"Import complete: {imported_count} imported, {failed_count} failed")
+print(f"All batches complete: {{batches_completed}}/{{len(BATCH_SCRIPTS)}} succeeded")
 print("=" * 60)
+print(f"\\nAssets imported to Content Browser: {{IMPORT_PATH}}")
+print("Structure: Instances/ (shared twigs) + species/variant/ (tree assemblies)")
+print("")
+print("=" * 60)
+print("TREE PLACEMENT")
+print("=" * 60)
+print("Trees are exported at origin (0,0,0)")
+print("Use TREE_POSITIONS dictionary to place trees at their CSV coordinates")
+print("")
+print("Example placement code:")
+print("  tree_asset = unreal.EditorAssetLibrary.load_asset(IMPORT_PATH + '/species/tree_0001/SK_species_stems')")
+print("  pos = TREE_POSITIONS.get('species_0001', (0,0,0))")
+print("  actor = unreal.EditorLevelLibrary.spawn_actor_from_object(tree_asset, unreal.Vector(pos[0]*100, pos[1]*100, pos[2]*100))")
+print("")
+print(f"Available tree positions: {{len(TREE_POSITIONS)}}")
+'''
 
-if failed_count > 0:
-    unreal.log_warning("Some imports failed. Check that USD Importer plugin is enabled.")
-else:
-    print(f"\\nAssets imported to Content Browser: {IMPORT_PATH}")
-    print("Structure: Instances/ (shared twigs) + species/variant/ (tree assemblies)")
-    print("")
-    print("=" * 60)
-    print("TREE PLACEMENT")
-    print("=" * 60)
-    print("Trees are exported at origin (0,0,0)")
-    print("Use TREE_POSITIONS dictionary to place trees at their CSV coordinates")
-    print("")
-    print("Example placement code:")
-    print("  # Get tree mesh from Content Browser")
-    print("  tree_asset = unreal.EditorAssetLibrary.load_asset(IMPORT_PATH + '/species/tree_0001/SK_species_stems')")
-    print("  # Get position for this tree")
-    print("  pos = TREE_POSITIONS.get('species_0001', (0,0,0))")
-    print("  # Place in level")
-    print("  actor = unreal.EditorLevelLibrary.spawn_actor_from_object(tree_asset, unreal.Vector(pos[0]*100, pos[1]*100, pos[2]*100))")
-    print("")
-    print(f"Available tree positions: {len(TREE_POSITIONS)}")
-"""
+    master_path.write_text(master_content, encoding="utf-8")
 
-    script_path.write_text(script_content, encoding="utf-8")
-    return script_path
+    logger.info(
+        "Generated %d batch import scripts + master script in %s",
+        len(batch_scripts),
+        script_dir,
+    )
+    return master_path
 
 
 def generate_unreal_cleanup_script(

@@ -88,7 +88,13 @@ def generate_preview_image(
                     if idx0 < 0 or idx0 >= num_points or idx1 < 0 or idx1 >= num_points:
                         continue
                     if radii is not None:
-                        r = (radii[idx0] + radii[idx1]) * 0.5
+                        # First segment is the junction: use the thinner
+                        # (branch-side) radius so it doesn't inherit the
+                        # parent stem's thickness.
+                        if i == 0:
+                            r = min(radii[idx0], radii[idx1])
+                        else:
+                            r = (radii[idx0] + radii[idx1]) * 0.5
                     else:
                         r = 0.005
                     all_seg_radii.append(r)
@@ -134,7 +140,7 @@ def generate_preview_image(
                     ws.append(r * 2 * pts_per_meter)
 
                 lc = LineCollection(
-                    segs, linewidths=ws, colors="#3b2a1a", alpha=0.85,
+                    segs, linewidths=ws, colors="#3b2a1a", alpha=1.0,
                     capstyle="round", joinstyle="round",
                 )
                 ax.add_collection(lc)
@@ -222,7 +228,10 @@ def generate_icon_image(
                     if idx0 < 0 or idx0 >= num_points or idx1 < 0 or idx1 >= num_points:
                         continue
                     if radii is not None:
-                        r = (radii[idx0] + radii[idx1]) * 0.5
+                        if i == 0:
+                            r = min(radii[idx0], radii[idx1])
+                        else:
+                            r = (radii[idx0] + radii[idx1]) * 0.5
                     else:
                         r = 0.005
                     all_seg_radii.append(r)
@@ -254,7 +263,7 @@ def generate_icon_image(
 
             fig, ax = plt.subplots(1, 1, figsize=(fig_inches, fig_inches))
             lc = LineCollection(
-                segs, linewidths=ws, colors="#3b2a1a", alpha=0.85,
+                segs, linewidths=ws, colors="#3b2a1a", alpha=1.0,
                 capstyle="round", joinstyle="round",
             )
             ax.add_collection(lc)

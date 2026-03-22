@@ -9,7 +9,7 @@
 
 [general]
 # Random seed for reproducible tree generation (remove to randomize)
-random_seed = 385
+random_seed = 42
 # Default input CSV with tree positions and species
 # CSV columns: x, y, species, height (optional: z, fid, dbh)
 csv_file = "data/input/test.csv"
@@ -58,10 +58,10 @@ interior_decimate_ratio = 0.5
 [growth_models]
 # Maximum growth cycles to simulate (1-250)
 # Automatically stops early when growth plateaus
-cycles = 35
+cycles = 75
 # Random seeds to average for robust curves (1-10)
 # Use 3+ for production, 1 for quick tests
-seeds = 3
+seeds = 1
 # Minimum height increase per cycle to consider as growth (meters)
 # Lower values = more sensitive plateau detection
 height_threshold = 0.01
@@ -70,7 +70,7 @@ height_threshold = 0.01
 max_cycles_without_growth = 5
 # Maximum simulation time per seed in seconds (10-3600)
 # Increase for complex species; prevents stuck simulations
-timeout = 25
+timeout = 900
 
 # --- Step 3b: Yield table calibration (integrated into create_growth_models.py) ---
 [calibration]
