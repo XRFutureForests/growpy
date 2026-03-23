@@ -332,7 +332,6 @@ def _simulate_height_threshold_mode(
                     while m <= curr_milestone:
                         if m not in captured.get(key, set()):
                             new_crossings.setdefault(species_name, {})[tree_idx] = m
-                            pending_captured[key] = m
                             break  # One milestone per tree per cycle
                         m += height_interval
 

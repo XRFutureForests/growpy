@@ -1,6 +1,6 @@
 fid,species,x,y,z,height,twig_density,individual_type
 1,Wild cherry,100.0,0.0,0.0,20,1.0,open_grown
 2,Wild cherry,0.0,0.0,0.0,20,1.0,competition
-101,Wild cherry,6.0,0.0,0.0,20,1.0,competition
-102,Wild cherry,-3.0,5.196,0.0,20,1.0,competition
-103,Wild cherry,-3.0,-5.196,0.0,20,1.0,competition
+101,Wild cherry,3.0,0.0,0.0,20,1.0,competition
+102,Wild cherry,-1.5,2.598,0.0,20,1.0,competition
+103,Wild cherry,-1.5,-2.598,0.0,20,1.0,competition

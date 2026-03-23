@@ -337,8 +337,10 @@ def compute_grow_length_curve(
         )
 
     grow_lengths = base_grow_length * scale_factors
-    # Physical floor: grow_length must stay positive and meaningful
-    grow_lengths = np.maximum(grow_lengths, 0.01)
+    # Physical floor: grow_length must stay above 50% of base value.
+    # Below this threshold, some trees die depending on random seed,
+    # because Grove cannot sustain growth with extremely low grow_length.
+    grow_lengths = np.maximum(grow_lengths, base_grow_length * 0.5)
     grow_lengths = np.insert(grow_lengths, 0, grow_lengths[0])
 
     return grow_lengths.tolist()

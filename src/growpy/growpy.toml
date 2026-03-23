@@ -9,7 +9,7 @@
 
 [general]
 # Random seed for reproducible tree generation (remove to randomize)
-random_seed = 23
+random_seed = 9
 # Default input CSV with tree positions and species
 # CSV columns: x, y, species, height (optional: z, fid, dbh)
 csv_file = "data/input/test.csv"

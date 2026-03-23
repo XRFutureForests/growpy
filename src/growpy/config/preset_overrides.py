@@ -535,6 +535,11 @@ def load_curves_from_preset(preset_path: Path) -> PresetOverrides:
     if calibration and isinstance(calibration, dict):
         grow_length_per_cycle = calibration.get("grow_length_per_cycle")
         if grow_length_per_cycle and isinstance(grow_length_per_cycle, list):
+            # Enforce survival floor: grow_length below 50% of base kills
+            # some trees depending on random seed (Grove engine limitation).
+            base_gl = preset_data.get("grow_length", 0.3)
+            floor = base_gl * 0.5
+            grow_length_per_cycle = [max(v, floor) for v in grow_length_per_cycle]
             overrides.cycle_array_overrides.append(
                 CycleArrayOverride(param="grow_length", values=grow_length_per_cycle)
             )
