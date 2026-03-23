@@ -173,7 +173,7 @@ selected_sycamore_maple = 1.0
 #   resolution_reduce   - Vertex reduction on thinner branches (0.0-1.0)
 #   texture_repeat      - Bark texture tiling count (1-4)
 #   build_cutoff_age    - Skip branches younger than N years (0 = keep all)
-#   build_cutoff_thickness - Skip branches thinner than this (meters, 0.0 = keep all)
+#   build_cutoff_thickness - Skip branches thinner than this (meters, 0.0 = keep all), CAUTION: values > 0.0 lead to less leaves since leaves are placed at thin branches
 #   build_blend         - Smooth branch junctions
 #   build_end_cap       - Cap open branch ends
 #
