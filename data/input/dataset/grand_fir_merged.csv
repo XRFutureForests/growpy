@@ -2,8 +2,5 @@ fid,species,x,y,z,height,twig_density,individual_type
 1,Grand fir,100.0,0.0,0.0,35,1.0,open_grown
 2,Grand fir,0.0,0.0,0.0,35,1.0,competition
 101,Grand fir,6.0,0.0,0.0,35,1.0,competition
-102,Grand fir,-6.0,0.0,0.0,35,1.0,competition
-103,Grand fir,3.0,5.196,0.0,35,1.0,competition
-104,Grand fir,-3.0,5.196,0.0,35,1.0,competition
-105,Grand fir,3.0,-5.196,0.0,35,1.0,competition
-106,Grand fir,-3.0,-5.196,0.0,35,1.0,competition
+102,Grand fir,-3.0,5.196,0.0,35,1.0,competition
+103,Grand fir,-3.0,-5.196,0.0,35,1.0,competition

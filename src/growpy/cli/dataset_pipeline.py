@@ -278,10 +278,10 @@ def main():
 
     # Generate dataset overview after step 4 (even if some species failed)
     if 4 in steps and not args.dry_run:
-        from growpy.config.core import GrowPyConfig
+        from growpy.config.core import get_config
         from growpy.config.paths import get_assets_directory
 
-        config = GrowPyConfig()
+        config = get_config()
         assets_dir = get_assets_directory()
         generate_overview_markdown(
             config.output_dir,

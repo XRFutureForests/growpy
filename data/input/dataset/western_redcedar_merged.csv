@@ -1,0 +1,6 @@
+fid,species,x,y,z,height,twig_density,individual_type
+1,Western redcedar,100.0,0.0,0.0,25,1.0,open_grown
+2,Western redcedar,0.0,0.0,0.0,25,1.0,competition
+101,Western redcedar,5.0,0.0,0.0,25,1.0,competition
+102,Western redcedar,-2.5,4.33,0.0,25,1.0,competition
+103,Western redcedar,-2.5,-4.33,0.0,25,1.0,competition

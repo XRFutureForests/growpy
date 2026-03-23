@@ -999,7 +999,7 @@ def generate_forest_stages(
 
                 # In height-threshold mode, only export trees that triggered
                 # a milestone crossing at this cycle. The milestone_map tells
-                # us which tree_idx crossed which milestone height.
+                # us which tree_idx crossed which milestone height(s).
                 cycle_milestones = milestone_map.get(cycle, {}).get(species_name, {})
                 if milestone_map:
                     if tree_idx not in cycle_milestones:
@@ -1019,7 +1019,7 @@ def generate_forest_stages(
                     .replace("-", "_")
                     .lower()
                 )
-                # Use milestone height for clean filenames (e.g., h05m, h10m)
+                # Use milestone height for clean filenames (e.g., h04m, h08m)
                 # In height-threshold mode, the milestone is the exact threshold
                 # the tree crossed. In legacy mode, use actual height.
                 height_for_filename = cycle_milestones.get(tree_idx, height)

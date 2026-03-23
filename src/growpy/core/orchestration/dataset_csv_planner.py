@@ -3,6 +3,9 @@
 Reads species metadata from tree_asset_lookup.csv (Max Height, Competition
 Spacing) and generates merged CSV files (open + competition combined) for each
 dataset species, plus an all-species CSV for pipeline steps 1-3.
+
+Competition layout: 3 neighbors in an equilateral triangle around the center
+tree, with species-specific spacing based on crown width.
 """
 
 import logging
@@ -42,8 +45,12 @@ def _get_dataset_species(config=None) -> pd.DataFrame:
     return dataset
 
 
-def _hex_neighbors(spacing: float) -> list:
-    """Compute 6 hexagonal neighbor positions at given spacing.
+def _triangle_neighbors(spacing: float) -> list:
+    """Compute 3 equilateral triangle neighbor positions at given spacing.
+
+    Places neighbors at 120-degree intervals around the center tree (origin),
+    each at the given spacing distance. The resulting equilateral triangle
+    has side length spacing * sqrt(3).
 
     Returns list of (fid, x, y) tuples. Center tree is at origin (not included).
     """
@@ -51,11 +58,8 @@ def _hex_neighbors(spacing: float) -> list:
     h = s * math.sqrt(3) / 2  # s * 0.866
     return [
         (101, round(s, 3), 0.0),
-        (102, round(-s, 3), 0.0),
-        (103, round(s / 2, 3), round(h, 3)),
-        (104, round(-s / 2, 3), round(h, 3)),
-        (105, round(s / 2, 3), round(-h, 3)),
-        (106, round(-s / 2, 3), round(-h, 3)),
+        (102, round(-s / 2, 3), round(h, 3)),
+        (103, round(-s / 2, 3), round(-h, 3)),
     ]
 
 
@@ -69,7 +73,8 @@ def generate_merged_csv(
 
     The open-grown tree (fid=1) is placed at (OPEN_TREE_X, 0, 0) to avoid
     light competition. The competition center tree is fid=2 at origin.
-    Six hexagonal neighbors (fid=101-106) surround the center tree.
+    Three equilateral-triangle neighbors (fid=101-103) surround the center tree,
+    spaced according to the species crown width.
     """
     rows = [
         {
@@ -93,7 +98,7 @@ def generate_merged_csv(
             "individual_type": "competition",
         },
     ]
-    for fid, x, y in _hex_neighbors(spacing):
+    for fid, x, y in _triangle_neighbors(spacing):
         rows.append(
             {
                 "fid": fid,

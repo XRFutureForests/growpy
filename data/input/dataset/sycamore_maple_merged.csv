@@ -2,8 +2,5 @@ fid,species,x,y,z,height,twig_density,individual_type
 1,Sycamore maple,100.0,0.0,0.0,25,1.0,open_grown
 2,Sycamore maple,0.0,0.0,0.0,25,1.0,competition
 101,Sycamore maple,6.0,0.0,0.0,25,1.0,competition
-102,Sycamore maple,-6.0,0.0,0.0,25,1.0,competition
-103,Sycamore maple,3.0,5.196,0.0,25,1.0,competition
-104,Sycamore maple,-3.0,5.196,0.0,25,1.0,competition
-105,Sycamore maple,3.0,-5.196,0.0,25,1.0,competition
-106,Sycamore maple,-3.0,-5.196,0.0,25,1.0,competition
+102,Sycamore maple,-3.0,5.196,0.0,25,1.0,competition
+103,Sycamore maple,-3.0,-5.196,0.0,25,1.0,competition

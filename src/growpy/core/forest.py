@@ -332,8 +332,8 @@ def _simulate_height_threshold_mode(
                     while m <= curr_milestone:
                         if m not in captured.get(key, set()):
                             new_crossings.setdefault(species_name, {})[tree_idx] = m
-                            captured.setdefault(key, set()).add(m)
-                            break  # Only one milestone per tree per cycle
+                            pending_captured[key] = m
+                            break  # One milestone per tree per cycle
                         m += height_interval
 
         if not new_crossings:
@@ -360,7 +360,21 @@ def _simulate_height_threshold_mode(
             if tree_data:
                 snapshots[cycle][species_name] = tree_data
                 milestone_map[cycle][species_name] = new_crossings[species_name]
-                total_captures += len(new_crossings[species_name])
+                # Only commit milestones to captured for trees with valid models
+                for tidx in new_crossings[species_name]:
+                    key = (species_name, tidx)
+                    if tidx < len(tree_data) and tree_data[tidx][0] is not None:
+                        captured.setdefault(key, set()).add(
+                            new_crossings[species_name][tidx]
+                        )
+                        total_captures += 1
+                    else:
+                        logger.warning(
+                            "  %s tree %d: model None at milestone %.0fm, "
+                            "will retry next cycle",
+                            species_name, tidx,
+                            new_crossings[species_name][tidx],
+                        )
 
     logger.info("  Height milestones captured: %d", total_captures)
     return snapshots, milestone_map
