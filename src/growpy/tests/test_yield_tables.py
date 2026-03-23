@@ -98,16 +98,16 @@ class TestEstimateFlushesPerYear:
         # Grove heights that grow steadily
         grove = [0.5 + i * 0.47 for i in range(50)]
         fpy = estimate_flushes_per_year(grove, ages, heights)
-        assert 0.3 <= fpy <= 3.0
+        assert 0.5 <= fpy <= 2.0
 
     def test_result_is_clamped(self):
         ages = [10, 20, 30, 40, 50]
         heights = [5.0, 12.0, 18.0, 22.0, 24.0]
-        # Very fast Grove growth -> fpy should be clamped to 3.0 max
+        # Very fast Grove growth -> fpy should be clamped to 2.0 max
         grove = [i * 2.0 for i in range(50)]
         fpy = estimate_flushes_per_year(grove, ages, heights)
-        assert fpy <= 3.0
-        assert fpy >= 0.3
+        assert fpy <= 2.0
+        assert fpy >= 0.5
 
 
 class TestInterpolateYieldTable:
@@ -164,15 +164,14 @@ class TestComputeGrowLengthCurve:
 
     def test_values_are_sigma_clamped(self):
         grove_h = [float(i) for i in range(1, 21)]
-        # Target grows much faster
+        # Target grows much faster (5x) but MAX_SCALE_FACTOR caps at 3x
         target_h = np.array([float(i * 5) for i in range(1, 21)])
         result = compute_grow_length_curve(grove_h, target_h, base_grow_length=0.3)
         # All values should be positive
         for v in result:
             assert v > 0
-        # With uniform 5x scaling, sigma is near zero so all values
-        # should cluster around base * 5 = 1.5
-        assert all(abs(v - 1.5) < 0.3 for v in result)
+        # With 5x scaling capped at 3.0x, values cluster around base * 3 = 0.9
+        assert all(abs(v - 0.9) < 0.15 for v in result)
 
 
 
@@ -247,7 +246,7 @@ class TestEstimateFlushesWarningLogs:
         ):
             result = estimate_flushes_per_year(grove, ages, heights)
         assert result == 1.0
-        assert "Interpolation failed" in caplog.text
+        assert "Interpolation failed" in caplog.text or "falling back" in caplog.text
         root.removeHandler(caplog.handler)
 
     def test_cr_failure_falls_back_to_pchip(self):
@@ -260,7 +259,7 @@ class TestEstimateFlushesWarningLogs:
             side_effect=RuntimeError("fit failed"),
         ):
             fpy = estimate_flushes_per_year(grove, ages, heights)
-        assert 0.3 <= fpy <= 3.0
+        assert 0.5 <= fpy <= 2.0 or fpy == 1.0  # may fall back on poor fit
 
 
 class TestInterpolateYieldTableFallback:

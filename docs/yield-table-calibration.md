@@ -28,6 +28,59 @@ do not match forestry yield tables out of the box. The key challenges:
 Silver fir was removed from the pipeline because it shares the same Grove preset as
 Norway spruce, producing identical growth curves.
 
+## Growth Curve Model: Chapman-Richards
+
+GrowPy uses the Chapman-Richards function as its primary growth curve model for
+interpolating yield tables and fitting Grove simulation output:
+
+```
+h(t) = A * (1 - exp(-k * t))^p
+```
+
+With optional baseline: `h(t) = y0 + (A - y0) * (1 - exp(-k * t))^p`
+
+### Why Chapman-Richards
+
+The Chapman-Richards equation is the standard growth model in forest mensuration,
+chosen for several properties that make it well-suited to tree growth:
+
+- **Biological basis**: Derived from the von Bertalanffy differential growth
+  equation (anabolism vs catabolism), giving it a mechanistic interpretation
+  rather than being a purely empirical curve fit.
+- **Asymptotic behavior**: The parameter `A` provides a natural height ceiling,
+  reflecting the biological reality that trees reach a maximum height.
+- **Flexible shape**: The exponent `p` controls the inflection point, allowing
+  the same equation to represent both fast-early growth (shade-intolerant pioneer
+  species) and slow-early growth (shade-tolerant species).
+- **Parsimonious**: Only 3-4 parameters (`A`, `k`, `p`, optional `y0`), which is
+  few enough to fit reliably from the limited data points in typical yield tables.
+
+Alternative sigmoidal models exist (Weibull, Gompertz, logistic, Korf, Hossfeld),
+but Chapman-Richards consistently ranks among the best across species and site
+conditions in comparative forestry studies.
+
+### How GrowPy Uses It
+
+| Context | Location | Purpose |
+|---------|----------|---------|
+| Yield table interpolation | `utils/yield_tables.py` | Smooth age-to-height mapping from sparse yield table data |
+| Growth model fitting | `utils/analysis.py` | Mapping Grove simulation cycles to height/DBH curves |
+| Extrapolation | `utils/analysis.py` | Predicting growth beyond the simulated cycle range |
+
+The fit is not blindly trusted. `analysis.py` checks R² after fitting and falls
+back to piecewise linear interpolation when the parametric fit is poor. This
+handles species or datasets where the sigmoidal assumption does not hold (e.g.
+irregular yield table data or very short simulation runs).
+
+### Parameters
+
+| Parameter | Meaning | Typical Range |
+|-----------|---------|---------------|
+| `A` | Asymptotic maximum (height ceiling) | 20-50 m for height |
+| `k` | Growth rate coefficient | 0.01-0.15 |
+| `p` | Shape/inflection exponent | 0.5-5.0 |
+| `y0` | Baseline offset (optional) | 0-2 m |
+
 ## Calibration Pipeline
 
 ```

@@ -52,6 +52,65 @@ def load_lookup_table(project_root: Path) -> Dict[str, Dict[str, str]]:
 # --- Calibration math ---
 
 
+FPY_MIN = 0.5
+FPY_MAX = 2.0
+FPY_RMSE_THRESHOLD = 0.25  # relative RMSE above which fpy is untrusted
+
+
+def _build_yield_height_interpolator(
+    yield_ages: List[float],
+    yield_heights: List[float],
+):
+    """Build a height-from-age interpolator for the yield table.
+
+    Returns a callable age -> height using Chapman-Richards parametric fit,
+    falling back to PCHIP spline.
+    """
+    from scipy.interpolate import PchipInterpolator
+
+    from growpy.utils.analysis import (
+        _chapman_richards_with_baseline,
+        fit_chapman_richards,
+    )
+
+    extended_ages = np.array([0.0] + list(yield_ages))
+    extended_heights = np.array([0.5] + list(yield_heights))
+
+    try:
+        A, k, p, _ = fit_chapman_richards(
+            extended_ages, extended_heights, y0=0.5
+        )
+
+        def cr_interp(ages):
+            return _chapman_richards_with_baseline(
+                np.asarray(ages, dtype=float), A, k, p, 0.5
+            )
+
+        return cr_interp
+    except Exception:
+        interp = PchipInterpolator(extended_ages, extended_heights)
+        return interp
+
+
+def _fpy_rmse(
+    fpy: float,
+    grove_heights: np.ndarray,
+    yield_interp,
+) -> float:
+    """Compute RMSE between Grove heights and yield table at a given fpy."""
+    cycles = np.arange(len(grove_heights))
+    calendar_ages = cycles / fpy
+    yield_at_cycles = np.asarray(yield_interp(calendar_ages), dtype=float)
+
+    # Only compare the active growth region (skip first few seedling cycles
+    # and stop where Grove has data)
+    start = min(5, len(grove_heights) // 5)
+    g = grove_heights[start:]
+    y = yield_at_cycles[start:]
+
+    return float(np.sqrt(np.mean((g - y) ** 2)))
+
+
 def estimate_flushes_per_year(
     grove_heights: List[float],
     yield_ages: List[float],
@@ -59,76 +118,57 @@ def estimate_flushes_per_year(
 ) -> float:
     """Estimate how many Grove growth cycles correspond to 1 calendar year.
 
-    Compares the uncalibrated Grove height trajectory against the yield table
-    to find the time-scaling factor. If Grove grows faster per cycle than real
-    trees grow per year, fpy > 1 (multiple cycles per year). If slower, fpy < 1.
+    Finds the fpy that minimizes RMSE between the full Grove height trajectory
+    and the yield table (interpolated via Chapman-Richards or PCHIP). Uses
+    bounded scalar optimization over [FPY_MIN, FPY_MAX].
 
-    Uses Chapman-Richards parametric fit for the yield table height-to-age
-    inversion. Falls back to PCHIP spline if the parametric fit fails.
+    If the best-fit RMSE is too high relative to the height range (above
+    FPY_RMSE_THRESHOLD), the estimate is considered unreliable and fpy falls
+    back to 1.0.
 
     Returns:
-        Estimated flushes_per_year, clamped to [0.3, 3.0].
+        Estimated flushes_per_year, clamped to [FPY_MIN, FPY_MAX].
     """
+    from scipy.optimize import minimize_scalar
+
     if len(grove_heights) < 5 or len(yield_ages) < 2 or len(yield_heights) < 2:
         return 1.0
 
-    grove_max = max(grove_heights)
+    grove_arr = np.array(grove_heights, dtype=float)
+    grove_max = grove_arr.max()
     if grove_max < 1.0:
         return 1.0
 
-    # Reference height: 60% of Grove max (avoids plateau and seedling phases)
-    ref_height = grove_max * 0.6
-
-    # Find Grove cycle where it reaches ref_height
-    grove_cycle = None
-    for i, h in enumerate(grove_heights):
-        if h >= ref_height:
-            grove_cycle = i + 1  # 1-based
-            break
-    if grove_cycle is None:
-        return 1.0
-
-    # Find yield table age where trees reach ref_height
-    extended_ages = np.array([0.0] + list(yield_ages))
-    extended_heights = np.array([0.5] + list(yield_heights))
-
-    yield_max = max(yield_heights)
-    if ref_height > yield_max:
-        # Grove grows taller than yield table — use yield table max instead
-        ref_height = yield_max * 0.6
-        for i, h in enumerate(grove_heights):
-            if h >= ref_height:
-                grove_cycle = i + 1
-                break
-
     try:
-        from growpy.utils.analysis import fit_chapman_richards
-
-        A, k, p, _ = fit_chapman_richards(extended_ages, extended_heights, y0=0.5)
-        # Analytic inverse: age = -ln(1 - ((h - y0)/(A - y0))^(1/p)) / k
-        ratio = np.clip((ref_height - 0.5) / (A - 0.5), 1e-12, 1.0 - 1e-12)
-        yield_age = float(-np.log(1.0 - ratio ** (1.0 / p)) / k)
+        yield_interp = _build_yield_height_interpolator(yield_ages, yield_heights)
     except Exception:
-        try:
-            from scipy.interpolate import PchipInterpolator
-
-            interp = PchipInterpolator(extended_heights, extended_ages)
-            yield_age = float(interp(ref_height))
-        except Exception:
-            logger.warning(
-                "Interpolation failed for ref_height=%.2f", ref_height
-            )
-            return 1.0
-
-    if yield_age <= 0.5:
+        logger.warning("  Interpolation failed — falling back to fpy=1.0")
         return 1.0
 
-    fpy = grove_cycle / yield_age
-    fpy = max(0.3, min(3.0, fpy))
+    result = minimize_scalar(
+        _fpy_rmse,
+        bounds=(FPY_MIN, FPY_MAX),
+        method="bounded",
+        args=(grove_arr, yield_interp),
+    )
+
+    fpy = float(np.clip(result.x, FPY_MIN, FPY_MAX))
+    best_rmse = _fpy_rmse(fpy, grove_arr, yield_interp)
+
+    # Relative RMSE: normalize by height range to make threshold scale-free
+    height_range = grove_max - grove_arr[0]
+    rel_rmse = best_rmse / height_range if height_range > 0.5 else 1.0
+
+    if rel_rmse > FPY_RMSE_THRESHOLD:
+        logger.warning(
+            "  fpy=%.2f has poor fit (relRMSE=%.3f > %.3f) — falling back to 1.0",
+            fpy, rel_rmse, FPY_RMSE_THRESHOLD,
+        )
+        return 1.0
 
     logger.info(
-        "  flushes_per_year: %.2f (Grove cycle %d = yield age %.1f yr at h=%.1fm)",
-        fpy, grove_cycle, yield_age, ref_height,
+        "  flushes_per_year: %.2f (RMSE=%.2fm, relRMSE=%.3f)",
+        fpy, best_rmse, rel_rmse,
     )
 
     return fpy
