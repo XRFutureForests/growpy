@@ -247,29 +247,3 @@ skeleton_length = 4.0
 skeleton_reduce = 0.8
 skeleton_bias = 0.5
 skeleton_connected = true
-
-[quality.helios]
-resolution = 8
-resolution_reduce = 0.85
-texture_repeat = 2
-build_cutoff_age = 0
-build_cutoff_thickness = 0.00
-build_blend = false
-build_end_cap = false
-skeleton_length = 4.0
-skeleton_reduce = 0.8
-skeleton_bias = 0.5
-skeleton_connected = true
-
-[quality.tom]
-resolution = 8
-resolution_reduce = 0.75
-texture_repeat = 2
-build_cutoff_age = 0
-build_cutoff_thickness = 0.0
-build_blend = true
-build_end_cap = true
-skeleton_length = 0.1
-skeleton_reduce = 0.1
-skeleton_bias = 0.5
-skeleton_connected = true
