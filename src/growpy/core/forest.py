@@ -301,9 +301,8 @@ def _simulate_height_threshold_mode(
     snapshots: SnapshotData = {}
     milestone_map: Dict[int, Dict[str, Dict[int, float]]] = {}
 
-    # Track previous heights and captured milestones per tree
+    # Track captured milestones per tree
     # Key: (species_name, tree_idx)
-    prev_heights: Dict[Tuple[str, int], float] = {}
     captured: Dict[Tuple[str, int], set] = {}
 
     # Count total milestone captures for progress reporting
@@ -324,16 +323,12 @@ def _simulate_height_threshold_mode(
             measurements = extract_tree_measurements(grove)
             for tree_idx, (height, _dbh) in enumerate(measurements):
                 key = (species_name, tree_idx)
-                prev_h = prev_heights.get(key, 0.0)
-                prev_heights[key] = height
 
-                # Find the lowest new milestone crossed since last cycle
-                prev_milestone = math.floor(prev_h / height_interval) * height_interval
+                # Find the lowest uncaptured milestone up to current height
                 curr_milestone = math.floor(height / height_interval) * height_interval
 
-                if curr_milestone > prev_milestone and curr_milestone >= height_interval:
-                    # Use lowest uncaptured milestone (closest to actual crossing)
-                    m = prev_milestone + height_interval
+                if curr_milestone >= height_interval:
+                    m = height_interval
                     while m <= curr_milestone:
                         if m not in captured.get(key, set()):
                             new_crossings.setdefault(species_name, {})[tree_idx] = m

@@ -16,8 +16,36 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
-def _build_import_block(file_path: str, dest_path: str, label: str) -> str:
-    """Build a single USD import try/except block."""
+def _build_import_block(
+    file_path: str,
+    dest_path: str,
+    label: str,
+    wind_json_path: str = "",
+    configure_nanite: bool = False,
+) -> str:
+    """Build a single USD import try/except block.
+
+    When configure_nanite is True (for assembly imports), the block also
+    configures the imported nanite assembly: Nanite shape preservation is set
+    to Voxelize, DynamicWind data is imported from the JSON file (if present),
+    and a default DynamicWindTransformProviderData is assigned.
+    """
+    config_block = ""
+    if configure_nanite:
+        wind_arg = f'r"{wind_json_path}"' if wind_json_path else '""'
+        config_block = f"""
+    # Post-import: configure nanite assembly
+    for _obj_path in (import_task.imported_object_paths or []):
+        _obj_path_str = str(_obj_path)
+        if "nanite_assembly" not in _obj_path_str.lower():
+            continue
+        _mesh = unreal.EditorAssetLibrary.load_asset(_obj_path_str)
+        if not _mesh:
+            continue
+        _configure_nanite_assembly(_mesh, {wind_arg}, "{label}")
+        break
+"""
+
     return f"""
 try:
     import_task = unreal.AssetImportTask()
@@ -44,7 +72,7 @@ try:
     else:
         failed_count += 1
         unreal.log_warning("Failed to import: {label}")
-
+{config_block}
     gc.collect()
     unreal.SystemLibrary.collect_garbage()
     time.sleep(IMPORT_DELAY)
@@ -55,15 +83,182 @@ except Exception as e:
 """
 
 
+def _build_consolidation_script(project_path: str) -> str:
+    """Build Unreal Python code that consolidates duplicate twig assets.
+
+    When Unreal imports tree assembly USDAs, it follows external references to
+    twig files and re-imports them into each tree's local folder — even though
+    batch 0 already imported the shared copies into Instances/.  This script
+    finds those local duplicates, redirects all references to the shared
+    Instances version via consolidate_assets(), and deletes the leftovers.
+    """
+    return f'''
+import unreal
+import gc
+
+print("")
+print("=" * 60)
+print("GrowPy Post-Import: Consolidate Duplicate Twig Assets")
+print("=" * 60)
+
+IMPORT_PATH = "{project_path}"
+INSTANCES_PATH = IMPORT_PATH + "/Instances"
+
+asset_registry = unreal.AssetRegistryHelpers.get_asset_registry()
+asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
+
+# Step 1: Build lookup of canonical foliage assets in Instances/
+instances_assets = asset_registry.get_assets_by_path(INSTANCES_PATH, recursive=True)
+canonical = {{}}  # asset_name -> asset_path
+for asset in instances_assets:
+    name = str(asset.asset_name)
+    if "_foliage" in name.lower():
+        canonical[name] = str(asset.package_name)
+
+print(f"Found {{len(canonical)}} canonical foliage assets in Instances/")
+
+if not canonical:
+    print("No shared foliage assets found — skipping consolidation")
+else:
+    # Step 2: Find duplicates in tree subfolders
+    all_assets = asset_registry.get_assets_by_path(IMPORT_PATH, recursive=True)
+    duplicates = []  # (duplicate_path, canonical_path)
+    for asset in all_assets:
+        asset_path = str(asset.package_name)
+        # Skip assets already in Instances/
+        if asset_path.startswith(INSTANCES_PATH):
+            continue
+        name = str(asset.asset_name)
+        if name in canonical:
+            duplicates.append((asset_path, canonical[name]))
+
+    print(f"Found {{len(duplicates)}} duplicate foliage assets in tree folders")
+
+    # Step 3: Consolidate duplicates to canonical versions
+    consolidated = 0
+    failed = 0
+    for dup_path, canon_path in duplicates:
+        try:
+            dup_obj = unreal.EditorAssetLibrary.load_asset(dup_path)
+            canon_obj = unreal.EditorAssetLibrary.load_asset(canon_path)
+            if dup_obj and canon_obj:
+                result = unreal.EditorAssetLibrary.consolidate_assets(
+                    canon_obj, [dup_obj]
+                )
+                if result:
+                    consolidated += 1
+                else:
+                    # consolidate_assets returns True on success
+                    # If False, try direct delete (asset may not have references)
+                    if unreal.EditorAssetLibrary.delete_asset(dup_path):
+                        consolidated += 1
+                    else:
+                        failed += 1
+            else:
+                failed += 1
+        except Exception as e:
+            # Fallback: try direct deletion if consolidation not supported
+            try:
+                if unreal.EditorAssetLibrary.delete_asset(dup_path):
+                    consolidated += 1
+                else:
+                    failed += 1
+            except Exception:
+                failed += 1
+
+    print(f"Consolidated {{consolidated}} assets, {{failed}} failures")
+
+    gc.collect()
+    unreal.SystemLibrary.collect_garbage()
+
+print("")
+print("=" * 60)
+print("Twig consolidation complete")
+print("=" * 60)
+'''
+
+
+# Unreal Python preamble for configuring nanite assemblies after import.
+# Included in species batch scripts to set shape preservation, wind data, etc.
+_NANITE_CONFIG_PREAMBLE = '''
+import os
+
+def _configure_nanite_assembly(mesh, wind_json_path, label):
+    """Configure a nanite assembly after USD import.
+
+    Sets Nanite shape preservation to Voxelize, imports DynamicWind data,
+    and assigns DynamicWindTransformProviderData.
+    """
+    # 1. Nanite Shape Preservation -> Voxelize
+    #    Preserves foliage volume at distance (prevents thin-out)
+    try:
+        _nanite = mesh.get_editor_property("nanite_settings")
+        # ENaniteShapePreservation: NONE=0, PRESERVE_AREA=1, VOXELIZE=2
+        _nanite.set_editor_property(
+            "shape_preservation",
+            unreal.ENaniteShapePreservation.VOXELIZE,
+        )
+        mesh.set_editor_property("nanite_settings", _nanite)
+        print(f"    [Nanite] Shape preservation -> Voxelize: {label}")
+    except Exception as e:
+        unreal.log_warning(f"Could not set shape preservation for {label}: {e}")
+
+    # 2. Import DynamicWind JSON data
+    #    Maps skeleton joints to wind simulation groups
+    if wind_json_path and os.path.isfile(wind_json_path):
+        try:
+            # UE 5.5+ DynamicWind plugin function library
+            unreal.DynamicWindSkeletalMeshFunctionLibrary.import_dynamic_wind_skeletal_data_from_file(
+                mesh, wind_json_path
+            )
+            print(f"    [Wind] Imported wind data: {label}")
+        except AttributeError:
+            try:
+                # Alternative API path (plugin version dependent)
+                unreal.DynamicWindSkeletalMeshHelpers.import_dynamic_wind_skeletal_data_from_file(
+                    mesh, wind_json_path
+                )
+                print(f"    [Wind] Imported wind data: {label}")
+            except Exception as e2:
+                unreal.log_warning(
+                    f"Could not import wind data for {label}: {e2}\\n"
+                    f"  Use right-click > Scripted Asset Actions > Import Dynamic Wind Data"
+                )
+
+    # 3. Assign default DynamicWindTransformProviderData
+    #    Enables runtime wind transforms on the skeletal mesh
+    #    See: https://dev.epicgames.com/documentation/en-us/unreal-engine/nanite-foliage
+    try:
+        _provider = unreal.DynamicWindTransformProviderData()
+        mesh.set_editor_property(
+            "default_dynamic_wind_transform_provider_data", _provider
+        )
+        print(f"    [Wind] Set transform provider data: {label}")
+    except Exception as e:
+        unreal.log_warning(
+            f"Could not set wind transform provider for {label}: {e}\\n"
+            f"  Set manually: Skeletal Mesh > Details > Dynamic Wind Transform Provider Data"
+        )
+
+    # Save the modified asset
+    try:
+        mesh.modify(True)
+    except Exception:
+        pass
+'''
+
+
 def _write_batch_script(
     script_path: Path,
     project_path: str,
     batch_label: str,
     import_blocks: str,
     file_count: int,
+    include_nanite_config: bool = False,
 ) -> None:
     """Write a single batch import script."""
     script_path_str = str(script_path).replace("\\", "/")
+    preamble = _NANITE_CONFIG_PREAMBLE if include_nanite_config else ""
 
     content = f'''"""
 GrowPy batch import: {batch_label} ({file_count} files) - Auto-generated
@@ -87,7 +282,7 @@ IMPORT_DELAY = 0.5
 asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
 imported_count = 0
 failed_count = 0
-
+{preamble}
 {import_blocks}
 
 print("")
@@ -237,6 +432,7 @@ def generate_unreal_import_script(
         blocks = ""
         blocks += f'print("Importing {species_folder}...")\n'
 
+        has_assemblies = False
         for variant_name, variant_trees in sorted(variants.items()):
             for usd_file in sorted(variant_trees):
                 usd_path = str(usd_file.resolve()).replace("\\", "/")
@@ -245,8 +441,23 @@ def generate_unreal_import_script(
                     if variant_name
                     else species_folder
                 )
+
+                # For assembly imports, find matching DynamicWind JSON and
+                # enable post-import nanite configuration (Voxelize, wind, etc.)
+                is_assembly = "_assembly" in usd_file.stem
+                wind_json = ""
+                if is_assembly:
+                    has_assemblies = True
+                    # Wind JSON is per-tree, shared across density variants.
+                    # Search for any *_stems_unreal_wind.json in the same dir.
+                    wind_files = sorted(usd_file.parent.glob("*_stems_unreal_wind.json"))
+                    if wind_files:
+                        wind_json = str(wind_files[0].resolve()).replace("\\", "/")
+
                 blocks += _build_import_block(
-                    usd_path, dest_subpath, usd_file.stem
+                    usd_path, dest_subpath, usd_file.stem,
+                    wind_json_path=wind_json,
+                    configure_nanite=is_assembly,
                 )
 
         batch_name = f"import_batch_{idx:02d}_{species_folder}.py"
@@ -257,8 +468,18 @@ def generate_unreal_import_script(
             batch_label,
             blocks,
             species_tree_count,
+            include_nanite_config=has_assemblies,
         )
         batch_scripts.append((batch_name, batch_label))
+
+    # Final batch: consolidate duplicate twig assets
+    if instance_files:
+        consolidation_code = _build_consolidation_script(project_path)
+        consolidation_name = "import_batch_99_consolidate.py"
+        consolidation_label = "Consolidate duplicate twig assets"
+        consolidation_path = script_dir / consolidation_name
+        consolidation_path.write_text(consolidation_code, encoding="utf-8")
+        batch_scripts.append((consolidation_name, consolidation_label))
 
     # Master script
     master_path = script_dir / "import_forest.py"

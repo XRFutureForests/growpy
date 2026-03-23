@@ -1151,6 +1151,31 @@ def generate_forest_stages(
                         # Preview and static derivation only for first variant
                         if variant_idx == 0:
                             stems_base = f"{species_clean}_{dims_suffix}"
+
+                            # DynamicWind JSON for Unreal import
+                            if use_skeletal:
+                                from growpy.io.wind_json import generate_wind_json
+
+                                wind_json_path = (
+                                    tree_dir / f"{file_prefix}_stems_unreal_wind.json"
+                                )
+                                try:
+                                    with timer.track("generate_wind_json"):
+                                        generate_wind_json(
+                                            tree_usd_path=tree_dir / f"{stems_base}_stems_skeletal.usda",
+                                            skeleton=skeleton,
+                                            bones_info=bones_info,
+                                            output_path=wind_json_path,
+                                        )
+                                except Exception as wind_error:
+                                    logger.warning(
+                                        "Failed to generate wind JSON for %s fid=%d: %s",
+                                        species_name,
+                                        fid,
+                                        wind_error,
+                                    )
+                                    logger.debug("Wind JSON traceback:", exc_info=True)
+
                             preview_bounds = _generate_preview_image(
                                 tree_dir, species_clean, file_prefix, skeleton, timer
                             )

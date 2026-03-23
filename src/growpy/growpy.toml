@@ -9,7 +9,7 @@
 
 [general]
 # Random seed for reproducible tree generation (remove to randomize)
-random_seed = 42
+random_seed = 123
 # Default input CSV with tree positions and species
 # CSV columns: x, y, species, height (optional: z, fid, dbh)
 csv_file = "data/input/test.csv"
@@ -119,7 +119,7 @@ preferred_region = ""
 quality = "high"
 # Maximum growth cycles per tree (1-250)
 # Trees exceeding this are scaled down proportionally
-growth_cycle_limit = 30
+growth_cycle_limit = 35
 # Branch smoothing iterations (0-20, 0 = disabled)
 # Higher values = smoother, more organic branches
 smooth_iterations = 10
