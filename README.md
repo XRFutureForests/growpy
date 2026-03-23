@@ -1,6 +1,6 @@
 # GrowPy - Procedural Forest Generation
 
-Clean, simplified tree generation system using The Grove 2.2 optimized for **Unreal Engine 5 Nanite workflows**.
+Clean, simplified tree generation system using The Grove 2.2 with two export modes: **Unreal Engine 5 Nanite** (USD with skeleton and wind) and **Helios++** (direct OBJ with material-aware mesh simplification for LiDAR simulation).
 
 **Documentation:**
 
@@ -50,13 +50,16 @@ python src/growpy/cli/generate_forest.py
 
 Steps 1-3 only need to run once per species set. Step 4 is the main generation step.
 
-OBJ export for Helios++ LiDAR simulation runs automatically in Step 4 when `helios.export_obj = true` in growpy.toml. Configure decimation ratios, scene XML, and combined OBJ in the `[helios]` section.
+Step 4 output format depends on the **export mode** configured in `growpy.toml`:
+
+- **`mode = "unreal"`** (default) -- Full USD pipeline with skeleton, wind JSON, and PVE presets for Unreal Engine
+- **`mode = "helios"`** -- Direct OBJ export with material-aware mesh simplification for Helios++ LiDAR simulation (no skeleton, no bone limit)
 
 **CSV Format Required**: `x`, `y`, `species`, `height` columns (optional: `z`, `fid`)
 
-**Output**: `data/output/forest/` with trees, twigs, textures, and metadata organized by species
+**Output**: `data/output/` directory with trees organized by species
 
-### Import to Unreal Engine
+### Import to Unreal Engine (Unreal Mode)
 
 1. Copy entire output folder to Unreal Content Browser
 2. USD files are auto-imported as Nanite Assemblies (UE 5.7+)
@@ -188,7 +191,7 @@ prepare_assets.py --> convert_twigs.py --> create_growth_models.py --> generate_
 1. **Prepare Assets** - Copy and standardize presets, textures, and twigs from Grove 2.2
 2. **Convert Twigs** - Convert .blend twig files to USD with silhouette-optimized mesh densification
 3. **Create Growth Models** - Simulate growth curves and generate height-to-age prediction models
-4. **Generate Forest** - Multi-species forest simulation with USD Nanite assembly export (includes OBJ/MTL for Helios++ when `helios.export_obj = true`)
+4. **Generate Forest** - Multi-species forest simulation with export (Unreal USD or Helios++ OBJ depending on `[export] mode`)
 
 All scripts read defaults from [`src/growpy/growpy.toml`](src/growpy/growpy.toml) and can be run without arguments. Each step is independently re-runnable and produces deterministic output.
 
@@ -251,7 +254,7 @@ python src/growpy/cli/create_growth_models.py --species "European beech"
 # Default generation (uses quality, cycles, etc. from growpy.toml)
 python src/growpy/cli/generate_forest.py
 
-# Production quality with profiling
+# Production quality with profiling (Unreal mode)
 python src/growpy/cli/generate_forest.py \
   --quality ultra --growth-cycle-limit 20 --smooth-iterations 15 --profile
 
@@ -264,10 +267,10 @@ python src/growpy/cli/generate_forest.py --cycle-interval 10 --growth-cycle-limi
 # Export only specific trees (others still participate in growth simulation)
 python src/growpy/cli/generate_forest.py --export-trees 1,2,5
 
-# Generate Unreal import scripts
+# Generate Unreal import scripts (Unreal mode only)
 python src/growpy/cli/generate_forest.py --import-to-unreal
 
-# Skeleton simplification (reduce bone count independently of mesh quality)
+# Skeleton simplification (reduce bone count, Unreal mode only)
 python src/growpy/cli/generate_forest.py \
   --quality ultra --skeleton-length 2.5 --skeleton-reduce 0.5
 ```
@@ -287,7 +290,7 @@ python src/growpy/cli/generate_forest.py \
 | Flag | Description |
 | ---- | ----------- |
 | `--quality {ultra,high,medium,low,performance}` | Quality preset (default: ultra) |
-| `--growth-cycle-limit INT` | Max growth cycles per tree (default: 10) |
+| `--growth-cycle-limit INT` | Max growth cycles per tree (default: 200) |
 | `--smooth-iterations INT` | Branch smoothing passes, 0-20 (default: 10) |
 | `--output-dir PATH` | Output directory (default: data/output/forest) |
 | `--skeleton-length FLOAT` | Merge nodes into longer bones, 0-5 (default: from preset) |
@@ -356,22 +359,38 @@ See the [Grove Preset Reference](docs/grove-preset-reference.md) for a complete 
 
 ## Output Structure
 
-Forest generation (Step 4) creates organized output folders ready for Unreal import:
+Forest generation (Step 4) creates organized output folders. The structure depends on the export mode:
+
+### Unreal Mode (`mode = "unreal"`)
 
 ```
 data/output/forest/
 ├── species_name/
 │   └── tree_0001/
-│       ├── species_name.usda                        # Nanite assembly
-│       ├── species_name_0001_skeletal.usda           # Tree mesh with skeleton
-│       ├── species_name_0001_DynamicWind.json        # Wind animation data
-│       ├── species_name_0001.json                    # PVE preset (optional)
-│       └── twigs/                                    # Copied twig USD files
-│           ├── species_name_twig_apical_skeletal.usda
-│           └── species_name_twig_lateral_skeletal.usda
-└── unreal_scripts/                                   # Optional (--import-to-unreal)
-    ├── import_forest.py                              # Auto-generated Unreal import
-    └── clean_assets.py                               # Auto-generated cleanup
+│       ├── species_name_assembly.usda                # Nanite assembly
+│       ├── species_name_stems_skeletal.usda           # Tree mesh with skeleton
+│       ├── species_name_stems_unreal_wind.json        # DynamicWind data
+│       ├── species_name_stems_unreal_pve.json         # PVE preset (optional)
+│       └── twigs/                                     # Copied twig USD files
+│           ├── species_name_twig_long_skeletal.usda
+│           └── species_name_twig_short_skeletal.usda
+├── unreal_scripts/                                    # Optional (--import-to-unreal)
+│   ├── import_forest.py
+│   └── clean_assets.py
+└── forest_generation_*.log                            # Terminal output log
+```
+
+### Helios Mode (`mode = "helios"`)
+
+```
+data/output/forest/
+├── species_name/
+│   └── tree_0001/
+│       ├── species_name_0001_helios.obj               # Simplified OBJ mesh
+│       └── species_name_0001_helios.mtl               # Material file (bark/leaf/wood)
+├── forest_combined.obj                                # Combined forest OBJ (optional)
+├── helios_scene.xml                                   # Helios++ scene XML (optional)
+└── forest_generation_*.log                            # Terminal output log
 ```
 
 ## Requirements
@@ -416,6 +435,61 @@ Quality presets are defined in `src/growpy/config/quality.py` with 5 LOD levels 
 - **Tree**: Individual instances with mesh + skeleton for wind animation
 - **Twig**: Reusable USD assets with silhouette-optimized mesh densification
 
+### Two Export Modes
+
+**Unreal Mode** (`[export] mode = "unreal"`):
+- Native USD/USDA format for Unreal Engine 5.7+
+- Nanite Assembly structure with skeletal mesh support
+- DynamicWind JSON for wind animation
+- PointInstancer-based twig placement
+- PVE preset JSON generation for Procedural Vegetation Editor
+- Subject to Unreal Engine's 32,767 bone limit
+
+**Helios Mode** (`[export] mode = "helios"`):
+- Direct OBJ/MTL export from Grove models (no USDA generation)
+- Skips skeleton building and bone tagging entirely -- no bone count limit
+- Material-aware mesh simplification (see below)
+- Twig instances baked directly into geometry
+- Optional combined forest OBJ and Helios++ scene XML
+- Significantly faster export than Unreal mode
+
+### Mesh Simplification (Helios Mode)
+
+Material-aware simplification reduces mesh complexity while preserving features critical for LiDAR simulation. Simplification is applied **only to OBJ exports** -- USDA files are always exported at full resolution.
+
+Geometry is classified by material into four categories with independent simplification ratios:
+
+| Material | Default Ratio | Description |
+| -------- | ------------- | ----------- |
+| bark     | 0.2 (keep 20%)| Trunk and branch surfaces |
+| wood     | 0.2 (keep 20%)| Twig wood sub-materials |
+| leaf     | 0.5 (keep 50%)| Foliage (critical for LAI accuracy) |
+| fruit    | 0.2 (keep 20%)| Fruit sub-materials (e.g. acorns) |
+
+Leaf ratios can be overridden per species in `[helios.simplification.leaf_per_species]` to keep LAI deviation below 1%.
+
+Simplification is performed in two stages:
+1. **Twig prototypes** are simplified once before instance baking (saves memory proportional to instance count)
+2. **Trunk/stem geometry** is decimated using Blender's quadric collapse algorithm (streaming mode for meshes above 5M faces)
+
+Configure in `growpy.toml`:
+```toml
+[helios.simplification]
+enabled = true
+bark = 0.2
+wood = 0.2
+leaf = 0.5
+fruit = 0.2
+
+[helios.simplification.leaf_per_species]
+selected_european_beech = 0.2
+selected_european_oak = 0.4
+selected_paper_birch = 0.2
+selected_scots_pine = 0.3
+selected_silver_fir = 0.4
+selected_sycamore_maple = 1.0
+```
+
 ### Smart Growth Models
 
 - Automatic early termination when growth plateaus
@@ -423,18 +497,10 @@ Quality presets are defined in `src/growpy/config/quality.py` with 5 LOD levels 
 - Multi-seed averaging for robust growth curves
 - Timeout protection for reliable batch processing
 
-### USD Export
-
-- Native USD/USDA format for Unreal Engine 5.7+
-- Nanite Assembly structure with skeletal mesh support
-- DynamicWind attributes embedded in skeleton for wind animation
-- PointInstancer-based twig placement
-- PVE preset JSON generation for Procedural Vegetation Editor
-
 ### Quality and Skeleton Control
 
 - 5 quality presets (ultra, high, medium, low, performance)
-- Independent skeleton simplification parameters
+- Independent skeleton simplification parameters (Unreal mode)
 - Skeleton length, reduce, bias, and connected bone controls
 - Critical for Unreal Engine's 32,767 bone limit
 
@@ -445,7 +511,7 @@ Quality presets are defined in `src/growpy/config/quality.py` with 5 LOD levels 
 - Longevity mode to prevent tree death at high cycle counts
 - Preset override system for dynamic parameter adjustment
 
-### Unreal Engine Optimized
+### Unreal Engine Optimized (Unreal Mode)
 
 - Nanite-ready mesh topology
 - Skeletal mesh support for wind animation
@@ -547,4 +613,4 @@ This project follows a template-based structure. Key guidelines:
 
 ---
 
-**Simplified. Clean. Ready for Unreal Engine.**
+**Simplified. Clean. Ready for Unreal Engine and Helios++ LiDAR simulation.**
