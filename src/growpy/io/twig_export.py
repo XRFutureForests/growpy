@@ -3325,7 +3325,7 @@ def process_twig_file(
 
             # Export in requested formats
             for fmt in formats:
-                if fmt in ["usd", "usda"]:
+                if fmt in ["usd", "usda", "usdc"]:
                     # Export skeletal mesh variant (using _skeletal to match tree convention)
                     skel_export_path = (
                         output_dir / f"{standardized_name}_skeletal.{fmt}"

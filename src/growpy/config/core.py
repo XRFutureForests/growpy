@@ -117,6 +117,7 @@ class GrowPyConfig:
     forest_skeleton_connected: Optional[bool] = None
 
     # [export]
+    export_usd_format: str = "usda"  # "usda" (ASCII) or "usdc" (binary)
     export_skeletal: bool = True
     export_static: bool = False
     export_skip_pve_json: bool = True
@@ -238,6 +239,11 @@ class GrowPyConfig:
             kwargs["forest_max_height"] = float(forest["max_height"])
         # [export]
         export = data.get("export", {})
+        if "usd_format" in export:
+            fmt = export["usd_format"].lower()
+            if fmt not in ("usda", "usdc"):
+                raise ValueError(f"export.usd_format must be 'usda' or 'usdc', got '{fmt}'")
+            kwargs["export_usd_format"] = fmt
         if "skeletal" in export:
             kwargs["export_skeletal"] = export["skeletal"]
         if "static" in export:
@@ -418,6 +424,11 @@ class GrowPyConfig:
             self.forest_export_trees = [int(x.strip()) for x in et.split(",")]
 
         return self
+
+    @property
+    def usd_ext(self) -> str:
+        """File extension for USD output (e.g. '.usda' or '.usdc')."""
+        return f".{self.export_usd_format}"
 
     def get_density_variants(self) -> List[Tuple[str, Dict[str, Any]]]:
         """Return [(variant_name, config_dict)] when active, else empty list."""

@@ -46,7 +46,14 @@ ensure_pxr_with_unreal_schema()
 
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel
 
+from ..config.core import get_config as _get_config
 from ..core.twig import extract_twig_placements_from_model
+
+
+def _usd_ext() -> str:
+    """Return configured USD file extension (e.g. '.usda' or '.usdc')."""
+    return _get_config().usd_ext
+
 
 # Module-level cache for copied twig files (optimization: avoid redundant copies per species)
 # Key: (source_path, dest_dir) tuple, Value: destination path
@@ -307,8 +314,9 @@ def create_assembly(
                     # Copy twig file to shared instances directory for relative references
                     _copy_twig_file_cached(twig_ref_path, twig_dest_dir)
                     # Also copy static variant for OBJ/Helios export
+                    _ext = twig_ref_path.suffix
                     static_name = twig_ref_path.name.replace(
-                        "_skeletal.usda", "_static.usda"
+                        f"_skeletal{_ext}", f"_static{_ext}"
                     )
                     static_ref = twig_ref_path.parent / static_name
                     if static_ref.exists() and static_ref != twig_ref_path:
@@ -745,7 +753,7 @@ def export_tree_as_nanite_assembly(
         # Skeletal mesh (with skeleton) is preferred for Nanite performance
         if use_static_mesh:
             # Static mesh export (no skeleton)
-            temp_tree_path = output_path.parent / f"{file_base}_static.usda"
+            temp_tree_path = output_path.parent / f"{file_base}_static{_usd_ext()}"
             with _track("build_tree_mesh"):
                 if not build_tree_mesh(
                     model=model,
@@ -763,7 +771,7 @@ def export_tree_as_nanite_assembly(
                     return False
         else:
             # Skeletal mesh export (default - preferred for performance)
-            temp_tree_path = output_path.parent / f"{file_base}_skeletal.usda"
+            temp_tree_path = output_path.parent / f"{file_base}_skeletal{_usd_ext()}"
             with _track("build_tree_mesh"):
                 if not build_tree_mesh(
                     model=model,
@@ -934,8 +942,9 @@ def export_tree_as_nanite_assembly(
                         if twig_path.exists():
                             _copy_twig_file_cached(twig_path, dest_dir)
                             # Also copy static variant for OBJ/Helios export
+                            _ext = twig_path.suffix
                             static_name = twig_path.name.replace(
-                                "_skeletal.usda", "_static.usda"
+                                f"_skeletal{_ext}", f"_static{_ext}"
                             )
                             static_path = twig_path.parent / static_name
                             if static_path.exists() and static_path != twig_path:
@@ -1477,17 +1486,19 @@ def create_combined_twig_usda(
 
     combined_files = []
 
+    ext = _usd_ext()
+
     for mesh_type in mesh_types:
         suffix = f"_{mesh_type}"
         twig_files = sorted(
             f
-            for f in instances_dir.glob(f"*{suffix}.usda")
+            for f in instances_dir.glob(f"*{suffix}{ext}")
             if "_twigs_combined" not in f.name
         )
         if not twig_files:
             continue
 
-        # Group by species prefix: "{species}_foliage_{variant}_{type}.usda"
+        # Group by species prefix: "{species}_foliage_{variant}_{type}{ext}"
         species_groups: Dict[str, List[Path]] = {}
         for f in twig_files:
             stem = f.stem.replace(suffix, "")
@@ -1495,7 +1506,7 @@ def create_combined_twig_usda(
             species_groups.setdefault(species, []).append(f)
 
         for species, files in sorted(species_groups.items()):
-            combined_name = f"{species}_twigs_combined_{mesh_type}.usda"
+            combined_name = f"{species}_twigs_combined_{mesh_type}{ext}"
             combined_path = instances_dir / combined_name
 
             stage = Usd.Stage.CreateNew(str(combined_path))

@@ -320,9 +320,11 @@ def generate_unreal_import_script(
     script_dir = output_dir / "unreal_scripts"
     script_dir.mkdir(exist_ok=True)
 
-    # Find all tree assemblies in species subdirectories
-    nanite_files = list(output_dir.glob("*/*/*_assembly*.usda")) + list(
-        output_dir.glob("*/*/*_assembly*.usd")
+    # Find all tree assemblies in species subdirectories (usda, usdc, or usd)
+    nanite_files = (
+        list(output_dir.glob("*/*/*_assembly*.usda"))
+        + list(output_dir.glob("*/*/*_assembly*.usdc"))
+        + list(output_dir.glob("*/*/*_assembly*.usd"))
     )
     skip_dirs = {"Instances", "unreal_scripts"}
     nanite_files = [
@@ -335,12 +337,13 @@ def generate_unreal_import_script(
     instances_dir = output_dir / "Instances"
     if instances_dir.exists():
         combined_files = sorted(
-            instances_dir.glob("*_twigs_combined_*.usda")
+            list(instances_dir.glob("*_twigs_combined_*.usda"))
+            + list(instances_dir.glob("*_twigs_combined_*.usdc"))
         )
         # Extract species names covered by combined wrappers
         combined_species = set()
         for f in combined_files:
-            # "{species}_twigs_combined_{skeletal|static}.usda"
+            # "{species}_twigs_combined_{skeletal|static}.{usda|usdc}"
             name = f.stem
             idx = name.find("_twigs_combined_")
             if idx > 0:
@@ -348,8 +351,10 @@ def generate_unreal_import_script(
 
         # Filter: skip static unless configured, skip files covered by combined
         individual_files = []
-        for f in sorted(instances_dir.glob("*.usda")) + sorted(
-            instances_dir.glob("*.usd")
+        for f in (
+            sorted(instances_dir.glob("*.usda"))
+            + sorted(instances_dir.glob("*.usdc"))
+            + sorted(instances_dir.glob("*.usd"))
         ):
             if "_twigs_combined_" in f.stem:
                 continue

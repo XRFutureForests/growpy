@@ -1660,7 +1660,7 @@ def get_twig_usd_map_for_species(
     def _resolve_usd_path(twig_paths):
         """Find a valid USD file path from a list of twig paths."""
         for twig_file in twig_paths:
-            for ext in [".usda", ".usd"]:
+            for ext in [".usda", ".usdc", ".usd"]:
                 usd_file = twig_file.with_suffix(ext)
                 if "_nanite_assembly" in usd_file.name:
                     continue
@@ -1777,9 +1777,11 @@ def bundle_twigs_for_species(
 
             for fmt in formats:
                 if fmt == "usd":
-                    extensions = [".usd", ".usda"]
+                    extensions = [".usd", ".usda", ".usdc"]
                 elif fmt == "usda":
-                    extensions = [".usda", ".usd"]
+                    extensions = [".usda", ".usdc", ".usd"]
+                elif fmt == "usdc":
+                    extensions = [".usdc", ".usda", ".usd"]
                 else:
                     continue
 

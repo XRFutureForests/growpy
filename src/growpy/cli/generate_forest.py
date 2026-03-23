@@ -131,9 +131,10 @@ def _derive_static_from_skeletal(
     from growpy.io.assembly_export import create_assembly
     from growpy.io.tree_export import strip_skeleton_from_usd
 
+    ext = get_config().usd_ext
     suffix = f"_{stems_suffix}" if stems_suffix else ""
-    skeletal_stems = tree_dir / f"{species_clean}{suffix}_stems_skeletal.usda"
-    static_stems = tree_dir / f"{species_clean}{suffix}_stems_static.usda"
+    skeletal_stems = tree_dir / f"{species_clean}{suffix}_stems_skeletal{ext}"
+    static_stems = tree_dir / f"{species_clean}{suffix}_stems_static{ext}"
 
     if not skeletal_stems.exists():
         logger.warning("Cannot derive static: skeletal stems not found: %s", skeletal_stems)
@@ -150,7 +151,7 @@ def _derive_static_from_skeletal(
         except Exception as e:
             logger.warning("Failed to extract twig placements for static derivation: %s", e)
 
-    static_assembly = tree_dir / f"{species_clean}{suffix}_assembly_static.usda"
+    static_assembly = tree_dir / f"{species_clean}{suffix}_assembly_static{ext}"
     create_assembly(
         tree_usd_path=static_stems,
         output_path=static_assembly,
@@ -427,7 +428,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                     else:
                         file_prefix = f"{species_clean}_{dims_suffix}"
                 tree_dir.mkdir(parents=True, exist_ok=True)
-                usd_path = tree_dir / f"{file_prefix}_assembly_{mesh_suffix}.usda"
+                usd_path = tree_dir / f"{file_prefix}_assembly_{mesh_suffix}{config.usd_ext}"
 
                 with timer.track(f"export_nanite_assembly_{mesh_suffix}"):
                     captured_twig_placements = {}
@@ -465,7 +466,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                             from growpy.io.wind_json import generate_wind_json
 
                             skeletal_usd_path = (
-                                tree_dir / f"{stems_base}_stems_skeletal.usda"
+                                tree_dir / f"{stems_base}_stems_skeletal{config.usd_ext}"
                             )
                             wind_json_path = (
                                 tree_dir / f"{file_prefix}_stems_unreal_wind.json"
@@ -1114,7 +1115,7 @@ def generate_forest_stages(
                             file_prefix = f"{species_clean}_{dims_suffix}"
                     tree_dir.mkdir(parents=True, exist_ok=True)
 
-                    usd_path = tree_dir / f"{file_prefix}_assembly.usda"
+                    usd_path = tree_dir / f"{file_prefix}_assembly{config.usd_ext}"
 
                     # Export as Nanite Assembly
                     try:
@@ -1162,7 +1163,7 @@ def generate_forest_stages(
                                 try:
                                     with timer.track("generate_wind_json"):
                                         generate_wind_json(
-                                            tree_usd_path=tree_dir / f"{stems_base}_stems_skeletal.usda",
+                                            tree_usd_path=tree_dir / f"{stems_base}_stems_skeletal{config.usd_ext}",
                                             skeleton=skeleton,
                                             bones_info=bones_info,
                                             output_path=wind_json_path,
@@ -1865,7 +1866,7 @@ Unreal Engine Integration:
 
         # Pipeline completion summary (always visible, even in quiet mode)
         total_time = timer.get_total_time() if timer.enabled else 0
-        tree_count = len(list(output_dir.glob("*/tree_*/*_assembly*.usda"))) if output_dir.exists() else 0
+        tree_count = len(list(output_dir.glob(f"*/tree_*/*_assembly*{config.usd_ext}"))) if output_dir.exists() else 0
         species_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name != "unreal_scripts"] if output_dir.exists() else []
         summary_parts = [
             f"{tree_count} assemblies",
