@@ -142,9 +142,6 @@ class GrowPyConfig:
     calibration_enabled: bool = True
     calibration_align_height: bool = True
     calibration_align_dbh: bool = True
-    calibration_output_dir: Path = field(
-        default_factory=lambda: Path("data/output/growth_comparison")
-    )
     calibration_plot: bool = True
     calibration_yield_tables_dir: Path = field(
         default_factory=lambda: Path("data/input/yield_tables")
@@ -292,8 +289,6 @@ class GrowPyConfig:
             kwargs["calibration_align_height"] = cal["align_height"]
         if "align_dbh" in cal:
             kwargs["calibration_align_dbh"] = cal["align_dbh"]
-        if "output_dir" in cal:
-            kwargs["calibration_output_dir"] = Path(cal["output_dir"])
         if "plot" in cal:
             kwargs["calibration_plot"] = cal["plot"]
         if "yield_tables_dir" in cal:
@@ -376,7 +371,6 @@ class GrowPyConfig:
             "obj_up_axis": "helios_obj_up_axis",
             # [calibration]
             "calibrate": "calibration_enabled",
-            "output_dir_cal": "calibration_output_dir",
             "plot": "calibration_plot",
         }
 

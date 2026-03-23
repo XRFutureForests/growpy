@@ -104,6 +104,7 @@ def generate_unreal_import_script(
     project_path: str = "/Game/GrowPy/Trees",
     forest_data: Optional[pd.DataFrame] = None,
     export_tree_ids: Optional[set] = None,
+    include_static: bool = False,
 ) -> Path:
     """Generate batched Unreal Python scripts for importing forest USD files.
 
@@ -115,6 +116,8 @@ def generate_unreal_import_script(
         project_path: Unreal project Content path.
         forest_data: Optional DataFrame with tree positions (fid, x, y, z columns).
         export_tree_ids: Optional set of tree IDs to include (if None, includes all).
+        include_static: If True, include static twig variants and static assemblies.
+            Mirrors [export] static setting from growpy.toml.
 
     Returns:
         Path to generated master script file.
@@ -133,13 +136,45 @@ def generate_unreal_import_script(
         if f.relative_to(output_dir).parts[0] not in skip_dirs
     ]
 
-    # Find shared twig instances
+    # Find shared twig instances — prefer combined per-species wrappers
     instances_dir = output_dir / "Instances"
-    instance_files = (
-        list(instances_dir.glob("*.usda")) + list(instances_dir.glob("*.usd"))
-        if instances_dir.exists()
-        else []
-    )
+    if instances_dir.exists():
+        combined_files = sorted(
+            instances_dir.glob("*_twigs_combined_*.usda")
+        )
+        # Extract species names covered by combined wrappers
+        combined_species = set()
+        for f in combined_files:
+            # "{species}_twigs_combined_{skeletal|static}.usda"
+            name = f.stem
+            idx = name.find("_twigs_combined_")
+            if idx > 0:
+                combined_species.add(name[:idx])
+
+        # Filter: skip static unless configured, skip files covered by combined
+        individual_files = []
+        for f in sorted(instances_dir.glob("*.usda")) + sorted(
+            instances_dir.glob("*.usd")
+        ):
+            if "_twigs_combined_" in f.stem:
+                continue
+            if "_static" in f.stem and not include_static:
+                continue
+            # Extract species from individual twig filename
+            stem = f.stem.replace("_skeletal", "").replace("_static", "")
+            if "_foliage_" in stem:
+                species_prefix = stem.split("_foliage_")[0]
+            elif "_foliage" in stem:
+                species_prefix = stem.split("_foliage")[0]
+            else:
+                species_prefix = None
+            if species_prefix and species_prefix in combined_species:
+                continue
+            individual_files.append(f)
+
+        instance_files = combined_files + individual_files
+    else:
+        instance_files = []
 
     # Group trees by species/variant
     trees_by_species: Dict[str, Dict[str, list]] = {}

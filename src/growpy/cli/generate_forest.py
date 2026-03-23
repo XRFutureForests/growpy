@@ -1783,6 +1783,20 @@ Unreal Engine Integration:
 
         # Generate Unreal scripts if requested
         if config.unreal_import_to_unreal:
+            # Create combined twig wrappers for efficient UE import
+            from growpy.io.assembly_export import create_combined_twig_usda
+
+            instances_dir = output_dir / "Instances"
+            if instances_dir.exists():
+                combined = create_combined_twig_usda(
+                    instances_dir, include_static=config.export_static
+                )
+                if combined:
+                    logger.info(
+                        "Created %d combined twig files for UE import",
+                        len(combined),
+                    )
+
             # Load forest data for tree positions
             try:
                 forest_data = pd.read_csv(csv_path)
@@ -1798,6 +1812,7 @@ Unreal Engine Integration:
                 config.unreal_project_path,
                 forest_data=forest_data,
                 export_tree_ids=export_tree_ids,
+                include_static=config.export_static,
             )
 
             cleanup_script = generate_unreal_cleanup_script(

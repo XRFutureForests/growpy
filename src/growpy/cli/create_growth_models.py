@@ -231,10 +231,7 @@ def _generate_comparison_plots(
     from growpy.utils.plotting import plot_calibration_comparison
     from growpy.config.preset_overrides import load_target_dbh_from_preset
 
-    plot_dir = config.calibration_output_dir
-    if not plot_dir.is_absolute():
-        plot_dir = script_dir / plot_dir
-
+    models_dir = script_dir / "data" / "assets" / "growth_models"
     presets_dir = script_dir / "data" / "assets" / "presets"
 
     for species_std, info in calibration_info.items():
@@ -254,6 +251,10 @@ def _generate_comparison_plots(
         preset_path = presets_dir / f"{species_std}.seed.json"
         target_dbh = load_target_dbh_from_preset(preset_path)
 
+        species_dir = models_dir / species_std
+        species_dir.mkdir(parents=True, exist_ok=True)
+        out_path = species_dir / "growth_comparison.png"
+
         plot_calibration_comparison(
             species_name=common_name,
             uncalibrated_heights=uncal_h,
@@ -266,9 +267,9 @@ def _generate_comparison_plots(
             calibrated_heights=cal_h,
             calibrated_dbhs=cal_d,
             target_dbh_per_cycle=target_dbh or None,
-            output_path=plot_dir / f"{species_std}_comparison.png",
+            output_path=out_path,
         )
-        logger.info("  Plot saved to %s", plot_dir / f"{species_std}_comparison.png")
+        logger.info("  Plot saved to %s", out_path)
 
 
 def _generate_grove_only_plots(
@@ -280,9 +281,7 @@ def _generate_grove_only_plots(
     """Generate grove-only growth plots for species without yield table data."""
     from growpy.utils.plotting import plot_grove_curves_only
 
-    plot_dir = config.calibration_output_dir
-    if not plot_dir.is_absolute():
-        plot_dir = script_dir / plot_dir
+    models_dir = script_dir / "data" / "assets" / "growth_models"
 
     calibrated_set = set(calibration_info.keys())
     uncalibrated = set(analyzer.height_curves.keys()) - calibrated_set
@@ -296,13 +295,18 @@ def _generate_grove_only_plots(
         d = analyzer.dbh_curves.get(species_std, [])
         if not h:
             continue
+
+        species_dir = models_dir / species_std
+        species_dir.mkdir(parents=True, exist_ok=True)
+        out_path = species_dir / "growth_comparison.png"
+
         plot_grove_curves_only(
             species_name=species_std.replace("_", " ").title(),
             grove_heights=h,
             grove_dbhs=d,
-            output_path=plot_dir / f"{species_std}_grove_only.png",
+            output_path=out_path,
         )
-        logger.info("  Plot saved to %s", plot_dir / f"{species_std}_grove_only.png")
+        logger.info("  Plot saved to %s", out_path)
 
 
 # ---------------------------------------------------------------------------

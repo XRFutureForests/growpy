@@ -316,7 +316,7 @@ After this phase, verify:
 - `data/assets/presets/` contains 16 `{species}.seed.json` files
 - `data/assets/twigs/` contains converted `.usda` twig files
 - `data/assets/growth_models/` contains 16 growth model JSON files
-- Calibration plots in `data/output/growth_comparison/` look reasonable
+- Calibration plots in `data/assets/growth_models/<species>/growth_comparison.png` look reasonable
 
 ### Phase 2: Configuration
 

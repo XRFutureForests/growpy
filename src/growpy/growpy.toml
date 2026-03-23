@@ -27,7 +27,7 @@ profile = true
 grove_dir = "src/the_grove_23"
 # Resize textures to power-of-2 for Unreal Engine virtual textures
 # Adds significant processing time; only needed if Grove textures are not already power-of-2
-resize_textures = false
+resize_textures = true
 
 # --- Step 2: convert_twigs.py ---
 [twigs]
@@ -93,9 +93,8 @@ align_dbh = true
 # Format: age,height,dbh (age in years, height in meters, dbh in centimeters)
 # File naming: <standardized_species_name>.csv (e.g., norway_spruce.csv)
 yield_tables_dir = "data/input/yield_tables"
-# Output directory for comparison plots
-output_dir = "data/output/growth_comparison"
 # Generate comparison plots (even without calibration)
+# Plots are saved alongside growth models in data/assets/growth_models/<species>/
 plot = true
 # Yield table resolution order per species:
 #   1. Local CSV in yield_tables_dir (by standardized name)
@@ -137,7 +136,7 @@ height_interval = 5
 # Trees taller than this in the input CSV are clamped to this height
 # Reduces growth cycles and number of height stages for faster runs
 # 0 = no limit (use full CSV heights)
-max_height = 25
+max_height = 24
 
 # Quality Presets (single source of truth)
 # Define any number of named presets below as [quality.<name>] sections.

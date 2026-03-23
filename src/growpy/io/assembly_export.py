@@ -1440,3 +1440,88 @@ def create_species_assembly(
     except Exception as e:
         logger.error("Error creating species assembly: %s", e)
         return False
+
+
+def _extract_species_from_twig_stem(stem: str) -> str:
+    """Extract species prefix from a twig filename stem (without _skeletal/_static suffix)."""
+    if "_foliage_" in stem:
+        return stem.split("_foliage_")[0]
+    if "_foliage" in stem:
+        return stem.split("_foliage")[0]
+    return stem
+
+
+def create_combined_twig_usda(
+    instances_dir: Path,
+    include_static: bool = False,
+) -> List[Path]:
+    """Create per-species combined twig USDA wrappers for UE import.
+
+    Groups twig variants by species and creates a single wrapper USDA per
+    species that references all variants via USD composition. UE imports one
+    file per species instead of N individual files, so materials and textures
+    are shared automatically.
+
+    Individual twig files are kept (used by assembly USD references and OBJ export).
+
+    Args:
+        instances_dir: Path to the shared Instances/ directory containing twig USDs.
+        include_static: If True, also create combined wrappers for static twig variants.
+
+    Returns:
+        List of created combined USDA file paths.
+    """
+    mesh_types = ["skeletal"]
+    if include_static:
+        mesh_types.append("static")
+
+    combined_files = []
+
+    for mesh_type in mesh_types:
+        suffix = f"_{mesh_type}"
+        twig_files = sorted(
+            f
+            for f in instances_dir.glob(f"*{suffix}.usda")
+            if "_twigs_combined" not in f.name
+        )
+        if not twig_files:
+            continue
+
+        # Group by species prefix: "{species}_foliage_{variant}_{type}.usda"
+        species_groups: Dict[str, List[Path]] = {}
+        for f in twig_files:
+            stem = f.stem.replace(suffix, "")
+            species = _extract_species_from_twig_stem(stem)
+            species_groups.setdefault(species, []).append(f)
+
+        for species, files in sorted(species_groups.items()):
+            combined_name = f"{species}_twigs_combined_{mesh_type}.usda"
+            combined_path = instances_dir / combined_name
+
+            stage = Usd.Stage.CreateNew(str(combined_path))
+            UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
+            UsdGeom.SetStageMetersPerUnit(stage, 1.0)
+
+            root_name = f"{species}_twigs"
+            root_prim = stage.DefinePrim(f"/{root_name}", "Scope")
+            stage.SetDefaultPrim(root_prim)
+
+            prim_type = "SkelRoot" if mesh_type == "skeletal" else "Xform"
+            for twig_file in files:
+                asset_name = twig_file.stem.replace(suffix, "")
+                child = stage.DefinePrim(
+                    f"/{root_name}/{asset_name}", prim_type
+                )
+                child.GetReferences().AddReference(
+                    f"./{twig_file.name}", f"/{asset_name}"
+                )
+
+            stage.GetRootLayer().Save()
+            combined_files.append(combined_path)
+            logger.info(
+                "Created combined twig wrapper: %s (%d variants)",
+                combined_name,
+                len(files),
+            )
+
+    return combined_files
