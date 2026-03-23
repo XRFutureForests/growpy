@@ -317,88 +317,32 @@ def _plot_height_dbh_correlation(
 def _plot_growth_increments(
     species, ages, heights, dbh_cm, fpy, metadata, output_dir,
 ):
-    """CAI/MAI increment curves for height and DBH, plus stem volume estimate.
+    """Stem volume and annual growth rates for height and DBH.
 
-    Current Annual Increment (CAI): year-over-year change.
-    Mean Annual Increment (MAI): cumulative value / age.
-    Volume estimated using standard form factor: V = f * pi/4 * DBH² * H.
+    Volume estimated using standard form factor: V = f * pi/4 * DBH^2 * H.
+    Growth rates are simple year-over-year differences.
     """
     if len(ages) < 3:
         return
 
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    fig, (ax_v, ax_r) = plt.subplots(1, 2, figsize=(14, 6))
     fig.suptitle(
-        f"Growth Increments and Volume for {species}",
+        f"Growth Summary for {species}",
         fontsize=16, fontweight="bold",
     )
 
-    # Height increments
-    ax_h = axes[0, 0]
-    h_cai = np.diff(heights) * fpy  # m/year
-    h_mai = heights[1:] / ages[1:]  # m/year
     cai_ages = ages[1:]
 
-    ax_h.plot(cai_ages, h_cai, "b-", linewidth=2, label="CAI (height)")
-    ax_h.plot(cai_ages, h_mai, "b--", linewidth=2, label="MAI (height)")
-
-    # Mark culmination (CAI = MAI crossover)
-    diff = h_cai[:len(h_mai)] - h_mai[:len(h_cai)]
-    crossings = np.where(np.diff(np.sign(diff)))[0]
-    if len(crossings) > 0:
-        cx = crossings[0]
-        ax_h.axvline(cai_ages[cx], color="gray", linestyle=":", alpha=0.7)
-        ax_h.annotate(
-            f"Culmination ~{cai_ages[cx]:.0f} yr",
-            xy=(cai_ages[cx], h_mai[cx]), xytext=(10, 10),
-            textcoords="offset points", fontsize=9,
-            arrowprops=dict(arrowstyle="->", color="gray"),
-        )
-
-    ax_h.set_xlabel("Age (years)", fontsize=11)
-    ax_h.set_ylabel("Height increment (m/year)", fontsize=11)
-    ax_h.set_title("Height: CAI and MAI", fontsize=13, fontweight="bold")
-    ax_h.legend(fontsize=9)
-    ax_h.grid(True, alpha=0.3)
-    ax_h.set_xlim(0, ages[-1])
-
-    # DBH increments
-    ax_d = axes[0, 1]
-    d_cai = np.diff(dbh_cm) * fpy  # cm/year
-    d_mai = dbh_cm[1:] / ages[1:]  # cm/year
-
-    ax_d.plot(cai_ages, d_cai, "g-", linewidth=2, label="CAI (DBH)")
-    ax_d.plot(cai_ages, d_mai, "g--", linewidth=2, label="MAI (DBH)")
-
-    diff_d = d_cai[:len(d_mai)] - d_mai[:len(d_cai)]
-    crossings_d = np.where(np.diff(np.sign(diff_d)))[0]
-    if len(crossings_d) > 0:
-        cx = crossings_d[0]
-        ax_d.axvline(cai_ages[cx], color="gray", linestyle=":", alpha=0.7)
-        ax_d.annotate(
-            f"Culmination ~{cai_ages[cx]:.0f} yr",
-            xy=(cai_ages[cx], d_mai[cx]), xytext=(10, 10),
-            textcoords="offset points", fontsize=9,
-            arrowprops=dict(arrowstyle="->", color="gray"),
-        )
-
-    ax_d.set_xlabel("Age (years)", fontsize=11)
-    ax_d.set_ylabel("DBH increment (cm/year)", fontsize=11)
-    ax_d.set_title("DBH: CAI and MAI", fontsize=13, fontweight="bold")
-    ax_d.legend(fontsize=9)
-    ax_d.grid(True, alpha=0.3)
-    ax_d.set_xlim(0, ages[-1])
-
-    # Stem volume estimate: V = f * pi/4 * (DBH_m)^2 * H
-    ax_v = axes[1, 0]
-    form_factor = 0.45  # typical conifer/broadleaf average
+    # -- Stem volume --
+    form_factor = 0.45
     dbh_m = dbh_cm / 100.0
-    volume = form_factor * (np.pi / 4) * dbh_m ** 2 * heights  # m³
+    volume = form_factor * (np.pi / 4) * dbh_m ** 2 * heights
 
-    ax_v.plot(ages, volume, "purple", linewidth=2.5)
+    ax_v.plot(ages, volume, color="purple", linewidth=2.5)
     ax_v.fill_between(ages, 0, volume, alpha=0.1, color="purple")
 
     ax_v.set_xlabel("Age (years)", fontsize=11)
-    ax_v.set_ylabel("Stem volume (m³)", fontsize=11)
+    ax_v.set_ylabel("Stem volume (m\u00b3)", fontsize=11)
     ax_v.set_title(
         f"Estimated Stem Volume (f={form_factor})",
         fontsize=13, fontweight="bold",
@@ -406,43 +350,37 @@ def _plot_growth_increments(
     ax_v.grid(True, alpha=0.3)
     ax_v.set_xlim(0, ages[-1])
 
-    vol_text = f"Final: {volume[-1]:.2f} m³\nMax: {volume.max():.2f} m³"
+    vol_text = f"{volume[-1]:.2f} m\u00b3"
     ax_v.text(
         0.02, 0.98, vol_text, transform=ax_v.transAxes, fontsize=10,
         verticalalignment="top",
         bbox=dict(boxstyle="round", facecolor="plum", alpha=0.6),
     )
 
-    # Volume increment (CAI/MAI for volume)
-    ax_vi = axes[1, 1]
-    v_cai = np.diff(volume) * fpy  # m³/year
-    v_mai = volume[1:] / ages[1:]
+    # -- Annual growth rates --
+    h_rate = np.diff(heights) * fpy  # m/year
+    d_rate = np.diff(dbh_cm) * fpy   # cm/year
 
-    ax_vi.plot(cai_ages, v_cai, "purple", linewidth=2, label="CAI (volume)")
-    ax_vi.plot(cai_ages, v_mai, "purple", linewidth=2, linestyle="--",
-               label="MAI (volume)")
+    ax_r.plot(cai_ages, h_rate, "b-", linewidth=2, label="Height (m/year)")
+    ax_r.set_xlabel("Age (years)", fontsize=11)
+    ax_r.set_ylabel("Height growth (m/year)", fontsize=11, color="blue")
+    ax_r.tick_params(axis="y", labelcolor="blue")
+    ax_r.grid(True, alpha=0.3)
+    ax_r.set_xlim(0, ages[-1])
 
-    diff_v = v_cai[:len(v_mai)] - v_mai[:len(v_cai)]
-    crossings_v = np.where(np.diff(np.sign(diff_v)))[0]
-    if len(crossings_v) > 0:
-        cx = crossings_v[0]
-        ax_vi.axvline(cai_ages[cx], color="gray", linestyle=":", alpha=0.7)
-        ax_vi.annotate(
-            f"Optimal rotation ~{cai_ages[cx]:.0f} yr",
-            xy=(cai_ages[cx], v_mai[cx]), xytext=(10, 10),
-            textcoords="offset points", fontsize=9,
-            arrowprops=dict(arrowstyle="->", color="gray"),
-        )
+    ax_d = ax_r.twinx()
+    ax_d.plot(cai_ages, d_rate, "g-", linewidth=2, label="DBH (cm/year)")
+    ax_d.set_ylabel("DBH growth (cm/year)", fontsize=11, color="green")
+    ax_d.tick_params(axis="y", labelcolor="green")
 
-    ax_vi.set_xlabel("Age (years)", fontsize=11)
-    ax_vi.set_ylabel("Volume increment (m³/year)", fontsize=11)
-    ax_vi.set_title("Volume: CAI and MAI", fontsize=13, fontweight="bold")
-    ax_vi.legend(fontsize=9)
-    ax_vi.grid(True, alpha=0.3)
-    ax_vi.set_xlim(0, ages[-1])
+    lines_r, labels_r = ax_r.get_legend_handles_labels()
+    lines_d, labels_d = ax_d.get_legend_handles_labels()
+    ax_r.legend(lines_r + lines_d, labels_r + labels_d, loc="upper right", fontsize=9)
+
+    ax_r.set_title("Annual Growth Rates", fontsize=13, fontweight="bold")
 
     plt.tight_layout()
-    plt.subplots_adjust(top=0.93)
+    plt.subplots_adjust(top=0.90)
     plt.savefig(
         output_dir / "growth_increments.png",
         dpi=300, bbox_inches="tight", facecolor="white",
