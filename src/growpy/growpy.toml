@@ -248,7 +248,7 @@ obj_up_axis = "y"
 # Referenced by name in export.density_variants list above.
 
 [density_variant.full]
-twig_density = 1.5
+twig_density = 2.5
 
 [density_variant.reduced]
 twig_density = 0.5

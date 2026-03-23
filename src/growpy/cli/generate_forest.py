@@ -991,8 +991,10 @@ def generate_forest_stages(
                     )
                     continue
 
-                # Skip this snapshot if cycle exceeds tree's calculated max
-                if cycle > tree_max_cycles:
+                # In height-threshold mode, milestone_map already gates exports
+                # based on actual measured height — no cycle-based cap needed.
+                # In legacy mode, fall back to growth-model-predicted max cycles.
+                if not milestone_map and cycle > tree_max_cycles:
                     continue
 
                 # In height-threshold mode, only export trees that triggered
