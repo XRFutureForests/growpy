@@ -136,7 +136,7 @@ height_interval = 5
 # Trees taller than this in the input CSV are clamped to this height
 # Reduces growth cycles and number of height stages for faster runs
 # 0 = no limit (use full CSV heights)
-max_height = 0
+max_height = 26
 
 # Quality Presets (single source of truth)
 # Define any number of named presets below as [quality.<name>] sections.
