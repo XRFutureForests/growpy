@@ -9,7 +9,7 @@
 
 [general]
 # Random seed for reproducible tree generation (remove to randomize)
-random_seed = 9
+random_seed = 3
 # Default input CSV with tree positions and species
 # CSV columns: x, y, species, height (optional: z, fid, dbh)
 csv_file = "data/input/test.csv"
@@ -118,8 +118,8 @@ preferred_region = ""
 # See [quality.*] sections below for per-preset parameters
 quality = "high"
 # Maximum growth cycles per tree (1-250)
-# Trees exceeding this are scaled down proportionally
-growth_cycle_limit = 50
+# Trees exceeding this limit are capped (not scaled)
+growth_cycle_limit = 90
 # Branch smoothing iterations (0-20, 0 = disabled)
 # Higher values = smoother, more organic branches
 smooth_iterations = 10
@@ -131,12 +131,12 @@ include_grove_attributes = false
 # Uses growth models to determine which cycle corresponds to each height milestone
 # Each snapshot includes height and DBH in the filename for easy asset selection
 # 0 = disabled (standard single height-based export)
-height_interval = 4
+height_interval = 5
 # Cap all tree heights at this value in meters (e.g., 15 for quick testing)
 # Trees taller than this in the input CSV are clamped to this height
 # Reduces growth cycles and number of height stages for faster runs
 # 0 = no limit (use full CSV heights)
-max_height = 12
+max_height = 0
 
 # Quality Presets (single source of truth)
 # Define any number of named presets below as [quality.<name>] sections.

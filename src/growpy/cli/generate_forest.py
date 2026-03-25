@@ -20,7 +20,6 @@ import pandas as pd
 from tqdm import tqdm
 
 GROWTH_CYCLE_LIMIT = 10
-HEIGHT_SCALE = 1
 SMOOTH_ITERATIONS = 10  # Default: 10 iterations for natural smoothing (range: 0-20)
 
 import logging
@@ -1269,7 +1268,6 @@ def generate_forest_exports(
         growth_cycle_limit = GROWTH_CYCLE_LIMIT
     if smooth_iterations is None:
         smooth_iterations = SMOOTH_ITERATIONS
-    height_scale = HEIGHT_SCALE  # Hardcoded height scale
 
     if not TREE_EXPORT_AVAILABLE:
         logger.error("Tree export not available (missing dependencies)")
@@ -1320,26 +1318,14 @@ def generate_forest_exports(
             forest_data["growth_cycles"] = 10
             forest_data["delay"] = 0
 
-        # Cap growth cycles to growth_cycle_limit if they exceed it
-        max_growth_cycles = forest_data["growth_cycles"].max()
-        if max_growth_cycles > growth_cycle_limit:
-            scale_factor = growth_cycle_limit / max_growth_cycles
-            forest_data["growth_cycles"] = (
-                forest_data["growth_cycles"] * scale_factor
-            ).astype(int)
-            forest_data["growth_cycles"] = forest_data["growth_cycles"].clip(lower=1)
+        # Cap each tree's cycles individually at the limit
+        forest_data["growth_cycles"] = forest_data["growth_cycles"].clip(
+            upper=growth_cycle_limit, lower=1
+        )
 
-            # CRITICAL: Recalculate delays after scaling cycles
-            # Without this, delays can exceed the total simulation cycles,
-            # preventing trees from growing entirely
-            max_cycles_after_scaling = forest_data["growth_cycles"].max()
-            forest_data["delay"] = (
-                max_cycles_after_scaling - forest_data["growth_cycles"]
-            )
-        else:
-            # Use calculated cycles (based on height) if they're within the limit
-            # Apply height scale only if not scaling growth cycles
-            forest_data["height"] /= height_scale
+        # Recalculate delays after clipping
+        max_cycles_after_clip = forest_data["growth_cycles"].max()
+        forest_data["delay"] = max_cycles_after_clip - forest_data["growth_cycles"]
 
     try:
         with timer.track("create_forest"):
