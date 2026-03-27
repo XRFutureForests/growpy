@@ -73,8 +73,26 @@ try:
         failed_count += 1
         unreal.log_warning("Failed to import: {label}")
 {config_block}
+    # Wait for async Nanite compilation to finish before unloading
+    try:
+        unreal.AssetCompilingManager.get_default().finish_all_compilation()
+    except Exception:
+        pass
+
+    # Unload imported assets from editor memory (already saved to disk)
+    for _unload_path in (import_task.imported_object_paths or []):
+        try:
+            unreal.EditorAssetLibrary.unload_asset(str(_unload_path))
+        except Exception:
+            pass
+
+    del import_task
+
     gc.collect()
-    unreal.SystemLibrary.collect_garbage()
+    try:
+        unreal.SystemLibrary.collect_garbage(full_purge=True)
+    except Exception:
+        unreal.SystemLibrary.collect_garbage()
     time.sleep(IMPORT_DELAY)
 
 except Exception as e:
@@ -277,7 +295,7 @@ print("GrowPy Batch Import: {batch_label}")
 print("=" * 60)
 
 IMPORT_PATH = "{project_path}"
-IMPORT_DELAY = 0.5
+IMPORT_DELAY = 2.0
 
 asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
 imported_count = 0
@@ -531,7 +549,7 @@ IMPORT_PATH = "{project_path}"
 SCRIPTS_DIR = r"{scripts_dir_str}"
 
 # Delay between batches (seconds) - increase if you still get VRAM crashes
-BATCH_DELAY = 3.0
+BATCH_DELAY = 5.0
 
 # Tree positions from CSV (in meters, multiply by 100 for Unreal units)
 {tree_positions_code}

@@ -262,6 +262,8 @@ def build_tree_mesh(
             branch_blend_dist = 0.05  # meters — just the junction ring
             is_junction_bone = [False] * len(bones_info)
             junction_trunk_scale = [1.0] * len(bones_info)
+            junction_parent_axis = list(bone_axes)
+            junction_parent_start = list(bone_starts)
             for idx in range(len(bones_info)):
                 if bone_order[idx] != 1:
                     continue
@@ -271,6 +273,11 @@ def build_tree_mesh(
                     continue
                 if bone_order[parent_local] == 0:
                     is_junction_bone[idx] = True
+                    # Use parent trunk axis for perpendicular displacement so
+                    # the branch base moves with the trunk surface, not away
+                    # from the branch axis (which causes disconnection).
+                    junction_parent_axis[idx] = bone_axes[parent_local]
+                    junction_parent_start[idx] = bone_starts[parent_local]
                     jh = bone_starts[idx][1]
                     if jh <= blend_start:
                         junction_trunk_scale[idx] = radial_scale
@@ -329,9 +336,15 @@ def build_tree_mesh(
                     usd_points.append(Gf.Vec3f(p.x, p.y, p.z))
                     continue
 
-                # Scale perpendicular to bone axis
-                ax, ay, az = bone_axes[local_idx]
-                bx, by, bz = bone_starts[local_idx]
+                # Scale perpendicular to bone axis.
+                # Junction bones use the parent trunk axis so the branch base
+                # displaces consistently with the trunk surface.
+                if is_junction_bone[local_idx]:
+                    ax, ay, az = junction_parent_axis[local_idx]
+                    bx, by, bz = junction_parent_start[local_idx]
+                else:
+                    ax, ay, az = bone_axes[local_idx]
+                    bx, by, bz = bone_starts[local_idx]
                 vx, vy, vz = p.x - bx, p.y - by, p.z - bz
                 dot = vx * ax + vy * ay + vz * az
                 px, py, pz = vx - dot * ax, vy - dot * ay, vz - dot * az
