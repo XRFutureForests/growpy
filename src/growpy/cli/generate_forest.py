@@ -208,6 +208,17 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                             "fruit": config.helios_simplify_fruit,
                         }
 
+                    # Helios classification codes for labeled point clouds
+                    cls_prefix = ""
+                    cls_codes = None
+                    if config.helios_classification:
+                        from growpy.io.helios_classification import (
+                            build_classification_codes,
+                            build_material_prefix,
+                        )
+                        cls_prefix = build_material_prefix(tree_fid)
+                        cls_codes = build_classification_codes(species_clean, tree_fid)
+
                     obj_path = convert_tree_to_obj_direct(
                         model=model,
                         twig_placements=twig_placements,
@@ -219,6 +230,8 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         stem_decimate_ratio=config.helios_stem_decimate_ratio,
                         helios_spectra_leaves=spectra,
                         simplification_ratios=simplification_ratios,
+                        mat_prefix=cls_prefix,
+                        classification_codes=cls_codes,
                     )
 
                 if obj_path:
@@ -692,6 +705,53 @@ def generate_forest_stages(
     # For cycle mode, we don't use delay - all trees start at cycle 0
     forest_data["delay"] = 0
 
+    # Validate helios classification requirements before simulation
+    if config.helios_classification and config.export_mode == "helios":
+        from growpy.io.helios_classification import (
+            validate_classification_fids,
+            validate_classification_materials,
+            validate_classification_species,
+        )
+
+        species_clean_list = [
+            s.replace(" ", "_").replace("-", "_").lower()
+            for s in forest_data["species"]
+        ]
+        errors = validate_classification_species(species_clean_list)
+        errors.extend(validate_classification_fids(forest_data["fid"].tolist()))
+
+        from growpy.config.paths import get_assets_directory, _find_species_row
+        import re as _re
+
+        for sp_clean in set(species_clean_list):
+            sp_original = forest_data.loc[
+                forest_data["species"].apply(
+                    lambda s: s.replace(" ", "_").replace("-", "_").lower()
+                ) == sp_clean, "species"
+            ].iloc[0]
+            try:
+                row = _find_species_row(sp_original)
+                twig_name = row.get("Twig", "")
+                if twig_name and twig_name not in ("—", "", "nan"):
+                    twig_name_std = (
+                        _re.sub(r"([A-Z])", r"_\1", str(twig_name).strip())
+                        .lower()
+                        .lstrip("_")
+                    )
+                    twig_dir = get_assets_directory() / "twigs" / f"{twig_name_std}_twig"
+                    if not twig_dir.exists():
+                        twig_dir = get_assets_directory() / "twigs" / twig_name_std
+                    errors.extend(validate_classification_materials(sp_clean, twig_dir))
+            except (ValueError, KeyError) as e:
+                errors.append(f"Could not validate materials for '{sp_clean}': {e}")
+
+        if errors:
+            print("\nERROR: Helios classification validation failed:")
+            for err in errors:
+                print(f"  - {err}")
+            raise SystemExit(1)
+        print("  Helios classification: ENABLED (all species validated)")
+
     with timer.track("create_forest"):
         forest = create_forest(forest_data)
 
@@ -963,6 +1023,58 @@ def generate_forest_exports(
             # Use calculated cycles (based on height) if they're within the limit
             # Apply height scale only if not scaling growth cycles
             forest_data["height"] /= height_scale
+
+    # Validate helios classification requirements before simulation
+    if config.helios_classification and config.export_mode == "helios":
+        from growpy.io.helios_classification import (
+            validate_classification_fids,
+            validate_classification_materials,
+            validate_classification_species,
+        )
+
+        # Ensure fid column for validation
+        if "fid" not in forest_data.columns:
+            forest_data["fid"] = range(1, len(forest_data) + 1)
+
+        species_clean_list = [
+            s.replace(" ", "_").replace("-", "_").lower()
+            for s in forest_data["species"]
+        ]
+        errors = validate_classification_species(species_clean_list)
+        errors.extend(validate_classification_fids(forest_data["fid"].tolist()))
+
+        # Validate materials per species using twig sidecar files
+        from growpy.config.paths import get_assets_directory, _find_species_row
+        import re as _re
+
+        for sp_clean in set(species_clean_list):
+            sp_original = forest_data.loc[
+                forest_data["species"].apply(
+                    lambda s: s.replace(" ", "_").replace("-", "_").lower()
+                ) == sp_clean, "species"
+            ].iloc[0]
+            try:
+                row = _find_species_row(sp_original)
+                twig_name = row.get("Twig", "")
+                if twig_name and twig_name not in ("—", "", "nan"):
+                    twig_name_std = (
+                        _re.sub(r"([A-Z])", r"_\1", str(twig_name).strip())
+                        .lower()
+                        .lstrip("_")
+                    )
+                    twig_dir = get_assets_directory() / "twigs" / f"{twig_name_std}_twig"
+                    if not twig_dir.exists():
+                        twig_dir = get_assets_directory() / "twigs" / twig_name_std
+                    errors.extend(validate_classification_materials(sp_clean, twig_dir))
+            except (ValueError, KeyError) as e:
+                errors.append(f"Could not validate materials for '{sp_clean}': {e}")
+
+        if errors:
+            print("\nERROR: Helios classification validation failed:")
+            for err in errors:
+                print(f"  - {err}")
+            raise SystemExit(1)
+        print("  Helios classification: ENABLED (all species validated)")
 
     try:
         with timer.track("create_forest"):

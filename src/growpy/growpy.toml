@@ -15,7 +15,7 @@ random_seed = 42
 # Multi-stage mode columns: x, y, species, cycle_interval, max_cycles
 csv_file = "data/input/stand_6trees.csv"
 # Output directory for generated trees (species subdirectories created automatically)
-output_dir = "data/output/stand_6trees_dens100_20m"
+output_dir = "data/output/stand_7trees_dens100_3m"
 # Enable verbose output for PVE preset generation
 verbose = true
 # Enable profiling to track execution time of each pipeline step
@@ -134,6 +134,15 @@ twig_decimate_ratio = 1.0
 helios_scene = true
 # Export a single combined OBJ with all trees positioned at CSV coordinates
 combined_obj = true
+# Helios++ 4-digit classification code per material for labeled point clouds.
+# Format: [material][species][tree_id_2digits]
+#   material: 1=leaf, 2=twig, 3=bark, 4=fruit
+#   species:  1=beech, 2=oak, 3=birch, 4=maple, 5=fir, 6=pine
+#   tree_id:  01-99 from CSV fid column
+# Only valid when ALL species in input CSV are "selected" variants.
+# When enabled, validates that each species has at least leaf and twig materials.
+# Material names are prefixed with tree ID for unique classification in combined OBJ.
+helios_classification = true
 
 # Material-aware mesh simplification applied in-memory before OBJ write.
 # Reduces file size and Helios++ processing time without re-reading/re-writing files.

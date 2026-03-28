@@ -134,6 +134,7 @@ class GrowPyConfig:
     helios_stem_decimate_ratio: float = 0.1
     helios_helios_scene: bool = False
     helios_combined_obj: bool = False
+    helios_classification: bool = False
 
     # [helios.simplification]
     helios_simplify: bool = False
@@ -273,6 +274,8 @@ class GrowPyConfig:
             kwargs["helios_helios_scene"] = helios["helios_scene"]
         if "combined_obj" in helios:
             kwargs["helios_combined_obj"] = helios["combined_obj"]
+        if "helios_classification" in helios:
+            kwargs["helios_classification"] = helios["helios_classification"]
 
         # [helios.simplification]
         simplification = helios.get("simplification", {})
