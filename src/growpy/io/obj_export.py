@@ -74,6 +74,8 @@ def convert_tree_to_obj_direct(
     stem_decimate_ratio: float = 0.1,
     helios_spectra_leaves: str = "deciduous",
     simplification_ratios: Optional[Dict[str, float]] = None,
+    mat_prefix: str = "",
+    classification_codes: Optional[Dict[str, int]] = None,
 ) -> Optional[Path]:
     """Convert a Grove model directly to OBJ without USD/skeleton intermediate.
 
@@ -93,6 +95,9 @@ def convert_tree_to_obj_direct(
         helios_spectra_leaves: Helios spectra type ("conifer" or "deciduous")
         simplification_ratios: Per-material simplification ratios
             {'bark': 0.3, 'wood': 0.3, 'leaf': 1.0}. None disables.
+        mat_prefix: Prefix for material names (e.g. "t01_" for classification)
+        classification_codes: Per-material classification codes
+            {'bark': 3101, 'wood': 2101, 'leaf': 1101, 'fruit': 4101}. None uses default.
 
     Returns:
         Path to generated OBJ file, or None on failure
@@ -286,7 +291,7 @@ def convert_tree_to_obj_direct(
         twig_face_count = _write_obj_streaming_direct(
             obj_path, points_flat, faces_raw, num_trunk_verts,
             instance_data, proto_meshes, proto_materials,
-            mtl_name,
+            mtl_name, mat_prefix=mat_prefix,
         )
         del points_flat, faces_raw, trunk_data_raw
     else:
@@ -295,7 +300,7 @@ def convert_tree_to_obj_direct(
         twig_face_count = _write_obj_streaming(
             obj_path, trunk_verts, trunk_faces, trunk_uvs,
             instance_data, proto_meshes, proto_materials,
-            mtl_name,
+            mtl_name, mat_prefix=mat_prefix,
         )
         del trunk_verts, trunk_faces, trunk_uvs
 
@@ -308,6 +313,8 @@ def convert_tree_to_obj_direct(
     _write_helios_mtl(
         mtl_path, bark_texture, helios_spectra_leaves, proto_materials,
         per_proto_face_mats_for_mtl, output_dir,
+        mat_prefix=mat_prefix,
+        classification_codes=classification_codes,
     )
 
     print(
@@ -963,6 +970,7 @@ def _write_twig_faces(
     proto_instance_offsets: Dict[int, List[int]],
     proto_meshes: Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]],
     proto_materials: Dict[int, Tuple[str, Optional[Path], Optional[List[str]]]],
+    mat_prefix: str = "",
 ) -> int:
     """Write twig faces grouped by prototype and sub-material. Returns face count."""
     twig_face_count = 0
@@ -986,7 +994,7 @@ def _write_twig_faces(
                     if mat_id < len(sidecar_mat_names)
                     else f"material_{mat_id}"
                 )
-                sub_mat_name = f"{mat_name}:{blend_mat_name}"
+                sub_mat_name = f"{mat_prefix}{mat_name}:{blend_mat_name}"
                 mask = proto_face_mats == mat_id
                 sub_faces = proto_faces[mask]
                 if len(sub_faces) == 0:
@@ -998,7 +1006,7 @@ def _write_twig_faces(
                         f.write(f"f {face[0]+base_offset+1} {face[1]+base_offset+1} {face[2]+base_offset+1}\n")
                         twig_face_count += 1
         else:
-            f.write(f"\nusemtl {mat_name}\n")
+            f.write(f"\nusemtl {mat_prefix}{mat_name}\n")
             for base_offset in offsets:
                 for face in proto_faces:
                     f.write(f"f {face[0]+base_offset+1} {face[1]+base_offset+1} {face[2]+base_offset+1}\n")
@@ -1016,6 +1024,7 @@ def _write_obj_streaming_direct(
     proto_meshes: Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]],
     proto_materials: Dict[int, Tuple[str, Optional[Path], Optional[List[str]]]],
     mtl_name: str,
+    mat_prefix: str = "",
 ) -> int:
     """Write OBJ file for large trunk meshes without any numpy conversion.
 
@@ -1037,12 +1046,13 @@ def _write_obj_streaming_direct(
         f.write("\n")
 
         # -- All faces (trunk then twigs) --
-        f.write("usemtl bark\n")
+        f.write(f"usemtl {mat_prefix}bark\n")
         for face in faces_raw:
             f.write(f"f {face[0]+1} {face[1]+1} {face[2]+1}\n")
 
         twig_face_count = _write_twig_faces(
             f, proto_offsets, proto_meshes, proto_materials,
+            mat_prefix=mat_prefix,
         )
 
     return twig_face_count
@@ -1057,6 +1067,7 @@ def _write_obj_streaming(
     proto_meshes: Dict[int, Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]],
     proto_materials: Dict[int, Tuple[str, Optional[Path], Optional[List[str]]]],
     mtl_name: str,
+    mat_prefix: str = "",
 ) -> int:
     """Write OBJ file by streaming twig instances directly to disk.
 
@@ -1087,7 +1098,7 @@ def _write_obj_streaming(
         f.write("\n")
 
         # -- All faces (trunk then twigs) --
-        f.write("usemtl bark\n")
+        f.write(f"usemtl {mat_prefix}bark\n")
         if has_trunk_uvs:
             for fi, face in enumerate(trunk_faces):
                 uv_base = fi * 3
@@ -1100,6 +1111,7 @@ def _write_obj_streaming(
 
         twig_face_count = _write_twig_faces(
             f, proto_offsets, proto_meshes, proto_materials,
+            mat_prefix=mat_prefix,
         )
 
     return twig_face_count
@@ -1375,6 +1387,8 @@ def _write_helios_mtl(
     proto_materials: Optional[Dict[int, Tuple[str, Optional[Path], Optional[List[str]]]]] = None,
     per_proto_face_mats: Optional[Dict[int, np.ndarray]] = None,
     tree_dir: Optional[Path] = None,
+    mat_prefix: str = "",
+    classification_codes: Optional[Dict[str, int]] = None,
 ) -> None:
     """Write Helios-compatible MTL file with per-twig leaf/wood materials.
 
@@ -1386,14 +1400,20 @@ def _write_helios_mtl(
     Helios++ uses custom MTL properties:
         helios_spectra  - ECOSTRESS spectral library identifier
         helios_classification - ASPRS point classification (4 = high vegetation)
+            or 4-digit code when helios_classification is enabled
     """
-    WOOD_KEYWORDS = ("twig", "bark", "branch", "wood", "stem")
+    from .mesh_simplify import classify_material
+
+    def _get_classification(material_class: str) -> int:
+        if classification_codes:
+            return classification_codes.get(material_class, 4)
+        return 4
 
     with open(mtl_path, "w") as f:
         f.write("# Helios++ compatible material\n\n")
 
         # Bark material
-        f.write("newmtl bark\n")
+        f.write(f"newmtl {mat_prefix}bark\n")
         f.write("Ka 0.1 0.1 0.1\n")
         f.write("Kd 0.4 0.3 0.2\n")
         f.write("Ks 0.05 0.05 0.05\n")
@@ -1401,7 +1421,7 @@ def _write_helios_mtl(
             rel_texture = f"textures/{bark_texture.name}"
             f.write(f"map_Kd {rel_texture}\n")
         f.write("helios_spectra wood\n")
-        f.write("helios_classification 4\n")
+        f.write(f"helios_classification {_get_classification('bark')}\n")
 
         # Per-twig materials
         if proto_materials:
@@ -1426,11 +1446,11 @@ def _write_helios_mtl(
                             if mat_id < len(sidecar_mat_names)
                             else f"material_{mat_id}"
                         )
-                        sub_mat_name = f"{mat_name}:{blend_mat_name}"
-                        is_wood = any(kw in blend_mat_name.lower() for kw in WOOD_KEYWORDS)
+                        sub_mat_name = f"{mat_prefix}{mat_name}:{blend_mat_name}"
+                        mat_class = classify_material(blend_mat_name)
 
                         f.write(f"\nnewmtl {sub_mat_name}\n")
-                        if is_wood:
+                        if mat_class in ("wood", "bark"):
                             f.write("Ka 0.1 0.1 0.1\n")
                             f.write("Kd 0.4 0.3 0.2\n")
                             f.write("Ks 0.05 0.05 0.05\n")
@@ -1442,25 +1462,25 @@ def _write_helios_mtl(
                             if diffuse_path and diffuse_path.exists():
                                 f.write(f"map_Kd textures/{diffuse_path.name}\n")
                             f.write(f"helios_spectra {helios_spectra_leaves}\n")
-                        f.write("helios_classification 4\n")
+                        f.write(f"helios_classification {_get_classification(mat_class)}\n")
                 else:
                     # No sub-material info: single material
-                    f.write(f"\nnewmtl {mat_name}\n")
+                    f.write(f"\nnewmtl {mat_prefix}{mat_name}\n")
                     f.write("Ka 0.1 0.15 0.05\n")
                     f.write("Kd 0.8 0.8 0.8\n")
                     f.write("Ks 0.2 0.2 0.2\n")
                     if diffuse_path and diffuse_path.exists():
                         f.write(f"map_Kd textures/{diffuse_path.name}\n")
                     f.write(f"helios_spectra {helios_spectra_leaves}\n")
-                    f.write("helios_classification 4\n")
+                    f.write(f"helios_classification {_get_classification('leaf')}\n")
         else:
             # Fallback: single generic leaves material
-            f.write("\nnewmtl leaves\n")
+            f.write(f"\nnewmtl {mat_prefix}leaves\n")
             f.write("Ka 0.1 0.15 0.05\n")
             f.write("Kd 0.3 0.5 0.15\n")
             f.write("Ks 0.2 0.2 0.2\n")
             f.write(f"helios_spectra {helios_spectra_leaves}\n")
-            f.write("helios_classification 4\n")
+            f.write(f"helios_classification {_get_classification('leaf')}\n")
 
 
 def _write_combined_mtl(
