@@ -1780,6 +1780,11 @@ Unreal Engine Integration:
             from growpy.io.obj_export import export_forest_obj
 
             with timer.track("obj_export"):
+                simp_ratios = None
+                simp_leaf = None
+                if config.helios_simplification_enabled:
+                    simp_ratios = config.helios_simplification_ratios
+                    simp_leaf = config.helios_simplification_leaf_per_species
                 export_forest_obj(
                     output_dir=output_dir,
                     csv_path=csv_path,
@@ -1787,6 +1792,8 @@ Unreal Engine Integration:
                     individual_obj=config.helios_individual_obj,
                     up_axis=config.helios_obj_up_axis,
                     timer=timer,
+                    simplification_ratios=simp_ratios,
+                    leaf_per_species=simp_leaf,
                 )
 
         # Print profiling report if enabled

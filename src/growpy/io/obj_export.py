@@ -16,6 +16,7 @@ Material groups:
     twig_leaf - Twig leaf/needle planes (helios_spectra conifer or deciduous)
 """
 
+import json
 import logging
 import math
 import shutil
@@ -479,6 +480,52 @@ def _read_twig_mesh(
     return vertices, np.array(faces, dtype=np.int64)
 
 
+def _read_twig_material(twig_path: Path) -> Optional[str]:
+    """Extract diffuse texture filename from twig USD material.
+
+    Returns:
+        Relative texture path or None if not found.
+    """
+    try:
+        stage = Usd.Stage.Open(str(twig_path))
+        if not stage:
+            return None
+        for prim in stage.Traverse():
+            if not prim.IsA(UsdShade.Shader):
+                continue
+            shader = UsdShade.Shader(prim)
+            if shader.GetIdAttr().Get() != "UsdUVTexture":
+                continue
+            if "DiffuseTexture" not in str(prim.GetPath()):
+                continue
+            file_input = shader.GetInput("file")
+            if file_input:
+                val = file_input.Get()
+                if val:
+                    return str(val.resolvedPath or val.path)
+    except Exception:
+        pass
+    return None
+
+
+def _read_face_material_names(twig_path: Path) -> Optional[List[str]]:
+    """Read sidecar face material names for a twig USD file.
+
+    Looks for a ``*_face_materials.json`` sidecar alongside the twig USDA.
+    Returns the list of Blender material names, or None if no sidecar found.
+    """
+    stem = twig_path.stem.replace("_skeletal", "").replace("_static", "")
+    sidecar_path = twig_path.parent / f"{stem}_face_materials.json"
+    if not sidecar_path.exists():
+        return None
+    try:
+        with open(sidecar_path) as f:
+            data = json.load(f)
+        return data.get("materials")
+    except Exception:
+        return None
+
+
 def _quat_to_rotation_matrix(w: float, x: float, y: float, z: float) -> np.ndarray:
     """Convert quaternion (w, x, y, z) to 3x3 rotation matrix."""
     return np.array(
@@ -901,6 +948,8 @@ def export_forest_obj(
     individual_obj: bool = False,
     up_axis: str = "y",
     timer=None,
+    simplification_ratios: Optional[Dict[str, float]] = None,
+    leaf_per_species: Optional[Dict[str, float]] = None,
 ) -> List[Tuple[Path, float, float, float, str]]:
     """Export USDA tree assemblies to OBJ for Helios++ LiDAR simulation.
 
@@ -978,6 +1027,22 @@ def export_forest_obj(
             x, y, z = 0.0, 0.0, 0.0
 
         trunk_verts, trunk_faces, tw_v, tw_f, tl_v, tl_f = mesh_data
+
+        if simplification_ratios:
+            from growpy.io.mesh_simplify import simplify_trunk_mesh
+
+            bark_ratio = simplification_ratios.get("bark", 1.0)
+            wood_ratio = simplification_ratios.get("wood", 1.0)
+            # Per-species leaf override falls back to global leaf ratio
+            global_leaf = simplification_ratios.get("leaf", 1.0)
+            leaf_ratio = (leaf_per_species or {}).get(species_dir, global_leaf)
+
+            trunk_verts, trunk_faces, _ = simplify_trunk_mesh(
+                trunk_verts, trunk_faces, None, bark_ratio
+            )
+            tw_v, tw_f, _ = simplify_trunk_mesh(tw_v, tw_f, None, wood_ratio)
+            tl_v, tl_f, _ = simplify_trunk_mesh(tl_v, tl_f, None, leaf_ratio)
+
         logger.info(
             "Extracted: %s (%d trunk + %d twig_wood + %d twig_leaf faces)",
             assembly_path.parent.name,
