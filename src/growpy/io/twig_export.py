@@ -1123,6 +1123,26 @@ def smooth_leaf_mesh(
     bpy.ops.object.mode_set(mode="OBJECT")
 
 
+def _save_face_material_sidecar(obj, output_dir: Path, standardized_name: str) -> None:
+    """Save per-face material assignment from Blender mesh as JSON sidecar.
+
+    Enables downstream OBJ export to split faces into leaf/wood/fruit groups
+    for material-aware mesh simplification. Must be called after all geometry
+    processing so face indices match the exported USD.
+    """
+    mesh = obj.data
+    mats = getattr(mesh, "materials", []) or []
+    if not mats or len(mats) < 2:
+        return
+
+    mat_names = [mat.name if mat else f"material_{i}" for i, mat in enumerate(mats)]
+    face_mat_indices = [p.material_index for p in mesh.polygons]
+
+    sidecar_path = output_dir / f"{standardized_name}_face_materials.json"
+    with open(sidecar_path, "w") as f:
+        json.dump({"materials": mat_names, "face_material_indices": face_mat_indices}, f)
+
+
 def _gather_texture_candidates(blend_dir, standardized_name, species, metadata):
     """Find textures for twig geometry processing and export.
 
@@ -3317,6 +3337,10 @@ def process_twig_file(
                 bpy.ops.mesh.select_all(action="SELECT")
                 bpy.ops.mesh.normals_make_consistent(inside=False)
                 bpy.ops.object.mode_set(mode="OBJECT")
+
+            # Save per-face material mapping for downstream OBJ simplification
+            # Must happen AFTER all geometry processing so face indices match exported USD
+            _save_face_material_sidecar(obj, output_dir, standardized_name)
 
             bpy.ops.object.select_all(action="DESELECT")
             mount_point.select_set(True)

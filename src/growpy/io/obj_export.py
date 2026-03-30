@@ -158,6 +158,7 @@ def _read_twig_mesh_classified(
 
 def _extract_tree_mesh(
     assembly_usda_path: Path,
+    simplification_ratios: Optional[Dict[str, float]] = None,
 ) -> Optional[tuple]:
     """Extract tree mesh data from USDA assembly without writing files.
 
@@ -165,8 +166,13 @@ def _extract_tree_mesh(
     twig prototypes. Static files have material bindings from the original
     .blend files, enabling material-based wood/leaf classification.
 
+    When simplification_ratios is provided, decimation is applied to
+    prototypes BEFORE baking instances. This is far more memory-efficient
+    than simplifying after baking (1 prototype vs N thousand copies).
+
     Args:
         assembly_usda_path: Path to the Nanite Assembly USDA file
+        simplification_ratios: Optional dict with bark/wood/leaf/fruit ratios (0-1)
 
     Returns:
         (trunk_verts, trunk_faces, twig_wood_verts, twig_wood_faces,
@@ -201,6 +207,16 @@ def _extract_tree_mesh(
         logger.warning("OBJ export: Failed to read tree mesh from %s", stem_path)
         return None
 
+    # Simplify trunk at prototype level (only 1 mesh to decimate)
+    if simplification_ratios:
+        bark_ratio = simplification_ratios.get("bark", 1.0)
+        if bark_ratio < 1.0 and len(trunk_faces) > 0:
+            from growpy.io.mesh_simplify import simplify_trunk_mesh
+
+            trunk_verts, trunk_faces, _ = simplify_trunk_mesh(
+                trunk_verts, trunk_faces, None, bark_ratio
+            )
+
     # Read twig instance data from assembly USDA
     instancer_data = _read_twig_instancer(assembly_usda_path)
 
@@ -213,6 +229,13 @@ def _extract_tree_mesh(
     if instancer_data is not None:
         positions, orientations, scales, proto_indices, proto_files = instancer_data
 
+        # Build cache key suffix from ratios so different ratios don't collide
+        ratio_key = ""
+        if simplification_ratios:
+            ratio_key = "|" + "|".join(
+                f"{k}={v}" for k, v in sorted(simplification_ratios.items())
+            )
+
         classified_protos: Dict[int, Tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
         for idx, twig_file in proto_files.items():
             # Resolve to static variant for material bindings
@@ -224,7 +247,7 @@ def _extract_tree_mesh(
             if not twig_path.exists():
                 continue
 
-            cache_key = str(twig_path)
+            cache_key = str(twig_path) + ratio_key
             if cache_key in _classified_twig_cache:
                 classified_protos[idx] = _classified_twig_cache[cache_key]
                 continue
@@ -235,6 +258,42 @@ def _extract_tree_mesh(
             )
             if raw_verts is None:
                 continue
+
+            # Simplify prototypes BEFORE baking — key optimization.
+            # For 3000 instances, simplifying 1 prototype is ~3000x cheaper.
+            if simplification_ratios:
+                from growpy.io.mesh_simplify import _extract_and_simplify
+
+                wood_ratio = simplification_ratios.get("wood", 1.0)
+                leaf_ratio = simplification_ratios.get("leaf", 1.0)
+
+                # _extract_and_simplify returns standalone (verts, faces)
+                # where faces are 0-indexed into the returned verts.
+                # Simplify each material group independently, then
+                # concatenate into a combined vertex array.
+                if wood_ratio < 1.0 and len(raw_wood_faces) > 0:
+                    wood_v, raw_wood_faces = _extract_and_simplify(
+                        raw_verts, raw_wood_faces, wood_ratio
+                    )
+                else:
+                    wood_v, raw_wood_faces = _extract_and_simplify(
+                        raw_verts, raw_wood_faces, 1.0
+                    )
+
+                if leaf_ratio < 1.0 and len(raw_leaf_faces) > 0:
+                    leaf_v, raw_leaf_faces = _extract_and_simplify(
+                        raw_verts, raw_leaf_faces, leaf_ratio
+                    )
+                else:
+                    leaf_v, raw_leaf_faces = _extract_and_simplify(
+                        raw_verts, raw_leaf_faces, 1.0
+                    )
+
+                # Merge back: wood verts first, then leaf verts
+                raw_leaf_faces = raw_leaf_faces + len(wood_v)
+                raw_verts = np.vstack([wood_v, leaf_v]) if (
+                    len(wood_v) > 0 and len(leaf_v) > 0
+                ) else (wood_v if len(wood_v) > 0 else leaf_v)
 
             classified_protos[idx] = (raw_verts, raw_wood_faces, raw_leaf_faces)
             _classified_twig_cache[cache_key] = classified_protos[idx]
@@ -1013,8 +1072,19 @@ def export_forest_obj(
         is_conifer = any(kw in species_dir.lower() for kw in CONIFER_KEYWORDS)
         spectra = "conifer" if is_conifer else "deciduous"
 
+        # Resolve per-species leaf ratio override into the ratios dict
+        tree_ratios = None
+        if simplification_ratios:
+            tree_ratios = dict(simplification_ratios)
+            global_leaf = tree_ratios.get("leaf", 1.0)
+            species_leaf = (leaf_per_species or {}).get(species_dir, global_leaf)
+            tree_ratios["leaf"] = species_leaf
+
         with _track("extract_tree_mesh"):
-            mesh_data = _extract_tree_mesh(assembly_usda_path=assembly_path)
+            mesh_data = _extract_tree_mesh(
+                assembly_usda_path=assembly_path,
+                simplification_ratios=tree_ratios,
+            )
         if mesh_data is None:
             continue
 
@@ -1027,22 +1097,6 @@ def export_forest_obj(
             x, y, z = 0.0, 0.0, 0.0
 
         trunk_verts, trunk_faces, tw_v, tw_f, tl_v, tl_f = mesh_data
-
-        if simplification_ratios:
-            from growpy.io.mesh_simplify import simplify_trunk_mesh
-
-            bark_ratio = simplification_ratios.get("bark", 1.0)
-            wood_ratio = simplification_ratios.get("wood", 1.0)
-            # Per-species leaf override falls back to global leaf ratio
-            global_leaf = simplification_ratios.get("leaf", 1.0)
-            leaf_ratio = (leaf_per_species or {}).get(species_dir, global_leaf)
-
-            trunk_verts, trunk_faces, _ = simplify_trunk_mesh(
-                trunk_verts, trunk_faces, None, bark_ratio
-            )
-            tw_v, tw_f, _ = simplify_trunk_mesh(tw_v, tw_f, None, wood_ratio)
-            tl_v, tl_f, _ = simplify_trunk_mesh(tl_v, tl_f, None, leaf_ratio)
-
         logger.info(
             "Extracted: %s (%d trunk + %d twig_wood + %d twig_leaf faces)",
             assembly_path.parent.name,
