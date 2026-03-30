@@ -138,6 +138,9 @@ class GrowPyConfig:
     helios_helios_scene: bool = False
     helios_individual_obj: bool = False
     helios_obj_up_axis: str = "y"
+    helios_simplification_enabled: bool = False
+    helios_simplification_ratios: dict = field(default_factory=dict)
+    helios_simplification_leaf_per_species: dict = field(default_factory=dict)
 
     # [calibration]
     calibration_enabled: bool = True
@@ -286,6 +289,16 @@ class GrowPyConfig:
             kwargs["helios_individual_obj"] = helios["individual_obj"]
         if "obj_up_axis" in helios:
             kwargs["helios_obj_up_axis"] = helios["obj_up_axis"]
+        simp = helios.get("simplification", {})
+        if simp:
+            kwargs["helios_simplification_enabled"] = simp.get("enabled", False)
+            kwargs["helios_simplification_ratios"] = {
+                "bark": simp.get("bark", 1.0),
+                "wood": simp.get("wood", 1.0),
+                "leaf": simp.get("leaf", 1.0),
+                "fruit": simp.get("fruit", 1.0),
+            }
+            kwargs["helios_simplification_leaf_per_species"] = simp.get("leaf_per_species", {})
 
         # [calibration]
         cal = data.get("calibration", {})

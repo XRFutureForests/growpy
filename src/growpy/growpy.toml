@@ -245,6 +245,30 @@ individual_obj = false
 # OBJ coordinate up axis: "y" (standard OBJ/Blender) or "z" (matches USD/Helios)
 obj_up_axis = "y"
 
+# Material-aware mesh simplification applied in-memory before OBJ write.
+# Reduces file size and Helios++ processing time without re-reading/re-writing files.
+# Material classification: "bark" = trunk/branch, "wood" = twig wood sub-materials,
+# "leaf" = leaf/foliage (preserve for LAI). Uses WOOD_KEYWORDS for detection.
+[helios.simplification]
+enabled = false
+# Bark/trunk simplification ratio (0.0-1.0, 0.2 = keep 20% of faces)
+bark = 0.2
+# Twig wood simplification ratio (0.0-1.0)
+wood = 0.2
+# Leaf simplification ratio - global default (1.0 = keep all, critical for LAI accuracy)
+# Override per species in [helios.simplification.leaf_per_species] below.
+leaf = 0.5
+# Fruit simplification ratio (0.0-1.0, e.g. EuropeanOakFruits)
+fruit = 0.2
+
+# Per-species leaf simplification overrides.
+# Keys are species_clean names (lowercase, underscores). Species not listed
+# here fall back to the global "leaf" value above.
+[helios.simplification.leaf_per_species]
+# selected_european_beech = 0.2
+# selected_european_oak = 0.4
+# selected_scots_pine = 0.3
+
 # --- Density Variant Definitions ---
 # Each variant can override build_cutoff and twig_density from the quality preset.
 # Only keys listed here override; others inherited from active [quality.*] preset.
