@@ -156,27 +156,27 @@ def _read_twig_mesh_classified(
     return vertices, np.empty((0, 3), dtype=np.int64), all_faces
 
 
-def _extract_tree_mesh(
+def _read_tree_components(
     assembly_usda_path: Path,
     simplification_ratios: Optional[Dict[str, float]] = None,
 ) -> Optional[tuple]:
-    """Extract tree mesh data from USDA assembly without writing files.
+    """Read trunk mesh and classified twig prototypes from USDA assembly.
 
-    Reads static USDA files (preferred over skeletal) for trunk geometry and
-    twig prototypes. Static files have material bindings from the original
-    .blend files, enabling material-based wood/leaf classification.
+    Unlike _extract_tree_mesh, does NOT bake twig instances into giant arrays.
+    Returns the raw components needed for either baking or streaming.
 
     When simplification_ratios is provided, decimation is applied to
-    prototypes BEFORE baking instances. This is far more memory-efficient
-    than simplifying after baking (1 prototype vs N thousand copies).
+    prototypes before they are returned — far more memory-efficient than
+    simplifying after baking (1 prototype vs N thousand copies).
 
     Args:
         assembly_usda_path: Path to the Nanite Assembly USDA file
         simplification_ratios: Optional dict with bark/wood/leaf/fruit ratios (0-1)
 
     Returns:
-        (trunk_verts, trunk_faces, twig_wood_verts, twig_wood_faces,
-         twig_leaf_verts, twig_leaf_faces) or None on failure
+        (trunk_verts, trunk_faces, classified_protos, instancer_data) or None.
+        classified_protos: {proto_idx: (verts, wood_faces, leaf_faces)}
+        instancer_data: (positions, orientations, scales, proto_indices, proto_files) or None
     """
     tree_dir = assembly_usda_path.parent
 
@@ -185,14 +185,12 @@ def _extract_tree_mesh(
     if not stem_files:
         stem_files = list(tree_dir.glob("*_static.usda"))
     if not stem_files:
-        # Fallback to skeletal if no static available
         stem_files = list(tree_dir.glob("*_stems_skeletal.usda"))
     if not stem_files:
         stem_files = list(tree_dir.glob("*_skeletal.usda"))
     if not stem_files:
         logger.warning("OBJ export: No stem USDA found in %s", tree_dir)
         return None
-    # Filter out twig/foliage files from matches
     stem_files = [
         f for f in stem_files if "foliage" not in f.stem and "twig" not in f.stem
     ]
@@ -201,13 +199,12 @@ def _extract_tree_mesh(
         return None
     stem_path = stem_files[0]
 
-    # Read trunk/branch mesh from USDA
     trunk_verts, trunk_faces, _trunk_uvs = _read_tree_mesh(stem_path)
     if trunk_verts is None:
         logger.warning("OBJ export: Failed to read tree mesh from %s", stem_path)
         return None
 
-    # Simplify trunk at prototype level (only 1 mesh to decimate)
+    # Simplify trunk
     if simplification_ratios:
         bark_ratio = simplification_ratios.get("bark", 1.0)
         if bark_ratio < 1.0 and len(trunk_faces) > 0:
@@ -217,32 +214,23 @@ def _extract_tree_mesh(
                 trunk_verts, trunk_faces, None, bark_ratio
             )
 
-    # Read twig instance data from assembly USDA
     instancer_data = _read_twig_instancer(assembly_usda_path)
 
-    _empty_v = np.empty((0, 3), dtype=np.float64)
-    _empty_f = np.empty((0, 3), dtype=np.int64)
-
-    twig_wood_verts, twig_wood_faces = _empty_v.copy(), _empty_f.copy()
-    twig_leaf_verts, twig_leaf_faces = _empty_v.copy(), _empty_f.copy()
+    classified_protos: Dict[int, Tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
 
     if instancer_data is not None:
-        positions, orientations, scales, proto_indices, proto_files = instancer_data
+        _, _, _, _, proto_files = instancer_data
 
-        # Build cache key suffix from ratios so different ratios don't collide
         ratio_key = ""
         if simplification_ratios:
             ratio_key = "|" + "|".join(
                 f"{k}={v}" for k, v in sorted(simplification_ratios.items())
             )
 
-        classified_protos: Dict[int, Tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
         for idx, twig_file in proto_files.items():
-            # Resolve to static variant for material bindings
             static_file = _resolve_to_static(twig_file)
             twig_path = tree_dir / static_file
             if not twig_path.exists():
-                # Fallback to original file
                 twig_path = tree_dir / twig_file
             if not twig_path.exists():
                 continue
@@ -252,7 +240,6 @@ def _extract_tree_mesh(
                 classified_protos[idx] = _classified_twig_cache[cache_key]
                 continue
 
-            # Read with material classification from static USDA
             raw_verts, raw_wood_faces, raw_leaf_faces = _read_twig_mesh_classified(
                 twig_path
             )
@@ -260,17 +247,12 @@ def _extract_tree_mesh(
                 continue
 
             # Simplify prototypes BEFORE baking — key optimization.
-            # For 3000 instances, simplifying 1 prototype is ~3000x cheaper.
             if simplification_ratios:
                 from growpy.io.mesh_simplify import _extract_and_simplify
 
                 wood_ratio = simplification_ratios.get("wood", 1.0)
                 leaf_ratio = simplification_ratios.get("leaf", 1.0)
 
-                # _extract_and_simplify returns standalone (verts, faces)
-                # where faces are 0-indexed into the returned verts.
-                # Simplify each material group independently, then
-                # concatenate into a combined vertex array.
                 if wood_ratio < 1.0 and len(raw_wood_faces) > 0:
                     wood_v, raw_wood_faces = _extract_and_simplify(
                         raw_verts, raw_wood_faces, wood_ratio
@@ -289,7 +271,7 @@ def _extract_tree_mesh(
                         raw_verts, raw_leaf_faces, 1.0
                     )
 
-                # Merge back: wood verts first, then leaf verts
+                # Merge back: wood verts first, then leaf verts offset
                 raw_leaf_faces = raw_leaf_faces + len(wood_v)
                 raw_verts = np.vstack([wood_v, leaf_v]) if (
                     len(wood_v) > 0 and len(leaf_v) > 0
@@ -298,24 +280,48 @@ def _extract_tree_mesh(
             classified_protos[idx] = (raw_verts, raw_wood_faces, raw_leaf_faces)
             _classified_twig_cache[cache_key] = classified_protos[idx]
 
-        if classified_protos:
-            twig_wood_verts, twig_wood_faces, twig_leaf_verts, twig_leaf_faces = (
-                _bake_classified_twig_instances(
-                    classified_protos,
-                    positions,
-                    orientations,
-                    scales,
-                    proto_indices,
-                )
+    return trunk_verts, trunk_faces, classified_protos, instancer_data
+
+
+def _extract_tree_mesh(
+    assembly_usda_path: Path,
+    simplification_ratios: Optional[Dict[str, float]] = None,
+) -> Optional[tuple]:
+    """Extract tree mesh data from USDA assembly, baking twig instances.
+
+    Convenience wrapper around _read_tree_components that bakes twig instances
+    into combined arrays. Used by convert_tree_to_obj.
+
+    For large forests, prefer _read_tree_components + streaming to avoid
+    holding all baked instances in RAM.
+
+    Returns:
+        (trunk_verts, trunk_faces, twig_wood_verts, twig_wood_faces,
+         twig_leaf_verts, twig_leaf_faces) or None on failure
+    """
+    result = _read_tree_components(assembly_usda_path, simplification_ratios)
+    if result is None:
+        return None
+
+    trunk_verts, trunk_faces, classified_protos, instancer_data = result
+
+    _empty_v = np.empty((0, 3), dtype=np.float64)
+    _empty_f = np.empty((0, 3), dtype=np.int64)
+    twig_wood_verts, twig_wood_faces = _empty_v.copy(), _empty_f.copy()
+    twig_leaf_verts, twig_leaf_faces = _empty_v.copy(), _empty_f.copy()
+
+    if instancer_data is not None and classified_protos:
+        positions, orientations, scales, proto_indices, _ = instancer_data
+        twig_wood_verts, twig_wood_faces, twig_leaf_verts, twig_leaf_faces = (
+            _bake_classified_twig_instances(
+                classified_protos, positions, orientations, scales, proto_indices,
             )
+        )
 
     return (
-        trunk_verts,
-        trunk_faces,
-        twig_wood_verts,
-        twig_wood_faces,
-        twig_leaf_verts,
-        twig_leaf_faces,
+        trunk_verts, trunk_faces,
+        twig_wood_verts, twig_wood_faces,
+        twig_leaf_verts, twig_leaf_faces,
     )
 
 
@@ -701,6 +707,250 @@ def _bake_classified_twig_instances(
     return wood_verts, wood_faces, leaf_verts, leaf_faces
 
 
+def _stream_classified_twig_vertices(
+    f,
+    initial_vert_offset: int,
+    classified_protos: Dict[int, Tuple[np.ndarray, np.ndarray, np.ndarray]],
+    positions: np.ndarray,
+    orientations: np.ndarray,
+    scales: np.ndarray,
+    proto_indices: np.ndarray,
+    up_axis: str = "y",
+) -> Tuple[Dict[int, List[int]], int]:
+    """Stream transformed twig instance vertices to an open OBJ file handle.
+
+    Writes one instance at a time, avoiding the multi-GB baked arrays.
+    Only one prototype's worth of transformed vertices lives in RAM at a time.
+
+    Returns:
+        (proto_instance_offsets, final_vert_offset).
+        proto_instance_offsets: {proto_idx: [base_offset_0, base_offset_1, ...]}
+    """
+    from collections import defaultdict
+
+    proto_instance_offsets: Dict[int, List[int]] = defaultdict(list)
+    vert_offset = initial_vert_offset
+
+    for i in range(len(positions)):
+        proto_idx = proto_indices[i]
+        if proto_idx not in classified_protos:
+            continue
+        proto_verts, _, _ = classified_protos[proto_idx]
+        if len(proto_verts) == 0:
+            continue
+
+        w, x, y, z = orientations[i]
+        rot = _quat_to_rotation_matrix(w, x, y, z)
+        transformed = (rot @ (proto_verts * scales[i]).T).T + positions[i]
+
+        for v in transformed:
+            f.write(_fmt_vert(v, up_axis))
+
+        proto_instance_offsets[proto_idx].append(vert_offset)
+        vert_offset += len(proto_verts)
+
+    return dict(proto_instance_offsets), vert_offset
+
+
+def _write_classified_twig_faces(
+    f,
+    classified_protos: Dict[int, Tuple[np.ndarray, np.ndarray, np.ndarray]],
+    proto_instance_offsets: Dict[int, List[int]],
+) -> Tuple[int, int]:
+    """Write twig faces grouped by wood/leaf material using streamed offsets.
+
+    Returns:
+        (wood_face_count, leaf_face_count)
+    """
+    wood_count = 0
+    leaf_count = 0
+
+    # Wood faces
+    has_wood = any(
+        len(classified_protos[idx][1]) > 0
+        for idx in proto_instance_offsets
+        if idx in classified_protos
+    )
+    if has_wood:
+        f.write("\nusemtl twig_wood\n")
+        for proto_idx in sorted(proto_instance_offsets.keys()):
+            if proto_idx not in classified_protos:
+                continue
+            _, wood_faces, _ = classified_protos[proto_idx]
+            if len(wood_faces) == 0:
+                continue
+            for base_offset in proto_instance_offsets[proto_idx]:
+                for face in wood_faces:
+                    idx = face + base_offset + 1
+                    f.write(f"f {idx[0]} {idx[1]} {idx[2]}\n")
+                    wood_count += 1
+
+    # Leaf faces
+    has_leaf = any(
+        len(classified_protos[idx][2]) > 0
+        for idx in proto_instance_offsets
+        if idx in classified_protos
+    )
+    if has_leaf:
+        f.write("\nusemtl twig_leaf\n")
+        for proto_idx in sorted(proto_instance_offsets.keys()):
+            if proto_idx not in classified_protos:
+                continue
+            _, _, leaf_faces = classified_protos[proto_idx]
+            if len(leaf_faces) == 0:
+                continue
+            for base_offset in proto_instance_offsets[proto_idx]:
+                for face in leaf_faces:
+                    idx = face + base_offset + 1
+                    f.write(f"f {idx[0]} {idx[1]} {idx[2]}\n")
+                    leaf_count += 1
+
+    return wood_count, leaf_count
+
+
+def _write_obj_streaming(
+    obj_path: Path,
+    trunk_verts: np.ndarray,
+    trunk_faces: np.ndarray,
+    classified_protos: Dict[int, Tuple[np.ndarray, np.ndarray, np.ndarray]],
+    positions: np.ndarray,
+    orientations: np.ndarray,
+    scales: np.ndarray,
+    proto_indices: np.ndarray,
+    mtl_name: str,
+    up_axis: str = "y",
+) -> Tuple[int, int, int]:
+    """Write a single tree OBJ by streaming twig instances to disk.
+
+    Peak RAM = trunk arrays + 1 twig prototype. No baked twig arrays.
+
+    Returns:
+        (trunk_face_count, wood_face_count, leaf_face_count)
+    """
+    with open(obj_path, "w") as f:
+        f.write("# Helios++ tree mesh (streaming)\n")
+        f.write(f"mtllib {mtl_name}\n\n")
+
+        # Trunk vertices
+        for v in trunk_verts:
+            f.write(_fmt_vert(v, up_axis))
+
+        # Stream twig instance vertices
+        proto_offsets, _ = _stream_classified_twig_vertices(
+            f, len(trunk_verts), classified_protos,
+            positions, orientations, scales, proto_indices, up_axis,
+        )
+
+        f.write("\n")
+
+        # Trunk faces
+        f.write("usemtl bark\n")
+        for face in trunk_faces:
+            f.write(f"f {face[0]+1} {face[1]+1} {face[2]+1}\n")
+
+        # Twig faces by material
+        wood_count, leaf_count = _write_classified_twig_faces(
+            f, classified_protos, proto_offsets,
+        )
+
+    return len(trunk_faces), wood_count, leaf_count
+
+
+def write_combined_obj_streaming(
+    tree_obj_paths: List[Tuple[Path, float, float, float]],
+    output_path: Path,
+    helios_spectra_leaves: str = "deciduous",
+) -> Path:
+    """Merge per-tree OBJs into a single combined OBJ via two-pass file streaming.
+
+    Never holds more than one tree's geometry in RAM:
+    - Pass 1: Stream vertices to temp file, recording offsets per tree
+    - Pass 2: Stream faces from each source OBJ, applying vertex offsets
+
+    Args:
+        tree_obj_paths: List of (obj_path, x, y, z) per tree
+        output_path: Path to write the combined OBJ file
+        helios_spectra_leaves: Helios spectra type for leaves material
+
+    Returns:
+        Path to generated combined OBJ file
+    """
+    import tempfile
+
+    mtl_name = output_path.stem + ".mtl"
+    mtl_path = output_path.with_suffix(".mtl")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    tree_offsets: List[Tuple[Path, int]] = []
+    total_verts = 0
+    total_faces = 0
+
+    # Pass 1: stream vertices to temp file, collect per-tree offsets
+    temp_geom = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".obj", dir=output_path.parent, delete=False
+    )
+    temp_geom_path = Path(temp_geom.name)
+
+    try:
+        for obj_path, x, y, z in tree_obj_paths:
+            if not obj_path.exists():
+                continue
+            vert_offset = total_verts
+            local_verts = 0
+            with open(obj_path) as src:
+                for line in src:
+                    if line.startswith("v "):
+                        parts = line.split()
+                        vx = float(parts[1]) + x
+                        vy = float(parts[2]) + y
+                        vz = float(parts[3]) + z
+                        temp_geom.write(f"v {vx:.6f} {vy:.6f} {vz:.6f}\n")
+                        local_verts += 1
+            tree_offsets.append((obj_path, vert_offset))
+            total_verts += local_verts
+
+        temp_geom.close()
+
+        # Pass 2: write final OBJ = header + geometry + faces with offsets
+        with open(output_path, "w") as out:
+            out.write("# Helios++ combined forest mesh\n")
+            out.write(f"mtllib {mtl_name}\n\n")
+
+            # Copy vertices from temp file
+            with open(temp_geom_path) as geom:
+                for line in geom:
+                    out.write(line)
+            out.write("\n")
+
+            # Stream faces from each source OBJ, applying offsets
+            current_mtl = None
+            for obj_path, v_off in tree_offsets:
+                with open(obj_path) as src:
+                    for line in src:
+                        if line.startswith("usemtl "):
+                            mat = line.strip().split(maxsplit=1)[1]
+                            if mat != current_mtl:
+                                out.write(f"usemtl {mat}\n")
+                                current_mtl = mat
+                        elif line.startswith("f "):
+                            parts = line.strip().split()
+                            shifted = ["f"] + [
+                                str(int(p) + v_off) for p in parts[1:]
+                            ]
+                            out.write(" ".join(shifted) + "\n")
+                            total_faces += 1
+    finally:
+        temp_geom_path.unlink(missing_ok=True)
+
+    _write_helios_mtl(mtl_path, bark_texture=None, helios_spectra_leaves=helios_spectra_leaves)
+
+    logger.info(
+        "Combined OBJ: %s (%d verts, %d faces, %d trees)",
+        output_path.name, total_verts, total_faces, len(tree_obj_paths),
+    )
+    return output_path
+
+
 def _find_bark_texture(tree_dir: Path) -> Optional[Path]:
     """Find bark texture in tree output directory."""
     textures_dir = tree_dir / "textures"
@@ -1051,7 +1301,7 @@ def export_forest_obj(
         logger.warning("OBJ export: No assembly USDA files found")
         return []
 
-    logger.info("HELIOS OBJ EXPORT (%d trees)", len(assembly_files))
+    logger.info("HELIOS OBJ EXPORT (%d trees, streaming)", len(assembly_files))
 
     forest_data = pd.read_csv(csv_path)
     if "fid" not in forest_data.columns:
@@ -1059,8 +1309,10 @@ def export_forest_obj(
     if "z" not in forest_data.columns:
         forest_data["z"] = 0.0
 
-    tree_meshes: List[tuple] = []
     obj_files: List[Tuple[Path, float, float, float, str]] = []
+    # Per-tree OBJ paths + positions for two-pass combined OBJ
+    tree_obj_entries: List[Tuple[Path, float, float, float]] = []
+    tree_count = 0
 
     for assembly_path in sorted(assembly_files):
         tree_dir_name = assembly_path.parent.name
@@ -1080,13 +1332,16 @@ def export_forest_obj(
             species_leaf = (leaf_per_species or {}).get(species_dir, global_leaf)
             tree_ratios["leaf"] = species_leaf
 
-        with _track("extract_tree_mesh"):
-            mesh_data = _extract_tree_mesh(
+        # Read components without baking (low RAM)
+        with _track("read_tree_components"):
+            components = _read_tree_components(
                 assembly_usda_path=assembly_path,
                 simplification_ratios=tree_ratios,
             )
-        if mesh_data is None:
+        if components is None:
             continue
+
+        trunk_verts, trunk_faces, classified_protos, instancer_data = components
 
         # Look up CSV position
         try:
@@ -1096,72 +1351,71 @@ def export_forest_obj(
         except (ValueError, IndexError):
             x, y, z = 0.0, 0.0, 0.0
 
-        trunk_verts, trunk_faces, tw_v, tw_f, tl_v, tl_f = mesh_data
-        logger.info(
-            "Extracted: %s (%d trunk + %d twig_wood + %d twig_leaf faces)",
-            assembly_path.parent.name,
-            len(trunk_faces),
-            len(tw_f),
-            len(tl_f),
-        )
-        tree_meshes.append((trunk_verts, trunk_faces, tw_v, tw_f, tl_v, tl_f, x, y, z))
+        # Write per-tree OBJ via streaming (always, needed for combined OBJ too)
+        tree_dir = assembly_path.parent
+        helios_name = assembly_path.stem.replace("_assembly", "_helios")
+        obj_path = tree_dir / f"{helios_name}.obj"
+        mtl_name = f"{helios_name}.mtl"
+        mtl_path = tree_dir / mtl_name
 
-        if individual_obj:
-            tree_dir = assembly_path.parent
-            helios_name = assembly_path.stem.replace("_assembly", "_helios")
-            obj_path = tree_dir / f"{helios_name}.obj"
-            mtl_name = f"{helios_name}.mtl"
-            mtl_path = tree_dir / mtl_name
-
-            _write_obj(
-                obj_path,
-                trunk_verts,
-                trunk_faces,
-                None,
-                mtl_name,
-                up_axis=up_axis,
-                twig_wood_verts=tw_v,
-                twig_wood_faces=tw_f,
-                twig_leaf_verts=tl_v,
-                twig_leaf_faces=tl_f,
-            )
-            bark_texture = _find_bark_texture(tree_dir)
-            _write_helios_mtl(mtl_path, bark_texture, spectra)
-            logger.info("OBJ export: %s", obj_path.name)
-            obj_files.append((obj_path, x, y, z, species_name))
-        else:
-            obj_files.append((Path(""), x, y, z, species_name))
-
-    if generate_scene_xml and tree_meshes:
-        # Scene XML references individual OBJs positioned via translate filters
-        if not individual_obj:
-            logger.warning(
-                "helios_scene requires individual_obj=true; skipping scene XML"
-            )
-        else:
-            with _track("generate_helios_scene"):
-                from growpy.io.helios_scene import generate_helios_scene
-
-                scene_path = output_dir / "helios_scene.xml"
-                generate_helios_scene(
-                    tree_entries=obj_files,
-                    output_path=scene_path,
+        if instancer_data is not None and classified_protos:
+            positions, orientations, scales, proto_indices, _ = instancer_data
+            with _track("write_obj_streaming"):
+                bark_n, wood_n, leaf_n = _write_obj_streaming(
+                    obj_path, trunk_verts, trunk_faces,
+                    classified_protos, positions, orientations,
+                    scales, proto_indices, mtl_name, up_axis,
                 )
-    elif tree_meshes:
-        # Combined OBJ as standalone alternative (positions baked into vertices)
+        else:
+            # No twigs — write trunk-only OBJ
+            with _track("write_obj_streaming"):
+                _write_obj(
+                    obj_path, trunk_verts, trunk_faces, None,
+                    mtl_name, up_axis=up_axis,
+                )
+                bark_n, wood_n, leaf_n = len(trunk_faces), 0, 0
+
+        bark_texture = _find_bark_texture(tree_dir)
+        _write_helios_mtl(mtl_path, bark_texture, spectra)
+
+        logger.info(
+            "OBJ export: %s (%d trunk + %d twig_wood + %d twig_leaf faces)",
+            obj_path.name, bark_n, wood_n, leaf_n,
+        )
+        obj_files.append((obj_path, x, y, z, species_name))
+        tree_obj_entries.append((obj_path, x, y, z))
+        tree_count += 1
+
+        # Free per-tree data before next iteration
+        del trunk_verts, trunk_faces, classified_protos, instancer_data
+
+    if generate_scene_xml and tree_count > 0:
+        with _track("generate_helios_scene"):
+            from growpy.io.helios_scene import generate_helios_scene
+
+            scene_path = output_dir / "helios_scene.xml"
+            generate_helios_scene(tree_entries=obj_files, output_path=scene_path)
+
+    if tree_count > 0:
+        # Combined OBJ via two-pass file streaming (no geometry in RAM)
         is_conifer_forest = any(
             any(kw in sp.lower() for kw in CONIFER_KEYWORDS)
             for _, _, _, _, sp in obj_files
         )
-        spectra = "conifer" if is_conifer_forest else "deciduous"
+        forest_spectra = "conifer" if is_conifer_forest else "deciduous"
         combined_path = output_dir / "forest_combined.obj"
         with _track("write_combined_obj"):
-            write_combined_obj(
-                tree_meshes=tree_meshes,
+            write_combined_obj_streaming(
+                tree_obj_paths=tree_obj_entries,
                 output_path=combined_path,
-                helios_spectra_leaves=spectra,
-                up_axis=up_axis,
+                helios_spectra_leaves=forest_spectra,
             )
 
-    logger.info("OBJ export complete: %d trees", len(tree_meshes))
+        # Clean up per-tree OBJs unless user explicitly requested them
+        if not individual_obj:
+            for obj_path, _, _, _ in tree_obj_entries:
+                obj_path.unlink(missing_ok=True)
+                obj_path.with_suffix(".mtl").unlink(missing_ok=True)
+
+    logger.info("OBJ export complete: %d trees", tree_count)
     return obj_files
