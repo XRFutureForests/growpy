@@ -87,6 +87,7 @@ class GrowPyConfig:
 
     # [twigs]
     twigs_path: Path = field(default_factory=lambda: Path("data/assets/twigs"))
+    custom_twigs_dir: Path = field(default_factory=lambda: Path("data/input/custom_twigs"))
     twigs_densify: bool = True
     twigs_alpha_trim: float = 0.75
     twigs_smooth_boundary: bool = True
@@ -138,6 +139,9 @@ class GrowPyConfig:
     helios_helios_scene: bool = False
     helios_individual_obj: bool = False
     helios_obj_up_axis: str = "y"
+    helios_simplification_enabled: bool = False
+    helios_simplification_ratios: dict = field(default_factory=dict)
+    helios_simplification_leaf_per_species: dict = field(default_factory=dict)
 
     # [calibration]
     calibration_enabled: bool = True
@@ -191,6 +195,8 @@ class GrowPyConfig:
         twigs = data.get("twigs", {})
         if "path" in twigs:
             kwargs["twigs_path"] = Path(twigs["path"])
+        if "custom_twigs_dir" in twigs:
+            kwargs["custom_twigs_dir"] = Path(twigs["custom_twigs_dir"])
         if "densify" in twigs:
             kwargs["twigs_densify"] = twigs["densify"]
         if "alpha_trim" in twigs:
@@ -286,6 +292,16 @@ class GrowPyConfig:
             kwargs["helios_individual_obj"] = helios["individual_obj"]
         if "obj_up_axis" in helios:
             kwargs["helios_obj_up_axis"] = helios["obj_up_axis"]
+        simp = helios.get("simplification", {})
+        if simp:
+            kwargs["helios_simplification_enabled"] = simp.get("enabled", False)
+            kwargs["helios_simplification_ratios"] = {
+                "bark": simp.get("bark", 1.0),
+                "wood": simp.get("wood", 1.0),
+                "leaf": simp.get("leaf", 1.0),
+                "fruit": simp.get("fruit", 1.0),
+            }
+            kwargs["helios_simplification_leaf_per_species"] = simp.get("leaf_per_species", {})
 
         # [calibration]
         cal = data.get("calibration", {})

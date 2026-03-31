@@ -1,10 +1,10 @@
 """Tree model functions for forest generation."""
 
+import json
 import logging
 import math
 from typing import Any, Dict, List, Optional, Tuple
 
-import joblib
 import numpy as np
 import pandas as pd
 import the_grove_23_core as gc
@@ -150,6 +150,32 @@ def extract_grove_attributes(grove: gc.Grove) -> Dict[str, Any]:
     }
 
 
+def _load_growth_model(model_dir):
+    """Load growth model from JSON (preferred) or pickle fallback.
+
+    JSON avoids joblib/sklearn ABI issues across environments.
+    """
+    from ..utils.analysis import ChapmanRichardsModel, PiecewiseLinearModel
+
+    json_path = model_dir / "growth_model_params.json"
+    if json_path.exists():
+        with open(json_path) as f:
+            d = json.load(f)
+        model_type = d.get("model_type", "")
+        if model_type == "chapman_richards":
+            return ChapmanRichardsModel.from_dict(d)
+        if model_type == "piecewise_linear":
+            return PiecewiseLinearModel.from_dict(d)
+        logger.warning("Unknown model_type '%s' in %s, falling back to pkl", model_type, json_path)
+
+    pkl_path = model_dir / "growth_model.pkl"
+    if pkl_path.exists():
+        import joblib
+        return joblib.load(pkl_path)
+
+    raise FileNotFoundError(f"No growth model found in {model_dir}")
+
+
 def calculate_growth_cycles_from_height(forest_data: pd.DataFrame) -> None:
     """Calculate growth cycles and delays from tree heights using pre-computed growth models.
 
@@ -171,13 +197,12 @@ def calculate_growth_cycles_from_height(forest_data: pd.DataFrame) -> None:
         species = tree["species"]
         if species not in model_cache:
             growth_model_path = config.get_growth_model_path(species)
-            model_path = growth_model_path / "growth_model.pkl"
-            model_cache[species] = joblib.load(model_path)
+            model_cache[species] = _load_growth_model(growth_model_path)
 
         model = model_cache[species]
         target_height = tree["height"]
         predicted = float(model.predict([[target_height]])[0])
-        forest_data.at[i, "growth_cycles"] = math.ceil(predicted)
+        forest_data.at[i, "growth_cycles"] = max(1, math.ceil(predicted))
 
     max_cycles = forest_data["growth_cycles"].max()
     forest_data["delay"] = max_cycles - forest_data["growth_cycles"]

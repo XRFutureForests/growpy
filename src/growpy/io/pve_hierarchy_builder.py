@@ -6,7 +6,10 @@ NOTE: We use skeleton (not model) because model.face_attribute_branch_id only
 contains faces for branches that pass cutoff filters. Skeleton has ALL branches.
 """
 
+import logging
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 def _derive_parents_from_skeleton(skeleton: Any) -> List[int]:
@@ -88,7 +91,7 @@ def build_hierarchy_arrays(
     """
     if skeleton is None:
         # Fallback: return empty/self-referencing hierarchy
-        print("  [HIERARCHY] WARNING: No skeleton provided, using default hierarchy")
+        logger.warning("No skeleton provided, using default hierarchy")
         parents_values = [[i] for i in range(num_branches)]
         return {
             "parents": {
@@ -182,7 +185,7 @@ def get_branch_generation(
     """
     if skeleton is None:
         # Fallback: all branches at generation 0
-        print("  [HIERARCHY] WARNING: No skeleton provided, using generation 0 for all")
+        logger.warning("No skeleton provided, using generation 0 for all")
         return [0] * num_branches
 
     # Derive parents from skeleton

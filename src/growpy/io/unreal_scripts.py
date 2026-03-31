@@ -88,6 +88,12 @@ try:
 
     del import_task
 
+    # Flush pending async loads so GC can actually free everything
+    try:
+        unreal.SystemLibrary.flush_async_loading()
+    except Exception:
+        pass
+
     gc.collect()
     try:
         unreal.SystemLibrary.collect_garbage(full_purge=True)
@@ -152,10 +158,10 @@ else:
 
     print(f"Found {{len(duplicates)}} duplicate foliage assets in tree folders")
 
-    # Step 3: Consolidate duplicates to canonical versions
+    # Step 3: Consolidate duplicates to canonical versions (one pair at a time)
     consolidated = 0
     failed = 0
-    for dup_path, canon_path in duplicates:
+    for _ci, (dup_path, canon_path) in enumerate(duplicates):
         try:
             dup_obj = unreal.EditorAssetLibrary.load_asset(dup_path)
             canon_obj = unreal.EditorAssetLibrary.load_asset(canon_path)
@@ -184,10 +190,28 @@ else:
             except Exception:
                 failed += 1
 
+        # Unload both assets after each pair to prevent memory accumulation
+        for _unload in (dup_path, canon_path):
+            try:
+                unreal.EditorAssetLibrary.unload_asset(_unload)
+            except Exception:
+                pass
+
+        # Periodic full GC every 5 pairs
+        if (_ci + 1) % 5 == 0:
+            gc.collect()
+            try:
+                unreal.SystemLibrary.collect_garbage(full_purge=True)
+            except Exception:
+                unreal.SystemLibrary.collect_garbage()
+
     print(f"Consolidated {{consolidated}} assets, {{failed}} failures")
 
     gc.collect()
-    unreal.SystemLibrary.collect_garbage()
+    try:
+        unreal.SystemLibrary.collect_garbage(full_purge=True)
+    except Exception:
+        unreal.SystemLibrary.collect_garbage()
 
 print("")
 print("=" * 60)
@@ -560,25 +584,54 @@ print(f"Destination: {{IMPORT_PATH}}")
 print(f"Found {num_species} species with {total_trees} trees, {num_instances} shared instances")
 print(f"Split into {{len(BATCH_SCRIPTS)}} batches\\n")
 
+# Resume support: skip already-completed batches after a crash
+PROGRESS_FILE = os.path.join(SCRIPTS_DIR, "_import_progress.txt")
+_resume_from = 0
+if os.path.isfile(PROGRESS_FILE):
+    try:
+        _resume_from = int(open(PROGRESS_FILE).read().strip()) + 1
+        print(f"Resuming from batch {{_resume_from + 1}} ({{_resume_from}} already completed)")
+        print("Delete _import_progress.txt to restart from scratch\\n")
+    except Exception:
+        _resume_from = 0
+
 total_imported = 0
 total_failed = 0
-batches_completed = 0
+batches_completed = _resume_from
 
-for batch_file, batch_label in BATCH_SCRIPTS:
+for _batch_idx, (batch_file, batch_label) in enumerate(BATCH_SCRIPTS):
+    if _batch_idx < _resume_from:
+        continue
+
     batch_path = os.path.join(SCRIPTS_DIR, batch_file).replace("\\\\", "/")
-    print(f"\\n>>> Running batch {{batches_completed + 1}}/{{len(BATCH_SCRIPTS)}}: {{batch_label}}")
+    print(f"\\n>>> Running batch {{_batch_idx + 1}}/{{len(BATCH_SCRIPTS)}}: {{batch_label}}")
 
     try:
         exec(open(batch_path).read())
         batches_completed += 1
+
+        # Record progress so we can resume after a crash
+        with open(PROGRESS_FILE, "w") as _pf:
+            _pf.write(str(_batch_idx))
     except Exception as e:
         unreal.log_error(f"Batch '{{batch_label}}' failed: {{e}}")
         total_failed += 1
 
     # Aggressive cleanup between batches
+    try:
+        unreal.SystemLibrary.flush_async_loading()
+    except Exception:
+        pass
     gc.collect()
-    unreal.SystemLibrary.collect_garbage()
+    try:
+        unreal.SystemLibrary.collect_garbage(full_purge=True)
+    except Exception:
+        unreal.SystemLibrary.collect_garbage()
     time.sleep(BATCH_DELAY)
+
+# Clean up progress file on successful completion
+if total_failed == 0 and os.path.isfile(PROGRESS_FILE):
+    os.remove(PROGRESS_FILE)
 
 print("")
 print("=" * 60)

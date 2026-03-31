@@ -200,12 +200,25 @@ CSV Format Support:
         default=None,
         help="Resize textures to power-of-2 for Unreal (slow, skip by default)",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output (INFO-level logging)",
+    )
+    parser.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Suppress INFO-level logging (only show warnings and errors)",
+    )
 
     args = parser.parse_args()
 
     # Resolve config: TOML defaults + CLI overrides
     config = get_config()
     config.resolve(args)
+    if args.quiet:
+        config.verbose = False
     setup_logging(verbose=config.verbose)
 
     # Resolve grove_dir
@@ -293,6 +306,11 @@ CSV Format Support:
     src_twigs = grove_dir / "twigs"
     dst_twigs = assets_dir / "twigs"
 
+    # Build list of twig source directories: Grove first, then custom overrides
+    custom_twigs_dir = config.custom_twigs_dir
+    if not custom_twigs_dir.is_absolute():
+        custom_twigs_dir = script_dir / custom_twigs_dir
+
     for _, row in df.iterrows():
         twig_name = row["Twig"]
         if pd.isna(twig_name) or twig_name in ["—", ""]:
@@ -303,33 +321,39 @@ CSV Format Support:
         # Check if this is CamelCase (from Grove) or snake_case (already standardized)
         # If it contains uppercase letters, it's likely CamelCase from Grove
         if any(c.isupper() for c in twig_name_original):
-            # CamelCase - look for direct match in Grove source
-            src_twig_dir = src_twigs / twig_name_original
             twig_name_snake = camel_to_snake(twig_name_original)
         else:
-            # Already snake_case - try to find matching CamelCase directory
             twig_name_snake = twig_name_original
-            found_dirs = []
-            for src_dir in src_twigs.iterdir():
-                if src_dir.is_dir():
-                    converted = camel_to_snake(src_dir.name)
-                    if converted == twig_name_snake:
-                        found_dirs.append(src_dir)
-            src_twig_dir = (
-                found_dirs[0] if found_dirs else src_twigs / twig_name_original
-            )
 
-        if src_twig_dir.exists():
-            original_name = src_twig_dir.name
+        # Search order: custom twigs dir (CamelCase), Grove source, Grove reverse lookup
+        src_twig_dir = None
+
+        # 1. Custom twigs directory (CamelCase match)
+        if custom_twigs_dir.exists():
+            candidate = custom_twigs_dir / twig_name_original
+            if candidate.exists():
+                src_twig_dir = candidate
+
+        # 2. Grove source (CamelCase match)
+        if src_twig_dir is None and any(c.isupper() for c in twig_name_original):
+            candidate = src_twigs / twig_name_original
+            if candidate.exists():
+                src_twig_dir = candidate
+
+        # 3. Grove reverse lookup (snake_case -> CamelCase)
+        if src_twig_dir is None:
+            for src_dir in src_twigs.iterdir():
+                if src_dir.is_dir() and camel_to_snake(src_dir.name) == twig_name_snake:
+                    src_twig_dir = src_dir
+                    break
+
+        if src_twig_dir is not None:
             dst_twig_dir = dst_twigs / twig_name_snake
 
-            # Copy with new name
             if dst_twig_dir.exists():
                 shutil.rmtree(dst_twig_dir)
             shutil.copytree(src_twig_dir, dst_twig_dir)
 
-            # Optional: Resize twig textures to power-of-2 for Unreal virtual texture support
-            # This is slow for large textures, so skip by default
             if resize_textures:
                 twig_textures_dir = dst_twig_dir / "textures"
                 if twig_textures_dir.exists():
@@ -346,7 +370,6 @@ CSV Format Support:
             if tex_results.get("alpha_path"):
                 stats["alpha_extracted"] += 1
 
-            # Log texture validation result
             if tex_results.get("copied_count", 0) > 0:
                 logger.info(
                     "Standardized %d texture files", tex_results["copied_count"]
@@ -362,7 +385,7 @@ CSV Format Support:
 
             stats["twigs_copied"] += 1
         else:
-            logger.warning("Twig directory not found: %s", src_twig_dir)
+            logger.warning("Twig directory not found: %s (checked Grove and custom)", twig_name_original)
             stats["twigs_missing"] += 1
 
     # Copy bark textures with CamelCase -> snake_case conversion (preserves age numbers)

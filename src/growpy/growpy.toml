@@ -34,6 +34,10 @@ resize_textures = true
 # Path to twig directory containing .blend files
 # Used as default when convert_twigs.py is run without a positional argument
 path = "data/assets/twigs"
+# Directory for custom (non-Grove) twig .blend files with textures
+# Copied to data/assets/twigs/ by prepare_assets.py alongside Grove twigs
+# Use for hand-curated twigs (e.g., Helios-classified variants with fruit materials)
+custom_twigs_dir = "data/input/custom_twigs"
 # Master switch for all mesh geometry processing (alpha trim, smoothing, decimation)
 # When false, .blend twig meshes are exported to USD as-is without any modification
 # When true, enables the sub-options below for Nanite-friendly high-poly silhouettes
@@ -119,7 +123,7 @@ preferred_region = ""
 quality = "high"
 # Maximum growth cycles per tree (1-250)
 # Trees exceeding this limit are capped (not scaled)
-growth_cycle_limit = 125
+growth_cycle_limit = 55
 # Branch smoothing iterations (0-20, 0 = disabled)
 # Higher values = smoother, more organic branches
 smooth_iterations = 10
@@ -136,7 +140,7 @@ height_interval = 5
 # Trees taller than this in the input CSV are clamped to this height
 # Reduces growth cycles and number of height stages for faster runs
 # 0 = no limit (use full CSV heights)
-max_height = 26
+max_height = 10
 
 # Quality Presets (single source of truth)
 # Define any number of named presets below as [quality.<name>] sections.
@@ -245,13 +249,37 @@ individual_obj = false
 # OBJ coordinate up axis: "y" (standard OBJ/Blender) or "z" (matches USD/Helios)
 obj_up_axis = "y"
 
+# Material-aware mesh simplification applied in-memory before OBJ write.
+# Reduces file size and Helios++ processing time without re-reading/re-writing files.
+# Material classification: "bark" = trunk/branch, "wood" = twig wood sub-materials,
+# "leaf" = leaf/foliage (preserve for LAI). Uses WOOD_KEYWORDS for detection.
+[helios.simplification]
+enabled = false
+# Bark/trunk simplification ratio (0.0-1.0, 0.2 = keep 20% of faces)
+bark = 0.2
+# Twig wood simplification ratio (0.0-1.0)
+wood = 0.2
+# Leaf simplification ratio - global default (1.0 = keep all, critical for LAI accuracy)
+# Override per species in [helios.simplification.leaf_per_species] below.
+leaf = 0.5
+# Fruit simplification ratio (0.0-1.0, e.g. EuropeanOakFruits)
+fruit = 0.2
+
+# Per-species leaf simplification overrides.
+# Keys are species_clean names (lowercase, underscores). Species not listed
+# here fall back to the global "leaf" value above.
+[helios.simplification.leaf_per_species]
+# selected_european_beech = 0.2
+# selected_european_oak = 0.4
+# selected_scots_pine = 0.3
+
 # --- Density Variant Definitions ---
 # Each variant can override build_cutoff and twig_density from the quality preset.
 # Only keys listed here override; others inherited from active [quality.*] preset.
 # Referenced by name in export.density_variants list above.
 
 [density_variant.full]
-twig_density = 2.5
+twig_density = 3
 
 [density_variant.reduced]
 twig_density = 0.75
