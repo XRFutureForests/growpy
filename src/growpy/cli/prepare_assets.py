@@ -200,12 +200,25 @@ CSV Format Support:
         default=None,
         help="Resize textures to power-of-2 for Unreal (slow, skip by default)",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output (INFO-level logging)",
+    )
+    parser.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Suppress INFO-level logging (only show warnings and errors)",
+    )
 
     args = parser.parse_args()
 
     # Resolve config: TOML defaults + CLI overrides
     config = get_config()
     config.resolve(args)
+    if args.quiet:
+        config.verbose = False
     setup_logging(verbose=config.verbose)
 
     # Resolve grove_dir

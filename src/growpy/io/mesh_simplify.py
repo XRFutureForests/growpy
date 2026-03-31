@@ -10,10 +10,13 @@ are classified as wood. Names containing "fruit" are classified as fruit.
 Everything else is treated as leaf geometry.
 """
 
+import logging
 import time
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 WOOD_KEYWORDS = ("twig", "bark", "branch", "wood", "stem")
 FRUIT_KEYWORDS = ("fruit",)
@@ -380,9 +383,9 @@ def simplify_tree_mesh(
     new_trunk_faces = len(trunk_faces)
     new_twig_faces = sum(len(f) for f in per_proto_faces.values())
     elapsed = time.time() - start
-    print(
-        f"  Simplification: trunk {orig_trunk_faces} -> {new_trunk_faces} faces, "
-        f"twigs {orig_twig_faces} -> {new_twig_faces} faces ({elapsed:.1f}s)"
+    logger.info(
+        "Simplification: trunk %d -> %d faces, twigs %d -> %d faces (%.1fs)",
+        orig_trunk_faces, new_trunk_faces, orig_twig_faces, new_twig_faces, elapsed,
     )
 
     return (

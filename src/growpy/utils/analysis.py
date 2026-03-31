@@ -19,6 +19,8 @@ import the_grove_23_core as gc
 from scipy.optimize import curve_fit
 from tqdm import tqdm
 
+from .log import is_verbose
+
 
 def _chapman_richards(t, A, k, p):
     """Chapman-Richards growth function: h(t) = A * (1 - exp(-k*t))^p."""
@@ -544,7 +546,7 @@ class SpeciesGrowthAnalyzer:
             seeds_to_test,
             desc=f"Testing seeds for {species[:25]}",
             leave=False,
-            disable=self.num_seeds <= 1,
+            disable=(self.num_seeds <= 1) or not is_verbose(),
         )
 
         # Load species-specific overrides (includes yield table calibration)
@@ -604,6 +606,7 @@ class SpeciesGrowthAnalyzer:
                 leave=False,
                 unit="cy",
                 bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
+                disable=not is_verbose(),
             )
 
             for cycle in cycle_progress:
@@ -863,16 +866,12 @@ class SpeciesGrowthAnalyzer:
             return True
 
         except SystemExit as e:
-            tqdm.write(
-                f"FATAL: Grove module called sys.exit({e.code}) during {species}"
+            logger.critical(
+                "FATAL: Grove module called sys.exit(%s) during %s", e.code, species
             )
             raise
         except Exception as e:
-            logger.error(f"Failed to analyze species {species}: {e}")
-            tqdm.write(f"ERROR analyzing {species}: {e}")
-            import traceback
-
-            traceback.print_exc()
+            logger.error("Failed to analyze species %s: %s", species, e, exc_info=True)
             return False
 
     def analyze_all_species(
@@ -914,17 +913,17 @@ class SpeciesGrowthAnalyzer:
             Dictionary mapping species to success status
         """
         results = {}
-        progress = tqdm(species_list, desc="Analyzing species (sequential)")
+        progress = tqdm(species_list, desc="Analyzing species (sequential)", disable=not is_verbose())
 
         for species in progress:
             progress.set_description(f"Analyzing: {species[:30]}...")
             results[species] = self._analyze_single_species(species)
 
             if not results[species]:
-                tqdm.write(f"FAILED {species}")
+                logger.warning("FAILED %s", species)
 
         successful = sum(1 for success in results.values() if success)
-        tqdm.write(f"\nAnalysis complete: {successful}/{len(species_list)} species")
+        logger.info("Analysis complete: %d/%d species", successful, len(species_list))
 
         return results
 
@@ -972,6 +971,7 @@ class SpeciesGrowthAnalyzer:
                 total=len(species_list),
                 desc="Analyzing species (parallel)",
                 unit="species",
+                disable=not is_verbose(),
             )
 
             for future in as_completed(future_to_species):
@@ -989,11 +989,11 @@ class SpeciesGrowthAnalyzer:
                         self.save_species_results(species)
                         results[species] = True
                     else:
-                        tqdm.write(f"FAILED {species}: {error_msg}")
+                        logger.warning("FAILED %s: %s", species, error_msg)
                         results[species] = False
 
                 except Exception as e:
-                    tqdm.write(f"FAILED {species_name}: {e}")
+                    logger.error("FAILED %s: %s", species_name, e)
                     results[species_name] = False
 
                 progress.update(1)
@@ -1001,8 +1001,8 @@ class SpeciesGrowthAnalyzer:
             progress.close()
 
         successful = sum(1 for success in results.values() if success)
-        tqdm.write(
-            f"\nParallel analysis complete: {successful}/{len(species_list)} species"
+        logger.info(
+            "Parallel analysis complete: %d/%d species", successful, len(species_list)
         )
 
         return results
@@ -1083,22 +1083,23 @@ class SpeciesGrowthAnalyzer:
                 species_dir,
             )
         except (ImportError, ValueError, OSError, TypeError) as e:
-            tqdm.write(f"Warning: Failed to generate plots for {species}: {e}")
+            logger.warning("Failed to generate plots for %s: %s", species, e)
 
         return species_dir
 
     def save_growth_models(self):
         """Save growth models in species-specific subfolders."""
-        tqdm.write("Saving individual species results...")
+        logger.info("Saving individual species results...")
         saved_count = 0
 
         for species in tqdm(
-            self.analysis_metadata.keys(), desc="Saving species", leave=False
+            self.analysis_metadata.keys(), desc="Saving species", leave=False,
+            disable=not is_verbose(),
         ):
             self.save_species_results(species)
             saved_count += 1
 
-        tqdm.write(f"Saved {saved_count} species models to: {self.output_dir}")
+        logger.info("Saved %d species models to: %s", saved_count, self.output_dir)
 
     def update_lookup_table_with_new_models(self):
         """Update tree asset lookup table with new growth model names."""

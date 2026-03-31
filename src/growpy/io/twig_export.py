@@ -16,12 +16,15 @@ Texture Handling:
 """
 
 import json
+import logging
 import math
 import os
 import shutil
 import sys
 from pathlib import Path
 from typing import Optional, Set
+
+logger = logging.getLogger(__name__)
 
 import bmesh
 import bpy
@@ -86,7 +89,7 @@ def export_blender_mesh_to_usd(
                     found = True
                     break
             if not found:
-                print(f"[ERROR] No mesh data found in object or its children")
+                logger.error("No mesh data found in object or its children")
                 return False
 
         # Create USD stage and mesh prim
@@ -126,10 +129,7 @@ def export_blender_mesh_to_usd(
         return True
 
     except Exception as e:
-        print(f"[ERROR] Direct USD export failed: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error("Direct USD export failed: %s", e, exc_info=True)
         return False
 
 
@@ -1365,9 +1365,9 @@ def densify_mesh_to_target_edge(
         final_edge = _measure_average_edge_length(obj.data, material_indices)
         final_edge_mm = final_edge * 1000.0
 
-        print(
-            f"  [DEBUG] Adaptive densify: {initial_edge_mm:.2f}mm -> {final_edge_mm:.2f}mm "
-            f"(target: {target_edge_mm:.2f}mm, {iteration + 1} iterations)"
+        logger.debug(
+            "Adaptive densify: %.2fmm -> %.2fmm (target: %.2fmm, %d iterations)",
+            initial_edge_mm, final_edge_mm, target_edge_mm, iteration + 1,
         )
 
         return final_edge_mm
@@ -1604,8 +1604,11 @@ def trim_by_alpha_mask(
             if preserve_interior and center_preserved > 0
             else ""
         )
-        print(
-            f"  [DEBUG] Alpha trimming: deleted {len(faces_to_delete)}/{total_faces_before} faces ({100*len(faces_to_delete)/total_faces_before:.1f}%), {faces_remaining} remaining{center_msg}, threshold={threshold}"
+        logger.debug(
+            "Alpha trimming: deleted %d/%d faces (%.1f%%), %d remaining%s, threshold=%s",
+            len(faces_to_delete), total_faces_before,
+            100 * len(faces_to_delete) / total_faces_before,
+            faces_remaining, center_msg, threshold,
         )
 
         # Write back to mesh
@@ -1614,10 +1617,7 @@ def trim_by_alpha_mask(
 
         mesh.update()
     except Exception as e:
-        print(f"  [DEBUG] Alpha trimming failed: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.warning("Alpha trimming failed: %s", e, exc_info=True)
 
 
 def _get_alpha_texture_for_geometry(tex_map: dict):
@@ -2045,16 +2045,13 @@ def densify_and_trim_interleaved(
         final_vert_count = len(mesh.vertices)
         final_face_count = len(mesh.polygons)
 
-        print(
-            f"  Alpha trim: {initial_face_count}->{final_face_count} faces "
-            f"({total_faces_deleted} deleted)"
+        logger.info(
+            "Alpha trim: %d->%d faces (%d deleted)",
+            initial_face_count, final_face_count, total_faces_deleted,
         )
 
     except Exception as e:
-        print(f"  Alpha trim error: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.warning("Alpha trim error: %s", e, exc_info=True)
 
 
 def _smooth_boundary_edges(
@@ -2492,16 +2489,17 @@ def _apply_interior_decimate(
     bm.free()
 
     if decimatable <= 0:
-        print(
-            f"  Interior decimate: skipped (no interior verts to decimate, "
-            f"{len(tube_verts)} tube + {len(boundary_verts)} boundary = all verts protected)"
+        logger.debug(
+            "Interior decimate: skipped (no interior verts to decimate, "
+            "%d tube + %d boundary = all verts protected)",
+            len(tube_verts), len(boundary_verts),
         )
         return
 
-    print(
-        f"  Interior decimate: {len(tube_verts)} tube verts protected, "
-        f"{len(boundary_verts)} boundary verts protected, "
-        f"{decimatable} verts decimatable"
+    logger.info(
+        "Interior decimate: %d tube verts protected, "
+        "%d boundary verts protected, %d verts decimatable",
+        len(tube_verts), len(boundary_verts), decimatable,
     )
 
     # Create/replace vertex group
@@ -3232,8 +3230,8 @@ def process_twig_file(
 
                 is_valid, validation_msg = validate_twig_textures(blend_dir)
                 if not is_valid:
-                    print(f"  Warning: {validation_msg}")
-                    print(f"  Geometry processing may produce suboptimal results")
+                    logger.warning("%s", validation_msg)
+                    logger.warning("Geometry processing may produce suboptimal results")
 
                 leaf_mats = _detect_leaf_material_indices(obj)
                 tex_map = _gather_texture_candidates(
@@ -3378,19 +3376,19 @@ def process_twig_file(
                         if result == {"FINISHED"}:
                             export_success = True
                         else:
-                            print(
-                                f"[WARNING] Blender USD export operator returned: {result}"
+                            logger.warning(
+                                "Blender USD export operator returned: %s", result
                             )
                     except Exception as export_err:
-                        print(
-                            f"[WARNING] Blender USD export operator failed: {export_err}"
+                        logger.warning(
+                            "Blender USD export operator failed: %s", export_err
                         )
 
                     if export_success:
                         exported_files.append(skel_export_path)
                     else:
-                        print(
-                            f"[ERROR] Skeletal USD export failed for {skel_export_path}"
+                        logger.error(
+                            "Skeletal USD export failed for %s", skel_export_path
                         )
 
                     # Add skeleton directly using Blender's bundled USD
@@ -3480,19 +3478,19 @@ def process_twig_file(
                         if result == {"FINISHED"}:
                             static_export_success = True
                         else:
-                            print(
-                                f"[WARNING] Blender USD export operator returned: {result}"
+                            logger.warning(
+                                "Blender USD export operator returned: %s", result
                             )
                     except Exception as export_err:
-                        print(
-                            f"[WARNING] Blender USD export operator failed: {export_err}"
+                        logger.warning(
+                            "Blender USD export operator failed: %s", export_err
                         )
 
                     if static_export_success:
                         exported_files.append(static_export_path)
                     else:
-                        print(
-                            f"[ERROR] Static USD export failed for {static_export_path}"
+                        logger.error(
+                            "Static USD export failed for %s", static_export_path
                         )
 
                     # Clean up static USD (remove skeleton artifacts, fix structure)
@@ -3513,10 +3511,7 @@ def process_twig_file(
             }
 
         except Exception as e:
-            import traceback
-
-            print(f"[ERROR] Failed to export {original_name}: {e}")
-            traceback.print_exc()
+            logger.error("Failed to export %s: %s", original_name, e, exc_info=True)
             continue
 
     # Note: Manifest file removed - not needed in output

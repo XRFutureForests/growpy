@@ -433,9 +433,7 @@ def build_tree_mesh(
         return True
 
     except Exception as e:
-        import traceback
-
-        traceback.print_exc()
+        logger.error("USD export failed: %s", e, exc_info=True)
         return False
 
 
@@ -1210,9 +1208,9 @@ def _add_dynamic_wind_attributes(
         group_counts = {0: 0, 1: 0, 2: 0}
         for g in simulation_groups:
             group_counts[g] = group_counts.get(g, 0) + 1
-        print(
-            f"  DynamicWind: {len(joint_tokens)} joints - "
-            f"trunk={group_counts[0]}, primary={group_counts[1]}, tips={group_counts[2]}"
+        logger.debug(
+            "DynamicWind: %d joints - trunk=%d, primary=%d, tips=%d",
+            len(joint_tokens), group_counts[0], group_counts[1], group_counts[2],
         )
 
 
@@ -1350,8 +1348,9 @@ def _build_usdskel_from_bones(
     )
 
     if verbose and len(bones_info) < original_bone_count:
-        print(
-            f"  Filtered bones: {original_bone_count} -> {len(bones_info)} (removed unreferenced bones)"
+        logger.debug(
+            "Filtered bones: %d -> %d (removed unreferenced bones)",
+            original_bone_count, len(bones_info),
         )
 
     # After filtering, bone_id_offset is 0 since bones are now renumbered
@@ -1363,10 +1362,10 @@ def _build_usdskel_from_bones(
     branch_id_offset = first_branch_id
 
     if verbose:
-        print(f"Building skeleton from bones_info ({len(bones_info)} bones)")
-        print(f"  Bone ID offset: {bone_id_offset}")
-        print(f"  Branch ID offset: {branch_id_offset}")
-        print(f"  Tree offset: {tree_offset}")
+        logger.debug("Building skeleton from bones_info (%d bones)", len(bones_info))
+        logger.debug("  Bone ID offset: %d", bone_id_offset)
+        logger.debug("  Branch ID offset: %d", branch_id_offset)
+        logger.debug("  Tree offset: %s", tree_offset)
 
     # Build joints using bones_info
     bone_id_to_joint_path = {}
@@ -1505,14 +1504,14 @@ def _build_usdskel_from_bones(
             bone_ids = model.point_attribute_bone_id
 
             if verbose:
-                print(
-                    f"Using hierarchical junction blending with blend_distance={junction_blend_distance}"
+                logger.debug(
+                    "Using hierarchical junction blending with blend_distance=%s",
+                    junction_blend_distance,
                 )
-                print(f"  Vertices: {len(bone_ids)}, Joints: {len(joint_tokens)}")
-                # Debug: show unique bone IDs and their distribution
+                logger.debug("  Vertices: %d, Joints: %d", len(bone_ids), len(joint_tokens))
                 unique_ids = set(bone_ids)
-                print(f"  Unique bone IDs found: {sorted(unique_ids)}")
-                print(f"  Bone ID range: {min(bone_ids)} to {max(bone_ids)}")
+                logger.debug("  Unique bone IDs found: %s", sorted(unique_ids))
+                logger.debug("  Bone ID range: %d to %d", min(bone_ids), max(bone_ids))
 
             # Build bone_to_joint_map using the old_to_new mapping from filtering
             # This maps original GLOBAL bone IDs to new filtered joint indices
@@ -1535,22 +1534,22 @@ def _build_usdskel_from_bones(
             joint_weights = joint_weights_flat
 
             if verbose:
-                print(f"  Calculated weights with {len(joint_indices)} vertices")
-                # Count vertices with reduced weights at junctions
+                logger.debug("  Calculated weights with %d vertices", len(joint_indices))
                 reduced_weight_count = sum(1 for w in joint_weights if w < 1.0)
-                print(
-                    f"  Vertices with reduced weights: {reduced_weight_count} ({reduced_weight_count * 100 / len(joint_weights):.1f}%)"
+                logger.debug(
+                    "  Vertices with reduced weights: %d (%.1f%%)",
+                    reduced_weight_count, reduced_weight_count * 100 / len(joint_weights),
                 )
 
         else:
             # Fallback: simple rigid binding to root joint
             # This should only happen if tag_bone_id() wasn't called before build_models()
             if verbose:
-                print(
-                    f"WARNING: point_attribute_bone_id not available, using fallback rigid binding"
+                logger.warning(
+                    "point_attribute_bone_id not available, using fallback rigid binding"
                 )
-                print(
-                    f"  Make sure to call grove.build_skeletons() and grove.tag_bone_id() BEFORE grove.build_models()"
+                logger.warning(
+                    "Make sure to call grove.build_skeletons() and grove.tag_bone_id() BEFORE grove.build_models()"
                 )
 
             for _ in range(num_vertices):
@@ -1595,14 +1594,17 @@ def _build_usdskel_from_bones(
                 branch_id_primvar.Set(local_branch_ids)
 
                 if verbose:
-                    print(
-                        f"  Converted BranchId: {len(local_branch_ids)} faces, offset={branch_id_offset}"
+                    logger.debug(
+                        "  Converted BranchId: %d faces, offset=%d",
+                        len(local_branch_ids), branch_id_offset,
                     )
-                    print(
-                        f"    Global range: {min(global_branch_ids)}-{max(global_branch_ids)}"
+                    logger.debug(
+                        "    Global range: %d-%d",
+                        min(global_branch_ids), max(global_branch_ids),
                     )
-                    print(
-                        f"    Local range: {min(local_branch_ids)}-{max(local_branch_ids)}"
+                    logger.debug(
+                        "    Local range: %d-%d",
+                        min(local_branch_ids), max(local_branch_ids),
                     )
 
             if model and hasattr(model, "face_attribute_branch_id_parent"):
@@ -1620,7 +1622,7 @@ def _build_usdskel_from_bones(
                 branch_parent_primvar.Set(local_parent_ids)
 
                 if verbose:
-                    print(f"  Converted BranchIdParent: {len(local_parent_ids)} faces")
+                    logger.debug("  Converted BranchIdParent: %d faces", len(local_parent_ids))
 
 
 def get_twig_usd_map_for_species(

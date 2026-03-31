@@ -123,7 +123,7 @@ preferred_region = ""
 quality = "high"
 # Maximum growth cycles per tree (1-250)
 # Trees exceeding this limit are capped (not scaled)
-growth_cycle_limit = 45
+growth_cycle_limit = 55
 # Branch smoothing iterations (0-20, 0 = disabled)
 # Higher values = smoother, more organic branches
 smooth_iterations = 10

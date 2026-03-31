@@ -197,7 +197,9 @@ def process_twig_directory(
 
     results: Dict[str, List[Path]] = {}
 
-    for blend_file in tqdm(blend_files, desc="Converting twigs"):
+    from growpy.utils.log import is_verbose
+
+    for blend_file in tqdm(blend_files, desc="Converting twigs", disable=not is_verbose()):
         try:
             twig_dir_name = blend_file.parent.name
             output_dir = blend_file.parent
@@ -326,10 +328,23 @@ Output per twig:
         "1.0=no subdivision, 0.5=50%% of avg, 0.25=25%%. "
         "Only transition edges (opaque->transparent) are subdivided.",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output (INFO-level logging)",
+    )
+    parser.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Suppress INFO-level logging (only show warnings and errors)",
+    )
     args = parser.parse_args()
 
     # Resolve config: TOML defaults + CLI overrides
     config.resolve(args)
+    if args.quiet:
+        config.verbose = False
     setup_logging(verbose=config.verbose)
 
     # Resolve twig path: CLI arg or config default

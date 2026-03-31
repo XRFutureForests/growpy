@@ -646,7 +646,9 @@ def export_individual_trees(
             )
 
     # Always use sequential processing (bpy/USD not compatible with multiprocessing)
-    for task_idx, task in enumerate(tqdm(grove_tasks, desc="Exporting groves")):
+    from growpy.utils.log import is_verbose
+
+    for task_idx, task in enumerate(tqdm(grove_tasks, desc="Exporting groves", disable=not is_verbose())):
         _fids, _grove, _species, _outdir, _qp, _mesh_type, _verbose, _timer, _td, _dbh, _it = task
         species_short = _species.replace(" ", "_").lower()
         track_name = f"grove_export ({species_short} {_mesh_type})"
@@ -897,7 +899,7 @@ def generate_forest_stages(
         logger.info("Density variants active -- CSV twig_density column ignored")
 
     exported_files = []
-    for cycle, species_snapshots in tqdm(snapshots.items(), desc="Exporting stages"):
+    for cycle, species_snapshots in tqdm(snapshots.items(), desc="Exporting stages", disable=not is_verbose()):
         for species_name, tree_data_list in species_snapshots.items():
             # Get fids and max cycles for this species from forest data
             species_rows = forest_data[forest_data["species"] == species_name]

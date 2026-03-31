@@ -8,9 +8,12 @@ Scene XML format reference:
     https://github.com/3dgeo-heidelberg/helios/wiki/Scene
 """
 
+import logging
 from pathlib import Path
 from typing import List, Optional, Tuple
 from xml.etree.ElementTree import Element, ElementTree, SubElement, indent
+
+logger = logging.getLogger(__name__)
 
 
 def generate_helios_scene(
@@ -69,5 +72,5 @@ def generate_helios_scene(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     tree.write(str(output_path), encoding="unicode", xml_declaration=True)
 
-    print(f"  Helios scene: {output_path.name} ({len(tree_entries)} trees)")
+    logger.info("Helios scene: %s (%d trees)", output_path.name, len(tree_entries))
     return output_path

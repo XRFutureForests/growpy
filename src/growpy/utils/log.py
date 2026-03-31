@@ -14,6 +14,15 @@ import sys
 _configured = False
 
 
+def is_verbose() -> bool:
+    """Check if growpy logging is at INFO level or below (verbose mode).
+
+    Useful for controlling progress bars and other user-facing output
+    that should be suppressed in quiet mode.
+    """
+    return logging.getLogger("growpy").getEffectiveLevel() <= logging.INFO
+
+
 def setup_logging(verbose: bool = False) -> None:
     """Configure the growpy logger hierarchy.
 

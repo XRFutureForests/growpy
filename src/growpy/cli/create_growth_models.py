@@ -564,6 +564,17 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         nargs="+",
         help="Run only these yield table providers (by name).",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output (INFO-level logging)",
+    )
+    parser.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Suppress INFO-level logging (only show warnings and errors)",
+    )
 
     args = parser.parse_args()
 
@@ -574,6 +585,8 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
     # Resolve config: TOML defaults + CLI overrides
     config.resolve(args)
+    if args.quiet:
+        config.verbose = False
     setup_logging(verbose=config.verbose)
 
     # Handle --ingest-yield-tables

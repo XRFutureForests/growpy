@@ -183,8 +183,21 @@ def main():
         help="Ingest yield tables from external providers before step 3 calibration.",
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output.")
+    parser.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Suppress INFO-level logging (only show warnings and errors)",
+    )
+    parser.add_argument(
+        "--profile",
+        action="store_true",
+        help="Enable profiling to track execution time of each processing step",
+    )
 
     args = parser.parse_args()
+    if args.quiet:
+        args.verbose = False
     setup_logging(verbose=args.verbose)
 
     # --generate-csvs: generate CSVs and exit

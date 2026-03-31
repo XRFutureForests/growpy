@@ -11,6 +11,7 @@ import the_grove_23_core as gc
 from tqdm import tqdm
 
 from ..config.preset_overrides import PresetOverrides, get_species_overrides
+from ..utils.log import is_verbose
 from .grove import add_tree_to_grove, create_grove
 from .tree import extract_tree_measurements
 
@@ -93,7 +94,8 @@ def _apply_smoothing(
     smooth_start = time.time()
     for grove, species_name, _, _ in forest:
         for _ in tqdm(
-            range(smooth_iterations), desc=f"Smoothing {species_name}", unit="iter"
+            range(smooth_iterations), desc=f"Smoothing {species_name}", unit="iter",
+            disable=not is_verbose(),
         ):
             grove.smooth()
         grove.weigh_and_bend()
@@ -158,7 +160,7 @@ def simulate_forest_growth(
             )
 
     growth_start = time.time()
-    for cycle in tqdm(range(cycles), desc="Simulating growth cycles", unit="cycle"):
+    for cycle in tqdm(range(cycles), desc="Simulating growth cycles", unit="cycle", disable=not is_verbose()):
         _run_single_growth_cycle(
             forest, groves, cycle, cycles, species_overrides, preset_overrides
         )
@@ -348,7 +350,7 @@ def _simulate_height_threshold_mode(
     cycles_without_growth = 0
 
     cycle = 0
-    pbar = tqdm(total=max_cycles, desc="Simulating growth cycles", unit="cycle")
+    pbar = tqdm(total=max_cycles, desc="Simulating growth cycles", unit="cycle", disable=not is_verbose())
 
     while cycle < max_cycles:
         cycle += 1
@@ -469,7 +471,8 @@ def _simulate_cycle_based_mode(
     next_snapshot_idx = 0
 
     for cycle in tqdm(
-        range(1, max_cycles + 1), desc="Simulating growth cycles", unit="cycle"
+        range(1, max_cycles + 1), desc="Simulating growth cycles", unit="cycle",
+        disable=not is_verbose(),
     ):
         _run_single_growth_cycle(
             forest, groves, cycle - 1, max_cycles, species_overrides, preset_overrides
