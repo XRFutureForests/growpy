@@ -94,6 +94,17 @@ try:
     except Exception:
         pass
 
+    # Flush GPU rendering commands and release pooled VRAM
+    try:
+        _w = unreal.EditorLevelLibrary.get_editor_world()
+        for _cmd in ("FlushRenderingCommands", "r.Streaming.FlushAll"):
+            try:
+                unreal.KismetSystemLibrary.execute_console_command(_w, _cmd)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     gc.collect()
     try:
         unreal.SystemLibrary.collect_garbage(full_purge=True)
@@ -319,7 +330,7 @@ print("GrowPy Batch Import: {batch_label}")
 print("=" * 60)
 
 IMPORT_PATH = "{project_path}"
-IMPORT_DELAY = 2.0
+IMPORT_DELAY = 3.0
 
 asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
 imported_count = 0
@@ -575,6 +586,26 @@ SCRIPTS_DIR = r"{scripts_dir_str}"
 # Delay between batches (seconds) - increase if you still get VRAM crashes
 BATCH_DELAY = 5.0
 
+# --- VRAM management: reduce GPU memory pressure during import ---
+# Cap texture streaming pool to 256 MB (default ~1024 MB) to leave room for Nanite
+_STREAMING_POOL_MB = 256
+try:
+    _world = unreal.EditorLevelLibrary.get_editor_world()
+    unreal.KismetSystemLibrary.execute_console_command(
+        _world, f"r.Streaming.PoolSize {{_STREAMING_POOL_MB}}"
+    )
+    print(f"Texture streaming pool capped to {{_STREAMING_POOL_MB}} MB")
+except Exception:
+    pass
+
+print("")
+print("VRAM tips -- if import still crashes:")
+print("  1. Press Ctrl+R in viewport to disable Realtime rendering")
+print("  2. Close the Content Browser (prevents thumbnail generation)")
+print("  3. Close other GPU-heavy apps (browser tabs, etc.)")
+print("  4. Increase BATCH_DELAY above (currently {{BATCH_DELAY}}s)")
+print("")
+
 # Tree positions from CSV (in meters, multiply by 100 for Unreal units)
 {tree_positions_code}
 
@@ -617,9 +648,18 @@ for _batch_idx, (batch_file, batch_label) in enumerate(BATCH_SCRIPTS):
         unreal.log_error(f"Batch '{{batch_label}}' failed: {{e}}")
         total_failed += 1
 
-    # Aggressive cleanup between batches
+    # Aggressive cleanup between batches (CPU + GPU)
     try:
         unreal.SystemLibrary.flush_async_loading()
+    except Exception:
+        pass
+    try:
+        _world = unreal.EditorLevelLibrary.get_editor_world()
+        for _cmd in ("FlushRenderingCommands", "r.Streaming.FlushAll"):
+            try:
+                unreal.KismetSystemLibrary.execute_console_command(_world, _cmd)
+            except Exception:
+                pass
     except Exception:
         pass
     gc.collect()
@@ -632,6 +672,13 @@ for _batch_idx, (batch_file, batch_label) in enumerate(BATCH_SCRIPTS):
 # Clean up progress file on successful completion
 if total_failed == 0 and os.path.isfile(PROGRESS_FILE):
     os.remove(PROGRESS_FILE)
+
+# Restore default texture streaming pool
+try:
+    _world = unreal.EditorLevelLibrary.get_editor_world()
+    unreal.KismetSystemLibrary.execute_console_command(_world, "r.Streaming.PoolSize 0")
+except Exception:
+    pass
 
 print("")
 print("=" * 60)

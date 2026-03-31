@@ -727,6 +727,7 @@ def generate_forest_stages(
     from growpy.io.assembly_export import export_tree_as_nanite_assembly
     from growpy.io.tree_export import get_twig_usd_map_for_species
     from growpy.utils.profiling import ProfileTimer
+    from growpy.utils.log import is_verbose
 
     if timer is None:
         timer = ProfileTimer(enabled=False)
