@@ -1,3 +1,0 @@
-# Explicitly disable Auto DevOps pipeline.
-# The Dockerfile is used only for local resource-limited runs via run_docker.sh.
-stages: []
