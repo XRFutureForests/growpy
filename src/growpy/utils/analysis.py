@@ -241,6 +241,22 @@ class PiecewiseLinearModel:
                 results[i] = self.cycles[-1] + slope * (t - self.heights[-1])
         return results
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize model parameters to a JSON-compatible dict."""
+        return {
+            "model_type": "piecewise_linear",
+            "heights": self.heights.tolist(),
+            "cycles": self.cycles.tolist(),
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "PiecewiseLinearModel":
+        """Reconstruct model from a parameter dict."""
+        model = cls()
+        model.heights = np.array(d["heights"])
+        model.cycles = np.array(d["cycles"])
+        return model
+
 
 # Backward-compatible alias for loading old .pkl files
 SimpleLinearModel = PiecewiseLinearModel

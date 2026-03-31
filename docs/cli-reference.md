@@ -38,6 +38,44 @@ Supports forest placement CSV (`x, y, species, height`) or asset lookup CSV
 
 **TOML-configurable:** `grove_dir`, `csv_file`, `resize_textures` (see `[assets]` and `[general]`).
 
+### Custom Twigs
+
+By default, `prepare_assets.py` copies twig `.blend` files from the vanilla Grove
+installation (`src/the_grove_23/twigs/`). For custom or hand-curated twigs (e.g.,
+Helios-classified variants with explicit fruit materials), place them in the custom
+twigs directory configured by `twigs.custom_twigs_dir` (default: `data/input/custom_twigs/`).
+
+**Setup:**
+
+1. Place the twig directory (CamelCase name with `.blend` + `textures/`) in
+   `data/input/custom_twigs/`:
+
+   ```text
+   data/input/custom_twigs/
+     SelectedScotsPineTwig/
+       SelectedScotsPineTwig.blend
+       textures/
+         ScotsPine.png
+   ```
+
+2. Update the `Twig` column in `src/growpy/config/tree_asset_lookup.csv` for the
+   species that should use the custom twig:
+
+   ```text
+   Scots pine,...,SelectedScotsPineTwig,...
+   ```
+
+3. Run `prepare_assets.py` -- custom twigs are found before Grove twigs, copied to
+   `data/assets/twigs/` as snake_case, and processed identically by `convert_twigs.py`.
+
+**Resolution order:** custom twigs dir (CamelCase match) > Grove source (CamelCase) >
+Grove reverse lookup (snake_case). Custom twigs override Grove twigs when names match.
+
+**Included custom twigs** (from Tom's Helios branch): `SelectedEuropeanBeechTwig`,
+`SelectedEuropeanOakTwigTom`, `SelectedPacificSilverFirTwigTom`,
+`SelectedPaparBirchVarATwig`, `SelectedScotsPineTwig` (with fruit material),
+`SelectedSycamoreMapleTwig`.
+
 ## Step 2: convert_twigs.py
 
 Convert Grove twig `.blend` files to USD with skeletal and static mesh variants.

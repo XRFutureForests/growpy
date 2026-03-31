@@ -87,6 +87,7 @@ class GrowPyConfig:
 
     # [twigs]
     twigs_path: Path = field(default_factory=lambda: Path("data/assets/twigs"))
+    custom_twigs_dir: Path = field(default_factory=lambda: Path("data/input/custom_twigs"))
     twigs_densify: bool = True
     twigs_alpha_trim: float = 0.75
     twigs_smooth_boundary: bool = True
@@ -194,6 +195,8 @@ class GrowPyConfig:
         twigs = data.get("twigs", {})
         if "path" in twigs:
             kwargs["twigs_path"] = Path(twigs["path"])
+        if "custom_twigs_dir" in twigs:
+            kwargs["custom_twigs_dir"] = Path(twigs["custom_twigs_dir"])
         if "densify" in twigs:
             kwargs["twigs_densify"] = twigs["densify"]
         if "alpha_trim" in twigs:
