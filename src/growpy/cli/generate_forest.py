@@ -74,40 +74,6 @@ def _is_bone_limit_error(error: ValueError) -> bool:
     return "bones" in msg and "limit" in msg
 
 
-def _compute_max_cycles_for_species(forest_data, config, cycle_limit=None):
-    """Compute maximum simulation cycles needed per species.
-
-    Uses growth models to predict how many cycles are needed to reach the
-    maximum height in the forest data. Returns a conservative estimate
-    to ensure all trees (including slow-growing open-grown ones) have
-    enough cycles to reach their target milestones.
-
-    Args:
-        forest_data: DataFrame with species and height columns
-        config: GrowPyConfig instance
-        cycle_limit: Optional max cycle cap
-
-    Returns:
-        max_cycles: Maximum cycle count needed across all species
-    """
-    import math
-
-    import joblib
-
-    max_cycles = 1
-    for species in forest_data["species"].unique():
-        growth_model_path = config.get_growth_model_path(species)
-        model_path = growth_model_path / "growth_model.pkl"
-        model = joblib.load(model_path)
-        max_height = forest_data[forest_data["species"] == species]["height"].max()
-        predicted = max(1, math.ceil(float(model.predict([[max_height]])[0])))
-        if cycle_limit:
-            predicted = min(predicted, cycle_limit)
-        logger.info("  %s: max_height=%.1fm -> ~%d cycles", species, max_height, predicted)
-        max_cycles = max(max_cycles, predicted)
-
-    return max_cycles
-
 
 def _derive_static_from_skeletal(
     tree_dir: Path,
@@ -825,35 +791,12 @@ def generate_forest_stages(
             original_max,
         )
 
-    # Calculate growth cycles from height using growth models
-    with timer.track("calculate_growth_cycles"):
-        try:
-            calculate_growth_cycles_from_height(forest_data)
-        except Exception as e:
-            logger.error("Could not calculate growth cycles from height: %s", e)
-            logger.error(
-                "  Ensure growth models exist (run create_growth_models.py first)"
-            )
-            return
-
-        # Cap each tree's cycles individually at the limit
-        if growth_cycle_limit is not None:
-            forest_data["growth_cycles"] = forest_data["growth_cycles"].clip(
-                upper=growth_cycle_limit, lower=1
-            )
-
-    # Compute max simulation cycles and height interval
+    # Height-threshold mode: no growth model cycle prediction needed.
+    # The simulation runs until milestones are captured, growth plateaus,
+    # or the cycle limit is reached.
     effective_interval = height_interval if height_interval is not None else 5.0
-    limit = growth_cycle_limit if growth_cycle_limit is not None else None
-
-    logger.info("\nComputing max cycles per species:")
-    global_max_cycles = _compute_max_cycles_for_species(
-        forest_data, config, cycle_limit=limit,
-    )
-
-    if global_max_cycles < 1:
-        logger.error("No valid cycles could be computed")
-        return
+    effective_max_height = config.forest_max_height if config.forest_max_height > 0 else 0.0
+    global_max_cycles = growth_cycle_limit if growth_cycle_limit is not None else 65
 
     logger.info("\n%s", "=" * 60)
     logger.info("MULTI-STAGE FOREST GENERATION (height-threshold mode)")
@@ -865,7 +808,8 @@ def generate_forest_stages(
         forest_data["height"].max(),
     )
     logger.info("  Height interval: %.0fm", effective_interval)
-    logger.info("  Max simulation cycles: %d", global_max_cycles)
+    logger.info("  Target height: %.0fm", effective_max_height)
+    logger.info("  Cycle limit: %d (safety cap)", global_max_cycles)
     logger.info("%s", "=" * 60)
 
     # All trees start at cycle 0 (no delay in multi-stage mode)
@@ -901,6 +845,7 @@ def generate_forest_stages(
             use_species_curves=config.calibration_align_height,
             quality_params=quality_params,
             height_interval=effective_interval,
+            max_height=effective_max_height,
         )
 
     if not snapshots:
@@ -964,7 +909,6 @@ def generate_forest_stages(
                 if tree_idx < len(species_rows):
                     tree_row = species_rows.iloc[tree_idx]
                     fid = int(tree_row["fid"])
-                    tree_max_cycles = int(tree_row["growth_cycles"])
                     tree_twig_density = (
                         float(tree_row["twig_density"])
                         if "twig_density" in tree_row.index and pd.notna(tree_row.get("twig_density"))
@@ -977,7 +921,6 @@ def generate_forest_stages(
                     )
                 else:
                     fid = tree_idx + 1
-                    tree_max_cycles = global_max_cycles
                     tree_twig_density = None
                     tree_individual_type = None
 
@@ -991,19 +934,11 @@ def generate_forest_stages(
                     )
                     continue
 
-                # In height-threshold mode, milestone_map already gates exports
-                # based on actual measured height — no cycle-based cap needed.
-                # In legacy mode, fall back to growth-model-predicted max cycles.
-                if not milestone_map and cycle > tree_max_cycles:
-                    continue
-
-                # In height-threshold mode, only export trees that triggered
-                # a milestone crossing at this cycle. The milestone_map tells
-                # us which tree_idx crossed which milestone height(s).
+                # Only export trees that triggered a milestone crossing at this
+                # cycle.  milestone_map tells us which tree crossed which height.
                 cycle_milestones = milestone_map.get(cycle, {}).get(species_name, {})
-                if milestone_map:
-                    if tree_idx not in cycle_milestones:
-                        continue
+                if tree_idx not in cycle_milestones:
+                    continue
 
                 # Skip trees not in export filter (they still participated in growth simulation)
                 if export_tree_ids is not None and fid not in export_tree_ids:

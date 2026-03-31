@@ -178,19 +178,21 @@ def simulate_forest_growth_with_snapshots(
     quality_params: Optional[Dict] = None,
     species_snapshot_cycles: Optional[Dict[str, Dict[int, float]]] = None,
     height_interval: float = 0.0,
+    max_height: float = 0.0,
 ) -> Tuple[SnapshotData, Dict[int, Dict[str, Dict[int, float]]]]:
     """Simulate forest growth and capture snapshots at height milestones.
 
     When height_interval > 0, uses height-threshold-based snapshots: measures
     tree heights at every cycle (cheap) and builds models only when any tree
-    crosses a new height milestone (e.g. 5m, 10m, 15m). This handles trees
-    that grow at different rates (competition vs open-grown) correctly.
+    crosses a new height milestone (e.g. 5m, 10m, 15m). No growth model
+    prediction is needed -- the simulation runs until all milestones up to
+    max_height are captured, growth plateaus, or the cycle limit is reached.
 
     When height_interval == 0, falls back to cycle-based snapshots (legacy).
 
     Args:
         forest: List of (grove, species_name, tree_count, fid_list) tuples from create_forest()
-        max_cycles: Maximum number of growth cycles to simulate
+        max_cycles: Maximum number of growth cycles (hard safety cap)
         snapshot_cycles: List of cycle numbers for cycle-based mode (used when height_interval==0)
         smooth_iterations: Number of smoothing iterations (default: 10)
         preset_overrides: Optional PresetOverrides for dynamic parameter adjustment
@@ -198,6 +200,7 @@ def simulate_forest_growth_with_snapshots(
         quality_params: Quality parameters for model building (vertices, etc.)
         species_snapshot_cycles: Optional per-species cycle filter (legacy, ignored in height mode)
         height_interval: Height interval in meters for threshold-based snapshots (0 = legacy mode)
+        max_height: Target height ceiling in meters for early stopping (0 = run until max_cycles)
 
     Returns:
         Tuple of:
@@ -225,9 +228,11 @@ def simulate_forest_growth_with_snapshots(
 
     if use_height_mode:
         logger.info(
-            "PHASE 1: GROWTH SIMULATION WITH HEIGHT MILESTONES (%d cycles, %.0fm interval)",
+            "PHASE 1: GROWTH SIMULATION WITH HEIGHT MILESTONES "
+            "(up to %d cycles, %.0fm interval, %.0fm target)",
             max_cycles,
             height_interval,
+            max_height,
         )
     else:
         # Legacy: validate and sort snapshot cycles
@@ -261,6 +266,7 @@ def simulate_forest_growth_with_snapshots(
         snapshots, milestone_map = _simulate_height_threshold_mode(
             forest, groves, max_cycles, height_interval,
             species_overrides, preset_overrides, quality_params,
+            max_height=max_height,
         )
     else:
         snapshots = _simulate_cycle_based_mode(
@@ -289,12 +295,28 @@ def _simulate_height_threshold_mode(
     species_overrides: Dict[str, PresetOverrides],
     preset_overrides: Optional[PresetOverrides],
     quality_params: Dict,
+    max_height: float = 0.0,
+    plateau_cycles: int = 10,
 ) -> Tuple[SnapshotData, Dict[int, Dict[str, Dict[int, float]]]]:
     """Run simulation with height-threshold-based snapshots.
 
-    Measures tree heights at every cycle (cheap). When any tree crosses a new
-    height milestone, builds models and captures a snapshot. This correctly
-    handles trees that grow at different rates due to competition effects.
+    Grows trees cycle by cycle, capturing snapshots whenever any tree crosses
+    a height milestone (e.g. 5m, 10m, 15m). No growth model prediction is
+    used -- the simulation simply runs until all reachable milestones up to
+    max_height have been captured, growth has plateaued, or the cycle limit
+    (max_cycles) is reached.
+
+    Stop conditions (whichever comes first):
+        1. All trees have captured all milestones up to max_height
+        2. No tree gained height for ``plateau_cycles`` consecutive cycles
+        3. Hard cycle cap (max_cycles) is reached
+
+    Args:
+        max_height: Target height ceiling in meters.  When > 0, the
+            simulation can stop early once every tree has captured all
+            milestones up to this height.  0 = run until max_cycles.
+        plateau_cycles: Stop after this many consecutive cycles with no
+            height increase across any tree (default: 10).
     """
     import math
 
@@ -305,12 +327,33 @@ def _simulate_height_threshold_mode(
     # Key: (species_name, tree_idx)
     captured: Dict[Tuple[str, int], set] = {}
 
+    # Build set of target milestones per tree (for early-stop check)
+    target_milestones: Dict[Tuple[str, int], set] = {}
+    if max_height > 0:
+        for _grove, species_name, tree_count, _fids in forest:
+            for tree_idx in range(tree_count):
+                key = (species_name, tree_idx)
+                milestones = set()
+                m = height_interval
+                while m <= max_height:
+                    milestones.add(m)
+                    m += height_interval
+                target_milestones[key] = milestones
+
     # Count total milestone captures for progress reporting
     total_captures = 0
 
-    for cycle in tqdm(
-        range(1, max_cycles + 1), desc="Simulating growth cycles", unit="cycle"
-    ):
+    # Plateau detection: track max height per tree across cycles
+    prev_max_heights: Dict[Tuple[str, int], float] = {}
+    cycles_without_growth = 0
+
+    cycle = 0
+    pbar = tqdm(total=max_cycles, desc="Simulating growth cycles", unit="cycle")
+
+    while cycle < max_cycles:
+        cycle += 1
+        pbar.update(1)
+
         _run_single_growth_cycle(
             forest, groves, cycle - 1, max_cycles, species_overrides, preset_overrides
         )
@@ -318,11 +361,18 @@ def _simulate_height_threshold_mode(
         # Cheaply measure heights at every cycle
         # Maps species -> tree_idx -> milestone height (lowest new crossing)
         new_crossings: Dict[str, Dict[int, float]] = {}
+        any_growth = False
 
         for grove, species_name, tree_count, fids in forest:
             measurements = extract_tree_measurements(grove)
             for tree_idx, (height, _dbh) in enumerate(measurements):
                 key = (species_name, tree_idx)
+
+                # Plateau detection
+                prev_h = prev_max_heights.get(key, 0.0)
+                if height > prev_h + 0.01:
+                    any_growth = True
+                    prev_max_heights[key] = height
 
                 # Find the lowest uncaptured milestone up to current height
                 curr_milestone = math.floor(height / height_interval) * height_interval
@@ -334,6 +384,19 @@ def _simulate_height_threshold_mode(
                             new_crossings.setdefault(species_name, {})[tree_idx] = m
                             break  # One milestone per tree per cycle
                         m += height_interval
+
+        # Plateau detection
+        if any_growth:
+            cycles_without_growth = 0
+        else:
+            cycles_without_growth += 1
+            if cycles_without_growth >= plateau_cycles:
+                logger.info(
+                    "Growth plateau detected: no height increase for %d "
+                    "consecutive cycles. Stopping at cycle %d.",
+                    plateau_cycles, cycle,
+                )
+                break
 
         if not new_crossings:
             continue
@@ -375,7 +438,19 @@ def _simulate_height_threshold_mode(
                             new_crossings[species_name][tidx],
                         )
 
-    logger.info("  Height milestones captured: %d", total_captures)
+        # Early stop: all target milestones captured
+        if target_milestones and all(
+            target_milestones[key] <= captured.get(key, set())
+            for key in target_milestones
+        ):
+            logger.info(
+                "All target milestones up to %.0fm captured at cycle %d.",
+                max_height, cycle,
+            )
+            break
+
+    pbar.close()
+    logger.info("  Height milestones captured: %d (in %d cycles)", total_captures, cycle)
     return snapshots, milestone_map
 
 
