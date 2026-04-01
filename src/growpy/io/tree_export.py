@@ -311,6 +311,35 @@ def build_tree_mesh(
                 root = branch_root_of[idx]
                 junction_root_start[idx] = bone_starts[root]
 
+            # Cumulative bone-chain distance from junction root to each
+            # junction bone.  Used to measure "distance along the branch"
+            # so that vertices at the branch-trunk surface (regardless of
+            # their radial position around the trunk) receive the same
+            # scale as adjacent trunk vertices — preventing gaps.
+            junction_chain_dist = {}
+            for idx in branch_root_of:
+                root = branch_root_of[idx]
+                if idx == root:
+                    junction_chain_dist[idx] = 0.0
+                else:
+                    dist = 0.0
+                    cur = idx
+                    visited = set()
+                    while cur != root and cur >= 0 and cur not in visited:
+                        visited.add(cur)
+                        parent_global = bones_info[cur][1]
+                        parent_local = parent_global - bone_id_offset
+                        if parent_local < 0 or parent_local >= len(bones_info):
+                            break
+                        csx, csy, csz = bone_starts[cur]
+                        cpx, cpy, cpz = bone_starts[parent_local]
+                        ddx = csx - cpx
+                        ddy = csy - cpy
+                        ddz = csz - cpz
+                        dist += math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz)
+                        cur = parent_local
+                    junction_chain_dist[idx] = dist
+
             usd_points = []
             for i, p in enumerate(points):
                 local_idx = vertex_bone_ids[i] - bone_id_offset
@@ -332,7 +361,11 @@ def build_tree_mesh(
                 elif is_junction_bone[local_idx]:
                     # Order-1 bone: compute per-vertex trunk scale from
                     # height (matches trunk exactly) and blend to 1.0
-                    # based on distance from branch root start.
+                    # based on distance *along the branch* from the root.
+                    # Using along-branch distance (not Euclidean from the
+                    # trunk centerline) ensures vertices on the trunk
+                    # surface at the junction get the same scale as
+                    # adjacent trunk vertices, preventing seams.
                     if p.y <= blend_start:
                         trunk_s = radial_scale
                     elif p.y >= blend_end:
@@ -344,17 +377,22 @@ def build_tree_mesh(
                     if abs(trunk_s - 1.0) < 1e-6:
                         s = 1.0
                     else:
-                        rx, ry, rz = junction_root_start[local_idx]
-                        dx = p.x - rx
-                        dy = p.y - ry
-                        dz = p.z - rz
-                        dist_from_root = math.sqrt(
-                            dx * dx + dy * dy + dz * dz
+                        # Cumulative chain distance + projection along
+                        # this bone's axis = total distance along branch.
+                        chain_d = junction_chain_dist.get(local_idx, 0.0)
+                        jax, jay, jaz = bone_axes[local_idx]
+                        jsx, jsy, jsz = bone_starts[local_idx]
+                        along = max(
+                            0.0,
+                            (p.x - jsx) * jax
+                            + (p.y - jsy) * jay
+                            + (p.z - jsz) * jaz,
                         )
-                        if dist_from_root >= branch_blend_dist:
+                        dist_along = chain_d + along
+                        if dist_along >= branch_blend_dist:
                             s = 1.0
                         else:
-                            bt = dist_from_root / branch_blend_dist
+                            bt = dist_along / branch_blend_dist
                             bt = bt * bt * (3.0 - 2.0 * bt)
                             s = trunk_s + (1.0 - trunk_s) * bt
                 else:
@@ -365,11 +403,37 @@ def build_tree_mesh(
                     continue
 
                 # Scale perpendicular to bone axis.
-                # Junction bones use the parent trunk axis so the branch base
-                # displaces consistently with the trunk surface.
+                # Junction bones interpolate the scaling axis from the
+                # parent trunk axis (at the connection) to the branch's
+                # own axis (further along), keeping cross-sections round
+                # throughout the transition zone.
                 if is_junction_bone[local_idx]:
-                    ax, ay, az = junction_parent_axis[local_idx]
-                    bx, by, bz = junction_parent_start[local_idx]
+                    chain_d = junction_chain_dist.get(local_idx, 0.0)
+                    jax, jay, jaz = bone_axes[local_idx]
+                    jsx, jsy, jsz = bone_starts[local_idx]
+                    along = max(
+                        0.0,
+                        (p.x - jsx) * jax
+                        + (p.y - jsy) * jay
+                        + (p.z - jsz) * jaz,
+                    )
+                    at = min(1.0, (chain_d + along) / branch_blend_dist)
+                    # Interpolate axis: trunk axis -> branch axis
+                    tax, tay, taz = junction_parent_axis[local_idx]
+                    ax = tax + (jax - tax) * at
+                    ay = tay + (jay - tay) * at
+                    az = taz + (jaz - taz) * at
+                    ln = math.sqrt(ax * ax + ay * ay + az * az)
+                    if ln > 1e-6:
+                        inv_ln = 1.0 / ln
+                        ax *= inv_ln
+                        ay *= inv_ln
+                        az *= inv_ln
+                    # Interpolate reference point: trunk start -> bone start
+                    tbx, tby, tbz = junction_parent_start[local_idx]
+                    bx = tbx + (jsx - tbx) * at
+                    by = tby + (jsy - tby) * at
+                    bz = tbz + (jsz - tbz) * at
                 else:
                     ax, ay, az = bone_axes[local_idx]
                     bx, by, bz = bone_starts[local_idx]
