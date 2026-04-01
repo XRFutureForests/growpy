@@ -13,6 +13,11 @@ from typing import Any, Dict, List, Optional, Tuple
 # Exceeding this causes integer overflow, resulting in negative indices like -31497
 UNREAL_MAX_BONE_INDEX = 32767
 
+# Nanite Assembly uses fixed-width bit fields for bone indices in packed clusters.
+# Exceeding this triggers: Assertion failed: Bits <= Mask [NaniteResources.h]
+# Limit is 256 (8-bit index); use 250 to leave headroom for internal overhead.
+NANITE_MAX_SKELETON_JOINTS = 250
+
 
 @dataclass
 class Vector3:
@@ -347,6 +352,17 @@ def filter_bones_for_mesh(
             f"Tree has {len(updated_filtered_bones)} bones, exceeding Unreal's "
             f"limit of {UNREAL_MAX_BONE_INDEX}. This will cause integer overflow crashes. "
             f"Use higher build_cutoff_age/build_cutoff_thickness to reduce bone count."
+        )
+
+    # Warn when bone count exceeds Nanite Assembly limit (will be auto-reduced later)
+    if len(updated_filtered_bones) > NANITE_MAX_SKELETON_JOINTS:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Skeleton has %d bones (Nanite limit: %d). "
+            "Assembly export will auto-reduce the skeleton.",
+            len(updated_filtered_bones),
+            NANITE_MAX_SKELETON_JOINTS,
         )
 
     return updated_filtered_bones, old_to_new_map

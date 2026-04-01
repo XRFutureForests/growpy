@@ -34,87 +34,92 @@ def _build_import_block(
     if configure_nanite:
         wind_arg = f'r"{wind_json_path}"' if wind_json_path else '""'
         config_block = f"""
-    # Post-import: configure nanite assembly
-    for _obj_path in (import_task.imported_object_paths or []):
-        _obj_path_str = str(_obj_path)
-        if "nanite_assembly" not in _obj_path_str.lower():
-            continue
-        _mesh = unreal.EditorAssetLibrary.load_asset(_obj_path_str)
-        if not _mesh:
-            continue
-        _configure_nanite_assembly(_mesh, {wind_arg}, "{label}")
-        break
+        # Post-import: configure nanite assembly
+        for _obj_path in (import_task.imported_object_paths or []):
+            _obj_path_str = str(_obj_path)
+            if "nanite_assembly" not in _obj_path_str.lower():
+                continue
+            _mesh = unreal.EditorAssetLibrary.load_asset(_obj_path_str)
+            if not _mesh:
+                continue
+            _configure_nanite_assembly(_mesh, {wind_arg}, "{label}")
+            break
 """
 
     return f"""
-try:
-    import_task = unreal.AssetImportTask()
-    import_task.filename = "{file_path}"
-    import_task.destination_path = IMPORT_PATH + "/{dest_path}"
-    import_task.automated = True
-    import_task.save = True
-    import_task.replace_existing = True
-
-    options = unreal.UsdStageImportOptions()
-    options.import_actors = False
-    options.import_geometry = True
-    options.import_materials = True
-    options.set_editor_property('prim_path_folder_structure', False)
-    options.set_editor_property('share_assets_for_identical_prims', True)
-    options.set_editor_property('merge_identical_material_slots', True)
-    import_task.options = options
-
-    asset_tools.import_asset_tasks([import_task])
-
-    if import_task.imported_object_paths:
-        imported_count += 1
-        print(f"  Imported: {label}")
-    else:
-        failed_count += 1
-        unreal.log_warning("Failed to import: {label}")
-{config_block}
-    # Wait for async Nanite compilation to finish before unloading
+if "{label}" in _completed_files:
+    skipped_count += 1
+    print(f"  Skipped (already imported): {label}")
+else:
     try:
-        unreal.AssetCompilingManager.get_default().finish_all_compilation()
-    except Exception:
-        pass
+        import_task = unreal.AssetImportTask()
+        import_task.filename = "{file_path}"
+        import_task.destination_path = IMPORT_PATH + "/{dest_path}"
+        import_task.automated = True
+        import_task.save = True
+        import_task.replace_existing = True
 
-    # Unload imported assets from editor memory (already saved to disk)
-    for _unload_path in (import_task.imported_object_paths or []):
+        options = unreal.UsdStageImportOptions()
+        options.import_actors = False
+        options.import_geometry = True
+        options.import_materials = True
+        options.set_editor_property('prim_path_folder_structure', False)
+        options.set_editor_property('share_assets_for_identical_prims', True)
+        options.set_editor_property('merge_identical_material_slots', True)
+        import_task.options = options
+
+        asset_tools.import_asset_tasks([import_task])
+
+        if import_task.imported_object_paths:
+            imported_count += 1
+            _record_file_done("{label}")
+            print(f"  Imported: {label}")
+        else:
+            failed_count += 1
+            unreal.log_warning("Failed to import: {label}")
+{config_block}
+        # Wait for async Nanite compilation to finish before unloading
         try:
-            unreal.EditorAssetLibrary.unload_asset(str(_unload_path))
+            unreal.AssetCompilingManager.get_default().finish_all_compilation()
         except Exception:
             pass
 
-    del import_task
-
-    # Flush pending async loads so GC can actually free everything
-    try:
-        unreal.SystemLibrary.flush_async_loading()
-    except Exception:
-        pass
-
-    # Flush GPU rendering commands and release pooled VRAM
-    try:
-        _w = unreal.EditorLevelLibrary.get_editor_world()
-        for _cmd in ("FlushRenderingCommands", "r.Streaming.FlushAll"):
+        # Unload imported assets from editor memory (already saved to disk)
+        for _unload_path in (import_task.imported_object_paths or []):
             try:
-                unreal.KismetSystemLibrary.execute_console_command(_w, _cmd)
+                unreal.EditorAssetLibrary.unload_asset(str(_unload_path))
             except Exception:
                 pass
-    except Exception:
-        pass
 
-    gc.collect()
-    try:
-        unreal.SystemLibrary.collect_garbage(full_purge=True)
-    except Exception:
-        unreal.SystemLibrary.collect_garbage()
-    time.sleep(IMPORT_DELAY)
+        del import_task
 
-except Exception as e:
-    failed_count += 1
-    unreal.log_error(f"Error importing {label}: {{e}}")
+        # Flush pending async loads so GC can actually free everything
+        try:
+            unreal.SystemLibrary.flush_async_loading()
+        except Exception:
+            pass
+
+        # Flush GPU rendering commands and release pooled VRAM
+        try:
+            _w = unreal.EditorLevelLibrary.get_editor_world()
+            for _cmd in ("FlushRenderingCommands", "r.Streaming.FlushAll"):
+                try:
+                    unreal.KismetSystemLibrary.execute_console_command(_w, _cmd)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        gc.collect()
+        try:
+            unreal.SystemLibrary.collect_garbage(full_purge=True)
+        except Exception:
+            unreal.SystemLibrary.collect_garbage()
+        time.sleep(IMPORT_DELAY)
+
+    except Exception as e:
+        failed_count += 1
+        unreal.log_error(f"Error importing {label}: {{e}}")
 """
 
 
@@ -313,16 +318,23 @@ def _write_batch_script(
     script_path_str = str(script_path).replace("\\", "/")
     preamble = _NANITE_CONFIG_PREAMBLE if include_nanite_config else ""
 
+    batch_progress_name = script_path.stem + "_done.txt"
+
     content = f'''"""
 GrowPy batch import: {batch_label} ({file_count} files) - Auto-generated
 
 Execute in Unreal Engine:
 1. Right-click > "Execute Python File in Unreal"
 2. Or: exec(open(r'{script_path_str}').read())
+
+Per-file resume: successfully imported files are tracked in
+  {batch_progress_name}
+Delete that file to re-import everything in this batch.
 """
 
 import unreal
 import gc
+import os
 import time
 
 print("=" * 60)
@@ -331,16 +343,33 @@ print("=" * 60)
 
 IMPORT_PATH = "{project_path}"
 IMPORT_DELAY = 3.0
+_BATCH_PROGRESS = os.path.join(os.path.dirname(r'{script_path_str}'), "{batch_progress_name}")
+
+# Load per-file progress for crash recovery
+_completed_files = set()
+if os.path.isfile(_BATCH_PROGRESS):
+    with open(_BATCH_PROGRESS, "r") as _pf:
+        _completed_files = set(line.strip() for line in _pf if line.strip())
+    if _completed_files:
+        print(f"Resuming: {{len(_completed_files)}} files already imported")
+        print(f"Delete {batch_progress_name} to re-import all\\n")
+
+def _record_file_done(label):
+    """Append a completed file label to the batch progress file."""
+    with open(_BATCH_PROGRESS, "a") as _pf:
+        _pf.write(label + "\\n")
+    _completed_files.add(label)
 
 asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
 imported_count = 0
 failed_count = 0
+skipped_count = 0
 {preamble}
 {import_blocks}
 
 print("")
 print("=" * 60)
-print(f"Batch '{batch_label}' complete: {{imported_count}} imported, {{failed_count}} failed")
+print(f"Batch '{batch_label}' complete: {{imported_count}} imported, {{skipped_count}} skipped, {{failed_count}} failed")
 print("=" * 60)
 '''
 
@@ -684,9 +713,15 @@ for _batch_idx, (batch_file, batch_label) in enumerate(BATCH_SCRIPTS):
         unreal.SystemLibrary.collect_garbage()
     time.sleep(BATCH_DELAY)
 
-# Clean up progress file on successful completion
+# Clean up progress files on successful completion
 if total_failed == 0 and os.path.isfile(PROGRESS_FILE):
     os.remove(PROGRESS_FILE)
+    # Also clean up per-file batch progress files
+    for _done_file in [f for f in os.listdir(SCRIPTS_DIR) if f.endswith("_done.txt")]:
+        try:
+            os.remove(os.path.join(SCRIPTS_DIR, _done_file))
+        except Exception:
+            pass
 
 # Restore default texture streaming pool
 try:

@@ -47,6 +47,7 @@ ensure_pxr_with_unreal_schema()
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel
 
 from ..config.core import get_config as _get_config
+from ..core.skeleton import NANITE_MAX_SKELETON_JOINTS
 from ..core.twig import extract_twig_placements_from_model
 
 
@@ -958,6 +959,108 @@ def export_tree_as_nanite_assembly(
                             static_path = twig_path.parent / static_name
                             if static_path.exists() and static_path != twig_path:
                                 _copy_twig_file_cached(static_path, dest_dir)
+
+        # Validate skeleton bone count against Nanite assembly limit.
+        # Nanite encodes bone indices in fixed-width bit fields (NaniteResources.h).
+        # Exceeding NANITE_MAX_SKELETON_JOINTS causes:
+        #   Assertion failed: Bits <= Mask
+        # When the limit is exceeded, rebuild the tree mesh with stricter
+        # skeleton reduction parameters until the joint count fits.
+        if use_skeletal_mesh and not use_static_mesh:
+            with _track("validate_nanite_bone_limit"):
+                joint_names = _extract_joint_names_from_usd(temp_tree_path)
+                joint_count = len(joint_names)
+
+                if joint_count > NANITE_MAX_SKELETON_JOINTS:
+                    logger.warning(
+                        "Skeleton has %d joints, exceeding Nanite limit of %d. "
+                        "Rebuilding with stricter skeleton reduction.",
+                        joint_count,
+                        NANITE_MAX_SKELETON_JOINTS,
+                    )
+
+                    # Iteratively increase skeleton reduction until under limit
+                    from ..core.skeleton import filter_bones_for_mesh
+
+                    if (
+                        model
+                        and hasattr(model, "point_attribute_bone_id")
+                        and model.point_attribute_bone_id
+                    ):
+                        bone_id_offset = min(model.point_attribute_bone_id)
+                    else:
+                        bone_id_offset = 0
+
+                    # Re-tag bones with progressively stricter parameters
+                    # This requires access to the grove object via bones_info re-filtering
+                    # Since we can't re-tag (no grove object here), use secondary filtering:
+                    # sort bones by radius (thinnest first) and drop until under limit
+                    filtered_bones, old_to_new = filter_bones_for_mesh(
+                        model, bones_info, bone_id_offset
+                    )
+                    excess = len(filtered_bones) - NANITE_MAX_SKELETON_JOINTS
+
+                    if excess > 0:
+                        # Sort bones by radius (index 4) ascending; drop thinnest ones
+                        # Skip index 0 (root bone) -- always keep it
+                        bones_with_idx = [
+                            (i, b) for i, b in enumerate(filtered_bones) if i > 0
+                        ]
+                        bones_with_idx.sort(key=lambda x: x[1][4])  # radius ascending
+                        drop_indices = set(i for i, _ in bones_with_idx[:excess])
+
+                        # Rebuild bones_info excluding dropped bones
+                        reduced_bones = [
+                            b for i, b in enumerate(filtered_bones)
+                            if i not in drop_indices
+                        ]
+
+                        logger.info(
+                            "Reduced skeleton from %d to %d joints for Nanite limit",
+                            len(filtered_bones),
+                            len(reduced_bones),
+                        )
+
+                        # Rebuild the tree mesh with the reduced skeleton
+                        # Update bones_info for twig remapping consistency
+                        bones_info = reduced_bones
+
+                        from .tree_export import build_tree_mesh
+
+                        if not build_tree_mesh(
+                            model=model,
+                            skeleton=skeleton,
+                            bones_info=bones_info,
+                            output_path=temp_tree_path,
+                            up_axis="Z",
+                            triangulated=True,
+                            include_skeleton=True,
+                            include_grove_attributes=include_grove_attributes,
+                            species_name=species_name,
+                            tree_id=tree_id,
+                            radial_scale=radial_scale,
+                        ):
+                            logger.error("Failed to rebuild tree mesh with reduced skeleton")
+                            return False
+
+                        # Re-extract joint names and rebuild twig bone mapping
+                        joint_names = _extract_joint_names_from_usd(temp_tree_path)
+                        logger.info(
+                            "Rebuilt tree mesh: %d joints (limit: %d)",
+                            len(joint_names),
+                            NANITE_MAX_SKELETON_JOINTS,
+                        )
+
+                        # Rebuild old_to_new map for twig placements
+                        if twig_placements:
+                            _, new_old_to_new = filter_bones_for_mesh(
+                                model, bones_info, bone_id_offset
+                            )
+                            for twig_type, placement_list in twig_placements.items():
+                                for placement in placement_list:
+                                    if placement.bone_id is not None:
+                                        if placement.bone_id not in new_old_to_new:
+                                            placement.bone_id = 0
 
         # Create Assembly USD
         with _track("create_assembly"):
