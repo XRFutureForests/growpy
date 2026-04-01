@@ -742,6 +742,15 @@ def export_tree_as_nanite_assembly(
         else:
             file_base = f"{sanitized_species}_stems"
 
+        # Skip export if model has no geometry (e.g. deciduous species in
+        # leaf-off season, or failed growth simulation).  Empty assemblies
+        # crash Nanite in Unreal Engine.
+        if not getattr(model, "points", None) or not getattr(model, "faces", None):
+            logger.warning(
+                "Skipping %s: model has no geometry (0 points/faces)", species_name,
+            )
+            return False
+
         # Triangulate model before building USD (CRITICAL for proper face/attribute matching)
         with _track("triangulate"):
             try:

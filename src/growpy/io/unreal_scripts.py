@@ -380,11 +380,22 @@ def generate_unreal_import_script(
         + list(output_dir.glob("*/*/*_assembly*.usd"))
     )
     skip_dirs = {"Instances", "unreal_scripts"}
-    nanite_files = [
+    # Minimum file size for valid USDC with geometry (empty stubs are ~1 KB)
+    MIN_ASSEMBLY_BYTES = 2048
+    nanite_files_raw = [
         f
         for f in nanite_files
         if f.relative_to(output_dir).parts[0] not in skip_dirs
     ]
+    nanite_files = []
+    for f in nanite_files_raw:
+        if f.stat().st_size < MIN_ASSEMBLY_BYTES:
+            logger.warning(
+                "Skipping empty/stub assembly %s (%d bytes)",
+                f.name, f.stat().st_size,
+            )
+        else:
+            nanite_files.append(f)
 
     # Find shared twig instances — prefer combined per-species wrappers
     instances_dir = output_dir / "Instances"
@@ -500,14 +511,10 @@ def generate_unreal_import_script(
                     else species_folder
                 )
 
-                # For assembly imports, find matching DynamicWind JSON and
-                # enable post-import nanite configuration (Voxelize, wind, etc.)
                 is_assembly = "_assembly" in usd_file.stem
                 wind_json = ""
                 if is_assembly:
                     has_assemblies = True
-                    # Wind JSON is per-tree, shared across density variants.
-                    # Search for any *_stems_unreal_wind.json in the same dir.
                     wind_files = sorted(usd_file.parent.glob("*_stems_unreal_wind.json"))
                     if wind_files:
                         wind_json = str(wind_files[0].resolve()).replace("\\", "/")
@@ -638,7 +645,10 @@ for _batch_idx, (batch_file, batch_label) in enumerate(BATCH_SCRIPTS):
     print(f"\\n>>> Running batch {{_batch_idx + 1}}/{{len(BATCH_SCRIPTS)}}: {{batch_label}}")
 
     try:
-        exec(open(batch_path).read())
+        # Execute in isolated namespace so batch-local variables get freed
+        _batch_ns = {{"__builtins__": __builtins__}}
+        exec(open(batch_path).read(), _batch_ns)
+        del _batch_ns
         batches_completed += 1
 
         # Record progress so we can resume after a crash
@@ -654,8 +664,13 @@ for _batch_idx, (batch_file, batch_label) in enumerate(BATCH_SCRIPTS):
     except Exception:
         pass
     try:
+        unreal.AssetCompilingManager.get_default().finish_all_compilation()
+    except Exception:
+        pass
+    try:
         _world = unreal.EditorLevelLibrary.get_editor_world()
-        for _cmd in ("FlushRenderingCommands", "r.Streaming.FlushAll"):
+        for _cmd in ("FlushRenderingCommands", "r.Streaming.FlushAll",
+                      "r.Nanite.CoarseMeshStreaming.ForceFlush 1"):
             try:
                 unreal.KismetSystemLibrary.execute_console_command(_world, _cmd)
             except Exception:

@@ -228,7 +228,7 @@ export_trees = []
 # Each simulation produces one file per variant without re-simulating.
 # Empty list (default) = single export using CSV/config twig_density.
 # When active, CSV twig_density column is ignored.
-density_variants = ["full", "reduced"] # e.g., ["full", "reduced", "bare"]
+density_variants = ["full"] # e.g., ["full", "reduced", "bare"]
 
 # --- Post-export: Unreal import ---
 [unreal]
@@ -279,7 +279,7 @@ fruit = 0.2
 # Referenced by name in export.density_variants list above.
 
 [density_variant.full]
-twig_density = 3
+twig_density = 5
 
 [density_variant.reduced]
 twig_density = 0.75

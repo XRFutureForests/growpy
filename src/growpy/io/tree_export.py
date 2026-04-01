@@ -172,6 +172,10 @@ def build_tree_mesh(
         faces = model.faces  # List of face definitions (point indices)
         uvs = model.uvs  # UV coordinates for texturing
 
+        if not points or not faces:
+            logger.warning("Model has no geometry (0 points/faces) — skipping USD export")
+            return False
+
         # Convert points to USD format, applying height-aware radial scaling.
         # Corrects Grove's inflated DBH to match yield table targets.
         # Scaling is perpendicular to the trunk bone axis so cross-sections
@@ -256,14 +260,18 @@ def build_tree_mesh(
                         break
                 bone_order[idx] = order
 
-            # Pre-compute junction bones: order-1 bones whose parent is
-            # trunk (order 0). These need scaling at their base to match
-            # the trunk diameter and blend to 1.0 along the branch.
-            branch_blend_dist = 0.05  # meters — just the junction ring
+            # Pre-compute junction bones: ALL order-1 bones need scaling
+            # near the trunk to prevent gaps when diameter is adjusted.
+            # Grove bone starts sit on the trunk centerline, so the
+            # blend distance must exceed the trunk radius for visible
+            # surface vertices to receive scaling.
+            branch_blend_dist = 0.5  # meters from branch root start
             is_junction_bone = [False] * len(bones_info)
-            junction_trunk_scale = [1.0] * len(bones_info)
             junction_parent_axis = list(bone_axes)
             junction_parent_start = list(bone_starts)
+
+            # First pass: find branch roots (order-1 bones with trunk parent)
+            branch_root_of = {}  # bone_idx -> root_bone_idx
             for idx in range(len(bones_info)):
                 if bone_order[idx] != 1:
                     continue
@@ -272,23 +280,36 @@ def build_tree_mesh(
                 if parent_local < 0 or parent_local >= len(bones_info):
                     continue
                 if bone_order[parent_local] == 0:
-                    is_junction_bone[idx] = True
-                    # Use parent trunk axis for perpendicular displacement so
-                    # the branch base moves with the trunk surface, not away
-                    # from the branch axis (which causes disconnection).
+                    branch_root_of[idx] = idx
                     junction_parent_axis[idx] = bone_axes[parent_local]
                     junction_parent_start[idx] = bone_starts[parent_local]
-                    jh = bone_starts[idx][1]
-                    if jh <= blend_start:
-                        junction_trunk_scale[idx] = radial_scale
-                    elif jh >= blend_end:
-                        junction_trunk_scale[idx] = 1.0
-                    else:
-                        t_h = (jh - blend_start) / blend_range
-                        t_h = t_h * t_h * (3.0 - 2.0 * t_h)
-                        junction_trunk_scale[idx] = (
-                            radial_scale + (1.0 - radial_scale) * t_h
-                        )
+                    is_junction_bone[idx] = True
+
+            # Second pass: propagate root info to descendant order-1 bones
+            changed = True
+            while changed:
+                changed = False
+                for idx in range(len(bones_info)):
+                    if bone_order[idx] != 1 or idx in branch_root_of:
+                        continue
+                    parent_global = bones_info[idx][1]
+                    parent_local = parent_global - bone_id_offset
+                    if (
+                        0 <= parent_local < len(bones_info)
+                        and parent_local in branch_root_of
+                    ):
+                        root = branch_root_of[parent_local]
+                        branch_root_of[idx] = root
+                        junction_parent_axis[idx] = junction_parent_axis[root]
+                        junction_parent_start[idx] = junction_parent_start[root]
+                        is_junction_bone[idx] = True
+                        changed = True
+
+            # Pre-compute branch root start positions for distance calc
+            junction_root_start = {}
+            for idx in branch_root_of:
+                root = branch_root_of[idx]
+                junction_root_start[idx] = bone_starts[root]
 
             usd_points = []
             for i, p in enumerate(points):
@@ -309,24 +330,31 @@ def build_tree_mesh(
                         t = t * t * (3.0 - 2.0 * t)
                         s = s_base + (1.0 - s_base) * t
                 elif is_junction_bone[local_idx]:
-                    # First bone off trunk: blend from trunk scale at
-                    # junction height to 1.0 along the branch
-                    trunk_s = junction_trunk_scale[local_idx]
+                    # Order-1 bone: compute per-vertex trunk scale from
+                    # height (matches trunk exactly) and blend to 1.0
+                    # based on distance from branch root start.
+                    if p.y <= blend_start:
+                        trunk_s = radial_scale
+                    elif p.y >= blend_end:
+                        trunk_s = 1.0
+                    else:
+                        t_h = (p.y - blend_start) / blend_range
+                        t_h = t_h * t_h * (3.0 - 2.0 * t_h)
+                        trunk_s = radial_scale + (1.0 - radial_scale) * t_h
                     if abs(trunk_s - 1.0) < 1e-6:
                         s = 1.0
                     else:
-                        ax, ay, az = bone_axes[local_idx]
-                        bx, by, bz = bone_starts[local_idx]
-                        vx = p.x - bx
-                        vy = p.y - by
-                        vz = p.z - bz
-                        dist_along = max(
-                            0.0, vx * ax + vy * ay + vz * az
+                        rx, ry, rz = junction_root_start[local_idx]
+                        dx = p.x - rx
+                        dy = p.y - ry
+                        dz = p.z - rz
+                        dist_from_root = math.sqrt(
+                            dx * dx + dy * dy + dz * dz
                         )
-                        if dist_along >= branch_blend_dist:
+                        if dist_from_root >= branch_blend_dist:
                             s = 1.0
                         else:
-                            bt = dist_along / branch_blend_dist
+                            bt = dist_from_root / branch_blend_dist
                             bt = bt * bt * (3.0 - 2.0 * bt)
                             s = trunk_s + (1.0 - trunk_s) * bt
                 else:
