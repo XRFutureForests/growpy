@@ -110,11 +110,20 @@ else:
                 "r.Streaming.FlushAll",
                 "r.Nanite.CoarseMeshStreaming.ForceFlush 1",
                 "r.RHI.GPUDefrag",
+                "r.D3D12.ResidencyManagement.DenyBudgetUpdates 1",
+                "r.D3D12.FreeAllPooledTextures",
             ):
                 try:
                     unreal.KismetSystemLibrary.execute_console_command(_w, _cmd)
                 except Exception:
                     pass
+            # Re-enable budget updates
+            try:
+                unreal.KismetSystemLibrary.execute_console_command(
+                    _w, "r.D3D12.ResidencyManagement.DenyBudgetUpdates 0"
+                )
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -628,7 +637,7 @@ IMPORT_PATH = "{project_path}"
 SCRIPTS_DIR = r"{scripts_dir_str}"
 
 # Delay between batches (seconds) - increase if you still get VRAM crashes
-BATCH_DELAY = 10.0
+BATCH_DELAY = 30.0
 
 # --- VRAM management: reduce GPU memory pressure during import ---
 # Cap texture streaming pool to 256 MB (default ~1024 MB) to leave room for Nanite
