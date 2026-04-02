@@ -178,9 +178,16 @@ def build_tree_mesh(
 
         # Convert points to USD format, applying height-aware radial scaling.
         # Corrects Grove's inflated DBH to match yield table targets.
-        # Scaling is perpendicular to the trunk bone axis so cross-sections
-        # stay round. Only trunk (order 0) bones are scaled — branches are
-        # left untouched to preserve natural shape.
+        #
+        # Scale factor: uniform height-based for ALL vertices (trunk +
+        # branches) so branches never appear thicker than the stem.
+        #
+        # Scale direction: at branch-trunk junctions, the scaling axis
+        # transitions from the trunk axis (at the connection surface) to
+        # the branch axis (further along the branch). This prevents gaps
+        # when shrinking — branch-base vertices follow the trunk surface
+        # inward rather than collapsing toward their own branch centerline.
+        #
         # Requires bones_info + vertex bone IDs; skipped otherwise.
         if (
             radial_scale != 1.0
@@ -201,8 +208,7 @@ def build_tree_mesh(
                 int(bones_info[0][7]) if len(bones_info[0]) >= 8 else -1
             )
 
-            # Build per-bone data and compute branch order (depth from trunk).
-            # Trunk bones = order 0, first branches off trunk = order 1, etc.
+            # Build per-bone data
             bone_axes = []
             bone_starts = []
             bone_branch_ids = []
@@ -223,10 +229,6 @@ def build_tree_mesh(
                 )
 
             # Normalize bone_starts to local space.
-            # bones_info positions may be in grove world coordinates (e.g.
-            # tree placed at X=10) while model.points are always local.
-            # Find the trunk base bone (lowest height) and subtract its
-            # horizontal position so bones match the model's local frame.
             min_z_idx = min(range(len(bone_starts)), key=lambda i: bone_starts[i][2])
             origin_x = bone_starts[min_z_idx][0]
             origin_y = bone_starts[min_z_idx][1]
@@ -236,15 +238,24 @@ def build_tree_mesh(
                 for bx, by, bz in bone_starts
             ]
 
-            # Compute branch order per bone via parent traversal
-            # Order 0 = trunk, increments each time branch_id changes along
-            # the parent chain
-            bone_order = [0] * len(bones_info)
+            # Determine which bones are trunk (order 0) vs branch
+            is_trunk_bone = [
+                bone_branch_ids[i] == trunk_branch_id
+                for i in range(len(bones_info))
+            ]
+
+            # For each non-trunk bone, find the parent trunk bone axis
+            # so we can blend the scaling direction at junctions.
+            # Walk parent chain until we hit a trunk bone.
+            parent_trunk_axis: List[Optional[Tuple[float, float, float]]] = [
+                None
+            ] * len(bones_info)
+            parent_trunk_start: List[Optional[Tuple[float, float, float]]] = [
+                None
+            ] * len(bones_info)
             for idx in range(len(bones_info)):
-                if bone_branch_ids[idx] == trunk_branch_id:
-                    bone_order[idx] = 0
+                if is_trunk_bone[idx]:
                     continue
-                order = 0
                 cur = idx
                 visited = set()
                 while cur >= 0 and cur not in visited:
@@ -253,69 +264,36 @@ def build_tree_mesh(
                     parent_local = parent_global - bone_id_offset
                     if parent_local < 0 or parent_local >= len(bones_info):
                         break
-                    if bone_branch_ids[parent_local] != bone_branch_ids[cur]:
-                        order += 1
-                    cur = parent_local
-                    if bone_branch_ids[cur] == trunk_branch_id:
+                    if is_trunk_bone[parent_local]:
+                        parent_trunk_axis[idx] = bone_axes[parent_local]
+                        parent_trunk_start[idx] = bone_starts[parent_local]
                         break
-                bone_order[idx] = order
+                    cur = parent_local
 
-            # Pre-compute junction bones: ALL order-1 bones need scaling
-            # near the trunk to prevent gaps when diameter is adjusted.
-            # Grove bone starts sit on the trunk centerline, so the
-            # blend distance must exceed the trunk radius for visible
-            # surface vertices to receive scaling.
-            branch_blend_dist = 0.5  # meters from branch root start
-            is_junction_bone = [False] * len(bones_info)
-            junction_parent_axis = list(bone_axes)
-            junction_parent_start = list(bone_starts)
-
-            # First pass: find branch roots (order-1 bones with trunk parent)
-            branch_root_of = {}  # bone_idx -> root_bone_idx
+            # Cumulative bone-chain distance from the first non-trunk bone
+            # (branch root) to each bone along the branch. Used to blend
+            # the scaling axis from trunk direction to branch direction.
+            branch_root_of = {}
             for idx in range(len(bones_info)):
-                if bone_order[idx] != 1:
+                if is_trunk_bone[idx] or parent_trunk_axis[idx] is None:
                     continue
-                parent_global = bones_info[idx][1]
-                parent_local = parent_global - bone_id_offset
-                if parent_local < 0 or parent_local >= len(bones_info):
-                    continue
-                if bone_order[parent_local] == 0:
-                    branch_root_of[idx] = idx
-                    junction_parent_axis[idx] = bone_axes[parent_local]
-                    junction_parent_start[idx] = bone_starts[parent_local]
-                    is_junction_bone[idx] = True
-
-            # Second pass: propagate root info to descendant order-1 bones
-            changed = True
-            while changed:
-                changed = False
-                for idx in range(len(bones_info)):
-                    if bone_order[idx] != 1 or idx in branch_root_of:
-                        continue
-                    parent_global = bones_info[idx][1]
+                # Walk parent chain to find first non-trunk bone (root)
+                cur = idx
+                visited = set()
+                root = idx
+                while cur >= 0 and cur not in visited:
+                    visited.add(cur)
+                    parent_global = bones_info[cur][1]
                     parent_local = parent_global - bone_id_offset
-                    if (
-                        0 <= parent_local < len(bones_info)
-                        and parent_local in branch_root_of
-                    ):
-                        root = branch_root_of[parent_local]
-                        branch_root_of[idx] = root
-                        junction_parent_axis[idx] = junction_parent_axis[root]
-                        junction_parent_start[idx] = junction_parent_start[root]
-                        is_junction_bone[idx] = True
-                        changed = True
+                    if parent_local < 0 or parent_local >= len(bones_info):
+                        break
+                    if is_trunk_bone[parent_local]:
+                        root = cur
+                        break
+                    root = parent_local
+                    cur = parent_local
+                branch_root_of[idx] = root
 
-            # Pre-compute branch root start positions for distance calc
-            junction_root_start = {}
-            for idx in branch_root_of:
-                root = branch_root_of[idx]
-                junction_root_start[idx] = bone_starts[root]
-
-            # Cumulative bone-chain distance from junction root to each
-            # junction bone.  Used to measure "distance along the branch"
-            # so that vertices at the branch-trunk surface (regardless of
-            # their radial position around the trunk) receive the same
-            # scale as adjacent trunk vertices — preventing gaps.
             junction_chain_dist = {}
             for idx in branch_root_of:
                 root = branch_root_of[idx]
@@ -333,81 +311,46 @@ def build_tree_mesh(
                             break
                         csx, csy, csz = bone_starts[cur]
                         cpx, cpy, cpz = bone_starts[parent_local]
-                        ddx = csx - cpx
-                        ddy = csy - cpy
-                        ddz = csz - cpz
+                        ddx, ddy, ddz = csx - cpx, csy - cpy, csz - cpz
                         dist += math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz)
                         cur = parent_local
                     junction_chain_dist[idx] = dist
+
+            # Distance over which the scaling axis transitions from trunk
+            # to branch direction. Must exceed trunk radius so surface
+            # vertices at the junction follow the trunk surface.
+            axis_blend_dist = 0.5
 
             usd_points = []
             for i, p in enumerate(points):
                 local_idx = vertex_bone_ids[i] - bone_id_offset
                 local_idx = max(0, min(local_idx, len(bone_axes) - 1))
 
-                order = bone_order[local_idx]
-
-                if order == 0:
-                    # Trunk: full radial scale with height blend
-                    s_base = radial_scale
-                    if p.y <= blend_start:
-                        s = s_base
-                    elif p.y >= blend_end:
-                        s = 1.0
-                    else:
-                        t = (p.y - blend_start) / blend_range
-                        t = t * t * (3.0 - 2.0 * t)
-                        s = s_base + (1.0 - s_base) * t
-                elif is_junction_bone[local_idx]:
-                    # Order-1 bone: compute per-vertex trunk scale from
-                    # height (matches trunk exactly) and blend to 1.0
-                    # based on distance *along the branch* from the root.
-                    # Using along-branch distance (not Euclidean from the
-                    # trunk centerline) ensures vertices on the trunk
-                    # surface at the junction get the same scale as
-                    # adjacent trunk vertices, preventing seams.
-                    if p.y <= blend_start:
-                        trunk_s = radial_scale
-                    elif p.y >= blend_end:
-                        trunk_s = 1.0
-                    else:
-                        t_h = (p.y - blend_start) / blend_range
-                        t_h = t_h * t_h * (3.0 - 2.0 * t_h)
-                        trunk_s = radial_scale + (1.0 - radial_scale) * t_h
-                    if abs(trunk_s - 1.0) < 1e-6:
-                        s = 1.0
-                    else:
-                        # Cumulative chain distance + projection along
-                        # this bone's axis = total distance along branch.
-                        chain_d = junction_chain_dist.get(local_idx, 0.0)
-                        jax, jay, jaz = bone_axes[local_idx]
-                        jsx, jsy, jsz = bone_starts[local_idx]
-                        along = max(
-                            0.0,
-                            (p.x - jsx) * jax
-                            + (p.y - jsy) * jay
-                            + (p.z - jsz) * jaz,
-                        )
-                        dist_along = chain_d + along
-                        if dist_along >= branch_blend_dist:
-                            s = 1.0
-                        else:
-                            bt = dist_along / branch_blend_dist
-                            bt = bt * bt * (3.0 - 2.0 * bt)
-                            s = trunk_s + (1.0 - trunk_s) * bt
-                else:
+                # Height-based scale: radial_scale at breast height,
+                # blending to 1.0 at blend_end. Same for all vertices
+                # regardless of branch order.
+                if p.y <= blend_start:
+                    s = radial_scale
+                elif p.y >= blend_end:
                     s = 1.0
+                else:
+                    t = (p.y - blend_start) / blend_range
+                    t = t * t * (3.0 - 2.0 * t)
+                    s = radial_scale + (1.0 - radial_scale) * t
 
                 if abs(s - 1.0) < 1e-6:
                     usd_points.append(Gf.Vec3f(p.x, p.y, p.z))
                     continue
 
-                # Scale perpendicular to bone axis.
-                # Junction bones interpolate the scaling axis from the
-                # parent trunk axis (at the connection) to the branch's
-                # own axis (further along), keeping cross-sections round
-                # throughout the transition zone.
-                if is_junction_bone[local_idx]:
+                # Determine scaling axis and reference point.
+                # Trunk bones: use own axis directly.
+                # Branch bones near junction: blend from trunk axis to
+                # branch axis so vertices at the connection surface move
+                # with the trunk rather than toward the branch centerline.
+                if (
+                    not is_trunk_bone[local_idx]
+                    and parent_trunk_axis[local_idx] is not None
+                ):
                     chain_d = junction_chain_dist.get(local_idx, 0.0)
                     jax, jay, jaz = bone_axes[local_idx]
                     jsx, jsy, jsz = bone_starts[local_idx]
@@ -417,26 +360,36 @@ def build_tree_mesh(
                         + (p.y - jsy) * jay
                         + (p.z - jsz) * jaz,
                     )
-                    at = min(1.0, (chain_d + along) / branch_blend_dist)
-                    # Interpolate axis: trunk axis -> branch axis
-                    tax, tay, taz = junction_parent_axis[local_idx]
-                    ax = tax + (jax - tax) * at
-                    ay = tay + (jay - tay) * at
-                    az = taz + (jaz - taz) * at
-                    ln = math.sqrt(ax * ax + ay * ay + az * az)
-                    if ln > 1e-6:
-                        inv_ln = 1.0 / ln
-                        ax *= inv_ln
-                        ay *= inv_ln
-                        az *= inv_ln
-                    # Interpolate reference point: trunk start -> bone start
-                    tbx, tby, tbz = junction_parent_start[local_idx]
-                    bx = tbx + (jsx - tbx) * at
-                    by = tby + (jsy - tby) * at
-                    bz = tbz + (jsz - tbz) * at
+                    dist_along = chain_d + along
+                    if dist_along >= axis_blend_dist:
+                        # Far enough from junction — use branch axis
+                        ax, ay, az = jax, jay, jaz
+                        bx, by, bz = jsx, jsy, jsz
+                    else:
+                        # Blend axis: trunk axis -> branch axis
+                        at = dist_along / axis_blend_dist
+                        at = at * at * (3.0 - 2.0 * at)
+                        pt_axis = parent_trunk_axis[local_idx] or (0.0, 1.0, 0.0)
+                        pt_start = parent_trunk_start[local_idx] or (0.0, 0.0, 0.0)
+                        tax, tay, taz = pt_axis
+                        ax = tax + (jax - tax) * at
+                        ay = tay + (jay - tay) * at
+                        az = taz + (jaz - taz) * at
+                        ln = math.sqrt(ax * ax + ay * ay + az * az)
+                        if ln > 1e-6:
+                            inv_ln = 1.0 / ln
+                            ax *= inv_ln
+                            ay *= inv_ln
+                            az *= inv_ln
+                        # Blend reference point: trunk start -> bone start
+                        tbx, tby, tbz = pt_start
+                        bx = tbx + (jsx - tbx) * at
+                        by = tby + (jsy - tby) * at
+                        bz = tbz + (jsz - tbz) * at
                 else:
                     ax, ay, az = bone_axes[local_idx]
                     bx, by, bz = bone_starts[local_idx]
+
                 vx, vy, vz = p.x - bx, p.y - by, p.z - bz
                 dot = vx * ax + vy * ay + vz * az
                 px, py, pz = vx - dot * ax, vy - dot * ay, vz - dot * az

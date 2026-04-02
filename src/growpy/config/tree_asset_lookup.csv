@@ -4,7 +4,7 @@ Norway spruce,norway_spruce,Picea abies,Pinaceae - Fir.seed.json,PacificSilverFi
 Scots pine,scots_pine,Pinus sylvestris,Pinaceae - Scots pine.seed.json,ScotsPineTwig,Pinaceae_Scots_pine,#aea59bff,#97a381ee,"Pine,Scotch pine",Fir70.jpg,Kiefer,30,4
 Silver fir,silver_fir,Abies alba,Pinaceae - Fir.seed.json,PacificSilverFirTwig,Pinaceae_Fir,#b9b1a4ff,#849085ea,Fir,Fir70.jpg,Tanne,35,2.5
 Grand fir,grand_fir,Abies grandis,Pinaceae - Grand fir.seed.json,PacificSilverFirTwig,Pinaceae_Grand_fir,#7f6659ff,#2d6b23ff,,Fir70.jpg,,35,3
-European oak,european_oak,Quercus robur,Fagaceae - European oak.seed.json,EuropeanOakTwig,Fagaceae_European_oak,#b8aea0ff,#96a281e1,"Oak,Common oak,Pedunculate oak,English oak",NorthernRedOak60.jpg,Eiche,30,3
+European oak,european_oak,Quercus robur,Fagaceae - European oak.seed.json,EuropeanOakTwig,Fagaceae_European_oak,#b8aea0ff,#96a281e1,"Oak,Common oak,Pedunculate oak,English oak",NorthernRedOak60.jpg,Eiche,30,4
 Red oak,red_oak,Quercus rubra,Fagaceae - Red oak.seed.json,RedOakTwig,Fagaceae_Red_oak,#b8aea0ff,#9ca780de,Northern red oak,NorthernRedOak60.jpg,Roteiche,,
 White oak,white_oak,Quercus alba,Fagaceae - White oak.seed.json,EuropeanOakTwig,Fagaceae_White_oak,#998c7fff,#47932dff,,NorthernRedOak60.jpg,,,
 Sweet chestnut,sweet_chestnut,Castanea sativa,Fagaceae - Sweet chestnut.seed.json,,Fagaceae_Sweet_chestnut,#66594cff,#4ca53fff,,SweetChestnut40.jpg,Edelkastanie,,
@@ -17,7 +17,7 @@ Paper birch,paper_birch,Betula papyrifera,Betulaceae - Paper Birch.seed.json,Pap
 Black alder,black_alder,Alnus glutinosa,Betulaceae - Alder.seed.json,BlackAlderTwig,Betulaceae_Alder,#4c3f33ff,#59a53fff,,BlackAlder35.jpg,Erle,25,4
 Hornbeam,hornbeam,Carpinus betulus,Betulaceae - Hornbeam.seed.json,HazelTwig,Betulaceae_Hornbeam,#b9b1a4ff,#94a081e5,,Beech60.jpg,Hainbuche,20,2.5
 Hazel,hazel,Corylus avellana,Betulaceae - Hazel.seed.json,HazelTwig,Betulaceae_Hazel,#b9b1a4ff,#97a381df,,Beech60.jpg,,,
-Field maple,field_maple,Acer campestre,Sapindaceae - Field maple.seed.json,FieldMapleTwig,Sapindaceae_Field_maple,#b0a695ff,#899684e3,Maple,MapleC65.jpg,,20,3
+Field maple,field_maple,Acer campestre,Sapindaceae - Field maple.seed.json,FieldMapleTwig,Sapindaceae_Field_maple,#b0a695ff,#899684e3,Maple,MapleC65.jpg,,20,5
 Sycamore maple,sycamore_maple,Acer pseudoplatanus,Sapindaceae - Maple.seed.json,SycamoreMapleFallTwig,Sapindaceae_Maple,#b0a695ff,#8e9a83e1,"Maple,Sycamore",MapleA60.jpg,,25,3
 Japanese maple,japanese_maple,Acer palmatum,Sapindaceae - Japanese maple.seed.json,JapeneseMapleAtropurpureumTwig,Sapindaceae_Japanese_maple,#66594cff,#993326ff,,MapleD40.jpg,,,
 Horse chestnut,horse_chestnut,Aesculus hippocastanum,Sapindaceae - Horse chestnut.seed.json,,Sapindaceae_Horse_chestnut,#8c7f72ff,#59b24cff,,HorseChestnut55.jpg,,,

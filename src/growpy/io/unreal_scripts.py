@@ -34,16 +34,18 @@ def _build_import_block(
     if configure_nanite:
         wind_arg = f'r"{wind_json_path}"' if wind_json_path else '""'
         config_block = f"""
-        # Post-import: configure nanite assembly
-        for _obj_path in (import_task.imported_object_paths or []):
-            _obj_path_str = str(_obj_path)
-            if "nanite_assembly" not in _obj_path_str.lower():
-                continue
-            _mesh = unreal.EditorAssetLibrary.load_asset(_obj_path_str)
-            if not _mesh:
-                continue
-            _configure_nanite_assembly(_mesh, {wind_arg}, "{label}")
-            break
+            # Post-import: configure nanite assembly
+            for _obj_path in (import_task.imported_object_paths or []):
+                _obj_path_str = str(_obj_path)
+                if "nanite_assembly" not in _obj_path_str.lower():
+                    continue
+                _mesh = unreal.EditorAssetLibrary.load_asset(_obj_path_str)
+                if not _mesh:
+                    continue
+                _configure_nanite_assembly(_mesh, {wind_arg}, "{label}")
+                # Save the configured asset to disk before unloading
+                unreal.EditorAssetLibrary.save_asset(_obj_path_str)
+                break
 """
 
     return f"""
@@ -74,10 +76,11 @@ else:
             imported_count += 1
             _record_file_done("{label}")
             print(f"  Imported: {label}")
+{config_block}
         else:
             failed_count += 1
             unreal.log_warning("Failed to import: {label}")
-{config_block}
+
         # Wait for async Nanite compilation to finish before unloading
         try:
             unreal.AssetCompilingManager.get_default().finish_all_compilation()
@@ -102,7 +105,12 @@ else:
         # Flush GPU rendering commands and release pooled VRAM
         try:
             _w = unreal.EditorLevelLibrary.get_editor_world()
-            for _cmd in ("FlushRenderingCommands", "r.Streaming.FlushAll"):
+            for _cmd in (
+                "FlushRenderingCommands",
+                "r.Streaming.FlushAll",
+                "r.Nanite.CoarseMeshStreaming.ForceFlush 1",
+                "r.RHI.GPUDefrag",
+            ):
                 try:
                     unreal.KismetSystemLibrary.execute_console_command(_w, _cmd)
                 except Exception:
@@ -298,7 +306,7 @@ def _configure_nanite_assembly(mesh, wind_json_path, label):
             f"  Set manually: Skeletal Mesh > Details > Dynamic Wind Transform Provider Data"
         )
 
-    # Save the modified asset
+    # Mark the asset as modified so editor knows it changed
     try:
         mesh.modify(True)
     except Exception:
@@ -620,7 +628,7 @@ IMPORT_PATH = "{project_path}"
 SCRIPTS_DIR = r"{scripts_dir_str}"
 
 # Delay between batches (seconds) - increase if you still get VRAM crashes
-BATCH_DELAY = 5.0
+BATCH_DELAY = 10.0
 
 # --- VRAM management: reduce GPU memory pressure during import ---
 # Cap texture streaming pool to 256 MB (default ~1024 MB) to leave room for Nanite
@@ -698,12 +706,25 @@ for _batch_idx, (batch_file, batch_label) in enumerate(BATCH_SCRIPTS):
         pass
     try:
         _world = unreal.EditorLevelLibrary.get_editor_world()
-        for _cmd in ("FlushRenderingCommands", "r.Streaming.FlushAll",
-                      "r.Nanite.CoarseMeshStreaming.ForceFlush 1"):
+        for _cmd in (
+            "FlushRenderingCommands",
+            "r.Streaming.FlushAll",
+            "r.Nanite.CoarseMeshStreaming.ForceFlush 1",
+            "r.RHI.GPUDefrag",
+            "r.D3D12.ResidencyManagement.DenyBudgetUpdates 1",
+            "r.D3D12.FreeAllPooledTextures",
+        ):
             try:
                 unreal.KismetSystemLibrary.execute_console_command(_world, _cmd)
             except Exception:
                 pass
+        # Re-enable budget updates
+        try:
+            unreal.KismetSystemLibrary.execute_console_command(
+                _world, "r.D3D12.ResidencyManagement.DenyBudgetUpdates 0"
+            )
+        except Exception:
+            pass
     except Exception:
         pass
     gc.collect()

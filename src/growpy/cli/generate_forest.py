@@ -333,10 +333,6 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 filename_dbh = csv_dbh_for_tree
                 dbh_from_csv = True
 
-            h_str = format_height_for_filename(tree_height_m)
-            d_str = format_dbh_for_filename(filename_dbh)
-            dims_suffix = f"{h_str}_{d_str}"
-
             # Shared per-tree work (independent of density variant)
             use_skeletal = mesh_type == "skeletal"
             use_static = mesh_type == "static"
@@ -355,6 +351,15 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                     tree_radial_scale = max(0.1, min(tree_radial_scale, 5.0))
                 else:
                     tree_radial_scale = max(0.5, min(tree_radial_scale, 2.0))
+
+            # Use the actual DBH after clamped radial scaling for the filename,
+            # so the filename reflects what the exported mesh actually shows.
+            if tree_radial_scale != 1.0 and grove_dbh_m > 0.001:
+                filename_dbh = grove_dbh_m * tree_radial_scale
+
+            h_str = format_height_for_filename(tree_height_m)
+            d_str = format_dbh_for_filename(filename_dbh)
+            dims_suffix = f"{h_str}_{d_str}"
 
             # Build export iterations: one per density variant, or single default
             if density_variants:
@@ -994,9 +999,6 @@ def generate_forest_stages(
                     filename_dbh = csv_dbh_for_tree
                     dbh_from_csv = True
 
-                dbh_str = format_dbh_for_filename(filename_dbh)
-                dims_suffix = f"{height_str}_{dbh_str}"
-
                 # Shared per-tree work (independent of density variant)
                 twig_usd_map = get_twig_usd_map_for_species(
                     species_name, config, prefer_skeletal=True, prefer_static=False
@@ -1013,6 +1015,14 @@ def generate_forest_stages(
                         tree_radial_scale = max(0.1, min(tree_radial_scale, 5.0))
                     else:
                         tree_radial_scale = max(0.5, min(tree_radial_scale, 2.0))
+
+                # Use the actual DBH after clamped radial scaling for the filename,
+                # so the filename reflects what the exported mesh actually shows.
+                if tree_radial_scale != 1.0 and grove_dbh > 0.001:
+                    filename_dbh = grove_dbh * tree_radial_scale
+
+                dbh_str = format_dbh_for_filename(filename_dbh)
+                dims_suffix = f"{height_str}_{dbh_str}"
 
                 use_skeletal = config.export_skeletal
                 use_static_only = not use_skeletal and config.export_static
