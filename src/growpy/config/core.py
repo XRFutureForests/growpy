@@ -124,6 +124,7 @@ class GrowPyConfig:
     export_skip_pve_json: bool = True
     export_skip_validation: bool = True
     export_twig_density: float = 1.0
+    export_youth_bias: float = 1.0
     export_density_variants: list = field(default_factory=list)
     density_variant_defs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
 
@@ -263,6 +264,8 @@ class GrowPyConfig:
             kwargs["calibration_align_dbh"] = export["radial_scale"]
         if "twig_density" in export:
             kwargs["export_twig_density"] = export["twig_density"]
+        if "youth_bias" in export:
+            kwargs["export_youth_bias"] = export["youth_bias"]
         if "export_trees" in export:
             kwargs["forest_export_trees"] = export["export_trees"]
         if "density_variants" in export:

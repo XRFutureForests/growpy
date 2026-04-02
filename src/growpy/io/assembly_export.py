@@ -832,6 +832,7 @@ def export_tree_as_nanite_assembly(
                             twig_placements,
                             density=effective_density,
                             bones_info=bones_info if not use_static_mesh else None,
+                            youth_bias=cfg.export_youth_bias,
                         )
 
             # CRITICAL: Remap twig bone_ids from UNFILTERED to FILTERED indices

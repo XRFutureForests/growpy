@@ -417,6 +417,7 @@ def densify_twig_placements(
     density: float = 1.0,
     bones_info: Optional[List] = None,
     seed: int = 42,
+    youth_bias: float = 1.0,
 ) -> Dict[str, List[TwigPlacement]]:
     """Adjust twig placement count to match a target density multiplier.
 
@@ -513,7 +514,7 @@ def densify_twig_placements(
         if youth < 0.01:
             continue
         candidate_faces.append(fi)
-        candidate_weights.append(youth)
+        candidate_weights.append(youth ** youth_bias if youth_bias != 1.0 else youth)
 
     if not candidate_faces:
         logger.debug("densify: no candidate faces available")

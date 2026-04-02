@@ -168,8 +168,8 @@ build_cutoff_age = 0
 build_cutoff_thickness = 0.005
 build_blend = true
 build_end_cap = true
-skeleton_length = 0.75
-skeleton_reduce = 0.333
+skeleton_length = 0.85
+skeleton_reduce = 0.4
 skeleton_bias = 0.5
 skeleton_connected = true
 
@@ -212,7 +212,13 @@ static = false
 # Values < 1.0 thin existing placements. Compensates for twig loss from build_cutoff.
 # Override per-tree via twig_density column in input CSV.
 # Range: 0.0 (no twigs) to 2.0+ (dense canopy)
-twig_density = 3
+twig_density = 2.75
+# Youth bias exponent for synthetic twig placement.
+# Controls how strongly additional twigs prefer younger branches.
+# 1.0 = linear (default), >1.0 = stronger youth preference, <1.0 = more uniform.
+# At 2.0 a branch at youth=0.5 gets 25% weight vs 100% for the youngest.
+# Range: 0.0 (uniform placement) to 3.0+ (extreme youth preference)
+youth_bias = 2.0
 # Skip PVE preset JSON generation (saves ~3% export time)
 # PVE presets only needed for Unreal Procedural Vegetation Editor
 skip_pve_json = false

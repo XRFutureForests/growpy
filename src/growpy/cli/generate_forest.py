@@ -1807,8 +1807,9 @@ Unreal Engine Integration:
 
         # Pipeline completion summary (always visible, even in quiet mode)
         total_time = timer.get_total_time() if timer.enabled else 0
-        tree_count = len(list(output_dir.glob(f"*/tree_*/*_assembly*{config.usd_ext}"))) if output_dir.exists() else 0
-        species_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name != "unreal_scripts"] if output_dir.exists() else []
+        skip_dirs = {"unreal_scripts", "Instances", "helios"}
+        tree_count = len(list(output_dir.glob(f"*/**/*_assembly*{config.usd_ext}"))) if output_dir.exists() else 0
+        species_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name not in skip_dirs] if output_dir.exists() else []
         summary_parts = [
             f"{tree_count} assemblies",
             f"{len(species_dirs)} species",
