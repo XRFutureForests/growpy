@@ -147,8 +147,9 @@ def create_assembly(
         api_schemas = Sdf.TokenListOp()
         api_schemas.prependedItems = ["NaniteAssemblyRootAPI"]
         root_prim.SetMetadata("apiSchemas", api_schemas)
-        # Set kind metadata to 'component' as per Megaplant reference (not 'assembly')
-        root_prim.SetMetadata("kind", "component")
+        # Set kind metadata to 'group' as per Epic's official Nanite Assembly tutorial.
+        # The root is a container of sub-components (tree mesh + twig instances).
+        root_prim.SetMetadata("kind", "group")
 
         # Set mesh type - CRITICAL: Must use uniform variability
         mesh_type = "skeletalMesh" if use_skeletal_mesh else "staticMesh"
@@ -451,6 +452,7 @@ def create_assembly(
                         for placement in placement_list:
                             pos = placement["position"]
                             normal = placement["normal"]
+                            twig_scale = placement.get("scale", 1.0)
 
                             rot_matrix = normal_to_rotation_matrix(normal)
                             quat = rotation_matrix_to_quaternion(rot_matrix)
@@ -462,7 +464,9 @@ def create_assembly(
                             all_orientations.append(
                                 Gf.Quath(quat[0], quat[1], quat[2], quat[3])
                             )
-                            all_scales.append(Gf.Vec3f(1.0, 1.0, 1.0))
+                            all_scales.append(
+                                Gf.Vec3f(twig_scale, twig_scale, twig_scale)
+                            )
                             all_proto_indices.append(proto_idx)
 
                     # Set PointInstancer attributes
@@ -495,11 +499,40 @@ def create_assembly(
                         # The bone_id in each TwigPlacement is a direct index into this array
                         joint_names = _extract_joint_names_from_usd(tree_usd_path)
 
-                        # Build bindJoints array using direct bone_id lookup
-                        # Each twig has a bone_id that's a direct index into joint_names
-                        # This is O(1) per twig instead of O(n) spatial search
+                        # Extract joint world positions and parent indices for dual-bone binding.
+                        # Dual-bone binding (2 joints per instance) produces smoother wind
+                        # animation at branch junctions by interpolating between a joint and
+                        # its parent based on the twig's position along the bone segment.
+                        # (See Epic's Houdini tutorial Part 2: "Scattering Parts and Solving
+                        # Their Bindings" for the reference approach.)
+                        joint_positions = _extract_joint_world_positions_from_usd(
+                            tree_usd_path
+                        )
+                        use_dual_binding = (
+                            len(joint_positions) == len(joint_names)
+                            and len(joint_names) > 0
+                        )
+                        if use_dual_binding:
+                            joint_parent_indices = _build_joint_parent_indices(
+                                joint_names
+                            )
+                            logger.info(
+                                "Using dual-bone binding (%d joints available)",
+                                len(joint_names),
+                            )
+                        else:
+                            joint_parent_indices = []
+                            logger.info(
+                                "Falling back to single-bone binding "
+                                "(joint positions unavailable)"
+                            )
+
+                        # Build bindJoints/bindJointWeights arrays.
+                        # Dual binding: 2 joints + 2 weights per instance (elementSize=2).
+                        # Single binding fallback: 1 joint + 1 weight per instance.
                         bind_joints = []
                         bind_weights = []
+                        num_instances = len(all_positions)
 
                         # Debug: Track bone_id usage
                         bone_id_usage = {}
@@ -521,25 +554,42 @@ def create_assembly(
                                 # Handle both TwigPlacement objects and dict representations
                                 if isinstance(placement, dict):
                                     bone_id = placement.get("bone_id")
+                                    twig_pos = placement.get("position", (0, 0, 0))
                                 else:
                                     # TwigPlacement object
                                     bone_id = getattr(placement, "bone_id", None)
+                                    twig_pos = getattr(
+                                        placement, "position", (0, 0, 0)
+                                    )
 
-                                # Use bone_id as direct index into joint_names (O(1) lookup)
+                                # Use bone_id as direct index into joint_names
                                 if bone_id is not None and 0 <= bone_id < len(
                                     joint_names
                                 ):
-                                    joint_path = joint_names[bone_id]
-                                    bind_joints.append(joint_path)
-                                    bind_weights.append(1.0)
-                                    # Track bone_id usage for debugging
+                                    if use_dual_binding:
+                                        names, weights = _compute_dual_bone_binding(
+                                            twig_pos,
+                                            bone_id,
+                                            joint_names,
+                                            joint_positions,
+                                            joint_parent_indices,
+                                        )
+                                        bind_joints.extend(names)
+                                        bind_weights.extend(weights)
+                                    else:
+                                        bind_joints.append(joint_names[bone_id])
+                                        bind_weights.append(1.0)
                                     bone_id_usage[bone_id] = (
                                         bone_id_usage.get(bone_id, 0) + 1
                                     )
                                 else:
                                     # Fallback to tree root if bone_id is invalid
-                                    bind_joints.append("tree_root")
-                                    bind_weights.append(1.0)
+                                    if use_dual_binding:
+                                        bind_joints.extend(["root", "root"])
+                                        bind_weights.extend([1.0, 0.0])
+                                    else:
+                                        bind_joints.append("root")
+                                        bind_weights.append(1.0)
                                     # Track invalid bone_ids
                                     if len(invalid_bone_ids) < 10:
                                         invalid_bone_ids.append(
@@ -599,9 +649,13 @@ def create_assembly(
                         )
                         bind_joints_attr.Set(bind_joints)
 
-                        # Set interpolation metadata (matching reference assembly)
-                        # Note: elementSize is NOT set - Unreal infers 1 joint per instance from array length
+                        # Set interpolation and elementSize metadata per Epic's official
+                        # Nanite Assembly USD specification (Part 1 tutorial):
+                        # "a uniform number of joints per instance must be supplied and
+                        #  described via the primvars elementSize metadata."
+                        joints_per_instance = len(bind_joints) // num_instances if num_instances else 1
                         bind_joints_attr.SetMetadata("interpolation", "uniform")
+                        bind_joints_attr.SetMetadata("elementSize", joints_per_instance)
 
                         # Create bindJointWeights primvar with uniform variability and interpolation
                         bind_weights_attr = instancer_prim.CreateAttribute(
@@ -612,9 +666,8 @@ def create_assembly(
                         )
                         bind_weights_attr.Set(bind_weights)
 
-                        # Set interpolation metadata (matching reference assembly)
-                        # Note: elementSize is NOT set - Unreal infers 1 joint per instance from array length
                         bind_weights_attr.SetMetadata("interpolation", "uniform")
+                        bind_weights_attr.SetMetadata("elementSize", joints_per_instance)
 
                     else:
                         pass
@@ -1306,6 +1359,171 @@ def _extract_joint_names_from_usd(tree_usd_path: Path) -> List[str]:
 
     except Exception as e:
         return []
+
+
+def _extract_joint_world_positions_from_usd(
+    tree_usd_path: Path,
+) -> List[Tuple[float, float, float]]:
+    """Extract joint world positions from tree USD skeleton.
+
+    Computes world-space positions for each joint by accumulating
+    bind transforms from object-space up through the parent chain.
+
+    Args:
+        tree_usd_path: Path to tree USD with skeleton
+
+    Returns:
+        List of (x, y, z) world positions per joint, in skeleton order.
+        Empty list on failure.
+    """
+    try:
+        from pxr import Usd, UsdSkel
+
+        stage = Usd.Stage.Open(str(tree_usd_path))
+
+        for prim in stage.Traverse():
+            if prim.IsA(UsdSkel.Skeleton):
+                skeleton = UsdSkel.Skeleton(prim)
+                bind_attr = skeleton.GetBindTransformsAttr()
+                rest_attr = skeleton.GetRestTransformsAttr()
+                joints_attr = skeleton.GetJointsAttr()
+
+                if not joints_attr or not rest_attr:
+                    continue
+
+                rest_transforms = rest_attr.Get()
+                joints = joints_attr.Get()
+                if not rest_transforms or not joints:
+                    continue
+
+                # Build parent map from joint paths
+                joint_to_idx = {str(j): i for i, j in enumerate(joints)}
+                parent_indices = []
+                for j in joints:
+                    j_str = str(j)
+                    if "/" in j_str:
+                        parent_path = j_str.rsplit("/", 1)[0]
+                        parent_indices.append(joint_to_idx.get(parent_path, -1))
+                    else:
+                        parent_indices.append(-1)
+
+                # Accumulate world transforms
+                world_transforms = [None] * len(joints)
+
+                def get_world_transform(idx):
+                    if world_transforms[idx] is not None:
+                        return world_transforms[idx]
+                    parent_idx = parent_indices[idx]
+                    local = rest_transforms[idx]
+                    if parent_idx < 0:
+                        world_transforms[idx] = local
+                    else:
+                        parent_world = get_world_transform(parent_idx)
+                        world_transforms[idx] = local * parent_world
+                    return world_transforms[idx]
+
+                positions = []
+                for i in range(len(joints)):
+                    world_xform = get_world_transform(i)
+                    t = world_xform.ExtractTranslation()
+                    positions.append((t[0], t[1], t[2]))
+
+                return positions
+
+        return []
+
+    except Exception as e:
+        logger.debug("Failed to extract joint positions: %s", e)
+        return []
+
+
+def _compute_dual_bone_binding(
+    twig_position: Tuple[float, float, float],
+    bone_id: int,
+    joint_names: List[str],
+    joint_positions: List[Tuple[float, float, float]],
+    joint_parent_indices: List[int],
+) -> Tuple[List[str], List[float]]:
+    """Compute dual-bone binding for a twig instance.
+
+    Finds the assigned joint and its parent, then interpolates weights based on
+    the twig's projection along the bone segment between them. This produces
+    smooth wind animation transitions at branch junctions (no twig popping).
+
+    Based on the approach from Epic's Houdini tutorial (Part 2): ray to nearest
+    line segment between two joints, use parametric distance as weight blend.
+
+    Args:
+        twig_position: World-space position of the twig instance
+        bone_id: Direct bone index into joint_names
+        joint_names: Ordered joint names from skeleton
+        joint_positions: World positions of joints (same order as joint_names)
+        joint_parent_indices: Parent index per joint (-1 for root)
+
+    Returns:
+        Tuple of (joint_names_list, weights_list) with 2 entries each.
+    """
+    import math
+
+    if bone_id < 0 or bone_id >= len(joint_names):
+        return (["root", "root"], [1.0, 0.0])
+
+    joint_name = joint_names[bone_id]
+    parent_idx = joint_parent_indices[bone_id]
+
+    # If no valid parent (root bone), bind fully to this joint
+    if parent_idx < 0 or parent_idx >= len(joint_names):
+        return ([joint_name, joint_name], [1.0, 0.0])
+
+    parent_name = joint_names[parent_idx]
+    jp = joint_positions[bone_id]
+    pp = joint_positions[parent_idx]
+    tp = twig_position
+
+    # Vector from parent to joint (bone segment)
+    seg = (jp[0] - pp[0], jp[1] - pp[1], jp[2] - pp[2])
+    seg_len_sq = seg[0] ** 2 + seg[1] ** 2 + seg[2] ** 2
+
+    if seg_len_sq < 1e-8:
+        return ([joint_name, parent_name], [1.0, 0.0])
+
+    # Project twig position onto bone segment
+    to_twig = (tp[0] - pp[0], tp[1] - pp[1], tp[2] - pp[2])
+    t = (to_twig[0] * seg[0] + to_twig[1] * seg[1] + to_twig[2] * seg[2]) / seg_len_sq
+    t = max(0.0, min(1.0, t))
+
+    # t=0 means at parent, t=1 means at joint
+    # Weight toward this joint increases as t increases
+    w_joint = t
+    w_parent = 1.0 - t
+
+    # Normalize to sum to 1.0
+    total = w_joint + w_parent
+    if total > 0:
+        w_joint /= total
+        w_parent /= total
+
+    return ([joint_name, parent_name], [w_joint, w_parent])
+
+
+def _build_joint_parent_indices(joint_names: List[str]) -> List[int]:
+    """Build parent index array from hierarchical joint name paths.
+
+    Joint names use "/" as hierarchy separator (e.g. "root/joint_1/joint_2").
+    Parent of "root/joint_1/joint_2" is "root/joint_1".
+
+    Returns:
+        List of parent indices (-1 for root joints).
+    """
+    joint_to_idx = {name: i for i, name in enumerate(joint_names)}
+    parent_indices = []
+    for name in joint_names:
+        if "/" in name:
+            parent_path = name.rsplit("/", 1)[0]
+            parent_indices.append(joint_to_idx.get(parent_path, -1))
+        else:
+            parent_indices.append(-1)
+    return parent_indices
 
 
 def _extract_dynamic_wind_from_usd(tree_usd_path: Path) -> Tuple[List[str], List[int]]:

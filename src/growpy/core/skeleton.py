@@ -13,9 +13,13 @@ from typing import Any, Dict, List, Optional, Tuple
 # Exceeding this causes integer overflow, resulting in negative indices like -31497
 UNREAL_MAX_BONE_INDEX = 32767
 
-# Nanite Assembly uses fixed-width bit fields for bone indices in packed clusters.
-# Exceeding this triggers: Assertion failed: Bits <= Mask [NaniteResources.h]
-# Limit is 256 (8-bit index); use 250 to leave headroom for internal overhead.
+# Nanite Assembly USD import pathway uses fixed-width bit fields for bone indices
+# in packed clusters. Exceeding this triggers:
+#   Assertion failed: Bits <= Mask [NaniteResources.h]
+# This limit is specific to the Nanite Assembly USD import path (8-bit index = 256 max).
+# The UE5.7 Procedural Vegetation Editor's native skeletal mesh path uses int32
+# bone indices with no such constraint (up to UNREAL_MAX_BONE_INDEX).
+# Use 250 to leave headroom for internal overhead within the 256 limit.
 NANITE_MAX_SKELETON_JOINTS = 250
 
 
