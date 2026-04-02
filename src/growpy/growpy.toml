@@ -222,6 +222,11 @@ youth_bias = 2.0
 # Skip PVE preset JSON generation (saves ~3% export time)
 # PVE presets only needed for Unreal Procedural Vegetation Editor
 skip_pve_json = false
+# Maximum skeleton joints for Nanite Assembly USD export.
+# Nanite encodes bone indices in 8-bit fields (max 256).
+# 0 = no limit (use for PVE native skeletal mesh path which has no constraint).
+# 250 = safe default for Nanite Assembly USD import path.
+max_skeleton_joints = 0
 # Skip assembly validation (saves ~5-10% export time)
 skip_validation = true
 # Only export specific trees by fid (integer array)
