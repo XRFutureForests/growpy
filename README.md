@@ -9,7 +9,7 @@ GrowPy wraps The Grove 2.3 tree modeling API in a Python pipeline that:
 - Simulates multi-species forests with inter-tree light competition
 - Calibrates growth against forestry yield tables (height and DBH)
 - Exports USD Nanite Assemblies with skeletal animation support for UE 5.7+
-- Produces systematic datasets covering 16 southern German tree species
+- Produces systematic datasets covering 20 central European tree species
 
 **Key concepts:**
 
@@ -73,14 +73,20 @@ Key sections in `growpy.toml`:
 
 | Section | Controls |
 |---------|----------|
-| `[general]` | Random seed, default CSV, output directory, verbosity |
+| `[general]` | Random seed, default CSV, output directory, verbosity, profiling |
 | `[assets]` | Grove installation path, texture resizing |
-| `[twigs]` | Mesh densification, alpha trimming, smoothing |
-| `[growth_models]` | Simulation cycles, seeds, plateau detection |
-| `[calibration]` | Yield table alignment (height, DBH) |
-| `[yield_sources]` | Ingested yield table store path |
+| `[twigs]` | Mesh densification, alpha trimming, smoothing, interior decimation |
+| `[growth_models]` | Simulation cycles, seeds, plateau detection, timeouts |
+| `[calibration]` | Yield table alignment (height, DBH), plot generation |
+| `[yield_sources]` | Ingested yield table store path, region filter |
+| `[forest]` | Quality preset, growth cycle limit, height interval, max height |
+| `[quality.*]` | Named presets (mesh resolution, skeleton parameters) |
+| `[export]` | USD format, skeletal/static mesh, twig density, density variants |
+| `[unreal]` | Import script generation, Unreal content path |
+| `[helios]` | OBJ export, scene XML, mesh simplification |
+| `[density_variant.*]` | Named density variants (twig_density, build_cutoff) |
 
-Species-to-asset mapping is defined in `src/growpy/config/tree_asset_lookup.csv` (57 Grove species). Quality presets (ultra, high, medium, low, performance) control mesh resolution and skeleton detail.
+Species-to-asset mapping is defined in `src/growpy/config/tree_asset_lookup.csv` (60 Grove species). Quality presets (`high`, `helios`, `debug`) are defined in `growpy.toml` under `[quality.*]` sections.
 
 For the full CLI flags reference, see [docs/cli-reference.md](docs/cli-reference.md).
 
@@ -107,7 +113,7 @@ Copies and standardizes presets, textures, and twigs from The Grove 2.3 into `da
 ```bash
 python src/growpy/cli/prepare_assets.py                # Species from default CSV
 python src/growpy/cli/prepare_assets.py --csv my.csv   # Species from custom CSV
-python src/growpy/cli/prepare_assets.py --all           # All 57 Grove species
+python src/growpy/cli/prepare_assets.py --all           # All 60 Grove species
 ```
 
 **Produces:** `data/assets/presets/`, `data/assets/textures/`, `data/assets/twigs/`
@@ -119,9 +125,12 @@ Converts twig `.blend` files to USD with optional mesh densification for Nanite 
 ```bash
 python src/growpy/cli/convert_twigs.py                  # Default from growpy.toml
 python src/growpy/cli/convert_twigs.py --no-densify     # Raw export without densification
+python src/growpy/cli/convert_twigs.py --alpha-trim 0.5 # Custom alpha threshold
 ```
 
-**Produces:** `.usda` twig files alongside `.blend` files in `data/assets/twigs/`
+Densification includes alpha-based silhouette trimming, boundary smoothing, and interior decimation. Per-twig parameters are configurable via `[twigs]` in `growpy.toml`.
+
+**Produces:** Two USD variants per twig in `data/assets/twigs/`: `*_skeletal.usda` (no materials, with skeleton) and `*_static.usda` (with materials, no skeleton)
 
 ### Step 3: Create growth models
 
@@ -140,31 +149,57 @@ python src/growpy/cli/create_growth_models.py --seeds 3 --cycles 35    # Robust 
 Multi-species forest simulation from CSV with USD Nanite assembly export.
 
 ```bash
-python src/growpy/cli/generate_forest.py                             # Default from growpy.toml
-python src/growpy/cli/generate_forest.py --quality high               # Quality preset
-python src/growpy/cli/generate_forest.py --height-interval 5          # Multi-stage export
-python src/growpy/cli/generate_forest.py --fast                       # Skip optional steps
+python src/growpy/cli/generate_forest.py                                  # Default from growpy.toml
+python src/growpy/cli/generate_forest.py --quality high                    # Quality preset
+python src/growpy/cli/generate_forest.py --height-interval 5               # Multi-stage export
+python src/growpy/cli/generate_forest.py --export-obj --helios-scene       # Helios++ OBJ + scene XML
+python src/growpy/cli/generate_forest.py --skeleton-reduce 0.5             # Override skeleton params
+python src/growpy/cli/generate_forest.py --export-trees 1,2                # Export specific trees only
+python src/growpy/cli/generate_forest.py --preset-override drop_decay=0.1  # Override preset params
 ```
 
 **Input CSV format:** `x`, `y`, `species`, `height` columns (optional: `z`, `fid`, `dbh`, `twig_density`, `individual_type`)
 
-**Produces:** `data/output/forest/` with per-species directories containing USD assemblies, skeletal meshes, twig USD files, wind data, preview images, and optional Unreal import scripts
+**Produces:** `data/output/forest/` with per-species directories containing USD assemblies, skeletal meshes, twig USD files, wind data, preview images, PVE presets, and optional Unreal import scripts or Helios++ OBJ/scene files
 
-Quality presets control mesh resolution and skeleton detail:
+Quality presets are defined in `growpy.toml` under `[quality.*]` sections:
 
 | Preset | Vertices | Skeleton | Use Case |
 |--------|----------|----------|----------|
-| ultra | 32 | Most bones | Hero trees, closeup |
-| high | 24 | Many bones | Featured trees |
-| medium | 16 | Balanced | Background trees |
-| low | 12 | Few bones | Distant trees |
-| performance | 8 | Minimal | Far background |
+| high | 16 | length=0.75, reduce=0.333 | USD Nanite export (default) |
+| helios | 9 | length=2.0, reduce=0.8 | OBJ export for LiDAR simulation |
+| debug | 8 | length=2.0, reduce=0.5 | Quick iteration |
 
-OBJ export for Helios++ LiDAR simulation runs automatically when `helios.export_obj = true` in growpy.toml.
+Skeleton parameters (`--skeleton-length`, `--skeleton-reduce`, `--skeleton-bias`, `--skeleton-connected`) can be overridden independently of the quality preset on the command line.
+
+### Helios++ OBJ export
+
+GrowPy can export [Helios++](https://github.com/3dgeo-heidelberg/helios) compatible Wavefront OBJ files for LiDAR point cloud simulation. Enable via CLI flags or `[helios]` in `growpy.toml`:
+
+```bash
+python src/growpy/cli/generate_forest.py --export-obj                     # OBJ/MTL export
+python src/growpy/cli/generate_forest.py --export-obj --helios-scene       # + Helios scene XML
+python src/growpy/cli/generate_forest.py --export-obj --individual-obj     # Per-tree OBJ files
+python src/growpy/cli/generate_forest.py --export-obj --obj-up-axis z      # Z-up coordinates
+```
+
+The OBJ exporter converts USD assemblies to Wavefront OBJ with baked twig instances and material classification (`bark`, `twig_wood`, `twig_leaf`). Material-aware mesh simplification can be configured in `[helios.simplification]` to reduce file size while preserving leaf area for LAI accuracy. The Helios scene XML positions trees at their CSV coordinates using `<part>` entries with translate filters.
+
+```toml
+[helios]
+export_obj = true
+helios_scene = true
+obj_up_axis = "z"
+
+[helios.simplification]
+enabled = true
+bark = 0.2
+leaf = 0.5
+```
 
 ## Dataset Production
 
-The dataset pipeline produces a systematic set of tree assets: 16 species, 2 individuals each (open-grown and competition), multiple height stages, 3 density variants (~522 models total). See [Dataset Specification](docs/dataset-specification.md) for species catalog and full details.
+The dataset pipeline produces a systematic set of tree assets: 20 species, 2 individuals each (open-grown and competition), multiple height stages, 3 density variants. See [Dataset Specification](docs/dataset-specification.md) for species catalog and full details.
 
 ### Preparation
 
@@ -198,22 +233,29 @@ density_variants = ["full", "reduced", "bare"]
 skeletal = true
 skip_pve_json = true
 skip_validation = true
+
+# Optional: Helios++ OBJ export alongside USD
+[helios]
+export_obj = false
+helios_scene = false
 ```
 
 ### Produce the dataset
 
 ```bash
-python src/growpy/cli/dataset_pipeline.py --pilot    # European Beech + Norway Spruce
-python src/growpy/cli/dataset_pipeline.py --all       # All 16 species
+python src/growpy/cli/dataset_pipeline.py --pilot       # European Beech + Norway Spruce
+python src/growpy/cli/dataset_pipeline.py --all         # All 20 dataset species
 python src/growpy/cli/dataset_pipeline.py --all --dry-run  # Preview commands only
+python src/growpy/cli/dataset_pipeline.py --list        # Show available species
+python src/growpy/cli/dataset_pipeline.py --all --workers 4  # Parallel species processing
 ```
 
 Each species produces two exported trees:
 
 - **fid=1** -- open-grown (isolated, no light competition)
-- **fid=2** -- competition center (surrounded by 6 hexagonal neighbors)
+- **fid=2** -- competition center (surrounded by 3 equilateral triangle neighbors)
 
-Neighbor trees (fid=101-106) participate in growth simulation but are not exported. With `density_variants` active, each tree gets `full`, `reduced`, and `bare` variants at every height milestone.
+Neighbor trees (fid=101-103) participate in growth simulation but are not exported. With `density_variants` active, each tree gets `full`, `reduced`, and `bare` variants at every height milestone.
 
 ### Quick reference (full dataset from scratch)
 
@@ -236,13 +278,20 @@ Forest generation creates organized output ready for Unreal import:
 data/output/forest/
 ├── species_name/
 │   └── tree_0001/
-│       ├── species_name_assembly.usda                # Nanite assembly
+│       ├── species_name_assembly.usda                # Nanite assembly (or .usdc)
 │       ├── species_name_0001_skeletal.usda            # Tree mesh with skeleton
 │       ├── species_name_0001_DynamicWind.json         # Wind animation data
 │       ├── species_name_0001.json                     # PVE preset (optional)
+│       ├── species_name_0001_preview.png              # 2D preview image
 │       └── twigs/                                     # Twig USD files
 │           ├── species_name_foliage_apical_skeletal.usda
 │           └── species_name_foliage_lateral_skeletal.usda
+├── helios/                                            # Optional (--export-obj)
+│   ├── forest.obj                                     # Combined OBJ (all trees)
+│   ├── forest.mtl                                     # Material definitions
+│   ├── helios_scene.xml                               # Helios++ scene (--helios-scene)
+│   └── individual/                                    # Optional (--individual-obj)
+│       └── species_name_0001.obj
 └── unreal_scripts/                                    # Optional (--import-to-unreal)
     ├── import_forest.py
     └── clean_assets.py
@@ -363,15 +412,17 @@ python src/growpy/cli/generate_forest.py --skeleton-reduce 0.5 --skeleton-length
 
 ## License
 
-This project uses The Grove 2.3, a commercial product. Ensure you have proper licensing before use.
+This project is licensed under the [Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/).
 
-This project follows a template-based structure. Key guidelines:
+You are free to use, share, and adapt this software for non-commercial purposes, provided you give appropriate credit. Commercial use is not permitted. See [LICENSE](LICENSE) for details.
 
-- Python files use snake_case
-- All scripts in `src/growpy/cli/` directory
-- Configuration in `src/growpy/config/`
-- Documentation in `docs/`
-- Use conda/mamba for environment management (never pip venv)
+**The Grove 2.3** is a separate commercial product with its own license. Ensure you have proper licensing from [The Grove](https://www.thegrove3d.com) before use.
+
+## Citation
+
+If you use GrowPy or its outputs in a publication, presentation, or other work, please cite this project. See [CITATION.cff](CITATION.cff) for the machine-readable citation, or use:
+
+> Sperlich, M. (2026). GrowPy: Procedural Forest Generation for Unreal Engine. University of Freiburg. Available at: <https://gitlab.uni-freiburg.de/xr-future-forests-lab/growpy>
 
 ---
 
