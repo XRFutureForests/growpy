@@ -317,6 +317,249 @@ print("=" * 60)
 '''
 
 
+def _build_datatable_script(project_path: str) -> str:
+    """Build Unreal Python code that creates a DataTable cataloguing all imported trees.
+
+    Scans the import path for nanite assembly skeletal meshes, parses metadata
+    (species, height, DBH, competition) from the asset name convention, creates
+    a UserDefinedStruct, and populates a DataTable with one row per assembly.
+
+    Asset name convention: {Species}_{comp|open}_h{HH}m_d{DD}cm_{density}_assembly
+    """
+    return f'''
+import unreal
+import re
+import gc
+
+print("")
+print("=" * 60)
+print("GrowPy Post-Import: Create Tree DataTable")
+print("=" * 60)
+
+IMPORT_PATH = "{project_path}"
+STRUCT_NAME = "GrowPyTreeInfo"
+DATATABLE_NAME = "DT_GrowPyTrees"
+STRUCT_PATH = IMPORT_PATH + "/" + STRUCT_NAME
+DATATABLE_PATH = IMPORT_PATH + "/" + DATATABLE_NAME
+
+asset_registry = unreal.AssetRegistryHelpers.get_asset_registry()
+asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
+editor_asset_lib = unreal.EditorAssetLibrary
+
+# Step 1: Find all nanite assembly skeletal meshes
+all_assets = asset_registry.get_assets_by_path(IMPORT_PATH, recursive=True)
+assemblies = []
+for asset_data in all_assets:
+    asset_name = str(asset_data.asset_name)
+    asset_class = ""
+    try:
+        asset_class = str(asset_data.asset_class_path.asset_name)
+    except Exception:
+        try:
+            asset_class = str(asset_data.asset_class)
+        except Exception:
+            pass
+    if "SkeletalMesh" not in asset_class:
+        continue
+    if "assembly" not in asset_name.lower():
+        continue
+    pkg = str(asset_data.package_name)
+    # Skip assets in Instances/ (shared twigs, not tree assemblies)
+    if "/Instances/" in pkg:
+        continue
+    assemblies.append((asset_name, pkg))
+
+print(f"Found {{len(assemblies)}} nanite assembly skeletal meshes")
+
+if not assemblies:
+    print("No assemblies found -- skipping DataTable creation")
+else:
+    # Step 2: Parse metadata from asset names
+    # Convention: Species_Name_comp_h05m_d15cm_full_assembly
+    _PATTERN = re.compile(
+        r"^(.+?)_(comp|open)_h(\\d+)m_d(\\d+)cm_(.+?)_assembly",
+        re.IGNORECASE,
+    )
+    rows = []
+    for asset_name, pkg_path in assemblies:
+        m = _PATTERN.match(asset_name)
+        species = ""
+        height_m = 0.0
+        dbh_cm = 0.0
+        competition = False
+        if m:
+            species = m.group(1).replace("_", " ")
+            competition = m.group(2).lower() == "comp"
+            height_m = float(m.group(3))
+            dbh_cm = float(m.group(4))
+        else:
+            # Fallback: use folder name as species
+            parts = pkg_path.split("/")
+            for i, p in enumerate(parts):
+                if p == "Assets" or p == "TheGrove":
+                    continue
+                if i > 0:
+                    species = parts[i].replace("_", " ").title()
+                    break
+            if not species:
+                species = asset_name
+
+        rows.append({{
+            "name": asset_name,
+            "pkg": pkg_path,
+            "species": species,
+            "height": height_m,
+            "dbh": dbh_cm,
+            "competition": competition,
+        }})
+
+    print(f"Parsed metadata for {{len(rows)}} assemblies")
+
+    # Step 3: Create or reuse UserDefinedStruct
+    existing_struct = editor_asset_lib.does_asset_exist(STRUCT_PATH)
+    if existing_struct:
+        print(f"Struct already exists: {{STRUCT_PATH}} -- reusing")
+        tree_struct = editor_asset_lib.load_asset(STRUCT_PATH)
+    else:
+        # Create struct via asset tools
+        # UE Python: make_struct returns the new struct asset
+        try:
+            tree_struct = asset_tools.create_asset(
+                STRUCT_NAME,
+                IMPORT_PATH,
+                unreal.UserDefinedStruct,
+                unreal.UserDefinedStructFactory(),
+            )
+        except Exception:
+            # Fallback: some UE versions need different factory approach
+            tree_struct = None
+
+        if tree_struct is None:
+            print("ERROR: Could not create UserDefinedStruct via Python.")
+            print("UE Python struct creation may require editor utility widget.")
+            print("")
+            print("Manual alternative:")
+            print(f"  1. Right-click in Content Browser > Miscellaneous > Data Table")
+            print(f"  2. Pick row structure or create struct with fields:")
+            print("     - SkeletalMesh (Soft Object Reference to SkeletalMesh)")
+            print("     - Species (String)")
+            print("     - Height (Float)")
+            print("     - DBH (Float)")
+            print("     - Competition (Bool)")
+        else:
+            print(f"Created struct: {{STRUCT_PATH}}")
+            # Add struct fields via FStructVariableDescription
+            # Default struct has one member "MemberVar_0"; remove and add ours
+            try:
+                struct_lib = unreal.UserDefinedStructEditorLibrary
+                # Remove the default member
+                for _var in tree_struct.get_editor_property("variables"):
+                    struct_lib.remove_variable(tree_struct, _var.get_editor_property("var_guid"))
+                    break
+            except Exception:
+                pass
+
+            _fields = [
+                ("SkeletalMesh", "SoftObjectPath"),
+                ("Species", "str"),
+                ("Height", "double"),
+                ("DBH", "double"),
+                ("Competition", "bool"),
+            ]
+            try:
+                struct_lib = unreal.UserDefinedStructEditorLibrary
+                for fname, ftype in _fields:
+                    struct_lib.add_variable(tree_struct, fname)
+                print(f"Added {{len(_fields)}} fields to struct")
+            except Exception as e:
+                unreal.log_warning(f"Could not add struct fields programmatically: {{e}}")
+                print("Struct created but fields must be configured manually")
+
+            editor_asset_lib.save_asset(STRUCT_PATH)
+
+    # Step 4: Create DataTable
+    if tree_struct is not None:
+        existing_dt = editor_asset_lib.does_asset_exist(DATATABLE_PATH)
+        if existing_dt:
+            editor_asset_lib.delete_asset(DATATABLE_PATH)
+            print(f"Deleted existing DataTable: {{DATATABLE_PATH}}")
+
+        try:
+            dt_factory = unreal.DataTableFactory()
+            dt_factory.set_editor_property("struct", tree_struct)
+            data_table = asset_tools.create_asset(
+                DATATABLE_NAME, IMPORT_PATH, unreal.DataTable, dt_factory
+            )
+        except Exception as e:
+            data_table = None
+            unreal.log_warning(f"Could not create DataTable: {{e}}")
+
+        if data_table is not None:
+            print(f"Created DataTable: {{DATATABLE_PATH}}")
+
+            # Step 5: Populate rows via JSON import
+            # UE DataTable Python API: fill_data_table_from_json_string
+            import json
+            json_rows = []
+            for row in rows:
+                json_rows.append({{
+                    "Name": row["name"],
+                    "SkeletalMesh": row["pkg"],
+                    "Species": row["species"],
+                    "Height": row["height"],
+                    "DBH": row["dbh"],
+                    "Competition": row["competition"],
+                }})
+            json_str = json.dumps(json_rows, indent=2)
+
+            try:
+                success = unreal.DataTableFunctionLibrary.fill_data_table_from_json_string(
+                    data_table, json_str
+                )
+                if success:
+                    print(f"Populated {{len(json_rows)}} rows in DataTable")
+                else:
+                    unreal.log_warning("fill_data_table_from_json_string returned False")
+                    print("JSON population failed -- trying CSV fallback")
+                    # CSV fallback: Name,SkeletalMesh,Species,Height,DBH,Competition
+                    csv_lines = ["---,SkeletalMesh,Species,Height,DBH,Competition"]
+                    for row in rows:
+                        comp_str = "true" if row["competition"] else "false"
+                        csv_lines.append(
+                            f'{{row["name"]}},{{row["pkg"]}},{{row["species"]}},'
+                            f'{{row["height"]}},{{row["dbh"]}},{{comp_str}}'
+                        )
+                    csv_str = "\\n".join(csv_lines)
+                    try:
+                        success2 = unreal.DataTableFunctionLibrary.fill_data_table_from_csv_string(
+                            data_table, csv_str
+                        )
+                        if success2:
+                            print(f"Populated {{len(rows)}} rows via CSV fallback")
+                        else:
+                            unreal.log_warning("CSV fallback also failed")
+                    except Exception as e2:
+                        unreal.log_warning(f"CSV fallback error: {{e2}}")
+            except Exception as e:
+                unreal.log_warning(f"Error populating DataTable: {{e}}")
+
+            editor_asset_lib.save_asset(DATATABLE_PATH)
+        else:
+            print("DataTable creation failed -- see log for details")
+
+    gc.collect()
+    try:
+        unreal.SystemLibrary.collect_garbage(full_purge=True)
+    except Exception:
+        unreal.SystemLibrary.collect_garbage()
+
+print("")
+print("=" * 60)
+print("DataTable creation complete")
+print("=" * 60)
+'''
+
+
 # Unreal Python preamble for configuring nanite assemblies after import.
 # Included in species batch scripts to set shape preservation, wind data, etc.
 _NANITE_CONFIG_PREAMBLE = '''
@@ -716,6 +959,14 @@ def generate_unreal_import_script(
         consolidation_path = script_dir / consolidation_name
         consolidation_path.write_text(consolidation_code, encoding="utf-8")
         batch_scripts.append((consolidation_name, consolidation_label))
+
+    # DataTable batch: catalogue all imported assemblies
+    datatable_code = _build_datatable_script(project_path)
+    datatable_name = "import_batch_100_datatable.py"
+    datatable_label = "Create tree inventory DataTable"
+    datatable_path = script_dir / datatable_name
+    datatable_path.write_text(datatable_code, encoding="utf-8")
+    batch_scripts.append((datatable_name, datatable_label))
 
     # Master script
     master_path = script_dir / "import_forest.py"
