@@ -161,6 +161,7 @@ class GrowPyConfig:
         default_factory=lambda: Path("data/input/yield_tables/store")
     )
     yield_sources_preferred_region: str = ""
+    yield_sources_preferred_site_index: Optional[float] = None
 
     @classmethod
     def from_toml(cls, toml_path: Path, set_as_global: bool = True) -> "GrowPyConfig":
@@ -334,6 +335,9 @@ class GrowPyConfig:
             kwargs["yield_sources_store_dir"] = Path(ys["store_dir"])
         if "preferred_region" in ys:
             kwargs["yield_sources_preferred_region"] = ys["preferred_region"]
+        if "preferred_site_index" in ys:
+            val = float(ys["preferred_site_index"])
+            kwargs["yield_sources_preferred_site_index"] = val if val > 0 else None
 
         instance = cls(**kwargs)
         if set_as_global:

@@ -9,7 +9,7 @@
 
 [general]
 # Random seed for reproducible tree generation (remove to randomize)
-random_seed = 3
+random_seed = 385
 # Default input CSV with tree positions and species
 # CSV columns: x, y, species, height (optional: z, fid, dbh)
 csv_file = "data/input/test.csv"
@@ -115,6 +115,14 @@ store_dir = "data/input/yield_tables/store"
 # Current store regions: "DE", "DE-NW", "DE-Central", "EU-West"
 # Empty string = no filter (selects from all regions by best site index)
 preferred_region = ""
+# Preferred site index for table selection (closest match).
+# Uses the provider's site index scale (e.g., German Ertragsklasse: 1=best).
+# The manifest h50 column (height at age 50 in meters) provides a universal
+# metric for cross-referencing with other SI definitions.
+# When set, overrides the automatic grove h50-based selection for all species.
+# Per-species overrides in [calibration.species."..."] take priority.
+# 0 = no preference (auto-select by simulated grove h50)
+preferred_site_index = 0
 
 # --- Step 4: generate_forest.py ---
 [forest]
@@ -123,10 +131,10 @@ preferred_region = ""
 quality = "high"
 # Maximum growth cycles per tree (1-250)
 # Trees exceeding this limit are capped (not scaled)
-growth_cycle_limit = 50
+growth_cycle_limit = 75
 # Branch smoothing iterations (0-20, 0 = disabled)
 # Higher values = smoother, more organic branches
-smooth_iterations = 10
+smooth_iterations = 3
 # Include Grove metadata (age, mass, vigor) in USD files
 # Increases file size by ~70%; useful for analysis
 include_grove_attributes = false
@@ -140,7 +148,7 @@ height_interval = 5
 # Trees taller than this in the input CSV are clamped to this height
 # Reduces growth cycles and number of height stages for faster runs
 # 0 = no limit (use full CSV heights)
-max_height = 10
+max_height = 20
 
 # Quality Presets (single source of truth)
 # Define any number of named presets below as [quality.<name>] sections.

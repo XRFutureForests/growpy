@@ -158,6 +158,16 @@ def _run_calibration_pass(
             if grove_h50 is not None:
                 logger.info("  Grove uncalibrated h50: %.1f m", grove_h50)
 
+        # Determine effective site index preference (per-species override > global)
+        explicit_si = config.calibration_species.get(
+            common_name, {}
+        ).get("site_index", config.yield_sources_preferred_site_index)
+
+        # When user explicitly sets a site index, suppress grove h50 so SI
+        # takes priority in select_best_table.  Otherwise let grove h50
+        # auto-select the closest matching yield table.
+        effective_h50 = None if explicit_si is not None else grove_h50
+
         yield_data = resolve_yield_table(
             species_common=common_name,
             species_std=species_std,
@@ -165,11 +175,9 @@ def _run_calibration_pass(
             calibration_species=config.calibration_species,
             yield_search=yield_search,
             store_dir=config.yield_sources_store_dir,
-            preferred_site_index=config.calibration_species.get(
-                common_name, {}
-            ).get("site_index"),
+            preferred_site_index=explicit_si,
             preferred_region=config.yield_sources_preferred_region,
-            preferred_h50=grove_h50,
+            preferred_h50=effective_h50,
         )
 
         if yield_data is None:
