@@ -109,6 +109,7 @@ class GrowPyConfig:
     forest_include_grove_attributes: bool = False
     forest_height_interval: float = 5.0
     forest_max_height: float = 0.0  # 0 = no limit; >0 = cap tree heights (meters)
+    forest_competition_distance_increase: float = 0.0  # meters per height interval
     forest_export_trees: list = field(default_factory=list)
 
     # Skeleton overrides - None means inherit from quality preset (CLI-only)
@@ -246,6 +247,10 @@ class GrowPyConfig:
             kwargs["forest_height_interval"] = float(forest["height_interval"])
         if "max_height" in forest:
             kwargs["forest_max_height"] = float(forest["max_height"])
+        if "competition_distance_increase" in forest:
+            kwargs["forest_competition_distance_increase"] = float(
+                forest["competition_distance_increase"]
+            )
         # [export]
         export = data.get("export", {})
         if "usd_format" in export:
@@ -383,6 +388,7 @@ class GrowPyConfig:
             "include_grove_attributes": "forest_include_grove_attributes",
             "height_interval": "forest_height_interval",
             "max_height": "forest_max_height",
+            "competition_distance_increase": "forest_competition_distance_increase",
             # [forest.skeleton]
             "skeleton_length": "forest_skeleton_length",
             "skeleton_reduce": "forest_skeleton_reduce",

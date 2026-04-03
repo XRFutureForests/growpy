@@ -149,6 +149,10 @@ height_interval = 5
 # Reduces growth cycles and number of height stages for faster runs
 # 0 = no limit (use full CSV heights)
 max_height = 20
+# Move competition neighbor trees outward by this many meters at each height
+# interval to simulate thinning. 0 = neighbors stay fixed (default).
+# Only affects neighbor trees (fid >= 100) in height-threshold mode.
+competition_distance_increase = 0.0
 
 # Quality Presets (single source of truth)
 # Define any number of named presets below as [quality.<name>] sections.

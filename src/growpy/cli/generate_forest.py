@@ -818,6 +818,11 @@ def generate_forest_stages(
     logger.info("  Height interval: %.0fm", effective_interval)
     logger.info("  Target height: %.0fm", effective_max_height)
     logger.info("  Cycle limit: %d (safety cap)", global_max_cycles)
+    if config.forest_competition_distance_increase > 0:
+        logger.info(
+            "  Competition thinning: %.1fm per interval",
+            config.forest_competition_distance_increase,
+        )
     logger.info("%s", "=" * 60)
 
     # All trees start at cycle 0 (no delay in multi-stage mode)
@@ -842,6 +847,11 @@ def generate_forest_stages(
             quality_params[key] = value
         logger.info("[Skeleton Overrides] Applied: %s", skeleton_overrides)
 
+    # Build species-to-grove mapping for PVE JSON generation
+    species_grove_map: Dict[str, Any] = {}
+    for grove_obj, sp_name, _tc, _fids in forest:
+        species_grove_map[sp_name] = grove_obj
+
     # Run simulation with height-threshold-based snapshots
     with timer.track("simulate_with_snapshots"):
         snapshots, milestone_map = simulate_forest_growth_with_snapshots(
@@ -854,6 +864,8 @@ def generate_forest_stages(
             quality_params=quality_params,
             height_interval=effective_interval,
             max_height=effective_max_height,
+            competition_distance_increase=config.forest_competition_distance_increase,
+            forest_data=forest_data,
         )
 
     if not snapshots:
@@ -1123,6 +1135,37 @@ def generate_forest_stages(
                                         wind_error,
                                     )
                                     logger.debug("Wind JSON traceback:", exc_info=True)
+
+                            # PVE preset JSON (optional)
+                            skip_pve = quality_params.get("skip_pve_json", False)
+                            if use_skeletal and not skip_pve:
+                                from growpy.io.pve_grove_mapper import generate_pve_from_grove
+
+                                pve_json_path = tree_dir / f"{file_prefix}_stems_unreal_pve.json"
+                                pve_config_dir = Path("data/assets/pve_configs")
+                                grove_for_species = species_grove_map.get(species_name)
+
+                                try:
+                                    with timer.track("generate_pve_json"):
+                                        generate_pve_from_grove(
+                                            grove=grove_for_species,
+                                            output_path=pve_json_path,
+                                            species_name=species_name,
+                                            tree_index=tree_idx,
+                                            model=model,
+                                            skeleton=skeleton,
+                                            bones_info=bones_info,
+                                            verbose=True,
+                                            pve_config_dir=pve_config_dir,
+                                        )
+                                except Exception as pve_error:
+                                    logger.warning(
+                                        "Failed to generate PVE preset JSON for %s fid=%d: %s",
+                                        species_name,
+                                        fid,
+                                        pve_error,
+                                    )
+                                    logger.debug("PVE JSON traceback:", exc_info=True)
 
                             preview_bounds = _generate_preview_image(
                                 tree_dir, species_clean, file_prefix, skeleton, timer
@@ -1569,6 +1612,14 @@ Unreal Engine Integration:
         default=None,
         help="Cap tree heights at this value in meters (e.g., 15). "
         "Trees taller than this in the CSV are clamped. 0 = no limit (default).",
+    )
+    parser.add_argument(
+        "--competition-distance-increase",
+        type=float,
+        default=None,
+        help="Move competition neighbor trees outward by this many meters at "
+        "each height interval to simulate thinning. 0 = no movement (default). "
+        "Only affects neighbor trees (fid >= 100) in height-threshold mode.",
     )
     parser.add_argument(
         "--export-trees",

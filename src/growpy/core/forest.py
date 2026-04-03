@@ -1,6 +1,7 @@
 """Forest simulation functions with Grove API integration."""
 
 import logging
+import math
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -181,6 +182,8 @@ def simulate_forest_growth_with_snapshots(
     species_snapshot_cycles: Optional[Dict[str, Dict[int, float]]] = None,
     height_interval: float = 0.0,
     max_height: float = 0.0,
+    competition_distance_increase: float = 0.0,
+    forest_data: Optional[pd.DataFrame] = None,
 ) -> Tuple[SnapshotData, Dict[int, Dict[str, Dict[int, float]]]]:
     """Simulate forest growth and capture snapshots at height milestones.
 
@@ -269,6 +272,8 @@ def simulate_forest_growth_with_snapshots(
             forest, groves, max_cycles, height_interval,
             species_overrides, preset_overrides, quality_params,
             max_height=max_height,
+            competition_distance_increase=competition_distance_increase,
+            forest_data=forest_data,
         )
     else:
         snapshots = _simulate_cycle_based_mode(
@@ -289,6 +294,72 @@ def simulate_forest_growth_with_snapshots(
     return snapshots, milestone_map
 
 
+def _apply_competition_thinning(
+    forest: List[Tuple[gc.Grove, str, int, List[int]]],
+    forest_data: pd.DataFrame,
+    distance_increase: float,
+    thinning_count: int,
+) -> None:
+    """Move competition neighbor trees outward from center to simulate thinning.
+
+    Applies an incremental radial displacement to neighbor trees (fid >= 100,
+    individual_type == "competition") using the Grove API's replant_tree().
+    The center tree (fid 2) and open-grown tree (fid 1) remain fixed.
+
+    Each call moves neighbors outward by ``distance_increase`` meters along
+    the radial direction from the center tree (origin).
+
+    Args:
+        forest: List of (grove, species_name, tree_count, fid_list) tuples.
+        forest_data: DataFrame with columns x, y, fid, individual_type.
+        distance_increase: Meters to move outward per thinning event.
+        thinning_count: How many thinning events have been applied so far
+            (used for logging the cumulative distance).
+    """
+    if distance_increase <= 0:
+        return
+
+    has_itype = "individual_type" in forest_data.columns
+    if not has_itype:
+        return
+
+    total_moved = 0
+    cumulative = distance_increase * (thinning_count + 1)
+
+    for grove, species_name, tree_count, fids in forest:
+        for tree_idx, fid in enumerate(fids):
+            if fid < 100:
+                continue
+
+            row = forest_data[forest_data["fid"] == fid]
+            if row.empty:
+                continue
+
+            itype = str(row.iloc[0].get("individual_type", "")).strip()
+            if itype != "competition":
+                continue
+
+            # Compute radial outward direction from origin (center tree)
+            init_x = float(row.iloc[0]["x"])
+            init_y = float(row.iloc[0]["y"])
+            dist = math.sqrt(init_x * init_x + init_y * init_y)
+            if dist < 0.001:
+                continue
+
+            dx = (init_x / dist) * distance_increase
+            dy = (init_y / dist) * distance_increase
+
+            grove.replant_tree(tree_idx, gc.Vector(dx, dy, 0.0), gc.Vector(0, 0, 0))
+            total_moved += 1
+
+    if total_moved > 0:
+        logger.info(
+            "[Thinning] Moved %d neighbor tree(s) outward by %.1fm "
+            "(cumulative: %.1fm from initial positions)",
+            total_moved, distance_increase, cumulative,
+        )
+
+
 def _simulate_height_threshold_mode(
     forest: List[Tuple[gc.Grove, str, int, List[int]]],
     groves: List[gc.Grove],
@@ -299,6 +370,8 @@ def _simulate_height_threshold_mode(
     quality_params: Dict,
     max_height: float = 0.0,
     plateau_cycles: int = 10,
+    competition_distance_increase: float = 0.0,
+    forest_data: Optional[pd.DataFrame] = None,
 ) -> Tuple[SnapshotData, Dict[int, Dict[str, Dict[int, float]]]]:
     """Run simulation with height-threshold-based snapshots.
 
@@ -319,8 +392,11 @@ def _simulate_height_threshold_mode(
             milestones up to this height.  0 = run until max_cycles.
         plateau_cycles: Stop after this many consecutive cycles with no
             height increase across any tree (default: 10).
+        competition_distance_increase: Meters to move competition neighbor
+            trees outward at each height milestone (0 = disabled).
+        forest_data: DataFrame with tree positions and individual_type
+            (required when competition_distance_increase > 0).
     """
-    import math
 
     snapshots: SnapshotData = {}
     milestone_map: Dict[int, Dict[str, Dict[int, float]]] = {}
@@ -348,6 +424,12 @@ def _simulate_height_threshold_mode(
     # Plateau detection: track max height per tree across cycles
     prev_max_heights: Dict[Tuple[str, int], float] = {}
     cycles_without_growth = 0
+
+    # Competition thinning state
+    thinning_count = 0
+    use_thinning = (
+        competition_distance_increase > 0 and forest_data is not None
+    )
 
     cycle = 0
     pbar = tqdm(total=max_cycles, desc="Simulating growth cycles", unit="cycle", disable=not is_verbose())
@@ -439,6 +521,14 @@ def _simulate_height_threshold_mode(
                             species_name, tidx,
                             new_crossings[species_name][tidx],
                         )
+
+        # Apply competition thinning after milestone capture
+        if use_thinning:
+            _apply_competition_thinning(
+                forest, forest_data,
+                competition_distance_increase, thinning_count,
+            )
+            thinning_count += 1
 
         # Early stop: all target milestones captured
         if target_milestones and all(
