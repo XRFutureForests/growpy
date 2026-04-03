@@ -876,15 +876,7 @@ def _import_wind_data(mesh, wind_json_path, label):
         except Exception as _we:
             unreal.log_warning(f"    Wind (Python) failed for {label}: {_we}")
 
-    # --- Strategy B: Blueprint library (opens file dialog) ---
-    try:
-        unreal.DynamicWindBlueprintLibrary.import_dynamic_wind_skeletal_data_from_file(mesh)
-        print(f"    [Wind] Imported via file dialog: {label}")
-        return True
-    except Exception:
-        pass
-
-    # --- Strategy C: Manual fallback ---
+    # Fallback: log manual instructions (do NOT use file-dialog API)
     unreal.log_warning(
         f"Could not auto-import wind for {label}\\n"
         f"  Manual: right-click mesh > Scripted Asset Actions > Import Dynamic Wind Data\\n"
