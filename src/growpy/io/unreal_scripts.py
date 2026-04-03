@@ -558,132 +558,343 @@ print("=" * 60)
 _NANITE_CONFIG_PREAMBLE = '''
 import os
 import json
+import math
+
+# ---------------------------------------------------------------------------
+# UE 5.7 API discovery: DynamicWind plugin classes may not have Python stubs.
+# We try direct module access first, then fall back to dynamic class loading
+# via the UE reflection system.
+# ---------------------------------------------------------------------------
+
+def _resolve_ue_class(direct_name, script_path):
+    """Find a UClass by direct attribute or by /Script/ object path."""
+    # 1. Direct unreal.ClassName (works if Python stubs exist)
+    try:
+        return getattr(unreal, direct_name)
+    except AttributeError:
+        pass
+    # 2. load_object with the /Script/Module.ClassName path
+    try:
+        cls = unreal.load_object(unreal.Class, script_path)
+        if cls is not None:
+            return cls
+    except Exception:
+        pass
+    # 3. find_object fallback
+    try:
+        cls = unreal.find_object(None, script_path)
+        if cls is not None:
+            return cls
+    except Exception:
+        pass
+    return None
+
+def _resolve_ue_struct_class(direct_name):
+    """Check if a USTRUCT wrapper is available on the unreal module."""
+    try:
+        return getattr(unreal, direct_name)
+    except AttributeError:
+        return None
+
+# Pre-resolve DynamicWind classes once at import time
+_WIND_SKEL_CLS = _resolve_ue_class(
+    "DynamicWindSkeletalData",
+    "/Script/DynamicWind.DynamicWindSkeletalData",
+)
+_WIND_SIM_GROUP_CLS = _resolve_ue_struct_class("DynamicWindSimulationGroupData")
+_WIND_BONE_LOOKUP_CLS = _resolve_ue_struct_class("DynamicWindSimulationGroupBoneLookup")
+_WIND_BONE_CHAIN_CLS = _resolve_ue_struct_class("DynamicWindBoneChainData")
+_WIND_EXTRA_BONE_CLS = _resolve_ue_struct_class("DynamicWindExtraBoneData")
+
+if _WIND_SKEL_CLS:
+    print("  [DynamicWind] Skeletal data class found -- batch wind import available")
+else:
+    print("  [DynamicWind] Skeletal data class not found in Python")
+    print("  Wind data must be imported manually: right-click mesh > Scripted Asset Actions > Import Dynamic Wind Data")
+
+
+def _set_nanite_shape_voxelize(mesh, label):
+    """Set Nanite shape preservation to Voxelize using multiple strategies.
+
+    ENaniteShapePreservation: None=0, PreserveArea=1, Voxelize=2
+    The exact Python API varies by UE version, so we try several approaches.
+    """
+    _strategies = []
+
+    # Strategy A: Enum via get/set_editor_property
+    try:
+        _ns = mesh.get_editor_property("nanite_settings")
+        _ns.set_editor_property(
+            "shape_preservation",
+            unreal.ENaniteShapePreservation.VOXELIZE,
+        )
+        mesh.set_editor_property("nanite_settings", _ns)
+        return True
+    except Exception as _e:
+        _strategies.append(f"enum: {_e}")
+
+    # Strategy B: Integer via set_editor_property
+    try:
+        _ns = mesh.get_editor_property("nanite_settings")
+        _ns.set_editor_property("shape_preservation", 2)
+        mesh.set_editor_property("nanite_settings", _ns)
+        return True
+    except Exception as _e:
+        _strategies.append(f"int: {_e}")
+
+    # Strategy C: String value
+    try:
+        _ns = mesh.get_editor_property("nanite_settings")
+        _ns.set_editor_property("shape_preservation", "Voxelize")
+        mesh.set_editor_property("nanite_settings", _ns)
+        return True
+    except Exception as _e:
+        _strategies.append(f"str: {_e}")
+
+    # Strategy D: Direct attribute assignment on struct copy
+    try:
+        _ns = mesh.get_editor_property("nanite_settings")
+        _ns.shape_preservation = 2
+        mesh.set_editor_property("nanite_settings", _ns)
+        return True
+    except Exception as _e:
+        _strategies.append(f"attr: {_e}")
+
+    # Strategy E: C++ getter/setter methods
+    try:
+        _ns = mesh.get_nanite_settings()
+        _ns.shape_preservation = 2
+        mesh.set_nanite_settings(_ns)
+        mesh.notify_nanite_settings_changed()
+        return True
+    except Exception as _e:
+        _strategies.append(f"methods: {_e}")
+
+    unreal.log_warning(f"Could not set shape preservation for {label}")
+    for _s in _strategies:
+        unreal.log_warning(f"    {_s}")
+    return False
+
+
+def _import_wind_data(mesh, wind_json_path, label):
+    """Import DynamicWind skeletal data from JSON into a SkeletalMesh.
+
+    Replicates the C++ DynamicWind::ImportSkeletalData logic:
+    1. Creates UDynamicWindSkeletalData as asset user data
+    2. Sets simulation groups from JSON
+    3. Maps joints to bone indices
+    4. Computes bone chains and extra bone data
+    """
+    if not wind_json_path or not os.path.isfile(wind_json_path):
+        return None
+
+    try:
+        with open(wind_json_path, "r") as _wf:
+            _wind_json = json.load(_wf)
+    except Exception as _e:
+        unreal.log_warning(f"Could not read wind JSON for {label}: {_e}")
+        return False
+
+    _joints = _wind_json.get("Joints", [])
+    _sim_groups = _wind_json.get("SimulationGroups", [])
+    _is_ground_cover = _wind_json.get("bIsGroundCover", False)
+    _gust_atten = _wind_json.get("GustAttenuation", 0.0)
+
+    # --- Strategy A: Create DynamicWindSkeletalData via resolved class ---
+    if _WIND_SKEL_CLS is not None:
+        try:
+            _skel_data = mesh.get_asset_user_data_of_class(_WIND_SKEL_CLS)
+            if _skel_data is None:
+                _skel_data = unreal.new_object(type=_WIND_SKEL_CLS, outer=mesh)
+                mesh.add_asset_user_data(_skel_data)
+
+            # Basic properties (C++ names: bIsEnabled, bIsGroundCover, GustAttenuation)
+            for _prop, _val in (
+                ("is_enabled", True),
+                ("is_ground_cover", _is_ground_cover),
+                ("gust_attenuation", float(_gust_atten)),
+            ):
+                try:
+                    _skel_data.set_editor_property(_prop, _val)
+                except Exception:
+                    setattr(_skel_data, _prop, _val)
+
+            # Build skeleton bone lookup: name -> index
+            _ref_skel = mesh.get_editor_property("ref_skeleton")
+            _bone_count = _ref_skel.get_num() if _ref_skel else 0
+            _bone_name_to_idx = {}
+            _bone_parent = {}
+            for _bi in range(_bone_count):
+                _bname = str(_ref_skel.get_bone_name(_bi))
+                _bone_name_to_idx[_bname] = _bi
+                _bone_parent[_bi] = _ref_skel.get_parent_index(_bi)
+
+            # Map joints to bone indices and track max simulation group index
+            _max_sg = -1
+            _bone_sg = {}  # bone_index -> sim_group_index
+            for _j in _joints:
+                _jn = _j.get("JointName", "")
+                _si = _j.get("SimulationGroupIndex", 0)
+                if _jn in _bone_name_to_idx:
+                    _bidx = _bone_name_to_idx[_jn]
+                    _bone_sg[_bidx] = _si
+                    _max_sg = max(_max_sg, _si)
+
+            # Ensure enough simulation groups exist (C++ fills missing with defaults)
+            _groups_data = list(_sim_groups)
+            while len(_groups_data) < _max_sg + 1:
+                _groups_data.append({"Influence": 1.0})
+
+            # Set simulation groups (try struct creation, fall back to direct property)
+            if _WIND_SIM_GROUP_CLS is not None:
+                _groups = []
+                for _sg in _groups_data:
+                    _g = _WIND_SIM_GROUP_CLS()
+                    for _pn, _jk, _dv in (
+                        ("use_dual_influence", "bUseDualInfluence", False),
+                        ("influence", "Influence", 1.0),
+                        ("min_influence", "MinInfluence", 0.0),
+                        ("max_influence", "MaxInfluence", 0.0),
+                        ("shift_top", "ShiftTop", 0.0),
+                        ("is_trunk_group", "bIsTrunkGroup", False),
+                    ):
+                        try:
+                            _g.set_editor_property(_pn, _sg.get(_jk, _dv))
+                        except Exception:
+                            setattr(_g, _pn, _sg.get(_jk, _dv))
+                    _groups.append(_g)
+                _skel_data.set_editor_property("simulation_groups", _groups)
+            else:
+                unreal.log_warning(f"    DynamicWindSimulationGroupData not available; sim groups not set")
+
+            # Build SimulationGroupBones using bone INDICES (int32, not names)
+            _sg_bone_map = {}
+            for _bidx, _si in _bone_sg.items():
+                _sg_bone_map.setdefault(_si, set()).add(_bidx)
+
+            if _WIND_BONE_LOOKUP_CLS is not None:
+                _lookups = []
+                for _si, _bset in sorted(_sg_bone_map.items()):
+                    _lk = _WIND_BONE_LOOKUP_CLS()
+                    try:
+                        _lk.set_editor_property("simulation_group_index", _si)
+                        _lk.set_editor_property("bone_indices", _bset)
+                    except Exception:
+                        _lk.simulation_group_index = _si
+                        _lk.bone_indices = _bset
+                    _lookups.append(_lk)
+                _skel_data.set_editor_property("simulation_group_bones", _lookups)
+
+            # Compute BoneChains and ExtraBonesData (mirrors C++ ImportSkeletalData)
+            # BoneChains: for each chain-origin bone, store count and total length
+            # ExtraBonesData: for each bone, store chain origin and position in chain
+            if _WIND_BONE_CHAIN_CLS and _WIND_EXTRA_BONE_CLS:
+                try:
+                    _bone_chains = {}  # origin_idx -> (num_bones, chain_length)
+                    _extra_bones = {}  # bone_idx -> (origin_idx, idx_in_chain)
+
+                    # Get bone transforms for chain length calculation
+                    _bone_pos = {}
+                    for _bi in range(_bone_count):
+                        try:
+                            _t = _ref_skel.get_ref_bone_pose(_bi)
+                            _loc = _t.translation
+                            _bone_pos[_bi] = (_loc.x, _loc.y, _loc.z)
+                        except Exception:
+                            _bone_pos[_bi] = (0.0, 0.0, 0.0)
+
+                    for _bidx, _si in _bone_sg.items():
+                        # Walk parent chain to find origin (first bone with different sim group)
+                        _origin = _bidx
+                        _depth = 0
+                        _cur = _bone_parent.get(_bidx, -1)
+                        while _cur >= 0:
+                            if _bone_sg.get(_cur, -1) != _si:
+                                break
+                            _origin = _cur
+                            _depth += 1
+                            _cur = _bone_parent.get(_cur, -1)
+
+                        _extra_bones[_bidx] = (_origin, _depth)
+
+                        # Accumulate chain data
+                        if _origin not in _bone_chains:
+                            _bone_chains[_origin] = [0, 0.0]
+                        _bone_chains[_origin][0] += 1
+
+                        # Chain length: distance from parent pos to this bone pos
+                        _pidx = _bone_parent.get(_bidx, -1)
+                        _start = _bone_pos.get(_pidx, (0, 0, 0)) if _pidx >= 0 else (0, 0, 0)
+                        _end = _bone_pos.get(_bidx, (0, 0, 0))
+                        _dx = _end[0] - _start[0]
+                        _dy = _end[1] - _start[1]
+                        _dz = _end[2] - _start[2]
+                        _bone_chains[_origin][1] += math.sqrt(_dx*_dx + _dy*_dy + _dz*_dz)
+
+                    # Set BoneChains as dict: int32 -> FDynamicWindBoneChainData
+                    _bc_map = {}
+                    for _oidx, (_cnt, _clen) in _bone_chains.items():
+                        _bc = _WIND_BONE_CHAIN_CLS()
+                        try:
+                            _bc.set_editor_property("num_bones", _cnt)
+                            _bc.set_editor_property("chain_length", _clen)
+                        except Exception:
+                            _bc.num_bones = _cnt
+                            _bc.chain_length = _clen
+                        _bc_map[_oidx] = _bc
+                    _skel_data.set_editor_property("bone_chains", _bc_map)
+
+                    # Set ExtraBonesData as dict: int32 -> FDynamicWindExtraBoneData
+                    _eb_map = {}
+                    for _bidx, (_oidx, _depth) in _extra_bones.items():
+                        _eb = _WIND_EXTRA_BONE_CLS()
+                        try:
+                            _eb.set_editor_property("bone_chain_origin_bone_index", _oidx)
+                            _eb.set_editor_property("index_in_bone_chain", _depth)
+                        except Exception:
+                            _eb.bone_chain_origin_bone_index = _oidx
+                            _eb.index_in_bone_chain = _depth
+                        _eb_map[_bidx] = _eb
+                    _skel_data.set_editor_property("extra_bones_data", _eb_map)
+                except Exception as _ce:
+                    unreal.log_warning(f"    BoneChain computation failed (non-critical): {_ce}")
+
+            # Trigger hash recalculation via property change notification
+            try:
+                _skel_data.modify(True)
+            except Exception:
+                pass
+
+            mesh.modify(True)
+            print(f"    [Wind] Imported ({len(_joints)} joints, {len(_sim_groups)} groups): {label}")
+            return True
+        except Exception as _we:
+            unreal.log_warning(f"    Wind (Python) failed for {label}: {_we}")
+
+    # --- Strategy B: Blueprint library (opens file dialog) ---
+    try:
+        unreal.DynamicWindBlueprintLibrary.import_dynamic_wind_skeletal_data_from_file(mesh)
+        print(f"    [Wind] Imported via file dialog: {label}")
+        return True
+    except Exception:
+        pass
+
+    # --- Strategy C: Manual fallback ---
+    unreal.log_warning(
+        f"Could not auto-import wind for {label}\\n"
+        f"  Manual: right-click mesh > Scripted Asset Actions > Import Dynamic Wind Data\\n"
+        f"  JSON: {wind_json_path}"
+    )
+    return False
+
 
 def _configure_nanite_assembly(mesh, wind_json_path, label):
     """Configure a nanite assembly after USD import.
 
-    Sets Nanite shape preservation to Voxelize, imports DynamicWind data,
-    and creates DynamicWindData transform provider.
+    Sets Nanite shape preservation to Voxelize and imports DynamicWind data.
     """
-    # 1. Nanite Shape Preservation -> Voxelize
-    #    Preserves foliage volume at distance (prevents thin-out)
-    #    ENaniteShapePreservation: None=0, PreserveArea=1, Voxelize=2
-    _shape_set = False
-    try:
-        _nanite = mesh.get_editor_property("nanite_settings")
-        _nanite.set_editor_property(
-            "shape_preservation",
-            unreal.ENaniteShapePreservation.VOXELIZE,
-        )
-        mesh.set_editor_property("nanite_settings", _nanite)
-        _shape_set = True
-    except AttributeError:
-        pass
-    if not _shape_set:
-        # Fallback: access enum via string or console command
-        try:
-            _nanite = mesh.get_editor_property("nanite_settings")
-            _nanite.set_editor_property("shape_preservation", 2)
-            mesh.set_editor_property("nanite_settings", _nanite)
-            _shape_set = True
-        except Exception:
-            pass
-    if not _shape_set:
-        try:
-            _w = unreal.EditorLevelLibrary.get_editor_world()
-            _asset_path = mesh.get_path_name()
-            unreal.KismetSystemLibrary.execute_console_command(
-                _w, f"Nanite.SetShapePreservation {{_asset_path}} Voxelize"
-            )
-            _shape_set = True
-        except Exception:
-            pass
-    if _shape_set:
-        print(f"    [Nanite] Shape preservation -> Voxelize: {label}")
-    else:
-        unreal.log_warning(f"Could not set shape preservation for {label}")
-
-    # 2. Import DynamicWind JSON data
-    #    Maps skeleton joints to wind simulation groups.
-    #    UE 5.7 DynamicWindBlueprintLibrary.import_dynamic_wind_skeletal_data_from_file
-    #    opens a file dialog, so we replicate the import logic in Python.
-    if wind_json_path and os.path.isfile(wind_json_path):
-        _wind_ok = False
-        try:
-            with open(wind_json_path, "r") as _wf:
-                _wind_data = json.load(_wf)
-
-            _joints = _wind_data.get("Joints", [])
-            _sim_groups = _wind_data.get("SimulationGroups", [])
-            _is_ground_cover = _wind_data.get("bIsGroundCover", False)
-            _gust_atten = _wind_data.get("GustAttenuation", 0.0)
-
-            # Get existing or create new DynamicWindSkeletalData asset user data
-            _skel_data = mesh.get_asset_user_data_of_class(unreal.DynamicWindSkeletalData)
-            if _skel_data is None:
-                _skel_data = unreal.DynamicWindSkeletalData()
-                mesh.add_asset_user_data(_skel_data)
-
-            _skel_data.set_editor_property("is_enabled", True)
-            _skel_data.set_editor_property("is_ground_cover", _is_ground_cover)
-            _skel_data.set_editor_property("gust_attenuation", _gust_atten)
-
-            # Build simulation groups array
-            _groups = []
-            for _sg in _sim_groups:
-                _g = unreal.DynamicWindSimulationGroupData()
-                _g.set_editor_property("use_dual_influence", _sg.get("bUseDualInfluence", False))
-                _g.set_editor_property("influence", _sg.get("Influence", 1.0))
-                _g.set_editor_property("min_influence", _sg.get("MinInfluence", 0.0))
-                _g.set_editor_property("max_influence", _sg.get("MaxInfluence", 0.0))
-                _g.set_editor_property("shift_top", _sg.get("ShiftTop", 0.0))
-                _g.set_editor_property("is_trunk_group", _sg.get("bIsTrunkGroup", False))
-                _groups.append(_g)
-            _skel_data.set_editor_property("simulation_groups", _groups)
-
-            # Map joints to bones by name
-            _ref_skel = mesh.get_editor_property("ref_skeleton")
-            _bone_names = set()
-            if _ref_skel:
-                for _bi in range(_ref_skel.get_num()):
-                    _bone_names.add(str(_ref_skel.get_bone_name(_bi)))
-
-            # Build simulation group bones lookup
-            _sg_bones = {}
-            for _j in _joints:
-                _jname = _j.get("JointName", "")
-                _sg_idx = _j.get("SimulationGroupIndex", 0)
-                if _jname in _bone_names:
-                    _sg_bones.setdefault(_sg_idx, set()).add(_jname)
-
-            # Set simulation group bones
-            _sg_bone_lookups = []
-            for _sg_idx, _bone_set in sorted(_sg_bones.items()):
-                _lookup = unreal.DynamicWindSimulationGroupBoneLookup()
-                _lookup.set_editor_property("simulation_group_index", _sg_idx)
-                _lookup.set_editor_property("bone_indices", _bone_set)
-                _sg_bone_lookups.append(_lookup)
-            _skel_data.set_editor_property("simulation_group_bones", _sg_bone_lookups)
-
-            mesh.modify(True)
-            _wind_ok = True
-            print(f"    [Wind] Imported wind data ({len(_joints)} joints, {len(_sim_groups)} groups): {label}")
-        except Exception as _we:
-            # Fallback: try the blueprint library (opens file dialog if available)
-            try:
-                unreal.DynamicWindBlueprintLibrary.import_dynamic_wind_skeletal_data_from_file(mesh)
-                _wind_ok = True
-                print(f"    [Wind] Imported wind data via dialog: {label}")
-            except Exception:
-                pass
-
-        if not _wind_ok:
-            unreal.log_warning(
-                f"Could not import wind data for {label}: {_we}\\n"
-                f"  Manual: right-click mesh > Scripted Asset Actions > Import Dynamic Wind Data"
-            )
-
-    # Mark the asset as modified so editor knows it changed
+    _set_nanite_shape_voxelize(mesh, label)
+    _import_wind_data(mesh, wind_json_path, label)
     try:
         mesh.modify(True)
     except Exception:
