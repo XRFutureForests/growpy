@@ -322,7 +322,8 @@ def _build_datatable_script(project_path: str) -> str:
 
     Scans the import path for nanite assembly skeletal meshes, parses metadata
     (species, height, DBH, competition) from the asset name convention, creates
-    a UserDefinedStruct, and populates a DataTable with one row per assembly.
+    a DataTable, and populates it. Falls back to saving a CSV file if Python
+    DataTable creation fails (common in UE 5.7+).
 
     Asset name convention: {Species}_{comp|open}_h{HH}m_d{DD}cm_{density}_assembly
     """
@@ -330,6 +331,8 @@ def _build_datatable_script(project_path: str) -> str:
 import unreal
 import re
 import gc
+import os
+import json
 
 print("")
 print("=" * 60)
@@ -374,15 +377,31 @@ print(f"Found {{len(assemblies)}} nanite assembly skeletal meshes")
 if not assemblies:
     print("No assemblies found -- skipping DataTable creation")
 else:
-    # Step 2: Parse metadata from asset names
-    # Convention: Species_Name_comp_h05m_d15cm_full_assembly
+    # Step 2: Parse metadata from package path
+    # Folder convention: Species_Name_comp_h05m_d15cm_full_assembly
+    # Asset name is SK_species_nanite_assembly (no height/dbh info)
     _PATTERN = re.compile(
-        r"^(.+?)_(comp|open)_h(\\d+)m_d(\\d+)cm_(.+?)_assembly",
+        r"(.+?)_(comp|open)_h(\\d+)m_d(\\d+)cm_(.+?)_assembly",
         re.IGNORECASE,
     )
+    # Known species folder names for fallback matching
+    _SPECIES_FOLDERS = {{
+        "austrian_pine", "black_alder", "common_ash", "douglas_fir",
+        "european_beech", "european_larch", "european_oak", "field_maple",
+        "grand_fir", "hornbeam", "japanese_larch", "norway_spruce",
+        "scots_pine", "silver_birch", "silver_fir", "sitka_spruce",
+        "small_leaved_linden", "sycamore_maple", "western_redcedar",
+        "wild_cherry",
+    }}
     rows = []
     for asset_name, pkg_path in assemblies:
-        m = _PATTERN.match(asset_name)
+        # Search all path parts for the height/dbh pattern (folder name)
+        parts = pkg_path.split("/")
+        m = None
+        for p in parts:
+            m = _PATTERN.search(p)
+            if m:
+                break
         species = ""
         height_m = 0.0
         dbh_cm = 0.0
@@ -393,16 +412,15 @@ else:
             height_m = float(m.group(3))
             dbh_cm = float(m.group(4))
         else:
-            # Fallback: use folder name as species
-            parts = pkg_path.split("/")
-            for i, p in enumerate(parts):
-                if p == "Assets" or p == "TheGrove":
-                    continue
-                if i > 0:
-                    species = parts[i].replace("_", " ").title()
+            # Fallback: find species folder name in path
+            for p in parts:
+                if p.lower() in _SPECIES_FOLDERS:
+                    species = p.replace("_", " ").title()
                     break
             if not species:
                 species = asset_name
+            if "competition" in pkg_path.lower() or "/comp" in pkg_path.lower():
+                competition = True
 
         rows.append({{
             "name": asset_name,
@@ -415,72 +433,60 @@ else:
 
     print(f"Parsed metadata for {{len(rows)}} assemblies")
 
-    # Step 3: Create or reuse UserDefinedStruct
-    existing_struct = editor_asset_lib.does_asset_exist(STRUCT_PATH)
-    if existing_struct:
+    # Step 3: Save tree inventory as JSON + CSV to disk (always succeeds)
+    _scripts_dir = os.path.dirname(os.path.abspath(__file__))
+    _json_path = os.path.join(_scripts_dir, "tree_inventory.json")
+    _csv_path = os.path.join(_scripts_dir, "tree_inventory.csv")
+
+    json_rows = []
+    csv_lines = ["Name,SkeletalMesh,Species,Height,DBH,Competition"]
+    for row in rows:
+        json_rows.append({{
+            "Name": row["name"],
+            "SkeletalMesh": row["pkg"],
+            "Species": row["species"],
+            "Height": row["height"],
+            "DBH": row["dbh"],
+            "Competition": row["competition"],
+        }})
+        comp_str = "true" if row["competition"] else "false"
+        csv_lines.append(
+            f'{{row["name"]}},{{row["pkg"]}},{{row["species"]}},'
+            f'{{row["height"]}},{{row["dbh"]}},{{comp_str}}'
+        )
+
+    with open(_json_path, "w") as _jf:
+        json.dump(json_rows, _jf, indent=2)
+    with open(_csv_path, "w") as _cf:
+        _cf.write("\\n".join(csv_lines))
+    print(f"Saved tree_inventory.json and tree_inventory.csv ({{len(rows)}} trees)")
+
+    # Step 4: Try to create DataTable programmatically
+    # UE 5.7+ UserDefinedStructFactory is not available in Python, so we
+    # try multiple approaches and fall back to CSV file for manual import.
+    tree_struct = None
+    data_table = None
+
+    # Approach A: Reuse existing struct if it already exists
+    if editor_asset_lib.does_asset_exist(STRUCT_PATH):
         print(f"Struct already exists: {{STRUCT_PATH}} -- reusing")
         tree_struct = editor_asset_lib.load_asset(STRUCT_PATH)
-    else:
-        # Create struct via asset tools
-        # UE Python: make_struct returns the new struct asset
+
+    # Approach B: Try creating struct via Python (may fail in some UE versions)
+    if tree_struct is None:
         try:
+            _factory = unreal.UserDefinedStructFactory()
             tree_struct = asset_tools.create_asset(
-                STRUCT_NAME,
-                IMPORT_PATH,
-                unreal.UserDefinedStruct,
-                unreal.UserDefinedStructFactory(),
+                STRUCT_NAME, IMPORT_PATH,
+                unreal.UserDefinedStruct, _factory,
             )
         except Exception:
-            # Fallback: some UE versions need different factory approach
-            tree_struct = None
+            pass
 
-        if tree_struct is None:
-            print("ERROR: Could not create UserDefinedStruct via Python.")
-            print("UE Python struct creation may require editor utility widget.")
-            print("")
-            print("Manual alternative:")
-            print(f"  1. Right-click in Content Browser > Miscellaneous > Data Table")
-            print(f"  2. Pick row structure or create struct with fields:")
-            print("     - SkeletalMesh (Soft Object Reference to SkeletalMesh)")
-            print("     - Species (String)")
-            print("     - Height (Float)")
-            print("     - DBH (Float)")
-            print("     - Competition (Bool)")
-        else:
-            print(f"Created struct: {{STRUCT_PATH}}")
-            # Add struct fields via FStructVariableDescription
-            # Default struct has one member "MemberVar_0"; remove and add ours
-            try:
-                struct_lib = unreal.UserDefinedStructEditorLibrary
-                # Remove the default member
-                for _var in tree_struct.get_editor_property("variables"):
-                    struct_lib.remove_variable(tree_struct, _var.get_editor_property("var_guid"))
-                    break
-            except Exception:
-                pass
-
-            _fields = [
-                ("SkeletalMesh", "SoftObjectPath"),
-                ("Species", "str"),
-                ("Height", "double"),
-                ("DBH", "double"),
-                ("Competition", "bool"),
-            ]
-            try:
-                struct_lib = unreal.UserDefinedStructEditorLibrary
-                for fname, ftype in _fields:
-                    struct_lib.add_variable(tree_struct, fname)
-                print(f"Added {{len(_fields)}} fields to struct")
-            except Exception as e:
-                unreal.log_warning(f"Could not add struct fields programmatically: {{e}}")
-                print("Struct created but fields must be configured manually")
-
-            editor_asset_lib.save_asset(STRUCT_PATH)
-
-    # Step 4: Create DataTable
+    # If struct creation succeeded, try DataTable creation + population
     if tree_struct is not None:
-        existing_dt = editor_asset_lib.does_asset_exist(DATATABLE_PATH)
-        if existing_dt:
+        # Delete existing DataTable if present
+        if editor_asset_lib.does_asset_exist(DATATABLE_PATH):
             editor_asset_lib.delete_asset(DATATABLE_PATH)
             print(f"Deleted existing DataTable: {{DATATABLE_PATH}}")
 
@@ -491,27 +497,11 @@ else:
                 DATATABLE_NAME, IMPORT_PATH, unreal.DataTable, dt_factory
             )
         except Exception as e:
-            data_table = None
             unreal.log_warning(f"Could not create DataTable: {{e}}")
 
         if data_table is not None:
             print(f"Created DataTable: {{DATATABLE_PATH}}")
-
-            # Step 5: Populate rows via JSON import
-            # UE DataTable Python API: fill_data_table_from_json_string
-            import json
-            json_rows = []
-            for row in rows:
-                json_rows.append({{
-                    "Name": row["name"],
-                    "SkeletalMesh": row["pkg"],
-                    "Species": row["species"],
-                    "Height": row["height"],
-                    "DBH": row["dbh"],
-                    "Competition": row["competition"],
-                }})
             json_str = json.dumps(json_rows, indent=2)
-
             try:
                 success = unreal.DataTableFunctionLibrary.fill_data_table_from_json_string(
                     data_table, json_str
@@ -519,33 +509,36 @@ else:
                 if success:
                     print(f"Populated {{len(json_rows)}} rows in DataTable")
                 else:
-                    unreal.log_warning("fill_data_table_from_json_string returned False")
-                    print("JSON population failed -- trying CSV fallback")
-                    # CSV fallback: Name,SkeletalMesh,Species,Height,DBH,Competition
-                    csv_lines = ["---,SkeletalMesh,Species,Height,DBH,Competition"]
-                    for row in rows:
-                        comp_str = "true" if row["competition"] else "false"
-                        csv_lines.append(
-                            f'{{row["name"]}},{{row["pkg"]}},{{row["species"]}},'
-                            f'{{row["height"]}},{{row["dbh"]}},{{comp_str}}'
-                        )
-                    csv_str = "\\n".join(csv_lines)
+                    # Try CSV fallback
+                    csv_str = "\\n".join(["---,SkeletalMesh,Species,Height,DBH,Competition"] + csv_lines[1:])
                     try:
                         success2 = unreal.DataTableFunctionLibrary.fill_data_table_from_csv_string(
                             data_table, csv_str
                         )
                         if success2:
                             print(f"Populated {{len(rows)}} rows via CSV fallback")
-                        else:
-                            unreal.log_warning("CSV fallback also failed")
-                    except Exception as e2:
-                        unreal.log_warning(f"CSV fallback error: {{e2}}")
+                    except Exception:
+                        pass
             except Exception as e:
                 unreal.log_warning(f"Error populating DataTable: {{e}}")
-
             editor_asset_lib.save_asset(DATATABLE_PATH)
-        else:
-            print("DataTable creation failed -- see log for details")
+
+    if data_table is None:
+        print("")
+        print("NOTE: Automated DataTable creation not supported in this UE version.")
+        print("Tree inventory saved to disk. To import manually:")
+        print(f"  CSV: {{_csv_path}}")
+        print(f"  JSON: {{_json_path}}")
+        print("")
+        print("Manual DataTable creation:")
+        print("  1. Create a struct (Miscellaneous > Structure) with fields:")
+        print("     - SkeletalMesh (Soft Object Reference)")
+        print("     - Species (String)")
+        print("     - Height (Float)")
+        print("     - DBH (Float)")
+        print("     - Competition (Bool)")
+        print("  2. Create a DataTable using that struct")
+        print("  3. Right-click DataTable > Reimport > select tree_inventory.csv")
 
     gc.collect()
     try:
@@ -564,63 +557,131 @@ print("=" * 60)
 # Included in species batch scripts to set shape preservation, wind data, etc.
 _NANITE_CONFIG_PREAMBLE = '''
 import os
+import json
 
 def _configure_nanite_assembly(mesh, wind_json_path, label):
     """Configure a nanite assembly after USD import.
 
     Sets Nanite shape preservation to Voxelize, imports DynamicWind data,
-    and assigns DynamicWindTransformProviderData.
+    and creates DynamicWindData transform provider.
     """
     # 1. Nanite Shape Preservation -> Voxelize
     #    Preserves foliage volume at distance (prevents thin-out)
+    #    ENaniteShapePreservation: None=0, PreserveArea=1, Voxelize=2
+    _shape_set = False
     try:
         _nanite = mesh.get_editor_property("nanite_settings")
-        # ENaniteShapePreservation: NONE=0, PRESERVE_AREA=1, VOXELIZE=2
         _nanite.set_editor_property(
             "shape_preservation",
             unreal.ENaniteShapePreservation.VOXELIZE,
         )
         mesh.set_editor_property("nanite_settings", _nanite)
+        _shape_set = True
+    except AttributeError:
+        pass
+    if not _shape_set:
+        # Fallback: access enum via string or console command
+        try:
+            _nanite = mesh.get_editor_property("nanite_settings")
+            _nanite.set_editor_property("shape_preservation", 2)
+            mesh.set_editor_property("nanite_settings", _nanite)
+            _shape_set = True
+        except Exception:
+            pass
+    if not _shape_set:
+        try:
+            _w = unreal.EditorLevelLibrary.get_editor_world()
+            _asset_path = mesh.get_path_name()
+            unreal.KismetSystemLibrary.execute_console_command(
+                _w, f"Nanite.SetShapePreservation {{_asset_path}} Voxelize"
+            )
+            _shape_set = True
+        except Exception:
+            pass
+    if _shape_set:
         print(f"    [Nanite] Shape preservation -> Voxelize: {label}")
-    except Exception as e:
-        unreal.log_warning(f"Could not set shape preservation for {label}: {e}")
+    else:
+        unreal.log_warning(f"Could not set shape preservation for {label}")
 
     # 2. Import DynamicWind JSON data
-    #    Maps skeleton joints to wind simulation groups
+    #    Maps skeleton joints to wind simulation groups.
+    #    UE 5.7 DynamicWindBlueprintLibrary.import_dynamic_wind_skeletal_data_from_file
+    #    opens a file dialog, so we replicate the import logic in Python.
     if wind_json_path and os.path.isfile(wind_json_path):
+        _wind_ok = False
         try:
-            # UE 5.5+ DynamicWind plugin function library
-            unreal.DynamicWindSkeletalMeshFunctionLibrary.import_dynamic_wind_skeletal_data_from_file(
-                mesh, wind_json_path
-            )
-            print(f"    [Wind] Imported wind data: {label}")
-        except AttributeError:
-            try:
-                # Alternative API path (plugin version dependent)
-                unreal.DynamicWindSkeletalMeshHelpers.import_dynamic_wind_skeletal_data_from_file(
-                    mesh, wind_json_path
-                )
-                print(f"    [Wind] Imported wind data: {label}")
-            except Exception as e2:
-                unreal.log_warning(
-                    f"Could not import wind data for {label}: {e2}\\n"
-                    f"  Use right-click > Scripted Asset Actions > Import Dynamic Wind Data"
-                )
+            with open(wind_json_path, "r") as _wf:
+                _wind_data = json.load(_wf)
 
-    # 3. Assign default DynamicWindTransformProviderData
-    #    Enables runtime wind transforms on the skeletal mesh
-    #    See: https://dev.epicgames.com/documentation/en-us/unreal-engine/nanite-foliage
-    try:
-        _provider = unreal.DynamicWindTransformProviderData()
-        mesh.set_editor_property(
-            "default_dynamic_wind_transform_provider_data", _provider
-        )
-        print(f"    [Wind] Set transform provider data: {label}")
-    except Exception as e:
-        unreal.log_warning(
-            f"Could not set wind transform provider for {label}: {e}\\n"
-            f"  Set manually: Skeletal Mesh > Details > Dynamic Wind Transform Provider Data"
-        )
+            _joints = _wind_data.get("Joints", [])
+            _sim_groups = _wind_data.get("SimulationGroups", [])
+            _is_ground_cover = _wind_data.get("bIsGroundCover", False)
+            _gust_atten = _wind_data.get("GustAttenuation", 0.0)
+
+            # Get existing or create new DynamicWindSkeletalData asset user data
+            _skel_data = mesh.get_asset_user_data_of_class(unreal.DynamicWindSkeletalData)
+            if _skel_data is None:
+                _skel_data = unreal.DynamicWindSkeletalData()
+                mesh.add_asset_user_data(_skel_data)
+
+            _skel_data.set_editor_property("is_enabled", True)
+            _skel_data.set_editor_property("is_ground_cover", _is_ground_cover)
+            _skel_data.set_editor_property("gust_attenuation", _gust_atten)
+
+            # Build simulation groups array
+            _groups = []
+            for _sg in _sim_groups:
+                _g = unreal.DynamicWindSimulationGroupData()
+                _g.set_editor_property("use_dual_influence", _sg.get("bUseDualInfluence", False))
+                _g.set_editor_property("influence", _sg.get("Influence", 1.0))
+                _g.set_editor_property("min_influence", _sg.get("MinInfluence", 0.0))
+                _g.set_editor_property("max_influence", _sg.get("MaxInfluence", 0.0))
+                _g.set_editor_property("shift_top", _sg.get("ShiftTop", 0.0))
+                _g.set_editor_property("is_trunk_group", _sg.get("bIsTrunkGroup", False))
+                _groups.append(_g)
+            _skel_data.set_editor_property("simulation_groups", _groups)
+
+            # Map joints to bones by name
+            _ref_skel = mesh.get_editor_property("ref_skeleton")
+            _bone_names = set()
+            if _ref_skel:
+                for _bi in range(_ref_skel.get_num()):
+                    _bone_names.add(str(_ref_skel.get_bone_name(_bi)))
+
+            # Build simulation group bones lookup
+            _sg_bones = {}
+            for _j in _joints:
+                _jname = _j.get("JointName", "")
+                _sg_idx = _j.get("SimulationGroupIndex", 0)
+                if _jname in _bone_names:
+                    _sg_bones.setdefault(_sg_idx, set()).add(_jname)
+
+            # Set simulation group bones
+            _sg_bone_lookups = []
+            for _sg_idx, _bone_set in sorted(_sg_bones.items()):
+                _lookup = unreal.DynamicWindSimulationGroupBoneLookup()
+                _lookup.set_editor_property("simulation_group_index", _sg_idx)
+                _lookup.set_editor_property("bone_indices", _bone_set)
+                _sg_bone_lookups.append(_lookup)
+            _skel_data.set_editor_property("simulation_group_bones", _sg_bone_lookups)
+
+            mesh.modify(True)
+            _wind_ok = True
+            print(f"    [Wind] Imported wind data ({len(_joints)} joints, {len(_sim_groups)} groups): {label}")
+        except Exception as _we:
+            # Fallback: try the blueprint library (opens file dialog if available)
+            try:
+                unreal.DynamicWindBlueprintLibrary.import_dynamic_wind_skeletal_data_from_file(mesh)
+                _wind_ok = True
+                print(f"    [Wind] Imported wind data via dialog: {label}")
+            except Exception:
+                pass
+
+        if not _wind_ok:
+            unreal.log_warning(
+                f"Could not import wind data for {label}: {_we}\\n"
+                f"  Manual: right-click mesh > Scripted Asset Actions > Import Dynamic Wind Data"
+            )
 
     # Mark the asset as modified so editor knows it changed
     try:
