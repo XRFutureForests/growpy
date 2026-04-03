@@ -398,9 +398,11 @@ else:
         # Search all path parts for the height/dbh pattern (folder name)
         parts = pkg_path.split("/")
         m = None
+        folder_name = ""
         for p in parts:
             m = _PATTERN.search(p)
             if m:
+                folder_name = p
                 break
         species = ""
         height_m = 0.0
@@ -422,9 +424,12 @@ else:
             if "competition" in pkg_path.lower() or "/comp" in pkg_path.lower():
                 competition = True
 
+        # Use assembly folder name as row name (unique per tree)
+        # e.g. "Hornbeam_comp_h05m_d04cm_full_assembly" not "SK_hornbeam_nanite_assembly"
+        # Full object path: PackageName.ObjectName (required for Soft Object References)
         rows.append({{
-            "name": asset_name,
-            "pkg": pkg_path,
+            "name": folder_name or asset_name,
+            "pkg": f"{{pkg_path}}.{{asset_name}}",
             "species": species,
             "height": height_m,
             "dbh": dbh_cm,
