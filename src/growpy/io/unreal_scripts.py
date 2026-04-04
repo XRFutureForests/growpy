@@ -20,8 +20,14 @@ logger = logging.getLogger(__name__)
 _VRAM_MONITOR_PREAMBLE = '''
 import subprocess
 
-# Maximum VRAM usage percentage before auto-stopping import (0 = disabled)
-VRAM_LIMIT_PERCENT = 85
+# VRAM threshold: pause import when usage exceeds this percentage
+VRAM_LIMIT_PERCENT = 80
+
+# Maximum time (seconds) to wait for VRAM to drop below threshold before giving up
+VRAM_WAIT_TIMEOUT = 600
+
+# Polling interval (seconds) when waiting for VRAM to settle
+VRAM_POLL_INTERVAL = 15
 
 def _get_gpu_vram():
     """Query GPU VRAM usage via nvidia-smi. Returns (used_mb, total_mb, pct) or None."""
@@ -41,23 +47,62 @@ def _get_gpu_vram():
         pass
     return None
 
+def _vram_bar(pct):
+    bar_len = 20
+    filled = int(bar_len * pct / 100)
+    return "#" * filled + "-" * (bar_len - filled)
+
 def _check_vram(context=""):
-    """Print VRAM usage and return True if over limit (should stop)."""
+    """Print VRAM usage and return True if over limit."""
     info = _get_gpu_vram()
     if info is None:
         return False
     used, total, pct = info
-    bar_len = 20
-    filled = int(bar_len * pct / 100)
-    bar = "#" * filled + "-" * (bar_len - filled)
-    status = f"  [VRAM] {used}/{total} MB ({pct}%) [{bar}]"
+    status = f"  [VRAM] {used}/{total} MB ({pct}%) [{_vram_bar(pct)}]"
     if context:
         status += f"  ({context})"
     print(status)
     if VRAM_LIMIT_PERCENT > 0 and pct >= VRAM_LIMIT_PERCENT:
-        print(f"  ** VRAM usage {pct}% >= limit {VRAM_LIMIT_PERCENT}% -- stopping batch to prevent crash **")
-        print(f"  ** Restart UE and re-run this script to continue (resume is automatic) **")
         return True
+    return False
+
+def _wait_for_vram(context="", min_delay=5.0):
+    """Wait for VRAM to drop below threshold before continuing.
+
+    Always waits at least min_delay seconds. If VRAM is over the limit,
+    polls every VRAM_POLL_INTERVAL seconds until it drops below threshold
+    or VRAM_WAIT_TIMEOUT is reached.
+
+    Returns True if VRAM settled below threshold, False if timed out.
+    """
+    time.sleep(min_delay)
+    info = _get_gpu_vram()
+    if info is None:
+        return True
+    used, total, pct = info
+    if VRAM_LIMIT_PERCENT <= 0 or pct < VRAM_LIMIT_PERCENT:
+        print(f"  [VRAM] {used}/{total} MB ({pct}%) [{_vram_bar(pct)}]  ({context})")
+        return True
+
+    print(f"  [VRAM] {used}/{total} MB ({pct}%) [{_vram_bar(pct)}]  ({context})")
+    print(f"  -- VRAM {pct}% >= {VRAM_LIMIT_PERCENT}% threshold, pausing until it settles...")
+    waited = 0.0
+    while waited < VRAM_WAIT_TIMEOUT:
+        time.sleep(VRAM_POLL_INTERVAL)
+        waited += VRAM_POLL_INTERVAL
+        info = _get_gpu_vram()
+        if info is None:
+            return True
+        used, total, pct = info
+        mins = int(waited // 60)
+        secs = int(waited % 60)
+        print(f"  [VRAM] {used}/{total} MB ({pct}%) [{_vram_bar(pct)}]  (waited {mins}m{secs:02d}s)")
+        if pct < VRAM_LIMIT_PERCENT:
+            print(f"  -- VRAM settled below {VRAM_LIMIT_PERCENT}%, continuing")
+            return True
+
+    print(f"  ** VRAM still {pct}% after {int(VRAM_WAIT_TIMEOUT)}s timeout -- stopping to prevent crash **")
+    print(f"  ** Restart UE and re-run this script to continue (resume is automatic) **")
     return False
 
 _vram_exceeded = False
@@ -192,10 +237,9 @@ else:
             unreal.SystemLibrary.collect_garbage(full_purge=True)
         except Exception:
             unreal.SystemLibrary.collect_garbage()
-        time.sleep(IMPORT_DELAY)
 
-        # Check VRAM after cleanup -- stop batch if over limit
-        if _check_vram("{label}"):
+        # Adaptive wait: pause until VRAM settles below threshold
+        if not _wait_for_vram("{label}", min_delay=IMPORT_DELAY):
             _vram_exceeded = True
 
     except Exception as e:
@@ -1025,10 +1069,12 @@ def generate_unreal_import_script(
     export_tree_ids: Optional[set] = None,
     include_static: bool = False,
 ) -> Path:
-    """Generate batched Unreal Python scripts for importing forest USD files.
+    """Generate Unreal Python scripts for importing forest USD files.
 
-    Produces one batch script per species (plus one for shared instances) to
-    avoid video memory exhaustion. A master script runs each batch sequentially.
+    Produces one script per species (plus one for shared instances).
+    Each file import is monitored with adaptive VRAM waiting that pauses
+    automatically when GPU memory is high. A master script runs all
+    species sequentially.
 
     Args:
         output_dir: Directory containing exported USD files.
@@ -1043,6 +1089,10 @@ def generate_unreal_import_script(
     """
     script_dir = output_dir / "unreal_scripts"
     script_dir.mkdir(exist_ok=True)
+
+    # Remove stale batch scripts from previous runs
+    for old_script in script_dir.glob("import_batch_*.py"):
+        old_script.unlink()
 
     # Find all tree assemblies in species subdirectories (usda, usdc, or usd)
     nanite_files = (
@@ -1145,36 +1195,28 @@ def generate_unreal_import_script(
     # Track batch scripts: (filename, label)
     batch_scripts: List[Tuple[str, str]] = []
 
-    # Batch 0+: Shared instances (split into sub-batches of max 10 files
-    # to avoid VRAM exhaustion from importing all twigs at once)
-    MAX_INSTANCE_BATCH = 10
+    # Batch 0: Shared instances (single batch -- per-file VRAM monitoring
+    # handles memory pressure so sub-batching is unnecessary)
     if instance_files:
         sorted_instances = sorted(instance_files)
-        for sub_idx, chunk_start in enumerate(
-            range(0, len(sorted_instances), MAX_INSTANCE_BATCH)
-        ):
-            chunk = sorted_instances[chunk_start : chunk_start + MAX_INSTANCE_BATCH]
-            chunk_count = len(chunk)
-            blocks = ""
-            blocks += 'print("Importing shared twig/foliage instances...")\n'
-            for inst_file in chunk:
-                inst_path = str(inst_file.resolve()).replace("\\", "/")
-                blocks += _build_import_block(
-                    inst_path, "Instances", inst_file.stem
-                )
+        blocks = ""
+        blocks += 'print("Importing shared twig/foliage instances...")\n'
+        for inst_file in sorted_instances:
+            inst_path = str(inst_file.resolve()).replace("\\", "/")
+            blocks += _build_import_block(
+                inst_path, "Instances", inst_file.stem
+            )
 
-            batch_name = f"import_batch_00{chr(ord('a') + sub_idx)}_instances.py"
-            batch_label = (
-                f"Shared instances part {sub_idx + 1} ({chunk_count} files)"
-            )
-            _write_batch_script(
-                script_dir / batch_name,
-                project_path,
-                batch_label,
-                blocks,
-                chunk_count,
-            )
-            batch_scripts.append((batch_name, batch_label))
+        batch_name = "import_batch_00_instances.py"
+        batch_label = f"Shared instances ({len(sorted_instances)} files)"
+        _write_batch_script(
+            script_dir / batch_name,
+            project_path,
+            batch_label,
+            blocks,
+            len(sorted_instances),
+        )
+        batch_scripts.append((batch_name, batch_label))
 
     # Batch per species
     for idx, (species_folder, variants) in enumerate(
@@ -1257,15 +1299,14 @@ def generate_unreal_import_script(
     master_content = f'''"""
 GrowPy Forest Import to Unreal Engine - Auto-generated master script
 
-Imports are split into {len(batch_scripts)} batches (1 per species + shared instances)
-to avoid video memory exhaustion. Each batch triggers garbage collection
-before moving to the next.
+One script per species + shared instances. Each file is imported with
+adaptive VRAM monitoring that pauses automatically when GPU memory is high.
 
 Execute this script in Unreal Engine:
 1. Right-click this file in VSCode > "Execute Python File in Unreal"
 2. Or from Unreal Python console: exec(open(r'{master_path_str}').read())
 
-To import a single species, run the individual batch script instead:
+To import a single species, run the individual script instead:
   e.g. exec(open(r'{scripts_dir_str}/import_batch_01_species.py').read())
 """
 
@@ -1282,11 +1323,17 @@ print("=" * 60)
 IMPORT_PATH = "{project_path}"
 SCRIPTS_DIR = r"{scripts_dir_str}"
 
-# Delay between batches (seconds) - increase if you still get VRAM crashes
-BATCH_DELAY = 60.0
+# VRAM threshold: pause import when usage exceeds this percentage
+VRAM_LIMIT_PERCENT = 80
 
-# Maximum VRAM usage percentage before auto-stopping (0 = disabled)
-VRAM_LIMIT_PERCENT = 85
+# Maximum time (seconds) to wait for VRAM to drop below threshold before giving up
+VRAM_WAIT_TIMEOUT = 600
+
+# Polling interval (seconds) when waiting for VRAM to settle
+VRAM_POLL_INTERVAL = 15
+
+# Minimum delay (seconds) between batches even when VRAM is fine
+BATCH_MIN_DELAY = 10.0
 
 def _get_gpu_vram():
     """Query GPU VRAM usage via nvidia-smi. Returns (used_mb, total_mb, pct) or None."""
@@ -1306,22 +1353,60 @@ def _get_gpu_vram():
         pass
     return None
 
+def _vram_bar(pct):
+    bar_len = 20
+    filled = int(bar_len * pct / 100)
+    return "#" * filled + "-" * (bar_len - filled)
+
 def _check_vram(context=""):
-    """Print VRAM usage and return True if over limit (should stop)."""
+    """Print VRAM usage and return True if over limit."""
     info = _get_gpu_vram()
     if info is None:
         return False
     used, total, pct = info
-    bar_len = 20
-    filled = int(bar_len * pct / 100)
-    bar = "#" * filled + "-" * (bar_len - filled)
-    status = f"  [VRAM] {{used}}/{{total}} MB ({{pct}}%) [{{bar}}]"
+    status = f"  [VRAM] {{used}}/{{total}} MB ({{pct}}%) [{{_vram_bar(pct)}}]"
     if context:
         status += f"  ({{context}})"
     print(status)
     if VRAM_LIMIT_PERCENT > 0 and pct >= VRAM_LIMIT_PERCENT:
-        print(f"  ** VRAM usage {{pct}}% >= limit {{VRAM_LIMIT_PERCENT}}% -- stopping to prevent crash **")
         return True
+    return False
+
+def _wait_for_vram(context="", min_delay=10.0):
+    """Wait for VRAM to drop below threshold before continuing.
+
+    Always waits at least min_delay seconds. If VRAM is over the limit,
+    polls every VRAM_POLL_INTERVAL seconds until it drops or times out.
+    Returns True if VRAM settled, False if timed out.
+    """
+    time.sleep(min_delay)
+    info = _get_gpu_vram()
+    if info is None:
+        return True
+    used, total, pct = info
+    if VRAM_LIMIT_PERCENT <= 0 or pct < VRAM_LIMIT_PERCENT:
+        print(f"  [VRAM] {{used}}/{{total}} MB ({{pct}}%) [{{_vram_bar(pct)}}]  ({{context}})")
+        return True
+
+    print(f"  [VRAM] {{used}}/{{total}} MB ({{pct}}%) [{{_vram_bar(pct)}}]  ({{context}})")
+    print(f"  -- VRAM {{pct}}% >= {{VRAM_LIMIT_PERCENT}}% threshold, pausing until it settles...")
+    waited = 0.0
+    while waited < VRAM_WAIT_TIMEOUT:
+        time.sleep(VRAM_POLL_INTERVAL)
+        waited += VRAM_POLL_INTERVAL
+        info = _get_gpu_vram()
+        if info is None:
+            return True
+        used, total, pct = info
+        mins = int(waited // 60)
+        secs = int(waited % 60)
+        print(f"  [VRAM] {{used}}/{{total}} MB ({{pct}}%) [{{_vram_bar(pct)}}]  (waited {{mins}}m{{secs:02d}}s)")
+        if pct < VRAM_LIMIT_PERCENT:
+            print(f"  -- VRAM settled below {{VRAM_LIMIT_PERCENT}}%, continuing")
+            return True
+
+    print(f"  ** VRAM still {{pct}}% after {{int(VRAM_WAIT_TIMEOUT)}}s -- stopping to prevent crash **")
+    print(f"  ** Restart UE and re-run import_forest.py to continue (resume is automatic) **")
     return False
 
 # Show initial VRAM state
@@ -1363,7 +1448,7 @@ print("VRAM tips -- if import still crashes:")
 print("  1. Press Ctrl+R in viewport to disable Realtime rendering")
 print("  2. Close the Content Browser (prevents thumbnail generation)")
 print("  3. Close other GPU-heavy apps (browser tabs, etc.)")
-print("  4. Increase BATCH_DELAY above (currently {{BATCH_DELAY}}s)")
+print("  4. Lower VRAM_LIMIT_PERCENT or increase VRAM_WAIT_TIMEOUT above")
 print("")
 
 # Tree positions from CSV (in meters, multiply by 100 for Unreal units)
@@ -1411,7 +1496,7 @@ for _batch_idx, (batch_file, batch_label) in enumerate(BATCH_SCRIPTS):
         unreal.log_error(f"Batch '{{batch_label}}' failed: {{e}}")
         total_failed += 1
 
-    # Aggressive cleanup between batches (CPU + GPU)
+    # Cleanup between species (lighter -- per-file VRAM management is in each batch)
     try:
         unreal.SystemLibrary.flush_async_loading()
     except Exception:
@@ -1420,36 +1505,8 @@ for _batch_idx, (batch_file, batch_label) in enumerate(BATCH_SCRIPTS):
         unreal.AssetCompilingManager.get_default().finish_all_compilation()
     except Exception:
         pass
-    # Save all dirty packages to disk so editor can release GPU resources
     try:
         unreal.EditorLoadingAndSavingUtils.save_dirty_packages(False, True)
-    except Exception:
-        pass
-    try:
-        _world = unreal.EditorLevelLibrary.get_editor_world()
-        for _cmd in (
-            "FlushRenderingCommands",
-            "r.Streaming.FlushAll",
-            "r.Nanite.CoarseMeshStreaming.ForceFlush 1",
-            "r.Nanite.Streaming.MaxPendingPages 0",
-            "r.RHI.GPUDefrag",
-            "r.D3D12.ResidencyManagement.DenyBudgetUpdates 1",
-            "r.D3D12.FreeAllPooledTextures",
-            "r.D3D12.FreeUnusedResources",
-        ):
-            try:
-                unreal.KismetSystemLibrary.execute_console_command(_world, _cmd)
-            except Exception:
-                pass
-        # Re-enable budget updates and nanite streaming
-        for _re_cmd in (
-            "r.D3D12.ResidencyManagement.DenyBudgetUpdates 0",
-            "r.Nanite.Streaming.MaxPendingPages 64",
-        ):
-            try:
-                unreal.KismetSystemLibrary.execute_console_command(_world, _re_cmd)
-            except Exception:
-                pass
     except Exception:
         pass
     gc.collect()
@@ -1457,11 +1514,10 @@ for _batch_idx, (batch_file, batch_label) in enumerate(BATCH_SCRIPTS):
         unreal.SystemLibrary.collect_garbage(full_purge=True)
     except Exception:
         unreal.SystemLibrary.collect_garbage()
-    time.sleep(BATCH_DELAY)
 
-    # Check VRAM between batches -- stop master loop if over limit
-    if _check_vram(f"after batch {{_batch_idx + 1}}"):
-        print(f"\\n** VRAM limit reached after batch {{_batch_idx + 1}} -- stopping master import **")
+    # Adaptive wait: pause until VRAM settles below threshold
+    if not _wait_for_vram(f"after batch {{_batch_idx + 1}}", min_delay=BATCH_MIN_DELAY):
+        print(f"\\n** VRAM did not settle after batch {{_batch_idx + 1}} -- stopping master import **")
         print("** Restart UE and re-run import_forest.py to continue (resume is automatic) **")
         break
 
