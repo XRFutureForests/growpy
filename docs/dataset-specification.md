@@ -8,7 +8,7 @@ This document defines the target tree asset dataset for a VR forest simulation i
 
 **Target engine**: Unreal Engine 5.5+ with Nanite and Procedural Vegetation Editor (PVE).
 
-**Estimated total models**: ~522 (16 species x 2 individuals x 4--7 stages x 3 densities). See [Asset Count Estimate](#asset-count-estimate) for breakdown.
+**Estimated total models**: ~384 (10 species x 2 individuals x 5--9 stages x 3 densities). See [Asset Count Estimate](#asset-count-estimate) for breakdown.
 
 **Dataset overview**: See [dataset-overview.md](dataset-overview.md) for production status and preview images.
 
@@ -24,48 +24,47 @@ Species are selected based on the German National Forest Inventory (Bundeswaldin
 
 ### Species Table
 
-#### Conifers (6 species)
+#### Conifers (5 species)
 
 | # | Common Name | Scientific Name | BWI Share | Standardized Name | Preset | Twig | Yield Table | Notes |
 |---|---|---|---|---|---|---|---|---|
 | 1 | Norway spruce | Picea abies | ~34% | `norway_spruce` | Pinaceae - Fir | PacificSilverFirTwig | Fichte | Dominant conifer in southern Germany |
 | 2 | Scots pine | Pinus sylvestris | ~15% | `scots_pine` | Pinaceae - Scots pine | ScotsPineTwig | Kiefer | Second most common conifer |
 | 3 | Silver fir | Abies alba | ~3% | `silver_fir` | Pinaceae - Fir | PacificSilverFirTwig | Tanne | Key species in Black Forest, Allgaeu |
-| 4 | Austrian pine | Pinus nigra | <1% | `austrian_pine` | Pinaceae - Austrian pine | ScotsPineTwig | Schwarzkiefer | Planted, dry limestone sites |
-| 5 | Grand fir | Abies grandis | <1% | `grand_fir` | Pinaceae - Grand fir | PacificSilverFirTwig | -- | Serves as Douglas fir stand-in |
-| 6 | Western redcedar | Thuja plicata | <1% | `western_redcedar` | Cupressaceae - Western redcedar | WesternRedCedarTwig | -- | Distinct silhouette, evergreen alternative |
+| 4 | Douglas fir | Pseudotsuga menziesii | ~2% | `douglas_fir` | Pinaceae - Douglas fir | DouglasFirTwig | Douglasie | Non-native but increasing in southern Germany |
+| 5 | European larch | Larix decidua | ~2% | `european_larch` | Pinaceae - Larch | EuropeanLarchTwig | Laerche | Native in Bavarian Alps, montane forests |
 
-#### Broadleaf (10 species)
+#### Broadleaf (5 species)
 
 | # | Common Name | Scientific Name | BWI Share | Standardized Name | Preset | Twig | Yield Table | Notes |
 |---|---|---|---|---|---|---|---|---|
-| 7 | European beech | Fagus sylvatica | ~14% | `european_beech` | Fagaceae - Beech | EuropeanBeechTwig | Buche | Dominant broadleaf |
-| 8 | European oak | Quercus robur | ~7% | `european_oak` | Fagaceae - European oak | EuropeanOakTwig | Eiche | Major component of mixed forests |
-| 9 | Common ash | Fraxinus excelsior | ~3% | `common_ash` | Oleaceae - Ash | OneLeavedAshTwig | Esche | Declining due to ash dieback |
-| 10 | Sycamore maple | Acer pseudoplatanus | ~2% | `sycamore_maple` | Sapindaceae - Maple | SycamoreMapleFallTwig | -- | Common in montane forests |
-| 11 | Silver birch | Betula pendula | ~2% | `silver_birch` | Betulaceae - Silver birch | PaperBirchTwig | Birke | Pioneer species, distinctive bark |
-| 12 | Black alder | Alnus glutinosa | ~2% | `black_alder` | Betulaceae - Alder | BlackAlderTwig | Erle | Riparian habitat indicator |
-| 13 | Hornbeam | Carpinus betulus | ~1% | `hornbeam` | Betulaceae - Hornbeam | HazelTwig | Hainbuche | Common understory tree |
-| 14 | Small-leaved linden | Tilia cordata | ~1% | `small_leaved_linden` | Malvaceae - Linden | SmallLeavedLindenTwig | Winterlinde | Cultural significance |
-| 15 | Wild cherry | Prunus avium | <1% | `wild_cherry` | Rosaceae - Wild cherry | JapaneseCherryTwig | -- | Valuable timber species |
-| 16 | Field maple | Acer campestre | <1% | `field_maple` | Sapindaceae - Field maple | FieldMapleTwig | -- | Hedgerows, forest edges |
+| 6 | European beech | Fagus sylvatica | ~14% | `european_beech` | Fagaceae - Beech | EuropeanBeechTwig | Buche | Dominant broadleaf |
+| 7 | European oak | Quercus robur | ~7% | `european_oak` | Fagaceae - European oak | EuropeanOakTwig | Eiche | Major component of mixed forests |
+| 8 | Common ash | Fraxinus excelsior | ~3% | `common_ash` | Oleaceae - Ash | OneLeavedAshTwig | Esche | Declining due to ash dieback |
+| 9 | Sycamore maple | Acer pseudoplatanus | ~2% | `sycamore_maple` | Sapindaceae - Maple | SycamoreMapleFallTwig | -- | Common in montane forests |
+| 10 | Silver birch | Betula pendula | ~2% | `silver_birch` | Betulaceae - Silver birch | PaperBirchTwig | Birke | Pioneer species, distinctive bark |
 
-### Gap Analysis
+### Removed Species
 
-The following species are common in southern German forests but lack Grove presets. They are planned for future custom preset and twig development:
+The following species from the original 16-species selection were removed to focus on the most representative southern German forest composition (5 conifer + 5 broadleaf):
 
-| Common Name | Scientific Name | BWI Share | Status |
-|---|---|---|---|
-| European larch | Larix decidua | ~2% | Needs custom preset and twig |
-| Douglas fir | Pseudotsuga menziesii | ~2% | Needs custom preset and twig; Grand fir used as stand-in for now |
-| Robinia | Robinia pseudoacacia | <1% | preset exists but low priority for southern Germany |
+| Common Name | Reason |
+|---|---|
+| Austrian pine | Low BWI share (<1%), dry limestone niche |
+| Grand fir | Non-native, was Douglas fir stand-in (Douglas fir now included directly) |
+| Western redcedar | Non-native, low ecological relevance |
+| Black alder | Riparian specialist, limited general forest use |
+| Hornbeam | Primarily understory, low visual impact |
+| Small-leaved linden | Low BWI share (~1%) |
+| Wild cherry | Low BWI share (<1%) |
+| Field maple | Hedgerow/edge species, low forest share |
 
 ## Asset Hierarchy
 
 Each tree asset is defined by four orthogonal dimensions:
 
 ```
-Species (16)
+Species (10)
   |
   +-- Individual (2+)
         |
@@ -76,7 +75,7 @@ Species (16)
 
 ### Level 1: Species
 
-The 16 species listed above. Each species has its own Grove preset, twig set, bark textures, and growth model (calibrated against yield tables where available).
+The 10 species listed above (5 conifer + 5 broadleaf). Each species has its own Grove preset, twig set, bark textures, and growth model (calibrated against yield tables where available).
 
 ### Level 2: Individual
 
@@ -91,9 +90,9 @@ Each species has at minimum two individuals representing different growing condi
 
 | Shade Tolerance | Spacing (m) | Species |
 |---|---|---|
-| Tolerant | 5 | European beech, hornbeam, silver fir, small-leaved linden, western redcedar |
-| Intermediate | 6 | European oak, sycamore maple, common ash, wild cherry, field maple, Norway spruce, grand fir |
-| Intolerant | 8 | Scots pine, Austrian pine, silver birch, black alder |
+| Tolerant | 5 | European beech, silver fir |
+| Intermediate | 6 | European oak, sycamore maple, common ash, Norway spruce, Douglas fir, European larch |
+| Intolerant | 8 | Scots pine, silver birch |
 
 **Hexagonal neighbor positions** at spacing `s`:
 
@@ -163,13 +162,12 @@ Seasonal leaf color (spring green, summer, autumn, winter) is handled at runtime
 
 | Species Group | Species | Individuals | Stages | Densities | Subtotal |
 |---|---|---|---|---|---|
-| Tall conifers (spruce, fir) | 3 | 2 | 7 | 3 | 126 |
+| Tall conifers (spruce, silver fir, larch) | 3 | 2 | 7 | 3 | 126 |
 | Scots pine | 1 | 2 | 6 | 3 | 36 |
-| Medium conifers | 2 | 2 | 5 | 3 | 60 |
-| Tall broadleaf | 3 | 2 | 6 | 3 | 108 |
-| Medium broadleaf | 4 | 2 | 5 | 3 | 120 |
-| Small broadleaf | 3 | 2 | 4 | 3 | 72 |
-| **Total** | **16** | | | | **522** |
+| Douglas fir | 1 | 2 | 9 | 3 | 54 |
+| Tall broadleaf (beech, oak, ash) | 3 | 2 | 6 | 3 | 108 |
+| Medium broadleaf (sycamore maple, silver birch) | 2 | 2 | 5 | 3 | 60 |
+| **Total** | **10** | | | | **384** |
 
 ## Naming Convention
 

@@ -8,11 +8,11 @@ See [Dataset Specification](dataset-specification.md) for the full production pl
 
 | Metric | Value |
 |---|---|
-| Target species | 16 |
+| Target species | 10 (5 conifer + 5 broadleaf) |
 | Individual types | 2 (open-grown, competition) |
-| Height stages | 4--7 per species |
+| Height stages | 5--9 per species |
 | Density variants | 3 (full, reduced, bare) |
-| **Target total** | **~522 models** |
+| **Target total** | **~384 models** |
 | Completed | 0 |
 
 ## Production Status
@@ -20,21 +20,15 @@ See [Dataset Specification](dataset-specification.md) for the full production pl
 | # | Species | Std. name | Max height | Stages | Growth model | Open | Comp | Notes |
 |---|---|---|---|---|---|---|---|---|
 | 1 | Norway spruce | `norway_spruce` | 35 m | 7 | -- | -- | -- | |
-| 2 | Scots pine | `scots_pine` | 30 m | 6 | -- | -- | -- | Own height group |
+| 2 | Scots pine | `scots_pine` | 30 m | 6 | -- | -- | -- | |
 | 3 | Silver fir | `silver_fir` | 35 m | 7 | -- | -- | -- | |
-| 4 | Austrian pine | `austrian_pine` | 25 m | 5 | -- | -- | -- | |
-| 5 | Grand fir | `grand_fir` | 35 m | 7 | -- | -- | -- | |
-| 6 | Western redcedar | `western_redcedar` | 25 m | 5 | -- | -- | -- | |
-| 7 | European beech | `european_beech` | 30 m | 6 | -- | -- | -- | Pilot species |
-| 8 | European oak | `european_oak` | 30 m | 6 | -- | -- | -- | |
-| 9 | Common ash | `common_ash` | 30 m | 6 | -- | -- | -- | |
-| 10 | Sycamore maple | `sycamore_maple` | 25 m | 5 | -- | -- | -- | |
-| 11 | Silver birch | `silver_birch` | 25 m | 5 | -- | -- | -- | |
-| 12 | Black alder | `black_alder` | 25 m | 5 | -- | -- | -- | |
-| 13 | Hornbeam | `hornbeam` | 20 m | 4 | -- | -- | -- | |
-| 14 | Small-leaved linden | `small_leaved_linden` | 25 m | 5 | -- | -- | -- | |
-| 15 | Wild cherry | `wild_cherry` | 20 m | 4 | -- | -- | -- | |
-| 16 | Field maple | `field_maple` | 20 m | 4 | -- | -- | -- | |
+| 4 | Douglas fir | `douglas_fir` | 45 m | 9 | -- | -- | -- | |
+| 5 | European larch | `european_larch` | 35 m | 7 | -- | -- | -- | |
+| 6 | European beech | `european_beech` | 30 m | 6 | -- | -- | -- | Pilot species |
+| 7 | European oak | `european_oak` | 30 m | 6 | -- | -- | -- | |
+| 8 | Common ash | `common_ash` | 30 m | 6 | -- | -- | -- | |
+| 9 | Sycamore maple | `sycamore_maple` | 25 m | 5 | -- | -- | -- | |
+| 10 | Silver birch | `silver_birch` | 25 m | 5 | -- | -- | -- | |
 
 **Status key**: -- = not started, WIP = in progress, OK = complete, SKIP = intentionally skipped
 
@@ -94,17 +88,7 @@ Preview images are generated during production (first density variant only). Lin
 | 30 m | | |
 | 35 m | | |
 
-#### Austrian Pine
-
-| Height | Open Grown | Competition |
-|---|---|---|
-| 5 m | | |
-| 10 m | | |
-| 15 m | | |
-| 20 m | | |
-| 25 m | | |
-
-#### Grand Fir
+#### Douglas Fir
 
 | Height | Open Grown | Competition |
 |---|---|---|
@@ -115,8 +99,10 @@ Preview images are generated during production (first density variant only). Lin
 | 25 m | | |
 | 30 m | | |
 | 35 m | | |
+| 40 m | | |
+| 45 m | | |
 
-#### Western Redcedar
+#### European Larch
 
 | Height | Open Grown | Competition |
 |---|---|---|
@@ -125,6 +111,8 @@ Preview images are generated during production (first density variant only). Lin
 | 15 m | | |
 | 20 m | | |
 | 25 m | | |
+| 30 m | | |
+| 35 m | | |
 
 ### Broadleaves
 
@@ -170,53 +158,6 @@ Preview images are generated during production (first density variant only). Lin
 | 20 m | | |
 | 25 m | | |
 
-#### Black Alder
-
-| Height | Open Grown | Competition |
-|---|---|---|
-| 5 m | | |
-| 10 m | | |
-| 15 m | | |
-| 20 m | | |
-| 25 m | | |
-
-#### Hornbeam
-
-| Height | Open Grown | Competition |
-|---|---|---|
-| 5 m | | |
-| 10 m | | |
-| 15 m | | |
-| 20 m | | |
-
-#### Small-leaved Linden
-
-| Height | Open Grown | Competition |
-|---|---|---|
-| 5 m | | |
-| 10 m | | |
-| 15 m | | |
-| 20 m | | |
-| 25 m | | |
-
-#### Wild Cherry
-
-| Height | Open Grown | Competition |
-|---|---|---|
-| 5 m | | |
-| 10 m | | |
-| 15 m | | |
-| 20 m | | |
-
-#### Field Maple
-
-| Height | Open Grown | Competition |
-|---|---|---|
-| 5 m | | |
-| 10 m | | |
-| 15 m | | |
-| 20 m | | |
-
 ## Output Directory Structure
 
 Completed models are exported to `data/output/forest/<species>/`:
@@ -243,4 +184,5 @@ data/output/forest/
 
 | Date | Change |
 |---|---|
+| 2026-04-04 | Reduced to 10 southern German species (5 conifer + 5 broadleaf), added Douglas fir and European larch |
 | *(initial)* | Created dataset overview with 16 species, all pending |

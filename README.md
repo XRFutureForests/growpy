@@ -9,7 +9,7 @@ GrowPy wraps The Grove 2.3 tree modeling API in a Python pipeline that:
 - Simulates multi-species forests with inter-tree light competition
 - Calibrates growth against forestry yield tables (height and DBH)
 - Exports USD Nanite Assemblies with skeletal animation support for UE 5.7+
-- Produces systematic datasets covering 20 central European tree species
+- Produces systematic datasets covering 10 southern German tree species
 
 **Key concepts:**
 
@@ -199,7 +199,7 @@ leaf = 0.5
 
 ## Dataset Production
 
-The dataset pipeline produces a systematic set of tree assets: 20 species, 2 individuals each (open-grown and competition), multiple height stages, 3 density variants. See [Dataset Specification](docs/dataset-specification.md) for species catalog and full details.
+The dataset pipeline produces a systematic set of tree assets: 10 southern German species (5 conifer + 5 broadleaf), 2 individuals each (open-grown and competition), multiple height stages, 3 density variants. Species selection focuses on the dominant trees of Bavaria and Baden-Wuerttemberg. See [Dataset Specification](docs/dataset-specification.md) for species catalog and full details.
 
 ### Preparation
 
@@ -244,7 +244,7 @@ helios_scene = false
 
 ```bash
 python src/growpy/cli/dataset_pipeline.py --pilot       # European Beech + Norway Spruce
-python src/growpy/cli/dataset_pipeline.py --all         # All 20 dataset species
+python src/growpy/cli/dataset_pipeline.py --all         # All 10 dataset species
 python src/growpy/cli/dataset_pipeline.py --all --dry-run  # Preview commands only
 python src/growpy/cli/dataset_pipeline.py --list        # Show available species
 python src/growpy/cli/dataset_pipeline.py --all --workers 4  # Parallel species processing

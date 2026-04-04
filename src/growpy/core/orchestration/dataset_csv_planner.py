@@ -25,6 +25,20 @@ DENSITY_VARIANTS = {
     "bare": 0.0,
 }
 
+# Southern German forest species selection (5 conifer + 5 broadleaf).
+DATASET_SPECIES = [
+    "Norway spruce",
+    "European beech",
+    "Silver fir",
+    "Scots pine",
+    "European oak",
+    "Douglas fir",
+    "Sycamore maple",
+    "Common ash",
+    "European larch",
+    "Silver birch",
+]
+
 # X offset for open-grown tree to avoid light competition with cluster
 OPEN_TREE_X = 100.0
 
@@ -40,6 +54,7 @@ def _get_dataset_species(config=None) -> pd.DataFrame:
 
     df = pd.read_csv(csv_path)
     dataset = df[df["Max Height"].notna() & df["Competition Spacing"].notna()].copy()
+    dataset = dataset[dataset["Common Name"].isin(DATASET_SPECIES)]
     dataset["Max Height"] = dataset["Max Height"].astype(int)
     dataset["Competition Spacing"] = dataset["Competition Spacing"].astype(int)
     return dataset
