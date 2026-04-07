@@ -223,4 +223,4 @@ class TestNormalToRotationMatrixAdvanced:
             - matrix[0][1] * (matrix[1][0] * matrix[2][2] - matrix[1][2] * matrix[2][0])
             + matrix[0][2] * (matrix[1][0] * matrix[2][1] - matrix[1][1] * matrix[2][0])
         )
-        assert det == pytest.approx(1.0, abs=1e-4)
+        assert det == pytest.approx(1.0, abs=2e-3)

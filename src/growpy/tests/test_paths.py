@@ -97,6 +97,13 @@ class TestFindSpeciesRow:
         _get_lookup_table.cache_clear()
         with pytest.raises(ValueError, match="not found"):
             _find_species_row("Douglas Fir", use_gbif=False)
+
+
+class TestNormalizeGroveTextureNameExtra:
+    """Additional texture name normalization tests."""
+
+    def test_png_extension(self):
+        _, ext = _normalize_grove_texture_name("SomeTex.png")
         assert ext == ".png"
 
     def test_multiple_numbers(self):
