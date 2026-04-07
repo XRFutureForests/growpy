@@ -10,7 +10,7 @@ import pytest
 from growpy.cli.dataset_csv_planner import (
     DENSITY_VARIANTS,
     OPEN_TREE_X,
-    _hex_neighbors,
+    _triangle_neighbors,
     generate_dataset_csvs,
     generate_merged_csv,
 )
@@ -36,26 +36,26 @@ from growpy.cli.step_runner import (
 # ---------------------------------------------------------------------------
 
 
-class TestHexNeighbors:
-    def test_returns_six_neighbors(self):
-        neighbors = _hex_neighbors(10.0)
-        assert len(neighbors) == 6
+class TestTriangleNeighbors:
+    def test_returns_three_neighbors(self):
+        neighbors = _triangle_neighbors(10.0)
+        assert len(neighbors) == 3
 
-    def test_fids_101_to_106(self):
-        neighbors = _hex_neighbors(10.0)
+    def test_fids_101_to_103(self):
+        neighbors = _triangle_neighbors(10.0)
         fids = [fid for fid, _, _ in neighbors]
-        assert fids == [101, 102, 103, 104, 105, 106]
+        assert fids == [101, 102, 103]
 
     def test_spacing_used_as_x_offset(self):
         spacing = 8.0
-        neighbors = _hex_neighbors(spacing)
+        neighbors = _triangle_neighbors(spacing)
         fid_101 = next(n for n in neighbors if n[0] == 101)
         assert fid_101[1] == spacing  # (101, spacing, 0.0)
 
-    def test_symmetric_x_values(self):
-        neighbors = _hex_neighbors(10.0)
+    def test_symmetric_y_values(self):
+        neighbors = _triangle_neighbors(10.0)
         by_fid = {fid: (x, y) for fid, x, y in neighbors}
-        assert by_fid[101][0] == -by_fid[102][0]  # +s and -s
+        assert by_fid[102][1] == -by_fid[103][1]  # mirror across x-axis
 
 
 class TestGenerateMergedCsv:
@@ -64,7 +64,7 @@ class TestGenerateMergedCsv:
         fids = set(df["fid"].tolist())
         assert 1 in fids  # open-grown
         assert 2 in fids  # competition center
-        assert all(f in fids for f in range(101, 107))  # 6 neighbors
+        assert all(f in fids for f in range(101, 104))  # 3 neighbors
 
     def test_open_tree_x_offset(self):
         df = generate_merged_csv("European Beech", 30, 8)
@@ -92,7 +92,7 @@ class TestGenerateMergedCsv:
 
     def test_total_rows(self):
         df = generate_merged_csv("European Beech", 30, 8)
-        assert len(df) == 8  # 1 open + 1 center + 6 neighbors
+        assert len(df) == 5  # 1 open + 1 center + 3 neighbors
 
 
 class TestDensityVariants:
@@ -116,7 +116,7 @@ class TestGenerateDatasetCsvs:
             }
         )
         with patch(
-            "growpy.core.orchestration.dataset_csv_planner._get_dataset_species",
+            "growpy.cli.dataset_csv_planner._get_dataset_species",
             return_value=mock_df,
         ):
             paths = generate_dataset_csvs(tmp_path, "full")
@@ -135,7 +135,7 @@ class TestGenerateDatasetCsvs:
             }
         )
         with patch(
-            "growpy.core.orchestration.dataset_csv_planner._get_dataset_species",
+            "growpy.cli.dataset_csv_planner._get_dataset_species",
             return_value=mock_df,
         ):
             generate_dataset_csvs(tmp_path, "full")
@@ -152,7 +152,7 @@ class TestGenerateDatasetCsvs:
             }
         )
         with patch(
-            "growpy.core.orchestration.dataset_csv_planner._get_dataset_species",
+            "growpy.cli.dataset_csv_planner._get_dataset_species",
             return_value=mock_df,
         ):
             generate_dataset_csvs(tmp_path, "bare")
@@ -263,7 +263,7 @@ class TestBuildStep4Command:
 
 class TestRunStep123:
     def test_dry_run_returns_true_and_does_not_call_subprocess(self):
-        with patch("growpy.core.orchestration.step_runner.subprocess.run") as mock_run:
+        with patch("growpy.cli.step_runner.subprocess.run") as mock_run:
             result = run_step123(3, Path("all_species.csv"), dry_run=True)
         assert result is True
         mock_run.assert_not_called()
@@ -271,14 +271,14 @@ class TestRunStep123:
     def test_returns_true_on_success(self):
         mock_result = MagicMock()
         mock_result.returncode = 0
-        with patch("growpy.core.orchestration.step_runner.subprocess.run", return_value=mock_result):
+        with patch("growpy.cli.step_runner.subprocess.run", return_value=mock_result):
             result = run_step123(1, Path("all_species.csv"))
         assert result is True
 
     def test_returns_false_on_failure(self):
         mock_result = MagicMock()
         mock_result.returncode = 1
-        with patch("growpy.core.orchestration.step_runner.subprocess.run", return_value=mock_result):
+        with patch("growpy.cli.step_runner.subprocess.run", return_value=mock_result):
             result = run_step123(2, Path("all_species.csv"))
         assert result is False
 
@@ -287,7 +287,7 @@ class TestRunSpeciesStep4:
     def test_dry_run_returns_true_without_subprocess(self, tmp_path):
         csv = tmp_path / "european_beech_merged.csv"
         csv.write_text("fid\n1\n")
-        with patch("growpy.core.orchestration.step_runner.subprocess.run") as mock_run:
+        with patch("growpy.cli.step_runner.subprocess.run") as mock_run:
             result = run_species_step4("European Beech", tmp_path, dry_run=True)
         assert result is True
         mock_run.assert_not_called()
@@ -301,7 +301,7 @@ class TestRunSpeciesStep4:
         csv.write_text("fid\n1\n")
         mock_result = MagicMock()
         mock_result.returncode = 0
-        with patch("growpy.core.orchestration.step_runner.subprocess.run", return_value=mock_result):
+        with patch("growpy.cli.step_runner.subprocess.run", return_value=mock_result):
             result = run_species_step4("European Beech", tmp_path)
         assert result is True
 
@@ -310,6 +310,6 @@ class TestRunSpeciesStep4:
         csv.write_text("fid\n1\n")
         mock_result = MagicMock()
         mock_result.returncode = 1
-        with patch("growpy.core.orchestration.step_runner.subprocess.run", return_value=mock_result):
+        with patch("growpy.cli.step_runner.subprocess.run", return_value=mock_result):
             result = run_species_step4("European Beech", tmp_path)
         assert result is False

@@ -39,7 +39,6 @@ conda run -n growpy python -m pytest src/growpy/tests/ -v
 
 ### Known issues
 
-- **test_orchestration.py** may fail with an `ImportError` if `_hex_neighbors` has been refactored out of `dataset_csv_planner`. Skip with `--ignore=src/growpy/tests/test_orchestration.py` if needed.
 - **Windows DLL crash at exit**: On Windows, a non-fatal `code 0xc0000139` crash trace may appear after all tests pass. This is caused by `tree_export.py` attempting to load Blender DLLs during Python garbage collection at shutdown. It does not affect test results.
 
 ## Test Modules

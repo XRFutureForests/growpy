@@ -27,7 +27,13 @@
     "claudeCode.useCtrlEnterToSend": true,
     "python-envs.workspaceSearchPaths": [
         "./**/.venv",
+        "./.conda",
     ],
-    "python.defaultInterpreterPath": "C:\\Users\\Max\\miniconda3\\envs\\the-grove\\python.exe",
+    "python.defaultInterpreterPath": "${workspaceFolder}\\.conda\\python.exe",
+    "mypy-type-checker.importStrategy": "useBundled",
+    "mypy-type-checker.interpreter": [
+        "${workspaceFolder}\\.conda\\python.exe"
+    ],
+    "mypy-type-checker.preferDaemon": false,
     "chat.agent.maxRequests": 500,
 }
