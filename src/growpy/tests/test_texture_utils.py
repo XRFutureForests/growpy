@@ -9,6 +9,7 @@ import pytest
 from PIL import Image
 
 from growpy.io.usd.texture_utils import (
+    _get_standardized_alpha_name,
     bump_to_normal,
     extract_alpha_from_diffuse,
     is_power_of_2,
@@ -252,6 +253,26 @@ class TestNormalizeAlphaTexture:
 
     def test_nonexistent_returns_false(self, tmp_path):
         assert normalize_alpha_texture(tmp_path / "missing.png") is False
+
+
+class TestGetStandardizedAlphaName:
+    """Tests for _get_standardized_alpha_name."""
+
+    def test_twig_suffix_already_present(self):
+        result = _get_standardized_alpha_name(Path("some/dir/european_beech_twig"))
+        assert result == "european_beech_twig_alpha.png"
+
+    def test_twig_suffix_added(self):
+        result = _get_standardized_alpha_name(Path("some/dir/norway_spruce"))
+        assert result == "norway_spruce_twig_alpha.png"
+
+    def test_case_normalization(self):
+        result = _get_standardized_alpha_name(Path("some/dir/European_Beech_Twig"))
+        assert result == "european_beech_twig_alpha.png"
+
+    def test_mixed_case_no_twig(self):
+        result = _get_standardized_alpha_name(Path("some/dir/SilverBirch"))
+        assert result == "silverbirch_twig_alpha.png"
 
     def test_tiny_image_returns_false(self, tmp_path):
         img = Image.new("L", (4, 4), 200)

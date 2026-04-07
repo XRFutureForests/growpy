@@ -69,6 +69,35 @@ class TestSeedEnvelope:
         assert len(hi) == 3
 
     def test_scale_factor(self):
+        curves = [[1.0, 2.0, 3.0], [2.0, 4.0, 6.0]]
+        lo, hi = _seed_envelope(curves, scale=100.0)
+        np.testing.assert_allclose(lo, [100.0, 200.0, 300.0])
+        np.testing.assert_allclose(hi, [200.0, 400.0, 600.0])
+
+    def test_identical_curves(self):
+        curves = [[5.0, 10.0], [5.0, 10.0]]
+        lo, hi = _seed_envelope(curves)
+        np.testing.assert_allclose(lo, hi)
+
+    def test_three_curves(self):
+        curves = [[1.0, 2.0], [0.5, 3.0], [1.5, 2.5]]
+        lo, hi = _seed_envelope(curves)
+        np.testing.assert_allclose(lo, [0.5, 2.0])
+        np.testing.assert_allclose(hi, [1.5, 3.0])
+
+
+class TestSeedColors:
+    """Tests for SEED_COLORS constant."""
+
+    def test_has_at_least_5_colors(self):
+        assert len(SEED_COLORS) >= 5
+
+    def test_all_strings(self):
+        assert all(isinstance(c, str) for c in SEED_COLORS)
+        assert len(lo) == 3
+        assert len(hi) == 3
+
+    def test_scale_factor(self):
         curves = [[1.0, 2.0], [1.5, 2.5]]
         lo, hi = _seed_envelope(curves, scale=100.0)
         np.testing.assert_allclose(lo, [100.0, 200.0])

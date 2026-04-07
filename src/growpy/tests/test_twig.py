@@ -169,3 +169,58 @@ class TestRotationMatrixToQuaternion:
         w, x, y, z = rotation_matrix_to_quaternion(matrix)
         length = math.sqrt(w * w + x * x + y * y + z * z)
         assert length == pytest.approx(1.0, abs=1e-6)
+
+
+class TestGetFaceCenterAndNormalAdvanced:
+    """Additional geometry tests for face center and normal."""
+
+    def test_yz_plane_triangle_normal_x(self):
+        vertices = [(0.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)]
+        face = [0, 1, 2]
+        _, normal = get_face_center_and_normal(vertices, face)
+        assert abs(normal[0]) == pytest.approx(1.0, abs=1e-6)
+
+    def test_xz_plane_triangle_normal_y(self):
+        vertices = [(0.0, 0.0, 0.0), (0.0, 0.0, 1.0), (1.0, 0.0, 0.0)]
+        face = [0, 1, 2]
+        _, normal = get_face_center_and_normal(vertices, face)
+        assert abs(normal[1]) == pytest.approx(1.0, abs=1e-6)
+
+    def test_pentagon_center(self):
+        import math as m
+
+        vertices = [
+            (m.cos(2 * m.pi * i / 5), m.sin(2 * m.pi * i / 5), 0.0) for i in range(5)
+        ]
+        face = [0, 1, 2, 3, 4]
+        center, _ = get_face_center_and_normal(vertices, face)
+        assert center[0] == pytest.approx(0.0, abs=1e-6)
+        assert center[1] == pytest.approx(0.0, abs=1e-6)
+
+
+class TestNormalToRotationMatrixAdvanced:
+    """Additional rotation matrix tests."""
+
+    def test_y_axis_normal(self):
+        matrix = normal_to_rotation_matrix((0.0, 1.0, 0.0))
+        assert matrix[1][0] == pytest.approx(1.0)
+
+    def test_negative_z_normal(self):
+        matrix = normal_to_rotation_matrix((0.0, 0.0, -1.0))
+        assert matrix[2][0] == pytest.approx(-1.0)
+
+    def test_columns_unit_length(self):
+        matrix = normal_to_rotation_matrix((0.3, 0.4, 0.866))
+        for c in range(3):
+            col = [matrix[r][c] for r in range(3)]
+            length = math.sqrt(sum(v * v for v in col))
+            assert length == pytest.approx(1.0, abs=1e-4)
+
+    def test_determinant_positive(self):
+        matrix = normal_to_rotation_matrix((0.577, 0.577, 0.577))
+        det = (
+            matrix[0][0] * (matrix[1][1] * matrix[2][2] - matrix[1][2] * matrix[2][1])
+            - matrix[0][1] * (matrix[1][0] * matrix[2][2] - matrix[1][2] * matrix[2][0])
+            + matrix[0][2] * (matrix[1][0] * matrix[2][1] - matrix[1][1] * matrix[2][0])
+        )
+        assert det == pytest.approx(1.0, abs=1e-4)

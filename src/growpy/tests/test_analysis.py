@@ -16,7 +16,6 @@ from growpy.utils.analysis import (
     fit_chapman_richards,
 )
 
-
 # --- Synthetic data generators ---
 
 
@@ -190,6 +189,102 @@ class TestChapmanRichardsModel:
             loaded = json.load(f)
         assert loaded["A"] == model.A
         assert loaded["k"] == model.k
+
+
+# --- Pure math function tests ---
+
+
+class TestChapmanRichardsMath:
+    """Tests for the bare _chapman_richards and _chapman_richards_with_baseline."""
+
+    def test_at_t_zero(self):
+        assert _chapman_richards(0.0, 30.0, 0.04, 1.8) == pytest.approx(0.0)
+
+    def test_approaches_asymptote(self):
+        val = _chapman_richards(10000.0, 30.0, 0.04, 1.8)
+        assert val == pytest.approx(30.0, abs=0.01)
+
+    def test_monotonically_increasing(self):
+        t = np.linspace(0, 200, 100)
+        h = _chapman_richards(t, 30.0, 0.04, 1.8)
+        assert np.all(np.diff(h) >= 0)
+
+    def test_with_baseline_at_t_zero(self):
+        val = _chapman_richards_with_baseline(0.0, 30.0, 0.04, 1.8, 0.5)
+        assert val == pytest.approx(0.5)
+
+    def test_with_baseline_approaches_A(self):
+        val = _chapman_richards_with_baseline(10000.0, 30.0, 0.04, 1.8, 0.5)
+        assert val == pytest.approx(30.0, abs=0.01)
+
+    def test_vectorized(self):
+        t = np.array([0, 10, 50, 100])
+        h = _chapman_richards(t, 30.0, 0.04, 1.8)
+        assert h.shape == (4,)
+        assert h[0] == pytest.approx(0.0, abs=0.01)
+        assert h[-1] > h[0]
+
+
+# --- PiecewiseLinearModel tests ---
+
+
+class TestPiecewiseLinearModel:
+
+    def test_fit_stores_data(self):
+        model = PiecewiseLinearModel()
+        model.fit([1.0, 5.0, 15.0, 25.0], [0, 10, 30, 60])
+        assert len(model.heights) == 4
+        assert len(model.cycles) == 4
+
+    def test_interpolation_exact_points(self):
+        model = PiecewiseLinearModel()
+        model.fit([1.0, 5.0, 15.0, 25.0], [0, 10, 30, 60])
+        result = model.predict([5.0])
+        assert result[0] == pytest.approx(10.0)
+
+    def test_interpolation_between_points(self):
+        model = PiecewiseLinearModel()
+        model.fit([0.0, 10.0, 20.0], [0, 20, 50])
+        result = model.predict([5.0])
+        assert result[0] == pytest.approx(10.0)
+
+    def test_extrapolation_beyond_max(self):
+        model = PiecewiseLinearModel()
+        model.fit([0.0, 10.0, 20.0], [0, 20, 50])
+        result = model.predict([30.0])
+        slope = (50 - 20) / (20 - 10)
+        expected = 50 + slope * 10
+        assert result[0] == pytest.approx(expected)
+
+    def test_predict_zero_height(self):
+        model = PiecewiseLinearModel()
+        model.fit([0.0, 10.0, 20.0], [0, 20, 50])
+        result = model.predict([0.0])
+        assert result[0] == pytest.approx(0.0)
+
+    def test_to_dict_from_dict_roundtrip(self):
+        model = PiecewiseLinearModel()
+        model.fit([1.0, 5.0, 15.0], [0, 10, 40])
+        d = model.to_dict()
+        assert d["model_type"] == "piecewise_linear"
+        restored = PiecewiseLinearModel.from_dict(d)
+        test_h = np.array([3.0, 10.0])
+        np.testing.assert_allclose(model.predict(test_h), restored.predict(test_h))
+
+    def test_json_serialization(self, tmp_path):
+        model = PiecewiseLinearModel()
+        model.fit([1.0, 5.0, 15.0], [0, 10, 40])
+        params_path = tmp_path / "pw_model.json"
+        with open(params_path, "w") as f:
+            json.dump(model.to_dict(), f)
+        with open(params_path) as f:
+            loaded = json.load(f)
+        assert loaded["model_type"] == "piecewise_linear"
+        restored = PiecewiseLinearModel.from_dict(loaded)
+        np.testing.assert_allclose(model.predict([3.0]), restored.predict([3.0]))
+
+    def test_simple_linear_model_alias(self):
+        assert SimpleLinearModel is PiecewiseLinearModel
 
 
 # --- Backward compatibility ---

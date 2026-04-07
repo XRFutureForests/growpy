@@ -2,7 +2,10 @@
 
 import pytest
 
-from growpy.io.usd.twig_export import classify_texture_from_name, export_blender_mesh_to_usd
+from growpy.io.usd.twig_export import (
+    classify_texture_from_name,
+    export_blender_mesh_to_usd,
+)
 
 
 class TestTwigExportModule:
