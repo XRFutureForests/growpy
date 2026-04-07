@@ -12,7 +12,7 @@
 random_seed = 385
 # Default input CSV with tree positions and species
 # CSV columns: x, y, species, height (optional: z, fid, dbh)
-csv_file = "data/input/test.csv"
+csv_file = "data/input/dataset/all_species.csv"
 # Output directory for generated trees (species subdirectories created automatically)
 output_dir = "data/output/forest"
 # Enable verbose output (INFO-level logging). Use --verbose / --quiet to override.
@@ -51,8 +51,9 @@ smooth_boundary = true
 smooth_iterations = 3
 # Smoothing strength per iteration (0.0-1.0)
 smooth_factor = 0.125
-# Target edge as fraction of average edge (0.1-1.0, lower = denser)
-# 1.0 = no subdivision, 0.5 = 50% of avg (recommended), 0.1 = very fine
+# Target boundary edge length as fraction of average edge length (0.1-1.0, lower = denser)
+# Despite the name, this is NOT in millimeters -- it is a unitless ratio.
+# 1.0 = no subdivision, 0.5 = edges split to 50% of avg (recommended), 0.1 = very fine
 boundary_edge_mm = 0.0125
 # Interior decimation ratio for leaf meshes (0.0 = disabled, 0.3 = keep 30%)
 # Simplifies interior triangles while preserving alpha-trimmed silhouette edges
@@ -62,7 +63,7 @@ interior_decimate_ratio = 0.25
 [growth_models]
 # Maximum growth cycles to simulate (1-250)
 # Automatically stops early when growth plateaus
-cycles = 50
+cycles = 35
 # Random seeds to average for robust curves (1-10)
 # Use 3+ for production, 1 for quick tests
 seeds = 1
@@ -74,7 +75,7 @@ height_threshold = 0.01
 max_cycles_without_growth = 5
 # Maximum simulation time per seed in seconds (10-3600)
 # Increase for complex species; prevents stuck simulations
-timeout = 600
+timeout = 60
 
 # --- Step 3b: Yield table calibration (integrated into create_growth_models.py) ---
 [calibration]
@@ -131,9 +132,10 @@ preferred_site_index = 0
 quality = "high"
 # Maximum growth cycles per tree (1-250)
 # Trees exceeding this limit are capped (not scaled)
-growth_cycle_limit = 75
-# Branch smoothing iterations (0-20, 0 = disabled)
-# Higher values = smoother, more organic branches
+growth_cycle_limit = 45
+# Number of grove.smooth() passes on branch angles (int, 0-20, 0 = disabled)
+# Each pass reduces sharp corner angles between branch segments.
+# Higher values = smoother, more organic branches; 10-20 for production.
 smooth_iterations = 3
 # Include Grove metadata (age, mass, vigor) in USD files
 # Increases file size by ~70%; useful for analysis
@@ -143,16 +145,12 @@ include_grove_attributes = false
 # Uses growth models to determine which cycle corresponds to each height milestone
 # Each snapshot includes height and DBH in the filename for easy asset selection
 # 0 = disabled (standard single height-based export)
-height_interval = 5
+height_interval = 4
 # Cap all tree heights at this value in meters (e.g., 15 for quick testing)
 # Trees taller than this in the input CSV are clamped to this height
 # Reduces growth cycles and number of height stages for faster runs
 # 0 = no limit (use full CSV heights)
-max_height = 20
-# Move competition neighbor trees outward by this many meters at each height
-# interval to simulate thinning. 0 = neighbors stay fixed (default).
-# Only affects neighbor trees (fid >= 100) in height-threshold mode.
-competition_distance_increase = 0.5
+max_height = 12
 
 # Quality Presets (single source of truth)
 # Define any number of named presets below as [quality.<name>] sections.
@@ -160,18 +158,26 @@ competition_distance_increase = 0.5
 # Any omitted key falls back to the built-in default in quality.py.
 #
 # Mesh Parameters:
-#   resolution          - Branch cross-section vertices (8-32)
-#   resolution_reduce   - Vertex reduction on thinner branches (0.0-1.0)
-#   build_cutoff_age    - Skip branches younger than N years (0 = keep all)
-#   build_cutoff_thickness - Skip branches thinner than this (meters, 0.0 = keep all)
-#   build_blend         - Smooth branch junctions
-#   build_end_cap       - Cap open branch ends
+#   resolution            - Cross-section vertex count at trunk base (int, 8-32)
+#   resolution_reduce     - How fast vertex count drops on thinner branches (0.0-1.0,
+#                           0.0 = uniform, 1.0 = very fast reduction)
+#   build_cutoff_age      - Skip branches younger than N growth cycles (0 = keep all)
+#   build_cutoff_thickness - Min branch diameter in meters to include (0.0 = keep all,
+#                           e.g. 0.005 = skip branches thinner than 5 mm)
+#   build_blend           - Extra geometry for smooth branch junctions
+#   build_end_cap         - Close off open branch ends with geometry
 #
-# Skeleton Parameters:
-#   skeleton_length     - Bone length multiplier (0.0-5.0, higher = fewer longer bones)
-#   skeleton_reduce     - Thickness threshold (0.0-1.0, higher = skip thinner branches)
-#   skeleton_bias       - Bone distribution (0.0-1.0, 0 = trunk, 1 = tips)
-#   skeleton_connected  - Connected bone chains (required for animation)
+# Skeleton Parameters (control bone count -- Unreal 16-bit limit = 32,767 bones):
+#   skeleton_length     - Min bone length in meters (0.0-5.0, Grove default 2.0 m).
+#                         Nodes are skipped until a bone reaches this length.
+#                         Lower = more bones (finer), higher = fewer bones (coarser).
+#   skeleton_reduce     - Branch thickness threshold, unitless (0.0-1.0, Grove default 0.4).
+#                         Thin side branches below this threshold get no bones.
+#                         Squared internally before passing to Grove API.
+#   skeleton_bias       - Bone density distribution (0.0-1.0, default 0.5).
+#                         0.0 = more bones on trunk/base, 1.0 = more bones at tips.
+#   skeleton_connected  - Connected bone chains vs floating bones.
+#                         true = required for Unreal skeletal mesh animation.
 
 [quality.high]
 resolution = 16
@@ -180,8 +186,8 @@ build_cutoff_age = 0
 build_cutoff_thickness = 0.005
 build_blend = true
 build_end_cap = true
-skeleton_length = 0.85
-skeleton_reduce = 0.4
+skeleton_length = 0.5
+skeleton_reduce = 0.5
 skeleton_bias = 0.5
 skeleton_connected = true
 
@@ -306,8 +312,38 @@ twig_density = 1.5
 
 [density_variant.reduced]
 twig_density = 0.75
-build_cutoff_thickness = 0.01
+build_cutoff_thickness = 0.01  # meters diameter (same unit as quality preset)
 
 [density_variant.bare]
 twig_density = 0.25
-build_cutoff_thickness = 0.02
+build_cutoff_thickness = 0.02  # meters diameter
+
+# --- Competition Groups ---
+# Thinning schedules and planting distances by silvicultural group.
+# Species-to-group assignment is in tree_asset_lookup.csv (Competition Group column).
+# Groups are driven by crown size, shade tolerance, and growth rate.
+#
+# Thinning schedule: list of [height_trigger_m, target_distance_m] pairs.
+# When a center competition tree crosses the height trigger, neighbors are
+# repositioned to the target distance from the center tree.
+#
+# Species not found in the lookup CSV fall back to competition.default_group.
+
+[competition]
+default_group = "slow_broadleaf"
+
+[competition.groups.fast_conifer]
+planting_distance = 2.25  # meters between trees at planting
+thinning = [[10, 3.5], [15, 5.0], [20, 6.0]]  # [height_m, distance_m]
+
+[competition.groups.slow_conifer]
+planting_distance = 2.75  # meters
+thinning = [[10, 4.0], [15, 5.5], [20, 6.5]]
+
+[competition.groups.fast_broadleaf]
+planting_distance = 2.25  # meters
+thinning = [[10, 3.5], [15, 5.0], [20, 6.0]]
+
+[competition.groups.slow_broadleaf]
+planting_distance = 3.0  # meters
+thinning = [[10, 4.5], [15, 6.0], [20, 7.0]]

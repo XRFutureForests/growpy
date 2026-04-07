@@ -43,6 +43,7 @@ from growpy.core.orchestration.dataset_job_planner import (
 )
 from growpy.core.orchestration.step_runner import (
     check_environment,
+    generate_unreal_scripts,
     run_parallel_step4,
     run_species_step4,
     run_step123,
@@ -288,6 +289,17 @@ def main():
 
             if failed:
                 logger.error("Step 4 failed for: %s", ", ".join(failed))
+
+    # Generate Unreal scripts once after all step 4 workers complete
+    if 4 in steps and not args.dry_run:
+        from growpy.config.core import get_config as _get_config
+
+        _cfg = _get_config()
+        if _cfg.unreal_import_to_unreal:
+            _out = _cfg.output_dir
+            if not _out.is_absolute():
+                _out = Path(__file__).parent.parent.parent.parent / _out
+            generate_unreal_scripts(_out, include_static=_cfg.export_static)
 
     # Generate dataset overview after step 4 (even if some species failed)
     if 4 in steps and not args.dry_run:

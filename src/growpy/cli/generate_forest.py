@@ -1650,6 +1650,11 @@ Unreal Engine Integration:
         choices=["y", "z"],
         help="OBJ coordinate up axis: 'y' (standard, default) or 'z' (matches USD)",
     )
+    parser.add_argument(
+        "--no-unreal-scripts",
+        action="store_true",
+        help="Skip Unreal import/cleanup script generation (used by parallel pipeline)",
+    )
 
     args = parser.parse_args()
 
@@ -1800,7 +1805,7 @@ Unreal Engine Integration:
             timer.print_report()
 
         # Generate Unreal scripts if requested
-        if config.unreal_import_to_unreal:
+        if config.unreal_import_to_unreal and not getattr(args, 'no_unreal_scripts', False):
             # Create combined twig wrappers for efficient UE import
             from growpy.io.assembly_export import create_combined_twig_usda
 

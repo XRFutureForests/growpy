@@ -26,33 +26,68 @@ def create_forest(
 ) -> List[Tuple[gc.Grove, str, int, List[int]]]:
     """Create groves for each species in forest data.
 
+    When *individual_type* is present in the DataFrame, trees are split into
+    separate groves per (species, individual_type).  This prevents the Grove
+    engine's intra-grove shade from interfering between independent growth
+    contexts (e.g. an open-grown tree at x=100 sharing a grove with a
+    competition cluster at origin).
+
     Args:
-        forest_data: DataFrame with columns: x, y, species, z (optional), delay (optional), fid (optional)
+        forest_data: DataFrame with columns: x, y, species, z (optional),
+            delay (optional), fid (optional), individual_type (optional)
 
     Returns:
         List of tuples: (grove_instance, species_name, tree_count, fid_list)
-        fid_list contains the original CSV fids for each tree in the grove (in order)
+        fid_list contains the original CSV fids for each tree in the grove (in order).
+        When individual_type splitting is active, multiple entries may share the
+        same species_name (one per context).
     """
     if "z" not in forest_data.columns:
         forest_data["z"] = 0.0
 
-    forest = []
-    for species_name, species_data in forest_data.groupby("species"):
-        grove = create_grove(str(species_name))
+    # Split by individual_type when available to prevent intra-grove shade
+    # killing isolated open-grown trees in the same grove as competition clusters
+    has_individual_type = (
+        "individual_type" in forest_data.columns
+        and forest_data["individual_type"].notna().any()
+    )
+    groupby_key = ["species", "individual_type"] if has_individual_type else "species"
 
-        # Collect fids for this species (use row index if fid column not present)
+    forest = []
+    for group_key, species_data in forest_data.groupby(groupby_key, sort=False):
+        species_name = str(group_key[0]) if has_individual_type else str(group_key)
+        grove = create_grove(species_name)
+
+        # Collect fids for this grove (use row index if fid column not present)
         fids = []
         for idx, row in species_data.iterrows():
             position = (row["x"], row["y"], row["z"])
             delay = int(row.get("delay", 0))
             add_tree_to_grove(grove, position, delay)
-            # Use fid column if available, otherwise use DataFrame index
             fid = int(row["fid"]) if "fid" in row else int(idx)
             fids.append(fid)
 
-        forest.append((grove, str(species_name), len(species_data), fids))
+        forest.append((grove, species_name, len(species_data), fids))
 
     return forest
+
+
+def _compute_grove_offsets(
+    forest: List[Tuple[gc.Grove, str, int, List[int]]],
+) -> List[int]:
+    """Compute the species-global tree index offset for each grove.
+
+    When multiple groves share a species name (context splitting), each grove's
+    trees need a unique global index within that species to match the original
+    CSV row ordering.  Returns a list parallel to *forest* with the offset for
+    each grove.
+    """
+    offsets = []
+    species_count: Dict[str, int] = {}
+    for _grove, species_name, tree_count, _fids in forest:
+        offsets.append(species_count.get(species_name, 0))
+        species_count[species_name] = species_count.get(species_name, 0) + tree_count
+    return offsets
 
 
 def _run_single_growth_cycle(
@@ -62,9 +97,19 @@ def _run_single_growth_cycle(
     total_cycles: int,
     species_overrides: Dict[str, PresetOverrides],
     preset_overrides: Optional[PresetOverrides],
+    frozen_grove_indices: Optional[set] = None,
 ) -> None:
-    """Run one growth cycle: apply overrides, shade competition, simulate."""
-    for grove, species_name, _, _ in forest:
+    """Run one growth cycle: apply overrides, shade competition, simulate.
+
+    Args:
+        frozen_grove_indices: Set of grove indices to skip simulation for.
+            Frozen groves still contribute shade geometry but do not grow.
+    """
+    frozen = frozen_grove_indices or set()
+
+    for grove_idx, (grove, species_name, _, _) in enumerate(forest):
+        if grove_idx in frozen:
+            continue
         if species_name in species_overrides:
             species_overrides[species_name].apply_to_grove(grove, cycle, total_cycles)
         if preset_overrides and not preset_overrides.is_empty():
@@ -77,7 +122,9 @@ def _run_single_growth_cycle(
         for grove in groves:
             grove.calculate_shade_together(all_coords)
 
-    for grove, _, _, _ in forest:
+    for grove_idx, (grove, _, _, _) in enumerate(forest):
+        if grove_idx in frozen:
+            continue
         grove.weigh_and_bend()
         grove.simulate(1)
 
@@ -299,24 +346,29 @@ def _apply_competition_thinning(
     forest_data: pd.DataFrame,
     distance_increase: float,
     thinning_count: int,
+    target_distances: Optional[Dict[str, float]] = None,
+    current_distances: Optional[Dict[int, float]] = None,
 ) -> None:
     """Move competition neighbor trees outward from center to simulate thinning.
 
-    Applies an incremental radial displacement to neighbor trees (fid >= 100,
-    individual_type == "competition") using the Grove API's replant_tree().
-    The center tree (fid 2) and open-grown tree (fid 1) remain fixed.
-
-    Each call moves neighbors outward by ``distance_increase`` meters along
-    the radial direction from the center tree (origin).
+    Supports two modes:
+    1. **Group-based** (preferred): When ``target_distances`` and
+       ``current_distances`` are provided, repositions each neighbor to the
+       species-specific target distance from center.
+    2. **Legacy fixed-increment**: When ``target_distances`` is None, moves
+       all neighbors outward by ``distance_increase`` meters (old behavior).
 
     Args:
         forest: List of (grove, species_name, tree_count, fid_list) tuples.
         forest_data: DataFrame with columns x, y, fid, individual_type.
-        distance_increase: Meters to move outward per thinning event.
-        thinning_count: How many thinning events have been applied so far
-            (used for logging the cumulative distance).
+        distance_increase: Legacy meters to move outward per thinning event.
+        thinning_count: How many thinning events have been applied so far.
+        target_distances: Per-species absolute target distance from center.
+            When provided, overrides distance_increase.
+        current_distances: Mutable dict of fid -> current distance from center.
+            Updated in place after repositioning.
     """
-    if distance_increase <= 0:
+    if not target_distances and distance_increase <= 0:
         return
 
     has_itype = "individual_type" in forest_data.columns
@@ -324,7 +376,6 @@ def _apply_competition_thinning(
         return
 
     total_moved = 0
-    cumulative = distance_increase * (thinning_count + 1)
 
     for grove, species_name, tree_count, fids in forest:
         for tree_idx, fid in enumerate(fids):
@@ -339,25 +390,49 @@ def _apply_competition_thinning(
             if itype != "competition":
                 continue
 
-            # Compute radial outward direction from origin (center tree)
             init_x = float(row.iloc[0]["x"])
             init_y = float(row.iloc[0]["y"])
-            dist = math.sqrt(init_x * init_x + init_y * init_y)
-            if dist < 0.001:
+            init_dist = math.sqrt(init_x * init_x + init_y * init_y)
+            if init_dist < 0.001:
                 continue
 
-            dx = (init_x / dist) * distance_increase
-            dy = (init_y / dist) * distance_increase
+            # Compute the radial displacement needed
+            if target_distances and current_distances is not None:
+                target = target_distances.get(species_name)
+                if target is None:
+                    continue
+                cur_dist = current_distances.get(fid, init_dist)
+                delta = target - cur_dist
+                if delta <= 0.01:
+                    continue
+                # Update tracking
+                current_distances[fid] = target
+            else:
+                delta = distance_increase
 
-            grove.replant_tree(tree_idx, gc.Vector(dx, dy, 0.0), gc.Vector(0, 0, 0))
+            # Direction: along the initial position vector (radial from origin)
+            dx = (init_x / init_dist) * delta
+            dy = (init_y / init_dist) * delta
+
+            grove.replant_tree(tree_idx, gc.Vector(dx, dy, 0.0), gc.Rotation(gc.Vector(0, 0, 1), 0.0))
             total_moved += 1
 
     if total_moved > 0:
-        logger.info(
-            "[Thinning] Moved %d neighbor tree(s) outward by %.1fm "
-            "(cumulative: %.1fm from initial positions)",
-            total_moved, distance_increase, cumulative,
-        )
+        if target_distances:
+            targets_str = ", ".join(
+                f"{sp}: {d:.1f}m" for sp, d in target_distances.items()
+            )
+            logger.info(
+                "[Thinning] Moved %d neighbor tree(s) to target distances (%s)",
+                total_moved, targets_str,
+            )
+        else:
+            cumulative = distance_increase * (thinning_count + 1)
+            logger.info(
+                "[Thinning] Moved %d neighbor tree(s) outward by %.1fm "
+                "(cumulative: %.1fm from initial positions)",
+                total_moved, distance_increase, cumulative,
+            )
 
 
 def _simulate_height_threshold_mode(
@@ -401,16 +476,20 @@ def _simulate_height_threshold_mode(
     snapshots: SnapshotData = {}
     milestone_map: Dict[int, Dict[str, Dict[int, float]]] = {}
 
+    # Compute species-global tree index offsets for split groves
+    grove_offsets = _compute_grove_offsets(forest)
+
     # Track captured milestones per tree
-    # Key: (species_name, tree_idx)
+    # Key: (species_name, global_tree_idx)
     captured: Dict[Tuple[str, int], set] = {}
 
     # Build set of target milestones per tree (for early-stop check)
     target_milestones: Dict[Tuple[str, int], set] = {}
     if max_height > 0:
-        for _grove, species_name, tree_count, _fids in forest:
+        for grove_idx, (_grove, species_name, tree_count, _fids) in enumerate(forest):
+            offset = grove_offsets[grove_idx]
             for tree_idx in range(tree_count):
-                key = (species_name, tree_idx)
+                key = (species_name, offset + tree_idx)
                 milestones = set()
                 m = height_interval
                 while m <= max_height:
@@ -427,30 +506,83 @@ def _simulate_height_threshold_mode(
 
     # Competition thinning state
     thinning_count = 0
-    use_thinning = (
+    use_legacy_thinning = (
         competition_distance_increase > 0 and forest_data is not None
     )
 
+    # Group-based thinning: look up config for per-species scheduling
+    from ..config.core import get_global_config
+    config = get_global_config()
+    use_group_thinning = (
+        config is not None
+        and bool(config.competition_groups)
+        and forest_data is not None
+    )
+
+    # Track current distance from center per neighbor fid (for group-based thinning)
+    neighbor_current_distances: Dict[int, float] = {}
+    if use_group_thinning and forest_data is not None:
+        for _, row in forest_data.iterrows():
+            fid = int(row["fid"]) if "fid" in row.index else 0
+            if fid >= 100:
+                x, y = float(row["x"]), float(row["y"])
+                neighbor_current_distances[fid] = math.sqrt(x * x + y * y)
+
+    use_thinning = use_legacy_thinning or use_group_thinning
+
+    # Thinning triggers: only thin when a center competition tree (fid < 100,
+    # individual_type == "competition") crosses a milestone.  Neighbor trees
+    # (fid >= 100) and open-grown trees do not trigger thinning events.
+    thinning_trigger_fids: set = set()
+    if use_thinning and forest_data is not None:
+        has_itype = "individual_type" in forest_data.columns
+        for _, row in forest_data.iterrows():
+            fid = int(row["fid"]) if "fid" in row.index else 0
+            itype = str(row.get("individual_type", "")).strip() if has_itype else ""
+            if fid < 100 and itype == "competition":
+                thinning_trigger_fids.add(fid)
+
     cycle = 0
     pbar = tqdm(total=max_cycles, desc="Simulating growth cycles", unit="cycle", disable=not is_verbose())
+
+    # Track completed species and frozen grove indices to save memory.
+    # Once all trees of a species have captured all target milestones,
+    # their groves stop simulating (no more branch data accumulation).
+    completed_species: set = set()
+    frozen_grove_indices: set = set()
+
+    # Build species -> grove index mapping for freezing
+    species_grove_indices: Dict[str, List[int]] = {}
+    for grove_idx, (_grove, species_name, _tc, _fids) in enumerate(forest):
+        species_grove_indices.setdefault(species_name, []).append(grove_idx)
+
+    # Build per-species target milestones for partial completion check
+    species_target_keys: Dict[str, List[Tuple[str, int]]] = {}
+    for key in target_milestones:
+        species_target_keys.setdefault(key[0], []).append(key)
 
     while cycle < max_cycles:
         cycle += 1
         pbar.update(1)
 
         _run_single_growth_cycle(
-            forest, groves, cycle - 1, max_cycles, species_overrides, preset_overrides
+            forest, groves, cycle - 1, max_cycles, species_overrides, preset_overrides,
+            frozen_grove_indices=frozen_grove_indices,
         )
 
-        # Cheaply measure heights at every cycle
+        # Cheaply measure heights at every cycle (skip frozen groves)
         # Maps species -> tree_idx -> milestone height (lowest new crossing)
         new_crossings: Dict[str, Dict[int, float]] = {}
         any_growth = False
 
-        for grove, species_name, tree_count, fids in forest:
+        for grove_idx, (grove, species_name, tree_count, fids) in enumerate(forest):
+            if grove_idx in frozen_grove_indices:
+                continue
+            offset = grove_offsets[grove_idx]
             measurements = extract_tree_measurements(grove)
             for tree_idx, (height, _dbh) in enumerate(measurements):
-                key = (species_name, tree_idx)
+                global_idx = offset + tree_idx
+                key = (species_name, global_idx)
 
                 # Plateau detection
                 prev_h = prev_max_heights.get(key, 0.0)
@@ -465,7 +597,7 @@ def _simulate_height_threshold_mode(
                     m = height_interval
                     while m <= curr_milestone:
                         if m not in captured.get(key, set()):
-                            new_crossings.setdefault(species_name, {})[tree_idx] = m
+                            new_crossings.setdefault(species_name, {})[global_idx] = m
                             break  # One milestone per tree per cycle
                         m += height_interval
 
@@ -498,37 +630,114 @@ def _simulate_height_threshold_mode(
         snapshots[cycle] = {}
         milestone_map[cycle] = {}
 
-        for grove, species_name, tree_count, fids in forest:
-            if species_name not in new_crossings:
+        # Determine which species need model building
+        species_with_crossings = set(new_crossings.keys())
+
+        # Build models from groves and merge per species (supports split groves)
+        merged_data: Dict[str, list] = {}
+        for grove_idx, (grove, species_name, tree_count, fids) in enumerate(forest):
+            if species_name not in species_with_crossings:
                 continue
+            offset = grove_offsets[grove_idx]
 
-            tree_data = _build_models_for_grove(grove, species_name, cycle, quality_params)
-            if tree_data:
-                snapshots[cycle][species_name] = tree_data
-                milestone_map[cycle][species_name] = new_crossings[species_name]
-                # Only commit milestones to captured for trees with valid models
-                for tidx in new_crossings[species_name]:
-                    key = (species_name, tidx)
-                    if tidx < len(tree_data) and tree_data[tidx][0] is not None:
-                        captured.setdefault(key, set()).add(
-                            new_crossings[species_name][tidx]
-                        )
-                        total_captures += 1
-                    else:
-                        logger.warning(
-                            "  %s tree %d: model None at milestone %.0fm, "
-                            "will retry next cycle",
-                            species_name, tidx,
-                            new_crossings[species_name][tidx],
-                        )
-
-        # Apply competition thinning after milestone capture
-        if use_thinning:
-            _apply_competition_thinning(
-                forest, forest_data,
-                competition_distance_increase, thinning_count,
+            # Only build models for groves that contain a tree with a crossing
+            grove_has_crossing = any(
+                offset <= gidx < offset + tree_count
+                for gidx in new_crossings.get(species_name, {})
             )
-            thinning_count += 1
+            if grove_has_crossing:
+                tree_data = _build_models_for_grove(grove, species_name, cycle, quality_params)
+                if tree_data:
+                    merged_data.setdefault(species_name, []).extend(tree_data)
+                else:
+                    merged_data.setdefault(species_name, []).extend(
+                        [(None, None, [], 0.0, 0.0)] * tree_count
+                    )
+            else:
+                # Placeholder for grove without crossings at this cycle
+                merged_data.setdefault(species_name, []).extend(
+                    [(None, None, [], 0.0, 0.0)] * tree_count
+                )
+
+        for species_name in species_with_crossings:
+            tree_data = merged_data.get(species_name, [])
+            if not tree_data:
+                continue
+            snapshots[cycle][species_name] = tree_data
+            milestone_map[cycle][species_name] = new_crossings[species_name]
+            # Only commit milestones to captured for trees with valid models
+            for global_idx, milestone_h in new_crossings[species_name].items():
+                key = (species_name, global_idx)
+                if global_idx < len(tree_data) and tree_data[global_idx][0] is not None:
+                    captured.setdefault(key, set()).add(milestone_h)
+                    total_captures += 1
+                else:
+                    logger.warning(
+                        "  %s tree %d: model None at milestone %.0fm, "
+                        "will retry next cycle",
+                        species_name, global_idx,
+                        milestone_h,
+                    )
+
+        # Freeze groves for species that completed all milestones
+        if target_milestones and species_target_keys:
+            for species_name in species_with_crossings:
+                if species_name in completed_species:
+                    continue
+                keys = species_target_keys.get(species_name, [])
+                if keys and all(
+                    target_milestones[k] <= captured.get(k, set()) for k in keys
+                ):
+                    completed_species.add(species_name)
+                    for gi in species_grove_indices.get(species_name, []):
+                        frozen_grove_indices.add(gi)
+                    logger.info(
+                        "[Species Complete] %s: all milestones captured, "
+                        "freezing %d grove(s) to save memory",
+                        species_name,
+                        len(species_grove_indices.get(species_name, [])),
+                    )
+
+        # Apply competition thinning only when a center competition tree
+        # (fid < 100, individual_type=competition) crossed a milestone.
+        if use_thinning and thinning_trigger_fids:
+            # Collect species that triggered thinning and their milestone heights
+            triggered_species: Dict[str, float] = {}
+            should_thin = False
+            for grove_idx, (_grove, species_name, _tc, fids) in enumerate(forest):
+                offset = grove_offsets[grove_idx]
+                for local_idx, fid in enumerate(fids):
+                    if fid in thinning_trigger_fids:
+                        global_idx = offset + local_idx
+                        if (
+                            species_name in new_crossings
+                            and global_idx in new_crossings[species_name]
+                        ):
+                            milestone_h = new_crossings[species_name][global_idx]
+                            triggered_species[species_name] = milestone_h
+                            should_thin = True
+            if should_thin:
+                if use_group_thinning and config is not None:
+                    # Group-based: compute per-species target distances
+                    target_dists: Dict[str, float] = {}
+                    for sp, mh in triggered_species.items():
+                        target = config.get_thinning_target(sp, mh)
+                        if target is not None:
+                            target_dists[sp] = target
+                    if target_dists:
+                        _apply_competition_thinning(
+                            forest, forest_data,
+                            0.0, thinning_count,
+                            target_distances=target_dists,
+                            current_distances=neighbor_current_distances,
+                        )
+                else:
+                    # Legacy fixed-increment
+                    _apply_competition_thinning(
+                        forest, forest_data,
+                        competition_distance_increase, thinning_count,
+                    )
+                thinning_count += 1
 
         # Early stop: all target milestones captured
         if target_milestones and all(
@@ -575,6 +784,8 @@ def _simulate_cycle_based_mode(
             logger.info("[Snapshot] Capturing cycle %d", cycle)
             snapshots[cycle] = {}
 
+            # Build models per grove and merge by species (supports split groves)
+            merged_data: Dict[str, list] = {}
             for grove, species_name, tree_count, fids in forest:
                 if species_snapshot_cycles and species_name in species_snapshot_cycles:
                     if cycle not in species_snapshot_cycles[species_name]:
@@ -584,7 +795,10 @@ def _simulate_cycle_based_mode(
                     grove, species_name, cycle, quality_params
                 )
                 if tree_data:
-                    snapshots[cycle][species_name] = tree_data
+                    merged_data.setdefault(species_name, []).extend(tree_data)
+
+            for species_name, tree_data in merged_data.items():
+                snapshots[cycle][species_name] = tree_data
 
             next_snapshot_idx += 1
 

@@ -21,7 +21,7 @@ _VRAM_MONITOR_PREAMBLE = '''
 import subprocess
 
 # VRAM threshold: pause import when usage exceeds this percentage
-VRAM_LIMIT_PERCENT = 80
+VRAM_LIMIT_PERCENT = 90
 
 # Maximum time (seconds) to wait for VRAM to drop below threshold before giving up
 VRAM_WAIT_TIMEOUT = 600
@@ -101,11 +101,9 @@ def _wait_for_vram(context="", min_delay=5.0):
             print(f"  -- VRAM settled below {VRAM_LIMIT_PERCENT}%, continuing")
             return True
 
-    print(f"  ** VRAM still {pct}% after {int(VRAM_WAIT_TIMEOUT)}s timeout -- stopping to prevent crash **")
-    print(f"  ** Restart UE and re-run this script to continue (resume is automatic) **")
-    return False
-
-_vram_exceeded = False
+    print(f"  ** VRAM still {pct}% after {int(VRAM_WAIT_TIMEOUT)}s timeout -- proceeding anyway **")
+    print(f"  ** Per-file tracking ensures progress is safe even if UE crashes **")
+    return True
 '''
 
 
@@ -142,9 +140,7 @@ def _build_import_block(
 """
 
     return f"""
-if _vram_exceeded:
-    pass  # skip remaining imports
-elif "{label}" in _completed_files:
+if "{label}" in _completed_files:
     skipped_count += 1
     print(f"  Skipped (already imported): {label}")
 else:
@@ -209,8 +205,10 @@ else:
             for _cmd in (
                 "FlushRenderingCommands",
                 "r.Streaming.FlushAll",
-                "r.Nanite.CoarseMeshStreaming.ForceFlush 1",
+                # Nuclear Nanite VRAM reclaim: release ALL pages temporarily
+                "r.Nanite.MaxAllocatedPages 0",
                 "r.Nanite.Streaming.MaxPendingPages 0",
+                "r.Nanite.CoarseMeshStreaming.ForceFlush 1",
                 "r.RHI.GPUDefrag",
                 "r.D3D12.ResidencyManagement.DenyBudgetUpdates 1",
                 "r.D3D12.FreeAllPooledTextures",
@@ -220,10 +218,11 @@ else:
                     unreal.KismetSystemLibrary.execute_console_command(_w, _cmd)
                 except Exception:
                     pass
-            # Re-enable budget updates and streaming
+            # Re-enable Nanite pool and streaming at reduced caps
             for _re_cmd in (
                 "r.D3D12.ResidencyManagement.DenyBudgetUpdates 0",
-                "r.Nanite.Streaming.MaxPendingPages 128",
+                "r.Nanite.MaxAllocatedPages 512",
+                "r.Nanite.Streaming.MaxPendingPages 32",
             ):
                 try:
                     unreal.KismetSystemLibrary.execute_console_command(_w, _re_cmd)
@@ -239,8 +238,7 @@ else:
             unreal.SystemLibrary.collect_garbage()
 
         # Adaptive wait: pause until VRAM settles below threshold
-        if not _wait_for_vram("{label}", min_delay=IMPORT_DELAY):
-            _vram_exceeded = True
+        _wait_for_vram("{label}", min_delay=IMPORT_DELAY)
 
     except Exception as e:
         failed_count += 1
@@ -929,12 +927,38 @@ def _import_wind_data(mesh, wind_json_path, label):
     return False
 
 
+def _reduce_nanite_fallback(mesh, label, percent=1.0):
+    """Reduce Nanite fallback mesh triangle percentage to save VRAM.
+
+    The fallback mesh is kept in VRAM permanently for non-Nanite rendering
+    paths. Reducing it from the default 100% to a low value significantly
+    reduces VRAM consumption per mesh.
+    """
+    try:
+        _ns = mesh.get_editor_property("nanite_settings")
+        _ns.set_editor_property("fallback_percent_triangles", percent)
+        mesh.set_editor_property("nanite_settings", _ns)
+        return True
+    except Exception:
+        pass
+    try:
+        _ns = mesh.get_editor_property("nanite_settings")
+        _ns.fallback_percent_triangles = percent
+        mesh.set_editor_property("nanite_settings", _ns)
+        return True
+    except Exception as _e:
+        unreal.log_warning(f"Could not set fallback triangle % for {label}: {_e}")
+    return False
+
+
 def _configure_nanite_assembly(mesh, wind_json_path, label):
     """Configure a nanite assembly after USD import.
 
-    Sets Nanite shape preservation to Voxelize and imports DynamicWind data.
+    Sets Nanite shape preservation to Voxelize, reduces fallback mesh VRAM,
+    and imports DynamicWind data.
     """
     _set_nanite_shape_voxelize(mesh, label)
+    _reduce_nanite_fallback(mesh, label, percent=1.0)
     _import_wind_data(mesh, wind_json_path, label)
     try:
         mesh.modify(True)
@@ -990,20 +1014,30 @@ except Exception:
     pass
 _VRAM_SAVED = {{}}
 if _world:
+    # Drop all quality to Medium for reduced VRAM during import
+    try:
+        unreal.KismetSystemLibrary.execute_console_command(_world, "scalability 1")
+    except Exception:
+        pass
     for _vk, _vv in (
         ("r.Lumen.DiffuseIndirect.Allow", "0"),
         ("r.Lumen.Reflections.Allow", "0"),
         ("r.Shadow.Virtual.Enable", "0"),
-        ("r.Streaming.PoolSize", "256"),
-        ("r.Nanite.MaxAllocatedPages", "2048"),
-        ("r.Nanite.Streaming.MaxPendingPages", "64"),
+        ("r.Streaming.PoolSize", "128"),
+        ("r.Streaming.PoolSizeVRAMPercentage", "0"),
+        ("r.Streaming.FullyLoadUsedTextures", "0"),
+        ("r.Nanite.MaxAllocatedPages", "512"),
+        ("r.Nanite.Streaming.MaxPendingPages", "32"),
+        ("r.Nanite.ProxyRenderMode", "1"),
+        # Disable Nanite ray tracing buffers (duplicate VRAM for RT)
+        ("r.RayTracing.Nanite.Mode", "0"),
         ("r.AllowCachedUniformExpressions", "0"),
     ):
         try:
             unreal.KismetSystemLibrary.execute_console_command(_world, f"{{_vk}} {{_vv}}")
         except Exception:
             pass
-    print("VRAM management active (Lumen/VSM off, Nanite capped)")
+    print("VRAM management active (Lumen/VSM off, Nanite capped, RT Nanite off)")
 
 # Load per-file progress for crash recovery
 _completed_files = set()
@@ -1031,20 +1065,23 @@ skipped_count = 0
     content += f"""
 {import_blocks}
 
-# --- VRAM status at end of batch ---
-if _vram_exceeded:
-    print("")
-    print("** VRAM limit reached -- batch stopped early. Restart UE and re-run. **")
-
 # --- Restore rendering settings ---
 if _world:
+    try:
+        unreal.KismetSystemLibrary.execute_console_command(_world, "scalability 3")
+    except Exception:
+        pass
     for _rk, _rv in (
         ("r.Lumen.DiffuseIndirect.Allow", "1"),
         ("r.Lumen.Reflections.Allow", "1"),
         ("r.Shadow.Virtual.Enable", "1"),
         ("r.Streaming.PoolSize", "0"),
+        ("r.Streaming.PoolSizeVRAMPercentage", "75"),
+        ("r.Streaming.FullyLoadUsedTextures", "0"),
         ("r.Nanite.MaxAllocatedPages", "0"),
         ("r.Nanite.Streaming.MaxPendingPages", "128"),
+        ("r.Nanite.ProxyRenderMode", "0"),
+        ("r.RayTracing.Nanite.Mode", "1"),
         ("r.AllowCachedUniformExpressions", "1"),
     ):
         try:
@@ -1324,7 +1361,8 @@ IMPORT_PATH = "{project_path}"
 SCRIPTS_DIR = r"{scripts_dir_str}"
 
 # VRAM threshold: pause import when usage exceeds this percentage
-VRAM_LIMIT_PERCENT = 80
+# 90% is safe for 24GB+ GPUs -- UE5 handles near-capacity gracefully
+VRAM_LIMIT_PERCENT = 90
 
 # Maximum time (seconds) to wait for VRAM to drop below threshold before giving up
 VRAM_WAIT_TIMEOUT = 600
@@ -1405,9 +1443,9 @@ def _wait_for_vram(context="", min_delay=10.0):
             print(f"  -- VRAM settled below {{VRAM_LIMIT_PERCENT}}%, continuing")
             return True
 
-    print(f"  ** VRAM still {{pct}}% after {{int(VRAM_WAIT_TIMEOUT)}}s -- stopping to prevent crash **")
-    print(f"  ** Restart UE and re-run import_forest.py to continue (resume is automatic) **")
-    return False
+    print(f"  ** VRAM still {{pct}}% after {{int(VRAM_WAIT_TIMEOUT)}}s -- proceeding anyway **")
+    print(f"  ** Per-file tracking ensures progress is safe even if UE crashes **")
+    return True
 
 # Show initial VRAM state
 _check_vram("before import")
@@ -1421,17 +1459,27 @@ except Exception:
     pass
 
 _VRAM_SETUP_CMDS = (
-    # Cap texture streaming pool to 256 MB (default ~1024 MB)
-    "r.Streaming.PoolSize 256",
+    # Drop all quality to Medium (reduces textures, shadows, effects VRAM)
+    "scalability 1",
+    # Cap texture streaming pool to 128 MB (default ~1024 MB)
+    "r.Streaming.PoolSize 128",
+    # Disable percentage-based VRAM auto-allocation for streaming pool
+    "r.Streaming.PoolSizeVRAMPercentage 0",
+    # Only load minimum mip levels during import
+    "r.Streaming.FullyLoadUsedTextures 0",
     # Disable Lumen GI and reflections (major VRAM consumers)
     "r.Lumen.DiffuseIndirect.Allow 0",
     "r.Lumen.Reflections.Allow 0",
     # Disable Virtual Shadow Maps
     "r.Shadow.Virtual.Enable 0",
-    # Cap Nanite page pool to limit GPU memory usage
-    "r.Nanite.MaxAllocatedPages 2048",
+    # Cap Nanite page pool aggressively (512 pages ~ 64 MB)
+    "r.Nanite.MaxAllocatedPages 512",
     # Limit Nanite streaming pressure
-    "r.Nanite.Streaming.MaxPendingPages 64",
+    "r.Nanite.Streaming.MaxPendingPages 32",
+    # Force proxy mesh rendering instead of Nanite (saves major VRAM)
+    "r.Nanite.ProxyRenderMode 1",
+    # Disable Nanite ray tracing buffers (duplicate VRAM for RT)
+    "r.RayTracing.Nanite.Mode 0",
     # Disable thumbnail generation during import
     "r.AllowCachedUniformExpressions 0",
 )
@@ -1515,11 +1563,36 @@ for _batch_idx, (batch_file, batch_label) in enumerate(BATCH_SCRIPTS):
     except Exception:
         unreal.SystemLibrary.collect_garbage()
 
+    # Nuclear VRAM reclaim between batches: release all Nanite pages, flush GPU
+    try:
+        _w = unreal.EditorLevelLibrary.get_editor_world()
+        for _cmd in (
+            "FlushRenderingCommands",
+            "r.Nanite.MaxAllocatedPages 0",
+            "r.Nanite.Streaming.MaxPendingPages 0",
+            "r.Streaming.FlushAll",
+            "r.RHI.GPUDefrag",
+            "r.D3D12.FreeAllPooledTextures",
+            "r.D3D12.FreeUnusedResources",
+        ):
+            try:
+                unreal.KismetSystemLibrary.execute_console_command(_w, _cmd)
+            except Exception:
+                pass
+        # Restore Nanite pools at reduced caps
+        for _cmd in (
+            "r.Nanite.MaxAllocatedPages 512",
+            "r.Nanite.Streaming.MaxPendingPages 32",
+        ):
+            try:
+                unreal.KismetSystemLibrary.execute_console_command(_w, _cmd)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     # Adaptive wait: pause until VRAM settles below threshold
-    if not _wait_for_vram(f"after batch {{_batch_idx + 1}}", min_delay=BATCH_MIN_DELAY):
-        print(f"\\n** VRAM did not settle after batch {{_batch_idx + 1}} -- stopping master import **")
-        print("** Restart UE and re-run import_forest.py to continue (resume is automatic) **")
-        break
+    _wait_for_vram(f"after batch {{_batch_idx + 1}}", min_delay=BATCH_MIN_DELAY)
 
 # Clean up progress files on successful completion
 if total_failed == 0 and os.path.isfile(PROGRESS_FILE):
@@ -1535,19 +1608,24 @@ if total_failed == 0 and os.path.isfile(PROGRESS_FILE):
 try:
     _world = unreal.EditorLevelLibrary.get_editor_world()
     for _restore_cmd in (
+        "scalability 3",
         "r.Streaming.PoolSize 0",
+        "r.Streaming.PoolSizeVRAMPercentage 75",
+        "r.Streaming.FullyLoadUsedTextures 0",
         "r.Lumen.DiffuseIndirect.Allow 1",
         "r.Lumen.Reflections.Allow 1",
         "r.Shadow.Virtual.Enable 1",
         "r.Nanite.MaxAllocatedPages 0",
         "r.Nanite.Streaming.MaxPendingPages 128",
+        "r.Nanite.ProxyRenderMode 0",
+        "r.RayTracing.Nanite.Mode 1",
         "r.AllowCachedUniformExpressions 1",
     ):
         try:
             unreal.KismetSystemLibrary.execute_console_command(_world, _restore_cmd)
         except Exception:
             pass
-    print("Rendering settings restored (Lumen, VSM, Nanite pools)")
+    print("Rendering settings restored (Lumen, VSM, Nanite pools, RT Nanite)")
 except Exception:
     pass
     pass

@@ -29,4 +29,5 @@
         "./**/.venv",
     ],
     "python.defaultInterpreterPath": "C:\\Users\\Max\\miniconda3\\envs\\the-grove\\python.exe",
+    "chat.agent.maxRequests": 500,
 }

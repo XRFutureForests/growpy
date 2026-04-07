@@ -16,7 +16,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import the_grove_23_core as gc
-from scipy.optimize import curve_fit
+from scipy.optimize import least_squares
 from tqdm import tqdm
 
 from .log import is_verbose
@@ -80,16 +80,21 @@ def fit_chapman_richards(
     else:
         _model = _chapman_richards
 
-    popt, _ = curve_fit(
-        _model,
-        x,
-        y,
-        p0=[A_init, k_init, p_init],
+    def _residuals(params):
+        return _model(x, *params) - y
+
+    result = least_squares(
+        _residuals,
+        x0=[A_init, k_init, p_init],
         bounds=([A_lo, 1e-4, 0.1], [A_hi, 1.0, 10.0]),
-        maxfev=10000,
+        method="dogbox",
+        max_nfev=10000,
     )
 
-    A, k, p = popt
+    if not result.success:
+        raise RuntimeError(f"Least squares failed: {result.message}")
+
+    A, k, p = result.x
     y_pred = _model(x, A, k, p)
     ss_res = np.sum((y - y_pred) ** 2)
     ss_tot = np.sum((y - np.mean(y)) ** 2)

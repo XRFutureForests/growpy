@@ -3132,6 +3132,7 @@ def process_twig_file(
 
     exported_files = []
     texture_manifest = {}
+    exported_names: set = set()
 
     for obj in mesh_objects:
         try:
@@ -3166,6 +3167,18 @@ def process_twig_file(
                 species_parts.append("foliage")
 
             standardized_name = "_".join(species_parts)
+
+            # Deduplicate: append letter suffix when multiple objects in one
+            # .blend file resolve to the same standardized name.
+            # Uses letters (a-z) to match Grove's variant naming convention
+            # and skips letters already taken by naturally-named variants.
+            if standardized_name in exported_names:
+                for suffix in "abcdefghijklmnopqrstuvwxyz":
+                    candidate = f"{standardized_name}_{suffix}"
+                    if candidate not in exported_names:
+                        standardized_name = candidate
+                        break
+            exported_names.add(standardized_name)
 
             # Center at origin
             obj.location = (0, 0, 0)

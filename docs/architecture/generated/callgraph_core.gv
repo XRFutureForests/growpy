@@ -1,0 +1,123 @@
+digraph G {
+concentrate=true;
+splines="ortho";
+rankdir="LR";
+subgraph legend{
+    rank = min;
+    label = "legend";
+    Legend [shape=none, margin=0, label = <
+        <table cellspacing="0" cellpadding="0" border="1"><tr><td>Code2flow Legend</td></tr><tr><td>
+        <table cellspacing="0">
+        <tr><td>Regular function</td><td width="50px" bgcolor='#cccccc'></td></tr>
+        <tr><td>Trunk function (nothing calls this)</td><td bgcolor='#966F33'></td></tr>
+        <tr><td>Leaf function (this calls nothing else)</td><td bgcolor='#6db33f'></td></tr>
+        <tr><td>Function call</td><td><font color='black'>&#8594;</font></td></tr>
+        </table></td></tr></table>
+        >];
+}node_acce529f [label="344: _apply_competition_thinning()" name="forest::_apply_competition_thinning" shape="rect" style="rounded,filled" fillcolor="#6db33f" ];
+node_21910a6f [label="132: _apply_smoothing()" name="forest::_apply_smoothing" shape="rect" style="rounded,filled" fillcolor="#6db33f" ];
+node_8078fc5e [label="743: _build_models_for_grove()" name="forest::_build_models_for_grove" shape="rect" style="rounded,filled" fillcolor="#cccccc" ];
+node_6e49f78c [label="75: _compute_grove_offsets()" name="forest::_compute_grove_offsets" shape="rect" style="rounded,filled" fillcolor="#6db33f" ];
+node_5b2a200a [label="93: _run_single_growth_cycle()" name="forest::_run_single_growth_cycle" shape="rect" style="rounded,filled" fillcolor="#6db33f" ];
+node_e9b24b90 [label="693: _simulate_cycle_based_mode()" name="forest::_simulate_cycle_based_mode" shape="rect" style="rounded,filled" fillcolor="#cccccc" ];
+node_9ba9c394 [label="410: _simulate_height_threshold_mode()" name="forest::_simulate_height_threshold_mode" shape="rect" style="rounded,filled" fillcolor="#cccccc" ];
+node_2eaa2d74 [label="821: _split_bones_by_tree()" name="forest::_split_bones_by_tree" shape="rect" style="rounded,filled" fillcolor="#6db33f" ];
+node_64244c88 [label="24: create_forest()" name="forest::create_forest" shape="rect" style="rounded,filled" fillcolor="#966F33" ];
+node_d709eeba [label="155: simulate_forest_growth()" name="forest::simulate_forest_growth" shape="rect" style="rounded,filled" fillcolor="#966F33" ];
+node_f22d1874 [label="221: simulate_forest_growth_with_snapshots()" name="forest::simulate_forest_growth_with_snapshots" shape="rect" style="rounded,filled" fillcolor="#966F33" ];
+node_31f55a75 [label="57: add_tree_to_grove()" name="grove::add_tree_to_grove" shape="rect" style="rounded,filled" fillcolor="#6db33f" ];
+node_fa349f61 [label="10: create_grove()" name="grove::create_grove" shape="rect" style="rounded,filled" fillcolor="#6db33f" ];
+node_baace95c [label="36: as_tuple()" name="skeleton::Vector3.as_tuple" shape="rect" style="rounded,filled" fillcolor="#6db33f" ];
+node_ece6007c [label="33: length()" name="skeleton::Vector3.length" shape="rect" style="rounded,filled" fillcolor="#6db33f" ];
+node_2f368442 [label="538: _apply_falloff()" name="skeleton::_apply_falloff" shape="rect" style="rounded,filled" fillcolor="#6db33f" ];
+node_55c40bb7 [label="531: _distance_3d()" name="skeleton::_distance_3d" shape="rect" style="rounded,filled" fillcolor="#6db33f" ];
+node_30e264f4 [label="152: build_skeleton_hierarchy()" name="skeleton::build_skeleton_hierarchy" shape="rect" style="rounded,filled" fillcolor="#966F33" ];
+node_3fe6bd57 [label="84: calculate_rotation_to_align()" name="skeleton::calculate_rotation_to_align" shape="rect" style="rounded,filled" fillcolor="#cccccc" ];
+node_19d435fb [label="357: calculate_vertex_weights()" name="skeleton::calculate_vertex_weights" shape="rect" style="rounded,filled" fillcolor="#966F33" ];
+node_3a94dc9c [label="71: convert_grove_vector_to_vector3()" name="skeleton::convert_grove_vector_to_vector3" shape="rect" style="rounded,filled" fillcolor="#cccccc" ];
+node_75b0d703 [label="153: _load_growth_model()" name="tree::_load_growth_model" shape="rect" style="rounded,filled" fillcolor="#6db33f" ];
+node_11c1f11d [label="52: calculate_dbh_at_height()" name="tree::calculate_dbh_at_height" shape="rect" style="rounded,filled" fillcolor="#6db33f" ];
+node_7a6cb7cf [label="179: calculate_growth_cycles_from_height()" name="tree::calculate_growth_cycles_from_height" shape="rect" style="rounded,filled" fillcolor="#966F33" ];
+node_ff11f4b5 [label="40: calculate_tree_height()" name="tree::calculate_tree_height" shape="rect" style="rounded,filled" fillcolor="#cccccc" ];
+node_0b0c218d [label="114: extract_tree_measurements()" name="tree::extract_tree_measurements" shape="rect" style="rounded,filled" fillcolor="#cccccc" ];
+node_a0e094b9 [label="17: find_max_height_in_branch()" name="tree::find_max_height_in_branch" shape="rect" style="rounded,filled" fillcolor="#cccccc" ];
+node_20c3a7a4 [label="414: densify_twig_placements()" name="twig::densify_twig_placements" shape="rect" style="rounded,filled" fillcolor="#966F33" ];
+node_00ec3574 [label="46: get_face_center_and_normal()" name="twig::get_face_center_and_normal" shape="rect" style="rounded,filled" fillcolor="#6db33f" ];
+node_8078fc5e -> node_2eaa2d74 [color="#D55E00" penwidth="2"];
+node_8078fc5e -> node_0b0c218d [color="#D55E00" penwidth="2"];
+node_e9b24b90 -> node_8078fc5e [color="#000000" penwidth="2"];
+node_e9b24b90 -> node_5b2a200a [color="#000000" penwidth="2"];
+node_9ba9c394 -> node_acce529f [color="#F0E442" penwidth="2"];
+node_9ba9c394 -> node_8078fc5e [color="#F0E442" penwidth="2"];
+node_9ba9c394 -> node_6e49f78c [color="#F0E442" penwidth="2"];
+node_9ba9c394 -> node_5b2a200a [color="#F0E442" penwidth="2"];
+node_9ba9c394 -> node_0b0c218d [color="#F0E442" penwidth="2"];
+node_64244c88 -> node_31f55a75 [color="#000000" penwidth="2"];
+node_64244c88 -> node_fa349f61 [color="#000000" penwidth="2"];
+node_d709eeba -> node_21910a6f [color="#56B4E9" penwidth="2"];
+node_d709eeba -> node_5b2a200a [color="#56B4E9" penwidth="2"];
+node_f22d1874 -> node_21910a6f [color="#F0E442" penwidth="2"];
+node_f22d1874 -> node_e9b24b90 [color="#F0E442" penwidth="2"];
+node_f22d1874 -> node_9ba9c394 [color="#F0E442" penwidth="2"];
+node_30e264f4 -> node_ece6007c [color="#F0E442" penwidth="2"];
+node_30e264f4 -> node_3fe6bd57 [color="#F0E442" penwidth="2"];
+node_30e264f4 -> node_3a94dc9c [color="#F0E442" penwidth="2"];
+node_30e264f4 -> node_3a94dc9c [color="#F0E442" penwidth="2"];
+node_3fe6bd57 -> node_ece6007c [color="#CC79A7" penwidth="2"];
+node_3fe6bd57 -> node_ece6007c [color="#CC79A7" penwidth="2"];
+node_3fe6bd57 -> node_ece6007c [color="#CC79A7" penwidth="2"];
+node_19d435fb -> node_baace95c [color="#009E73" penwidth="2"];
+node_19d435fb -> node_baace95c [color="#009E73" penwidth="2"];
+node_19d435fb -> node_2f368442 [color="#009E73" penwidth="2"];
+node_19d435fb -> node_55c40bb7 [color="#009E73" penwidth="2"];
+node_19d435fb -> node_55c40bb7 [color="#009E73" penwidth="2"];
+node_3a94dc9c -> node_baace95c [color="#F0E442" penwidth="2"];
+node_7a6cb7cf -> node_75b0d703 [color="#CC79A7" penwidth="2"];
+node_ff11f4b5 -> node_a0e094b9 [color="#0072B2" penwidth="2"];
+node_0b0c218d -> node_11c1f11d [color="#0072B2" penwidth="2"];
+node_0b0c218d -> node_ff11f4b5 [color="#0072B2" penwidth="2"];
+node_a0e094b9 -> node_a0e094b9 [color="#E69F00" penwidth="2"];
+node_20c3a7a4 -> node_00ec3574 [color="#F0E442" penwidth="2"];
+subgraph cluster_8bc00d59 {
+    node_64244c88 node_6e49f78c node_5b2a200a node_21910a6f node_d709eeba node_f22d1874 node_acce529f node_9ba9c394 node_e9b24b90 node_8078fc5e node_2eaa2d74;
+    label="File: forest";
+    name="forest";
+    style="filled";
+    graph[style=dotted];
+};
+subgraph cluster_5fabf7c5 {
+    node_fa349f61 node_31f55a75;
+    label="File: grove";
+    name="grove";
+    style="filled";
+    graph[style=dotted];
+};
+subgraph cluster_66e7afb1 {
+    node_3a94dc9c node_3fe6bd57 node_30e264f4 node_19d435fb node_55c40bb7 node_2f368442;
+    label="File: skeleton";
+    name="skeleton";
+    style="filled";
+    graph[style=dotted];
+    subgraph cluster_e77466b4 {
+        node_ece6007c node_baace95c;
+        label="Class: Vector3";
+        name="Vector3";
+        style="filled";
+        graph[style=dotted];
+    };
+};
+subgraph cluster_90e07cd9 {
+    node_a0e094b9 node_ff11f4b5 node_11c1f11d node_0b0c218d node_75b0d703 node_7a6cb7cf;
+    label="File: tree";
+    name="tree";
+    style="filled";
+    graph[style=dotted];
+};
+subgraph cluster_037949df {
+    node_00ec3574 node_20c3a7a4;
+    label="File: twig";
+    name="twig";
+    style="filled";
+    graph[style=dotted];
+};
+}

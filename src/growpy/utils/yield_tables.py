@@ -186,7 +186,7 @@ def fit_height_dbh_model(
     Returns:
         Dict with keys 'a', 'b', 'r_squared', or None if fit fails.
     """
-    from scipy.optimize import curve_fit
+    from scipy.optimize import least_squares
 
     h = np.array(yield_heights, dtype=float)
     d = np.array(yield_dbhs, dtype=float)
@@ -208,8 +208,11 @@ def fit_height_dbh_model(
         b0 = np.polyfit(log_h, log_d, 1)
         p0 = [np.exp(b0[1]), b0[0]]
 
-        popt, _ = curve_fit(power_func, h, d, p0=p0, maxfev=5000)
-        a, b = float(popt[0]), float(popt[1])
+        def _residuals(params):
+            return power_func(h, *params) - d
+
+        result = least_squares(_residuals, x0=p0, method="lm", max_nfev=5000)
+        a, b = float(result.x[0]), float(result.x[1])
 
         pred = power_func(h, a, b)
         ss_res = np.sum((d - pred) ** 2)

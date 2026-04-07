@@ -112,6 +112,11 @@ class GrowPyConfig:
     forest_competition_distance_increase: float = 0.0  # meters per height interval
     forest_export_trees: list = field(default_factory=list)
 
+    # [competition] - group-based spacing and thinning
+    # Dict: group_name -> {species: [...], planting_distance: float, thinning: [[h, d], ...]}
+    competition_groups: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    competition_default_group: str = "slow_broadleaf"
+
     # Skeleton overrides - None means inherit from quality preset (CLI-only)
     forest_skeleton_length: Optional[float] = None
     forest_skeleton_reduce: Optional[float] = None
@@ -163,6 +168,45 @@ class GrowPyConfig:
     )
     yield_sources_preferred_region: str = ""
     yield_sources_preferred_site_index: Optional[float] = None
+
+    def get_competition_group(self, species_name: str) -> Dict[str, Any]:
+        """Look up the competition group config for a species.
+
+        Resolution order:
+        1. Competition Group column in tree_asset_lookup.csv
+        2. Falls back to competition_default_group
+
+        Returns the group dict with keys: planting_distance, thinning.
+        """
+        group_name = self.competition_default_group
+
+        try:
+            from .paths import _find_species_row
+            row = _find_species_row(species_name, use_gbif=False)
+            csv_group = str(row.get("Competition Group", "")).strip()
+            if csv_group:
+                group_name = csv_group
+        except (ValueError, KeyError):
+            pass
+
+        return self.competition_groups.get(
+            group_name,
+            {"planting_distance": 3.0, "thinning": []},
+        )
+
+    def get_thinning_target(self, species_name: str, height_m: float) -> Optional[float]:
+        """Get the thinning target distance for a species at a given height.
+
+        Returns the target distance in meters, or None if no thinning
+        schedule entry matches the given height.
+        """
+        group = self.get_competition_group(species_name)
+        thinning = group.get("thinning", [])
+        target = None
+        for trigger_h, target_d in thinning:
+            if height_m >= trigger_h:
+                target = target_d
+        return target
 
     @classmethod
     def from_toml(cls, toml_path: Path, set_as_global: bool = True) -> "GrowPyConfig":
@@ -343,6 +387,16 @@ class GrowPyConfig:
         if "preferred_site_index" in ys:
             val = float(ys["preferred_site_index"])
             kwargs["yield_sources_preferred_site_index"] = val if val > 0 else None
+
+        # [competition]
+        comp = data.get("competition", {})
+        if "default_group" in comp:
+            kwargs["competition_default_group"] = comp["default_group"]
+        comp_groups = comp.get("groups", {})
+        if comp_groups:
+            kwargs["competition_groups"] = {
+                name: dict(cfg) for name, cfg in comp_groups.items()
+            }
 
         instance = cls(**kwargs)
         if set_as_global:
