@@ -26,7 +26,7 @@
                 "editor.inlineSuggest.enabled": true,
                 "python.analysis.extraPaths": [
                     "${workspaceFolder}/src",
-                    "${workspaceFolder}/src/the_grove_22/modules"
+                    "${workspaceFolder}/src/the_grove_23/modules"
                 ]
             }
         }
