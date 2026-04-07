@@ -110,12 +110,13 @@ def _run_calibration_pass(
         Tuple of (calibrated_species, calibration_info) where calibration_info
         maps standardized species names to {common_name, yield_data, fpy}.
     """
+    from pylometree.yield_tables.store import REFERENCE_AGE, compute_h50
+
     from growpy.utils.yield_tables import (
         calibrate_species,
         load_lookup_table,
         resolve_yield_table,
     )
-    from pylometree.yield_tables.store import REFERENCE_AGE, compute_h50
 
     presets_dir = analyzer.presets_dir
 
@@ -236,8 +237,8 @@ def _generate_comparison_plots(
     - Grove before calibration (raw simulation output)
     - Grove after calibration (re-simulated with overrides applied)
     """
-    from growpy.utils.plotting import plot_calibration_comparison
     from growpy.config.preset_overrides import load_target_dbh_from_preset
+    from growpy.utils.plotting import plot_calibration_comparison
 
     models_dir = script_dir / "data" / "assets" / "growth_models"
     presets_dir = script_dir / "data" / "assets" / "presets"
@@ -339,10 +340,7 @@ def _list_yield_providers():
 
 def _select_yield_providers(names):
     """Select providers by name, or return all available providers."""
-    from pylometree.yield_tables import (
-        get_available_providers,
-        get_provider_by_name,
-    )
+    from pylometree.yield_tables import get_available_providers, get_provider_by_name
 
     if names:
         providers = []

@@ -32,6 +32,7 @@ import os
 import sys
 from pathlib import Path
 
+from growpy.io.usd.overview import generate_overview_markdown
 from growpy.pipelines.dataset_csv_planner import (
     generate_dataset_csvs,
     synchronize_dataset_csvs,
@@ -48,7 +49,6 @@ from growpy.pipelines.step_runner import (
     run_species_step4,
     run_step123,
 )
-from growpy.io.usd.overview import generate_overview_markdown
 from growpy.utils.log import setup_logging
 
 logger = logging.getLogger(__name__)
