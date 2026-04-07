@@ -57,9 +57,7 @@ def fit_chapman_richards(
     y = np.asarray(y, dtype=float).flatten()
 
     if len(x) < 4:
-        raise RuntimeError(
-            f"Need >= 4 data points for Chapman-Richards, got {len(x)}"
-        )
+        raise RuntimeError(f"Need >= 4 data points for Chapman-Richards, got {len(x)}")
 
     y_max = float(np.max(y))
     if y_max <= 0:
@@ -88,7 +86,7 @@ def fit_chapman_richards(
         x0=[A_init, k_init, p_init],
         bounds=([A_lo, 1e-4, 0.1], [A_hi, 1.0, 10.0]),
         method="dogbox",
-        max_nfev=10000,
+        max_nfev=50000,
     )
 
     if not result.success:
@@ -918,7 +916,11 @@ class SpeciesGrowthAnalyzer:
             Dictionary mapping species to success status
         """
         results = {}
-        progress = tqdm(species_list, desc="Analyzing species (sequential)", disable=not is_verbose())
+        progress = tqdm(
+            species_list,
+            desc="Analyzing species (sequential)",
+            disable=not is_verbose(),
+        )
 
         for species in progress:
             progress.set_description(f"Analyzing: {species[:30]}...")
@@ -1098,7 +1100,9 @@ class SpeciesGrowthAnalyzer:
         saved_count = 0
 
         for species in tqdm(
-            self.analysis_metadata.keys(), desc="Saving species", leave=False,
+            self.analysis_metadata.keys(),
+            desc="Saving species",
+            leave=False,
             disable=not is_verbose(),
         ):
             self.save_species_results(species)
@@ -1155,7 +1159,13 @@ class SpeciesGrowthAnalyzer:
             else:
                 logger.warning("No updates were made to the lookup table")
 
-        except (FileNotFoundError, PermissionError, pd.errors.ParserError, KeyError, OSError) as e:
+        except (
+            FileNotFoundError,
+            PermissionError,
+            pd.errors.ParserError,
+            KeyError,
+            OSError,
+        ) as e:
             logger.error(f"Failed to update lookup table: {e}")
 
     def generate_lookup_table_summary(self):

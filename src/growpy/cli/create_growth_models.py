@@ -424,6 +424,9 @@ def _ingest_yield_tables(
                 filename = record.filename()
                 csv_path = store_dir / filename
                 record.to_csv(csv_path)
+                manifest.entries = [
+                    e for e in manifest.entries if e["filename"] != filename
+                ]
                 manifest.add(record, filename)
                 count += 1
                 logger.debug("  Wrote %s (%d rows)", filename, len(record.ages))

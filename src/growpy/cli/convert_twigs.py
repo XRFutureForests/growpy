@@ -4,6 +4,11 @@
 Step 2 of the pipeline. Defaults from growpy.toml [twigs]. See docs/cli-reference.md.
 """
 
+import bpy
+
+if hasattr(bpy.utils, "expose_bundled_modules"):
+    bpy.utils.expose_bundled_modules()
+
 import logging
 import sys
 from pathlib import Path
@@ -199,7 +204,9 @@ def process_twig_directory(
 
     from growpy.utils.log import is_verbose
 
-    for blend_file in tqdm(blend_files, desc="Converting twigs", disable=not is_verbose()):
+    for blend_file in tqdm(
+        blend_files, desc="Converting twigs", disable=not is_verbose()
+    ):
         try:
             twig_dir_name = blend_file.parent.name
             output_dir = blend_file.parent

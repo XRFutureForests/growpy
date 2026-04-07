@@ -132,7 +132,7 @@ def extract_foliage_data(
     """
     import time
 
-    from ..core.twig import extract_twig_placements_from_model
+    from ...core.twig import extract_twig_placements_from_model
 
     timings = {} if profile else None
 

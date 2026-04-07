@@ -631,7 +631,7 @@ def _load_species_seed_params(species_name: str) -> Optional[Dict]:
     import json
 
     try:
-        from ..config.paths import get_preset_path
+        from ...config.paths import get_preset_path
 
         preset_path = get_preset_path(species_name)
         with open(preset_path, "r") as f:

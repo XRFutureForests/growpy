@@ -75,7 +75,7 @@ height_threshold = 0.01
 max_cycles_without_growth = 5
 # Maximum simulation time per seed in seconds (10-3600)
 # Increase for complex species; prevents stuck simulations
-timeout = 60
+timeout = 300
 
 # --- Step 3b: Yield table calibration (integrated into create_growth_models.py) ---
 [calibration]

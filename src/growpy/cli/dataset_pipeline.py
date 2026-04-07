@@ -183,6 +183,11 @@ def main():
         action="store_true",
         help="Ingest yield tables from external providers before step 3 calibration.",
     )
+    parser.add_argument(
+        "--clean-store",
+        action="store_true",
+        help="Clear existing yield table store before re-ingestion (requires --ingest-yield-tables).",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output.")
     parser.add_argument(
         "-q",
@@ -262,7 +267,12 @@ def main():
     failed = []
     for step in steps:
         if step in (1, 2, 3):
-            extra = ["--ingest-yield-tables"] if step == 3 and args.ingest_yield_tables else None
+            extra = []
+            if step == 3 and args.ingest_yield_tables:
+                extra.append("--ingest-yield-tables")
+                if args.clean_store:
+                    extra.append("--clean-store")
+            extra = extra or None
             ok = run_step123(step, all_species_csv, dry_run=args.dry_run, extra_args=extra)
             if not ok:
                 logger.error("Pipeline aborted at step %d.", step)
