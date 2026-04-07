@@ -1,0 +1,14 @@
+age,height,dbh,species_latin,region,management,site_index,source,table_id,volume
+40,5.7,7.55,Picea abies,DE,moderate_thinning,4.5,forest_elements,fe_spruce_wiedemann_moderate_1936_42_si4.5,36.0
+45,6.95,8.55,Picea abies,DE,moderate_thinning,4.5,forest_elements,fe_spruce_wiedemann_moderate_1936_42_si4.5,65.0
+50,8.3,9.55,Picea abies,DE,moderate_thinning,4.5,forest_elements,fe_spruce_wiedemann_moderate_1936_42_si4.5,97.0
+55,9.65,10.55,Picea abies,DE,moderate_thinning,4.5,forest_elements,fe_spruce_wiedemann_moderate_1936_42_si4.5,129.0
+60,11.0,11.55,Picea abies,DE,moderate_thinning,4.5,forest_elements,fe_spruce_wiedemann_moderate_1936_42_si4.5,160.0
+65,12.25,12.5,Picea abies,DE,moderate_thinning,4.5,forest_elements,fe_spruce_wiedemann_moderate_1936_42_si4.5,190.0
+70,13.45,13.5,Picea abies,DE,moderate_thinning,4.5,forest_elements,fe_spruce_wiedemann_moderate_1936_42_si4.5,216.0
+75,14.55,14.4,Picea abies,DE,moderate_thinning,4.5,forest_elements,fe_spruce_wiedemann_moderate_1936_42_si4.5,238.0
+80,15.55,15.25,Picea abies,DE,moderate_thinning,4.5,forest_elements,fe_spruce_wiedemann_moderate_1936_42_si4.5,256.0
+85,16.55,16.1,Picea abies,DE,moderate_thinning,4.5,forest_elements,fe_spruce_wiedemann_moderate_1936_42_si4.5,271.0
+90,17.45,16.85,Picea abies,DE,moderate_thinning,4.5,forest_elements,fe_spruce_wiedemann_moderate_1936_42_si4.5,283.0
+95,18.3,17.6,Picea abies,DE,moderate_thinning,4.5,forest_elements,fe_spruce_wiedemann_moderate_1936_42_si4.5,294.0
+100,19.1,18.35,Picea abies,DE,moderate_thinning,4.5,forest_elements,fe_spruce_wiedemann_moderate_1936_42_si4.5,303.0

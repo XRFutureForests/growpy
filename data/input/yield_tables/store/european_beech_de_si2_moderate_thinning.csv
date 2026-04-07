@@ -1,0 +1,24 @@
+age,height,dbh,species_latin,region,management,site_index,source,table_id,volume
+30,7.5,5.2,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,
+35,9.35,6.7,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,
+40,11.05,8.1,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,72.0
+45,12.55,9.6,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,107.0
+50,14.15,11.0,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,142.0
+55,15.55,12.4,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,175.0
+60,17.0,13.9,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,207.0
+65,18.25,15.5,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,236.0
+70,19.5,17.1,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,263.0
+75,20.65,18.7,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,288.0
+80,21.85,20.3,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,313.0
+85,22.9,22.0,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,335.0
+90,23.8,23.6,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,354.0
+95,24.75,25.3,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,373.0
+100,25.6,27.0,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,389.0
+105,26.45,28.7,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,405.0
+110,27.2,30.5,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,420.0
+115,27.9,32.3,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,434.0
+120,28.55,34.2,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,448.0
+125,29.15,36.0,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,462.0
+130,29.75,37.8,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,475.0
+135,30.3,39.5,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,486.0
+140,30.75,41.3,Fagus sylvatica,DE,moderate_thinning,2.5,forest_elements,fe_beech_wiedemann_moderate_1931_si2.5,496.0

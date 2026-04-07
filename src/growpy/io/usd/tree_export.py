@@ -173,7 +173,9 @@ def build_tree_mesh(
         uvs = model.uvs  # UV coordinates for texturing
 
         if not points or not faces:
-            logger.warning("Model has no geometry (0 points/faces) — skipping USD export")
+            logger.warning(
+                "Model has no geometry (0 points/faces) — skipping USD export"
+            )
             return False
 
         # Convert points to USD format, applying height-aware radial scaling.
@@ -204,9 +206,7 @@ def build_tree_mesh(
             bone_id_offset = min(vertex_bone_ids)
 
             # Trunk branch_id = first bone's branch_id (bone index 7)
-            trunk_branch_id = (
-                int(bones_info[0][7]) if len(bones_info[0]) >= 8 else -1
-            )
+            trunk_branch_id = int(bones_info[0][7]) if len(bones_info[0]) >= 8 else -1
 
             # Build per-bone data
             bone_axes = []
@@ -240,8 +240,7 @@ def build_tree_mesh(
 
             # Determine which bones are trunk (order 0) vs branch
             is_trunk_bone = [
-                bone_branch_ids[i] == trunk_branch_id
-                for i in range(len(bones_info))
+                bone_branch_ids[i] == trunk_branch_id for i in range(len(bones_info))
             ]
 
             # For each non-trunk bone, find the parent trunk bone axis
@@ -356,9 +355,7 @@ def build_tree_mesh(
                     jsx, jsy, jsz = bone_starts[local_idx]
                     along = max(
                         0.0,
-                        (p.x - jsx) * jax
-                        + (p.y - jsy) * jay
-                        + (p.z - jsz) * jaz,
+                        (p.x - jsx) * jax + (p.y - jsy) * jay + (p.z - jsz) * jaz,
                     )
                     dist_along = chain_d + along
                     if dist_along >= axis_blend_dist:
@@ -588,7 +585,9 @@ def derive_static_from_skeletal(
     static_stems = tree_dir / f"{species_clean}{suffix}_stems_static{ext}"
 
     if not skeletal_stems.exists():
-        logger.warning("Cannot derive static: skeletal stems not found: %s", skeletal_stems)
+        logger.warning(
+            "Cannot derive static: skeletal stems not found: %s", skeletal_stems
+        )
         return None
 
     if not strip_skeleton_from_usd(skeletal_stems, static_stems):
@@ -600,7 +599,9 @@ def derive_static_from_skeletal(
         try:
             twig_placements = extract_twig_placements_from_model(model)
         except Exception as e:
-            logger.warning("Failed to extract twig placements for static derivation: %s", e)
+            logger.warning(
+                "Failed to extract twig placements for static derivation: %s", e
+            )
 
     static_assembly = tree_dir / f"{species_clean}{suffix}_assembly_static{ext}"
     create_assembly(
@@ -1043,7 +1044,7 @@ def _add_static_materials(
         species_name: Species name for texture lookup
     """
     try:
-        from ..config import get_config
+        from ...config import get_config
 
         config = get_config()
 
@@ -1332,7 +1333,10 @@ def _add_dynamic_wind_attributes(
             group_counts[g] = group_counts.get(g, 0) + 1
         logger.debug(
             "DynamicWind: %d joints - trunk=%d, primary=%d, tips=%d",
-            len(joint_tokens), group_counts[0], group_counts[1], group_counts[2],
+            len(joint_tokens),
+            group_counts[0],
+            group_counts[1],
+            group_counts[2],
         )
 
 
@@ -1462,7 +1466,7 @@ def _build_usdskel_from_bones(
     # CRITICAL: Filter bones_info to only include bones referenced by mesh vertices
     # This prevents crashes when build_models() was called with cutoff parameters
     # that removed branches (and their vertices) but bones still exist in bones_info
-    from ..core.skeleton import filter_bones_for_mesh
+    from ...core.skeleton import filter_bones_for_mesh
 
     original_bone_count = len(bones_info)
     bones_info, old_to_new_bone_map = filter_bones_for_mesh(
@@ -1472,7 +1476,8 @@ def _build_usdskel_from_bones(
     if verbose and len(bones_info) < original_bone_count:
         logger.debug(
             "Filtered bones: %d -> %d (removed unreferenced bones)",
-            original_bone_count, len(bones_info),
+            original_bone_count,
+            len(bones_info),
         )
 
     # After filtering, bone_id_offset is 0 since bones are now renumbered
@@ -1630,7 +1635,9 @@ def _build_usdskel_from_bones(
                     "Using hierarchical junction blending with blend_distance=%s",
                     junction_blend_distance,
                 )
-                logger.debug("  Vertices: %d, Joints: %d", len(bone_ids), len(joint_tokens))
+                logger.debug(
+                    "  Vertices: %d, Joints: %d", len(bone_ids), len(joint_tokens)
+                )
                 unique_ids = set(bone_ids)
                 logger.debug("  Unique bone IDs found: %s", sorted(unique_ids))
                 logger.debug("  Bone ID range: %d to %d", min(bone_ids), max(bone_ids))
@@ -1640,7 +1647,7 @@ def _build_usdskel_from_bones(
             bone_to_joint_map = old_to_new_bone_map
 
             # Use calculate_vertex_weights with reduced weights at junctions
-            from ..core.skeleton import calculate_vertex_weights
+            from ...core.skeleton import calculate_vertex_weights
 
             joint_indices_flat, joint_weights_flat = calculate_vertex_weights(
                 model=model,
@@ -1656,11 +1663,14 @@ def _build_usdskel_from_bones(
             joint_weights = joint_weights_flat
 
             if verbose:
-                logger.debug("  Calculated weights with %d vertices", len(joint_indices))
+                logger.debug(
+                    "  Calculated weights with %d vertices", len(joint_indices)
+                )
                 reduced_weight_count = sum(1 for w in joint_weights if w < 1.0)
                 logger.debug(
                     "  Vertices with reduced weights: %d (%.1f%%)",
-                    reduced_weight_count, reduced_weight_count * 100 / len(joint_weights),
+                    reduced_weight_count,
+                    reduced_weight_count * 100 / len(joint_weights),
                 )
 
         else:
@@ -1718,15 +1728,18 @@ def _build_usdskel_from_bones(
                 if verbose:
                     logger.debug(
                         "  Converted BranchId: %d faces, offset=%d",
-                        len(local_branch_ids), branch_id_offset,
+                        len(local_branch_ids),
+                        branch_id_offset,
                     )
                     logger.debug(
                         "    Global range: %d-%d",
-                        min(global_branch_ids), max(global_branch_ids),
+                        min(global_branch_ids),
+                        max(global_branch_ids),
                     )
                     logger.debug(
                         "    Local range: %d-%d",
-                        min(local_branch_ids), max(local_branch_ids),
+                        min(local_branch_ids),
+                        max(local_branch_ids),
                     )
 
             if model and hasattr(model, "face_attribute_branch_id_parent"):
@@ -1744,7 +1757,9 @@ def _build_usdskel_from_bones(
                 branch_parent_primvar.Set(local_parent_ids)
 
                 if verbose:
-                    logger.debug("  Converted BranchIdParent: %d faces", len(local_parent_ids))
+                    logger.debug(
+                        "  Converted BranchIdParent: %d faces", len(local_parent_ids)
+                    )
 
 
 def get_twig_usd_map_for_species(

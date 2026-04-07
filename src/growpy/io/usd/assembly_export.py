@@ -237,8 +237,11 @@ def create_assembly(
 
                 # Compute relative path from assembly location to twig destination
                 import os
+
                 if instances_dir:
-                    rel_to_twigs = os.path.relpath(instances_dir, output_path.parent).replace("\\", "/")
+                    rel_to_twigs = os.path.relpath(
+                        instances_dir, output_path.parent
+                    ).replace("\\", "/")
                 else:
                     rel_to_twigs = "."
 
@@ -367,7 +370,8 @@ def create_assembly(
                         skel_root_path = f"/{assembly_name}/TwigPrototypes/{proto_name}/{twig_asset_name}"
                         skel_root_prim = stage.DefinePrim(skel_root_path, "SkelRoot")
                         skel_root_prim.GetReferences().AddReference(
-                            f"{rel_to_twigs}/{twig_ref_path.name}", f"/{twig_asset_name}"
+                            f"{rel_to_twigs}/{twig_ref_path.name}",
+                            f"/{twig_asset_name}",
                         )
                     else:
                         proto_xform = UsdGeom.Xform.Define(
@@ -379,7 +383,8 @@ def create_assembly(
                         twig_child_path = f"/{assembly_name}/TwigPrototypes/{proto_name}/{twig_asset_name}"
                         twig_child_prim = stage.DefinePrim(twig_child_path, "Xform")
                         twig_child_prim.GetReferences().AddReference(
-                            f"{rel_to_twigs}/{twig_ref_path.name}", f"/{twig_asset_name}"
+                            f"{rel_to_twigs}/{twig_ref_path.name}",
+                            f"/{twig_asset_name}",
                         )
 
                     prototype_paths.append(Sdf.Path(proto_prim.GetPath()))
@@ -545,7 +550,10 @@ def create_assembly(
 
                             # Must match instance creation skip logic exactly
                             if twig_type not in twig_type_to_proto_indices:
-                                if twig_type == "twig_dead" or not all_proto_indices_pool:
+                                if (
+                                    twig_type == "twig_dead"
+                                    or not all_proto_indices_pool
+                                ):
                                     continue
 
                             for placement in placement_list:
@@ -557,9 +565,7 @@ def create_assembly(
                                 else:
                                     # TwigPlacement object
                                     bone_id = getattr(placement, "bone_id", None)
-                                    twig_pos = getattr(
-                                        placement, "position", (0, 0, 0)
-                                    )
+                                    twig_pos = getattr(placement, "position", (0, 0, 0))
 
                                 # Use bone_id as direct index into joint_names
                                 if bone_id is not None and 0 <= bone_id < len(
@@ -652,7 +658,9 @@ def create_assembly(
                         # Nanite Assembly USD specification (Part 1 tutorial):
                         # "a uniform number of joints per instance must be supplied and
                         #  described via the primvars elementSize metadata."
-                        joints_per_instance = len(bind_joints) // num_instances if num_instances else 1
+                        joints_per_instance = (
+                            len(bind_joints) // num_instances if num_instances else 1
+                        )
                         bind_joints_attr.SetMetadata("interpolation", "uniform")
                         bind_joints_attr.SetMetadata("elementSize", joints_per_instance)
 
@@ -666,7 +674,9 @@ def create_assembly(
                         bind_weights_attr.Set(bind_weights)
 
                         bind_weights_attr.SetMetadata("interpolation", "uniform")
-                        bind_weights_attr.SetMetadata("elementSize", joints_per_instance)
+                        bind_weights_attr.SetMetadata(
+                            "elementSize", joints_per_instance
+                        )
 
                     else:
                         pass
@@ -800,7 +810,8 @@ def export_tree_as_nanite_assembly(
         # crash Nanite in Unreal Engine.
         if not getattr(model, "points", None) or not getattr(model, "faces", None):
             logger.warning(
-                "Skipping %s: model has no geometry (0 points/faces)", species_name,
+                "Skipping %s: model has no geometry (0 points/faces)",
+                species_name,
             )
             return False
 
@@ -871,13 +882,17 @@ def export_tree_as_nanite_assembly(
             # Adjust twig count: density > 1.0 adds synthetic placements on
             # non-twig faces; density < 1.0 randomly thins existing placements
             if twig_placements:
-                from ..config import get_config
+                from ...config import get_config
 
                 cfg = get_config()
-                effective_density = twig_density if twig_density is not None else cfg.export_twig_density
+                effective_density = (
+                    twig_density
+                    if twig_density is not None
+                    else cfg.export_twig_density
+                )
                 if effective_density != 1.0:
                     with _track("adjust_twig_density"):
-                        from ..core.twig import densify_twig_placements
+                        from ...core.twig import densify_twig_placements
 
                         twig_placements = densify_twig_placements(
                             model,
@@ -892,7 +907,7 @@ def export_tree_as_nanite_assembly(
             # Twig bone_ids are GLOBAL bone IDs that need to be mapped to NEW joint indices
             if twig_placements and bones_info and not use_static_mesh:
                 with _track("remap_twig_bone_ids"):
-                    from ..core.skeleton import filter_bones_for_mesh
+                    from ...core.skeleton import filter_bones_for_mesh
 
                     # Get bone_id_offset to match tree export
                     if (
@@ -1763,9 +1778,7 @@ def create_combined_twig_usda(
             prim_type = "SkelRoot" if mesh_type == "skeletal" else "Xform"
             for twig_file in files:
                 asset_name = twig_file.stem.replace(suffix, "")
-                child = stage.DefinePrim(
-                    f"/{root_name}/{asset_name}", prim_type
-                )
+                child = stage.DefinePrim(f"/{root_name}/{asset_name}", prim_type)
                 child.GetReferences().AddReference(
                     f"./{twig_file.name}", f"/{asset_name}"
                 )
