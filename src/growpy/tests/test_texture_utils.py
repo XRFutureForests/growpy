@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from growpy.io.texture_utils import (
+from growpy.io.usd.texture_utils import (
     bump_to_normal,
     extract_alpha_from_diffuse,
     is_power_of_2,

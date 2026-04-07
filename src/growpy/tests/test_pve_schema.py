@@ -2,7 +2,7 @@
 
 import pytest
 
-from growpy.io.pve_schema import create_empty_pve_preset, get_pve_schema
+from growpy.io.unreal.pve_schema import create_empty_pve_preset, get_pve_schema
 
 
 class TestGetPveSchema:

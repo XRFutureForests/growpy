@@ -1,6 +1,9 @@
 """Import/Export functionality for GrowPy.
 
-USD export with skeleton support, twig placement, and assembly creation.
+Organized into three sub-packages by output target:
+    io.usd/       Universal USD export (tree mesh, assembly, twig, texture, preview)
+    io.unreal/    Unreal Engine output (import scripts, remote exec, PVE, wind JSON)
+    io.helios/    Helios++ output (OBJ/MTL, mesh simplification, scene XML)
 
 Key Functions:
     build_tree_mesh()       Build USD mesh from Grove model
@@ -14,7 +17,7 @@ Note:
 
 # Tree export (requires bpy and USD)
 try:
-    from .tree_export import (
+    from .usd.tree_export import (
         build_tree_mesh,
         bundle_twigs_for_species,
         get_twig_usd_map_for_species,
@@ -29,7 +32,7 @@ except ImportError:
 
 # Assembly creation and validation (requires USD)
 try:
-    from .assembly_export import create_assembly, validate_assembly
+    from .usd.assembly_export import create_assembly, validate_assembly
 
     ASSEMBLY_AVAILABLE = True
 except ImportError:
@@ -39,7 +42,7 @@ except ImportError:
 
 # OBJ/MTL export for Helios++ (requires USD)
 try:
-    from .obj_export import convert_tree_to_obj, export_forest_obj
+    from .helios.obj_export import convert_tree_to_obj, export_forest_obj
 
     OBJ_EXPORT_AVAILABLE = True
 except ImportError:
@@ -49,7 +52,7 @@ except ImportError:
 
 # Helios++ scene XML generation
 try:
-    from .helios_scene import generate_helios_scene
+    from .helios.helios_scene import generate_helios_scene
 
     HELIOS_SCENE_AVAILABLE = True
 except ImportError:

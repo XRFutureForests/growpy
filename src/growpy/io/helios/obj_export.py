@@ -208,7 +208,7 @@ def _read_tree_components(
     if simplification_ratios:
         bark_ratio = simplification_ratios.get("bark", 1.0)
         if bark_ratio < 1.0 and len(trunk_faces) > 0:
-            from growpy.io.mesh_simplify import simplify_trunk_mesh
+            from growpy.io.helios.mesh_simplify import simplify_trunk_mesh
 
             trunk_verts, trunk_faces, _ = simplify_trunk_mesh(
                 trunk_verts, trunk_faces, None, bark_ratio
@@ -248,7 +248,7 @@ def _read_tree_components(
 
             # Simplify prototypes BEFORE baking — key optimization.
             if simplification_ratios:
-                from growpy.io.mesh_simplify import _extract_and_simplify
+                from growpy.io.helios.mesh_simplify import _extract_and_simplify
 
                 wood_ratio = simplification_ratios.get("wood", 1.0)
                 leaf_ratio = simplification_ratios.get("leaf", 1.0)
@@ -1391,7 +1391,7 @@ def export_forest_obj(
 
     if generate_scene_xml and tree_count > 0:
         with _track("generate_helios_scene"):
-            from growpy.io.helios_scene import generate_helios_scene
+            from growpy.io.helios.helios_scene import generate_helios_scene
 
             scene_path = output_dir / "helios_scene.xml"
             generate_helios_scene(tree_entries=obj_files, output_path=scene_path)

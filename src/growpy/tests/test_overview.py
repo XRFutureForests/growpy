@@ -5,7 +5,7 @@ Does not test functions requiring filesystem, matplotlib, or pandas I/O.
 
 import pytest
 
-from growpy.io.overview import (
+from growpy.io.usd.overview import (
     _snap_to_interval,
     _build_interval_columns,
     _height_label,

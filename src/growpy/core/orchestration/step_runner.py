@@ -164,8 +164,8 @@ def generate_unreal_scripts(output_dir: Path, include_static: bool = False) -> N
     Called once after parallel step 4 workers finish, instead of per-species, to
     avoid race conditions from concurrent script deletion/regeneration.
     """
-    from growpy.io.assembly_export import create_combined_twig_usda
-    from growpy.io.unreal_scripts import (
+    from growpy.io.usd.assembly_export import create_combined_twig_usda
+    from growpy.io.unreal.unreal_scripts import (
         generate_unreal_cleanup_script,
         generate_unreal_import_script,
     )

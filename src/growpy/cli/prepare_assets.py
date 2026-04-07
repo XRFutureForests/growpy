@@ -13,7 +13,7 @@ import pandas as pd
 
 from growpy.config import get_config
 from growpy.config.pve_species_overrides import create_null_placeholder_config
-from growpy.io.texture_utils import (
+from growpy.io.usd.texture_utils import (
     copy_and_resize_texture,
     ensure_power_of_2_textures,
     process_twig_textures,

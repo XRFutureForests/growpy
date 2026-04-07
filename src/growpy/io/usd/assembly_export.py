@@ -40,14 +40,14 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-from ..utils.pxr_init import ensure_pxr_with_unreal_schema
+from ...utils.pxr_init import ensure_pxr_with_unreal_schema
 
 ensure_pxr_with_unreal_schema()
 
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel
 
-from ..config.core import get_config as _get_config
-from ..core.twig import extract_twig_placements_from_model
+from ...config.core import get_config as _get_config
+from ...core.twig import extract_twig_placements_from_model
 
 
 def _usd_ext() -> str:

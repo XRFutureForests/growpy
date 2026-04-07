@@ -54,7 +54,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import bpy
 import the_grove_23_core as gc
 
-from ..utils.pxr_init import ensure_pxr_with_unreal_schema
+from ...utils.pxr_init import ensure_pxr_with_unreal_schema
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +62,9 @@ ensure_pxr_with_unreal_schema()
 
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade, UsdSkel, Vt
 
-from ..config import get_config
-from ..config.quality import get_quality_preset
-from ..core.skeleton import calculate_vertex_weights
+from ...config import get_config
+from ...config.quality import get_quality_preset
+from ...core.skeleton import calculate_vertex_weights
 
 
 def build_tree_mesh(
@@ -1877,7 +1877,7 @@ def bundle_twigs_for_species(
                 dest_texture_dir.mkdir(exist_ok=True)
 
                 # Import texture classification function
-                from growpy.io.twig_export import classify_texture_from_name
+                from growpy.io.usd.twig_export import classify_texture_from_name
 
                 # CRITICAL: Only use base color (diffuse) textures
                 # Normal maps and other texture types are excluded

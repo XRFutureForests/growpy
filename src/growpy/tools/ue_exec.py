@@ -51,7 +51,7 @@ def main():
     )
     logger = logging.getLogger("growpy.ue_exec")
 
-    from growpy.io.ue_remote import discover_nodes, run_file
+    from growpy.io.unreal.ue_remote import discover_nodes, run_file
 
     if args.list_nodes:
         logger.info("Searching for UE editors...")

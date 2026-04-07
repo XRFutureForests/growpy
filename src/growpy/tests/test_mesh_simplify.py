@@ -7,7 +7,7 @@ since _decimate_with_bpy requires Blender).
 import numpy as np
 import pytest
 
-from growpy.io.mesh_simplify import (
+from growpy.io.helios.mesh_simplify import (
     classify_material,
     _extract_and_simplify,
     _simplify_proto_by_material,

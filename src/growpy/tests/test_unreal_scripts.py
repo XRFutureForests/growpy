@@ -2,7 +2,7 @@
 
 import pytest
 
-from growpy.io.unreal_scripts import _build_import_block, _build_consolidation_script
+from growpy.io.unreal.unreal_scripts import _build_import_block, _build_consolidation_script
 
 
 class TestBuildImportBlock:

@@ -193,7 +193,7 @@ def process_twig_directory(
         return {}
 
     # Import twig_export module directly
-    from growpy.io.twig_export import process_twig_file
+    from growpy.io.usd.twig_export import process_twig_file
 
     results: Dict[str, List[Path]] = {}
 

@@ -38,12 +38,12 @@ from growpy.config.preset_overrides import (
 )
 from growpy.config.quality import get_quality_preset
 from growpy.core.forest import simulate_forest_growth_with_snapshots
-from growpy.io.preview import generate_preview_image as _generate_preview_image
-from growpy.io.preview import (
+from growpy.io.usd.preview import generate_preview_image as _generate_preview_image
+from growpy.io.usd.preview import (
     generate_export_control_image as _generate_export_control_image,
 )
-from growpy.io.preview import generate_icon_image as _generate_icon_image
-from growpy.io.unreal_scripts import (
+from growpy.io.usd.preview import generate_icon_image as _generate_icon_image
+from growpy.io.unreal.unreal_scripts import (
     generate_unreal_cleanup_script,
     generate_unreal_import_script,
 )
@@ -93,8 +93,8 @@ def _derive_static_from_skeletal(
     then creates a static assembly referencing the stripped stems.
     Returns the static assembly path string, or None on failure.
     """
-    from growpy.io.assembly_export import create_assembly
-    from growpy.io.tree_export import strip_skeleton_from_usd
+    from growpy.io.usd.assembly_export import create_assembly
+    from growpy.io.usd.tree_export import strip_skeleton_from_usd
 
     ext = get_config().usd_ext
     suffix = f"_{stems_suffix}" if stems_suffix else ""
@@ -164,8 +164,8 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         predict_dbh_from_height_model,
     )
     from growpy.core.tree import calculate_dbh_at_height, calculate_tree_height
-    from growpy.io.assembly_export import export_tree_as_nanite_assembly
-    from growpy.io.tree_export import get_twig_usd_map_for_species
+    from growpy.io.usd.assembly_export import export_tree_as_nanite_assembly
+    from growpy.io.usd.tree_export import get_twig_usd_map_for_species
     from growpy.utils.profiling import ProfileTimer
 
     (fids, grove, species, output_dir, quality_params, mesh_type, verbose, timer, twig_densities, csv_dbh_map, individual_type_map) = args
@@ -433,7 +433,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         stems_base = f"{species_clean}_{dims_suffix}"
                         # DynamicWind JSON for Unreal import
                         if use_skeletal:
-                            from growpy.io.wind_json import generate_wind_json
+                            from growpy.io.unreal.wind_json import generate_wind_json
 
                             skeletal_usd_path = (
                                 tree_dir / f"{stems_base}_stems_skeletal{config.usd_ext}"
@@ -461,7 +461,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         skip_pve = quality_params.get("skip_pve_json", False)
                         profile_pve = quality_params.get("profile_pve", False)
                         if use_skeletal and not skip_pve:
-                            from growpy.io.pve_grove_mapper import generate_pve_from_grove
+                            from growpy.io.unreal.pve_grove_mapper import generate_pve_from_grove
 
                             pve_json_path = tree_dir / f"{file_prefix}_stems_unreal_pve.json"
                             pve_config_dir = Path("data/assets/pve_configs")
@@ -729,8 +729,8 @@ def generate_forest_stages(
         load_target_dbh_from_preset,
         predict_dbh_from_height_model,
     )
-    from growpy.io.assembly_export import export_tree_as_nanite_assembly
-    from growpy.io.tree_export import get_twig_usd_map_for_species
+    from growpy.io.usd.assembly_export import export_tree_as_nanite_assembly
+    from growpy.io.usd.tree_export import get_twig_usd_map_for_species
     from growpy.utils.profiling import ProfileTimer
     from growpy.utils.log import is_verbose
 
@@ -738,7 +738,7 @@ def generate_forest_stages(
         timer = ProfileTimer(enabled=False)
 
     # Clear twig file copy cache at start of export session
-    from growpy.io.assembly_export import clear_twig_copy_cache
+    from growpy.io.usd.assembly_export import clear_twig_copy_cache
 
     clear_twig_copy_cache()
 
@@ -1114,7 +1114,7 @@ def generate_forest_stages(
 
                             # DynamicWind JSON for Unreal import
                             if use_skeletal:
-                                from growpy.io.wind_json import generate_wind_json
+                                from growpy.io.unreal.wind_json import generate_wind_json
 
                                 wind_json_path = (
                                     tree_dir / f"{file_prefix}_stems_unreal_wind.json"
@@ -1139,7 +1139,7 @@ def generate_forest_stages(
                             # PVE preset JSON (optional)
                             skip_pve = quality_params.get("skip_pve_json", False)
                             if use_skeletal and not skip_pve:
-                                from growpy.io.pve_grove_mapper import generate_pve_from_grove
+                                from growpy.io.unreal.pve_grove_mapper import generate_pve_from_grove
 
                                 pve_json_path = tree_dir / f"{file_prefix}_stems_unreal_pve.json"
                                 pve_config_dir = Path("data/assets/pve_configs")
@@ -1250,7 +1250,7 @@ def generate_forest_exports(
         timer = ProfileTimer(enabled=False)
 
     # Clear twig file copy cache at start of export session
-    from growpy.io.assembly_export import clear_twig_copy_cache
+    from growpy.io.usd.assembly_export import clear_twig_copy_cache
 
     clear_twig_copy_cache()
 
@@ -1781,7 +1781,7 @@ Unreal Engine Integration:
         # OBJ/MTL export for Helios++ (post-processes USDA output)
         do_export_obj = config.helios_export_obj or config.helios_helios_scene
         if do_export_obj:
-            from growpy.io.obj_export import export_forest_obj
+            from growpy.io.helios.obj_export import export_forest_obj
 
             with timer.track("obj_export"):
                 simp_ratios = None
@@ -1807,7 +1807,7 @@ Unreal Engine Integration:
         # Generate Unreal scripts if requested
         if config.unreal_import_to_unreal and not getattr(args, 'no_unreal_scripts', False):
             # Create combined twig wrappers for efficient UE import
-            from growpy.io.assembly_export import create_combined_twig_usda
+            from growpy.io.usd.assembly_export import create_combined_twig_usda
 
             instances_dir = output_dir / "Instances"
             if instances_dir.exists():

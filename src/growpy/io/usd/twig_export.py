@@ -1015,7 +1015,7 @@ def copy_opaque_textures_for_skeletal(
 
         # Convert bump maps to normal maps (don't copy bump itself)
         if tex_type == "bump":
-            from growpy.io.texture_utils import bump_to_normal
+            from growpy.io.usd.texture_utils import bump_to_normal
 
             # Generate normal map name
             standardized_tex_name = f"{base_name}_normal{tex_ext}"
@@ -2728,7 +2728,7 @@ def setup_materials_with_textures(
 
         # Convert bump maps to normal maps if needed
         if "bump" in texture_map and "normal" not in texture_map:
-            from growpy.io.texture_utils import bump_to_normal
+            from growpy.io.usd.texture_utils import bump_to_normal
 
             # Generate normal map from bump
             bump_path = texture_map["bump"]
@@ -2890,7 +2890,7 @@ def setup_materials_with_textures(
                 elif tex_type == "bump":
                     # Bump maps should have been converted to normal maps already
                     # But if still present, convert on-the-fly
-                    from growpy.io.texture_utils import bump_to_normal
+                    from growpy.io.usd.texture_utils import bump_to_normal
 
                     normal_path = (
                         textures_dir / f"{tex_path.stem}_normal{tex_path.suffix}"
@@ -3239,7 +3239,7 @@ def process_twig_file(
             if densify:
                 # Validate textures before geometry processing
                 # Textures should have been standardized during asset preparation
-                from growpy.io.texture_utils import validate_twig_textures
+                from growpy.io.usd.texture_utils import validate_twig_textures
 
                 is_valid, validation_msg = validate_twig_textures(blend_dir)
                 if not is_valid:

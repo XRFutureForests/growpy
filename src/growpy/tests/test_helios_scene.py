@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from growpy.io.helios_scene import generate_helios_scene
+from growpy.io.helios.helios_scene import generate_helios_scene
 
 
 class TestGenerateHeliosScene:

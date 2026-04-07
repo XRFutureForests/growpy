@@ -2,7 +2,7 @@
 
 import pytest
 
-from growpy.io.wind_json import (
+from growpy.io.unreal.wind_json import (
     _classify_by_hierarchy_depth,
     _classify_joint,
     extract_joint_names_from_bones_info,
