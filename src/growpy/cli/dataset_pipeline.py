@@ -32,16 +32,16 @@ import os
 import sys
 from pathlib import Path
 
-from growpy.core.orchestration.dataset_csv_planner import (
+from growpy.cli.dataset_csv_planner import (
     generate_dataset_csvs,
     synchronize_dataset_csvs,
 )
-from growpy.core.orchestration.dataset_job_planner import (
+from growpy.cli.dataset_job_planner import (
     DATASET_DIR,
     list_all_species,
     resolve_species,
 )
-from growpy.core.orchestration.step_runner import (
+from growpy.cli.step_runner import (
     check_environment,
     generate_unreal_scripts,
     run_parallel_step4,

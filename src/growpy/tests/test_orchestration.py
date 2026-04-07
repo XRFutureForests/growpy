@@ -7,14 +7,14 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from growpy.core.orchestration.dataset_csv_planner import (
+from growpy.cli.dataset_csv_planner import (
     DENSITY_VARIANTS,
     OPEN_TREE_X,
     _hex_neighbors,
     generate_dataset_csvs,
     generate_merged_csv,
 )
-from growpy.core.orchestration.dataset_job_planner import (
+from growpy.cli.dataset_job_planner import (
     DATASET_DIR,
     PILOT_SPECIES,
     display_names_from_stems,
@@ -22,7 +22,7 @@ from growpy.core.orchestration.dataset_job_planner import (
     list_all_species,
     resolve_species,
 )
-from growpy.core.orchestration.step_runner import (
+from growpy.cli.step_runner import (
     STEP_SCRIPTS,
     _build_step4_command,
     run_parallel_step4,
