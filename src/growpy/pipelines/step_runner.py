@@ -16,7 +16,7 @@ import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
-from growpy.cli.dataset_job_planner import find_species_csv
+from growpy.pipelines.dataset_job_planner import find_species_csv
 
 logger = logging.getLogger(__name__)
 

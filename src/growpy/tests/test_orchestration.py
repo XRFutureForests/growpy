@@ -7,14 +7,14 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from growpy.cli.dataset_csv_planner import (
+from growpy.pipelines.dataset_csv_planner import (
     DENSITY_VARIANTS,
     OPEN_TREE_X,
     _triangle_neighbors,
     generate_dataset_csvs,
     generate_merged_csv,
 )
-from growpy.cli.dataset_job_planner import (
+from growpy.pipelines.dataset_job_planner import (
     DATASET_DIR,
     PILOT_SPECIES,
     display_names_from_stems,
@@ -22,7 +22,7 @@ from growpy.cli.dataset_job_planner import (
     list_all_species,
     resolve_species,
 )
-from growpy.cli.step_runner import (
+from growpy.pipelines.step_runner import (
     STEP_SCRIPTS,
     _build_step4_command,
     run_parallel_step4,
@@ -115,7 +115,7 @@ class TestGenerateDatasetCsvs:
             }
         )
         with patch(
-            "growpy.cli.dataset_csv_planner._get_dataset_species",
+            "growpy.pipelines.dataset_csv_planner._get_dataset_species",
             return_value=mock_df,
         ):
             paths = generate_dataset_csvs(tmp_path, "full")
@@ -134,7 +134,7 @@ class TestGenerateDatasetCsvs:
             }
         )
         with patch(
-            "growpy.cli.dataset_csv_planner._get_dataset_species",
+            "growpy.pipelines.dataset_csv_planner._get_dataset_species",
             return_value=mock_df,
         ):
             generate_dataset_csvs(tmp_path, "full")
@@ -151,7 +151,7 @@ class TestGenerateDatasetCsvs:
             }
         )
         with patch(
-            "growpy.cli.dataset_csv_planner._get_dataset_species",
+            "growpy.pipelines.dataset_csv_planner._get_dataset_species",
             return_value=mock_df,
         ):
             generate_dataset_csvs(tmp_path, "bare")
@@ -262,7 +262,7 @@ class TestBuildStep4Command:
 
 class TestRunStep123:
     def test_dry_run_returns_true_and_does_not_call_subprocess(self):
-        with patch("growpy.cli.step_runner.subprocess.run") as mock_run:
+        with patch("growpy.pipelines.step_runner.subprocess.run") as mock_run:
             result = run_step123(3, Path("all_species.csv"), dry_run=True)
         assert result is True
         mock_run.assert_not_called()
@@ -270,14 +270,14 @@ class TestRunStep123:
     def test_returns_true_on_success(self):
         mock_result = MagicMock()
         mock_result.returncode = 0
-        with patch("growpy.cli.step_runner.subprocess.run", return_value=mock_result):
+        with patch("growpy.pipelines.step_runner.subprocess.run", return_value=mock_result):
             result = run_step123(1, Path("all_species.csv"))
         assert result is True
 
     def test_returns_false_on_failure(self):
         mock_result = MagicMock()
         mock_result.returncode = 1
-        with patch("growpy.cli.step_runner.subprocess.run", return_value=mock_result):
+        with patch("growpy.pipelines.step_runner.subprocess.run", return_value=mock_result):
             result = run_step123(2, Path("all_species.csv"))
         assert result is False
 
@@ -286,7 +286,7 @@ class TestRunSpeciesStep4:
     def test_dry_run_returns_true_without_subprocess(self, tmp_path):
         csv = tmp_path / "european_beech_merged.csv"
         csv.write_text("fid\n1\n")
-        with patch("growpy.cli.step_runner.subprocess.run") as mock_run:
+        with patch("growpy.pipelines.step_runner.subprocess.run") as mock_run:
             result = run_species_step4("European Beech", tmp_path, dry_run=True)
         assert result is True
         mock_run.assert_not_called()
@@ -300,7 +300,7 @@ class TestRunSpeciesStep4:
         csv.write_text("fid\n1\n")
         mock_result = MagicMock()
         mock_result.returncode = 0
-        with patch("growpy.cli.step_runner.subprocess.run", return_value=mock_result):
+        with patch("growpy.pipelines.step_runner.subprocess.run", return_value=mock_result):
             result = run_species_step4("European Beech", tmp_path)
         assert result is True
 
@@ -309,6 +309,6 @@ class TestRunSpeciesStep4:
         csv.write_text("fid\n1\n")
         mock_result = MagicMock()
         mock_result.returncode = 1
-        with patch("growpy.cli.step_runner.subprocess.run", return_value=mock_result):
+        with patch("growpy.pipelines.step_runner.subprocess.run", return_value=mock_result):
             result = run_species_step4("European Beech", tmp_path)
         assert result is False

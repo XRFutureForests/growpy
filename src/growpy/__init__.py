@@ -57,9 +57,6 @@ __all__ = [
     "create_grove",
     # Tree model building (lazy)
     "calculate_growth_cycles_from_height",
-    # Export availability flags (lazy)
-    "TREE_EXPORT_AVAILABLE",
-    "ASSEMBLY_AVAILABLE",
 ]
 
 
@@ -77,11 +74,6 @@ def __getattr__(name):
             create_grove,
             simulate_forest_growth,
         )
-
-        return locals()[name]
-
-    if name in ("TREE_EXPORT_AVAILABLE", "ASSEMBLY_AVAILABLE"):
-        from .io import ASSEMBLY_AVAILABLE, TREE_EXPORT_AVAILABLE
 
         return locals()[name]
 
