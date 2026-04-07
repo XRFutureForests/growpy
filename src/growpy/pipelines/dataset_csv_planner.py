@@ -28,15 +28,15 @@ DENSITY_VARIANTS = {
 # Southern German forest species selection (5 conifer + 5 broadleaf).
 DATASET_SPECIES = [
     "Norway spruce",
-    #"European beech",
-    #"Silver fir",
-    #"Scots pine",
+    # "European beech",
+    # "Silver fir",
+    # "Scots pine",
     "European oak",
-    #"Douglas fir",
-    #"Sycamore maple",
-    #"Common ash",
-    #"European larch",
-    #"Silver birch",
+    # "Douglas fir",
+    # "Sycamore maple",
+    # "Common ash",
+    # "European larch",
+    # "Silver birch",
 ]
 
 # X offset for open-grown tree to avoid light competition with cluster
@@ -48,9 +48,13 @@ def _get_dataset_species(config=None) -> pd.DataFrame:
     if config is None:
         config = get_config()
 
-    csv_path = Path(config.grove_dir).parent / "growpy" / "config" / "tree_asset_lookup.csv"
+    csv_path = (
+        Path(config.grove_dir).parent / "growpy" / "config" / "tree_asset_lookup.csv"
+    )
     if not csv_path.exists():
-        csv_path = Path(__file__).parent.parent.parent / "config" / "tree_asset_lookup.csv"
+        csv_path = (
+            Path(__file__).parent.parent.parent / "config" / "tree_asset_lookup.csv"
+        )
 
     df = pd.read_csv(csv_path)
     dataset = df[df["Max Height"].notna() & df["Competition Spacing"].notna()].copy()
@@ -60,22 +64,25 @@ def _get_dataset_species(config=None) -> pd.DataFrame:
     return dataset
 
 
-def _triangle_neighbors(spacing: float) -> list:
-    """Compute 3 equilateral triangle neighbor positions at given spacing.
+def _polygon_neighbors(spacing: float, n: int = 3) -> list:
+    """Compute n regular-polygon neighbor positions at given spacing.
 
-    Places neighbors at 120-degree intervals around the center tree (origin),
-    each at the given spacing distance. The resulting equilateral triangle
-    has side length spacing * sqrt(3).
+    Places n neighbors at equal angular intervals around the center tree
+    (origin), each at the given spacing distance.
+
+    Args:
+        spacing: Distance from center to each neighbor.
+        n: Number of neighbors (3, 4, 5, or 6).
 
     Returns list of (fid, x, y) tuples. Center tree is at origin (not included).
     """
-    s = spacing
-    h = s * math.sqrt(3) / 2  # s * 0.866
-    return [
-        (101, round(s, 3), 0.0),
-        (102, round(-s / 2, 3), round(h, 3)),
-        (103, round(-s / 2, 3), round(-h, 3)),
-    ]
+    neighbors = []
+    for i in range(n):
+        angle = 2 * math.pi * i / n
+        x = round(spacing * math.cos(angle), 3)
+        y = round(spacing * math.sin(angle), 3)
+        neighbors.append((101 + i, x, y))
+    return neighbors
 
 
 def generate_merged_csv(
@@ -83,13 +90,14 @@ def generate_merged_csv(
     max_height: int,
     spacing: int,
     twig_density: float = 1.0,
+    competition_neighbors: int = 3,
 ) -> pd.DataFrame:
     """Generate merged DataFrame: open tree + competition cluster in one simulation.
 
     The open-grown tree (fid=1) is placed at (OPEN_TREE_X, 0, 0) to avoid
     light competition. The competition center tree is fid=2 at origin.
-    Three equilateral-triangle neighbors (fid=101-103) surround the center tree,
-    spaced according to the species crown width.
+    Neighbors (fid=101+) are placed in a regular polygon around the center
+    tree, spaced according to the species crown width.
     """
     rows = [
         {
@@ -113,7 +121,7 @@ def generate_merged_csv(
             "individual_type": "competition",
         },
     ]
-    for fid, x, y in _triangle_neighbors(spacing):
+    for fid, x, y in _polygon_neighbors(spacing, competition_neighbors):
         rows.append(
             {
                 "fid": fid,
@@ -143,8 +151,10 @@ def generate_dataset_csvs(output_dir: Path, density: str = "full") -> list:
         List of generated CSV file paths.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    dataset = _get_dataset_species()
+    config = get_config()
+    dataset = _get_dataset_species(config)
     twig_density = DENSITY_VARIANTS.get(density, 1.0)
+    competition_neighbors = config.dataset_competition_neighbors
 
     generated = []
     all_species_rows = []
@@ -155,7 +165,9 @@ def generate_dataset_csvs(output_dir: Path, density: str = "full") -> list:
         max_height = row["Max Height"]
         spacing = row["Competition Spacing"]
 
-        merged_df = generate_merged_csv(species, max_height, spacing, twig_density)
+        merged_df = generate_merged_csv(
+            species, max_height, spacing, twig_density, competition_neighbors
+        )
         merged_path = output_dir / f"{std_name}_merged.csv"
         merged_df.to_csv(merged_path, index=False)
         generated.append(merged_path)
@@ -222,17 +234,13 @@ def synchronize_dataset_csvs(dataset_dir: Path) -> None:
 
     # Filter all_species.csv to common species only
     if only_in_all:
-        keep = all_df["species"].apply(
-            lambda s: standardize_species_name(s) in common
-        )
+        keep = all_df["species"].apply(lambda s: standardize_species_name(s) in common)
         removed = all_df[~keep]["species"].tolist()
         all_df = all_df[keep].reset_index(drop=True)
         all_df["fid"] = range(1, len(all_df) + 1)
         all_df.to_csv(all_species_path, index=False)
         for name in removed:
-            logger.warning(
-                "Removed from all_species.csv (no merged CSV): %s", name
-            )
+            logger.warning("Removed from all_species.csv (no merged CSV): %s", name)
 
     logger.info(
         "Dataset synchronized: %d species in both all_species.csv and merged CSVs.",

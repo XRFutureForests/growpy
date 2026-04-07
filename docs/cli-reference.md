@@ -286,6 +286,12 @@ python src/growpy/cli/dataset_pipeline.py --all
 # Full pipeline (steps 1-4) for all species
 python src/growpy/cli/dataset_pipeline.py --all --steps all
 
+# Full pipeline with yield table ingestion
+python src/growpy/cli/dataset_pipeline.py --all --steps all --ingest-yield-tables
+
+# Full pipeline with clean yield table store (wipe and re-ingest)
+python src/growpy/cli/dataset_pipeline.py --all --steps all --ingest-yield-tables --clean-store
+
 # Steps 3 and 4 only for pilot species
 python src/growpy/cli/dataset_pipeline.py --pilot --steps 3,4
 
@@ -312,6 +318,8 @@ python src/growpy/cli/dataset_pipeline.py --list
 | `--dry-run` | Print commands without executing |
 | `--max-height FLOAT` | Cap tree heights for step 4 (for faster testing) |
 | `--workers INT` | Parallel workers for step 4 (default: min(4, cpu_count)) |
+| `--ingest-yield-tables` | Ingest yield tables from external providers before step 3 calibration |
+| `--clean-store` | Clear existing yield table store before re-ingestion (requires `--ingest-yield-tables`) |
 
 ## Diagnostic Tools
 

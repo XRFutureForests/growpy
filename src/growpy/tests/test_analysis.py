@@ -12,6 +12,7 @@ from growpy.utils.analysis import (
     PiecewiseLinearModel,
     SimpleLinearModel,
     _chapman_richards,
+    _chapman_richards_with_baseline,
     fit_chapman_richards,
 )
 

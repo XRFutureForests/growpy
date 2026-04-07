@@ -8,33 +8,33 @@ import pytest
 from growpy.pipelines.dataset_csv_planner import (
     DENSITY_VARIANTS,
     OPEN_TREE_X,
-    _triangle_neighbors,
+    _polygon_neighbors,
     generate_merged_csv,
     synchronize_dataset_csvs,
 )
 
 
-class TestTriangleNeighbors:
-    """Tests for equilateral triangle neighbor placement."""
+class TestPolygonNeighbors:
+    """Tests for polygon neighbor placement."""
 
     def test_returns_three_neighbors(self):
-        result = _triangle_neighbors(10.0)
+        result = _polygon_neighbors(10.0)
         assert len(result) == 3
 
     def test_fids_are_101_102_103(self):
-        result = _triangle_neighbors(10.0)
+        result = _polygon_neighbors(10.0)
         fids = [r[0] for r in result]
         assert fids == [101, 102, 103]
 
     def test_distance_from_origin(self):
         spacing = 12.0
-        result = _triangle_neighbors(spacing)
+        result = _polygon_neighbors(spacing)
         for _, x, y in result:
             dist = math.sqrt(x**2 + y**2)
             assert dist == pytest.approx(spacing, abs=0.01)
 
     def test_equilateral_triangle(self):
-        result = _triangle_neighbors(8.0)
+        result = _polygon_neighbors(8.0)
         coords = [(x, y) for _, x, y in result]
         # Check pairwise distances are equal
         dists = []
@@ -47,10 +47,18 @@ class TestTriangleNeighbors:
         assert dists[1] == pytest.approx(dists[2], rel=1e-4)
 
     def test_zero_spacing(self):
-        result = _triangle_neighbors(0.0)
+        result = _polygon_neighbors(0.0)
         for _, x, y in result:
             assert x == 0.0
             assert y == 0.0
+
+    def test_four_neighbors(self):
+        result = _polygon_neighbors(10.0, n=4)
+        assert len(result) == 4
+
+    def test_six_neighbors(self):
+        result = _polygon_neighbors(10.0, n=6)
+        assert len(result) == 6
 
 
 class TestGenerateMergedCsv:

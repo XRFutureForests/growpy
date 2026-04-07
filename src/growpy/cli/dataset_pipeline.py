@@ -16,7 +16,7 @@ Usage:
     python src/growpy/cli/dataset_pipeline.py --pilot
     python src/growpy/cli/dataset_pipeline.py --all
     python src/growpy/cli/dataset_pipeline.py --species "European Beech"
-    python src/growpy/cli/dataset_pipeline.py --all --steps all --ingest-yield-tables
+    python src/growpy/cli/dataset_pipeline.py --all --steps all --ingest-yield-tables --clean-store
     python src/growpy/cli/dataset_pipeline.py --pilot --dry-run
 
     # Generate CSVs then run only step 4 for pilot species:

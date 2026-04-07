@@ -87,7 +87,9 @@ class GrowPyConfig:
 
     # [twigs]
     twigs_path: Path = field(default_factory=lambda: Path("data/assets/twigs"))
-    custom_twigs_dir: Path = field(default_factory=lambda: Path("data/input/custom_twigs"))
+    custom_twigs_dir: Path = field(
+        default_factory=lambda: Path("data/input/custom_twigs")
+    )
     twigs_densify: bool = True
     twigs_alpha_trim: float = 0.75
     twigs_smooth_boundary: bool = True
@@ -169,6 +171,9 @@ class GrowPyConfig:
     yield_sources_preferred_region: str = ""
     yield_sources_preferred_site_index: Optional[float] = None
 
+    # [dataset]
+    dataset_competition_neighbors: int = 3
+
     def get_competition_group(self, species_name: str) -> Dict[str, Any]:
         """Look up the competition group config for a species.
 
@@ -182,6 +187,7 @@ class GrowPyConfig:
 
         try:
             from .paths import _find_species_row
+
             row = _find_species_row(species_name, use_gbif=False)
             csv_group = str(row.get("Competition Group", "")).strip()
             if csv_group:
@@ -194,7 +200,9 @@ class GrowPyConfig:
             {"planting_distance": 3.0, "thinning": []},
         )
 
-    def get_thinning_target(self, species_name: str, height_m: float) -> Optional[float]:
+    def get_thinning_target(
+        self, species_name: str, height_m: float
+    ) -> Optional[float]:
         """Get the thinning target distance for a species at a given height.
 
         Returns the target distance in meters, or None if no thinning
@@ -300,7 +308,9 @@ class GrowPyConfig:
         if "usd_format" in export:
             fmt = export["usd_format"].lower()
             if fmt not in ("usda", "usdc"):
-                raise ValueError(f"export.usd_format must be 'usda' or 'usdc', got '{fmt}'")
+                raise ValueError(
+                    f"export.usd_format must be 'usda' or 'usdc', got '{fmt}'"
+                )
             kwargs["export_usd_format"] = fmt
         if "skeletal" in export:
             kwargs["export_skeletal"] = export["skeletal"]
@@ -357,7 +367,9 @@ class GrowPyConfig:
                 "leaf": simp.get("leaf", 1.0),
                 "fruit": simp.get("fruit", 1.0),
             }
-            kwargs["helios_simplification_leaf_per_species"] = simp.get("leaf_per_species", {})
+            kwargs["helios_simplification_leaf_per_species"] = simp.get(
+                "leaf_per_species", {}
+            )
 
         # [calibration]
         cal = data.get("calibration", {})
@@ -387,6 +399,16 @@ class GrowPyConfig:
         if "preferred_site_index" in ys:
             val = float(ys["preferred_site_index"])
             kwargs["yield_sources_preferred_site_index"] = val if val > 0 else None
+
+        # [dataset]
+        dataset = data.get("dataset", {})
+        if "competition_neighbors" in dataset:
+            n = int(dataset["competition_neighbors"])
+            if n not in (3, 4, 5, 6):
+                raise ValueError(
+                    f"dataset.competition_neighbors must be 3, 4, 5, or 6, got {n}"
+                )
+            kwargs["dataset_competition_neighbors"] = n
 
         # [competition]
         comp = data.get("competition", {})

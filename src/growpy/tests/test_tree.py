@@ -1,12 +1,16 @@
 """Tests for growpy.core.tree module."""
 
+import json
 from types import SimpleNamespace
 
 import pytest
 
 from growpy.core.tree import (
+    _load_growth_model,
     calculate_dbh_at_height,
     calculate_tree_height,
+    extract_grove_attributes,
+    extract_tree_measurements,
     find_max_height_in_branch,
 )
 
@@ -145,3 +149,106 @@ class TestCalculateDbhAtHeight:
         tree = _make_branch([_make_node(5.0, radius=0.1)])
         dbh = calculate_dbh_at_height(tree, target_height=1.3)
         assert dbh == pytest.approx(0.2)
+
+
+class TestExtractTreeMeasurements:
+    """Tests for extract_tree_measurements."""
+
+    def test_single_tree(self):
+        tree = _make_branch([
+            _make_node(0.0, radius=0.2),
+            _make_node(1.3, radius=0.1),
+            _make_node(5.0, radius=0.02),
+        ])
+        grove = SimpleNamespace(trees=[tree])
+        result = extract_tree_measurements(grove)
+        assert len(result) == 1
+        height, dbh = result[0]
+        assert height == pytest.approx(5.0)
+        assert dbh == pytest.approx(0.2)  # radius * 2 at 1.3m
+
+    def test_multiple_trees(self):
+        tree1 = _make_branch([_make_node(0.0, radius=0.2), _make_node(3.0, radius=0.05)])
+        tree2 = _make_branch([_make_node(0.0, radius=0.3), _make_node(8.0, radius=0.01)])
+        grove = SimpleNamespace(trees=[tree1, tree2])
+        result = extract_tree_measurements(grove)
+        assert len(result) == 2
+        assert result[0][0] == pytest.approx(3.0)
+        assert result[1][0] == pytest.approx(8.0)
+
+    def test_empty_grove(self):
+        grove = SimpleNamespace(trees=[])
+        assert extract_tree_measurements(grove) == []
+
+    def test_no_trees_attribute(self):
+        grove = SimpleNamespace(trees=None)
+        assert extract_tree_measurements(grove) == []
+
+
+class TestExtractGroveAttributes:
+    """Tests for extract_grove_attributes."""
+
+    def test_with_all_attributes(self):
+        grove = SimpleNamespace(
+            total_mass=100.0,
+            number_of_branches=50,
+            height=15.0,
+            age=10,
+            roots=object(),
+        )
+        result = extract_grove_attributes(grove)
+        assert result["total_mass"] == 100.0
+        assert result["number_of_branches"] == 50
+        assert result["height"] == 15.0
+        assert result["age"] == 10
+        assert result["has_roots"] is True
+
+    def test_missing_attributes(self):
+        grove = SimpleNamespace()
+        result = extract_grove_attributes(grove)
+        assert result["total_mass"] is None
+        assert result["has_roots"] is False
+
+    def test_no_roots(self):
+        grove = SimpleNamespace(roots=None, total_mass=50.0)
+        result = extract_grove_attributes(grove)
+        assert result["has_roots"] is False
+        assert result["total_mass"] == 50.0
+
+
+class TestLoadGrowthModel:
+    """Tests for _load_growth_model with temp files."""
+
+    def test_load_chapman_richards(self, tmp_path):
+        params = {
+            "model_type": "chapman_richards",
+            "A": 30.0,
+            "k": 0.05,
+            "p": 1.5,
+            "r_squared": 0.99,
+        }
+        (tmp_path / "growth_model_params.json").write_text(json.dumps(params))
+        model = _load_growth_model(tmp_path)
+        prediction = model.predict([[15.0]])[0]
+        assert prediction > 0
+
+    def test_load_piecewise_linear(self, tmp_path):
+        params = {
+            "model_type": "piecewise_linear",
+            "heights": [0.0, 5.0, 10.0, 20.0],
+            "cycles": [0.0, 5.0, 15.0, 30.0],
+        }
+        (tmp_path / "growth_model_params.json").write_text(json.dumps(params))
+        model = _load_growth_model(tmp_path)
+        prediction = model.predict([[15.0]])[0]
+        assert prediction > 0
+
+    def test_no_model_file_raises(self, tmp_path):
+        with pytest.raises(FileNotFoundError, match="No growth model found"):
+            _load_growth_model(tmp_path)
+
+    def test_unknown_model_type_falls_back_to_pkl(self, tmp_path):
+        params = {"model_type": "unknown_type"}
+        (tmp_path / "growth_model_params.json").write_text(json.dumps(params))
+        with pytest.raises(FileNotFoundError, match="No growth model found"):
+            _load_growth_model(tmp_path)

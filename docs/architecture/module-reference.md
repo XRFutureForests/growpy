@@ -23,7 +23,8 @@ production across one or more species. Spawns every step as a subprocess so
 direct invocation).
 
 **Key flags:** `--all`, `--species`, `--pilot`, `--steps {1,2,3,4,all}`,
-`--generate-csvs`, `--ingest-yield-tables`, `--dry-run`, `--parallel N`.
+`--generate-csvs`, `--ingest-yield-tables`, `--clean-store`, `--dry-run`,
+`--workers N`.
 
 **Calls:** `dataset_csv_planner.generate_dataset_csvs`,
 `dataset_job_planner.resolve_species`, `step_runner.run_step123`,

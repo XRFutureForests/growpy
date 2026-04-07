@@ -1,20 +1,15 @@
-"""Tests for growpy.core.forest pure-logic functions.
-
-Only covers _split_bones_by_tree which is pure logic. Other forest
-functions require The Grove API and are not unit-tested.
-
-Uses try/except import to gracefully skip if Grove is unavailable.
-"""
+"""Tests for growpy.core.forest pure-logic functions."""
 
 import pytest
 
 try:
-    from growpy.core.forest import _split_bones_by_tree
+    from growpy.core.forest import _compute_grove_offsets, _split_bones_by_tree
 
     _IMPORT_OK = True
 except (ImportError, OSError):
     _IMPORT_OK = False
     _split_bones_by_tree = None
+    _compute_grove_offsets = None
 
 pytestmark = pytest.mark.skipif(
     not _IMPORT_OK,
@@ -71,3 +66,45 @@ class TestSplitBonesByTree:
         result = _split_bones_by_tree(bones, 3)
         assert len(result) >= 1
         assert len(result[0]) == 2
+
+
+class TestComputeGroveOffsets:
+    """Tests for _compute_grove_offsets."""
+
+    def _grove_entry(self, species_name, tree_count):
+        """Create a minimal forest entry tuple: (grove, species_name, tree_count, fids)."""
+        return (None, species_name, tree_count, [])
+
+    def test_single_grove(self):
+        forest = [self._grove_entry("spruce", 5)]
+        offsets = _compute_grove_offsets(forest)
+        assert offsets == [0]
+
+    def test_different_species(self):
+        forest = [
+            self._grove_entry("spruce", 3),
+            self._grove_entry("beech", 4),
+        ]
+        offsets = _compute_grove_offsets(forest)
+        assert offsets == [0, 0]
+
+    def test_same_species_multiple_groves(self):
+        forest = [
+            self._grove_entry("spruce", 3),
+            self._grove_entry("spruce", 4),
+            self._grove_entry("spruce", 2),
+        ]
+        offsets = _compute_grove_offsets(forest)
+        assert offsets == [0, 3, 7]
+
+    def test_mixed_species(self):
+        forest = [
+            self._grove_entry("spruce", 3),
+            self._grove_entry("beech", 2),
+            self._grove_entry("spruce", 4),
+        ]
+        offsets = _compute_grove_offsets(forest)
+        assert offsets == [0, 0, 3]
+
+    def test_empty_forest(self):
+        assert _compute_grove_offsets([]) == []

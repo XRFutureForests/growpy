@@ -206,7 +206,6 @@ The dataset pipeline produces a systematic set of tree assets: 10 southern Germa
 Generate input CSVs from species metadata in `tree_asset_lookup.csv`:
 
 ```bash
-python src/growpy/cli/create_growth_models.py --ingest-yield-tables  # Populate yield table store
 python src/growpy/cli/dataset_pipeline.py --generate-csvs             # Generate per-species CSVs
 ```
 
@@ -215,9 +214,13 @@ This produces `data/input/dataset/all_species.csv` (one row per species for step
 ### Run pipeline for all species
 
 ```bash
+# All steps in one command (recommended):
+python src/growpy/cli/dataset_pipeline.py --all --steps all --ingest-yield-tables
+
+# Or run individual steps:
 python src/growpy/cli/prepare_assets.py --csv data/input/dataset/all_species.csv
 python src/growpy/cli/convert_twigs.py --csv data/input/dataset/all_species.csv
-python src/growpy/cli/create_growth_models.py --csv data/input/dataset/all_species.csv
+python src/growpy/cli/create_growth_models.py --csv data/input/dataset/all_species.csv --ingest-yield-tables
 ```
 
 ### Configure growpy.toml for dataset
@@ -248,6 +251,8 @@ python src/growpy/cli/dataset_pipeline.py --all         # All 10 dataset species
 python src/growpy/cli/dataset_pipeline.py --all --dry-run  # Preview commands only
 python src/growpy/cli/dataset_pipeline.py --list        # Show available species
 python src/growpy/cli/dataset_pipeline.py --all --workers 4  # Parallel species processing
+python src/growpy/cli/dataset_pipeline.py --all --steps all --ingest-yield-tables  # Full pipeline with yield tables
+python src/growpy/cli/dataset_pipeline.py --all --steps all --ingest-yield-tables --clean-store  # Full clean re-run
 ```
 
 Each species produces two exported trees:
@@ -261,13 +266,11 @@ Neighbor trees (fid=101-103) participate in growth simulation but are not export
 
 ```bash
 conda activate growpy
-python src/growpy/cli/create_growth_models.py --ingest-yield-tables
 python src/growpy/cli/dataset_pipeline.py --generate-csvs
-python src/growpy/cli/prepare_assets.py --csv data/input/dataset/all_species.csv
-python src/growpy/cli/convert_twigs.py --csv data/input/dataset/all_species.csv
-python src/growpy/cli/create_growth_models.py --csv data/input/dataset/all_species.csv
-# Configure growpy.toml (height_interval, density_variants, quality)
-python src/growpy/cli/dataset_pipeline.py --all
+python src/growpy/cli/dataset_pipeline.py --all --steps all --ingest-yield-tables
+
+# Or with a clean yield table store (wipe and re-ingest):
+python src/growpy/cli/dataset_pipeline.py --all --steps all --ingest-yield-tables --clean-store
 ```
 
 ## Output Structure

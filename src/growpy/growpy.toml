@@ -125,6 +125,13 @@ preferred_region = ""
 # 0 = no preference (auto-select by simulated grove h50)
 preferred_site_index = 0
 
+# --- Dataset CSV planner ---
+[dataset]
+# Number of competition neighbors around the center tree (3, 4, 5, or 6)
+# Neighbors are placed in a regular polygon at species-specific spacing.
+# 3 = equilateral triangle, 4 = square, 5 = pentagon, 6 = hexagon
+competition_neighbors = 3
+
 # --- Step 4: generate_forest.py ---
 [forest]
 # Quality preset: ultra, high, medium, low, performance
@@ -312,11 +319,11 @@ twig_density = 1.5
 
 [density_variant.reduced]
 twig_density = 0.75
-build_cutoff_thickness = 0.01  # meters diameter (same unit as quality preset)
+build_cutoff_thickness = 0.01 # meters diameter (same unit as quality preset)
 
 [density_variant.bare]
 twig_density = 0.25
-build_cutoff_thickness = 0.02  # meters diameter
+build_cutoff_thickness = 0.02 # meters diameter
 
 # --- Competition Groups ---
 # Thinning schedules and planting distances by silvicultural group.
@@ -333,17 +340,17 @@ build_cutoff_thickness = 0.02  # meters diameter
 default_group = "slow_broadleaf"
 
 [competition.groups.fast_conifer]
-planting_distance = 2.25  # meters between trees at planting
-thinning = [[10, 3.5], [15, 5.0], [20, 6.0]]  # [height_m, distance_m]
+planting_distance = 2.25                     # meters between trees at planting
+thinning = [[10, 3.5], [15, 5.0], [20, 6.0]] # [height_m, distance_m]
 
 [competition.groups.slow_conifer]
-planting_distance = 2.75  # meters
+planting_distance = 2.75                     # meters
 thinning = [[10, 4.0], [15, 5.5], [20, 6.5]]
 
 [competition.groups.fast_broadleaf]
-planting_distance = 2.25  # meters
+planting_distance = 2.25                     # meters
 thinning = [[10, 3.5], [15, 5.0], [20, 6.0]]
 
 [competition.groups.slow_broadleaf]
-planting_distance = 3.0  # meters
+planting_distance = 3.0                      # meters
 thinning = [[10, 4.5], [15, 6.0], [20, 7.0]]

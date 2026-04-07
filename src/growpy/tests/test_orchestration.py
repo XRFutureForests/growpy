@@ -10,7 +10,7 @@ import pytest
 from growpy.pipelines.dataset_csv_planner import (
     DENSITY_VARIANTS,
     OPEN_TREE_X,
-    _triangle_neighbors,
+    _polygon_neighbors,
     generate_dataset_csvs,
     generate_merged_csv,
 )
@@ -35,24 +35,24 @@ from growpy.pipelines.step_runner import (
 # ---------------------------------------------------------------------------
 
 
-class TestTriangleNeighbors:
+class TestPolygonNeighbors:
     def test_returns_three_neighbors(self):
-        neighbors = _triangle_neighbors(10.0)
+        neighbors = _polygon_neighbors(10.0)
         assert len(neighbors) == 3
 
     def test_fids_101_to_103(self):
-        neighbors = _triangle_neighbors(10.0)
+        neighbors = _polygon_neighbors(10.0)
         fids = [fid for fid, _, _ in neighbors]
         assert fids == [101, 102, 103]
 
     def test_spacing_used_as_x_offset(self):
         spacing = 8.0
-        neighbors = _triangle_neighbors(spacing)
+        neighbors = _polygon_neighbors(spacing)
         fid_101 = next(n for n in neighbors if n[0] == 101)
         assert fid_101[1] == spacing  # (101, spacing, 0.0)
 
     def test_symmetric_y_values(self):
-        neighbors = _triangle_neighbors(10.0)
+        neighbors = _polygon_neighbors(10.0)
         by_fid = {fid: (x, y) for fid, x, y in neighbors}
         assert by_fid[102][1] == -by_fid[103][1]  # mirror across x-axis
 
