@@ -540,6 +540,83 @@ def strip_skeleton_from_usd(skeletal_path: Path, static_path: Path) -> bool:
     return True
 
 
+def is_bone_limit_error(error: ValueError) -> bool:
+    """Check if a ValueError is about exceeding Unreal's bone limit."""
+    msg = str(error)
+    return "bones" in msg and "limit" in msg
+
+
+def handle_bone_limit_error(error: ValueError) -> None:
+    """Print actionable guidance for bone limit errors and exit."""
+    logger.error("\nERROR: %s", error)
+    logger.error(
+        "\nTo reduce bone count, try one or more of:\n"
+        "  CLI arguments:\n"
+        "    --skeleton-reduce 0.6    (skip thin branches, most effective, range 0.0-1.0)\n"
+        "    --skeleton-length 3.0    (merge nodes into longer bones, range 0.0-5.0)\n"
+        "    --quality performance    (use a lower quality preset)\n"
+        "  Config (growpy.toml [forest.skeleton]):\n"
+        "    reduce = 0.6\n"
+        "    length = 3.0"
+    )
+    raise SystemExit(1) from error
+
+
+def derive_static_from_skeletal(
+    tree_dir: Path,
+    species_clean: str,
+    species_name: str,
+    tree_id,
+    model,
+    twig_usd_map: dict,
+    skip_validation: bool = False,
+    stems_suffix: str = "",
+    twig_placements=None,
+    instances_dir: Path | None = None,
+) -> str | None:
+    """Derive a static mesh assembly from an existing skeletal one.
+
+    Strips skeleton prims from a copy of the skeletal stems file,
+    then creates a static assembly referencing the stripped stems.
+    Returns the static assembly path string, or None on failure.
+    """
+    from .assembly_export import create_assembly
+
+    ext = get_config().usd_ext
+    suffix = f"_{stems_suffix}" if stems_suffix else ""
+    skeletal_stems = tree_dir / f"{species_clean}{suffix}_stems_skeletal{ext}"
+    static_stems = tree_dir / f"{species_clean}{suffix}_stems_static{ext}"
+
+    if not skeletal_stems.exists():
+        logger.warning("Cannot derive static: skeletal stems not found: %s", skeletal_stems)
+        return None
+
+    if not strip_skeleton_from_usd(skeletal_stems, static_stems):
+        return None
+
+    if twig_placements is None:
+        from ...core.twig import extract_twig_placements_from_model
+
+        try:
+            twig_placements = extract_twig_placements_from_model(model)
+        except Exception as e:
+            logger.warning("Failed to extract twig placements for static derivation: %s", e)
+
+    static_assembly = tree_dir / f"{species_clean}{suffix}_assembly_static{ext}"
+    create_assembly(
+        tree_usd_path=static_stems,
+        output_path=static_assembly,
+        species_name=species_name,
+        tree_id=tree_id,
+        twig_usd_paths=twig_usd_map,
+        use_skeletal_mesh=False,
+        twig_placements=twig_placements,
+        validate=not skip_validation,
+        instances_dir=instances_dir,
+    )
+    return str(static_assembly)
+
+
 def _remove_api_schema(prim_spec, schema_name: str) -> None:
     """Remove an API schema from a PrimSpec's apiSchemas metadata."""
     api_schemas = prim_spec.GetInfo("apiSchemas")
