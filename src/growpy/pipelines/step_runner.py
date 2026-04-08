@@ -187,6 +187,7 @@ def generate_unreal_scripts(output_dir: Path, include_static: bool = False) -> N
         output_dir,
         config.unreal_project_path,
         include_static=include_static,
+        voxelization=config.unreal_voxelization,
     )
 
     cleanup_script = generate_unreal_cleanup_script(

@@ -194,7 +194,7 @@ build_cutoff_thickness = 0.005
 build_blend = true
 build_end_cap = true
 skeleton_length = 1.0
-skeleton_reduce = 0.5
+skeleton_reduce = 0.3
 skeleton_bias = 0.5
 skeleton_connected = true
 
@@ -227,7 +227,7 @@ skeleton_connected = true
 # USD file format: "usda" (ASCII, human-readable) or "usdc" (binary, smaller/faster)
 # Binary USDC files are ~50% smaller on disk and faster for UE to parse,
 # significantly reducing memory pressure during import.
-usd_format = "usdc"
+usd_format = "usda"
 # Export skeletal mesh assemblies (required for Unreal animation/wind)
 skeletal = true
 # Export static mesh assemblies (geometry only, no skeleton)
@@ -274,6 +274,10 @@ density_variants = [] # e.g., ["full", "reduced", "bare"]
 import_to_unreal = true
 # Unreal content path for imported assets in Content Browser
 project_path = "/Game/Assets/TheGrove"
+# Automatically set Nanite shape preservation to Voxelize on imported assemblies.
+# Voxelization produces the best visual quality but adds significant import time.
+# Set to false for faster testing iterations; re-enable for production exports.
+voxelization = true
 
 # --- Post-export: Helios++ LiDAR ---
 [helios]

@@ -460,6 +460,7 @@ Unreal Engine Integration:
                 output_dir,
                 config.unreal_project_path,
                 include_static=config.export_static,
+                voxelization=config.unreal_voxelization,
             )
 
             cleanup_script = generate_unreal_cleanup_script(

@@ -117,12 +117,11 @@ def _build_import_block(
 
     When configure_nanite is True (for assembly imports), the block also
     configures the imported nanite assembly: Nanite shape preservation is set
-    to Voxelize, DynamicWind data is imported from the JSON file (if present),
-    and a default DynamicWindTransformProviderData is assigned.
+    to Voxelize and fallback mesh VRAM is reduced. DynamicWind data is
+    delivered via separate wind JSON files for post-import application.
     """
     config_block = ""
     if configure_nanite:
-        wind_arg = f'r"{wind_json_path}"' if wind_json_path else '""'
         config_block = f"""
             # Post-import: configure nanite assembly
             for _obj_path in (import_task.imported_object_paths or []):
@@ -132,7 +131,7 @@ def _build_import_block(
                 _mesh = unreal.EditorAssetLibrary.load_asset(_obj_path_str)
                 if not _mesh:
                     continue
-                _configure_nanite_assembly(_mesh, {wind_arg}, "{label}")
+                _configure_nanite_assembly(_mesh, "{label}")
                 # Save the configured asset to disk before unloading
                 unreal.EditorAssetLibrary.save_asset(_obj_path_str)
                 break
@@ -601,62 +600,13 @@ print("=" * 60)
 # Unreal Python preamble for configuring nanite assemblies after import.
 # Included in species batch scripts to set shape preservation, wind data, etc.
 _NANITE_CONFIG_PREAMBLE = '''
-import os
-import json
-import math
 
 # ---------------------------------------------------------------------------
-# UE 5.7 API discovery: DynamicWind plugin classes may not have Python stubs.
-# We try direct module access first, then fall back to dynamic class loading
-# via the UE reflection system.
+# Nanite assembly post-import configuration.
+# DynamicWind data is delivered via separate wind JSON files.
+# UE has no DynamicWindSkeletonAPI USD schema -- wind must be applied
+# post-import (not via USD attributes).
 # ---------------------------------------------------------------------------
-
-def _resolve_ue_class(direct_name, script_path):
-    """Find a UClass by direct attribute or by /Script/ object path."""
-    # 1. Direct unreal.ClassName (works if Python stubs exist)
-    try:
-        return getattr(unreal, direct_name)
-    except AttributeError:
-        pass
-    # 2. load_object with the /Script/Module.ClassName path
-    try:
-        cls = unreal.load_object(unreal.Class, script_path)
-        if cls is not None:
-            return cls
-    except Exception:
-        pass
-    # 3. find_object fallback
-    try:
-        cls = unreal.find_object(None, script_path)
-        if cls is not None:
-            return cls
-    except Exception:
-        pass
-    return None
-
-def _resolve_ue_struct_class(direct_name):
-    """Check if a USTRUCT wrapper is available on the unreal module."""
-    try:
-        return getattr(unreal, direct_name)
-    except AttributeError:
-        return None
-
-# Pre-resolve DynamicWind classes once at import time
-_WIND_SKEL_CLS = _resolve_ue_class(
-    "DynamicWindSkeletalData",
-    "/Script/DynamicWind.DynamicWindSkeletalData",
-)
-_WIND_SIM_GROUP_CLS = _resolve_ue_struct_class("DynamicWindSimulationGroupData")
-_WIND_BONE_LOOKUP_CLS = _resolve_ue_struct_class("DynamicWindSimulationGroupBoneLookup")
-_WIND_BONE_CHAIN_CLS = _resolve_ue_struct_class("DynamicWindBoneChainData")
-_WIND_EXTRA_BONE_CLS = _resolve_ue_struct_class("DynamicWindExtraBoneData")
-
-if _WIND_SKEL_CLS:
-    print("  [DynamicWind] Skeletal data class found -- batch wind import available")
-else:
-    print("  [DynamicWind] Skeletal data class not found in Python")
-    print("  Wind data must be imported manually: right-click mesh > Scripted Asset Actions > Import Dynamic Wind Data")
-
 
 def _set_nanite_shape_voxelize(mesh, label):
     """Set Nanite shape preservation to Voxelize using multiple strategies.
@@ -746,259 +696,8 @@ def _set_nanite_shape_voxelize(mesh, label):
     return False
 
 
-def _import_wind_data(mesh, wind_json_path, label):
-    """Import DynamicWind skeletal data from JSON into a SkeletalMesh.
-
-    Replicates the C++ DynamicWind::ImportSkeletalData logic:
-    1. Creates UDynamicWindSkeletalData as asset user data
-    2. Sets simulation groups from JSON
-    3. Maps joints to bone indices
-    4. Computes bone chains and extra bone data
-    """
-    if not wind_json_path or not os.path.isfile(wind_json_path):
-        return None
-
-    try:
-        with open(wind_json_path, "r") as _wf:
-            _wind_json = json.load(_wf)
-    except Exception as _e:
-        unreal.log_warning(f"Could not read wind JSON for {label}: {_e}")
-        return False
-
-    _joints = _wind_json.get("Joints", [])
-    _sim_groups = _wind_json.get("SimulationGroups", [])
-    _is_ground_cover = _wind_json.get("bIsGroundCover", False)
-    _gust_atten = _wind_json.get("GustAttenuation", 0.0)
-
-    # --- Strategy A: Create DynamicWindSkeletalData via resolved class ---
-    if _WIND_SKEL_CLS is not None:
-        try:
-            _skel_data = mesh.get_asset_user_data_of_class(_WIND_SKEL_CLS)
-            if _skel_data is None:
-                _skel_data = unreal.new_object(type=_WIND_SKEL_CLS, outer=mesh)
-                try:
-                    mesh.add_asset_user_data(_skel_data)
-                except AttributeError:
-                    # SkeletalMesh may not expose add_asset_user_data in Python;
-                    # set via the asset_user_data property array instead
-                    _udata = list(mesh.get_editor_property("asset_user_data") or [])
-                    _udata.append(_skel_data)
-                    mesh.set_editor_property("asset_user_data", _udata)
-
-            # Basic properties (C++ names: bIsEnabled, bIsGroundCover, GustAttenuation)
-            for _prop, _val in (
-                ("is_enabled", True),
-                ("is_ground_cover", _is_ground_cover),
-                ("gust_attenuation", float(_gust_atten)),
-            ):
-                try:
-                    _skel_data.set_editor_property(_prop, _val)
-                except Exception:
-                    try:
-                        setattr(_skel_data, _prop, _val)
-                    except Exception:
-                        pass  # Python wrapper may lack attribute (non-critical)
-
-            # Build skeleton bone lookup: name -> index
-            # Strategy 1: ref_skeleton directly on mesh (UE4 / early UE5)
-            _ref_skel = None
-            try:
-                _ref_skel = mesh.get_editor_property("ref_skeleton")
-            except Exception:
-                pass
-            # Strategy 2: skeleton asset -> get_reference_skeleton (UE 5.4+)
-            if _ref_skel is None:
-                try:
-                    _skel_asset = mesh.get_editor_property("skeleton")
-                    if _skel_asset:
-                        _ref_skel = _skel_asset.get_reference_skeleton()
-                except Exception:
-                    pass
-
-            _bone_count = 0
-            _bone_name_to_idx = {}
-            _bone_parent = {}
-            if _ref_skel is not None:
-                _bone_count = _ref_skel.get_num() if hasattr(_ref_skel, "get_num") else 0
-                for _bi in range(_bone_count):
-                    _bname = str(_ref_skel.get_bone_name(_bi))
-                    _bone_name_to_idx[_bname] = _bi
-                    _bone_parent[_bi] = _ref_skel.get_parent_index(_bi)
-            else:
-                # Strategy 3: query USkeleton directly for bone data
-                try:
-                    _skel_asset = mesh.get_editor_property("skeleton")
-                    if _skel_asset:
-                        _bone_count = _skel_asset.get_num_bones()
-                        for _bi in range(_bone_count):
-                            _bname = str(_skel_asset.get_bone_name(_bi))
-                            _bone_name_to_idx[_bname] = _bi
-                            _bone_parent[_bi] = _skel_asset.get_parent_index(_bi)
-                except Exception as _be:
-                    unreal.log_warning(f"    Could not resolve skeleton bones for {label}: {_be}")
-
-            # Map joints to bone indices and track max simulation group index
-            _max_sg = -1
-            _bone_sg = {}  # bone_index -> sim_group_index
-            for _j in _joints:
-                _jn = _j.get("JointName", "")
-                _si = _j.get("SimulationGroupIndex", 0)
-                if _jn in _bone_name_to_idx:
-                    _bidx = _bone_name_to_idx[_jn]
-                    _bone_sg[_bidx] = _si
-                    _max_sg = max(_max_sg, _si)
-
-            # Ensure enough simulation groups exist (C++ fills missing with defaults)
-            _groups_data = list(_sim_groups)
-            while len(_groups_data) < _max_sg + 1:
-                _groups_data.append({"Influence": 1.0})
-
-            # Set simulation groups (try struct creation, fall back to direct property)
-            if _WIND_SIM_GROUP_CLS is not None:
-                _groups = []
-                for _sg in _groups_data:
-                    _g = _WIND_SIM_GROUP_CLS()
-                    for _pn, _jk, _dv in (
-                        ("use_dual_influence", "bUseDualInfluence", False),
-                        ("influence", "Influence", 1.0),
-                        ("min_influence", "MinInfluence", 0.0),
-                        ("max_influence", "MaxInfluence", 0.0),
-                        ("shift_top", "ShiftTop", 0.0),
-                        ("is_trunk_group", "bIsTrunkGroup", False),
-                    ):
-                        try:
-                            _g.set_editor_property(_pn, _sg.get(_jk, _dv))
-                        except Exception:
-                            setattr(_g, _pn, _sg.get(_jk, _dv))
-                    _groups.append(_g)
-                _skel_data.set_editor_property("simulation_groups", _groups)
-            else:
-                unreal.log_warning(f"    DynamicWindSimulationGroupData not available; sim groups not set")
-
-            # Build SimulationGroupBones using bone INDICES (int32, not names)
-            _sg_bone_map = {}
-            for _bidx, _si in _bone_sg.items():
-                _sg_bone_map.setdefault(_si, set()).add(_bidx)
-
-            if _WIND_BONE_LOOKUP_CLS is not None:
-                _lookups = []
-                for _si, _bset in sorted(_sg_bone_map.items()):
-                    _lk = _WIND_BONE_LOOKUP_CLS()
-                    try:
-                        _lk.set_editor_property("simulation_group_index", _si)
-                        _lk.set_editor_property("bone_indices", _bset)
-                    except Exception:
-                        _lk.simulation_group_index = _si
-                        _lk.bone_indices = _bset
-                    _lookups.append(_lk)
-                _skel_data.set_editor_property("simulation_group_bones", _lookups)
-
-            # Compute BoneChains and ExtraBonesData (mirrors C++ ImportSkeletalData)
-            # BoneChains: for each chain-origin bone, store count and total length
-            # ExtraBonesData: for each bone, store chain origin and position in chain
-            if _WIND_BONE_CHAIN_CLS and _WIND_EXTRA_BONE_CLS:
-                try:
-                    _bone_chains = {}  # origin_idx -> (num_bones, chain_length)
-                    _extra_bones = {}  # bone_idx -> (origin_idx, idx_in_chain)
-
-                    # Get bone transforms for chain length calculation
-                    _bone_pos = {}
-                    for _bi in range(_bone_count):
-                        try:
-                            if _ref_skel is not None:
-                                _t = _ref_skel.get_ref_bone_pose(_bi)
-                            else:
-                                _skel_asset = mesh.get_editor_property("skeleton")
-                                _t = _skel_asset.get_ref_local_pose(_bi)
-                            _loc = _t.translation
-                            _bone_pos[_bi] = (_loc.x, _loc.y, _loc.z)
-                        except Exception:
-                            _bone_pos[_bi] = (0.0, 0.0, 0.0)
-
-                    for _bidx, _si in _bone_sg.items():
-                        # Walk parent chain to find origin (first bone with different sim group)
-                        _origin = _bidx
-                        _depth = 0
-                        _cur = _bone_parent.get(_bidx, -1)
-                        while _cur >= 0:
-                            if _bone_sg.get(_cur, -1) != _si:
-                                break
-                            _origin = _cur
-                            _depth += 1
-                            _cur = _bone_parent.get(_cur, -1)
-
-                        _extra_bones[_bidx] = (_origin, _depth)
-
-                        # Accumulate chain data
-                        if _origin not in _bone_chains:
-                            _bone_chains[_origin] = [0, 0.0]
-                        _bone_chains[_origin][0] += 1
-
-                        # Chain length: distance from parent pos to this bone pos
-                        _pidx = _bone_parent.get(_bidx, -1)
-                        _start = _bone_pos.get(_pidx, (0, 0, 0)) if _pidx >= 0 else (0, 0, 0)
-                        _end = _bone_pos.get(_bidx, (0, 0, 0))
-                        _dx = _end[0] - _start[0]
-                        _dy = _end[1] - _start[1]
-                        _dz = _end[2] - _start[2]
-                        _bone_chains[_origin][1] += math.sqrt(_dx*_dx + _dy*_dy + _dz*_dz)
-
-                    # Set BoneChains as dict: int32 -> FDynamicWindBoneChainData
-                    _bc_map = {}
-                    for _oidx, (_cnt, _clen) in _bone_chains.items():
-                        _bc = _WIND_BONE_CHAIN_CLS()
-                        try:
-                            _bc.set_editor_property("num_bones", _cnt)
-                            _bc.set_editor_property("chain_length", _clen)
-                        except Exception:
-                            _bc.num_bones = _cnt
-                            _bc.chain_length = _clen
-                        _bc_map[_oidx] = _bc
-                    _skel_data.set_editor_property("bone_chains", _bc_map)
-
-                    # Set ExtraBonesData as dict: int32 -> FDynamicWindExtraBoneData
-                    _eb_map = {}
-                    for _bidx, (_oidx, _depth) in _extra_bones.items():
-                        _eb = _WIND_EXTRA_BONE_CLS()
-                        try:
-                            _eb.set_editor_property("bone_chain_origin_bone_index", _oidx)
-                            _eb.set_editor_property("index_in_bone_chain", _depth)
-                        except Exception:
-                            _eb.bone_chain_origin_bone_index = _oidx
-                            _eb.index_in_bone_chain = _depth
-                        _eb_map[_bidx] = _eb
-                    _skel_data.set_editor_property("extra_bones_data", _eb_map)
-                except Exception as _ce:
-                    unreal.log_warning(f"    BoneChain computation failed (non-critical): {_ce}")
-
-            # Trigger hash recalculation via property change notification
-            try:
-                _skel_data.modify(True)
-            except Exception:
-                pass
-
-            mesh.modify(True)
-            print(f"    [Wind] Imported ({len(_joints)} joints, {len(_sim_groups)} groups): {label}")
-            return True
-        except Exception as _we:
-            unreal.log_warning(f"    Wind (Python) failed for {label}: {_we}")
-
-    # Fallback: log manual instructions (do NOT use file-dialog API)
-    unreal.log_warning(
-        f"Could not auto-import wind for {label}\\n"
-        f"  Manual: right-click mesh > Scripted Asset Actions > Import Dynamic Wind Data\\n"
-        f"  JSON: {wind_json_path}"
-    )
-    return False
-
-
 def _reduce_nanite_fallback(mesh, label, percent=1.0):
-    """Reduce Nanite fallback mesh triangle percentage to save VRAM.
-
-    The fallback mesh is kept in VRAM permanently for non-Nanite rendering
-    paths. Reducing it from the default 100% to a low value significantly
-    reduces VRAM consumption per mesh.
-    """
+    """Reduce Nanite fallback mesh triangle percentage to save VRAM."""
     try:
         _ns = mesh.get_editor_property("nanite_settings")
         _ns.set_editor_property("fallback_percent_triangles", percent)
@@ -1016,15 +715,15 @@ def _reduce_nanite_fallback(mesh, label, percent=1.0):
     return False
 
 
-def _configure_nanite_assembly(mesh, wind_json_path, label):
+def _configure_nanite_assembly(mesh, label):
     """Configure a nanite assembly after USD import.
 
-    Sets Nanite shape preservation to Voxelize, reduces fallback mesh VRAM,
-    and imports DynamicWind data.
+    Sets Nanite shape preservation to Voxelize and reduces fallback mesh VRAM.
+    DynamicWind data is delivered via separate wind JSON files and
+    must be applied post-import.
     """
     _set_nanite_shape_voxelize(mesh, label)
     _reduce_nanite_fallback(mesh, label, percent=1.0)
-    _import_wind_data(mesh, wind_json_path, label)
     try:
         mesh.modify(True)
     except Exception:
@@ -1175,6 +874,7 @@ def generate_unreal_import_script(
     output_dir: Path,
     project_path: str = "/Game/GrowPy/Trees",
     include_static: bool = False,
+    voxelization: bool = True,
 ) -> Path:
     """Generate Unreal Python scripts for importing forest USD files.
 
@@ -1188,6 +888,8 @@ def generate_unreal_import_script(
         project_path: Unreal project Content path.
         include_static: If True, include static twig variants and static assemblies.
             Mirrors [export] static setting from growpy.toml.
+        voxelization: If True, set Nanite shape preservation to Voxelize
+            on imported assemblies. Mirrors [unreal] voxelization from growpy.toml.
 
     Returns:
         Path to generated scripts directory.
@@ -1341,7 +1043,7 @@ def generate_unreal_import_script(
                     dest_subpath,
                     usd_file.stem,
                     wind_json_path=wind_json,
-                    configure_nanite=is_assembly,
+                    configure_nanite=is_assembly and voxelization,
                 )
 
         batch_name = f"import_batch_{idx:02d}_{species_folder}.py"
@@ -1352,7 +1054,7 @@ def generate_unreal_import_script(
             batch_label,
             blocks,
             species_tree_count,
-            include_nanite_config=has_assemblies,
+            include_nanite_config=has_assemblies and voxelization,
         )
         batch_scripts.append((batch_name, batch_label))
 
@@ -1514,129 +1216,49 @@ def generate_wind_reimport_script(
 ) -> Path:
     """Generate a UE Python script that re-imports wind data for all assemblies.
 
-    This is useful when the initial import used an older template that lacked
-    the multi-strategy skeleton bone lookup. The generated script loads each
-    already-imported SkeletalMesh and applies DynamicWind data from the JSON
-    files without re-importing geometry.
+    .. deprecated::
+        Wind data is delivered via separate JSON files alongside USD exports.
+        UE has no DynamicWindSkeletonAPI USD schema, so wind must be applied
+        post-import. This function currently generates a no-op stub.
 
     Args:
         output_dir: Directory containing exported USD files (parent of unreal_scripts/).
         project_path: Unreal project Content path.
 
     Returns:
-        Path to generated wind re-import script.
+        Path to generated informational script.
     """
     script_dir = output_dir / "unreal_scripts"
     script_dir.mkdir(exist_ok=True)
-
-    # Discover all wind JSON files and map to UE asset paths
-    wind_entries: List[Tuple[str, str, str]] = []  # (ue_path, wind_json, label)
-    for wind_json in sorted(output_dir.rglob("*_stems_unreal_wind.json")):
-        rel = wind_json.relative_to(output_dir)
-        parts = rel.parts  # e.g. ("european_oak", "competition", "...json")
-        if len(parts) < 3:
-            continue
-        species_folder = parts[0]
-        variant_folder = parts[1]
-
-        # Derive assembly asset name from wind JSON name
-        stem = wind_json.stem  # e.g. "European_Oak_comp_h05m_d03cm_full_stems_unreal_wind"
-        tree_prefix = stem.replace("_stems_unreal_wind", "")
-        asset_name = f"{tree_prefix}_assembly"
-
-        ue_asset_path = f"{project_path}/{species_folder}/{variant_folder}/{asset_name}"
-        wind_path = str(wind_json.resolve()).replace("\\", "/")
-        wind_entries.append((ue_asset_path, wind_path, asset_name))
-
-    # Build script content
-    entries_literal = "[\n"
-    for ue_path, wind_path, label in wind_entries:
-        entries_literal += f'    ("{ue_path}", r"{wind_path}", "{label}"),\n'
-    entries_literal += "]"
 
     script_path = script_dir / "import_batch_97_wind_reimport.py"
     script_path_str = str(script_path.resolve()).replace("\\", "/")
 
     content = f'''"""
-GrowPy wind data re-import for all assemblies ({len(wind_entries)} trees) - Auto-generated
+GrowPy wind data - Auto-generated (informational only)
 
-Applies DynamicWind skeletal data to already-imported SkeletalMesh assets.
-Run after geometry import if wind data was not applied during initial import.
+Wind data is exported as separate JSON files (*_unreal_wind.json) alongside
+the USD files. UE has no DynamicWindSkeletonAPI USD schema, so wind must be
+applied post-import via DynamicWind::ImportSkeletalData or equivalent.
 
-Execute in Unreal Engine:
-1. Right-click > "Execute Python File in Unreal"
-2. Or: exec(open(r'{script_path_str}').read())
+This script is a no-op placeholder for future wind import automation.
+
+Execute in Unreal Engine (optional):
+  exec(open(r'{script_path_str}').read())
 """
 
 import unreal
-import os
-import json
-import math
-import time
 
 print("=" * 60)
-print("GrowPy Wind Data Re-Import ({len(wind_entries)} trees)")
-print("=" * 60)
-
-{_NANITE_CONFIG_PREAMBLE.lstrip()}
-
-# List of (UE asset path, wind JSON path, label)
-_WIND_ENTRIES = {entries_literal}
-
-_success = 0
-_skipped = 0
-_failed = 0
-
-for _ue_path, _wind_json, _label in _WIND_ENTRIES:
-    # Try loading the exact asset first
-    _mesh = unreal.EditorAssetLibrary.load_asset(_ue_path)
-
-    # If not found directly, search nearby paths (USD import may add suffixes)
-    if _mesh is None:
-        _parent_dir = _ue_path.rsplit("/", 1)[0]
-        _base_name = _ue_path.rsplit("/", 1)[1] if "/" in _ue_path else _ue_path
-        try:
-            _all_assets = unreal.EditorAssetLibrary.list_assets(_parent_dir, recursive=False)
-            for _ap in _all_assets:
-                if _base_name.lower() in str(_ap).lower():
-                    _candidate = unreal.EditorAssetLibrary.load_asset(str(_ap))
-                    if isinstance(_candidate, unreal.SkeletalMesh):
-                        _mesh = _candidate
-                        break
-        except Exception:
-            pass
-
-    if _mesh is None:
-        print(f"  [Skip] Not found in UE: {{_label}}")
-        _skipped += 1
-        continue
-
-    if not isinstance(_mesh, unreal.SkeletalMesh):
-        print(f"  [Skip] Not a SkeletalMesh: {{_label}} ({{type(_mesh).__name__}})")
-        _skipped += 1
-        continue
-
-    _result = _import_wind_data(_mesh, _wind_json, _label)
-    if _result:
-        # Save asset after wind data update
-        try:
-            unreal.EditorAssetLibrary.save_asset(_ue_path)
-        except Exception:
-            pass
-        _success += 1
-    else:
-        _failed += 1
-
-print("")
-print("=" * 60)
-print(f"Wind re-import complete: {{_success}} updated, {{_skipped}} skipped, {{_failed}} failed")
+print("GrowPy DynamicWind - Wind JSON files exported alongside USD")
+print("Wind must be applied post-import (no USD schema exists).")
+print("See *_unreal_wind.json files for per-joint classification.")
 print("=" * 60)
 '''
 
     script_path.write_text(content, encoding="utf-8")
     logger.info(
-        "Generated wind re-import script: %s (%d entries)",
+        "Generated wind info script (no-op): %s",
         script_path,
-        len(wind_entries),
     )
     return script_path

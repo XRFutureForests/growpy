@@ -140,6 +140,7 @@ class GrowPyConfig:
     # [unreal]
     unreal_import_to_unreal: bool = True
     unreal_project_path: str = "/Game/GrowPy"
+    unreal_voxelization: bool = True
 
     # [twigs] - interior decimation
     twigs_interior_decimate_ratio: float = 0.5
@@ -347,6 +348,8 @@ class GrowPyConfig:
             kwargs["unreal_import_to_unreal"] = unreal["import_to_unreal"]
         if "project_path" in unreal:
             kwargs["unreal_project_path"] = unreal["project_path"]
+        if "voxelization" in unreal:
+            kwargs["unreal_voxelization"] = unreal["voxelization"]
 
         # [helios]
         helios = data.get("helios", {})
