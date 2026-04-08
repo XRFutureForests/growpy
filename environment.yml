@@ -16,15 +16,10 @@ dependencies:
   # R for yield table extraction (ForestElementsR, et.nwfva)
   - r-base>=4.3
   - openpyxl # XLSX yield table parsing (Kohlenstoff-Ertragstafeln)
-  # Architecture diagram generation (scripts/generate_arch_diagrams.sh)
-  - graphviz
-  - python-graphviz
   - pip:
       - openyieldtables # For real-world yield data calibration
       - bpy # Blender Python API with bundled USD, MaterialX, OpenImageIO, etc.
       - tabula-py # PDF yield table extraction (requires Java runtime)
-      - pylint # Provides pyreverse for class/package UML generation
-      - code2flow # Static call-graph generation
 
 variables:
   PYTHONPATH: ./src:./src/the_grove_23/modules

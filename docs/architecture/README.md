@@ -19,7 +19,6 @@ documents in this folder focus on **structure and connections**.
 | [module-graph.md](module-graph.md) | Module-level dependency graph: who imports who, grouped by layer (cli / core / io / config / utils) |
 | [module-reference.md](module-reference.md) | Per-module reference: purpose, key functions/classes, inputs, outputs, and downstream consumers |
 | [data-flow.md](data-flow.md) | What data structures flow between steps (CSV schemas, in-memory tree/grove objects, on-disk artefacts) |
-| [generated/](generated/) | Auto-generated diagrams (pyreverse class/package UMLs, code2flow call graphs). Regenerate with `scripts/generate_arch_diagrams.sh` |
 
 ## How to read these docs
 
