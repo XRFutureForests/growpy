@@ -1,0 +1,10 @@
+fid,species,x,y,dbh,height,z
+1,Selected Scots pine,-10, 10,0.0,10,0
+2,Selected Scots pine,  0, 10,0.0,10,0
+3,Selected Scots pine, 10, 10,0.0,10,0
+4,Selected Scots pine,-10,  0,0.0,10,0
+5,Selected Scots pine,  0,  0,0.0,10,0
+6,Selected Scots pine, 10,  0,0.0,10,0
+7,Selected Scots pine,-10,-10,0.0,10,0
+8,Selected Scots pine,  0,-10,0.0,10,0
+9,Selected Scots pine, 10,-10,0.0,10,0

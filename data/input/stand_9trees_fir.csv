@@ -1,0 +1,10 @@
+fid,species,x,y,dbh,height,z
+1,Selected Silver fir,-10, 10,0.0,5,0
+2,Selected Silver fir,  0, 10,0.0,5,0
+3,Selected Silver fir, 10, 10,0.0,5,0
+4,Selected Silver fir,-10,  0,0.0,5,0
+5,Selected Silver fir,  0,  0,0.0,5,0
+6,Selected Silver fir, 10,  0,0.0,5,0
+7,Selected Silver fir,-10,-10,0.0,5,0
+8,Selected Silver fir,  0,-10,0.0,5,0
+9,Selected Silver fir, 10,-10,0.0,5,0
