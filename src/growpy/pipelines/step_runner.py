@@ -74,7 +74,9 @@ def run_step123(
 
 
 def _build_step4_command(
-    csv_path: Path, max_height: float = 0, skip_unreal_scripts: bool = False,
+    csv_path: Path,
+    max_height: float = 0,
+    skip_unreal_scripts: bool = False,
 ) -> list:
     """Build the generate_forest.py command for a merged species CSV."""
     cmd = [sys.executable, str(STEP_SCRIPTS[4]), str(csv_path)]
@@ -105,13 +107,17 @@ def run_species_step4(
     cmd = _build_step4_command(csv_path, max_height, skip_unreal_scripts)
 
     if dry_run:
-        logger.info("[DRY RUN] step 4 [%s]: %s", species_name, " ".join(str(c) for c in cmd))
+        logger.info(
+            "[DRY RUN] step 4 [%s]: %s", species_name, " ".join(str(c) for c in cmd)
+        )
         return True
 
     logger.info("Step 4 [%s]: running", species_name)
     result = subprocess.run(cmd, check=False)
     if result.returncode != 0:
-        logger.error("Step 4 [%s]: FAILED (exit code %d)", species_name, result.returncode)
+        logger.error(
+            "Step 4 [%s]: FAILED (exit code %d)", species_name, result.returncode
+        )
         return False
 
     logger.info("Step 4 [%s]: OK", species_name)
@@ -122,7 +128,9 @@ def _run_species_worker(args: tuple) -> tuple:
     """Top-level picklable worker for ProcessPoolExecutor."""
     species_name, dataset_dir, max_height = args
     ok = run_species_step4(
-        species_name, dataset_dir, max_height=max_height,
+        species_name,
+        dataset_dir,
+        max_height=max_height,
         skip_unreal_scripts=True,
     )
     return species_name, ok
@@ -142,7 +150,9 @@ def run_parallel_step4(
 
     with ProcessPoolExecutor(max_workers=workers) as pool:
         futures = {
-            pool.submit(_run_species_worker, (species, dataset_dir, max_height)): species
+            pool.submit(
+                _run_species_worker, (species, dataset_dir, max_height)
+            ): species
             for species in species_list
         }
         for future in as_completed(futures):
@@ -164,12 +174,12 @@ def generate_unreal_scripts(output_dir: Path, include_static: bool = False) -> N
     Called once after parallel step 4 workers finish, instead of per-species, to
     avoid race conditions from concurrent script deletion/regeneration.
     """
-    from growpy.io.usd.assembly_export import create_combined_twig_usda
+    from growpy.config.core import get_config
     from growpy.io.unreal.unreal_scripts import (
         generate_unreal_cleanup_script,
         generate_unreal_import_script,
     )
-    from growpy.config.core import get_config
+    from growpy.io.usd.assembly_export import create_combined_twig_usda
 
     config = get_config()
 
@@ -179,9 +189,7 @@ def generate_unreal_scripts(output_dir: Path, include_static: bool = False) -> N
             instances_dir, include_static=include_static
         )
         if combined:
-            logger.info(
-                "Created %d combined twig files for UE import", len(combined)
-            )
+            logger.info("Created %d combined twig files for UE import", len(combined))
 
     import_script = generate_unreal_import_script(
         output_dir,
