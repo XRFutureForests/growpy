@@ -439,7 +439,9 @@ Unreal Engine Integration:
             timer.print_report()
 
         # Generate Unreal scripts if requested
-        if config.unreal_import_to_unreal and not getattr(args, 'no_unreal_scripts', False):
+        if config.unreal_import_to_unreal and not getattr(
+            args, "no_unreal_scripts", False
+        ):
             # Create combined twig wrappers for efficient UE import
             from growpy.io.usd.assembly_export import create_combined_twig_usda
 
@@ -454,21 +456,9 @@ Unreal Engine Integration:
                         len(combined),
                     )
 
-            # Load forest data for tree positions
-            try:
-                forest_data = pd.read_csv(csv_path)
-                # Ensure fid column exists
-                if "fid" not in forest_data.columns:
-                    forest_data["fid"] = range(1, len(forest_data) + 1)
-            except Exception as e:
-                logger.warning("Could not load CSV for position data: %s", e)
-                forest_data = None
-
             import_script = generate_unreal_import_script(
                 output_dir,
                 config.unreal_project_path,
-                forest_data=forest_data,
-                export_tree_ids=export_tree_ids,
                 include_static=config.export_static,
             )
 
@@ -481,25 +471,35 @@ Unreal Engine Integration:
             logger.info("\n%s", "=" * 60)
             logger.info("UNREAL SCRIPTS GENERATED")
             logger.info("%s", "=" * 60)
-            logger.info("Import script: %s", import_script)
+            logger.info("Scripts directory: %s", import_script)
             logger.info("Cleanup script: %s", cleanup_script)
             logger.info("\nTo import trees to Unreal Engine:")
-            logger.info("1. Open import_forest.py in VSCode")
-            logger.info("2. Right-click > 'Execute Python File in Unreal'")
+            logger.info(
+                "  python -m growpy.tools.ue_exec %s --vram-limit 85", import_script
+            )
             logger.info("\nTo cleanup assets:")
             logger.info("1. Open clean_assets.py in VSCode")
             logger.info("2. Review DRY_RUN setting (True = preview, False = delete)")
             logger.info("3. Right-click > 'Execute Python File in Unreal'")
             logger.info("\nRequirements:")
             logger.info("- Unreal Engine must be running")
+            logger.info("- Python Remote Execution enabled in UE Editor Preferences")
             logger.info("- USD Importer plugin enabled")
             logger.info("- Editor Scripting Utilities plugin enabled")
 
         # Pipeline completion summary (always visible, even in quiet mode)
         total_time = timer.get_total_time() if timer.enabled else 0
         skip_dirs = {"unreal_scripts", "Instances", "helios"}
-        tree_count = len(list(output_dir.glob(f"*/**/*_assembly*{config.usd_ext}"))) if output_dir.exists() else 0
-        species_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name not in skip_dirs] if output_dir.exists() else []
+        tree_count = (
+            len(list(output_dir.glob(f"*/**/*_assembly*{config.usd_ext}")))
+            if output_dir.exists()
+            else 0
+        )
+        species_dirs = (
+            [d for d in output_dir.iterdir() if d.is_dir() and d.name not in skip_dirs]
+            if output_dir.exists()
+            else []
+        )
         summary_parts = [
             f"{tree_count} assemblies",
             f"{len(species_dirs)} species",

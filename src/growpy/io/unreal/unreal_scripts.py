@@ -4,14 +4,12 @@ Generates standalone Python scripts that can be executed inside Unreal Engine
 to import USD tree assemblies and clean up previously imported assets.
 
 Imports are split into per-species batch scripts to avoid video memory crashes.
-A master script orchestrates running batches sequentially.
+Use ``python -m growpy.tools.ue_exec`` to run batches sequentially.
 """
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-
-import pandas as pd
+from typing import Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -200,8 +198,8 @@ else:
             pass
 
         # Flush GPU rendering commands and release pooled VRAM
-        try:
-            _w = unreal.EditorLevelLibrary.get_editor_world()
+        _w = _get_ue_world()
+        if _w:
             for _cmd in (
                 "FlushRenderingCommands",
                 "r.Streaming.FlushAll",
@@ -228,8 +226,6 @@ else:
                     unreal.KismetSystemLibrary.execute_console_command(_w, _re_cmd)
                 except Exception:
                     pass
-        except Exception:
-            pass
 
         gc.collect()
         try:
@@ -255,7 +251,7 @@ def _build_consolidation_script(project_path: str) -> str:
     finds those local duplicates, redirects all references to the shared
     Instances version via consolidate_assets(), and deletes the leftovers.
     """
-    return f'''
+    return f"""
 import unreal
 import gc
 
@@ -356,10 +352,10 @@ print("")
 print("=" * 60)
 print("Twig consolidation complete")
 print("=" * 60)
-'''
+"""
 
 
-def _build_datatable_script(project_path: str) -> str:
+def _build_datatable_script(project_path: str, scripts_dir: str) -> str:
     """Build Unreal Python code that creates a DataTable cataloguing all imported trees.
 
     Scans the import path for nanite assembly skeletal meshes, parses metadata
@@ -369,7 +365,8 @@ def _build_datatable_script(project_path: str) -> str:
 
     Asset name convention: {Species}_{comp|open}_h{HH}m_d{DD}cm_{density}_assembly
     """
-    return f'''
+    scripts_dir_fwd = scripts_dir.replace("\\", "/")
+    return f"""
 import unreal
 import re
 import gc
@@ -481,7 +478,7 @@ else:
     print(f"Parsed metadata for {{len(rows)}} assemblies")
 
     # Step 3: Save tree inventory as JSON + CSV to disk (always succeeds)
-    _scripts_dir = os.path.dirname(os.path.abspath(__file__))
+    _scripts_dir = r"{scripts_dir_fwd}"
     _json_path = os.path.join(_scripts_dir, "tree_inventory.json")
     _csv_path = os.path.join(_scripts_dir, "tree_inventory.csv")
 
@@ -597,7 +594,7 @@ print("")
 print("=" * 60)
 print("DataTable creation complete")
 print("=" * 60)
-'''
+"""
 
 
 # Unreal Python preamble for configuring nanite assemblies after import.
@@ -668,7 +665,19 @@ def _set_nanite_shape_voxelize(mesh, label):
     """
     _strategies = []
 
-    # Strategy A: Enum via get/set_editor_property
+    # Strategy A: Enum without E prefix (UE 5.4+ Python reflection)
+    try:
+        _ns = mesh.get_editor_property("nanite_settings")
+        _ns.set_editor_property(
+            "shape_preservation",
+            unreal.NaniteShapePreservation.VOXELIZE,
+        )
+        mesh.set_editor_property("nanite_settings", _ns)
+        return True
+    except Exception as _e:
+        _strategies.append(f"enum_no_e: {_e}")
+
+    # Strategy B: Enum with E prefix
     try:
         _ns = mesh.get_editor_property("nanite_settings")
         _ns.set_editor_property(
@@ -680,7 +689,29 @@ def _set_nanite_shape_voxelize(mesh, label):
     except Exception as _e:
         _strategies.append(f"enum: {_e}")
 
-    # Strategy B: Integer via set_editor_property
+    # Strategy C: Type introspection -- read current value, construct enum(2)
+    try:
+        _ns = mesh.get_editor_property("nanite_settings")
+        _cur = _ns.get_editor_property("shape_preservation")
+        _enum_cls = type(_cur)
+        _ns.set_editor_property("shape_preservation", _enum_cls(2))
+        mesh.set_editor_property("nanite_settings", _ns)
+        return True
+    except Exception as _e:
+        _strategies.append(f"introspect: {_e}")
+
+    # Strategy D: Qualified enum path string
+    try:
+        _ns = mesh.get_editor_property("nanite_settings")
+        _ns.set_editor_property(
+            "shape_preservation", "NaniteShapePreservation::Voxelize",
+        )
+        mesh.set_editor_property("nanite_settings", _ns)
+        return True
+    except Exception as _e:
+        _strategies.append(f"qualified: {_e}")
+
+    # Strategy E: Integer via set_editor_property
     try:
         _ns = mesh.get_editor_property("nanite_settings")
         _ns.set_editor_property("shape_preservation", 2)
@@ -689,16 +720,7 @@ def _set_nanite_shape_voxelize(mesh, label):
     except Exception as _e:
         _strategies.append(f"int: {_e}")
 
-    # Strategy C: String value
-    try:
-        _ns = mesh.get_editor_property("nanite_settings")
-        _ns.set_editor_property("shape_preservation", "Voxelize")
-        mesh.set_editor_property("nanite_settings", _ns)
-        return True
-    except Exception as _e:
-        _strategies.append(f"str: {_e}")
-
-    # Strategy D: Direct attribute assignment on struct copy
+    # Strategy F: Direct attribute assignment on struct copy
     try:
         _ns = mesh.get_editor_property("nanite_settings")
         _ns.shape_preservation = 2
@@ -707,7 +729,7 @@ def _set_nanite_shape_voxelize(mesh, label):
     except Exception as _e:
         _strategies.append(f"attr: {_e}")
 
-    # Strategy E: C++ getter/setter methods
+    # Strategy G: C++ getter/setter methods (StaticMesh only)
     try:
         _ns = mesh.get_nanite_settings()
         _ns.shape_preservation = 2
@@ -753,7 +775,14 @@ def _import_wind_data(mesh, wind_json_path, label):
             _skel_data = mesh.get_asset_user_data_of_class(_WIND_SKEL_CLS)
             if _skel_data is None:
                 _skel_data = unreal.new_object(type=_WIND_SKEL_CLS, outer=mesh)
-                mesh.add_asset_user_data(_skel_data)
+                try:
+                    mesh.add_asset_user_data(_skel_data)
+                except AttributeError:
+                    # SkeletalMesh may not expose add_asset_user_data in Python;
+                    # set via the asset_user_data property array instead
+                    _udata = list(mesh.get_editor_property("asset_user_data") or [])
+                    _udata.append(_skel_data)
+                    mesh.set_editor_property("asset_user_data", _udata)
 
             # Basic properties (C++ names: bIsEnabled, bIsGroundCover, GustAttenuation)
             for _prop, _val in (
@@ -764,17 +793,48 @@ def _import_wind_data(mesh, wind_json_path, label):
                 try:
                     _skel_data.set_editor_property(_prop, _val)
                 except Exception:
-                    setattr(_skel_data, _prop, _val)
+                    try:
+                        setattr(_skel_data, _prop, _val)
+                    except Exception:
+                        pass  # Python wrapper may lack attribute (non-critical)
 
             # Build skeleton bone lookup: name -> index
-            _ref_skel = mesh.get_editor_property("ref_skeleton")
-            _bone_count = _ref_skel.get_num() if _ref_skel else 0
+            # Strategy 1: ref_skeleton directly on mesh (UE4 / early UE5)
+            _ref_skel = None
+            try:
+                _ref_skel = mesh.get_editor_property("ref_skeleton")
+            except Exception:
+                pass
+            # Strategy 2: skeleton asset -> get_reference_skeleton (UE 5.4+)
+            if _ref_skel is None:
+                try:
+                    _skel_asset = mesh.get_editor_property("skeleton")
+                    if _skel_asset:
+                        _ref_skel = _skel_asset.get_reference_skeleton()
+                except Exception:
+                    pass
+
+            _bone_count = 0
             _bone_name_to_idx = {}
             _bone_parent = {}
-            for _bi in range(_bone_count):
-                _bname = str(_ref_skel.get_bone_name(_bi))
-                _bone_name_to_idx[_bname] = _bi
-                _bone_parent[_bi] = _ref_skel.get_parent_index(_bi)
+            if _ref_skel is not None:
+                _bone_count = _ref_skel.get_num() if hasattr(_ref_skel, "get_num") else 0
+                for _bi in range(_bone_count):
+                    _bname = str(_ref_skel.get_bone_name(_bi))
+                    _bone_name_to_idx[_bname] = _bi
+                    _bone_parent[_bi] = _ref_skel.get_parent_index(_bi)
+            else:
+                # Strategy 3: query USkeleton directly for bone data
+                try:
+                    _skel_asset = mesh.get_editor_property("skeleton")
+                    if _skel_asset:
+                        _bone_count = _skel_asset.get_num_bones()
+                        for _bi in range(_bone_count):
+                            _bname = str(_skel_asset.get_bone_name(_bi))
+                            _bone_name_to_idx[_bname] = _bi
+                            _bone_parent[_bi] = _skel_asset.get_parent_index(_bi)
+                except Exception as _be:
+                    unreal.log_warning(f"    Could not resolve skeleton bones for {label}: {_be}")
 
             # Map joints to bone indices and track max simulation group index
             _max_sg = -1
@@ -844,7 +904,11 @@ def _import_wind_data(mesh, wind_json_path, label):
                     _bone_pos = {}
                     for _bi in range(_bone_count):
                         try:
-                            _t = _ref_skel.get_ref_bone_pose(_bi)
+                            if _ref_skel is not None:
+                                _t = _ref_skel.get_ref_bone_pose(_bi)
+                            else:
+                                _skel_asset = mesh.get_editor_property("skeleton")
+                                _t = _skel_asset.get_ref_local_pose(_bi)
                             _loc = _t.translation
                             _bone_pos[_bi] = (_loc.x, _loc.y, _loc.z)
                         except Exception:
@@ -976,7 +1040,7 @@ def _write_batch_script(
     include_nanite_config: bool = False,
 ) -> None:
     """Write a single batch import script."""
-    script_path_str = str(script_path).replace("\\", "/")
+    script_path_str = str(script_path.resolve()).replace("\\", "/")
     preamble = _NANITE_CONFIG_PREAMBLE if include_nanite_config else ""
 
     batch_progress_name = script_path.stem + "_done.txt"
@@ -998,6 +1062,17 @@ import gc
 import os
 import time
 
+def _get_ue_world():
+    """Get editor world via UnrealEditorSubsystem (UE 5.4+), with legacy fallback."""
+    try:
+        return unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
+    except Exception:
+        pass
+    try:
+        return unreal.EditorLevelLibrary.get_editor_world()
+    except Exception:
+        return None
+
 print("=" * 60)
 print("GrowPy Batch Import: {batch_label}")
 print("=" * 60)
@@ -1007,11 +1082,7 @@ IMPORT_DELAY = 5.0
 _BATCH_PROGRESS = os.path.join(os.path.dirname(r'{script_path_str}'), "{batch_progress_name}")
 
 # --- VRAM management: safe to run standalone ---
-_world = None
-try:
-    _world = unreal.EditorLevelLibrary.get_editor_world()
-except Exception:
-    pass
+_world = _get_ue_world()
 _VRAM_SAVED = {{}}
 if _world:
     # Drop all quality to Medium for reduced VRAM during import
@@ -1102,27 +1173,23 @@ print("=" * 60)
 def generate_unreal_import_script(
     output_dir: Path,
     project_path: str = "/Game/GrowPy/Trees",
-    forest_data: Optional[pd.DataFrame] = None,
-    export_tree_ids: Optional[set] = None,
     include_static: bool = False,
 ) -> Path:
     """Generate Unreal Python scripts for importing forest USD files.
 
     Produces one script per species (plus one for shared instances).
     Each file import is monitored with adaptive VRAM waiting that pauses
-    automatically when GPU memory is high. A master script runs all
-    species sequentially.
+    automatically when GPU memory is high. Use ue_exec to run the batch
+    scripts sequentially with resource monitoring between batches.
 
     Args:
         output_dir: Directory containing exported USD files.
         project_path: Unreal project Content path.
-        forest_data: Optional DataFrame with tree positions (fid, x, y, z columns).
-        export_tree_ids: Optional set of tree IDs to include (if None, includes all).
         include_static: If True, include static twig variants and static assemblies.
             Mirrors [export] static setting from growpy.toml.
 
     Returns:
-        Path to generated master script file.
+        Path to generated scripts directory.
     """
     script_dir = output_dir / "unreal_scripts"
     script_dir.mkdir(exist_ok=True)
@@ -1141,16 +1208,15 @@ def generate_unreal_import_script(
     # Minimum file size for valid USDC with geometry (empty stubs are ~1 KB)
     MIN_ASSEMBLY_BYTES = 2048
     nanite_files_raw = [
-        f
-        for f in nanite_files
-        if f.relative_to(output_dir).parts[0] not in skip_dirs
+        f for f in nanite_files if f.relative_to(output_dir).parts[0] not in skip_dirs
     ]
     nanite_files = []
     for f in nanite_files_raw:
         if f.stat().st_size < MIN_ASSEMBLY_BYTES:
             logger.warning(
                 "Skipping empty/stub assembly %s (%d bytes)",
-                f.name, f.stat().st_size,
+                f.name,
+                f.stat().st_size,
             )
         else:
             nanite_files.append(f)
@@ -1211,24 +1277,6 @@ def generate_unreal_import_script(
             trees_by_species[species_name][variant_name] = []
         trees_by_species[species_name][variant_name].append(usd_file)
 
-    num_species = len(trees_by_species)
-    total_trees = len(nanite_files)
-    num_instances = len(instance_files)
-
-    # Build TREE_POSITIONS from forest_data
-    tree_positions_dict: Dict[str, Tuple[float, float, float]] = {}
-    if forest_data is not None:
-        for _, row in forest_data.iterrows():
-            fid = int(row["fid"])
-            if export_tree_ids is not None and fid not in export_tree_ids:
-                continue
-            x = float(row["x"])
-            y = float(row["y"])
-            z = float(row.get("z", 0.0))
-            species = row["species"]
-            tree_key = f"{species}_{fid:04d}"
-            tree_positions_dict[tree_key] = (x, y, z)
-
     # Track batch scripts: (filename, label)
     batch_scripts: List[Tuple[str, str]] = []
 
@@ -1240,9 +1288,7 @@ def generate_unreal_import_script(
         blocks += 'print("Importing shared twig/foliage instances...")\n'
         for inst_file in sorted_instances:
             inst_path = str(inst_file.resolve()).replace("\\", "/")
-            blocks += _build_import_block(
-                inst_path, "Instances", inst_file.stem
-            )
+            blocks += _build_import_block(inst_path, "Instances", inst_file.stem)
 
         batch_name = "import_batch_00_instances.py"
         batch_label = f"Shared instances ({len(sorted_instances)} files)"
@@ -1277,12 +1323,22 @@ def generate_unreal_import_script(
                 wind_json = ""
                 if is_assembly:
                     has_assemblies = True
-                    wind_files = sorted(usd_file.parent.glob("*_stems_unreal_wind.json"))
+                    # Match wind JSON to this specific tree by prefix
+                    tree_prefix = usd_file.stem.replace("_assembly", "")
+                    wind_files = sorted(
+                        usd_file.parent.glob(f"{tree_prefix}_stems_unreal_wind.json")
+                    )
+                    if not wind_files:
+                        wind_files = sorted(
+                            usd_file.parent.glob("*_stems_unreal_wind.json")
+                        )
                     if wind_files:
                         wind_json = str(wind_files[0].resolve()).replace("\\", "/")
 
                 blocks += _build_import_block(
-                    usd_path, dest_subpath, usd_file.stem,
+                    usd_path,
+                    dest_subpath,
+                    usd_file.stem,
                     wind_json_path=wind_json,
                     configure_nanite=is_assembly,
                 )
@@ -1309,356 +1365,24 @@ def generate_unreal_import_script(
         batch_scripts.append((consolidation_name, consolidation_label))
 
     # DataTable batch: catalogue all imported assemblies
-    datatable_code = _build_datatable_script(project_path)
+    datatable_code = _build_datatable_script(project_path, str(script_dir.resolve()))
     datatable_name = "import_batch_100_datatable.py"
     datatable_label = "Create tree inventory DataTable"
     datatable_path = script_dir / datatable_name
     datatable_path.write_text(datatable_code, encoding="utf-8")
     batch_scripts.append((datatable_name, datatable_label))
 
-    # Master script
-    master_path = script_dir / "import_forest.py"
-    master_path_str = str(master_path).replace("\\", "/")
-    scripts_dir_str = str(script_dir.resolve()).replace("\\", "/")
-
-    # Format tree positions
-    tree_positions_code = "TREE_POSITIONS = {\n"
-    for tree_key, (x, y, z) in sorted(tree_positions_dict.items()):
-        tree_positions_code += f"    '{tree_key}': ({x}, {y}, {z}),\n"
-    tree_positions_code += "}\n"
-
-    # Build batch list for the master script
-    batch_list_code = "BATCH_SCRIPTS = [\n"
-    for batch_name, batch_label in batch_scripts:
-        batch_list_code += f'    ("{batch_name}", "{batch_label}"),\n'
-    batch_list_code += "]\n"
-
-    master_content = f'''"""
-GrowPy Forest Import to Unreal Engine - Auto-generated master script
-
-One script per species + shared instances. Each file is imported with
-adaptive VRAM monitoring that pauses automatically when GPU memory is high.
-
-Execute this script in Unreal Engine:
-1. Right-click this file in VSCode > "Execute Python File in Unreal"
-2. Or from Unreal Python console: exec(open(r'{master_path_str}').read())
-
-To import a single species, run the individual script instead:
-  e.g. exec(open(r'{scripts_dir_str}/import_batch_01_species.py').read())
-"""
-
-import unreal
-import os
-import gc
-import time
-import subprocess
-
-print("=" * 60)
-print("GrowPy Forest Import to Unreal Engine")
-print("=" * 60)
-
-IMPORT_PATH = "{project_path}"
-SCRIPTS_DIR = r"{scripts_dir_str}"
-
-# VRAM threshold: pause import when usage exceeds this percentage
-# 90% is safe for 24GB+ GPUs -- UE5 handles near-capacity gracefully
-VRAM_LIMIT_PERCENT = 90
-
-# Maximum time (seconds) to wait for VRAM to drop below threshold before giving up
-VRAM_WAIT_TIMEOUT = 600
-
-# Polling interval (seconds) when waiting for VRAM to settle
-VRAM_POLL_INTERVAL = 15
-
-# Minimum delay (seconds) between batches even when VRAM is fine
-BATCH_MIN_DELAY = 10.0
-
-def _get_gpu_vram():
-    """Query GPU VRAM usage via nvidia-smi. Returns (used_mb, total_mb, pct) or None."""
-    try:
-        result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=memory.used,memory.total",
-             "--format=csv,noheader,nounits", "--id=0"],
-            capture_output=True, text=True, timeout=5,
-        )
-        if result.returncode == 0:
-            parts = result.stdout.strip().split(",")
-            used = int(parts[0].strip())
-            total = int(parts[1].strip())
-            pct = round(used / total * 100, 1) if total > 0 else 0
-            return (used, total, pct)
-    except Exception:
-        pass
-    return None
-
-def _vram_bar(pct):
-    bar_len = 20
-    filled = int(bar_len * pct / 100)
-    return "#" * filled + "-" * (bar_len - filled)
-
-def _check_vram(context=""):
-    """Print VRAM usage and return True if over limit."""
-    info = _get_gpu_vram()
-    if info is None:
-        return False
-    used, total, pct = info
-    status = f"  [VRAM] {{used}}/{{total}} MB ({{pct}}%) [{{_vram_bar(pct)}}]"
-    if context:
-        status += f"  ({{context}})"
-    print(status)
-    if VRAM_LIMIT_PERCENT > 0 and pct >= VRAM_LIMIT_PERCENT:
-        return True
-    return False
-
-def _wait_for_vram(context="", min_delay=10.0):
-    """Wait for VRAM to drop below threshold before continuing.
-
-    Always waits at least min_delay seconds. If VRAM is over the limit,
-    polls every VRAM_POLL_INTERVAL seconds until it drops or times out.
-    Returns True if VRAM settled, False if timed out.
-    """
-    time.sleep(min_delay)
-    info = _get_gpu_vram()
-    if info is None:
-        return True
-    used, total, pct = info
-    if VRAM_LIMIT_PERCENT <= 0 or pct < VRAM_LIMIT_PERCENT:
-        print(f"  [VRAM] {{used}}/{{total}} MB ({{pct}}%) [{{_vram_bar(pct)}}]  ({{context}})")
-        return True
-
-    print(f"  [VRAM] {{used}}/{{total}} MB ({{pct}}%) [{{_vram_bar(pct)}}]  ({{context}})")
-    print(f"  -- VRAM {{pct}}% >= {{VRAM_LIMIT_PERCENT}}% threshold, pausing until it settles...")
-    waited = 0.0
-    while waited < VRAM_WAIT_TIMEOUT:
-        time.sleep(VRAM_POLL_INTERVAL)
-        waited += VRAM_POLL_INTERVAL
-        info = _get_gpu_vram()
-        if info is None:
-            return True
-        used, total, pct = info
-        mins = int(waited // 60)
-        secs = int(waited % 60)
-        print(f"  [VRAM] {{used}}/{{total}} MB ({{pct}}%) [{{_vram_bar(pct)}}]  (waited {{mins}}m{{secs:02d}}s)")
-        if pct < VRAM_LIMIT_PERCENT:
-            print(f"  -- VRAM settled below {{VRAM_LIMIT_PERCENT}}%, continuing")
-            return True
-
-    print(f"  ** VRAM still {{pct}}% after {{int(VRAM_WAIT_TIMEOUT)}}s -- proceeding anyway **")
-    print(f"  ** Per-file tracking ensures progress is safe even if UE crashes **")
-    return True
-
-# Show initial VRAM state
-_check_vram("before import")
-
-# --- VRAM management: reduce GPU memory pressure during import ---
-# Disable expensive rendering features that consume VRAM during import
-_world = None
-try:
-    _world = unreal.EditorLevelLibrary.get_editor_world()
-except Exception:
-    pass
-
-_VRAM_SETUP_CMDS = (
-    # Drop all quality to Medium (reduces textures, shadows, effects VRAM)
-    "scalability 1",
-    # Cap texture streaming pool to 128 MB (default ~1024 MB)
-    "r.Streaming.PoolSize 128",
-    # Disable percentage-based VRAM auto-allocation for streaming pool
-    "r.Streaming.PoolSizeVRAMPercentage 0",
-    # Only load minimum mip levels during import
-    "r.Streaming.FullyLoadUsedTextures 0",
-    # Disable Lumen GI and reflections (major VRAM consumers)
-    "r.Lumen.DiffuseIndirect.Allow 0",
-    "r.Lumen.Reflections.Allow 0",
-    # Disable Virtual Shadow Maps
-    "r.Shadow.Virtual.Enable 0",
-    # Cap Nanite page pool aggressively (512 pages ~ 64 MB)
-    "r.Nanite.MaxAllocatedPages 512",
-    # Limit Nanite streaming pressure
-    "r.Nanite.Streaming.MaxPendingPages 32",
-    # Force proxy mesh rendering instead of Nanite (saves major VRAM)
-    "r.Nanite.ProxyRenderMode 1",
-    # Disable Nanite ray tracing buffers (duplicate VRAM for RT)
-    "r.RayTracing.Nanite.Mode 0",
-    # Disable thumbnail generation during import
-    "r.AllowCachedUniformExpressions 0",
-)
-if _world:
-    for _cmd in _VRAM_SETUP_CMDS:
-        try:
-            unreal.KismetSystemLibrary.execute_console_command(_world, _cmd)
-        except Exception:
-            pass
-    print("VRAM management: Lumen/VSM disabled, Nanite pool capped")
-
-print("")
-print("VRAM tips -- if import still crashes:")
-print("  1. Press Ctrl+R in viewport to disable Realtime rendering")
-print("  2. Close the Content Browser (prevents thumbnail generation)")
-print("  3. Close other GPU-heavy apps (browser tabs, etc.)")
-print("  4. Lower VRAM_LIMIT_PERCENT or increase VRAM_WAIT_TIMEOUT above")
-print("")
-
-# Tree positions from CSV (in meters, multiply by 100 for Unreal units)
-{tree_positions_code}
-
-{batch_list_code}
-
-print(f"Destination: {{IMPORT_PATH}}")
-print(f"Found {num_species} species with {total_trees} trees, {num_instances} shared instances")
-print(f"Split into {{len(BATCH_SCRIPTS)}} batches\\n")
-
-# Resume support: skip already-completed batches after a crash
-PROGRESS_FILE = os.path.join(SCRIPTS_DIR, "_import_progress.txt")
-_resume_from = 0
-if os.path.isfile(PROGRESS_FILE):
-    try:
-        _resume_from = int(open(PROGRESS_FILE).read().strip()) + 1
-        print(f"Resuming from batch {{_resume_from + 1}} ({{_resume_from}} already completed)")
-        print("Delete _import_progress.txt to restart from scratch\\n")
-    except Exception:
-        _resume_from = 0
-
-total_imported = 0
-total_failed = 0
-batches_completed = _resume_from
-
-for _batch_idx, (batch_file, batch_label) in enumerate(BATCH_SCRIPTS):
-    if _batch_idx < _resume_from:
-        continue
-
-    batch_path = os.path.join(SCRIPTS_DIR, batch_file).replace("\\\\", "/")
-    print(f"\\n>>> Running batch {{_batch_idx + 1}}/{{len(BATCH_SCRIPTS)}}: {{batch_label}}")
-
-    try:
-        # Execute in isolated namespace so batch-local variables get freed
-        _batch_ns = {{"__builtins__": __builtins__}}
-        exec(open(batch_path).read(), _batch_ns)
-        del _batch_ns
-        batches_completed += 1
-
-        # Record progress so we can resume after a crash
-        with open(PROGRESS_FILE, "w") as _pf:
-            _pf.write(str(_batch_idx))
-    except Exception as e:
-        unreal.log_error(f"Batch '{{batch_label}}' failed: {{e}}")
-        total_failed += 1
-
-    # Cleanup between species (lighter -- per-file VRAM management is in each batch)
-    try:
-        unreal.SystemLibrary.flush_async_loading()
-    except Exception:
-        pass
-    try:
-        unreal.AssetCompilingManager.get_default().finish_all_compilation()
-    except Exception:
-        pass
-    try:
-        unreal.EditorLoadingAndSavingUtils.save_dirty_packages(False, True)
-    except Exception:
-        pass
-    gc.collect()
-    try:
-        unreal.SystemLibrary.collect_garbage(full_purge=True)
-    except Exception:
-        unreal.SystemLibrary.collect_garbage()
-
-    # Nuclear VRAM reclaim between batches: release all Nanite pages, flush GPU
-    try:
-        _w = unreal.EditorLevelLibrary.get_editor_world()
-        for _cmd in (
-            "FlushRenderingCommands",
-            "r.Nanite.MaxAllocatedPages 0",
-            "r.Nanite.Streaming.MaxPendingPages 0",
-            "r.Streaming.FlushAll",
-            "r.RHI.GPUDefrag",
-            "r.D3D12.FreeAllPooledTextures",
-            "r.D3D12.FreeUnusedResources",
-        ):
-            try:
-                unreal.KismetSystemLibrary.execute_console_command(_w, _cmd)
-            except Exception:
-                pass
-        # Restore Nanite pools at reduced caps
-        for _cmd in (
-            "r.Nanite.MaxAllocatedPages 512",
-            "r.Nanite.Streaming.MaxPendingPages 32",
-        ):
-            try:
-                unreal.KismetSystemLibrary.execute_console_command(_w, _cmd)
-            except Exception:
-                pass
-    except Exception:
-        pass
-
-    # Adaptive wait: pause until VRAM settles below threshold
-    _wait_for_vram(f"after batch {{_batch_idx + 1}}", min_delay=BATCH_MIN_DELAY)
-
-# Clean up progress files on successful completion
-if total_failed == 0 and os.path.isfile(PROGRESS_FILE):
-    os.remove(PROGRESS_FILE)
-    # Also clean up per-file batch progress files
-    for _done_file in [f for f in os.listdir(SCRIPTS_DIR) if f.endswith("_done.txt")]:
-        try:
-            os.remove(os.path.join(SCRIPTS_DIR, _done_file))
-        except Exception:
-            pass
-
-# Restore default rendering settings
-try:
-    _world = unreal.EditorLevelLibrary.get_editor_world()
-    for _restore_cmd in (
-        "scalability 3",
-        "r.Streaming.PoolSize 0",
-        "r.Streaming.PoolSizeVRAMPercentage 75",
-        "r.Streaming.FullyLoadUsedTextures 0",
-        "r.Lumen.DiffuseIndirect.Allow 1",
-        "r.Lumen.Reflections.Allow 1",
-        "r.Shadow.Virtual.Enable 1",
-        "r.Nanite.MaxAllocatedPages 0",
-        "r.Nanite.Streaming.MaxPendingPages 128",
-        "r.Nanite.ProxyRenderMode 0",
-        "r.RayTracing.Nanite.Mode 1",
-        "r.AllowCachedUniformExpressions 1",
-    ):
-        try:
-            unreal.KismetSystemLibrary.execute_console_command(_world, _restore_cmd)
-        except Exception:
-            pass
-    print("Rendering settings restored (Lumen, VSM, Nanite pools, RT Nanite)")
-except Exception:
-    pass
-    pass
-
-print("")
-print("=" * 60)
-print(f"All batches complete: {{batches_completed}}/{{len(BATCH_SCRIPTS)}} succeeded")
-print("=" * 60)
-print(f"\\nAssets imported to Content Browser: {{IMPORT_PATH}}")
-print("Structure: Instances/ (shared twigs) + species/variant/ (tree assemblies)")
-print("")
-print("=" * 60)
-print("TREE PLACEMENT")
-print("=" * 60)
-print("Trees are exported at origin (0,0,0)")
-print("Use TREE_POSITIONS dictionary to place trees at their CSV coordinates")
-print("")
-print("Example placement code:")
-print("  tree_asset = unreal.EditorAssetLibrary.load_asset(IMPORT_PATH + '/species/tree_0001/SK_species_stems')")
-print("  pos = TREE_POSITIONS.get('species_0001', (0,0,0))")
-print("  actor = unreal.EditorLevelLibrary.spawn_actor_from_object(tree_asset, unreal.Vector(pos[0]*100, pos[1]*100, pos[2]*100))")
-print("")
-print(f"Available tree positions: {{len(TREE_POSITIONS)}}")
-'''
-
-    master_path.write_text(master_content, encoding="utf-8")
+    # Remove stale master script from previous runs
+    stale_master = script_dir / "import_forest.py"
+    if stale_master.exists():
+        stale_master.unlink()
 
     logger.info(
-        "Generated %d batch import scripts + master script in %s",
+        "Generated %d batch import scripts in %s",
         len(batch_scripts),
         script_dir,
     )
-    return master_path
+    return script_dir
 
 
 def generate_unreal_cleanup_script(

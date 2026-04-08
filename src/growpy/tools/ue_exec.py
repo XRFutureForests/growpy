@@ -177,9 +177,12 @@ _UE_CLEANUP_SCRIPT = """\
 import unreal, gc
 _w = None
 try:
-    _w = unreal.EditorLevelLibrary.get_editor_world()
+    _w = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
 except Exception:
-    pass
+    try:
+        _w = unreal.EditorLevelLibrary.get_editor_world()
+    except Exception:
+        pass
 if _w:
     for _cmd in (
         "FlushRenderingCommands",
@@ -211,7 +214,33 @@ try:
     unreal.SystemLibrary.collect_garbage(full_purge=True)
 except Exception:
     unreal.SystemLibrary.collect_garbage()
+# Load a blank transient level to force Nanite page eviction from VRAM.
+# Imported assets remain on disk -- only the GPU-resident pages are released.
+try:
+    _subsys = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
+    _subsys.new_level("/Engine/Maps/Templates/Template_Default")
+    print("  Loaded blank level to release Nanite VRAM")
+except Exception:
+    try:
+        unreal.EditorLevelLibrary.new_level("/Engine/Maps/Templates/Template_Default")
+        print("  Loaded blank level to release Nanite VRAM")
+    except Exception as _le:
+        print(f"  Could not load blank level: {_le}")
+gc.collect()
+try:
+    unreal.SystemLibrary.collect_garbage(full_purge=True)
+except Exception:
+    unreal.SystemLibrary.collect_garbage()
 # Restore Nanite pools at reduced caps
+# Re-acquire world reference after level change
+_w = None
+try:
+    _w = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
+except Exception:
+    try:
+        _w = unreal.EditorLevelLibrary.get_editor_world()
+    except Exception:
+        pass
 if _w:
     for _cmd in (
         "r.Nanite.MaxAllocatedPages 512",

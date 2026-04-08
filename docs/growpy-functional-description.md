@@ -225,16 +225,19 @@ data/assets/
 #### Key Algorithms
 
 **Boundary-Only Densification**:
+
 - Only subdivides edges at the silhouette boundary
 - Interior mesh topology preserved
 - Creates high-detail edges where alpha transitions occur
 
 **Relative Edge Sizing**:
+
 - `boundary_edge_mm` parameter is fraction of average edge length
 - Default: 0.5 (subdivide to 50% of avg edge)
 - Scale-independent: works for any mesh size
 
 **Alpha Trimming Methods**:
+
 - `all`: Delete face only if ALL vertex samples < threshold (conservative)
 - `any`: Delete face if ANY vertex sample < threshold (aggressive)
 
@@ -443,12 +446,12 @@ data/assets/growth_models/
 
 8. **Unreal Script Generation** (optional, with --import-to-unreal)
 
-   **Import Script** (`unreal_scripts/import_forest.py`):
-   - Standalone Python script for Unreal Engine
-   - Imports all tree assemblies to Content Browser
-   - Configurable destination path (default: /Game/GrowPy/Trees)
-   - Execute via VSCode Unreal Python extension
-   - Includes tree position data from CSV
+   **Batch Import Scripts** (`unreal_scripts/import_batch_*.py`):
+   - One script per species + shared instances batch
+   - Each imports its species trees to Content Browser
+   - Adaptive VRAM monitoring per file
+   - Run via `python -m growpy.tools.ue_exec <scripts_dir> --vram-limit 85`
+   - Includes consolidation and DataTable generation batches
 
    **Cleanup Script** (`unreal_scripts/clean_assets.py`):
    - Remove all imported assets
@@ -458,6 +461,7 @@ data/assets/growth_models/
 #### Key Processing Phases
 
 **Timing Breakdown** (approximate):
+
 - CSV loading: <1%
 - Forest creation: 1-5%
 - Growth simulation: 60-80%
@@ -470,6 +474,7 @@ data/assets/growth_models/
 #### Export Variants
 
 **Skeletal Assemblies** (default):
+
 - Minimal export: geometry + skeleton only
 - No materials/textures in tree mesh
 - Wind animation support
@@ -477,6 +482,7 @@ data/assets/growth_models/
 - Use skeletal twigs
 
 **Static Assemblies** (optional, --include-static):
+
 - Full PBR materials with textures
 - No skeleton (static geometry)
 - Better visual quality for static placement
@@ -507,7 +513,9 @@ data/output/forest/
 │           ├── {species}_twig_apical_skeletal.usda
 │           └── {species}_twig_lateral_skeletal.usda
 └── unreal_scripts/
-    ├── import_forest.py
+    ├── import_batch_00_instances.py
+    ├── import_batch_01_{species}.py
+    ├── ...
     └── clean_assets.py
 ```
 
@@ -520,6 +528,7 @@ data/output/forest/
 **Purpose**: Height-to-cycles conversion using growth models
 
 **Key Functions**:
+
 - `calculate_growth_cycles_from_height()`: Load growth models and convert height column to growth_cycles
 - Uses linear interpolation if height between data points
 - Extrapolates if height exceeds model range
@@ -529,10 +538,12 @@ data/output/forest/
 **Purpose**: Single-species grove management (wrapper around Grove API)
 
 **Key Functions**:
+
 - `create_grove()`: Initialize Grove instance for species
 - `add_tree_to_grove()`: Place tree at (x, y, z) with optional delay
 
 **Grove API Methods Used**:
+
 - `grove.simulate(cycles)`: Run growth simulation
 - `grove.smooth()`: Reduce branch angles
 - `grove.smooth_minimal()`: Fix thick branch kinks
@@ -548,16 +559,19 @@ data/output/forest/
 **Purpose**: Multi-species forest creation and simulation
 
 **Key Functions**:
+
 - `create_forest()`: Group trees by species, create groves, track fids
 - `simulate_forest_growth()`: Growth simulation with preset overrides and smoothing
 
 **Preset Override System**:
+
 - Load species curves from seed.json files (interpolated_overrides)
 - Apply CLI overrides (static_overrides and interpolated_overrides)
 - Priority: CLI > species curves > defaults
 - Applied at each growth cycle for dynamic parameter adjustment
 
 **Inter-Species Light Competition**:
+
 - All groves share shade geometry
 - Shade from one species affects growth of other species
 - Simulates realistic forest dynamics
@@ -567,11 +581,13 @@ data/output/forest/
 **Purpose**: Skeleton hierarchy management for skeletal meshes
 
 **Data Structures**:
+
 - `Vector3`: 3D point (x, y, z)
 - `JointTransform`: Bone position, rotation, scale
 - `SkeletonHierarchy`: Full skeleton tree with parent-child relationships
 
 **Key Functions**:
+
 - `build_skeleton_hierarchy()`: Convert Grove skeleton to USD skeleton
 - `calculate_vertex_weights()`: Skinning weights for vertex deformation
 - `tag_bone_id()`: Filter bones by quality parameters
@@ -582,15 +598,18 @@ data/output/forest/
 **Purpose**: Twig placement extraction and bone assignment
 
 **Data Structures**:
+
 - `TwigPlacement`: Position, rotation, scale, type, leaf count, bone_id
 
 **Key Functions**:
+
 - `extract_twig_placements_from_model()`: Find all twigs in tree
 - `get_face_center_and_normal()`: Geometry calculations for placement
 - `normal_to_rotation_matrix()`: Convert surface normal to 3D rotation
 - `_find_twig_bone_id()`: Assign twigs to skeleton bones (vertex voting or branch lookup)
 
 **Twig-to-Bone Assignment**:
+
 1. Vertex voting: Use vertex bone_id attributes (fast, accurate)
 2. Branch lookup fallback: Match twig to nearest branch (slow, less accurate)
 
@@ -605,6 +624,7 @@ data/output/forest/
 **Key Function**: `export_tree_as_nanite_assembly()`
 
 **Assembly Structure**:
+
 ```
 Assembly USD (species.usda)
 ├── References tree mesh (species_tree_id_skeletal.usda)
@@ -653,6 +673,7 @@ Assembly USD (species.usda)
    - Validate PointInstancer indices
 
 **Twig Type Fallback Mapping**:
+
 ```python
 {
     "dead" → "apical",
@@ -697,6 +718,7 @@ Assembly USD (species.usda)
    - Create animation rig
 
 **Twig USD Map**: `get_twig_usd_map_for_species()`
+
 - Find all twig USD files for species
 - Map twig types to file paths
 - Prefer skeletal or static variants
@@ -734,12 +756,14 @@ Assembly USD (species.usda)
    - Static: geometry + materials
 
 **Key Algorithms**:
+
 - Boundary detection via mesh.edges with is_boundary flag
 - Alpha sampling via texture pixel access
 - Edge subdivision via bmesh.ops.subdivide_edges
 - Face deletion via bmesh.ops.delete
 
 **Texture Processing**:
+
 - Classify texture types (diffuse, alpha, normal, etc.)
 - Find textures for each material
 - Smart matching by filename patterns
@@ -774,6 +798,7 @@ Assembly USD (species.usda)
    - jointSimulationGroups array (0-3)
 
 **Classification Strategies**:
+
 - Preferred: Use skeleton thickness attributes
 - Fallback: Hierarchy depth from joint name parsing
 
@@ -824,6 +849,7 @@ Assembly USD (species.usda)
    - Format for Unreal import
 
 **PVE Schema Structure**:
+
 ```json
 {
     "global_attributes": {
@@ -854,6 +880,7 @@ Assembly USD (species.usda)
 **Quality Presets**: 5 levels with different parameter sets
 
 **Parameters**:
+
 - `resolution`: Vertex count per branch segment (8-32)
 - `resolution_reduce`: Simplification factor (0.75-0.9)
 - `texture_repeat`: UV scaling (2-4)
@@ -891,11 +918,13 @@ Assembly USD (species.usda)
    - Format: `{param}_curve: [(cycle, value), ...]`
 
 **Priority Order**:
+
 1. CLI preset overrides (highest)
 2. Species curves from seed.json
 3. Grove defaults (lowest)
 
 **Common Parameters**:
+
 - `drop_decay`: Rate of dead branch decay (0.0-1.0)
 - `drop_weak`: Rate of weak branch dropping
 - `drop_shaded`: Rate of shaded branch dropping
@@ -903,6 +932,7 @@ Assembly USD (species.usda)
 - `light_power`: Light intensity influence
 
 **Longevity Mode**: Predefined overrides to prevent tree death at high cycles
+
 ```python
 {
     "drop_decay": 0.1,
@@ -917,12 +947,14 @@ Assembly USD (species.usda)
 **Path Resolution**: Find Grove assets with multiple fallback strategies
 
 **Key Functions**:
+
 - `get_preset_path()`: Find species preset file
 - `get_growth_model_path()`: Find growth model JSON
 - `get_twig_directory()`: Find twig folder
 - `get_bark_texture_path()`: Find bark texture
 
 **Fallback Strategies**:
+
 1. Try standardized snake_case name
 2. Try original Grove CamelCase name
 3. Try lookup table mapping
@@ -982,6 +1014,7 @@ cli/ (orchestrates all layers)
 ```
 
 **External Dependencies**:
+
 - `the_grove_23_core`: C++ Grove API (Python bindings)
 - `bpy`: Blender Python API
 - `pxr`: Pixar USD
@@ -1001,6 +1034,7 @@ cli/ (orchestrates all layers)
 **Purpose**: Convert tree height (meters) to growth cycles for simulation
 
 **Algorithm**:
+
 1. Load growth model JSON for species
 2. Find cycles corresponding to target height
 3. Linear interpolation if between data points
@@ -1013,6 +1047,7 @@ cli/ (orchestrates all layers)
 **Purpose**: Create high-detail silhouettes while removing internal transparent faces
 
 **Algorithm** (from convert_twigs.py):
+
 ```
 while not converged:
     1. Classify faces by alpha (opaque, transparent, transition, boundary)
@@ -1022,6 +1057,7 @@ while not converged:
 ```
 
 **Key Properties**:
+
 - Only subdivides silhouette boundary (transition zones)
 - Interior mesh topology preserved
 - Auto-detects inverted alpha (black=opaque)
@@ -1034,6 +1070,7 @@ while not converged:
 **Purpose**: Simulate realistic forest dynamics where species compete for light
 
 **Algorithm** (from core/forest.py):
+
 ```python
 for cycle in range(cycles):
     # Apply preset overrides
@@ -1057,6 +1094,7 @@ for cycle in range(cycles):
 ```
 
 **Key Properties**:
+
 - Shade geometry shared between all species
 - Grove API handles shade calculation
 - Overhead branches reduce light for lower trees
@@ -1069,6 +1107,7 @@ for cycle in range(cycles):
 **Purpose**: Assign each twig placement to a skeleton bone for animation
 
 **Algorithm** (from core/twig.py):
+
 ```python
 def _find_twig_bone_id():
     # Strategy 1: Vertex voting (fast, accurate)
@@ -1086,6 +1125,7 @@ def _find_twig_bone_id():
 ```
 
 **Key Properties**:
+
 - Vertex voting preferred (uses Grove's bone assignments)
 - Branch lookup fallback for models without vertex bone data
 - Twig placement uses center of twig face
@@ -1098,6 +1138,7 @@ def _find_twig_bone_id():
 **Purpose**: Reduce skeleton bone count while preserving animation quality
 
 **Algorithm** (from generate_forest.py):
+
 ```python
 # Grove API filters bones based on quality parameters
 bones = grove.tag_bone_id(
@@ -1109,6 +1150,7 @@ bones = grove.tag_bone_id(
 ```
 
 **Quality Preset Values**:
+
 - ultra: length=0.1, reduce=0.1 (most bones, max detail)
 - medium: length=2.0, reduce=0.4 (balanced, Grove default)
 - performance: length=4.0, reduce=0.8 (minimal bones, 32K limit safe)
@@ -1120,6 +1162,7 @@ bones = grove.tag_bone_id(
 **Purpose**: Dynamic parameter adjustment during growth simulation
 
 **Algorithm** (from config/preset_overrides.py):
+
 ```python
 def apply_to_grove(grove, current_cycle, total_cycles):
     # Apply static overrides (fixed values)
@@ -1134,6 +1177,7 @@ def apply_to_grove(grove, current_cycle, total_cycles):
 ```
 
 **Curve Format** (in seed.json):
+
 ```json
 {
     "drop_decay_curve": [
@@ -1155,11 +1199,13 @@ def apply_to_grove(grove, current_cycle, total_cycles):
 **Type**: C++ library with Python bindings (CFFI or ctypes)
 
 **Key Classes**:
+
 - `Grove`: Main simulation class
 - `Model`: 3D geometry representation
 - `Skeleton`: Bone hierarchy
 
 **Key Methods Used**:
+
 - Growth: `simulate()`, `weigh_and_bend()`
 - Smoothing: `smooth()`, `smooth_minimal()`
 - Building: `build_skeletons()`, `tag_bone_id()`, `build_models()`
@@ -1172,6 +1218,7 @@ def apply_to_grove(grove, current_cycle, total_cycles):
 **Type**: Python module embedded in Blender
 
 **Key Modules Used**:
+
 - `bpy.data`: Access Blender data (meshes, materials, textures)
 - `bpy.ops`: Blender operators (import, export, modifiers)
 - `bmesh`: Low-level mesh editing
@@ -1180,6 +1227,7 @@ def apply_to_grove(grove, current_cycle, total_cycles):
 **Integration**: Direct imports in io/twig_export.py and cli/convert_twigs.py
 
 **Special Handling**: Bundled module exposure for NumPy access
+
 ```python
 if hasattr(bpy.utils, "expose_bundled_modules"):
     bpy.utils.expose_bundled_modules()
@@ -1190,6 +1238,7 @@ if hasattr(bpy.utils, "expose_bundled_modules"):
 **Type**: Universal Scene Description Python bindings
 
 **Key Modules Used**:
+
 - `pxr.Usd`: Core USD API (Stage, Prim, Attribute)
 - `pxr.UsdGeom`: Geometry (Mesh, PointInstancer, Xform)
 - `pxr.UsdSkel`: Skeletal animation (Skeleton, Animation, BindingAPI)
@@ -1208,12 +1257,14 @@ Based on the comprehensive analysis, the following optimization opportunities ha
 ### 1. Verbose Output Cleanup
 
 **Current State**:
+
 - 84 print statements in CLI scripts alone
 - 23 total files with print statements
 - No unified logging system
 - Hardcoded print statements in library code
 
 **Recommendations**:
+
 - Replace print() with Python logging module
 - Add log levels: DEBUG, INFO, WARNING, ERROR
 - Make verbose output opt-in via --verbose flag
@@ -1224,16 +1275,19 @@ Based on the comprehensive analysis, the following optimization opportunities ha
 ### 2. Deprecated/Legacy Code Removal
 
 **Current State**:
+
 - 7 files with TODO/FIXME/NOTE comments
 - Multiple deprecated functions marked but not removed
 - Legacy fallback paths for old file formats
 - Unused parameter warnings
 
 **Identified Deprecated Code**:
+
 - `io/tree_export.py`: Multiple deprecated skeleton parameters (lines 147-150)
 - `io/pve_hierarchy_builder.py`: Legacy model parameter kept for compatibility (lines 84, 164)
 
 **Recommendations**:
+
 - Remove deprecated functions entirely
 - Clean up legacy parameter handling
 - Remove fallback code for old formats
@@ -1244,18 +1298,21 @@ Based on the comprehensive analysis, the following optimization opportunities ha
 ### 3. Fallback Code Reduction
 
 **Current State**:
+
 - Extensive fallback logic throughout codebase
 - Multiple path resolution fallbacks in config/paths.py
 - Twig-to-bone assignment fallbacks in core/twig.py
 - Texture matching fallbacks in io/twig_export.py
 
 **Fallback Categories**:
+
 - **Path Resolution**: 8+ fallback attempts per asset lookup
 - **Twig-Bone Assignment**: 2 strategies (vertex voting → branch lookup)
 - **Texture Matching**: 3-tier matching (direct → word overlap → permissive)
 - **PVE Attribute**: Multiple fallback defaults
 
 **Recommendations**:
+
 - Standardize asset organization (eliminate CamelCase → snake_case variations)
 - Document required file structure clearly
 - Reduce fallback depth (1-2 levels max)
@@ -1267,17 +1324,20 @@ Based on the comprehensive analysis, the following optimization opportunities ha
 ### 4. Redundant File Operations
 
 **Current State**:
+
 - Twig USD files copied per tree (even if already copied)
 - Texture processing repeated for each twig variant
 - No caching for repeated asset reads
 - File existence checks in tight loops
 
 **Identified Redundancies**:
+
 - `io/assembly_export.py`: Copy twig files even if already present
 - `cli/prepare_assets.py`: Process textures separately for each species
 - `io/twig_export.py`: Reload textures for each material
 
 **Recommendations**:
+
 - Expand twig copy cache (currently partial)
 - Cache texture processing results
 - Batch file operations where possible
@@ -1288,12 +1348,14 @@ Based on the comprehensive analysis, the following optimization opportunities ha
 ### 5. Profiling and Performance Tracking
 
 **Current State**:
+
 - Profiling system implemented (utils/profiling.py)
 - Optional via --profile flag
 - Not enabled by default
 - Timer hierarchy for detailed breakdown
 
 **Recommendations**:
+
 - Enable profiling by default (minimal overhead)
 - Add summary output always (even without --profile)
 - Track more granular operations
@@ -1305,6 +1367,7 @@ Based on the comprehensive analysis, the following optimization opportunities ha
 ### 6. Configuration Consolidation
 
 **Current State**:
+
 - Multiple configuration sources:
   - Quality presets (config/quality.py)
   - Preset overrides (config/preset_overrides.py)
@@ -1314,6 +1377,7 @@ Based on the comprehensive analysis, the following optimization opportunities ha
 - Priority rules not always clear
 
 **Recommendations**:
+
 - Consolidate configuration into single system
 - Clear hierarchy: CLI > species > quality > defaults
 - Single source of truth for each parameter
@@ -1325,12 +1389,14 @@ Based on the comprehensive analysis, the following optimization opportunities ha
 ### 7. Error Handling Improvements
 
 **Current State**:
+
 - Many functions silently fail or return default values
 - Try/except blocks catch generic Exception
 - Error messages not always informative
 - Some errors printed but not raised
 
 **Recommendations**:
+
 - Raise specific exceptions with clear messages
 - Add custom exception classes for domain errors
 - Fail fast on critical errors (missing assets)
@@ -1342,12 +1408,14 @@ Based on the comprehensive analysis, the following optimization opportunities ha
 ### 8. Documentation and Code Comments
 
 **Current State**:
+
 - Extensive docstrings in CLI scripts (good)
 - Less documentation in library modules
 - Some outdated comments referencing old behavior
 - Algorithm explanations mostly in CLI help text
 
 **Recommendations**:
+
 - Move algorithm documentation to library modules
 - Update outdated comments
 - Add type hints consistently
@@ -1359,12 +1427,14 @@ Based on the comprehensive analysis, the following optimization opportunities ha
 ### 9. Testing Coverage
 
 **Current State**:
+
 - Single test file: tests/test_pve_generation.py
 - No tests for CLI scripts
 - No tests for core simulation logic
 - No tests for export functions
 
 **Recommendations**:
+
 - Add unit tests for core modules
 - Add integration tests for CLI pipeline
 - Add regression tests for export formats
@@ -1376,17 +1446,20 @@ Based on the comprehensive analysis, the following optimization opportunities ha
 ### 10. Memory Management
 
 **Current State**:
+
 - Manual garbage collection after tree export
 - Large data structures held in memory during processing
 - Grove instances kept alive throughout pipeline
 - No streaming processing for large forests
 
 **Identified Issues**:
+
 - `generate_forest.py`: Grove instances stored until all exports complete
 - `generate_forest.py`: Models list kept in memory (cleared iteratively)
 - Memory spikes during skeleton/model building
 
 **Recommendations**:
+
 - Process and export trees incrementally
 - Release Grove instances immediately after export
 - Stream processing for large forests
@@ -1402,6 +1475,7 @@ Based on the comprehensive analysis, the following optimization opportunities ha
 GrowPy is a well-structured package with clear separation of concerns and a logical pipeline architecture. The code is generally clean and well-documented, with extensive help text in CLI scripts.
 
 **Strengths**:
+
 - Clear 4-step pipeline workflow
 - Modular architecture with no circular dependencies
 - Comprehensive CLI documentation
@@ -1409,6 +1483,7 @@ GrowPy is a well-structured package with clear separation of concerns and a logi
 - Performance profiling infrastructure
 
 **Areas for Improvement**:
+
 - Verbose output cleanup (replace print with logging)
 - Remove deprecated/legacy code
 - Reduce fallback complexity
@@ -1418,6 +1493,7 @@ GrowPy is a well-structured package with clear separation of concerns and a logi
 - Optimize file operations and memory usage
 
 The package is production-ready but would benefit significantly from the optimization opportunities identified above. The refactoring should focus on:
+
 1. **Code cleanup** (verbose output, deprecated code, comments)
 2. **Simplification** (reduce fallbacks, consolidate config)
 3. **Robustness** (error handling, testing)

@@ -72,7 +72,7 @@ seeds = 1
 height_threshold = 0.01
 # Stop after N consecutive cycles without significant growth (1-20)
 # Lower values = earlier termination, prevents wasting time on plateaued trees
-max_cycles_without_growth = 5
+max_cycles_without_growth = 3
 # Maximum simulation time per seed in seconds (10-3600)
 # Increase for complex species; prevents stuck simulations
 timeout = 300
@@ -139,7 +139,7 @@ competition_neighbors = 3
 quality = "high"
 # Maximum growth cycles per tree (1-250)
 # Trees exceeding this limit are capped (not scaled)
-growth_cycle_limit = 45
+growth_cycle_limit = 65
 # Number of grove.smooth() passes on branch angles (int, 0-20, 0 = disabled)
 # Each pass reduces sharp corner angles between branch segments.
 # Higher values = smoother, more organic branches; 10-20 for production.
@@ -152,12 +152,12 @@ include_grove_attributes = false
 # Uses growth models to determine which cycle corresponds to each height milestone
 # Each snapshot includes height and DBH in the filename for easy asset selection
 # 0 = disabled (standard single height-based export)
-height_interval = 4
+height_interval = 5
 # Cap all tree heights at this value in meters (e.g., 15 for quick testing)
 # Trees taller than this in the input CSV are clamped to this height
 # Reduces growth cycles and number of height stages for faster runs
 # 0 = no limit (use full CSV heights)
-max_height = 12
+max_height = 20
 
 # Quality Presets (single source of truth)
 # Define any number of named presets below as [quality.<name>] sections.

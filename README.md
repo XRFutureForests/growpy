@@ -296,7 +296,9 @@ data/output/forest/
 │   └── individual/                                    # Optional (--individual-obj)
 │       └── species_name_0001.obj
 └── unreal_scripts/                                    # Optional (--import-to-unreal)
-    ├── import_forest.py
+    ├── import_batch_00_instances.py
+    ├── import_batch_01_species.py
+    ├── ...
     └── clean_assets.py
 ```
 
