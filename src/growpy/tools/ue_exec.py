@@ -255,12 +255,14 @@ print("CLEANUP COMPLETE")
 
 
 def _discover_batch_scripts(scripts_dir: Path) -> list[Path]:
-    """Find and sort batch import scripts in a directory."""
+    """Find and sort batch import scripts by numeric batch ID."""
     batches = []
-    for f in sorted(scripts_dir.iterdir()):
-        if BATCH_PATTERN.match(f.name):
-            batches.append(f)
-    return batches
+    for f in scripts_dir.iterdir():
+        m = BATCH_PATTERN.match(f.name)
+        if m:
+            batches.append((int(m.group(1)), f))
+    batches.sort(key=lambda x: x[0])
+    return [f for _, f in batches]
 
 
 def _run_single(

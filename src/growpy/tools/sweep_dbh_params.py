@@ -6,9 +6,9 @@ measure their effect on DBH. Tests untried parameters (thicken_join,
 thicken_deadwood, thicken_base_shape) alongside known levers.
 
 Usage:
-    python src/growpy/cli/sweep_dbh_params.py
-    python src/growpy/cli/sweep_dbh_params.py --cycles 15
-    python src/growpy/cli/sweep_dbh_params.py --species "European beech"
+    python -m growpy.tools.sweep_dbh_params
+    python -m growpy.tools.sweep_dbh_params --cycles 15
+    python -m growpy.tools.sweep_dbh_params --species "European beech"
 """
 
 import argparse
@@ -19,15 +19,11 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-# Add src to path for Grove imports
-src_path = Path(__file__).parent.parent.parent
-sys.path.insert(0, str(src_path))
-sys.path.insert(0, str(src_path / "the_grove_23" / "modules"))
+from growpy.config.paths import get_assets_directory
 
 logger = logging.getLogger(__name__)
 
-SCRIPT_DIR = Path(__file__).parent.parent.parent.parent
-PRESETS_DIR = SCRIPT_DIR / "data" / "assets" / "presets"
+PRESETS_DIR = get_assets_directory() / "presets"
 
 # Species to test (common name -> preset filename stem)
 SPECIES_MAP = {

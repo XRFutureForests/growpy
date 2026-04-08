@@ -152,19 +152,21 @@ global XZ plane. This correctly thickens branches without stretching them along
 their length -- critical for angled and horizontal branches where XZ-plane scaling
 would distort the mesh.
 
-The scaling magnitude is **height-aware** to preserve crown proportions:
+The scaling magnitude is **distributed across the full tree** to avoid unnatural
+base bulging while preserving crown proportions:
 
 - Below breast height (1.3m): full `radial_scale` applied
-- From breast height to 40% of tree height: smoothstep blend toward 1.0
-- Above 40% of tree height: no scaling (branches keep natural proportions)
+- From breast height to 85% of tree height: smoothstep blend toward `crown_scale`
+- Above 85% of tree height: `crown_scale` (30% of full correction retained)
 
 ```text
 radial_scale = clamp(target_dbh[cycle] / grove_dbh, 0.1, 2.0)
+crown_scale  = 1.0 + (radial_scale - 1.0) * 0.3
 
 per-vertex scale at height h:
   h <= 1.3m            -> radial_scale          (full correction)
   1.3m < h < blend_end -> smoothstep blend      (gradual transition)
-  h >= blend_end       -> 1.0                   (no distortion)
+  h >= blend_end       -> crown_scale           (30% correction retained)
 
 per-vertex displacement (when bone data available):
   D = normalize(bone_end - bone_start)           (bone axis)

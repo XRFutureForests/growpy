@@ -46,7 +46,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
               fids is a list of original CSV fid values for each tree in the grove
               verbose is boolean for verbose output
               timer is optional ProfileTimer instance
-              twig_densities is a dict mapping fid -> twig_density float (or empty dict)
+              twig_densities is a dict mapping fid -> twig_density scale factor (or empty dict)
               csv_dbh_map is a dict mapping fid -> dbh in meters (or empty dict)
               individual_type_map is a dict mapping fid -> individual_type str (or empty dict)
 
@@ -78,7 +78,9 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         generate_unreal_import_script,
     )
     from .usd.assembly_export import export_tree_as_nanite_assembly
-    from .usd.preview import generate_export_control_image as _generate_export_control_image
+    from .usd.preview import (
+        generate_export_control_image as _generate_export_control_image,
+    )
     from .usd.preview import generate_icon_image as _generate_icon_image
     from .usd.preview import generate_preview_image as _generate_preview_image
     from .usd.tree_export import (
@@ -88,7 +90,19 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         is_bone_limit_error,
     )
 
-    (fids, grove, species, output_dir, quality_params, mesh_type, verbose, timer, twig_densities, csv_dbh_map, individual_type_map) = args
+    (
+        fids,
+        grove,
+        species,
+        output_dir,
+        quality_params,
+        mesh_type,
+        verbose,
+        timer,
+        twig_densities,
+        csv_dbh_map,
+        individual_type_map,
+    ) = args
 
     # Use provided timer or create disabled one
     if timer is None:
@@ -284,18 +298,21 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             # Build export iterations: one per density variant, or single default
             if density_variants:
                 export_iterations = [
-                    (vname, vcfg["twig_density"],
-                     variant_model_sets.get(vname, models)[model_idx])
+                    (
+                        vname,
+                        vcfg["twig_density"],
+                        variant_model_sets.get(vname, models)[model_idx],
+                    )
                     for vname, vcfg in density_variants
                 ]
             else:
-                export_iterations = [
-                    (None, twig_densities.get(tree_fid), model)
-                ]
+                export_iterations = [(None, twig_densities.get(tree_fid), model)]
 
-            for variant_idx, (variant_name, effective_twig_density, effective_model) in enumerate(
-                export_iterations
-            ):
+            for variant_idx, (
+                variant_name,
+                effective_twig_density,
+                effective_model,
+            ) in enumerate(export_iterations):
                 # Build output directory and filename prefix
                 if individual_type:
                     tree_dir = output_dir / species_clean / individual_type
@@ -304,9 +321,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         if variant_name
                         else format_density_for_filename(effective_twig_density)
                     )
-                    individual_short = (
-                        "comp" if "comp" in individual_type else "open"
-                    )
+                    individual_short = "comp" if "comp" in individual_type else "open"
                     species_title = (
                         species_clean.replace("_", " ").title().replace(" ", "_")
                     )
@@ -318,7 +333,9 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                     else:
                         file_prefix = f"{species_clean}_{dims_suffix}"
                 tree_dir.mkdir(parents=True, exist_ok=True)
-                usd_path = tree_dir / f"{file_prefix}_assembly_{mesh_suffix}{config.usd_ext}"
+                usd_path = (
+                    tree_dir / f"{file_prefix}_assembly_{mesh_suffix}{config.usd_ext}"
+                )
 
                 with timer.track(f"export_nanite_assembly_{mesh_suffix}"):
                     captured_twig_placements = {}
@@ -356,7 +373,8 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                             from .unreal.wind_json import generate_wind_json
 
                             skeletal_usd_path = (
-                                tree_dir / f"{stems_base}_stems_skeletal{config.usd_ext}"
+                                tree_dir
+                                / f"{stems_base}_stems_skeletal{config.usd_ext}"
                             )
                             wind_json_path = (
                                 tree_dir / f"{file_prefix}_stems_unreal_wind.json"
@@ -383,7 +401,9 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         if use_skeletal and not skip_pve:
                             from .unreal.pve_grove_mapper import generate_pve_from_grove
 
-                            pve_json_path = tree_dir / f"{file_prefix}_stems_unreal_pve.json"
+                            pve_json_path = (
+                                tree_dir / f"{file_prefix}_stems_unreal_pve.json"
+                            )
                             pve_config_dir = Path("data/assets/pve_configs")
 
                             try:
@@ -434,13 +454,14 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                             tree_dir, species_clean, file_prefix, skeleton, timer
                         )
                         _generate_export_control_image(
-                            tree_dir, species_clean, file_prefix, timer,
+                            tree_dir,
+                            species_clean,
+                            file_prefix,
+                            timer,
                             view_bounds=preview_bounds,
                             stems_file_base=stems_base,
                         )
-                        _generate_icon_image(
-                            tree_dir, file_prefix, skeleton, timer
-                        )
+                        _generate_icon_image(tree_dir, file_prefix, skeleton, timer)
 
             # MEMORY OPTIMIZATION: Clear this tree's data immediately after export
             models[model_idx] = None  # type: ignore[call-overload]
@@ -510,7 +531,9 @@ def export_individual_trees(
     # Trees are named using their original CSV fid values
     grove_tasks = []
 
-    # Build per-tree twig_density map from input CSV (if column exists)
+    # Build per-tree twig_density scale map from input CSV (if column exists).
+    # CSV twig_density is a multiplier applied to the TOML export_twig_density base.
+    # e.g. TOML base=0.8, CSV scale=0.5 -> effective density = 0.4
     twig_density_map: Dict[int, float] = {}
     if "twig_density" in forest_data.columns:
         for _, row in forest_data.iterrows():
@@ -572,8 +595,22 @@ def export_individual_trees(
             )
 
     # Always use sequential processing (bpy/USD not compatible with multiprocessing)
-    for task_idx, task in enumerate(tqdm(grove_tasks, desc="Exporting groves", disable=not is_verbose())):
-        _fids, _grove, _species, _outdir, _qp, _mesh_type, _verbose, _timer, _td, _dbh, _it = task
+    for task_idx, task in enumerate(
+        tqdm(grove_tasks, desc="Exporting groves", disable=not is_verbose())
+    ):
+        (
+            _fids,
+            _grove,
+            _species,
+            _outdir,
+            _qp,
+            _mesh_type,
+            _verbose,
+            _timer,
+            _td,
+            _dbh,
+            _it,
+        ) = task
         species_short = _species.replace(" ", "_").lower()
         track_name = f"grove_export ({species_short} {_mesh_type})"
         with timer.track(track_name):
@@ -587,5 +624,7 @@ def export_individual_trees(
 
     # PVE JSON generation now happens inline during tree export
     # No separate batch generation needed
+
+    return exported_files
 
     return exported_files

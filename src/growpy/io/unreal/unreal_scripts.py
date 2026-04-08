@@ -19,10 +19,11 @@ _VRAM_MONITOR_PREAMBLE = '''
 import subprocess
 
 # VRAM threshold: pause import when usage exceeds this percentage
-VRAM_LIMIT_PERCENT = 90
+# Set high (95%) because the orchestrator handles cleanup between batches at a lower threshold.
+VRAM_LIMIT_PERCENT = 95
 
 # Maximum time (seconds) to wait for VRAM to drop below threshold before giving up
-VRAM_WAIT_TIMEOUT = 600
+VRAM_WAIT_TIMEOUT = 300
 
 # Polling interval (seconds) when waiting for VRAM to settle
 VRAM_POLL_INTERVAL = 15
@@ -1504,4 +1505,138 @@ else:
 '''
 
     script_path.write_text(script_content, encoding="utf-8")
+    return script_path
+
+
+def generate_wind_reimport_script(
+    output_dir: Path,
+    project_path: str = "/Game/GrowPy/Trees",
+) -> Path:
+    """Generate a UE Python script that re-imports wind data for all assemblies.
+
+    This is useful when the initial import used an older template that lacked
+    the multi-strategy skeleton bone lookup. The generated script loads each
+    already-imported SkeletalMesh and applies DynamicWind data from the JSON
+    files without re-importing geometry.
+
+    Args:
+        output_dir: Directory containing exported USD files (parent of unreal_scripts/).
+        project_path: Unreal project Content path.
+
+    Returns:
+        Path to generated wind re-import script.
+    """
+    script_dir = output_dir / "unreal_scripts"
+    script_dir.mkdir(exist_ok=True)
+
+    # Discover all wind JSON files and map to UE asset paths
+    wind_entries: List[Tuple[str, str, str]] = []  # (ue_path, wind_json, label)
+    for wind_json in sorted(output_dir.rglob("*_stems_unreal_wind.json")):
+        rel = wind_json.relative_to(output_dir)
+        parts = rel.parts  # e.g. ("european_oak", "competition", "...json")
+        if len(parts) < 3:
+            continue
+        species_folder = parts[0]
+        variant_folder = parts[1]
+
+        # Derive assembly asset name from wind JSON name
+        stem = wind_json.stem  # e.g. "European_Oak_comp_h05m_d03cm_full_stems_unreal_wind"
+        tree_prefix = stem.replace("_stems_unreal_wind", "")
+        asset_name = f"{tree_prefix}_assembly"
+
+        ue_asset_path = f"{project_path}/{species_folder}/{variant_folder}/{asset_name}"
+        wind_path = str(wind_json.resolve()).replace("\\", "/")
+        wind_entries.append((ue_asset_path, wind_path, asset_name))
+
+    # Build script content
+    entries_literal = "[\n"
+    for ue_path, wind_path, label in wind_entries:
+        entries_literal += f'    ("{ue_path}", r"{wind_path}", "{label}"),\n'
+    entries_literal += "]"
+
+    script_path = script_dir / "import_batch_97_wind_reimport.py"
+    script_path_str = str(script_path.resolve()).replace("\\", "/")
+
+    content = f'''"""
+GrowPy wind data re-import for all assemblies ({len(wind_entries)} trees) - Auto-generated
+
+Applies DynamicWind skeletal data to already-imported SkeletalMesh assets.
+Run after geometry import if wind data was not applied during initial import.
+
+Execute in Unreal Engine:
+1. Right-click > "Execute Python File in Unreal"
+2. Or: exec(open(r'{script_path_str}').read())
+"""
+
+import unreal
+import os
+import json
+import math
+import time
+
+print("=" * 60)
+print("GrowPy Wind Data Re-Import ({len(wind_entries)} trees)")
+print("=" * 60)
+
+{_NANITE_CONFIG_PREAMBLE.lstrip()}
+
+# List of (UE asset path, wind JSON path, label)
+_WIND_ENTRIES = {entries_literal}
+
+_success = 0
+_skipped = 0
+_failed = 0
+
+for _ue_path, _wind_json, _label in _WIND_ENTRIES:
+    # Try loading the exact asset first
+    _mesh = unreal.EditorAssetLibrary.load_asset(_ue_path)
+
+    # If not found directly, search nearby paths (USD import may add suffixes)
+    if _mesh is None:
+        _parent_dir = _ue_path.rsplit("/", 1)[0]
+        _base_name = _ue_path.rsplit("/", 1)[1] if "/" in _ue_path else _ue_path
+        try:
+            _all_assets = unreal.EditorAssetLibrary.list_assets(_parent_dir, recursive=False)
+            for _ap in _all_assets:
+                if _base_name.lower() in str(_ap).lower():
+                    _candidate = unreal.EditorAssetLibrary.load_asset(str(_ap))
+                    if isinstance(_candidate, unreal.SkeletalMesh):
+                        _mesh = _candidate
+                        break
+        except Exception:
+            pass
+
+    if _mesh is None:
+        print(f"  [Skip] Not found in UE: {{_label}}")
+        _skipped += 1
+        continue
+
+    if not isinstance(_mesh, unreal.SkeletalMesh):
+        print(f"  [Skip] Not a SkeletalMesh: {{_label}} ({{type(_mesh).__name__}})")
+        _skipped += 1
+        continue
+
+    _result = _import_wind_data(_mesh, _wind_json, _label)
+    if _result:
+        # Save asset after wind data update
+        try:
+            unreal.EditorAssetLibrary.save_asset(_ue_path)
+        except Exception:
+            pass
+        _success += 1
+    else:
+        _failed += 1
+
+print("")
+print("=" * 60)
+print(f"Wind re-import complete: {{_success}} updated, {{_skipped}} skipped, {{_failed}} failed")
+print("=" * 60)
+'''
+
+    script_path.write_text(content, encoding="utf-8")
+    logger.info(
+        "Generated wind re-import script: %s (%d entries)",
+        script_path,
+        len(wind_entries),
+    )
     return script_path

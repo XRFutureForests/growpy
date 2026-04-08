@@ -106,15 +106,12 @@ boundaries.
 
 These files have `if __name__ == "__main__"` blocks but are **not imported** by any
 pipeline module. They are useful for development and debugging but are not required
-for production runs. Relocated to `src/scripts/` to keep the growpy package clean.
+for production runs. Kept in `src/growpy/tools/` for proper package imports.
 
 | Script | Purpose |
 |--------|----------|
-| `src/scripts/sweep_dbh_params.py` | Parameter sweep for DBH calibration levers |
-| `src/scripts/create_minimal_pve_test.py` | Create minimal PVE JSON for Unreal testing |
-| `src/scripts/validate_pve_json.py` | Validate PVE JSON against Unreal requirements |
-| `src/scripts/extract_pve_config.py` | Extract PVE overrides from reference JSON |
-| `src/scripts/the-grove-output-complete.py` | Grove output analysis |
+| `tools/sweep_dbh_params.py` | Parameter sweep for DBH calibration levers |
+| `tools/validate_pve_json.py` | Validate PVE JSON against Unreal requirements |
 
 ## Removed / Relocated Modules
 
@@ -124,10 +121,13 @@ for production runs. Relocated to `src/scripts/` to keep the growpy package clea
 | `utils/unreal_schema_env.py` | Redundant with `utils/pxr_init.py` | 2026-03-11 |
 | `tests/test_obj_export.py` | Manual test, not imported by any module | 2026-03-11 |
 | `tests/test_pve_generation.py` | Manual test, not imported by any module | 2026-03-11 |
-| `cli/sweep_dbh_params.py` | Moved to `src/scripts/` -- standalone research tool, not a pipeline step | 2026-03-11 |
-| `io/create_minimal_pve_test.py` | Moved to `src/scripts/` -- standalone PVE test tool | 2026-03-11 |
-| `io/validate_pve_json.py` | Moved to `src/scripts/` -- standalone PVE validator | 2026-03-11 |
-| `utils/extract_pve_config.py` | Moved to `src/scripts/` -- standalone PVE config extractor | 2026-03-11 |
+| `cli/sweep_dbh_params.py` | Moved to `tools/sweep_dbh_params.py` -- standalone research tool | 2026-03-11 |
+| `io/validate_pve_json.py` | Moved to `tools/validate_pve_json.py` -- standalone PVE validator | 2026-03-11 |
+| `io/create_minimal_pve_test.py` | Removed -- one-off PVE debugging script, no longer needed | 2026-04-08 |
+| `utils/extract_pve_config.py` | Removed -- one-off PVE config extractor, no longer needed | 2026-04-08 |
+| `scripts/the-grove-output-complete.py` | Removed -- early discovery script, findings captured in docs | 2026-04-08 |
+| `scripts/extract_et_nwfva.R` | Removed -- replaced by pylometree `et_nwfva` provider | 2026-04-08 |
+| `scripts/extract_forest_elements.R` | Removed -- replaced by pylometree `forest_elements` provider | 2026-04-08 |
 | `core/orchestration/*` | Moved to `pipelines/` (`dataset_csv_planner`, `dataset_job_planner`, `step_runner`) | 2026-04-08 |
 | `io/{assembly_export,tree_export,twig_export,texture_utils,preview,overview}.py` | Moved into `io/usd/` sub-package | 2026-04-08 |
 | `io/{wind_json,pve_*,unreal_scripts,ue_remote}.py` | Moved into `io/unreal/` sub-package | 2026-04-08 |

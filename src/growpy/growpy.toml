@@ -139,7 +139,7 @@ competition_neighbors = 3
 quality = "high"
 # Maximum growth cycles per tree (1-250)
 # Trees exceeding this limit are capped (not scaled)
-growth_cycle_limit = 65
+growth_cycle_limit = 45
 # Number of grove.smooth() passes on branch angles (int, 0-20, 0 = disabled)
 # Each pass reduces sharp corner angles between branch segments.
 # Higher values = smoother, more organic branches; 10-20 for production.
@@ -152,12 +152,12 @@ include_grove_attributes = false
 # Uses growth models to determine which cycle corresponds to each height milestone
 # Each snapshot includes height and DBH in the filename for easy asset selection
 # 0 = disabled (standard single height-based export)
-height_interval = 5
+height_interval = 4
 # Cap all tree heights at this value in meters (e.g., 15 for quick testing)
 # Trees taller than this in the input CSV are clamped to this height
 # Reduces growth cycles and number of height stages for faster runs
 # 0 = no limit (use full CSV heights)
-max_height = 20
+max_height = 12
 
 # Quality Presets (single source of truth)
 # Define any number of named presets below as [quality.<name>] sections.
@@ -233,10 +233,12 @@ skeletal = true
 # Export static mesh assemblies (geometry only, no skeleton)
 # When both skeletal and static are enabled, static is derived from skeletal
 static = false
-# Twig density multiplier. Values > 1.0 add synthetic twigs;
-# Values < 1.0 thin existing placements. Compensates for twig loss from build_cutoff.
-# Override per-tree via twig_density column in input CSV.
-# Range: 0.0 (no twigs) to 2.0+ (dense canopy)
+# Base twig density multiplier applied to all trees globally.
+# Values > 1.0 add synthetic twigs; values < 1.0 thin existing placements.
+# Compensates for twig loss from build_cutoff.
+# Per-tree scaling: the input CSV twig_density column is a scale factor
+# multiplied with this base (e.g., base=2.0, CSV=0.5 -> effective 1.0).
+# Range: 0.0 (no twigs) to 3.0+ (dense canopy)
 twig_density = 2.75
 # Youth bias exponent for synthetic twig placement.
 # Controls how strongly additional twigs prefer younger branches.

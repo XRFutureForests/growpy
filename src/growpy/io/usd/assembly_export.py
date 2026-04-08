@@ -764,8 +764,9 @@ def export_tree_as_nanite_assembly(
         stems_file_suffix: Optional suffix for stems filename (e.g., "h4m4" produces
             {species}_h4m4_stems_skeletal.usda). Prevents overwrite in cycle mode.
         radial_scale: Radial scale factor for trunk mesh
-        twig_density: Twig density multiplier. When provided, overrides the global
-            config value (from input CSV twig_density column).
+        twig_density: Per-tree density scale factor from the input CSV
+            twig_density column.  Multiplied with the TOML export_twig_density
+            base to produce the effective density.  None means scale 1.0.
         instances_dir: Optional shared directory for twig USD files and textures.
             When set, twig files are copied here instead of alongside the assembly,
             and assembly references use relative paths to this directory.
@@ -885,11 +886,10 @@ def export_tree_as_nanite_assembly(
                 from ...config import get_config
 
                 cfg = get_config()
-                effective_density = (
-                    twig_density
-                    if twig_density is not None
-                    else cfg.export_twig_density
-                )
+                # CSV twig_density is a per-tree scale factor applied to the
+                # TOML base (export_twig_density).  When absent, scale is 1.0.
+                twig_scale = twig_density if twig_density is not None else 1.0
+                effective_density = cfg.export_twig_density * twig_scale
                 if effective_density != 1.0:
                     with _track("adjust_twig_density"):
                         from ...core.twig import densify_twig_placements

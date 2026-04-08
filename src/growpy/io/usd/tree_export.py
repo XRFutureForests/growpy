@@ -179,10 +179,11 @@ def build_tree_mesh(
             return False
 
         # Convert points to USD format, applying height-aware radial scaling.
-        # Corrects Grove's inflated DBH to match yield table targets.
+        # Corrects Grove's DBH to match yield table targets.
         #
-        # Scale factor: uniform height-based for ALL vertices (trunk +
-        # branches) so branches never appear thicker than the stem.
+        # Scale factor: distributed across the full tree height so
+        # branches scale proportionally with the trunk. Full correction
+        # at breast height, 30% correction retained at the crown.
         #
         # Scale direction: at branch-trunk junctions, the scaling axis
         # transitions from the trunk axis (at the connection surface) to
@@ -200,8 +201,13 @@ def build_tree_mesh(
             tree_height = max((p.y for p in points), default=0.0)
             breast_height = 1.3
             blend_start = breast_height
-            blend_end = max(breast_height + 1.0, tree_height * 0.4)
+            blend_end = max(breast_height + 1.0, tree_height * 0.85)
             blend_range = blend_end - blend_start
+
+            # Crown retains 30% of the radial correction so the whole
+            # tree thickens/thins proportionally instead of only the base.
+            crown_ratio = 0.3
+            crown_scale = 1.0 + (radial_scale - 1.0) * crown_ratio
 
             bone_id_offset = min(vertex_bone_ids)
 
@@ -326,16 +332,17 @@ def build_tree_mesh(
                 local_idx = max(0, min(local_idx, len(bone_axes) - 1))
 
                 # Height-based scale: radial_scale at breast height,
-                # blending to 1.0 at blend_end. Same for all vertices
-                # regardless of branch order.
+                # blending to crown_scale at blend_end. crown_scale
+                # keeps partial correction so branches don't appear
+                # under/oversized relative to the trunk.
                 if p.y <= blend_start:
                     s = radial_scale
                 elif p.y >= blend_end:
-                    s = 1.0
+                    s = crown_scale
                 else:
                     t = (p.y - blend_start) / blend_range
                     t = t * t * (3.0 - 2.0 * t)
-                    s = radial_scale + (1.0 - radial_scale) * t
+                    s = radial_scale + (crown_scale - radial_scale) * t
 
                 if abs(s - 1.0) < 1e-6:
                     usd_points.append(Gf.Vec3f(p.x, p.y, p.z))

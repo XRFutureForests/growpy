@@ -13,8 +13,6 @@ dependencies:
   - joblib
   - ipykernel
   - pillow
-  # R for yield table extraction (ForestElementsR, et.nwfva)
-  - r-base>=4.3
   - openpyxl # XLSX yield table parsing (Kohlenstoff-Ertragstafeln)
   - pip:
       - openyieldtables # For real-world yield data calibration
