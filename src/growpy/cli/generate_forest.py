@@ -217,7 +217,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                             build_material_prefix,
                         )
                         cls_prefix = build_material_prefix(tree_fid)
-                        cls_codes = build_classification_codes(species_clean, tree_fid)
+                        cls_codes = build_classification_codes(tree_fid)
 
                     obj_path = convert_tree_to_obj_direct(
                         model=model,
@@ -718,7 +718,8 @@ def generate_forest_stages(
             for s in forest_data["species"]
         ]
         errors = validate_classification_species(species_clean_list)
-        errors.extend(validate_classification_fids(forest_data["fid"].tolist()))
+        fid_errors, fid_warnings = validate_classification_fids(forest_data["fid"].tolist())
+        errors.extend(fid_errors)
 
         from growpy.config.paths import get_assets_directory, _find_species_row
         import re as _re
@@ -750,6 +751,8 @@ def generate_forest_stages(
             for err in errors:
                 print(f"  - {err}")
             raise SystemExit(1)
+        for warn in fid_warnings:
+            print(f"  WARNING: {warn}")
         print("  Helios classification: ENABLED (all species validated)")
 
     with timer.track("create_forest"):
@@ -1041,7 +1044,8 @@ def generate_forest_exports(
             for s in forest_data["species"]
         ]
         errors = validate_classification_species(species_clean_list)
-        errors.extend(validate_classification_fids(forest_data["fid"].tolist()))
+        fid_errors, fid_warnings = validate_classification_fids(forest_data["fid"].tolist())
+        errors.extend(fid_errors)
 
         # Validate materials per species using twig sidecar files
         from growpy.config.paths import get_assets_directory, _find_species_row
@@ -1074,6 +1078,8 @@ def generate_forest_exports(
             for err in errors:
                 print(f"  - {err}")
             raise SystemExit(1)
+        for warn in fid_warnings:
+            print(f"  WARNING: {warn}")
         print("  Helios classification: ENABLED (all species validated)")
 
     try:
@@ -1751,6 +1757,14 @@ Unreal Engine Integration:
 
         # Set up log file to capture all terminal output
         output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Copy input CSV to output folder for helios++ post-processing
+        if config.helios_classification:
+            import shutil
+            csv_copy_path = output_dir / csv_path.name
+            shutil.copy2(csv_path, csv_copy_path)
+            print(f"Copied input CSV to: {csv_copy_path}")
+
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         log_path = output_dir / f"forest_generation_{timestamp}.log"
         log_file = open(log_path, "w")

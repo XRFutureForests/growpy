@@ -1400,7 +1400,7 @@ def _write_helios_mtl(
     Helios++ uses custom MTL properties:
         helios_spectra  - ECOSTRESS spectral library identifier
         helios_classification - ASPRS point classification (4 = high vegetation)
-            or 4-digit code when helios_classification is enabled
+            or 3-digit code when helios_classification is enabled
     """
     from .mesh_simplify import classify_material
 
