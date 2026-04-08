@@ -1,23 +1,30 @@
-"""Helios++ 4-digit classification codes for labeled point clouds.
+"""Helios++ 2-digit classification codes for labeled point clouds.
 
-Encodes material type, tree species, and tree instance into a single
-integer that Helios++ writes as helios_classification per point.
+Encodes material type and tree instance into a single integer (11-29)
+that fits within the helios++ LAS classification range (0-31).
 
-Code format: [material][species][id_digit1][id_digit2]
-    material: 1=leaf, 2=twig, 3=bark, 4=fruit
+Code format in OBJ/MTL: [material][fid]
+    material: 1=leaf, 2=wood (bark, twig/wood, fruit)
+    fid:      1-9 from CSV fid column (max 9 trees; 0 is reserved for ground)
+
+Ground plane uses helios_classification = 0 (material=0, fid=0).
+
+Species is added in post-processing by joining on fid with the input CSV,
+producing a 3-digit code: [material][fid][species]
     species:  1=beech, 2=oak, 3=birch, 4=maple, 5=fir, 6=pine
-    id:       01-99 from CSV fid column
 """
 
 import json
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
+MAX_TREES = 9  # fid 1-9; fid 0 is reserved for ground
+
 MATERIAL_CODES = {
     "leaf": 1,
     "wood": 2,
-    "bark": 3,
-    "fruit": 4,
+    "bark": 2,
+    "fruit": 2,
 }
 
 SPECIES_CODES = {
@@ -30,30 +37,41 @@ SPECIES_CODES = {
 }
 
 
-def compute_classification_code(material_class: str, species_clean: str, tree_fid: int) -> int:
-    """Compute the 4-digit classification code.
+def compute_classification_code(
+    material_class: str, tree_fid: int,
+) -> int:
+    """Compute the 2-digit classification code.
 
     Args:
         material_class: One of "leaf", "wood", "bark", "fruit"
-        species_clean: Standardized species name (e.g. "selected_european_beech")
-        tree_fid: Tree instance ID from CSV (1-99)
+        tree_fid: Tree instance ID from CSV (1-9; 0 is reserved for ground)
 
     Returns:
-        4-digit integer classification code
+        Integer classification code (11-29, fits in 0-31)
+
+    Raises:
+        ValueError: If tree_fid is 0 (reserved for ground) or > 9.
     """
+    if tree_fid < 1 or tree_fid > 9:
+        raise ValueError(
+            f"tree_fid must be 1-9 (got {tree_fid}). "
+            f"fid 0 is reserved for ground."
+        )
     material_digit = MATERIAL_CODES[material_class]
-    species_digit = SPECIES_CODES[species_clean]
-    return material_digit * 1000 + species_digit * 100 + tree_fid
+    return material_digit * 10 + tree_fid
 
 
-def build_classification_codes(species_clean: str, tree_fid: int) -> Dict[str, int]:
+def build_classification_codes(tree_fid: int) -> Dict[str, int]:
     """Build classification code lookup for all material classes.
+
+    Args:
+        tree_fid: Tree FID from CSV (1-9; 0 is reserved for ground).
 
     Returns:
         Dict mapping material_class -> classification code
     """
     return {
-        mat_class: compute_classification_code(mat_class, species_clean, tree_fid)
+        mat_class: compute_classification_code(mat_class, tree_fid)
         for mat_class in MATERIAL_CODES
     }
 
@@ -125,16 +143,22 @@ def validate_classification_materials(
     return errors
 
 
-def validate_classification_fids(fids: List[int]) -> List[str]:
-    """Check that all tree fids are in the valid range 1-99.
+def validate_classification_fids(fids: List[int]) -> tuple[List[str], List[str]]:
+    """Check that tree fids are valid (0-9, warning if >MAX_TREES).
 
     Returns:
-        List of error messages (empty if valid)
+        Tuple of (errors, warnings). Errors are fatal, warnings are informational.
     """
     errors = []
+    warnings = []
     for fid in fids:
-        if fid < 1 or fid > 99:
+        if fid < 1 or fid > 9:
             errors.append(
-                f"Tree fid {fid} is out of range for classification (valid: 1-99)"
+                f"Tree fid {fid} is out of range for classification (valid: 1-9; 0 is reserved for ground)"
             )
-    return errors
+    if len(fids) > MAX_TREES:
+        warnings.append(
+            f"{len(fids)} trees exceed max {MAX_TREES} for "
+            f"classification (fid 1-9). Reduce tree count or adjust fid assignment."
+        )
+    return errors, warnings
