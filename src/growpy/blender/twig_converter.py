@@ -275,81 +275,90 @@ def _export_objects_to_usd(
         skel_path = None
 
     depsgraph = bpy.context.evaluated_depsgraph_get()
+    mesh_exported = False
 
     for obj in mesh_objects:
-        eval_obj = obj.evaluated_get(depsgraph)
-        mesh = eval_obj.to_mesh()
-        if mesh is None:
-            continue
+        try:
+            eval_obj = obj.evaluated_get(depsgraph)
+            mesh = eval_obj.to_mesh()
+            if mesh is None:
+                continue
 
-        mesh.calc_loop_triangles()
-        mesh_name = _sanitize_identifier(obj.name)
-        mesh_prim = UsdGeom.Mesh.Define(
-            stage, root_path.AppendChild(mesh_name)
-        ).GetPrim()
-        usd_mesh = UsdGeom.Mesh(mesh_prim)
+            mesh.calc_loop_triangles()
+            mesh_name = _sanitize_identifier(obj.name)
+            mesh_prim = UsdGeom.Mesh.Define(
+                stage, root_path.AppendChild(mesh_name)
+            ).GetPrim()
+            usd_mesh = UsdGeom.Mesh(mesh_prim)
 
-        pts = []
-        for v in mesh.vertices:
-            wc = eval_obj.matrix_world @ v.co
-            pts.append(Gf.Vec3f(float(wc.x), float(wc.y), float(wc.z)))
+            pts = []
+            for v in mesh.vertices:
+                wc = eval_obj.matrix_world @ v.co
+                pts.append(Gf.Vec3f(float(wc.x), float(wc.y), float(wc.z)))
 
-        counts = []
-        indices = []
-        for tri in mesh.loop_triangles:
-            counts.append(3)
-            indices.extend(tri.vertices)
-
-        usd_mesh.CreatePointsAttr(pts)
-        usd_mesh.CreateFaceVertexCountsAttr(counts)
-        usd_mesh.CreateFaceVertexIndicesAttr(indices)
-
-        # Export UVs from Blender mesh
-        if mesh.uv_layers.active:
-            uv_layer = mesh.uv_layers.active.data
-            uvs = []
+            counts = []
+            indices = []
             for tri in mesh.loop_triangles:
-                for loop_idx in tri.loops:
-                    uv = uv_layer[loop_idx].uv
-                    uvs.append(Gf.Vec2f(float(uv[0]), float(uv[1])))
-            if uvs:
-                primvars_api = UsdGeom.PrimvarsAPI(usd_mesh)
-                st = primvars_api.CreatePrimvar(
-                    "st",
-                    Sdf.ValueTypeNames.TexCoord2fArray,
-                    UsdGeom.Tokens.faceVarying,
+                counts.append(3)
+                indices.extend(tri.vertices)
+
+            usd_mesh.CreatePointsAttr(pts)
+            usd_mesh.CreateFaceVertexCountsAttr(counts)
+            usd_mesh.CreateFaceVertexIndicesAttr(indices)
+
+            # Export UVs from Blender mesh
+            if mesh.uv_layers.active:
+                uv_layer = mesh.uv_layers.active.data
+                uvs = []
+                for tri in mesh.loop_triangles:
+                    for loop_idx in tri.loops:
+                        uv = uv_layer[loop_idx].uv
+                        uvs.append(Gf.Vec2f(float(uv[0]), float(uv[1])))
+                if uvs:
+                    primvars_api = UsdGeom.PrimvarsAPI(usd_mesh)
+                    st = primvars_api.CreatePrimvar(
+                        "st",
+                        Sdf.ValueTypeNames.TexCoord2fArray,
+                        UsdGeom.Tokens.faceVarying,
+                    )
+                    st.Set(uvs)
+
+            # Extract textures and add material
+            obj_textures = _extract_textures_from_object(obj)
+            _add_twig_material(
+                stage, mesh_prim, root_path, root_name, obj_textures, output_path.parent
+            )
+
+            if include_skeleton and skel_path is not None:
+                _apply_api_schema(mesh_prim, "SkelBindingAPI")
+                mesh_rel = mesh_prim.CreateRelationship("skel:skeleton", custom=False)
+                mesh_rel.SetTargets([skel_path])
+
+                primvars = UsdGeom.PrimvarsAPI(usd_mesh)
+                joint_indices = primvars.CreatePrimvar(
+                    "skel:jointIndices",
+                    Sdf.ValueTypeNames.IntArray,
+                    UsdGeom.Tokens.vertex,
                 )
-                st.Set(uvs)
+                joint_indices.Set([0] * len(pts))
+                joint_indices.SetElementSize(1)
 
-        # Extract textures and add material
-        obj_textures = _extract_textures_from_object(obj)
-        _add_twig_material(
-            stage, usd_mesh, root_path, root_name, obj_textures, output_path.parent
-        )
+                joint_weights = primvars.CreatePrimvar(
+                    "skel:jointWeights",
+                    Sdf.ValueTypeNames.FloatArray,
+                    UsdGeom.Tokens.vertex,
+                )
+                joint_weights.Set([1.0] * len(pts))
+                joint_weights.SetElementSize(1)
 
-        if include_skeleton and skel_path is not None:
-            _apply_api_schema(mesh_prim, "SkelBindingAPI")
-            mesh_rel = mesh_prim.CreateRelationship("skel:skeleton", custom=False)
-            mesh_rel.SetTargets([skel_path])
-
-            primvars = UsdGeom.PrimvarsAPI(usd_mesh)
-            joint_indices = primvars.CreatePrimvar(
-                "skel:jointIndices",
-                Sdf.ValueTypeNames.IntArray,
-                UsdGeom.Tokens.vertex,
-            )
-            joint_indices.Set([0] * len(pts))
-            joint_indices.SetElementSize(1)
-
-            joint_weights = primvars.CreatePrimvar(
-                "skel:jointWeights",
-                Sdf.ValueTypeNames.FloatArray,
-                UsdGeom.Tokens.vertex,
-            )
-            joint_weights.Set([1.0] * len(pts))
-            joint_weights.SetElementSize(1)
-
-        eval_obj.to_mesh_clear()
+            mesh_exported = True
+        except Exception:
+            pass
+        finally:
+            try:
+                eval_obj.to_mesh_clear()
+            except Exception:
+                pass
 
     stage.SetDefaultPrim(root_prim)
     stage.GetRootLayer().Save()

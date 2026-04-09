@@ -6,8 +6,13 @@ EXPERIMENTAL -- UE 5.7+ Procedural Vegetation Editor (PVE) plugin only.
 Creates one ProceduralVegetation graph per species+scene directory. Each
 graph's PresetLoader points at a combined preset whose Variants TMap holds
 all height stages found in that directory. The graph wires one processing
-chain (Gravity -> MeshBuilder -> BoneReduction -> FoliagePalette -> Output)
-per variant.
+chain per variant following the Epic PVE tutorial node order:
+
+    PresetLoader -> Curve -> Gravity -> Scale -> RemoveBranches ->
+    MeshBuilder -> BoneReduction -> FoliagePalette ->
+    FoliageDistributor -> Output
+
+Nodes are positioned in a row-per-variant layout to avoid overlap.
 
 Directory layout expected::
 
@@ -22,10 +27,14 @@ UE Python API used (UE 5.7+, Experimental):
 - unreal.ProceduralVegetationPreset      - combined preset DataAsset
 - unreal.ProceduralVegetationGraph       - PCG graph (inner object)
 - unreal.PVPresetLoaderSettings          - preset loader node
+- unreal.PVCurveSettings                 - curve node
 - unreal.PVGravitySettings               - gravity node
+- unreal.PVScaleSettings                 - scale node
+- unreal.PVRemoveBranchesSettings        - remove branches node
 - unreal.PVMeshBuilderSettings           - mesh builder node
 - unreal.PVBoneReductionSettings         - bone reduction node
 - unreal.PVFoliagePaletteSettings        - foliage palette node
+- unreal.PVFoliageDistributorSettings    - foliage distributor node
 - unreal.PVOutputSettings                - output node
 """
 
@@ -71,10 +80,6 @@ def _have_pve_classes():
         "ProceduralVegetationFactory",
         "ProceduralVegetationGraph",
         "PVPresetLoaderSettings",
-        "PVGravitySettings",
-        "PVMeshBuilderSettings",
-        "PVBoneReductionSettings",
-        "PVFoliagePaletteSettings",
         "PVOutputSettings",
     ):
         if not hasattr(unreal, cls_name):
@@ -86,6 +91,30 @@ def _make_directory_path(path_str):
     dp = unreal.DirectoryPath()
     dp.path = path_str
     return dp
+
+
+NODE_X_SPACING = 350
+NODE_Y_SPACING = 250
+
+CHAIN_NODE_TYPES = [
+    ("PVCurveSettings", "Curve"),
+    ("PVGravitySettings", "Gravity"),
+    ("PVScaleSettings", "Scale"),
+    ("PVRemoveBranchesSettings", "RemoveBranches"),
+    ("PVMeshBuilderSettings", "MeshBuilder"),
+    ("PVBoneReductionSettings", "BoneReduction"),
+    ("PVFoliagePaletteSettings", "FoliagePalette"),
+    ("PVFoliageDistributorSettings", "FoliageDistributor"),
+    ("PVOutputSettings", "Output"),
+]
+
+
+def _position_node(node, x, y):
+    """Set node position in the graph editor (PCGNode API)."""
+    try:
+        node.set_node_position(int(x), int(y))
+    except Exception:
+        pass
 
 
 def _ensure_foliage_data(json_dir):
@@ -232,7 +261,12 @@ def _set_preset_properties(asset, json_dir, foliage_folder, materials_folder,
 
 
 def _create_pve_graph(graph_name, graph_package, preset, variant_names):
-    """Create a PVE graph with one processing chain per variant."""
+    """Create a PVE graph following the Epic tutorial node chain order.
+
+    Per-variant chain (skips unavailable node types):
+        Curve -> Gravity -> Scale -> RemoveBranches -> MeshBuilder ->
+        BoneReduction -> FoliagePalette -> FoliageDistributor -> Output
+    """
     asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
     full_path = "%s/%s" % (graph_package, graph_name)
 
@@ -266,27 +300,44 @@ def _create_pve_graph(graph_name, graph_package, preset, variant_names):
         unreal.log_warning("[PVE-G] Could not find inner graph: %s" % graph_obj_path)
         return graph_asset
 
+    # Filter chain to node types available in this UE build
+    available_chain = []
+    for cls_name, label in CHAIN_NODE_TYPES:
+        if hasattr(unreal, cls_name):
+            available_chain.append((cls_name, label))
+        else:
+            unreal.log_warning(
+                "[PVE-G] Node class %s not available, skipping" % cls_name
+            )
+
+    # PresetLoader positioned at left, centered vertically
     loader_settings = unreal.PVPresetLoaderSettings()
     loader_settings.set_editor_property("preset", preset)
     loader_node, _ = graph.add_node_copy(loader_settings)
+    loader_y = (len(variant_names) - 1) * NODE_Y_SPACING // 2
+    _position_node(loader_node, 0, loader_y)
 
     for i, vname in enumerate(variant_names):
-        grav_node, _ = graph.add_node_copy(unreal.PVGravitySettings())
-        mesh_node, _ = graph.add_node_copy(unreal.PVMeshBuilderSettings())
-        bone_node, _ = graph.add_node_copy(unreal.PVBoneReductionSettings())
-        foliage_node, _ = graph.add_node_copy(unreal.PVFoliagePaletteSettings())
-        output_node, output_settings = graph.add_node_copy(unreal.PVOutputSettings())
+        row_y = i * NODE_Y_SPACING
+        prev_node = loader_node
+        prev_pin = vname
 
-        try:
-            output_node.set_editor_property("node_title", vname)
-        except Exception:
-            pass
+        for j, (cls_name, label) in enumerate(available_chain):
+            settings_cls = getattr(unreal, cls_name)
+            node, settings = graph.add_node_copy(settings_cls())
 
-        graph.add_edge(loader_node, vname, grav_node, "In")
-        graph.add_edge(grav_node, "Out", mesh_node, "In")
-        graph.add_edge(mesh_node, "Out", bone_node, "In")
-        graph.add_edge(bone_node, "Out", foliage_node, "In")
-        graph.add_edge(foliage_node, "Out", output_node, "In")
+            col_x = (j + 1) * NODE_X_SPACING
+            _position_node(node, col_x, row_y)
+
+            if cls_name == "PVOutputSettings":
+                try:
+                    node.set_editor_property("node_title", vname)
+                except Exception:
+                    pass
+
+            graph.add_edge(prev_node, prev_pin, node, "In")
+            prev_node = node
+            prev_pin = "Out"
 
     try:
         graph.call_method("ForceNotificationForEditor")
@@ -295,8 +346,8 @@ def _create_pve_graph(graph_name, graph_package, preset, variant_names):
 
     unreal.EditorAssetLibrary.save_loaded_asset(graph_asset)
     unreal.log(
-        "[PVE-G] Created graph %s with %d variant chain(s)"
-        % (graph_name, len(variant_names))
+        "[PVE-G] Created graph %s with %d variant chain(s) x %d node(s) each"
+        % (graph_name, len(variant_names), len(available_chain))
     )
     return graph_asset
 
