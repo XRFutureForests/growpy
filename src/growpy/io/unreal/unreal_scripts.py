@@ -9,7 +9,7 @@ Use ``python -m growpy.tools.ue_exec`` to run batches sequentially.
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +112,7 @@ def _build_import_block(
     label: str,
     wind_json_path: str = "",
     configure_nanite: bool = False,
+    nanite_cfg: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build a single USD import try/except block.
 
@@ -122,6 +123,7 @@ def _build_import_block(
     """
     config_block = ""
     if configure_nanite:
+        cfg_repr = repr(nanite_cfg or {})
         config_block = f"""
             # Post-import: configure nanite assembly
             for _obj_path in (import_task.imported_object_paths or []):
@@ -131,7 +133,7 @@ def _build_import_block(
                 _mesh = unreal.EditorAssetLibrary.load_asset(_obj_path_str)
                 if not _mesh:
                     continue
-                _configure_nanite_assembly(_mesh, "{label}")
+                _configure_nanite_assembly(_mesh, "{label}", {cfg_repr})
                 # Save the configured asset to disk before unloading
                 unreal.EditorAssetLibrary.save_asset(_obj_path_str)
                 break
@@ -715,15 +717,59 @@ def _reduce_nanite_fallback(mesh, label, percent=1.0):
     return False
 
 
-def _configure_nanite_assembly(mesh, label):
+def _set_nanite_property(mesh, label, prop_name, value):
+    """Set a single property on the mesh nanite_settings struct.
+
+    Tries set_editor_property first, then direct attribute assignment.
+    Returns True on success.
+    """
+    try:
+        _ns = mesh.get_editor_property("nanite_settings")
+        _ns.set_editor_property(prop_name, value)
+        mesh.set_editor_property("nanite_settings", _ns)
+        return True
+    except Exception:
+        pass
+    try:
+        _ns = mesh.get_editor_property("nanite_settings")
+        setattr(_ns, prop_name, value)
+        mesh.set_editor_property("nanite_settings", _ns)
+        return True
+    except Exception as _e:
+        unreal.log_warning(f"Could not set {prop_name} for {label}: {_e}")
+    return False
+
+
+def _configure_nanite_assembly(mesh, label, nanite_cfg=None):
     """Configure a nanite assembly after USD import.
 
-    Sets Nanite shape preservation to Voxelize and reduces fallback mesh VRAM.
-    DynamicWind data is delivered via separate wind JSON files and
-    must be applied post-import.
+    Sets Nanite shape preservation to Voxelize, reduces fallback mesh VRAM,
+    and applies additional Nanite build settings from nanite_cfg dict.
     """
+    if nanite_cfg is None:
+        nanite_cfg = {}
+
     _set_nanite_shape_voxelize(mesh, label)
-    _reduce_nanite_fallback(mesh, label, percent=1.0)
+    _reduce_nanite_fallback(
+        mesh, label, percent=nanite_cfg.get("fallback_percent", 0.01),
+    )
+
+    _trim_err = nanite_cfg.get("trim_relative_error", 0.0)
+    if _trim_err > 0.0:
+        _set_nanite_property(mesh, label, "trim_relative_error", _trim_err)
+
+    _residency = nanite_cfg.get("target_residency_kb", 0)
+    _set_nanite_property(
+        mesh, label, "target_minimum_residency_in_kb", _residency,
+    )
+
+    if nanite_cfg.get("lerp_uvs", True):
+        _set_nanite_property(mesh, label, "lerp_u_vs", True)
+
+    _max_edge = nanite_cfg.get("max_edge_length_factor", 0.0)
+    if _max_edge > 0.0:
+        _set_nanite_property(mesh, label, "max_edge_length_factor", _max_edge)
+
     try:
         mesh.modify(True)
     except Exception:
@@ -875,6 +921,7 @@ def generate_unreal_import_script(
     project_path: str = "/Game/GrowPy/Trees",
     include_static: bool = False,
     voxelization: bool = True,
+    nanite_cfg: Optional[Dict[str, Any]] = None,
 ) -> Path:
     """Generate Unreal Python scripts for importing forest USD files.
 
@@ -890,6 +937,10 @@ def generate_unreal_import_script(
             Mirrors [export] static setting from growpy.toml.
         voxelization: If True, set Nanite shape preservation to Voxelize
             on imported assemblies. Mirrors [unreal] voxelization from growpy.toml.
+        nanite_cfg: Optional dict of Nanite build parameters passed through to
+            _configure_nanite_assembly in generated scripts. Keys:
+            fallback_percent, trim_relative_error, target_residency_kb,
+            lerp_uvs, max_edge_length_factor.
 
     Returns:
         Path to generated scripts directory.
@@ -1044,6 +1095,7 @@ def generate_unreal_import_script(
                     usd_file.stem,
                     wind_json_path=wind_json,
                     configure_nanite=is_assembly and voxelization,
+                    nanite_cfg=nanite_cfg,
                 )
 
         batch_name = f"import_batch_{idx:02d}_{species_folder}.py"

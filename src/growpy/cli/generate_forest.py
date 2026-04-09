@@ -456,11 +456,20 @@ Unreal Engine Integration:
                         len(combined),
                     )
 
+            nanite_cfg = {
+                "fallback_percent": config.unreal_nanite_fallback_percent,
+                "trim_relative_error": config.unreal_nanite_trim_relative_error,
+                "target_residency_kb": config.unreal_nanite_target_residency_kb,
+                "lerp_uvs": config.unreal_nanite_lerp_uvs,
+                "max_edge_length_factor": config.unreal_nanite_max_edge_length_factor,
+            }
+
             import_script = generate_unreal_import_script(
                 output_dir,
                 config.unreal_project_path,
                 include_static=config.export_static,
                 voxelization=config.unreal_voxelization,
+                nanite_cfg=nanite_cfg,
             )
 
             cleanup_script = generate_unreal_cleanup_script(

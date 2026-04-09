@@ -60,7 +60,7 @@ flowchart TB
     A4 --> D2
 
     click I2 href "../../src/growpy/config/tree_asset_lookup.csv" "Species/twig/texture lookup table"
-    click O  href "../../src/growpy/cli/dataset_pipeline.py" "Top-level orchestrator"
+    click O href "../../src/growpy/cli/dataset_pipeline.py" "Top-level orchestrator"
     click S1 href "../../src/growpy/cli/prepare_assets.py" "Step 1: copy Grove assets"
     click S2 href "../../src/growpy/cli/convert_twigs.py" "Step 2: .blend to .usda foliage"
     click S3 href "../../src/growpy/cli/create_growth_models.py" "Step 3: simulate + calibrate growth"
@@ -231,26 +231,26 @@ flowchart LR
     USDA --> US
     US --> ImportPy[/*_unreal_import.py/]
 
-    click CLI  href "../../src/growpy/cli/generate_forest.py"
-    click FS   href "../../src/growpy/pipelines/forest_stages.py"
-    click FE   href "../../src/growpy/pipelines/forest_exports.py"
-    click CF   href "../../src/growpy/core/forest.py"
-    click SS   href "../../src/growpy/core/forest.py"
-    click SG   href "../../src/growpy/core/forest.py"
-    click PO   href "../../src/growpy/config/preset_overrides.py"
-    click AE   href "../../src/growpy/io/usd/assembly_export.py"
-    click TE   href "../../src/growpy/io/usd/tree_export.py"
-    click SK   href "../../src/growpy/core/skeleton.py"
-    click TW   href "../../src/growpy/core/twig.py"
-    click FX   href "../../src/growpy/io/forest_export.py"
+    click CLI href "../../src/growpy/cli/generate_forest.py"
+    click FS href "../../src/growpy/pipelines/forest_stages.py"
+    click FE href "../../src/growpy/pipelines/forest_exports.py"
+    click CF href "../../src/growpy/core/forest.py"
+    click SS href "../../src/growpy/core/forest.py"
+    click SG href "../../src/growpy/core/forest.py"
+    click PO href "../../src/growpy/config/preset_overrides.py"
+    click AE href "../../src/growpy/io/usd/assembly_export.py"
+    click TE href "../../src/growpy/io/usd/tree_export.py"
+    click SK href "../../src/growpy/core/skeleton.py"
+    click TW href "../../src/growpy/core/twig.py"
+    click FX href "../../src/growpy/io/forest_export.py"
     click Prev href "../../src/growpy/io/usd/preview.py"
     click Wind href "../../src/growpy/io/unreal/wind_json.py"
-    click PVE  href "../../src/growpy/io/unreal/pve_grove_mapper.py"
-    click OBJ  href "../../src/growpy/io/helios/obj_export.py"
+    click PVE href "../../src/growpy/io/unreal/pve_grove_mapper.py"
+    click OBJ href "../../src/growpy/io/helios/obj_export.py"
     click Hsim href "../../src/growpy/io/helios/mesh_simplify.py"
     click Hscn href "../../src/growpy/io/helios/helios_scene.py"
-    click OV   href "../../src/growpy/io/usd/overview.py"
-    click US   href "../../src/growpy/io/unreal/unreal_scripts.py"
+    click OV href "../../src/growpy/io/usd/overview.py"
+    click US href "../../src/growpy/io/unreal/unreal_scripts.py"
 ```
 
 ## Dataset orchestration (multiple species)
@@ -269,14 +269,14 @@ flowchart TB
     Done4 --> OV[io/usd/overview.py<br/>generate_overview_markdown]
     Done4 --> US2[step_runner.generate_unreal_scripts]
 
-    click DP   href "../../src/growpy/cli/dataset_pipeline.py"
+    click DP href "../../src/growpy/cli/dataset_pipeline.py"
     click CSVP href "../../src/growpy/pipelines/dataset_csv_planner.py"
-    click JP   href "../../src/growpy/pipelines/dataset_job_planner.py"
-    click SR   href "../../src/growpy/pipelines/step_runner.py"
+    click JP href "../../src/growpy/pipelines/dataset_job_planner.py"
+    click SR href "../../src/growpy/pipelines/step_runner.py"
     click RUN123 href "../../src/growpy/pipelines/step_runner.py"
     click RUN4 href "../../src/growpy/pipelines/step_runner.py"
-    click OV   href "../../src/growpy/io/usd/overview.py"
-    click US2  href "../../src/growpy/pipelines/step_runner.py"
+    click OV href "../../src/growpy/io/usd/overview.py"
+    click US2 href "../../src/growpy/pipelines/step_runner.py"
 ```
 
 `dataset_pipeline.py` itself does **no Python work** other than argument

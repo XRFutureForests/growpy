@@ -141,6 +141,11 @@ class GrowPyConfig:
     unreal_import_to_unreal: bool = True
     unreal_project_path: str = "/Game/GrowPy"
     unreal_voxelization: bool = True
+    unreal_nanite_fallback_percent: float = 0.01
+    unreal_nanite_trim_relative_error: float = 0.0
+    unreal_nanite_target_residency_kb: int = 0
+    unreal_nanite_lerp_uvs: bool = True
+    unreal_nanite_max_edge_length_factor: float = 0.0
 
     # [twigs] - interior decimation
     twigs_interior_decimate_ratio: float = 0.5
@@ -350,6 +355,24 @@ class GrowPyConfig:
             kwargs["unreal_project_path"] = unreal["project_path"]
         if "voxelization" in unreal:
             kwargs["unreal_voxelization"] = unreal["voxelization"]
+        if "nanite_fallback_percent" in unreal:
+            kwargs["unreal_nanite_fallback_percent"] = float(
+                unreal["nanite_fallback_percent"]
+            )
+        if "nanite_trim_relative_error" in unreal:
+            kwargs["unreal_nanite_trim_relative_error"] = float(
+                unreal["nanite_trim_relative_error"]
+            )
+        if "nanite_target_residency_kb" in unreal:
+            kwargs["unreal_nanite_target_residency_kb"] = int(
+                unreal["nanite_target_residency_kb"]
+            )
+        if "nanite_lerp_uvs" in unreal:
+            kwargs["unreal_nanite_lerp_uvs"] = unreal["nanite_lerp_uvs"]
+        if "nanite_max_edge_length_factor" in unreal:
+            kwargs["unreal_nanite_max_edge_length_factor"] = float(
+                unreal["nanite_max_edge_length_factor"]
+            )
 
         # [helios]
         helios = data.get("helios", {})

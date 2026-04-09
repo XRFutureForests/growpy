@@ -252,7 +252,7 @@ python src/growpy/cli/dataset_pipeline.py --all --dry-run  # Preview commands on
 python src/growpy/cli/dataset_pipeline.py --list        # Show available species
 python src/growpy/cli/dataset_pipeline.py --all --workers 4  # Parallel species processing
 python src/growpy/cli/dataset_pipeline.py --all --steps all --ingest-yield-tables  # Full pipeline with yield tables
-python src/growpy/cli/dataset_pipeline.py --all --steps all --ingest-yield-tables --clean-store  # Full clean re-run
+python src/growpy/cli/dataset_pipeline.py --all --steps all --ingest-yield-tables --clean  # Full clean re-run
 ```
 
 Each species produces two exported trees:
@@ -269,8 +269,8 @@ conda activate growpy
 python src/growpy/cli/dataset_pipeline.py --generate-csvs
 python src/growpy/cli/dataset_pipeline.py --all --steps all --ingest-yield-tables
 
-# Or with a clean yield table store (wipe and re-ingest):
-python src/growpy/cli/dataset_pipeline.py --all --steps all --ingest-yield-tables --clean-store
+# Or with a full clean re-run (wipe outputs and yield table store):
+python src/growpy/cli/dataset_pipeline.py --all --steps all --ingest-yield-tables --clean
 ```
 
 ## Output Structure

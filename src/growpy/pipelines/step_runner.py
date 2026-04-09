@@ -191,11 +191,20 @@ def generate_unreal_scripts(output_dir: Path, include_static: bool = False) -> N
         if combined:
             logger.info("Created %d combined twig files for UE import", len(combined))
 
+    nanite_cfg = {
+        "fallback_percent": config.unreal_nanite_fallback_percent,
+        "trim_relative_error": config.unreal_nanite_trim_relative_error,
+        "target_residency_kb": config.unreal_nanite_target_residency_kb,
+        "lerp_uvs": config.unreal_nanite_lerp_uvs,
+        "max_edge_length_factor": config.unreal_nanite_max_edge_length_factor,
+    }
+
     import_script = generate_unreal_import_script(
         output_dir,
         config.unreal_project_path,
         include_static=include_static,
         voxelization=config.unreal_voxelization,
+        nanite_cfg=nanite_cfg,
     )
 
     cleanup_script = generate_unreal_cleanup_script(

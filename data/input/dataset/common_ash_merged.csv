@@ -1,0 +1,6 @@
+fid,species,x,y,z,height,twig_density,individual_type
+1,Common ash,100.0,0.0,0.0,30,1.0,open_grown
+2,Common ash,0.0,0.0,0.0,30,1.0,competition
+101,Common ash,10.0,0.0,0.0,30,1.0,competition
+102,Common ash,-5.0,8.66,0.0,30,1.0,competition
+103,Common ash,-5.0,-8.66,0.0,30,1.0,competition
