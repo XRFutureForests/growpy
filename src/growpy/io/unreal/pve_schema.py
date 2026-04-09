@@ -46,13 +46,28 @@ def get_pve_schema() -> Dict[str, Any]:
             # Scale parameters
             "maxDavinciPscales": {"isArray": True, "size": 1, "type": "float"},
             "maxGenerations": {"isArray": False, "size": 1, "type": "int"},
+            "maxPscale": {"isArray": False, "size": 1, "type": "float"},
             "maxPscales": {"isArray": True, "size": 1, "type": "float"},
+            "max_curve_length": {"isArray": False, "size": 1, "type": "float"},
+            "max_pscale": {"isArray": False, "size": 1, "type": "float"},
+            "minPscale": {"isArray": False, "size": 1, "type": "float"},
+            "photogrammetryTrunk": {"isArray": False, "size": 1, "type": "int"},
+            # Phototropism / phyllotaxy / angle curves
+            "phototropism": {"isArray": True, "size": 1, "type": "float"},
+            "phototropismChild": {"isArray": True, "size": 1, "type": "float"},
+            "phyllotaxy": {"isArray": True, "size": 1, "type": "float"},
+            "phyllotaxyChild": {"isArray": True, "size": 1, "type": "float"},
+            # REQUIRED by UE LoadMegaPlantsJsonToCollection validation
+            "phyllotaxyLeaf": {"isArray": True, "size": 1, "type": "float"},
             # Crown profile arrays (required - 5 variations with 100 float values each)
             "plantProfile_1": {"isArray": True, "size": 1, "type": "float"},
             "plantProfile_2": {"isArray": True, "size": 1, "type": "float"},
             "plantProfile_3": {"isArray": True, "size": 1, "type": "float"},
             "plantProfile_4": {"isArray": True, "size": 1, "type": "float"},
             "plantProfile_5": {"isArray": True, "size": 1, "type": "float"},
+            "randomAngle": {"isArray": True, "size": 1, "type": "float"},
+            "randomAngleChild": {"isArray": True, "size": 1, "type": "float"},
+            "trunkGrowth": {"isArray": True, "size": 1, "type": "float"},
         },
         "points": {
             "attributes": {
@@ -91,9 +106,9 @@ def get_pve_schema() -> Dict[str, Any]:
                 # Required by PVMaterialSettings.cpp: BudDevelopment[0]=gen, BudDevelopment[2]=age
                 "budDevelopment": {"isArray": True, "size": 1, "type": "int"},
                 "budDirection": {"isArray": True, "size": 3, "type": "float"},
-                "budHormoneLevels": {"isArray": False, "size": 2, "type": "float"},
+                "budHormoneLevels": {"isArray": True, "size": 1, "type": "float"},
                 "budLateralMeristem": {"isArray": False, "size": 1, "type": "int"},
-                "budLightDetected": {"isArray": False, "size": 1, "type": "float"},
+                "budLightDetected": {"isArray": True, "size": 1, "type": "float"},
                 "budNumber": {"isArray": False, "size": 1, "type": "int"},
                 "budStatus": {"isArray": False, "size": 1, "type": "int"},
                 # Scale/radius
@@ -104,7 +119,7 @@ def get_pve_schema() -> Dict[str, Any]:
                 "uv_metric": {"isArray": False, "size": 3, "type": "float"},
                 "uv_out": {"isArray": False, "size": 3, "type": "float"},
                 # Light simulation
-                "njord_pixelIdx": {"isArray": False, "size": 1, "type": "int"},
+                "njord_pixelIdx": {"isArray": False, "size": 1, "type": "float"},
             },
             "positions": [],  # List of [x, y, z]
         },

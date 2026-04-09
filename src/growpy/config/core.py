@@ -142,10 +142,19 @@ class GrowPyConfig:
     unreal_project_path: str = "/Game/GrowPy"
     unreal_voxelization: bool = True
     unreal_nanite_fallback_percent: float = 0.01
+    unreal_nanite_fallback_target: str = "percent_triangles"
+    unreal_nanite_fallback_relative_error: float = 1.0
     unreal_nanite_trim_relative_error: float = 0.0
     unreal_nanite_target_residency_kb: int = 0
     unreal_nanite_lerp_uvs: bool = True
     unreal_nanite_max_edge_length_factor: float = 0.0
+    unreal_nanite_explicit_tangents: bool = False
+    unreal_nanite_position_precision: int = -1
+    unreal_nanite_normal_precision: int = -1
+    unreal_generate_pve_presets: bool = True
+    unreal_pve_package_path: str = "/Game/Assets/TheGrove/PVE"
+    unreal_pve_foliage_folder: str = "/Game/Assets/TheGrove/PVE/Foliage"
+    unreal_pve_materials_folder: str = "/Game/Assets/TheGrove/PVE/Materials"
 
     # [twigs] - interior decimation
     twigs_interior_decimate_ratio: float = 0.5
@@ -372,6 +381,38 @@ class GrowPyConfig:
         if "nanite_max_edge_length_factor" in unreal:
             kwargs["unreal_nanite_max_edge_length_factor"] = float(
                 unreal["nanite_max_edge_length_factor"]
+            )
+        if "nanite_fallback_target" in unreal:
+            kwargs["unreal_nanite_fallback_target"] = str(
+                unreal["nanite_fallback_target"]
+            ).lower()
+        if "nanite_fallback_relative_error" in unreal:
+            kwargs["unreal_nanite_fallback_relative_error"] = float(
+                unreal["nanite_fallback_relative_error"]
+            )
+        if "nanite_explicit_tangents" in unreal:
+            kwargs["unreal_nanite_explicit_tangents"] = bool(
+                unreal["nanite_explicit_tangents"]
+            )
+        if "nanite_position_precision" in unreal:
+            kwargs["unreal_nanite_position_precision"] = int(
+                unreal["nanite_position_precision"]
+            )
+        if "nanite_normal_precision" in unreal:
+            kwargs["unreal_nanite_normal_precision"] = int(
+                unreal["nanite_normal_precision"]
+            )
+        if "generate_pve_presets" in unreal:
+            kwargs["unreal_generate_pve_presets"] = bool(
+                unreal["generate_pve_presets"]
+            )
+        if "pve_package_path" in unreal:
+            kwargs["unreal_pve_package_path"] = str(unreal["pve_package_path"])
+        if "pve_foliage_folder" in unreal:
+            kwargs["unreal_pve_foliage_folder"] = str(unreal["pve_foliage_folder"])
+        if "pve_materials_folder" in unreal:
+            kwargs["unreal_pve_materials_folder"] = str(
+                unreal["pve_materials_folder"]
             )
 
         # [helios]

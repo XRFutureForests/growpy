@@ -11,6 +11,8 @@ enabled in UE Editor Preferences.
 
 Usage:
     # Import all batches from a scripts directory (recommended):
+    # Runs import_batch_*.py in numeric order, then post-import scripts
+    # (e.g. growpy_pve_preset_import.py) automatically.
     python -m growpy.tools.ue_exec data/output/forest/unreal_scripts/
 
     # Import a single script:
@@ -34,6 +36,13 @@ from pathlib import Path
 logger = logging.getLogger("growpy.ue_exec")
 
 BATCH_PATTERN = re.compile(r"^import_batch_(\d+)_.+\.py$")
+
+# Scripts to run after all numbered batches (order preserved).
+# These depend on imported assets already existing in UE.
+POST_IMPORT_SCRIPTS = [
+    "growpy_pve_preset_import.py",
+    "growpy_pve_graph_builder.py",
+]
 
 
 def _get_gpu_vram() -> tuple[int, int, float] | None:
@@ -255,14 +264,21 @@ print("CLEANUP COMPLETE")
 
 
 def _discover_batch_scripts(scripts_dir: Path) -> list[Path]:
-    """Find and sort batch import scripts by numeric batch ID."""
+    """Find and sort batch import scripts, then append post-import scripts."""
     batches = []
     for f in scripts_dir.iterdir():
         m = BATCH_PATTERN.match(f.name)
         if m:
             batches.append((int(m.group(1)), f))
     batches.sort(key=lambda x: x[0])
-    return [f for _, f in batches]
+    result = [f for _, f in batches]
+
+    for name in POST_IMPORT_SCRIPTS:
+        p = scripts_dir / name
+        if p.exists():
+            result.append(p)
+
+    return result
 
 
 def _run_single(
@@ -329,7 +345,7 @@ def run_batches(
     """
     batches = _discover_batch_scripts(scripts_dir)
     if not batches:
-        logger.error("No import_batch_*.py scripts found in %s", scripts_dir)
+        logger.error("No executable scripts found in %s", scripts_dir)
         return ["<no batches>"]
 
     logger.info("=" * 60)

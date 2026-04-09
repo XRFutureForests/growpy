@@ -63,7 +63,7 @@ interior_decimate_ratio = 0.25
 [growth_models]
 # Maximum growth cycles to simulate (1-250)
 # Automatically stops early when growth plateaus
-cycles = 55
+cycles = 25
 # Random seeds to average for robust curves (1-10)
 # Use 3+ for production, 1 for quick tests
 seeds = 1
@@ -139,7 +139,7 @@ competition_neighbors = 3
 quality = "high"
 # Maximum growth cycles per tree (1-250)
 # Trees exceeding this limit are capped (not scaled)
-growth_cycle_limit = 75
+growth_cycle_limit = 25
 # Number of grove.smooth() passes on branch angles (int, 0-20, 0 = disabled)
 # Each pass reduces sharp corner angles between branch segments.
 # Higher values = smoother, more organic branches; 10-20 for production.
@@ -152,12 +152,12 @@ include_grove_attributes = false
 # Uses growth models to determine which cycle corresponds to each height milestone
 # Each snapshot includes height and DBH in the filename for easy asset selection
 # 0 = disabled (standard single height-based export)
-height_interval = 5
+height_interval = 3
 # Cap all tree heights at this value in meters (e.g., 15 for quick testing)
 # Trees taller than this in the input CSV are clamped to this height
 # Reduces growth cycles and number of height stages for faster runs
 # 0 = no limit (use full CSV heights)
-max_height = 20
+max_height = 9
 
 # Quality Presets (single source of truth)
 # Define any number of named presets below as [quality.<name>] sections.
@@ -279,14 +279,25 @@ project_path = "/Game/Assets/TheGrove"
 # Set to false for faster testing iterations; re-enable for production exports.
 voxelization = false
 # Nanite fallback mesh triangle percentage (0.0-1.0).
-# The fallback mesh is used when Nanite data cannot stream in time.
-# Lower values reduce build time and VRAM at no visual cost when Nanite is active.
+# The fallback mesh is used when Nanite is unavailable: complex collision
+# queries, ray tracing without Nanite RT, mobile, editor "Nanite off" view.
+# Lower values reduce build time and VRAM at no visual cost when Nanite renders.
 # 0.01 = keep 1% of triangles (recommended), 1.0 = keep all (wasteful).
 nanite_fallback_percent = 0.01
+# Nanite fallback heuristic: "percent_triangles", "relative_error", "auto".
+# CRITICAL: if left at engine default (often "auto"/"relative_error"), the
+# fallback_percent value above may be silently ignored, leaving fallbacks
+# much heavier than intended. Setting this explicitly is the single biggest
+# import-perf win for forests where Nanite is always available.
+nanite_fallback_target = "percent_triangles"
+# Used only when fallback_target = "relative_error". Higher = coarser fallback.
+# Default 1.0 is conservative; try 2.0-4.0 for further build-time savings.
+nanite_fallback_relative_error = 1.0
 # Nanite trim relative error threshold (0.0 = auto).
 # Controls how aggressively Nanite simplifies internal LOD hierarchy.
 # Higher values allow coarser LODs, reducing build time and streaming data.
 # 0.0 = UE default (auto), try 1.0-3.0 for faster builds on organic meshes.
+# Epic recommends staying above 0.02; 0.04 is a good default.
 nanite_trim_relative_error = 0.0
 # Minimum always-resident Nanite data in KB per mesh (0 = single page).
 # Lower values reduce baseline VRAM per mesh. 0 is ideal for large forests
@@ -299,6 +310,29 @@ nanite_lerp_uvs = true
 # Prevents oversimplification of edges on deformable meshes (wind/WPO).
 # Set > 0 (e.g., 1.0) if trees use skeletal mesh wind animation.
 nanite_max_edge_length_factor = 0.0
+# Store explicit per-vertex tangents instead of deriving them implicitly.
+# false = smaller assets + faster builds (recommended for vegetation).
+# true only if a material specifically depends on baked tangent vectors.
+nanite_explicit_tangents = false
+# Position quantization precision (-1 = auto). Lower = smaller Nanite data.
+# Trees tolerate aggressive precision; -1 lets UE choose per-mesh.
+nanite_position_precision = -1
+# Normal quantization precision (-1 = auto). Lower = smaller Nanite data.
+# Vegetation usually tolerates coarse normals well.
+nanite_normal_precision = -1
+
+# --- PVE preset import (UE 5.7+ Procedural Vegetation Editor) ---
+# Generates a complementary UE Python script that creates
+# ProceduralVegetationPreset DataAssets from per-tree PVE JSON recipes,
+# alongside the existing skeletal-mesh assembly import. Requires the
+# Procedural Vegetation Editor plugin to be enabled in UE.
+generate_pve_presets = true
+# Content Browser folder where PVE preset DataAssets will be created.
+pve_package_path = "/Game/Assets/TheGrove/PVE"
+# Content Browser folder where PVE writes generated foliage assets.
+pve_foliage_folder = "/Game/Assets/TheGrove/PVE/Foliage"
+# Content Browser folder where PVE writes generated materials.
+pve_materials_folder = "/Game/Assets/TheGrove/PVE/Materials"
 
 # --- Post-export: Helios++ LiDAR ---
 [helios]
@@ -306,7 +340,7 @@ nanite_max_edge_length_factor = 0.0
 # Converts USDA assemblies to Wavefront OBJ with baked twig instances
 export_obj = false
 # Generate Helios++ scene XML placing all tree OBJs at CSV positions
-individual_obj = false\
+individual_obj = false
 helios_scene = false
 # Also export individual per-tree OBJ files (default: false, only combined OBJ)
 # OBJ coordinate up axis: "y" (standard OBJ/Blender) or "z" (matches USD/Helios)

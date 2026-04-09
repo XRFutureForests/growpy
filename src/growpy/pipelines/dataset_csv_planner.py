@@ -29,14 +29,14 @@ DENSITY_VARIANTS = {
 DATASET_SPECIES = [
     "Norway spruce",
     "European beech",
-    "Silver fir",
-    "Scots pine",
-    "European oak",
-    "Douglas fir",
-    "Sycamore maple",
-    "Common ash",
-    "European larch",
-    "Silver birch",
+    # "Silver fir",
+    # "Scots pine",
+    # "European oak",
+    # "Douglas fir",
+    # "Sycamore maple",
+    # "Common ash",
+    # "European larch",
+    # "Silver birch",
 ]
 
 # X offset for open-grown tree to avoid light competition with cluster

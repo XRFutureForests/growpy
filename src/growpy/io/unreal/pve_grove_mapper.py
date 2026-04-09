@@ -287,10 +287,11 @@ def _map_global_attributes(
         if custom_growth_params:
             defaults = merge_growth_params(defaults, custom_growth_params)
 
-        # Apply to global_attrs
+        # Apply to global_attrs — always include defaults even when absent
+        # from the template. phyllotaxyLeaf and other growth curves are
+        # required by UE LoadMegaPlantsJsonToCollection validation.
         for key, value in defaults.items():
-            if key in global_attrs:
-                global_attrs[key] = value
+            global_attrs[key] = value
 
     # Compute metadata attributes from actual skeleton data
     if skeleton is not None:

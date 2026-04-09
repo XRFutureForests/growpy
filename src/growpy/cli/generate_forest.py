@@ -458,10 +458,15 @@ Unreal Engine Integration:
 
             nanite_cfg = {
                 "fallback_percent": config.unreal_nanite_fallback_percent,
+                "fallback_target": config.unreal_nanite_fallback_target,
+                "fallback_relative_error": config.unreal_nanite_fallback_relative_error,
                 "trim_relative_error": config.unreal_nanite_trim_relative_error,
                 "target_residency_kb": config.unreal_nanite_target_residency_kb,
                 "lerp_uvs": config.unreal_nanite_lerp_uvs,
                 "max_edge_length_factor": config.unreal_nanite_max_edge_length_factor,
+                "explicit_tangents": config.unreal_nanite_explicit_tangents,
+                "position_precision": config.unreal_nanite_position_precision,
+                "normal_precision": config.unreal_nanite_normal_precision,
             }
 
             import_script = generate_unreal_import_script(
@@ -477,6 +482,22 @@ Unreal Engine Integration:
                 config.unreal_project_path,
                 dry_run=True,  # Default to dry-run mode for safety
             )
+
+            if config.unreal_generate_pve_presets:
+                from growpy.io.unreal.pve_import_script import (
+                    generate_pve_preset_import_script,
+                )
+
+                pve_script = generate_pve_preset_import_script(
+                    output_dir=output_dir / "unreal_scripts",
+                    forest_root=output_dir,
+                    package_path=config.unreal_pve_package_path,
+                    foliage_folder=config.unreal_pve_foliage_folder,
+                    materials_folder=config.unreal_pve_materials_folder,
+                )
+                logger.info(
+                    "Generated PVE preset import script: %s", pve_script
+                )
 
             logger.info("\n%s", "=" * 60)
             logger.info("UNREAL SCRIPTS GENERATED")

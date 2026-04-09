@@ -740,6 +740,44 @@ def _set_nanite_property(mesh, label, prop_name, value):
     return False
 
 
+def _set_nanite_fallback_target(mesh, label, target_name):
+    """Set Nanite fallback_target enum (PercentTriangles / RelativeError / Auto).
+
+    Without this, UE may default to a heuristic that ignores
+    fallback_percent_triangles entirely. Tries enum then int fallback.
+    """
+    _name_map = {
+        "percent_triangles": ("PERCENT_TRIANGLES", 0),
+        "relative_error": ("RELATIVE_ERROR", 1),
+        "auto": ("AUTO", 2),
+    }
+    _enum_name, _enum_int = _name_map.get(
+        (target_name or "percent_triangles").lower(),
+        ("PERCENT_TRIANGLES", 0),
+    )
+    try:
+        _ns = mesh.get_editor_property("nanite_settings")
+        _enum_cls = getattr(unreal, "NaniteFallbackTarget", None)
+        if _enum_cls is not None and hasattr(_enum_cls, _enum_name):
+            _ns.set_editor_property(
+                "fallback_target", getattr(_enum_cls, _enum_name)
+            )
+            mesh.set_editor_property("nanite_settings", _ns)
+            return True
+    except Exception:
+        pass
+    try:
+        _ns = mesh.get_editor_property("nanite_settings")
+        _ns.set_editor_property("fallback_target", _enum_int)
+        mesh.set_editor_property("nanite_settings", _ns)
+        return True
+    except Exception as _e:
+        unreal.log_warning(
+            f"Could not set fallback_target for {label}: {_e}"
+        )
+    return False
+
+
 def _configure_nanite_assembly(mesh, label, nanite_cfg=None):
     """Configure a nanite assembly after USD import.
 
@@ -750,8 +788,21 @@ def _configure_nanite_assembly(mesh, label, nanite_cfg=None):
         nanite_cfg = {}
 
     _set_nanite_shape_voxelize(mesh, label)
+
+    # CRITICAL: set fallback_target BEFORE fallback_percent_triangles, else
+    # UE may interpret the percent under the wrong heuristic.
+    _set_nanite_fallback_target(
+        mesh, label,
+        nanite_cfg.get("fallback_target", "percent_triangles"),
+    )
+
     _reduce_nanite_fallback(
         mesh, label, percent=nanite_cfg.get("fallback_percent", 0.01),
+    )
+
+    _fallback_rel = nanite_cfg.get("fallback_relative_error", 1.0)
+    _set_nanite_property(
+        mesh, label, "fallback_relative_error", _fallback_rel,
     )
 
     _trim_err = nanite_cfg.get("trim_relative_error", 0.0)
@@ -769,6 +820,21 @@ def _configure_nanite_assembly(mesh, label, nanite_cfg=None):
     _max_edge = nanite_cfg.get("max_edge_length_factor", 0.0)
     if _max_edge > 0.0:
         _set_nanite_property(mesh, label, "max_edge_length_factor", _max_edge)
+
+    # Implicit tangents save build time + storage; only set true if asset
+    # actually depends on baked tangents (rare for vegetation).
+    _set_nanite_property(
+        mesh, label, "explicit_tangents",
+        bool(nanite_cfg.get("explicit_tangents", False)),
+    )
+
+    _pos_prec = nanite_cfg.get("position_precision", -1)
+    if _pos_prec is not None and _pos_prec >= 0:
+        _set_nanite_property(mesh, label, "position_precision", int(_pos_prec))
+
+    _norm_prec = nanite_cfg.get("normal_precision", -1)
+    if _norm_prec is not None and _norm_prec >= 0:
+        _set_nanite_property(mesh, label, "normal_precision", int(_norm_prec))
 
     try:
         mesh.modify(True)
@@ -939,8 +1005,10 @@ def generate_unreal_import_script(
             on imported assemblies. Mirrors [unreal] voxelization from growpy.toml.
         nanite_cfg: Optional dict of Nanite build parameters passed through to
             _configure_nanite_assembly in generated scripts. Keys:
-            fallback_percent, trim_relative_error, target_residency_kb,
-            lerp_uvs, max_edge_length_factor.
+            fallback_percent, fallback_target, fallback_relative_error,
+            trim_relative_error, target_residency_kb, lerp_uvs,
+            max_edge_length_factor, explicit_tangents, position_precision,
+            normal_precision.
 
     Returns:
         Path to generated scripts directory.
