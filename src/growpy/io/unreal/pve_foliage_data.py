@@ -67,7 +67,7 @@ def _compute_twig_asset_path(
         species, f"{species}_twigs_combined_skeletal"
     )
     sk_folder = f"{import_base}/Instances/{twig_folder}/SkeletalMeshes"
-    sk_name = f"SK_{twig_name}"
+    sk_name = twig_name if twig_name.startswith("SK_") else f"SK_{twig_name}"
     return f"{sk_folder}/{sk_name}.{sk_name}"
 
 

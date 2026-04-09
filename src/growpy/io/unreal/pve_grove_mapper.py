@@ -1278,14 +1278,24 @@ def _calculate_length_from_root(skeleton: Any) -> List[float]:
 
     lengths = [0.0] * num_points
 
-    # Process each poly_line with rebased indices
+    # Process each poly_line with rebased indices.
+    # CRITICAL: Child branches share their first point (fork) with the parent.
+    # We must inherit the parent's LFR at the fork so child LFR values are
+    # tree-root-relative and monotonically increasing.  Non-monotonic LFR
+    # breaks PVE Gravity/Slope recursive child matching which requires:
+    #   PreviousParentPointLFR < ChildFirstPointLFR <= CurrentParentPointLFR
     for poly_line in poly_lines:
         cumulative = 0.0
         for i in range(len(poly_line)):
             point_idx = poly_line[i]
             rebased_idx = point_idx - index_offset
 
-            if i > 0:
+            if i == 0:
+                # Inherit existing LFR set by parent branch processing.
+                # For the trunk (first poly_line) this is 0.0.
+                if 0 <= rebased_idx < num_points:
+                    cumulative = lengths[rebased_idx]
+            else:
                 prev_idx = poly_line[i - 1]
                 rebased_prev = prev_idx - index_offset
                 # Bounds check for skeleton_points access with rebased indices

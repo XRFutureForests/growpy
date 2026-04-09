@@ -151,6 +151,7 @@ class GrowPyConfig:
     unreal_nanite_explicit_tangents: bool = False
     unreal_nanite_position_precision: int = -1
     unreal_nanite_normal_precision: int = -1
+    unreal_db_path: str = "/Game/Assets/TheGrove/TreeDB"
     unreal_generate_pve_presets: bool = True
     unreal_pve_import_base: str = "/Game/Assets/TheGrove"
 
@@ -400,6 +401,8 @@ class GrowPyConfig:
             kwargs["unreal_nanite_normal_precision"] = int(
                 unreal["nanite_normal_precision"]
             )
+        if "db_path" in unreal:
+            kwargs["unreal_db_path"] = str(unreal["db_path"])
         if "generate_pve_presets" in unreal:
             kwargs["unreal_generate_pve_presets"] = bool(unreal["generate_pve_presets"])
         if "pve_import_base" in unreal:

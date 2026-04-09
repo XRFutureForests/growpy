@@ -181,7 +181,7 @@ def _derive_dir_paths(json_dir):
     twig_inst = SPECIES_TWIG_MAP.get(
         species, species + "_twigs_combined_skeletal"
     )
-    foliage_folder = IMPORT_BASE + "/Instances/" + twig_inst
+    foliage_folder = IMPORT_BASE + "/Instances/" + twig_inst + "/SkeletalMeshes"
 
     trunk_material_name = "MI_" + species + "_bark"
 
@@ -272,7 +272,6 @@ def _patch_foliage_meshes(asset, foliage_folder):
     Falls back to constructing paths from foliage_folder + SK_ prefix if
     AssetPath entries are not present (backward compatibility).
     """
-    sk_folder = foliage_folder + "/SkeletalMeshes"
     variations = asset.get_editor_property("preset_variations")
     if not variations:
         return
@@ -325,9 +324,9 @@ def _patch_foliage_meshes(asset, foliage_folder):
             else:
                 tn = entry.get("Name", "")
                 if tn:
-                    sk_name = "SK_" + tn
+                    sk_name = tn if tn.startswith("SK_") else "SK_" + tn
                     mesh_refs.append(
-                        "%s/%s.%s" % (sk_folder, sk_name, sk_name)
+                        "%s/%s.%s" % (foliage_folder, sk_name, sk_name)
                     )
 
         if not mesh_refs:
@@ -489,6 +488,8 @@ def main():
         )
         if preset is None:
             continue
+
+        _patch_foliage_meshes(preset, foliage_folder)
 
         _create_pve_graph(graph_name, GRAPH_PACKAGE_PATH, preset, variant_names)
 

@@ -258,7 +258,7 @@ def extract_foliage_data(
 
                 # Construct full twig filename (without _skeletal.usda extension)
                 species_clean = species_name.replace(" ", "_").lower()
-                twig_name = f"{species_clean}_foliage_{variant}"
+                twig_name = f"SK_{species_clean}_foliage_{variant}"
 
                 # Convert to PVE format (Y-up, meters for positions; Y-up for vectors)
                 pve_pos = grove_to_pve_position(position)
