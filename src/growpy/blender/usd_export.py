@@ -146,6 +146,14 @@ def build_tree_mesh_usd(
         _apply_api_schema(root_prim, "SkelBindingAPI")
         _apply_api_schema(mesh_prim, "SkelBindingAPI")
 
+        # Tree offset: bone positions from Grove are in world space, while
+        # mesh points from build_models() are tree-local. Subtract the tree
+        # location so the skeleton aligns with the mesh.
+        tree_offset = (0.0, 0.0, 0.0)
+        if hasattr(model, "location") and model.location:
+            loc = model.location
+            tree_offset = (loc.x, loc.y, loc.z)
+
         bone_offset = 0
         if hasattr(model, "point_attribute_bone_id") and model.point_attribute_bone_id:
             bone_offset = min(model.point_attribute_bone_id)
@@ -161,7 +169,9 @@ def build_tree_mesh_usd(
             bind_positions,
             rest_positions,
             _bone_id_to_joint,
-        ) = build_joint_hierarchy(filtered_bones, bone_id_offset=0)
+        ) = build_joint_hierarchy(
+            filtered_bones, bone_id_offset=0, tree_offset=tree_offset
+        )
 
         skel_path = root_path.AppendChild(skel_name)
         skel = UsdSkel.Skeleton.Define(stage, skel_path)
@@ -273,12 +283,15 @@ def _add_twig_instances(
             proto_prim = stage.DefinePrim(proto_path, "Xform")
             proto_prim.SetInstanceable(True)
 
-            child_name = _sanitize_identifier(twig_path.stem)
+            # The twig USD root prim strips _skeletal/_static from the name
+            twig_root_name = _sanitize_identifier(
+                twig_path.stem.replace("_skeletal", "").replace("_static", "")
+            )
             child_type = "SkelRoot" if use_skeletal_mesh else "Xform"
-            child = stage.DefinePrim(f"{proto_path}/{child_name}", child_type)
+            child = stage.DefinePrim(f"{proto_path}/{twig_root_name}", child_type)
             child.GetReferences().AddReference(
                 f"./twigs/{twig_path.name}",
-                f"/{_sanitize_identifier(twig_path.stem)}",
+                f"/{twig_root_name}",
             )
 
             prototype_paths.append(Sdf.Path(proto_path))

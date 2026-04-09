@@ -164,17 +164,22 @@ def calculate_vertex_weights(
 def build_joint_hierarchy(
     bones_info: List[Tuple],
     bone_id_offset: int = 0,
+    tree_offset: Tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> Tuple[List[str], List["Any"], List["Any"], Dict[int, str]]:
     """Build joint tokens and transforms from bones_info.
 
     Returns (joint_tokens, bind_transforms, rest_transforms, bone_id_to_joint_path).
     Transform values are (tx, ty, tz) tuples (translation only).
+
+    tree_offset: Subtracted from bone world positions to produce tree-local
+        coordinates that match the mesh vertex space.
     """
     joint_tokens = []
-    bind_positions = []  # World-space positions
+    bind_positions = []  # Tree-local positions
     rest_positions = []  # Parent-relative positions
     bone_id_to_joint_path: Dict[int, str] = {}
     bone_positions: Dict[int, Tuple[float, float, float]] = {}
+    ox, oy, oz = tree_offset
 
     branch_id_offset = (
         int(bones_info[0][7]) if bones_info and len(bones_info[0]) >= 8 else 0
@@ -185,7 +190,7 @@ def build_joint_hierarchy(
         gid = bone_id_offset + bone_idx
         local_branch = int(branch_id) - branch_id_offset
 
-        pos = (sp.x, sp.y, sp.z)
+        pos = (sp.x - ox, sp.y - oy, sp.z - oz)
         bone_positions[gid] = pos
 
         if bone_idx == 0:

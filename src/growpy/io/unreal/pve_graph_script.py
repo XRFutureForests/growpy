@@ -6,7 +6,8 @@ EXPERIMENTAL -- UE 5.7+ Procedural Vegetation Editor (PVE) plugin only.
 Creates one ProceduralVegetation graph per species+scene directory. Each
 graph's PresetLoader points at a combined preset whose Variants TMap holds
 all height stages found in that directory. The graph wires one processing
-chain (Gravity -> MeshBuilder -> FoliagePalette -> Output) per variant.
+chain (Gravity -> MeshBuilder -> BoneReduction -> FoliagePalette -> Output)
+per variant.
 
 Directory layout expected::
 
@@ -23,6 +24,7 @@ UE Python API used (UE 5.7+, Experimental):
 - unreal.PVPresetLoaderSettings          - preset loader node
 - unreal.PVGravitySettings               - gravity node
 - unreal.PVMeshBuilderSettings           - mesh builder node
+- unreal.PVBoneReductionSettings         - bone reduction node
 - unreal.PVFoliagePaletteSettings        - foliage palette node
 - unreal.PVOutputSettings                - output node
 """
@@ -208,8 +210,20 @@ def _create_pve_graph(graph_name, graph_package, preset, variant_names):
     full_path = "%s/%s" % (graph_package, graph_name)
 
     if unreal.EditorAssetLibrary.does_asset_exist(full_path):
-        unreal.log("[PVE-G] Deleting existing graph for rebuild: %s" % full_path)
-        unreal.EditorAssetLibrary.delete_asset(full_path)
+        unreal.log("[PVE-G] Removing existing graph: %s" % full_path)
+        # Rename out of the way first, then delete -- avoids stale reference
+        # blocking creation of the new asset.
+        trash_path = "%s/%s_OLD" % (graph_package, graph_name)
+        if unreal.EditorAssetLibrary.does_asset_exist(trash_path):
+            unreal.EditorAssetLibrary.delete_asset(trash_path)
+            unreal.SystemLibrary.collect_garbage()
+        renamed = unreal.EditorAssetLibrary.rename_asset(full_path, trash_path)
+        if renamed:
+            unreal.EditorAssetLibrary.delete_asset(trash_path)
+        else:
+            # Rename failed -- try direct delete as fallback
+            unreal.EditorAssetLibrary.delete_asset(full_path)
+        unreal.SystemLibrary.collect_garbage()
 
     factory = unreal.ProceduralVegetationFactory()
     graph_asset = asset_tools.create_asset(

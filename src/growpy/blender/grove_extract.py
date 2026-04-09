@@ -301,7 +301,7 @@ def extract_grove(
     # Tag bones for skeletal mesh export
     bones_info_all = grove.tag_bone_id(
         skeleton_length,
-        skeleton_reduce ** 2,
+        skeleton_reduce**2,
         skeleton_bias,
         skeleton_connected,
     )
