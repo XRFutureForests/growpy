@@ -227,10 +227,13 @@ def generate_unreal_scripts(output_dir: Path, include_static: bool = False) -> N
             generate_pve_preset_import_script,
         )
 
-        foliage_files = generate_all_foliage_data(output_dir)
-        logger.info("Generated %d FoliageData.json files", len(foliage_files))
-
         twig_map = build_species_twig_map()
+        foliage_files = generate_all_foliage_data(
+            output_dir,
+            import_base=config.unreal_pve_import_base,
+            species_twig_map=twig_map,
+        )
+        logger.info("Generated %d FoliageData.json files", len(foliage_files))
         pve_script = generate_pve_preset_import_script(
             output_dir=output_dir / "unreal_scripts",
             forest_root=output_dir,

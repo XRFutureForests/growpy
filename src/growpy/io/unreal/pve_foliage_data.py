@@ -48,21 +48,65 @@ def _extract_twig_names(pve_json_path: Path) -> list[str]:
     return sorted(unique)
 
 
-def generate_foliage_data(directory: Path) -> Path:
+def _compute_twig_asset_path(
+    twig_name: str,
+    species: str,
+    import_base: str,
+    species_twig_map: dict[str, str],
+) -> str:
+    """Compute the full UE Content Browser path for a twig SkeletalMesh.
+
+    UE USD import creates assets with an SK_ prefix inside a
+    SkeletalMeshes/ subfolder under the combined twig wrapper folder.
+    The combined wrapper strips the _skeletal suffix from prim names,
+    so the UE asset name matches the bare twig name with SK_ prefix.
+
+    Returns a Soft Object Reference: ``PackagePath/SK_Name.SK_Name``
+    """
+    twig_folder = species_twig_map.get(
+        species, f"{species}_twigs_combined_skeletal"
+    )
+    sk_folder = f"{import_base}/Instances/{twig_folder}/SkeletalMeshes"
+    sk_name = f"SK_{twig_name}"
+    return f"{sk_folder}/{sk_name}.{sk_name}"
+
+
+def generate_foliage_data(
+    directory: Path,
+    forest_root: Path | None = None,
+    import_base: str = "",
+    species_twig_map: dict[str, str] | None = None,
+) -> Path:
     """Generate FoliageData.json for a directory of PVE recipe files.
 
     Scans *_stems_unreal_pve.json files, extracts twig names from
     instancer_name attributes, and writes a FoliageData.json that UE's
     UpdateDataAsset can use to populate FoliageMeshes on the preset.
 
+    When ``import_base`` and ``species_twig_map`` are provided, each twig
+    entry includes an ``AssetPath`` field with the full UE Content Browser
+    reference so the PVE graph builder can resolve foliage meshes directly.
+
     Args:
         directory: Path containing PVE recipe JSON files.
+        forest_root: Root of the forest output directory (for species inference).
+        import_base: UE Content Browser base path (e.g. ``/Game/Assets/TheGrove``).
+        species_twig_map: Maps species name to combined twig instance folder name.
 
     Returns:
         Path to the written FoliageData.json.
     """
     directory = Path(directory)
     recipes = sorted(directory.glob(f"*{PVE_RECIPE_SUFFIX}"))
+
+    # Infer species from directory relative to forest_root
+    species = ""
+    can_resolve_paths = bool(import_base and species_twig_map and forest_root)
+    if can_resolve_paths and forest_root is not None and species_twig_map is not None:
+        try:
+            species = directory.relative_to(forest_root).parts[0]
+        except (ValueError, IndexError):
+            can_resolve_paths = False
 
     variations = []
     for recipe_path in recipes:
@@ -75,16 +119,19 @@ def generate_foliage_data(directory: Path) -> Path:
 
         foliage_data_entries = []
         for twig_name in twig_names:
-            foliage_data_entries.append(
-                {
-                    "Name": twig_name,
-                    "scale": 0.0,
-                    "upAlignment": 0.0,
-                    "light": 0.0,
-                    "health": 0.0,
-                    "tip": 0.0,
-                }
-            )
+            entry: dict = {
+                "Name": twig_name,
+                "scale": 0.0,
+                "upAlignment": 0.0,
+                "light": 0.0,
+                "health": 0.0,
+                "tip": 0.0,
+            }
+            if can_resolve_paths and species_twig_map is not None:
+                entry["AssetPath"] = _compute_twig_asset_path(
+                    twig_name, species, import_base, species_twig_map,
+                )
+            foliage_data_entries.append(entry)
 
         variations.append(
             {
@@ -107,7 +154,11 @@ def generate_foliage_data(directory: Path) -> Path:
     return out_path
 
 
-def generate_all_foliage_data(forest_root: Path) -> list[Path]:
+def generate_all_foliage_data(
+    forest_root: Path,
+    import_base: str = "",
+    species_twig_map: dict[str, str] | None = None,
+) -> list[Path]:
     """Generate FoliageData.json for all species/scene directories.
 
     Walks the forest output tree looking for directories containing
@@ -115,6 +166,8 @@ def generate_all_foliage_data(forest_root: Path) -> list[Path]:
 
     Args:
         forest_root: Root of the forest output directory.
+        import_base: UE Content Browser base path for twig asset resolution.
+        species_twig_map: Maps species name to combined twig instance folder.
 
     Returns:
         List of paths to generated FoliageData.json files.
@@ -127,7 +180,12 @@ def generate_all_foliage_data(forest_root: Path) -> list[Path]:
             continue
         recipes = list(dirpath.glob(f"*{PVE_RECIPE_SUFFIX}"))
         if recipes:
-            path = generate_foliage_data(dirpath)
+            path = generate_foliage_data(
+                dirpath,
+                forest_root=forest_root,
+                import_base=import_base,
+                species_twig_map=species_twig_map,
+            )
             generated.append(path)
 
     logger.info("Generated %d FoliageData.json file(s)", len(generated))

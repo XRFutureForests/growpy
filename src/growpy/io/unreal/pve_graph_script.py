@@ -260,6 +260,96 @@ def _set_preset_properties(asset, json_dir, foliage_folder, materials_folder,
         unreal.log_warning("[PVE-G] trunk_material_name set failed: %s" % _e)
 
 
+def _patch_foliage_meshes(asset, foliage_folder):
+    """Force-set foliage_meshes on preset variations via import_text.
+
+    UpdateDataAsset creates variation slots from FoliageData.json but cannot
+    resolve SkeletalMesh assets because UE USD import adds an SK_ prefix and
+    places them in a SkeletalMeshes/ subfolder. This function reads
+    pre-computed AssetPath entries from FoliageData.json (written by
+    pve_foliage_data.py) and forces the references via import_text.
+
+    Falls back to constructing paths from foliage_folder + SK_ prefix if
+    AssetPath entries are not present (backward compatibility).
+    """
+    sk_folder = foliage_folder + "/SkeletalMeshes"
+    variations = asset.get_editor_property("preset_variations")
+    if not variations:
+        return
+
+    patched = 0
+    for var in variations:
+        fm = var.get_editor_property("foliage_meshes")
+        if not fm:
+            continue
+        # Check if already resolved (non-None entries)
+        if all(m is not None for m in fm):
+            continue
+
+        # Read FoliageData entry names from the variation's export text
+        et = var.export_text()
+        foliage_path = os.path.join(
+            asset.get_editor_property("json_directory_path").path,
+            "FoliageData.json",
+        )
+        if not os.path.isfile(foliage_path):
+            continue
+
+        with open(foliage_path, "r") as _f:
+            foliage_data = json.load(_f)
+
+        var_name = var.get_editor_property("name") if hasattr(var, "name") else ""
+        # Try to get variation name from export text
+        if not var_name and 'Name="' in et:
+            var_name = et.split('Name="')[1].split('"')[0]
+
+        # Find matching variation in FoliageData
+        matched_entries = []
+        for fv in foliage_data.get("Variations", []):
+            fv_name = fv.get("name", "")
+            if fv_name == var_name or not matched_entries:
+                matched_entries = fv.get("Data", [])
+                if fv_name == var_name:
+                    break
+
+        if not matched_entries:
+            continue
+
+        # Build full asset paths -- prefer pre-computed AssetPath from
+        # pve_foliage_data.py, fall back to SK_ prefix construction.
+        mesh_refs = []
+        for entry in matched_entries:
+            asset_path = entry.get("AssetPath")
+            if asset_path:
+                mesh_refs.append(asset_path)
+            else:
+                tn = entry.get("Name", "")
+                if tn:
+                    sk_name = "SK_" + tn
+                    mesh_refs.append(
+                        "%s/%s.%s" % (sk_folder, sk_name, sk_name)
+                    )
+
+        if not mesh_refs:
+            continue
+
+        # Use import_text to force foliage mesh references
+        mesh_csv = ",".join('"%s"' % r for r in mesh_refs)
+        import_str = "(FoliageMeshes=(%s))" % mesh_csv
+        try:
+            ok = var.import_text(import_str)
+            if ok:
+                patched += 1
+        except Exception as _e:
+            unreal.log_warning(
+                "[PVE-G] import_text failed for variation %s: %s" % (var_name, _e)
+            )
+
+    if patched:
+        unreal.EditorAssetLibrary.save_loaded_asset(asset)
+        unreal.log("[PVE-G] Patched foliage_meshes on %d variation(s)" % patched)
+
+
 def _create_pve_graph(graph_name, graph_package, preset, variant_names):
     """Create a PVE graph following the Epic tutorial node chain order.
 
