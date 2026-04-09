@@ -39,6 +39,7 @@ class GroveExtractionResult:
     skeletons: List[Any] = field(default_factory=list)
     bones_info_per_tree: List[List[Tuple]] = field(default_factory=list)
     twig_blend_paths: List[str] = field(default_factory=list)
+    bark_texture_path: Optional[str] = None
     species_name: str = ""
     collection_name: str = ""
 
@@ -219,6 +220,63 @@ def get_grove_twigs_folder() -> Optional[str]:
     return None
 
 
+def get_grove_textures_folder() -> Optional[str]:
+    """Return the Textures Folder path from The Grove 2.3 addon preferences."""
+    grove_addon_name = "the_grove_23_in_blender"
+    addons = bpy.context.preferences.addons
+    if grove_addon_name not in addons:
+        return None
+    prefs = addons[grove_addon_name].preferences
+    textures_path = getattr(prefs, "textures_path", "")
+    if textures_path:
+        return bpy.path.abspath(textures_path)
+    return None
+
+
+def find_bark_texture_path(
+    collection: Optional[bpy.types.Collection] = None,
+) -> Optional[str]:
+    """Find bark texture file path for the Grove collection.
+
+    Checks two sources in order:
+    1. The collection's GROVE23_Properties.texture_bark (set by user in Build)
+    2. Blender materials on the first mesh object in the collection
+    """
+    import os
+
+    # 1. Check collection property
+    if collection is not None and hasattr(collection, "GROVE23_Properties"):
+        grove_props = collection.GROVE23_Properties
+        texture_bark = getattr(grove_props, "texture_bark", "")
+        if texture_bark:
+            resolved = bpy.path.abspath(texture_bark)
+            if os.path.isfile(resolved):
+                return resolved
+            # texture_bark might be just a filename - search textures folder
+            textures_folder = get_grove_textures_folder()
+            if textures_folder:
+                candidate = os.path.join(textures_folder, os.path.basename(texture_bark))
+                if os.path.isfile(candidate):
+                    return candidate
+
+    # 2. Check Blender materials on mesh objects in the collection
+    if collection is not None:
+        for obj in collection.objects:
+            if obj.type != "MESH" or not obj.data.materials:
+                continue
+            for mat in obj.data.materials:
+                if mat is None or not mat.use_nodes:
+                    continue
+                for node in mat.node_tree.nodes:
+                    if node.type != "TEX_IMAGE" or node.image is None:
+                        continue
+                    filepath = bpy.path.abspath(node.image.filepath)
+                    if os.path.isfile(filepath):
+                        return filepath
+
+    return None
+
+
 def find_twig_blend_paths(
     grove: Any,
     collection: Optional[bpy.types.Collection] = None,
@@ -337,6 +395,7 @@ def extract_grove(
         skeletons=skeletons,
         bones_info_per_tree=bones_info_per_tree,
         twig_blend_paths=twig_paths,
+        bark_texture_path=find_bark_texture_path(collection),
         species_name=species_name,
         collection_name=collection.name,
     )

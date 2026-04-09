@@ -152,9 +152,7 @@ class GrowPyConfig:
     unreal_nanite_position_precision: int = -1
     unreal_nanite_normal_precision: int = -1
     unreal_generate_pve_presets: bool = True
-    unreal_pve_package_path: str = "/Game/Assets/TheGrove/PVE"
-    unreal_pve_foliage_folder: str = "/Game/Assets/TheGrove/PVE/Foliage"
-    unreal_pve_materials_folder: str = "/Game/Assets/TheGrove/PVE/Materials"
+    unreal_pve_import_base: str = "/Game/Assets/TheGrove"
 
     # [twigs] - interior decimation
     twigs_interior_decimate_ratio: float = 0.5
@@ -403,17 +401,9 @@ class GrowPyConfig:
                 unreal["nanite_normal_precision"]
             )
         if "generate_pve_presets" in unreal:
-            kwargs["unreal_generate_pve_presets"] = bool(
-                unreal["generate_pve_presets"]
-            )
-        if "pve_package_path" in unreal:
-            kwargs["unreal_pve_package_path"] = str(unreal["pve_package_path"])
-        if "pve_foliage_folder" in unreal:
-            kwargs["unreal_pve_foliage_folder"] = str(unreal["pve_foliage_folder"])
-        if "pve_materials_folder" in unreal:
-            kwargs["unreal_pve_materials_folder"] = str(
-                unreal["pve_materials_folder"]
-            )
+            kwargs["unreal_generate_pve_presets"] = bool(unreal["generate_pve_presets"])
+        if "pve_import_base" in unreal:
+            kwargs["unreal_pve_import_base"] = str(unreal["pve_import_base"])
 
         # [helios]
         helios = data.get("helios", {})

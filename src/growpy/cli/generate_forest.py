@@ -484,20 +484,26 @@ Unreal Engine Integration:
             )
 
             if config.unreal_generate_pve_presets:
+                from growpy.io.unreal.pve_foliage_data import generate_all_foliage_data
                 from growpy.io.unreal.pve_import_script import (
+                    build_species_twig_map,
                     generate_pve_preset_import_script,
                 )
 
+                foliage_files = generate_all_foliage_data(output_dir)
+                logger.info(
+                    "Generated %d FoliageData.json files",
+                    len(foliage_files),
+                )
+
+                twig_map = build_species_twig_map()
                 pve_script = generate_pve_preset_import_script(
                     output_dir=output_dir / "unreal_scripts",
                     forest_root=output_dir,
-                    package_path=config.unreal_pve_package_path,
-                    foliage_folder=config.unreal_pve_foliage_folder,
-                    materials_folder=config.unreal_pve_materials_folder,
+                    import_base=config.unreal_pve_import_base,
+                    species_twig_map=twig_map,
                 )
-                logger.info(
-                    "Generated PVE preset import script: %s", pve_script
-                )
+                logger.info("Generated PVE preset import script: %s", pve_script)
 
             logger.info("\n%s", "=" * 60)
             logger.info("UNREAL SCRIPTS GENERATED")

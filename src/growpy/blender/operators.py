@@ -257,6 +257,7 @@ class GROWPY_OT_ExportNaniteAssembly(bpy.types.Operator):
                 bones_info=bones_info,
                 include_skeleton=use_skeletal,
                 junction_blend_distance=prefs.junction_blend_distance,
+                bark_texture_path=extraction.bark_texture_path,
             )
             if not ok_tree:
                 self.report({"WARNING"}, f"Tree export failed: {tree_usd.name}")

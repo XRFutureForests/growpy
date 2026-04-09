@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 import os
 import random
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -83,6 +84,141 @@ def _build_matrix(tx: float, ty: float, tz: float) -> Any:
     return m
 
 
+def _get_tree_offset(
+    model: Any, bones_info: Optional[List[Tuple]]
+) -> Tuple[float, float, float]:
+    """Get tree world-space offset for skeleton alignment.
+
+    Tries model.location first, falls back to the tree root bone start_point.
+    """
+    if hasattr(model, "location") and model.location is not None:
+        loc = model.location
+        if hasattr(loc, "x"):
+            return (loc.x, loc.y, loc.z)
+
+    if bones_info:
+        for bone in bones_info:
+            is_tree_root = bone[0]
+            if is_tree_root:
+                sp = bone[2]
+                return (sp.x, sp.y, sp.z)
+
+    return (0.0, 0.0, 0.0)
+
+
+def _add_bark_material(
+    stage: Any,
+    mesh_prim: Any,
+    root_path: Any,
+    species_name: str,
+    bark_texture_path: Optional[str] = None,
+) -> None:
+    """Add bark material with optional texture to the tree mesh.
+
+    Creates a UsdPreviewSurface material with bark texture if a valid texture
+    file is provided. Falls back to solid brown color otherwise. Copies texture
+    files to a textures/ subdirectory next to the USD file.
+    """
+    from pxr import Gf, Sdf, UsdGeom, UsdShade
+
+    BARK_BROWN = Gf.Vec3f(0.4, 0.3, 0.2)
+
+    materials_path = str(root_path) + "/Materials"
+    UsdGeom.Scope.Define(stage, materials_path)
+
+    bark_mat_name = (
+        f"{_sanitize_identifier(species_name)}_bark" if species_name else "bark"
+    )
+    mat_path = f"{materials_path}/{bark_mat_name}"
+    bark_mat = UsdShade.Material.Define(stage, mat_path)
+
+    shader = UsdShade.Shader.Define(stage, f"{mat_path}/PreviewSurface")
+    shader.CreateIdAttr("UsdPreviewSurface")
+
+    texture_found = False
+    if bark_texture_path and os.path.isfile(bark_texture_path):
+        texture_found = True
+        texture_file = Path(bark_texture_path)
+
+        uv_reader = UsdShade.Shader.Define(stage, f"{mat_path}/uvmap")
+        uv_reader.CreateIdAttr("UsdPrimvarReader_float2")
+        uv_reader.CreateInput("varname", Sdf.ValueTypeNames.Token).Set("st")
+        uv_reader.CreateOutput("result", Sdf.ValueTypeNames.Float2)
+
+        tex_reader = UsdShade.Shader.Define(stage, f"{mat_path}/DiffuseTexture")
+        tex_reader.CreateIdAttr("UsdUVTexture")
+        tex_reader.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
+            f"./textures/{texture_file.name}"
+        )
+        tex_reader.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set(
+            "sRGB"
+        )
+        tex_reader.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+        tex_reader.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
+            uv_reader.ConnectableAPI(), "result"
+        )
+
+        shader.CreateInput(
+            "diffuseColor", Sdf.ValueTypeNames.Color3f
+        ).ConnectToSource(tex_reader.ConnectableAPI(), "rgb")
+
+        # Check for a matching normal map (same stem with _normal suffix)
+        normal_candidates = [
+            texture_file.parent / f"{texture_file.stem}_normal{texture_file.suffix}",
+            texture_file.parent / f"{texture_file.stem}Normal{texture_file.suffix}",
+        ]
+        normal_file = None
+        for candidate in normal_candidates:
+            if candidate.is_file():
+                normal_file = candidate
+                break
+
+        if normal_file:
+            normal_reader = UsdShade.Shader.Define(
+                stage, f"{mat_path}/NormalTexture"
+            )
+            normal_reader.CreateIdAttr("UsdUVTexture")
+            normal_reader.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
+                f"./textures/{normal_file.name}"
+            )
+            normal_reader.CreateInput(
+                "sourceColorSpace", Sdf.ValueTypeNames.Token
+            ).Set("raw")
+            normal_reader.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+            normal_reader.CreateInput(
+                "st", Sdf.ValueTypeNames.Float2
+            ).ConnectToSource(uv_reader.ConnectableAPI(), "result")
+            shader.CreateInput(
+                "normal", Sdf.ValueTypeNames.Normal3f
+            ).ConnectToSource(normal_reader.ConnectableAPI(), "rgb")
+
+        # Copy texture files to output textures/ subdirectory
+        output_dir = Path(stage.GetRootLayer().realPath).parent
+        textures_dir = output_dir / "textures"
+        textures_dir.mkdir(exist_ok=True)
+
+        dest = textures_dir / texture_file.name
+        if not dest.exists():
+            shutil.copy2(str(texture_file), str(dest))
+
+        if normal_file:
+            dest_normal = textures_dir / normal_file.name
+            if not dest_normal.exists():
+                shutil.copy2(str(normal_file), str(dest_normal))
+
+    if not texture_found:
+        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(BARK_BROWN)
+
+    shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.7)
+    shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
+    shader.CreateInput("specular", Sdf.ValueTypeNames.Float).Set(0.5)
+    shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(1.0)
+    bark_mat.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+
+    binding_api = UsdShade.MaterialBindingAPI.Apply(mesh_prim)
+    binding_api.Bind(bark_mat)
+
+
 def build_tree_mesh_usd(
     model: Any,
     output_path: Path,
@@ -92,6 +228,7 @@ def build_tree_mesh_usd(
     include_skeleton: bool = True,
     junction_blend_distance: float = 0.5,
     blend_mode: str = "linear",
+    bark_texture_path: Optional[str] = None,
 ) -> bool:
     """Export a single Grove tree model to USD.
 
@@ -149,10 +286,7 @@ def build_tree_mesh_usd(
         # Tree offset: bone positions from Grove are in world space, while
         # mesh points from build_models() are tree-local. Subtract the tree
         # location so the skeleton aligns with the mesh.
-        tree_offset = (0.0, 0.0, 0.0)
-        if hasattr(model, "location") and model.location:
-            loc = model.location
-            tree_offset = (loc.x, loc.y, loc.z)
+        tree_offset = _get_tree_offset(model, bones_info)
 
         bone_offset = 0
         if hasattr(model, "point_attribute_bone_id") and model.point_attribute_bone_id:
@@ -214,6 +348,8 @@ def build_tree_mesh_usd(
         )
         joint_w.Set(weights)
         joint_w.SetElementSize(2)
+
+    _add_bark_material(stage, mesh_prim, root_path, species_name, bark_texture_path)
 
     stage.SetDefaultPrim(root_prim)
     stage.GetRootLayer().Save()

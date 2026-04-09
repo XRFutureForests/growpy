@@ -7,6 +7,7 @@ Produces both static and skeletal variants and caches results per session.
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -115,6 +116,128 @@ def _cleanup_temp(
         pass
 
 
+def _extract_textures_from_object(
+    obj: bpy.types.Object,
+) -> List[Dict[str, Any]]:
+    """Extract image texture file paths from Blender material nodes."""
+    textures: List[Dict[str, Any]] = []
+    if not obj.data.materials:
+        return textures
+
+    for mat in obj.data.materials:
+        if mat is None or not mat.use_nodes:
+            continue
+        for node in mat.node_tree.nodes:
+            if node.type != "TEX_IMAGE" or node.image is None:
+                continue
+            filepath = bpy.path.abspath(node.image.filepath)
+            if filepath and os.path.isfile(filepath):
+                name_lower = Path(filepath).stem.lower()
+                if any(k in name_lower for k in ["normal", "norm", "nrm"]):
+                    tex_type = "normal"
+                elif any(k in name_lower for k in ["alpha", "opacity", "mask"]):
+                    continue  # Skip alpha for Nanite
+                else:
+                    tex_type = "diffuse"
+                textures.append({"type": tex_type, "path": filepath})
+    return textures
+
+
+def _add_twig_material(
+    stage: Any,
+    mesh_prim: Any,
+    root_path: Any,
+    twig_name: str,
+    textures: List[Dict[str, Any]],
+    output_dir: Path,
+) -> None:
+    """Add leaf material with textures to a twig mesh prim."""
+    from pxr import Gf, Sdf, UsdGeom, UsdShade
+
+    LEAF_GREEN = Gf.Vec3f(0.3, 0.6, 0.2)
+
+    materials_path = str(root_path) + "/Materials"
+    UsdGeom.Scope.Define(stage, materials_path)
+
+    mat_name = f"{_sanitize_identifier(twig_name)}_leaf"
+    mat_full = f"{materials_path}/{mat_name}"
+    mat = UsdShade.Material.Define(stage, mat_full)
+
+    shader = UsdShade.Shader.Define(stage, f"{mat_full}/PreviewSurface")
+    shader.CreateIdAttr("UsdPreviewSurface")
+
+    diffuse_tex = None
+    normal_tex = None
+    for t in textures:
+        if t["type"] == "diffuse" and diffuse_tex is None:
+            diffuse_tex = Path(t["path"])
+        elif t["type"] == "normal" and normal_tex is None:
+            normal_tex = Path(t["path"])
+
+    textures_dir = output_dir / "textures"
+    texture_found = False
+
+    if diffuse_tex and diffuse_tex.is_file():
+        texture_found = True
+        textures_dir.mkdir(exist_ok=True)
+
+        uv_reader = UsdShade.Shader.Define(stage, f"{mat_full}/uvmap")
+        uv_reader.CreateIdAttr("UsdPrimvarReader_float2")
+        uv_reader.CreateInput("varname", Sdf.ValueTypeNames.Token).Set("st")
+        uv_reader.CreateOutput("result", Sdf.ValueTypeNames.Float2)
+
+        tex_reader = UsdShade.Shader.Define(stage, f"{mat_full}/DiffuseTexture")
+        tex_reader.CreateIdAttr("UsdUVTexture")
+        tex_reader.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
+            f"./textures/{diffuse_tex.name}"
+        )
+        tex_reader.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set("sRGB")
+        tex_reader.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+        tex_reader.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
+            uv_reader.ConnectableAPI(), "result"
+        )
+        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(
+            tex_reader.ConnectableAPI(), "rgb"
+        )
+
+        dest = textures_dir / diffuse_tex.name
+        if not dest.exists():
+            shutil.copy2(str(diffuse_tex), str(dest))
+
+        if normal_tex and normal_tex.is_file():
+            normal_reader = UsdShade.Shader.Define(stage, f"{mat_full}/NormalTexture")
+            normal_reader.CreateIdAttr("UsdUVTexture")
+            normal_reader.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
+                f"./textures/{normal_tex.name}"
+            )
+            normal_reader.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set(
+                "raw"
+            )
+            normal_reader.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
+            normal_reader.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
+                uv_reader.ConnectableAPI(), "result"
+            )
+            shader.CreateInput("normal", Sdf.ValueTypeNames.Normal3f).ConnectToSource(
+                normal_reader.ConnectableAPI(), "rgb"
+            )
+
+            dest_normal = textures_dir / normal_tex.name
+            if not dest_normal.exists():
+                shutil.copy2(str(normal_tex), str(dest_normal))
+
+    if not texture_found:
+        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(LEAF_GREEN)
+
+    shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.5)
+    shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
+    shader.CreateInput("specular", Sdf.ValueTypeNames.Float).Set(0.5)
+    shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(1.0)
+    mat.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+
+    binding_api = UsdShade.MaterialBindingAPI.Apply(mesh_prim)
+    binding_api.Bind(mat)
+
+
 def _export_objects_to_usd(
     mesh_objects: List[bpy.types.Object],
     output_path: Path,
@@ -180,6 +303,29 @@ def _export_objects_to_usd(
         usd_mesh.CreatePointsAttr(pts)
         usd_mesh.CreateFaceVertexCountsAttr(counts)
         usd_mesh.CreateFaceVertexIndicesAttr(indices)
+
+        # Export UVs from Blender mesh
+        if mesh.uv_layers.active:
+            uv_layer = mesh.uv_layers.active.data
+            uvs = []
+            for tri in mesh.loop_triangles:
+                for loop_idx in tri.loops:
+                    uv = uv_layer[loop_idx].uv
+                    uvs.append(Gf.Vec2f(float(uv[0]), float(uv[1])))
+            if uvs:
+                primvars_api = UsdGeom.PrimvarsAPI(usd_mesh)
+                st = primvars_api.CreatePrimvar(
+                    "st",
+                    Sdf.ValueTypeNames.TexCoord2fArray,
+                    UsdGeom.Tokens.faceVarying,
+                )
+                st.Set(uvs)
+
+        # Extract textures and add material
+        obj_textures = _extract_textures_from_object(obj)
+        _add_twig_material(
+            stage, usd_mesh, root_path, root_name, obj_textures, output_path.parent
+        )
 
         if include_skeleton and skel_path is not None:
             _apply_api_schema(mesh_prim, "SkelBindingAPI")
