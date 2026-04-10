@@ -18,12 +18,19 @@ import bpy  # noqa: F401  (required; generate_forest_stages runs Grove via bpy)
 import pandas as pd
 from tqdm import tqdm
 
-from growpy import GrowPyConfig, calculate_growth_cycles_from_height, create_forest, get_config
+from growpy import (
+    GrowPyConfig,
+    calculate_growth_cycles_from_height,
+    create_forest,
+    get_config,
+)
 from growpy.config.preset_overrides import PresetOverrides
 from growpy.config.quality import get_quality_preset
 from growpy.core.forest import simulate_forest_growth_with_snapshots
 from growpy.io.forest_export import export_individual_trees  # noqa: F401
-from growpy.io.usd.preview import generate_export_control_image as _generate_export_control_image
+from growpy.io.usd.preview import (
+    generate_export_control_image as _generate_export_control_image,
+)
 from growpy.io.usd.preview import generate_icon_image as _generate_icon_image
 from growpy.io.usd.preview import generate_preview_image as _generate_preview_image
 from growpy.io.usd.tree_export import (
@@ -32,9 +39,7 @@ from growpy.io.usd.tree_export import (
 from growpy.io.usd.tree_export import (
     handle_bone_limit_error as _handle_bone_limit_error,
 )
-from growpy.io.usd.tree_export import (
-    is_bone_limit_error as _is_bone_limit_error,
-)
+from growpy.io.usd.tree_export import is_bone_limit_error as _is_bone_limit_error
 from growpy.utils.export_naming import (
     format_dbh_for_filename,
     format_density_for_filename,
@@ -100,8 +105,8 @@ def generate_forest_stages(
     )
     from growpy.io.usd.assembly_export import export_tree_as_nanite_assembly
     from growpy.io.usd.tree_export import get_twig_usd_map_for_species
-    from growpy.utils.profiling import ProfileTimer
     from growpy.utils.log import is_verbose
+    from growpy.utils.profiling import ProfileTimer
 
     if timer is None:
         timer = ProfileTimer(enabled=False)
@@ -168,7 +173,9 @@ def generate_forest_stages(
     # The simulation runs until milestones are captured, growth plateaus,
     # or the cycle limit is reached.
     effective_interval = height_interval if height_interval is not None else 5.0
-    effective_max_height = config.forest_max_height if config.forest_max_height > 0 else 0.0
+    effective_max_height = (
+        config.forest_max_height if config.forest_max_height > 0 else 0.0
+    )
     global_max_cycles = growth_cycle_limit if growth_cycle_limit is not None else 65
 
     logger.info("\n%s", "=" * 60)
@@ -282,7 +289,9 @@ def generate_forest_stages(
         logger.info("Density variants active -- CSV twig_density column ignored")
 
     exported_files = []
-    for cycle, species_snapshots in tqdm(snapshots.items(), desc="Exporting stages", disable=not is_verbose()):
+    for cycle, species_snapshots in tqdm(
+        snapshots.items(), desc="Exporting stages", disable=not is_verbose()
+    ):
         for species_name, tree_data_list in species_snapshots.items():
             # Get fids and max cycles for this species from forest data
             species_rows = forest_data[forest_data["species"] == species_name]
@@ -296,12 +305,14 @@ def generate_forest_stages(
                     fid = int(tree_row["fid"])
                     tree_twig_density = (
                         float(tree_row["twig_density"])
-                        if "twig_density" in tree_row.index and pd.notna(tree_row.get("twig_density"))
+                        if "twig_density" in tree_row.index
+                        and pd.notna(tree_row.get("twig_density"))
                         else None
                     )
                     tree_individual_type = (
                         str(tree_row["individual_type"]).strip()
-                        if "individual_type" in tree_row.index and pd.notna(tree_row.get("individual_type"))
+                        if "individual_type" in tree_row.index
+                        and pd.notna(tree_row.get("individual_type"))
                         else None
                     )
                 else:
@@ -434,7 +445,9 @@ def generate_forest_stages(
                     else:
                         tree_dir = output_dir / species_clean / f"tree_{fid:04d}"
                         if variant_name:
-                            file_prefix = f"{species_clean}_{dims_suffix}_{variant_name}"
+                            file_prefix = (
+                                f"{species_clean}_{dims_suffix}_{variant_name}"
+                            )
                         else:
                             file_prefix = f"{species_clean}_{dims_suffix}"
                     tree_dir.mkdir(parents=True, exist_ok=True)
@@ -478,8 +491,10 @@ def generate_forest_stages(
                             stems_base = f"{species_clean}_{dims_suffix}"
 
                             # DynamicWind JSON for Unreal import
-                            if use_skeletal:
-                                from growpy.io.unreal.wind_json import generate_wind_json
+                            if use_skeletal and config.unreal_generate_wind_data:
+                                from growpy.io.unreal.wind_json import (
+                                    generate_wind_json,
+                                )
 
                                 wind_json_path = (
                                     tree_dir / f"{file_prefix}_stems_unreal_wind.json"
@@ -487,7 +502,8 @@ def generate_forest_stages(
                                 try:
                                     with timer.track("generate_wind_json"):
                                         generate_wind_json(
-                                            tree_usd_path=tree_dir / f"{stems_base}_stems_skeletal{config.usd_ext}",
+                                            tree_usd_path=tree_dir
+                                            / f"{stems_base}_stems_skeletal{config.usd_ext}",
                                             skeleton=skeleton,
                                             bones_info=bones_info,
                                             output_path=wind_json_path,
@@ -504,9 +520,13 @@ def generate_forest_stages(
                             # PVE preset JSON (optional)
                             skip_pve = quality_params.get("skip_pve_json", False)
                             if use_skeletal and not skip_pve:
-                                from growpy.io.unreal.pve_grove_mapper import generate_pve_from_grove
+                                from growpy.io.unreal.pve_grove_mapper import (
+                                    generate_pve_from_grove,
+                                )
 
-                                pve_json_path = tree_dir / f"{file_prefix}_stems_unreal_pve.json"
+                                pve_json_path = (
+                                    tree_dir / f"{file_prefix}_stems_unreal_pve.json"
+                                )
                                 pve_config_dir = Path("data/assets/pve_configs")
                                 grove_for_species = species_grove_map.get(species_name)
 
@@ -536,13 +556,14 @@ def generate_forest_stages(
                                 tree_dir, species_clean, file_prefix, skeleton, timer
                             )
                             _generate_export_control_image(
-                                tree_dir, species_clean, file_prefix, timer,
+                                tree_dir,
+                                species_clean,
+                                file_prefix,
+                                timer,
                                 view_bounds=preview_bounds,
                                 stems_file_base=stems_base,
                             )
-                            _generate_icon_image(
-                                tree_dir, file_prefix, skeleton, timer
-                            )
+                            _generate_icon_image(tree_dir, file_prefix, skeleton, timer)
 
                             if use_skeletal and config.export_static:
                                 static_path = _derive_static_from_skeletal(

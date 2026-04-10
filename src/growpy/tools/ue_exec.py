@@ -40,6 +40,7 @@ BATCH_PATTERN = re.compile(r"^import_batch_(\d+)_.+\.py$")
 # Scripts to run after all numbered batches (order preserved).
 # These depend on imported assets already existing in UE.
 POST_IMPORT_SCRIPTS = [
+    "growpy_wind_import.py",
     "growpy_pve_preset_import.py",
     "growpy_pve_graph_builder.py",
 ]

@@ -139,7 +139,7 @@ competition_neighbors = 3
 quality = "high"
 # Maximum growth cycles per tree (1-250)
 # Trees exceeding this limit are capped (not scaled)
-growth_cycle_limit = 25
+growth_cycle_limit = 45
 # Number of grove.smooth() passes on branch angles (int, 0-20, 0 = disabled)
 # Each pass reduces sharp corner angles between branch segments.
 # Higher values = smoother, more organic branches; 10-20 for production.
@@ -152,12 +152,12 @@ include_grove_attributes = false
 # Uses growth models to determine which cycle corresponds to each height milestone
 # Each snapshot includes height and DBH in the filename for easy asset selection
 # 0 = disabled (standard single height-based export)
-height_interval = 3
+height_interval = 4
 # Cap all tree heights at this value in meters (e.g., 15 for quick testing)
 # Trees taller than this in the input CSV are clamped to this height
 # Reduces growth cycles and number of height stages for faster runs
 # 0 = no limit (use full CSV heights)
-max_height = 9
+max_height = 12
 
 # Quality Presets (single source of truth)
 # Define any number of named presets below as [quality.<name>] sections.
@@ -239,13 +239,13 @@ static = false
 # Per-tree scaling: the input CSV twig_density column is a scale factor
 # multiplied with this base (e.g., base=2.0, CSV=0.5 -> effective 1.0).
 # Range: 0.0 (no twigs) to 3.0+ (dense canopy)
-twig_density = 2.75
+twig_density = 1
 # Youth bias exponent for synthetic twig placement.
 # Controls how strongly additional twigs prefer younger branches.
 # 1.0 = linear (default), >1.0 = stronger youth preference, <1.0 = more uniform.
 # At 2.0 a branch at youth=0.5 gets 25% weight vs 100% for the youngest.
 # Range: 0.0 (uniform placement) to 3.0+ (extreme youth preference)
-youth_bias = 2.0
+youth_bias = 1
 # Skip PVE preset JSON generation (saves ~3% export time)
 # PVE presets only needed for Unreal Procedural Vegetation Editor
 skip_pve_json = false
@@ -277,7 +277,7 @@ project_path = "/Game/Assets/TheGrove"
 # Automatically set Nanite shape preservation to Voxelize on imported assemblies.
 # Voxelization produces the best visual quality but adds significant import time.
 # Set to false for faster testing iterations; re-enable for production exports.
-voxelization = false
+voxelization = true
 # Nanite fallback mesh triangle percentage (0.0-1.0).
 # The fallback mesh is used when Nanite is unavailable: complex collision
 # queries, ray tracing without Nanite RT, mobile, editor "Nanite off" view.
@@ -326,13 +326,9 @@ nanite_normal_precision = -1
 # ProceduralVegetationPreset DataAssets from per-tree PVE JSON recipes,
 # alongside the existing skeletal-mesh assembly import. Requires the
 # Procedural Vegetation Editor plugin to be enabled in UE.
+# Combined presets and PVE graphs are colocated with tree meshes
+# at <project_path>/<species>/<scene>/.
 generate_pve_presets = true
-# Content Browser folder where PVE preset DataAssets will be created.
-pve_package_path = "/Game/Assets/TheGrove/PVE"
-# Content Browser folder where PVE writes generated foliage assets.
-pve_foliage_folder = "/Game/Assets/TheGrove/PVE/Foliage"
-# Content Browser folder where PVE writes generated materials.
-pve_materials_folder = "/Game/Assets/TheGrove/PVE/Materials"
 
 # --- Post-export: Helios++ LiDAR ---
 [helios]

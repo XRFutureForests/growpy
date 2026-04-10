@@ -141,6 +141,7 @@ class GrowPyConfig:
     unreal_import_to_unreal: bool = True
     unreal_project_path: str = "/Game/GrowPy"
     unreal_voxelization: bool = True
+    unreal_generate_wind_data: bool = True
     unreal_nanite_fallback_percent: float = 0.01
     unreal_nanite_fallback_target: str = "percent_triangles"
     unreal_nanite_fallback_relative_error: float = 1.0
@@ -151,7 +152,7 @@ class GrowPyConfig:
     unreal_nanite_explicit_tangents: bool = False
     unreal_nanite_position_precision: int = -1
     unreal_nanite_normal_precision: int = -1
-    unreal_db_path: str = "/Game/Assets/TheGrove/TreeDB"
+    unreal_db_path: str = "/Game/Assets/TheGrove"
     unreal_generate_pve_presets: bool = True
     unreal_pve_import_base: str = "/Game/Assets/TheGrove"
 
@@ -363,6 +364,8 @@ class GrowPyConfig:
             kwargs["unreal_project_path"] = unreal["project_path"]
         if "voxelization" in unreal:
             kwargs["unreal_voxelization"] = unreal["voxelization"]
+        if "generate_wind_data" in unreal:
+            kwargs["unreal_generate_wind_data"] = bool(unreal["generate_wind_data"])
         if "nanite_fallback_percent" in unreal:
             kwargs["unreal_nanite_fallback_percent"] = float(
                 unreal["nanite_fallback_percent"]

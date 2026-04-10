@@ -67,7 +67,6 @@ import unreal
 
 FOREST_ROOT = r"{forest_root}"
 IMPORT_BASE = "{import_base}"
-GRAPH_PACKAGE_PATH = "{graph_package_path}"
 SPECIES_TWIG_MAP = {species_twig_map}
 
 PVE_RECIPE_SUFFIX = "_stems_unreal_pve.json"
@@ -491,7 +490,7 @@ def main():
 
         _patch_foliage_meshes(preset, foliage_folder)
 
-        _create_pve_graph(graph_name, GRAPH_PACKAGE_PATH, preset, variant_names)
+        _create_pve_graph(graph_name, package_path, preset, variant_names)
 
     unreal.log("[PVE-G] Done.")
 
@@ -504,19 +503,17 @@ def generate_pve_graph_script(
     output_dir: Path,
     forest_root: Path,
     import_base: str = "/Game/Assets/TheGrove",
-    graph_package_path: str = "/Game/Assets/TheGrove/PVE/Graphs",
     species_twig_map: dict | None = None,
 ) -> Path:
     """Write a UE Python script that creates combined PVE presets and graphs.
 
-    Presets are placed alongside tree assemblies under ``import_base``.
-    Graphs are placed in ``graph_package_path``.
+    Presets and graphs are placed alongside tree assemblies under
+    ``import_base/<species>/<scene>/``.
 
     Args:
         output_dir: Where to write the .py script.
         forest_root: Root of the growpy forest export.
         import_base: UE Content Browser base path for tree assets.
-        graph_package_path: UE Content Browser path for PVE graphs.
         species_twig_map: Maps species name to twig instance folder name.
 
     Returns:
@@ -531,7 +528,6 @@ def generate_pve_graph_script(
     body = _PVE_GRAPH_SCRIPT.format(
         forest_root=forest_root_str,
         import_base=import_base,
-        graph_package_path=graph_package_path,
         species_twig_map=twig_map_repr,
     )
 

@@ -221,6 +221,17 @@ def generate_unreal_scripts(output_dir: Path, include_static: bool = False) -> N
 
     logger.info("Generated Unreal scripts: %s, %s", import_script, cleanup_script)
 
+    # DynamicWind import script (runs before PVE to apply wind data first)
+    if config.unreal_generate_wind_data:
+        from growpy.io.unreal.wind_import_script import generate_wind_import_script
+
+        wind_script = generate_wind_import_script(
+            output_dir=output_dir / "unreal_scripts",
+            forest_root=output_dir,
+            import_base=config.unreal_pve_import_base,
+        )
+        logger.info("Generated DynamicWind import script: %s", wind_script)
+
     if config.unreal_generate_pve_presets:
         from growpy.io.unreal.pve_foliage_data import generate_all_foliage_data
         from growpy.io.unreal.pve_import_script import (

@@ -1141,15 +1141,23 @@ def _map_primitives_from_skeleton(
         skel_points = skeleton.points
         num_skel_points = len(skel_points)
 
+        # Origin (first skeleton point) for world-to-local conversion
+        origin_pt = skel_points[0] if num_skel_points > 0 else (0, 0, 0)
+
         pivot_locations = []
         for poly_line in poly_lines:
             if len(poly_line) > 0:
                 first_point_idx = poly_line[0]
                 if first_point_idx < num_skel_points:
                     pos = skel_points[first_point_idx]
-                    # Inline coordinate conversion (Grove Z-up meters -> PVE Y-up centimeters)
+                    # Origin-subtracted, meters -> cm, NO Y/Z swap (C++ reads as-is,
+                    # matching UE internal convention: X-right, Y-forward, Z-up in cm)
                     pivot_locations.append(
-                        [pos[0] * 100.0, pos[2] * 100.0, pos[1] * 100.0]
+                        [
+                            (pos[0] - origin_pt[0]) * 100.0,
+                            (pos[1] - origin_pt[1]) * 100.0,
+                            (pos[2] - origin_pt[2]) * 100.0,
+                        ]
                     )
                 else:
                     pivot_locations.append([0.0, 0.0, 0.0])
@@ -1509,38 +1517,54 @@ def _calculate_bud_directions(skeleton: Any) -> List[List[float]]:
                         dy /= length
                         dz /= length
 
-                        # Convert to PVE Y-up coords (swap Y and Z)
-                        # Grove: (X, Y, Z) where Z is up
-                        # PVE:   (X, Z, Y) where Y is up
-                        pve_x = dx
-                        pve_y = dz  # Grove Z becomes PVE Y
-                        pve_z = dy  # Grove Y becomes PVE Z
-
-                        directions.extend([pve_x, pve_y, pve_z])
+                        # Keep Grove Z-up coords (no swap).
+                        # C++ reads budDirection as-is (no Y/Z swap),
+                        # so it must already be in UE space (Z-up).
+                        directions.extend([dx, dy, dz])
 
         # Fill bud_directions array (up to 6 buds = 18 floats)
         for i in range(min(len(directions), 18)):
             bud_directions[point_idx][i] = directions[i]
 
-        # CRITICAL: If we have fewer than 6 buds worth of directions, ensure at least
-        # indices [0] and [5] have valid vectors (required by PVMeshBuilderElement.cpp line 782, 806)
-        # If we don't have any directions, use default up vector
+        # CRITICAL: Ensure indices [0:3] (AimVector) and [15:18] (PointUpOriginal)
+        # have valid, NON-PARALLEL vectors. Mesh Builder computes their cross product
+        # to define the ring cross-section plane. Parallel vectors -> zero cross product
+        # -> degenerate geometry -> no mesh output.
         if len(directions) == 0:
-            # No direction data - use default up vector (Y-up in PVE coords)
-            bud_directions[point_idx][0] = 0.0  # X
-            bud_directions[point_idx][1] = 1.0  # Y (up)
-            bud_directions[point_idx][2] = 0.0  # Z
-            # Copy to index [5] as well (required by PVMeshBuilderElement.cpp line 806)
-            bud_directions[point_idx][15] = 0.0  # X
-            bud_directions[point_idx][16] = 1.0  # Y (up)
-            bud_directions[point_idx][17] = 0.0  # Z
-        elif len(directions) < 18:
-            # Ensure index [5] (indices 15-17) has a valid vector
-            if all(bud_directions[point_idx][i] == 0.0 for i in range(15, 18)):
-                # Copy first vector to index [5]
-                bud_directions[point_idx][15] = bud_directions[point_idx][0]
-                bud_directions[point_idx][16] = bud_directions[point_idx][1]
-                bud_directions[point_idx][17] = bud_directions[point_idx][2]
+            # No direction data - default Z-up primary, X-right secondary
+            bud_directions[point_idx][0] = 0.0
+            bud_directions[point_idx][1] = 0.0
+            bud_directions[point_idx][2] = 1.0  # Z-up (UE convention)
+            bud_directions[point_idx][15] = 1.0  # X-right (perpendicular)
+            bud_directions[point_idx][16] = 0.0
+            bud_directions[point_idx][17] = 0.0
+
+        # Ensure index [5] (indices 15-17) has a valid perpendicular vector
+        if all(bud_directions[point_idx][i] == 0.0 for i in range(15, 18)):
+            ax = bud_directions[point_idx][0]
+            ay = bud_directions[point_idx][1]
+            az = bud_directions[point_idx][2]
+            # Compute perpendicular "up" reference for cross-section orientation
+            if abs(az) < 0.95:
+                # Reject world-up (0,0,1) from aim direction
+                up_x = -az * ax
+                up_y = -az * ay
+                up_z = 1.0 - az * az
+            else:
+                # Nearly vertical branch: use (1,0,0) as reference
+                up_x = 1.0 - ax * ax
+                up_y = -ax * ay
+                up_z = -ax * az
+            up_len = math.sqrt(up_x * up_x + up_y * up_y + up_z * up_z)
+            if up_len > 0.0001:
+                up_x /= up_len
+                up_y /= up_len
+                up_z /= up_len
+            else:
+                up_x, up_y, up_z = 0.0, 1.0, 0.0
+            bud_directions[point_idx][15] = up_x
+            bud_directions[point_idx][16] = up_y
+            bud_directions[point_idx][17] = up_z
 
     return bud_directions
 

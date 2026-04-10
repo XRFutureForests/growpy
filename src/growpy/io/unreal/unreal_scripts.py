@@ -358,7 +358,7 @@ print("=" * 60)
 
 
 def _build_datatable_script(
-    project_path: str, scripts_dir: str, db_path: str = "/Game/Assets/TheGrove/TreeDB"
+    project_path: str, scripts_dir: str, db_path: str = "/Game/Assets/TheGrove"
 ) -> str:
     """Build Unreal Python code that creates a DataTable cataloguing all imported trees.
 
@@ -549,7 +549,7 @@ else:
             dt_factory = unreal.DataTableFactory()
             dt_factory.set_editor_property("struct", tree_struct)
             data_table = asset_tools.create_asset(
-                DATATABLE_NAME, IMPORT_PATH, unreal.DataTable, dt_factory
+                DATATABLE_NAME, DB_PATH, unreal.DataTable, dt_factory
             )
         except Exception as e:
             unreal.log_warning(f"Could not create DataTable: {{e}}")
@@ -990,7 +990,7 @@ def generate_unreal_import_script(
     include_static: bool = False,
     voxelization: bool = True,
     nanite_cfg: Optional[Dict[str, Any]] = None,
-    db_path: str = "/Game/Assets/TheGrove/TreeDB",
+    db_path: str = "/Game/Assets/TheGrove",
 ) -> Path:
     """Generate Unreal Python scripts for importing forest USD files.
 

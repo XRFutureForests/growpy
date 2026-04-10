@@ -155,7 +155,7 @@ def get_pve_schema() -> Dict[str, Any]:
                 "instancer_scale": {"isArray": True, "size": 1, "type": "float"},
                 # Metadata
                 "path": {"isArray": False, "size": 1, "type": "string"},
-                "pivotPointLocation": {"isArray": False, "size": 1, "type": "float"},
+                "pivotPointLocation": {"isArray": False, "size": 3, "type": "float"},
                 "plantNumber": {"isArray": False, "size": 1, "type": "int"},
                 "shop_materialpath": {"isArray": False, "size": 1, "type": "string"},
                 "streamName": {"isArray": False, "size": 1, "type": "string"},
