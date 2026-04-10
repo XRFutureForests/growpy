@@ -67,30 +67,42 @@ def _find_assembly_mesh(json_dir, stem):
     """Locate the nanite assembly SkeletalMesh for a wind JSON file.
 
     Derives the UE asset path from the on-disk directory structure.
-    The assembly is imported as SK_{{species}}_assembly (or similar) under
-    IMPORT_BASE/{{species}}/{{scene}}/{{tree}}/.
+    UE USD importer places skeletal meshes under a SkeletalMeshes/ subfolder
+    with the prim name: SK_{{species}}_nanite_assembly.
 
     Returns the loaded SkeletalMesh or None.
     """
     rel = os.path.relpath(json_dir, FOREST_ROOT).replace("\\\\", "/")
 
-    # The assembly file prefix matches the wind JSON prefix.
-    # e.g. european_beech_0001_stems_unreal_wind.json
-    #   -> european_beech_0001_assembly
+    # e.g. European_Beech_comp_h12m_d19cm_full_stems_unreal_wind
+    #   -> European_Beech_comp_h12m_d19cm_full_assembly
     assembly_stem = stem.replace("_stems_unreal_wind", "") + "_assembly"
 
-    # Try the direct assembly path first
-    # Pattern: IMPORT_BASE/species/scene/tree/assembly_name/SK_assembly_name
     package_path = IMPORT_BASE + "/" + rel
-    candidates = [
-        # USD importer places meshes as SK_{{name}}
+
+    # Derive species name from assembly_stem for the SK_ asset name.
+    # Convention: {{Species}}_{{comp|open}}_h{{HH}}m_... -> species before _comp_/_open_
+    species_part = ""
+    for tag in ("_comp_", "_open_"):
+        idx = assembly_stem.lower().find(tag)
+        if idx > 0:
+            species_part = assembly_stem[:idx].lower()
+            break
+
+    # Build candidate paths (most specific first).
+    # UE USD importer places skeletal meshes in SkeletalMeshes/ subfolder.
+    candidates = []
+    if species_part:
+        candidates.append(
+            "%s/%s/SkeletalMeshes/SK_%s_nanite_assembly"
+            % (package_path, assembly_stem, species_part)
+        )
+    candidates.extend([
+        "%s/%s/SkeletalMeshes/SK_%s" % (
+            package_path, assembly_stem, assembly_stem),
         "%s/%s/SK_%s" % (package_path, assembly_stem, assembly_stem),
-        # Or directly under the tree folder
         "%s/SK_%s" % (package_path, assembly_stem),
-        # Flat import (no SK_ prefix)
-        "%s/%s/%s" % (package_path, assembly_stem, assembly_stem),
-        "%s/%s" % (package_path, assembly_stem),
-    ]
+    ])
 
     for asset_path in candidates:
         if unreal.EditorAssetLibrary.does_asset_exist(asset_path):
@@ -98,16 +110,24 @@ def _find_assembly_mesh(json_dir, stem):
             if mesh is not None and isinstance(mesh, unreal.SkeletalMesh):
                 return mesh
 
-    # Fallback: search for nanite_assembly skeletal meshes under this package
+    # Fallback: search recursively under the assembly folder using
+    # get_assets_by_path (compatible with UE 5.7+, unlike ARFilter).
+    assembly_path = package_path + "/" + assembly_stem
     try:
         registry = unreal.AssetRegistryHelpers.get_asset_registry()
-        filter_obj = unreal.ARFilter()
-        filter_obj.package_paths = [package_path]
-        filter_obj.class_names = ["SkeletalMesh"]
-        filter_obj.recursive_paths = True
-        assets = registry.get_assets(filter_obj)
-        for asset_data in assets:
+        all_assets = registry.get_assets_by_path(assembly_path, recursive=True)
+        for asset_data in all_assets:
             name = str(asset_data.asset_name).lower()
+            asset_class = ""
+            try:
+                asset_class = str(asset_data.asset_class_path.asset_name)
+            except Exception:
+                try:
+                    asset_class = str(asset_data.asset_class)
+                except Exception:
+                    pass
+            if "SkeletalMesh" not in asset_class:
+                continue
             if "nanite_assembly" in name or "assembly" in name:
                 mesh = asset_data.get_asset()
                 if mesh is not None and isinstance(mesh, unreal.SkeletalMesh):
@@ -115,7 +135,7 @@ def _find_assembly_mesh(json_dir, stem):
     except Exception as _e:
         unreal.log_warning(
             "[Wind] Asset registry search failed for %s: %s"
-            % (package_path, _e)
+            % (assembly_path, _e)
         )
 
     unreal.log_warning(

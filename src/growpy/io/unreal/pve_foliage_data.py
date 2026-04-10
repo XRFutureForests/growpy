@@ -48,11 +48,48 @@ def _extract_twig_names(pve_json_path: Path) -> list[str]:
     return sorted(unique)
 
 
+def _resolve_twig_asset_name(
+    pve_twig_name: str,
+    species: str,
+    species_twig_map: dict[str, str],
+    instances_dir: Path | None,
+) -> str:
+    """Resolve a PVE instancer name to the actual twig asset name.
+
+    Handles shared twigs where the PVE recipe uses the tree species name
+    (e.g. SK_norway_spruce_foliage_a) but the actual twig asset uses the
+    twig source species name (e.g. SK_pacific_silver_fir_foliage).
+    """
+    twig_folder = species_twig_map.get(species, f"{species}_twigs_combined_skeletal")
+    twig_source = twig_folder.replace("_twigs_combined_skeletal", "")
+
+    if species == twig_source:
+        return pve_twig_name
+
+    bare = pve_twig_name.removeprefix("SK_")
+    species_prefix = f"{species}_foliage"
+    variant_suffix = (
+        bare[len(species_prefix) :] if bare.startswith(species_prefix) else ""
+    )
+
+    candidate_with_variant = f"{twig_source}_foliage{variant_suffix}"
+    candidate_base = f"{twig_source}_foliage"
+
+    if instances_dir is not None:
+        if (instances_dir / f"{candidate_with_variant}_skeletal.usda").exists():
+            return f"SK_{candidate_with_variant}"
+        if (instances_dir / f"{candidate_base}_skeletal.usda").exists():
+            return f"SK_{candidate_base}"
+
+    return f"SK_{candidate_with_variant}"
+
+
 def _compute_twig_asset_path(
     twig_name: str,
     species: str,
     import_base: str,
     species_twig_map: dict[str, str],
+    instances_dir: Path | None = None,
 ) -> str:
     """Compute the full UE Content Browser path for a twig SkeletalMesh.
 
@@ -61,13 +98,21 @@ def _compute_twig_asset_path(
     The combined wrapper strips the _skeletal suffix from prim names,
     so the UE asset name matches the bare twig name with SK_ prefix.
 
+    For shared twigs (e.g. norway_spruce using pacific_silver_fir twig),
+    resolves the PVE instancer name to the actual twig asset name.
+
     Returns a Soft Object Reference: ``PackagePath/SK_Name.SK_Name``
     """
-    twig_folder = species_twig_map.get(
-        species, f"{species}_twigs_combined_skeletal"
-    )
+    twig_folder = species_twig_map.get(species, f"{species}_twigs_combined_skeletal")
     sk_folder = f"{import_base}/Instances/{twig_folder}/SkeletalMeshes"
-    sk_name = twig_name if twig_name.startswith("SK_") else f"SK_{twig_name}"
+    sk_name = _resolve_twig_asset_name(
+        twig_name,
+        species,
+        species_twig_map,
+        instances_dir,
+    )
+    if not sk_name.startswith("SK_"):
+        sk_name = f"SK_{sk_name}"
     return f"{sk_folder}/{sk_name}.{sk_name}"
 
 
@@ -108,6 +153,9 @@ def generate_foliage_data(
         except (ValueError, IndexError):
             can_resolve_paths = False
 
+    # Resolve Instances directory for shared twig name resolution
+    instances_dir = forest_root / "Instances" if forest_root else None
+
     variations = []
     for recipe_path in recipes:
         variant_name = recipe_path.stem  # filename without .json
@@ -119,8 +167,16 @@ def generate_foliage_data(
 
         foliage_data_entries = []
         for twig_name in twig_names:
+            resolved_name = twig_name
+            if can_resolve_paths and species_twig_map is not None:
+                resolved_name = _resolve_twig_asset_name(
+                    twig_name,
+                    species,
+                    species_twig_map,
+                    instances_dir,
+                )
             entry: dict = {
-                "Name": twig_name,
+                "Name": resolved_name,
                 "scale": 0.0,
                 "upAlignment": 0.0,
                 "light": 0.0,
@@ -129,7 +185,11 @@ def generate_foliage_data(
             }
             if can_resolve_paths and species_twig_map is not None:
                 entry["AssetPath"] = _compute_twig_asset_path(
-                    twig_name, species, import_base, species_twig_map,
+                    twig_name,
+                    species,
+                    import_base,
+                    species_twig_map,
+                    instances_dir=instances_dir,
                 )
             foliage_data_entries.append(entry)
 

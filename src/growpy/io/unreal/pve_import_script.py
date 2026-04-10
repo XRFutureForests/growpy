@@ -268,8 +268,8 @@ def _patch_foliage_meshes(asset, foliage_folder):
         fm = var.get_editor_property("foliage_meshes")
         if not fm:
             continue
-        if all(m is not None for m in fm):
-            continue
+        # Always force-patch: UpdateDataAsset may set refs to non-existent
+        # assets when shared twigs have different names than the tree species.
 
         foliage_path = os.path.join(
             asset.get_editor_property("json_directory_path").path,

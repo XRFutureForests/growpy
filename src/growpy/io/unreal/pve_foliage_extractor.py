@@ -111,6 +111,8 @@ def extract_foliage_data(
     num_branches: Optional[int] = None,
     verbose: bool = False,
     profile: bool = False,
+    twig_species: Optional[str] = None,
+    foliage_variants: Optional[List[str]] = None,
 ) -> Dict[str, Dict]:
     """
     Extract foliage instancer data from a Grove model.
@@ -126,6 +128,10 @@ def extract_foliage_data(
         num_branches: Number of branches from skeleton (poly_lines count). If None, calculated from model.
         verbose: Print detailed extraction information
         profile: Enable timing output
+        twig_species: Twig source species name for shared twigs (e.g., "pacific_silver_fir").
+            If None, uses species_name.
+        foliage_variants: Available foliage variant letters (e.g., ["a", "b", "c"]).
+            If None, all twig types get a bare name without variant suffix.
 
     Returns:
         Dictionary with instancer_* attribute structures
@@ -256,9 +262,16 @@ def extract_foliage_data(
                 }
                 variant = variant_map.get(twig_type, "a")
 
-                # Construct full twig filename (without _skeletal.usda extension)
-                species_clean = species_name.replace(" ", "_").lower()
-                twig_name = f"SK_{species_clean}_foliage_{variant}"
+                # Use twig source species if provided (for shared twigs),
+                # otherwise fall back to tree species name.
+                base_species = (twig_species or species_name).replace(" ", "_").lower()
+                # Only append variant suffix if multiple foliage variants exist
+                if foliage_variants and variant in foliage_variants:
+                    twig_name = f"SK_{base_species}_foliage_{variant}"
+                elif foliage_variants:
+                    twig_name = f"SK_{base_species}_foliage_{foliage_variants[0]}"
+                else:
+                    twig_name = f"SK_{base_species}_foliage"
 
                 # Convert to PVE format (Y-up, meters for positions; Y-up for vectors)
                 pve_pos = grove_to_pve_position(position)
