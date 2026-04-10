@@ -38,7 +38,6 @@ To bridge between yield table data and Grove iteration counts, we fit a
 $$h(t) = h_{max} \cdot (1 - e^{-k \cdot t})^p$$
 
 Where:
-
 - $h(t)$ is the predicted height at age $t$
 - $h_{max}$ is the asymptotic maximum height
 - $k$ is the growth rate coefficient
