@@ -277,7 +277,7 @@ project_path = "/Game/Assets/TheGrove"
 # Automatically set Nanite shape preservation to Voxelize on imported assemblies.
 # Voxelization produces the best visual quality but adds significant import time.
 # Set to false for faster testing iterations; re-enable for production exports.
-voxelization = true
+voxelization = false
 # Nanite fallback mesh triangle percentage (0.0-1.0).
 # The fallback mesh is used when Nanite is unavailable: complex collision
 # queries, ray tracing without Nanite RT, mobile, editor "Nanite off" view.
