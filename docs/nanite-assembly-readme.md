@@ -70,6 +70,22 @@ python src/growpy/cli/generate_forest.py forest.csv --formats usda
 3. Nanite conversion happens automatically
 4. Use in level, PCG, or Foliage system
 
+### 5. DataTable Setup (one-time prerequisite)
+
+The DataTable batch script (`import_batch_*_datatable.py`) requires a
+`ST_TreeRecord` UserDefinedStruct that must be created manually once
+(UE Python API cannot create struct fields programmatically).
+
+1. Content Browser > right-click > Miscellaneous > Structure
+2. Save as `ST_TreeRecord` in `/Game/Assets/TheGrove/`
+3. Add 5 fields:
+   - **SkeletalMesh** -- Soft Object Reference > Skeletal Mesh
+   - **Species** -- String
+   - **Height** -- Float (or Double)
+   - **DBH** -- Float (or Double)
+   - **Competition** -- Boolean
+4. Save the struct, then run the datatable batch script to populate `DT_TreeDatabase`
+
 ## Output Files
 
 Each species generates **three USD files**:

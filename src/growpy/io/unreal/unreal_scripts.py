@@ -366,9 +366,10 @@ def _build_datatable_script(
     (species, height, DBH, competition) from the asset name convention, creates
     a DataTable via DataTableFactory, and populates it from CSV data.
 
-    Requires a ST_TreeRecord struct to exist at db_path (one-time manual
-    creation). The struct needs: SkeletalMesh (SoftObjectReference),
-    Species (String), Height (Float), DBH (Float), Competition (Bool).
+    Requires a pre-existing ST_TreeRecord UserDefinedStruct with fields:
+    SkeletalMesh (SoftObjectReference), Species (String), Height (Float),
+    DBH (Float), Competition (Bool). UE 5.7 Python API does not expose
+    StructureEditorUtils so the struct must be created manually once.
 
     Asset name convention: {Species}_{comp|open}_h{HH}m_d{DD}cm_{density}_assembly
     """
@@ -513,30 +514,30 @@ else:
         _cf.write("\\n".join(csv_lines))
     print(f"Saved tree_inventory.json and tree_inventory.csv ({{len(rows)}} trees)")
 
-    # Step 4: Create DataTable programmatically
-    # Requires a ST_TreeRecord struct to already exist (one-time manual setup).
-    # The struct needs fields: SkeletalMesh (SoftObjectReference to SkeletalMesh),
-    # Species (String), Height (Float), DBH (Float), Competition (Bool).
+    # Step 4: Check for ST_TreeRecord struct (must be created manually once)
     tree_struct = None
     data_table = None
 
-    if not editor_asset_lib.does_asset_exist(STRUCT_PATH):
+    if editor_asset_lib.does_asset_exist(STRUCT_PATH):
+        tree_struct = editor_asset_lib.load_asset(STRUCT_PATH)
+        print(f"Found struct: {{STRUCT_PATH}}")
+    else:
         print("")
-        print(f"Struct not found: {{STRUCT_PATH}}")
-        print("Create it once manually (Miscellaneous > Structure) with fields:")
-        print("  - SkeletalMesh (Soft Object Reference to SkeletalMesh)")
-        print("  - Species (String)")
-        print("  - Height (Float)")
-        print("  - DBH (Float)")
-        print("  - Competition (Bool)")
-        print(f"Save it as: {{STRUCT_PATH}}")
-        print("Then re-run this script to populate the DataTable.")
-        print("")
-        print("Tree inventory saved to disk for manual import if preferred:")
+        print(f"PREREQUISITE: ST_TreeRecord struct not found at {{STRUCT_PATH}}")
+        print("Create it once in Unreal Editor:")
+        print("  Content Browser > right-click > Miscellaneous > Structure")
+        print(f"  Save as '{{STRUCT_NAME}}' in {{DB_PATH}}")
+        print("  Add 5 fields:")
+        print("    1. SkeletalMesh  (Soft Object Reference > Skeletal Mesh)")
+        print("    2. Species       (String)")
+        print("    3. Height        (Float / Double)")
+        print("    4. DBH           (Float / Double)")
+        print("    5. Competition   (Boolean)")
+        print("Then re-run this script.")
         print(f"  CSV: {{_csv_path}}")
         print(f"  JSON: {{_json_path}}")
-    else:
-        tree_struct = editor_asset_lib.load_asset(STRUCT_PATH)
+
+    if tree_struct is not None:
         print(f"Using struct: {{STRUCT_PATH}}")
 
         # Delete existing DataTable if present (recreate with fresh data)
