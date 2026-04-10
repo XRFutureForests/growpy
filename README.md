@@ -62,7 +62,7 @@ twigs/           # Twig .blend files
 
 ```bash
 conda activate growpy
-python -c "import the_grove_23_core.grove_core as gc; print('Grove API ready')"
+python -c "import the_grove_23_core as gc; print('Grove API ready')"
 ```
 
 ## Configuration
