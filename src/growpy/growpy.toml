@@ -63,7 +63,7 @@ interior_decimate_ratio = 0.25
 [growth_models]
 # Maximum growth cycles to simulate (1-250)
 # Automatically stops early when growth plateaus
-cycles = 125
+cycles = 55
 # Random seeds to average for robust curves (1-10)
 # Use 3+ for production, 1 for quick tests
 seeds = 1
@@ -139,7 +139,7 @@ competition_neighbors = 3
 quality = "high"
 # Maximum growth cycles per tree (1-250)
 # Trees exceeding this limit are capped (not scaled)
-growth_cycle_limit = 125
+growth_cycle_limit = 55
 # Number of grove.smooth() passes on branch angles (int, 0-20, 0 = disabled)
 # Each pass reduces sharp corner angles between branch segments.
 # Higher values = smoother, more organic branches; 10-20 for production.
@@ -157,7 +157,7 @@ height_interval = 5
 # Trees taller than this in the input CSV are clamped to this height
 # Reduces growth cycles and number of height stages for faster runs
 # 0 = no limit (use full CSV heights)
-max_height = 30
+max_height = 10
 
 # Quality Presets (single source of truth)
 # Define any number of named presets below as [quality.<name>] sections.
@@ -193,8 +193,8 @@ build_cutoff_age = 0
 build_cutoff_thickness = 0.005
 build_blend = true
 build_end_cap = true
-skeleton_length = 1.0
-skeleton_reduce = 0.3
+skeleton_length = 1.5
+skeleton_reduce = 0.5
 skeleton_bias = 0.5
 skeleton_connected = true
 
@@ -254,6 +254,12 @@ skip_pve_json = false
 # 0 = no limit (use for PVE native skeletal mesh path which has no constraint).
 # 250 = safe default for Nanite Assembly USD import path.
 max_skeleton_joints = 0
+# Maximum twig instances per Nanite Assembly.
+# During UE import, NaniteAssemblyRootAPI expands all instances into a combined
+# Nanite mesh which can consume extreme amounts of RAM.
+# 0 = no limit.  5000 = safe default for 64 GB systems.
+# Instances beyond this limit are randomly removed (uniform across twig types).
+max_assembly_instances = 2000
 # Skip assembly validation (saves ~5-10% export time)
 skip_validation = true
 # Only export specific trees by fid (integer array)

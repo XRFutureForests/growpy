@@ -8,6 +8,7 @@ Requires "Python Remote Execution" enabled in UE Editor Preferences:
 """
 
 import json
+import os
 import socket
 import time
 import uuid
@@ -249,6 +250,10 @@ def run_file(
     Returns:
         dict with 'success' (bool), 'result' (str), and 'output' (list of log lines).
     """
-    with open(filepath, "r", encoding="utf-8") as f:
-        code = f.read()
-    return run_command(code, timeout=timeout, command_endpoint=command_endpoint)
+    abs_path = os.path.abspath(filepath)
+    return run_command(
+        abs_path,
+        exec_mode=MODE_EXEC_FILE,
+        timeout=timeout,
+        command_endpoint=command_endpoint,
+    )

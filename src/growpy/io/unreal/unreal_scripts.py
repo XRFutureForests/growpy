@@ -13,14 +13,65 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Snippet injected into batch scripts for GPU VRAM monitoring via nvidia-smi.
-# Returns (used_mb, total_mb, percent) or None if nvidia-smi unavailable.
+# Snippet injected into batch scripts for GPU VRAM monitoring via nvidia-smi
+# and UE process RSS monitoring via Win32 psapi (psutil is not available in UE
+# Python). Returns (used_mb, total_mb, percent) or None if unavailable.
 _VRAM_MONITOR_PREAMBLE = '''
 import subprocess
+import ctypes
+from ctypes import wintypes
 
 # VRAM threshold: pause import when usage exceeds this percentage
 # Set high (95%) because the orchestrator handles cleanup between batches at a lower threshold.
 VRAM_LIMIT_PERCENT = 95
+
+# Process private-memory budget in GB.  NaniteAssembly imports leak ~1 GB of
+# CRT heap scratch per file that never returns to the OS, so long batches
+# must abort cleanly before OOM and let ue_exec restart the editor.  The
+# done.txt progress file ensures resume works.
+RSS_LIMIT_GB = 28.0
+
+
+class _PMC(ctypes.Structure):
+    _fields_ = [
+        ("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD),
+        ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t),
+        ("QuotaPeakPagedPoolUsage", ctypes.c_size_t), ("QuotaPagedPoolUsage", ctypes.c_size_t),
+        ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t), ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+        ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t),
+        ("PrivateUsage", ctypes.c_size_t),
+    ]
+
+
+try:
+    _kernel32 = ctypes.WinDLL("kernel32")
+    _psapi = ctypes.WinDLL("psapi")
+    _kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    _psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(_PMC), wintypes.DWORD]
+    _psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+    _HAVE_WIN32_MEM = True
+except Exception:
+    _HAVE_WIN32_MEM = False
+
+
+def _get_proc_rss():
+    """Return (working_set_gb, private_gb) for the current UE process."""
+    if not _HAVE_WIN32_MEM:
+        return None
+    pmc = _PMC()
+    pmc.cb = ctypes.sizeof(_PMC)
+    if _psapi.GetProcessMemoryInfo(_kernel32.GetCurrentProcess(), ctypes.byref(pmc), pmc.cb):
+        return (pmc.WorkingSetSize / 1e9, pmc.PrivateUsage / 1e9)
+    return None
+
+
+def _log_rss(tag):
+    info = _get_proc_rss()
+    if info is None:
+        return 0.0
+    ws, pv = info
+    print(f"  [RSS {tag}] ws={ws:.2f}GB private={pv:.2f}GB (limit {RSS_LIMIT_GB:.1f}GB)")
+    return pv
 
 # Maximum time (seconds) to wait for VRAM to drop below threshold before giving up
 VRAM_WAIT_TIMEOUT = 300
@@ -117,27 +168,16 @@ def _build_import_block(
     """Build a single USD import try/except block.
 
     When configure_nanite is True (for assembly imports), the block also
-    configures the imported nanite assembly: Nanite shape preservation is set
-    to Voxelize and fallback mesh VRAM is reduced. DynamicWind data is
-    delivered via separate wind JSON files for post-import application.
+    configures the imported nanite assembly: fallback mesh VRAM is reduced
+    and optional voxelization is applied. DynamicWind data is delivered via
+    separate wind JSON files for post-import application.
     """
+    # Post-import nanite reconfigure was removed: set_editor_property on
+    # nanite_settings + save_asset triggers a synchronous Nanite rebuild
+    # per-file.  The builder scratch never fully frees and, across a batch,
+    # accumulates until a single allocation can exceed 20 GB and kills the
+    # editor.  USD NaniteAssemblyRootAPI already bakes the settings we need.
     config_block = ""
-    if configure_nanite:
-        cfg_repr = repr(nanite_cfg or {})
-        config_block = f"""
-            # Post-import: configure nanite assembly
-            for _obj_path in (import_task.imported_object_paths or []):
-                _obj_path_str = str(_obj_path)
-                if "nanite_assembly" not in _obj_path_str.lower():
-                    continue
-                _mesh = unreal.EditorAssetLibrary.load_asset(_obj_path_str)
-                if not _mesh:
-                    continue
-                _configure_nanite_assembly(_mesh, "{label}", {cfg_repr})
-                # Save the configured asset to disk before unloading
-                unreal.EditorAssetLibrary.save_asset(_obj_path_str)
-                break
-"""
 
     return f"""
 if "{label}" in _completed_files:
@@ -159,9 +199,32 @@ else:
         options.set_editor_property('prim_path_folder_structure', False)
         options.set_editor_property('share_assets_for_identical_prims', True)
         options.set_editor_property('merge_identical_material_slots', True)
+        # Prevent auto-Nanite during import: the MeshBuilder can OOM on
+        # large skeletal meshes. Post-import _configure_nanite_assembly
+        # enables Nanite with controlled settings instead.
+        try:
+            options.set_editor_property('nanite_triangle_threshold', 2147483647)
+        except Exception:
+            pass
         import_task.options = options
 
+        _log_rss("pre  {label}")
+
         asset_tools.import_asset_tasks([import_task])
+
+        # Force pending Nanite/mesh builds to finish synchronously before we
+        # try to unload.  Otherwise the builder scratch stays resident and
+        # the next import piles on top of it.
+        try:
+            _acm = getattr(unreal, "AssetCompilingManager", None)
+            if _acm is not None:
+                _get = getattr(_acm, "get", None)
+                _inst = _get() if callable(_get) else _acm
+                _finish = getattr(_inst, "finish_all_compilation", None)
+                if callable(_finish):
+                    _finish()
+        except Exception as _ace:
+            print(f"  finish_all_compilation err: {{_ace}}")
 
         if import_task.imported_object_paths:
             imported_count += 1
@@ -172,32 +235,17 @@ else:
             failed_count += 1
             unreal.log_warning("Failed to import: {label}")
 
-        # Wait for async Nanite compilation to finish before unloading
-        try:
-            unreal.AssetCompilingManager.get_default().finish_all_compilation()
-        except Exception:
-            pass
-
-        # Unload imported assets from editor memory (already saved to disk)
-        for _unload_path in (import_task.imported_object_paths or []):
-            try:
-                unreal.EditorAssetLibrary.unload_asset(str(_unload_path))
-            except Exception:
-                pass
+        _log_rss("post {label}")
 
         del import_task
 
-        # Flush pending async loads so GC can actually free everything
-        try:
-            unreal.SystemLibrary.flush_async_loading()
-        except Exception:
-            pass
-
-        # Save all dirty packages to disk so editor can release them
-        try:
-            unreal.EditorLoadingAndSavingUtils.save_dirty_packages(False, True)
-        except Exception:
-            pass
+        # NOTE: unload_packages was removed -- it races with async loading
+        # and triggers AsyncLoading2.cpp assertion crashes in UE 5.7.
+        # The CRT heap memory from Nanite builds doesn't free anyway.
+        # NOTE: save_dirty_packages is intentionally NOT called per-file.
+        # Saving re-materialises the package in memory and, for Nanite
+        # assemblies, can trigger another build pass.  The batch-level
+        # import_task.save = True already wrote the asset during import.
 
         # Flush GPU rendering commands and release pooled VRAM
         _w = _get_ue_world()
@@ -229,15 +277,25 @@ else:
                 except Exception:
                     pass
 
+        # UE 5.7 collect_garbage takes no keyword args; two passes to let the
+        # GC drop anything the first pass un-referenced.
         gc.collect()
-        try:
-            unreal.SystemLibrary.collect_garbage(full_purge=True)
-        except Exception:
-            unreal.SystemLibrary.collect_garbage()
+        unreal.SystemLibrary.collect_garbage()
+        unreal.SystemLibrary.collect_garbage()
 
         # Adaptive wait: pause until VRAM settles below threshold
         _wait_for_vram("{label}", min_delay=IMPORT_DELAY)
 
+        _pv = _log_rss("gc   {label}")
+        if _pv > RSS_LIMIT_GB:
+            print("")
+            print(f"  ** Private memory {{_pv:.1f}}GB exceeds limit {{RSS_LIMIT_GB:.1f}}GB **")
+            print("  ** GROWPY_BATCH_ABORT_MEMORY ** ue_exec must stop and restart UE.")
+            print("  ** Progress saved in done.txt; rerun to resume. **")
+            raise SystemExit(42)
+
+    except SystemExit:
+        raise
     except Exception as e:
         failed_count += 1
         unreal.log_error(f"Error importing {label}: {{e}}")
@@ -327,28 +385,15 @@ else:
             except Exception:
                 failed += 1
 
-        # Unload both assets after each pair to prevent memory accumulation
-        for _unload in (dup_path, canon_path):
-            try:
-                unreal.EditorAssetLibrary.unload_asset(_unload)
-            except Exception:
-                pass
-
         # Periodic full GC every 5 pairs
         if (_ci + 1) % 5 == 0:
             gc.collect()
-            try:
-                unreal.SystemLibrary.collect_garbage(full_purge=True)
-            except Exception:
-                unreal.SystemLibrary.collect_garbage()
+            unreal.SystemLibrary.collect_garbage()
 
     print(f"Consolidated {{consolidated}} assets, {{failed}} failures")
 
     gc.collect()
-    try:
-        unreal.SystemLibrary.collect_garbage(full_purge=True)
-    except Exception:
-        unreal.SystemLibrary.collect_garbage()
+    unreal.SystemLibrary.collect_garbage()
 
 print("")
 print("=" * 60)
@@ -590,10 +635,7 @@ else:
             editor_asset_lib.save_asset(DATATABLE_PATH)
 
     gc.collect()
-    try:
-        unreal.SystemLibrary.collect_garbage(full_purge=True)
-    except Exception:
-        unreal.SystemLibrary.collect_garbage()
+    unreal.SystemLibrary.collect_garbage()
 
 print("")
 print("=" * 60)
@@ -784,13 +826,22 @@ def _set_nanite_fallback_target(mesh, label, target_name):
 def _configure_nanite_assembly(mesh, label, nanite_cfg=None):
     """Configure a nanite assembly after USD import.
 
-    Sets Nanite shape preservation to Voxelize, reduces fallback mesh VRAM,
-    and applies additional Nanite build settings from nanite_cfg dict.
+    Enables Nanite (disabled during import to avoid MeshBuilder OOM),
+    reduces fallback mesh VRAM and applies Nanite build settings from
+    nanite_cfg dict. Shape preservation is only set to Voxelize when
+    nanite_cfg["voxelization"] is True.
     """
     if nanite_cfg is None:
         nanite_cfg = {}
 
-    _set_nanite_shape_voxelize(mesh, label)
+    # NaniteAssemblyRootAPI on the USD already builds Nanite during import.
+    # Do NOT re-enable or call modify(True) here -- that would trigger a
+    # second Nanite build whose deferred memory accumulates across files
+    # and causes OOM.  We only configure fallback / quality settings
+    # which are stored as metadata and applied on the next manual rebuild.
+
+    if nanite_cfg.get("voxelization", False):
+        _set_nanite_shape_voxelize(mesh, label)
 
     # CRITICAL: set fallback_target BEFORE fallback_percent_triangles, else
     # UE may interpret the percent under the wrong heuristic.
@@ -839,10 +890,10 @@ def _configure_nanite_assembly(mesh, label, nanite_cfg=None):
     if _norm_prec is not None and _norm_prec >= 0:
         _set_nanite_property(mesh, label, "normal_precision", int(_norm_prec))
 
-    try:
-        mesh.modify(True)
-    except Exception:
-        pass
+    # NOTE: mesh.modify(True) is intentionally NOT called.  The USD
+    # NaniteAssemblyRootAPI already built Nanite during import; calling
+    # modify(True) would trigger a deferred rebuild whose memory
+    # accumulates across files and causes OOM on large batches.
 '''
 
 
@@ -1000,25 +1051,34 @@ def generate_unreal_import_script(
     automatically when GPU memory is high. Use ue_exec to run the batch
     scripts sequentially with resource monitoring between batches.
 
+    Nanite configuration (fallback reduction, residency, etc.) is always
+    applied to assemblies. Voxelization is controlled separately via
+    nanite_cfg["voxelization"] or the voxelization parameter.
+
     Args:
         output_dir: Directory containing exported USD files.
         project_path: Unreal project Content path.
         include_static: If True, include static twig variants and static assemblies.
             Mirrors [export] static setting from growpy.toml.
         voxelization: If True, set Nanite shape preservation to Voxelize
-            on imported assemblies. Mirrors [unreal] voxelization from growpy.toml.
+            on imported assemblies. Merged into nanite_cfg if not already set.
         nanite_cfg: Optional dict of Nanite build parameters passed through to
             _configure_nanite_assembly in generated scripts. Keys:
-            fallback_percent, fallback_target, fallback_relative_error,
-            trim_relative_error, target_residency_kb, lerp_uvs,
-            max_edge_length_factor, explicit_tangents, position_precision,
-            normal_precision.
+            voxelization, fallback_percent, fallback_target,
+            fallback_relative_error, trim_relative_error, target_residency_kb,
+            lerp_uvs, max_edge_length_factor, explicit_tangents,
+            position_precision, normal_precision.
 
     Returns:
         Path to generated scripts directory.
     """
     script_dir = output_dir / "unreal_scripts"
     script_dir.mkdir(exist_ok=True)
+
+    # Merge voxelization into nanite_cfg so it reaches the generated script
+    if nanite_cfg is None:
+        nanite_cfg = {}
+    nanite_cfg.setdefault("voxelization", voxelization)
 
     # Remove stale batch scripts from previous runs
     for old_script in script_dir.glob("import_batch_*.py"):
@@ -1166,7 +1226,7 @@ def generate_unreal_import_script(
                     dest_subpath,
                     usd_file.stem,
                     wind_json_path=wind_json,
-                    configure_nanite=is_assembly and voxelization,
+                    configure_nanite=is_assembly,
                     nanite_cfg=nanite_cfg,
                 )
 
@@ -1178,7 +1238,7 @@ def generate_unreal_import_script(
             batch_label,
             blocks,
             species_tree_count,
-            include_nanite_config=has_assemblies and voxelization,
+            include_nanite_config=has_assemblies,
         )
         batch_scripts.append((batch_name, batch_label))
 

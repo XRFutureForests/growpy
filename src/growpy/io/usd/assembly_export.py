@@ -222,6 +222,31 @@ def create_assembly(
                 logger.info("Creating assembly with %d twig instances:", total_twigs)
                 for twig_type, p_list in placements.items():
                     logger.info("  %s: %d instances", twig_type, len(p_list))
+
+                # Cap instance count to prevent OOM during Nanite Assembly build.
+                # NaniteAssemblyRootAPI triggers a combined Nanite build that
+                # expands all instances; this can easily exceed GPU/system RAM.
+                cfg = _get_config()
+                max_inst = cfg.export_max_assembly_instances
+                if max_inst > 0 and total_twigs > max_inst:
+                    import random as _cap_rng
+
+                    _cap_rng.seed(42)
+                    ratio = max_inst / total_twigs
+                    for twig_type in list(placements.keys()):
+                        original = len(placements[twig_type])
+                        keep = max(1, int(original * ratio))
+                        placements[twig_type] = _cap_rng.sample(
+                            placements[twig_type], keep
+                        )
+                    capped_total = sum(len(p) for p in placements.values())
+                    logger.warning(
+                        "Capped assembly instances from %d to %d "
+                        "(max_assembly_instances=%d)",
+                        total_twigs,
+                        capped_total,
+                        max_inst,
+                    )
             else:
                 placements = {}
                 logger.warning("No twig placements available!")

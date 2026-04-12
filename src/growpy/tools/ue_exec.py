@@ -212,18 +212,22 @@ try:
 except Exception:
     pass
 try:
-    unreal.AssetCompilingManager.get_default().finish_all_compilation()
-except Exception:
-    pass
+    _acm = getattr(unreal, "AssetCompilingManager", None)
+    if _acm is not None:
+        _get = getattr(_acm, "get", None)
+        _inst = _get() if callable(_get) else _acm
+        _finish = getattr(_inst, "finish_all_compilation", None)
+        if callable(_finish):
+            _finish()
+except Exception as _ace:
+    print(f"  finish_all_compilation err: {_ace}")
 try:
     unreal.EditorLoadingAndSavingUtils.save_dirty_packages(False, True)
 except Exception:
     pass
 gc.collect()
-try:
-    unreal.SystemLibrary.collect_garbage(full_purge=True)
-except Exception:
-    unreal.SystemLibrary.collect_garbage()
+unreal.SystemLibrary.collect_garbage()
+unreal.SystemLibrary.collect_garbage()
 # Load a blank transient level to force Nanite page eviction from VRAM.
 # Imported assets remain on disk -- only the GPU-resident pages are released.
 try:
@@ -237,10 +241,8 @@ except Exception:
     except Exception as _le:
         print(f"  Could not load blank level: {_le}")
 gc.collect()
-try:
-    unreal.SystemLibrary.collect_garbage(full_purge=True)
-except Exception:
-    unreal.SystemLibrary.collect_garbage()
+unreal.SystemLibrary.collect_garbage()
+unreal.SystemLibrary.collect_garbage()
 # Restore Nanite pools at reduced caps
 # Re-acquire world reference after level change
 _w = None
@@ -282,12 +284,20 @@ def _discover_batch_scripts(scripts_dir: Path) -> list[Path]:
     return result
 
 
+ABORT_MARKER = "GROWPY_BATCH_ABORT_MEMORY"
+
+
 def _run_single(
     script_path: Path,
     port: int,
     timeout: float,
-) -> bool:
-    """Send a single script to UE. Returns True on success."""
+) -> tuple[bool, bool]:
+    """Send a single script to UE.
+
+    Returns (success, aborted_memory) where aborted_memory is True when the
+    batch printed the GROWPY_BATCH_ABORT_MEMORY marker. In that case the
+    orchestrator must stop -- UE is near OOM and the user must restart it.
+    """
     from growpy.io.unreal.ue_remote import run_file
 
     try:
@@ -298,23 +308,29 @@ def _run_single(
         )
     except ConnectionError as e:
         logger.error("Connection failed: %s", e)
-        return False
+        return False, False
     except RuntimeError as e:
         logger.error("Execution error: %s", e)
-        return False
+        return False, False
 
     success = result.get("success", False)
+    aborted = False
     output = result.get("output", [])
     if output:
         for line in output:
             text = line.get("output", "")
             if text:
                 print(text)
+                if ABORT_MARKER in text:
+                    aborted = True
 
     if result.get("result"):
-        print(result["result"])
+        result_text = result["result"]
+        print(result_text)
+        if ABORT_MARKER in result_text:
+            aborted = True
 
-    return success
+    return success, aborted
 
 
 def _run_cleanup(port: int) -> None:
@@ -368,7 +384,7 @@ def run_batches(
         logger.info("%s Sending %s ...", label, batch_path.name)
         t0 = time.monotonic()
 
-        ok = _run_single(batch_path, port, timeout)
+        ok, aborted_memory = _run_single(batch_path, port, timeout)
         elapsed = time.monotonic() - t0
 
         if ok:
@@ -376,6 +392,15 @@ def run_batches(
         else:
             logger.error("%s FAILED after %.0fs", label, elapsed)
             failed.append(batch_path.name)
+
+        if aborted_memory:
+            logger.error("")
+            logger.error("=" * 60)
+            logger.error("Batch aborted: UE private memory over limit")
+            logger.error("Per-file progress is saved in done.txt next to each batch.")
+            logger.error("Please restart Unreal Engine and re-run ue_exec to resume.")
+            logger.error("=" * 60)
+            return failed or [batch_path.name]
 
         # Resource check between batches (skip after last)
         if idx < len(batches) - 1:
@@ -509,7 +534,10 @@ def main():
         sys.exit(1)
 
     logger.info("Sending %s to UE editor...", target.name)
-    ok = _run_single(target, args.port, args.timeout)
+    ok, aborted_memory = _run_single(target, args.port, args.timeout)
+    if aborted_memory:
+        logger.error("Batch aborted: UE private memory over limit. Restart UE and rerun.")
+        sys.exit(2)
     if not ok:
         logger.error("Script execution failed in UE.")
         sys.exit(1)

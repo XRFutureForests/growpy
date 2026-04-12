@@ -277,13 +277,11 @@ def _patch_foliage_meshes(asset, foliage_folder):
 
     patched = 0
     for var in variations:
-        fm = var.get_editor_property("foliage_meshes")
-        if not fm:
-            continue
-        # Always force-patch: UpdateDataAsset may set refs to non-existent
-        # assets when shared twigs have different names than the tree species.
+        # Always attempt patch: UpdateDataAsset may leave foliage_meshes empty
+        # for species that use shared twigs (e.g. Norway spruce -> pacific
+        # silver fir), because the PVE recipe references twig names that don't
+        # match the species name and UE can't resolve them.
 
-        # Read FoliageData entry names from the variation's export text
         et = var.export_text()
         foliage_path = os.path.join(
             asset.get_editor_property("json_directory_path").path,

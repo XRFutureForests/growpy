@@ -56,7 +56,7 @@ def run_step123(
     """
     import os
     from pathlib import Path as PathlibPath
-    
+
     script = STEP_SCRIPTS[step]
     cmd = [sys.executable, str(script), "--csv", str(csv_path)]
     if extra_args:
@@ -67,13 +67,13 @@ def run_step123(
         return True
 
     logger.info("Step %d: %s", step, script.name)
-    
+
     # Run in growpy conda environment to ensure all dependencies are available
     conda_cmd = ["conda", "run", "-n", "growpy"] + cmd
-    
+
     # Get project root for working directory
     project_root = PathlibPath(__file__).parent.parent.parent.parent
-    
+
     # Use shell=True on Windows so conda command is found through cmd.exe
     result = subprocess.run(conda_cmd, check=False, cwd=str(project_root), shell=True)
     if result.returncode != 0:
@@ -111,7 +111,7 @@ def run_species_step4(
     Returns True on success (or dry_run).
     """
     from pathlib import Path as PathlibPath
-    
+
     csv_path = find_species_csv(species_name, dataset_dir)
     if not csv_path:
         logger.error("No merged CSV found for species: %s", species_name)
@@ -126,13 +126,13 @@ def run_species_step4(
         return True
 
     logger.info("Step 4 [%s]: running", species_name)
-    
+
     # Run in growpy conda environment to ensure all dependencies are available
     conda_cmd = ["conda", "run", "-n", "growpy"] + cmd
-    
+
     # Get project root for working directory
     project_root = PathlibPath(__file__).parent.parent.parent.parent
-    
+
     # Use shell=True on Windows so conda command is found through cmd.exe
     result = subprocess.run(conda_cmd, check=False, cwd=str(project_root), shell=True)
     if result.returncode != 0:
@@ -213,6 +213,7 @@ def generate_unreal_scripts(output_dir: Path, include_static: bool = False) -> N
             logger.info("Created %d combined twig files for UE import", len(combined))
 
     nanite_cfg = {
+        "voxelization": config.unreal_voxelization,
         "fallback_percent": config.unreal_nanite_fallback_percent,
         "fallback_target": config.unreal_nanite_fallback_target,
         "fallback_relative_error": config.unreal_nanite_fallback_relative_error,

@@ -130,6 +130,9 @@ class GrowPyConfig:
     export_skeletal: bool = True
     export_static: bool = False
     export_max_skeleton_joints: int = 0  # 0 = no limit; 250 = Nanite Assembly USD
+    export_max_assembly_instances: int = (
+        0  # 0 = no limit; cap twig instances per assembly
+    )
     export_skip_pve_json: bool = True
     export_skip_validation: bool = True
     export_twig_density: float = 1.0
@@ -333,6 +336,10 @@ class GrowPyConfig:
             kwargs["export_static"] = export["static"]
         if "max_skeleton_joints" in export:
             kwargs["export_max_skeleton_joints"] = int(export["max_skeleton_joints"])
+        if "max_assembly_instances" in export:
+            kwargs["export_max_assembly_instances"] = int(
+                export["max_assembly_instances"]
+            )
         if "skip_pve_json" in export:
             kwargs["export_skip_pve_json"] = export["skip_pve_json"]
         if "skip_validation" in export:
