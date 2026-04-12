@@ -1,7 +1,14 @@
 """Core configuration for GrowPy.
 
-Central configuration loaded from growpy.toml with layered resolution:
-    dataclass defaults -> growpy.toml -> CLI arguments
+Central configuration loaded from TOML files with layered resolution:
+    dataclass defaults -> TOML files -> CLI arguments
+
+Configuration is split across sibling TOML files in the same directory:
+    growpy.toml       - Pipeline settings (main file)
+    quality.toml      - Quality presets and density variants
+    unreal.toml       - Unreal Engine import and Nanite settings
+    helios.toml       - Helios++ LiDAR export settings
+    competition.toml  - Competition groups and thinning schedules
 """
 
 import os
@@ -33,8 +40,8 @@ def _find_toml_path() -> Optional[Path]:
             return p
         return None
 
-    # Look in the growpy package directory (src/growpy/growpy.toml)
-    package_path = Path(__file__).resolve().parent.parent / "growpy.toml"
+    # Look in the config directory (src/growpy/config/growpy.toml)
+    package_path = Path(__file__).resolve().parent / "growpy.toml"
     if package_path.exists():
         return package_path
 
@@ -44,6 +51,42 @@ def _find_toml_path() -> Optional[Path]:
         return cwd_path
 
     return None
+
+
+# Sibling TOML files to merge with the main growpy.toml.
+_SIBLING_TOML_FILES = [
+    "quality.toml",
+    "unreal.toml",
+    "helios.toml",
+    "competition.toml",
+]
+
+
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Recursively merge override into base, returning a new dict."""
+    merged = base.copy()
+    for key, value in override.items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _load_toml_data(toml_path: Path) -> dict:
+    """Load main TOML file and merge sibling TOML files from the same directory."""
+    with open(toml_path, "rb") as f:
+        data = tomllib.load(f)
+
+    toml_dir = toml_path.parent
+    for sibling_name in _SIBLING_TOML_FILES:
+        sibling_path = toml_dir / sibling_name
+        if sibling_path.exists():
+            with open(sibling_path, "rb") as f:
+                sibling_data = tomllib.load(f)
+            data = _deep_merge(data, sibling_data)
+
+    return data
 
 
 def get_config() -> "GrowPyConfig":
@@ -238,10 +281,11 @@ class GrowPyConfig:
     def from_toml(cls, toml_path: Path, set_as_global: bool = True) -> "GrowPyConfig":
         """Create config from a TOML file.
 
-        Only keys present in the TOML override the dataclass defaults.
+        Loads the main growpy.toml plus any sibling TOML files in the same
+        directory. Only keys present in the merged result override dataclass
+        defaults.
         """
-        with open(toml_path, "rb") as f:
-            data = tomllib.load(f)
+        data = _load_toml_data(toml_path)
 
         kwargs: Dict[str, Any] = {}
 

@@ -174,6 +174,7 @@ def extract_twig_placements_from_model(
     twig_types: Optional[List[str]] = None,
     bones_info: Optional[List] = None,
     verbose: bool = False,
+    scaled_points: Optional[List[Tuple[float, float, float]]] = None,
 ) -> Dict[str, List[TwigPlacement]]:
     """Extract twig placement data from Grove model.
 
@@ -182,6 +183,11 @@ def extract_twig_placements_from_model(
         twig_types: List of twig types to extract (default: living twig types only)
         bones_info: Optional skeleton bones list for branch-based binding
         verbose: If True, print debug information during extraction
+        scaled_points: Optional list of (x, y, z) vertex positions from the
+            radially-scaled mesh (from build_tree_mesh). When provided, twig
+            positions are computed as face centroids of the scaled mesh instead
+            of using Grove's get_twig_locations(). This keeps twigs attached to
+            the scaled branches without a separate transform pass.
 
     Returns:
         Dictionary mapping twig type to list of TwigPlacement objects
@@ -304,26 +310,39 @@ def extract_twig_placements_from_model(
             if twig_idx >= num_twigs:
                 break
 
-            # Extract position and normal from flat arrays (3 floats per twig)
+            # Extract position: use scaled face centroid when available,
+            # otherwise fall back to Grove's twig_locations array.
             base_idx = twig_idx * 3
-            position = (
-                twig_locations[base_idx],
-                twig_locations[base_idx + 1],
-                twig_locations[base_idx + 2],
-            )
+            if scaled_points is not None:
+                cx, cy, cz = 0.0, 0.0, 0.0
+                n = len(face)
+                for vi in face:
+                    sp = scaled_points[vi]
+                    cx += sp[0]
+                    cy += sp[1]
+                    cz += sp[2]
+                inv_n = 1.0 / n
+                position = (cx * inv_n, cy * inv_n, cz * inv_n)
+            else:
+                position = (
+                    twig_locations[base_idx],
+                    twig_locations[base_idx + 1],
+                    twig_locations[base_idx + 2],
+                )
             normal = (
                 twig_directions[base_idx],
                 twig_directions[base_idx + 1],
                 twig_directions[base_idx + 2],
             )
 
-            # BONE ASSIGNMENT STRATEGY:
-            # PRIMARY: Vertex voting - most reliable, uses actual vertex bone assignments
-            # FALLBACK: Branch lookup - only if no vertex bone data available
+            # BONE & BRANCH ASSIGNMENT:
+            # - bone_id: from vertex voting (needed for skeletal binding)
+            # - branch_id: from face_attribute_branch_id (direct, covers all
+            #   branches), with bone_to_branch as fallback
             twig_bone_id = None
             branch_id_for_twig = None
 
-            # PRIMARY METHOD: Vertex voting (most reliable)
+            # Bone ID via vertex voting (for skeletal mesh binding)
             if bone_ids:
                 face_vert_indices = face
                 bone_counts = {}
@@ -333,27 +352,23 @@ def extract_twig_placements_from_model(
                         bone_counts[bid] = bone_counts.get(bid, 0) + 1
 
                 if bone_counts:
-                    # Get the most common bone ID among this face's vertices
                     global_bone_id = max(bone_counts, key=bone_counts.get)
-                    # Store GLOBAL bone ID for assembly export to remap after filtering
                     twig_bone_id = global_bone_id
 
-            # FALLBACK: If vertex voting failed, try branch lookup
+            # Branch ID: prefer face_attribute_branch_id (covers all branches)
             if (
-                twig_bone_id is None
-                and face_branch_ids is not None
+                face_branch_ids is not None
                 and face_idx < len(face_branch_ids)
             ):
                 global_branch_id = face_branch_ids[face_idx]
                 branch_id_for_twig = global_branch_id - branch_id_offset
 
-                # Try to convert branch_id to bone_id using branch_root_bones
-                if branch_id_for_twig in branch_root_bones:
+                # Also resolve bone_id from branch if vertex voting failed
+                if twig_bone_id is None and branch_id_for_twig in branch_root_bones:
                     local_bone_idx = branch_root_bones[branch_id_for_twig]
-                    # Convert local bone index to GLOBAL bone ID
                     twig_bone_id = local_bone_idx + bone_id_offset
 
-            # Extract branch_id_for_twig if we have a bone_id but no branch_id yet
+            # Fallback: derive branch_id from bone_id if face attr unavailable
             if twig_bone_id is not None and branch_id_for_twig is None:
                 local_bone_id = twig_bone_id - bone_id_offset
                 branch_id_for_twig = bone_to_branch.get(local_bone_id)
@@ -418,6 +433,7 @@ def densify_twig_placements(
     bones_info: Optional[List] = None,
     seed: int = 42,
     youth_bias: float = 1.0,
+    scaled_points: Optional[List[Tuple[float, float, float]]] = None,
 ) -> Dict[str, List[TwigPlacement]]:
     """Adjust twig placement count to match a target density multiplier.
 
@@ -432,6 +448,9 @@ def densify_twig_placements(
         density: Target multiplier. 0.5 = keep half, 1.0 = no change, 2.0 = double.
         bones_info: Optional bone list for bone/branch assignment.
         seed: Random seed for reproducibility.
+        scaled_points: Optional list of (x, y, z) tuples from the radially-scaled
+            mesh. When provided, face centroids for synthetic placements are
+            computed from these instead of model.points.
 
     Returns:
         The same placements dict, modified in-place.
@@ -535,7 +554,10 @@ def densify_twig_placements(
         type_dist = {t: type_counts[t] / total_living for t in living_types}
 
     # Pre-compute vertex coords as tuples for face center calculation
-    verts = [(p.x, p.y, p.z) if hasattr(p, "x") else (p[0], p[1], p[2]) for p in points]
+    if scaled_points is not None:
+        verts = scaled_points
+    else:
+        verts = [(p.x, p.y, p.z) if hasattr(p, "x") else (p[0], p[1], p[2]) for p in points]
 
     # Bone assignment helpers
     bone_ids = getattr(model, "point_attribute_bone_id", None)

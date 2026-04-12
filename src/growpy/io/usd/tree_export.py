@@ -87,6 +87,7 @@ def build_tree_mesh(
     include_skeleton: bool = True,
     include_grove_attributes: bool = False,
     radial_scale: float = 1.0,
+    scaled_points_out: Optional[List] = None,
 ) -> bool:
     """Build USD file directly from Grove model using API geometry data.
 
@@ -120,6 +121,10 @@ def build_tree_mesh(
         tree_id: Tree ID for unique prim naming (e.g., "0004")
         include_skeleton: If True and skeleton provided, add skeleton structure (skeletal mesh)
         include_grove_attributes: If True, add Grove metadata attributes as primvars (for analysis)
+        scaled_points_out: Optional mutable list. When provided and radial_scale != 1.0,
+            filled with (x, y, z) tuples of the final mesh points in Grove's Y-up
+            coordinate space (before USD axis swap). Used by assembly export to
+            compute twig face centroids from the scaled mesh.
 
     Returns:
         bool: True if USD file was created successfully
@@ -406,6 +411,14 @@ def build_tree_mesh(
                 )
         else:
             usd_points = [Gf.Vec3f(p.x, p.y, p.z) for p in points]
+
+        # Export scaled vertex positions for twig face centroid computation.
+        # Assembly export uses these to place twigs on the already-scaled mesh
+        # instead of applying a separate radial transform.
+        if scaled_points_out is not None and radial_scale != 1.0:
+            scaled_points_out.extend(
+                (pt[0], pt[1], pt[2]) for pt in usd_points
+            )
 
         # Convert faces to USD format
         face_vertex_counts = [len(face) for face in faces]

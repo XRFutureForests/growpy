@@ -7,6 +7,7 @@ Quixel Megaplants PVE format, avoiding Houdini entirely.
 
 import json
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -18,6 +19,32 @@ from .pve_foliage_extractor import extract_foliage_data
 from .pve_growth_defaults import get_default_growth_params, merge_growth_params
 from .pve_hierarchy_builder import build_hierarchy_arrays
 from .pve_schema import create_empty_pve_preset
+
+
+def _detect_foliage_variants(species_name: str) -> List[str]:
+    """Detect available foliage variant letters from twig files on disk.
+
+    Scans the twig directory for ``*_foliage_{letter}_skeletal.*``
+    files and returns sorted variant letters (e.g. ``["a", "b", "c"]``).
+    Returns an empty list when no variants are found (single-file twigs).
+    """
+    try:
+        from ...config.paths import get_twig_files_by_type
+    except ImportError:
+        return []
+
+    twig_files = get_twig_files_by_type(species_name)
+    if not twig_files:
+        return []
+
+    variants: set[str] = set()
+    pattern = re.compile(r"_foliage_([a-z])_skeletal$")
+    for stem in twig_files:
+        m = pattern.search(stem)
+        if m:
+            variants.add(m.group(1))
+
+    return sorted(variants)
 
 
 def create_pve_template_from_reference(reference_json_path: Path) -> Dict:
@@ -1188,6 +1215,11 @@ def _map_primitives_from_skeleton(
     # CRITICAL: Pass bones_info for correct branch_id assignment
     # CRITICAL: Pass num_branches from skeleton (poly_lines count), not from model branch IDs
     t0 = time.perf_counter() if profile else 0
+    foliage_variants = _detect_foliage_variants(species_name)
+    if foliage_variants:
+        logger.debug(
+            "Detected foliage variants for %s: %s", species_name, foliage_variants
+        )
     foliage_data = extract_foliage_data(
         model,
         species_name,
@@ -1195,6 +1227,7 @@ def _map_primitives_from_skeleton(
         num_branches=num_branches,
         verbose=False,
         profile=profile,
+        foliage_variants=foliage_variants or None,
     )
     if profile:
         timings["extract_foliage"] = time.perf_counter() - t0

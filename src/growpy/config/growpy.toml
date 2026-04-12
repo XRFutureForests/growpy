@@ -5,11 +5,11 @@
 # Resolution order: dataclass defaults -> TOML files -> CLI arguments
 #
 # Configuration is split across sibling TOML files:
-#   growpy.toml       - Pipeline settings (this file)
-#   quality.toml      - Quality presets and density variants
-#   unreal.toml       - Unreal Engine import and Nanite settings
-#   helios.toml       - Helios++ LiDAR export settings
-#   competition.toml  - Competition groups and thinning schedules
+#   config/growpy.toml       - Pipeline settings (this file)
+#   config/quality.toml      - Quality presets and density variants
+#   config/unreal.toml       - Unreal Engine import and Nanite settings
+#   config/helios.toml       - Helios++ LiDAR export settings
+#   config/competition.toml  - Competition groups and thinning schedules
 #
 # To use a custom config directory, set GROWPY_CONFIG to the main file:
 #   GROWPY_CONFIG=/path/to/custom/growpy.toml python src/growpy/cli/generate_forest.py

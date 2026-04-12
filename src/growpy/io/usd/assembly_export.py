@@ -846,6 +846,10 @@ def export_tree_as_nanite_assembly(
 
         # Use unified build_tree_mesh for both skeletal and static
         # Skeletal mesh (with skeleton) is preferred for Nanite performance
+        # Collect scaled points when radial_scale is active so twig positions
+        # can be derived from face centroids of the already-scaled mesh.
+        _scaled_pts = [] if radial_scale != 1.0 else None
+
         if use_static_mesh:
             # Static mesh export (no skeleton)
             temp_tree_path = output_path.parent / f"{file_base}_static{_usd_ext()}"
@@ -862,6 +866,7 @@ def export_tree_as_nanite_assembly(
                     species_name=species_name,
                     tree_id=tree_id,
                     radial_scale=radial_scale,
+                    scaled_points_out=_scaled_pts,
                 ):
                     return False
         else:
@@ -880,8 +885,13 @@ def export_tree_as_nanite_assembly(
                     species_name=species_name,
                     tree_id=tree_id,
                     radial_scale=radial_scale,
+                    scaled_points_out=_scaled_pts,
                 ):
                     return False
+
+        # Pass scaled points to twig extraction so positions come from
+        # face centroids of the already-scaled mesh (None when no scaling).
+        _sp = _scaled_pts if _scaled_pts else None
 
         # Extract twig placements from Grove model BEFORE creating assembly
         twig_placements = None
@@ -889,7 +899,9 @@ def export_tree_as_nanite_assembly(
             with _track("extract_twig_placements"):
                 try:
                     twig_placements = extract_twig_placements_from_model(
-                        model, bones_info=bones_info if not use_static_mesh else None
+                        model,
+                        bones_info=bones_info if not use_static_mesh else None,
+                        scaled_points=_sp,
                     )
                     total_twigs = sum(len(p) for p in twig_placements.values())
                     logger.info(
@@ -921,6 +933,7 @@ def export_tree_as_nanite_assembly(
                             density=effective_density,
                             bones_info=bones_info if not use_static_mesh else None,
                             youth_bias=cfg.export_youth_bias,
+                            scaled_points=_sp,
                         )
 
             # CRITICAL: Remap twig bone_ids from UNFILTERED to FILTERED indices

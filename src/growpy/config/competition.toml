@@ -1,0 +1,30 @@
+# GrowPy Competition Groups
+#
+# Thinning schedules and planting distances by silvicultural group.
+# Species-to-group assignment is in tree_asset_lookup.csv (Competition Group column).
+# Groups are driven by crown size, shade tolerance, and growth rate.
+#
+# Thinning schedule: list of [height_trigger_m, target_distance_m] pairs.
+# When a center competition tree crosses the height trigger, neighbors are
+# repositioned to the target distance from the center tree.
+#
+# Species not found in the lookup CSV fall back to competition.default_group.
+
+[competition]
+default_group = "slow_broadleaf"
+
+[competition.groups.fast_conifer]
+planting_distance = 2.25                     # meters between trees at planting
+thinning = [[10, 3.5], [15, 5.0], [20, 6.0]] # [height_m, distance_m]
+
+[competition.groups.slow_conifer]
+planting_distance = 2.75                     # meters
+thinning = [[10, 4.0], [15, 5.5], [20, 6.5]]
+
+[competition.groups.fast_broadleaf]
+planting_distance = 2.25                     # meters
+thinning = [[10, 3.5], [15, 5.0], [20, 6.0]]
+
+[competition.groups.slow_broadleaf]
+planting_distance = 3.0                      # meters
+thinning = [[10, 4.5], [15, 6.0], [20, 7.0]]

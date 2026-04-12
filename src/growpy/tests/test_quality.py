@@ -9,19 +9,19 @@ class TestDefaultPreset:
     """Tests for the default quality preset values."""
 
     def test_default_resolution(self):
-        assert _DEFAULT["resolution"] == 24
+        assert _DEFAULT["resolution"] == 16
 
     def test_default_resolution_reduce(self):
-        assert _DEFAULT["resolution_reduce"] == 0.8
+        assert _DEFAULT["resolution_reduce"] == 0.78
 
     def test_default_skeleton_length(self):
-        assert _DEFAULT["skeleton_length"] == 0.25
+        assert _DEFAULT["skeleton_length"] == 2.0
 
     def test_default_build_cutoff_age(self):
         assert _DEFAULT["build_cutoff_age"] == 0
 
     def test_default_build_cutoff_thickness(self):
-        assert _DEFAULT["build_cutoff_thickness"] == 0.01
+        assert _DEFAULT["build_cutoff_thickness"] == 0.0
 
     def test_default_build_blend(self):
         assert _DEFAULT["build_blend"] is True

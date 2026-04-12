@@ -1,44 +1,44 @@
 """Quality and LOD configuration for GrowPy.
 
-Quality presets are defined in growpy.toml under [quality.<name>] sections.
+Quality presets are defined in quality.toml under [quality.<name>] sections.
 A single hardcoded default is used as fallback when a key is missing from TOML
 or when no TOML file is found.
 """
 
 from typing import Any, Dict
 
-# Fallback values used when a TOML preset omits a key (based on "high" profile).
+# Fallback values when a TOML preset omits a key.
+# Based on Grove 2.3 defaults from Properties.py and OperatorBuildSkeleton.py.
 _DEFAULT = {
-    "resolution": 24,
-    "resolution_reduce": 0.8,
+    "resolution": 16,
+    "resolution_reduce": 0.78,
     "build_cutoff_age": 0,
-    "build_cutoff_thickness": 0.01,
+    "build_cutoff_thickness": 0.0,
     "build_blend": True,
     "build_end_cap": True,
-    "skeleton_length": 0.25,
-    "skeleton_reduce": 0.2,
+    "skeleton_length": 2.0,
+    "skeleton_reduce": 0.4,
     "skeleton_bias": 0.5,
     "skeleton_connected": True,
 }
 
 
 def _load_presets_from_toml() -> Dict[str, Dict[str, Any]]:
-    """Load quality presets from growpy.toml [quality.*] sections.
+    """Load quality presets from TOML [quality.*] sections.
 
+    Uses the same multi-file loader as the main config so that presets
+    defined in quality.toml (or growpy.toml) are all discovered.
     Each TOML preset is merged with _DEFAULT so that any omitted key
     gets a sensible fallback value.  If no TOML file is found a single
     preset named "default" is returned.
     """
-    from .core import _find_toml_path
+    from .core import _find_toml_path, _load_toml_data
 
     toml_path = _find_toml_path()
     if not toml_path:
         return {"default": dict(_DEFAULT)}
 
-    import tomllib
-
-    with open(toml_path, "rb") as f:
-        data = tomllib.load(f)
+    data = _load_toml_data(toml_path)
 
     quality_section = data.get("quality", {})
     if not quality_section:
