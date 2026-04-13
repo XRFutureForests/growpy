@@ -72,7 +72,8 @@ def run_step123(
     logger.info("Step %d: %s", step, script.name)
 
     # Run in growpy conda environment to ensure all dependencies are available
-    conda_cmd = ["conda", "run", "-n", "growpy"] + cmd
+    # --no-capture-output lets subprocess stdout/stderr stream through in real-time
+    conda_cmd = ["conda", "run", "--no-capture-output", "-n", "growpy"] + cmd
 
     # Get project root for working directory
     project_root = PathlibPath(__file__).parent.parent.parent.parent
@@ -135,7 +136,8 @@ def run_species_step4(
     logger.info("Step 4 [%s]: running", species_name)
 
     # Run in growpy conda environment to ensure all dependencies are available
-    conda_cmd = ["conda", "run", "-n", "growpy"] + cmd
+    # --no-capture-output lets subprocess stdout/stderr stream through in real-time
+    conda_cmd = ["conda", "run", "--no-capture-output", "-n", "growpy"] + cmd
 
     # Get project root for working directory
     project_root = PathlibPath(__file__).parent.parent.parent.parent

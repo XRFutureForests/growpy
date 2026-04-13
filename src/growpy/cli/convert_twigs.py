@@ -154,7 +154,6 @@ def process_twig_directory(
     smooth_factor: float = 0.5,
     boundary_edge_mm: float = 0.5,
     interior_decimate_ratio: float = 0.0,
-    interior_edge_mm: float = 0.0,
 ) -> Dict[str, List[Path]]:
     """Process all twig blend files in a directory.
 
@@ -168,7 +167,7 @@ def process_twig_directory(
         twig_filter: Optional list of twig directory names to process (snake_case)
         densify: Enable boundary densification (default: True)
         alpha_trim_threshold: Alpha threshold for silhouette trimming (default: 0.5)
-        boundary_edge_mm: Target edge as fraction of avg edge (default: 0.5)
+        boundary_edge_mm: Target boundary edge length in millimeters (default: 0.5)
         smooth_boundary: Enable boundary edge smoothing (default: False)
     """
     # Force clean export for Nanite compatibility
@@ -232,7 +231,6 @@ def process_twig_directory(
                 smooth_factor=smooth_factor,
                 boundary_edge_mm=boundary_edge_mm,
                 interior_decimate_ratio=interior_decimate_ratio,
-                interior_edge_mm=interior_edge_mm,
             )
 
             if exported_files:
@@ -469,7 +467,6 @@ Output per twig:
             interior_decimate_ratio=min(
                 max(0.0, config.twigs_interior_decimate_ratio), 1.0
             ),
-            interior_edge_mm=max(0.0, config.twigs_interior_edge_mm),
         )
     elif twig_path.is_dir():
         # Directory
@@ -488,7 +485,6 @@ Output per twig:
             interior_decimate_ratio=min(
                 max(0.0, config.twigs_interior_decimate_ratio), 1.0
             ),
-            interior_edge_mm=max(0.0, config.twigs_interior_edge_mm),
         )
     else:
         return 1
