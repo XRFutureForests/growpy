@@ -334,7 +334,11 @@ def main():
                     extra.append("--clean-store")
             extra = extra or None
             ok = run_step123(
-                step, all_species_csv, dry_run=args.dry_run, extra_args=extra
+                step,
+                all_species_csv,
+                dry_run=args.dry_run,
+                extra_args=extra,
+                verbose=args.verbose,
             )
             if not ok:
                 logger.error("Pipeline aborted at step %d.", step)
@@ -351,13 +355,21 @@ def main():
                     workers,
                 )
                 failed = run_parallel_step4(
-                    species_list, workers, args.max_height, DATASET_DIR
+                    species_list,
+                    workers,
+                    args.max_height,
+                    DATASET_DIR,
+                    verbose=args.verbose,
                 )
             else:
                 failed = []
                 for species in species_list:
                     if not run_species_step4(
-                        species, DATASET_DIR, args.dry_run, args.max_height
+                        species,
+                        DATASET_DIR,
+                        args.dry_run,
+                        args.max_height,
+                        verbose=args.verbose,
                     ):
                         failed.append(species)
 

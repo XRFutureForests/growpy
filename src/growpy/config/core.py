@@ -138,7 +138,7 @@ class GrowPyConfig:
     twigs_smooth_boundary: bool = True
     twigs_smooth_iterations: int = 10
     twigs_smooth_factor: float = 0.25
-    twigs_boundary_edge_mm: float = 0.01
+    twigs_boundary_edge_mm: float = 0.5
 
     # [growth_models]
     growth_models_cycles: int = 25
@@ -204,6 +204,7 @@ class GrowPyConfig:
 
     # [twigs] - interior decimation
     twigs_interior_decimate_ratio: float = 0.5
+    twigs_interior_edge_mm: float = 0.0
 
     # [helios]
     helios_export_obj: bool = False
@@ -329,6 +330,8 @@ class GrowPyConfig:
             kwargs["twigs_boundary_edge_mm"] = twigs["boundary_edge_mm"]
         if "interior_decimate_ratio" in twigs:
             kwargs["twigs_interior_decimate_ratio"] = twigs["interior_decimate_ratio"]
+        if "interior_edge_mm" in twigs:
+            kwargs["twigs_interior_edge_mm"] = twigs["interior_edge_mm"]
 
         # [growth_models]
         gm = data.get("growth_models", {})
@@ -566,6 +569,7 @@ class GrowPyConfig:
             "smooth_boundary": "twigs_smooth_boundary",
             "smooth_factor": "twigs_smooth_factor",
             "boundary_edge_mm": "twigs_boundary_edge_mm",
+            "interior_edge_mm": "twigs_interior_edge_mm",
             # [growth_models]
             "cycles": "growth_models_cycles",
             "seeds": "growth_models_seeds",

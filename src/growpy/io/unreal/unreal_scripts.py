@@ -411,7 +411,7 @@ def _build_datatable_script(
     (species, height, DBH, competition) from the asset name convention, creates
     a DataTable via DataTableFactory, and populates it from CSV data.
 
-    Requires a pre-existing ST_TreeRecord UserDefinedStruct with fields:
+    Requires a pre-existing ST_TreeCatalogEntry UserDefinedStruct with fields:
     SkeletalMesh (SoftObjectReference), Species (String), Height (Float),
     DBH (Float), Competition (Bool). UE 5.7 Python API does not expose
     StructureEditorUtils so the struct must be created manually once.
@@ -433,8 +433,8 @@ print("=" * 60)
 
 IMPORT_PATH = "{project_path}"
 DB_PATH = "{db_path}"
-STRUCT_NAME = "ST_TreeRecord"
-DATATABLE_NAME = "DT_TreeDatabase"
+STRUCT_NAME = "ST_TreeCatalogEntry"
+DATATABLE_NAME = "DT_TreeCatalog"
 STRUCT_PATH = DB_PATH + "/" + STRUCT_NAME
 DATATABLE_PATH = DB_PATH + "/" + DATATABLE_NAME
 
@@ -559,7 +559,7 @@ else:
         _cf.write("\\n".join(csv_lines))
     print(f"Saved tree_inventory.json and tree_inventory.csv ({{len(rows)}} trees)")
 
-    # Step 4: Check for ST_TreeRecord struct (must be created manually once)
+    # Step 4: Check for ST_TreeCatalogEntry struct (must be created manually once)
     tree_struct = None
     data_table = None
 
@@ -568,7 +568,7 @@ else:
         print(f"Found struct: {{STRUCT_PATH}}")
     else:
         print("")
-        print(f"PREREQUISITE: ST_TreeRecord struct not found at {{STRUCT_PATH}}")
+        print(f"PREREQUISITE: ST_TreeCatalogEntry struct not found at {{STRUCT_PATH}}")
         print("Create it once in Unreal Editor:")
         print("  Content Browser > right-click > Miscellaneous > Structure")
         print(f"  Save as '{{STRUCT_NAME}}' in {{DB_PATH}}")

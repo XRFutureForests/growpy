@@ -1140,7 +1140,9 @@ def _save_face_material_sidecar(obj, output_dir: Path, standardized_name: str) -
 
     sidecar_path = output_dir / f"{standardized_name}_face_materials.json"
     with open(sidecar_path, "w") as f:
-        json.dump({"materials": mat_names, "face_material_indices": face_mat_indices}, f)
+        json.dump(
+            {"materials": mat_names, "face_material_indices": face_mat_indices}, f
+        )
 
 
 def _gather_texture_candidates(blend_dir, standardized_name, species, metadata):
@@ -1367,7 +1369,10 @@ def densify_mesh_to_target_edge(
 
         logger.debug(
             "Adaptive densify: %.2fmm -> %.2fmm (target: %.2fmm, %d iterations)",
-            initial_edge_mm, final_edge_mm, target_edge_mm, iteration + 1,
+            initial_edge_mm,
+            final_edge_mm,
+            target_edge_mm,
+            iteration + 1,
         )
 
         return final_edge_mm
@@ -1606,9 +1611,12 @@ def trim_by_alpha_mask(
         )
         logger.debug(
             "Alpha trimming: deleted %d/%d faces (%.1f%%), %d remaining%s, threshold=%s",
-            len(faces_to_delete), total_faces_before,
+            len(faces_to_delete),
+            total_faces_before,
             100 * len(faces_to_delete) / total_faces_before,
-            faces_remaining, center_msg, threshold,
+            faces_remaining,
+            center_msg,
+            threshold,
         )
 
         # Write back to mesh
@@ -1745,7 +1753,8 @@ def densify_and_trim_interleaved(
     material_indices,
     alpha_img,
     threshold,
-    target_edge_factor=0.5,
+    target_edge_factor=None,
+    boundary_edge_mm=0.5,
     max_iterations=10,
     method="all",
 ):
@@ -1767,13 +1776,17 @@ def densify_and_trim_interleaved(
         - Transparent faces are subdivided only to make them small enough to delete
         - edge_split naturally propagates subdivision to neighboring faces
         - Auto-detects inverted alpha masks (black=opaque convention)
+        - Only new midpoint vertices are added; original vertices are never moved
 
     Args:
         obj: Blender mesh object
         material_indices: Set of material indices for leaf geometry
         alpha_img: Alpha texture PIL Image (grayscale)
         threshold: Alpha threshold (0.0-1.0) - vertices below are "transparent"
-        target_edge_factor: Target edge as fraction of avg edge (default: 0.5)
+        target_edge_factor: DEPRECATED - ignored when boundary_edge_mm is set.
+        boundary_edge_mm: Target boundary edge length in millimeters (default: 0.5).
+            Edges longer than this are subdivided at their midpoint.
+            1 Blender unit = 1 meter = 1000 mm.
         max_iterations: Maximum subdivision iterations (default: 10)
         method: Trim method - "all" (delete only if ALL verts < threshold) or
                 "average" (delete if avg < threshold). Default "all" is conservative.
@@ -1790,12 +1803,8 @@ def densify_and_trim_interleaved(
         # If mean alpha < 0.5, the mask likely uses black=opaque convention
         invert_alpha = _detect_alpha_inversion(alpha_img)
 
-        # Measure initial mesh scale
-        avg_edge_length = _measure_average_edge_length(mesh, material_indices)
-        if avg_edge_length <= 0:
-            return
-
-        target_edge_bu = avg_edge_length * max(0.1, min(1.0, target_edge_factor))
+        # Convert mm to Blender units (1 BU = 1 m = 1000 mm)
+        target_edge_bu = max(0.0001, boundary_edge_mm / 1000.0)
 
         initial_face_count = len(mesh.polygons)
 
@@ -2047,7 +2056,9 @@ def densify_and_trim_interleaved(
 
         logger.info(
             "Alpha trim: %d->%d faces (%d deleted)",
-            initial_face_count, final_face_count, total_faces_deleted,
+            initial_face_count,
+            final_face_count,
+            total_faces_deleted,
         )
 
     except Exception as e:
@@ -2383,6 +2394,7 @@ def _apply_interior_decimate(
     obj,
     ratio: float = 0.5,
     boundary_rings: int = 1,
+    interior_edge_mm: float = 0.0,
 ):
     """Apply topology-based interior decimation on leaf/needle geometry.
 
@@ -2394,12 +2406,20 @@ def _apply_interior_decimate(
     Boundary vertices (leaf silhouette edges) are also protected, so only the
     interior of leaf planes gets simplified.
 
+    When interior_edge_mm > 0, the decimation ratio is computed automatically
+    from the current average interior edge length so the result converges to
+    the requested edge size regardless of input resolution.  The explicit ratio
+    parameter is ignored in that case.
+
     Args:
         obj: Blender mesh object (should be called AFTER alpha trimming)
-        ratio: Decimation ratio (0.0-1.0, lower = more reduction)
+        ratio: Decimation ratio (0.0-1.0, lower = more reduction).
+            Ignored when interior_edge_mm > 0.
         boundary_rings: Number of vertex rings to protect around boundary
+        interior_edge_mm: Target average interior edge length in millimeters.
+            0 = disabled (use ratio instead).
     """
-    if ratio <= 0.0 or ratio >= 1.0:
+    if interior_edge_mm <= 0 and (ratio <= 0.0 or ratio >= 1.0):
         return
 
     mesh = obj.data
@@ -2486,20 +2506,49 @@ def _apply_interior_decimate(
     total = len(bm.verts)
     decimatable = total - len(preserve_indices)
 
+    # Compute ratio from interior_edge_mm when specified
+    if interior_edge_mm > 0:
+        target_bu = interior_edge_mm / 1000.0
+        interior_edges = [
+            e
+            for e in bm.edges
+            if all(v not in boundary_verts and v not in tube_verts for v in e.verts)
+        ]
+        if interior_edges:
+            avg_interior = sum(e.calc_length() for e in interior_edges) / len(
+                interior_edges
+            )
+            # Decimate ratio approximation: each halving of edge count roughly
+            # doubles average edge length.  ratio = (current / target)^-2
+            if avg_interior > 0 and avg_interior < target_bu:
+                # Already finer than target -- need to decimate
+                ratio = min(0.95, (target_bu / avg_interior) ** -2)
+                ratio = max(0.05, ratio)
+            elif avg_interior >= target_bu:
+                # Already coarser than target -- skip decimation
+                bm.free()
+                return
+        else:
+            bm.free()
+            return
+
     bm.free()
 
     if decimatable <= 0:
         logger.debug(
             "Interior decimate: skipped (no interior verts to decimate, "
             "%d tube + %d boundary = all verts protected)",
-            len(tube_verts), len(boundary_verts),
+            len(tube_verts),
+            len(boundary_verts),
         )
         return
 
     logger.info(
         "Interior decimate: %d tube verts protected, "
         "%d boundary verts protected, %d verts decimatable",
-        len(tube_verts), len(boundary_verts), decimatable,
+        len(tube_verts),
+        len(boundary_verts),
+        decimatable,
     )
 
     # Create/replace vertex group
@@ -3002,6 +3051,7 @@ def process_twig_file(
     boundary_edge_mm=0.5,
     boundary_band_mm=1.0,
     interior_decimate_ratio=0.0,
+    interior_edge_mm=0.0,
 ):
     """Process a single twig blend file.
 
@@ -3022,8 +3072,15 @@ def process_twig_file(
         smooth_boundary: Enable boundary edge smoothing
         smooth_iterations: Number of smoothing passes
         smooth_factor: Smoothing strength per iteration
-        boundary_edge_mm: Target boundary edge length in mm (default: 0.5)
+        boundary_edge_mm: Target boundary edge length in millimeters (default: 0.5).
+            Edges longer than this are split at midpoint during densification.
+            Absolute unit ensures consistent output regardless of input mesh resolution.
         boundary_band_mm: Distance from silhouette in mm to include (default: 1.0)
+        interior_decimate_ratio: Fallback decimation ratio for interior faces (0-1).
+            Ignored when interior_edge_mm > 0.
+        interior_edge_mm: Target interior edge length in millimeters (default: 0).
+            When > 0, derives the decimation ratio automatically so interior
+            faces converge to this edge size. 0 = disabled (uses ratio instead).
     """
     import bpy
 
@@ -3235,7 +3292,9 @@ def process_twig_file(
             # Optional geometry processing for enhanced leaf detail
             # Restrict to leaf materials to avoid artifacts on twigs/bark
             # densify acts as master switch: when False, export original .blend mesh as-is
-            interior_decimate = 0.0 < interior_decimate_ratio < 1.0
+            interior_decimate = (
+                0.0 < interior_decimate_ratio < 1.0
+            ) or interior_edge_mm > 0
             if densify:
                 # Validate textures before geometry processing
                 # Textures should have been standardized during asset preparation
@@ -3285,7 +3344,7 @@ def process_twig_file(
                         material_indices=leaf_mats,
                         alpha_img=alpha_img,
                         threshold=alpha_trim_threshold,
-                        target_edge_factor=boundary_edge_mm,
+                        boundary_edge_mm=boundary_edge_mm,
                         max_iterations=15,
                         method=alpha_trim_method,
                     )
@@ -3338,6 +3397,7 @@ def process_twig_file(
                             obj,
                             ratio=interior_decimate_ratio,
                             boundary_rings=1,
+                            interior_edge_mm=interior_edge_mm,
                         )
                     except Exception:
                         pass

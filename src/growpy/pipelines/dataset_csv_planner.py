@@ -1,11 +1,13 @@
 """Dataset CSV generation: merged per-species CSVs and all-species CSV.
 
 Reads species metadata from tree_asset_lookup.csv (Max Height, Competition
-Spacing) and generates merged CSV files (open + competition combined) for each
+Group) and generates merged CSV files (open + competition combined) for each
 dataset species, plus an all-species CSV for pipeline steps 1-3.
 
-Competition layout: 3 neighbors in an equilateral triangle around the center
-tree, with species-specific spacing based on crown width.
+Competition layout: n neighbors in a regular polygon around the center tree,
+with initial spacing from the competition group's planting_distance
+(competition.toml). Trees start close together and are thinned outward
+during simulation as height milestones are reached.
 """
 
 import logging
@@ -31,9 +33,9 @@ DATASET_SPECIES = [
     "European beech",
     # "Silver fir",
     # "Scots pine",
-    # "European oak",
-    # "Douglas fir",
-    # "Sycamore maple",
+    "European oak",
+    "Douglas fir",
+    "Sycamore maple",
     # "Common ash",
     # "European larch",
     # "Silver birch",
@@ -44,7 +46,7 @@ OPEN_TREE_X = 100.0
 
 
 def _get_dataset_species(config=None) -> pd.DataFrame:
-    """Load species with Max Height and Competition Spacing from lookup CSV."""
+    """Load species with Max Height and Competition Group from lookup CSV."""
     if config is None:
         config = get_config()
 
@@ -57,10 +59,9 @@ def _get_dataset_species(config=None) -> pd.DataFrame:
         )
 
     df = pd.read_csv(csv_path)
-    dataset = df[df["Max Height"].notna() & df["Competition Spacing"].notna()].copy()
+    dataset = df[df["Max Height"].notna() & df["Competition Group"].notna()].copy()
     dataset = dataset[dataset["Common Name"].isin(DATASET_SPECIES)]
     dataset["Max Height"] = dataset["Max Height"].astype(int)
-    dataset["Competition Spacing"] = dataset["Competition Spacing"].astype(int)
     return dataset
 
 
@@ -88,7 +89,7 @@ def _polygon_neighbors(spacing: float, n: int = 3) -> list:
 def generate_merged_csv(
     species_name: str,
     max_height: int,
-    spacing: int,
+    spacing: float,
     twig_density: float = 1.0,
     competition_neighbors: int = 3,
 ) -> pd.DataFrame:
@@ -97,7 +98,7 @@ def generate_merged_csv(
     The open-grown tree (fid=1) is placed at (OPEN_TREE_X, 0, 0) to avoid
     light competition. The competition center tree is fid=2 at origin.
     Neighbors (fid=101+) are placed in a regular polygon around the center
-    tree, spaced according to the species crown width.
+    tree at the planting distance (close spacing for young stands).
     """
     rows = [
         {
@@ -163,7 +164,8 @@ def generate_dataset_csvs(output_dir: Path, density: str = "full") -> list:
         species = row["Common Name"]
         std_name = standardize_species_name(species)
         max_height = row["Max Height"]
-        spacing = row["Competition Spacing"]
+        group = config.get_competition_group(species)
+        spacing = group["planting_distance"]
 
         merged_df = generate_merged_csv(
             species, max_height, spacing, twig_density, competition_neighbors

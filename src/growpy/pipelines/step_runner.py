@@ -49,6 +49,7 @@ def run_step123(
     csv_path: Path,
     dry_run: bool = False,
     extra_args: list | None = None,
+    verbose: bool = False,
 ) -> bool:
     """Run a single step (1, 2, or 3) as a subprocess with --csv.
 
@@ -59,6 +60,8 @@ def run_step123(
 
     script = STEP_SCRIPTS[step]
     cmd = [sys.executable, str(script), "--csv", str(csv_path)]
+    if verbose:
+        cmd.append("--verbose")
     if extra_args:
         cmd.extend(extra_args)
 
@@ -88,6 +91,7 @@ def _build_step4_command(
     csv_path: Path,
     max_height: float = 0,
     skip_unreal_scripts: bool = False,
+    verbose: bool = False,
 ) -> list:
     """Build the generate_forest.py command for a merged species CSV."""
     cmd = [sys.executable, str(STEP_SCRIPTS[4]), str(csv_path)]
@@ -96,6 +100,8 @@ def _build_step4_command(
     cmd.extend(["--export-trees", "1,2"])
     if skip_unreal_scripts:
         cmd.append("--no-unreal-scripts")
+    if verbose:
+        cmd.append("--verbose")
     return cmd
 
 
@@ -105,6 +111,7 @@ def run_species_step4(
     dry_run: bool = False,
     max_height: float = 0,
     skip_unreal_scripts: bool = False,
+    verbose: bool = False,
 ) -> bool:
     """Run generate_forest.py for one species using its merged CSV.
 
@@ -117,7 +124,7 @@ def run_species_step4(
         logger.error("No merged CSV found for species: %s", species_name)
         return False
 
-    cmd = _build_step4_command(csv_path, max_height, skip_unreal_scripts)
+    cmd = _build_step4_command(csv_path, max_height, skip_unreal_scripts, verbose)
 
     if dry_run:
         logger.info(
@@ -147,12 +154,13 @@ def run_species_step4(
 
 def _run_species_worker(args: tuple) -> tuple:
     """Top-level picklable worker for ProcessPoolExecutor."""
-    species_name, dataset_dir, max_height = args
+    species_name, dataset_dir, max_height, verbose = args
     ok = run_species_step4(
         species_name,
         dataset_dir,
         max_height=max_height,
         skip_unreal_scripts=True,
+        verbose=verbose,
     )
     return species_name, ok
 
@@ -162,6 +170,7 @@ def run_parallel_step4(
     workers: int,
     max_height: float,
     dataset_dir: Path,
+    verbose: bool = False,
 ) -> list:
     """Run step 4 for multiple species in parallel.
 
@@ -172,7 +181,7 @@ def run_parallel_step4(
     with ProcessPoolExecutor(max_workers=workers) as pool:
         futures = {
             pool.submit(
-                _run_species_worker, (species, dataset_dir, max_height)
+                _run_species_worker, (species, dataset_dir, max_height, verbose)
             ): species
             for species in species_list
         }

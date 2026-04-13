@@ -111,7 +111,6 @@ class TestGenerateDatasetCsvs:
             {
                 "Common Name": ["European Beech", "Norway Spruce"],
                 "Max Height": [30, 25],
-                "Competition Spacing": [8, 6],
             }
         )
         with patch(
@@ -130,7 +129,6 @@ class TestGenerateDatasetCsvs:
             {
                 "Common Name": ["European Beech", "Norway Spruce"],
                 "Max Height": [30, 25],
-                "Competition Spacing": [8, 6],
             }
         )
         with patch(
@@ -147,7 +145,6 @@ class TestGenerateDatasetCsvs:
             {
                 "Common Name": ["European Beech"],
                 "Max Height": [30],
-                "Competition Spacing": [8],
             }
         )
         with patch(

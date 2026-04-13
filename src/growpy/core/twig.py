@@ -306,34 +306,70 @@ def extract_twig_placements_from_model(
 
         # If this face has a twig, process it
         if current_twig_type:
-            # Check if we still have twig data available
-            if twig_idx >= num_twigs:
-                break
+            is_dead = current_twig_type == "twig_dead"
 
-            # Extract position: use scaled face centroid when available,
-            # otherwise fall back to Grove's twig_locations array.
-            base_idx = twig_idx * 3
-            if scaled_points is not None:
+            # Dead twigs have face attributes but NO entries in Grove's
+            # twig location/direction/orientation arrays (those only hold
+            # living twigs).  Use face centroid + default vectors instead.
+            if is_dead:
                 cx, cy, cz = 0.0, 0.0, 0.0
                 n = len(face)
-                for vi in face:
-                    sp = scaled_points[vi]
-                    cx += sp[0]
-                    cy += sp[1]
-                    cz += sp[2]
+                if scaled_points is not None:
+                    for vi in face:
+                        sp = scaled_points[vi]
+                        cx += sp[0]
+                        cy += sp[1]
+                        cz += sp[2]
+                else:
+                    pts = model.points
+                    for vi in face:
+                        p = pts[vi]
+                        if hasattr(p, "x"):
+                            cx += p.x
+                            cy += p.y
+                            cz += p.z
+                        else:
+                            cx += p[0]
+                            cy += p[1]
+                            cz += p[2]
                 inv_n = 1.0 / n
                 position = (cx * inv_n, cy * inv_n, cz * inv_n)
+                normal = (0.0, 0.0, 1.0)
+                orientation = (0.0, 0.0, 1.0)
             else:
-                position = (
-                    twig_locations[base_idx],
-                    twig_locations[base_idx + 1],
-                    twig_locations[base_idx + 2],
+                # Living twig — index into Grove arrays
+                if twig_idx >= num_twigs:
+                    break
+
+                base_idx = twig_idx * 3
+                if scaled_points is not None:
+                    cx, cy, cz = 0.0, 0.0, 0.0
+                    n = len(face)
+                    for vi in face:
+                        sp = scaled_points[vi]
+                        cx += sp[0]
+                        cy += sp[1]
+                        cz += sp[2]
+                    inv_n = 1.0 / n
+                    position = (cx * inv_n, cy * inv_n, cz * inv_n)
+                else:
+                    position = (
+                        twig_locations[base_idx],
+                        twig_locations[base_idx + 1],
+                        twig_locations[base_idx + 2],
+                    )
+                normal = (
+                    twig_directions[base_idx],
+                    twig_directions[base_idx + 1],
+                    twig_directions[base_idx + 2],
                 )
-            normal = (
-                twig_directions[base_idx],
-                twig_directions[base_idx + 1],
-                twig_directions[base_idx + 2],
-            )
+                orientation = (0.0, 0.0, 1.0)
+                if twig_orientations and base_idx + 2 < len(twig_orientations):
+                    orientation = (
+                        twig_orientations[base_idx],
+                        twig_orientations[base_idx + 1],
+                        twig_orientations[base_idx + 2],
+                    )
 
             # BONE & BRANCH ASSIGNMENT:
             # - bone_id: from vertex voting (needed for skeletal binding)
@@ -373,15 +409,6 @@ def extract_twig_placements_from_model(
                 local_bone_id = twig_bone_id - bone_id_offset
                 branch_id_for_twig = bone_to_branch.get(local_bone_id)
 
-            # Extract orientation (up vector) from twig_orientations
-            orientation = (0.0, 0.0, 1.0)  # Default Z-up in Grove space
-            if twig_orientations and base_idx + 2 < len(twig_orientations):
-                orientation = (
-                    twig_orientations[base_idx],
-                    twig_orientations[base_idx + 1],
-                    twig_orientations[base_idx + 2],
-                )
-
             placement = TwigPlacement(
                 type=current_twig_type,
                 position=position,
@@ -393,8 +420,10 @@ def extract_twig_placements_from_model(
             )
             placements[current_twig_type].append(placement)
 
-            # Increment twig index for ALL types (they share the same sequential array)
-            twig_idx += 1
+            # Only increment twig_idx for living twigs — dead twigs have
+            # no entries in Grove's twig arrays.
+            if not is_dead:
+                twig_idx += 1
 
     # Report results
     total_extracted = sum(len(p) for p in placements.values())
