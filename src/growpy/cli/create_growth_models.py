@@ -555,8 +555,9 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         """,
     )
 
-    # Get script directory for default paths
-    script_dir = Path(__file__).parent.parent.parent.parent
+    from growpy.config.paths import get_project_root
+
+    script_dir = get_project_root()
     default_assets_dir = script_dir / "data" / "assets"
 
     parser.add_argument(

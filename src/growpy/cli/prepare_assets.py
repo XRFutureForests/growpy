@@ -162,9 +162,10 @@ CSV Format Support:
         """,
     )
 
-    # Default paths
-    script_dir = Path(__file__).parent.parent.parent.parent
-    default_assets = script_dir / "data" / "assets"
+    from growpy.config.paths import get_project_root
+
+    project_root = get_project_root()
+    default_assets = project_root / "data" / "assets"
 
     parser.add_argument(
         "--grove-dir",
@@ -215,14 +216,14 @@ CSV Format Support:
     if args.grove_dir is not None:
         grove_dir = args.grove_dir
     elif not grove_dir.is_absolute():
-        grove_dir = script_dir / grove_dir
+        grove_dir = project_root / grove_dir
 
     # Resolve CSV path
     csv_path = config.csv_file
     if args.csv is not None:
         csv_path = args.csv
     elif not csv_path.is_absolute():
-        csv_path = script_dir / csv_path
+        csv_path = project_root / csv_path
 
     resize_textures = config.resize_textures
 
@@ -300,7 +301,7 @@ CSV Format Support:
     # Build list of twig source directories: Grove first, then custom overrides
     custom_twigs_dir = config.custom_twigs_dir
     if not custom_twigs_dir.is_absolute():
-        custom_twigs_dir = script_dir / custom_twigs_dir
+        custom_twigs_dir = project_root / custom_twigs_dir
 
     for _, row in df.iterrows():
         twig_name = row["Twig"]

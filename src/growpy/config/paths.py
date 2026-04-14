@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 _GBIF_ENABLED = True  # Can be disabled if pygbif not available or API issues
 
 
-def _get_project_root() -> Path:
+def get_project_root() -> Path:
     """Get project root directory.
 
     Resolution order:
@@ -41,7 +41,7 @@ def _get_lookup_table_path() -> Path:
     """
     from .core import _find_config_dir
 
-    project_root = _get_project_root()
+    project_root = get_project_root()
     cfg_dir = _find_config_dir()
 
     lookup_paths = []
@@ -134,7 +134,7 @@ def _find_species_row(species: str, use_gbif: bool = True) -> pd.Series:
 
 def get_data_directory() -> Path:
     """Get data directory path."""
-    return _get_project_root() / "data"
+    return get_project_root() / "data"
 
 
 def get_assets_directory() -> Path:

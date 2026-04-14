@@ -35,9 +35,10 @@ def main():
     """Main forest generation function."""
     import argparse
 
-    # Get script directory for default paths
-    script_dir = Path(__file__).parent.parent.parent.parent
-    default_csv = script_dir / "data" / "input" / "test.csv"
+    from growpy.config.paths import get_project_root
+
+    project_root = get_project_root()
+    default_csv = project_root / "data" / "input" / "test.csv"
 
     parser = argparse.ArgumentParser(
         description="Generate forest from CSV data and export trees in multiple formats",
@@ -325,7 +326,7 @@ Unreal Engine Integration:
     try:
         csv_path = config.csv_file
         if not csv_path.is_absolute():
-            csv_path = script_dir / csv_path
+            csv_path = project_root / csv_path
 
         if not csv_path.exists():
             logger.error("CSV file not found: %s", csv_path)
@@ -333,7 +334,7 @@ Unreal Engine Integration:
 
         output_dir = config.output_dir
         if not output_dir.is_absolute():
-            output_dir = script_dir / output_dir
+            output_dir = project_root / output_dir
 
         # Build preset overrides from CLI arguments
         preset_overrides = None

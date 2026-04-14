@@ -256,10 +256,10 @@ def main():
     import argparse
 
     from growpy.config import get_config
+    from growpy.config.paths import get_project_root
     from growpy.utils.log import setup_logging
 
-    # Get script directory for default paths
-    script_dir = Path(__file__).parent.parent.parent.parent
+    project_root = get_project_root()
 
     config = get_config()
 
@@ -365,12 +365,12 @@ Output per twig:
     # Resolve twig path: CLI arg or config default
     twig_path = args.path if args.path is not None else config.twigs_path
     if not twig_path.is_absolute():
-        twig_path = script_dir / twig_path
+        twig_path = project_root / twig_path
 
     # Resolve CSV path
     csv_path = config.csv_file
     if not csv_path.is_absolute():
-        csv_path = script_dir / csv_path
+        csv_path = project_root / csv_path
 
     if not twig_path.exists():
         logger.error("Path not found: %s", twig_path)

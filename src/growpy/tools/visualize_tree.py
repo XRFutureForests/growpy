@@ -17,6 +17,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
+from growpy.config.paths import get_project_root
+
 
 def parse_usda_points(usda_path: Path) -> np.ndarray:
     """Extract vertex positions from a USDA stems file.
@@ -222,10 +224,10 @@ def main():
     args = parser.parse_args()
 
     # Resolve path
-    script_dir = Path(__file__).parent.parent.parent.parent
-    target = args.path or script_dir / "data" / "output" / "forest"
+    project_root = get_project_root()
+    target = args.path or project_root / "data" / "output" / "forest"
     if not target.is_absolute():
-        target = script_dir / target
+        target = project_root / target
 
     if not target.exists():
         print(f"Path not found: {target}")
