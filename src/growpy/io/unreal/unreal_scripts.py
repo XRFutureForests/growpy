@@ -17,13 +17,13 @@ logger = logging.getLogger(__name__)
 def _get_vram_monitor_preamble() -> str:
     """Return the VRAM/RSS monitor preamble with RSS_LIMIT_GB auto-filled.
 
-    Computes the UE private-memory budget as 95% of total system RAM at
+    Computes the UE working-set budget as 90% of total system RAM at
     generation time; falls back to 28 GB if psutil is unavailable.
     """
     try:
         import psutil
 
-        rss_limit = round(psutil.virtual_memory().total / (1024**3) * 0.95, 1)
+        rss_limit = round(psutil.virtual_memory().total / (1024**3) * 0.90, 1)
     except Exception:
         rss_limit = 28.0
     return _VRAM_MONITOR_PREAMBLE.replace("__RSS_LIMIT_GB__", f"{rss_limit}")
@@ -41,11 +41,10 @@ from ctypes import wintypes
 # Set high (95%) because the orchestrator handles cleanup between batches at a lower threshold.
 VRAM_LIMIT_PERCENT = 95
 
-# Process private-memory budget in GB. NaniteAssembly imports leak ~1 GB of
-# CRT heap scratch per file that never returns to the OS, so long batches
-# must abort cleanly before OOM and let ue_exec restart the editor. The
-# done.txt progress file ensures resume works. Value auto-computed at
-# generation time as 95% of total system RAM (see _get_vram_monitor_preamble).
+# Working-set budget in GB. Compared against WorkingSetSize (actual physical
+# pages owned by UE), NOT PrivateUsage (committed virtual memory which can
+# safely exceed physical RAM via the page file). Value auto-computed at
+# generation time as 90% of total system RAM (see _get_vram_monitor_preamble).
 RSS_LIMIT_GB = __RSS_LIMIT_GB__
 
 
@@ -88,7 +87,7 @@ def _log_rss(tag):
         return 0.0
     ws, pv = info
     print(f"  [RSS {tag}] ws={ws:.2f}GB private={pv:.2f}GB (limit {RSS_LIMIT_GB:.1f}GB)")
-    return pv
+    return ws
 
 # Maximum time (seconds) to wait for VRAM to drop below threshold before giving up
 VRAM_WAIT_TIMEOUT = 300
@@ -303,10 +302,10 @@ else:
         # Adaptive wait: pause until VRAM settles below threshold
         _wait_for_vram("{label}", min_delay=IMPORT_DELAY)
 
-        _pv = _log_rss("gc   {label}")
-        if _pv > RSS_LIMIT_GB:
+        _ws = _log_rss("gc   {label}")
+        if _ws > RSS_LIMIT_GB:
             print("")
-            print(f"  ** Private memory {{_pv:.1f}}GB exceeds limit {{RSS_LIMIT_GB:.1f}}GB **")
+            print(f"  ** Working set {{_ws:.1f}}GB exceeds limit {{RSS_LIMIT_GB:.1f}}GB **")
             print("  ** GROWPY_BATCH_ABORT_MEMORY ** ue_exec must stop and restart UE.")
             print("  ** Progress saved in done.txt; rerun to resume. **")
             raise SystemExit(42)

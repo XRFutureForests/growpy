@@ -1,0 +1,23 @@
+age,height,dbh,species_latin,region,management,site_index,source,table_id,volume
+45,5.7,4.4,Abies alba,DE,moderate_thinning,4.0,forest_elements,fe_silver_fir_hausser_moderate_1956_si4,
+50,6.8,5.4,Abies alba,DE,moderate_thinning,4.0,forest_elements,fe_silver_fir_hausser_moderate_1956_si4,47.0
+55,8.0,6.5,Abies alba,DE,moderate_thinning,4.0,forest_elements,fe_silver_fir_hausser_moderate_1956_si4,82.0
+60,9.3,7.7,Abies alba,DE,moderate_thinning,4.0,forest_elements,fe_silver_fir_hausser_moderate_1956_si4,120.0
+65,10.5,9.0,Abies alba,DE,moderate_thinning,4.0,forest_elements,fe_silver_fir_hausser_moderate_1956_si4,160.0
+70,11.7,10.4,Abies alba,DE,moderate_thinning,4.0,forest_elements,fe_silver_fir_hausser_moderate_1956_si4,199.0
+75,12.8,11.8,Abies alba,DE,moderate_thinning,4.0,forest_elements,fe_silver_fir_hausser_moderate_1956_si4,236.0
+80,13.9,13.3,Abies alba,DE,moderate_thinning,4.0,forest_elements,fe_silver_fir_hausser_moderate_1956_si4,272.0
+85,15.0,14.8,Abies alba,DE,moderate_thinning,4.0,forest_elements,fe_silver_fir_hausser_moderate_1956_si4,306.0
+90,16.0,16.3,Abies alba,DE,moderate_thinning,4.0,forest_elements,fe_silver_fir_hausser_moderate_1956_si4,337.0
+95,17.0,17.8,Abies alba,DE,moderate_thinning,4.0,forest_elements,fe_silver_fir_hausser_moderate_1956_si4,365.0
+100,17.9,19.3,Abies alba,DE,moderate_thinning,4.0,forest_elements,fe_silver_fir_hausser_moderate_1956_si4,390.0
+105,18.8,20.9,Abies alba,DE,moderate_thinning,4.0,forest_elements,fe_silver_fir_hausser_moderate_1956_si4,413.0
+110,19.6,22.5,Abies alba,DE,moderate_thinning,4.0,forest_elements,fe_silver_fir_hausser_moderate_1956_si4,434.0
+115,20.4,24.1,Abies alba,DE,moderate_thinning,4.0,forest_elements,fe_silver_fir_hausser_moderate_1956_si4,453.0
+120,21.1,25.7,Abies alba,DE,moderate_thinning,4.0,forest_elements,fe_silver_fir_hausser_moderate_1956_si4,470.0
+125,21.8,27.3,Abies alba,DE,moderate_thinning,4.0,forest_elements,fe_silver_fir_hausser_moderate_1956_si4,485.0
+130,22.4,28.9,Abies alba,DE,moderate_thinning,4.0,forest_elements,fe_silver_fir_hausser_moderate_1956_si4,499.0
+135,23.0,30.5,Abies alba,DE,moderate_thinning,4.0,forest_elements,fe_silver_fir_hausser_moderate_1956_si4,511.0
+140,23.5,32.1,Abies alba,DE,moderate_thinning,4.0,forest_elements,fe_silver_fir_hausser_moderate_1956_si4,522.0
+145,24.0,33.7,Abies alba,DE,moderate_thinning,4.0,forest_elements,fe_silver_fir_hausser_moderate_1956_si4,532.0
+150,24.4,35.3,Abies alba,DE,moderate_thinning,4.0,forest_elements,fe_silver_fir_hausser_moderate_1956_si4,540.0

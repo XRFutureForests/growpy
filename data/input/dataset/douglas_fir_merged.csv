@@ -1,0 +1,6 @@
+fid,species,x,y,z,height,twig_density,individual_type
+1,Douglas fir,100.0,0.0,0.0,45,1.0,open_grown
+2,Douglas fir,0.0,0.0,0.0,45,1.0,competition
+101,Douglas fir,2.25,0.0,0.0,45,1.0,competition
+102,Douglas fir,-1.125,1.949,0.0,45,1.0,competition
+103,Douglas fir,-1.125,-1.949,0.0,45,1.0,competition

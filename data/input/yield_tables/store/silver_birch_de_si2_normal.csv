@@ -1,0 +1,12 @@
+age,height,dbh,species_latin,region,management,site_index,source,table_id,volume
+30,11.3,9.8,Betula pendula,DE,normal,2.0,forest_elements,fe_birch_schwappach_1903_29_si2,47.0
+35,12.8,12.1,Betula pendula,DE,normal,2.0,forest_elements,fe_birch_schwappach_1903_29_si2,71.0
+40,14.1,14.0,Betula pendula,DE,normal,2.0,forest_elements,fe_birch_schwappach_1903_29_si2,90.0
+45,15.3,15.6,Betula pendula,DE,normal,2.0,forest_elements,fe_birch_schwappach_1903_29_si2,106.0
+50,16.4,17.1,Betula pendula,DE,normal,2.0,forest_elements,fe_birch_schwappach_1903_29_si2,118.0
+55,17.4,18.3,Betula pendula,DE,normal,2.0,forest_elements,fe_birch_schwappach_1903_29_si2,128.0
+60,18.3,19.7,Betula pendula,DE,normal,2.0,forest_elements,fe_birch_schwappach_1903_29_si2,136.0
+65,19.1,21.0,Betula pendula,DE,normal,2.0,forest_elements,fe_birch_schwappach_1903_29_si2,141.0
+70,19.8,22.6,Betula pendula,DE,normal,2.0,forest_elements,fe_birch_schwappach_1903_29_si2,145.0
+75,20.4,24.3,Betula pendula,DE,normal,2.0,forest_elements,fe_birch_schwappach_1903_29_si2,148.0
+80,20.9,26.5,Betula pendula,DE,normal,2.0,forest_elements,fe_birch_schwappach_1903_29_si2,150.0

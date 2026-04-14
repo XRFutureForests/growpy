@@ -352,8 +352,8 @@ def run_batches(
     scripts_dir: Path,
     port: int = 6776,
     timeout: float = 0,
-    vram_limit: float = 90.0,
-    ram_limit: float = 90.0,
+    vram_limit: float = 75.0,
+    ram_limit: float = 75.0,
     batch_delay: float = 10.0,
 ) -> list[str]:
     """Execute batch scripts sequentially with resource monitoring.
@@ -460,14 +460,14 @@ def main():
     parser.add_argument(
         "--vram-limit",
         type=float,
-        default=90.0,
-        help="VRAM usage %% threshold to trigger cleanup between batches (default: 90)",
+        default=75.0,
+        help="VRAM usage %% threshold to trigger cleanup between batches (default: 75)",
     )
     parser.add_argument(
         "--ram-limit",
         type=float,
-        default=90.0,
-        help="RAM usage %% threshold to trigger cleanup between batches (default: 90)",
+        default=75.0,
+        help="RAM usage %% threshold to trigger cleanup between batches (default: 75)",
     )
     parser.add_argument(
         "--batch-delay",
@@ -536,7 +536,9 @@ def main():
     logger.info("Sending %s to UE editor...", target.name)
     ok, aborted_memory = _run_single(target, args.port, args.timeout)
     if aborted_memory:
-        logger.error("Batch aborted: UE private memory over limit. Restart UE and rerun.")
+        logger.error(
+            "Batch aborted: UE private memory over limit. Restart UE and rerun."
+        )
         sys.exit(2)
     if not ok:
         logger.error("Script execution failed in UE.")
