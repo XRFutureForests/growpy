@@ -17,6 +17,7 @@ from pathlib import Path
 import pandas as pd
 
 from growpy.config import get_config
+from growpy.config.paths import _get_lookup_table
 from growpy.utils.naming import standardize_species_name
 
 logger = logging.getLogger(__name__)
@@ -45,20 +46,9 @@ DATASET_SPECIES = [
 OPEN_TREE_X = 100.0
 
 
-def _get_dataset_species(config=None) -> pd.DataFrame:
+def _get_dataset_species() -> pd.DataFrame:
     """Load species with Max Height and Competition Group from lookup CSV."""
-    if config is None:
-        config = get_config()
-
-    csv_path = (
-        Path(config.grove_dir).parent / "growpy" / "config" / "tree_asset_lookup.csv"
-    )
-    if not csv_path.exists():
-        csv_path = (
-            Path(__file__).parent.parent.parent / "config" / "tree_asset_lookup.csv"
-        )
-
-    df = pd.read_csv(csv_path)
+    df = _get_lookup_table()
     dataset = df[df["Max Height"].notna() & df["Competition Group"].notna()].copy()
     dataset = dataset[dataset["Common Name"].isin(DATASET_SPECIES)]
     dataset["Max Height"] = dataset["Max Height"].astype(int)
@@ -153,7 +143,7 @@ def generate_dataset_csvs(output_dir: Path, density: str = "full") -> list:
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     config = get_config()
-    dataset = _get_dataset_species(config)
+    dataset = _get_dataset_species()
     twig_density = DENSITY_VARIANTS.get(density, 1.0)
     competition_neighbors = config.dataset_competition_neighbors
 

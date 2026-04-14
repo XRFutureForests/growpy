@@ -31,9 +31,8 @@ def _get_project_root() -> Path:
     return Path(__file__).parent.parent.parent.parent
 
 
-@lru_cache(maxsize=1)
-def _get_lookup_table() -> pd.DataFrame:
-    """Load tree asset lookup table.
+def _get_lookup_table_path() -> Path:
+    """Resolve the path to tree_asset_lookup.csv.
 
     Resolution order:
     1. <resolved config dir>/tree_asset_lookup.csv (follows GROWPY_CONFIG)
@@ -53,11 +52,17 @@ def _get_lookup_table() -> pd.DataFrame:
 
     for lookup_path in lookup_paths:
         if lookup_path.exists():
-            return pd.read_csv(lookup_path)
+            return lookup_path
 
     raise FileNotFoundError(
         f"tree_asset_lookup.csv not found in any location: {[str(p) for p in lookup_paths]}"
     )
+
+
+@lru_cache(maxsize=1)
+def _get_lookup_table() -> pd.DataFrame:
+    """Load tree asset lookup table as a DataFrame."""
+    return pd.read_csv(_get_lookup_table_path())
 
 
 def _find_species_row(species: str, use_gbif: bool = True) -> pd.Series:
@@ -102,8 +107,12 @@ def _find_species_row(species: str, use_gbif: bool = True) -> pd.Series:
 
     # Try Aliases (vectorized: no iterrows loop)
     if "Aliases" in lookup_df.columns:
-        mask = lookup_df["Aliases"].fillna("").str.lower().str.split(",").apply(
-            lambda parts: species_lower in [a.strip() for a in parts]
+        mask = (
+            lookup_df["Aliases"]
+            .fillna("")
+            .str.lower()
+            .str.split(",")
+            .apply(lambda parts: species_lower in [a.strip() for a in parts])
         )
         match = lookup_df[mask]
         if not match.empty:

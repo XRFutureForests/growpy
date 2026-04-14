@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 def load_species_csv(
-    csv_path: Path, script_dir: Path, use_gbif: bool = True
+    csv_path: Path, script_dir: Path = None, use_gbif: bool = True
 ) -> pd.DataFrame:
     """Load and validate species CSV.
 
@@ -40,7 +40,7 @@ def load_species_csv(
 
     Args:
         csv_path: Path to species CSV file
-        script_dir: Path to project root for loading asset lookup table
+        script_dir: Deprecated, unused. Lookup CSV resolved via config/paths.py.
         use_gbif: Whether to use GBIF for unmatched species (default: True)
 
     Returns:
@@ -50,6 +50,8 @@ def load_species_csv(
         FileNotFoundError: If CSV doesn't exist
         ValueError: If CSV is invalid or species not found in lookup
     """
+    from growpy.config.paths import _get_lookup_table
+
     if not csv_path.exists():
         raise FileNotFoundError(f"Species CSV not found: {csv_path}")
 
@@ -60,17 +62,7 @@ def load_species_csv(
         # Extract unique species names
         unique_species = df["species"].dropna().unique().tolist()
 
-        # Load the asset lookup table
-        asset_lookup_path = (
-            script_dir / "src" / "growpy" / "config" / "tree_asset_lookup.csv"
-        )
-        if not asset_lookup_path.exists():
-            raise FileNotFoundError(
-                f"Asset lookup table not found: {asset_lookup_path}\n"
-                f"Need this to map species names to assets."
-            )
-
-        lookup_df = pd.read_csv(asset_lookup_path)
+        lookup_df = _get_lookup_table()
 
         # Try GBIF-enhanced matching if available
         gbif_available = False
@@ -244,7 +236,9 @@ CSV Format Support:
 
     # Override CSV if --all flag is set
     if args.all:
-        csv_path = script_dir / "src" / "growpy" / "config" / "tree_asset_lookup.csv"
+        from growpy.config.paths import _get_lookup_table_path
+
+        csv_path = _get_lookup_table_path()
 
     if not csv_path.exists():
         logger.error("CSV file not found: %s", csv_path)

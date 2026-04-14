@@ -47,79 +47,6 @@ def _detect_foliage_variants(species_name: str) -> List[str]:
     return sorted(variants)
 
 
-def create_pve_template_from_reference(reference_json_path: Path) -> Dict:
-    """
-    Create an empty PVE template based on a reference JSON (like Hazel).
-
-    Preserves the structure but clears the data arrays/values.
-    """
-    with open(reference_json_path, "r") as f:
-        reference = json.load(f)
-
-    template = {
-        "globalAttributes": _create_empty_global_attributes(
-            reference.get("globalAttributes", {})
-        ),
-        "points": {
-            "attributes": _create_empty_point_attributes(
-                reference["points"]["attributes"]
-            ),
-            "positions": [],
-        },
-        "primitives": {
-            "attributes": _create_empty_primitive_attributes(
-                reference["primitives"]["attributes"]
-            ),
-            "points": [],
-        },
-    }
-
-    return template
-
-
-def _create_empty_global_attributes(reference: Dict) -> Dict:
-    """Create empty globalAttributes structure."""
-    empty = {}
-    for key, value in reference.items():
-        empty[key] = {
-            "isArray": value.get("isArray", False),
-            "size": value.get("size", 1),
-            "type": value.get("type", "float"),
-            "value": [] if value.get("isArray") else 0,
-        }
-    return empty
-
-
-def _create_empty_point_attributes(reference: Dict) -> Dict:
-    """Create empty point attributes structure, preserving 'value' vs 'values' key."""
-    empty = {}
-    for key, value in reference.items():
-        # Preserve the exact key name from reference (value vs values)
-        value_key = "values" if "values" in value else "value"
-        empty[key] = {
-            "isArray": value.get("isArray", False),
-            "size": value.get("size", 1),
-            "type": value.get("type", "float"),
-            value_key: [],
-        }
-    return empty
-
-
-def _create_empty_primitive_attributes(reference: Dict) -> Dict:
-    """Create empty primitive attributes structure, preserving 'value' vs 'values' key."""
-    empty = {}
-    for key, value in reference.items():
-        # Preserve the exact key name from reference (value vs values)
-        value_key = "values" if "values" in value else "value"
-        empty[key] = {
-            "isArray": value.get("isArray", False),
-            "size": value.get("size", 1),
-            "type": value.get("type", "int"),
-            value_key: [],
-        }
-    return empty
-
-
 def map_grove_to_pve(
     grove: Any,
     template: Dict,
@@ -143,7 +70,7 @@ def map_grove_to_pve(
 
     Args:
         grove: Grove object after simulation
-        template: Empty PVE template from create_pve_template_from_reference()
+        template: Empty PVE template from create_empty_pve_preset()
         species_name: Name of species
         tree_index: Index of tree in grove
         model: Pre-built model (with twigs) from export phase
@@ -1725,34 +1652,11 @@ def generate_pve_from_grove(
     """
     timings = {} if profile else None
 
-    # Load Hazel JSON as template
     if verbose:
         logger.info("Creating PVE preset from Grove data with foliage...")
 
-    # Find Hazel reference file
-    project_root = Path(__file__).parent.parent.parent.parent
-    hazel_reference = (
-        project_root
-        / "data"
-        / "tmp"
-        / "ProceduralVegetationEditor"
-        / "Content"
-        / "SampleAssets"
-        / "Tree_Common_Hazel_01"
-        / "Instances"
-        / "Broadleaf_Hazel_04.json"
-    )
-
     t0 = time.perf_counter() if profile else 0
-    if not hazel_reference.exists():
-        if verbose:
-            logger.info(
-                "Hazel reference not found at %s, using schema",
-                hazel_reference,
-            )
-        template = create_empty_pve_preset()
-    else:
-        template = create_pve_template_from_reference(hazel_reference)
+    template = create_empty_pve_preset()
     if profile:
         timings["load_template"] = time.perf_counter() - t0
 

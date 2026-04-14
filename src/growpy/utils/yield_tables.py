@@ -25,20 +25,18 @@ from pylometree.yield_tables import (  # noqa: F401
 logger = logging.getLogger(__name__)
 
 
-def load_lookup_table(project_root: Path) -> Dict[str, Dict[str, str]]:
+def load_lookup_table(project_root: Path = None) -> Dict[str, Dict[str, str]]:
     """Load tree_asset_lookup.csv keyed by Common Name.
+
+    Args:
+        project_root: Deprecated, unused. CSV resolved via config/paths.py.
 
     Returns:
         {common_name: {"standardized": ..., "yield_search": ..., ...}}
     """
-    import pandas as pd
+    from growpy.config.paths import _get_lookup_table
 
-    lookup_path = project_root / "src" / "growpy" / "config" / "tree_asset_lookup.csv"
-    if not lookup_path.exists():
-        logger.error("Asset lookup table not found: %s", lookup_path)
-        return {}
-
-    df = pd.read_csv(lookup_path)
+    df = _get_lookup_table()
     result = {}
     for _, row in df.iterrows():
         name = row["Common Name"]

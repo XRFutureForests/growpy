@@ -46,23 +46,18 @@ def _strip_previous_calibration(presets_dir: Path, species_list: List[str]) -> N
             logger.info("Stripped previous calibration from %s", species)
 
 
-def _resolve_species_from_csv(csv_path: Path, script_dir: Path) -> Optional[List[str]]:
+def _resolve_species_from_csv(csv_path: Path, script_dir: Path = None) -> Optional[List[str]]:
     """Parse CSV and return list of standardized species names."""
     import pandas as pd
+
+    from growpy.config.paths import _get_lookup_table
 
     df = pd.read_csv(csv_path)
 
     if "species" in df.columns and "Common Name" not in df.columns:
         unique_species = df["species"].dropna().unique().tolist()
 
-        asset_lookup_path = (
-            script_dir / "src" / "growpy" / "config" / "tree_asset_lookup.csv"
-        )
-        if not asset_lookup_path.exists():
-            logger.error("Asset lookup table not found: %s", asset_lookup_path)
-            return None
-
-        lookup_df = pd.read_csv(asset_lookup_path)
+        lookup_df = _get_lookup_table()
 
         csv_species = []
         for species in unique_species:
@@ -121,7 +116,7 @@ def _run_calibration_pass(
         yield_tables_dir = script_dir / yield_tables_dir
 
     # Load lookup table for common name <-> standardized name mapping
-    lookup = load_lookup_table(script_dir)
+    lookup = load_lookup_table()
     std_to_common = {v["standardized"]: name for name, v in lookup.items()}
 
     calibrated_species = []
@@ -426,6 +421,8 @@ def _ingest_yield_tables(
     from pylometree.yield_tables import StoreManifest
     from pylometree.yield_tables.species import load_species_mapping
 
+    from growpy.config.paths import _get_lookup_table_path
+
     store_dir = config.yield_sources_store_dir
     if not store_dir.is_absolute():
         store_dir = script_dir / store_dir
@@ -446,7 +443,7 @@ def _ingest_yield_tables(
     store_dir.mkdir(parents=True, exist_ok=True)
     manifest = StoreManifest.load(store_dir / "manifest.csv")
 
-    species_csv = script_dir / "src" / "growpy" / "config" / "tree_asset_lookup.csv"
+    species_csv = _get_lookup_table_path()
     species_mapping = load_species_mapping(
         species_csv if species_csv.exists() else None
     )
@@ -540,7 +537,7 @@ Examples:
     python src/growpy/cli/create_growth_models.py --species "European oak"
 
     # Analyze ALL 57 available species using comprehensive lookup table
-    python src/growpy/cli/create_growth_models.py --csv src/growpy/config/tree_asset_lookup.csv
+    python src/growpy/cli/create_growth_models.py --csv config/tree_asset_lookup.csv
 
     # Skip calibration even when enabled in config
     python src/growpy/cli/create_growth_models.py --no-calibrate

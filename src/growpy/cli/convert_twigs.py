@@ -280,7 +280,7 @@ Examples:
     python src/growpy/cli/convert_twigs.py data/assets/twigs/european_beech_twig --formats usda --csv ""
 
     # Convert ALL 57 available twigs using comprehensive lookup table
-    python src/growpy/cli/convert_twigs.py data/assets/twigs --csv src/growpy/config/tree_asset_lookup.csv
+    python src/growpy/cli/convert_twigs.py data/assets/twigs --csv config/tree_asset_lookup.csv
 
 CSV Format Support:
     Automatically handles forest placement CSV (x,y,species) or asset lookup CSV (Common Name,Twig)
@@ -393,17 +393,9 @@ Output per twig:
                     unique_species = df["species"].dropna().unique().tolist()
 
                     # Load the asset lookup table
-                    asset_lookup_path = (
-                        script_dir
-                        / "src"
-                        / "growpy"
-                        / "config"
-                        / "tree_asset_lookup.csv"
-                    )
-                    if not asset_lookup_path.exists():
-                        return 1
+                    from growpy.config.paths import _get_lookup_table
 
-                    lookup_df = pd.read_csv(asset_lookup_path)
+                    lookup_df = _get_lookup_table()
 
                     # Filter lookup table by species names and extract twig names.
                     # Each twig is converted once using its native name.

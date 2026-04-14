@@ -1113,25 +1113,9 @@ class SpeciesGrowthAnalyzer:
     def update_lookup_table_with_new_models(self):
         """Update tree asset lookup table with new growth model names."""
         try:
-            current_file = Path(__file__)
-            package_config = (
-                current_file.parent.parent / "config" / "tree_asset_lookup.csv"
-            )
-            project_root = self.assets_dir.parent
-            project_config = project_root.parent / "config" / "tree_asset_lookup.csv"
-            data_path = project_root / "tree_asset_lookup.csv"
+            from growpy.config.paths import _get_lookup_table_path
 
-            if package_config.exists():
-                lookup_table_path = package_config
-            elif project_config.exists():
-                lookup_table_path = project_config
-            elif data_path.exists():
-                lookup_table_path = data_path
-            else:
-                logger.warning(
-                    "Lookup table not found in src/growpy/config/, config/, or data/"
-                )
-                return
+            lookup_table_path = _get_lookup_table_path()
 
             df = pd.read_csv(lookup_table_path)
             updated_count = 0

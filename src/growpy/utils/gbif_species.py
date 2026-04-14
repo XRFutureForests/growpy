@@ -485,8 +485,8 @@ def main():
     parser.add_argument(
         "--csv",
         type=Path,
-        default=Path("src/growpy/config/tree_asset_lookup.csv"),
-        help="Path to lookup CSV (default: src/growpy/config/tree_asset_lookup.csv)",
+        default=Path("config/tree_asset_lookup.csv"),
+        help="Path to lookup CSV (default: config/tree_asset_lookup.csv)",
     )
     parser.add_argument(
         "--output",
