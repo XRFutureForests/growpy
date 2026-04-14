@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from growpy.config.paths import get_assets_directory
+from growpy.constants import BREAST_HEIGHT_METERS
 
 logger = logging.getLogger(__name__)
 
@@ -119,8 +120,7 @@ def run_single_simulation(
             if h > max_h:
                 max_h = h
 
-            # DBH at 1.3m
-            d = _measure_dbh(tree, 1.3)
+            d = _measure_dbh(tree, BREAST_HEIGHT_METERS)
             if d > max_d:
                 max_d = d
 
@@ -130,7 +130,7 @@ def run_single_simulation(
     return max_h, max_d, heights, dbhs
 
 
-def _measure_dbh(tree, target_height: float = 1.3) -> float:
+def _measure_dbh(tree, target_height: float = BREAST_HEIGHT_METERS) -> float:
     """Measure diameter at breast height via trunk node interpolation."""
     if not hasattr(tree, "nodes") or not tree.nodes:
         return 0.0

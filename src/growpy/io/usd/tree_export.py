@@ -64,6 +64,7 @@ from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade, UsdSkel, Vt
 
 from ...config import get_config
 from ...config.quality import get_quality_preset
+from ...constants import BREAST_HEIGHT_METERS
 from ...core.skeleton import calculate_vertex_weights
 
 
@@ -204,7 +205,7 @@ def build_tree_mesh(
         ):
             vertex_bone_ids = model.point_attribute_bone_id
             tree_height = max((p.y for p in points), default=0.0)
-            breast_height = 1.3
+            breast_height = BREAST_HEIGHT_METERS
             blend_start = breast_height
             blend_end = max(breast_height + 1.0, tree_height * 0.85)
             blend_range = blend_end - blend_start

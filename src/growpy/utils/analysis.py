@@ -19,6 +19,7 @@ import the_grove_23_core as gc
 from scipy.optimize import least_squares
 from tqdm import tqdm
 
+from ..constants import BREAST_HEIGHT_METERS
 from .log import is_verbose
 
 
@@ -467,7 +468,7 @@ class SpeciesGrowthAnalyzer:
         )
         return safe_name
 
-    def calculate_dbh_at_height(self, tree, target_height: float = 1.3) -> float:
+    def calculate_dbh_at_height(self, tree, target_height: float = BREAST_HEIGHT_METERS) -> float:
         """Calculate diameter at breast height using linear interpolation.
 
         Finds the closest nodes below and above the target height and interpolates
@@ -655,7 +656,7 @@ class SpeciesGrowthAnalyzer:
                         return local_max
 
                     current_height = find_max_height_in_branch(tree)
-                    current_dbh = self.calculate_dbh_at_height(tree, target_height=1.3)
+                    current_dbh = self.calculate_dbh_at_height(tree, target_height=BREAST_HEIGHT_METERS)
 
                     if current_height > max_height_achieved:
                         max_height_achieved = current_height

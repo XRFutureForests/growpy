@@ -10,6 +10,7 @@ import pandas as pd
 import the_grove_23_core as gc
 
 from ..config import get_config
+from ..constants import BREAST_HEIGHT_METERS
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ def calculate_tree_height(tree) -> float:
     return find_max_height_in_branch(tree)
 
 
-def calculate_dbh_at_height(tree, target_height: float = 1.3) -> float:
+def calculate_dbh_at_height(tree, target_height: float = BREAST_HEIGHT_METERS) -> float:
     """Calculate diameter at breast height using linear interpolation.
 
     Finds the closest nodes below and above the target height and interpolates
@@ -124,7 +125,7 @@ def extract_tree_measurements(grove: gc.Grove) -> List[Tuple[float, float]]:
     if grove.trees:
         for tree in grove.trees:
             height = calculate_tree_height(tree)
-            dbh = calculate_dbh_at_height(tree, target_height=1.3)
+            dbh = calculate_dbh_at_height(tree, target_height=BREAST_HEIGHT_METERS)
             measurements.append((height, dbh))
     return measurements
 
