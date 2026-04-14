@@ -624,7 +624,7 @@ fitting, and the `seed.json` writer.
 
 **Public:**
 
-- `load_lookup_table(project_root) -> dict`
+- `load_lookup_table() -> dict`
 - `estimate_flushes_per_year(...)`
 - `fit_height_dbh_model(heights, dbhs) -> dict`
 - `predict_dbh_from_height(model, height) -> float`

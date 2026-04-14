@@ -24,9 +24,7 @@ from growpy.utils.naming import camel_to_snake, standardize_species_name
 logger = logging.getLogger(__name__)
 
 
-def load_species_csv(
-    csv_path: Path, script_dir: Path = None, use_gbif: bool = True
-) -> pd.DataFrame:
+def load_species_csv(csv_path: Path, use_gbif: bool = True) -> pd.DataFrame:
     """Load and validate species CSV.
 
     Handles two CSV formats:
@@ -40,7 +38,6 @@ def load_species_csv(
 
     Args:
         csv_path: Path to species CSV file
-        script_dir: Deprecated, unused. Lookup CSV resolved via config/paths.py.
         use_gbif: Whether to use GBIF for unmatched species (default: True)
 
     Returns:
@@ -246,7 +243,7 @@ CSV Format Support:
 
     # Load species CSV
     try:
-        df = load_species_csv(csv_path, script_dir)
+        df = load_species_csv(csv_path)
     except Exception as e:
         logger.error("Failed to load species CSV: %s", e)
         return 1

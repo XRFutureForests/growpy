@@ -24,11 +24,8 @@ from pylometree.yield_tables import (  # noqa: F401
 logger = logging.getLogger(__name__)
 
 
-def load_lookup_table(project_root: Path = None) -> Dict[str, Dict[str, str]]:
+def load_lookup_table() -> Dict[str, Dict[str, str]]:
     """Load tree_asset_lookup.csv keyed by Common Name.
-
-    Args:
-        project_root: Deprecated, unused. CSV resolved via config/paths.py.
 
     Returns:
         {common_name: {"standardized": ..., "yield_search": ..., ...}}

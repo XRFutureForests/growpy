@@ -8,7 +8,7 @@ import pytest
 
 from growpy.config.core import (
     GrowPyConfig,
-    _find_toml_path,
+    _find_config_dir,
     get_config,
     get_global_config,
     set_global_config,
@@ -191,18 +191,22 @@ class TestGlobalConfig:
         set_global_config(None)
 
 
-class TestFindTomlPath:
-    """Tests for TOML file discovery."""
+class TestFindConfigDir:
+    """Tests for config directory discovery."""
 
-    def test_env_var_override(self, tmp_path, monkeypatch):
+    def test_env_var_file_resolves_to_parent_dir(self, tmp_path, monkeypatch):
         toml_file = tmp_path / "custom.toml"
         toml_file.write_bytes(b"[general]\n")
         monkeypatch.setenv("GROWPY_CONFIG", str(toml_file))
-        assert _find_toml_path() == toml_file
+        assert _find_config_dir() == tmp_path
+
+    def test_env_var_directory(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("GROWPY_CONFIG", str(tmp_path))
+        assert _find_config_dir() == tmp_path
 
     def test_env_var_nonexistent_returns_none(self, monkeypatch):
         monkeypatch.setenv("GROWPY_CONFIG", "/nonexistent/path.toml")
-        assert _find_toml_path() is None
+        assert _find_config_dir() is None
 
 
 class TestDensityVariants:

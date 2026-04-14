@@ -63,19 +63,6 @@ def _find_config_dir() -> Optional[Path]:
     return None
 
 
-def _find_toml_path() -> Optional[Path]:
-    """Return a representative TOML path inside the resolved config directory.
-
-    Kept for backward compatibility (quality.py and tests still call it). The
-    actual loader uses ``_find_config_dir`` + ``_load_toml_data``.
-    """
-    cfg_dir = _find_config_dir()
-    if not cfg_dir:
-        return None
-    toml_files = sorted(cfg_dir.glob("*.toml"))
-    return toml_files[0] if toml_files else None
-
-
 def _deep_merge(base: dict, override: dict) -> dict:
     """Recursively merge override into base, returning a new dict."""
     merged = base.copy()

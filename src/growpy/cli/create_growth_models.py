@@ -46,7 +46,7 @@ def _strip_previous_calibration(presets_dir: Path, species_list: List[str]) -> N
             logger.info("Stripped previous calibration from %s", species)
 
 
-def _resolve_species_from_csv(csv_path: Path, script_dir: Path = None) -> Optional[List[str]]:
+def _resolve_species_from_csv(csv_path: Path) -> Optional[List[str]]:
     """Parse CSV and return list of standardized species names."""
     import pandas as pd
 
@@ -789,7 +789,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
     else:
         # --- Multi-species mode (from CSV) ---
         try:
-            csv_species = _resolve_species_from_csv(csv_path, script_dir)
+            csv_species = _resolve_species_from_csv(csv_path)
         except Exception as e:
             logger.error("Error processing CSV file: %s", e)
             return 1
