@@ -2328,16 +2328,14 @@ def _cleanup_boundary_spikes(
 
 
 def _is_likely_tube_component(component, boundary_edge_set):
-    """Check if a component with boundary edges is an open-ended cylinder.
+    """Check if a component with boundary edges is a 3D volume (cylinder,
+    acorn, berry) rather than a flat leaf plane.
 
-    Open-ended cylinders have boundary edges only at their uncapped ends,
-    forming small closed rings. Leaves have boundary edges around their
-    entire perimeter (large single loop after alpha trimming).
-
-    Uses two signals:
-    - Boundary loop count: tubes have 2 loops (both ends open) or 1 (one end capped)
-    - Boundary vertex ratio: tubes have few boundary verts (just the end rings)
-      relative to total verts, while leaves have many (the entire silhouette)
+    Uses three signals:
+    - Flatness (PCA): leaves have one near-zero principal dimension; 3D shapes
+      (acorns, cylinders) have meaningful extent in all three axes
+    - Boundary loop count: tubes have 2 loops (both ends open) or 1 (one capped)
+    - Boundary vertex ratio: tubes have few boundary verts relative to total
     """
     comp_boundary = set()
     comp_verts = set()
@@ -2348,7 +2346,21 @@ def _is_likely_tube_component(component, boundary_edge_set):
         for v in f.verts:
             comp_verts.add(v)
 
-    if not comp_boundary or len(comp_verts) < 8:
+    if len(comp_verts) < 8:
+        return False
+
+    # Flatness check via PCA -- catches 3D shapes (acorns, berries) that a
+    # topological test alone misclassifies when they have a stem hole.
+    coords = np.array([v.co[:] for v in comp_verts], dtype=np.float32)
+    centered = coords - coords.mean(axis=0)
+    try:
+        sv = np.linalg.svd(centered, compute_uv=False)
+        if sv[0] > 0 and (sv[2] / sv[0]) >= 0.08:
+            return True
+    except np.linalg.LinAlgError:
+        pass
+
+    if not comp_boundary:
         return False
 
     # Count boundary loops (connected components of boundary edges)
@@ -2556,47 +2568,34 @@ def _apply_interior_decimate(
         ratio,
     )
 
-    # Create/replace vertex group
-    vg_name = "edge_protect"
-    if vg_name in obj.vertex_groups:
-        vg_old = obj.vertex_groups.get(vg_name)
-        try:
-            obj.vertex_groups.remove(vg_old)
-        except Exception:
-            pass
-    vg = obj.vertex_groups.new(name=vg_name)
-
-    if preserve_indices:
-        try:
-            vg.add(list(preserve_indices), 1.0, "REPLACE")
-        except Exception:
-            # Fallback: add in chunks to avoid limits
-            inds = list(preserve_indices)
-            step = 32766
-            for i in range(0, len(inds), step):
-                vg.add(inds[i : i + step], 1.0, "REPLACE")
-
-    # Apply Decimate (Collapse) only to non-preserved (invert group)
+    # Use the edit-mode decimate operator on only interior faces.
+    # This makes `ratio` scale against the selected interior, not the global
+    # face count -- so ratio=0.3 actually keeps 30% of interior faces.
+    # The DECIMATE modifier with a vertex group uses a global ratio and
+    # saturates when protected verts dominate, requiring absurdly small values.
     import bpy
 
+    mesh = obj.data
     bpy.context.view_layer.objects.active = obj
     try:
         bpy.ops.object.mode_set(mode="OBJECT")
     except Exception:
         pass
-    mod = obj.modifiers.new(name="InteriorDecimate", type="DECIMATE")
-    mod.ratio = float(ratio)
-    mod.vertex_group = vg.name
-    mod.invert_vertex_group = True
-    # Triangulate collapse produces more stable results for our pipeline
-    if hasattr(mod, "use_collapse_triangulate"):
-        mod.use_collapse_triangulate = True
 
+    # Mark interior faces (and their verts/edges) as selected.
+    for v in mesh.vertices:
+        v.select = v.index not in preserve_indices
+    for e in mesh.edges:
+        e.select = all(vi not in preserve_indices for vi in e.vertices)
+    for p in mesh.polygons:
+        p.select = all(vi not in preserve_indices for vi in p.vertices)
+
+    bpy.ops.object.mode_set(mode="EDIT")
     try:
-        bpy.ops.object.modifier_apply(modifier=mod.name)
-    except Exception:
-        # If apply fails (rare), leave modifier on the stack
-        pass
+        bpy.ops.mesh.select_mode(type="FACE")
+        bpy.ops.mesh.decimate(ratio=float(ratio))
+    finally:
+        bpy.ops.object.mode_set(mode="OBJECT")
 
 
 def setup_materials_with_textures(
