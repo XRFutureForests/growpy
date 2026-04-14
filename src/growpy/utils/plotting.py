@@ -1,7 +1,7 @@
 """Growth curve plotting utilities for species analysis and calibration."""
 
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import matplotlib.pyplot as plt
 import matplotlib.style as mplstyle
@@ -47,8 +47,15 @@ def _seed_envelope(individual_curves, scale=1.0):
 
 # -- Seed colors used across all plots --
 SEED_COLORS = [
-    "lightblue", "lightgreen", "lightcoral", "lightyellow", "lightpink",
-    "lightgray", "lightsteelblue", "lightsalmon", "lightseagreen",
+    "lightblue",
+    "lightgreen",
+    "lightcoral",
+    "lightyellow",
+    "lightpink",
+    "lightgray",
+    "lightsteelblue",
+    "lightsalmon",
+    "lightseagreen",
 ]
 
 
@@ -76,15 +83,38 @@ def plot_growth_curves(
     model_params = _load_model_params(output_dir)
 
     _plot_growth_curves_main(
-        species, ages, heights, dbh_cm, ind_h, ind_d, seeds,
-        fpy, metadata, model_params, output_dir,
+        species,
+        ages,
+        heights,
+        dbh_cm,
+        ind_h,
+        ind_d,
+        seeds,
+        fpy,
+        metadata,
+        model_params,
+        output_dir,
     )
     _plot_height_dbh_correlation(
-        species, ages, heights, dbh_cm, ind_h, ind_d, seeds,
-        fpy, metadata, output_dir,
+        species,
+        ages,
+        heights,
+        dbh_cm,
+        ind_h,
+        ind_d,
+        seeds,
+        fpy,
+        metadata,
+        output_dir,
     )
     _plot_growth_increments(
-        species, ages, heights, dbh_cm, fpy, metadata, output_dir,
+        species,
+        ages,
+        heights,
+        dbh_cm,
+        fpy,
+        metadata,
+        output_dir,
     )
 
 
@@ -103,8 +133,17 @@ def _load_model_params(output_dir: Path) -> Optional[Dict[str, float]]:
 
 
 def _plot_growth_curves_main(
-    species, ages, heights, dbh_cm, ind_h, ind_d, seeds,
-    fpy, metadata, model_params, output_dir,
+    species,
+    ages,
+    heights,
+    dbh_cm,
+    ind_h,
+    ind_d,
+    seeds,
+    fpy,
+    metadata,
+    model_params,
+    output_dir,
 ):
     """Main growth curves: height and DBH over age with model fit and bands."""
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
@@ -116,8 +155,12 @@ def _plot_growth_curves_main(
     if h_min is not None:
         band_ages = np.array([(j + 1) / fpy for j in range(len(h_min))])
         ax1.fill_between(
-            band_ages, h_min, h_max,
-            alpha=0.15, color="blue", label="Seed range",
+            band_ages,
+            h_min,
+            h_max,
+            alpha=0.15,
+            color="blue",
+            label="Seed range",
         )
 
     # Individual seed curves
@@ -125,14 +168,26 @@ def _plot_growth_curves_main(
         color = SEED_COLORS[i % len(SEED_COLORS)]
         ages_s = [(j + 1) / fpy for j in range(len(hc))]
         ax1.plot(
-            ages_s, hc, color=color, linewidth=1.0, alpha=0.6,
-            linestyle="--", label=f"Seed {seed}",
+            ages_s,
+            hc,
+            color=color,
+            linewidth=1.0,
+            alpha=0.6,
+            linestyle="--",
+            label=f"Seed {seed}",
         )
 
     # Aggregated curve
     ax1.plot(
-        ages, heights, "b-", linewidth=3.0, marker="o", markersize=4,
-        alpha=0.9, label="Maximum (aggregated)", zorder=10,
+        ages,
+        heights,
+        "b-",
+        linewidth=3.0,
+        marker="o",
+        markersize=4,
+        alpha=0.9,
+        label="Maximum (aggregated)",
+        zorder=10,
     )
 
     # Chapman-Richards model fit overlay
@@ -143,7 +198,11 @@ def _plot_growth_curves_main(
         h_fit = A * (1.0 - np.exp(-k * t_smooth)) ** p
         ages_fit = t_smooth / fpy
         ax1.plot(
-            ages_fit, h_fit, "r--", linewidth=1.5, alpha=0.8,
+            ages_fit,
+            h_fit,
+            "r--",
+            linewidth=1.5,
+            alpha=0.8,
             label=f"Chapman-Richards (R²={r2:.3f})",
         )
 
@@ -161,7 +220,11 @@ def _plot_growth_curves_main(
         f"Growth Rate: {growth_rate_yr:.3f} m/year"
     )
     ax1.text(
-        0.02, 0.98, height_text, transform=ax1.transAxes, fontsize=10,
+        0.02,
+        0.98,
+        height_text,
+        transform=ax1.transAxes,
+        fontsize=10,
         verticalalignment="top",
         bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.8),
     )
@@ -171,21 +234,37 @@ def _plot_growth_curves_main(
     if d_min is not None:
         band_ages = np.array([(j + 1) / fpy for j in range(len(d_min))])
         ax2.fill_between(
-            band_ages, d_min, d_max,
-            alpha=0.15, color="green", label="Seed range",
+            band_ages,
+            d_min,
+            d_max,
+            alpha=0.15,
+            color="green",
+            label="Seed range",
         )
 
     for i, (dc, seed) in enumerate(zip(ind_d, seeds)):
         color = SEED_COLORS[i % len(SEED_COLORS)]
         ages_s = [(j + 1) / fpy for j in range(len(dc))]
         ax2.plot(
-            ages_s, [d * 100 for d in dc], color=color, linewidth=1.0,
-            alpha=0.6, linestyle="--", label=f"Seed {seed}",
+            ages_s,
+            [d * 100 for d in dc],
+            color=color,
+            linewidth=1.0,
+            alpha=0.6,
+            linestyle="--",
+            label=f"Seed {seed}",
         )
 
     ax2.plot(
-        ages, dbh_cm, "g-", linewidth=3.0, marker="s", markersize=4,
-        alpha=0.9, label="Maximum (aggregated)", zorder=10,
+        ages,
+        dbh_cm,
+        "g-",
+        linewidth=3.0,
+        marker="s",
+        markersize=4,
+        alpha=0.9,
+        label="Maximum (aggregated)",
+        zorder=10,
     )
 
     ax2.set_xlabel("Age (years)", fontsize=12)
@@ -202,7 +281,11 @@ def _plot_growth_curves_main(
         f"DBH Growth Rate: {dbh_rate_yr:.2f} cm/year"
     )
     ax2.text(
-        0.02, 0.98, dbh_text, transform=ax2.transAxes, fontsize=10,
+        0.02,
+        0.98,
+        dbh_text,
+        transform=ax2.transAxes,
+        fontsize=10,
         verticalalignment="top",
         bbox=dict(boxstyle="round", facecolor="lightgreen", alpha=0.8),
     )
@@ -230,16 +313,31 @@ def _plot_growth_curves_main(
     plt.subplots_adjust(top=0.93, bottom=0.08)
     plt.savefig(
         output_dir / "growth_curves.png",
-        dpi=300, bbox_inches="tight", facecolor="white",
+        dpi=300,
+        bbox_inches="tight",
+        facecolor="white",
     )
     plt.close()
 
 
 def _plot_height_dbh_correlation(
-    species, ages, heights, dbh_cm, ind_h, ind_d, seeds,
-    fpy, metadata, output_dir,
+    species,
+    ages,
+    heights,
+    dbh_cm,
+    ind_h,
+    ind_d,
+    seeds,
+    fpy,
+    metadata,
+    output_dir,
 ):
-    """Height vs DBH with allometric power-law fit instead of linear."""
+    """Height vs DBH with allometric power-law fit.
+
+    Shows GrowPy simulation scatter with a fit from simulation data.
+    When yield table allometry data is available (yield_table_allometry.json),
+    overlays the yield-table-derived power model and raw data points.
+    """
     fig, ax = plt.subplots(1, 1, figsize=(10, 8))
 
     # Individual seed scatter
@@ -247,23 +345,37 @@ def _plot_height_dbh_correlation(
         if len(hc) > 0 and len(dc) > 0:
             ages_s = [(j + 1) / fpy for j in range(len(hc))]
             ax.scatter(
-                hc, [d * 100 for d in dc], c=ages_s, cmap="plasma",
-                s=30, alpha=0.5, marker="o", label=f"Seed {seed}",
+                hc,
+                [d * 100 for d in dc],
+                c=ages_s,
+                cmap="plasma",
+                s=30,
+                alpha=0.5,
+                marker="o",
+                label=f"Seed {seed}",
                 edgecolors="none",
             )
 
     # Aggregated scatter
     scatter = ax.scatter(
-        heights, dbh_cm, c=ages, cmap="viridis", s=80, alpha=0.9,
-        marker="s", label="Maximum (aggregated)",
-        edgecolors="black", linewidth=0.5,
+        heights,
+        dbh_cm,
+        c=ages,
+        cmap="viridis",
+        s=80,
+        alpha=0.9,
+        marker="s",
+        label="Maximum (aggregated)",
+        edgecolors="black",
+        linewidth=0.5,
     )
 
     ax.set_xlabel("Height (m)", fontsize=12)
     ax.set_ylabel("DBH (cm)", fontsize=12)
     ax.set_title(
         f"Height vs DBH Relationship for {species}",
-        fontsize=14, fontweight="bold",
+        fontsize=14,
+        fontweight="bold",
     )
     ax.grid(True, alpha=0.3)
 
@@ -271,7 +383,7 @@ def _plot_height_dbh_correlation(
     cbar.set_label("Age (years)", fontsize=12)
 
     # Allometric power-law fit: DBH = a * H^b (log-linear regression)
-    stats_text = ""
+    stats_lines = []
     if len(heights) > 3:
         mask = (heights > 0.1) & (dbh_cm > 0.1)
         h_pos = heights[mask]
@@ -284,23 +396,87 @@ def _plot_height_dbh_correlation(
             a = np.exp(log_a)
 
             h_smooth = np.linspace(h_pos.min(), h_pos.max(), 200)
-            d_fit = a * h_smooth ** b
+            d_fit = a * h_smooth**b
 
             # R² for allometric fit
-            d_pred = a * h_pos ** b
+            d_pred = a * h_pos**b
             ss_res = np.sum((d_pos - d_pred) ** 2)
             ss_tot = np.sum((d_pos - d_pos.mean()) ** 2)
             r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0
 
             ax.plot(
-                h_smooth, d_fit, "r--", alpha=0.8, linewidth=2,
-                label=f"Allometric: DBH = {a:.2f} * H^{b:.2f}",
+                h_smooth,
+                d_fit,
+                "r--",
+                alpha=0.8,
+                linewidth=2,
+                label=f"GrowPy: DBH = {a:.2f} * H^{b:.2f}",
             )
-            stats_text = f"DBH = {a:.2f} * H^{b:.2f}\nR² = {r2:.3f}"
+            stats_lines.append(f"GrowPy: DBH = {a:.2f} * H^{b:.2f} (R²={r2:.3f})")
 
-    if stats_text:
+    # Yield table allometric overlay
+    yt_allom_path = output_dir / "yield_table_allometry.json"
+    if yt_allom_path.exists():
+        import json as _json
+
+        with open(yt_allom_path) as _f:
+            yt_allom = _json.load(_f)
+
+        yt_model = yt_allom.get("model")
+        yt_heights_m = yt_allom.get("heights", [])
+        yt_dbhs_m = yt_allom.get("dbhs", [])
+        table_title = yt_allom.get("table_title", "Yield table")
+
+        # Plot raw yield table data points (DBH in cm)
+        if yt_heights_m and yt_dbhs_m:
+            yt_h = np.array(yt_heights_m, dtype=float)
+            yt_d = np.array(yt_dbhs_m, dtype=float) * 100  # m -> cm
+            valid = (yt_h > 0) & (yt_d > 0)
+            if valid.any():
+                ax.scatter(
+                    yt_h[valid],
+                    yt_d[valid],
+                    marker="D",
+                    s=60,
+                    facecolors="none",
+                    edgecolors="green",
+                    linewidth=1.5,
+                    zorder=5,
+                    label=f"Yield table ({table_title})",
+                )
+
+        # Overlay yield-table-derived allometric model
+        if yt_model:
+            yt_a = yt_model["a"]
+            yt_b = yt_model["b"]
+            yt_r2 = yt_model.get("r_squared", 0)
+
+            h_range = np.linspace(
+                max(0.5, min(heights.min(), min(yt_heights_m) if yt_heights_m else 1)),
+                max(heights.max(), max(yt_heights_m) if yt_heights_m else 30),
+                200,
+            )
+            yt_d_fit = yt_a * h_range**yt_b * 100  # m -> cm
+
+            ax.plot(
+                h_range,
+                yt_d_fit,
+                "g-",
+                alpha=0.9,
+                linewidth=2.5,
+                label=f"Yield table: DBH = {yt_a:.4f} * H^{yt_b:.2f}",
+            )
+            stats_lines.append(
+                f"Yield table: DBH = {yt_a:.4f} * H^{yt_b:.2f} (R²={yt_r2:.3f})"
+            )
+
+    if stats_lines:
         ax.text(
-            0.02, 0.98, stats_text, transform=ax.transAxes, fontsize=12,
+            0.02,
+            0.98,
+            "\n".join(stats_lines),
+            transform=ax.transAxes,
+            fontsize=11,
             verticalalignment="top",
             bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
         )
@@ -309,13 +485,21 @@ def _plot_height_dbh_correlation(
     plt.tight_layout()
     plt.savefig(
         output_dir / "height_dbh_correlation.png",
-        dpi=300, bbox_inches="tight", facecolor="white",
+        dpi=300,
+        bbox_inches="tight",
+        facecolor="white",
     )
     plt.close()
 
 
 def _plot_growth_increments(
-    species, ages, heights, dbh_cm, fpy, metadata, output_dir,
+    species,
+    ages,
+    heights,
+    dbh_cm,
+    fpy,
+    metadata,
+    output_dir,
 ):
     """Stem volume and annual growth rates for height and DBH.
 
@@ -328,7 +512,8 @@ def _plot_growth_increments(
     fig, (ax_v, ax_r) = plt.subplots(1, 2, figsize=(14, 6))
     fig.suptitle(
         f"Growth Summary for {species}",
-        fontsize=16, fontweight="bold",
+        fontsize=16,
+        fontweight="bold",
     )
 
     cai_ages = ages[1:]
@@ -336,7 +521,7 @@ def _plot_growth_increments(
     # -- Stem volume --
     form_factor = 0.45
     dbh_m = dbh_cm / 100.0
-    volume = form_factor * (np.pi / 4) * dbh_m ** 2 * heights
+    volume = form_factor * (np.pi / 4) * dbh_m**2 * heights
 
     ax_v.plot(ages, volume, color="purple", linewidth=2.5)
     ax_v.fill_between(ages, 0, volume, alpha=0.1, color="purple")
@@ -345,21 +530,26 @@ def _plot_growth_increments(
     ax_v.set_ylabel("Stem volume (m\u00b3)", fontsize=11)
     ax_v.set_title(
         f"Estimated Stem Volume (f={form_factor})",
-        fontsize=13, fontweight="bold",
+        fontsize=13,
+        fontweight="bold",
     )
     ax_v.grid(True, alpha=0.3)
     ax_v.set_xlim(0, ages[-1])
 
     vol_text = f"{volume[-1]:.2f} m\u00b3"
     ax_v.text(
-        0.02, 0.98, vol_text, transform=ax_v.transAxes, fontsize=10,
+        0.02,
+        0.98,
+        vol_text,
+        transform=ax_v.transAxes,
+        fontsize=10,
         verticalalignment="top",
         bbox=dict(boxstyle="round", facecolor="plum", alpha=0.6),
     )
 
     # -- Annual growth rates --
     h_rate = np.diff(heights) * fpy  # m/year
-    d_rate = np.diff(dbh_cm) * fpy   # cm/year
+    d_rate = np.diff(dbh_cm) * fpy  # cm/year
 
     ax_r.plot(cai_ages, h_rate, "b-", linewidth=2, label="Height (m/year)")
     ax_r.set_xlabel("Age (years)", fontsize=11)
@@ -383,7 +573,9 @@ def _plot_growth_increments(
     plt.subplots_adjust(top=0.90)
     plt.savefig(
         output_dir / "growth_increments.png",
-        dpi=300, bbox_inches="tight", facecolor="white",
+        dpi=300,
+        bbox_inches="tight",
+        facecolor="white",
     )
     plt.close()
 
@@ -431,27 +623,37 @@ def plot_calibration_comparison(
     ax1 = axes[0]
 
     ax1.plot(
-        yield_ages, yield_heights,
-        "r-", linewidth=2.0, label="Yield table (reference)",
+        yield_ages,
+        yield_heights,
+        "r-",
+        linewidth=2.0,
+        label="Yield table (reference)",
     )
 
     ax1.plot(
-        uncal_years, uncalibrated_heights,
-        "b-", linewidth=2.0, alpha=0.6, label="Grove (before calibration)",
+        uncal_years,
+        uncalibrated_heights,
+        "b-",
+        linewidth=2.0,
+        alpha=0.6,
+        label="Grove (before calibration)",
     )
 
     if calibrated_heights is not None:
-        cal_years = [
-            (i + 1) / flushes_per_year for i in range(len(calibrated_heights))
-        ]
+        cal_years = [(i + 1) / flushes_per_year for i in range(len(calibrated_heights))]
         ax1.plot(
-            cal_years, calibrated_heights,
-            "g-", linewidth=2.5, label="Grove (after calibration)",
+            cal_years,
+            calibrated_heights,
+            "g-",
+            linewidth=2.5,
+            label="Grove (after calibration)",
         )
 
     # Limit x-axis to the Grove data range so curves are clearly visible
-    grove_max_year = max(uncal_years[-1] if uncal_years else 0,
-                         cal_years[-1] if calibrated_heights is not None else 0)
+    grove_max_year = max(
+        uncal_years[-1] if uncal_years else 0,
+        cal_years[-1] if calibrated_heights is not None else 0,
+    )
     if grove_max_year > 0:
         ax1.set_xlim(0, grove_max_year * 1.15)
 
@@ -465,16 +667,22 @@ def plot_calibration_comparison(
     ax2 = axes[1]
 
     ax2.plot(
-        yield_ages, [d * 100 for d in yield_dbhs],
-        "r-", linewidth=2.0, label="Yield table (reference)",
+        yield_ages,
+        [d * 100 for d in yield_dbhs],
+        "r-",
+        linewidth=2.0,
+        label="Yield table (reference)",
     )
 
     if uncalibrated_dbhs:
-        uncal_dbh_years = uncal_years[:len(uncalibrated_dbhs)]
+        uncal_dbh_years = uncal_years[: len(uncalibrated_dbhs)]
         ax2.plot(
             uncal_dbh_years,
             [d * 100 for d in uncalibrated_dbhs],
-            "b-", linewidth=2.0, alpha=0.6, label="Grove (before calibration)",
+            "b-",
+            linewidth=2.0,
+            alpha=0.6,
+            label="Grove (before calibration)",
         )
 
     if calibrated_dbhs is not None:
@@ -484,7 +692,9 @@ def plot_calibration_comparison(
         ax2.plot(
             cal_dbh_years,
             [d * 100 for d in calibrated_dbhs],
-            "g-", linewidth=2.5, label="Grove (after calibration)",
+            "g-",
+            linewidth=2.5,
+            label="Grove (after calibration)",
         )
 
     if target_dbh_per_cycle is not None:
@@ -494,13 +704,17 @@ def plot_calibration_comparison(
         ax2.plot(
             target_dbh_years,
             [d * 100 for d in target_dbh_per_cycle],
-            "g--", linewidth=2.0, alpha=0.8, label="Export DBH (radial scaling)",
+            "g--",
+            linewidth=2.0,
+            alpha=0.8,
+            label="Export DBH (radial scaling)",
         )
 
     # Match x-axis range to the height plot
-    grove_max_year = max(uncal_years[-1] if uncal_years else 0,
-                         (len(calibrated_dbhs) / flushes_per_year
-                          if calibrated_dbhs is not None else 0))
+    grove_max_year = max(
+        uncal_years[-1] if uncal_years else 0,
+        (len(calibrated_dbhs) / flushes_per_year if calibrated_dbhs is not None else 0),
+    )
     if grove_max_year > 0:
         ax2.set_xlim(0, grove_max_year * 1.15)
 
@@ -512,9 +726,13 @@ def plot_calibration_comparison(
 
     # Annotate fpy so the conversion factor is visible
     fig.text(
-        0.99, 0.01,
+        0.99,
+        0.01,
         f"flushes_per_year = {flushes_per_year:.2f}",
-        ha="right", va="bottom", fontsize=9, color="gray",
+        ha="right",
+        va="bottom",
+        fontsize=9,
+        color="gray",
     )
 
     plt.tight_layout()
@@ -553,8 +771,11 @@ def plot_grove_curves_only(
     # Height
     ax1 = axes[0]
     ax1.plot(
-        years, grove_heights,
-        "b-", linewidth=2.0, label="Grove simulation",
+        years,
+        grove_heights,
+        "b-",
+        linewidth=2.0,
+        label="Grove simulation",
     )
     ax1.set_xlabel("Age (years)")
     ax1.set_ylabel("Height (m)")
@@ -565,11 +786,13 @@ def plot_grove_curves_only(
     # DBH
     ax2 = axes[1]
     if grove_dbhs:
-        dbh_years = years[:len(grove_dbhs)]
+        dbh_years = years[: len(grove_dbhs)]
         ax2.plot(
             dbh_years,
             [d * 100 for d in grove_dbhs],
-            "b-", linewidth=2.0, label="Grove simulation",
+            "b-",
+            linewidth=2.0,
+            label="Grove simulation",
         )
     ax2.set_xlabel("Age (years)")
     ax2.set_ylabel("DBH (cm)")
@@ -578,9 +801,13 @@ def plot_grove_curves_only(
     ax2.grid(True, alpha=0.3)
 
     fig.text(
-        0.99, 0.01,
+        0.99,
+        0.01,
         f"flushes_per_year = {flushes_per_year:.2f}",
-        ha="right", va="bottom", fontsize=9, color="gray",
+        ha="right",
+        va="bottom",
+        fontsize=9,
+        color="gray",
     )
 
     plt.tight_layout()

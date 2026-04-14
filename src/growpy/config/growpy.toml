@@ -80,7 +80,7 @@ interior_boundary_rings = 3
 [growth_models]
 # Maximum growth cycles to simulate (1-250)
 # Automatically stops early when growth plateaus
-cycles = 55
+cycles = 30
 # Random seeds to average for robust curves (1-10)
 # Use 3+ for production, 1 for quick tests
 seeds = 1
@@ -215,7 +215,7 @@ max_skeleton_joints = 0
 # Nanite mesh which can consume extreme amounts of RAM.
 # 0 = no limit.  5000 = safe default for 64 GB systems.
 # Instances beyond this limit are randomly removed (uniform across twig types).
-max_assembly_instances = 2000
+max_assembly_instances = 4096
 # Skip assembly validation (saves ~5-10% export time)
 skip_validation = true
 # Only export specific trees by fid (integer array)

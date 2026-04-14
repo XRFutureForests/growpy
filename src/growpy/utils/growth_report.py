@@ -23,6 +23,7 @@ def _read_species_data(species_dir: Path) -> Optional[Dict[str, Any]]:
     """Read metadata and growth model params for one species."""
     meta_path = species_dir / "metadata.json"
     params_path = species_dir / "growth_model_params.json"
+    uncal_path = species_dir / "uncalibrated_curves.json"
     if not meta_path.exists():
         return None
 
@@ -34,7 +35,24 @@ def _read_species_data(species_dir: Path) -> Optional[Dict[str, Any]]:
         with open(params_path, encoding="utf-8") as f:
             params = json.load(f)
 
-    return {"metadata": meta, "params": params, "dir": species_dir}
+    uncalibrated = None
+    if uncal_path.exists():
+        with open(uncal_path, encoding="utf-8") as f:
+            uncalibrated = json.load(f)
+
+    allometry_path = species_dir / "yield_table_allometry.json"
+    allometry = None
+    if allometry_path.exists():
+        with open(allometry_path, encoding="utf-8") as f:
+            allometry = json.load(f)
+
+    return {
+        "metadata": meta,
+        "params": params,
+        "dir": species_dir,
+        "uncalibrated": uncalibrated,
+        "allometry": allometry,
+    }
 
 
 def _read_calibration_info(presets_dir: Path, species: str) -> Optional[Dict[str, Any]]:
@@ -346,6 +364,7 @@ def generate_growth_model_report(
             lines.append("")
 
         # Calibration details
+        uncal = data.get("uncalibrated")
         if cal_info:
             table_title = cal_info.get("table_title", "unknown")
             lines.append(
@@ -368,11 +387,26 @@ def generate_growth_model_report(
 
         lines.append("#### Height-DBH Relationship")
         lines.append("")
-        lines.append(
-            "Allometric power-law relationship between height and diameter, "
-            "colored by tree age. The dashed line shows the fitted model "
-            "DBH = a * H^b."
-        )
+
+        allometry = data.get("allometry")
+        if allometry and allometry.get("model"):
+            yt_model = allometry["model"]
+            table_title = allometry.get("table_title", "yield table")
+            lines.append(
+                "Allometric power-law relationship between height and diameter. "
+                "The red dashed line shows the fit from GrowPy simulation data, "
+                "while the green solid line shows the yield-table-derived model "
+                f"from *{table_title}* "
+                f"(DBH = {yt_model['a']:.4f} * H^{yt_model['b']:.2f}, "
+                f"R^2 = {yt_model.get('r_squared', 0):.3f}). "
+                "Green diamonds mark the raw yield table data points."
+            )
+        else:
+            lines.append(
+                "Allometric power-law relationship between height and diameter, "
+                "colored by tree age. The dashed line shows the fitted model "
+                "DBH = a * H^b from simulation data."
+            )
         lines.append("")
         lines.append(
             f"![Height-DBH correlation]({species_dir_name}/height_dbh_correlation.png)"
@@ -390,27 +424,45 @@ def generate_growth_model_report(
         lines.append(f"![Growth increments]({species_dir_name}/growth_increments.png)")
         lines.append("")
 
-        # Calibration comparison plot (only if calibrated)
+        # Grove growth curves with optional calibration comparison
         comparison_png = data["dir"] / "growth_comparison.png"
         if comparison_png.exists():
-            if cal_info:
-                lines.append("#### Yield Table Calibration")
-                lines.append("")
+            lines.append("#### Grove Growth Curves")
+            lines.append("")
+            if cal_info and uncal:
+                uncal_max_h = max(uncal["height_curve"]) if uncal["height_curve"] else 0
+                uncal_dbh_list = uncal.get("dbh_curve", [])
+                uncal_final_dbh = (max(uncal_dbh_list) * 100) if uncal_dbh_list else 0
+                h_delta = max_h - uncal_max_h
+                h_pct = (h_delta / uncal_max_h * 100) if uncal_max_h else 0
+                d_delta = final_dbh_cm - uncal_final_dbh
+                d_pct = (d_delta / uncal_final_dbh * 100) if uncal_final_dbh else 0
                 lines.append(
                     "Comparison of Grove simulation output against forestry yield "
-                    "table reference data. The green curve (after calibration) shows "
-                    "the effect of per-cycle grow_length overrides on height, and "
-                    "radial scaling on DBH at export."
+                    "table reference data. The dashed curves show uncalibrated "
+                    "output, the solid curves show calibrated results after "
+                    "per-cycle grow_length overrides on height and radial "
+                    "scaling on DBH at export."
+                )
+                lines.append("")
+                lines.append(f"| Metric | Uncalibrated | Calibrated | Change |")
+                lines.append("| --- | ---: | ---: | ---: |")
+                lines.append(
+                    f"| Max Height | {uncal_max_h:.2f} m | {max_h:.2f} m "
+                    f"| {h_delta:+.2f} m ({h_pct:+.1f}%) |"
+                )
+                lines.append(
+                    f"| Final DBH | {uncal_final_dbh:.1f} cm "
+                    f"| {final_dbh_cm:.1f} cm "
+                    f"| {d_delta:+.1f} cm ({d_pct:+.1f}%) |"
                 )
             else:
-                lines.append("#### Grove Growth Curves")
-                lines.append("")
                 lines.append(
                     "Grove simulation output for height and diameter over time."
                 )
             lines.append("")
             lines.append(
-                f"![Calibration comparison]({species_dir_name}/growth_comparison.png)"
+                f"![Growth comparison]({species_dir_name}/growth_comparison.png)"
             )
             lines.append("")
 

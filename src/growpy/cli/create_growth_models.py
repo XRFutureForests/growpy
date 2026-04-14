@@ -14,6 +14,7 @@ sources.  Species without yield data are exported with uncalibrated Grove output
 """
 
 import argparse
+import json
 import logging
 import sys
 from pathlib import Path
@@ -271,6 +272,68 @@ def _generate_comparison_plots(
             output_path=out_path,
         )
         logger.info("  Plot saved to %s", out_path)
+
+        # Persist yield table allometric model for the report and per-species
+        # H-DBH plot overlay. Stored independently of seed.json calibration
+        # (which gets stripped between pipeline runs).
+        _save_yield_table_allometry(
+            yield_data,
+            species_dir,
+        )
+
+
+def _save_uncalibrated_curves(
+    uncal_heights: Dict[str, List[float]],
+    uncal_dbhs: Dict[str, List[float]],
+    models_dir: Path,
+) -> None:
+    """Persist uncalibrated height/DBH curves for report comparison."""
+    for species in uncal_heights:
+        species_dir = models_dir / species
+        species_dir.mkdir(parents=True, exist_ok=True)
+        out_path = species_dir / "uncalibrated_curves.json"
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "species": species,
+                    "height_curve": uncal_heights[species],
+                    "dbh_curve": uncal_dbhs.get(species, []),
+                },
+                f,
+                indent=2,
+            )
+
+
+def _save_yield_table_allometry(
+    yield_data,
+    species_dir: Path,
+) -> None:
+    """Persist yield table allometric model (H-DBH) for report overlays.
+
+    Fits the power model DBH = a * H^b from yield table data and saves
+    both the model parameters and raw data points. This file survives
+    pipeline re-runs (unlike seed.json calibration which gets stripped).
+    """
+    from growpy.utils.yield_tables import fit_height_dbh_model
+
+    if not yield_data or not yield_data.heights or not yield_data.dbhs:
+        return
+
+    model = fit_height_dbh_model(yield_data.heights, yield_data.dbhs)
+
+    out_path = species_dir / "yield_table_allometry.json"
+    data = {
+        "heights": yield_data.heights,
+        "dbhs": yield_data.dbhs,
+        "table_title": yield_data.title,
+    }
+    if model:
+        data["model"] = model
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+    logger.info("  Yield table allometry saved to %s", out_path)
 
 
 def _generate_grove_only_plots(
@@ -669,6 +732,12 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
             uncal_heights = {args.species: list(height_curve)}
             uncal_dbhs = {args.species: list(dbh_curve)}
 
+            _save_uncalibrated_curves(
+                uncal_heights,
+                uncal_dbhs,
+                default_assets_dir / "growth_models",
+            )
+
             logger.info("")
             logger.info("=" * 60)
             logger.info("  Calibration pass")
@@ -773,6 +842,12 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
                 for s in successful
                 if s in analyzer.dbh_curves
             }
+
+            _save_uncalibrated_curves(
+                uncal_heights,
+                uncal_dbhs,
+                default_assets_dir / "growth_models",
+            )
 
             logger.info("")
             logger.info("=" * 60)
