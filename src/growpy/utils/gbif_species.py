@@ -202,7 +202,7 @@ def validate_lookup_table(csv_path: Path) -> pd.DataFrame:
         if pd.isna(scientific) or not scientific.strip():
             continue
 
-        print(f"Validating: {scientific}...")
+        logger.info("Validating: %s...", scientific)
         validation = validate_scientific_name(scientific)
         validation["common_name"] = row.get("Common Name", "")
         results.append(validation)
@@ -244,7 +244,7 @@ def enrich_lookup_table(
         if pd.isna(scientific) or not scientific.strip():
             continue
 
-        print(f"Looking up: {scientific}...")
+        logger.info("Looking up: %s...", scientific)
         try:
             validation = validate_scientific_name(scientific)
             df.at[idx, "GBIF Taxon Key"] = validation.get("accepted_key")
@@ -259,7 +259,7 @@ def enrich_lookup_table(
 
     if output_path:
         df.to_csv(output_path, index=False)
-        print(f"Enriched table saved to: {output_path}")
+        logger.info("Enriched table saved to: %s", output_path)
 
     return df
 
@@ -450,15 +450,15 @@ def resolve_species_list(
         # Fall back to GBIF if local matching failed
         if matched is None and use_gbif and PYGBIF_AVAILABLE:
             if verbose:
-                print(f"  GBIF lookup: {species}...")
+                logger.info("  GBIF lookup: %s...", species)
             matched = match_species_via_gbif(species, lookup_df)
             if matched is not None and verbose:
-                print(f"    -> Matched to: {matched.get('Common Name', 'Unknown')}")
+                logger.info("    -> Matched to: %s", matched.get("Common Name", "Unknown"))
 
         results[species] = matched
 
         if verbose and matched is None:
-            print(f"  WARNING: No match found for '{species}'")
+            logger.warning("No match found for '%s'", species)
 
     return results
 
