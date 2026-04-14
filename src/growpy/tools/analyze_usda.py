@@ -240,8 +240,10 @@ def main():
             print_stats(analyze_stems(target))
     else:
         print(f"Not found or not a .usda file: {target}")
-        sys.exit(1)
+        return 1
+
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

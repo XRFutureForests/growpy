@@ -115,7 +115,8 @@ def main():
     print("Note: Height/DBH are from Grove's internal measurement.")
     print("      BBox Y/X/Z are from actual model vertex positions.")
     print("      If BBox Y << Height, the mesh is being squashed.")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

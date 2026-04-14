@@ -893,6 +893,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
     logger.info("")
     logger.info("Generating growth model report...")
     generate_growth_model_report(default_assets_dir / "growth_models", presets_dir)
+    return 0
 
 
 if __name__ == "__main__":

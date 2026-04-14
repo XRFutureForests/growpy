@@ -318,7 +318,7 @@ Unreal Engine Integration:
             "No mesh export types enabled. "
             "Enable at least one of: --skeletal, --static, or --export-obj"
         )
-        return
+        return 1
 
     # Initialize profiler
     timer = init_profiler(enabled=config.profile)
@@ -330,7 +330,7 @@ Unreal Engine Integration:
 
         if not csv_path.exists():
             logger.error("CSV file not found: %s", csv_path)
-            return
+            return 1
 
         output_dir = config.output_dir
         if not output_dir.is_absolute():
@@ -566,7 +566,10 @@ Unreal Engine Integration:
     except Exception as e:
         logger.error("Forest generation failed: %s", e)
         logger.debug("Traceback:", exc_info=True)
+        return 1
+
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -263,7 +263,7 @@ def main():
         files = generate_dataset_csvs(args.output_dir, args.density)
         logger.info("Generated %d CSV files.", len(files))
         if not any([args.species, args.pilot, args.all]):
-            return
+            return 0
 
     # --list: show available species and exit
     if args.list:
@@ -272,7 +272,7 @@ def main():
             print("No species found. Run --generate-csvs first.")
         for stem in stems:
             print(stem.replace("_", " ").title())
-        return
+        return 0
 
     # Parse --steps
     try:
@@ -405,7 +405,8 @@ def main():
         raise SystemExit(1)
 
     logger.info("Done. %d step(s) completed.", len(steps))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
