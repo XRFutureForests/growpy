@@ -47,7 +47,7 @@ def load_species_csv(csv_path: Path, use_gbif: bool = True) -> pd.DataFrame:
         FileNotFoundError: If CSV doesn't exist
         ValueError: If CSV is invalid or species not found in lookup
     """
-    from growpy.config.paths import _get_lookup_table
+    from growpy.config.paths import _find_species_row, _get_lookup_table
 
     if not csv_path.exists():
         raise FileNotFoundError(f"Species CSV not found: {csv_path}")
@@ -87,30 +87,12 @@ def load_species_csv(csv_path: Path, use_gbif: bool = True) -> pd.DataFrame:
                 else:
                     unmatched.append(species)
         else:
-            # Fallback: local matching only
+            # Fallback: local matching only (no GBIF)
             for species in unique_species:
-                # Try matching Common Name
-                match = lookup_df[
-                    lookup_df["Common Name"].str.lower() == species.lower()
-                ]
-
-                # Try matching Scientific Name
-                if match.empty and "Scientific Name" in lookup_df.columns:
-                    match = lookup_df[
-                        lookup_df["Scientific Name"].str.lower() == species.lower()
-                    ]
-
-                # Try matching aliases if no direct match
-                if match.empty and "Aliases" in lookup_df.columns:
-                    for idx, row in lookup_df.iterrows():
-                        aliases = str(row.get("Aliases", "")).lower()
-                        if species.lower() in [a.strip() for a in aliases.split(",")]:
-                            match = lookup_df.iloc[[idx]]
-                            break
-
-                if not match.empty:
-                    filtered_rows.append(match)
-                else:
+                try:
+                    row = _find_species_row(species, use_gbif=False)
+                    filtered_rows.append(pd.DataFrame([row]))
+                except ValueError:
                     unmatched.append(species)
 
         if unmatched:

@@ -50,32 +50,22 @@ def _resolve_species_from_csv(csv_path: Path) -> Optional[List[str]]:
     """Parse CSV and return list of standardized species names."""
     import pandas as pd
 
-    from growpy.config.paths import _get_lookup_table
+    from growpy.config.paths import _find_species_row
 
     df = pd.read_csv(csv_path)
 
     if "species" in df.columns and "Common Name" not in df.columns:
         unique_species = df["species"].dropna().unique().tolist()
 
-        lookup_df = _get_lookup_table()
-
         csv_species = []
         for species in unique_species:
-            match = lookup_df[lookup_df["Common Name"].str.lower() == species.lower()]
-
-            if match.empty and "Aliases" in lookup_df.columns:
-                for _, row in lookup_df.iterrows():
-                    aliases = str(row.get("Aliases", "")).lower()
-                    if species.lower() in [a.strip() for a in aliases.split(",")]:
-                        match = lookup_df[
-                            lookup_df["Common Name"] == row["Common Name"]
-                        ]
-                        break
-
-            if not match.empty:
-                standardized = match.iloc[0].get("Standardized Name")
+            try:
+                row = _find_species_row(species)
+                standardized = row.get("Standardized Name")
                 if standardized:
                     csv_species.append(standardized)
+            except ValueError:
+                logger.warning("Species '%s' not found in lookup table", species)
 
         return csv_species if csv_species else None
 

@@ -392,48 +392,23 @@ Output per twig:
                 if "species" in df.columns and "Twig" not in df.columns:
                     unique_species = df["species"].dropna().unique().tolist()
 
-                    # Load the asset lookup table
-                    from growpy.config.paths import _get_lookup_table
+                    from growpy.config.paths import _find_species_row
 
-                    lookup_df = _get_lookup_table()
-
-                    # Filter lookup table by species names and extract twig names.
-                    # Each twig is converted once using its native name.
                     twig_filter = []
                     for species in unique_species:
-                        # Try matching Common Name
-                        match = lookup_df[
-                            lookup_df["Common Name"].str.lower() == species.lower()
-                        ]
-
-                        twig_name = None
-
-                        # Try matching aliases if no direct match
-                        if match.empty and "Aliases" in lookup_df.columns:
-                            for _, row in lookup_df.iterrows():
-                                aliases = str(row.get("Aliases", "")).lower()
-                                if species.lower() in [
-                                    a.strip() for a in aliases.split(",")
-                                ]:
-                                    candidate = str(row.get("Twig", ""))
-                                    if candidate not in [
-                                        "—",
-                                        "",
-                                        "nan",
-                                    ] and not pd.isna(candidate):
-                                        twig_name = candidate.strip()
-                                    break
-                        elif not match.empty:
-                            candidate = str(match.iloc[0].get("Twig", ""))
+                        try:
+                            row = _find_species_row(species)
+                            candidate = str(row.get("Twig", ""))
                             if candidate not in ["—", "", "nan"] and not pd.isna(
                                 candidate
                             ):
-                                twig_name = candidate.strip()
+                                twig_filter.append(candidate.strip())
+                        except ValueError:
+                            logger.warning(
+                                "Species '%s' not found in lookup table", species
+                            )
 
-                        if twig_name:
-                            twig_filter.append(twig_name)
-
-                    twig_filter = list(set(twig_filter))  # Remove duplicates
+                    twig_filter = list(set(twig_filter))
                 else:
                     # Direct asset lookup CSV - get unique twig names
                     twig_filter = []
