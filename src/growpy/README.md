@@ -9,7 +9,6 @@ For installation, pipeline usage, and dataset production, see the [project READM
 ```text
 growpy/
 ├── __init__.py        # Public API (create_grove, create_forest, export functions)
-├── growpy.toml        # Central configuration (all CLI defaults)
 ├── config/            # Configuration management
 │   ├── core.py                  # GrowPyConfig dataclass, TOML loading
 │   ├── paths.py                 # Path resolution, twig lookup
@@ -105,7 +104,7 @@ build_tree_mesh(
 ```python
 from growpy import get_config
 
-config = get_config()  # Loads from growpy.toml
+config = get_config()  # Loads from config/*.toml
 print(config.csv_file, config.output_dir, config.verbose)
 ```
 
@@ -132,7 +131,7 @@ generate_forest.py --> data/output/forest/ (USD assemblies)
 ### Key design decisions
 
 - **Pipeline architecture**: Each step produces files consumed by later steps. Steps are independently re-runnable.
-- **Configuration over code**: `growpy.toml` centralizes all defaults. CLI args override TOML. Quality presets bundle related parameters.
+- **Configuration over code**: `config/*.toml` files centralize all defaults. CLI args override TOML. Quality presets bundle related parameters.
 - **CSV-driven**: Species selection and forest layout defined in CSV files, not hardcoded.
 - **Separation of concerns**: CLI layer (orchestration) / core layer (simulation) / IO layer (export) / config layer (parameters).
 

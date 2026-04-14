@@ -1,6 +1,6 @@
 # GrowPy Quality Presets and Density Variants
 #
-# Quality presets are selected by [forest] quality in growpy.toml.
+# Quality presets are selected by [forest] quality in config/forest.toml.
 # Any omitted key falls back to the built-in default in quality.py.
 
 # Mesh Parameters (Grove defaults from Properties.py / build_models API):
@@ -66,7 +66,7 @@ skeleton_connected = true
 # --- Density Variant Definitions ---
 # Each variant can override build_cutoff and twig_density from the quality preset.
 # Only keys listed here override; others inherited from active [quality.*] preset.
-# Referenced by name in export.density_variants list in growpy.toml.
+# Referenced by name in export.density_variants list in config/forest.toml.
 
 [density_variant.full]
 twig_density = 1.5

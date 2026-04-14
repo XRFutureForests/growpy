@@ -22,6 +22,7 @@ dev = ["pytest>=7.0.0", "black>=22.0.0", "ruff>=0.0.250"]
 export = ["usd-core>=23.11"]
 
 [project.scripts]
+growpy-init-config = "growpy.cli.init_config:main"
 growpy-prepare-assets = "growpy.cli.prepare_assets:main"
 growpy-convert-twigs = "growpy.cli.convert_twigs:main"
 growpy-create-models = "growpy.cli.create_growth_models:main"
@@ -33,11 +34,11 @@ growpy-diagnose-growth = "growpy.tools.diagnose_growth:main"
 growpy-visualize-tree = "growpy.tools.visualize_tree:main"
 
 [tool.setuptools]
-packages = ["growpy", "the_grove_23_core"]
+packages = ["growpy", "growpy.config.templates", "the_grove_23_core"]
 package-dir = { "" = "src", "the_grove_23_core" = "src/the_grove_23/modules/the_grove_23_core" }
 
 [tool.setuptools.package-data]
-growpy = ["config/*.csv", "*.toml"]
+"growpy.config.templates" = ["*.toml", "*.csv", "*.md"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "src/the_grove_23/modules"]

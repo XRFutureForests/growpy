@@ -27,18 +27,18 @@ def _load_presets_from_toml() -> Dict[str, Dict[str, Any]]:
     """Load quality presets from TOML [quality.*] sections.
 
     Uses the same multi-file loader as the main config so that presets
-    defined in quality.toml (or growpy.toml) are all discovered.
+    defined in any *.toml file inside the resolved config directory are discovered.
     Each TOML preset is merged with _DEFAULT so that any omitted key
     gets a sensible fallback value.  If no TOML file is found a single
     preset named "default" is returned.
     """
-    from .core import _find_toml_path, _load_toml_data
+    from .core import _find_config_dir, _load_toml_data
 
-    toml_path = _find_toml_path()
-    if not toml_path:
+    cfg_dir = _find_config_dir()
+    if not cfg_dir:
         return {"default": dict(_DEFAULT)}
 
-    data = _load_toml_data(toml_path)
+    data = _load_toml_data(cfg_dir)
 
     quality_section = data.get("quality", {})
     if not quality_section:
@@ -54,7 +54,7 @@ def _load_presets_from_toml() -> Dict[str, Dict[str, Any]]:
 def get_quality_preset(preset_name: str) -> Dict[str, Any]:
     """Get a named quality preset for tree model building.
 
-    Presets are defined in growpy.toml under [quality.<name>].
+    Presets are defined in config/quality.toml under [quality.<name>].
     Missing keys fall back to the built-in default (high-quality profile).
 
     WARNING: Unreal Engine uses 16-bit signed integers for bone indices.

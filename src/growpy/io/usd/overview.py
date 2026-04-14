@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -253,7 +254,9 @@ def generate_icon_grid(
 ) -> Path:
     """Export a PNG grid of all icon previews."""
     interval = max(1, int(height_interval))
-    icon_cols = [c for c in df.columns if c.startswith("icon_h") and not c.endswith("_abs")]
+    icon_cols = [
+        c for c in df.columns if c.startswith("icon_h") and not c.endswith("_abs")
+    ]
     abs_cols = [c + "_abs" for c in icon_cols]
 
     all_species = df["species"].unique()
@@ -267,7 +270,8 @@ def generate_icon_grid(
 
     cell_size = 2.0
     fig, axes = plt.subplots(
-        n_rows, n_cols,
+        n_rows,
+        n_cols,
         figsize=(n_cols * cell_size, n_rows * cell_size),
         squeeze=False,
     )
@@ -326,7 +330,7 @@ def generate_overview_markdown(
 
     Args:
         forest_dir: Path to the forest output directory.
-        height_interval: Height interval in meters from growpy.toml config.
+        height_interval: Height interval in meters from config/forest.toml.
         preset_dir: Path to preset seed.json directory.
         models_dir: Path to growth_models directory.
 
@@ -343,7 +347,9 @@ def generate_overview_markdown(
         return forest_dir / "dataset_overview.md"
 
     interval = max(1, int(height_interval))
-    icon_cols = [c for c in df.columns if c.startswith("icon_h") and not c.endswith("_abs")]
+    icon_cols = [
+        c for c in df.columns if c.startswith("icon_h") and not c.endswith("_abs")
+    ]
 
     # Export CSV with all data (for ML consumption)
     csv_cols = (
@@ -458,4 +464,5 @@ def generate_overview_markdown(
     output_path = forest_dir / "dataset_overview.md"
     output_path.write_text("\n".join(lines), encoding="utf-8")
     logger.info("Dataset overview written to %s", output_path)
+    return output_path
     return output_path

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """CLI front-end for forest generation.
 
-Step 4 of the pipeline. Defaults from growpy.toml [forest], [export], [unreal].
+Step 4 of the pipeline. Defaults from config/forest.toml, config/unreal.toml, config/quality.toml.
 Argument parsing and dispatch only -- pipeline logic lives in
 `growpy.pipelines.forest_stages` and `growpy.pipelines.forest_exports`.
 See docs/cli-reference.md.

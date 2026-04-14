@@ -1,0 +1,23 @@
+# GrowPy General Settings
+#
+# Cross-cutting defaults shared by all pipeline steps.
+# All *.toml files in this directory are loaded and deep-merged in sorted order.
+# CLI arguments override these values when provided.
+#
+# Resolution order: dataclass defaults -> config/*.toml -> CLI arguments
+#
+# To use a custom config directory, set GROWPY_CONFIG to the directory path:
+#   GROWPY_CONFIG=/path/to/custom/config python -m growpy.cli.generate_forest
+
+[general]
+# Random seed for reproducible tree generation (remove to randomize)
+random_seed = 27
+# Default input CSV with tree positions and species
+# CSV columns: x, y, species, height (optional: z, fid, dbh)
+csv_file = "data/input/dataset/all_species.csv"
+# Output directory for generated trees (species subdirectories created automatically)
+output_dir = "data/output/forest"
+# Enable verbose output (INFO-level logging). Use --verbose / --quiet to override.
+verbose = true
+# Enable profiling to track execution time of each pipeline step
+profile = true

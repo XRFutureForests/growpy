@@ -1,14 +1,15 @@
 """Core configuration for GrowPy.
 
 Central configuration loaded from TOML files with layered resolution:
-    dataclass defaults -> TOML files -> CLI arguments
+    dataclass defaults -> config/*.toml -> CLI arguments
 
-Configuration is split across sibling TOML files in the same directory:
-    growpy.toml       - Pipeline settings (main file)
-    quality.toml      - Quality presets and density variants
-    unreal.toml       - Unreal Engine import and Nanite settings
-    helios.toml       - Helios++ LiDAR export settings
-    competition.toml  - Competition groups and thinning schedules
+All TOML files in the resolved config directory are loaded in sorted order
+and deep-merged. Filenames are for humans (e.g. general.toml, assets.toml,
+twigs.toml, growth_models.toml, forest.toml, quality.toml, unreal.toml,
+helios.toml, competition.toml) -- the loader does not care about naming.
+
+To seed a fresh project with a starter config/ directory, run
+``growpy-init-config``.
 """
 
 import os
@@ -31,35 +32,48 @@ def set_global_config(config: "GrowPyConfig") -> None:
     _global_config = config
 
 
-def _find_toml_path() -> Optional[Path]:
-    """Find growpy.toml using search order: env var -> package dir -> cwd."""
+def _editable_install_root() -> Path:
+    """Repo root assuming editable install: src/growpy/config/core.py -> 4 up."""
+    return Path(__file__).resolve().parent.parent.parent.parent
+
+
+def _find_config_dir() -> Optional[Path]:
+    """Find the directory holding *.toml config files.
+
+    Search order:
+        1. GROWPY_CONFIG env var (accepts a directory OR a file inside one)
+        2. ./config/ in the current working directory
+        3. <editable-install-root>/config/
+    """
     env_path = os.environ.get("GROWPY_CONFIG")
     if env_path:
         p = Path(env_path)
-        if p.exists():
-            return p
-        return None
+        if not p.exists():
+            return None
+        return p if p.is_dir() else p.parent
 
-    # Look in the config directory (src/growpy/config/growpy.toml)
-    package_path = Path(__file__).resolve().parent / "growpy.toml"
-    if package_path.exists():
-        return package_path
+    cwd_dir = Path.cwd() / "config"
+    if cwd_dir.is_dir():
+        return cwd_dir
 
-    # Fallback: current working directory
-    cwd_path = Path.cwd() / "growpy.toml"
-    if cwd_path.exists():
-        return cwd_path
+    install_dir = _editable_install_root() / "config"
+    if install_dir.is_dir():
+        return install_dir
 
     return None
 
 
-# Sibling TOML files to merge with the main growpy.toml.
-_SIBLING_TOML_FILES = [
-    "quality.toml",
-    "unreal.toml",
-    "helios.toml",
-    "competition.toml",
-]
+def _find_toml_path() -> Optional[Path]:
+    """Return a representative TOML path inside the resolved config directory.
+
+    Kept for backward compatibility (quality.py and tests still call it). The
+    actual loader uses ``_find_config_dir`` + ``_load_toml_data``.
+    """
+    cfg_dir = _find_config_dir()
+    if not cfg_dir:
+        return None
+    toml_files = sorted(cfg_dir.glob("*.toml"))
+    return toml_files[0] if toml_files else None
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
@@ -74,36 +88,34 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 
 def _load_toml_data(toml_path: Path) -> dict:
-    """Load main TOML file and merge sibling TOML files from the same directory."""
-    with open(toml_path, "rb") as f:
-        data = tomllib.load(f)
+    """Deep-merge every *.toml in the same directory as ``toml_path``.
 
-    toml_dir = toml_path.parent
-    for sibling_name in _SIBLING_TOML_FILES:
-        sibling_path = toml_dir / sibling_name
-        if sibling_path.exists():
-            with open(sibling_path, "rb") as f:
-                sibling_data = tomllib.load(f)
-            data = _deep_merge(data, sibling_data)
-
+    Accepts either a file inside the config dir or the config dir itself.
+    Files are merged in sorted order so results are deterministic.
+    """
+    cfg_dir = toml_path if toml_path.is_dir() else toml_path.parent
+    data: dict = {}
+    for sibling in sorted(cfg_dir.glob("*.toml")):
+        with open(sibling, "rb") as f:
+            data = _deep_merge(data, tomllib.load(f))
     return data
 
 
 def get_config() -> "GrowPyConfig":
-    """Get config instance, auto-loading from growpy.toml if available.
+    """Get config instance, auto-loading the ``config/`` directory if present.
 
-    Search order for TOML file:
-        1. GROWPY_CONFIG environment variable
-        2. src/growpy/growpy.toml (package directory)
-        3. ./growpy.toml (current working directory)
+    Search order for the config directory:
+        1. GROWPY_CONFIG environment variable (directory or any file inside one)
+        2. ./config/ (current working directory)
+        3. <editable-install-root>/config/
 
-    If no TOML file is found, returns dataclass defaults.
+    If no config directory is found, returns dataclass defaults.
     """
     global _global_config
     if _global_config is None:
-        toml_path = _find_toml_path()
-        if toml_path:
-            _global_config = GrowPyConfig.from_toml(toml_path, set_as_global=False)
+        cfg_dir = _find_config_dir()
+        if cfg_dir:
+            _global_config = GrowPyConfig.from_toml(cfg_dir, set_as_global=False)
         else:
             _global_config = GrowPyConfig()
     return _global_config
@@ -281,11 +293,12 @@ class GrowPyConfig:
 
     @classmethod
     def from_toml(cls, toml_path: Path, set_as_global: bool = True) -> "GrowPyConfig":
-        """Create config from a TOML file.
+        """Create config from a TOML file or directory.
 
-        Loads the main growpy.toml plus any sibling TOML files in the same
-        directory. Only keys present in the merged result override dataclass
-        defaults.
+        If ``toml_path`` is a directory, every ``*.toml`` inside is loaded in
+        sorted order and deep-merged. If it's a file, every ``*.toml`` in the
+        file's parent directory is loaded the same way. Only keys present in
+        the merged result override dataclass defaults.
         """
         data = _load_toml_data(toml_path)
 

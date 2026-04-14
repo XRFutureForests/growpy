@@ -1,0 +1,39 @@
+# GrowPy Helios++ LiDAR Export Settings
+#
+# Controls OBJ/MTL export for Helios++ point cloud simulation
+# and material-aware mesh simplification.
+
+[helios]
+# Export OBJ/MTL files for Helios++ LiDAR simulation
+# Converts USDA assemblies to Wavefront OBJ with baked twig instances
+export_obj = false
+# Generate Helios++ scene XML placing all tree OBJs at CSV positions
+individual_obj = false
+helios_scene = false
+# Also export individual per-tree OBJ files (default: false, only combined OBJ)
+# OBJ coordinate up axis: "y" (standard OBJ/Blender) or "z" (matches USD/Helios)
+obj_up_axis = "y"
+
+# Material-aware mesh simplification applied in-memory before OBJ write.
+# Reduces file size and Helios++ processing time without re-reading/re-writing files.
+# Material classification: "bark" = trunk/branch, "wood" = twig wood sub-materials,
+# "leaf" = leaf/foliage (preserve for LAI). Uses WOOD_KEYWORDS for detection.
+[helios.simplification]
+enabled = false
+# Bark/trunk simplification ratio (0.0-1.0, 0.2 = keep 20% of faces)
+bark = 0.2
+# Twig wood simplification ratio (0.0-1.0)
+wood = 0.2
+# Leaf simplification ratio - global default (1.0 = keep all, critical for LAI accuracy)
+# Override per species in [helios.simplification.leaf_per_species] below.
+leaf = 0.5
+# Fruit simplification ratio (0.0-1.0, e.g. EuropeanOakFruits)
+fruit = 0.2
+
+# Per-species leaf simplification overrides.
+# Keys are species_clean names (lowercase, underscores). Species not listed
+# here fall back to the global "leaf" value above.
+[helios.simplification.leaf_per_species]
+# selected_european_beech = 0.2
+# selected_european_oak = 0.4
+# selected_scots_pine = 0.3

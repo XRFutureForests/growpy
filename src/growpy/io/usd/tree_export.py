@@ -416,9 +416,7 @@ def build_tree_mesh(
         # Assembly export uses these to place twigs on the already-scaled mesh
         # instead of applying a separate radial transform.
         if scaled_points_out is not None and radial_scale != 1.0:
-            scaled_points_out.extend(
-                (pt[0], pt[1], pt[2]) for pt in usd_points
-            )
+            scaled_points_out.extend((pt[0], pt[1], pt[2]) for pt in usd_points)
 
         # Convert faces to USD format
         face_vertex_counts = [len(face) for face in faces]
@@ -572,7 +570,7 @@ def handle_bone_limit_error(error: ValueError) -> None:
         "    --skeleton-reduce 0.6    (skip thin branches, most effective, range 0.0-1.0)\n"
         "    --skeleton-length 3.0    (merge nodes into longer bones, range 0.0-5.0)\n"
         "    --quality performance    (use a lower quality preset)\n"
-        "  Config (growpy.toml [forest.skeleton]):\n"
+        "  Config (config/forest.toml [forest.skeleton]):\n"
         "    reduce = 0.6\n"
         "    length = 3.0"
     )

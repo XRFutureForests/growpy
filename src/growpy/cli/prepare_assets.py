@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Copy Grove assets (presets, twigs, textures) for species in CSV.
 
-Step 1 of the pipeline. Defaults from growpy.toml [assets]. See docs/cli-reference.md.
+Step 1 of the pipeline. Defaults from config/assets.toml. See docs/cli-reference.md.
 """
 import argparse
 import logging
@@ -385,7 +385,10 @@ CSV Format Support:
 
             stats["twigs_copied"] += 1
         else:
-            logger.warning("Twig directory not found: %s (checked Grove and custom)", twig_name_original)
+            logger.warning(
+                "Twig directory not found: %s (checked Grove and custom)",
+                twig_name_original,
+            )
             stats["twigs_missing"] += 1
 
     # Copy bark textures with CamelCase -> snake_case conversion (preserves age numbers)

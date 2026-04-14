@@ -1,0 +1,80 @@
+# GrowPy Quality Presets and Density Variants
+#
+# Quality presets are selected by [forest] quality in config/forest.toml.
+# Any omitted key falls back to the built-in default in quality.py.
+
+# Mesh Parameters (Grove defaults from Properties.py / build_models API):
+#   resolution            - Cross-section vertex count at trunk base (int, 8-32,
+#                           Grove default 16)
+#   resolution_reduce     - How fast vertex count drops on thinner branches (0.0-1.0,
+#                           0.0 = uniform, 1.0 = very fast reduction,
+#                           Grove default 0.78)
+#   build_cutoff_age      - Skip branches younger than N growth cycles (Grove default 0)
+#   build_cutoff_thickness - Min branch diameter in meters to include (Grove default 0.0,
+#                           e.g. 0.005 = skip branches thinner than 5 mm)
+#   build_blend           - Extra geometry for smooth branch junctions (Grove default true)
+#   build_end_cap         - Close off open branch ends with geometry (Grove default true)
+#
+# Skeleton Parameters (control bone count -- Unreal 16-bit limit = 32,767 bones):
+#   skeleton_length     - Min bone length in meters (0.0-5.0, Grove default 2.0 m).
+#                         Nodes are skipped until a bone reaches this length.
+#                         Lower = more bones (finer), higher = fewer bones (coarser).
+#   skeleton_reduce     - Branch thickness threshold, unitless (0.0-1.0, Grove default 0.4).
+#                         Thin side branches below this threshold get no bones.
+#                         Squared internally before passing to Grove API.
+#   skeleton_bias       - Bone density distribution (0.0-1.0, Grove default 0.5).
+#                         0.0 = more bones on trunk/base, 1.0 = more bones at tips.
+#   skeleton_connected  - Connected bone chains vs floating bones.
+#                         true = required for Unreal skeletal mesh animation.
+
+[quality.high]
+resolution = 16
+resolution_reduce = 0.5
+build_cutoff_age = 0
+build_cutoff_thickness = 0.005
+build_blend = true
+build_end_cap = true
+skeleton_length = 1.25
+skeleton_reduce = 0.4
+skeleton_bias = 0.5
+skeleton_connected = true
+
+[quality.helios]
+resolution = 9
+resolution_reduce = 0.75
+build_cutoff_age = 0
+build_cutoff_thickness = 0
+build_blend = false
+build_end_cap = false
+skeleton_length = 2.0
+skeleton_reduce = 0.8
+skeleton_bias = 0.5
+skeleton_connected = true
+
+[quality.debug]
+resolution = 8
+resolution_reduce = 0.5
+build_cutoff_age = 0
+build_cutoff_thickness = 0.0
+build_blend = true
+build_end_cap = true
+skeleton_length = 2.0
+skeleton_reduce = 0.5
+skeleton_bias = 0.5
+skeleton_connected = true
+
+# --- Density Variant Definitions ---
+# Each variant can override build_cutoff and twig_density from the quality preset.
+# Only keys listed here override; others inherited from active [quality.*] preset.
+# Referenced by name in export.density_variants list in config/forest.toml.
+
+[density_variant.full]
+twig_density = 1.5
+
+[density_variant.reduced]
+twig_density = 0.75
+build_cutoff_thickness = 0.01 # meters diameter (same unit as quality preset)
+
+[density_variant.bare]
+twig_density = 0.25
+build_cutoff_thickness = 0.02 # meters diameter

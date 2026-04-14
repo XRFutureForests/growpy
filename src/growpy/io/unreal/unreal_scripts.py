@@ -13,6 +13,22 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
+
+def _get_vram_monitor_preamble() -> str:
+    """Return the VRAM/RSS monitor preamble with RSS_LIMIT_GB auto-filled.
+
+    Computes the UE private-memory budget as 95% of total system RAM at
+    generation time; falls back to 28 GB if psutil is unavailable.
+    """
+    try:
+        import psutil
+
+        rss_limit = round(psutil.virtual_memory().total / (1024**3) * 0.95, 1)
+    except Exception:
+        rss_limit = 28.0
+    return _VRAM_MONITOR_PREAMBLE.replace("__RSS_LIMIT_GB__", f"{rss_limit}")
+
+
 # Snippet injected into batch scripts for GPU VRAM monitoring via nvidia-smi
 # and UE process RSS monitoring via Win32 psapi (psutil is not available in UE
 # Python). Returns (used_mb, total_mb, percent) or None if unavailable.
@@ -25,11 +41,12 @@ from ctypes import wintypes
 # Set high (95%) because the orchestrator handles cleanup between batches at a lower threshold.
 VRAM_LIMIT_PERCENT = 95
 
-# Process private-memory budget in GB.  NaniteAssembly imports leak ~1 GB of
+# Process private-memory budget in GB. NaniteAssembly imports leak ~1 GB of
 # CRT heap scratch per file that never returns to the OS, so long batches
-# must abort cleanly before OOM and let ue_exec restart the editor.  The
-# done.txt progress file ensures resume works.
-RSS_LIMIT_GB = 28.0
+# must abort cleanly before OOM and let ue_exec restart the editor. The
+# done.txt progress file ensures resume works. Value auto-computed at
+# generation time as 95% of total system RAM (see _get_vram_monitor_preamble).
+RSS_LIMIT_GB = __RSS_LIMIT_GB__
 
 
 class _PMC(ctypes.Structure):
@@ -997,7 +1014,7 @@ failed_count = 0
 skipped_count = 0
 '''
     # Insert VRAM monitor + nanite config preambles
-    content += _VRAM_MONITOR_PREAMBLE
+    content += _get_vram_monitor_preamble()
     content += preamble
     content += f"""
 {import_blocks}
@@ -1059,7 +1076,7 @@ def generate_unreal_import_script(
         output_dir: Directory containing exported USD files.
         project_path: Unreal project Content path.
         include_static: If True, include static twig variants and static assemblies.
-            Mirrors [export] static setting from growpy.toml.
+            Mirrors [export] static setting from config/forest.toml.
         voxelization: If True, set Nanite shape preservation to Voxelize
             on imported assemblies. Merged into nanite_cfg if not already set.
         nanite_cfg: Optional dict of Nanite build parameters passed through to

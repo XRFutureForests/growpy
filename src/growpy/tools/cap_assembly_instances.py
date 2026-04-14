@@ -2,7 +2,7 @@
 
 Re-running the full Grove simulation is expensive. This script reads existing
 assembly USD files, detects oversized PointInstancers, and trims them down to
-``max_assembly_instances`` from growpy.toml (default 5000). Arrays trimmed in
+``max_assembly_instances`` from config/forest.toml (default 5000). Arrays trimmed in
 parallel: positions, orientations, scales, protoIndices, bindJoints,
 bindJointWeights.
 

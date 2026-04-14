@@ -1,0 +1,75 @@
+# GrowPy Growth Model Settings
+# Used by step 3: create_growth_models.py (growpy-create-models)
+# Includes yield-table calibration, yield-source selection, and dataset planner.
+
+[growth_models]
+# Maximum growth cycles to simulate (1-250)
+# Automatically stops early when growth plateaus
+cycles = 30
+# Random seeds to average for robust curves (1-10)
+# Use 3+ for production, 1 for quick tests
+seeds = 1
+# Minimum height increase per cycle to consider as growth (meters)
+# Lower values = more sensitive plateau detection
+height_threshold = 0.01
+# Stop after N consecutive cycles without significant growth (1-20)
+# Lower values = earlier termination, prevents wasting time on plateaued trees
+max_cycles_without_growth = 3
+# Maximum simulation time per seed in seconds (10-3600)
+# Increase for complex species; prevents stuck simulations
+timeout = 600
+
+# --- Yield table calibration (integrated into create_growth_models.py) ---
+[calibration]
+# When enabled, create_growth_models.py automatically calibrates against yield tables
+# after the initial simulation, then re-simulates with calibration applied.
+enabled = true
+# Align grove height growth to yield table height curve.
+# Applies per-cycle grow_length multipliers from calibrated seed.json files during
+# simulation (step 4). Only affects overall growth speed, not branch shape.
+# When cycles exceed the calibration array length, the last value is held.
+# false = use original Grove grow_length values from seed.json (no height alignment)
+align_height = true
+# Align grove trunk DBH to yield table DBH curve.
+# Applies radial scaling at export to match target DBH from calibrated seed.json files.
+# Scales trunk mesh perpendicular to bone axes at breast height (1.3m), blending
+# smoothly to 1.0 at the crown. Only affects trunk thickness, not branch shape.
+# false = export Grove geometry as-is (trunk may be thicker/thinner than yield table)
+align_dbh = true
+# Directory for local yield table CSVs.
+# Format: age,height,dbh (age in years, height in meters, dbh in centimeters)
+# File naming: <standardized_species_name>.csv (e.g., norway_spruce.csv)
+yield_tables_dir = "data/input/yield_tables"
+# Generate comparison plots (even without calibration)
+# Plots are saved alongside growth models in data/assets/growth_models/<species>/
+plot = true
+# Yield table resolution order per species:
+#   1. Local CSV in yield_tables_dir (by standardized name)
+#   2. Ingested store (pylometree-ingest output in yield_sources.store_dir)
+# Species without yield data use uncalibrated Grove output for both height and DBH.
+
+# --- Yield table store ---
+# Pre-ingested yield tables from pylometree providers.
+# Run: pylometree-ingest --store-dir data/input/yield_tables/store
+[yield_sources]
+# Directory for the normalized yield table store (ingested CSVs + manifest)
+store_dir = "data/input/yield_tables/store"
+# Preferred region filter for table selection (case-insensitive exact match)
+# Current store regions: "DE", "DE-NW", "DE-Central", "EU-West"
+# Empty string = no filter (selects from all regions by best site index)
+preferred_region = ""
+# Preferred site index for table selection (closest match).
+# Uses the provider's site index scale (e.g., German Ertragsklasse: 1=best).
+# The manifest h50 column (height at age 50 in meters) provides a universal
+# metric for cross-referencing with other SI definitions.
+# When set, overrides the automatic grove h50-based selection for all species.
+# Per-species overrides in [calibration.species."..."] take priority.
+# 0 = no preference (auto-select by simulated grove h50)
+preferred_site_index = 0
+
+# --- Dataset CSV planner ---
+[dataset]
+# Number of competition neighbors around the center tree (3, 4, 5, or 6)
+# Neighbors are placed in a regular polygon at species-specific spacing.
+# 3 = equilateral triangle, 4 = square, 5 = pentagon, 6 = hexagon
+competition_neighbors = 3

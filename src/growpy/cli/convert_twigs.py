@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Convert Grove twig .blend files to USD with skeletal and static mesh variants.
 
-Step 2 of the pipeline. Defaults from growpy.toml [twigs]. See docs/cli-reference.md.
+Step 2 of the pipeline. Defaults from config/twigs.toml. See docs/cli-reference.md.
 """
 
 import bpy

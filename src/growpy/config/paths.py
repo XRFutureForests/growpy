@@ -35,22 +35,21 @@ def _get_project_root() -> Path:
 def _get_lookup_table() -> pd.DataFrame:
     """Load tree asset lookup table.
 
-    Looks in multiple locations:
-    1. src/growpy/config/tree_asset_lookup.csv (packaged with code)
-    2. config/tree_asset_lookup.csv (project root override)
-    3. data/tree_asset_lookup.csv (legacy)
-
-    Returns:
-        DataFrame with species lookup data
+    Resolution order:
+    1. <resolved config dir>/tree_asset_lookup.csv (follows GROWPY_CONFIG)
+    2. <project root>/config/tree_asset_lookup.csv
+    3. <package templates>/tree_asset_lookup.csv (package fallback)
     """
-    project_root = _get_project_root()
+    from .core import _find_config_dir
 
-    # Try locations in order
-    lookup_paths = [
-        Path(__file__).parent / "tree_asset_lookup.csv",  # Packaged with code
-        project_root / "config" / "tree_asset_lookup.csv",  # Project root override
-        project_root / "data" / "tree_asset_lookup.csv",  # Legacy
-    ]
+    project_root = _get_project_root()
+    cfg_dir = _find_config_dir()
+
+    lookup_paths = []
+    if cfg_dir:
+        lookup_paths.append(cfg_dir / "tree_asset_lookup.csv")
+    lookup_paths.append(project_root / "config" / "tree_asset_lookup.csv")
+    lookup_paths.append(Path(__file__).parent / "templates" / "tree_asset_lookup.csv")
 
     for lookup_path in lookup_paths:
         if lookup_path.exists():
