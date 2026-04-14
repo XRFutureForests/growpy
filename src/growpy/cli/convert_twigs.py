@@ -155,6 +155,7 @@ def process_twig_directory(
     boundary_edge_mm: float = 0.5,
     interior_decimate_ratio: float = 0.0,
     interior_edge_mm: float = 0.0,
+    interior_boundary_rings: int = 1,
 ) -> Dict[str, List[Path]]:
     """Process all twig blend files in a directory.
 
@@ -237,6 +238,7 @@ def process_twig_directory(
                 boundary_edge_mm=boundary_edge_mm,
                 interior_decimate_ratio=interior_decimate_ratio,
                 interior_edge_mm=interior_edge_mm,
+                interior_boundary_rings=interior_boundary_rings,
             )
 
             if exported_files:
@@ -474,6 +476,7 @@ Output per twig:
                 max(0.0, config.twigs_interior_decimate_ratio), 1.0
             ),
             interior_edge_mm=max(0.0, config.twigs_interior_edge_mm),
+            interior_boundary_rings=max(0, int(config.twigs_interior_boundary_rings)),
         )
     elif twig_path.is_dir():
         # Directory
@@ -493,6 +496,7 @@ Output per twig:
                 max(0.0, config.twigs_interior_decimate_ratio), 1.0
             ),
             interior_edge_mm=max(0.0, config.twigs_interior_edge_mm),
+            interior_boundary_rings=max(0, int(config.twigs_interior_boundary_rings)),
         )
     else:
         return 1

@@ -45,9 +45,7 @@ def _strip_previous_calibration(presets_dir: Path, species_list: List[str]) -> N
             logger.info("Stripped previous calibration from %s", species)
 
 
-def _resolve_species_from_csv(
-    csv_path: Path, script_dir: Path
-) -> Optional[List[str]]:
+def _resolve_species_from_csv(csv_path: Path, script_dir: Path) -> Optional[List[str]]:
     """Parse CSV and return list of standardized species names."""
     import pandas as pd
 
@@ -67,16 +65,12 @@ def _resolve_species_from_csv(
 
         csv_species = []
         for species in unique_species:
-            match = lookup_df[
-                lookup_df["Common Name"].str.lower() == species.lower()
-            ]
+            match = lookup_df[lookup_df["Common Name"].str.lower() == species.lower()]
 
             if match.empty and "Aliases" in lookup_df.columns:
                 for _, row in lookup_df.iterrows():
                     aliases = str(row.get("Aliases", "")).lower()
-                    if species.lower() in [
-                        a.strip() for a in aliases.split(",")
-                    ]:
+                    if species.lower() in [a.strip() for a in aliases.split(",")]:
                         match = lookup_df[
                             lookup_df["Common Name"] == row["Common Name"]
                         ]
@@ -160,9 +154,9 @@ def _run_calibration_pass(
                 logger.info("  Grove uncalibrated h50: %.1f m", grove_h50)
 
         # Determine effective site index preference (per-species override > global)
-        explicit_si = config.calibration_species.get(
-            common_name, {}
-        ).get("site_index", config.yield_sources_preferred_site_index)
+        explicit_si = config.calibration_species.get(common_name, {}).get(
+            "site_index", config.yield_sources_preferred_site_index
+        )
 
         # When user explicitly sets a site index, suppress grove h50 so SI
         # takes priority in select_best_table.  Otherwise let grove h50
@@ -186,9 +180,7 @@ def _run_calibration_pass(
             continue
 
         # Use explicit fpy from TOML override, or None for auto-estimation
-        fpy = config.calibration_species.get(common_name, {}).get(
-            "flushes_per_year"
-        )
+        fpy = config.calibration_species.get(common_name, {}).get("flushes_per_year")
 
         ok = calibrate_species(
             species_name=common_name,
@@ -298,7 +290,9 @@ def _generate_grove_only_plots(
     if not uncalibrated:
         return
 
-    logger.info("Generating grove-only plots for %d uncalibrated species...", len(uncalibrated))
+    logger.info(
+        "Generating grove-only plots for %d uncalibrated species...", len(uncalibrated)
+    )
     for species_std in sorted(uncalibrated):
         h = analyzer.height_curves.get(species_std)
         d = analyzer.dbh_curves.get(species_std, [])
@@ -432,9 +426,7 @@ def _ingest_yield_tables(
             logger.error("  Provider %s failed: %s", provider.name, e)
             errors += 1
 
-        logger.info(
-            "  %s: %d tables ingested, %d errors", provider.name, count, errors
-        )
+        logger.info("  %s: %d tables ingested, %d errors", provider.name, count, errors)
         total_tables += count
         total_errors += errors
 
@@ -771,10 +763,16 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
             successful = [s for s, ok in results.items() if ok]
 
             # Snapshot uncalibrated curves before calibration overwrites them
-            uncal_heights = {s: list(analyzer.height_curves[s]) for s in successful
-                            if s in analyzer.height_curves}
-            uncal_dbhs = {s: list(analyzer.dbh_curves[s]) for s in successful
-                          if s in analyzer.dbh_curves}
+            uncal_heights = {
+                s: list(analyzer.height_curves[s])
+                for s in successful
+                if s in analyzer.height_curves
+            }
+            uncal_dbhs = {
+                s: list(analyzer.dbh_curves[s])
+                for s in successful
+                if s in analyzer.dbh_curves
+            }
 
             logger.info("")
             logger.info("=" * 60)
@@ -825,6 +823,13 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
         # Save final results
         analyzer.save_growth_models()
+
+    # Generate cross-species growth model report
+    from growpy.utils.growth_report import generate_growth_model_report
+
+    logger.info("")
+    logger.info("Generating growth model report...")
+    generate_growth_model_report(default_assets_dir / "growth_models", presets_dir)
 
 
 if __name__ == "__main__":

@@ -2411,9 +2411,9 @@ def _apply_interior_decimate(
     the requested edge size regardless of input resolution.  The explicit ratio
     parameter is ignored in that case.
 
-    The ratio is rescaled so it applies to interior faces only, not the global
-    face count.  This ensures the parameter has meaningful effect even when
-    boundary faces dominate after densification.
+    The ratio is passed directly to Blender's Decimate modifier.  Protected
+    vertices (boundary rings + tube verts) are shielded via an inverted vertex
+    group, so collapse operates only on the interior.
 
     Args:
         obj: Blender mesh object (should be called AFTER alpha trimming)
@@ -2509,17 +2509,7 @@ def _apply_interior_decimate(
 
     total_verts = len(bm.verts)
     decimatable = total_verts - len(preserve_indices)
-
-    # Count interior vs protected faces for ratio rescaling.
-    # Blender's decimate ratio is global (fraction of total faces to keep),
-    # but the user's ratio should apply to interior faces only.
     total_faces = len(bm.faces)
-    interior_face_count = sum(
-        1
-        for f in bm.faces
-        if all(v.index not in preserve_indices for v in f.verts)
-    )
-    protected_face_count = total_faces - interior_face_count
 
     # Compute ratio from interior_edge_mm when specified
     if interior_edge_mm > 0:
@@ -2556,28 +2546,14 @@ def _apply_interior_decimate(
         )
         return
 
-    # Rescale ratio so it applies to interior faces only.
-    # effective_ratio = (protected + ratio * interior) / total
-    # This ensures ratio=0.3 keeps 30% of interior faces regardless of
-    # how many boundary faces exist after densification.
-    if interior_face_count > 0 and total_faces > 0:
-        effective_ratio = (
-            protected_face_count + ratio * interior_face_count
-        ) / total_faces
-    else:
-        effective_ratio = 1.0
-
     logger.info(
         "Interior decimate: %d tube verts protected, "
-        "%d boundary verts protected, %d verts decimatable, "
-        "%d/%d interior faces (ratio %.3f -> effective %.3f)",
+        "%d boundary verts protected, %d/%d verts decimatable (ratio %.3f)",
         len(tube_verts),
         len(boundary_verts),
         decimatable,
-        interior_face_count,
-        total_faces,
+        total_verts,
         ratio,
-        effective_ratio,
     )
 
     # Create/replace vertex group
@@ -2609,7 +2585,7 @@ def _apply_interior_decimate(
     except Exception:
         pass
     mod = obj.modifiers.new(name="InteriorDecimate", type="DECIMATE")
-    mod.ratio = float(effective_ratio)
+    mod.ratio = float(ratio)
     mod.vertex_group = vg.name
     mod.invert_vertex_group = True
     # Triangulate collapse produces more stable results for our pipeline
@@ -3081,6 +3057,7 @@ def process_twig_file(
     boundary_band_mm=1.0,
     interior_decimate_ratio=0.0,
     interior_edge_mm=0.0,
+    interior_boundary_rings=1,
 ):
     """Process a single twig blend file.
 
@@ -3421,15 +3398,12 @@ def process_twig_file(
 
                 # 5) Interior decimation - simplify leaf interiors, protect branches
                 if interior_decimate:
-                    try:
-                        _apply_interior_decimate(
-                            obj,
-                            ratio=interior_decimate_ratio,
-                            boundary_rings=1,
-                            interior_edge_mm=interior_edge_mm,
-                        )
-                    except Exception:
-                        pass
+                    _apply_interior_decimate(
+                        obj,
+                        ratio=interior_decimate_ratio,
+                        boundary_rings=interior_boundary_rings,
+                        interior_edge_mm=interior_edge_mm,
+                    )
 
                 # Recalculate normals
                 bpy.context.view_layer.objects.active = obj

@@ -71,6 +71,10 @@ interior_decimate_ratio = 0.01
 # When set, derives the decimation ratio automatically so interior faces
 # converge to this edge size regardless of input resolution.
 interior_edge_mm = 0
+# Number of vertex rings inward from the mesh boundary to protect from decimation.
+# 0 = protect only boundary verts, 1 = also protect first interior ring, etc.
+# Higher values preserve silhouette fidelity but leave more faces unchanged.
+interior_boundary_rings = 1
 
 # --- Step 3: create_growth_models.py ---
 [growth_models]

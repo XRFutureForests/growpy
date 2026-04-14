@@ -205,6 +205,7 @@ class GrowPyConfig:
     # [twigs] - interior decimation
     twigs_interior_decimate_ratio: float = 0.5
     twigs_interior_edge_mm: float = 0.0
+    twigs_interior_boundary_rings: int = 1
 
     # [helios]
     helios_export_obj: bool = False
@@ -332,6 +333,8 @@ class GrowPyConfig:
             kwargs["twigs_interior_decimate_ratio"] = twigs["interior_decimate_ratio"]
         if "interior_edge_mm" in twigs:
             kwargs["twigs_interior_edge_mm"] = twigs["interior_edge_mm"]
+        if "interior_boundary_rings" in twigs:
+            kwargs["twigs_interior_boundary_rings"] = twigs["interior_boundary_rings"]
 
         # [growth_models]
         gm = data.get("growth_models", {})

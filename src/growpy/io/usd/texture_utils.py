@@ -418,9 +418,16 @@ def extract_alpha_from_diffuse(
 def strip_alpha_from_diffuse(diffuse_path: Path) -> bool:
     """Remove alpha channel from diffuse texture, converting RGBA to RGB.
 
-    This ensures diffuse textures don't have embedded alpha after we've
-    extracted it to a dedicated alpha texture. Matches the pattern of
-    existing Grove textures like BeechDiffuse.jpg which have no alpha.
+    Unreal Nanite skeletal meshes do not work well with masked materials, so
+    the USD pipeline drops alpha entirely. A plain RGBA->RGB convert leaves
+    whatever garbage RGB values the source stored behind transparent pixels
+    (many authors don't fill those regions). That garbage shows as colored
+    fringe/halo around leaf silhouettes.
+
+    To avoid this, composite RGB against a black background using the alpha
+    channel (rgb_out = rgb * alpha), then drop alpha. Fully-transparent pixels
+    become black, opaque pixels are unchanged, semi-transparent pixels darken
+    smoothly toward black -- clean edges with no halo.
 
     Args:
         diffuse_path: Path to diffuse texture (PNG with alpha)
@@ -434,14 +441,17 @@ def strip_alpha_from_diffuse(diffuse_path: Path) -> bool:
 
         img = Image.open(diffuse_path)
 
-        # Only process if image has alpha channel
         if "A" not in img.getbands():
             return False
 
-        # Convert RGBA to RGB (removes alpha channel)
-        rgb_img = img.convert("RGB")
+        if img.mode != "RGBA":
+            img = img.convert("RGBA")
 
-        # Save back to same path (overwrite)
+        arr = np.array(img, dtype=np.float32)
+        alpha = arr[..., 3:4] / 255.0
+        rgb = arr[..., :3] * alpha
+        rgb_img = Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8), mode="RGB")
+
         rgb_img.save(diffuse_path)
         return True
 
