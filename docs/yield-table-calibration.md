@@ -1,7 +1,7 @@
 # Yield Table Calibration
 
 How GrowPy calibrates Grove 2.3 growth simulations against real-world yield tables
-from [openyieldtables.org](https://openyieldtables.org).
+from local ingested data (via [pylometree](https://github.com/maxsperlich/pylometree)).
 
 ## Problem Statement
 
@@ -100,9 +100,9 @@ behavior for each species.
 
 ### Step 2: Yield Table Comparison & Calibration
 
-`create_growth_models.py` fetches yield table data via the `openyieldtables` Python
-package, interpolates it to per-year resolution using PCHIP (preserving monotonicity),
-and computes per-cycle parameter overrides:
+`create_growth_models.py` loads pre-ingested yield table data via pylometree
+(use `--ingest-yield-tables` flag to populate the local store first), interpolates it to
+per-year resolution using PCHIP (preserving monotonicity), and computes per-cycle parameter overrides:
 
 #### Height Calibration: `grow_length_per_cycle`
 
@@ -260,12 +260,12 @@ Species yield table mappings are in `growpy.toml`:
 [calibration.species."Norway spruce"]
 table_id = 2
 yield_class = 12
-search = "Fichte"
 flushes_per_year = 1.0
 ```
 
-- `search`: helps the yield table API find relevant tables when using `--list-tables`
-- `flushes_per_year`: controls the cycle-to-age mapping (see below)
+- `table_id`: Identifier for the yield table in the ingested pylometree store
+- `yield_class`: Site quality class (index used for lookup)
+- `flushes_per_year`: Cycle-to-age mapping (see below)
 
 ### Cycle-to-Age Mapping: `flushes_per_year`
 
@@ -298,7 +298,7 @@ When not 1.0, the value is stored in the seed.json calibration block for referen
 |------|------|
 | `cli/create_growth_models.py` | Growth model generation + calibration (step 3) |
 | `cli/generate_forest.py` | Forest pipeline with radial scaling |
-| `cli/sweep_dbh_params.py` | Parameter sweep tool |
+| `tools/sweep_dbh_params.py` | Parameter sweep tool (diagnostic) |
 | `config/preset_overrides.py` | PresetOverrides system + `load_target_dbh_from_preset()` |
 | `io/tree_export.py` | Radial scaling in `build_tree_mesh()` |
 | `data/assets/presets/*.seed.json` | Per-species calibration data |

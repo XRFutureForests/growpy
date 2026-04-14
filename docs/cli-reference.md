@@ -13,6 +13,24 @@ python src/growpy/cli/create_growth_models.py
 python src/growpy/cli/generate_forest.py
 ```
 
+## Setup: growpy-init-config
+
+(Optional) Scaffold a project-level configuration directory with starter TOML files
+and species lookup CSV. Useful for customizing defaults without modifying the package.
+
+```bash
+growpy-init-config                      # Copy templates to ./config
+growpy-init-config --target ./myconfig  # Copy to custom directory
+growpy-init-config --force              # Overwrite existing files
+```
+
+**Output:** Copies all files from `growpy/config/templates/` (TOML files + `tree_asset_lookup.csv`)
+to target directory. Existing files are skipped unless `--force` is passed.
+
+All CLI scripts read from the package default `src/growpy/growpy.toml` by default; if you create
+a local config directory, update TOML settings to reference it via `growpy_toml` parameter or
+edit the package configuration directly.
+
 ## Step 1: prepare_assets.py
 
 Copy species assets (presets, twigs, textures) from The Grove 2.3 installation.

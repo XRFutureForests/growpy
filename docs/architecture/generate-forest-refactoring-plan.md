@@ -1,5 +1,8 @@
 # generate_forest.py Refactoring Plan
 
+**Status: HISTORICAL PLANNING DOCUMENT** — This refactoring was proposed but not implemented.
+The actual codebase structure differs from the proposed plan. See `pipeline-overview.md` for the current architecture.
+
 Phase 2 of the `refactor/io-cli-restructure` branch.
 
 ## Current State

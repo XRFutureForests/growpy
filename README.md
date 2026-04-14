@@ -35,7 +35,18 @@ conda activate growpy
 pip install -e .
 ```
 
-### 3. Add The Grove 2.3
+### 3. (Optional) Initialize project configuration
+
+Copy starter TOML files and species lookup CSV to a local `config/` directory:
+
+```bash
+growpy-init-config                    # Copies to ./config (default)
+growpy-init-config --target ./my_config  # Copies to custom directory
+```
+
+You can edit these files to override defaults in `src/growpy/growpy.toml`. All CLI scripts read from `growpy.toml` in the package by default.
+
+### 4. Add The Grove 2.3
 
 The Grove is commercial software ([thegrove3d.com](https://www.thegrove3d.com)) and not included in the repository. Copy or symlink your licensed installation:
 
@@ -98,13 +109,7 @@ The pipeline has 4 sequential steps. Each reads from `growpy.toml` and can run w
 prepare_assets -> convert_twigs -> create_growth_models -> generate_forest
 ```
 
-### Step 0 (optional): Ingest yield tables
-
-Populates the local yield table store from pylometree providers. Run once before Step 3 to enable growth calibration. No dependency on Grove assets.
-
-```bash
-python src/growpy/cli/ingest_yield_tables.py
-```
+Yield table ingestion is integrated into Step 3 via the `--ingest-yield-tables` flag (see Step 3 below).
 
 ### Step 1: Prepare assets
 
@@ -137,9 +142,11 @@ Densification includes alpha-based silhouette trimming, boundary smoothing, and 
 Simulates species growth curves and generates height-to-age prediction models. When `[calibration] enabled = true`, aligns growth to yield tables and re-simulates with calibration applied.
 
 ```bash
-python src/growpy/cli/create_growth_models.py                          # Default from growpy.toml
-python src/growpy/cli/create_growth_models.py --species "European beech"  # Single species
-python src/growpy/cli/create_growth_models.py --seeds 3 --cycles 35    # Robust curves
+python src/growpy/cli/create_growth_models.py                                  # Default from growpy.toml
+python src/growpy/cli/create_growth_models.py --species "European beech"       # Single species
+python src/growpy/cli/create_growth_models.py --seeds 3 --cycles 35            # Robust curves
+python src/growpy/cli/create_growth_models.py --ingest-yield-tables            # Populate yield table store first
+python src/growpy/cli/create_growth_models.py --ingest-yield-tables --clean-store  # Wipe and re-ingest
 ```
 
 **Produces:** `data/assets/growth_models/` (JSON models), calibration data in `.seed.json` files, comparison plots in `data/output/growth_comparison/`
