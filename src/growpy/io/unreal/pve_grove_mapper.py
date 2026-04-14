@@ -22,10 +22,12 @@ from .pve_schema import create_empty_pve_preset
 
 
 def _detect_foliage_variants(species_name: str) -> List[str]:
-    """Detect available foliage variant letters from twig files on disk.
+    """Detect available foliage variant suffixes from twig files on disk.
 
-    Scans the twig directory for ``*_foliage_{letter}_skeletal.*``
-    files and returns sorted variant letters (e.g. ``["a", "b", "c"]``).
+    Scans the twig directory for ``*_foliage_{suffix}_skeletal.*``
+    files and returns sorted variant suffixes.  Handles both single-letter
+    conventions (``["a", "b", "c"]``) and named conventions
+    (``["apical", "lateral"]``, ``["apical_dead", "lateral_dead"]``).
     Returns an empty list when no variants are found (single-file twigs).
     """
     try:
@@ -38,13 +40,34 @@ def _detect_foliage_variants(species_name: str) -> List[str]:
         return []
 
     variants: set[str] = set()
-    pattern = re.compile(r"_foliage_([a-z])_skeletal$")
+    pattern = re.compile(r"_foliage_(.+)_skeletal$")
     for stem in twig_files:
         m = pattern.search(stem)
         if m:
             variants.add(m.group(1))
 
     return sorted(variants)
+
+
+def _detect_twig_source(species_name: str) -> Optional[str]:
+    """Infer the twig source species name from twig files on disk.
+
+    Returns the species prefix before ``_foliage`` in twig filenames,
+    or None when it cannot be determined.  For species that use their
+    own twig the returned value equals *species_name*; for shared twigs
+    it differs (e.g. ``"pacific_silver_fir"`` for Norway Spruce).
+    """
+    try:
+        from ...config.paths import get_twig_files_by_type
+    except ImportError:
+        return None
+
+    twig_files = get_twig_files_by_type(species_name)
+    for stem in twig_files:
+        idx = stem.find("_foliage")
+        if idx > 0:
+            return stem[:idx]
+    return None
 
 
 def map_grove_to_pve(
@@ -1143,10 +1166,13 @@ def _map_primitives_from_skeleton(
     # CRITICAL: Pass num_branches from skeleton (poly_lines count), not from model branch IDs
     t0 = time.perf_counter() if profile else 0
     foliage_variants = _detect_foliage_variants(species_name)
+    twig_source = _detect_twig_source(species_name)
     if foliage_variants:
         logger.debug(
             "Detected foliage variants for %s: %s", species_name, foliage_variants
         )
+    if twig_source and twig_source != species_name:
+        logger.debug("Twig source for %s: %s", species_name, twig_source)
     foliage_data = extract_foliage_data(
         model,
         species_name,
@@ -1154,6 +1180,9 @@ def _map_primitives_from_skeleton(
         num_branches=num_branches,
         verbose=False,
         profile=profile,
+        twig_species=(
+            twig_source if twig_source and twig_source != species_name else None
+        ),
         foliage_variants=foliage_variants or None,
     )
     if profile:

@@ -184,9 +184,10 @@ def _build_import_block(
     """Build a single USD import try/except block.
 
     When configure_nanite is True (for assembly imports), the block also
-    configures the imported nanite assembly: fallback mesh VRAM is reduced
-    and optional voxelization is applied. DynamicWind data is delivered via
-    separate wind JSON files for post-import application.
+    configures the imported nanite assembly: fallback mesh VRAM is reduced.
+    Voxelization is handled by the standalone growpy_nanite_voxelize.py
+    script after UE restart. DynamicWind data is delivered via separate
+    wind JSON files for post-import application.
     """
     # Post-import nanite reconfigure was removed: set_editor_property on
     # nanite_settings + save_asset triggers a synchronous Nanite rebuild
@@ -661,11 +662,14 @@ print("=" * 60)
 
 
 # Unreal Python preamble for configuring nanite assemblies after import.
-# Included in species batch scripts to set shape preservation, wind data, etc.
+# Included in species batch scripts to set fallback mesh, quality settings, etc.
+# Voxelization is handled by the standalone growpy_nanite_voxelize.py script.
 _NANITE_CONFIG_PREAMBLE = '''
 
 # ---------------------------------------------------------------------------
 # Nanite assembly post-import configuration.
+# Voxelization is NOT applied here -- use growpy_nanite_voxelize.py after
+# restarting UE to avoid VRAM accumulation during batch import.
 # DynamicWind data is delivered via separate wind JSON files.
 # UE has no DynamicWindSkeletonAPI USD schema -- wind must be applied
 # post-import (not via USD attributes).
@@ -842,10 +846,9 @@ def _set_nanite_fallback_target(mesh, label, target_name):
 def _configure_nanite_assembly(mesh, label, nanite_cfg=None):
     """Configure a nanite assembly after USD import.
 
-    Enables Nanite (disabled during import to avoid MeshBuilder OOM),
-    reduces fallback mesh VRAM and applies Nanite build settings from
-    nanite_cfg dict. Shape preservation is only set to Voxelize when
-    nanite_cfg["voxelization"] is True.
+    Reduces fallback mesh VRAM and applies Nanite build settings from
+    nanite_cfg dict. Voxelization is handled separately by the standalone
+    growpy_nanite_voxelize.py script (run after UE restart).
     """
     if nanite_cfg is None:
         nanite_cfg = {}
@@ -856,8 +859,9 @@ def _configure_nanite_assembly(mesh, label, nanite_cfg=None):
     # and causes OOM.  We only configure fallback / quality settings
     # which are stored as metadata and applied on the next manual rebuild.
 
-    if nanite_cfg.get("voxelization", False):
-        _set_nanite_shape_voxelize(mesh, label)
+    # NOTE: voxelization removed from batch imports -- it triggers a Nanite
+    # rebuild per mesh that accumulates VRAM.  Use the standalone
+    # growpy_nanite_voxelize.py script after restarting UE instead.
 
     # CRITICAL: set fallback_target BEFORE fallback_percent_triangles, else
     # UE may interpret the percent under the wrong heuristic.
@@ -1068,19 +1072,19 @@ def generate_unreal_import_script(
     scripts sequentially with resource monitoring between batches.
 
     Nanite configuration (fallback reduction, residency, etc.) is always
-    applied to assemblies. Voxelization is controlled separately via
-    nanite_cfg["voxelization"] or the voxelization parameter.
+    applied to assemblies. Voxelization is now handled by the standalone
+    growpy_nanite_voxelize.py script (run after UE restart).
 
     Args:
         output_dir: Directory containing exported USD files.
         project_path: Unreal project Content path.
         include_static: If True, include static twig variants and static assemblies.
             Mirrors [export] static setting from config/forest.toml.
-        voxelization: If True, set Nanite shape preservation to Voxelize
-            on imported assemblies. Merged into nanite_cfg if not already set.
+        voxelization: Deprecated -- voxelization is now a standalone script.
+            Kept for backward compatibility but ignored.
         nanite_cfg: Optional dict of Nanite build parameters passed through to
             _configure_nanite_assembly in generated scripts. Keys:
-            voxelization, fallback_percent, fallback_target,
+            fallback_percent, fallback_target,
             fallback_relative_error, trim_relative_error, target_residency_kb,
             lerp_uvs, max_edge_length_factor, explicit_tangents,
             position_precision, normal_precision.
@@ -1091,10 +1095,9 @@ def generate_unreal_import_script(
     script_dir = output_dir / "unreal_scripts"
     script_dir.mkdir(exist_ok=True)
 
-    # Merge voxelization into nanite_cfg so it reaches the generated script
     if nanite_cfg is None:
         nanite_cfg = {}
-    nanite_cfg.setdefault("voxelization", voxelization)
+    # voxelization removed from nanite_cfg -- handled by standalone script
 
     # Remove stale batch scripts from previous runs
     for old_script in script_dir.glob("import_batch_*.py"):

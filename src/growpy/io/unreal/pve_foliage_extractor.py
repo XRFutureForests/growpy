@@ -255,21 +255,32 @@ def extract_foliage_data(
 
                 # Build twig filename to match our USD export naming convention
                 # Map twig_type to variant name that matches our exported files
-                variant_map = {
-                    "twig_long": "a",
-                    "twig_short": "b",
-                    "twig_upward": "c",
-                }
-                variant = variant_map.get(twig_type, "a")
-
-                # Use twig source species if provided (for shared twigs),
-                # otherwise fall back to tree species name.
                 base_species = (twig_species or species_name).replace(" ", "_").lower()
-                # Only append variant suffix if multiple foliage variants exist
-                if foliage_variants and variant in foliage_variants:
-                    twig_name = f"SK_{base_species}_foliage_{variant}"
-                elif foliage_variants:
-                    twig_name = f"SK_{base_species}_foliage_{foliage_variants[0]}"
+
+                if foliage_variants:
+                    # Classify variants to choose the right mapping
+                    apical = [v for v in foliage_variants if "apical" in v]
+                    lateral = [v for v in foliage_variants if "lateral" in v]
+
+                    if apical or lateral:
+                        # Named variant convention (apical/lateral)
+                        variant_map = {
+                            "twig_long": (apical or foliage_variants)[0],
+                            "twig_short": (lateral or foliage_variants)[0],
+                            "twig_upward": (apical or foliage_variants)[0],
+                        }
+                    else:
+                        # Letter variant convention (a, b, c, ...)
+                        variant_map = {
+                            "twig_long": "a",
+                            "twig_short": "b",
+                            "twig_upward": "c",
+                        }
+                    variant = variant_map.get(twig_type, foliage_variants[0])
+                    if variant in foliage_variants:
+                        twig_name = f"SK_{base_species}_foliage_{variant}"
+                    else:
+                        twig_name = f"SK_{base_species}_foliage_{foliage_variants[0]}"
                 else:
                     twig_name = f"SK_{base_species}_foliage"
 

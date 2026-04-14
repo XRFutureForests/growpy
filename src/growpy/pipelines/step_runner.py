@@ -296,3 +296,15 @@ def generate_unreal_scripts(output_dir: Path, include_static: bool = False) -> N
             species_twig_map=twig_map,
         )
         logger.info("Generated PVE graph builder script: %s", pve_graph_script)
+
+    # Nanite voxelize script (run after UE restart for best VRAM headroom)
+    if config.unreal_import_to_unreal and config.unreal_voxelization:
+        from growpy.io.unreal.nanite_voxelize_script import (
+            generate_nanite_voxelize_script,
+        )
+
+        voxelize_script = generate_nanite_voxelize_script(
+            output_dir=output_dir / "unreal_scripts",
+            import_path=config.unreal_project_path,
+        )
+        logger.info("Generated Nanite voxelize script: %s", voxelize_script)

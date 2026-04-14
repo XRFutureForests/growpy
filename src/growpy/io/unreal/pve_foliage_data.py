@@ -59,11 +59,23 @@ def _resolve_twig_asset_name(
     Handles shared twigs where the PVE recipe uses the tree species name
     (e.g. SK_norway_spruce_foliage_a) but the actual twig asset uses the
     twig source species name (e.g. SK_pacific_silver_fir_foliage).
+
+    Also handles variant resolution when the PVE recipe uses a bare name
+    (e.g. SK_european_oak_foliage) but the actual files include a variant
+    suffix (e.g. SK_european_oak_foliage_apical).
     """
     twig_folder = species_twig_map.get(species, f"{species}_twigs_combined_skeletal")
     twig_source = twig_folder.replace("_twigs_combined_skeletal", "")
 
     if species == twig_source:
+        # Own twig -- verify name exists on disk, fall back to variant match
+        if instances_dir is not None:
+            bare = pve_twig_name.removeprefix("SK_")
+            if not (instances_dir / f"{bare}_skeletal.usda").exists():
+                matches = sorted(instances_dir.glob(f"{bare}_*_skeletal.usda"))
+                if matches:
+                    matched = matches[0].stem.removesuffix("_skeletal")
+                    return f"SK_{matched}"
         return pve_twig_name
 
     bare = pve_twig_name.removeprefix("SK_")
@@ -80,6 +92,11 @@ def _resolve_twig_asset_name(
             return f"SK_{candidate_with_variant}"
         if (instances_dir / f"{candidate_base}_skeletal.usda").exists():
             return f"SK_{candidate_base}"
+        # Neither exact candidate exists -- try partial match for variants
+        matches = sorted(instances_dir.glob(f"{candidate_base}_*_skeletal.usda"))
+        if matches:
+            matched = matches[0].stem.removesuffix("_skeletal")
+            return f"SK_{matched}"
 
     return f"SK_{candidate_with_variant}"
 
