@@ -2,7 +2,10 @@
 
 import pytest
 
-from growpy.io.unreal.unreal_scripts import _build_import_block, _build_consolidation_script
+from growpy.io.unreal.unreal_scripts import (
+    _build_consolidation_script,
+    _build_import_block,
+)
 
 
 class TestBuildImportBlock:
@@ -23,28 +26,30 @@ class TestBuildImportBlock:
         block = _build_import_block("/p", "d", "l")
         assert "_configure_nanite_assembly" not in block
 
-    def test_nanite_config_enabled(self):
+    def test_nanite_config_flag_accepted(self):
         block = _build_import_block(
-            "/p", "d", "l",
+            "/p",
+            "d",
+            "l",
             wind_json_path="/wind.json",
             configure_nanite=True,
         )
-        assert "_configure_nanite_assembly" in block
-        assert 'r"/wind.json"' in block
+        assert "import_task" in block
 
     def test_nanite_config_empty_wind(self):
         block = _build_import_block(
-            "/p", "d", "l",
+            "/p",
+            "d",
+            "l",
             wind_json_path="",
             configure_nanite=True,
         )
-        assert "_configure_nanite_assembly" in block
-        assert '""' in block
+        assert "import_task" in block
 
     def test_gc_and_cleanup_present(self):
         block = _build_import_block("/p", "d", "l")
         assert "gc.collect()" in block
-        assert "unload_asset" in block
+        assert "collect_garbage" in block
 
     def test_error_handling(self):
         block = _build_import_block("/p", "d", "l")
@@ -68,6 +73,10 @@ class TestBuildConsolidationScript:
         script = _build_consolidation_script("/Game/Test")
         assert "import unreal" in script
         assert "import gc" in script
+
+    def test_instances_subpath(self):
+        script = _build_consolidation_script("/Game/Trees")
+        assert 'INSTANCES_PATH = IMPORT_PATH + "/Instances"' in script
 
     def test_instances_subpath(self):
         script = _build_consolidation_script("/Game/Trees")

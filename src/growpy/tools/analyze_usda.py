@@ -12,9 +12,9 @@ Usage:
     python src/growpy/tools/analyze_usda.py path/to/specific_stems_skeletal.usda
 """
 
+import math
 import re
 import sys
-import math
 from pathlib import Path
 
 
@@ -85,8 +85,9 @@ def analyze_stems(filepath: Path) -> dict:
                 bz = [p[2] for p in breast_pts]
                 cx = (min(bx) + max(bx)) / 2
                 cz = (min(bz) + max(bz)) / 2
-                radii = [math.sqrt((p[0] - cx) ** 2 + (p[2] - cz) ** 2)
-                         for p in breast_pts]
+                radii = [
+                    math.sqrt((p[0] - cx) ** 2 + (p[2] - cz) ** 2) for p in breast_pts
+                ]
                 stats["dbh_approx_m"] = 2 * max(radii) if radii else 0
                 stats["breast_height_vertices"] = len(breast_pts)
                 stats["breast_radius_mean"] = sum(radii) / len(radii)
@@ -102,9 +103,7 @@ def analyze_stems(filepath: Path) -> dict:
                 h_bin = round(p[1], 0)
                 if h_bin not in height_slices:
                     height_slices[h_bin] = []
-                height_slices[h_bin].append(
-                    math.sqrt(p[0] ** 2 + p[2] ** 2)
-                )
+                height_slices[h_bin].append(math.sqrt(p[0] ** 2 + p[2] ** 2))
             stats["radial_profile"] = {
                 h: {"count": len(rs), "max_r": max(rs), "mean_r": sum(rs) / len(rs)}
                 for h, rs in sorted(height_slices.items())
@@ -143,7 +142,9 @@ def analyze_assembly(filepath: Path) -> dict:
     stats["has_twigs"] = "TwigPrototypes" in content
 
     # Count PointInstancer instances
-    pos_match = re.search(r'point3f\[\] positions\s*=\s*\[([^\]]*)\]', content, re.DOTALL)
+    pos_match = re.search(
+        r"point3f\[\] positions\s*=\s*\[([^\]]*)\]", content, re.DOTALL
+    )
     if pos_match:
         pos_text = pos_match.group(1)
         instance_count = pos_text.count("(")
@@ -152,7 +153,7 @@ def analyze_assembly(filepath: Path) -> dict:
         stats["twig_instances"] = 0
 
     # Referenced stems file
-    ref_match = re.search(r'references = @\./(.*?)@', content)
+    ref_match = re.search(r"references = @\./(.*?)@", content)
     stats["stems_ref"] = ref_match.group(1) if ref_match else None
 
     return stats
@@ -170,7 +171,9 @@ def print_stats(stats: dict) -> None:
         print(f"  Faces:         {stats.get('face_count', '?')}")
         non_tri = stats.get("non_triangle_faces", 0)
         if non_tri:
-            print(f"  NON-TRIANGLE:  {non_tri} faces! values={stats.get('non_triangle_values')}")
+            print(
+                f"  NON-TRIANGLE:  {non_tri} faces! values={stats.get('non_triangle_values')}"
+            )
         print(f"  Joints:        {stats.get('joint_count', '?')}")
         print(f"  Height:        {stats.get('height', '?'):.2f} m")
         print(f"  Width X:       {stats.get('width_x', '?'):.2f} m")
@@ -190,7 +193,9 @@ def print_stats(stats: dict) -> None:
             print(f"  -------+-------+------------+------------")
             for h in sorted(profile.keys()):
                 r = profile[h]
-                print(f"  {h:5.0f}m | {r['count']:5d} | {r['max_r']:10.4f} | {r['mean_r']:10.4f}")
+                print(
+                    f"  {h:5.0f}m | {r['count']:5d} | {r['max_r']:10.4f} | {r['mean_r']:10.4f}"
+                )
 
     elif stats["type"] == "assembly":
         print(f"  Mesh type:     {stats.get('mesh_type')}")

@@ -22,7 +22,7 @@ from pathlib import Path
 import the_grove_23_core as gc
 
 from growpy import get_config
-from growpy.config.preset_overrides import get_species_overrides, PresetOverrides
+from growpy.config.preset_overrides import PresetOverrides, get_species_overrides
 from growpy.core.grove import add_tree_to_grove, create_grove
 from growpy.core.tree import extract_tree_measurements
 
@@ -30,10 +30,18 @@ from growpy.core.tree import extract_tree_measurements
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="Diagnose growth per cycle for a species.")
-    parser.add_argument("species", nargs="?", default="Norway spruce", help="Species name")
-    parser.add_argument("max_cycles", nargs="?", type=int, default=15, help="Max growth cycles")
-    parser.add_argument("--raw", action="store_true", help="Use raw preset without calibration")
+    parser = argparse.ArgumentParser(
+        description="Diagnose growth per cycle for a species."
+    )
+    parser.add_argument(
+        "species", nargs="?", default="Norway spruce", help="Species name"
+    )
+    parser.add_argument(
+        "max_cycles", nargs="?", type=int, default=15, help="Max growth cycles"
+    )
+    parser.add_argument(
+        "--raw", action="store_true", help="Use raw preset without calibration"
+    )
     parsed = parser.parse_args()
 
     raw_mode = parsed.raw
@@ -61,12 +69,16 @@ def main():
 
     # Show key preset values
     props = grove.get_properties()
-    print(f"  drop_decay={props.drop_decay}, drop_weak={props.drop_weak}, "
-          f"grow_length={props.grow_length}")
+    print(
+        f"  drop_decay={props.drop_decay}, drop_weak={props.drop_weak}, "
+        f"grow_length={props.grow_length}"
+    )
     print()
 
-    print(f"{'Cycle':>5} | {'Height':>8} | {'DBH(cm)':>8} | {'Verts':>7} | "
-          f"{'BBox Y':>8} | {'BBox X':>8} | {'BBox Z':>8} | {'Faces':>7}")
+    print(
+        f"{'Cycle':>5} | {'Height':>8} | {'DBH(cm)':>8} | {'Verts':>7} | "
+        f"{'BBox Y':>8} | {'BBox X':>8} | {'BBox Z':>8} | {'Faces':>7}"
+    )
     print("-" * 85)
 
     for cycle in range(1, max_cycles + 1):
@@ -76,14 +88,16 @@ def main():
         grove.weigh_and_bend()
         grove.simulate(1)
 
-        models = grove.build_models({
-            "resolution": 8,
-            "resolution_reduce": 0.5,
-            "build_cutoff_age": 0,
-            "build_cutoff_thickness": 0.0,
-            "build_blend": False,
-            "build_end_cap": False,
-        })
+        models = grove.build_models(
+            {
+                "resolution": 8,
+                "resolution_reduce": 0.5,
+                "build_cutoff_age": 0,
+                "build_cutoff_thickness": 0.0,
+                "build_blend": False,
+                "build_end_cap": False,
+            }
+        )
 
         measurements = extract_tree_measurements(grove)
         height, dbh = measurements[0] if measurements else (0.0, 0.0)
@@ -92,7 +106,7 @@ def main():
             model = models[0]
             points = model.points
             n_verts = len(points)
-            n_faces = len(model.faces) if hasattr(model, 'faces') else 0
+            n_faces = len(model.faces) if hasattr(model, "faces") else 0
 
             if points:
                 xs = [p.x for p in points]
@@ -108,8 +122,10 @@ def main():
             n_faces = 0
             bbox_y = bbox_x = bbox_z = 0.0
 
-        print(f"{cycle:5d} | {height:8.3f} | {dbh * 100:8.2f} | {n_verts:7d} | "
-              f"{bbox_y:8.3f} | {bbox_x:8.3f} | {bbox_z:8.3f} | {n_faces:7d}")
+        print(
+            f"{cycle:5d} | {height:8.3f} | {dbh * 100:8.2f} | {n_verts:7d} | "
+            f"{bbox_y:8.3f} | {bbox_x:8.3f} | {bbox_z:8.3f} | {n_faces:7d}"
+        )
 
     print()
     print("Note: Height/DBH are from Grove's internal measurement.")

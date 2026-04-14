@@ -217,8 +217,8 @@ else:
         options.set_editor_property('share_assets_for_identical_prims', True)
         options.set_editor_property('merge_identical_material_slots', True)
         # Prevent auto-Nanite during import: the MeshBuilder can OOM on
-        # large skeletal meshes. Post-import _configure_nanite_assembly
-        # enables Nanite with controlled settings instead.
+        # large skeletal meshes.  Setting the threshold to max-int disables
+        # the automatic conversion.
         try:
             options.set_editor_property('nanite_triangle_threshold', 2147483647)
         except Exception:
