@@ -2394,6 +2394,7 @@ def _apply_interior_decimate(
     obj,
     ratio: float = 0.5,
     boundary_rings: int = 1,
+    interior_edge_mm: float = 0.0,
 ):
     """Apply topology-based interior decimation on leaf/needle geometry.
 
@@ -2405,12 +2406,24 @@ def _apply_interior_decimate(
     Boundary vertices (leaf silhouette edges) are also protected, so only the
     interior of leaf planes gets simplified.
 
+    When interior_edge_mm > 0, the decimation ratio is computed automatically
+    from the current average interior edge length so the result converges to
+    the requested edge size regardless of input resolution.  The explicit ratio
+    parameter is ignored in that case.
+
+    The ratio is rescaled so it applies to interior faces only, not the global
+    face count.  This ensures the parameter has meaningful effect even when
+    boundary faces dominate after densification.
+
     Args:
         obj: Blender mesh object (should be called AFTER alpha trimming)
         ratio: Decimation ratio (0.0-1.0, lower = more reduction).
+            Ignored when interior_edge_mm > 0.
         boundary_rings: Number of vertex rings to protect around boundary
+        interior_edge_mm: Target average interior edge length in millimeters.
+            0 = disabled (use ratio instead).
     """
-    if ratio <= 0.0 or ratio >= 1.0:
+    if interior_edge_mm <= 0 and (ratio <= 0.0 or ratio >= 1.0):
         return
 
     mesh = obj.data
@@ -2494,8 +2507,43 @@ def _apply_interior_decimate(
     preserve_indices = {v.index for v in boundary_verts}
     preserve_indices.update(v.index for v in tube_verts)
 
-    total = len(bm.verts)
-    decimatable = total - len(preserve_indices)
+    total_verts = len(bm.verts)
+    decimatable = total_verts - len(preserve_indices)
+
+    # Count interior vs protected faces for ratio rescaling.
+    # Blender's decimate ratio is global (fraction of total faces to keep),
+    # but the user's ratio should apply to interior faces only.
+    total_faces = len(bm.faces)
+    interior_face_count = sum(
+        1
+        for f in bm.faces
+        if all(v.index not in preserve_indices for v in f.verts)
+    )
+    protected_face_count = total_faces - interior_face_count
+
+    # Compute ratio from interior_edge_mm when specified
+    if interior_edge_mm > 0:
+        target_bu = interior_edge_mm / 1000.0
+        interior_edges = [
+            e
+            for e in bm.edges
+            if all(v not in boundary_verts and v not in tube_verts for v in e.verts)
+        ]
+        if interior_edges:
+            avg_interior = sum(e.calc_length() for e in interior_edges) / len(
+                interior_edges
+            )
+            # Face count scales as 1/edge_length^2, so keeping
+            # (current / target)^2 of faces yields the target edge length.
+            if avg_interior > 0 and avg_interior < target_bu:
+                ratio = min(0.95, (avg_interior / target_bu) ** 2)
+                ratio = max(0.05, ratio)
+            elif avg_interior >= target_bu:
+                bm.free()
+                return
+        else:
+            bm.free()
+            return
 
     bm.free()
 
@@ -2508,12 +2556,28 @@ def _apply_interior_decimate(
         )
         return
 
+    # Rescale ratio so it applies to interior faces only.
+    # effective_ratio = (protected + ratio * interior) / total
+    # This ensures ratio=0.3 keeps 30% of interior faces regardless of
+    # how many boundary faces exist after densification.
+    if interior_face_count > 0 and total_faces > 0:
+        effective_ratio = (
+            protected_face_count + ratio * interior_face_count
+        ) / total_faces
+    else:
+        effective_ratio = 1.0
+
     logger.info(
         "Interior decimate: %d tube verts protected, "
-        "%d boundary verts protected, %d verts decimatable",
+        "%d boundary verts protected, %d verts decimatable, "
+        "%d/%d interior faces (ratio %.3f -> effective %.3f)",
         len(tube_verts),
         len(boundary_verts),
         decimatable,
+        interior_face_count,
+        total_faces,
+        ratio,
+        effective_ratio,
     )
 
     # Create/replace vertex group
@@ -2545,7 +2609,7 @@ def _apply_interior_decimate(
     except Exception:
         pass
     mod = obj.modifiers.new(name="InteriorDecimate", type="DECIMATE")
-    mod.ratio = float(ratio)
+    mod.ratio = float(effective_ratio)
     mod.vertex_group = vg.name
     mod.invert_vertex_group = True
     # Triangulate collapse produces more stable results for our pipeline
@@ -3016,6 +3080,7 @@ def process_twig_file(
     boundary_edge_mm=0.5,
     boundary_band_mm=1.0,
     interior_decimate_ratio=0.0,
+    interior_edge_mm=0.0,
 ):
     """Process a single twig blend file.
 
@@ -3040,7 +3105,11 @@ def process_twig_file(
             Edges longer than this are split at midpoint during densification.
             Absolute unit ensures consistent output regardless of input mesh resolution.
         boundary_band_mm: Distance from silhouette in mm to include (default: 1.0)
-        interior_decimate_ratio: Decimation ratio for interior faces (0-1).
+        interior_decimate_ratio: Fallback decimation ratio for interior faces (0-1).
+            Ignored when interior_edge_mm > 0.
+        interior_edge_mm: Target interior edge length in millimeters (default: 0).
+            When > 0, derives the decimation ratio automatically so interior
+            faces converge to this edge size. 0 = disabled (uses ratio instead).
     """
     import bpy
 
@@ -3252,7 +3321,9 @@ def process_twig_file(
             # Optional geometry processing for enhanced leaf detail
             # Restrict to leaf materials to avoid artifacts on twigs/bark
             # densify acts as master switch: when False, export original .blend mesh as-is
-            interior_decimate = 0.0 < interior_decimate_ratio < 1.0
+            interior_decimate = (
+                0.0 < interior_decimate_ratio < 1.0
+            ) or interior_edge_mm > 0
             if densify:
                 # Validate textures before geometry processing
                 # Textures should have been standardized during asset preparation
@@ -3355,6 +3426,7 @@ def process_twig_file(
                             obj,
                             ratio=interior_decimate_ratio,
                             boundary_rings=1,
+                            interior_edge_mm=interior_edge_mm,
                         )
                     except Exception:
                         pass

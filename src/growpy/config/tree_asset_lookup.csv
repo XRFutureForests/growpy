@@ -18,7 +18,7 @@ Black alder,black_alder,Alnus glutinosa,Betulaceae - Alder.seed.json,BlackAlderT
 Hornbeam,hornbeam,Carpinus betulus,Betulaceae - Hornbeam.seed.json,HazelTwig,Betulaceae_Hornbeam,#b9b1a4ff,#94a081e5,,Beech60.jpg,Hainbuche,20,7,fast_broadleaf
 Hazel,hazel,Corylus avellana,Betulaceae - Hazel.seed.json,HazelTwig,Betulaceae_Hazel,#b9b1a4ff,#97a381df,,Beech60.jpg,,,,fast_broadleaf
 Field maple,field_maple,Acer campestre,Sapindaceae - Field maple.seed.json,FieldMapleTwig,Sapindaceae_Field_maple,#b0a695ff,#899684e3,Maple,MapleC65.jpg,,20,7,fast_broadleaf
-Sycamore maple,sycamore_maple,Acer pseudoplatanus,Sapindaceae - Maple.seed.json,SycamoreMapleFallTwig,Sapindaceae_Maple,#b0a695ff,#8e9a83e1,"Maple,Sycamore",MapleA60.jpg,,25,10,fast_broadleaf
+Sycamore maple,sycamore_maple,Acer pseudoplatanus,Sapindaceae - Maple.seed.json,SycamoreMapleFallTwig,Sapindaceae_Maple,#b0a695ff,#8e9a83e1,"Maple,Sycamore",MapleA60.jpg,,25,10,slow_broadleaf
 Japanese maple,japanese_maple,Acer palmatum,Sapindaceae - Japanese maple.seed.json,JapeneseMapleAtropurpureumTwig,Sapindaceae_Japanese_maple,#66594cff,#993326ff,,MapleD40.jpg,,,,fast_broadleaf
 Horse chestnut,horse_chestnut,Aesculus hippocastanum,Sapindaceae - Horse chestnut.seed.json,,Sapindaceae_Horse_chestnut,#8c7f72ff,#59b24cff,,HorseChestnut55.jpg,,,,slow_broadleaf
 Small-leaved linden,small_leaved_linden,Tilia cordata,Malvaceae - Linden.seed.json,SmallLeavedLindenTwig,Malvaceae_Linden,#c4bfb3ff,#98a481de,,LargeLeavedLinden60.jpg,Winterlinde,25,10,fast_broadleaf
