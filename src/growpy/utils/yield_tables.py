@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-
 from pylometree.yield_tables import (  # noqa: F401
     YieldTableData,
     load_local_yield_table,
@@ -75,9 +74,7 @@ def _build_yield_height_interpolator(
     extended_heights = np.array([0.5] + list(yield_heights))
 
     try:
-        A, k, p, _ = fit_chapman_richards(
-            extended_ages, extended_heights, y0=0.5
-        )
+        A, k, p, _ = fit_chapman_richards(extended_ages, extended_heights, y0=0.5)
 
         def cr_interp(ages):
             return _chapman_richards_with_baseline(
@@ -160,13 +157,17 @@ def estimate_flushes_per_year(
     if rel_rmse > FPY_RMSE_THRESHOLD:
         logger.warning(
             "  fpy=%.2f has poor fit (relRMSE=%.3f > %.3f) — falling back to 1.0",
-            fpy, rel_rmse, FPY_RMSE_THRESHOLD,
+            fpy,
+            rel_rmse,
+            FPY_RMSE_THRESHOLD,
         )
         return 1.0
 
     logger.info(
         "  flushes_per_year: %.2f (RMSE=%.2fm, relRMSE=%.3f)",
-        fpy, best_rmse, rel_rmse,
+        fpy,
+        best_rmse,
+        rel_rmse,
     )
 
     return fpy
@@ -219,7 +220,9 @@ def fit_height_dbh_model(
 
         logger.info(
             "  height-DBH model: DBH = %.4f * H^%.4f, R²=%.4f",
-            a, b, r_sq,
+            a,
+            b,
+            r_sq,
         )
         return {"a": round(a, 6), "b": round(b, 6), "r_squared": round(r_sq, 6)}
 
@@ -234,7 +237,7 @@ def predict_dbh_from_height(
 ) -> List[float]:
     """Predict DBH (m) from heights (m) using a fitted power model."""
     a, b = model["a"], model["b"]
-    return [max(0.0, a * (h ** b)) if h > 0 else 0.0 for h in heights]
+    return [max(0.0, a * (h**b)) if h > 0 else 0.0 for h in heights]
 
 
 def interpolate_yield_table(
@@ -279,7 +282,10 @@ def interpolate_yield_table(
         interpolated = np.maximum(interpolated, 0.0)
         logger.debug(
             "  Yield table CR fit: A=%.2f, k=%.4f, p=%.2f, R²=%.4f",
-            A, k, p, r_sq,
+            A,
+            k,
+            p,
+            r_sq,
         )
     except (RuntimeError, ValueError) as e:
         logger.debug("  Yield table CR fit failed (%s), using PCHIP fallback", e)
@@ -436,7 +442,9 @@ def calibrate_species(
     # Auto-estimate flushes_per_year from height curves if not specified
     if flushes_per_year is None:
         flushes_per_year = estimate_flushes_per_year(
-            grove_heights, yield_data.ages, yield_data.heights,
+            grove_heights,
+            yield_data.ages,
+            yield_data.heights,
         )
 
     # Height calibration
@@ -452,8 +460,11 @@ def calibrate_species(
     gl_cv = np.std(gl_arr) / np.mean(gl_arr) if np.mean(gl_arr) > 0 else 0.0
     logger.info(
         "  grow_length: base=%.3f, range=%.4f-%.4f, avg=%.4f, cv=%.3f",
-        base_grow_length, min(grow_lengths), max(grow_lengths),
-        np.mean(grow_lengths), gl_cv,
+        base_grow_length,
+        min(grow_lengths),
+        max(grow_lengths),
+        np.mean(grow_lengths),
+        gl_cv,
     )
 
     # Target DBH via height-DBH allometric model (applied at export via radial scaling)
