@@ -15,13 +15,13 @@ custom_twigs_dir = "data/input/custom_twigs"
 densify = true
 # Alpha threshold for silhouette trimming
 # 0.05-0.3 = minimal (conservative), 0.5 = moderate (recommended), 0.7 = aggressive
-alpha_trim = 0.9
+alpha_trim = 0.95
 # Enable boundary edge smoothing for natural silhouette curves
 smooth_boundary = true
 # Number of Laplacian smoothing passes (1-10)
-smooth_iterations = 20
+smooth_iterations = 10
 # Smoothing strength per iteration (0.0-1.0)
-smooth_factor = 0.2
+smooth_factor = 0.25
 # Target boundary edge length in millimeters (0.1-5.0)
 # Boundary edges longer than this are split at their midpoint during densification.
 # Lower = finer silhouette detail, higher = fewer faces. 0.5 mm is a good default.
@@ -38,4 +38,4 @@ interior_edge_mm = 0
 # Number of vertex rings inward from the mesh boundary to protect from decimation.
 # 0 = protect only boundary verts, 1 = also protect first interior ring, etc.
 # Higher values preserve silhouette fidelity but leave more faces unchanged.
-interior_boundary_rings = 3
+interior_boundary_rings = 2
