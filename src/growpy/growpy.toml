@@ -13,9 +13,9 @@ random_seed = 42
 # Default input CSV with tree positions and species
 # Height mode columns: x, y, species, height (optional: z, fid)
 # Multi-stage mode columns: x, y, species, cycle_interval, max_cycles
-csv_file = "data/input/stand_6trees.csv"
+csv_file = "data/input/stand_4trees_deciduous.csv"
 # Output directory for generated trees (species subdirectories created automatically)
-output_dir = "data/output/stand_6trees_dens100_5m"
+output_dir = "data/output/stand_4trees_deciduous_dist4m_height10m_dens100_foliage100_stem010_twig010"
 # Enable verbose output for PVE preset generation
 verbose = true
 # Enable profiling to track execution time of each pipeline step
@@ -151,14 +151,14 @@ helios_classification = true
 [helios.simplification]
 enabled = true
 # Bark/trunk simplification ratio (0.0-1.0, 0.3 = keep 30% of faces)
-bark = 0.2
+bark = 0.1
 # Twig wood simplification ratio (0.0-1.0, 0.3 = keep 30% of faces)
-wood = 0.2
+wood = 0.1
 # Leaf simplification ratio - global default (1.0 = keep all, critical for LAI accuracy)
 # Override per species in [helios.simplification.leaf_per_species] below.
 leaf = 0.5
 # Fruit simplification ratio (0.0-1.0, e.g. EuropeanOakFruits)
-fruit = 0.2
+fruit = 0.1
 
 # Per-species leaf simplification overrides.
 # Keys are species_clean names (lowercase, underscores). Species not listed
