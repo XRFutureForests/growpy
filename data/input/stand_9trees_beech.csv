@@ -1,10 +1,10 @@
 fid,species,x,y,dbh,height,z
-1,Selected European beech,-10, 10,0.0,15,0
-2,Selected European beech,  0, 10,0.0,15,0
-3,Selected European beech, 10, 10,0.0,15,0
-4,Selected European beech,-10,  0,0.0,15,0
-5,Selected European beech,  0,  0,0.0,15,0
-6,Selected European beech, 10,  0,0.0,15,0
-7,Selected European beech,-10,-10,0.0,15,0
-8,Selected European beech,  0,-10,0.0,15,0
-9,Selected European beech, 10,-10,0.0,15,0
+1,Selected European beech,-5, 5,0.0,15,0
+2,Selected European beech, 0, 5,0.0,15,0
+3,Selected European beech, 5, 5,0.0,15,0
+4,Selected European beech,-5, 0,0.0,15,0
+5,Selected European beech, 0, 0,0.0,15,0
+6,Selected European beech, 5, 0,0.0,15,0
+7,Selected European beech,-5,-5,0.0,15,0
+8,Selected European beech, 0,-5,0.0,15,0
+9,Selected European beech, 5,-5,0.0,15,0
