@@ -24,7 +24,7 @@
     "ue-python.remote.multicastBindAddress": "127.0.0.1",
     "ue-python.remote.commandEndpoint": "127.0.0.1:6776",
     "claudeCode.allowDangerouslySkipPermissions": true,
-    "claudeCode.useCtrlEnterToSend": true,
+    "claudeCode.useCtrlEnterToSend": false,
     "python-envs.workspaceSearchPaths": [
         "./**/.venv",
         "./.conda",

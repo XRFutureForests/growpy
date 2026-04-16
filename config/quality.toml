@@ -29,13 +29,13 @@
 
 [quality.high]
 resolution = 16
-resolution_reduce = 0.5
+resolution_reduce = 0.75
 build_cutoff_age = 0
-build_cutoff_thickness = 0.005
+build_cutoff_thickness = 0.0075
 build_blend = true
 build_end_cap = true
-skeleton_length = 0.9
-skeleton_reduce = 0.333
+skeleton_length = 0.5
+skeleton_reduce = 0.4
 skeleton_bias = 0.5
 skeleton_connected = true
 
