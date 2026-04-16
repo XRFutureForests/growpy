@@ -48,6 +48,40 @@ def _extract_twig_names(pve_json_path: Path) -> list[str]:
     return sorted(unique)
 
 
+def _rewrite_instancer_names(pve_json_path: Path, name_map: dict[str, str]) -> None:
+    """Rewrite instancer_name values in a per-tree PVE recipe.
+
+    The UE PVE plugin (LoadFoliageDataInCollection) requires names in
+    primitives.attributes.instancer_name.values to match the Name fields in
+    FoliageData.json exactly. When _resolve_twig_asset_name resolves a raw
+    Grove name to a suffixed asset name (e.g. SK_european_oak_foliage ->
+    SK_european_oak_foliage_apical) or a shared-twig donor name (e.g.
+    SK_douglas_fir_foliage -> SK_pacific_silver_fir_foliage), this rewrites
+    the per-tree JSON so the two stay consistent.
+    """
+    with open(pve_json_path, "r") as f:
+        data = json.load(f)
+
+    values = (
+        data.get("primitives", {})
+        .get("attributes", {})
+        .get("instancer_name", {})
+        .get("values")
+    )
+    if not isinstance(values, list):
+        return
+
+    for branch_names in values:
+        if not isinstance(branch_names, list):
+            continue
+        for i, name in enumerate(branch_names):
+            if name in name_map and name_map[name] != name:
+                branch_names[i] = name_map[name]
+
+    with open(pve_json_path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
 def _resolve_twig_asset_name(
     pve_twig_name: str,
     species: str,
@@ -183,6 +217,7 @@ def generate_foliage_data(
             continue
 
         foliage_data_entries = []
+        name_map: dict[str, str] = {}
         for twig_name in twig_names:
             resolved_name = twig_name
             if can_resolve_paths and species_twig_map is not None:
@@ -192,6 +227,7 @@ def generate_foliage_data(
                     species_twig_map,
                     instances_dir,
                 )
+            name_map[twig_name] = resolved_name
             entry: dict = {
                 "Name": resolved_name,
                 "scale": 0.0,
@@ -209,6 +245,9 @@ def generate_foliage_data(
                     instances_dir=instances_dir,
                 )
             foliage_data_entries.append(entry)
+
+        if any(raw != res for raw, res in name_map.items()):
+            _rewrite_instancer_names(recipe_path, name_map)
 
         variations.append(
             {

@@ -1769,6 +1769,9 @@ def get_twig_usd_map_for_species(
 
     # If no type-specific matches found, assign all available twigs to all grove types
     # randomly. This handles species with non-standard naming.
+    # twig_dead is excluded: without a dedicated dead-twig asset, dead positions
+    # should be skipped (assembly_export does this when the type has no prototypes)
+    # rather than filled with living foliage at the default upright orientation.
     if not twig_usd_map and twig_files_by_type:
         all_paths = []
         for twig_type, twig_paths in twig_files_by_type.items():
@@ -1777,6 +1780,8 @@ def get_twig_usd_map_for_species(
                 all_paths.append(resolved)
         if all_paths:
             for grove_type in type_mapping:
+                if grove_type == "twig_dead":
+                    continue
                 twig_usd_map[grove_type] = list(all_paths)
 
     return twig_usd_map

@@ -98,7 +98,6 @@ Execute in Unreal Engine:
 Requires the Procedural Vegetation Editor plugin to be enabled.
 """
 
-import json
 import os
 import unreal
 
@@ -251,82 +250,6 @@ def _create_pve_preset(asset_name, package_path, json_dir,
     return asset
 
 
-def _patch_foliage_meshes(asset, foliage_folder):
-    """Force-set foliage_meshes on preset variations via import_text.
-
-    UpdateDataAsset creates variation slots from FoliageData.json but cannot
-    resolve SkeletalMesh assets because UE USD import adds an SK_ prefix and
-    places them in a SkeletalMeshes/ subfolder. This reads pre-computed
-    AssetPath entries from FoliageData.json and forces the references.
-    """
-    variations = asset.get_editor_property("preset_variations")
-    if not variations:
-        return
-
-    patched = 0
-    for var in variations:
-        # Always attempt patch: UpdateDataAsset may leave foliage_meshes empty
-        # for species that use shared twigs (e.g. Norway spruce -> pacific
-        # silver fir).
-
-        foliage_path = os.path.join(
-            asset.get_editor_property("json_directory_path").path,
-            "FoliageData.json",
-        )
-        if not os.path.isfile(foliage_path):
-            continue
-
-        with open(foliage_path, "r") as _f:
-            foliage_data = json.load(_f)
-
-        var_name = ""
-        et = var.export_text()
-        if 'Name="' in et:
-            var_name = et.split('Name="')[1].split('"')[0]
-
-        matched_entries = []
-        for fv in foliage_data.get("Variations", []):
-            fv_name = fv.get("name", "")
-            if fv_name == var_name or not matched_entries:
-                matched_entries = fv.get("Data", [])
-                if fv_name == var_name:
-                    break
-
-        if not matched_entries:
-            continue
-
-        mesh_refs = []
-        for entry in matched_entries:
-            asset_path = entry.get("AssetPath")
-            if asset_path:
-                mesh_refs.append(asset_path)
-            else:
-                tn = entry.get("Name", "")
-                if tn:
-                    sk_name = tn if tn.startswith("SK_") else "SK_" + tn
-                    mesh_refs.append(
-                        "%s/%s.%s" % (foliage_folder, sk_name, sk_name)
-                    )
-
-        if not mesh_refs:
-            continue
-
-        mesh_csv = ",".join('"%s"' % r for r in mesh_refs)
-        import_str = "(FoliageMeshes=(%s))" % mesh_csv
-        try:
-            ok = var.import_text(import_str)
-            if ok:
-                patched += 1
-        except Exception as _e:
-            unreal.log_warning(
-                "[PVE] import_text failed for variation %s: %s" % (var_name, _e)
-            )
-
-    if patched:
-        unreal.EditorAssetLibrary.save_loaded_asset(asset)
-        unreal.log("[PVE] Patched foliage_meshes on %d variation(s)" % patched)
-
-
 def main():
     if not _have_pve_classes():
         unreal.log_error(
@@ -382,8 +305,9 @@ def main():
             trunk_material_name=trunk_mat,
         )
         if asset is not None:
-            _patch_foliage_meshes(asset, foliage_folder)
-        created += 1
+            created += 1
+        else:
+            unreal.log_warning("[PVE] Skipped %s (creation failed)" % asset_name)
 
     unreal.log(
         "[PVE] Created/refreshed %d preset(s) under %s"
