@@ -1,7 +1,7 @@
 fid,species,x,y,dbh,height,z
-1,Selected European beech,-5,2.5,0.0,5,0
-2,Selected Scots pine,-5,-2.5,0.0,5,0
-3,Selected Silver fir,0,2.5,0.0,5,0
-4,Selected European oak,0,-2.5,0.0,5,0
-5,Selected Paper birch,5,2.5,0.0,5,0
-6,Selected Sycamore maple,5,-2.5,0.0,5,0
+1,Selected European beech,-5,2.5,0.0,10,0
+2,Selected Scots pine,-5,-2.5,0.0,10,0
+3,Selected Silver fir,0,2.5,0.0,10,0
+4,Selected European oak,0,-2.5,0.0,10,0
+5,Selected Paper birch,5,2.5,0.0,10,0
+6,Selected Sycamore maple,5,-2.5,0.0,10,0
