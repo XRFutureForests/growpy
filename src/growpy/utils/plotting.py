@@ -15,48 +15,41 @@ def _init_plot_style():
     plt.style.use(style)
 
 
+def _display_name(species_std: str) -> str:
+    """Convert snake_case species name to Title Case display name."""
+    return species_std.replace("_", " ").title()
+
+
+def _add_flush_axis(ax, fpy: float) -> None:
+    """Add flush labels on the same x-axis as age, showing both years and flushes."""
+    # Get current tick locations
+    ticks = ax.get_xticks()
+
+    # Calculate flush values for each tick
+    flushes = ticks * fpy
+
+    # Format tick labels to show both age (years) and flushes
+    tick_labels = []
+    for age, flush in zip(ticks, flushes):
+        # Show flush count in parentheses after age
+        flush_str = f"{flush:.1f}"
+        tick_labels.append(f"{age:.0f}({flush_str})")
+
+    # Set ticks explicitly to avoid warning
+    ax.set_xticks(ticks)
+    ax.set_xticklabels(tick_labels)
+
+    # Update x-axis label to indicate both metrics
+    ax.set_xlabel("Age (years) [Flushes]", fontsize=12)
+
+
 def _extract_common(metadata: Dict[str, Any], height_curve, dbh_curve):
     """Extract common data used across multiple plot functions."""
     fpy = metadata.get("flushes_per_year", 1.0)
     ages = np.array([(i + 1) / fpy for i in range(len(height_curve))])
     heights = np.array(height_curve)
     dbh_cm = np.array(dbh_curve) * 100
-    individual_h = metadata.get("individual_height_curves", [])
-    individual_d = metadata.get("individual_dbh_curves", [])
-    seeds = metadata.get("seeds_tested", [])
-    return fpy, ages, heights, dbh_cm, individual_h, individual_d, seeds
-
-
-def _seed_envelope(individual_curves, scale=1.0):
-    """Compute min/max envelope across seed curves.
-
-    Returns (min_arr, max_arr) of equal length, or (None, None) if < 2 seeds.
-    """
-    if len(individual_curves) < 2:
-        return None, None
-    max_len = max(len(c) for c in individual_curves)
-    padded = []
-    for c in individual_curves:
-        arr = np.array(c) * scale
-        if len(arr) < max_len:
-            arr = np.pad(arr, (0, max_len - len(arr)), constant_values=np.nan)
-        padded.append(arr)
-    stacked = np.array(padded)
-    return np.nanmin(stacked, axis=0), np.nanmax(stacked, axis=0)
-
-
-# -- Seed colors used across all plots --
-SEED_COLORS = [
-    "lightblue",
-    "lightgreen",
-    "lightcoral",
-    "lightyellow",
-    "lightpink",
-    "lightgray",
-    "lightsteelblue",
-    "lightsalmon",
-    "lightseagreen",
-]
+    return fpy, ages, heights, dbh_cm
 
 
 def plot_growth_curves(
@@ -75,47 +68,18 @@ def plot_growth_curves(
     """
     _init_plot_style()
 
-    fpy, ages, heights, dbh_cm, ind_h, ind_d, seeds = _extract_common(
-        metadata, height_curve, dbh_curve
-    )
+    fpy, ages, heights, dbh_cm = _extract_common(metadata, height_curve, dbh_curve)
 
     # Load model params if available (for Chapman-Richards overlay)
     model_params = _load_model_params(output_dir)
 
     _plot_growth_curves_main(
-        species,
-        ages,
-        heights,
-        dbh_cm,
-        ind_h,
-        ind_d,
-        seeds,
-        fpy,
-        metadata,
-        model_params,
-        output_dir,
+        species, ages, heights, dbh_cm, fpy, metadata, model_params, output_dir
     )
     _plot_height_dbh_correlation(
-        species,
-        ages,
-        heights,
-        dbh_cm,
-        ind_h,
-        ind_d,
-        seeds,
-        fpy,
-        metadata,
-        output_dir,
+        species, ages, heights, dbh_cm, fpy, metadata, output_dir
     )
-    _plot_growth_increments(
-        species,
-        ages,
-        heights,
-        dbh_cm,
-        fpy,
-        metadata,
-        output_dir,
-    )
+    _plot_growth_increments(species, ages, heights, dbh_cm, fpy, metadata, output_dir)
 
 
 def _load_model_params(output_dir: Path) -> Optional[Dict[str, float]]:
@@ -137,56 +101,26 @@ def _plot_growth_curves_main(
     ages,
     heights,
     dbh_cm,
-    ind_h,
-    ind_d,
-    seeds,
     fpy,
     metadata,
     model_params,
     output_dir,
 ):
-    """Main growth curves: height and DBH over age with model fit and bands."""
+    """Main growth curves: height and DBH over age with model fit."""
+    display = _display_name(species)
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
-    fig.suptitle(f"Growth Curves for {species}", fontsize=16, fontweight="bold")
+    fig.suptitle(f"Growth Curves for {display}", fontsize=16, fontweight="bold")
 
     # -- Height subplot --
-    # Seed confidence band
-    h_min, h_max = _seed_envelope(ind_h, scale=1.0)
-    if h_min is not None:
-        band_ages = np.array([(j + 1) / fpy for j in range(len(h_min))])
-        ax1.fill_between(
-            band_ages,
-            h_min,
-            h_max,
-            alpha=0.15,
-            color="blue",
-            label="Seed range",
-        )
-
-    # Individual seed curves
-    for i, (hc, seed) in enumerate(zip(ind_h, seeds)):
-        color = SEED_COLORS[i % len(SEED_COLORS)]
-        ages_s = [(j + 1) / fpy for j in range(len(hc))]
-        ax1.plot(
-            ages_s,
-            hc,
-            color=color,
-            linewidth=1.0,
-            alpha=0.6,
-            linestyle="--",
-            label=f"Seed {seed}",
-        )
-
-    # Aggregated curve
     ax1.plot(
         ages,
         heights,
         "b-",
-        linewidth=3.0,
+        linewidth=2.5,
         marker="o",
-        markersize=4,
+        markersize=3,
         alpha=0.9,
-        label="Maximum (aggregated)",
+        label="Simulation",
         zorder=10,
     )
 
@@ -203,7 +137,7 @@ def _plot_growth_curves_main(
             "r--",
             linewidth=1.5,
             alpha=0.8,
-            label=f"Chapman-Richards (R²={r2:.3f})",
+            label=f"Chapman-Richards (R\u00b2={r2:.3f})",
         )
 
     ax1.set_xlabel("Age (years)", fontsize=12)
@@ -212,6 +146,7 @@ def _plot_growth_curves_main(
     ax1.grid(True, alpha=0.3)
     ax1.set_xlim(0, ages[-1] if len(ages) else 1)
     ax1.legend(loc="lower right", fontsize=9)
+    _add_flush_axis(ax1, fpy)
 
     growth_rate_yr = metadata["growth_rate"] * fpy
     height_text = (
@@ -230,40 +165,15 @@ def _plot_growth_curves_main(
     )
 
     # -- DBH subplot --
-    d_min, d_max = _seed_envelope(ind_d, scale=100.0)
-    if d_min is not None:
-        band_ages = np.array([(j + 1) / fpy for j in range(len(d_min))])
-        ax2.fill_between(
-            band_ages,
-            d_min,
-            d_max,
-            alpha=0.15,
-            color="green",
-            label="Seed range",
-        )
-
-    for i, (dc, seed) in enumerate(zip(ind_d, seeds)):
-        color = SEED_COLORS[i % len(SEED_COLORS)]
-        ages_s = [(j + 1) / fpy for j in range(len(dc))]
-        ax2.plot(
-            ages_s,
-            [d * 100 for d in dc],
-            color=color,
-            linewidth=1.0,
-            alpha=0.6,
-            linestyle="--",
-            label=f"Seed {seed}",
-        )
-
     ax2.plot(
         ages,
         dbh_cm,
         "g-",
-        linewidth=3.0,
-        marker="s",
-        markersize=4,
+        linewidth=2.5,
+        marker="o",
+        markersize=3,
         alpha=0.9,
-        label="Maximum (aggregated)",
+        label="Simulation",
         zorder=10,
     )
 
@@ -273,6 +183,7 @@ def _plot_growth_curves_main(
     ax2.grid(True, alpha=0.3)
     ax2.set_xlim(0, ages[-1] if len(ages) else 1)
     ax2.legend(loc="lower right", fontsize=9)
+    _add_flush_axis(ax2, fpy)
 
     dbh_rate_yr = metadata["dbh_growth_rate"] * 100 * fpy
     dbh_text = (
@@ -292,21 +203,15 @@ def _plot_growth_curves_main(
 
     # Footer
     max_age = metadata["actual_max_cycles"] / fpy
-    avg_age = metadata["avg_actual_cycles"] / fpy
     footer = (
-        f"Analysis: {metadata['num_seeds']} seeds, {max_age:.0f} years max "
-        f"(avg: {avg_age:.0f}) | Avg time: {metadata['avg_simulation_time']:.1f}s "
-        f"| Seeds tested: {', '.join(str(s) for s in metadata['seeds_tested'])}"
+        f"{metadata['actual_max_cycles']} cycles over {max_age:.0f} years "
+        f"| Simulation time: {metadata['avg_simulation_time']:.1f}s "
+        f"| fpy: {fpy:.2f}"
     )
-    if fpy != 1.0:
-        footer += f" | fpy: {fpy:.2f}"
     if metadata["early_terminations"] > 0:
-        footer += (
-            f" | Early terminations: "
-            f"{metadata['early_terminations']}/{metadata['num_seeds']}"
-        )
+        footer += f" | Early terminations: {metadata['early_terminations']}"
     if metadata["timeouts"] > 0:
-        footer += f" | Timeouts: {metadata['timeouts']}/{metadata['num_seeds']}"
+        footer += f" | Timeouts: {metadata['timeouts']}"
     fig.text(0.5, 0.02, footer, ha="center", fontsize=9, style="italic")
 
     plt.tight_layout()
@@ -325,9 +230,6 @@ def _plot_height_dbh_correlation(
     ages,
     heights,
     dbh_cm,
-    ind_h,
-    ind_d,
-    seeds,
     fpy,
     metadata,
     output_dir,
@@ -338,42 +240,27 @@ def _plot_height_dbh_correlation(
     When yield table allometry data is available (yield_table_allometry.json),
     overlays the yield-table-derived power model and raw data points.
     """
+    display = _display_name(species)
     fig, ax = plt.subplots(1, 1, figsize=(10, 8))
 
-    # Individual seed scatter
-    for i, (hc, dc, seed) in enumerate(zip(ind_h, ind_d, seeds)):
-        if len(hc) > 0 and len(dc) > 0:
-            ages_s = [(j + 1) / fpy for j in range(len(hc))]
-            ax.scatter(
-                hc,
-                [d * 100 for d in dc],
-                c=ages_s,
-                cmap="plasma",
-                s=30,
-                alpha=0.5,
-                marker="o",
-                label=f"Seed {seed}",
-                edgecolors="none",
-            )
-
-    # Aggregated scatter
+    # Simulation scatter
     scatter = ax.scatter(
         heights,
         dbh_cm,
         c=ages,
         cmap="viridis",
-        s=80,
+        s=40,
         alpha=0.9,
-        marker="s",
-        label="Maximum (aggregated)",
+        marker="o",
+        label="Simulation",
         edgecolors="black",
-        linewidth=0.5,
+        linewidth=0.3,
     )
 
     ax.set_xlabel("Height (m)", fontsize=12)
     ax.set_ylabel("DBH (cm)", fontsize=12)
     ax.set_title(
-        f"Height vs DBH Relationship for {species}",
+        f"Height vs DBH Relationship for {display}",
         fontsize=14,
         fontweight="bold",
     )
@@ -509,9 +396,10 @@ def _plot_growth_increments(
     if len(ages) < 3:
         return
 
+    display = _display_name(species)
     fig, (ax_v, ax_r) = plt.subplots(1, 2, figsize=(14, 6))
     fig.suptitle(
-        f"Growth Summary for {species}",
+        f"Growth Summary for {display}",
         fontsize=16,
         fontweight="bold",
     )
@@ -535,6 +423,7 @@ def _plot_growth_increments(
     )
     ax_v.grid(True, alpha=0.3)
     ax_v.set_xlim(0, ages[-1])
+    _add_flush_axis(ax_v, fpy)
 
     vol_text = f"{volume[-1]:.2f} m\u00b3"
     ax_v.text(
@@ -568,6 +457,7 @@ def _plot_growth_increments(
     ax_r.legend(lines_r + lines_d, labels_r + labels_d, loc="upper right", fontsize=9)
 
     ax_r.set_title("Annual Growth Rates", fontsize=13, fontweight="bold")
+    _add_flush_axis(ax_r, fpy)
 
     plt.tight_layout()
     plt.subplots_adjust(top=0.90)
@@ -662,6 +552,7 @@ def plot_calibration_comparison(
     ax1.set_title("Height over Age")
     ax1.legend(loc="upper left")
     ax1.grid(True, alpha=0.3)
+    _add_flush_axis(ax1, flushes_per_year)
 
     # DBH comparison
     ax2 = axes[1]
@@ -723,17 +614,7 @@ def plot_calibration_comparison(
     ax2.set_title("Diameter at Breast Height over Age")
     ax2.legend(loc="upper left")
     ax2.grid(True, alpha=0.3)
-
-    # Annotate fpy so the conversion factor is visible
-    fig.text(
-        0.99,
-        0.01,
-        f"flushes_per_year = {flushes_per_year:.2f}",
-        ha="right",
-        va="bottom",
-        fontsize=9,
-        color="gray",
-    )
+    _add_flush_axis(ax2, flushes_per_year)
 
     plt.tight_layout()
 
@@ -782,6 +663,7 @@ def plot_grove_curves_only(
     ax1.set_title("Height over Age")
     ax1.legend(loc="upper left")
     ax1.grid(True, alpha=0.3)
+    _add_flush_axis(ax1, flushes_per_year)
 
     # DBH
     ax2 = axes[1]
@@ -799,16 +681,7 @@ def plot_grove_curves_only(
     ax2.set_title("Diameter at Breast Height over Age")
     ax2.legend(loc="upper left")
     ax2.grid(True, alpha=0.3)
-
-    fig.text(
-        0.99,
-        0.01,
-        f"flushes_per_year = {flushes_per_year:.2f}",
-        ha="right",
-        va="bottom",
-        fontsize=9,
-        color="gray",
-    )
+    _add_flush_axis(ax2, flushes_per_year)
 
     plt.tight_layout()
 

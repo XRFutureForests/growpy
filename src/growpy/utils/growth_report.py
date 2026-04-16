@@ -90,7 +90,7 @@ def _plot_cross_species_height(
         heights = meta.get("height_curve", [])
         fpy = meta.get("flushes_per_year", 1.0)
         ages = [i / fpy for i in range(len(heights))]
-        label = _display_name(species)
+        label = f"{_display_name(species)} (fpy={fpy:.2f})"
         ax.plot(ages, heights, linewidth=2, label=label)
 
     ax.set_xlabel("Age (years)", fontsize=11)
@@ -115,7 +115,7 @@ def _plot_cross_species_dbh(
         dbh_cm = [d * 100 for d in dbh_curve]
         fpy = meta.get("flushes_per_year", 1.0)
         ages = [i / fpy for i in range(len(dbh_cm))]
-        label = _display_name(species)
+        label = f"{_display_name(species)} (fpy={fpy:.2f})"
         ax.plot(ages, dbh_cm, linewidth=2, label=label)
 
     ax.set_xlabel("Age (years)", fontsize=11)
@@ -336,8 +336,7 @@ def generate_growth_model_report(
 
         lines.append(
             f"Simulated for **{actual} cycles** "
-            f"(planned: {planned}) with **{n_seeds} seed(s)**, "
-            f"averaging **{sim_time:.0f}s** per seed."
+            f"(planned: {planned}) in **{sim_time:.0f}s**."
         )
         if early > 0 or timeouts > 0:
             lines.append(f" Early terminations: {early}. Timeouts: {timeouts}.")
