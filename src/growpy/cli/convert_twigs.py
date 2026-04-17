@@ -149,9 +149,6 @@ def process_twig_directory(
     densify: bool = True,
     alpha_trim_threshold: float = 0.5,
     alpha_trim_method: str = "all",
-    smooth_boundary: bool = False,
-    smooth_iterations: int = 3,
-    smooth_factor: float = 0.5,
     boundary_edge_mm: float = 0.5,
     interior_decimate_ratio: float = 0.0,
     interior_edge_mm: float = 0.0,
@@ -169,8 +166,8 @@ def process_twig_directory(
         twig_filter: Optional list of twig directory names to process (snake_case)
         densify: Enable boundary densification (default: True)
         alpha_trim_threshold: Alpha threshold for silhouette trimming (default: 0.5)
-        boundary_edge_mm: Target boundary edge length in millimeters (default: 0.5)
-        smooth_boundary: Enable boundary edge smoothing (default: False)
+        boundary_edge_mm: Target leaf edge length in millimeters for pre-densification
+            before alpha contour cut (default: 0.5)
         interior_decimate_ratio: Fallback decimation ratio for interior faces (0-1).
             Ignored when interior_edge_mm > 0.
         interior_edge_mm: Target interior edge length in millimeters (default: 0).
@@ -232,9 +229,6 @@ def process_twig_directory(
                 densify=densify,
                 alpha_trim_threshold=alpha_trim_threshold,
                 alpha_trim_method=alpha_trim_method,
-                smooth_boundary=smooth_boundary,
-                smooth_iterations=smooth_iterations,
-                smooth_factor=smooth_factor,
                 boundary_edge_mm=boundary_edge_mm,
                 interior_decimate_ratio=interior_decimate_ratio,
                 interior_edge_mm=interior_edge_mm,
@@ -315,24 +309,6 @@ Output per twig:
         default=None,
         help="Alpha threshold for trimming (default: from config). "
         "0.1-0.3=minimal (~0.3%% faces), 0.5=moderate (~7%%), 0.7=aggressive (~12-65%%).",
-    )
-    parser.add_argument(
-        "--smooth-boundary",
-        action="store_true",
-        default=None,
-        help="Smooth boundary edges to follow texture curves more naturally (default: from config)",
-    )
-    parser.add_argument(
-        "--smooth-iterations",
-        type=int,
-        default=None,
-        help="Number of Laplacian smoothing passes for boundary edges (default: from config)",
-    )
-    parser.add_argument(
-        "--smooth-factor",
-        type=float,
-        default=None,
-        help="Smoothing strength per iteration (0.0-1.0, default: from config)",
     )
     # Edge densification parameters
     parser.add_argument(
@@ -435,9 +411,6 @@ Output per twig:
             include_skeleton=True,
             densify=config.twigs_densify,
             alpha_trim_threshold=min(max(0.0, config.twigs_alpha_trim), 1.0),
-            smooth_boundary=config.twigs_smooth_boundary,
-            smooth_iterations=max(1, config.twigs_smooth_iterations),
-            smooth_factor=min(max(0.0, config.twigs_smooth_factor), 1.0),
             boundary_edge_mm=max(0.01, config.twigs_boundary_edge_mm),
             interior_decimate_ratio=min(
                 max(0.0, config.twigs_interior_decimate_ratio), 1.0
@@ -455,9 +428,6 @@ Output per twig:
             include_skeleton=True,
             densify=config.twigs_densify,
             alpha_trim_threshold=min(max(0.0, config.twigs_alpha_trim), 1.0),
-            smooth_boundary=config.twigs_smooth_boundary,
-            smooth_iterations=max(1, config.twigs_smooth_iterations),
-            smooth_factor=min(max(0.0, config.twigs_smooth_factor), 1.0),
             boundary_edge_mm=max(0.01, config.twigs_boundary_edge_mm),
             interior_decimate_ratio=min(
                 max(0.0, config.twigs_interior_decimate_ratio), 1.0

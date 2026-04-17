@@ -134,9 +134,6 @@ class GrowPyConfig:
     )
     twigs_densify: bool = True
     twigs_alpha_trim: float = 0.75
-    twigs_smooth_boundary: bool = True
-    twigs_smooth_iterations: int = 10
-    twigs_smooth_factor: float = 0.25
     twigs_boundary_edge_mm: float = 0.5
 
     # [growth_models]
@@ -321,12 +318,6 @@ class GrowPyConfig:
             kwargs["twigs_densify"] = twigs["densify"]
         if "alpha_trim" in twigs:
             kwargs["twigs_alpha_trim"] = twigs["alpha_trim"]
-        if "smooth_boundary" in twigs:
-            kwargs["twigs_smooth_boundary"] = twigs["smooth_boundary"]
-        if "smooth_iterations" in twigs:
-            kwargs["twigs_smooth_iterations"] = twigs["smooth_iterations"]
-        if "smooth_factor" in twigs:
-            kwargs["twigs_smooth_factor"] = twigs["smooth_factor"]
         if "boundary_edge_mm" in twigs:
             kwargs["twigs_boundary_edge_mm"] = twigs["boundary_edge_mm"]
         if "interior_decimate_ratio" in twigs:
@@ -567,10 +558,8 @@ class GrowPyConfig:
             # [assets]
             "grove_dir": "grove_dir",
             "resize_textures": "resize_textures",
-            # [twigs] - uses "smooth_iterations" from convert_twigs.py argparse
+            # [twigs]
             "alpha_trim": "twigs_alpha_trim",
-            "smooth_boundary": "twigs_smooth_boundary",
-            "smooth_factor": "twigs_smooth_factor",
             "boundary_edge_mm": "twigs_boundary_edge_mm",
             "interior_edge_mm": "twigs_interior_edge_mm",
             # [growth_models]
@@ -620,16 +609,11 @@ class GrowPyConfig:
                 else:
                     setattr(self, config_name, cli_val)
 
-        # Special handling: --smooth-iterations is used by both convert_twigs.py
-        # and generate_forest.py. Resolve to the correct config field based on
-        # which script is calling (detected by presence of script-specific args).
+        # Special handling: --smooth-iterations comes from generate_forest.py
+        # (convert_twigs.py no longer defines it — twigs have no smoothing step)
         si = getattr(args, "smooth_iterations", None)
         if si is not None:
-            # generate_forest.py defines --quality; convert_twigs.py does not
-            if hasattr(args, "quality"):
-                self.forest_smooth_iterations = si
-            else:
-                self.twigs_smooth_iterations = si
+            self.forest_smooth_iterations = si
 
         # Special handling: --no-densify inverts the flag
         no_densify = getattr(args, "no_densify", None)

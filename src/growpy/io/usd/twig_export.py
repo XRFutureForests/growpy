@@ -1685,9 +1685,6 @@ def process_twig_file(
     densify=False,
     alpha_trim_threshold=0.0,
     alpha_trim_method="all",
-    smooth_boundary=False,
-    smooth_iterations=3,
-    smooth_factor=0.5,
     boundary_edge_mm=0.5,
     boundary_band_mm=1.0,
     interior_decimate_ratio=0.0,
@@ -1707,15 +1704,14 @@ def process_twig_file(
         minimal_export: If True, creates minimal USD without materials/textures/attributes
         include_skeleton: If True, creates skeletal variant with skeleton
         densify: Master switch for geometry processing. When False, export .blend
-            mesh as-is. When True, enables alpha trim, smoothing, and decimation.
+            mesh as-is. When True, enables pre-densification, alpha contour cut,
+            and interior decimation.
         alpha_trim_threshold: Alpha threshold for geometry trimming (0.0 = disabled)
-        alpha_trim_method: Trimming method (default: 'all' - conservative)
-        smooth_boundary: Enable boundary edge smoothing
-        smooth_iterations: Number of smoothing passes
-        smooth_factor: Smoothing strength per iteration
-        boundary_edge_mm: Target boundary edge length in millimeters (default: 0.5).
-            Edges longer than this are split at midpoint during densification.
-            Absolute unit ensures consistent output regardless of input mesh resolution.
+        alpha_trim_method: Fallback trim method used only when the alpha image
+            cannot be loaded (default: 'all' - conservative)
+        boundary_edge_mm: Target leaf edge length in millimeters for pre-densification
+            before the alpha contour cut (default: 0.5). Smaller values = denser
+            mesh and finer Nanite detail; larger values = faster export, coarser mesh.
         boundary_band_mm: Distance from silhouette in mm to include (default: 1.0)
         interior_decimate_ratio: Fallback decimation ratio for interior faces (0-1).
             Ignored when interior_edge_mm > 0.

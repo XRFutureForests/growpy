@@ -9,28 +9,23 @@ path = "data/assets/twigs"
 # Copied to data/assets/twigs/ by prepare_assets.py alongside Grove twigs
 # Use for hand-curated twigs (e.g., Helios-classified variants with fruit materials)
 custom_twigs_dir = "data/input/custom_twigs"
-# Master switch for all mesh geometry processing (alpha trim, smoothing, decimation)
+# Master switch for all mesh geometry processing (densify, contour cut, decimation)
 # When false, .blend twig meshes are exported to USD as-is without any modification
 # When true, enables the sub-options below for Nanite-friendly high-poly silhouettes
 densify = true
 # Alpha threshold for silhouette trimming
 # 0.05-0.3 = minimal (conservative), 0.5 = moderate (recommended), 0.7 = aggressive
 alpha_trim = 0.95
-# Enable boundary edge smoothing for natural silhouette curves
-smooth_boundary = true
-# Number of Laplacian smoothing passes (1-10)
-smooth_iterations = 10
-# Smoothing strength per iteration (0.0-1.0)
-smooth_factor = 0.25
-# Target boundary edge length in millimeters (0.1-5.0)
-# Boundary edges longer than this are split at their midpoint during densification.
-# Lower = finer silhouette detail, higher = fewer faces. 0.5 mm is a good default.
-boundary_edge_mm = 0.75
+# Target edge length for leaf-face pre-densification in millimeters.
+# Leaf edges are subdivided to this length before the alpha contour cut so the
+# silhouette has enough vertex density to carve through. Also controls Nanite
+# interior detail. 0.5 mm is a good default; lower = denser, higher = coarser.
+boundary_edge_mm = 0.5
 # Interior decimation ratio for leaf meshes (0.0 = disabled, 0.3 = keep 30%)
 # Simplifies interior triangles while preserving alpha-trimmed silhouette edges.
 # Branch cylinders and boundary silhouette vertices are always protected.
 # Ignored when interior_edge_mm > 0.
-interior_decimate_ratio = 0.01
+interior_decimate_ratio = 0.005
 # Target interior edge length in millimeters (0 = disabled, uses ratio instead)
 # When set, derives the decimation ratio automatically so interior faces
 # converge to this edge size regardless of input resolution.
@@ -38,4 +33,4 @@ interior_edge_mm = 0
 # Number of vertex rings inward from the mesh boundary to protect from decimation.
 # 0 = protect only boundary verts, 1 = also protect first interior ring, etc.
 # Higher values preserve silhouette fidelity but leave more faces unchanged.
-interior_boundary_rings = 1
+interior_boundary_rings = 0
