@@ -1224,15 +1224,14 @@ def _gather_texture_candidates(blend_dir, standardized_name, species, metadata):
 
 from .twig_geometry import (  # noqa: F401
     _apply_interior_decimate,
-    _cleanup_boundary_spikes,
     _get_alpha_texture_for_geometry,
-    _smooth_boundary_edges,
     apply_normal_displacement,
-    densify_and_trim_interleaved,
+    cut_along_alpha_contour,
     densify_mesh,
     densify_mesh_to_target_edge,
     trim_by_alpha_mask,
 )
+
 
 
 def setup_materials_with_textures(
@@ -1973,25 +1972,35 @@ def process_twig_file(
                     except Exception as e:
                         alpha_img = None
 
-                # INTERLEAVED DENSIFY + TRIM - new algorithm that subdivides
-                # only transition edges and trims faces each iteration
+                # DENSIFY + CONTOUR CUT: first subdivide leaf edges to the
+                # target length so the alpha silhouette has mixed (opaque/
+                # transparent) edges to cut through. Grove meshes can be as
+                # coarse as one quad per needle, leaving the contour cut
+                # nothing to bite without pre-densification.
+                # Then carve the exact alpha=threshold silhouette in one pass:
+                # one new vertex per mixed edge, 3D position lerped, UVs
+                # lerped per face so the texture mapping is preserved without
+                # distortion. No boundary smoothing or spike cleanup needed.
                 if (
                     densify
                     and leaf_mats
                     and alpha_img is not None
                     and alpha_trim_threshold > 0.0
                 ):
-                    densify_and_trim_interleaved(
+                    densify_mesh_to_target_edge(
+                        obj,
+                        target_edge_mm=boundary_edge_mm,
+                        material_indices=leaf_mats,
+                        max_iterations=8,
+                    )
+                    cut_along_alpha_contour(
                         obj,
                         material_indices=leaf_mats,
                         alpha_img=alpha_img,
                         threshold=alpha_trim_threshold,
-                        boundary_edge_mm=boundary_edge_mm,
-                        max_iterations=15,
-                        method=alpha_trim_method,
                     )
                 elif alpha_trim_threshold > 0.0 and leaf_mats and alpha_tex_path:
-                    # Fallback: just trim without densification
+                    # Fallback: face-level trim when alpha image couldn't be loaded
                     trim_by_alpha_mask(
                         obj,
                         str(alpha_tex_path),
@@ -2002,37 +2011,7 @@ def process_twig_file(
                         method=alpha_trim_method,
                     )
 
-                # 3) Cleanup tiny spikes along the trimmed boundary
-                if alpha_trim_threshold > 0.0 and leaf_mats and alpha_tex_path:
-                    try:
-                        _cleanup_boundary_spikes(
-                            obj,
-                            leaf_mats,
-                            iterations=2,
-                            area_factor=0.2,
-                            short_len_factor=0.25,
-                            angle_deg=55.0,
-                        )
-                    except Exception:
-                        pass
-
-                # 4) Smooth boundary edges to follow texture curves more naturally
-                if smooth_boundary and leaf_mats:
-                    if alpha_img is not None and alpha_trim_threshold > 0.0:
-                        try:
-                            _smooth_boundary_edges(
-                                obj,
-                                leaf_mats,
-                                alpha_img,
-                                threshold=alpha_trim_threshold,
-                                smooth_iterations=max(1, int(smooth_iterations)),
-                                smooth_factor=min(max(0.0, float(smooth_factor)), 1.0),
-                                boundary_rings=1,
-                            )
-                        except Exception:
-                            pass
-
-                # 5) Interior decimation - simplify leaf interiors, protect branches
+                # Interior decimation - simplify leaf interiors, protect branches
                 if interior_decimate:
                     _apply_interior_decimate(
                         obj,

@@ -549,6 +549,253 @@ def _sample_alpha_at_uv(uv_x, uv_y, alpha_img, invert=False):
     return (1.0 - alpha) if invert else alpha
 
 
+def cut_along_alpha_contour(
+    obj,
+    material_indices,
+    alpha_img,
+    threshold,
+    binary_search_iterations=8,
+):
+    """Cut leaf meshes along the exact alpha=threshold contour in one pass.
+
+    For each leaf triangle with mixed opaque/transparent vertices, binary-searches
+    in UV space to find the alpha crossing on each opaque <-> transparent edge,
+    inserts a new vertex at that crossing (3D position via linear interpolation,
+    UV via per-face linear interpolation), and retriangulates the opaque side.
+    Fully transparent triangles are discarded.
+
+    The resulting mesh carries the silhouette as geometry, so the exported
+    material can be fully opaque (no masked alpha, no Nanite proxy path).
+    Because UVs are interpolated linearly on unchanged opaque verts and on the
+    new cut verts, the original texture mapping is preserved without distortion.
+    No boundary smoothing or spike cleanup is required afterwards.
+
+    Args:
+        obj: Blender mesh object
+        material_indices: Set of material indices identifying leaf geometry
+        alpha_img: Alpha texture PIL Image (grayscale, L mode)
+        threshold: Alpha threshold (0..1); verts below are transparent
+        binary_search_iterations: Bisection steps per edge (8 -> 1/256 bracket)
+    """
+    if not material_indices or alpha_img is None:
+        return
+    mesh = obj.data
+    if not mesh:
+        return
+
+    try:
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode="OBJECT")
+
+        invert_alpha = _detect_alpha_inversion(alpha_img)
+        initial_face_count = len(mesh.polygons)
+
+        bm = bmesh.new()
+        bm.from_mesh(mesh)
+        bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
+
+        leaf_ngons = [
+            f
+            for f in bm.faces
+            if f.material_index in material_indices and len(f.verts) > 3
+        ]
+        if leaf_ngons:
+            bmesh.ops.triangulate(bm, faces=leaf_ngons)
+            bm.verts.ensure_lookup_table()
+            bm.edges.ensure_lookup_table()
+            bm.faces.ensure_lookup_table()
+
+        uv_layer = bm.loops.layers.uv.active
+        if uv_layer is None:
+            bm.free()
+            return
+
+        vert_alpha_sum = {}
+        vert_uv_sum = {}
+        vert_count = {}
+        for face in bm.faces:
+            if face.material_index not in material_indices:
+                continue
+            for loop in face.loops:
+                vi = loop.vert.index
+                uv = loop[uv_layer].uv
+                a = _sample_alpha_at_uv(
+                    uv.x, uv.y, alpha_img, invert=invert_alpha
+                )
+                vert_alpha_sum[vi] = vert_alpha_sum.get(vi, 0.0) + a
+                prev = vert_uv_sum.get(vi, (0.0, 0.0))
+                vert_uv_sum[vi] = (prev[0] + uv.x, prev[1] + uv.y)
+                vert_count[vi] = vert_count.get(vi, 0) + 1
+
+        vert_alpha = {}
+        vert_uv_avg = {}
+        for vi, n in vert_count.items():
+            vert_alpha[vi] = vert_alpha_sum[vi] / n
+            vert_uv_avg[vi] = (vert_uv_sum[vi][0] / n, vert_uv_sum[vi][1] / n)
+
+        edge_cuts = {}  # (vi_low, vi_high) -> (BMVert, t_from_vi_low)
+
+        def get_edge_cut(v_op, v_tr):
+            vi_op, vi_tr = v_op.index, v_tr.index
+            key = (min(vi_op, vi_tr), max(vi_op, vi_tr))
+            cached = edge_cuts.get(key)
+            if cached is not None:
+                new_vert, t_low = cached
+                t_from_op = t_low if vi_op == key[0] else 1.0 - t_low
+                return new_vert, t_from_op
+
+            uv_op = vert_uv_avg[vi_op]
+            uv_tr = vert_uv_avg[vi_tr]
+            t_lo, t_hi = 0.0, 1.0
+            for _ in range(binary_search_iterations):
+                t_mid = 0.5 * (t_lo + t_hi)
+                u = uv_op[0] + t_mid * (uv_tr[0] - uv_op[0])
+                v = uv_op[1] + t_mid * (uv_tr[1] - uv_op[1])
+                a = _sample_alpha_at_uv(
+                    u, v, alpha_img, invert=invert_alpha
+                )
+                if a >= threshold:
+                    t_lo = t_mid
+                else:
+                    t_hi = t_mid
+            t = 0.5 * (t_lo + t_hi)
+            t = max(0.01, min(0.99, t))
+
+            pos = v_op.co.lerp(v_tr.co, t)
+            new_vert = bm.verts.new(pos)
+            t_low = t if vi_op == key[0] else 1.0 - t
+            edge_cuts[key] = (new_vert, t_low)
+            return new_vert, t
+
+        faces_to_delete = []
+        new_faces_spec = []  # list of (loops_spec, material_index)
+
+        for face in list(bm.faces):
+            if face.material_index not in material_indices:
+                continue
+            if len(face.verts) != 3:
+                continue
+
+            loops = list(face.loops)
+            verts = [lp.vert for lp in loops]
+            uvs = [tuple(lp[uv_layer].uv) for lp in loops]
+            alphas = [vert_alpha.get(v.index, 1.0) for v in verts]
+            op_mask = [a >= threshold for a in alphas]
+            n_op = sum(op_mask)
+
+            if n_op == 3:
+                continue
+            if n_op == 0:
+                faces_to_delete.append(face)
+                continue
+
+            faces_to_delete.append(face)
+            mat_idx = face.material_index
+
+            if n_op == 1:
+                i_op = op_mask.index(True)
+                v_op = verts[i_op]
+                uv_op = uvs[i_op]
+                v_t1 = verts[(i_op + 1) % 3]
+                uv_t1 = uvs[(i_op + 1) % 3]
+                v_t2 = verts[(i_op + 2) % 3]
+                uv_t2 = uvs[(i_op + 2) % 3]
+
+                new1, t1 = get_edge_cut(v_op, v_t1)
+                new2, t2 = get_edge_cut(v_op, v_t2)
+                uv_n1 = (
+                    uv_op[0] + t1 * (uv_t1[0] - uv_op[0]),
+                    uv_op[1] + t1 * (uv_t1[1] - uv_op[1]),
+                )
+                uv_n2 = (
+                    uv_op[0] + t2 * (uv_t2[0] - uv_op[0]),
+                    uv_op[1] + t2 * (uv_t2[1] - uv_op[1]),
+                )
+                new_faces_spec.append(
+                    ([(v_op, uv_op), (new1, uv_n1), (new2, uv_n2)], mat_idx)
+                )
+
+            else:  # n_op == 2
+                i_tr = op_mask.index(False)
+                v_tr = verts[i_tr]
+                uv_tr = uvs[i_tr]
+                v_o1 = verts[(i_tr + 1) % 3]
+                uv_o1 = uvs[(i_tr + 1) % 3]
+                v_o2 = verts[(i_tr + 2) % 3]
+                uv_o2 = uvs[(i_tr + 2) % 3]
+
+                new1, t1 = get_edge_cut(v_o1, v_tr)
+                new2, t2 = get_edge_cut(v_o2, v_tr)
+                uv_n1 = (
+                    uv_o1[0] + t1 * (uv_tr[0] - uv_o1[0]),
+                    uv_o1[1] + t1 * (uv_tr[1] - uv_o1[1]),
+                )
+                uv_n2 = (
+                    uv_o2[0] + t2 * (uv_tr[0] - uv_o2[0]),
+                    uv_o2[1] + t2 * (uv_tr[1] - uv_o2[1]),
+                )
+                # Quad v_o1, v_o2, new2, new1 -> two triangles keeping winding
+                new_faces_spec.append(
+                    (
+                        [(v_o1, uv_o1), (v_o2, uv_o2), (new2, uv_n2)],
+                        mat_idx,
+                    )
+                )
+                new_faces_spec.append(
+                    (
+                        [(v_o1, uv_o1), (new2, uv_n2), (new1, uv_n1)],
+                        mat_idx,
+                    )
+                )
+
+        if faces_to_delete:
+            # FACES_ONLY keeps verts alive; FACES would purge our newly-created
+            # cut verts (they have no linked faces yet at this point)
+            bmesh.ops.delete(bm, geom=faces_to_delete, context="FACES_ONLY")
+            bm.verts.ensure_lookup_table()
+            bm.edges.ensure_lookup_table()
+            bm.faces.ensure_lookup_table()
+
+        created = 0
+        for loops_spec, mat_idx in new_faces_spec:
+            verts_only = [lv[0] for lv in loops_spec]
+            if len(set(verts_only)) != len(verts_only):
+                continue
+            try:
+                new_face = bm.faces.new(verts_only)
+            except ValueError:
+                continue
+            new_face.material_index = mat_idx
+            for loop, (_, uv_target) in zip(new_face.loops, loops_spec):
+                loop[uv_layer].uv = uv_target
+            created += 1
+
+        bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
+
+        # Drop orphan verts left behind by deleted transparent faces
+        orphans = [v for v in bm.verts if not v.link_faces]
+        if orphans:
+            bmesh.ops.delete(bm, geom=orphans, context="VERTS")
+
+        bm.to_mesh(mesh)
+        bm.free()
+        mesh.update()
+
+        logger.info(
+            "Alpha contour cut: %d->%d faces (%d edge cuts)",
+            initial_face_count,
+            len(mesh.polygons),
+            len(edge_cuts),
+        )
+
+    except Exception as e:
+        logger.warning("Alpha contour cut error: %s", e, exc_info=True)
+
+
 def densify_and_trim_interleaved(
     obj,
     material_indices,
