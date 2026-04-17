@@ -7,11 +7,74 @@ Imports are split into per-species batch scripts to avoid video memory crashes.
 Use ``python -m growpy.tools.ue_exec`` to run batches sequentially.
 """
 
+import json
 import logging
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+_HEX_RE = re.compile(r"^#?([0-9a-fA-F]{6})([0-9a-fA-F]{2})?$")
+
+
+def _srgb_to_linear(c: float) -> float:
+    """Inverse sRGB EOTF (IEC 61966-2-1): sRGB float -> linear float."""
+    if c <= 0.04045:
+        return c / 12.92
+    return ((c + 0.055) / 1.055) ** 2.4
+
+
+def _hex_to_linear_rgba(hex_str: str) -> Optional[Tuple[float, float, float, float]]:
+    """Parse #RRGGBB[AA] hex (sRGB) and return linear (r,g,b,a). Alpha stays linear."""
+    if not hex_str:
+        return None
+    m = _HEX_RE.match(hex_str.strip())
+    if not m:
+        return None
+    rgb_hex = m.group(1)
+    alpha_hex = m.group(2)
+    r = int(rgb_hex[0:2], 16) / 255.0
+    g = int(rgb_hex[2:4], 16) / 255.0
+    b = int(rgb_hex[4:6], 16) / 255.0
+    a = int(alpha_hex, 16) / 255.0 if alpha_hex else 1.0
+    return (_srgb_to_linear(r), _srgb_to_linear(g), _srgb_to_linear(b), a)
+
+
+def _load_species_colors() -> Dict[str, Dict[str, Tuple[float, float, float, float]]]:
+    """Load per-species leaf/bark linear-RGBA tuples from tree_asset_lookup.csv.
+
+    Returns:
+        {standardized_name: {"leaf": (r,g,b,a), "bark": (r,g,b,a)}}
+        Species with unparseable hex are skipped.
+    """
+    try:
+        from growpy.config.paths import _get_lookup_table
+    except Exception as e:
+        logger.warning("Could not import lookup table helpers: %s", e)
+        return {}
+
+    try:
+        df = _get_lookup_table()
+    except Exception as e:
+        logger.warning("Could not load tree_asset_lookup.csv: %s", e)
+        return {}
+
+    out: Dict[str, Dict[str, Tuple[float, float, float, float]]] = {}
+    for _, row in df.iterrows():
+        std = str(row.get("Standardized Name", "")).strip()
+        if not std:
+            continue
+        leaf = _hex_to_linear_rgba(str(row.get("Leaf Color", "") or ""))
+        bark = _hex_to_linear_rgba(str(row.get("Branch Color", "") or ""))
+        if leaf is None and bark is None:
+            continue
+        out[std] = {}
+        if leaf is not None:
+            out[std]["leaf"] = leaf
+        if bark is not None:
+            out[std]["bark"] = bark
+    return out
 
 
 def _get_vram_monitor_preamble() -> str:
@@ -226,6 +289,12 @@ else:
         import_task.options = options
 
         _log_rss("pre  {label}")
+
+        # Clear stale ObjectRedirectors in the destination before import.
+        # Without this, UE fatally crashes when USDStageImporter tries to
+        # create a new SkeletalMesh where a redirector (from a prior
+        # consolidate pass) still lives.
+        _fixup_dest_redirectors(import_task.destination_path)
 
         asset_tools.import_asset_tasks([import_task])
 
@@ -661,6 +730,305 @@ print("=" * 60)
 """
 
 
+def _build_material_script(
+    project_path: str,
+    species_colors: Dict[str, Dict[str, Tuple[float, float, float, float]]],
+    parent_material_path: str = (
+        "/ProceduralVegetationEditor/SampleAssets/Materials/MA_Foliage_Trees"
+    ),
+) -> str:
+    """Build Unreal Python code that assigns MA_Foliage_Trees-derived MICs to imports.
+
+    Per species creates two Material Instance Constants under
+    ``{IMPORT_PATH}/Materials/``:
+
+    * ``MI_<species>_Leaves`` with static switch ``DefaultLit Trunk = False``
+      and ``BaseColor Tint Leaves`` (+ ``Translucency Tint Leaves``) set from
+      the CSV.
+    * ``MI_<species>_Trunk`` with static switch ``DefaultLit Trunk = True``
+      and ``BaseColor Tint`` set from the CSV.
+
+    Then walks all imported SkeletalMesh / StaticMesh assets and assigns
+    the appropriate MIC to each material slot. Foliage is detected via
+    ``Instances/`` path membership or slot/material names containing
+    foliage/twig/leaf keywords.
+    """
+    colors_json = json.dumps(
+        {s: {k: list(v) for k, v in d.items()} for s, d in species_colors.items()},
+        indent=2,
+    )
+    return f'''"""
+GrowPy batch: assign MA_Foliage_Trees material instances - Auto-generated
+
+Execute in Unreal Engine:
+  exec(open(__file__).read())
+"""
+
+import unreal
+import gc
+
+print("=" * 60)
+print("GrowPy Post-Import: Assign MA_Foliage_Trees Material Instances")
+print("=" * 60)
+
+IMPORT_PATH = "{project_path}"
+MATERIALS_PATH = IMPORT_PATH + "/Materials"
+PARENT_MATERIAL_PATH = "{parent_material_path}"
+
+# Species color data sourced from config/tree_asset_lookup.csv (linear RGBA).
+SPECIES_COLORS = {colors_json}
+
+_FOLIAGE_TOKENS = ("foliage", "twig", "leaf", "leaves")
+
+asset_registry = unreal.AssetRegistryHelpers.get_asset_registry()
+asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
+editor_asset_lib = unreal.EditorAssetLibrary
+mel = unreal.MaterialEditingLibrary
+
+parent_mat = editor_asset_lib.load_asset(PARENT_MATERIAL_PATH)
+if parent_mat is None:
+    unreal.log_error(
+        f"Parent material not found: {{PARENT_MATERIAL_PATH}} -- aborting."
+    )
+else:
+    print(f"Parent material: {{PARENT_MATERIAL_PATH}}")
+
+    if not editor_asset_lib.does_directory_exist(MATERIALS_PATH):
+        editor_asset_lib.make_directory(MATERIALS_PATH)
+
+
+def _to_linear_color(rgba):
+    r, g, b, a = rgba
+    return unreal.LinearColor(float(r), float(g), float(b), float(a))
+
+
+def _set_static_switch(mic, name, value):
+    """Set a static switch parameter using whichever API the UE version exposes."""
+    try:
+        mel.set_material_instance_static_switch_parameter_value(mic, name, bool(value))
+        return True
+    except Exception:
+        pass
+    try:
+        sps = mic.get_editor_property("static_parameters")
+        switches = list(sps.get_editor_property("static_switch_parameters") or [])
+        found = False
+        for sw in switches:
+            if str(sw.get_editor_property("parameter_info").get_editor_property("name")) == name:
+                sw.set_editor_property("value", bool(value))
+                sw.set_editor_property("override", True)
+                found = True
+                break
+        if not found:
+            new_sw = unreal.StaticSwitchParameter()
+            info = new_sw.get_editor_property("parameter_info")
+            info.set_editor_property("name", name)
+            new_sw.set_editor_property("value", bool(value))
+            new_sw.set_editor_property("override", True)
+            switches.append(new_sw)
+        sps.set_editor_property("static_switch_parameters", switches)
+        mic.set_editor_property("static_parameters", sps)
+        return True
+    except Exception as e:
+        unreal.log_warning(f"Could not set static switch '{{name}}': {{e}}")
+    return False
+
+
+def _create_mic(name, parent, sub_path=""):
+    full_path = MATERIALS_PATH + ("/" + sub_path if sub_path else "") + "/" + name
+    if editor_asset_lib.does_asset_exist(full_path):
+        mic = editor_asset_lib.load_asset(full_path)
+    else:
+        factory = unreal.MaterialInstanceConstantFactoryNew()
+        mic = asset_tools.create_asset(
+            name,
+            MATERIALS_PATH + ("/" + sub_path if sub_path else ""),
+            unreal.MaterialInstanceConstant,
+            factory,
+        )
+    if mic is None:
+        return None
+    try:
+        mel.set_material_instance_parent(mic, parent)
+    except Exception as e:
+        unreal.log_warning(f"Could not set parent on {{name}}: {{e}}")
+    return mic
+
+
+def _set_vector(mic, name, rgba):
+    try:
+        mel.set_material_instance_vector_parameter_value(mic, name, _to_linear_color(rgba))
+        return True
+    except Exception as e:
+        unreal.log_warning(f"Could not set vector '{{name}}': {{e}}")
+    return False
+
+
+# ----------------------------------------------------------------------
+# Step 1: collect imported species by scanning mesh assets.
+# ----------------------------------------------------------------------
+species_found = set()
+all_assets = []
+if parent_mat is not None:
+    all_assets = asset_registry.get_assets_by_path(IMPORT_PATH, recursive=True)
+
+mesh_assets = []  # (asset_data, pkg_path, asset_class)
+for ad in all_assets:
+    try:
+        cls = str(ad.asset_class_path.asset_name)
+    except Exception:
+        try:
+            cls = str(ad.asset_class)
+        except Exception:
+            cls = ""
+    if cls not in ("SkeletalMesh", "StaticMesh"):
+        continue
+    pkg = str(ad.package_name)
+    if pkg.startswith(MATERIALS_PATH):
+        continue
+    mesh_assets.append((ad, pkg, cls))
+
+    # Derive species standardized-name from path
+    rel = pkg[len(IMPORT_PATH):].lstrip("/") if pkg.startswith(IMPORT_PATH) else pkg
+    parts = rel.split("/")
+    if parts and parts[0] == "Instances":
+        name = str(ad.asset_name)
+        for token in ("_foliage_", "_twigs_combined_", "_foliage"):
+            idx = name.find(token)
+            if idx > 0:
+                species_found.add(name[:idx])
+                break
+    elif parts:
+        species_found.add(parts[0])
+
+print(f"Found {{len(mesh_assets)}} mesh assets covering {{len(species_found)}} species")
+
+# ----------------------------------------------------------------------
+# Step 2: create MICs per species.
+# ----------------------------------------------------------------------
+mic_cache = {{}}  # species -> {{"leaves": mic, "trunk": mic}}
+if parent_mat is not None:
+    for species in sorted(species_found):
+        colors = SPECIES_COLORS.get(species)
+        if not colors:
+            print(f"  [skip] no color data for '{{species}}'")
+            continue
+        entry = {{}}
+        leaf_rgba = colors.get("leaf")
+        bark_rgba = colors.get("bark")
+        if leaf_rgba is not None:
+            mic_l = _create_mic(f"MI_{{species}}_Leaves", parent_mat)
+            if mic_l is not None:
+                _set_static_switch(mic_l, "DefaultLit Trunk", False)
+                _set_vector(mic_l, "BaseColor Tint Leaves", leaf_rgba)
+                _set_vector(mic_l, "Translucency Tint Leaves", leaf_rgba)
+                mel.update_material_instance(mic_l)
+                editor_asset_lib.save_loaded_asset(mic_l)
+                entry["leaves"] = mic_l
+        if bark_rgba is not None:
+            mic_t = _create_mic(f"MI_{{species}}_Trunk", parent_mat)
+            if mic_t is not None:
+                _set_static_switch(mic_t, "DefaultLit Trunk", True)
+                _set_vector(mic_t, "BaseColor Tint", bark_rgba)
+                mel.update_material_instance(mic_t)
+                editor_asset_lib.save_loaded_asset(mic_t)
+                entry["trunk"] = mic_t
+        if entry:
+            mic_cache[species] = entry
+            print(
+                f"  [ok] {{species}}: "
+                f"{{'Leaves' if 'leaves' in entry else '-'}} / "
+                f"{{'Trunk' if 'trunk' in entry else '-'}}"
+            )
+
+print(f"Created/updated MICs for {{len(mic_cache)}} species")
+
+# ----------------------------------------------------------------------
+# Step 3: assign MICs to mesh material slots.
+# ----------------------------------------------------------------------
+def _slot_is_foliage(pkg_path, slot_name, material_name):
+    if "/Instances/" in pkg_path:
+        return True
+    probe = ((slot_name or "") + " " + (material_name or "")).lower()
+    return any(tok in probe for tok in _FOLIAGE_TOKENS)
+
+
+def _species_for_asset(pkg_path, asset_name):
+    rel = pkg_path[len(IMPORT_PATH):].lstrip("/") if pkg_path.startswith(IMPORT_PATH) else pkg_path
+    parts = rel.split("/")
+    if parts and parts[0] == "Instances":
+        for token in ("_foliage_", "_twigs_combined_", "_foliage"):
+            idx = asset_name.find(token)
+            if idx > 0:
+                return asset_name[:idx]
+        return None
+    if parts:
+        return parts[0]
+    return None
+
+
+def _iter_slots(mesh, cls):
+    """Yield (index, slot_name, material_interface) and return setter callable."""
+    if cls == "SkeletalMesh":
+        prop = "materials"
+        struct_cls = unreal.SkeletalMaterial
+    else:
+        prop = "static_materials"
+        struct_cls = unreal.StaticMaterial
+    slots = list(mesh.get_editor_property(prop) or [])
+    return prop, struct_cls, slots
+
+
+assigned_count = 0
+skipped_count = 0
+for ad, pkg, cls in mesh_assets:
+    species = _species_for_asset(pkg, str(ad.asset_name))
+    if species is None or species not in mic_cache:
+        skipped_count += 1
+        continue
+    mesh = editor_asset_lib.load_asset(pkg)
+    if mesh is None:
+        skipped_count += 1
+        continue
+    prop, struct_cls, slots = _iter_slots(mesh, cls)
+    if not slots:
+        skipped_count += 1
+        continue
+
+    changed = False
+    for slot in slots:
+        slot_name = str(slot.get_editor_property("material_slot_name") or "")
+        cur_mat = slot.get_editor_property("material_interface")
+        cur_name = str(cur_mat.get_name()) if cur_mat is not None else ""
+        is_foliage = _slot_is_foliage(pkg, slot_name, cur_name)
+        mic = mic_cache[species].get("leaves" if is_foliage else "trunk")
+        if mic is None:
+            # fall back to whichever exists
+            mic = mic_cache[species].get("trunk") or mic_cache[species].get("leaves")
+        if mic is None:
+            continue
+        if cur_mat is not mic:
+            slot.set_editor_property("material_interface", mic)
+            changed = True
+
+    if changed:
+        mesh.set_editor_property(prop, slots)
+        editor_asset_lib.save_loaded_asset(mesh)
+        assigned_count += 1
+
+gc.collect()
+unreal.SystemLibrary.collect_garbage()
+
+print("")
+print("=" * 60)
+print(
+    f"Material assignment complete: {{assigned_count}} meshes updated, "
+    f"{{skipped_count}} skipped"
+)
+print("=" * 60)
+'''
+
+
 # Unreal Python preamble for configuring nanite assemblies after import.
 # Included in species batch scripts to set fallback mesh, quality settings, etc.
 # Voxelization is handled by the standalone growpy_nanite_voxelize.py script.
@@ -958,6 +1326,72 @@ def _get_ue_world():
         return unreal.EditorLevelLibrary.get_editor_world()
     except Exception:
         return None
+
+def _fixup_dest_redirectors(dest_path):
+    """Resolve and delete ObjectRedirectors under dest_path before import.
+
+    Prior runs + batch_99_consolidate move shared twigs to /Instances/ and
+    leave ObjectRedirectors behind. USDStageImporter then crashes UE with
+    "Renaming an object on top of an existing object is not allowed" when
+    it tries to create a new SkeletalMesh at a redirector's path.
+    """
+    try:
+        _registry = unreal.AssetRegistryHelpers.get_asset_registry()
+        _tools = unreal.AssetToolsHelpers.get_asset_tools()
+    except Exception:
+        return 0
+    try:
+        if not unreal.EditorAssetLibrary.does_directory_exist(dest_path):
+            return 0
+    except Exception:
+        return 0
+    try:
+        _assets = _registry.get_assets_by_path(dest_path, recursive=True)
+    except Exception:
+        return 0
+    _redirs = []
+    for _ad in _assets:
+        try:
+            _cls = str(_ad.asset_class_path.asset_name)
+        except Exception:
+            try:
+                _cls = str(_ad.asset_class)
+            except Exception:
+                _cls = ""
+        if _cls == "ObjectRedirector":
+            _redirs.append(_ad)
+    if not _redirs:
+        return 0
+    print(f"  Fixing up {{len(_redirs)}} redirector(s) in {{dest_path}}")
+    _objs = []
+    for _ad in _redirs:
+        try:
+            _obj = _ad.get_asset()
+        except Exception:
+            _obj = None
+        if _obj is None:
+            try:
+                _obj = unreal.EditorAssetLibrary.load_asset(str(_ad.package_name))
+            except Exception:
+                _obj = None
+        if _obj is not None:
+            _objs.append(_obj)
+    if _objs:
+        try:
+            _tools.fixup_referencers(_objs)
+        except Exception as _fe:
+            print(f"  fixup_referencers err: {{_fe}}")
+    _removed = 0
+    for _ad in _redirs:
+        _pkg = str(_ad.package_name)
+        try:
+            if unreal.EditorAssetLibrary.delete_asset(_pkg):
+                _removed += 1
+        except Exception:
+            pass
+    if _removed:
+        print(f"  Deleted {{_removed}} stale redirector(s)")
+    return _removed
 
 print("=" * 60)
 print("GrowPy Batch Import: {batch_label}")
@@ -1269,6 +1703,19 @@ def generate_unreal_import_script(
         consolidation_path = script_dir / consolidation_name
         consolidation_path.write_text(consolidation_code, encoding="utf-8")
         batch_scripts.append((consolidation_name, consolidation_label))
+
+    # Material batch: create MA_Foliage_Trees-derived MICs and assign to meshes
+    species_colors = _load_species_colors()
+    if species_colors:
+        materials_code = _build_material_script(project_path, species_colors)
+        materials_name = "import_batch_98_materials.py"
+        materials_label = "Assign MA_Foliage_Trees material instances"
+        (script_dir / materials_name).write_text(materials_code, encoding="utf-8")
+        batch_scripts.append((materials_name, materials_label))
+    else:
+        logger.warning(
+            "No species color data available -- skipping material batch script."
+        )
 
     # DataTable batch: catalogue all imported assemblies
     datatable_code = _build_datatable_script(
