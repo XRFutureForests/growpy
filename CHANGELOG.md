@@ -9,12 +9,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `.editorconfig` for cross-editor consistency.
 - `CONTRIBUTING.md` with contribution workflow.
 - `CHANGELOG.md` (this file).
+- `docs/reference/package-api.md`: Package API reference with Python examples.
+- `docs/reference/testing.md`: Test suite documentation.
 
 ### Changed
-- `pyproject.toml`: `pylometree` dependency now points to the GitLab
-  repository via `git+https` rather than an absolute local Windows path.
+- `pyproject.toml`: `requires-python` from `>=3.9` to `>=3.12`.
+- `environment.yml`: Python version from `3.11` to `3.12`.
 - `README.md`: Configuration section updated to reference the user-editable
   `config/` directory and the packaged template layout.
+- `src/growpy/README.md` → `docs/reference/package-api.md`: Package API reference.
+- `src/growpy/tests/README.md` → `docs/reference/testing.md`: Test suite docs.
+- `src/growpy/config/templates/README.md`: Rewritten as brief pointer to
+  user-editable `config/` directory.
 
 ### Removed
 - `.coverage` test coverage artifact removed from version control and added
