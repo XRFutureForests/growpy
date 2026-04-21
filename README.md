@@ -78,9 +78,9 @@ python -c "import the_grove_23_core as gc; print('Grove API ready')"
 
 ## Configuration
 
-All CLI scripts read defaults from [`src/growpy/growpy.toml`](src/growpy/growpy.toml). CLI arguments override TOML values. Resolution order: dataclass defaults -> growpy.toml -> CLI arguments.
+All CLI scripts read defaults from the TOML files in [`config/`](config/) (user-editable; bootstrapped from the packaged templates in `src/growpy/config/templates/` via `growpy-init-config`). CLI arguments override TOML values. Resolution order: dataclass defaults -> packaged templates -> `config/*.toml` -> CLI arguments.
 
-Key sections in `growpy.toml`:
+Key configuration files in `config/`:
 
 | Section | Controls |
 |---------|----------|

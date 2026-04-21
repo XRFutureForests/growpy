@@ -6,6 +6,10 @@
 /data/tmp/
 /data/megaplant/
 
+# User-specific twig assets (Blender files + textures). Keep only .gitkeep tracked.
+/data/input/custom_twigs/*
+!/data/input/custom_twigs/.gitkeep
+
 # Grove commercial software (requires separate license from thegrove3d.com)
 /src/the_grove_*/
 
@@ -48,3 +52,4 @@ Thumbs.db
 *.tmp
 *.log
 nul
+.coverage
