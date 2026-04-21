@@ -1,8 +1,8 @@
-# GrowPy Package
+# GrowPy Package API
 
-Python package for procedural forest generation using The Grove 2.3 with USD export for Unreal Engine 5 Nanite workflows.
+Python package for procedural forest generation using The Grove 2.3 with USD export for Unreal Engine 5 Nanite workflows. This document is the Python-API reference for the `growpy` package.
 
-For installation, pipeline usage, and dataset production, see the [project README](../../README.md).
+For installation, pipeline usage, and dataset production, see the [project README](../README.md).
 
 ## Package Structure
 

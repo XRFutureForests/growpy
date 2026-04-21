@@ -252,8 +252,8 @@ section of growpy.toml.
 ## Dataset Production
 
 Two integrated features automate batch production of tree assets across all 16 dataset
-species. See [dataset-specification.md](dataset-specification.md) for the full
-specification and [dataset-overview.md](dataset-overview.md) for production status.
+species. See [../dataset/dataset-specification.md](../dataset/dataset-specification.md) for the full
+specification and [../dataset/dataset-overview.md](../dataset/dataset-overview.md) for production status.
 
 ### dataset_pipeline.py
 

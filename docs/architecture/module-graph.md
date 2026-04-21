@@ -50,6 +50,7 @@ flowchart TB
     AE[io/usd/assembly_export]:::iousd
     TE[io/usd/tree_export]:::iousd
     TWE[io/usd/twig_export]:::iousd
+    TWG[io/usd/twig_geometry]:::iousd
     Tex[io/usd/texture_utils]:::iousd
     Prev[io/usd/preview]:::iousd
     OV[io/usd/overview]:::iousd
@@ -57,11 +58,16 @@ flowchart TB
     %% IO unreal
     US[io/unreal/unreal_scripts]:::ioue
     Wind[io/unreal/wind_json]:::ioue
+    WindImp[io/unreal/wind_import_script]:::ioue
     PVEMap[io/unreal/pve_grove_mapper]:::ioue
     PVEFol[io/unreal/pve_foliage_extractor]:::ioue
     PVEHier[io/unreal/pve_hierarchy_builder]:::ioue
     PVESch[io/unreal/pve_schema]:::ioue
     PVEDef[io/unreal/pve_growth_defaults]:::ioue
+    PVEData[io/unreal/pve_foliage_data]:::ioue
+    PVEImp[io/unreal/pve_import_script]:::ioue
+    PVEGr[io/unreal/pve_graph_script]:::ioue
+    NVox[io/unreal/nanite_voxelize_script]:::ioue
     UER[io/unreal/ue_remote]:::ioue
 
     %% IO helios
@@ -101,6 +107,7 @@ flowchart TB
 
     %% Pipelines internals
     SR --> JP
+    SR --> AE & US & WindImp & PVEData & PVEImp & PVEGr & NVox & Cfg
     CSVP --> Nm & Cfg
     JP --> Nm & Cfg
     FS --> Forest & POv & Q & AE & TE & Prev & Wind & PVEMap & EN & Prof & Bpy & GC
@@ -117,10 +124,15 @@ flowchart TB
     FX --> AE & TE & Prev & Wind & PVEMap
     AE --> TE & Skel & Twig & EN & Q & Paths
     TE --> Skel & MS & Paths
-    TWE --> Tex & Pxr
+    TWE --> Tex & Pxr & TWG
     OBJ --> TE & Twig & Pxr & MS & HEL
     HEL --> Paths
     PVEMap --> PVEFol & PVEHier & PVESch & PVEDef & PVEov
+    PVEImp --> Nm & Cfg
+    PVEGr --> Nm & Cfg
+    PVEData --> Paths
+    WindImp --> Cfg
+    NVox --> Cfg
     OV --> Paths
 
     %% Config internals
@@ -152,16 +164,22 @@ flowchart TB
     click AE href "../../src/growpy/io/usd/assembly_export.py"
     click TE href "../../src/growpy/io/usd/tree_export.py"
     click TWE href "../../src/growpy/io/usd/twig_export.py"
+    click TWG href "../../src/growpy/io/usd/twig_geometry.py"
     click Tex href "../../src/growpy/io/usd/texture_utils.py"
     click Prev href "../../src/growpy/io/usd/preview.py"
     click OV href "../../src/growpy/io/usd/overview.py"
     click US href "../../src/growpy/io/unreal/unreal_scripts.py"
     click Wind href "../../src/growpy/io/unreal/wind_json.py"
+    click WindImp href "../../src/growpy/io/unreal/wind_import_script.py"
     click PVEMap href "../../src/growpy/io/unreal/pve_grove_mapper.py"
     click PVEFol href "../../src/growpy/io/unreal/pve_foliage_extractor.py"
     click PVEHier href "../../src/growpy/io/unreal/pve_hierarchy_builder.py"
     click PVESch href "../../src/growpy/io/unreal/pve_schema.py"
     click PVEDef href "../../src/growpy/io/unreal/pve_growth_defaults.py"
+    click PVEData href "../../src/growpy/io/unreal/pve_foliage_data.py"
+    click PVEImp href "../../src/growpy/io/unreal/pve_import_script.py"
+    click PVEGr href "../../src/growpy/io/unreal/pve_graph_script.py"
+    click NVox href "../../src/growpy/io/unreal/nanite_voxelize_script.py"
     click UER href "../../src/growpy/io/unreal/ue_remote.py"
     click OBJ href "../../src/growpy/io/helios/obj_export.py"
     click HEL href "../../src/growpy/io/helios/helios_scene.py"

@@ -9,7 +9,7 @@ This document is the lookup table for "where does X live and what does it do".
 For the layered import view, see [module-graph.md](module-graph.md). For the
 end-to-end process flow with clickable nodes, see
 [pipeline-overview.md](pipeline-overview.md). For the flat inventory
-(including standalone scripts), see [../module-audit.md](../module-audit.md).
+(including standalone scripts), see [../internals/module-audit.md](../internals/module-audit.md).
 
 > **Layout note (April 2026 refactor).** The `io/` package has been split into
 > three sub-packages: [`io/usd/`](../../src/growpy/io/usd/) (USD/Nanite
@@ -419,6 +419,22 @@ calibrated growth-model plots into a single `overview.md` for a dataset run.
 **Public:** `generate_overview_markdown(forest_dir, height_interval, preset_dir,
 models_dir)`, `build_dataset_dataframe(...)`, `generate_icon_grid(...)`.
 
+### [`io/usd/twig_geometry.py`](../../src/growpy/io/usd/twig_geometry.py)
+
+**Purpose:** Pure Blender-mesh operations on twig meshes: subdivision
+densification, edge-length-targeted densification, normal displacement,
+alpha-mask trimming, and alpha-contour cutting. Split out of
+[`twig_export.py`](../../src/growpy/io/usd/twig_export.py) so the geometry
+manipulations can be reused independently from the USD writer.
+
+**Public:** `densify_mesh(obj, subdivision_levels=3, material_indices=None)`,
+`densify_mesh_to_target_edge(obj, target_edge_length, ...)`,
+`apply_normal_displacement(obj, ...)`,
+`trim_by_alpha_mask(obj, alpha_image, ...)`,
+`cut_along_alpha_contour(obj, ...)`.
+
+**Consumed by:** `io.usd.twig_export`.
+
 ---
 
 ## Helios++ sub-package ([`src/growpy/io/helios/`](../../src/growpy/io/helios/))
@@ -507,6 +523,70 @@ sub-module — see [../pve-attribute-reference.md](../pve-attribute-reference.md
 for the schema details. The split exists so each concern (foliage instancer
 extraction, hierarchy parent arrays, schema templates, default growth params)
 can be unit-tested independently.
+
+### [`io/unreal/wind_import_script.py`](../../src/growpy/io/unreal/wind_import_script.py)
+
+**Purpose:** Generate the standalone UE-side Python script that walks every
+tree directory, reads `*_DynamicWind.json` sidecars, and applies the wind
+data to the matching SkeletalMesh asset. Runs **before** the PVE preset
+import so foliage-type assets resolve their skeletal wind metadata.
+
+**Public:** `generate_wind_import_script(output_dir, forest_root, import_base)`,
+`main()` (the in-editor entry point emitted into the generated script).
+
+**Consumed by:** `pipelines.step_runner.generate_unreal_scripts` when
+`config.unreal_generate_wind_data = true`.
+
+### [`io/unreal/pve_foliage_data.py`](../../src/growpy/io/unreal/pve_foliage_data.py)
+
+**Purpose:** Aggregate per-tree PVE recipe JSONs into `FoliageData.json`
+files consumed by `UProceduralVegetationPreset::UpdateDataAsset()`. Extracts
+unique twig mesh names from every recipe's `instancer_name` array and maps
+them to distribution rules.
+
+**Public:** `generate_foliage_data(recipe_dir, output_path, ...)`,
+`generate_all_foliage_data(output_dir, import_base, species_twig_map)`.
+
+**Consumed by:** `pipelines.step_runner.generate_unreal_scripts` when
+`config.unreal_generate_pve_presets = true`.
+
+### [`io/unreal/pve_import_script.py`](../../src/growpy/io/unreal/pve_import_script.py)
+
+**Purpose:** Generate the UE-side script that imports PVE preset JSONs as
+FoliageType assets and wires each preset to its twig mesh references.
+
+**Public:**
+
+- `build_species_twig_map(lookup_csv=None) -> dict[str, str]` — reads
+  `tree_asset_lookup.csv` and returns the `species -> twig_name` mapping used
+  when resolving static-mesh references in the generated script.
+- `generate_pve_preset_import_script(output_dir, forest_root, import_base, species_twig_map)`.
+- `generate_pve_import_for_species(...)` — per-species variant used when
+  importing one species at a time.
+- `main()` — in-editor entry emitted into the generated script.
+
+### [`io/unreal/pve_graph_script.py`](../../src/growpy/io/unreal/pve_graph_script.py)
+
+**Purpose:** Generate the UE-side script that wires FoliageType assets into
+a PVE graph (nodes + edges + default parameter sets). Runs after
+`pve_import_script.py` so the FoliageType assets exist before the graph
+references them.
+
+**Public:** `generate_pve_graph_script(output_dir, forest_root, import_base, species_twig_map)`,
+`main()`.
+
+### [`io/unreal/nanite_voxelize_script.py`](../../src/growpy/io/unreal/nanite_voxelize_script.py)
+
+**Purpose:** Generate the UE-side script that walks Nanite Assembly assets
+and calls `set_nanite_shape_voxelize` for the best runtime VRAM-residency.
+Runs **after** an editor restart to ensure clean VRAM, which is why it is a
+standalone script rather than part of the batch importer.
+
+**Public:** `generate_nanite_voxelize_script(output_dir, import_path)`,
+`main()`.
+
+**Consumed by:** `pipelines.step_runner.generate_unreal_scripts` when
+`config.unreal_import_to_unreal = true` and `config.unreal_voxelization = true`.
 
 ### [`io/unreal/ue_remote.py`](../../src/growpy/io/unreal/ue_remote.py)
 

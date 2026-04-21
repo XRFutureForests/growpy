@@ -427,7 +427,7 @@ Apply at each review checkpoint:
 | `bare` variant still shows twigs | Density threshold misconfigured | Check `[density_variant.bare]` has `twig_density = 0.0` in growpy.toml |
 | `reduced` variant looks identical to `full` | `build_cutoff_thickness` not distinct enough | Increase `build_cutoff_thickness` in `[density_variant.reduced]` (e.g., 0.015) |
 | Export takes very long | High mesh resolution | Use `--quality debug` for test runs; switch to `high` for final production |
-| Calibration mismatch for a species | Wrong yield table matched | Override with `--table-id` or `--yield-class` in `create_growth_models.py`; see [yield-table-calibration.md](yield-table-calibration.md) |
+| Calibration mismatch for a species | Wrong yield table matched | Override with `--table-id` or `--yield-class` in `create_growth_models.py`; see [../reference/yield-table-calibration.md](../reference/yield-table-calibration.md) |
 | Tree dies before reaching target height | `longevity_mode` disabled | Ensure `longevity_mode = true` in growpy.toml `[forest]` section |
 
 ## Species Catalog
