@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+
 - `.editorconfig` for cross-editor consistency.
 - `CONTRIBUTING.md` with contribution workflow.
 - `CHANGELOG.md` (this file).
@@ -13,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `docs/reference/testing.md`: Test suite documentation.
 
 ### Changed
+
 - `pyproject.toml`: `requires-python` from `>=3.9` to `>=3.12`.
 - `environment.yml`: Python version from `3.11` to `3.12`.
 - `README.md`: Configuration section updated to reference the user-editable
@@ -23,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   user-editable `config/` directory.
 
 ### Removed
+
 - `.coverage` test coverage artifact removed from version control and added
   to `.gitignore`.
 - Stale redirect file `docs/growpy/cli-reference.md` removed; live docs are
