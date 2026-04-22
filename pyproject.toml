@@ -32,6 +32,7 @@ growpy-ue-exec = "growpy.tools.ue_exec:main"
 growpy-analyze-usda = "growpy.tools.analyze_usda:main"
 growpy-diagnose-growth = "growpy.tools.diagnose_growth:main"
 growpy-visualize-tree = "growpy.tools.visualize_tree:main"
+growpy-sensitivity-analysis = "growpy.cli.sensitivity_analysis:main"
 
 [tool.setuptools]
 packages = ["growpy", "growpy.config.templates", "the_grove_23_core"]

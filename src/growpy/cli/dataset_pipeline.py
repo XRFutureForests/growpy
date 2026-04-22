@@ -332,6 +332,9 @@ def main():
                 extra.append("--ingest-yield-tables")
                 if args.clean_store:
                     extra.append("--clean-store")
+            # Pass --species to step 3 so calibration is limited to one species
+            if step == 3 and args.species:
+                extra.extend(["--species", args.species])
             extra = extra or None
             ok = run_step123(
                 step,
