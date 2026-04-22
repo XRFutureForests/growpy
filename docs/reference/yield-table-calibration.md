@@ -41,23 +41,29 @@ With optional baseline: `h(t) = y0 + (A - y0) * (1 - exp(-k * t))^p`
 
 ### Why Chapman-Richards
 
-The Chapman-Richards equation is the standard growth model in forest mensuration,
-chosen for several properties that make it well-suited to tree growth:
+The Chapman-Richards equation is the standard growth model in forest mensuration
+[[Zeide 1993](#references), [Salas 2021](#references)], chosen for several properties
+that make it well-suited to tree growth:
 
-- **Biological basis**: Derived from the von Bertalanffy differential growth
-  equation (anabolism vs catabolism), giving it a mechanistic interpretation
-  rather than being a purely empirical curve fit.
+- **Biological basis**: Richards (1959) formulated the equation as an extended form of
+  von Bertalanffy's growth function, in which anabolic (resource assimilation) and
+  catabolic (metabolic cost) processes oppose each other to produce a sigmoidal curve
+  [[Richards 1959](#references)]. Pienaar & Turnbull (1973) applied this generalization
+  directly to even-aged forest stand growth, demonstrating its mechanistic grounding in
+  tree biology [[Pienaar & Turnbull 1973](#references)].
 - **Asymptotic behavior**: The parameter `A` provides a natural height ceiling,
   reflecting the biological reality that trees reach a maximum height.
-- **Flexible shape**: The exponent `p` controls the inflection point, allowing
-  the same equation to represent both fast-early growth (shade-intolerant pioneer
-  species) and slow-early growth (shade-tolerant species).
-- **Parsimonious**: Only 3-4 parameters (`A`, `k`, `p`, optional `y0`), which is
-  few enough to fit reliably from the limited data points in typical yield tables.
+- **Flexible shape**: The exponent `p` controls the inflection point, allowing the same
+  equation to represent both fast-early growth (shade-intolerant pioneer species) and
+  slow-early growth (shade-tolerant species) [[Richards 1959](#references),
+  [Salas 2021](#references)].
+- **Parsimonious**: Only 3-4 parameters (`A`, `k`, `p`, optional `y0`), which is few
+  enough to fit reliably from the limited data points in typical yield tables.
 
-Alternative sigmoidal models exist (Weibull, Gompertz, logistic, Korf, Hossfeld),
-but Chapman-Richards consistently ranks among the best across species and site
-conditions in comparative forestry studies.
+Alternative sigmoidal models exist (Weibull, Gompertz, logistic, Korf, Hossfeld), but
+Chapman-Richards consistently ranks among the best across species and site conditions in
+comparative forestry studies [[Zeide 1993](#references), [Bontemps & Duplat 2012](#references),
+[Protazio et al. 2022](#references)].
 
 ### How GrowPy Uses It
 
@@ -323,3 +329,12 @@ When not 1.0, the value is stored in the seed.json calibration block for referen
    across the life of a tree. In reality, juvenile trees may flush more frequently
    than mature ones. A per-cycle mapping function could improve accuracy but adds
    complexity.
+
+## References
+
+- **Richards 1959** — Richards, F.J. (1959). A flexible growth function for empirical use. *Journal of Experimental Botany*, 10(2), 290–301. <https://doi.org/10.1093/jxb/10.2.290>
+- **Pienaar & Turnbull 1973** — Pienaar, L.V. & Turnbull, K.J. (1973). The Chapman-Richards generalization of Von Bertalanffy's growth model for basal area growth and yield in even-aged stands. *Forest Science*, 19(1), 2–22. <https://academic.oup.com/forestscience/article-abstract/19/1/2/4675357>
+- **Zeide 1993** — Zeide, B. (1993). Analysis of growth equations. *Forest Science*, 39(3), 594–616. <https://doi.org/10.1093/forestscience/39.3.594>
+- **Bontemps & Duplat 2012** — Bontemps, J.D. & Duplat, P. (2012). A non-asymptotic sigmoid growth curve for top height growth in forest stands. *Forestry*, 85(3), 353–368. <https://doi.org/10.1093/forestry/cps010>
+- **Salas 2021** — Salas, C. et al. (2021). Growth equations in forest research: mathematical basis and model similarities. *Current Forestry Reports*, 7, 230–253. <https://doi.org/10.1007/s40725-021-00145-8>
+- **Protazio et al. 2022** — Protazio, J.M.B., Souza, M.A. & Hernández, J.C. (2022). A dynamical model based on the Chapman–Richards growth equation for fitting growth curves for four pine species in Northern Mexico. *Forests*, 13(11), 1866. <https://doi.org/10.3390/f13111866>
