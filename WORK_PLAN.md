@@ -34,8 +34,8 @@ XRFF-36  (Grove generation driven by live Ecosense DB)  ← parallel track
 | Sycamore maple | ✅ | ✅ | ✅ |
 | Common ash | ✅ | ✅ | ✅ |
 | Silver birch | ✅ | ✅ | ✅ |
-| Small-leaved linden | ✅ | ✅ | ❌ needs Blender |
-| Wild cherry | ✅ | ✅ | ❌ needs Blender |
+| Small-leaved linden | ✅ | ✅ | ✅ |
+| Wild cherry | ✅ | ✅ | ✅ |
 
 Bugs fixed (2026-04-22):
 
@@ -43,27 +43,22 @@ Bugs fixed (2026-04-22):
 - `prepare_assets.py`: step 1 overwrote calibrated presets. Fixed with `_yield_table_calibration` existence guard.
 - `dataset_pipeline.py`: `--species` flag not forwarded to step 3. Fixed.
 - `create_growth_models.py`: `--species` input not normalized before lookup. Fixed.
+- `pyproject.toml`: `requires-python` lowered to `>=3.11` to match growpy conda env (Python 3.11.14). Fixed editable install in growpy env so both `bpy` and `growpy` coexist.
+
+Note: `bpy` lives in the growpy conda env. Steps 1–3 use the base env (has `growpy` editable install, no `bpy`). Steps 2 and 4 use the growpy env directly:
+
+```bash
+conda run -n growpy python src/growpy/cli/dataset_pipeline.py --species "..." --steps 2
+```
 
 ### Remaining steps
 
-#### 1. Step 2 (twig USDA) for Small-leaved Linden + Wild Cherry
+#### Step 4 validation (pilot) [IN PROGRESS]
 
-Requires Blender with Grove add-on. In Blender:
-
-- Open `src/the_grove_23/` Grove add-on
-- Run twig export script or use the grove convert_twigs step:
+Running pilot (beech + spruce) to verify mesh output at all height steps:
 
 ```bash
-growpy-dataset-pipeline --species "Small-leaved Linden" --steps 2
-growpy-dataset-pipeline --species "Wild Cherry" --steps 2
-```
-
-#### 2. Step 4 validation (pilot)
-
-Once twig USDAs exist for all species, validate mesh output at ≥1 height step:
-
-```bash
-growpy-dataset-pipeline --pilot --steps 4
+conda run -n growpy python src/growpy/cli/dataset_pipeline.py --pilot --steps 4
 ```
 
 Check `data/output/forest/<species>/` for preview icons. Crown silhouette must be species-recognizable.
