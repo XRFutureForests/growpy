@@ -141,6 +141,71 @@ Cross-check that all 5 Ecosense dominant species have presets. If any inventory 
 
 ---
 
+## XRFF-134 — Add GBIF taxon key to species lookup (High, assignee: Max)
+
+**Goal**: Add `GBIF Key` column to `src/growpy/config/templates/tree_asset_lookup.csv` and embed `gbif_taxon_key` in per-tree output metadata JSON. UE DataTable uses integer key (not name string) for cross-system species matching against digital-twin-db.
+
+**Prerequisite**: XRFF-133 (digital-twin-db) complete — DB must have `gbif_taxon_key` populated before validation in Step 4.
+
+### Steps
+
+**1. Complete GBIF Key population in tree_asset_lookup.csv**
+
+`GBIF Key` column added. 9 dataset species populated. Resolve remaining dataset species via GBIF Species Match API:
+
+```bash
+curl "https://api.gbif.org/v1/species/match?name=Fraxinus+excelsior"
+# Response includes: { "usageKey": <int>, "scientificName": "...", "status": "ACCEPTED" }
+```
+
+Priority — resolve these for the 16-species dataset (XRFF-127) first:
+
+| Species | Scientific Name |
+|---|---|
+| Common ash | Fraxinus excelsior |
+| Silver birch | Betula pendula |
+| Downy birch | Betula pubescens |
+| Small-leaved linden | Tilia cordata |
+| Grand fir | Abies grandis |
+| Rowan / Mountain ash | Sorbus aucuparia |
+| Black alder | Alnus glutinosa |
+| Hornbeam | Carpinus betulus |
+
+Remaining 44 Grove species can be populated later.
+
+**2. Propagate key through pipeline metadata**
+
+In the per-tree metadata JSON writer (wherever `*_DynamicWind.json` or tree metadata is written), add `gbif_taxon_key` field sourced from lookup CSV:
+
+```python
+# metadata output
+{
+    "species": "european_beech",
+    "scientific_name": "Fagus sylvatica",
+    "gbif_taxon_key": 2882316,
+    ...
+}
+```
+
+Find the metadata writer: search `src/growpy/io/` for the JSON output function.
+
+**3. UE DataTable update (Paul — XRFF-14 / XRFF-59)**
+
+Add `GBIFTaxonKey` (int32) column to tree mesh DataTable in UE. Populate from growpy output metadata JSON. Switch species match logic from name string to `GBIFTaxonKey` int match against API response `gbif_taxon_key`.
+
+**4. Validate sync with digital-twin-db**
+
+Every `GBIF Key` in growpy lookup must exist in `shared.species.gbif_taxon_key` in the DB:
+
+```bash
+# Spot-check: query DB species keys, compare against tree_asset_lookup.csv
+curl "http://<db-host>/species?select=common_name,gbif_taxon_key" -H "apikey: <anon-key>"
+```
+
+**5. Mark done when** all 16 dataset species have `GBIF Key` populated, key flows into output metadata JSON, and Paul has updated the UE DataTable column.
+
+---
+
 ## Dependency Map
 
 ```
@@ -151,6 +216,10 @@ XRFF-129: calibrate 5 species
 XRFF-127: full batch (~522 models)
     ↓
 Paul: XRFF-59 → XRFF-61 → XRFF-17
+
+XRFF-134 (GBIF taxon key in lookup + metadata)  ← parallel track
+    ↓
+XRFF-36 (live DB → growpy) requires all dataset species GBIF keys synced
 ```
 
 ---
