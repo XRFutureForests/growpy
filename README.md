@@ -372,7 +372,7 @@ python -m pytest src/growpy/tests/ -v
 python -m pytest src/growpy/tests/test_skeleton.py -v   # Single module
 ```
 
-See [src/growpy/tests/README.md](src/growpy/tests/README.md) for coverage details.
+See [docs/testing.md](docs/testing.md) for coverage details.
 
 ## Troubleshooting
 
