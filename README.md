@@ -99,7 +99,7 @@ Key configuration files in `config/`:
 
 Species-to-asset mapping is defined in `src/growpy/config/tree_asset_lookup.csv` (60 Grove species). Quality presets (`high`, `helios`, `debug`) are defined in `growpy.toml` under `[quality.*]` sections.
 
-For the full CLI flags reference, see [docs/cli-reference.md](docs/cli-reference.md).
+For the full CLI flags reference, see [docs/reference/cli-reference.md](docs/reference/cli-reference.md).
 
 ## Core Pipeline
 
@@ -206,7 +206,7 @@ leaf = 0.5
 
 ## Dataset Production
 
-The dataset pipeline produces a systematic set of tree assets: 10 southern German species (5 conifer + 5 broadleaf), 2 individuals each (open-grown and competition), multiple height stages, 3 density variants. Species selection focuses on the dominant trees of Bavaria and Baden-Wuerttemberg. See [Dataset Specification](docs/dataset-specification.md) for species catalog and full details.
+The dataset pipeline produces a systematic set of tree assets: 10 southern German species (5 conifer + 5 broadleaf), 2 individuals each (open-grown and competition), multiple height stages, 3 density variants. Species selection focuses on the dominant trees of Bavaria and Baden-Wuerttemberg. See [Dataset Specification](docs/dataset/dataset-specification.md) for species catalog and full details.
 
 ### Preparation
 
@@ -338,7 +338,7 @@ Wind data is embedded directly in the USD skeleton. For older workflows, each tr
 - **USD Importer**: Enable "Use Nanite" for automatic Nanite mesh generation
 - **Remote Execution**: Enable for running Python scripts from VSCode
 
-See [PVE Preset Workflow](docs/pve-preset-workflow.md) for Procedural Vegetation Editor integration.
+See [PVE Preset Workflow](docs/guides/pve-preset-workflow.md) for Procedural Vegetation Editor integration.
 
 ## Project Structure
 
@@ -408,18 +408,22 @@ python src/growpy/cli/generate_forest.py --skeleton-reduce 0.5 --skeleton-length
 
 | Document | Description |
 |----------|-------------|
-| [CLI Reference](docs/cli-reference.md) | Complete CLI flags and options for all scripts |
-| [Functional Description](docs/growpy-functional-description.md) | Package architecture and data flow |
-| [Dataset Specification](docs/dataset-specification.md) | Species catalog and dataset production plan |
-| [Dataset Overview](docs/dataset-overview.md) | Production status and preview gallery |
-| [Grove Preset Reference](docs/grove-preset-reference.md) | Growth parameters and cycle-based curves |
-| [Naming Conventions](docs/naming-conventions.md) | Species, file, and directory naming standards |
-| [Coordinate Systems](docs/coordinate-systems.md) | Grove, Blender, Unreal, PVE transforms |
-| [PVE Preset Workflow](docs/pve-preset-workflow.md) | Procedural Vegetation Editor integration |
-| [PVE Attribute Reference](docs/pve-attribute-reference.md) | PVE attributes and Grove mapping |
-| [Yield Table Calibration](docs/yield-table-calibration.md) | Calibration methodology |
-| [USD Builder](docs/usd-builder.md) | USD export internals |
-| [Module Audit](docs/module-audit.md) | Module inventory and dependencies |
+| [Quickstart](docs/quickstart.md) | Fastest path from install to working forest |
+| [CLI Reference](docs/reference/cli-reference.md) | Complete CLI flags and options for all scripts |
+| [Pipeline Overview](docs/architecture/pipeline-overview.md) | Package architecture and data flow |
+| [Processing Logic](docs/architecture/processing-logic.md) | Per-step algorithm walkthrough |
+| [Dataset Specification](docs/dataset/dataset-specification.md) | Species catalog and dataset production plan |
+| [Dataset Overview](docs/dataset/dataset-overview.md) | Production status and preview gallery |
+| [Helios Export](docs/guides/helios-export.md) | OBJ/MTL export for Helios++ LiDAR |
+| [Unreal Import](docs/guides/unreal-import.md) | UE 5.7+ import, wind, PVE, Nanite |
+| [PVE Preset Workflow](docs/guides/pve-preset-workflow.md) | Procedural Vegetation Editor integration |
+| [Grove Preset Reference](docs/reference/grove-preset-reference.md) | Growth parameters and cycle-based curves |
+| [Naming Conventions](docs/reference/naming-conventions.md) | Species, file, and directory naming standards |
+| [Coordinate Systems](docs/reference/coordinate-systems.md) | Grove, Blender, Unreal, PVE transforms |
+| [PVE Attribute Reference](docs/reference/pve-attribute-reference.md) | PVE attributes and Grove mapping |
+| [Yield Table Calibration](docs/reference/yield-table-calibration.md) | Calibration methodology |
+| [USD Builder](docs/reference/usd-builder.md) | USD export internals |
+| [Module Audit](docs/internals/module-audit.md) | Module inventory and dependencies |
 | [Grove 2.3 API](docs/the_grove/) | Grove core API documentation |
 
 ## License

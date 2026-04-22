@@ -184,9 +184,6 @@ def calculate_growth_cycles_from_height(forest_data: pd.DataFrame) -> None:
     - 'growth_cycles': Number of cycles needed to reach target height
     - 'delay': Growth delay offset for synchronized growth
 
-    When the target height exceeds what the growth model achieved during training,
-    cycles are clamped to the model's actual maximum and a warning is logged.
-
     Args:
         forest_data: DataFrame with 'species' and 'height' columns
     """
