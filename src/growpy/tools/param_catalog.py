@@ -26,6 +26,18 @@ logger = logging.getLogger(__name__)
 _SKIP_PREFIXES = ("_",)
 _SKIP_TYPES = (bool, dict, list)
 
+# Competition/environment geometry params — not tree morphology
+_SKIP_PARAMS = frozenset({
+    "shade_area",
+    "shade_alongside",
+    "shade_distance",
+    "shade_height",
+    "surround_distance",
+    "surround_height",
+    "surround_count",
+    "surround_randomness",
+})
+
 DEFAULT_PRESET_DIRS = [
     get_project_root() / "src" / "the_grove_23" / "presets",
     get_assets_directory() / "presets",
@@ -56,6 +68,8 @@ def scan_presets(preset_dirs: list[Path]) -> dict[str, list[float]]:
                     data = json.load(f)
                 for key, val in data.items():
                     if any(key.startswith(p) for p in _SKIP_PREFIXES):
+                        continue
+                    if key in _SKIP_PARAMS:
                         continue
                     if isinstance(val, _SKIP_TYPES):
                         continue

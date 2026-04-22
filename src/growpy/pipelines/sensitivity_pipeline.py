@@ -93,7 +93,7 @@ def run_grove_simulation(
     grove.simulate(cycles)
 
     tree = grove.trees[0] if grove.trees else None
-    skeletons = grove.build_models({})
+    skeletons = grove.build_skeletons(True)
     skeleton = skeletons[0] if skeletons else None
 
     return skeleton, tree
@@ -155,7 +155,16 @@ def measure_metrics(skeleton, tree) -> dict:
         return metrics
 
     try:
-        points = np.array(skeleton.points)
+        pts_raw = list(skeleton.points)
+        if not pts_raw:
+            return metrics
+        first = pts_raw[0]
+        if hasattr(first, "x"):
+            points = np.array([(v.x, v.y, v.z) for v in pts_raw], dtype=float)
+        elif isinstance(first, (list, tuple)):
+            points = np.array(pts_raw, dtype=float)
+        else:
+            points = np.array([float(v) for v in pts_raw], dtype=float).reshape(-1, 3)
     except Exception:
         return metrics
 

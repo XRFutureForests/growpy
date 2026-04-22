@@ -362,7 +362,9 @@ def write_calibration_to_seed_json(
     flushes_per_year: float = 1.0,
 ) -> Optional[Path]:
     """Write calibration data to the species seed.json."""
-    species_dir = species_name.lower().replace(" ", "_")
+    from growpy.utils.naming import standardize_species_name
+
+    species_dir = standardize_species_name(species_name)
     preset_path = presets_dir / f"{species_dir}.seed.json"
 
     if not preset_path.exists():
@@ -422,7 +424,9 @@ def calibrate_species(
     Returns:
         True if calibration was written successfully.
     """
-    species_clean = species_name.lower().replace(" ", "_")
+    from growpy.utils.naming import standardize_species_name
+
+    species_clean = standardize_species_name(species_name)
     max_cycles = len(grove_heights)
 
     # Load base preset values
