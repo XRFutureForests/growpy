@@ -146,11 +146,11 @@ generate_forest.py --> data/output/forest/ (USD assemblies)
 
 | Document | Description |
 |----------|-------------|
-| [CLI Reference](../../docs/cli-reference.md) | Complete CLI flags for all scripts |
-| [Functional Description](../../docs/growpy-functional-description.md) | Architecture and data flow |
-| [Grove Preset Reference](../../docs/grove-preset-reference.md) | Growth parameters |
-| [Coordinate Systems](../../docs/coordinate-systems.md) | Grove/Blender/Unreal transforms |
-| [Naming Conventions](../../docs/naming-conventions.md) | Species and file naming |
-| [USD Builder](../../docs/usd-builder.md) | USD export internals |
-| [Module Audit](../../docs/module-audit.md) | Module inventory and dependencies |
-| [Grove API](../../docs/the_grove/) | Grove core API documentation |
+| [CLI Reference](cli-reference.md) | Complete CLI flags for all scripts |
+| [Pipeline Overview](../architecture/pipeline-overview.md) | Architecture and data flow |
+| [Grove Preset Reference](grove-preset-reference.md) | Growth parameters |
+| [Coordinate Systems](coordinate-systems.md) | Grove/Blender/Unreal transforms |
+| [Naming Conventions](naming-conventions.md) | Species and file naming |
+| [USD Builder](usd-builder.md) | USD export internals |
+| [Module Audit](../internals/module-audit.md) | Module inventory and dependencies |
+| [Grove API](../the_grove/) | Grove core API documentation |

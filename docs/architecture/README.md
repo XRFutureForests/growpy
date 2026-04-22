@@ -6,7 +6,7 @@ takes as input and produces as output, and where to make changes when fixing
 bugs or adding features.
 
 If you are looking for *how to use* GrowPy from the command line, see
-[../growpy/cli-reference.md](../growpy/cli-reference.md). If you are looking for
+[../reference/cli-reference.md](../reference/cli-reference.md). If you are looking for
 the *historical* functional description, see
 [../growpy-functional-description.md](../growpy-functional-description.md). The
 documents in this folder focus on **structure and connections**.
@@ -33,12 +33,12 @@ documents in this folder focus on **structure and connections**.
 
 ## Companion documents (already in the repo)
 
-- [../module-audit.md](../module-audit.md) — flat inventory of every module,
+- [../internals/module-audit.md](../internals/module-audit.md) — flat inventory of every module,
   including standalone scripts and removed modules (this is the "what files
   exist" doc; the architecture docs here are the "how they work together" doc).
 - [../growpy-functional-description.md](../growpy-functional-description.md) —
   long-form prose description of the package's purpose and capabilities.
-- [../coordinate-systems.md](../coordinate-systems.md) — how Grove, USD, and
+- [../reference/coordinate-systems.md](../reference/coordinate-systems.md) — how Grove, USD, and
   Unreal coordinate frames map to each other.
-- [../yield-table-calibration.md](../yield-table-calibration.md) — the math and
+- [../reference/yield-table-calibration.md](../reference/yield-table-calibration.md) — the math and
   decision tree behind growth-model calibration.

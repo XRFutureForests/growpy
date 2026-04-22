@@ -130,7 +130,7 @@ Assemblies, using three USD schemas:
 PointInstancer prims are the preferred way to scatter prototypes — Epic notes
 this is "more efficient because it reduces the complexity of the stage"
 versus native USD instancing. See
-[nanite-assembly-readme.md](nanite-assembly-readme.md) for the export side.
+[nanite-assembly-readme.md](../internals/nanite-assembly-readme.md) for the export side.
 
 ## Sources
 

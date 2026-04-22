@@ -519,7 +519,7 @@ sub-package.
 ### [`io/unreal/pve_foliage_extractor.py`](../../src/growpy/io/unreal/pve_foliage_extractor.py), [`pve_hierarchy_builder.py`](../../src/growpy/io/unreal/pve_hierarchy_builder.py), [`pve_schema.py`](../../src/growpy/io/unreal/pve_schema.py), [`pve_growth_defaults.py`](../../src/growpy/io/unreal/pve_growth_defaults.py)
 
 **Purpose:** Private collaborators of `pve_grove_mapper`. Treat them as one
-sub-module — see [../pve-attribute-reference.md](../pve-attribute-reference.md)
+sub-module — see [../reference/pve-attribute-reference.md](../reference/pve-attribute-reference.md)
 for the schema details. The split exists so each concern (foliage instancer
 extraction, hierarchy parent arrays, schema templates, default growth params)
 can be unit-tested independently.
