@@ -34,12 +34,12 @@ This file references the main AI instructions for consistency across all AI assi
 - **Architecture Decisions**: Simple ADR format for significant technical decisions in `docs/adr/`
 - **Change Documentation**: Maintain CHANGELOG.md for user-facing changes following Keep a Changelog format
 - **Inline Documentation**: Use docstrings for public APIs, focus on purpose and usage examples
-- **Documentation Location**: All project documentation in `docs/` directory, technical specs in `.specify/`
+- **Documentation Location**: All project documentation in `docs/` directory
 
 ## Project Structure
 
 - **Template Compliance**: This project follows a strict template structure - try not to deviate from it
-- **Standard Folders**: `.docker/`, `data/`, `src/`, `docs/`, `.config/`, `.vscode/`, `.github/`, `.devcontainer/`, `.specify/`
+- **Standard Folders**: `.docker/`, `data/`, `src/`, `docs/`, `.config/`, `.vscode/`, `.github/`, `.devcontainer/`
 - **Source Code**: Package-style structure in `src/project_name/`
 - **Main Entry Point**: Always use `main.py` as the primary entry point file (not package name) for clear project navigation
 - **Dependencies**: Keep minimal, prefer standard libraries
@@ -131,8 +131,6 @@ Projects naturally evolve: **Flat → Modular**
 
 ## Development Workflow
 
-- **Spec-Driven Process**: Follow constitution -> specification -> plan -> tasks -> implement
-- **Specification First**: Always check specs/ directory for project requirements and plans
 - **Linear Integration**: Use MCP commands to check current issues and create new ones
 - **Git Commits**: Regular commits with short, meaningful messages after significant changes
 - **Code Quality**: Enforce consistent formatting and linting through manual tools
@@ -220,7 +218,6 @@ Projects naturally evolve: **Flat → Modular**
 - **Scripts**: Utility scripts in `src/project_name/scripts/` or separate `scripts/` folder if standalone
 - **GitHub Files**: Templates, workflows, and GitHub-specific configs in `.github/`
 - **VS Code Files**: Workspace settings, launch configs, and extensions in `.vscode/`
-- **Spec Files**: Project specifications and plans in `.specify/` directory
 - **Never in Root**: Avoid placing operational files (Docker, config, scripts) in project root - keep it clean
 
 ## Docker Commands
@@ -273,10 +270,4 @@ Projects naturally evolve: **Flat → Modular**
 
 ## Additional Claude Code Specific Notes
 
-- **Specification Awareness**: Always read specs/ directory first to understand project context
-- **Tool Usage**: Use manage_todo_list for complex multi-step tasks, prefer batch tool calls for efficiency
-- **Spec-Kit Integration**: Help with specification refinement, planning, and task breakdown
-
----
-
-*These instructions integrate with Linear MCP workflow for enhanced project management and follow established development patterns for Python/R/PostGIS projects.*
+- **Tool Usage**: Prefer batch tool calls for efficiency when running multiple independent operations
