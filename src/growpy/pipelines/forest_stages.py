@@ -563,7 +563,10 @@ def generate_forest_stages(
                                 view_bounds=preview_bounds,
                                 stems_file_base=stems_base,
                             )
-                            _generate_icon_image(tree_dir, file_prefix, skeleton, timer)
+                            for _view in ("front", "side", "top"):
+                                _generate_icon_image(
+                                    tree_dir, file_prefix, skeleton, timer, view=_view
+                                )
 
                             if use_skeletal and config.export_static:
                                 static_path = _derive_static_from_skeletal(
