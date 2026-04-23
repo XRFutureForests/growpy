@@ -22,7 +22,8 @@ from matplotlib.image import imread
 logger = logging.getLogger(__name__)
 
 _ICON_PATTERN = re.compile(
-    r"^(.+?)_(comp|open)_(h\d+m)_(d\d+cm)_(.+?)_icon\.png$", re.IGNORECASE
+    r"^(.+?)_(comp|open)_(h\d+m)_(d\d+cm)_(.+?)_icon_(front|side|top)\.png$",
+    re.IGNORECASE,
 )
 
 PRESET_COLUMNS = [
@@ -121,11 +122,15 @@ def _parse_icon_files(forest_dir: Path) -> dict:
 
     Returns dict keyed by (species_clean, context) with values being
     dicts of {height_meters (int): (relative_path, absolute_path)}.
+    Uses front-view icons only for overview display.
     """
     entries = {}
-    for png in sorted(forest_dir.rglob("*_icon.png")):
+    for png in sorted(forest_dir.rglob("*_icon_*.png")):
         m = _ICON_PATTERN.match(png.name)
         if not m:
+            continue
+        view = m.group(6).lower()
+        if view != "front":
             continue
         species_title = m.group(1)
         context = m.group(2)
@@ -464,5 +469,4 @@ def generate_overview_markdown(
     output_path = forest_dir / "dataset_overview.md"
     output_path.write_text("\n".join(lines), encoding="utf-8")
     logger.info("Dataset overview written to %s", output_path)
-    return output_path
     return output_path

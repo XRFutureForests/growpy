@@ -5,107 +5,37 @@ Linear: [XRFF team](https://linear.app/geosense-ufr/team/XRFF/all)
 ## Issue Sequence
 
 ```
-XRFF-129 (calibrate remaining species) [IN PROGRESS]
-    └─► XRFF-127 (full 11-species batch production)
+XRFF-129 (calibrate species) ✅ DONE
+    └─► XRFF-127 (batch production: 10 species) ✅ DONE
             └─► XRFF-59  (Paul: import assets into UE)
                 XRFF-61  (Paul: showcase library in UE)
                 XRFF-17  (Paul: production trees at inventory positions)
 
-XRFF-132 (sensitivity analysis pipeline)  ← parallel track [IN PROGRESS]
-XRFF-36  (Grove generation driven by live Ecosense DB)  ← parallel track
+XRFF-132 (sensitivity analysis pipeline) ✅ DONE  ← parallel track
+XRFF-134 (GBIF taxon key) steps 1+2 ✅ DONE       ← parallel track
+XRFF-36  (full-stand Grove generation) ❌ CANCELED — Grove cannot process full stand
+
+Backlog:
+XRFF-135  spatial batch processing for full-stand generation (low, deferred)
+XRFF-136  crown diameter + structural params in DB for better catalog matching (medium)
 ```
 
 ---
 
-## XRFF-129 — Calibrate remaining species (High, assignee: Max)
+## XRFF-127 — Full batch production (High, assignee: Max)
 
-**Status: ✅ COMPLETE** (2026-04-22)
+**Status: ✅ COMPLETE** (2026-04-23)
 
-All 10 species have `.seed.json` presets in `data/assets/presets/`:
-- `norway_spruce`, `european_beech`, `silver_fir`, `scots_pine`, `european_oak`
-- `douglas_fir`, `sycamore_maple`, `common_ash`, `european_larch`, `silver_birch`
+10 species delivered (3 conifers + 7 broadleaves):
 
-All 10 species have calibrated growth models in `data/assets/growth_models/`.
-All 10 species have merged CSVs in `data/input/dataset/`.
+- Norway spruce, Silver fir, Douglas fir
+- European beech, European oak, Sycamore maple, Common ash, Silver birch, Small-leaved linden, Wild cherry
 
-**Note**: The original "missing presets" table below is now obsolete — all listed species have been completed.
+Scots pine dropped — generation issues, coverage sufficient without it.
 
-### Steps
+Each species: competition + open-grown context, 5m height steps, USD + PVE configs + 3-view icons + `species_info.json`. Overview at `data/output/forest/dataset_overview.md`.
 
-**1. Ingest yield tables for all remaining species**
-**Goal**: Yield table calibration + Grove presets for all 11 dataset species.
-
-**Dataset species** (4 conifer + 7 broadleaf — updated 2026-04-22, European Larch replaced by Small-leaved Linden + Wild Cherry):
-
-| Species | Preset | Calibrated | Twig USDA |
-|---|---|---|---|
-| Norway spruce | ✅ | ✅ | ✅ |
-| Silver fir | ✅ | ✅ | ✅ |
-| Scots pine | ✅ | ✅ | ✅ |
-| Douglas fir | ✅ | ✅ | ✅ |
-| European beech | ✅ | ✅ | ✅ |
-| European oak | ✅ | ✅ | ✅ |
-| Sycamore maple | ✅ | ✅ | ✅ |
-| Common ash | ✅ | ✅ | ✅ |
-| Silver birch | ✅ | ✅ | ✅ |
-| Small-leaved linden | ✅ | ✅ | ✅ |
-| Wild cherry | ✅ | ✅ | ✅ |
-
-Bugs fixed (2026-04-22):
-
-- `yield_tables.py`: `write_calibration_to_seed_json()` and `calibrate_species()` used `lower().replace(" ", "_")` — broke hyphenated species names. Fixed to use `standardize_species_name()`.
-- `prepare_assets.py`: step 1 overwrote calibrated presets. Fixed with `_yield_table_calibration` existence guard.
-- `dataset_pipeline.py`: `--species` flag not forwarded to step 3. Fixed.
-- `create_growth_models.py`: `--species` input not normalized before lookup. Fixed.
-- `pyproject.toml`: `requires-python` lowered to `>=3.11` to match growpy conda env (Python 3.11.14). Fixed editable install in growpy env so both `bpy` and `growpy` coexist.
-
-Note: `bpy` lives in the growpy conda env. Steps 1–3 use the base env (has `growpy` editable install, no `bpy`). Steps 2 and 4 use the growpy env directly:
-
-```bash
-conda run -n growpy python src/growpy/cli/dataset_pipeline.py --species "..." --steps 2
-```
-
-### Remaining steps
-
-#### Step 4 validation (pilot) [IN PROGRESS]
-
-Running pilot (beech + spruce) to verify mesh output at all height steps:
-
-```bash
-conda run -n growpy python src/growpy/cli/dataset_pipeline.py --pilot --steps 4
-```
-
-Check `data/output/forest/<species>/` for preview icons. Crown silhouette must be species-recognizable.
-
----
-
-## XRFF-127 — Full batch production (High, assignee: Max) [IN PROGRESS]
-
-**Prerequisite**: XRFF-129 complete ✅
-
-### Steps
-
-**1. Clean previous pilot output** — skipped (re-running all includes done species)
-
-**2. Run full pipeline** — 8/11 species complete as of 2026-04-23
-
-Done: european_beech, norway_spruce, european_oak, sycamore_maple, douglas_fir, common_ash, silver_birch, silver_fir.
-Running: scots_pine, small_leaved_linden, wild_cherry.
-
-```bash
-# To re-run a specific species:
-conda run -n growpy python src/growpy/cli/dataset_pipeline.py --species "Scots pine" --steps 4
-```
-
-`species_info.json` (XRFF-134 step 2) backfilled for all 8 completed species via `tmp/backfill_species_info.py`.
-
-**3. Generate dataset overview**
-
-The pipeline auto-generates `data/output/forest/overview.md`. Review icon grid for QA.
-
-**4. Handoff to Paul (XRFF-59)**
-
-Zip `data/output/forest/` and transfer to Unreal project content directory, or set up shared network path. Paul needs the USD files + PVE configs.
+**Next**: Paul imports assets (XRFF-59). Zip `data/output/forest/` and transfer to Unreal project.
 
 ---
 
@@ -156,35 +86,18 @@ Resolved 2026-04-23:
 
 ---
 
-## XRFF-36 — Grove generation with full Ecosense dataset (Medium, assignee: Max)
+## XRFF-36 — Grove generation with full Ecosense dataset
 
-**Status: ⏳ IN PROGRESS** (since Dec 2025). The live API integration (XRFF-20) is done — Unreal fetches inventory from PostgREST at runtime. What remains for XRFF-36 is **driving growpy batch generation from the live DB inventory** rather than a static CSV, so that tree proportions (height, DBH) match the actual Ecosense measurements.
+**Status: ❌ CANCELED** (2026-04-23)
 
-### Steps
+Grove cannot process a full stand. Spatial batch processing not planned.
 
-**1. Export inventory snapshot for growpy input**
+**Adopted approach**: dataset pipeline produces species catalog → UE selects best-matching tree by height/DBH → spawns at inventory position. See XRFF-17 (Paul).
 
-```bash
-# Query PostgREST for Ecosense trees_flat view
-curl "http://<db-host>/trees_flat?site=eq.ecosense&select=species,height_m,dbh_cm,x,y" \
-  -H "apikey: <anon-key>" > data/input/ecosense_inventory.csv
-```
+**Backlog**:
 
-Or write `scripts/export_inventory_for_growpy.py` in `digital-twin-db` that queries and formats to growpy CSV schema (`x,y,species,height`).
-
-**2. Run growpy with inventory CSV**
-
-```bash
-growpy-generate-forest --csv data/input/ecosense_inventory.csv --quality high
-```
-
-This places trees matching the actual inventory height/DBH distribution, not the calibration grid.
-
-**3. Validate species coverage**
-
-Cross-check that all 5 Ecosense dominant species have presets. If any inventory record uses a species without a preset, the pipeline falls back to nearest calibrated species — document this in the run log.
-
-**4. Mark done when** the generated forest for the full Ecosense plot (not just pilot 2 species) produces correctly-proportioned trees for all inventory records.
+- XRFF-135: spatial batch processing if per-stand simulation becomes needed (low priority)
+- XRFF-136: add crown diameter + structural params to DB for better catalog matching + overlap avoidance
 
 ---
 
@@ -234,18 +147,11 @@ Add `GBIFTaxonKey` (int32) column to tree mesh DataTable in UE. Populate from gr
 ## Dependency Map
 
 ```
-pylometree yield tables
-    ↓ (ingested via --ingest-yield-tables)
-XRFF-129: calibrate 11 species [steps 1-3 DONE; steps 2+4 pending Blender]
-    ↓
-XRFF-127: full batch (11 species)
-    ↓
-Paul: XRFF-59 → XRFF-61 → XRFF-17
+XRFF-129 ✅ → XRFF-127 ✅ → Paul: XRFF-59 → XRFF-61 → XRFF-17
 
-XRFF-132 (sensitivity analysis)  ← parallel track [core pipeline DONE]
-XRFF-134 (GBIF taxon key)        ← parallel track
+XRFF-132 ✅  XRFF-134 (steps 1+2 ✅, step 3 Paul)
     ↓
-XRFF-36 (live DB → growpy) requires all dataset species GBIF keys synced
+XRFF-36 (live DB → growpy) ← ACTIVE
 ```
 
 ---
