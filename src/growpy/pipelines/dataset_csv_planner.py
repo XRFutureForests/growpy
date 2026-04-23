@@ -28,7 +28,7 @@ DENSITY_VARIANTS = {
     "bare": 0.0,
 }
 
-# Southern German forest species selection (5 conifer + 5 broadleaf).
+# Southern German forest species selection (4 conifer + 7 broadleaf).
 DATASET_SPECIES = [
     "Norway spruce",
     "European beech",
@@ -38,8 +38,9 @@ DATASET_SPECIES = [
     "Douglas fir",
     "Sycamore maple",
     "Common ash",
-    "European larch",
+    "Small-leaved linden",
     "Silver birch",
+    "Wild cherry",
 ]
 
 # X offset for open-grown tree to avoid light competition with cluster

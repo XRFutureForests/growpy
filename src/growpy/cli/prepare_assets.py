@@ -270,6 +270,22 @@ CSV Format Support:
         dst_file = dst_presets / f"{standardized_name}.seed.json"
 
         if src_file.exists():
+            # Skip if destination already has calibration data embedded —
+            # overwriting would destroy the yield table calibration from step 3.
+            if dst_file.exists():
+                try:
+                    import json as _json
+                    with open(dst_file) as _f:
+                        _existing = _json.load(_f)
+                    if "_yield_table_calibration" in _existing:
+                        logger.debug(
+                            "Preset %s has calibration data — skipping overwrite",
+                            dst_file.name,
+                        )
+                        stats["presets_copied"] += 1
+                        continue
+                except Exception:
+                    pass
             shutil.copy2(src_file, dst_file)
             stats["presets_copied"] += 1
         else:

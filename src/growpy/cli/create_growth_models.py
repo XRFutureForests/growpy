@@ -682,6 +682,8 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
 
     if args.species:
         # --- Single species mode ---
+        # Normalize input so "Small-leaved linden" matches preset "small_leaved_linden"
+        args.species = standardize_species_name(args.species)
         available_species = analyzer.get_available_species()
         if args.species not in available_species:
             logger.error(
