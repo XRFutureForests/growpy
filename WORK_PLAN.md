@@ -18,20 +18,16 @@ XRFF-36  (Grove generation driven by live Ecosense DB)  ← parallel track
 
 ## XRFF-129 — Calibrate remaining species (High, assignee: Max)
 
-**Goal**: Yield table calibration + Grove branching presets for the 5 species missing from `data/assets/presets/`.
+**Status: ✅ COMPLETE** (2026-04-22)
 
-**Already done**: `european_beech`, `norway_spruce`, `european_oak`, `sycamore_maple`, `douglas_fir` have `.seed.json` presets.
+All 10 species have `.seed.json` presets in `data/assets/presets/`:
+- `norway_spruce`, `european_beech`, `silver_fir`, `scots_pine`, `european_oak`
+- `douglas_fir`, `sycamore_maple`, `common_ash`, `european_larch`, `silver_birch`
 
-**Missing presets** (from 10-species priority list):
+All 10 species have calibrated growth models in `data/assets/growth_models/`.
+All 10 species have merged CSVs in `data/input/dataset/`.
 
-| Species | Scientific | Type |
-|---|---|---|
-| Scots Pine | *Pinus sylvestris* | Conifer |
-| Silver Birch | *Betula pendula* | Broadleaf |
-| Common Ash | *Fraxinus excelsior* | Broadleaf |
-| Silver Fir | *Abies alba* | Conifer |
-| Small-leaved Linden | *Tilia cordata* | Broadleaf |
-| Wild Cherry | *Prunus avium* | Broadleaf |
+**Note**: The original "missing presets" table below is now obsolete — all listed species have been completed.
 
 ### Steps
 
@@ -81,9 +77,18 @@ growpy-dataset-pipeline --generate-csvs
 
 ## XRFF-127 — Full batch production (High, assignee: Max)
 
-**Prerequisite**: XRFF-129 complete (all 10-species presets + calibrations validated).
+**Status: ⏳ PENDING** (XRFF-129 prerequisite met)
 
 ### Steps
+
+**0. Fix known issues before running**
+
+The last run of `dataset_pipeline.py --all --steps 3` exited with code 1. Investigate and fix before full batch:
+
+```bash
+# Check what failed
+python src/growpy/cli/dataset_pipeline.py --pilot --steps 3 --verbose
+```
 
 **1. Clean previous pilot output** (optional if re-running all)
 
@@ -111,7 +116,7 @@ Zip `data/output/forest/` and transfer to Unreal project content directory, or s
 
 ## XRFF-36 — Grove generation with full Ecosense dataset (Medium, assignee: Max)
 
-**Status**: In Progress (since Dec 2025). The live API integration (XRFF-20) is done — Unreal fetches inventory from PostgREST at runtime. What remains for XRFF-36 is **driving growpy batch generation from the live DB inventory** rather than a static CSV, so that tree proportions (height, DBH) match the actual Ecosense measurements.
+**Status: ⏳ IN PROGRESS** (since Dec 2025). The live API integration (XRFF-20) is done — Unreal fetches inventory from PostgREST at runtime. What remains for XRFF-36 is **driving growpy batch generation from the live DB inventory** rather than a static CSV, so that tree proportions (height, DBH) match the actual Ecosense measurements.
 
 ### Steps
 

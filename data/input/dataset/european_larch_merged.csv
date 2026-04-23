@@ -1,0 +1,6 @@
+fid,species,x,y,z,height,twig_density,individual_type
+1,European larch,100.0,0.0,0.0,35,1.0,open_grown
+2,European larch,0.0,0.0,0.0,35,1.0,competition
+101,European larch,2.25,0.0,0.0,35,1.0,competition
+102,European larch,-1.125,1.949,0.0,35,1.0,competition
+103,European larch,-1.125,-1.949,0.0,35,1.0,competition
