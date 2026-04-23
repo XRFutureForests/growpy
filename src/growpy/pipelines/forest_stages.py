@@ -8,6 +8,7 @@ and calls `generate_forest_stages()`.
 
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 from itertools import groupby
@@ -24,6 +25,7 @@ from growpy import (
     create_forest,
     get_config,
 )
+from growpy.config.paths import _find_species_row
 from growpy.config.preset_overrides import PresetOverrides
 from growpy.config.quality import get_quality_preset
 from growpy.core.forest import simulate_forest_growth_with_snapshots
@@ -51,6 +53,34 @@ GROWTH_CYCLE_LIMIT = 10
 SMOOTH_ITERATIONS = 10
 
 logger = logging.getLogger(__name__)
+
+
+def _write_species_info(species_dir: Path, species_name: str, species_clean: str) -> None:
+    """Write species_info.json with GBIF taxon key and taxonomy to species output dir."""
+    try:
+        row = _find_species_row(species_name, use_gbif=False)
+        gbif_key = row.get("GBIF Key")
+        if gbif_key and not (isinstance(gbif_key, float) and gbif_key != gbif_key):
+            gbif_key = int(gbif_key)
+        else:
+            gbif_key = None
+        info = {
+            "common_name": row.get("Common Name", species_name),
+            "standardized_name": species_clean,
+            "scientific_name": row.get("Scientific Name", ""),
+            "gbif_taxon_key": gbif_key,
+        }
+    except (ValueError, KeyError):
+        info = {
+            "common_name": species_name,
+            "standardized_name": species_clean,
+            "scientific_name": "",
+            "gbif_taxon_key": None,
+        }
+    out_path = species_dir / "species_info.json"
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(info, f, indent=2)
+    logger.debug("Species info: %s", out_path)
 
 
 def generate_forest_stages(
@@ -289,6 +319,7 @@ def generate_forest_stages(
         logger.info("Density variants active -- CSV twig_density column ignored")
 
     exported_files = []
+    _species_info_written: set = set()
     for cycle, species_snapshots in tqdm(
         snapshots.items(), desc="Exporting stages", disable=not is_verbose()
     ):
@@ -451,6 +482,12 @@ def generate_forest_stages(
                         else:
                             file_prefix = f"{species_clean}_{dims_suffix}"
                     tree_dir.mkdir(parents=True, exist_ok=True)
+
+                    if species_clean not in _species_info_written:
+                        _write_species_info(
+                            tree_dir.parent, species_name, species_clean
+                        )
+                        _species_info_written.add(species_clean)
 
                     usd_path = tree_dir / f"{file_prefix}_assembly{config.usd_ext}"
 

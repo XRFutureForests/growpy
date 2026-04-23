@@ -79,35 +79,25 @@ Check `data/output/forest/<species>/` for preview icons. Crown silhouette must b
 
 ---
 
-## XRFF-127 — Full batch production (High, assignee: Max)
+## XRFF-127 — Full batch production (High, assignee: Max) [IN PROGRESS]
 
-**Status: ⏳ PENDING** (XRFF-129 prerequisite met)
-**Prerequisite**: XRFF-129 complete (all 11 presets + calibrations validated, twig USDAs for linden + cherry).
+**Prerequisite**: XRFF-129 complete ✅
 
 ### Steps
 
-**0. Fix known issues before running**
+**1. Clean previous pilot output** — skipped (re-running all includes done species)
 
-The last run of `dataset_pipeline.py --all --steps 3` exited with code 1. Investigate and fix before full batch:
+**2. Run full pipeline** — 8/11 species complete as of 2026-04-23
 
-```bash
-# Check what failed
-python src/growpy/cli/dataset_pipeline.py --pilot --steps 3 --verbose
-```
-
-**1. Clean previous pilot output** (optional if re-running all)
+Done: european_beech, norway_spruce, european_oak, sycamore_maple, douglas_fir, common_ash, silver_birch, silver_fir.
+Running: scots_pine, small_leaved_linden, wild_cherry.
 
 ```bash
-growpy-dataset-pipeline --all --steps 4 --clean
+# To re-run a specific species:
+conda run -n growpy python src/growpy/cli/dataset_pipeline.py --species "Scots pine" --steps 4
 ```
 
-**2. Run full pipeline**
-
-```bash
-growpy-dataset-pipeline --all --steps all --ingest-yield-tables
-```
-
-Step 4 runs one subprocess per species. Monitor `data/output/forest/`. Estimated: 4–8 h depending on hardware.
+`species_info.json` (XRFF-134 step 2) backfilled for all 8 completed species via `tmp/backfill_species_info.py`.
 
 **3. Generate dataset overview**
 
@@ -119,9 +109,9 @@ Zip `data/output/forest/` and transfer to Unreal project content directory, or s
 
 ---
 
-## XRFF-132 — Sensitivity Analysis Pipeline (Medium, assignee: Max) [IN PROGRESS]
+## XRFF-132 — Sensitivity Analysis Pipeline (Medium, assignee: Max) [DONE]
 
-**Status**: Core pipeline implemented and working end-to-end.
+**Status**: Core pipeline implemented and working end-to-end. All remaining items resolved 2026-04-23.
 
 New files created:
 
@@ -159,15 +149,10 @@ growpy-sensitivity-analysis --dry-run
 | `add_side_branches` | 4.0 | branching density |
 | `grow_nodes` | 4.0 | node count per cycle |
 
-Remaining:
+Resolved 2026-04-23:
 
-- Re-install entry point once `growpy-dataset-pipeline.exe` file lock is released:
-
-  ```bash
-  pip install -e . --no-deps --ignore-requires-python
-  ```
-
-- Retrofit 3-view icons (`_icon_front.png`, `_icon_side.png`) to dataset pipeline step 4 (optional, non-blocking)
+- Entry point reinstalled (`growpy-sensitivity-analysis.exe` registered in conda env)
+- 3-view icons (`_icon_front.png`, `_icon_side.png`, `_icon_top.png`) retrofitted to dataset pipeline step 4 in `forest_stages.py`
 
 ---
 
@@ -211,27 +196,32 @@ Cross-check that all 5 Ecosense dominant species have presets. If any inventory 
 
 ### Steps
 
-**1. Complete GBIF Key population in tree_asset_lookup.csv**
+**1. Complete GBIF Key population in tree_asset_lookup.csv** ✅ DONE 2026-04-23
 
-`GBIF Key` column added. 9 dataset species populated. Resolve remaining dataset species via GBIF Species Match API:
+All 11 dataset species now populated:
 
-```bash
-curl "https://api.gbif.org/v1/species/match?name=Fraxinus+excelsior"
-# Response includes: { "usageKey": <int>, "scientificName": "...", "status": "ACCEPTED" }
+| Species | Scientific Name | GBIF Key |
+| --- | --- | --- |
+| Common ash | Fraxinus excelsior | 3172358 |
+| Silver birch | Betula pendula | 5331916 |
+| Small-leaved linden | Tilia cordata | 3152047 |
+| Wild cherry | Prunus avium | 3020791 |
+| + 7 others | (already populated) | ✅ |
+
+**2. Propagate key through pipeline metadata** ✅ DONE 2026-04-23
+
+`_write_species_info()` added to `forest_stages.py`. Writes `species_info.json` per species output folder:
+
+```json
+{
+  "common_name": "European Beech",
+  "standardized_name": "european_beech",
+  "scientific_name": "Fagus sylvatica",
+  "gbif_taxon_key": 2882316
+}
 ```
 
-Priority — resolve these for the 11-species dataset first:
-
-| Species | Scientific Name |
-|---|---|
-| Common ash | Fraxinus excelsior |
-| Silver birch | Betula pendula |
-| Small-leaved linden | Tilia cordata |
-| Wild cherry | Prunus avium |
-
-**2. Propagate key through pipeline metadata**
-
-In the per-tree metadata JSON writer (wherever `*_DynamicWind.json` or tree metadata is written), add `gbif_taxon_key` field sourced from lookup CSV.
+File written to `data/output/forest/<species>/species_info.json` once per species on first tree export.
 
 **3. UE DataTable update (Paul — XRFF-14 / XRFF-59)**
 
