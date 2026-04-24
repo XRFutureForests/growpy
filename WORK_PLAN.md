@@ -2,18 +2,25 @@
 
 Linear: [XRFF team](https://linear.app/geosense-ufr/team/XRFF/all)
 
+**Last updated:** 2026-04-23
+
+---
+
 ## Issue Sequence
 
 ```
-XRFF-129 (calibrate species) ✅ DONE
-    └─► XRFF-127 (batch production: 10 species) ✅ DONE
-            └─► XRFF-59  (Paul: import assets into UE)
-                XRFF-61  (Paul: showcase library in UE)
-                XRFF-17  (Paul: production trees at inventory positions)
+✅ XRFF-129 (calibrate species)
+    └─► ✅ XRFF-127 (batch production: 10 species)
+            └─► Paul: XRFF-59 (import assets into UE)
+                XRFF-61 (showcase library in UE)
+                XRFF-17 (production trees at inventory positions)
 
-XRFF-132 (sensitivity analysis pipeline) ✅ DONE  ← parallel track
-XRFF-134 (GBIF taxon key) steps 1+2 ✅ DONE       ← parallel track
-XRFF-36  (full-stand Grove generation) ❌ CANCELED — Grove cannot process full stand
+✅ XRFF-132 (sensitivity analysis pipeline) — core done, CLI entry point registered
+✅ XRFF-134 (GBIF taxon key) steps 1+2 ✅ DONE
+    └─► Paul: XRFF-14/59 (UE DataTable GBIFKey column)
+
+❌ XRFF-36 (full-stand Grove generation) — CANCELED
+    └─► Adopted approach: dataset pipeline → UE catalog match → spawn
 
 Backlog:
 XRFF-135  spatial batch processing for full-stand generation (low, deferred)
@@ -39,28 +46,28 @@ Each species: competition + open-grown context, 5m height steps, USD + PVE confi
 
 ---
 
-## XRFF-132 — Sensitivity Analysis Pipeline (Medium, assignee: Max) [DONE]
+## XRFF-132 — Sensitivity Analysis Pipeline (Medium, assignee: Max)
 
-**Status**: Core pipeline implemented and working end-to-end. All remaining items resolved 2026-04-23.
+**Status:** ✅ **Core pipeline implemented and working.** CLI entry point registered.
 
-New files created:
+New files:
 
 - `src/growpy/tools/param_catalog.py` — scan presets → ranked param catalog CSV
 - `src/growpy/pipelines/sensitivity_pipeline.py` — sweep design, simulation, metrics, image gen
-- `src/growpy/cli/sensitivity_analysis.py` — CLI entry point
+- `src/growpy/cli/sensitivity_analysis.py` — CLI entry point (`growpy-sensitivity-analysis`)
 
 Modified: `src/growpy/io/usd/preview.py` (multi-view icon support), `pyproject.toml` (entry point)
 
-Bugs fixed during implementation:
+Bugs fixed:
 
-- `param_catalog.py`: added `_SKIP_PARAMS` to exclude competition/shade geometry params (`shade_area`, `surround_distance`, etc.) from top-N selection
-- `sensitivity_pipeline.py`: `run_grove_simulation` used `grove.build_models({})` (returns mesh Model) instead of `grove.build_skeletons(True)` (returns Skeleton with `poly_lines`)
-- `sensitivity_pipeline.py`: `measure_metrics` needed Vector-aware point extraction
+- `param_catalog.py`: `_SKIP_PARAMS` excludes competition/shade geometry params from top-N selection
+- `sensitivity_pipeline.py`: `run_grove_simulation` uses `grove.build_skeletons(True)` (not `build_models({})`)
+- `sensitivity_pipeline.py`: `measure_metrics` needs Vector-aware point extraction
 
 **Usage**:
 
 ```bash
-# via base conda env (package installed there)
+# via base conda env
 conda run -n base python src/growpy/cli/sensitivity_analysis.py --dry-run
 conda run -n base python src/growpy/cli/sensitivity_analysis.py --n-params 6 --cycles 10,20,30
 
@@ -78,11 +85,6 @@ growpy-sensitivity-analysis --dry-run
 | `bend_mass` | 4.5 | branch droop |
 | `add_side_branches` | 4.0 | branching density |
 | `grow_nodes` | 4.0 | node count per cycle |
-
-Resolved 2026-04-23:
-
-- Entry point reinstalled (`growpy-sensitivity-analysis.exe` registered in conda env)
-- 3-view icons (`_icon_front.png`, `_icon_side.png`, `_icon_top.png`) retrofitted to dataset pipeline step 4 in `forest_stages.py`
 
 ---
 
@@ -136,7 +138,7 @@ All 11 dataset species now populated:
 
 File written to `data/output/forest/<species>/species_info.json` once per species on first tree export.
 
-**3. UE DataTable update (Paul — XRFF-14 / XRFF-59)**
+**3. UE DataTable update (Paul — XRFF-14 / XRFF-59)** ⬜ TODO
 
 Add `GBIFTaxonKey` (int32) column to tree mesh DataTable in UE. Populate from growpy output metadata JSON.
 
@@ -147,11 +149,9 @@ Add `GBIFTaxonKey` (int32) column to tree mesh DataTable in UE. Populate from gr
 ## Dependency Map
 
 ```
-XRFF-129 ✅ → XRFF-127 ✅ → Paul: XRFF-59 → XRFF-61 → XRFF-17
+✅ XRFF-129 → ✅ XRFF-127 → Paul: XRFF-59 → XRFF-61 → XRFF-17
 
-XRFF-132 ✅  XRFF-134 (steps 1+2 ✅, step 3 Paul)
-    ↓
-XRFF-36 (live DB → growpy) ← ACTIVE
+✅ XRFF-132  ✅ XRFF-134 (steps 1+2 ✅, step 3 Paul)
 ```
 
 ---
@@ -163,3 +163,4 @@ XRFF-36 (live DB → growpy) ← ACTIVE
 - `config/growth_models.toml` — calibration settings
 - `data/assets/presets/` — Grove seed files (all 11 calibrated)
 - `data/output/sensitivity/` — sensitivity analysis outputs (gitignored)
+
