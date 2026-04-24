@@ -5,8 +5,8 @@ channels:
 dependencies:
   - python=3.12
   - pip
-  - numpy
-  - pandas
+  - numpy>=1.24
+  - pandas>=2.0
   - matplotlib
   - scikit-learn
   - tqdm
@@ -14,10 +14,13 @@ dependencies:
   - ipykernel
   - pillow
   - openpyxl # XLSX yield table parsing (Kohlenstoff-Ertragstafeln)
+  - scipy>=1.10
   - pip:
       - openyieldtables # For real-world yield data calibration
       - bpy # Blender Python API with bundled USD, MaterialX, OpenImageIO, etc.
       - tabula-py # PDF yield table extraction (requires Java runtime)
+      - python-dotenv>=1.0.0
+      - pylometree @ git+https://github.com/geosense-ufr/pylometree.git
 
 variables:
   PYTHONPATH: ./src:./src/the_grove_23/modules
