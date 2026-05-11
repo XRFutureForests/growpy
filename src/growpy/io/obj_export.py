@@ -115,21 +115,27 @@ def convert_tree_to_obj_direct(
     _log_memory(f"Start export {species_clean} tree_{tree_id}")
 
     # Probe trunk size to decide processing strategy.
-    # For huge meshes (>5M faces) we stream directly from model data,
-    # avoiding multi-GB numpy allocations and Blender decimation (which
-    # silently fails and returns the original mesh on inputs this large).
+    # For huge meshes (>5M faces) we can stream directly from model data,
+    # avoiding multi-GB numpy allocations. However, when bark decimation
+    # is requested, we must convert to numpy for Blender decimation.
     faces_raw = model.faces
     num_trunk_faces = len(faces_raw)
+
+    # Determine if bark decimation is requested
+    bark_ratio = 1.0
+    if simplification_ratios:
+        bark_ratio = simplification_ratios.get("bark", 1.0)
+    need_bark_decimate = 0.0 < bark_ratio < 1.0
+    need_stem_decimate = not simplification_ratios and 0.0 < stem_decimate_ratio < 1.0
+    need_decimation = need_bark_decimate or need_stem_decimate
+
     large_trunk = num_trunk_faces > TRUNK_DIRECT_THRESHOLD
 
-    if large_trunk:
+    if large_trunk and not need_decimation:
+        # Direct streaming: skip numpy conversion entirely (no decimation needed)
         points_flat = model.get_points_flat()
         num_trunk_verts = len(points_flat) // 3
         print(f"  Trunk: {num_trunk_verts:,} verts, {num_trunk_faces:,} faces (direct streaming)")
-        print(f"  NOTE: Trunk > {TRUNK_DIRECT_THRESHOLD:,} faces -- skipping Blender decimation.")
-        print(f"        To reduce trunk size at generation time, increase build_cutoff_thickness")
-        print(f"        in [quality.ultra] (e.g. 0.005 skips branches < 5 mm).")
-        # Keep raw model data for direct streaming (no numpy conversion)
         trunk_data_raw = (points_flat, faces_raw, num_trunk_verts, num_trunk_faces)
         trunk_verts = None
         trunk_faces = None
@@ -158,18 +164,19 @@ def convert_tree_to_obj_direct(
             trunk_uvs = np.array([[uv[0], uv[1]] for uv in uvs_raw], dtype=np.float64)
 
         # Simplify trunk (bark)
-        if simplification_ratios:
-            bark_ratio = simplification_ratios.get("bark", 1.0)
-            if 0.0 < bark_ratio < 1.0:
-                orig = len(trunk_faces)
-                trunk_verts, trunk_faces = _decimate_mesh(trunk_verts, trunk_faces, bark_ratio)
-                trunk_uvs = None
-                print(f"  Trunk decimated: {orig:,} -> {len(trunk_faces):,} faces (ratio {bark_ratio})")
-        elif 0.0 < stem_decimate_ratio < 1.0:
+        if need_bark_decimate:
+            orig = len(trunk_faces)
+            if large_trunk:
+                print(f"  Large trunk ({orig:,} faces): applying bark decimation (ratio {bark_ratio})")
+            trunk_verts, trunk_faces = _decimate_mesh(trunk_verts, trunk_faces, bark_ratio)
+            trunk_uvs = None
+            print(f"  Trunk decimated: {orig:,} -> {len(trunk_faces):,} faces (ratio {bark_ratio})")
+        elif need_stem_decimate:
             trunk_verts, trunk_faces = _decimate_mesh(trunk_verts, trunk_faces, stem_decimate_ratio)
             trunk_uvs = None
 
         print(f"  Trunk: {len(trunk_verts):,} verts, {len(trunk_faces):,} faces")
+        large_trunk = False
         trunk_data_raw = None
 
     # Map twig types to prototype indices
@@ -768,6 +775,9 @@ def _decimate_mesh(
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Decimate mesh using Blender's DECIMATE modifier.
 
+    For large meshes (>10M faces), delegates to chunked spatial decimation
+    from mesh_simplify to limit peak RAM usage.
+
     Args:
         vertices: (N, 3) vertex positions
         faces: (M, 3) triangle indices
@@ -776,6 +786,11 @@ def _decimate_mesh(
     Returns:
         Tuple of (decimated_vertices, decimated_faces)
     """
+    from .mesh_simplify import CHUNK_FACE_LIMIT, _decimate_chunked
+
+    if len(faces) > CHUNK_FACE_LIMIT:
+        return _decimate_chunked(vertices, faces, ratio, CHUNK_FACE_LIMIT)
+
     import bpy
 
     # Create temporary mesh in Blender
@@ -1554,7 +1569,7 @@ def export_forest_obj(
     generate_scene_xml: bool = False,
     generate_combined_obj: bool = False,
     simplification_ratios: Optional[Dict[str, float]] = None,
-    leaf_per_species: Optional[Dict[str, float]] = None,
+    per_species_ratios: Optional[Dict[str, Dict[str, float]]] = None,
 ) -> List[Tuple[Path, float, float, float, str]]:
     """Export all USDA tree assemblies in a forest directory to OBJ/MTL.
 
@@ -1622,10 +1637,10 @@ def export_forest_obj(
         is_conifer = any(kw in species_dir.lower() for kw in CONIFER_KEYWORDS)
         spectra = "conifer" if is_conifer else "deciduous"
 
-        # Resolve per-species leaf ratio if configured
+        # Resolve per-species simplification overrides if configured
         tree_ratios = simplification_ratios
-        if tree_ratios and leaf_per_species and species_dir in leaf_per_species:
-            tree_ratios = {**tree_ratios, "leaf": leaf_per_species[species_dir]}
+        if tree_ratios and per_species_ratios and species_dir in per_species_ratios:
+            tree_ratios = {**tree_ratios, **per_species_ratios[species_dir]}
 
         obj_path = convert_tree_to_obj(
             assembly_usda_path=assembly_path,

@@ -142,14 +142,26 @@ class GrowPyConfig:
     helios_simplify_wood: float = 1.0
     helios_simplify_leaf: float = 1.0
     helios_simplify_fruit: float = 1.0
-    # [helios.simplification.leaf_per_species] - species_clean -> ratio
-    helios_simplify_leaf_per_species: Dict[str, float] = field(default_factory=dict)
+    # [helios.simplification.per_species] - species_clean -> {material -> ratio}
+    helios_simplify_per_species: Dict[str, Dict[str, float]] = field(
+        default_factory=dict
+    )
 
-    def get_leaf_ratio(self, species_clean: str) -> float:
-        """Return species-specific leaf ratio, falling back to global."""
-        return self.helios_simplify_leaf_per_species.get(
-            species_clean, self.helios_simplify_leaf
-        )
+    def get_simplification_ratios(self, species_clean: str) -> Dict[str, float]:
+        """Return simplification ratios for a species.
+
+        Per-species overrides are merged over global defaults.
+        Unknown species or omitted materials fall back to global values.
+        """
+        ratios = {
+            "bark": self.helios_simplify_bark,
+            "wood": self.helios_simplify_wood,
+            "leaf": self.helios_simplify_leaf,
+            "fruit": self.helios_simplify_fruit,
+        }
+        species_overrides = self.helios_simplify_per_species.get(species_clean, {})
+        ratios.update(species_overrides)
+        return ratios
 
     @classmethod
     def from_toml(cls, toml_path: Path, set_as_global: bool = True) -> "GrowPyConfig":
@@ -289,10 +301,11 @@ class GrowPyConfig:
             kwargs["helios_simplify_leaf"] = simplification["leaf"]
         if "fruit" in simplification:
             kwargs["helios_simplify_fruit"] = simplification["fruit"]
-        leaf_per_species = simplification.get("leaf_per_species", {})
-        if leaf_per_species:
-            kwargs["helios_simplify_leaf_per_species"] = {
-                k: float(v) for k, v in leaf_per_species.items()
+        per_species = simplification.get("per_species", {})
+        if per_species:
+            kwargs["helios_simplify_per_species"] = {
+                species: {k: float(v) for k, v in overrides.items()}
+                for species, overrides in per_species.items()
             }
 
         instance = cls(**kwargs)
