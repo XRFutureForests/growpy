@@ -10,6 +10,7 @@ are classified as wood. Names containing "fruit" are classified as fruit.
 Everything else is treated as leaf geometry.
 """
 
+import gc as gc_module
 import time
 from typing import Dict, List, Optional, Tuple
 
@@ -17,6 +18,10 @@ import numpy as np
 
 WOOD_KEYWORDS = ("twig", "bark", "branch", "wood", "stem")
 FRUIT_KEYWORDS = ("fruit",)
+
+# Meshes above this face count use chunked decimation to limit peak RAM.
+# Each chunk stays below this size during Blender decimation.
+CHUNK_FACE_LIMIT = 10_000_000
 
 
 def classify_material(material_name: str) -> str:
@@ -45,6 +50,10 @@ def simplify_trunk_mesh(
 ) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
     """Simplify trunk/bark mesh using Blender's quadric decimation.
 
+    For large meshes (>CHUNK_FACE_LIMIT faces), splits spatially into
+    height bands and decimates each chunk independently.  This keeps peak
+    RAM proportional to chunk size instead of total mesh size.
+
     Args:
         trunk_verts: (N, 3) vertex positions
         trunk_faces: (M, 3) triangle indices
@@ -57,6 +66,14 @@ def simplify_trunk_mesh(
     """
     if ratio >= 1.0 or len(trunk_faces) == 0:
         return trunk_verts, trunk_faces, trunk_uvs
+
+    num_faces = len(trunk_faces)
+
+    if num_faces > CHUNK_FACE_LIMIT:
+        dec_verts, dec_faces = _decimate_chunked(
+            trunk_verts, trunk_faces, ratio, CHUNK_FACE_LIMIT,
+        )
+        return dec_verts, dec_faces, None
 
     dec_verts, dec_faces = _decimate_with_bpy(trunk_verts, trunk_faces, ratio)
     return dec_verts, dec_faces, None
@@ -89,12 +106,13 @@ def simplify_twig_meshes(
     if not per_proto_faces or len(twig_verts) == 0:
         return twig_verts, per_proto_faces, per_proto_uvs, per_proto_face_mats
 
+    bark_ratio = simplification_ratios.get("bark", 1.0)
     wood_ratio = simplification_ratios.get("wood", 1.0)
     leaf_ratio = simplification_ratios.get("leaf", 1.0)
     fruit_ratio = simplification_ratios.get("fruit", 1.0)
 
     # If nothing to simplify, return as-is
-    if wood_ratio >= 1.0 and leaf_ratio >= 1.0 and fruit_ratio >= 1.0:
+    if bark_ratio >= 1.0 and wood_ratio >= 1.0 and leaf_ratio >= 1.0 and fruit_ratio >= 1.0:
         return twig_verts, per_proto_faces, per_proto_uvs, per_proto_face_mats
 
     new_verts_list = []
@@ -113,10 +131,10 @@ def simplify_twig_meshes(
         _, _, sidecar_mat_names = proto_materials.get(proto_idx, ("", None, None))
 
         if face_mats is not None and sidecar_mat_names:
-            # Split faces by material classification (leaf vs wood vs fruit)
+            # Split faces by material classification (bark vs wood vs leaf vs fruit)
             result_verts, result_faces, result_face_mats = _simplify_proto_by_material(
                 twig_verts, faces, face_mats, sidecar_mat_names,
-                wood_ratio, leaf_ratio, fruit_ratio, vert_offset,
+                bark_ratio, wood_ratio, leaf_ratio, fruit_ratio, vert_offset,
             )
         else:
             # No sub-material info: apply leaf ratio (preserve by default)
@@ -165,11 +183,12 @@ def simplify_prototype(
     Returns:
         (simplified_verts, simplified_faces, simplified_uvs, simplified_face_mats)
     """
+    bark_ratio = simplification_ratios.get("bark", 1.0)
     wood_ratio = simplification_ratios.get("wood", 1.0)
     leaf_ratio = simplification_ratios.get("leaf", 1.0)
     fruit_ratio = simplification_ratios.get("fruit", 1.0)
 
-    if wood_ratio >= 1.0 and leaf_ratio >= 1.0 and fruit_ratio >= 1.0:
+    if bark_ratio >= 1.0 and wood_ratio >= 1.0 and leaf_ratio >= 1.0 and fruit_ratio >= 1.0:
         return verts, faces, uvs, face_mats
 
     if len(faces) == 0:
@@ -178,7 +197,7 @@ def simplify_prototype(
     if face_mats is not None and sidecar_mat_names:
         result_verts, result_faces, result_face_mats = _simplify_proto_by_material(
             verts, faces, face_mats, sidecar_mat_names,
-            wood_ratio, leaf_ratio, fruit_ratio, 0,
+            bark_ratio, wood_ratio, leaf_ratio, fruit_ratio, 0,
         )
         return result_verts, result_faces, None, result_face_mats
 
@@ -192,12 +211,13 @@ def _simplify_proto_by_material(
     faces: np.ndarray,
     face_mats: np.ndarray,
     sidecar_mat_names: List[str],
+    bark_ratio: float,
     wood_ratio: float,
     leaf_ratio: float,
     fruit_ratio: float,
     global_offset: int,
 ) -> Tuple[np.ndarray, Optional[np.ndarray], np.ndarray]:
-    """Simplify a single prototype's faces split by wood/leaf/fruit material.
+    """Simplify a single prototype's faces split by bark/wood/leaf/fruit material.
 
     Returns:
         (combined_verts, combined_faces_with_offset, combined_face_mats)
@@ -211,7 +231,9 @@ def _simplify_proto_by_material(
     for mat_id in unique_mat_ids:
         blend_name = sidecar_mat_names[mat_id] if mat_id < len(sidecar_mat_names) else ""
         mat_class = classify_material(blend_name)
-        if mat_class in ("bark", "wood"):
+        if mat_class == "bark":
+            ratio = bark_ratio
+        elif mat_class == "wood":
             ratio = wood_ratio
         elif mat_class == "fruit":
             ratio = fruit_ratio
@@ -269,6 +291,96 @@ def _extract_and_simplify(
         sub_verts, sub_faces = _decimate_with_bpy(sub_verts, sub_faces, ratio)
 
     return sub_verts, sub_faces
+
+
+def _decimate_chunked(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    ratio: float,
+    chunk_limit: int,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Decimate a large mesh by splitting into spatial chunks along the Z axis.
+
+    Each chunk is decimated independently via Blender, then results are
+    concatenated.  Peak RAM stays proportional to ``chunk_limit`` instead
+    of total face count.  Boundary seams between chunks are negligible for
+    Helios spectra-based simulation.
+
+    Args:
+        vertices: (N, 3) vertex positions
+        faces: (M, 3) triangle indices
+        ratio: Target ratio of faces to keep (0.0-1.0)
+        chunk_limit: Max faces per chunk sent to Blender
+
+    Returns:
+        (concatenated_verts, concatenated_faces)
+    """
+    num_faces = len(faces)
+    n_chunks = max(1, int(np.ceil(num_faces / chunk_limit)))
+    print(
+        f"  Chunked decimation: {num_faces:,} faces -> {n_chunks} chunks "
+        f"(~{chunk_limit:,} faces each, ratio {ratio})"
+    )
+
+    # Compute face centroids along Z axis for spatial splitting
+    face_z = vertices[faces, 2].mean(axis=1)
+
+    # Quantile-based split for roughly equal chunk sizes
+    percentiles = np.linspace(0, 100, n_chunks + 1)
+    boundaries = np.percentile(face_z, percentiles)
+
+    all_verts: List[np.ndarray] = []
+    all_faces: List[np.ndarray] = []
+    vert_offset = 0
+
+    for i in range(n_chunks):
+        lo, hi = boundaries[i], boundaries[i + 1]
+        if i < n_chunks - 1:
+            mask = (face_z >= lo) & (face_z < hi)
+        else:
+            mask = face_z >= lo
+
+        chunk_faces_global = faces[mask]
+        if len(chunk_faces_global) == 0:
+            continue
+
+        # Extract only the vertices referenced by this chunk
+        used_ids = np.unique(chunk_faces_global.ravel())
+        old_to_new = np.empty(len(vertices), dtype=np.int64)
+        old_to_new[used_ids] = np.arange(len(used_ids))
+        chunk_verts = vertices[used_ids]
+        chunk_faces_local = old_to_new[chunk_faces_global.ravel()].reshape(-1, 3)
+
+        print(
+            f"    Chunk {i + 1}/{n_chunks}: {len(chunk_faces_local):,} faces, "
+            f"{len(chunk_verts):,} verts (z={lo:.1f}..{hi:.1f})"
+        )
+
+        dec_v, dec_f = _decimate_with_bpy(chunk_verts, chunk_faces_local, ratio)
+
+        # Free chunk inputs before accumulating results
+        del chunk_verts, chunk_faces_local, chunk_faces_global, used_ids, old_to_new
+        gc_module.collect()
+
+        all_verts.append(dec_v)
+        all_faces.append(dec_f + vert_offset)
+        vert_offset += len(dec_v)
+
+        del dec_v, dec_f
+        gc_module.collect()
+
+    if not all_verts:
+        return vertices, faces
+
+    result_verts = np.vstack(all_verts)
+    result_faces = np.vstack(all_faces)
+    del all_verts, all_faces
+    gc_module.collect()
+
+    total_in = num_faces
+    total_out = len(result_faces)
+    print(f"  Chunked decimation done: {total_in:,} -> {total_out:,} faces")
+    return result_verts, result_faces
 
 
 def _decimate_with_bpy(
