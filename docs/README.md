@@ -6,6 +6,34 @@
 |---|---|
 | [quickstart.md](quickstart.md) | Install, configure, and run the pipeline end-to-end |
 
+## Project Documentation
+
+| Document | What it covers |
+|---|---|
+| [project/requirements.md](project/requirements.md) | Functional requirements (FR-XXX-NNN) with MoSCoW |
+| [project/architecture.md](project/architecture.md) | arc42 system architecture with C4 diagrams |
+| [project/tech_stack.md](project/tech_stack.md) | Technology versions, CLI scripts, dev commands |
+| [project/infrastructure.md](project/infrastructure.md) | Host requirements, env vars, CLI entry points |
+| [principles.md](principles.md) | Development principles and anti-patterns |
+| [documentation_standards.md](documentation_standards.md) | Documentation rules and verification requirements |
+
+## Task Management
+
+| Document | What it covers |
+|---|---|
+| [tasks/README.md](tasks/README.md) | Task workflow, Linear integration, templates |
+| [tasks/kanban_board.md](tasks/kanban_board.md) | Live kanban board (Linear XRFF team) |
+
+## ADRs and Guides
+
+| Document | What it covers |
+|---|---|
+| [reference/README.md](reference/README.md) | Reference hub: ADRs, guides, manuals, research |
+| [reference/adrs/adr-001-tree-engine.md](reference/adrs/adr-001-tree-engine.md) | ADR: The Grove 2.3 tree engine selection |
+| [reference/adrs/adr-002-usd-pipeline-format.md](reference/adrs/adr-002-usd-pipeline-format.md) | ADR: Pixar USD as pipeline format |
+| [reference/adrs/adr-003-conda-environment.md](reference/adrs/adr-003-conda-environment.md) | ADR: conda environment management |
+| [reference/guides/01-pipeline-subprocess-pattern.md](reference/guides/01-pipeline-subprocess-pattern.md) | Guide: Pipeline subprocess isolation pattern |
+
 ## Guides
 
 Task-oriented walkthroughs for specific workflows.
