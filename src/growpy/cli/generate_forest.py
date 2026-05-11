@@ -201,12 +201,13 @@ def _export_single_tree_from_forest(args: tuple) -> list:
 
                     simplification_ratios = None
                     if config.helios_simplify:
-                        simplification_ratios = {
-                            "bark": config.helios_simplify_bark,
-                            "wood": config.helios_simplify_wood,
-                            "leaf": config.get_leaf_ratio(species_clean),
-                            "fruit": config.helios_simplify_fruit,
-                        }
+                        simplification_ratios = config.get_simplification_ratios(
+                            species_clean
+                        )
+                        ratios_str = " ".join(
+                            f"{k}={v}" for k, v in sorted(simplification_ratios.items())
+                        )
+                        print(f"  Simplification [{species_clean}]: {ratios_str}")
 
                     # Helios classification codes for labeled point clouds
                     cls_prefix = ""
@@ -1918,7 +1919,7 @@ Unreal Engine Integration:
 
                 with timer.track("obj_export"):
                     simplification_ratios = None
-                    leaf_per_species = None
+                    per_species_ratios = None
                     if config.helios_simplify:
                         simplification_ratios = {
                             "bark": config.helios_simplify_bark,
@@ -1926,8 +1927,8 @@ Unreal Engine Integration:
                             "leaf": config.helios_simplify_leaf,
                             "fruit": config.helios_simplify_fruit,
                         }
-                        if config.helios_simplify_leaf_per_species:
-                            leaf_per_species = config.helios_simplify_leaf_per_species
+                        if config.helios_simplify_per_species:
+                            per_species_ratios = config.helios_simplify_per_species
 
                     export_forest_obj(
                         output_dir=output_dir,
@@ -1937,7 +1938,7 @@ Unreal Engine Integration:
                         generate_scene_xml=config.helios_helios_scene,
                         generate_combined_obj=config.helios_combined_obj,
                         simplification_ratios=simplification_ratios,
-                        leaf_per_species=leaf_per_species,
+                        per_species_ratios=per_species_ratios,
                     )
 
         # Print profiling report if enabled

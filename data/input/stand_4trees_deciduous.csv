@@ -1,5 +1,5 @@
 fid,species,x,y,dbh,height,z
-1,Selected European beech,-2,-2,0,10,0
-2,Selected European oak,2,-2,0,10,0
-3,Selected Paper birch,-2,2,0,10,0
-4,Selected Sycamore maple,2,2,0,10,0
+1,Selected European beech,-2,-2,0,25,0
+2,Selected European oak,2,-2,0,25,0
+3,Selected Paper birch,-2,2,0,25,0
+4,Selected Sycamore maple,2,2,0,25,0
