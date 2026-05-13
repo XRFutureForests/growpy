@@ -62,7 +62,7 @@ See [requirements.md](requirements.md) for the full functional requirements cata
 
 | Stakeholder | Concern |
 |-------------|---------|
-| XR Future Forests Lab (Uni Freiburg) | Research-grade forest simulation, FoWiTA project deliverables |
+| XR Future Forests Lab (Uni Freiburg) | Research-grade forest simulation, Eva Mayr-Stihl Stiftung funded project |
 | Pipeline Operators | Reliable end-to-end runs, clear error messages, reproducible outputs |
 | UE Integration Engineers | Valid Nanite-compatible USD, correct PVE JSON and wind sidecars |
 | LiDAR Analysts | Standard OBJ/MTL geometry + valid Helios++ scene XML |

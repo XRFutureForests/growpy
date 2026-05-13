@@ -1,20 +1,21 @@
 # Task Navigation
 
-<!-- SCOPE: Quick navigation to active tasks. Links point to Linear (provider=linear) per .hex-skills/environment_state.json. -->
+<!-- SCOPE: Quick navigation to active tasks. Links point to Linear (provider=linear). Scoped to: growpy (Epic 15, Epic 2). -->
 <!-- DOC_KIND: how-to -->
 <!-- DOC_ROLE: working -->
 <!-- READ_WHEN: Read when you need the current board, provider setup, or epic/story/task navigation. -->
 <!-- SKIP_WHEN: Skip when you only need workflow policy or template rules. -->
-<!-- PRIMARY_SOURCES: .hex-skills/environment_state.json, docs/tasks/README.md, Linear -->
+<!-- PRIMARY_SOURCES: docs/tasks/README.md, Linear -->
 <!-- DO NOT add here: task descriptions, implementation notes, workflow rules → tasks/README.md -->
 
-> **Last Updated**: 2026-05-11 (Hierarchical format: Status → Epic → Story → Tasks)
+> **Last Updated**: 2026-05-13 (Hierarchical format: Status → Epic → Story → Tasks)
 
 ## Quick Navigation
 
 - [Task Rules](./README.md)
 - [Reference Hub](../reference/README.md)
 - [Architecture](../project/architecture.md)
+- [Workspace Board](../../docs/tasks/kanban_board.md) — all epics across all repos
 
 ## Agent Entry
 
@@ -46,11 +47,18 @@
 - [Backlog](https://linear.app/geosense-ufr/team/XRFF/backlog)
 - [Active Sprint](https://linear.app/geosense-ufr/team/XRFF/active)
 
-### Common Configuration
+---
 
-| Variable | Value | Description |
-|----------|-------|-------------|
-| **Next Epic Number** | 1 | Next available Epic number |
+## Repo Scope
+
+This repo contributes to:
+
+| Epic # | Name | Initiative | URL |
+|--------|------|------------|-----|
+| Epic 15 | Forest Generator | Scientific Infrastructure | [link](https://linear.app/geosense-ufr/issue/XRFF-137) |
+| Epic 2 | VR Forest: built virtual forest Ecosense | Immersive Teaching Platform | [link](https://linear.app/geosense-ufr/project/vr-forest-built-virtual-forest-ecosense-aea56156c668) |
+
+> For all epics across all repos, see the [workspace kanban board](../../docs/tasks/kanban_board.md).
 
 ---
 
@@ -58,8 +66,8 @@
 
 | Epic | Last Story | Next Story | Last Task | Next Task |
 |------|------------|------------|-----------|-----------|
-| Epic 0 | — | US001 | — | T001 |
-| Epic 1+ | — | US001 | — | T001 |
+| Epic 15 (Forest Generator) | — | US001 | — | T001 |
+| Epic 2 (VR Forest: virtual) | — | US001 | — | T001 |
 
 > Story numbering: US001+ per Epic. Task numbering: T001+ per Story.
 
@@ -127,7 +135,7 @@ No completed items tracked yet.
 - [ ] Board links resolve
 - [ ] Next counters reflect current board state
 
-**Last Updated:** 2026-05-11
+**Last Updated:** 2026-05-13
 
 ---
 
@@ -135,3 +143,4 @@ No completed items tracked yet.
 
 - [tasks/README.md](./README.md) — Task system workflow and rules
 - [Reference Hub](../reference/README.md) — ADRs, guides, manuals
+- [Workspace Board](../../docs/tasks/kanban_board.md) — all repos overview

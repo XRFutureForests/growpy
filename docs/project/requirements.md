@@ -42,7 +42,7 @@ This document specifies the functional requirements for GrowPy — a procedural 
 
 ### 1.2 Scope
 
-GrowPy is a single-user, offline batch pipeline operated by researchers at XR Future Forests Lab, University of Freiburg (FoWiTA project).
+GrowPy is a single-user, offline batch pipeline operated by researchers at XR Future Forests Lab, University of Freiburg (Eva Mayr-Stihl Stiftung funded).
 
 **IN SCOPE:**
 - 4-step pipeline: asset preparation → twig conversion → growth model calibration → forest generation
