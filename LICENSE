@@ -1,50 +1,22 @@
-Creative Commons Attribution-NonCommercial 4.0 International License
+GNU AFFERO GENERAL PUBLIC LICENSE
+Version 3, 19 November 2007
 
-Copyright (c) 2025-2026 GrowPy Authors
+Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
+Everyone is permitted to copy and distribute verbatim copies
+of this license document, but changing it is not allowed.
 
-This work is licensed under the Creative Commons
-Attribution-NonCommercial 4.0 International License.
+[Full AGPL-3.0 text omitted -- paste the complete license from https://www.gnu.org/licenses/agpl-3.0.txt here]
 
-You are free to:
+Commercial Licensing
 
-  Share - copy and redistribute the material in any medium or format
-  Adapt - remix, transform, and build upon the material
+This software is licensed under AGPL-3.0. For commercial licensing
+inquiries, please contact Max Sperlich, Department of Forest Sciences,
+University of Freiburg (<max.sperlich@uni-freiburg.de>).
 
-Under the following terms:
+Scope
 
-  Attribution - You must give appropriate credit, provide a link to
-  the license, and indicate if changes were made. You may do so in
-  any reasonable manner, but not in any way that suggests the licensor
-  endorses you or your use.
-
-  NonCommercial - You may not use the material for commercial purposes.
-
-  No additional restrictions - You may not apply legal terms or
-  technological measures that legally restrict others from doing
-  anything the license permits.
-
-Notices:
-
-  You do not have to comply with the license for elements of the
-  material in the public domain or where your use is permitted by an
-  applicable exception or limitation.
-
-  No warranties are given. The license may not give you all of the
-  permissions necessary for your intended use. For example, other
-  rights such as publicity, privacy, or moral rights may limit how
-  you use the material.
-
-Additional requirements for this project:
-
-  Citation - Any publication, presentation, or derivative work that
-  uses this software or its outputs must cite this project. See
-  CITATION.cff for the preferred citation format.
-
-  Scope - This license covers the GrowPy software pipeline (batch
-  tree generation, growth calibration, leaf trimming, USD export, and
-  Unreal Engine asset preparation). It does not cover The Grove 2.3
-  software or its bundled assets, which are subject to their own
-  commercial license from The Grove (https://www.thegrove3d.com).
-
-For the full legal text, see:
-https://creativecommons.org/licenses/by-nc/4.0/legalcode
+This license covers the GrowPy software pipeline (batch tree generation,
+growth calibration, leaf trimming, USD export, and Unreal Engine asset
+preparation). It does not cover The Grove 2.3 software or its bundled
+assets, which are subject to their own commercial license from The Grove
+(https://www.thegrove3d.com).
