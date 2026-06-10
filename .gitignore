@@ -56,3 +56,7 @@ nul
 
 # Manual test results
 tests/manual/results/
+
+# Tooling runtime artifacts and scratch (not project code)
+/.hex-skills/
+/tmp/

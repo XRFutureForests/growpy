@@ -53,12 +53,15 @@ jobs:
       - name: Set up Python
         run: uv python install 3.11
 
-      # NOTE: bpy and usd-core both ship their own USD build and cannot be
-      # imported in the same process (DLL/.so clash). Until the suite is split
-      # into bpy-only and usd-core-only runs, tests are advisory.
-      - name: Install package
-        run: uv pip install --system -e ".[dev,export]"
+      # bpy provides the bundled USD (pxr) build the exporters import, and the
+      # tests/conftest.py imports it first so its bundled DLLs win the load race
+      # against numpy/scipy/Pillow (otherwise bpy aborts intermittently). Do NOT
+      # also install usd-core here: two USD builds in one process conflict.
+      - name: Install system libs for headless bpy
+        run: sudo apt-get update && sudo apt-get install -y libgl1 libxi6 libxxf86vm1 libxfixes3 libxrender1
 
-      - name: Pytest (advisory until test isolation lands)
+      - name: Install package
+        run: uv pip install --system -e ".[dev]" bpy
+
+      - name: Pytest
         run: uv run --no-project pytest
-        continue-on-error: true

@@ -16,16 +16,16 @@ def ensure_pxr_with_unreal_schema() -> None:
     1. Exposes bundled modules if using bpy's bundled USD
     2. Registers Unreal schema plugin from PXR_PLUGINPATH_NAME if set
     """
-    # Expose bundled modules only when running inside Blender. We deliberately do
-    # NOT `import bpy` here: a broken/incompatible bpy install can abort the
-    # interpreter with a native DLL fault that Python cannot catch. In standalone
-    # Python (tests, usd-core paths) bpy is unnecessary, so skip it unless it is
-    # already loaded (which means we are inside Blender).
-    import sys
+    # Expose bpy's bundled USD (pxr) modules so `from pxr import ...` works in
+    # standalone Python. The repo relies on bpy providing pxr; usd-core is only a
+    # fallback. bpy is absent outside the growpy env, so tolerate ImportError.
+    try:
+        import bpy  # type: ignore
 
-    bpy = sys.modules.get("bpy")
-    if bpy is not None and hasattr(bpy.utils, "expose_bundled_modules"):
-        bpy.utils.expose_bundled_modules()  # type: ignore[attr-defined]
+        if hasattr(bpy.utils, "expose_bundled_modules"):
+            bpy.utils.expose_bundled_modules()  # type: ignore[attr-defined]
+    except ImportError:
+        pass
 
     # Register Unreal schema plugin if PXR_PLUGINPATH_NAME is set
     env_path = os.environ.get("PXR_PLUGINPATH_NAME")
