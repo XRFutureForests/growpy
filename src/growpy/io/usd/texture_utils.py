@@ -13,10 +13,7 @@ Virtual Texture Requirements (Unreal Engine):
 """
 
 import logging
-import math
-import shutil
 from pathlib import Path
-from typing import Optional, Tuple
 
 import numpy as np
 from PIL import Image
@@ -68,10 +65,10 @@ def is_power_of_2(value: int) -> bool:
 
 def resize_to_power_of_2(
     image_path: Path,
-    output_path: Optional[Path] = None,
+    output_path: Path | None = None,
     resample: int = Image.LANCZOS,
     upscale_only: bool = True,
-) -> Optional[Path]:
+) -> Path | None:
     """Resize image to power-of-2 dimensions for Unreal virtual texture compatibility.
 
     CRITICAL: Unreal Engine virtual textures require power-of-2 dimensions.
@@ -128,13 +125,13 @@ def resize_to_power_of_2(
 
         return output_path
 
-    except Exception as e:
+    except Exception:
         return None
 
 
 def ensure_power_of_2_textures(
     texture_dir: Path,
-    extensions: Optional[Tuple[str, ...]] = None,
+    extensions: tuple[str, ...] | None = None,
     upscale_only: bool = True,
 ) -> int:
     """Ensure all textures in a directory have power-of-2 dimensions.
@@ -173,7 +170,7 @@ def copy_and_resize_texture(
     src_path: Path,
     dst_path: Path,
     upscale_only: bool = True,
-) -> Optional[Path]:
+) -> Path | None:
     """Copy a texture to destination and resize to power-of-2 if needed.
 
     Args:
@@ -208,16 +205,16 @@ def copy_and_resize_texture(
 
         return dst_path
 
-    except Exception as e:
+    except Exception:
         return None
 
 
 def bump_to_normal(
     bump_path: Path,
-    output_path: Optional[Path] = None,
+    output_path: Path | None = None,
     strength: float = 40.0,
     invert: bool = False,
-) -> Optional[Path]:
+) -> Path | None:
     """Convert a bump/height map to a normal map.
 
     Args:
@@ -325,7 +322,7 @@ def ensure_normal_map(
     is_bump: bool = False,
     strength: float = 40.0,
     invert: bool = False,
-) -> Optional[Path]:
+) -> Path | None:
     """Ensure a normal map exists, converting from bump if needed.
 
     Args:
@@ -357,7 +354,7 @@ def ensure_normal_map(
 
 def extract_alpha_from_diffuse(
     diffuse_path: Path, output_path: Path = None
-) -> Optional[Path]:
+) -> Path | None:
     """Extract alpha channel from RGBA diffuse texture and save as grayscale.
 
     Creates a dedicated alpha texture from diffuse textures that have embedded
@@ -539,7 +536,7 @@ def _get_standardized_alpha_name(twig_dir: Path) -> str:
     return f"{twig_name}_alpha.png"
 
 
-def ensure_alpha_texture(twig_dir: Path) -> Optional[Path]:
+def ensure_alpha_texture(twig_dir: Path) -> Path | None:
     """Ensure a dedicated alpha texture exists for a twig directory.
 
     If a non-standardized alpha texture exists (e.g., BeechAlpha.jpg), converts
@@ -568,7 +565,6 @@ def ensure_alpha_texture(twig_dir: Path) -> Optional[Path]:
     # Includes standardized names (diffuse, albedo, etc.) and Grove original patterns
     # (files with top/bottom variants without explicit diffuse keyword)
     diffuse_keywords = ["diffuse", "albedo", "color", "basecolor"]
-    bump_keywords = ["bump", "height"]
     all_diffuse_files = []
     for tex_file in textures_dir.iterdir():
         if tex_file.is_file() and tex_file.suffix.lower() in [".png", ".jpg", ".jpeg"]:
@@ -652,7 +648,7 @@ def ensure_alpha_texture(twig_dir: Path) -> Optional[Path]:
     return alpha_result
 
 
-def ensure_normal_from_bump(twig_dir: Path) -> Optional[Path]:
+def ensure_normal_from_bump(twig_dir: Path) -> Path | None:
     """Convert bump maps to normal maps for a twig directory.
 
     Searches for bump/height map textures and converts them to normal maps.
@@ -671,7 +667,6 @@ def ensure_normal_from_bump(twig_dir: Path) -> Optional[Path]:
     bump_keywords = ["bump", "height", "displacement"]
     normal_keywords = ["normal", "normals", "nrm"]
     bump_file = None
-    existing_normal = None
 
     # Single pass: find bump map and check for existing normal simultaneously
     for tex_file in textures_dir.iterdir():
@@ -853,7 +848,7 @@ def standardize_twig_textures(twig_dir: Path) -> dict:
     return results
 
 
-def validate_twig_textures(twig_dir: Path) -> Tuple[bool, str]:
+def validate_twig_textures(twig_dir: Path) -> tuple[bool, str]:
     """Validate that all required textures exist for a twig directory.
 
     After alpha extraction and normal conversion, validates:

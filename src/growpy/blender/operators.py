@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List
 
 import bpy
 
@@ -21,8 +20,8 @@ def _sanitize_identifier(name: str) -> str:
     return clean or "tree"
 
 
-def _twig_face_types(model) -> Dict[int, str]:
-    type_map: Dict[int, str] = {}
+def _twig_face_types(model) -> dict[int, str]:
+    type_map: dict[int, str] = {}
     type_attrs = ["twig_long", "twig_short", "twig_upward", "twig_dead"]
     for twig_type in type_attrs:
         attr_name = f"face_attribute_{twig_type}"
@@ -35,8 +34,8 @@ def _twig_face_types(model) -> Dict[int, str]:
     return type_map
 
 
-def _extract_twig_placements(model) -> Dict[str, List[dict]]:
-    placements: Dict[str, List[dict]] = {
+def _extract_twig_placements(model) -> dict[str, list[dict]]:
+    placements: dict[str, list[dict]] = {
         "twig_long": [],
         "twig_short": [],
         "twig_upward": [],
@@ -85,7 +84,7 @@ def _extract_twig_placements(model) -> Dict[str, List[dict]]:
 
         bone_id = None
         if bone_ids:
-            counts: Dict[int, int] = {}
+            counts: dict[int, int] = {}
             for vid in face:
                 if vid < len(bone_ids):
                     b = int(bone_ids[vid])
@@ -224,7 +223,7 @@ class GROWPY_OT_ExportNaniteAssembly(bpy.types.Operator):
             self.report({"ERROR"}, f"Failed to extract Grove data: {exc}")
             return {"CANCELLED"}
 
-        twig_paths: Dict[str, List[Path]] = {}
+        twig_paths: dict[str, list[Path]] = {}
         if prefs.include_twigs and extraction.twig_blend_paths:
             try:
                 twig_paths = twig_converter.convert_twig_sources(
@@ -299,11 +298,6 @@ _classes = [
 def register():
     for cls in _classes:
         bpy.utils.register_class(cls)
-
-
-def unregister():
-    for cls in reversed(_classes):
-        bpy.utils.unregister_class(cls)
 
 
 def unregister():

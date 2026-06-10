@@ -12,7 +12,6 @@ if hasattr(bpy.utils, "expose_bundled_modules"):
 import logging
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 from tqdm import tqdm
 
@@ -20,7 +19,6 @@ from growpy.utils.naming import (
     TEXTURE_CLASSIFICATIONS,
     TEXTURE_MODIFIERS,
     camel_to_snake,
-    standardize_twig_name,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,7 +58,7 @@ def classify_texture_type(texture_path: Path, material_name: str = "") -> str:
 
 def find_textures_for_material(
     blend_dir: Path, material_name: str, search_parent: bool = True
-) -> Dict[str, Path]:
+) -> dict[str, Path]:
     """
     Find all available textures for a material with intelligent matching.
 
@@ -69,7 +67,7 @@ def find_textures_for_material(
         e.g., {'diffuse': Path(...), 'alpha': Path(...), 'normal': Path(...)}
     """
     texture_extensions = [".png", ".jpg", ".jpeg", ".tiff", ".exr", ".bmp"]
-    scored_map: Dict[str, Tuple[Path, int]] = {}
+    scored_map: dict[str, tuple[Path, int]] = {}
 
     # Search locations
     search_dirs = [blend_dir / "textures", blend_dir]
@@ -77,7 +75,7 @@ def find_textures_for_material(
         search_dirs.extend([blend_dir.parent / "textures", blend_dir.parent])
 
     # Find all textures
-    available_textures: List[Path] = []
+    available_textures: list[Path] = []
     for search_dir in search_dirs:
         if not search_dir.exists():
             continue
@@ -134,16 +132,16 @@ def find_textures_for_material(
                 scored_map[tex_type] = (texture, match_score)
 
     # Extract paths from (path, score) tuples
-    texture_map: Dict[str, Path] = {k: v[0] for k, v in scored_map.items()}
+    texture_map: dict[str, Path] = {k: v[0] for k, v in scored_map.items()}
 
     return texture_map
 
 
 def process_twig_directory(
     twig_dir: Path,
-    formats: List[str] = ["usda"],
+    formats: list[str] = ["usda"],
     minimal_export: bool = True,
-    twig_filter: Optional[List[str]] = None,
+    twig_filter: list[str] | None = None,
     include_skeleton: bool = True,
     *,
     densify: bool = True,
@@ -153,7 +151,7 @@ def process_twig_directory(
     interior_decimate_ratio: float = 0.0,
     interior_edge_mm: float = 0.0,
     interior_boundary_rings: int = 1,
-) -> Dict[str, List[Path]]:
+) -> dict[str, list[Path]]:
     """Process all twig blend files in a directory.
 
     Each .blend file is converted exactly once using the twig's native name
@@ -173,8 +171,6 @@ def process_twig_directory(
         interior_edge_mm: Target interior edge length in millimeters (default: 0).
             When > 0, derives decimation ratio automatically.
     """
-    # Force clean export for Nanite compatibility
-    clean_export = True
 
     blend_files = list(twig_dir.rglob("*.blend"))
 
@@ -203,7 +199,7 @@ def process_twig_directory(
     # Import twig_export module directly
     from growpy.io.usd.twig_export import process_twig_file
 
-    results: Dict[str, List[Path]] = {}
+    results: dict[str, list[Path]] = {}
 
     from growpy.utils.log import is_verbose
 

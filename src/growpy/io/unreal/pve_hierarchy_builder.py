@@ -7,12 +7,12 @@ contains faces for branches that pass cutoff filters. Skeleton has ALL branches.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-def _derive_parents_from_skeleton(skeleton: Any) -> List[int]:
+def _derive_parents_from_skeleton(skeleton: Any) -> list[int]:
     """
     Derive parent branch indices from skeleton poly_line connectivity.
 
@@ -67,8 +67,8 @@ def _derive_parents_from_skeleton(skeleton: Any) -> List[int]:
 
 
 def build_hierarchy_arrays(
-    model: Any, num_branches: int, skeleton: Optional[Any] = None
-) -> Dict[str, Dict]:
+    model: Any, num_branches: int, skeleton: Any | None = None
+) -> dict[str, dict]:
     """
     Build parent and children arrays from Grove skeleton poly_line connectivity.
 
@@ -165,8 +165,8 @@ def build_hierarchy_arrays(
 
 
 def get_branch_generation(
-    model: Any, num_branches: int, skeleton: Optional[Any] = None
-) -> List[int]:
+    model: Any, num_branches: int, skeleton: Any | None = None
+) -> list[int]:
     """
     Calculate generation number for each branch.
 

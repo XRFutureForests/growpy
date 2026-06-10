@@ -45,14 +45,10 @@ Main Functions:
 
 from __future__ import annotations
 
-import json
 import logging
 import math
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-
-import bpy
-import the_grove_23_core as gc
+from typing import Any
 
 from ...utils.pxr_init import ensure_pxr_with_unreal_schema
 
@@ -63,16 +59,14 @@ ensure_pxr_with_unreal_schema()
 from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade, UsdSkel, Vt
 
 from ...config import get_config
-from ...config.quality import get_quality_preset
 from ...constants import BREAST_HEIGHT_METERS
-from ...core.skeleton import calculate_vertex_weights
 
 
 def build_tree_mesh(
     model: Any,
-    skeleton: Optional[Any],
+    skeleton: Any | None,
     output_path: Path,
-    bones_info: Optional[List] = None,
+    bones_info: list | None = None,
     up_axis: str = "Z",
     triangulated: bool = True,
     include_materials: bool = False,
@@ -83,12 +77,12 @@ def build_tree_mesh(
     skeleton_connected: bool = True,
     junction_blend_distance: float = 0.5,
     blend_mode: str = "linear",
-    species_name: Optional[str] = None,
-    tree_id: Optional[str] = None,
+    species_name: str | None = None,
+    tree_id: str | None = None,
     include_skeleton: bool = True,
     include_grove_attributes: bool = False,
     radial_scale: float = 1.0,
-    scaled_points_out: Optional[List] = None,
+    scaled_points_out: list | None = None,
 ) -> bool:
     """Build USD file directly from Grove model using API geometry data.
 
@@ -151,11 +145,9 @@ def build_tree_mesh(
             sanitized_species = species_name.replace(" ", "_").replace("-", "_").lower()
             root_name = f"{sanitized_species}_stems"
             mesh_name = f"{sanitized_species}_stems_mesh"
-            skel_name = f"{sanitized_species}_stems_skel"
         else:
             root_name = "tree"
             mesh_name = "TreeMesh"
-            skel_name = "TreeSkel"
 
         # Define root xform
         root_path = Sdf.Path(f"/{root_name}")
@@ -258,10 +250,10 @@ def build_tree_mesh(
             # For each non-trunk bone, find the parent trunk bone axis
             # so we can blend the scaling direction at junctions.
             # Walk parent chain until we hit a trunk bone.
-            parent_trunk_axis: List[Optional[Tuple[float, float, float]]] = [
+            parent_trunk_axis: list[tuple[float, float, float] | None] = [
                 None
             ] * len(bones_info)
-            parent_trunk_start: List[Optional[Tuple[float, float, float]]] = [
+            parent_trunk_start: list[tuple[float, float, float] | None] = [
                 None
             ] * len(bones_info)
             for idx in range(len(bones_info)):
@@ -658,8 +650,8 @@ def _add_skeleton_to_stage_inline(
     skeleton: Any,
     root_xform_prim: Usd.Prim,
     mesh_prim: Usd.Prim,
-    model: Optional[Any] = None,
-    bones_info: Optional[List] = None,
+    model: Any | None = None,
+    bones_info: list | None = None,
     skeleton_length: float = 0.0,
     skeleton_reduce: float = 0.0,
     skeleton_bias: float = 0.5,
@@ -850,7 +842,11 @@ def _add_model_attributes(mesh: UsdGeom.Mesh, model: Any) -> None:
 
 
 def _add_usd_materials(
-    stage: Usd.Stage, mesh_prim: UsdGeom.Mesh, model: Any, mesh_path: str
+    stage: Usd.Stage,
+    mesh_prim: UsdGeom.Mesh,
+    model: Any,
+    mesh_path: str,
+    species_name: str | None = None,
 ) -> None:
     """Create proper USD materials for Unreal Engine compatibility.
 
@@ -890,7 +886,7 @@ def _add_skeletal_materials(
     stage: Usd.Stage,
     mesh_prim: Usd.Prim,
     root_path: str,
-    species_name: Optional[str] = None,
+    species_name: str | None = None,
 ) -> None:
     """Add materials with opaque-only textures to skeletal tree mesh for Nanite assembly.
 
@@ -1038,7 +1034,7 @@ def _add_skeletal_materials(
                 if not dest_normal.exists():
                     copy_and_resize_texture(normal_texture_file, dest_normal)
 
-    except Exception as e:
+    except Exception:
         # Silently fail - material addition is optional
         pass
 
@@ -1048,7 +1044,7 @@ def _add_static_materials(
     mesh_prim: Usd.Prim,
     root_path: str,
     model: Any,
-    species_name: Optional[str] = None,
+    species_name: str | None = None,
 ) -> None:
     """Add materials with textures to static tree mesh.
 
@@ -1065,7 +1061,7 @@ def _add_static_materials(
     try:
         from ...config import get_config
 
-        config = get_config()
+        get_config()
 
         # Bark material color (brown) - fallback if no texture
         BARK_BROWN = Gf.Vec3f(0.4, 0.3, 0.2)
@@ -1199,7 +1195,7 @@ def _add_static_materials(
                 if not dest_normal.exists():
                     copy_and_resize_texture(normal_texture_file, dest_normal)
 
-    except Exception as e:
+    except Exception:
         # Silently fail - material addition is optional
         pass
 
@@ -1258,9 +1254,9 @@ def _add_mesh_normals(
 def _build_usdskel_from_bones(
     stage: Usd.Stage,
     skeleton: Any,
-    model: Optional[Any] = None,
-    bones_info: Optional[List[Tuple]] = None,
-    twig_placements: Optional[Dict[str, List[Dict]]] = None,
+    model: Any | None = None,
+    bones_info: list[tuple] | None = None,
+    twig_placements: dict[str, list[dict]] | None = None,
     verbose: bool = False,
     clean_export: bool = True,
     junction_blend_distance: float = 0.5,
@@ -1675,10 +1671,10 @@ def _build_usdskel_from_bones(
 
 def get_twig_usd_map_for_species(
     species_name: str,
-    config: Optional[Any] = None,
+    config: Any | None = None,
     prefer_skeletal: bool = False,
     prefer_static: bool = False,
-) -> Dict[str, List[Path]]:
+) -> dict[str, list[Path]]:
     """Get mapping of twig types to USD file paths for a species.
 
     Returns ALL matching twig variants per grove type so that the assembly
@@ -1710,7 +1706,7 @@ def get_twig_usd_map_for_species(
     if not twig_files_by_type:
         pass
 
-    twig_usd_map: Dict[str, List[Path]] = {}
+    twig_usd_map: dict[str, list[Path]] = {}
 
     # Map Grove attribute names to twig file keywords
     type_mapping = {
@@ -1790,9 +1786,9 @@ def get_twig_usd_map_for_species(
 def bundle_twigs_for_species(
     species_name: str,
     output_dir: Path,
-    formats: List[str] = ["usda"],
-    config: Optional[Any] = None,
-) -> Dict[str, List[Path]]:
+    formats: list[str] = ["usda"],
+    config: Any | None = None,
+) -> dict[str, list[Path]]:
     """Bundle twig files for a species to output directory.
 
     Copies relevant twig meshes (USD) to species output folder

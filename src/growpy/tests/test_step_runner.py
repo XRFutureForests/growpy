@@ -1,11 +1,8 @@
 """Tests for growpy.pipelines.step_runner."""
 
-import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from growpy.pipelines.step_runner import (
     STEP_SCRIPTS,

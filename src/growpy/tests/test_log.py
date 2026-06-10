@@ -2,8 +2,6 @@
 
 import logging
 
-import pytest
-
 import growpy.utils.log as log_module
 from growpy.utils.log import setup_logging
 

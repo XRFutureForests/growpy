@@ -8,7 +8,7 @@ comparison summary.
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import matplotlib
 
@@ -19,7 +19,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-def _read_species_data(species_dir: Path) -> Optional[Dict[str, Any]]:
+def _read_species_data(species_dir: Path) -> dict[str, Any] | None:
     """Read metadata and growth model params for one species."""
     meta_path = species_dir / "metadata.json"
     params_path = species_dir / "growth_model_params.json"
@@ -55,7 +55,7 @@ def _read_species_data(species_dir: Path) -> Optional[Dict[str, Any]]:
     }
 
 
-def _read_calibration_info(presets_dir: Path, species: str) -> Optional[Dict[str, Any]]:
+def _read_calibration_info(presets_dir: Path, species: str) -> dict[str, Any] | None:
     """Read calibration info from seed.json preset if present."""
     preset_path = presets_dir / f"{species}.seed.json"
     if not preset_path.exists():
@@ -80,7 +80,7 @@ def _fmt(value, decimals=2) -> str:
 
 
 def _plot_cross_species_height(
-    all_data: Dict[str, Dict[str, Any]], output_path: Path
+    all_data: dict[str, dict[str, Any]], output_path: Path
 ) -> None:
     """Plot all species height curves on a single figure for comparison."""
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -104,7 +104,7 @@ def _plot_cross_species_height(
 
 
 def _plot_cross_species_dbh(
-    all_data: Dict[str, Dict[str, Any]], output_path: Path
+    all_data: dict[str, dict[str, Any]], output_path: Path
 ) -> None:
     """Plot all species DBH curves on a single figure for comparison."""
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -129,7 +129,7 @@ def _plot_cross_species_dbh(
 
 
 def _plot_simulation_performance(
-    all_data: Dict[str, Dict[str, Any]], output_path: Path
+    all_data: dict[str, dict[str, Any]], output_path: Path
 ) -> None:
     """Bar chart of simulation time and cycle count per species."""
     species_names = sorted(all_data.keys())
@@ -176,7 +176,7 @@ def _plot_simulation_performance(
 
 def generate_growth_model_report(
     models_dir: Path,
-    presets_dir: Optional[Path] = None,
+    presets_dir: Path | None = None,
 ) -> Path:
     """Generate a comprehensive growth model report as Markdown.
 
@@ -194,7 +194,7 @@ def generate_growth_model_report(
     if presets_dir is None:
         presets_dir = models_dir.parent / "presets"
 
-    all_data: Dict[str, Dict[str, Any]] = {}
+    all_data: dict[str, dict[str, Any]] = {}
     for species_dir in sorted(models_dir.iterdir()):
         if not species_dir.is_dir():
             continue
@@ -215,14 +215,14 @@ def generate_growth_model_report(
     _plot_simulation_performance(all_data, models_dir / "simulation_performance.png")
 
     # Collect calibration info per species
-    calibration: Dict[str, Optional[Dict]] = {}
+    calibration: dict[str, dict | None] = {}
     for species in all_data:
         calibration[species] = _read_calibration_info(presets_dir, species)
 
     n_species = len(all_data)
     n_calibrated = sum(1 for v in calibration.values() if v is not None)
 
-    lines: List[str] = []
+    lines: list[str] = []
 
     # --- Header ---
     lines.append("# Growth Model Report")
@@ -330,7 +330,6 @@ def generate_growth_model_report(
         planned = meta.get("planned_cycles", 0)
         actual = meta.get("actual_max_cycles", 0)
         sim_time = meta.get("avg_simulation_time", 0)
-        n_seeds = meta.get("num_seeds", 0)
         early = meta.get("early_terminations", 0)
         timeouts = meta.get("timeouts", 0)
 
@@ -444,7 +443,7 @@ def generate_growth_model_report(
                     "scaling on DBH at export."
                 )
                 lines.append("")
-                lines.append(f"| Metric | Uncalibrated | Calibrated | Change |")
+                lines.append("| Metric | Uncalibrated | Calibrated | Change |")
                 lines.append("| --- | ---: | ---: | ---: |")
                 lines.append(
                     f"| Max Height | {uncal_max_h:.2f} m | {max_h:.2f} m "

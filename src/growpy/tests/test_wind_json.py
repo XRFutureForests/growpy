@@ -1,6 +1,5 @@
 """Tests for growpy.io.wind_json module."""
 
-import pytest
 
 from growpy.io.unreal.wind_json import (
     _classify_by_hierarchy_depth,

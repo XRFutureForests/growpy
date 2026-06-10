@@ -17,12 +17,12 @@ Schema: src/DynamicWind/Resources/UsdResources/Plugins/unrealDynamicWind/resourc
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-def extract_joint_names_from_bones_info(bones_info: List) -> List[str]:
+def extract_joint_names_from_bones_info(bones_info: list) -> list[str]:
     """
     Extract joint names from bones_info without reading USD file.
 
@@ -97,11 +97,11 @@ def extract_joint_names_from_bones_info(bones_info: List) -> List[str]:
 
 def generate_wind_json(
     tree_usd_path: Path,
-    skeleton: Optional[Any] = None,
-    bones_info: Optional[List] = None,
-    output_path: Optional[Path] = None,
-    joint_names: Optional[List[str]] = None,
-) -> Dict:
+    skeleton: Any | None = None,
+    bones_info: list | None = None,
+    output_path: Path | None = None,
+    joint_names: list[str] | None = None,
+) -> dict:
     """
     Generate DynamicWind JSON for a tree USD file using Grove skeleton data.
 
@@ -197,7 +197,7 @@ def generate_wind_json(
 def _classify_joint(
     joint_name: str,
     joint_index: int,
-    skeleton_attrs: Optional[Dict],
+    skeleton_attrs: dict | None,
 ) -> int:
     """
     Classify joint into simulation group based on branch hierarchy and age.
@@ -286,7 +286,7 @@ def _classify_by_hierarchy_depth(joint_name: str) -> int:
         return 2  # Secondary+ branches
 
 
-def _extract_joint_names_from_usd(tree_usd_path: Path) -> List[str]:
+def _extract_joint_names_from_usd(tree_usd_path: Path) -> list[str]:
     """
     Extract joint names array from tree USD skeleton.
 
@@ -298,7 +298,6 @@ def _extract_joint_names_from_usd(tree_usd_path: Path) -> List[str]:
     """
     try:
         # Use bpy's bundled USD (pxr module)
-        import bpy
         from pxr import Usd, UsdSkel
 
         stage = Usd.Stage.Open(str(tree_usd_path))
@@ -321,8 +320,8 @@ def _extract_joint_names_from_usd(tree_usd_path: Path) -> List[str]:
 
 
 def _extract_skeleton_attrs_from_grove(
-    skeleton: Any, bones_info: List
-) -> Dict[str, List[float]]:
+    skeleton: Any, bones_info: list
+) -> dict[str, list[float]]:
     """
     Extract age and branch hierarchy from Grove skeleton and bones.
 
@@ -421,7 +420,6 @@ def _extract_skeleton_attrs_from_grove(
 
             # Handle last point (end of last bone)
             if point_idx < len(age_array) and bones_info and len(bones_info) > 0:
-                last_bone = bones_info[-1]
                 last_branch_id = bone_branch_ids[len(bones_info) - 1]
                 branch_depth_map[point_idx] = branch_to_depth[last_branch_id]
                 is_branch_root_map[point_idx] = (
@@ -466,7 +464,7 @@ def _extract_skeleton_attrs_from_grove(
 
 def generate_wind_json_for_species(
     species_output_dir: Path,
-) -> List[Path]:
+) -> list[Path]:
     """
     Generate wind JSON files for all skeletal trees in a species output directory.
 

@@ -1,6 +1,5 @@
 """Tests for growpy.io.pve_schema module."""
 
-import pytest
 
 from growpy.io.unreal.pve_schema import create_empty_pve_preset, get_pve_schema
 

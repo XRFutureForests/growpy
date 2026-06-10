@@ -5,7 +5,6 @@ and twig name parsing used across the pipeline.
 """
 
 import re
-from typing import Dict, Tuple
 
 
 def camel_to_snake(name: str) -> str:
@@ -84,7 +83,7 @@ TEXTURE_MODIFIERS = {
 
 def standardize_twig_name(
     original_name: str, species_name: str
-) -> Tuple[str, Dict]:
+) -> tuple[str, dict]:
     """Convert Grove's CamelCase .blend filenames to snake_case USD output names.
 
     Parses semantic meaning from Grove's .blend file naming (e.g., type, variation)
@@ -151,7 +150,7 @@ def standardize_twig_name(
 
     if metadata["type"] != "generic":
         parts.append(str(metadata["type"]))
-    
+
     # Include variation to distinguish multiple .blend files with same type
     # e.g., FieldElmTwig.blend vs FieldElmVarATwig.blend both with apical
     if metadata["variation"]:

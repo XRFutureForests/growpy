@@ -2,8 +2,6 @@
 
 import json
 
-import pytest
-
 from growpy.config.pve_species_overrides import (
     apply_species_overrides,
     create_example_pve_config,

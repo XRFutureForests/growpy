@@ -9,12 +9,12 @@ from __future__ import annotations
 import os
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import bpy
 
 _PXR_READY = False
-_TWIG_CACHE: Dict[str, Tuple[Path, Path]] = {}
+_TWIG_CACHE: dict[str, tuple[Path, Path]] = {}
 
 
 def _ensure_pxr() -> None:
@@ -82,8 +82,8 @@ def _apply_api_schema(prim: Any, schema_name: str) -> None:
     prim.SetMetadata("apiSchemas", op)
 
 
-def _collect_mesh_objects_from_blend(blend_path: Path) -> List[bpy.types.Object]:
-    mesh_objects: List[bpy.types.Object] = []
+def _collect_mesh_objects_from_blend(blend_path: Path) -> list[bpy.types.Object]:
+    mesh_objects: list[bpy.types.Object] = []
     with bpy.data.libraries.load(str(blend_path), link=False) as (data_from, data_to):
         data_to.objects = list(data_from.objects)
 
@@ -93,7 +93,7 @@ def _collect_mesh_objects_from_blend(blend_path: Path) -> List[bpy.types.Object]
     return mesh_objects
 
 
-def _link_temp_objects(mesh_objects: List[bpy.types.Object]) -> bpy.types.Collection:
+def _link_temp_objects(mesh_objects: list[bpy.types.Object]) -> bpy.types.Collection:
     temp = bpy.data.collections.new("__growpy_twigs_tmp")
     bpy.context.scene.collection.children.link(temp)
     for obj in mesh_objects:
@@ -103,7 +103,7 @@ def _link_temp_objects(mesh_objects: List[bpy.types.Object]) -> bpy.types.Collec
 
 
 def _cleanup_temp(
-    temp_collection: bpy.types.Collection, mesh_objects: List[bpy.types.Object]
+    temp_collection: bpy.types.Collection, mesh_objects: list[bpy.types.Object]
 ) -> None:
     for obj in mesh_objects:
         try:
@@ -118,9 +118,9 @@ def _cleanup_temp(
 
 def _extract_textures_from_object(
     obj: bpy.types.Object,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Extract image texture file paths from Blender material nodes."""
-    textures: List[Dict[str, Any]] = []
+    textures: list[dict[str, Any]] = []
     if not obj.data.materials:
         return textures
 
@@ -148,7 +148,7 @@ def _add_twig_material(
     mesh_prim: Any,
     root_path: Any,
     twig_name: str,
-    textures: List[Dict[str, Any]],
+    textures: list[dict[str, Any]],
     output_dir: Path,
 ) -> None:
     """Add leaf material with textures to a twig mesh prim."""
@@ -239,7 +239,7 @@ def _add_twig_material(
 
 
 def _export_objects_to_usd(
-    mesh_objects: List[bpy.types.Object],
+    mesh_objects: list[bpy.types.Object],
     output_path: Path,
     include_skeleton: bool,
 ) -> None:
@@ -275,7 +275,6 @@ def _export_objects_to_usd(
         skel_path = None
 
     depsgraph = bpy.context.evaluated_depsgraph_get()
-    mesh_exported = False
 
     for obj in mesh_objects:
         try:
@@ -351,7 +350,6 @@ def _export_objects_to_usd(
                 joint_weights.Set([1.0] * len(pts))
                 joint_weights.SetElementSize(1)
 
-            mesh_exported = True
         except Exception:
             pass
         finally:
@@ -366,7 +364,7 @@ def _export_objects_to_usd(
 
 def convert_blend_to_usd(
     blend_path: str | Path, output_dir: str | Path
-) -> Tuple[Path, Path]:
+) -> tuple[Path, Path]:
     """Convert one twig .blend file to (skeletal_usd, static_usd)."""
     src = Path(blend_path)
     dst = Path(output_dir)
@@ -396,12 +394,12 @@ def convert_blend_to_usd(
 
 
 def convert_twig_sources(
-    twig_blend_paths: List[str],
+    twig_blend_paths: list[str],
     output_dir: str | Path,
     use_skeletal_mesh: bool,
-) -> Dict[str, List[Path]]:
+) -> dict[str, list[Path]]:
     """Convert all twig sources and return mapping twig_type -> USD paths."""
-    result: Dict[str, List[Path]] = {
+    result: dict[str, list[Path]] = {
         "twig_long": [],
         "twig_short": [],
         "twig_upward": [],

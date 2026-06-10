@@ -44,7 +44,7 @@ import logging
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -100,8 +100,8 @@ class InterpolatedOverride:
     easing: str = "linear"  # linear, ease_in, ease_out, ease_in_out
     power: float = 2.0  # Curve steepness (1.0=linear, 2.0=quadratic, 3.0=cubic)
     midpoint: float = 0.5  # Relative inflection point for ease_in_out (0.0-1.0)
-    midpoint_cycle: Optional[int] = None  # Absolute cycle for ease_in_out inflection
-    transition_cycle: Optional[int] = (
+    midpoint_cycle: int | None = None  # Absolute cycle for ease_in_out inflection
+    transition_cycle: int | None = (
         None  # Absolute cycle for ease_in/ease_out 50% point
     )
 
@@ -118,7 +118,7 @@ class CycleArrayOverride:
     """
 
     param: str
-    values: List[float]
+    values: list[float]
 
 
 @dataclass
@@ -136,11 +136,11 @@ class PresetOverrides:
         cycle_array_overrides: List of CycleArrayOverride for per-cycle values
     """
 
-    static_overrides: Dict[str, float] = field(default_factory=dict)
-    interpolated_overrides: List[InterpolatedOverride] = field(default_factory=list)
-    cycle_array_overrides: List[CycleArrayOverride] = field(default_factory=list)
+    static_overrides: dict[str, float] = field(default_factory=dict)
+    interpolated_overrides: list[InterpolatedOverride] = field(default_factory=list)
+    cycle_array_overrides: list[CycleArrayOverride] = field(default_factory=list)
     # Memoized lookup table: {total_cycles: [overrides_at_cycle_0, ..., overrides_at_cycle_N]}
-    _lookup_table: Dict[int, List[Dict[str, float]]] = field(
+    _lookup_table: dict[int, list[dict[str, float]]] = field(
         default_factory=dict, compare=False, repr=False
     )
 
@@ -280,7 +280,7 @@ class PresetOverrides:
         return override.start + (override.end - override.start) * t
 
     def add_cycle_array(
-        self, param: str, values: List[float]
+        self, param: str, values: list[float]
     ) -> "PresetOverrides":
         """Add a per-cycle array override (e.g., from yield table calibration).
 
@@ -301,7 +301,7 @@ class PresetOverrides:
         self,
         current_cycle: int,
         total_cycles: int,
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """Get all override values for a specific cycle.
 
         Results are memoized per total_cycles to avoid recomputing easing math
@@ -371,7 +371,7 @@ class PresetOverrides:
         )
 
 
-def parse_override_arg(arg: str) -> Tuple[str, float]:
+def parse_override_arg(arg: str) -> tuple[str, float]:
     """Parse a static override argument.
 
     Args:
@@ -395,7 +395,7 @@ def parse_override_arg(arg: str) -> Tuple[str, float]:
     return param.strip(), value
 
 
-def parse_curve_arg(arg: str) -> Tuple[str, float, float, str]:
+def parse_curve_arg(arg: str) -> tuple[str, float, float, str]:
     """Parse an interpolated override argument.
 
     Args:
@@ -434,8 +434,8 @@ def parse_curve_arg(arg: str) -> Tuple[str, float, float, str]:
 
 
 def create_overrides_from_args(
-    static_args: Optional[List[str]] = None,
-    curve_args: Optional[List[str]] = None,
+    static_args: list[str] | None = None,
+    curve_args: list[str] | None = None,
 ) -> PresetOverrides:
     """Create PresetOverrides from CLI arguments.
 
@@ -499,7 +499,7 @@ def load_curves_from_preset(preset_path: Path) -> PresetOverrides:
     if not preset_path.exists():
         return overrides
 
-    with open(preset_path, "r") as f:
+    with open(preset_path) as f:
         preset_data = json.load(f)
 
     for key, value in preset_data.items():
@@ -552,7 +552,7 @@ def load_curves_from_preset(preset_path: Path) -> PresetOverrides:
     return overrides
 
 
-def load_target_dbh_from_preset(preset_path: Path) -> List[float]:
+def load_target_dbh_from_preset(preset_path: Path) -> list[float]:
     """Load target DBH per cycle from yield table calibration in a seed.json.
 
     Used at export time to compute radial scale for stem mesh correction.
@@ -567,7 +567,7 @@ def load_target_dbh_from_preset(preset_path: Path) -> List[float]:
     if not preset_path.exists():
         return []
 
-    with open(preset_path, "r") as f:
+    with open(preset_path) as f:
         preset_data = json.load(f)
 
     calibration = preset_data.get("_yield_table_calibration")
@@ -580,7 +580,7 @@ def load_target_dbh_from_preset(preset_path: Path) -> List[float]:
 
 def load_height_dbh_model_from_preset(
     preset_path: Path,
-) -> Optional[Dict[str, float]]:
+) -> dict[str, float] | None:
     """Load height-DBH allometric model from yield table calibration in a seed.json.
 
     The model is a power function DBH(cm) = a * H(m)^b fitted from the yield
@@ -597,7 +597,7 @@ def load_height_dbh_model_from_preset(
     if not preset_path.exists():
         return None
 
-    with open(preset_path, "r") as f:
+    with open(preset_path) as f:
         preset_data = json.load(f)
 
     calibration = preset_data.get("_yield_table_calibration")
@@ -610,7 +610,7 @@ def load_height_dbh_model_from_preset(
 
 def predict_dbh_from_height_model(
     height_m: float,
-    model: Dict[str, float],
+    model: dict[str, float],
 ) -> float:
     """Predict DBH in meters from height using the allometric power model.
 

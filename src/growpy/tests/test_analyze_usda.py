@@ -2,7 +2,7 @@
 
 import pytest
 
-from growpy.tools.analyze_usda import parse_vec3f_array, parse_int_array
+from growpy.tools.analyze_usda import parse_int_array, parse_vec3f_array
 
 
 class TestParseVec3fArray:

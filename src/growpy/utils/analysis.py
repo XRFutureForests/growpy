@@ -7,10 +7,11 @@ and growth prediction models from Grove species presets.
 import json
 import logging
 import multiprocessing as mp
+import os
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import joblib
 import numpy as np
@@ -37,7 +38,7 @@ def fit_chapman_richards(
     x: np.ndarray,
     y: np.ndarray,
     y0: float = 0.0,
-) -> Tuple[float, float, float, float]:
+) -> tuple[float, float, float, float]:
     """Fit Chapman-Richards growth function to (x, y) data.
 
     Fits h(t) = y0 + (A - y0) * (1 - exp(-k*t))^p when y0 > 0,
@@ -193,7 +194,7 @@ class ChapmanRichardsModel:
 
         return results
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize model parameters to a JSON-compatible dict."""
         return {
             "model_type": "chapman_richards",
@@ -204,7 +205,7 @@ class ChapmanRichardsModel:
         }
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> "ChapmanRichardsModel":
+    def from_dict(cls, d: dict[str, Any]) -> "ChapmanRichardsModel":
         """Reconstruct model from a parameter dict."""
         model = cls()
         model.A = d["A"]
@@ -247,7 +248,7 @@ class PiecewiseLinearModel:
                 results[i] = self.cycles[-1] + slope * (t - self.heights[-1])
         return results
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize model parameters to a JSON-compatible dict."""
         return {
             "model_type": "piecewise_linear",
@@ -256,7 +257,7 @@ class PiecewiseLinearModel:
         }
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> "PiecewiseLinearModel":
+    def from_dict(cls, d: dict[str, Any]) -> "PiecewiseLinearModel":
         """Reconstruct model from a parameter dict."""
         model = cls()
         model.heights = np.array(d["heights"])
@@ -397,7 +398,7 @@ class SpeciesGrowthAnalyzer:
                 logger.error(f"Preset file not found: {preset_file}")
                 return False
 
-            with open(preset_file, "r") as f:
+            with open(preset_file) as f:
                 preset_data = json.load(f)
 
             # Performance: disable twig placement (not needed for height/DBH curves)
@@ -417,7 +418,7 @@ class SpeciesGrowthAnalyzer:
             logger.error(f"Failed to apply species preset {species}: {e}")
             return False
 
-    def get_available_species(self) -> List[str]:
+    def get_available_species(self) -> list[str]:
         """Get list of all available Grove species presets from preset files."""
         try:
             species_list = []
@@ -531,7 +532,7 @@ class SpeciesGrowthAnalyzer:
 
     def generate_height_curve_for_species(
         self, species: str
-    ) -> Tuple[List[float], List[float], Dict[str, Any]]:
+    ) -> tuple[list[float], list[float], dict[str, Any]]:
         """Generate height and DBH curves for a species with multiple seeds.
 
         Args:
@@ -791,7 +792,7 @@ class SpeciesGrowthAnalyzer:
 
         return max_heights, max_dbhs, metadata
 
-    def create_growth_model_for_species(self, species: str, height_curve: List[float]):
+    def create_growth_model_for_species(self, species: str, height_curve: list[float]):
         """Create a growth model to predict required cycles from target height.
 
         Tries Chapman-Richards parametric fit first (better extrapolation).
@@ -881,9 +882,9 @@ class SpeciesGrowthAnalyzer:
     def analyze_all_species(
         self,
         parallel: bool = True,
-        max_workers: Optional[int] = None,
-        species_filter: Optional[list] = None,
-    ) -> Dict[str, bool]:
+        max_workers: int | None = None,
+        species_filter: list | None = None,
+    ) -> dict[str, bool]:
         """Analyze all available species (sequential or parallel).
 
         Args:
@@ -900,14 +901,13 @@ class SpeciesGrowthAnalyzer:
         if species_filter:
             species_list = [s for s in species_list if s in species_filter]
 
-        results = {}
 
         if parallel:
             return self._analyze_parallel(species_list, max_workers)
         else:
             return self._analyze_sequential(species_list)
 
-    def _analyze_sequential(self, species_list: List[str]) -> Dict[str, bool]:
+    def _analyze_sequential(self, species_list: list[str]) -> dict[str, bool]:
         """Analyze species sequentially.
 
         Args:
@@ -936,8 +936,8 @@ class SpeciesGrowthAnalyzer:
         return results
 
     def _analyze_parallel(
-        self, species_list: List[str], max_workers: Optional[int]
-    ) -> Dict[str, bool]:
+        self, species_list: list[str], max_workers: int | None
+    ) -> dict[str, bool]:
         """Analyze species in parallel.
 
         Args:
@@ -955,6 +955,12 @@ class SpeciesGrowthAnalyzer:
         logger.info(
             f"Using {max_workers} parallel workers for {len(species_list)} species"
         )
+
+        # Avoid CPU oversubscription: each worker process runs numpy/scipy, which
+        # each spawn their own BLAS thread pool. Cap inner threads (children inherit
+        # these env vars on spawn) so we don't end up with max_workers x cores threads.
+        for _thread_var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
+            os.environ.setdefault(_thread_var, "1")
 
         process_args = [
             (

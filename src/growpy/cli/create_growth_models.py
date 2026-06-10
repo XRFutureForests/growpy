@@ -18,7 +18,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from growpy.config import get_config
 from growpy.utils.analysis import SpeciesGrowthAnalyzer
@@ -28,7 +28,7 @@ from growpy.utils.naming import standardize_species_name
 logger = logging.getLogger(__name__)
 
 
-def _strip_previous_calibration(presets_dir: Path, species_list: List[str]) -> None:
+def _strip_previous_calibration(presets_dir: Path, species_list: list[str]) -> None:
     """Remove _yield_table_calibration from seed.json files for a clean baseline."""
     import json
 
@@ -46,7 +46,7 @@ def _strip_previous_calibration(presets_dir: Path, species_list: List[str]) -> N
             logger.info("Stripped previous calibration from %s", species)
 
 
-def _resolve_species_from_csv(csv_path: Path) -> Optional[List[str]]:
+def _resolve_species_from_csv(csv_path: Path) -> list[str] | None:
     """Parse CSV and return list of standardized species names."""
     import pandas as pd
 
@@ -77,10 +77,10 @@ def _resolve_species_from_csv(csv_path: Path) -> Optional[List[str]]:
 
 def _run_calibration_pass(
     analyzer: SpeciesGrowthAnalyzer,
-    species_list: List[str],
+    species_list: list[str],
     config,
     script_dir: Path,
-) -> Tuple[List[str], Dict[str, Dict[str, Any]]]:
+) -> tuple[list[str], dict[str, dict[str, Any]]]:
     """Run yield table calibration for species with available yield tables.
 
     Computes calibration from uncalibrated curves (already in analyzer) and
@@ -110,7 +110,7 @@ def _run_calibration_pass(
     std_to_common = {v["standardized"]: name for name, v in lookup.items()}
 
     calibrated_species = []
-    calibration_info: Dict[str, Dict[str, Any]] = {}
+    calibration_info: dict[str, dict[str, Any]] = {}
 
     for species_std in species_list:
         common_name = std_to_common.get(species_std)
@@ -200,11 +200,11 @@ def _run_calibration_pass(
 
 
 def _generate_comparison_plots(
-    calibration_info: Dict[str, Dict[str, Any]],
-    uncalibrated_heights: Dict[str, List[float]],
-    uncalibrated_dbhs: Dict[str, List[float]],
-    calibrated_heights: Dict[str, List[float]],
-    calibrated_dbhs: Dict[str, List[float]],
+    calibration_info: dict[str, dict[str, Any]],
+    uncalibrated_heights: dict[str, list[float]],
+    uncalibrated_dbhs: dict[str, list[float]],
+    calibrated_heights: dict[str, list[float]],
+    calibrated_dbhs: dict[str, list[float]],
     config,
     script_dir: Path,
 ) -> None:
@@ -268,8 +268,8 @@ def _generate_comparison_plots(
 
 
 def _save_uncalibrated_curves(
-    uncal_heights: Dict[str, List[float]],
-    uncal_dbhs: Dict[str, List[float]],
+    uncal_heights: dict[str, list[float]],
+    uncal_dbhs: dict[str, list[float]],
     models_dir: Path,
 ) -> None:
     """Persist uncalibrated height/DBH curves for report comparison."""
@@ -323,7 +323,7 @@ def _save_yield_table_allometry(
 
 def _generate_grove_only_plots(
     analyzer: "SpeciesGrowthAnalyzer",
-    calibration_info: Dict[str, Dict[str, Any]],
+    calibration_info: dict[str, dict[str, Any]],
     config,
     script_dir: Path,
 ) -> None:

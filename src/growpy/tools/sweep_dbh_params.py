@@ -17,7 +17,6 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 from growpy.config.paths import get_assets_directory
 from growpy.constants import BREAST_HEIGHT_METERS
@@ -48,10 +47,10 @@ PARAM_SWEEPS = {
 
 def run_single_simulation(
     species_key: str,
-    param_overrides: Dict[str, float],
+    param_overrides: dict[str, float],
     cycles: int = 25,
     seed: int = 42,
-) -> Tuple[float, float, List[float], List[float]]:
+) -> tuple[float, float, list[float], list[float]]:
     """Run a single growth simulation and return final height + DBH.
 
     Returns:
@@ -172,9 +171,9 @@ def _measure_dbh(tree, target_height: float = BREAST_HEIGHT_METERS) -> float:
 
 
 def run_sweep(
-    species_filter: Optional[str] = None,
+    species_filter: str | None = None,
     cycles: int = 25,
-) -> Dict:
+) -> dict:
     """Run parameter sweep across species and parameters."""
     results = {}
 
@@ -250,7 +249,7 @@ def run_sweep(
     return results
 
 
-def print_summary(results: Dict) -> None:
+def print_summary(results: dict) -> None:
     """Print a summary of which parameters have the most DBH impact."""
     print(f"\n\n{'='*70}")
     print("  SUMMARY: Parameters ranked by DBH reduction potential")

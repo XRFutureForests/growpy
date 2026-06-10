@@ -17,19 +17,15 @@ Texture Handling:
 
 import json
 import logging
-import math
 import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Optional, Set
 
 logger = logging.getLogger(__name__)
 
 import bmesh
 import bpy
-import mathutils
-import numpy as np
 
 try:
     from PIL import Image
@@ -354,7 +350,7 @@ def _add_twig_material(
         # Bind material to mesh
         binding_api = UsdShade.MaterialBindingAPI.Apply(mesh_prim.GetPrim())
         binding_api.Bind(mat)
-    except Exception as e:
+    except Exception:
         # Silently fail - material addition is optional
         pass
 
@@ -433,7 +429,7 @@ def clean_static_usd_file(usd_path):
 
         # Create root Xform with species-specific name
         root_path = Sdf.Path(f"/{prim_name}")
-        root_xform = UsdGeom.Xform.Define(stage, root_path)
+        UsdGeom.Xform.Define(stage, root_path)
 
         # Re-parent mesh under root as {prim_name}_mesh
         new_mesh_path = root_path.AppendChild(f"{prim_name}_mesh")
@@ -453,7 +449,7 @@ def clean_static_usd_file(usd_path):
             from pxr import UsdShade
 
             new_materials_path = root_path.AppendChild("Materials")
-            materials_scope = stage.DefinePrim(new_materials_path, "Scope")
+            stage.DefinePrim(new_materials_path, "Scope")
 
             # Copy all material definitions
             for child in materials_prim.GetChildren():
@@ -515,7 +511,7 @@ def clean_static_usd_file(usd_path):
         stage.Save()
         return True
 
-    except Exception as e:
+    except Exception:
         return False
 
 
@@ -535,8 +531,6 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), minimal_export=Tru
     Returns:
         bool: True if skeleton added successfully
     """
-    # Force clean export for Nanite compatibility
-    clean_export = True
     try:
         # Open existing stage
         stage = Usd.Stage.Open(str(usd_path))
@@ -737,124 +731,9 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), minimal_export=Tru
         # CRITICAL: Never copy materials for Nanite assemblies
         # Materials, textures, and masks cause import failures with skeletal Nanite assemblies
         # All visual appearance should be configured in Unreal Engine after import
-        if False:  # Disabled - clean_export always True for Nanite compatibility
-            from pxr import UsdShade
-
-            materials_prim = stage.GetPrimAtPath("/root/_materials")
-            if materials_prim and materials_prim.IsValid():
-                new_materials_path = root_path.AppendChild("Materials")
-                materials_scope = stage.DefinePrim(new_materials_path, "Scope")
-
-                # Copy all material definitions
-                for child in materials_prim.GetChildren():
-                    # Clean material name (remove numeric suffixes)
-                    mat_name = child.GetName()
-                    clean_mat_name = (
-                        mat_name.split(".")[0] if "." in mat_name else mat_name
-                    )
-
-                    new_mat_path = new_materials_path.AppendChild(clean_mat_name)
-                    # Use CopySpec to copy entire material hierarchy
-                    Sdf.CopySpec(
-                        stage.GetRootLayer(),
-                        child.GetPath(),
-                        stage.GetRootLayer(),
-                        new_mat_path,
-                    )
-
-                    # Rename shaders with semantic names
-                    mat_prim = stage.GetPrimAtPath(new_mat_path)
-                    if mat_prim:
-                        shader_renames = {}
-                        for shader_prim in list(mat_prim.GetChildren()):
-                            shader_name = shader_prim.GetName()
-                            new_shader_name = None
-
-                            # Check shader connections to determine type
-                            shader = UsdShade.Shader(shader_prim)
-                            file_input = shader.GetInput("file")
-                            if file_input:
-                                file_path = str(file_input.Get())
-                                if "alpha" in file_path:
-                                    new_shader_name = "AlphaTexture"
-                                elif "normal" in file_path:
-                                    new_shader_name = "NormalTexture"
-                                elif "translucent" in file_path:
-                                    new_shader_name = "TranslucentTexture"
-                                elif "diffuse" in file_path:
-                                    new_shader_name = "DiffuseTexture"
-
-                            # Fallback naming based on shader name patterns
-                            if not new_shader_name:
-                                if (
-                                    "Image_Texture_001" in shader_name
-                                    or shader_name == "Image_Texture_001"
-                                ):
-                                    new_shader_name = "DiffuseTexture"
-                                elif "Image_Texture_003" in shader_name:
-                                    new_shader_name = "NormalTexture"
-                                elif shader_name == "Image_Texture":
-                                    new_shader_name = "AlphaTexture"
-
-                            if new_shader_name and shader_name != new_shader_name:
-                                old_shader_path = shader_prim.GetPath()
-                                new_shader_path = mat_prim.GetPath().AppendChild(
-                                    new_shader_name
-                                )
-                                shader_renames[old_shader_path] = new_shader_path
-                                rename_prim_recursive(
-                                    stage, old_shader_path, new_shader_path
-                                )
-
-                    # Update material binding paths in shader network
-                    def update_material_paths(prim_path):
-                        prim = stage.GetPrimAtPath(prim_path)
-                        if not prim:
-                            return
-                        # Update all relationships that reference old material paths
-                        for rel in prim.GetRelationships():
-                            targets = rel.GetTargets()
-                            if targets:
-                                new_targets = []
-                                for target in targets:
-                                    target_str = str(target)
-                                    if "/root/_materials/" in target_str:
-                                        new_target_str = target_str.replace(
-                                            "/root/_materials/",
-                                            str(new_materials_path) + "/",
-                                        )
-                                        new_targets.append(Sdf.Path(new_target_str))
-                                    else:
-                                        new_targets.append(target)
-                                rel.SetTargets(new_targets)
-                        # Recursively update children
-                        for child_prim in prim.GetChildren():
-                            update_material_paths(child_prim.GetPath())
-
-                    update_material_paths(new_mat_path)
-
-                # Update mesh material binding to point to new location
-                mat_binding_api = UsdShade.MaterialBindingAPI(mesh_prim)
-                mat_binding = mat_binding_api.GetDirectBinding()
-                if mat_binding:
-                    mat_path = mat_binding.GetMaterialPath()
-                    if mat_path and "/root/_materials/" in str(mat_path):
-                        new_mat_path_str = str(mat_path).replace(
-                            "/root/_materials/", str(new_materials_path) + "/"
-                        )
-                        # Also update for cleaned material name
-                        path_parts = new_mat_path_str.split("/")
-                        if path_parts:
-                            mat_name = path_parts[-1].split(".")[0]
-                            path_parts[-1] = mat_name
-                            new_mat_path_str = "/".join(path_parts)
-
-                        new_mat_path = Sdf.Path(new_mat_path_str)
-                        mat_prim = stage.GetPrimAtPath(new_mat_path)
-                        if mat_prim and mat_prim.IsValid():
-                            UsdShade.MaterialBindingAPI.Apply(mesh_prim).Bind(
-                                UsdShade.Material(mat_prim)
-                            )
+        # (Material copying intentionally omitted: materials, textures, and masks
+        # cause import failures with skeletal Nanite assemblies and are configured
+        # in Unreal Engine after import.)
 
         # Remove the old /root prim that Blender created
         root_prim = stage.GetPrimAtPath("/root")
@@ -870,7 +749,7 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), minimal_export=Tru
         stage.Save()
         return True
 
-    except Exception as e:
+    except Exception:
         return False
 
 
@@ -913,7 +792,6 @@ def classify_texture_from_name(name):
     # These can have explicit "diffuse" keyword OR be implicit (e.g., "OakTop.png")
     has_top = "top" in name_lower or "upper" in name_lower or "face" in name_lower
     has_bottom = "bottom" in name_lower or "lower" in name_lower or "back" in name_lower
-    has_diffuse_keyword = any(kw in name_lower for kw in ["diffuse", "albedo", "color"])
 
     # If it has top/bottom keywords, classify as two-sided texture
     # Even without explicit "diffuse" keyword (e.g., Grove's "OakTop.png")
@@ -1074,7 +952,7 @@ def smooth_leaf_mesh(
     obj,
     iterations: int = 10,
     factor: float = 0.2,
-    material_indices: Optional[Set[int]] = None,
+    material_indices: set[int] | None = None,
 ):
     """Smooth selected (leaf) regions to reduce faceting from low-poly meshes.
 
@@ -1082,7 +960,6 @@ def smooth_leaf_mesh(
     material indices in `material_indices`. If `material_indices` is None,
     applies to the whole mesh.
     """
-    import bmesh
     import bpy
 
     if iterations <= 0 or factor <= 0.0:
@@ -1233,6 +1110,134 @@ from .twig_geometry import (  # noqa: F401
 )
 
 
+def _group_twig_textures(
+    available_textures,
+    species_name,
+    had_multiple_materials,
+    original_bark_indices,
+):
+    """Group twig textures into bark/leaf materials by filename affinity and season.
+
+    Routes bark-affinity vs leaf-affinity textures to separate materials and
+    consolidates seasonal variants (summer preferred, else fall/winter/spring).
+    Ensures a bark material exists when the mesh has bark faces, and falls back
+    to a single species material when no grouping applies.
+
+    Returns a dict of material_name -> list[Path].
+    """
+    bark_keywords = ["twig", "bark", "wood", "branch", "stem"]
+    bark_tex_keywords = ["bark", "twig", "branch", "wood", "stem"]
+    material_groups = {}
+
+    for texture in available_textures:
+        tex_lower = texture.stem.lower()
+        material_part = (
+            "bark" if any(kw in tex_lower for kw in bark_tex_keywords) else "leaf"
+        )
+
+        season = None
+        if "summer" in tex_lower:
+            season = "summer"
+        elif "fall" in tex_lower or "autumn" in tex_lower:
+            season = "fall"
+        elif "winter" in tex_lower or "bare" in tex_lower:
+            season = "winter"
+        elif "spring" in tex_lower:
+            season = "spring"
+
+        mat_group_key = f"{material_part}_{season}" if season else material_part
+        material_groups.setdefault(mat_group_key, []).append(texture)
+
+    # Consolidate season variants: if summer exists, prefer it
+    season_prioritization = {"leaf": [], "bark": []}
+    for group_key in list(material_groups.keys()):
+        if "summer" in group_key:
+            material_type = group_key.replace("_summer", "")
+            season_prioritization[material_type] = material_groups.pop(group_key)
+        elif "fall" in group_key or "winter" in group_key or "spring" in group_key:
+            material_type = group_key.split("_")[0]
+            if f"{material_type}_summer" not in material_groups:
+                if not season_prioritization[material_type]:
+                    season_prioritization[material_type] = material_groups.pop(
+                        group_key
+                    )
+                else:
+                    material_groups.pop(group_key)
+            else:
+                material_groups.pop(group_key)
+        elif material_groups[group_key]:
+            material_type = group_key.split("_")[0]
+            if not season_prioritization[material_type]:
+                season_prioritization[material_type] = material_groups.pop(group_key)
+
+    # Build final material groups with species prefix
+    final_material_groups = {}
+    for material_type, textures in season_prioritization.items():
+        if textures:
+            mat_name = (
+                f"{species_name}_{material_type}" if material_type else species_name
+            )
+            final_material_groups[mat_name] = textures
+
+    material_groups = (
+        final_material_groups if final_material_groups else material_groups
+    )
+
+    # Ensure bark material exists when mesh has bark faces (from joined objects).
+    if had_multiple_materials and original_bark_indices:
+        has_bark_group = any(
+            any(kw in name.lower() for kw in bark_keywords)
+            for name in material_groups
+        )
+        if not has_bark_group:
+            material_groups[f"{species_name}_bark"] = []
+
+    if not material_groups:
+        material_groups[species_name] = available_textures
+
+    return material_groups
+
+
+def _build_twig_texture_map(textures):
+    """Classify a material's textures into a {tex_type: Path} map for Nanite export.
+
+    Excludes alpha/translucent/mask textures, converts a bump map to a normal map
+    when no normal exists, and collapses one-sided diffuse_top/diffuse_bottom into
+    a single ``diffuse`` entry.
+    """
+    excluded_types = {"alpha", "translucent", "mask", "opacity"}
+    texture_map = {}
+    for tex in textures:
+        tex_type = classify_texture_from_name(tex.stem)
+        if tex_type in excluded_types:
+            continue
+        if tex_type not in texture_map:
+            texture_map[tex_type] = tex
+
+    # Convert bump maps to normal maps if needed
+    if "bump" in texture_map and "normal" not in texture_map:
+        from growpy.io.usd.texture_utils import bump_to_normal
+
+        bump_path = texture_map["bump"]
+        normal_path = bump_path.parent / f"{bump_path.stem}_normal{bump_path.suffix}"
+        if not normal_path.exists():
+            if bump_to_normal(bump_path, normal_path):
+                texture_map["normal"] = normal_path
+        else:
+            texture_map["normal"] = normal_path
+        del texture_map["bump"]
+
+    # Collapse one-sided diffuse_top/diffuse_bottom into a single diffuse
+    has_two_sided = "diffuse_top" in texture_map and "diffuse_bottom" in texture_map
+    if not has_two_sided:
+        if "diffuse_top" in texture_map:
+            texture_map["diffuse"] = texture_map.pop("diffuse_top")
+        elif "diffuse_bottom" in texture_map:
+            texture_map["diffuse"] = texture_map.pop("diffuse_bottom")
+
+    return texture_map
+
+
 
 def setup_materials_with_textures(
     obj, blend_dir, species_name, output_dir, standardized_name, metadata=None
@@ -1281,90 +1286,13 @@ def setup_materials_with_textures(
     # Clear existing materials
     obj.data.materials.clear()
 
-    # Group textures by material affinity and season.
-    # Material EXISTENCE is determined by mesh structure (bark/leaf face regions
-    # from joined twig objects), NOT by texture filenames.
-    # Texture ASSIGNMENT uses filename affinity to route textures to the
-    # correct material (bark-related textures -> bark material, etc.).
-    bark_tex_keywords = ["bark", "twig", "branch", "wood", "stem"]
-    material_groups = {}
-
-    for texture in available_textures:
-        tex_type = classify_texture_from_name(texture.stem)
-        tex_lower = texture.stem.lower()
-
-        # Route texture to bark or leaf group by filename affinity
-        material_part = (
-            "bark" if any(kw in tex_lower for kw in bark_tex_keywords) else "leaf"
-        )
-
-        # Detect season
-        season = None
-        if "summer" in tex_lower:
-            season = "summer"
-        elif "fall" in tex_lower or "autumn" in tex_lower:
-            season = "fall"
-        elif "winter" in tex_lower or "bare" in tex_lower:
-            season = "winter"
-        elif "spring" in tex_lower:
-            season = "spring"
-
-        mat_group_key = f"{material_part}_{season}" if season else material_part
-        if mat_group_key not in material_groups:
-            material_groups[mat_group_key] = []
-        material_groups[mat_group_key].append(texture)
-
-    # Consolidate season variants: if summer exists, prefer it
-    season_prioritization = {
-        "leaf": [],
-        "bark": [],
-    }
-
-    for group_key in list(material_groups.keys()):
-        if "summer" in group_key:
-            material_type = group_key.replace("_summer", "")
-            season_prioritization[material_type] = material_groups.pop(group_key)
-        elif "fall" in group_key or "winter" in group_key or "spring" in group_key:
-            material_type = group_key.split("_")[0]
-            if f"{material_type}_summer" not in material_groups:
-                if not season_prioritization[material_type]:
-                    season_prioritization[material_type] = material_groups.pop(
-                        group_key
-                    )
-                else:
-                    material_groups.pop(group_key)
-            else:
-                material_groups.pop(group_key)
-        elif material_groups[group_key]:
-            material_type = group_key.split("_")[0]
-            if not season_prioritization[material_type]:
-                season_prioritization[material_type] = material_groups.pop(group_key)
-
-    # Build final material groups with species prefix
-    final_material_groups = {}
-    for material_type, textures in season_prioritization.items():
-        if textures:
-            mat_name = (
-                f"{species_name}_{material_type}" if material_type else species_name
-            )
-            final_material_groups[mat_name] = textures
-
-    material_groups = (
-        final_material_groups if final_material_groups else material_groups
+    # Group textures into bark/leaf materials (seasonal variants consolidated).
+    material_groups = _group_twig_textures(
+        available_textures,
+        species_name,
+        had_multiple_materials,
+        original_bark_indices,
     )
-
-    # Ensure bark material exists when mesh has bark faces (from joined objects).
-    # Material existence is driven by mesh structure, not texture filenames.
-    if had_multiple_materials and original_bark_indices:
-        has_bark_group = any(
-            any(kw in name.lower() for kw in bark_keywords)
-            for name in material_groups.keys()
-        )
-        if not has_bark_group:
-            material_groups[f"{species_name}_bark"] = []
-
-    if not material_groups:
-        material_groups[species_name] = available_textures
 
     # Create materials
     materials_created = 0
@@ -1405,50 +1333,8 @@ def setup_materials_with_textures(
 
         links.new(bsdf.outputs["BSDF"], output.inputs["Surface"])
 
-        # Classify and add textures (Nanite-compatible: no alpha/translucent/mask)
-        EXCLUDED_TEXTURE_TYPES = {"alpha", "translucent", "mask", "opacity"}
-        texture_map = {}
-        for tex in textures:
-            tex_type = classify_texture_from_name(tex.stem)
-            if tex_type in EXCLUDED_TEXTURE_TYPES:
-                continue
-            if tex_type not in texture_map:
-                texture_map[tex_type] = tex
-
-        # Convert bump maps to normal maps if needed
-        if "bump" in texture_map and "normal" not in texture_map:
-            from growpy.io.usd.texture_utils import bump_to_normal
-
-            # Generate normal map from bump
-            bump_path = texture_map["bump"]
-            normal_path = textures_dir / f"{bump_path.stem}_normal{bump_path.suffix}"
-
-            if not normal_path.exists():
-                converted = bump_to_normal(bump_path, normal_path)
-                if converted:
-                    texture_map["normal"] = normal_path
-            else:
-                texture_map["normal"] = normal_path
-
-            # Remove bump from map since we've converted it
-            del texture_map["bump"]
-
-        # Handle two-sided materials (top/bottom diffuse textures)
-        # Keep both if available for two-sided rendering
-        has_two_sided = "diffuse_top" in texture_map and "diffuse_bottom" in texture_map
-
-        if not has_two_sided:
-            # Single-sided: use top or bottom as main diffuse
-            if "diffuse_top" in texture_map:
-                texture_map["diffuse"] = texture_map["diffuse_top"]
-                del texture_map["diffuse_top"]
-            elif "diffuse_bottom" in texture_map:
-                texture_map["diffuse"] = texture_map["diffuse_bottom"]
-                del texture_map["diffuse_bottom"]
-
-        # Debug: Show texture file names
-        for tex_type, tex_path in texture_map.items():
-            pass
+        # Build the {tex_type: Path} map for this material (Nanite-safe).
+        texture_map = _build_twig_texture_map(textures)
 
         y_offset = 300
 
@@ -1627,7 +1513,7 @@ def setup_materials_with_textures(
 
                 y_offset -= 250
 
-            except Exception as e:
+            except Exception:
                 pass
 
         if "Specular" in bsdf.inputs:
@@ -1924,7 +1810,6 @@ def process_twig_file(
             # CRITICAL: Material setup disabled for Nanite compatibility
             # Nanite assemblies with skeletal meshes have known issues with materials, textures, and masks
             # All visual appearance should be configured in Unreal Engine after import
-            material_setup_success = False  # Disabled - clean export always for Nanite
 
             # Optional geometry processing for enhanced leaf detail
             # Restrict to leaf materials to avoid artifacts on twigs/bark
@@ -1965,7 +1850,7 @@ def process_twig_file(
                             img = PILImage.open(alpha_tex_path)
                             if "A" in img.getbands():
                                 alpha_img = img.getchannel("A")
-                    except Exception as e:
+                    except Exception:
                         alpha_img = None
 
                 # DENSIFY + CONTOUR CUT: first subdivide leaf edges to the
@@ -2086,7 +1971,7 @@ def process_twig_file(
                         minimal_export=minimal_export,
                     ):
                         # Copy opaque-only textures for skeletal twig (no alpha/translucent for Nanite)
-                        textures_copied = copy_opaque_textures_for_skeletal(
+                        copy_opaque_textures_for_skeletal(
                             blend_dir, output_dir, standardized_name, metadata
                         )
 
@@ -2134,7 +2019,7 @@ def process_twig_file(
                     )
 
                     # Enable materials for static export
-                    material_setup_success = setup_materials_with_textures(
+                    setup_materials_with_textures(
                         obj,
                         blend_dir,
                         species_name,
@@ -2247,7 +2132,7 @@ def process_twig_file(
         for hdr_file in output_dir.glob("*.hdr"):
             if hdr_file.stem.startswith("color_"):
                 hdr_file.unlink()
-    except Exception as e:
+    except Exception:
         pass
 
     return exported_files

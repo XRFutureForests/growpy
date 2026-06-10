@@ -1,12 +1,10 @@
 """Tests for growpy.core.skeleton module."""
 
-import math
 from types import SimpleNamespace
 
 import pytest
 
 from growpy.core.skeleton import (
-    UNREAL_MAX_BONE_INDEX,
     JointTransform,
     SkeletonHierarchy,
     Vector3,

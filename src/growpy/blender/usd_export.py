@@ -11,7 +11,7 @@ import os
 import random
 import shutil
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import bpy
 
@@ -85,8 +85,8 @@ def _build_matrix(tx: float, ty: float, tz: float) -> Any:
 
 
 def _get_tree_offset(
-    model: Any, bones_info: Optional[List[Tuple]]
-) -> Tuple[float, float, float]:
+    model: Any, bones_info: list[tuple] | None
+) -> tuple[float, float, float]:
     """Get tree world-space offset for skeleton alignment.
 
     Tries model.location first, falls back to the tree root bone start_point.
@@ -111,7 +111,7 @@ def _add_bark_material(
     mesh_prim: Any,
     root_path: Any,
     species_name: str,
-    bark_texture_path: Optional[str] = None,
+    bark_texture_path: str | None = None,
 ) -> None:
     """Add bark material with optional texture to the tree mesh.
 
@@ -223,12 +223,12 @@ def build_tree_mesh_usd(
     model: Any,
     output_path: Path,
     species_name: str,
-    tree_id: Optional[str] = None,
-    bones_info: Optional[List[Tuple]] = None,
+    tree_id: str | None = None,
+    bones_info: list[tuple] | None = None,
     include_skeleton: bool = True,
     junction_blend_distance: float = 0.5,
     blend_mode: str = "linear",
-    bark_texture_path: Optional[str] = None,
+    bark_texture_path: str | None = None,
 ) -> bool:
     """Export a single Grove tree model to USD.
 
@@ -261,7 +261,7 @@ def build_tree_mesh_usd(
 
     points = [Gf.Vec3f(p.x, p.y, p.z) for p in model.points]
     face_counts = [len(face) for face in model.faces]
-    face_indices: List[int] = []
+    face_indices: list[int] = []
     for face in model.faces:
         face_indices.extend(face)
 
@@ -357,8 +357,8 @@ def build_tree_mesh_usd(
 
 
 def _normal_to_quaternion(
-    normal: Tuple[float, float, float],
-) -> Tuple[float, float, float, float]:
+    normal: tuple[float, float, float],
+) -> tuple[float, float, float, float]:
     """Create quaternion rotating +X onto the target normal."""
     nx, ny, nz = normal
     n_len = math.sqrt(nx * nx + ny * ny + nz * nz)
@@ -389,8 +389,8 @@ def _normal_to_quaternion(
 def _add_twig_instances(
     stage: Any,
     assembly_name: str,
-    twig_usd_paths: Dict[str, List[Path]],
-    twig_placements: Dict[str, List[Dict[str, Any]]],
+    twig_usd_paths: dict[str, list[Path]],
+    twig_placements: dict[str, list[dict[str, Any]]],
     use_skeletal_mesh: bool,
 ) -> None:
     from pxr import Gf, Sdf, UsdGeom
@@ -399,9 +399,9 @@ def _add_twig_instances(
     if not use_skeletal_mesh:
         UsdGeom.Imageable(prototype_scope).MakeInvisible()
 
-    type_to_indices: Dict[str, List[int]] = {}
-    prototype_paths: List[Any] = []
-    dedup: Dict[str, int] = {}
+    type_to_indices: dict[str, list[int]] = {}
+    prototype_paths: list[Any] = []
+    dedup: dict[str, int] = {}
 
     for twig_type, path_list in twig_usd_paths.items():
         for twig_path in path_list:
@@ -505,9 +505,9 @@ def create_nanite_assembly(
     tree_usd_path: Path,
     output_path: Path,
     species_name: str,
-    tree_id: Optional[str] = None,
-    twig_usd_paths: Optional[Dict[str, List[Path]]] = None,
-    twig_placements: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+    tree_id: str | None = None,
+    twig_usd_paths: dict[str, list[Path]] | None = None,
+    twig_placements: dict[str, list[dict[str, Any]]] | None = None,
     use_skeletal_mesh: bool = True,
 ) -> bool:
     """Create Nanite Assembly USD wrapping a tree mesh and optional twig instances."""

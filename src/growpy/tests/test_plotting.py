@@ -1,7 +1,5 @@
 """Tests for growpy.utils.plotting growth curve plot functions."""
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest

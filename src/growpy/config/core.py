@@ -12,11 +12,14 @@ To seed a fresh project with a starter config/ directory, run
 ``growpy-init-config``.
 """
 
+import logging
 import os
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 _global_config: Optional["GrowPyConfig"] = None
 
@@ -37,7 +40,7 @@ def _editable_install_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent.parent
 
 
-def _find_config_dir() -> Optional[Path]:
+def _find_config_dir() -> Path | None:
     """Find the directory holding *.toml config files.
 
     Search order:
@@ -117,7 +120,7 @@ class GrowPyConfig:
     """
 
     # [general]
-    random_seed: Optional[int] = 42
+    random_seed: int | None = 42
     csv_file: Path = field(default_factory=lambda: Path("data/input/test.csv"))
     output_dir: Path = field(default_factory=lambda: Path("data/output/forest"))
     verbose: bool = False
@@ -155,14 +158,14 @@ class GrowPyConfig:
 
     # [competition] - group-based spacing and thinning
     # Dict: group_name -> {species: [...], planting_distance: float, thinning: [[h, d], ...]}
-    competition_groups: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    competition_groups: dict[str, dict[str, Any]] = field(default_factory=dict)
     competition_default_group: str = "slow_broadleaf"
 
     # Skeleton overrides - None means inherit from quality preset (CLI-only)
-    forest_skeleton_length: Optional[float] = None
-    forest_skeleton_reduce: Optional[float] = None
-    forest_skeleton_bias: Optional[float] = None
-    forest_skeleton_connected: Optional[bool] = None
+    forest_skeleton_length: float | None = None
+    forest_skeleton_reduce: float | None = None
+    forest_skeleton_bias: float | None = None
+    forest_skeleton_connected: bool | None = None
 
     # [export]
     export_usd_format: str = "usda"  # "usda" (ASCII) or "usdc" (binary)
@@ -177,7 +180,7 @@ class GrowPyConfig:
     export_twig_density: float = 1.0
     export_youth_bias: float = 1.0
     export_density_variants: list = field(default_factory=list)
-    density_variant_defs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    density_variant_defs: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     # [unreal]
     unreal_import_to_unreal: bool = True
@@ -221,19 +224,19 @@ class GrowPyConfig:
         default_factory=lambda: Path("data/input/yield_tables")
     )
     # Per-species overrides: {species_name: {site_index, flushes_per_year, ...}}
-    calibration_species: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    calibration_species: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     # [yield_sources]
     yield_sources_store_dir: Path = field(
         default_factory=lambda: Path("data/input/yield_tables/store")
     )
     yield_sources_preferred_region: str = ""
-    yield_sources_preferred_site_index: Optional[float] = None
+    yield_sources_preferred_site_index: float | None = None
 
     # [dataset]
     dataset_competition_neighbors: int = 3
 
-    def get_competition_group(self, species_name: str) -> Dict[str, Any]:
+    def get_competition_group(self, species_name: str) -> dict[str, Any]:
         """Look up the competition group config for a species.
 
         Resolution order:
@@ -261,7 +264,7 @@ class GrowPyConfig:
 
     def get_thinning_target(
         self, species_name: str, height_m: float
-    ) -> Optional[float]:
+    ) -> float | None:
         """Get the thinning target distance for a species at a given height.
 
         Returns the target distance in meters, or None if no thinning
@@ -286,7 +289,7 @@ class GrowPyConfig:
         """
         data = _load_toml_data(toml_path)
 
-        kwargs: Dict[str, Any] = {}
+        kwargs: dict[str, Any] = {}
 
         # [general]
         general = data.get("general", {})
@@ -531,6 +534,21 @@ class GrowPyConfig:
                 name: dict(cfg) for name, cfg in comp_groups.items()
             }
 
+        # Warn about unrecognized top-level sections (usually a typo in the TOML);
+        # such sections are otherwise silently ignored and defaults are used.
+        _known_sections = {
+            "general", "assets", "twigs", "growth_models", "forest", "export",
+            "density_variant", "unreal", "helios", "calibration", "yield_sources",
+            "dataset", "competition", "quality",
+        }
+        for _section in data:
+            if _section not in _known_sections:
+                logger.warning(
+                    "Unrecognized config section [%s] in %s ignored (check for a typo)",
+                    _section,
+                    toml_path,
+                )
+
         instance = cls(**kwargs)
         if set_as_global:
             set_global_config(instance)
@@ -643,7 +661,7 @@ class GrowPyConfig:
         """File extension for USD output (e.g. '.usda' or '.usdc')."""
         return f".{self.export_usd_format}"
 
-    def get_density_variants(self) -> List[Tuple[str, Dict[str, Any]]]:
+    def get_density_variants(self) -> list[tuple[str, dict[str, Any]]]:
         """Return [(variant_name, config_dict)] when active, else empty list."""
         if not self.export_density_variants:
             return []

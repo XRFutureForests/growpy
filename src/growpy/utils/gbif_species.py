@@ -27,10 +27,8 @@ Usage:
 """
 
 import argparse
-import json
 import logging
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 
@@ -211,7 +209,7 @@ def validate_lookup_table(csv_path: Path) -> pd.DataFrame:
 
 
 def enrich_lookup_table(
-    input_path: Path, output_path: Optional[Path] = None
+    input_path: Path, output_path: Path | None = None
 ) -> pd.DataFrame:
     """Enrich lookup table with GBIF taxonomic data.
 
@@ -293,7 +291,7 @@ def match_species_via_gbif(
     query: str,
     lookup_df: pd.DataFrame,
     min_confidence: int = 80,
-) -> Optional[pd.Series]:
+) -> pd.Series | None:
     """Match an unknown species name to lookup table using GBIF.
 
     Uses GBIF backbone taxonomy to resolve synonyms, misspellings, and

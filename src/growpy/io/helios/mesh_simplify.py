@@ -12,7 +12,6 @@ Everything else is treated as leaf geometry.
 
 import logging
 import time
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -43,9 +42,9 @@ def classify_material(material_name: str) -> str:
 def simplify_trunk_mesh(
     trunk_verts: np.ndarray,
     trunk_faces: np.ndarray,
-    trunk_uvs: Optional[np.ndarray],
+    trunk_uvs: np.ndarray | None,
     ratio: float,
-) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
     """Simplify trunk/bark mesh using Blender's quadric decimation.
 
     Args:
@@ -67,12 +66,12 @@ def simplify_trunk_mesh(
 
 def simplify_twig_meshes(
     twig_verts: np.ndarray,
-    per_proto_faces: Dict[int, np.ndarray],
-    per_proto_uvs: Dict[int, np.ndarray],
-    per_proto_face_mats: Dict[int, np.ndarray],
-    proto_materials: Dict[int, Tuple[str, object, Optional[List[str]]]],
-    simplification_ratios: Dict[str, float],
-) -> Tuple[np.ndarray, Dict[int, np.ndarray], Dict[int, np.ndarray], Dict[int, np.ndarray]]:
+    per_proto_faces: dict[int, np.ndarray],
+    per_proto_uvs: dict[int, np.ndarray],
+    per_proto_face_mats: dict[int, np.ndarray],
+    proto_materials: dict[int, tuple[str, object, list[str] | None]],
+    simplification_ratios: dict[str, float],
+) -> tuple[np.ndarray, dict[int, np.ndarray], dict[int, np.ndarray], dict[int, np.ndarray]]:
     """Simplify twig meshes per material sub-group.
 
     For each prototype, splits faces by sub-material (leaf vs wood),
@@ -146,11 +145,11 @@ def simplify_twig_meshes(
 def simplify_prototype(
     verts: np.ndarray,
     faces: np.ndarray,
-    uvs: Optional[np.ndarray],
-    face_mats: Optional[np.ndarray],
-    sidecar_mat_names: Optional[List[str]],
-    simplification_ratios: Dict[str, float],
-) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]:
+    uvs: np.ndarray | None,
+    face_mats: np.ndarray | None,
+    sidecar_mat_names: list[str] | None,
+    simplification_ratios: dict[str, float],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray | None, np.ndarray | None]:
     """Simplify a single twig prototype mesh by material classification.
 
     Applied BEFORE baking instances so memory savings scale with instance count.
@@ -194,12 +193,12 @@ def _simplify_proto_by_material(
     all_verts: np.ndarray,
     faces: np.ndarray,
     face_mats: np.ndarray,
-    sidecar_mat_names: List[str],
+    sidecar_mat_names: list[str],
     wood_ratio: float,
     leaf_ratio: float,
     fruit_ratio: float,
     global_offset: int,
-) -> Tuple[np.ndarray, Optional[np.ndarray], np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray | None, np.ndarray]:
     """Simplify a single prototype's faces split by wood/leaf/fruit material.
 
     Returns:
@@ -250,7 +249,7 @@ def _extract_and_simplify(
     all_verts: np.ndarray,
     faces: np.ndarray,
     ratio: float,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """Extract vertices used by faces, simplify, and return with reindexed faces.
 
     Args:
@@ -278,7 +277,7 @@ def _decimate_with_bpy(
     vertices: np.ndarray,
     faces: np.ndarray,
     ratio: float,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """Decimate mesh using Blender's DECIMATE modifier (quadric collapse).
 
     Same approach as the existing _decimate_mesh in obj_export.py but
@@ -327,16 +326,16 @@ def _decimate_with_bpy(
 def simplify_tree_mesh(
     trunk_verts: np.ndarray,
     trunk_faces: np.ndarray,
-    trunk_uvs: Optional[np.ndarray],
+    trunk_uvs: np.ndarray | None,
     twig_verts: np.ndarray,
-    per_proto_faces: Dict[int, np.ndarray],
-    per_proto_uvs: Dict[int, np.ndarray],
-    per_proto_face_mats: Dict[int, np.ndarray],
-    proto_materials: Dict[int, Tuple[str, object, Optional[List[str]]]],
-    simplification_ratios: Dict[str, float],
-) -> Tuple[
-    np.ndarray, np.ndarray, Optional[np.ndarray],
-    np.ndarray, Dict[int, np.ndarray], Dict[int, np.ndarray], Dict[int, np.ndarray],
+    per_proto_faces: dict[int, np.ndarray],
+    per_proto_uvs: dict[int, np.ndarray],
+    per_proto_face_mats: dict[int, np.ndarray],
+    proto_materials: dict[int, tuple[str, object, list[str] | None]],
+    simplification_ratios: dict[str, float],
+) -> tuple[
+    np.ndarray, np.ndarray, np.ndarray | None,
+    np.ndarray, dict[int, np.ndarray], dict[int, np.ndarray], dict[int, np.ndarray],
 ]:
     """Apply material-aware simplification to a complete tree mesh.
 

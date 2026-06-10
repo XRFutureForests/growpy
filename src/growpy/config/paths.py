@@ -5,7 +5,6 @@ import os
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import pandas as pd
 
@@ -237,7 +236,7 @@ def _normalize_grove_texture_name(texture_name: str) -> tuple:
     return standardized, ext
 
 
-def get_bark_texture_path(species: str) -> Optional[Path]:
+def get_bark_texture_path(species: str) -> Path | None:
     """Get bark texture file path for species.
 
     The texture files are stored with standardized names (e.g., beech_60_bark.jpg)
@@ -270,7 +269,7 @@ def get_bark_texture_path(species: str) -> Optional[Path]:
         return None
 
 
-def get_bark_normal_texture_path(species: str) -> Optional[Path]:
+def get_bark_normal_texture_path(species: str) -> Path | None:
     """Get bark normal map texture file path for species.
 
     The normal texture files follow the same naming convention as diffuse textures
@@ -303,7 +302,7 @@ def get_bark_normal_texture_path(species: str) -> Optional[Path]:
         return None
 
 
-def get_twig_files_by_type(species: str) -> Dict[str, List[Path]]:
+def get_twig_files_by_type(species: str) -> dict[str, list[Path]]:
     """Get twig files organized by type for species.
 
     The twig directories are stored with standardized snake_case names
@@ -348,7 +347,7 @@ def get_twig_files_by_type(species: str) -> Dict[str, List[Path]]:
         # Organize twig files by type - return all USD files in the directory.
         # Files are named after the twig's native species (directory name),
         # so no species filtering is needed.
-        twig_files: Dict[str, List[Path]] = {}
+        twig_files: dict[str, list[Path]] = {}
         for usd_file in twig_dir.glob("*.usd*"):
             file_type = usd_file.stem.lower()
 

@@ -11,9 +11,8 @@ from __future__ import annotations
 import json
 import logging
 import shutil
-from itertools import groupby
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import bpy  # noqa: F401  (required; generate_forest_stages runs Grove via bpy)
 import pandas as pd
@@ -21,9 +20,7 @@ from tqdm import tqdm
 
 from growpy import (
     GrowPyConfig,
-    calculate_growth_cycles_from_height,
     create_forest,
-    get_config,
 )
 from growpy.config.paths import _find_species_row
 from growpy.config.preset_overrides import PresetOverrides
@@ -88,17 +85,17 @@ def generate_forest_stages(
     output_dir: Path,
     config: GrowPyConfig,
     quality: str = "high",
-    height_interval: Optional[float] = None,
-    growth_cycle_limit: Optional[int] = None,
-    smooth_iterations: Optional[int] = None,
+    height_interval: float | None = None,
+    growth_cycle_limit: int | None = None,
+    smooth_iterations: int | None = None,
     include_grove_attributes: bool = False,
     verbose: bool = False,
-    preset_overrides: Optional[PresetOverrides] = None,
-    timer: Optional["ProfileTimer"] = None,
+    preset_overrides: PresetOverrides | None = None,
+    timer: ProfileTimer | None = None,
     skip_pve_json: bool = False,
     skip_validation: bool = False,
-    skeleton_overrides: Optional[Dict[str, Any]] = None,
-    export_tree_ids: Optional[set] = None,
+    skeleton_overrides: dict[str, Any] | None = None,
+    export_tree_ids: set | None = None,
 ) -> None:
     """Generate trees at multiple growth stages using height-based milestones.
 
@@ -250,7 +247,7 @@ def generate_forest_stages(
         logger.info("[Skeleton Overrides] Applied: %s", skeleton_overrides)
 
     # Build species-to-grove mapping for PVE JSON generation
-    species_grove_map: Dict[str, Any] = {}
+    species_grove_map: dict[str, Any] = {}
     for grove_obj, sp_name, _tc, _fids in forest:
         species_grove_map[sp_name] = grove_obj
 
@@ -303,11 +300,11 @@ def generate_forest_stages(
     logger.info("%s", "=" * 60)
 
     # Cache height-DBH models and fallback curves per species for radial scaling
-    h_dbh_model_cache: Dict[str, Optional[Dict[str, float]]] = {}
-    target_dbh_cache: Dict[str, list] = {}
+    h_dbh_model_cache: dict[str, dict[str, float] | None] = {}
+    target_dbh_cache: dict[str, list] = {}
 
     # Build per-tree CSV DBH map (fid -> dbh in meters) for custom diameter scaling
-    csv_dbh_map: Dict[int, float] = {}
+    csv_dbh_map: dict[int, float] = {}
     if "dbh" in forest_data.columns:
         for _, row in forest_data.iterrows():
             val = row["dbh"]

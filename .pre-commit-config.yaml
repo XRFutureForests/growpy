@@ -1,0 +1,25 @@
+# Pre-commit hooks for growpy. Install with: pre-commit install
+# Run on all files: pre-commit run --all-files
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      # Bug-level lint only (matches the blocking CI gate). The broader rule set
+      # is run in CI as advisory until the backlog is cleared.
+      - id: ruff
+        name: ruff (critical)
+        args: ["check", "--select", "F82,F63,F7,E9", "src/growpy"]
+        pass_filenames: false
+      - id: ruff-format
+        name: ruff format (check)
+        args: ["--check", "src/growpy"]
+        pass_filenames: false
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml

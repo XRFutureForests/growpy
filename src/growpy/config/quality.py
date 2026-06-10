@@ -5,7 +5,7 @@ A single hardcoded default is used as fallback when a key is missing from TOML
 or when no TOML file is found.
 """
 
-from typing import Any, Dict
+from typing import Any
 
 # Fallback values when a TOML preset omits a key.
 # Based on Grove 2.3 defaults from Properties.py and OperatorBuildSkeleton.py.
@@ -23,7 +23,7 @@ _DEFAULT = {
 }
 
 
-def _load_presets_from_toml() -> Dict[str, Dict[str, Any]]:
+def _load_presets_from_toml() -> dict[str, dict[str, Any]]:
     """Load quality presets from TOML [quality.*] sections.
 
     Uses the same multi-file loader as the main config so that presets
@@ -51,7 +51,7 @@ def _load_presets_from_toml() -> Dict[str, Dict[str, Any]]:
     return presets
 
 
-def get_quality_preset(preset_name: str) -> Dict[str, Any]:
+def get_quality_preset(preset_name: str) -> dict[str, Any]:
     """Get a named quality preset for tree model building.
 
     Presets are defined in config/quality.toml under [quality.<name>].

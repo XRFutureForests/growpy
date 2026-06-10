@@ -147,7 +147,7 @@ Output files in --output-dir:
     total_sims = total_combos * len(cycle_counts)
     if not args.dry_run:
         print(f"Starting sensitivity sweep: {total_sims} simulations")
-        print(f"  (This may take a long time for large sweeps. Use --dry-run to preview.)")
+        print("  (This may take a long time for large sweeps. Use --dry-run to preview.)")
         print()
 
     run_sensitivity_sweep(

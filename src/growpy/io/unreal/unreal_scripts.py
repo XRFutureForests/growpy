@@ -11,7 +11,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ def _srgb_to_linear(c: float) -> float:
     return ((c + 0.055) / 1.055) ** 2.4
 
 
-def _hex_to_linear_rgba(hex_str: str) -> Optional[Tuple[float, float, float, float]]:
+def _hex_to_linear_rgba(hex_str: str) -> tuple[float, float, float, float] | None:
     """Parse #RRGGBB[AA] hex (sRGB) and return linear (r,g,b,a). Alpha stays linear."""
     if not hex_str:
         return None
@@ -41,7 +41,7 @@ def _hex_to_linear_rgba(hex_str: str) -> Optional[Tuple[float, float, float, flo
     return (_srgb_to_linear(r), _srgb_to_linear(g), _srgb_to_linear(b), a)
 
 
-def _load_species_colors() -> Dict[str, Dict[str, Tuple[float, float, float, float]]]:
+def _load_species_colors() -> dict[str, dict[str, tuple[float, float, float, float]]]:
     """Load per-species leaf/bark linear-RGBA tuples from tree_asset_lookup.csv.
 
     Returns:
@@ -60,7 +60,7 @@ def _load_species_colors() -> Dict[str, Dict[str, Tuple[float, float, float, flo
         logger.warning("Could not load tree_asset_lookup.csv: %s", e)
         return {}
 
-    out: Dict[str, Dict[str, Tuple[float, float, float, float]]] = {}
+    out: dict[str, dict[str, tuple[float, float, float, float]]] = {}
     for _, row in df.iterrows():
         std = str(row.get("Standardized Name", "")).strip()
         if not std:
@@ -242,7 +242,7 @@ def _build_import_block(
     label: str,
     wind_json_path: str = "",
     configure_nanite: bool = False,
-    nanite_cfg: Optional[Dict[str, Any]] = None,
+    nanite_cfg: dict[str, Any] | None = None,
 ) -> str:
     """Build a single USD import try/except block.
 
@@ -732,7 +732,7 @@ print("=" * 60)
 
 def _build_material_script(
     project_path: str,
-    species_colors: Dict[str, Dict[str, Tuple[float, float, float, float]]],
+    species_colors: dict[str, dict[str, tuple[float, float, float, float]]],
     parent_material_path: str = (
         "/ProceduralVegetationEditor/SampleAssets/Materials/MA_Foliage_Trees"
     ),
@@ -1495,7 +1495,7 @@ def generate_unreal_import_script(
     project_path: str = "/Game/GrowPy/Trees",
     include_static: bool = False,
     voxelization: bool = True,
-    nanite_cfg: Optional[Dict[str, Any]] = None,
+    nanite_cfg: dict[str, Any] | None = None,
     db_path: str = "/Game/Assets/TheGrove",
 ) -> Path:
     """Generate Unreal Python scripts for importing forest USD files.
@@ -1604,7 +1604,7 @@ def generate_unreal_import_script(
         instance_files = []
 
     # Group trees by species/variant
-    trees_by_species: Dict[str, Dict[str, list]] = {}
+    trees_by_species: dict[str, dict[str, list]] = {}
     for usd_file in nanite_files:
         rel_parts = usd_file.relative_to(output_dir).parts
         species_name = rel_parts[0]
@@ -1617,7 +1617,7 @@ def generate_unreal_import_script(
         trees_by_species[species_name][variant_name].append(usd_file)
 
     # Track batch scripts: (filename, label)
-    batch_scripts: List[Tuple[str, str]] = []
+    batch_scripts: list[tuple[str, str]] = []
 
     # Batch 0: Shared instances (single batch -- per-file VRAM monitoring
     # handles memory pressure so sub-batching is unnecessary)

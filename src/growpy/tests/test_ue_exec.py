@@ -1,7 +1,5 @@
 """Tests for growpy.tools.ue_exec CLI and batch orchestration."""
 
-import os
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -9,7 +7,6 @@ import pytest
 from growpy.tools.ue_exec import (
     BATCH_PATTERN,
     _discover_batch_scripts,
-    _get_gpu_vram,
     _vram_bar,
 )
 

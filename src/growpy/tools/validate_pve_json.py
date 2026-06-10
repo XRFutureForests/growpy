@@ -7,10 +7,9 @@ for importing into Unreal's Procedural Vegetation Editor without crashes.
 
 import json
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 
-def validate_pve_json(json_path: Path) -> Tuple[bool, List[str]]:
+def validate_pve_json(json_path: Path) -> tuple[bool, list[str]]:
     """
     Validate a PVE JSON file for critical requirements.
 
@@ -28,7 +27,7 @@ def validate_pve_json(json_path: Path) -> Tuple[bool, List[str]]:
     errors = []
 
     try:
-        with open(json_path, "r") as f:
+        with open(json_path) as f:
             data = json.load(f)
     except Exception as e:
         return False, [f"Failed to load JSON: {e}"]
@@ -165,7 +164,7 @@ def validate_pve_json(json_path: Path) -> Tuple[bool, List[str]]:
         return False, errors
 
 
-def validate_pve_json_from_data(data: Dict) -> Tuple[bool, List[str]]:
+def validate_pve_json_from_data(data: dict) -> tuple[bool, list[str]]:
     """
     Validate PVE JSON data (already loaded) for critical requirements.
 

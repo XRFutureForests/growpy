@@ -18,7 +18,6 @@ import json
 import logging
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -247,9 +246,9 @@ def build_sweep_design(
 def run_sensitivity_sweep(
     base_preset_path: Path,
     output_dir: Path,
-    preset_dirs: Optional[list[Path]] = None,
+    preset_dirs: list[Path] | None = None,
     n_params: int = 6,
-    cycle_counts: Optional[list[int]] = None,
+    cycle_counts: list[int] | None = None,
     seed: int = 42,
     dry_run: bool = False,
 ) -> Path:
@@ -279,7 +278,7 @@ def run_sensitivity_sweep(
     selected_params, combos, param_levels = build_sweep_design(catalog, n_params)
     total = len(combos) * len(cycle_counts)
 
-    print(f"Sensitivity sweep plan:")
+    print("Sensitivity sweep plan:")
     print(f"  Base preset: {base_preset_path.name}")
     print(f"  Parameters ({n_params}): {', '.join(selected_params)}")
     print(f"  Combos: {len(combos)}  (3^{n_params} = {3**n_params})")
@@ -356,7 +355,7 @@ def run_sensitivity_sweep(
 
     print(f"\nDone. Results in: {output_dir}")
     print(f"  {csv_path.name} — {len(df)} rows")
-    print(f"  sensitivity_overview.md — icon grid")
+    print("  sensitivity_overview.md — icon grid")
 
     return csv_path
 

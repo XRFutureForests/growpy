@@ -18,10 +18,7 @@ Material groups:
 
 import json
 import logging
-import math
-import shutil
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import bpy
 import numpy as np
@@ -31,13 +28,13 @@ logger = logging.getLogger(__name__)
 if hasattr(bpy.utils, "expose_bundled_modules"):
     bpy.utils.expose_bundled_modules()
 
-from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade
+from pxr import Sdf, Usd, UsdGeom, UsdShade
 
 WOOD_MATERIAL_KEYWORDS = ("bark", "branch", "wood", "dead", "stem", "twig")
 
 # Cache classified twig meshes per twig file path
 # Values: (verts, wood_faces, leaf_faces)
-_classified_twig_cache: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+_classified_twig_cache: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
 
 
 def clear_twig_cache() -> None:
@@ -53,7 +50,7 @@ def _resolve_to_static(filename: str) -> str:
 
 def _read_twig_mesh_classified(
     twig_path: Path,
-) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]:
+) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None]:
     """Read twig mesh from static USDA and classify faces by material bindings.
 
     Uses material names to separate wood (bark/branch/wood/dead) from leaf faces.
@@ -158,8 +155,8 @@ def _read_twig_mesh_classified(
 
 def _read_tree_components(
     assembly_usda_path: Path,
-    simplification_ratios: Optional[Dict[str, float]] = None,
-) -> Optional[tuple]:
+    simplification_ratios: dict[str, float] | None = None,
+) -> tuple | None:
     """Read trunk mesh and classified twig prototypes from USDA assembly.
 
     Unlike _extract_tree_mesh, does NOT bake twig instances into giant arrays.
@@ -216,7 +213,7 @@ def _read_tree_components(
 
     instancer_data = _read_twig_instancer(assembly_usda_path)
 
-    classified_protos: Dict[int, Tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+    classified_protos: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
 
     if instancer_data is not None:
         _, _, _, _, proto_files = instancer_data
@@ -285,8 +282,8 @@ def _read_tree_components(
 
 def _extract_tree_mesh(
     assembly_usda_path: Path,
-    simplification_ratios: Optional[Dict[str, float]] = None,
-) -> Optional[tuple]:
+    simplification_ratios: dict[str, float] | None = None,
+) -> tuple | None:
     """Extract tree mesh data from USDA assembly, baking twig instances.
 
     Convenience wrapper around _read_tree_components that bakes twig instances
@@ -329,7 +326,7 @@ def convert_tree_to_obj(
     assembly_usda_path: Path,
     species_name: str,
     helios_spectra_leaves: str = "deciduous",
-) -> Optional[Path]:
+) -> Path | None:
     """Convert a tree's USDA assembly to an individual OBJ file with baked twigs.
 
     Args:
@@ -377,7 +374,7 @@ def convert_tree_to_obj(
 
 def _read_tree_mesh(
     skeletal_path: Path,
-) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]:
+) -> tuple[np.ndarray | None, np.ndarray | None, np.ndarray | None]:
     """Read tree mesh geometry from skeletal USDA.
 
     Returns:
@@ -424,7 +421,7 @@ def _read_tree_mesh(
 
 def _read_twig_instancer(
     assembly_path: Path,
-) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, Dict[int, str]]]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[int, str]] | None:
     """Read PointInstancer data and prototype file references from assembly USDA.
 
     Returns:
@@ -496,7 +493,7 @@ def _read_twig_instancer(
 
 def _read_twig_mesh(
     twig_path: Path,
-) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+) -> tuple[np.ndarray | None, np.ndarray | None]:
     """Read twig mesh geometry from USDA file.
 
     Returns:
@@ -545,7 +542,7 @@ def _read_twig_mesh(
     return vertices, np.array(faces, dtype=np.int64)
 
 
-def _read_twig_material(twig_path: Path) -> Optional[str]:
+def _read_twig_material(twig_path: Path) -> str | None:
     """Extract diffuse texture filename from twig USD material.
 
     Returns:
@@ -573,7 +570,7 @@ def _read_twig_material(twig_path: Path) -> Optional[str]:
     return None
 
 
-def _read_face_material_names(twig_path: Path) -> Optional[List[str]]:
+def _read_face_material_names(twig_path: Path) -> list[str] | None:
     """Read sidecar face material names for a twig USD file.
 
     Looks for a ``*_face_materials.json`` sidecar alongside the twig USDA.
@@ -604,12 +601,12 @@ def _quat_to_rotation_matrix(w: float, x: float, y: float, z: float) -> np.ndarr
 
 
 def _bake_twig_instances(
-    proto_meshes: Dict[int, Tuple[np.ndarray, np.ndarray]],
+    proto_meshes: dict[int, tuple[np.ndarray, np.ndarray]],
     positions: np.ndarray,
     orientations: np.ndarray,
     scales: np.ndarray,
     proto_indices: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """Transform and merge all twig instances into a single combined mesh.
 
     Returns:
@@ -648,12 +645,12 @@ def _bake_twig_instances(
 
 
 def _bake_classified_twig_instances(
-    classified_protos: Dict[int, Tuple[np.ndarray, np.ndarray, np.ndarray]],
+    classified_protos: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]],
     positions: np.ndarray,
     orientations: np.ndarray,
     scales: np.ndarray,
     proto_indices: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Transform and merge classified twig instances into wood and leaf meshes.
 
     Args:
@@ -662,10 +659,10 @@ def _bake_classified_twig_instances(
     Returns:
         (wood_verts, wood_faces, leaf_verts, leaf_faces)
     """
-    wood_verts_list: List[np.ndarray] = []
-    wood_faces_list: List[np.ndarray] = []
-    leaf_verts_list: List[np.ndarray] = []
-    leaf_faces_list: List[np.ndarray] = []
+    wood_verts_list: list[np.ndarray] = []
+    wood_faces_list: list[np.ndarray] = []
+    leaf_verts_list: list[np.ndarray] = []
+    leaf_faces_list: list[np.ndarray] = []
     wood_vert_offset = 0
     leaf_vert_offset = 0
 
@@ -710,13 +707,13 @@ def _bake_classified_twig_instances(
 def _stream_classified_twig_vertices(
     f,
     initial_vert_offset: int,
-    classified_protos: Dict[int, Tuple[np.ndarray, np.ndarray, np.ndarray]],
+    classified_protos: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]],
     positions: np.ndarray,
     orientations: np.ndarray,
     scales: np.ndarray,
     proto_indices: np.ndarray,
     up_axis: str = "y",
-) -> Tuple[Dict[int, List[int]], int]:
+) -> tuple[dict[int, list[int]], int]:
     """Stream transformed twig instance vertices to an open OBJ file handle.
 
     Writes one instance at a time, avoiding the multi-GB baked arrays.
@@ -728,7 +725,7 @@ def _stream_classified_twig_vertices(
     """
     from collections import defaultdict
 
-    proto_instance_offsets: Dict[int, List[int]] = defaultdict(list)
+    proto_instance_offsets: dict[int, list[int]] = defaultdict(list)
     vert_offset = initial_vert_offset
 
     for i in range(len(positions)):
@@ -754,9 +751,9 @@ def _stream_classified_twig_vertices(
 
 def _write_classified_twig_faces(
     f,
-    classified_protos: Dict[int, Tuple[np.ndarray, np.ndarray, np.ndarray]],
-    proto_instance_offsets: Dict[int, List[int]],
-) -> Tuple[int, int]:
+    classified_protos: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]],
+    proto_instance_offsets: dict[int, list[int]],
+) -> tuple[int, int]:
     """Write twig faces grouped by wood/leaf material using streamed offsets.
 
     Returns:
@@ -812,14 +809,14 @@ def _write_obj_streaming(
     obj_path: Path,
     trunk_verts: np.ndarray,
     trunk_faces: np.ndarray,
-    classified_protos: Dict[int, Tuple[np.ndarray, np.ndarray, np.ndarray]],
+    classified_protos: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]],
     positions: np.ndarray,
     orientations: np.ndarray,
     scales: np.ndarray,
     proto_indices: np.ndarray,
     mtl_name: str,
     up_axis: str = "y",
-) -> Tuple[int, int, int]:
+) -> tuple[int, int, int]:
     """Write a single tree OBJ by streaming twig instances to disk.
 
     Peak RAM = trunk arrays + 1 twig prototype. No baked twig arrays.
@@ -857,7 +854,7 @@ def _write_obj_streaming(
 
 
 def write_combined_obj_streaming(
-    tree_obj_paths: List[Tuple[Path, float, float, float]],
+    tree_obj_paths: list[tuple[Path, float, float, float]],
     output_path: Path,
     helios_spectra_leaves: str = "deciduous",
 ) -> Path:
@@ -881,7 +878,7 @@ def write_combined_obj_streaming(
     mtl_path = output_path.with_suffix(".mtl")
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    tree_offsets: List[Tuple[Path, int]] = []
+    tree_offsets: list[tuple[Path, int]] = []
     total_verts = 0
     total_faces = 0
 
@@ -951,7 +948,7 @@ def write_combined_obj_streaming(
     return output_path
 
 
-def _find_bark_texture(tree_dir: Path) -> Optional[Path]:
+def _find_bark_texture(tree_dir: Path) -> Path | None:
     """Find bark texture in tree output directory."""
     textures_dir = tree_dir / "textures"
     if not textures_dir.exists():
@@ -976,13 +973,13 @@ def _write_obj(
     obj_path: Path,
     trunk_verts: np.ndarray,
     trunk_faces: np.ndarray,
-    trunk_uvs: Optional[np.ndarray],
+    trunk_uvs: np.ndarray | None,
     mtl_name: str,
     up_axis: str = "y",
-    twig_wood_verts: Optional[np.ndarray] = None,
-    twig_wood_faces: Optional[np.ndarray] = None,
-    twig_leaf_verts: Optional[np.ndarray] = None,
-    twig_leaf_faces: Optional[np.ndarray] = None,
+    twig_wood_verts: np.ndarray | None = None,
+    twig_wood_faces: np.ndarray | None = None,
+    twig_leaf_verts: np.ndarray | None = None,
+    twig_leaf_faces: np.ndarray | None = None,
 ) -> None:
     """Write Wavefront OBJ file with bark, twig_wood, twig_leaf material groups."""
     has_uvs = trunk_uvs is not None and len(trunk_uvs) > 0
@@ -998,7 +995,7 @@ def _write_obj(
         twig_leaf_faces = np.empty((0, 3), dtype=np.int64)
 
     with open(obj_path, "w") as f:
-        f.write(f"# Helios++ tree mesh\n")
+        f.write("# Helios++ tree mesh\n")
         f.write(f"mtllib {mtl_name}\n\n")
 
         # Write all vertices
@@ -1019,7 +1016,7 @@ def _write_obj(
         # Dummy UVs for twig vertices
         total_twig_faces = len(twig_wood_faces) + len(twig_leaf_faces)
         if total_twig_faces > 0:
-            f.write(f"vt 0.0 0.0\n")
+            f.write("vt 0.0 0.0\n")
             twig_uv_start = len(trunk_uvs) + 1 if has_uvs else 1
         else:
             twig_uv_start = 0
@@ -1070,7 +1067,7 @@ def _write_obj(
 
 
 def write_combined_obj(
-    tree_meshes: List[tuple],
+    tree_meshes: list[tuple],
     output_path: Path,
     helios_spectra_leaves: str = "deciduous",
     up_axis: str = "y",
@@ -1192,7 +1189,7 @@ def write_combined_obj(
 
 def _write_helios_mtl(
     mtl_path: Path,
-    bark_texture: Optional[Path],
+    bark_texture: Path | None,
     helios_spectra_leaves: str = "deciduous",
 ) -> None:
     """Write Helios-compatible MTL file with bark, twig_wood, twig_leaf materials.
@@ -1257,9 +1254,9 @@ def export_forest_obj(
     individual_obj: bool = False,
     up_axis: str = "y",
     timer=None,
-    simplification_ratios: Optional[Dict[str, float]] = None,
-    leaf_per_species: Optional[Dict[str, float]] = None,
-) -> List[Tuple[Path, float, float, float, str]]:
+    simplification_ratios: dict[str, float] | None = None,
+    leaf_per_species: dict[str, float] | None = None,
+) -> list[tuple[Path, float, float, float, str]]:
     """Export USDA tree assemblies to OBJ for Helios++ LiDAR simulation.
 
     Two mutually exclusive output modes:
@@ -1309,9 +1306,9 @@ def export_forest_obj(
     if "z" not in forest_data.columns:
         forest_data["z"] = 0.0
 
-    obj_files: List[Tuple[Path, float, float, float, str]] = []
+    obj_files: list[tuple[Path, float, float, float, str]] = []
     # Per-tree OBJ paths + positions for two-pass combined OBJ
-    tree_obj_entries: List[Tuple[Path, float, float, float]] = []
+    tree_obj_entries: list[tuple[Path, float, float, float]] = []
     tree_count = 0
 
     for assembly_path in sorted(assembly_files):

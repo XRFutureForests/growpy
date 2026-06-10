@@ -9,7 +9,7 @@ import logging
 import math
 import random
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -19,18 +19,18 @@ class TwigPlacement:
     """Twig instance placement data."""
 
     type: str  # 'twig_long', 'twig_short', 'twig_upward', 'twig_dead'
-    position: Tuple[float, float, float]
-    normal: Tuple[float, float, float]  # Facing direction (from get_twig_directions)
-    orientation: Tuple[float, float, float] = (
+    position: tuple[float, float, float]
+    normal: tuple[float, float, float]  # Facing direction (from get_twig_directions)
+    orientation: tuple[float, float, float] = (
         0.0,
         0.0,
         1.0,
     )  # Up vector (from get_twig_orientations)
     scale: float = 1.0
-    bone_id: Optional[int] = None  # Direct bone ID from point_attribute_bone_id
-    branch_id: Optional[int] = None  # Branch ID for binding to branch_X joints
+    bone_id: int | None = None  # Direct bone ID from point_attribute_bone_id
+    branch_id: int | None = None  # Branch ID for binding to branch_X joints
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
         return {
             "type": self.type,
@@ -44,8 +44,8 @@ class TwigPlacement:
 
 
 def get_face_center_and_normal(
-    vertices: List[Tuple[float, float, float]], face: List[int]
-) -> Tuple[Tuple[float, float, float], Tuple[float, float, float]]:
+    vertices: list[tuple[float, float, float]], face: list[int]
+) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
     """Calculate face center and normal vector.
 
     Args:
@@ -79,7 +79,7 @@ def get_face_center_and_normal(
     return center, normal
 
 
-def normal_to_rotation_matrix(normal: Tuple[float, float, float]) -> List[List[float]]:
+def normal_to_rotation_matrix(normal: tuple[float, float, float]) -> list[list[float]]:
     """Convert normal vector to rotation matrix.
 
     Args:
@@ -121,8 +121,8 @@ def normal_to_rotation_matrix(normal: Tuple[float, float, float]) -> List[List[f
 
 
 def rotation_matrix_to_quaternion(
-    matrix: List[List[float]],
-) -> Tuple[float, float, float, float]:
+    matrix: list[list[float]],
+) -> tuple[float, float, float, float]:
     """Convert 3x3 rotation matrix to normalized quaternion.
 
     Args:
@@ -171,11 +171,11 @@ def rotation_matrix_to_quaternion(
 
 def extract_twig_placements_from_model(
     model: Any,
-    twig_types: Optional[List[str]] = None,
-    bones_info: Optional[List] = None,
+    twig_types: list[str] | None = None,
+    bones_info: list | None = None,
     verbose: bool = False,
-    scaled_points: Optional[List[Tuple[float, float, float]]] = None,
-) -> Dict[str, List[TwigPlacement]]:
+    scaled_points: list[tuple[float, float, float]] | None = None,
+) -> dict[str, list[TwigPlacement]]:
     """Extract twig placement data from Grove model.
 
     Args:
@@ -267,7 +267,6 @@ def extract_twig_placements_from_model(
     # This avoids repeated bones_info lookups in the inner loop
     bone_to_branch = {}
     if bones_info:
-        num_bones = len(bones_info)
         for bone_idx, bone in enumerate(bones_info):
             if len(bone) >= 8:
                 is_branch_root = bone[6]  # Index 6 is is_branch_root flag
@@ -457,13 +456,13 @@ def extract_twig_placements_from_model(
 
 def densify_twig_placements(
     model: Any,
-    placements: Dict[str, List[TwigPlacement]],
+    placements: dict[str, list[TwigPlacement]],
     density: float = 1.0,
-    bones_info: Optional[List] = None,
+    bones_info: list | None = None,
     seed: int = 42,
     youth_bias: float = 1.0,
-    scaled_points: Optional[List[Tuple[float, float, float]]] = None,
-) -> Dict[str, List[TwigPlacement]]:
+    scaled_points: list[tuple[float, float, float]] | None = None,
+) -> dict[str, list[TwigPlacement]]:
     """Adjust twig placement count to match a target density multiplier.
 
     density > 1.0: adds synthetic twigs on non-twig faces, weighted by branch
@@ -624,7 +623,7 @@ def densify_twig_placements(
         twig_bone_id = None
         branch_id_for_twig = None
         if bone_ids:
-            bone_counts: Dict[int, int] = {}
+            bone_counts: dict[int, int] = {}
             for vi in face:
                 if vi < len(bone_ids):
                     bid = bone_ids[vi]

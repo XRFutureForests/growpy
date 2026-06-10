@@ -1,12 +1,10 @@
 """Tests for growpy.config.preset_overrides module."""
 
 import json
-from pathlib import Path
 
 import pytest
 
 from growpy.config.preset_overrides import (
-    CycleArrayOverride,
     InterpolatedOverride,
     PresetOverrides,
     StaticOverride,

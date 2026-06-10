@@ -6,10 +6,10 @@ PVE presets work correctly in Unreal Engine while we implement proper
 extraction from Grove .seed.json files.
 """
 
-from typing import Any, Dict
+from typing import Any
 
 
-def get_hazel_growth_defaults() -> Dict[str, Any]:
+def get_hazel_growth_defaults() -> dict[str, Any]:
     """
     Get default growth parameters from Hazel reference.
 
@@ -774,7 +774,7 @@ def get_hazel_growth_defaults() -> Dict[str, Any]:
     }
 
 
-def get_default_growth_params(use_hazel_defaults: bool = True) -> Dict[str, Any]:
+def get_default_growth_params(use_hazel_defaults: bool = True) -> dict[str, Any]:
     """
     Get default growth parameters for PVE preset generation.
 
@@ -815,8 +815,8 @@ def get_default_growth_params(use_hazel_defaults: bool = True) -> Dict[str, Any]
 
 
 def merge_growth_params(
-    defaults: Dict[str, Any], overrides: Dict[str, Any] = None
-) -> Dict[str, Any]:
+    defaults: dict[str, Any], overrides: dict[str, Any] = None
+) -> dict[str, Any]:
     """
     Merge default growth parameters with optional overrides.
 

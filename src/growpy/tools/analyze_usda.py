@@ -41,7 +41,7 @@ def parse_int_array(text: str) -> list[int]:
 
 def extract_array_line(filepath: Path, prefix: str) -> str | None:
     """Read a specific array line from USDA by prefix (e.g. 'point3f[] points')."""
-    with open(filepath, "r") as f:
+    with open(filepath) as f:
         collecting = False
         result = []
         for line in f:
@@ -185,12 +185,12 @@ def print_stats(stats: dict) -> None:
             print(f"    mean radius:  {stats.get('breast_radius_mean', 0):.4f} m")
             print(f"    max radius:   {stats.get('breast_radius_max', 0):.4f} m")
         else:
-            print(f"  DBH:           tree too short for breast height measurement")
+            print("  DBH:           tree too short for breast height measurement")
 
         profile = stats.get("radial_profile", {})
         if profile:
-            print(f"\n  Height | Verts | Max Radius | Mean Radius")
-            print(f"  -------+-------+------------+------------")
+            print("\n  Height | Verts | Max Radius | Mean Radius")
+            print("  -------+-------+------------+------------")
             for h in sorted(profile.keys()):
                 r = profile[h]
                 print(

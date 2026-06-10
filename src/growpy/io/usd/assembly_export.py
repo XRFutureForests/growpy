@@ -34,9 +34,8 @@ Based on:
 """
 
 import logging
-import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +43,7 @@ from ...utils.pxr_init import ensure_pxr_with_unreal_schema
 
 ensure_pxr_with_unreal_schema()
 
-from pxr import Gf, Sdf, Usd, UsdGeom, UsdSkel
+from pxr import Gf, Sdf, Usd, UsdGeom
 
 from ...config.core import get_config as _get_config
 from ...core.twig import extract_twig_placements_from_model
@@ -90,12 +89,12 @@ def create_assembly(
     tree_usd_path: Path,
     output_path: Path,
     species_name: str,
-    tree_id: Optional[str] = None,
-    twig_usd_paths: Optional[Dict[str, List[Path]]] = None,
+    tree_id: str | None = None,
+    twig_usd_paths: dict[str, list[Path]] | None = None,
     use_skeletal_mesh: bool = False,
-    twig_placements: Optional[Dict[str, List]] = None,
+    twig_placements: dict[str, list] | None = None,
     validate: bool = True,
-    instances_dir: Optional[Path] = None,
+    instances_dir: Path | None = None,
 ) -> bool:
     """Create an assembly USD file for Unreal Engine import.
 
@@ -269,7 +268,7 @@ def create_assembly(
                 # Flatten all twig variants into a single prototype list.
                 # twig_type_to_proto_indices maps grove type -> list of proto indices
                 # so each placement can randomly pick among them.
-                remapped_twig_paths: List[Tuple[str, Path, Path]] = (
+                remapped_twig_paths: list[tuple[str, Path, Path]] = (
                     []
                 )  # (grove_type, output_path, source_path)
                 for grove_type, source_paths in twig_usd_paths.items():
@@ -299,9 +298,9 @@ def create_assembly(
 
                 # Create a prototype for each unique twig file
                 # twig_type_to_proto_indices: grove_type -> [proto_idx, proto_idx, ...]
-                twig_type_to_proto_indices: Dict[str, List[int]] = {}
+                twig_type_to_proto_indices: dict[str, list[int]] = {}
                 prototype_paths = []
-                seen_files: Dict[str, int] = {}  # twig filename -> proto_idx (dedup)
+                seen_files: dict[str, int] = {}  # twig filename -> proto_idx (dedup)
 
                 from .texture_utils import copy_and_resize_texture
                 from .twig_export import classify_texture_from_name
@@ -516,8 +515,6 @@ def create_assembly(
                         ]
                         instancer_prim.SetMetadata("apiSchemas", skel_binding_schemas)
 
-                        # Get primvars API for creating custom attributes
-                        primvars_api = UsdGeom.PrimvarsAPI(instancer_prim)
 
                         # Extract joint names array from tree skeleton
                         # Joint names are hierarchical paths like "joint_0/joint_1/joint_2"
@@ -728,7 +725,7 @@ def create_assembly(
 
     except ImportError:
         return False
-    except Exception as e:
+    except Exception:
         import traceback
 
         traceback.print_exc()
@@ -737,23 +734,23 @@ def create_assembly(
 
 def export_tree_as_nanite_assembly(
     model: Any,
-    skeleton: Optional[Any],
+    skeleton: Any | None,
     output_path: Path,
     species_name: str,
-    tree_id: Optional[str] = None,
-    bones_info: Optional[List] = None,
-    twig_usd_paths: Optional[Dict[str, List[Path]]] = None,
+    tree_id: str | None = None,
+    bones_info: list | None = None,
+    twig_usd_paths: dict[str, list[Path]] | None = None,
     include_twigs: bool = True,
     use_skeletal_mesh: bool = False,
     use_static_mesh: bool = False,
     include_grove_attributes: bool = False,
     validate: bool = True,
-    timer: Optional[Any] = None,
-    stems_file_suffix: Optional[str] = None,
+    timer: Any | None = None,
+    stems_file_suffix: str | None = None,
     radial_scale: float = 1.0,
-    twig_density: Optional[float] = None,
-    twig_placements_out: Optional[Dict] = None,
-    instances_dir: Optional[Path] = None,
+    twig_density: float | None = None,
+    twig_placements_out: dict | None = None,
+    instances_dir: Path | None = None,
 ) -> bool:
     """Export Grove tree as Unreal Engine Nanite Assembly.
 
@@ -841,7 +838,7 @@ def export_tree_as_nanite_assembly(
         with _track("triangulate"):
             try:
                 model.triangulate()
-            except Exception as e:
+            except Exception:
                 pass
 
         # Use unified build_tree_mesh for both skeletal and static
@@ -1041,7 +1038,7 @@ def export_tree_as_nanite_assembly(
                         pass
                     else:
                         pass
-                except Exception as e:
+                except Exception:
                     twig_usd_paths = None
 
         # Copy twig USD files to shared instances directory (with caching)
@@ -1096,14 +1093,14 @@ def export_tree_as_nanite_assembly(
 
         return success
 
-    except Exception as e:
+    except Exception:
         import traceback
 
         traceback.print_exc()
         return False
 
 
-def validate_assembly(usd_path: Path) -> Dict[str, Any]:
+def validate_assembly(usd_path: Path) -> dict[str, Any]:
     """Validate an assembly USD file for Unreal Engine compatibility.
 
     Checks for:
@@ -1276,19 +1273,19 @@ def _fix_api_schemas_in_assembly(assembly_path: Path, assembly_name: str) -> Non
 
         # Fix PointInstancer - add prepend apiSchemas
         content = content.replace(
-            f'def PointInstancer "TwigInstances"\n    {{',
-            f'def PointInstancer "TwigInstances" (\n        prepend apiSchemas = ["NaniteAssemblySkelBindingAPI"]\n    )\n    {{',
+            'def PointInstancer "TwigInstances"\n    {',
+            'def PointInstancer "TwigInstances" (\n        prepend apiSchemas = ["NaniteAssemblySkelBindingAPI"]\n    )\n    {',
         )
 
         # Write back
         assembly_path.write_text(content)
 
-    except Exception as e:
+    except Exception:
         # Non-fatal - assembly might still work without perfect schema setup
         pass
 
 
-def _extract_joint_names_from_usd(tree_usd_path: Path) -> List[str]:
+def _extract_joint_names_from_usd(tree_usd_path: Path) -> list[str]:
     """Extract joint names array from tree USD skeleton.
 
     Joint names are hierarchical paths like "tree_root/joint_1/branch_0/joint_2".
@@ -1318,13 +1315,13 @@ def _extract_joint_names_from_usd(tree_usd_path: Path) -> List[str]:
 
         return []
 
-    except Exception as e:
+    except Exception:
         return []
 
 
 def _extract_joint_world_positions_from_usd(
     tree_usd_path: Path,
-) -> List[Tuple[float, float, float]]:
+) -> list[tuple[float, float, float]]:
     """Extract joint world positions from tree USD skeleton.
 
     Computes world-space positions for each joint by accumulating
@@ -1345,7 +1342,6 @@ def _extract_joint_world_positions_from_usd(
         for prim in stage.Traverse():
             if prim.IsA(UsdSkel.Skeleton):
                 skeleton = UsdSkel.Skeleton(prim)
-                bind_attr = skeleton.GetBindTransformsAttr()
                 rest_attr = skeleton.GetRestTransformsAttr()
                 joints_attr = skeleton.GetJointsAttr()
 
@@ -1399,12 +1395,12 @@ def _extract_joint_world_positions_from_usd(
 
 
 def _compute_dual_bone_binding(
-    twig_position: Tuple[float, float, float],
+    twig_position: tuple[float, float, float],
     bone_id: int,
-    joint_names: List[str],
-    joint_positions: List[Tuple[float, float, float]],
-    joint_parent_indices: List[int],
-) -> Tuple[List[str], List[float]]:
+    joint_names: list[str],
+    joint_positions: list[tuple[float, float, float]],
+    joint_parent_indices: list[int],
+) -> tuple[list[str], list[float]]:
     """Compute dual-bone binding for a twig instance.
 
     Finds the assigned joint and its parent, then interpolates weights based on
@@ -1424,7 +1420,6 @@ def _compute_dual_bone_binding(
     Returns:
         Tuple of (joint_names_list, weights_list) with 2 entries each.
     """
-    import math
 
     if bone_id < 0 or bone_id >= len(joint_names):
         return (["root", "root"], [1.0, 0.0])
@@ -1467,7 +1462,7 @@ def _compute_dual_bone_binding(
     return ([joint_name, parent_name], [w_joint, w_parent])
 
 
-def _build_joint_parent_indices(joint_names: List[str]) -> List[int]:
+def _build_joint_parent_indices(joint_names: list[str]) -> list[int]:
     """Build parent index array from hierarchical joint name paths.
 
     Joint names use "/" as hierarchy separator (e.g. "root/joint_1/joint_2").
@@ -1489,7 +1484,7 @@ def _build_joint_parent_indices(joint_names: List[str]) -> List[int]:
 
 def create_species_assembly(
     species_name: str,
-    tree_assembly_paths: List[Path],
+    tree_assembly_paths: list[Path],
     output_path: Path,
     use_skeletal_mesh: bool = True,
 ) -> bool:
@@ -1557,7 +1552,7 @@ def create_species_assembly(
 
         # Create shared TwigPrototypes scope
         if twig_refs:
-            prototypes_prim = stage.DefinePrim(
+            stage.DefinePrim(
                 f"/{assembly_name}/TwigPrototypes", "Scope"
             )
 
@@ -1583,7 +1578,7 @@ def create_species_assembly(
                 )
 
         # Create Trees scope with references to individual tree assemblies
-        trees_prim = stage.DefinePrim(f"/{assembly_name}/Trees", "Scope")
+        stage.DefinePrim(f"/{assembly_name}/Trees", "Scope")
 
         for tree_path in tree_assembly_paths:
             # Extract tree ID from filename (e.g., "common_ash_tree_0007" from full path)
@@ -1621,7 +1616,7 @@ def _extract_species_from_twig_stem(stem: str) -> str:
 def create_combined_twig_usda(
     instances_dir: Path,
     include_static: bool = False,
-) -> List[Path]:
+) -> list[Path]:
     """Create per-species combined twig USDA wrappers for UE import.
 
     Groups twig variants by species and creates a single wrapper USDA per
@@ -1657,7 +1652,7 @@ def create_combined_twig_usda(
             continue
 
         # Group by species prefix: "{species}_foliage_{variant}_{type}{ext}"
-        species_groups: Dict[str, List[Path]] = {}
+        species_groups: dict[str, list[Path]] = {}
         for f in twig_files:
             stem = f.stem.replace(suffix, "")
             species = _extract_species_from_twig_stem(stem)

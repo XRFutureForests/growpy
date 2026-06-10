@@ -6,7 +6,7 @@ any USD I/O dependencies.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 # Unreal Engine uses 16-bit signed integers for joint indices in skeletal meshes
 # Maximum bone index is 32767 (2^15 - 1)
@@ -33,7 +33,7 @@ class Vector3:
     def length(self) -> float:
         return (self.x**2 + self.y**2 + self.z**2) ** 0.5
 
-    def as_tuple(self) -> Tuple[float, float, float]:
+    def as_tuple(self) -> tuple[float, float, float]:
         return (self.x, self.y, self.z)
 
 
@@ -42,7 +42,7 @@ class JointTransform:
     """Joint transform with translation and rotation."""
 
     translation: Vector3
-    rotation_matrix: Optional[List[List[float]]] = None  # 3x3 rotation matrix
+    rotation_matrix: list[list[float]] | None = None  # 3x3 rotation matrix
 
     def is_identity_rotation(self) -> bool:
         """Check if rotation is identity."""
@@ -61,11 +61,11 @@ class JointTransform:
 class SkeletonHierarchy:
     """Complete skeleton hierarchy data."""
 
-    joint_names: List[str]
-    joint_parents: List[int]  # Parent joint index for each joint (-1 for root)
-    bind_transforms: List[JointTransform]
-    rest_transforms: List[JointTransform]
-    bone_to_joint_map: Dict[int, int]  # Maps bone ID to joint index
+    joint_names: list[str]
+    joint_parents: list[int]  # Parent joint index for each joint (-1 for root)
+    bind_transforms: list[JointTransform]
+    rest_transforms: list[JointTransform]
+    bone_to_joint_map: dict[int, int]  # Maps bone ID to joint index
 
 
 def convert_grove_vector_to_vector3(grove_vector: Any) -> Vector3:
@@ -83,7 +83,7 @@ def convert_grove_vector_to_vector3(grove_vector: Any) -> Vector3:
 
 def calculate_rotation_to_align(
     from_vec: Vector3, to_vec: Vector3
-) -> Optional[List[List[float]]]:
+) -> list[list[float]] | None:
     """Calculate rotation matrix to align from_vec to to_vec.
 
     Args:
@@ -149,7 +149,7 @@ def calculate_rotation_to_align(
     return matrix
 
 
-def build_skeleton_hierarchy(bones_info: List[Tuple]) -> SkeletonHierarchy:
+def build_skeleton_hierarchy(bones_info: list[tuple]) -> SkeletonHierarchy:
     """Build skeleton hierarchy from Grove bone data.
 
     Args:
@@ -222,9 +222,9 @@ def build_skeleton_hierarchy(bones_info: List[Tuple]) -> SkeletonHierarchy:
 
 def filter_bones_for_mesh(
     model: Any,
-    bones_info: List[Tuple],
+    bones_info: list[tuple],
     bone_id_offset: int = 0,
-) -> Tuple[List[Tuple], Dict[int, int]]:
+) -> tuple[list[tuple], dict[int, int]]:
     """Filter bones_info to only include bones referenced by mesh vertices.
 
     When build_models() is called with cutoff parameters, some branches are
@@ -277,7 +277,7 @@ def filter_bones_for_mesh(
         referenced_bones.add(bone_id_offset)
 
     # Build original parent map (global_id -> parent_global_id) for ancestor walk
-    original_parent_map: Dict[int, int] = {
+    original_parent_map: dict[int, int] = {
         bone_id_offset + local_idx: int(bone[1])
         for local_idx, bone in enumerate(bones_info)
     }
@@ -356,12 +356,12 @@ def filter_bones_for_mesh(
 
 def calculate_vertex_weights(
     model: Any,
-    bone_to_joint_map: Dict[int, int],
-    bones_info: List[Tuple],
+    bone_to_joint_map: dict[int, int],
+    bones_info: list[tuple],
     element_size: int = 2,
     junction_blend_distance: float = 0.5,
     blend_mode: str = "smooth",
-) -> Tuple[List[int], List[float]]:
+) -> tuple[list[int], list[float]]:
     """Calculate vertex skinning weights with reduced branch root weights.
 
     Implements weight reduction at branch junctions to allow natural bone chain
@@ -393,11 +393,11 @@ def calculate_vertex_weights(
     # CRITICAL: bone_to_joint_map uses OLD global bone IDs as keys (from vertex bone_id attributes)
     # and maps them to NEW local joint indices after bone filtering
 
-    branch_info: Dict[int, tuple] = {}  # {OLD_GLOBAL_bone_id: (is_branch_root, parent_OLD_GLOBAL_bone_id, head_pos, tail_pos)}
+    branch_info: dict[int, tuple] = {}  # {OLD_GLOBAL_bone_id: (is_branch_root, parent_OLD_GLOBAL_bone_id, head_pos, tail_pos)}
 
     # Build reverse map once (joint_local_idx -> OLD global bone ID) for O(1) lookups.
     # bone_to_joint_map maps OLD global bone ID -> NEW local joint index.
-    joint_to_global: Dict[int, int] = {lidx: gid for gid, lidx in bone_to_joint_map.items()}
+    joint_to_global: dict[int, int] = {lidx: gid for gid, lidx in bone_to_joint_map.items()}
 
     for local_idx, bone in enumerate(bones_info):
         global_bone_id = joint_to_global.get(local_idx)
@@ -529,7 +529,7 @@ def calculate_vertex_weights(
 
 
 def _distance_3d(
-    p1: Tuple[float, float, float], p2: Tuple[float, float, float]
+    p1: tuple[float, float, float], p2: tuple[float, float, float]
 ) -> float:
     """Calculate 3D Euclidean distance between two points."""
     return ((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2 + (p1[2] - p2[2]) ** 2) ** 0.5
@@ -564,7 +564,7 @@ def get_bone_data_from_grove(
     skeleton_reduce: float = 0.0,
     skeleton_bias: float = 0.5,
     skeleton_connected: bool = True,
-) -> List[Tuple]:
+) -> list[tuple]:
     """Get bone data from Grove instance.
 
     Args:

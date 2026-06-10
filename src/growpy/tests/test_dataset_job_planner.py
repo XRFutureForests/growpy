@@ -2,8 +2,6 @@
 
 import types
 
-import pytest
-
 from growpy.pipelines.dataset_job_planner import (
     PILOT_SPECIES,
     display_names_from_stems,

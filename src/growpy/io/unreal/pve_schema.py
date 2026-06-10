@@ -5,10 +5,10 @@ Extracted from Quixel Megaplants format - defines structure and data types only,
 not actual values. This serves as the lightweight template for PVE generation.
 """
 
-from typing import Any, Dict
+from typing import Any
 
 
-def get_pve_schema() -> Dict[str, Any]:
+def get_pve_schema() -> dict[str, Any]:
     """
     Get the PVE preset JSON schema structure.
 
@@ -165,7 +165,7 @@ def get_pve_schema() -> Dict[str, Any]:
     }
 
 
-def create_empty_pve_preset() -> Dict[str, Any]:
+def create_empty_pve_preset() -> dict[str, Any]:
     """
     Create an empty PVE preset with proper structure and empty value arrays.
 

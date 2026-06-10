@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0.0",
+  "summary_kind": "evaluation-worker",
+  "run_id": "codebase-audit-20260610-091208",
+  "identifier": "global",
+  "producer_skill": "ln-622",
+  "produced_at": "2026-06-10T09:30:00Z",
+  "payload": {
+    "worker": "ln-622",
+    "status": "completed",
+    "operation": "auditing",
+    "warnings": ["pytest collection aborts with native DLL fault in growpy env; full test run not obtainable"],
+    "audit": {
+      "category": "Build & Delivery Gate",
+      "report_path": ".hex-skills/runtime-artifacts/runs/codebase-audit-20260610-091208/audit-report/ln-622--global.md",
+      "score": 5.5,
+      "issues_total": 4,
+      "severity_counts": { "critical": 1, "high": 2, "medium": 1, "low": 0 }
+    }
+  }
+}

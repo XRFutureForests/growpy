@@ -1,6 +1,5 @@
 """Tests for growpy.io.usd.assembly_export utility functions."""
 
-import shutil
 from pathlib import Path
 
 from growpy.io.usd.assembly_export import (

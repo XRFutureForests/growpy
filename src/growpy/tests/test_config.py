@@ -1,7 +1,5 @@
 """Tests for growpy.config.core module."""
 
-import os
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -9,7 +7,6 @@ import pytest
 from growpy.config.core import (
     GrowPyConfig,
     _find_config_dir,
-    get_config,
     get_global_config,
     set_global_config,
 )

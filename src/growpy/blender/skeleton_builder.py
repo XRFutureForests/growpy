@@ -7,7 +7,7 @@ Self-contained -- no imports from growpy.
 
 import logging
 import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -16,9 +16,9 @@ UNREAL_MAX_BONE_INDEX = 32767
 
 def filter_bones_for_mesh(
     model: Any,
-    bones_info: List[Tuple],
+    bones_info: list[tuple],
     bone_id_offset: int = 0,
-) -> Tuple[List[Tuple], Dict[int, int]]:
+) -> tuple[list[tuple], dict[int, int]]:
     """Filter bones_info to only include bones referenced by mesh vertices.
 
     Prevents Unreal crashes caused by vertices referencing non-existent bones.
@@ -48,7 +48,7 @@ def filter_bones_for_mesh(
 
     original_parent = {bone_id_offset + i: int(b[1]) for i, b in enumerate(bones_info)}
 
-    old_to_new: Dict[int, int] = {}
+    old_to_new: dict[int, int] = {}
     filtered = []
     filtered_gids = []
     idx = 0
@@ -92,12 +92,12 @@ def filter_bones_for_mesh(
 
 def calculate_vertex_weights(
     model: Any,
-    bone_to_joint_map: Dict[int, int],
-    bones_info: List[Tuple],
+    bone_to_joint_map: dict[int, int],
+    bones_info: list[tuple],
     element_size: int = 2,
     junction_blend_distance: float = 0.5,
     blend_mode: str = "linear",
-) -> Tuple[List[int], List[float]]:
+) -> tuple[list[int], list[float]]:
     """Calculate vertex skinning weights with reduced branch root weights.
 
     Returns (joint_indices_flat, joint_weights_flat) with element_size entries per vertex.
@@ -110,7 +110,7 @@ def calculate_vertex_weights(
     num_vertices = len(points)
 
     # Build branch topology for junction weight reduction
-    branch_info: Dict[int, Tuple] = {}
+    branch_info: dict[int, tuple] = {}
     for gid, lidx in bone_to_joint_map.items():
         # Find bone in bones_info by local index (gid == lidx after filtering)
         if lidx < len(bones_info):
@@ -162,10 +162,10 @@ def calculate_vertex_weights(
 
 
 def build_joint_hierarchy(
-    bones_info: List[Tuple],
+    bones_info: list[tuple],
     bone_id_offset: int = 0,
-    tree_offset: Tuple[float, float, float] = (0.0, 0.0, 0.0),
-) -> Tuple[List[str], List["Any"], List["Any"], Dict[int, str]]:
+    tree_offset: tuple[float, float, float] = (0.0, 0.0, 0.0),
+) -> tuple[list[str], list["Any"], list["Any"], dict[int, str]]:
     """Build joint tokens and transforms from bones_info.
 
     Returns (joint_tokens, bind_transforms, rest_transforms, bone_id_to_joint_path).
@@ -177,8 +177,8 @@ def build_joint_hierarchy(
     joint_tokens = []
     bind_positions = []  # Tree-local positions
     rest_positions = []  # Parent-relative positions
-    bone_id_to_joint_path: Dict[int, str] = {}
-    bone_positions: Dict[int, Tuple[float, float, float]] = {}
+    bone_id_to_joint_path: dict[int, str] = {}
+    bone_positions: dict[int, tuple[float, float, float]] = {}
     ox, oy, oz = tree_offset
 
     branch_id_offset = (

@@ -9,7 +9,7 @@ import base64
 import gzip
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import bpy
 
@@ -22,7 +22,7 @@ except ImportError:
 
 
 UNREAL_MAX_BONE_INDEX = 32767
-GROVE_SKELETON_DEFAULTS: Dict[str, Any] = {
+GROVE_SKELETON_DEFAULTS: dict[str, Any] = {
     "length": 2.0,
     "reduce": 0.4,
     "bias": 0.5,
@@ -35,11 +35,11 @@ class GroveExtractionResult:
     """Result of extracting and rebuilding a Grove from Blender."""
 
     grove: Any
-    trees: List[Any] = field(default_factory=list)
-    skeletons: List[Any] = field(default_factory=list)
-    bones_info_per_tree: List[List[Tuple]] = field(default_factory=list)
-    twig_blend_paths: List[str] = field(default_factory=list)
-    bark_texture_path: Optional[str] = None
+    trees: list[Any] = field(default_factory=list)
+    skeletons: list[Any] = field(default_factory=list)
+    bones_info_per_tree: list[list[tuple]] = field(default_factory=list)
+    twig_blend_paths: list[str] = field(default_factory=list)
+    bark_texture_path: str | None = None
     species_name: str = ""
     collection_name: str = ""
 
@@ -49,12 +49,12 @@ class ExportPreflightResult:
     """Preflight validation result for export readiness."""
 
     ok: bool
-    errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    infos: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    infos: list[str] = field(default_factory=list)
 
 
-def find_grove_collections() -> List[bpy.types.Collection]:
+def find_grove_collections() -> list[bpy.types.Collection]:
     """Find all Blender collections that contain Grove tree data."""
     grove_collections = []
     for collection in bpy.data.collections:
@@ -68,7 +68,7 @@ def find_grove_collections() -> List[bpy.types.Collection]:
     return grove_collections
 
 
-def get_active_grove_collection() -> Optional[bpy.types.Collection]:
+def get_active_grove_collection() -> bpy.types.Collection | None:
     """Get the active Grove collection from current view layer context."""
     active = bpy.context.collection
     if active and ("grove" in active or _has_valid_grove_unique_id(active)):
@@ -115,9 +115,9 @@ def preflight_export(
     Strict mode enforces Grove-side prerequisites so export complements Grove
     workflow instead of duplicating it.
     """
-    errors: List[str] = []
-    warnings: List[str] = []
-    infos: List[str] = []
+    errors: list[str] = []
+    warnings: list[str] = []
+    infos: list[str] = []
 
     if gc is None:
         errors.append(
@@ -207,7 +207,7 @@ def get_species_name_from_collection(collection: bpy.types.Collection) -> str:
     return collection.name
 
 
-def get_grove_twigs_folder() -> Optional[str]:
+def get_grove_twigs_folder() -> str | None:
     """Return the Twigs Folder path from The Grove 2.3 addon preferences."""
     grove_addon_name = "the_grove_23_in_blender"
     addons = bpy.context.preferences.addons
@@ -220,7 +220,7 @@ def get_grove_twigs_folder() -> Optional[str]:
     return None
 
 
-def get_grove_textures_folder() -> Optional[str]:
+def get_grove_textures_folder() -> str | None:
     """Return the Textures Folder path from The Grove 2.3 addon preferences."""
     grove_addon_name = "the_grove_23_in_blender"
     addons = bpy.context.preferences.addons
@@ -234,8 +234,8 @@ def get_grove_textures_folder() -> Optional[str]:
 
 
 def find_bark_texture_path(
-    collection: Optional[bpy.types.Collection] = None,
-) -> Optional[str]:
+    collection: bpy.types.Collection | None = None,
+) -> str | None:
     """Find bark texture file path for the Grove collection.
 
     Checks two sources in order:
@@ -279,8 +279,8 @@ def find_bark_texture_path(
 
 def find_twig_blend_paths(
     grove: Any,
-    collection: Optional[bpy.types.Collection] = None,
-) -> List[str]:
+    collection: bpy.types.Collection | None = None,
+) -> list[str]:
     """Find .blend twig file paths referenced by the Grove collection.
 
     Checks three sources in order:
@@ -288,7 +288,7 @@ def find_twig_blend_paths(
     2. The grove core object's properties (attribute scan)
     3. The Grove addon's Twigs Folder preference (fallback search)
     """
-    paths: List[str] = []
+    paths: list[str] = []
 
     # 1. Read twig_menu from collection properties (most reliable)
     if collection is not None and hasattr(collection, "GROVE23_Properties"):
@@ -401,13 +401,13 @@ def extract_grove(
     )
 
 
-def _split_bones_by_tree(bones_info: List[Tuple]) -> List[List[Tuple]]:
+def _split_bones_by_tree(bones_info: list[tuple]) -> list[list[tuple]]:
     """Split a flat bones_info list into per-tree lists using is_tree_root flag."""
     if not bones_info:
         return []
 
-    per_tree: List[List[Tuple]] = []
-    current_tree: List[Tuple] = []
+    per_tree: list[list[tuple]] = []
+    current_tree: list[tuple] = []
 
     for bone in bones_info:
         is_tree_root = bone[0]

@@ -7,7 +7,6 @@ mesh/skeleton data for visual QA.
 import logging
 import re
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,7 @@ def generate_preview_image(
     file_prefix: str,
     skeleton,
     timer,
-) -> Optional[list]:
+) -> list | None:
     """Draw branch structure from skeleton polylines as 3-axis preview.
 
     Renders front (X vs Z), side (Y vs Z), and top (X vs Y) orthogonal
@@ -173,7 +172,7 @@ def generate_icon_image(
     skeleton,
     timer,
     size_px: int = 512,
-    view: Optional[str] = None,
+    view: str | None = None,
 ) -> None:
     """Render a minimal icon on a square canvas.
 
@@ -456,8 +455,8 @@ def generate_export_control_image(
     species_clean: str,
     file_prefix: str,
     timer,
-    view_bounds: Optional[list] = None,
-    stems_file_base: Optional[str] = None,
+    view_bounds: list | None = None,
+    stems_file_base: str | None = None,
 ) -> None:
     """Render control image from exported USDA stems mesh and skeleton.
 

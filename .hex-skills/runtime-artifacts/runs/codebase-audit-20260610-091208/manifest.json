@@ -1,0 +1,10 @@
+{
+  "skill": "ln-620-codebase-auditor",
+  "identifier": "codebase-audit",
+  "project_root": "D:/Git/growpy",
+  "phase_order": ["PHASE_0_CONFIG", "PHASE_1_DISCOVERY", "PHASE_2_RESEARCH", "PHASE_3_DELEGATE", "PHASE_4_AGGREGATE", "PHASE_5_REPORT", "PHASE_6_SELF_CHECK"],
+  "report_path": ".hex-skills/runtime-artifacts/runs/codebase-audit-20260610-091208/audit-report/ln-620--final-report.md",
+  "created_at": "2026-06-10T09:12:08Z",
+  "required_research": true,
+  "scope": "growpy (D:/Git/growpy), excluding .conda vendored environment and cache directories"
+}

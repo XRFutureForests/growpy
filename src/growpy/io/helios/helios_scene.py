@@ -10,14 +10,13 @@ Scene XML format reference:
 
 import logging
 from pathlib import Path
-from typing import List, Optional, Tuple
 from xml.etree.ElementTree import Element, ElementTree, SubElement, indent
 
 logger = logging.getLogger(__name__)
 
 
 def generate_helios_scene(
-    tree_entries: List[Tuple[Path, float, float, float, str]],
+    tree_entries: list[tuple[Path, float, float, float, str]],
     output_path: Path,
     scene_id: str = "forest",
     scene_name: str = "Generated Forest",

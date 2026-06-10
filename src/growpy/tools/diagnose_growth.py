@@ -17,9 +17,6 @@ if hasattr(bpy.utils, "expose_bundled_modules"):
     bpy.utils.expose_bundled_modules()
 
 import sys
-from pathlib import Path
-
-import the_grove_23_core as gc
 
 from growpy import get_config
 from growpy.config.preset_overrides import PresetOverrides, get_species_overrides
@@ -47,7 +44,7 @@ def main():
     raw_mode = parsed.raw
     species = parsed.species
     max_cycles = parsed.max_cycles
-    config = get_config()
+    get_config()
 
     grove = create_grove(species)
     add_tree_to_grove(grove, (0.0, 0.0, 0.0))

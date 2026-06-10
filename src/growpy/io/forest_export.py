@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 from itertools import groupby
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING
 
 import pandas as pd
 from tqdm import tqdm
@@ -181,13 +181,13 @@ def _export_single_tree_from_forest(args: tuple) -> list:
 
         # Build additional model sets for density variants with different cutoffs
         density_variants = config.get_density_variants()
-        variant_model_sets: Dict[str, list] = {}
+        variant_model_sets: dict[str, list] = {}
         if density_variants:
             base_cutoff = (
                 quality_params["build_cutoff_age"],
                 quality_params["build_cutoff_thickness"],
             )
-            built_cutoffs: Dict[tuple, list] = {base_cutoff: models}
+            built_cutoffs: dict[tuple, list] = {base_cutoff: models}
             for vname, vcfg in density_variants:
                 cutoff_key = (
                     vcfg.get("build_cutoff_age", base_cutoff[0]),
@@ -488,11 +488,11 @@ def export_individual_trees(
     forest: list,
     forest_data: pd.DataFrame,
     output_dir: Path,
-    config: "GrowPyConfig",
+    config: GrowPyConfig,
     quality_params: dict,
     mesh_type: str = "skeletal",
     verbose: bool = False,
-    timer: Optional["ProfileTimer"] = None,
+    timer: ProfileTimer | None = None,
 ) -> list:
     """Export trees directly from already-simulated forest groves (no re-simulation).
 
@@ -534,7 +534,7 @@ def export_individual_trees(
     # Build per-tree twig_density scale map from input CSV (if column exists).
     # CSV twig_density is a multiplier applied to the TOML export_twig_density base.
     # e.g. TOML base=0.8, CSV scale=0.5 -> effective density = 0.4
-    twig_density_map: Dict[int, float] = {}
+    twig_density_map: dict[int, float] = {}
     if "twig_density" in forest_data.columns:
         for _, row in forest_data.iterrows():
             val = row["twig_density"]
@@ -543,7 +543,7 @@ def export_individual_trees(
 
     # Build per-tree CSV DBH map (fid -> dbh in meters) for custom diameter scaling.
     # When a tree has dbh > 0 in the CSV, that value overrides the yield table target.
-    csv_dbh_map: Dict[int, float] = {}
+    csv_dbh_map: dict[int, float] = {}
     if "dbh" in forest_data.columns:
         for _, row in forest_data.iterrows():
             val = row["dbh"]
@@ -551,7 +551,7 @@ def export_individual_trees(
                 csv_dbh_map[int(row["fid"])] = float(val) / 100.0  # cm -> m
 
     # Build per-tree individual_type map for dataset naming
-    individual_type_map: Dict[int, str] = {}
+    individual_type_map: dict[int, str] = {}
     if "individual_type" in forest_data.columns:
         for _, row in forest_data.iterrows():
             val = row["individual_type"]

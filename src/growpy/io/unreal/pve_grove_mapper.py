@@ -10,7 +10,7 @@ import logging
 import re
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ from .pve_hierarchy_builder import build_hierarchy_arrays
 from .pve_schema import create_empty_pve_preset
 
 
-def _detect_foliage_variants(species_name: str) -> List[str]:
+def _detect_foliage_variants(species_name: str) -> list[str]:
     """Detect available foliage variant suffixes from twig files on disk.
 
     Scans the twig directory for ``*_foliage_{suffix}_skeletal.*``
@@ -49,7 +49,7 @@ def _detect_foliage_variants(species_name: str) -> List[str]:
     return sorted(variants)
 
 
-def _detect_twig_source(species_name: str) -> Optional[str]:
+def _detect_twig_source(species_name: str) -> str | None:
     """Infer the twig source species name from twig files on disk.
 
     Returns the species prefix before ``_foliage`` in twig filenames,
@@ -72,19 +72,19 @@ def _detect_twig_source(species_name: str) -> Optional[str]:
 
 def map_grove_to_pve(
     grove: Any,
-    template: Dict,
+    template: dict,
     species_name: str,
     tree_index: int = 0,
-    model: Optional[Any] = None,
-    skeleton: Optional[Any] = None,
-    bones_info: Optional[List] = None,
+    model: Any | None = None,
+    skeleton: Any | None = None,
+    bones_info: list | None = None,
     use_default_growth_params: bool = True,
     twig_density: float = 1.0,
-    custom_growth_params: Optional[Dict] = None,
-    pve_config_dir: Optional[Path] = None,
+    custom_growth_params: dict | None = None,
+    pve_config_dir: Path | None = None,
     verbose: bool = False,
     profile: bool = False,
-) -> Dict:
+) -> dict:
     """
     Map Grove simulation data to PVE preset JSON format.
 
@@ -108,7 +108,6 @@ def map_grove_to_pve(
     Returns:
         Filled PVE preset dictionary
     """
-    import the_grove_23_core as gc
 
     timings = {} if profile else None
 
@@ -211,12 +210,12 @@ def map_grove_to_pve(
 def _map_global_attributes(
     grove: Any,
     properties: Any,
-    template: Dict,
-    skeleton: Optional[Any] = None,
+    template: dict,
+    skeleton: Any | None = None,
     use_default_growth_params: bool = True,
-    custom_growth_params: Optional[Dict] = None,
+    custom_growth_params: dict | None = None,
     species_name: str = "",
-) -> Dict:
+) -> dict:
     """
     Map Grove properties to PVE globalAttributes with default growth curves.
 
@@ -282,7 +281,7 @@ def _map_global_attributes(
     return global_attrs
 
 
-def _compute_global_metadata_from_skeleton(global_attrs: Dict, skeleton: Any) -> None:
+def _compute_global_metadata_from_skeleton(global_attrs: dict, skeleton: Any) -> None:
     """Compute globalAttributes metadata from actual skeleton data."""
     num_branches = len(skeleton.poly_lines)
     pscales = list(skeleton.point_attribute_radius)
@@ -346,7 +345,7 @@ def _compute_global_metadata_from_skeleton(global_attrs: Dict, skeleton: Any) ->
 
 
 def _compute_skeleton_derived_growth_params(
-    global_attrs: Dict, skeleton: Any, properties: Any
+    global_attrs: dict, skeleton: Any, properties: Any
 ) -> None:
     """Compute growth curve values from actual skeleton geometry.
 
@@ -452,8 +451,8 @@ def _compute_skeleton_derived_growth_params(
 
 
 def _compute_plant_profiles(
-    global_attrs: Dict,
-    points: List,
+    global_attrs: dict,
+    points: list,
     origin: tuple,
     max_height: float,
 ) -> None:
@@ -546,7 +545,7 @@ _HAZEL_GROVE_PARAMS = {
 }
 
 
-def _scale_growth_params_by_species(global_attrs: Dict, species_name: str) -> None:
+def _scale_growth_params_by_species(global_attrs: dict, species_name: str) -> None:
     """Scale Hazel-baseline growth curves using Grove seed.json parameter ratios.
 
     For attributes where a plausible Grove counterpart exists, scales the
@@ -601,7 +600,7 @@ def _scale_growth_params_by_species(global_attrs: Dict, species_name: str) -> No
                     vals[3] *= ratio
 
 
-def _load_species_seed_params(species_name: str) -> Optional[Dict]:
+def _load_species_seed_params(species_name: str) -> dict | None:
     """Load growth parameters from species seed.json file.
 
     Returns a flat dict of parameter name -> value, or None if unavailable.
@@ -612,7 +611,7 @@ def _load_species_seed_params(species_name: str) -> Optional[Dict]:
         from ...config.paths import get_preset_path
 
         preset_path = get_preset_path(species_name)
-        with open(preset_path, "r") as f:
+        with open(preset_path) as f:
             return json.load(f)
     except (FileNotFoundError, ImportError, KeyError):
         return None
@@ -646,7 +645,7 @@ def _max_branch_generation(skeleton: Any) -> int:
     return max(generation) if generation else 0
 
 
-def _map_points_from_skeleton(skeleton: Any, template: Dict) -> Dict:
+def _map_points_from_skeleton(skeleton: Any, template: dict) -> dict:
     """
     Map Grove skeleton points to PVE points structure.
 
@@ -835,7 +834,6 @@ def _map_points_from_skeleton(skeleton: Any, template: Dict) -> Dict:
             continue
 
         # Map Grove skeleton attributes to PVE attributes where possible
-        default_value = 0 if attr_data.get("type") == "int" else 0.0
 
         # Try to use real skeleton data for certain attributes
         if attr_name == "lengthFromSeed" and age_values:
@@ -916,13 +914,13 @@ def _map_points_from_skeleton(skeleton: Any, template: Dict) -> Dict:
 
 def _map_primitives_from_skeleton(
     skeleton: Any,
-    template: Dict,
+    template: dict,
     model: Any,
-    bones_info: List,
+    bones_info: list,
     species_name: str,
     num_branches: int,
     profile: bool = False,
-) -> Dict:
+) -> dict:
     """
     Map Grove skeleton poly_lines to PVE primitives with foliage and hierarchy.
 
@@ -953,7 +951,6 @@ def _map_primitives_from_skeleton(
 
     # Get poly_lines from skeleton
     poly_lines = skeleton.poly_lines
-    num_poly_lines = len(poly_lines)
 
     # CRITICAL: Rebase poly_line indices to start at 0
     # Grove skeleton poly_lines use global indices across all skeletons in the grove.
@@ -1210,7 +1207,7 @@ def _map_primitives_from_skeleton(
     return primitives_data
 
 
-def _calculate_generation_from_polylines(skeleton: Any) -> List[int]:
+def _calculate_generation_from_polylines(skeleton: Any) -> list[int]:
     """
     Calculate generation (hierarchy depth) for each point based on poly_lines.
 
@@ -1260,7 +1257,7 @@ def _calculate_generation_from_polylines(skeleton: Any) -> List[int]:
     return [max(0, g) for g in generation]
 
 
-def _calculate_length_from_root(skeleton: Any) -> List[float]:
+def _calculate_length_from_root(skeleton: Any) -> list[float]:
     """Calculate cumulative distance from root for each point."""
     skeleton_points = skeleton.points
     num_points = len(skeleton_points)
@@ -1314,7 +1311,7 @@ def _calculate_length_from_root(skeleton: Any) -> List[float]:
     return lengths
 
 
-def _calculate_branch_gradients(skeleton: Any) -> List[float]:
+def _calculate_branch_gradients(skeleton: Any) -> list[float]:
     """
     Calculate normalized position (0-1) along each branch for each point.
     """
@@ -1350,7 +1347,7 @@ def _calculate_branch_gradients(skeleton: Any) -> List[float]:
     return gradients
 
 
-def _calculate_branch_parents(skeleton: Any) -> List[int]:
+def _calculate_branch_parents(skeleton: Any) -> list[int]:
     """
     Calculate parent branch index for each branch.
 
@@ -1396,7 +1393,7 @@ def _calculate_branch_parents(skeleton: Any) -> List[int]:
 
 def _calculate_branch_parents_from_skeleton(
     skeleton: Any, num_branches: int
-) -> List[int]:
+) -> list[int]:
     """
     Calculate parent branch index for each branch using skeleton poly_line connectivity.
 
@@ -1431,7 +1428,7 @@ def _calculate_branch_parents_from_skeleton(
     return parents
 
 
-def _calculate_bud_directions(skeleton: Any) -> List[List[float]]:
+def _calculate_bud_directions(skeleton: Any) -> list[list[float]]:
     """
     Calculate bud direction vectors from skeleton poly_lines.
 
@@ -1559,8 +1556,8 @@ def _calculate_bud_directions(skeleton: Any) -> List[List[float]]:
 
 
 def _calculate_lod_gradients(
-    skeleton: Any, pscales: List[float], age_values: List[int]
-) -> Dict[str, List[float]]:
+    skeleton: Any, pscales: list[float], age_values: list[int]
+) -> dict[str, list[float]]:
     """
     Calculate LOD (Level of Detail) gradient values from skeleton data.
 
@@ -1646,16 +1643,16 @@ def generate_pve_from_grove(
     output_path: Path,
     species_name: str,
     tree_index: int = 0,
-    model: Optional[Any] = None,
-    skeleton: Optional[Any] = None,
-    bones_info: Optional[List] = None,
+    model: Any | None = None,
+    skeleton: Any | None = None,
+    bones_info: list | None = None,
     verbose: bool = True,
     use_default_growth_params: bool = True,
     twig_density: float = 1.0,
-    custom_growth_params: Optional[Dict] = None,
-    pve_config_dir: Optional[Path] = None,
+    custom_growth_params: dict | None = None,
+    pve_config_dir: Path | None = None,
     profile: bool = False,
-) -> Dict:
+) -> dict:
     """
     Generate PVE preset JSON from Grove simulation with full foliage and hierarchy.
 

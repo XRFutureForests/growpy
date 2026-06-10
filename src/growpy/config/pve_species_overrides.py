@@ -8,14 +8,14 @@ attributes not available from the Grove API.
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 def load_species_pve_config(
-    species_name: str, config_dir: Optional[Path] = None
-) -> Optional[Dict[str, Any]]:
+    species_name: str, config_dir: Path | None = None
+) -> dict[str, Any] | None:
     """
     Load species-specific PVE attribute overrides from JSON config.
 
@@ -45,7 +45,7 @@ def load_species_pve_config(
     for config_path in search_paths:
         if config_path.exists():
             try:
-                with open(config_path, "r") as f:
+                with open(config_path) as f:
                     config = json.load(f)
                 return config
             except Exception as e:
@@ -150,11 +150,11 @@ def create_example_pve_config(
 
 
 def apply_species_overrides(
-    pve_preset: Dict[str, Any],
+    pve_preset: dict[str, Any],
     species_name: str,
-    config_dir: Optional[Path] = None,
+    config_dir: Path | None = None,
     verbose: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Apply species-specific overrides to PVE preset.
 
@@ -416,7 +416,7 @@ def extract_pve_overrides_from_reference(
         output_path: Path to write config file
         species_name: Species name for the config
     """
-    with open(reference_json_path, "r") as f:
+    with open(reference_json_path) as f:
         reference = json.load(f)
 
     global_attrs = reference.get("globalAttributes", {})

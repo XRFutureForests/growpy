@@ -1,12 +1,6 @@
 """Tests for growpy.io.usd.preview image generation."""
 
-import logging
-import types
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import numpy as np
-import pytest
+from unittest.mock import MagicMock
 
 from growpy.io.usd.preview import generate_preview_image
 

@@ -1,9 +1,7 @@
 """Tests for growpy.utils.pxr_init USD initialization."""
 
 import os
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from growpy.utils.pxr_init import ensure_pxr_with_unreal_schema
 

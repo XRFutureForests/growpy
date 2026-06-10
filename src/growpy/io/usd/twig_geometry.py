@@ -6,9 +6,7 @@ inside Blender's Python environment (bpy / bmesh).
 """
 
 import logging
-import math
 from pathlib import Path
-from typing import Optional, Set
 
 import bmesh
 import bpy
@@ -261,7 +259,7 @@ def apply_normal_displacement(
                 vert.co += displacement
 
         mesh.update()
-    except Exception as e:
+    except Exception:
         pass
 
 
@@ -331,7 +329,6 @@ def trim_by_alpha_mask(
             return
 
         mesh = obj.data
-        uv_layer = mesh.uv_layers.active.data
 
         # Use bmesh for efficient face deletion
         bm = bmesh.new()
@@ -988,7 +985,6 @@ def _apply_interior_decimate(
 
     total_verts = len(bm.verts)
     decimatable = total_verts - len(preserve_indices)
-    total_faces = len(bm.faces)
 
     # Compute ratio from interior_edge_mm when specified
     if interior_edge_mm > 0:

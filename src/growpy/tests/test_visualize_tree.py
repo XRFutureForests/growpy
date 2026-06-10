@@ -1,7 +1,6 @@
 """Tests for growpy.tools.visualize_tree USDA parsing functions."""
 
 import numpy as np
-import pytest
 
 from growpy.tools.visualize_tree import parse_usda_faces, parse_usda_points
 

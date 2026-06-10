@@ -14,12 +14,17 @@ dependencies = [
     "pandas>=1.3.0",
     "tqdm>=4.60.0",
     "joblib>=1.2.0",
+    "scipy>=1.7.0",
+    "matplotlib>=3.4.0",
+    "Pillow>=9.0.0",
     "pylometree @ git+https://gitlab.uni-freiburg.de/xr-future-forests-lab/pylometree.git",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0.0", "black>=22.0.0", "ruff>=0.0.250"]
+dev = ["pytest>=7.0.0", "black>=22.0.0", "ruff>=0.0.250", "mypy>=1.0.0"]
 export = ["usd-core>=23.11"]
+monitor = ["psutil>=5.9.0"]
+species = ["pygbif>=0.6.0"]
 
 [project.scripts]
 growpy-init-config = "growpy.cli.init_config:main"
@@ -44,3 +49,30 @@ package-dir = { "" = "src", "the_grove_23_core" = "src/the_grove_23/modules/the_
 [tool.pytest.ini_options]
 pythonpath = ["src", "src/the_grove_23/modules"]
 testpaths = ["src/growpy/tests"]
+
+[tool.ruff]
+src = ["src"]
+target-version = "py311"
+line-length = 88
+extend-exclude = ["src/the_grove_23"]
+
+[tool.ruff.lint]
+# Pyflakes (F), pycodestyle (E/W), isort (I), pyupgrade (UP), bugbear (B), comprehensions (C4)
+select = ["E", "F", "W", "I", "UP", "B", "C4"]
+# E402: bpy/pxr modules legitimately import after expose_bundled_modules() shim.
+ignore = ["E402"]
+
+[tool.ruff.lint.per-file-ignores]
+# __init__.py re-exports and test helper imports are intentional.
+"__init__.py" = ["F401"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src/growpy"]
+exclude = "src/the_grove_23"
+ignore_missing_imports = true
+warn_unused_ignores = true
+no_implicit_optional = true

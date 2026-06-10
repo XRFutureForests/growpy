@@ -5,8 +5,6 @@ that pull in Blender/Grove dependencies.
 """
 
 import argparse
-import importlib
-import types
 
 import pytest
 

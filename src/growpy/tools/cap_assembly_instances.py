@@ -25,7 +25,7 @@ def cap_assembly(assembly_path: Path, max_instances: int, dry_run: bool = False)
     from growpy.utils.pxr_init import ensure_pxr_with_unreal_schema
 
     ensure_pxr_with_unreal_schema()
-    from pxr import Sdf, Usd, UsdGeom
+    from pxr import Usd, UsdGeom
 
     stage = Usd.Stage.Open(str(assembly_path))
     if not stage:

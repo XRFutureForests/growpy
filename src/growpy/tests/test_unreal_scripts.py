@@ -1,6 +1,5 @@
 """Tests for growpy.io.unreal_scripts string generation functions."""
 
-import pytest
 
 from growpy.io.unreal.unreal_scripts import (
     _build_consolidation_script,

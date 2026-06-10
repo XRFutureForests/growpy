@@ -31,7 +31,7 @@ _DEFAULT_RULES = [
 
 def _extract_twig_names(pve_json_path: Path) -> list[str]:
     """Return sorted unique twig mesh names from a PVE recipe JSON."""
-    with open(pve_json_path, "r") as f:
+    with open(pve_json_path) as f:
         data = json.load(f)
 
     instancer_name = (
@@ -59,7 +59,7 @@ def _rewrite_instancer_names(pve_json_path: Path, name_map: dict[str, str]) -> N
     SK_douglas_fir_foliage -> SK_pacific_silver_fir_foliage), this rewrites
     the per-tree JSON so the two stay consistent.
     """
-    with open(pve_json_path, "r") as f:
+    with open(pve_json_path) as f:
         data = json.load(f)
 
     values = (

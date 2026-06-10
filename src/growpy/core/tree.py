@@ -3,9 +3,8 @@
 import json
 import logging
 import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
-import numpy as np
 import pandas as pd
 import the_grove_23_core as gc
 
@@ -112,7 +111,7 @@ def calculate_dbh_at_height(tree, target_height: float = BREAST_HEIGHT_METERS) -
     return interpolated_radius * 2.0
 
 
-def extract_tree_measurements(grove: gc.Grove) -> List[Tuple[float, float]]:
+def extract_tree_measurements(grove: gc.Grove) -> list[tuple[float, float]]:
     """Extract height and DBH measurements for all trees in a grove.
 
     Args:
@@ -130,7 +129,7 @@ def extract_tree_measurements(grove: gc.Grove) -> List[Tuple[float, float]]:
     return measurements
 
 
-def extract_grove_attributes(grove: gc.Grove) -> Dict[str, Any]:
+def extract_grove_attributes(grove: gc.Grove) -> dict[str, Any]:
     """Extract grove-level summary attributes after simulation.
 
     Wraps the grove attribute access pattern from direct Grove API usage,
@@ -190,7 +189,7 @@ def calculate_growth_cycles_from_height(forest_data: pd.DataFrame) -> None:
     config = get_config()
     forest_data["growth_cycles"] = 0
 
-    model_cache: Dict[str, Any] = {}
+    model_cache: dict[str, Any] = {}
     for i, tree in forest_data.iterrows():
         species = tree["species"]
         if species not in model_cache:

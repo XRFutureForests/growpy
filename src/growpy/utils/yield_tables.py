@@ -11,7 +11,7 @@ calls).  Use ``pylometree-ingest`` to populate the store beforehand.
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 from pylometree.yield_tables import (  # noqa: F401
@@ -24,7 +24,7 @@ from pylometree.yield_tables import (  # noqa: F401
 logger = logging.getLogger(__name__)
 
 
-def load_lookup_table() -> Dict[str, Dict[str, str]]:
+def load_lookup_table() -> dict[str, dict[str, str]]:
     """Load tree_asset_lookup.csv keyed by Common Name.
 
     Returns:
@@ -52,8 +52,8 @@ FPY_RMSE_THRESHOLD = 0.25  # relative RMSE above which fpy is untrusted
 
 
 def _build_yield_height_interpolator(
-    yield_ages: List[float],
-    yield_heights: List[float],
+    yield_ages: list[float],
+    yield_heights: list[float],
 ):
     """Build a height-from-age interpolator for the yield table.
 
@@ -104,9 +104,9 @@ def _fpy_rmse(
 
 
 def estimate_flushes_per_year(
-    grove_heights: List[float],
-    yield_ages: List[float],
-    yield_heights: List[float],
+    grove_heights: list[float],
+    yield_ages: list[float],
+    yield_heights: list[float],
 ) -> float:
     """Estimate how many Grove growth cycles correspond to 1 calendar year.
 
@@ -171,9 +171,9 @@ def estimate_flushes_per_year(
 
 
 def fit_height_dbh_model(
-    yield_heights: List[float],
-    yield_dbhs: List[float],
-) -> Optional[Dict[str, float]]:
+    yield_heights: list[float],
+    yield_dbhs: list[float],
+) -> dict[str, float] | None:
     """Fit a power model DBH = a * H^b from yield table height/DBH pairs.
 
     Uses the allometric relationship between tree height and stem diameter
@@ -229,17 +229,17 @@ def fit_height_dbh_model(
 
 
 def predict_dbh_from_height(
-    heights: List[float],
-    model: Dict[str, float],
-) -> List[float]:
+    heights: list[float],
+    model: dict[str, float],
+) -> list[float]:
     """Predict DBH (m) from heights (m) using a fitted power model."""
     a, b = model["a"], model["b"]
     return [max(0.0, a * (h**b)) if h > 0 else 0.0 for h in heights]
 
 
 def interpolate_yield_table(
-    ages: List[float],
-    values: List[float],
+    ages: list[float],
+    values: list[float],
     max_cycles: int,
     flushes_per_year: float = 1.0,
     initial_value: float = 0.5,
@@ -295,11 +295,11 @@ def interpolate_yield_table(
 
 
 def compute_grow_length_curve(
-    grove_heights: List[float],
+    grove_heights: list[float],
     target_heights: np.ndarray,
     base_grow_length: float,
     sigma_k: float = 2.0,
-) -> List[float]:
+) -> list[float]:
     """Compute per-cycle grow_length values to match target height trajectory.
 
     Outlier scale factors are clipped at k standard deviations from the mean,
@@ -352,15 +352,15 @@ def compute_grow_length_curve(
 
 def write_calibration_to_seed_json(
     species_name: str,
-    grow_lengths: List[float],
+    grow_lengths: list[float],
     table_title: str,
     presets_dir: Path,
-    yield_class: Optional[float] = None,
-    table_id: Optional[int] = None,
-    target_dbh_per_cycle: Optional[List[float]] = None,
-    height_dbh_model: Optional[Dict[str, float]] = None,
+    yield_class: float | None = None,
+    table_id: int | None = None,
+    target_dbh_per_cycle: list[float] | None = None,
+    height_dbh_model: dict[str, float] | None = None,
     flushes_per_year: float = 1.0,
-) -> Optional[Path]:
+) -> Path | None:
     """Write calibration data to the species seed.json."""
     from growpy.utils.naming import standardize_species_name
 
@@ -374,7 +374,7 @@ def write_calibration_to_seed_json(
     with open(preset_path) as f:
         preset = json.load(f)
 
-    calibration: Dict[str, Any] = {
+    calibration: dict[str, Any] = {
         "table_title": table_title,
         "grow_length_per_cycle": [round(v, 4) for v in grow_lengths],
         "description": (
@@ -404,11 +404,11 @@ def write_calibration_to_seed_json(
 
 def calibrate_species(
     species_name: str,
-    grove_heights: List[float],
-    grove_dbhs: List[float],
+    grove_heights: list[float],
+    grove_dbhs: list[float],
     yield_data: YieldTableData,
     presets_dir: Path,
-    flushes_per_year: Optional[float] = None,
+    flushes_per_year: float | None = None,
 ) -> bool:
     """Run full calibration for a single species and write results to seed.json.
 

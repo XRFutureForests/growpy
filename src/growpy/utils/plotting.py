@@ -1,7 +1,7 @@
 """Growth curve plotting utilities for species analysis and calibration."""
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import matplotlib.pyplot as plt
 import matplotlib.style as mplstyle
@@ -43,7 +43,7 @@ def _add_flush_axis(ax, fpy: float) -> None:
     ax.set_xlabel("Age (years) [Flushes]", fontsize=12)
 
 
-def _extract_common(metadata: Dict[str, Any], height_curve, dbh_curve):
+def _extract_common(metadata: dict[str, Any], height_curve, dbh_curve):
     """Extract common data used across multiple plot functions."""
     fpy = metadata.get("flushes_per_year", 1.0)
     ages = np.array([(i + 1) / fpy for i in range(len(height_curve))])
@@ -54,9 +54,9 @@ def _extract_common(metadata: Dict[str, Any], height_curve, dbh_curve):
 
 def plot_growth_curves(
     species: str,
-    height_curve: List[float],
-    dbh_curve: List[float],
-    metadata: Dict[str, Any],
+    height_curve: list[float],
+    dbh_curve: list[float],
+    metadata: dict[str, Any],
     output_dir: Path,
 ) -> None:
     """Create and save growth curve plots plus additional diagnostic plots.
@@ -82,7 +82,7 @@ def plot_growth_curves(
     _plot_growth_increments(species, ages, heights, dbh_cm, fpy, metadata, output_dir)
 
 
-def _load_model_params(output_dir: Path) -> Optional[Dict[str, float]]:
+def _load_model_params(output_dir: Path) -> dict[str, float] | None:
     """Try to load Chapman-Richards model params from the species output dir."""
     import json
 
@@ -472,17 +472,17 @@ def _plot_growth_increments(
 
 def plot_calibration_comparison(
     species_name: str,
-    uncalibrated_heights: List[float],
-    uncalibrated_dbhs: List[float],
-    yield_ages: List[float],
-    yield_heights: List[float],
-    yield_dbhs: List[float],
+    uncalibrated_heights: list[float],
+    uncalibrated_dbhs: list[float],
+    yield_ages: list[float],
+    yield_heights: list[float],
+    yield_dbhs: list[float],
     table_title: str,
     flushes_per_year: float = 1.0,
-    calibrated_heights: Optional[List[float]] = None,
-    calibrated_dbhs: Optional[List[float]] = None,
-    target_dbh_per_cycle: Optional[List[float]] = None,
-    output_path: Optional[Path] = None,
+    calibrated_heights: list[float] | None = None,
+    calibrated_dbhs: list[float] | None = None,
+    target_dbh_per_cycle: list[float] | None = None,
+    output_path: Path | None = None,
 ) -> None:
     """Plot Grove curves vs yield table with a consistent year-based x-axis.
 
@@ -628,10 +628,10 @@ def plot_calibration_comparison(
 
 def plot_grove_curves_only(
     species_name: str,
-    grove_heights: List[float],
-    grove_dbhs: List[float],
+    grove_heights: list[float],
+    grove_dbhs: list[float],
     flushes_per_year: float = 1.0,
-    output_path: Optional[Path] = None,
+    output_path: Path | None = None,
 ) -> None:
     """Plot Grove-only growth curves for species without yield table data.
 

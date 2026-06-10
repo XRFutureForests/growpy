@@ -7,8 +7,6 @@ which may attempt to load Blender/USD DLLs.
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-import pytest
-
 from growpy.io.helios.helios_scene import generate_helios_scene
 
 

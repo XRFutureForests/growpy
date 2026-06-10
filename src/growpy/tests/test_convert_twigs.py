@@ -4,7 +4,6 @@ Covers classify_texture_type and find_textures_for_material (with real
 temp directories). Does not test process_twig_directory which requires Blender.
 """
 
-from pathlib import Path
 
 import pytest
 

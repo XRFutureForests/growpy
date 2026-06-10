@@ -1,7 +1,6 @@
 """Tests for Chapman-Richards growth model and fit utility."""
 
 import json
-from pathlib import Path
 
 import joblib
 import numpy as np

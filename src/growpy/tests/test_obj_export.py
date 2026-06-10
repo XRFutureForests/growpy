@@ -1,7 +1,6 @@
 """Tests for growpy.io.helios.obj_export utility functions."""
 
 import numpy as np
-import pytest
 
 from growpy.io.helios.obj_export import (
     WOOD_MATERIAL_KEYWORDS,

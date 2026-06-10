@@ -10,12 +10,17 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import bpy  # noqa: F401  (required; generate_forest_exports runs Grove via bpy)
 import pandas as pd
 
-from growpy import GrowPyConfig, calculate_growth_cycles_from_height, create_forest, simulate_forest_growth
+from growpy import (
+    GrowPyConfig,
+    calculate_growth_cycles_from_height,
+    create_forest,
+    simulate_forest_growth,
+)
 from growpy.config.preset_overrides import PresetOverrides
 from growpy.config.quality import get_quality_preset
 from growpy.io.forest_export import export_individual_trees
@@ -38,16 +43,16 @@ def generate_forest_exports(
     output_dir: Path,
     config: GrowPyConfig,
     quality: str = "high",
-    growth_cycle_limit: Optional[int] = None,
-    smooth_iterations: Optional[int] = None,
+    growth_cycle_limit: int | None = None,
+    smooth_iterations: int | None = None,
     include_grove_attributes: bool = False,
     verbose: bool = False,
-    preset_overrides: Optional[PresetOverrides] = None,
-    timer: Optional["ProfileTimer"] = None,
+    preset_overrides: PresetOverrides | None = None,
+    timer: ProfileTimer | None = None,
     skip_pve_json: bool = False,
     skip_validation: bool = False,
-    skeleton_overrides: Optional[Dict[str, Any]] = None,
-    export_tree_ids: Optional[set] = None,
+    skeleton_overrides: dict[str, Any] | None = None,
+    export_tree_ids: set | None = None,
 ) -> None:
     """Generate forest from CSV data and export as Nanite Assembly USD files.
 

@@ -7,14 +7,12 @@ coordinate system conversion and grouping by branch.
 
 import logging
 import math
-from typing import Any, Dict, List, Optional, Tuple
-
-import numpy as np
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-def grove_to_pve_position(grove_pos: Tuple[float, float, float]) -> List[float]:
+def grove_to_pve_position(grove_pos: tuple[float, float, float]) -> list[float]:
     """
     Convert Grove position to PVE format.
 
@@ -30,7 +28,7 @@ def grove_to_pve_position(grove_pos: Tuple[float, float, float]) -> List[float]:
     return [x * 100.0, z * 100.0, y * 100.0]
 
 
-def grove_to_pve_vector(grove_vec: Tuple[float, float, float]) -> List[float]:
+def grove_to_pve_vector(grove_vec: tuple[float, float, float]) -> list[float]:
     """
     Convert Grove direction vector to PVE format.
 
@@ -45,8 +43,8 @@ def grove_to_pve_vector(grove_vec: Tuple[float, float, float]) -> List[float]:
 
 
 def quaternion_to_up_normal(
-    quat: Tuple[float, float, float, float],
-) -> Tuple[List[float], List[float]]:
+    quat: tuple[float, float, float, float],
+) -> tuple[list[float], list[float]]:
     """
     Convert quaternion to up and normal vectors for PVE.
 
@@ -107,13 +105,13 @@ def get_twig_name_for_species(
 def extract_foliage_data(
     model: Any,
     species_name: str,
-    bones_info: Optional[List] = None,
-    num_branches: Optional[int] = None,
+    bones_info: list | None = None,
+    num_branches: int | None = None,
     verbose: bool = False,
     profile: bool = False,
-    twig_species: Optional[str] = None,
-    foliage_variants: Optional[List[str]] = None,
-) -> Dict[str, Dict]:
+    twig_species: str | None = None,
+    foliage_variants: list[str] | None = None,
+) -> dict[str, dict]:
     """
     Extract foliage instancer data from a Grove model.
 
@@ -382,7 +380,7 @@ def extract_foliage_data(
     }
 
 
-def _create_empty_instancer_arrays(num_branches: int) -> Dict[str, Dict]:
+def _create_empty_instancer_arrays(num_branches: int) -> dict[str, dict]:
     """Create empty instancer arrays for branches with no foliage."""
     empty_arrays = [[] for _ in range(num_branches)]
 

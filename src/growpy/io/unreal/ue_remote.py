@@ -8,11 +8,11 @@ Requires "Python Remote Execution" enabled in UE Editor Preferences:
 """
 
 import json
+import logging
 import os
 import socket
 import time
 import uuid
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +92,7 @@ def discover_nodes(timeout: float = 3.0, bind_address: str = MULTICAST_BIND) -> 
             while time.monotonic() < recv_until:
                 try:
                     data = sock.recv(RECV_BUF)
-                except socket.timeout:
+                except TimeoutError:
                     break
                 msg = _parse_msg(data)
                 if not msg or msg.get("type") != TYPE_PONG:
@@ -180,7 +180,7 @@ def run_command(
                 tcp_conn, _ = tcp_server.accept()
                 tcp_conn.setblocking(True)
                 break
-            except socket.timeout:
+            except TimeoutError:
                 continue
         if not tcp_conn:
             raise ConnectionError(
@@ -214,7 +214,7 @@ def run_command(
                 msg = _parse_msg(b"".join(chunks))
                 if msg and msg.get("type") == TYPE_COMMAND_RESULT:
                     break
-            except socket.timeout:
+            except TimeoutError:
                 break
 
         tcp_conn.close()

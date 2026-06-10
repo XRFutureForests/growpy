@@ -258,7 +258,6 @@ def generate_icon_grid(
     df: pd.DataFrame, forest_dir: Path, height_interval: float = 5.0
 ) -> Path:
     """Export a PNG grid of all icon previews."""
-    interval = max(1, int(height_interval))
     icon_cols = [
         c for c in df.columns if c.startswith("icon_h") and not c.endswith("_abs")
     ]

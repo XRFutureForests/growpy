@@ -2,8 +2,6 @@
 
 import json
 
-import pytest
-
 from growpy.io.unreal.ue_remote import (
     MODE_EVAL_STATEMENT,
     MODE_EXEC_FILE,

@@ -20,6 +20,19 @@ from growpy.pipelines.dataset_job_planner import find_species_csv
 
 logger = logging.getLogger(__name__)
 
+
+def _resolve_conda() -> str:
+    """Resolve the conda executable path without relying on a shell.
+
+    Prefers CONDA_EXE (a real executable) so callers can avoid shell=True, which
+    would otherwise interpret shell metacharacters in interpolated CSV/species
+    paths passed on the command line.
+    """
+    import os
+    import shutil
+
+    return os.environ.get("CONDA_EXE") or shutil.which("conda") or "conda"
+
 STEP_SCRIPTS: dict[int, Path] = {
     1: Path("src/growpy/cli/prepare_assets.py"),
     2: Path("src/growpy/cli/convert_twigs.py"),
@@ -55,7 +68,6 @@ def run_step123(
 
     Returns True on success (or dry_run).
     """
-    import os
     from pathlib import Path as PathlibPath
 
     script = STEP_SCRIPTS[step]
@@ -73,13 +85,13 @@ def run_step123(
 
     # Run in growpy conda environment to ensure all dependencies are available
     # --no-capture-output lets subprocess stdout/stderr stream through in real-time
-    conda_cmd = ["conda", "run", "--no-capture-output", "-n", "growpy"] + cmd
+    conda_cmd = [_resolve_conda(), "run", "--no-capture-output", "-n", "growpy"] + cmd
 
     # Get project root for working directory
     project_root = PathlibPath(__file__).parent.parent.parent.parent
 
-    # Use shell=True on Windows so conda command is found through cmd.exe
-    result = subprocess.run(conda_cmd, check=False, cwd=str(project_root), shell=True)
+    # conda_cmd[0] is an absolute executable path, so no shell is needed.
+    result = subprocess.run(conda_cmd, check=False, cwd=str(project_root))
     if result.returncode != 0:
         logger.error("Step %d FAILED (exit code %d)", step, result.returncode)
         return False
@@ -137,13 +149,13 @@ def run_species_step4(
 
     # Run in growpy conda environment to ensure all dependencies are available
     # --no-capture-output lets subprocess stdout/stderr stream through in real-time
-    conda_cmd = ["conda", "run", "--no-capture-output", "-n", "growpy"] + cmd
+    conda_cmd = [_resolve_conda(), "run", "--no-capture-output", "-n", "growpy"] + cmd
 
     # Get project root for working directory
     project_root = PathlibPath(__file__).parent.parent.parent.parent
 
-    # Use shell=True on Windows so conda command is found through cmd.exe
-    result = subprocess.run(conda_cmd, check=False, cwd=str(project_root), shell=True)
+    # conda_cmd[0] is an absolute executable path, so no shell is needed.
+    result = subprocess.run(conda_cmd, check=False, cwd=str(project_root))
     if result.returncode != 0:
         logger.error(
             "Step 4 [%s]: FAILED (exit code %d)", species_name, result.returncode

@@ -16,8 +16,6 @@ import logging
 import sys
 from pathlib import Path
 
-import pandas as pd
-
 from growpy import get_config
 from growpy.config.preset_overrides import create_overrides_from_args
 from growpy.io.unreal.unreal_scripts import (
@@ -38,7 +36,6 @@ def main():
     from growpy.config.paths import get_project_root
 
     project_root = get_project_root()
-    default_csv = project_root / "data" / "input" / "test.csv"
 
     parser = argparse.ArgumentParser(
         description="Generate forest from CSV data and export trees in multiple formats",

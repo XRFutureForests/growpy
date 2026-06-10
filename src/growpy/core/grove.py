@@ -1,13 +1,13 @@
 """Grove operations for forest simulation."""
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import the_grove_23_core as gc
 
 from ..config import get_config
 
 
-def create_grove(species: Optional[str] = None) -> gc.Grove:
+def create_grove(species: str | None = None) -> gc.Grove:
     """Create a new Grove instance with optional species preset.
 
     Args:
@@ -25,7 +25,7 @@ def create_grove(species: Optional[str] = None) -> gc.Grove:
 
     if species:
         preset_path = config.get_preset_path(species)
-        with open(preset_path, "r") as f:
+        with open(preset_path) as f:
             preset_json = f.read()
         properties = gc.io.properties_from_json_string(preset_json)
         grove.set_properties(properties)
@@ -35,8 +35,8 @@ def create_grove(species: Optional[str] = None) -> gc.Grove:
 
 def grow_and_build_roots(
     grove: gc.Grove,
-    build_params: Optional[Dict[str, Any]] = None,
-) -> List[Any]:
+    build_params: dict[str, Any] | None = None,
+) -> list[Any]:
     """Simulate root growth and build root meshes for all trees.
 
     Combines grove.grow_roots() and grove.build_roots() into a single call,
@@ -55,7 +55,7 @@ def grow_and_build_roots(
 
 
 def add_tree_to_grove(
-    grove: gc.Grove, position: Tuple[float, float, float], delay: int = 0
+    grove: gc.Grove, position: tuple[float, float, float], delay: int = 0
 ) -> None:
     """Add a tree to grove at specified position with optional growth delay.
 

@@ -5,12 +5,10 @@ API-dependent functions (validate_scientific_name, get_vernacular_names)
 are tested with mocked pygbif responses.
 """
 
-from unittest.mock import MagicMock, patch
 
 import pandas as pd
-import pytest
 
-from growpy.utils.gbif_species import match_species_via_gbif, resolve_species_list
+from growpy.utils.gbif_species import resolve_species_list
 
 
 def _make_lookup_df():

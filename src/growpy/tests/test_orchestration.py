@@ -5,7 +5,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
-import pytest
 
 from growpy.pipelines.dataset_csv_planner import (
     DENSITY_VARIANTS,
@@ -15,7 +14,6 @@ from growpy.pipelines.dataset_csv_planner import (
     generate_merged_csv,
 )
 from growpy.pipelines.dataset_job_planner import (
-    DATASET_DIR,
     PILOT_SPECIES,
     display_names_from_stems,
     find_species_csv,
@@ -25,7 +23,6 @@ from growpy.pipelines.dataset_job_planner import (
 from growpy.pipelines.step_runner import (
     STEP_SCRIPTS,
     _build_step4_command,
-    run_parallel_step4,
     run_species_step4,
     run_step123,
 )

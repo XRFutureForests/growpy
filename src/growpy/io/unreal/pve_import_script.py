@@ -32,8 +32,8 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, Optional
 
 from growpy.utils.naming import camel_to_snake
 
@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 PVE_RECIPE_SUFFIX = "_stems_unreal_pve.json"
 
 
-def build_species_twig_map(lookup_csv: Optional[Path] = None) -> dict[str, str]:
+def build_species_twig_map(lookup_csv: Path | None = None) -> dict[str, str]:
     """Build a mapping from species name to UE twig instance folder name.
 
     Reads the tree_asset_lookup.csv ``Twig`` column, converts from CamelCase
@@ -323,7 +323,7 @@ def generate_pve_preset_import_script(
     output_dir: Path,
     forest_root: Path,
     import_base: str = "/Game/Assets/TheGrove",
-    species_twig_map: Optional[dict] = None,
+    species_twig_map: dict | None = None,
 ) -> Path:
     """Write a UE Python script that creates ProceduralVegetationPreset assets.
 
@@ -376,8 +376,8 @@ def generate_pve_import_for_species(
     output_dir: Path,
     pve_json_paths: Iterable[Path],
     import_base: str = "/Game/Assets/TheGrove",
-    species_twig_map: Optional[dict] = None,
-) -> Optional[Path]:
+    species_twig_map: dict | None = None,
+) -> Path | None:
     """Convenience: derive forest_root from a list of per-tree JSON paths.
 
     Picks the common ancestor directory of the supplied paths and forwards

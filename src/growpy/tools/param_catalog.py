@@ -14,7 +14,6 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -108,8 +107,8 @@ def build_catalog(param_values: dict[str, list[float]]) -> pd.DataFrame:
 
 
 def run_param_catalog(
-    preset_dirs: Optional[list[Path]] = None,
-    output_path: Optional[Path] = None,
+    preset_dirs: list[Path] | None = None,
+    output_path: Path | None = None,
 ) -> pd.DataFrame:
     """Scan presets, build catalog, optionally save CSV, return DataFrame."""
     if preset_dirs is None:

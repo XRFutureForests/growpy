@@ -3,7 +3,7 @@
 import logging
 import math
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -18,12 +18,12 @@ from .tree import extract_tree_measurements
 
 # Type alias for snapshot data
 # Dict[cycle, Dict[species, List[(model, skeleton, bones_info, height, dbh)]]]
-SnapshotData = Dict[int, Dict[str, List[Tuple[Any, Any, Any, float, float]]]]
+SnapshotData = dict[int, dict[str, list[tuple[Any, Any, Any, float, float]]]]
 
 
 def create_forest(
     forest_data: pd.DataFrame,
-) -> List[Tuple[gc.Grove, str, int, List[int]]]:
+) -> list[tuple[gc.Grove, str, int, list[int]]]:
     """Create groves for each species in forest data.
 
     When *individual_type* is present in the DataFrame, trees are split into
@@ -73,8 +73,8 @@ def create_forest(
 
 
 def _compute_grove_offsets(
-    forest: List[Tuple[gc.Grove, str, int, List[int]]],
-) -> List[int]:
+    forest: list[tuple[gc.Grove, str, int, list[int]]],
+) -> list[int]:
     """Compute the species-global tree index offset for each grove.
 
     When multiple groves share a species name (context splitting), each grove's
@@ -83,7 +83,7 @@ def _compute_grove_offsets(
     each grove.
     """
     offsets = []
-    species_count: Dict[str, int] = {}
+    species_count: dict[str, int] = {}
     for _grove, species_name, tree_count, _fids in forest:
         offsets.append(species_count.get(species_name, 0))
         species_count[species_name] = species_count.get(species_name, 0) + tree_count
@@ -91,13 +91,13 @@ def _compute_grove_offsets(
 
 
 def _run_single_growth_cycle(
-    forest: List[Tuple[gc.Grove, str, int, List[int]]],
-    groves: List[gc.Grove],
+    forest: list[tuple[gc.Grove, str, int, list[int]]],
+    groves: list[gc.Grove],
     cycle: int,
     total_cycles: int,
-    species_overrides: Dict[str, PresetOverrides],
-    preset_overrides: Optional[PresetOverrides],
-    frozen_grove_indices: Optional[set] = None,
+    species_overrides: dict[str, PresetOverrides],
+    preset_overrides: PresetOverrides | None,
+    frozen_grove_indices: set | None = None,
 ) -> None:
     """Run one growth cycle: apply overrides, shade competition, simulate.
 
@@ -130,7 +130,7 @@ def _run_single_growth_cycle(
 
 
 def _apply_smoothing(
-    forest: List[Tuple[gc.Grove, str, int, List[int]]],
+    forest: list[tuple[gc.Grove, str, int, list[int]]],
     smooth_iterations: int,
 ) -> None:
     """Apply branch smoothing to all groves after simulation."""
@@ -153,10 +153,10 @@ def _apply_smoothing(
 
 
 def simulate_forest_growth(
-    forest: List[Tuple[gc.Grove, str, int, List[int]]],
+    forest: list[tuple[gc.Grove, str, int, list[int]]],
     cycles: int,
     smooth_iterations: int = 10,
-    preset_overrides: Optional[PresetOverrides] = None,
+    preset_overrides: PresetOverrides | None = None,
     use_species_curves: bool = True,
 ) -> None:
     """Simulate forest growth with inter-species light competition and optional smoothing.
@@ -182,7 +182,7 @@ def simulate_forest_growth(
     groves = [grove for grove, _, _, _ in forest]
 
     # Load per-species overrides from their seed.json files
-    species_overrides: Dict[str, PresetOverrides] = {}
+    species_overrides: dict[str, PresetOverrides] = {}
     if use_species_curves:
         for grove, species_name, _, _ in forest:
             species_ov = get_species_overrides(species_name)
@@ -219,19 +219,19 @@ def simulate_forest_growth(
 
 
 def simulate_forest_growth_with_snapshots(
-    forest: List[Tuple[gc.Grove, str, int, List[int]]],
+    forest: list[tuple[gc.Grove, str, int, list[int]]],
     max_cycles: int,
-    snapshot_cycles: List[int],
+    snapshot_cycles: list[int],
     smooth_iterations: int = 10,
-    preset_overrides: Optional[PresetOverrides] = None,
+    preset_overrides: PresetOverrides | None = None,
     use_species_curves: bool = True,
-    quality_params: Optional[Dict] = None,
-    species_snapshot_cycles: Optional[Dict[str, Dict[int, float]]] = None,
+    quality_params: dict | None = None,
+    species_snapshot_cycles: dict[str, dict[int, float]] | None = None,
     height_interval: float = 0.0,
     max_height: float = 0.0,
     competition_distance_increase: float = 0.0,
-    forest_data: Optional[pd.DataFrame] = None,
-) -> Tuple[SnapshotData, Dict[int, Dict[str, Dict[int, float]]]]:
+    forest_data: pd.DataFrame | None = None,
+) -> tuple[SnapshotData, dict[int, dict[str, dict[int, float]]]]:
     """Simulate forest growth and capture snapshots at height milestones.
 
     When height_interval > 0, uses height-threshold-based snapshots: measures
@@ -263,13 +263,13 @@ def simulate_forest_growth_with_snapshots(
     """
     groves = [grove for grove, _, _, _ in forest]
     snapshots: SnapshotData = {}
-    milestone_map: Dict[int, Dict[str, Dict[int, float]]] = {}
+    milestone_map: dict[int, dict[str, dict[int, float]]] = {}
 
     if quality_params is None:
         quality_params = {"vertices": 16}
 
     # Load per-species overrides from their seed.json files
-    species_overrides: Dict[str, PresetOverrides] = {}
+    species_overrides: dict[str, PresetOverrides] = {}
     if use_species_curves:
         for grove, species_name, _, _ in forest:
             species_ov = get_species_overrides(species_name)
@@ -342,12 +342,12 @@ def simulate_forest_growth_with_snapshots(
 
 
 def _apply_competition_thinning(
-    forest: List[Tuple[gc.Grove, str, int, List[int]]],
+    forest: list[tuple[gc.Grove, str, int, list[int]]],
     forest_data: pd.DataFrame,
     distance_increase: float,
     thinning_count: int,
-    target_distances: Optional[Dict[str, float]] = None,
-    current_distances: Optional[Dict[int, float]] = None,
+    target_distances: dict[str, float] | None = None,
+    current_distances: dict[int, float] | None = None,
 ) -> None:
     """Move competition neighbor trees outward from center to simulate thinning.
 
@@ -436,18 +436,18 @@ def _apply_competition_thinning(
 
 
 def _simulate_height_threshold_mode(
-    forest: List[Tuple[gc.Grove, str, int, List[int]]],
-    groves: List[gc.Grove],
+    forest: list[tuple[gc.Grove, str, int, list[int]]],
+    groves: list[gc.Grove],
     max_cycles: int,
     height_interval: float,
-    species_overrides: Dict[str, PresetOverrides],
-    preset_overrides: Optional[PresetOverrides],
-    quality_params: Dict,
+    species_overrides: dict[str, PresetOverrides],
+    preset_overrides: PresetOverrides | None,
+    quality_params: dict,
     max_height: float = 0.0,
     plateau_cycles: int = 10,
     competition_distance_increase: float = 0.0,
-    forest_data: Optional[pd.DataFrame] = None,
-) -> Tuple[SnapshotData, Dict[int, Dict[str, Dict[int, float]]]]:
+    forest_data: pd.DataFrame | None = None,
+) -> tuple[SnapshotData, dict[int, dict[str, dict[int, float]]]]:
     """Run simulation with height-threshold-based snapshots.
 
     Grows trees cycle by cycle, capturing snapshots whenever any tree crosses
@@ -474,17 +474,17 @@ def _simulate_height_threshold_mode(
     """
 
     snapshots: SnapshotData = {}
-    milestone_map: Dict[int, Dict[str, Dict[int, float]]] = {}
+    milestone_map: dict[int, dict[str, dict[int, float]]] = {}
 
     # Compute species-global tree index offsets for split groves
     grove_offsets = _compute_grove_offsets(forest)
 
     # Track captured milestones per tree
     # Key: (species_name, global_tree_idx)
-    captured: Dict[Tuple[str, int], set] = {}
+    captured: dict[tuple[str, int], set] = {}
 
     # Build set of target milestones per tree (for early-stop check)
-    target_milestones: Dict[Tuple[str, int], set] = {}
+    target_milestones: dict[tuple[str, int], set] = {}
     if max_height > 0:
         for grove_idx, (_grove, species_name, tree_count, _fids) in enumerate(forest):
             offset = grove_offsets[grove_idx]
@@ -501,7 +501,7 @@ def _simulate_height_threshold_mode(
     total_captures = 0
 
     # Plateau detection: track max height per tree across cycles
-    prev_max_heights: Dict[Tuple[str, int], float] = {}
+    prev_max_heights: dict[tuple[str, int], float] = {}
     cycles_without_growth = 0
 
     # Competition thinning state
@@ -520,7 +520,7 @@ def _simulate_height_threshold_mode(
     )
 
     # Track current distance from center per neighbor fid (for group-based thinning)
-    neighbor_current_distances: Dict[int, float] = {}
+    neighbor_current_distances: dict[int, float] = {}
     if use_group_thinning and forest_data is not None:
         for _, row in forest_data.iterrows():
             fid = int(row["fid"]) if "fid" in row.index else 0
@@ -552,12 +552,12 @@ def _simulate_height_threshold_mode(
     frozen_grove_indices: set = set()
 
     # Build species -> grove index mapping for freezing
-    species_grove_indices: Dict[str, List[int]] = {}
+    species_grove_indices: dict[str, list[int]] = {}
     for grove_idx, (_grove, species_name, _tc, _fids) in enumerate(forest):
         species_grove_indices.setdefault(species_name, []).append(grove_idx)
 
     # Build per-species target milestones for partial completion check
-    species_target_keys: Dict[str, List[Tuple[str, int]]] = {}
+    species_target_keys: dict[str, list[tuple[str, int]]] = {}
     for key in target_milestones:
         species_target_keys.setdefault(key[0], []).append(key)
 
@@ -572,7 +572,7 @@ def _simulate_height_threshold_mode(
 
         # Cheaply measure heights at every cycle (skip frozen groves)
         # Maps species -> tree_idx -> milestone height (lowest new crossing)
-        new_crossings: Dict[str, Dict[int, float]] = {}
+        new_crossings: dict[str, dict[int, float]] = {}
         any_growth = False
 
         for grove_idx, (grove, species_name, tree_count, fids) in enumerate(forest):
@@ -634,7 +634,7 @@ def _simulate_height_threshold_mode(
         species_with_crossings = set(new_crossings.keys())
 
         # Build models from groves and merge per species (supports split groves)
-        merged_data: Dict[str, list] = {}
+        merged_data: dict[str, list] = {}
         for grove_idx, (grove, species_name, tree_count, fids) in enumerate(forest):
             if species_name not in species_with_crossings:
                 continue
@@ -702,7 +702,7 @@ def _simulate_height_threshold_mode(
         # (fid < 100, individual_type=competition) crossed a milestone.
         if use_thinning and thinning_trigger_fids:
             # Collect species that triggered thinning and their milestone heights
-            triggered_species: Dict[str, float] = {}
+            triggered_species: dict[str, float] = {}
             should_thin = False
             for grove_idx, (_grove, species_name, _tc, fids) in enumerate(forest):
                 offset = grove_offsets[grove_idx]
@@ -719,7 +719,7 @@ def _simulate_height_threshold_mode(
             if should_thin:
                 if use_group_thinning and config is not None:
                     # Group-based: compute per-species target distances
-                    target_dists: Dict[str, float] = {}
+                    target_dists: dict[str, float] = {}
                     for sp, mh in triggered_species.items():
                         target = config.get_thinning_target(sp, mh)
                         if target is not None:
@@ -756,14 +756,14 @@ def _simulate_height_threshold_mode(
 
 
 def _simulate_cycle_based_mode(
-    forest: List[Tuple[gc.Grove, str, int, List[int]]],
-    groves: List[gc.Grove],
+    forest: list[tuple[gc.Grove, str, int, list[int]]],
+    groves: list[gc.Grove],
     max_cycles: int,
-    snapshot_cycles: List[int],
-    species_overrides: Dict[str, PresetOverrides],
-    preset_overrides: Optional[PresetOverrides],
-    quality_params: Dict,
-    species_snapshot_cycles: Optional[Dict[str, Dict[int, float]]],
+    snapshot_cycles: list[int],
+    species_overrides: dict[str, PresetOverrides],
+    preset_overrides: PresetOverrides | None,
+    quality_params: dict,
+    species_snapshot_cycles: dict[str, dict[int, float]] | None,
 ) -> SnapshotData:
     """Run simulation with cycle-based snapshots (legacy mode)."""
     snapshots: SnapshotData = {}
@@ -785,7 +785,7 @@ def _simulate_cycle_based_mode(
             snapshots[cycle] = {}
 
             # Build models per grove and merge by species (supports split groves)
-            merged_data: Dict[str, list] = {}
+            merged_data: dict[str, list] = {}
             for grove, species_name, tree_count, fids in forest:
                 if species_snapshot_cycles and species_name in species_snapshot_cycles:
                     if cycle not in species_snapshot_cycles[species_name]:
@@ -809,8 +809,8 @@ def _build_models_for_grove(
     grove: gc.Grove,
     species_name: str,
     cycle: int,
-    quality_params: Dict,
-) -> List[Tuple[Any, Any, Any, float, float]]:
+    quality_params: dict,
+) -> list[tuple[Any, Any, Any, float, float]]:
     """Build skeleton, bones, and models for all trees in a grove.
 
     Returns list of (model, skeleton, bones_info, height, dbh) per tree.
@@ -883,7 +883,7 @@ def _build_models_for_grove(
     return tree_snapshots
 
 
-def _split_bones_by_tree(all_bones: List, num_trees: int) -> List[List]:
+def _split_bones_by_tree(all_bones: list, num_trees: int) -> list[list]:
     """Split combined bone list into per-tree bone lists.
 
     Grove's tag_bone_id() returns bones for all trees combined, ordered by
@@ -904,8 +904,8 @@ def _split_bones_by_tree(all_bones: List, num_trees: int) -> List[List]:
         return [[] for _ in range(num_trees)]
 
     # Split on is_tree_root flag (bone[0] == True marks first bone of each tree)
-    tree_bones: List[List] = []
-    current: List = []
+    tree_bones: list[list] = []
+    current: list = []
     for bone in all_bones:
         if bone[0] and current:  # is_tree_root and already have bones
             tree_bones.append(current)

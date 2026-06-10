@@ -4,7 +4,6 @@ Provides consistent formatting of height, DBH, and density values
 for use in exported filenames across the pipeline.
 """
 
-from typing import Optional
 
 
 def format_height_for_filename(height_m: float) -> str:
@@ -32,7 +31,7 @@ def format_dbh_for_filename(dbh_m: float) -> str:
     return f"d{cm:02d}cm"
 
 
-def format_density_for_filename(twig_density: Optional[float]) -> str:
+def format_density_for_filename(twig_density: float | None) -> str:
     """Map twig_density float to dataset density label.
 
     Args:

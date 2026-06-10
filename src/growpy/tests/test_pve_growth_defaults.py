@@ -1,6 +1,5 @@
 """Tests for growpy.io.pve_growth_defaults module."""
 
-import pytest
 
 from growpy.io.unreal.pve_growth_defaults import (
     get_default_growth_params,

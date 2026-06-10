@@ -24,7 +24,6 @@ import time
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass
@@ -36,7 +35,7 @@ class TimingEntry:
     call_count: int = 0
     min_time: float = float("inf")
     max_time: float = 0.0
-    parent: Optional[str] = None
+    parent: str | None = None
 
     def add_timing(self, duration: float) -> None:
         self.total_time += duration
@@ -64,7 +63,7 @@ class ProfileTimer:
     _active_stack: list = field(default_factory=list)
 
     @contextmanager
-    def track(self, name: str, parent: Optional[str] = None):
+    def track(self, name: str, parent: str | None = None):
         """
         Context manager to track execution time of a code block.
 
@@ -94,7 +93,7 @@ class ProfileTimer:
 
             self.entries[name].add_timing(duration)
 
-    def start(self, name: str, parent: Optional[str] = None) -> None:
+    def start(self, name: str, parent: str | None = None) -> None:
         """Start timing a named block (for non-context-manager usage)."""
         if not self.enabled:
             return
@@ -275,7 +274,7 @@ class ProfileTimer:
 
 
 # Global timer instance for convenience
-_global_timer: Optional[ProfileTimer] = None
+_global_timer: ProfileTimer | None = None
 
 
 def get_timer() -> ProfileTimer:
