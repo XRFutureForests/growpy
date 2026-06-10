@@ -112,7 +112,7 @@ def _parse_steps(steps_str: str) -> list:
         raise argparse.ArgumentTypeError(
             f"Invalid --steps value: {steps_str!r}. "
             "Use integers 1-4 separated by commas, or 'all'."
-        )
+        ) from None
     invalid = [s for s in steps if s not in (1, 2, 3, 4)]
     if invalid:
         raise argparse.ArgumentTypeError(

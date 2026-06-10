@@ -1786,7 +1786,7 @@ def get_twig_usd_map_for_species(
 def bundle_twigs_for_species(
     species_name: str,
     output_dir: Path,
-    formats: list[str] = ["usda"],
+    formats: list[str] | None = None,
     config: Any | None = None,
 ) -> dict[str, list[Path]]:
     """Bundle twig files for a species to output directory.
@@ -1806,6 +1806,9 @@ def bundle_twigs_for_species(
     Returns:
         Dict with 'twig_files' and 'manifest' paths
     """
+    if formats is None:
+        formats = ["usda"]
+
     if config is None:
         from growpy import get_config
 

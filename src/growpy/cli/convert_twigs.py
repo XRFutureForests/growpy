@@ -139,7 +139,7 @@ def find_textures_for_material(
 
 def process_twig_directory(
     twig_dir: Path,
-    formats: list[str] = ["usda"],
+    formats: list[str] | None = None,
     minimal_export: bool = True,
     twig_filter: list[str] | None = None,
     include_skeleton: bool = True,
@@ -171,6 +171,9 @@ def process_twig_directory(
         interior_edge_mm: Target interior edge length in millimeters (default: 0).
             When > 0, derives decimation ratio automatically.
     """
+
+    if formats is None:
+        formats = ["usda"]
 
     blend_files = list(twig_dir.rglob("*.blend"))
 

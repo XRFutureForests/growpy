@@ -390,7 +390,7 @@ def parse_override_arg(arg: str) -> tuple[str, float]:
     try:
         value = float(value_str)
     except ValueError:
-        raise ValueError(f"Invalid value '{value_str}' for parameter '{param}'")
+        raise ValueError(f"Invalid value '{value_str}' for parameter '{param}'") from None
 
     return param.strip(), value
 
@@ -423,7 +423,7 @@ def parse_curve_arg(arg: str) -> tuple[str, float, float, str]:
         start = float(parts[0])
         end = float(parts[1])
     except ValueError:
-        raise ValueError(f"Invalid numeric values in curve: '{arg}'")
+        raise ValueError(f"Invalid numeric values in curve: '{arg}'") from None
 
     easing = parts[2] if len(parts) > 2 else "linear"
     valid_easings = ["linear", "ease_in", "ease_out", "ease_in_out"]
