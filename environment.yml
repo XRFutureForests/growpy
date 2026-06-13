@@ -5,7 +5,7 @@ channels:
 dependencies:
   - python=3.13
   - pip
-  - numpy>=1.24
+  - numpy>=1.24,<2.3 # cap: numpy 2.4.x crashes matplotlib's compiled transform/Agg path (native fault during preview/icon rendering)
   - pandas>=2.0
   - matplotlib
   - scikit-learn
