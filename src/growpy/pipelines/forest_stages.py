@@ -52,6 +52,34 @@ SMOOTH_ITERATIONS = 10
 logger = logging.getLogger(__name__)
 
 
+def _load_species_max_heights(species_names: list[str]) -> dict[str, float]:
+    """Read each species' calibrated max_height (m) from its growth model metadata.
+
+    The per-species max is written by step 3 calibration to
+    ``data/assets/growth_models/<species>/metadata.json``. It bounds milestone
+    capture in the simulation so trees never exceed the height their growth
+    curve predicts. Species without readable metadata are omitted (no ceiling).
+    """
+    from growpy.config.paths import get_assets_directory
+    from growpy.utils.naming import standardize_species_name
+
+    models_dir = get_assets_directory() / "growth_models"
+    result: dict[str, float] = {}
+    for species in species_names:
+        meta_file = models_dir / standardize_species_name(species) / "metadata.json"
+        if not meta_file.exists():
+            continue
+        try:
+            with open(meta_file, encoding="utf-8") as f:
+                meta = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            continue
+        mh = meta.get("max_height")
+        if mh and float(mh) > 0:
+            result[species] = float(mh)
+    return result
+
+
 def _write_species_info(species_dir: Path, species_name: str, species_clean: str) -> None:
     """Write species_info.json with GBIF taxon key and taxonomy to species output dir."""
     try:
@@ -251,6 +279,20 @@ def generate_forest_stages(
     for grove_obj, sp_name, _tc, _fids in forest:
         species_grove_map[sp_name] = grove_obj
 
+    # Per-species height ceiling from each species' calibrated growth model.
+    # Caps milestone capture so trees never exceed the height their growth curve
+    # predicts (and so the simulation stops once a species reaches its own max).
+    species_max_height = _load_species_max_heights(
+        list(forest_data["species"].unique())
+    )
+    if species_max_height:
+        logger.info(
+            "  Per-species height ceilings: %s",
+            ", ".join(
+                f"{sp} {h:.1f}m" for sp, h in sorted(species_max_height.items())
+            ),
+        )
+
     # Run simulation with height-threshold-based snapshots
     with timer.track("simulate_with_snapshots"):
         snapshots, milestone_map = simulate_forest_growth_with_snapshots(
@@ -263,6 +305,7 @@ def generate_forest_stages(
             quality_params=quality_params,
             height_interval=effective_interval,
             max_height=effective_max_height,
+            species_max_height=species_max_height,
             competition_distance_increase=config.forest_competition_distance_increase,
             forest_data=forest_data,
         )

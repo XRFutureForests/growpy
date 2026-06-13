@@ -229,6 +229,7 @@ def simulate_forest_growth_with_snapshots(
     species_snapshot_cycles: dict[str, dict[int, float]] | None = None,
     height_interval: float = 0.0,
     max_height: float = 0.0,
+    species_max_height: dict[str, float] | None = None,
     competition_distance_increase: float = 0.0,
     forest_data: pd.DataFrame | None = None,
 ) -> tuple[SnapshotData, dict[int, dict[str, dict[int, float]]]]:
@@ -252,7 +253,12 @@ def simulate_forest_growth_with_snapshots(
         quality_params: Quality parameters for model building (vertices, etc.)
         species_snapshot_cycles: Optional per-species cycle filter (legacy, ignored in height mode)
         height_interval: Height interval in meters for threshold-based snapshots (0 = legacy mode)
-        max_height: Target height ceiling in meters for early stopping (0 = run until max_cycles)
+        max_height: Global height ceiling in meters for early stopping (0 = no global cap).
+            Acts as an upper bound across all species (e.g. the --max-height test flag).
+        species_max_height: Optional per-species height ceiling in meters (from each
+            species' calibrated growth model). When set, each species stops capturing
+            milestones above its own max and is considered complete at that height.
+            Combined with max_height by taking the lower of the two when both apply.
 
     Returns:
         Tuple of:
@@ -319,6 +325,7 @@ def simulate_forest_growth_with_snapshots(
             forest, groves, max_cycles, height_interval,
             species_overrides, preset_overrides, quality_params,
             max_height=max_height,
+            species_max_height=species_max_height,
             competition_distance_increase=competition_distance_increase,
             forest_data=forest_data,
         )
@@ -444,6 +451,7 @@ def _simulate_height_threshold_mode(
     preset_overrides: PresetOverrides | None,
     quality_params: dict,
     max_height: float = 0.0,
+    species_max_height: dict[str, float] | None = None,
     plateau_cycles: int = 10,
     competition_distance_increase: float = 0.0,
     forest_data: pd.DataFrame | None = None,
@@ -483,19 +491,36 @@ def _simulate_height_threshold_mode(
     # Key: (species_name, global_tree_idx)
     captured: dict[tuple[str, int], set] = {}
 
-    # Build set of target milestones per tree (for early-stop check)
+    # Per-species height ceiling: the species' own calibrated max, bounded by the
+    # global max_height cap (--max-height) when one is set.  0 = no ceiling.
+    def _ceiling_for(species_name: str) -> float:
+        sc = 0.0
+        if species_max_height:
+            sc = float(species_max_height.get(species_name, 0.0) or 0.0)
+        if max_height > 0:
+            return min(sc, max_height) if sc > 0 else max_height
+        return sc
+
+    species_ceiling: dict[str, float] = {}
+    for _g, species_name, _tc, _f in forest:
+        if species_name not in species_ceiling:
+            species_ceiling[species_name] = _ceiling_for(species_name)
+
+    # Build set of target milestones per tree (for early-stop check), bounded by
+    # each species' own ceiling.  Species without a ceiling run to plateau/cap.
     target_milestones: dict[tuple[str, int], set] = {}
-    if max_height > 0:
-        for grove_idx, (_grove, species_name, tree_count, _fids) in enumerate(forest):
-            offset = grove_offsets[grove_idx]
-            for tree_idx in range(tree_count):
-                key = (species_name, offset + tree_idx)
-                milestones = set()
-                m = height_interval
-                while m <= max_height:
-                    milestones.add(m)
-                    m += height_interval
-                target_milestones[key] = milestones
+    for grove_idx, (_grove, species_name, tree_count, _fids) in enumerate(forest):
+        ceiling = species_ceiling.get(species_name, 0.0)
+        if ceiling <= 0:
+            continue
+        offset = grove_offsets[grove_idx]
+        milestones = set()
+        m = height_interval
+        while m <= ceiling:
+            milestones.add(m)
+            m += height_interval
+        for tree_idx in range(tree_count):
+            target_milestones[(species_name, offset + tree_idx)] = milestones
 
     # Count total milestone captures for progress reporting
     total_captures = 0
@@ -594,8 +619,12 @@ def _simulate_height_threshold_mode(
                 curr_milestone = math.floor(height / height_interval) * height_interval
 
                 if curr_milestone >= height_interval:
+                    ceiling = species_ceiling.get(species_name, 0.0)
                     m = height_interval
                     while m <= curr_milestone:
+                        # Never capture milestones above the species ceiling
+                        if ceiling > 0 and m > ceiling:
+                            break
                         if m not in captured.get(key, set()):
                             new_crossings.setdefault(species_name, {})[global_idx] = m
                             break  # One milestone per tree per cycle
@@ -745,8 +774,8 @@ def _simulate_height_threshold_mode(
             for key in target_milestones
         ):
             logger.info(
-                "All target milestones up to %.0fm captured at cycle %d.",
-                max_height, cycle,
+                "All per-species target milestones captured at cycle %d.",
+                cycle,
             )
             break
 
