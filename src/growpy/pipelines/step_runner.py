@@ -21,17 +21,33 @@ from growpy.pipelines.dataset_job_planner import find_species_csv
 logger = logging.getLogger(__name__)
 
 
-def _resolve_conda() -> str:
+def _resolve_conda() -> str | None:
     """Resolve the conda executable path without relying on a shell.
 
     Prefers CONDA_EXE (a real executable) so callers can avoid shell=True, which
     would otherwise interpret shell metacharacters in interpolated CSV/species
-    paths passed on the command line.
+    paths passed on the command line. Returns None when conda cannot be found.
     """
     import os
     import shutil
 
-    return os.environ.get("CONDA_EXE") or shutil.which("conda") or "conda"
+    return os.environ.get("CONDA_EXE") or shutil.which("conda")
+
+
+def _wrap_in_env(cmd: list) -> list:
+    """Wrap a command to execute inside the growpy conda environment.
+
+    When conda is resolvable, prefix with ``conda run -n growpy`` so the
+    subprocess uses the growpy env regardless of the parent's environment.
+    When conda is not on PATH (e.g. the pipeline was launched directly with the
+    growpy env's interpreter), run the command as-is: cmd[0] is already
+    ``sys.executable`` from the active environment.
+    """
+    conda = _resolve_conda()
+    if conda:
+        return [conda, "run", "--no-capture-output", "-n", "growpy"] + cmd
+    return cmd
+
 
 STEP_SCRIPTS: dict[int, Path] = {
     1: Path("src/growpy/cli/prepare_assets.py"),
