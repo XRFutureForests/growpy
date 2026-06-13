@@ -83,15 +83,15 @@ def run_step123(
 
     logger.info("Step %d: %s", step, script.name)
 
-    # Run in growpy conda environment to ensure all dependencies are available
+    # Run in the growpy env (via conda run when available, else directly).
     # --no-capture-output lets subprocess stdout/stderr stream through in real-time
-    conda_cmd = [_resolve_conda(), "run", "--no-capture-output", "-n", "growpy"] + cmd
+    run_cmd = _wrap_in_env(cmd)
 
     # Get project root for working directory
     project_root = PathlibPath(__file__).parent.parent.parent.parent
 
-    # conda_cmd[0] is an absolute executable path, so no shell is needed.
-    result = subprocess.run(conda_cmd, check=False, cwd=str(project_root))
+    # run_cmd[0] is an absolute executable path, so no shell is needed.
+    result = subprocess.run(run_cmd, check=False, cwd=str(project_root))
     if result.returncode != 0:
         logger.error("Step %d FAILED (exit code %d)", step, result.returncode)
         return False
@@ -147,15 +147,15 @@ def run_species_step4(
 
     logger.info("Step 4 [%s]: running", species_name)
 
-    # Run in growpy conda environment to ensure all dependencies are available
+    # Run in the growpy env (via conda run when available, else directly).
     # --no-capture-output lets subprocess stdout/stderr stream through in real-time
-    conda_cmd = [_resolve_conda(), "run", "--no-capture-output", "-n", "growpy"] + cmd
+    run_cmd = _wrap_in_env(cmd)
 
     # Get project root for working directory
     project_root = PathlibPath(__file__).parent.parent.parent.parent
 
-    # conda_cmd[0] is an absolute executable path, so no shell is needed.
-    result = subprocess.run(conda_cmd, check=False, cwd=str(project_root))
+    # run_cmd[0] is an absolute executable path, so no shell is needed.
+    result = subprocess.run(run_cmd, check=False, cwd=str(project_root))
     if result.returncode != 0:
         logger.error(
             "Step 4 [%s]: FAILED (exit code %d)", species_name, result.returncode

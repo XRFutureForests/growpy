@@ -29,6 +29,8 @@ conda env create -f environment.yml
 conda activate growpy
 ```
 
+**Important:** No separate Blender installation is required. The `bpy` module (Blender's Python API) is installed via conda and includes all dependencies including USD tools (`pxr`). All USD export functionality works out of the box through `bpy`.
+
 ### 2. Install the package
 
 ```bash

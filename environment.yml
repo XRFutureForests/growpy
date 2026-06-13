@@ -3,7 +3,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.12
+  - python=3.13
   - pip
   - numpy>=1.24
   - pandas>=2.0
@@ -17,10 +17,10 @@ dependencies:
   - scipy>=1.10
   - pip:
       - openyieldtables # For real-world yield data calibration
-      - bpy # Blender Python API with bundled USD, MaterialX, OpenImageIO, etc.
+      - bpy==5.1.2 # Blender Python API with bundled USD, MaterialX, OpenImageIO, etc. (pinned: latest with win_amd64 wheel for cp313)
       - tabula-py # PDF yield table extraction (requires Java runtime)
       - python-dotenv>=1.0.0
-      - pylometree @ git+https://github.com/geosense-ufr/pylometree.git
+      - pylometree @ git+https://github.com/XRFutureForests/pylometree.git
 
 variables:
   PYTHONPATH: ./src:./src/the_grove_23/modules

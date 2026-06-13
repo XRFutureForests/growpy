@@ -76,7 +76,3 @@ class TestBuildConsolidationScript:
     def test_instances_subpath(self):
         script = _build_consolidation_script("/Game/Trees")
         assert 'INSTANCES_PATH = IMPORT_PATH + "/Instances"' in script
-
-    def test_instances_subpath(self):
-        script = _build_consolidation_script("/Game/Trees")
-        assert 'INSTANCES_PATH = IMPORT_PATH + "/Instances"' in script
