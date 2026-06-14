@@ -1,6 +1,6 @@
 fid,species,x,y,z,height,twig_density,individual_type
 1,Silver birch,100.0,0.0,0.0,25,1.0,open_grown
 2,Silver birch,0.0,0.0,0.0,25,1.0,competition
-101,Silver birch,2.25,0.0,0.0,25,1.0,competition
-102,Silver birch,-1.125,1.949,0.0,25,1.0,competition
-103,Silver birch,-1.125,-1.949,0.0,25,1.0,competition
+101,Silver birch,3.5,0.0,0.0,25,1.0,competition
+102,Silver birch,-1.75,3.031,0.0,25,1.0,competition
+103,Silver birch,-1.75,-3.031,0.0,25,1.0,competition

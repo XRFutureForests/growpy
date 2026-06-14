@@ -1,6 +1,6 @@
 fid,species,x,y,z,height,twig_density,individual_type
 1,Small-leaved linden,100.0,0.0,0.0,25,1.0,open_grown
 2,Small-leaved linden,0.0,0.0,0.0,25,1.0,competition
-101,Small-leaved linden,2.25,0.0,0.0,25,1.0,competition
-102,Small-leaved linden,-1.125,1.949,0.0,25,1.0,competition
-103,Small-leaved linden,-1.125,-1.949,0.0,25,1.0,competition
+101,Small-leaved linden,3.5,0.0,0.0,25,1.0,competition
+102,Small-leaved linden,-1.75,3.031,0.0,25,1.0,competition
+103,Small-leaved linden,-1.75,-3.031,0.0,25,1.0,competition
