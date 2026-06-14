@@ -106,6 +106,7 @@ def densify_mesh_to_target_edge(
     Returns:
         Final average edge length in mm
     """
+    MAX_DENSIFY_FACES = 400_000  # cap face growth from use_grid_fill subdivision ((cuts+1)^2 per iteration)
     if target_edge_mm is None or target_edge_mm <= 0:
         return 0.0
 
@@ -145,13 +146,25 @@ def densify_mesh_to_target_edge(
             bm.from_mesh(obj.data)
 
             edges = list(bm.edges)
+            target_face_count = len(bm.faces)
             if material_indices:
                 face_edges = set()
+                leaf_face_count = 0
                 for f in bm.faces:
                     if f.material_index in material_indices:
+                        leaf_face_count += 1
                         for e in f.edges:
                             face_edges.add(e)
                 edges = list(face_edges)
+                target_face_count = leaf_face_count
+
+            # use_grid_fill multiplies faces by (cuts+1)^2 per iteration; cap
+            # growth so meshes far above the target edge length don't explode
+            while cuts > 0 and target_face_count * (cuts + 1) ** 2 > MAX_DENSIFY_FACES:
+                cuts -= 1
+            if cuts == 0:
+                bm.free()
+                break
 
             if edges:
                 bmesh.ops.subdivide_edges(
