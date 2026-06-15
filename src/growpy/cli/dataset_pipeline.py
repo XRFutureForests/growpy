@@ -335,6 +335,11 @@ def main():
             # Pass --species to step 3 so calibration is limited to one species
             if step == 3 and args.species:
                 extra.extend(["--species", args.species])
+            # Pass --max-height to step 3 so growth simulation stops once
+            # species reach the target height instead of always running
+            # the full cycle count
+            if step == 3 and args.max_height > 0:
+                extra.extend(["--max-height", str(args.max_height)])
             extra = extra or None
             ok = run_step123(
                 step,

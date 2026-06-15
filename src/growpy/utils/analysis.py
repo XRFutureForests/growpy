@@ -342,16 +342,21 @@ class SpeciesGrowthAnalyzer:
         height_growth_threshold: float = 0.01,
         max_cycles_without_growth: int = 10,
         timeout_seconds: int = 60,
+        target_height: float = 0.0,
     ):
         """Initialize the growth analyzer.
 
         Args:
             assets_dir: Directory containing prepared GrowPy assets
-            height_model_flushes: Number of growth cycles for height curve generation
+            height_model_flushes: Maximum number of growth cycles for height curve
+                generation (safety cap when target_height is set)
             num_seeds: Number of different random seeds to average for robust curves
             height_growth_threshold: Minimum height increase to consider as growth
             max_cycles_without_growth: Number of cycles without growth before stopping
             timeout_seconds: Maximum time in seconds for growth simulation per seed
+            target_height: If > 0, stop simulating once max_height_achieved reaches
+                this value (meters), instead of always running height_model_flushes
+                cycles. 0 disables early stopping (default, original behavior).
         """
         self.assets_dir = Path(assets_dir)
         self.presets_dir = self.assets_dir / "presets"
@@ -372,6 +377,7 @@ class SpeciesGrowthAnalyzer:
         self.height_growth_threshold = height_growth_threshold
         self.max_cycles_without_growth = max_cycles_without_growth
         self.timeout_seconds = timeout_seconds
+        self.target_height = target_height
 
         # Results storage
         self.height_curves = {}
@@ -694,6 +700,17 @@ class SpeciesGrowthAnalyzer:
                     logger.info(
                         f"Species {species}, seed {seed}: Height growth stopped after "
                         f"{cycle + 1} cycles (max height: {max_height_achieved:.3f})"
+                    )
+                    break
+
+                if (
+                    self.target_height > 0
+                    and max_height_achieved >= self.target_height
+                ):
+                    logger.info(
+                        f"Species {species}, seed {seed}: Reached target height "
+                        f"{self.target_height:.1f}m after {cycle + 1} cycles "
+                        f"(max height: {max_height_achieved:.3f})"
                     )
                     break
 
