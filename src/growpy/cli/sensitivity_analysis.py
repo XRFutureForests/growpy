@@ -11,22 +11,35 @@ Usage:
 """
 
 import argparse
+import json
 import logging
 import sys
 from pathlib import Path
 
 from growpy.config.paths import get_assets_directory, get_project_root
 from growpy.pipelines.sensitivity_pipeline import run_sensitivity_sweep
-from growpy.tools.param_catalog import DEFAULT_PRESET_DIRS
+from growpy.tools.param_catalog import (
+    DEFAULT_PRESET_DIRS,
+    build_average_preset,
+    find_central_preset,
+)
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_BASE_PRESET = "Fagaceae - Beech"
+_DEFAULT_BASE_PRESET = "average"
 _DEFAULT_OUTPUT_DIR = Path("data/output/sensitivity")
+_SYNTHETIC_PRESETS = {"average": "mean", "mean": "mean", "median": "median"}
 
 
-def _resolve_base_preset(stem: str) -> Path:
-    """Find the base preset file by stem name across known preset dirs."""
+def _resolve_base_preset(stem: str, preset_dirs: list[Path]) -> Path:
+    """Find the base preset file by stem name across known preset dirs.
+
+    Special value "auto" selects the preset closest to the cross-preset mean
+    (the most representative / central config).
+    """
+    if stem == "auto":
+        return find_central_preset(preset_dirs)
+
     search_dirs = [
         get_project_root() / "src" / "the_grove_23" / "presets",
         get_assets_directory() / "presets",
@@ -81,7 +94,10 @@ Output files in --output-dir:
         "--base-preset",
         type=str,
         default=_DEFAULT_BASE_PRESET,
-        help=f"Base preset stem to build combos on (default: '{_DEFAULT_BASE_PRESET}')",
+        help="Base preset to build combos on. Special values: "
+        "'average'/'mean' (synthesize an artificial preset at the per-param mean), "
+        "'median' (same at the median), 'auto' (closest real species to the mean). "
+        f"Otherwise a preset stem (default: '{_DEFAULT_BASE_PRESET}')",
     )
     parser.add_argument(
         "--n-params",
@@ -135,13 +151,26 @@ Output files in --output-dir:
         print("ERROR: --n-params must be at least 1")
         return 1
 
+    preset_dirs = args.preset_dirs or DEFAULT_PRESET_DIRS
+
+    synthetic = _SYNTHETIC_PRESETS.get(args.base_preset)
     try:
-        base_preset_path = _resolve_base_preset(args.base_preset)
-    except FileNotFoundError as e:
+        if synthetic is not None:
+            args.output_dir.mkdir(parents=True, exist_ok=True)
+            avg_preset = build_average_preset(preset_dirs, statistic=synthetic)
+            base_preset_path = args.output_dir / "_average_base.seed.json"
+            base_preset_path.write_text(json.dumps(avg_preset, indent=2), encoding="utf-8")
+            print(
+                f"Synthesized artificial base preset ({synthetic}) "
+                f"-> {base_preset_path.name}"
+            )
+        else:
+            base_preset_path = _resolve_base_preset(args.base_preset, preset_dirs)
+            if args.base_preset == "auto":
+                print(f"Auto-selected base preset: {base_preset_path.stem}")
+    except (FileNotFoundError, RuntimeError, ValueError) as e:
         print(f"ERROR: {e}")
         return 1
-
-    preset_dirs = args.preset_dirs or DEFAULT_PRESET_DIRS
 
     total_combos = 3 ** args.n_params
     total_sims = total_combos * len(cycle_counts)

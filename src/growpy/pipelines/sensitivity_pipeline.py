@@ -63,6 +63,22 @@ def load_base_preset(preset_path: Path) -> dict:
     return data
 
 
+def _merge_combo(base_preset: dict, combo_params: dict) -> dict:
+    """Merge swept overrides onto the base, coercing to each base param's type.
+
+    Swept levels are floats (p10/p50/p90), but integer-typed (usize) Grove fields
+    reject floats. Cast each override to int when the base value is an int.
+    """
+    merged = dict(base_preset)
+    for key, val in combo_params.items():
+        base_val = base_preset.get(key)
+        if isinstance(base_val, int) and not isinstance(base_val, bool):
+            merged[key] = int(round(val))
+        else:
+            merged[key] = val
+    return merged
+
+
 def run_grove_simulation(
     preset_data: dict,
     cycles: int,
@@ -287,8 +303,8 @@ def run_sensitivity_sweep(
     print()
 
     if dry_run:
-        print("Top parameters by range:")
-        sub = catalog.head(n_params)[["parameter", "range", "p10", "p50", "p90"]]
+        print("Top parameters by interpercentile spread (p90-p10):")
+        sub = catalog.head(n_params)[["parameter", "ip_range", "range", "p10", "p50", "p90"]]
         print(sub.to_string(index=False))
         print()
         for param, levels in param_levels.items():
@@ -309,7 +325,7 @@ def run_sensitivity_sweep(
 
     for combo_id, combo_params, cycles in run_iter:
         prefix = f"{combo_id:04d}_c{cycles:02d}"
-        preset_data = {**base_preset, **combo_params}
+        preset_data = _merge_combo(base_preset, combo_params)
 
         try:
             skeleton, tree = run_grove_simulation(preset_data, cycles, seed)
