@@ -310,9 +310,7 @@ def run_sensitivity_sweep(
         print(sub.to_string(index=False))
         print()
         for param, levels in param_levels.items():
-            print(
-                f"  {param:<35} lo={levels['lo']:.4g}  hi={levels['hi']:.4g}"
-            )
+            print(f"  {param:<35} lo={levels['lo']:.4g}  hi={levels['hi']:.4g}")
         return catalog_path
 
     base_preset = load_base_preset(base_preset_path)
@@ -332,7 +330,9 @@ def run_sensitivity_sweep(
         try:
             skeleton, tree = run_grove_simulation(preset_data, cycles, seed)
         except Exception as e:
-            logger.warning("Simulation failed combo=%d cycles=%d: %s", combo_id, cycles, e)
+            logger.warning(
+                "Simulation failed combo=%d cycles=%d: %s", combo_id, cycles, e
+            )
             skeleton, tree = None, None
 
         metrics = measure_metrics(skeleton, tree)
@@ -341,8 +341,12 @@ def run_sensitivity_sweep(
             generate_icon_image(output_dir, prefix, skeleton, timer, view=view)
 
         generate_sensitivity_preview(
-            output_dir, prefix, skeleton, timer,
-            metrics=metrics, param_labels=combo_params,
+            output_dir,
+            prefix,
+            skeleton,
+            timer,
+            metrics=metrics,
+            param_labels=combo_params,
         )
 
         row: dict = {
@@ -409,7 +413,9 @@ def _write_overview_md(
 
     lines.append("## Per-Parameter Icon Grids")
     lines.append("")
-    lines.append("Rows: lo / hi.  Columns: cycle counts.  Other params held at lo (default).")
+    lines.append(
+        "Rows: lo / hi.  Columns: cycle counts.  Other params held at lo (default)."
+    )
     lines.append("")
 
     for param_name in selected_params:

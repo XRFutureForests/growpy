@@ -54,9 +54,7 @@ def _resolve_base_preset(stem: str, preset_dirs: list[Path]) -> Path:
         if d.exists():
             candidates.extend(d.glob("*.seed.json"))
     names = sorted(c.stem for c in candidates)
-    raise FileNotFoundError(
-        f"Base preset not found: '{stem}'\nAvailable: {names}"
-    )
+    raise FileNotFoundError(f"Base preset not found: '{stem}'\nAvailable: {names}")
 
 
 def main() -> int:
@@ -129,7 +127,8 @@ Output files in --output-dir:
         help="Print sweep plan (combo count, param table) without running simulations",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Enable debug logging",
     )
@@ -159,7 +158,9 @@ Output files in --output-dir:
             args.output_dir.mkdir(parents=True, exist_ok=True)
             avg_preset = build_average_preset(preset_dirs, statistic=synthetic)
             base_preset_path = args.output_dir / "_average_base.seed.json"
-            base_preset_path.write_text(json.dumps(avg_preset, indent=2), encoding="utf-8")
+            base_preset_path.write_text(
+                json.dumps(avg_preset, indent=2), encoding="utf-8"
+            )
             print(
                 f"Synthesized artificial base preset ({synthetic}) "
                 f"-> {base_preset_path.name}"
@@ -172,11 +173,13 @@ Output files in --output-dir:
         print(f"ERROR: {e}")
         return 1
 
-    total_combos = 3 ** args.n_params
+    total_combos = 3**args.n_params
     total_sims = total_combos * len(cycle_counts)
     if not args.dry_run:
         print(f"Starting sensitivity sweep: {total_sims} simulations")
-        print("  (This may take a long time for large sweeps. Use --dry-run to preview.)")
+        print(
+            "  (This may take a long time for large sweeps. Use --dry-run to preview.)"
+        )
         print()
 
     run_sensitivity_sweep(
