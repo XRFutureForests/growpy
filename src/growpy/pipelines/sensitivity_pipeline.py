@@ -6,7 +6,7 @@ counts, and produces icons + aggregate CSV/MD reports.
 
 Architecture:
     1. run_param_catalog()       → param_catalog.csv  (from tools/param_catalog)
-    2. build_sweep_design()      → combo list (lo/mid/hi × top-N params)
+    2. build_sweep_design()      → combo list (lo/hi × top-N params, i.e. 2^N)
     3. run_grove_simulation()    → per-combo grove + skeleton + tree objects
     4. measure_metrics()         → height, DBH, crown stats, branch counts
     5. generate images           → 3 icons + 2×2 preview per combo×cycles
@@ -223,7 +223,10 @@ def build_sweep_design(
     catalog: pd.DataFrame,
     n_params: int,
 ) -> tuple[list[str], list[dict], dict]:
-    """Select top-N parameters and generate all lo/mid/hi combinations.
+    """Select top-N parameters and generate all lo/hi combinations.
+
+    Uses min/max values from the catalog (skipping mean/median to reduce
+    combinatorial explosion: 2^N vs 3^N combos).
 
     Args:
         catalog: Parameter catalog DataFrame sorted by range descending.
@@ -233,7 +236,7 @@ def build_sweep_design(
         (selected_params, combos, param_levels)
         - selected_params: list of parameter names
         - combos: list of dicts mapping param_name → float value
-        - param_levels: dict mapping param_name → {"lo": float, "mid": float, "hi": float}
+        - param_levels: dict mapping param_name → {"lo": float, "hi": float}
     """
     top = catalog.head(n_params)
     selected_params = top["parameter"].tolist()
@@ -241,9 +244,8 @@ def build_sweep_design(
     param_levels: dict[str, dict[str, float]] = {}
     for _, row in top.iterrows():
         param_levels[row["parameter"]] = {
-            "lo": float(row["p10"]),
-            "mid": float(row["p50"]),
-            "hi": float(row["p90"]),
+            "lo": float(row["min"]),
+            "hi": float(row["max"]),
         }
 
     level_lists = [
@@ -297,19 +299,19 @@ def run_sensitivity_sweep(
     print("Sensitivity sweep plan:")
     print(f"  Base preset: {base_preset_path.name}")
     print(f"  Parameters ({n_params}): {', '.join(selected_params)}")
-    print(f"  Combos: {len(combos)}  (3^{n_params} = {3**n_params})")
+    print(f"  Combos: {len(combos)}  (2^{n_params} = {2**n_params})")
     print(f"  Cycle counts: {cycle_counts}")
     print(f"  Total simulations: {total}")
     print()
 
     if dry_run:
-        print("Top parameters by interpercentile spread (p90-p10):")
-        sub = catalog.head(n_params)[["parameter", "ip_range", "range", "p10", "p50", "p90"]]
+        print("Top parameters by range (min/max):")
+        sub = catalog.head(n_params)[["parameter", "range", "min", "max"]]
         print(sub.to_string(index=False))
         print()
         for param, levels in param_levels.items():
             print(
-                f"  {param:<35} lo={levels['lo']:.4g}  mid={levels['mid']:.4g}  hi={levels['hi']:.4g}"
+                f"  {param:<35} lo={levels['lo']:.4g}  hi={levels['hi']:.4g}"
             )
         return catalog_path
 
@@ -390,25 +392,24 @@ def _write_overview_md(
     # Param catalog table
     lines.append("## Parameter Catalog (top-N by range)")
     lines.append("")
-    lines.append("| Parameter | Range | lo (p10) | mid (p50) | hi (p90) |")
-    lines.append("|---|---|---|---|---|")
+    lines.append("| Parameter | Range | lo (min) | hi (max) |")
+    lines.append("|---|---|---|---|")
     for _, row in catalog_top.iterrows():
         levels = param_levels.get(row["parameter"], {})
         lines.append(
             f"| `{row['parameter']}` "
             f"| {row['range']:.4g} "
             f"| {levels.get('lo', 0):.4g} "
-            f"| {levels.get('mid', 0):.4g} "
             f"| {levels.get('hi', 0):.4g} |"
         )
     lines.append("")
 
-    # Per-parameter icon grids (hold all other params at mid)
-    mid_vals = {p: param_levels[p]["mid"] for p in selected_params}
+    # Per-parameter icon grids (hold all other params at lo)
+    lo_vals = {p: param_levels[p]["lo"] for p in selected_params}
 
     lines.append("## Per-Parameter Icon Grids")
     lines.append("")
-    lines.append("Rows: lo / mid / hi.  Columns: cycle counts.  Other params held at mid.")
+    lines.append("Rows: lo / hi.  Columns: cycle counts.  Other params held at lo (default).")
     lines.append("")
 
     for param_name in selected_params:
@@ -420,7 +421,7 @@ def _write_overview_md(
         lines.append(header)
         lines.append(separator)
 
-        for level_name in ("lo", "mid", "hi"):
+        for level_name in ("lo", "hi"):
             level_val = param_levels[param_name][level_name]
             row_cells = [f"**{level_name}** ({level_val:.4g})"]
 
@@ -428,7 +429,7 @@ def _write_overview_md(
                 mask = df["cycles"] == cycles
                 for other_p in selected_params:
                     if other_p != param_name:
-                        mask = mask & (df[other_p] == mid_vals[other_p])
+                        mask = mask & (df[other_p] == lo_vals[other_p])
                 mask = mask & (df[param_name] == level_val)
                 matching = df[mask]
 

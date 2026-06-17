@@ -71,7 +71,7 @@ Examples:
   # Sweep top 4 params, two cycle counts, custom base preset:
   growpy-sensitivity-analysis --n-params 4 --cycles 10,20 --base-preset "Coniferae - Norway Spruce"
 
-  # Full default sweep (3^6 = 729 combos × 3 cycle counts = 2187 sims):
+  # Full default sweep (2^6 = 64 combos × 3 cycle counts = 192 sims):
   growpy-sensitivity-analysis --n-params 6 --cycles 10,20,30
 
 Output files in --output-dir:

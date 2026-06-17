@@ -3,21 +3,17 @@
 Produces:
 - dataset_overview.md: Markdown with icon table and key parameters
 - dataset_overview.csv: Full pandas DataFrame for ML consumption
-- dataset_overview_icons.png: Visual grid of all icon previews
 """
+
 
 import json
 import logging
 import re
 from pathlib import Path
 
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib.image import imread
+
 
 logger = logging.getLogger(__name__)
 
@@ -254,83 +250,13 @@ def build_dataset_dataframe(
     return pd.DataFrame(rows)
 
 
-def generate_icon_grid(
-    df: pd.DataFrame, forest_dir: Path, height_interval: float = 5.0
-) -> Path:
-    """Export a PNG grid of all icon previews."""
-    icon_cols = [
-        c for c in df.columns if c.startswith("icon_h") and not c.endswith("_abs")
-    ]
-    abs_cols = [c + "_abs" for c in icon_cols]
-
-    all_species = df["species"].unique()
-    contexts = df["context"].unique()
-    n_rows = len(all_species) * len(contexts)
-    n_cols = len(icon_cols)
-
-    if n_rows == 0 or n_cols == 0:
-        logger.warning("No data for icon grid")
-        return forest_dir / "dataset_overview_icons.png"
-
-    cell_size = 2.0
-    fig, axes = plt.subplots(
-        n_rows,
-        n_cols,
-        figsize=(n_cols * cell_size, n_rows * cell_size),
-        squeeze=False,
-    )
-
-    for ax_row in axes:
-        for ax in ax_row:
-            ax.axis("off")
-
-    row_idx = 0
-    for species in all_species:
-        for context in contexts:
-            mask = (df["species"] == species) & (df["context"] == context)
-            sub = df[mask]
-            if sub.empty:
-                row_idx += 1
-                continue
-            record = sub.iloc[0]
-
-            for col_idx, (icon_col, abs_col) in enumerate(zip(icon_cols, abs_cols)):
-                abs_path = record.get(abs_col, "")
-                if abs_path and Path(abs_path).exists():
-                    try:
-                        img = imread(abs_path)
-                        axes[row_idx][col_idx].imshow(img)
-                    except Exception:
-                        pass
-
-                if col_idx == 0:
-                    ctx_label = "C" if context == "competition" else "O"
-                    label = f"{species.replace('_', ' ').title()} ({ctx_label})"
-                    axes[row_idx][col_idx].set_ylabel(
-                        label, fontsize=7, rotation=0, labelpad=120, va="center"
-                    )
-
-            row_idx += 1
-
-    for col_idx, icon_col in enumerate(icon_cols):
-        label = icon_col.replace("icon_", "")
-        axes[0][col_idx].set_title(label, fontsize=8)
-
-    plt.tight_layout()
-    output_path = forest_dir / "dataset_overview_icons.png"
-    fig.savefig(output_path, dpi=150, bbox_inches="tight", facecolor="white")
-    plt.close(fig)
-    logger.info("Icon grid written to %s", output_path)
-    return output_path
-
-
 def generate_overview_markdown(
     forest_dir: Path,
     height_interval: float = 5.0,
     preset_dir: Path = None,
     models_dir: Path = None,
 ) -> Path:
-    """Generate dataset_overview.md, .csv, and icon grid PNG.
+    """Generate dataset_overview.md and .csv.
 
     Args:
         forest_dir: Path to the forest output directory.
@@ -365,9 +291,6 @@ def generate_overview_markdown(
     csv_path = forest_dir / "dataset_overview.csv"
     df[csv_cols].to_csv(csv_path, index=False)
     logger.info("Dataset CSV written to %s", csv_path)
-
-    # Export icon grid PNG
-    generate_icon_grid(df, forest_dir, height_interval)
 
     # Build markdown
     lines = []
@@ -461,8 +384,6 @@ def generate_overview_markdown(
         "Full dataset with all preset and growth model parameters: "
         "[dataset_overview.csv](dataset_overview.csv)"
     )
-    lines.append("")
-    lines.append("Icon grid: [dataset_overview_icons.png](dataset_overview_icons.png)")
     lines.append("")
 
     output_path = forest_dir / "dataset_overview.md"
