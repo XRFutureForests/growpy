@@ -56,7 +56,7 @@ Generated scripts land in `unreal_scripts/`. Each is idempotent and VRAM-aware.
 ### Enable script generation
 
 ```toml
-# growpy.toml
+# config/unreal.toml
 [unreal]
 import_to_unreal         = true
 project_path             = "/Game/GrowPy/Trees"
@@ -155,7 +155,7 @@ Voxelization gives Nanite streaming at distance (fallback mesh representation). 
 ue_exec data/output/forest/unreal_scripts/growpy_nanite_voxelize.py
 ```
 
-Configured via `[unreal.nanite]` in `growpy.toml`. The script walks every assembly under `project_path` and calls `_set_nanite_shape_voxelize`.
+Configured via `[unreal.nanite]` in `unreal.toml`. The script walks every assembly under `project_path` and calls `_set_nanite_shape_voxelize`.
 
 ## Troubleshooting
 

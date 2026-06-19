@@ -127,7 +127,7 @@ generate_forest_exports(csv, output_dir, config, quality, ...)
 ├── core.forest.simulate_forest_growth(forest, max_cycles, ...)
 │       └── per-cycle loop: overrides -> shade -> weigh_and_bend -> simulate(1)
 │       └── then: smooth() × N -> weigh_and_bend()
-├── resolve quality_params from growpy.toml [quality.<preset>]
+├── resolve quality_params from quality.toml [quality.<preset>]
 ├── apply skeleton_overrides (cli flags)
 └── io.forest_export.export_individual_trees(forest, df, output_dir, ...)
         └── for each tree:
@@ -253,7 +253,7 @@ Design notes:
 
 ## Competition thinning
 
-When `[competition_groups]` is configured in `growpy.toml`, the dataset workflow plants 3 neighbour trees (`fid >= 100`) around a central `competition` tree (`fid < 100`). As the central tree grows, the dataset planner can "thin" by moving the neighbours outward at every milestone. Two modes coexist:
+When `[competition.groups.*]` is configured in `competition.toml`, the dataset workflow plants 3 neighbour trees (`fid >= 100`) around a central `competition` tree (`fid < 100`). As the central tree grows, the dataset planner can "thin" by moving the neighbours outward at every milestone. Two modes coexist:
 
 1. **Group-based** (preferred). `target_distances = {species: target_m}` per milestone. Each neighbour is repositioned to its species-specific target distance from the origin via `grove.replant_tree`. The current distance is tracked in `neighbor_current_distances` so successive milestones move incrementally.
 2. **Legacy fixed increment.** When no `target_distances` are supplied but `competition_distance_increase > 0`, every neighbour shifts outward by the same amount per milestone event.

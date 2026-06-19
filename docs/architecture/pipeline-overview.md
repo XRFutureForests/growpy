@@ -111,7 +111,7 @@ re-simulate to produce the final per-cycle prediction model.
 
 | | |
 |---|---|
-| **Reads** | `data/assets/presets/`, yield tables (local CSV or `pylometree` store), `growpy.toml [calibration]` |
+| **Reads** | `data/assets/presets/`, yield tables (local CSV or `pylometree` store), `growth_models.toml [calibration]` |
 | **Writes** | `data/assets/growth_models/<species>.seed.json` (with `_yield_table_calibration` block), calibration plots under `data/assets/growth_models/` |
 | **Key calls** | `core.grove.create_grove`, `utils.analysis.SpeciesGrowthAnalyzer`, `utils.yield_tables` (Chapman-Richards interpolation), `utils.plotting` |
 | **CLI entry** | `growpy-create-models` |
@@ -127,7 +127,7 @@ species applying calibration overrides, and export USD/OBJ/PVE artefacts.
 
 | | |
 |---|---|
-| **Reads** | Forest CSV, `data/assets/twigs/.../foliage_skeletal.usda`, `data/assets/growth_models/<species>.seed.json` (calibration), `growpy.toml [quality.<preset>]` |
+| **Reads** | Forest CSV, `data/assets/twigs/.../foliage_skeletal.usda`, `data/assets/growth_models/<species>.seed.json` (calibration), `quality.toml [quality.<preset>]` |
 | **Writes** | `data/output/forest/<run>/<species>/*.usda` (Nanite assemblies), `*.obj`/`*.mtl` (Helios), `*.json` (PVE), `*_unreal_wind.json`, Unreal import script |
 | **Key calls** | `pipelines.forest_stages.generate_forest_stages` / `pipelines.forest_exports.generate_forest_exports`, `core.forest.{create_forest, simulate_forest_growth_with_snapshots, simulate_forest_growth}`, `io.usd.assembly_export.export_tree_as_nanite_assembly`, `io.usd.tree_export.build_tree_mesh` (radial scaling), `io.helios.obj_export`, `io.helios.helios_scene`, `io.unreal.wind_json`, `io.unreal.pve_grove_mapper`, `io.unreal.unreal_scripts` |
 | **CLI entry** | `growpy-generate-forest` |
@@ -294,7 +294,7 @@ doesn't have `bpy` available — only the spawned step-4 subprocess imports it.
 | Change step-4 control flow (multi-stage / standard) | `pipelines/forest_stages.py`, `pipelines/forest_exports.py` |
 | Change USD layout | `io/usd/assembly_export.py` (+ `core/skeleton.py`, `core/twig.py`) |
 | Change radial scaling / DBH targeting | `io/usd/tree_export.build_tree_mesh` |
-| Change quality presets / LOD ratios | `growpy.toml [quality.*]` |
+| Change quality presets / LOD ratios | `quality.toml [quality.*]` |
 | Change Helios export | `io/helios/obj_export.py`, `io/helios/helios_scene.py` |
 | Change PVE mapping for Unreal | `io/unreal/pve_grove_mapper.py` |
 | Change DynamicWind metadata | `io/unreal/wind_json.py` |

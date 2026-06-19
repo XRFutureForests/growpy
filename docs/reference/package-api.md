@@ -152,5 +152,5 @@ generate_forest.py --> data/output/forest/ (USD assemblies)
 | [Coordinate Systems](coordinate-systems.md) | Grove/Blender/Unreal transforms |
 | [Naming Conventions](naming-conventions.md) | Species and file naming |
 | [USD Builder](usd-builder.md) | USD export internals |
-| [Module Audit](../internals/module-audit.md) | Module inventory and dependencies |
+| [Module Reference](../architecture/module-reference.md) | Per-module purpose, functions, inputs, outputs |
 | [Grove API](../the_grove/) | Grove core API documentation |

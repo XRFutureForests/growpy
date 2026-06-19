@@ -26,15 +26,22 @@ class TestSetupLogging:
         assert logger.level == logging.WARNING
 
     def test_adds_handler(self):
-        setup_logging()
         logger = logging.getLogger("growpy")
-        assert len(logger.handlers) == 1
+        # pytest's log-capture plugin attaches its own handlers to the growpy
+        # logger during tests, so count only the handler setup_logging adds.
+        before = list(logger.handlers)
+        setup_logging()
+        added = [h for h in logger.handlers if h not in before]
+        assert len(added) == 1
+        assert isinstance(added[0], logging.StreamHandler)
 
     def test_idempotent_does_not_add_duplicate_handler(self):
+        logger = logging.getLogger("growpy")
+        before = list(logger.handlers)
         setup_logging(verbose=True)
         setup_logging(verbose=False)
-        logger = logging.getLogger("growpy")
-        assert len(logger.handlers) == 1
+        added = [h for h in logger.handlers if h not in before]
+        assert len(added) == 1
 
     def test_reconfigure_changes_level(self):
         setup_logging(verbose=False)
@@ -58,7 +65,7 @@ class TestCaplogIntegration:
         logger.handlers.clear()
 
     def _attach_caplog(self, caplog):
-        """Attach caplog handler to growpy logger (propagate=False blocks default capture)."""
+        """Attach caplog handler; propagate=False blocks default capture."""
         root = logging.getLogger("growpy")
         root.addHandler(caplog.handler)
         caplog.set_level(logging.DEBUG)

@@ -23,6 +23,10 @@ __pycache__/
 *$py.class
 *.so
 
+# Tooling caches
+.mypy_cache/
+.ruff_cache/
+
 # Python egg-info
 *.egg-info/
 *.egg-info

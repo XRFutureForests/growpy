@@ -6,10 +6,8 @@ takes as input and produces as output, and where to make changes when fixing
 bugs or adding features.
 
 If you are looking for *how to use* GrowPy from the command line, see
-[../reference/cli-reference.md](../reference/cli-reference.md). If you are looking for
-the *historical* functional description, see
-[../growpy-functional-description.md](../growpy-functional-description.md). The
-documents in this folder focus on **structure and connections**.
+[../reference/cli-reference.md](../reference/cli-reference.md), or start at the
+[quickstart](../quickstart.md). The documents in this folder focus on **structure and connections**.
 
 ## Documents in this folder
 
@@ -33,11 +31,8 @@ documents in this folder focus on **structure and connections**.
 
 ## Companion documents (already in the repo)
 
-- [../internals/module-audit.md](../internals/module-audit.md) — flat inventory of every module,
-  including standalone scripts and removed modules (this is the "what files
-  exist" doc; the architecture docs here are the "how they work together" doc).
-- [../growpy-functional-description.md](../growpy-functional-description.md) —
-  long-form prose description of the package's purpose and capabilities.
+- [../reference/configuration.md](../reference/configuration.md) — every TOML key and the
+  `tree_asset_lookup.csv` columns (the "what can I configure" doc).
 - [../reference/coordinate-systems.md](../reference/coordinate-systems.md) — how Grove, USD, and
   Unreal coordinate frames map to each other.
 - [../reference/yield-table-calibration.md](../reference/yield-table-calibration.md) — the math and

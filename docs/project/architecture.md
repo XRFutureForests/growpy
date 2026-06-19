@@ -411,7 +411,7 @@ See: `pipelines/step_runner.py`
 
 ### 7.3 Configuration Management
 
-- All config lives in `growpy.toml` (project root), scaffolded by `growpy-init-config`.
+- All config lives in the `config/*.toml` files (project root), scaffolded by `growpy-init-config`.
 - Per-species overrides in `config/` TOML fragments merge over base config.
 - No hardcoded paths; all paths resolved relative to project root via `config/paths.py`.
 - Secrets: none (no credentials required; Grove licence is a local file).
@@ -442,7 +442,7 @@ No formal ADR directory exists at `docs/reference/adrs/` at time of writing. Key
 | Subprocess isolation for `bpy` | Each step as subprocess | Prevents Blender import pollution; enables parallel step-4 |
 | Chapman-Richards calibration model | `scipy.optimize` + 3-param fit | Standard forestry model; validated in literature (see `docs/reference/yield-table-calibration.md`) |
 | USD as primary 3D exchange format | USD `.usda` with layer instancing | Native UE 5 Nanite pipeline; best geometry compression |
-| TOML for configuration | `growpy.toml` + fragment overrides | Human-readable, supports nested keys, no additional deps |
+| TOML for configuration | `config/*.toml` (deep-merged) | Human-readable, supports nested keys, no additional deps |
 | On-disk artefact contracts between steps | Filesystem-only handoff | Decouples steps, enables resume after failure, simplifies testing |
 
 ---

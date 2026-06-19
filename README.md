@@ -46,7 +46,7 @@ growpy-init-config                    # Copies to ./config (default)
 growpy-init-config --target ./my_config  # Copies to custom directory
 ```
 
-You can edit these files to override defaults in `src/growpy/growpy.toml`. All CLI scripts read from `growpy.toml` in the package by default.
+These files override the built-in defaults. All `config/*.toml` files are deep-merged in sorted order, then CLI arguments override them. See [docs/reference/configuration.md](docs/reference/configuration.md).
 
 ### 4. Add The Grove 2.3
 
@@ -80,7 +80,7 @@ python -c "import the_grove_23_core as gc; print('Grove API ready')"
 
 ## Configuration
 
-All CLI scripts read defaults from the TOML files in [`config/`](config/) (user-editable; bootstrapped from the packaged templates in `src/growpy/config/templates/` via `growpy-init-config`). CLI arguments override TOML values. Resolution order: dataclass defaults -> packaged templates -> `config/*.toml` -> CLI arguments.
+All CLI scripts read defaults from the TOML files in [`config/`](config/) (user-editable; bootstrapped from the packaged templates in `src/growpy/config/templates/` via `growpy-init-config`). CLI arguments override TOML values. Resolution order: dataclass defaults -> `config/*.toml` (deep-merged in sorted order) -> CLI arguments.
 
 Key configuration files in `config/`:
 
@@ -99,13 +99,13 @@ Key configuration files in `config/`:
 | `[helios]` | OBJ export, scene XML, mesh simplification |
 | `[density_variant.*]` | Named density variants (twig_density, build_cutoff) |
 
-Species-to-asset mapping is defined in `src/growpy/config/tree_asset_lookup.csv` (60 Grove species). Quality presets (`high`, `helios`, `debug`) are defined in `growpy.toml` under `[quality.*]` sections.
+Species-to-asset mapping is defined in `config/tree_asset_lookup.csv` (the Grove species catalogue; the `Dataset` column selects which species the dataset pipeline produces). Quality presets (`high`, `helios`, `debug`) are defined in `quality.toml` under `[quality.*]` sections.
 
 For the full CLI flags reference, see [docs/reference/cli-reference.md](docs/reference/cli-reference.md).
 
 ## Core Pipeline
 
-The pipeline has 4 sequential steps. Each reads from `growpy.toml` and can run without arguments.
+The pipeline has 4 sequential steps. Each reads defaults from the `config/*.toml` files and can run without arguments.
 
 ```
 prepare_assets -> convert_twigs -> create_growth_models -> generate_forest
@@ -130,12 +130,12 @@ python src/growpy/cli/prepare_assets.py --all           # All 60 Grove species
 Converts twig `.blend` files to USD with optional mesh densification for Nanite silhouettes.
 
 ```bash
-python src/growpy/cli/convert_twigs.py                  # Default from growpy.toml
+python src/growpy/cli/convert_twigs.py                  # Defaults from config/*.toml
 python src/growpy/cli/convert_twigs.py --no-densify     # Raw export without densification
 python src/growpy/cli/convert_twigs.py --alpha-trim 0.5 # Custom alpha threshold
 ```
 
-Densification includes alpha-based silhouette trimming, boundary smoothing, and interior decimation. Per-twig parameters are configurable via `[twigs]` in `growpy.toml`.
+Densification includes alpha-based silhouette trimming, boundary smoothing, and interior decimation. Per-twig parameters are configurable via `[twigs]` in `twigs.toml`.
 
 **Produces:** Two USD variants per twig in `data/assets/twigs/`: `*_skeletal.usda` (no materials, with skeleton) and `*_static.usda` (with materials, no skeleton)
 
@@ -144,7 +144,7 @@ Densification includes alpha-based silhouette trimming, boundary smoothing, and 
 Simulates species growth curves and generates height-to-age prediction models. When `[calibration] enabled = true`, aligns growth to yield tables and re-simulates with calibration applied.
 
 ```bash
-python src/growpy/cli/create_growth_models.py                                  # Default from growpy.toml
+python src/growpy/cli/create_growth_models.py                                  # Defaults from config/*.toml
 python src/growpy/cli/create_growth_models.py --species "European beech"       # Single species
 python src/growpy/cli/create_growth_models.py --seeds 3 --cycles 35            # Robust curves
 python src/growpy/cli/create_growth_models.py --ingest-yield-tables            # Populate yield table store first
@@ -158,7 +158,7 @@ python src/growpy/cli/create_growth_models.py --ingest-yield-tables --clean-stor
 Multi-species forest simulation from CSV with USD Nanite assembly export.
 
 ```bash
-python src/growpy/cli/generate_forest.py                                  # Default from growpy.toml
+python src/growpy/cli/generate_forest.py                                  # Defaults from config/*.toml
 python src/growpy/cli/generate_forest.py --quality high                    # Quality preset
 python src/growpy/cli/generate_forest.py --height-interval 5               # Multi-stage export
 python src/growpy/cli/generate_forest.py --export-obj --helios-scene       # Helios++ OBJ + scene XML
@@ -171,7 +171,7 @@ python src/growpy/cli/generate_forest.py --preset-override drop_decay=0.1  # Ove
 
 **Produces:** `data/output/forest/` with per-species directories containing USD assemblies, skeletal meshes, twig USD files, wind data, preview images, PVE presets, and optional Unreal import scripts or Helios++ OBJ/scene files
 
-Quality presets are defined in `growpy.toml` under `[quality.*]` sections:
+Quality presets are defined in `quality.toml` under `[quality.*]` sections:
 
 | Preset | Vertices | Skeleton | Use Case |
 |--------|----------|----------|----------|
@@ -183,7 +183,7 @@ Skeleton parameters (`--skeleton-length`, `--skeleton-reduce`, `--skeleton-bias`
 
 ### Helios++ OBJ export
 
-GrowPy can export [Helios++](https://github.com/3dgeo-heidelberg/helios) compatible Wavefront OBJ files for LiDAR point cloud simulation. Enable via CLI flags or `[helios]` in `growpy.toml`:
+GrowPy can export [Helios++](https://github.com/3dgeo-heidelberg/helios) compatible Wavefront OBJ files for LiDAR point cloud simulation. Enable via CLI flags or `[helios]` in `helios.toml`:
 
 ```bash
 python src/growpy/cli/generate_forest.py --export-obj                     # OBJ/MTL export
@@ -232,7 +232,7 @@ python src/growpy/cli/convert_twigs.py --csv data/input/dataset/all_species.csv
 python src/growpy/cli/create_growth_models.py --csv data/input/dataset/all_species.csv --ingest-yield-tables
 ```
 
-### Configure growpy.toml for dataset
+### Configure the dataset run
 
 ```toml
 [forest]
@@ -355,7 +355,7 @@ growpy/
 │   │   ├── tools/                 # Diagnostic tools (analyze_usda, diagnose_growth, visualize_tree)
 │   │   ├── tests/                 # Test suite (pytest)
 │   │   ├── utils/                 # Analysis, profiling, plotting
-│   │   └── growpy.toml            # Central configuration
+│   │   └── (config templates live in config/templates/)
 │   └── the_grove_23/              # Grove 2.3 installation (not in repo)
 ├── data/
 │   ├── input/                     # CSV files, yield tables, dataset templates
@@ -374,7 +374,7 @@ python -m pytest src/growpy/tests/ -v
 python -m pytest src/growpy/tests/test_skeleton.py -v   # Single module
 ```
 
-See [docs/testing.md](docs/testing.md) for coverage details.
+See [docs/reference/testing.md](docs/reference/testing.md) for coverage details.
 
 ## Troubleshooting
 
@@ -411,6 +411,9 @@ python src/growpy/cli/generate_forest.py --skeleton-reduce 0.5 --skeleton-length
 | Document | Description |
 |----------|-------------|
 | [Quickstart](docs/quickstart.md) | Fastest path from install to working forest |
+| [Dataset Workflow](docs/guides/dataset-workflow.md) | Full multi-species dataset production |
+| [Forest Generation](docs/guides/forest-generation.md) | Manual single-forest run from a CSV |
+| [Configuration](docs/reference/configuration.md) | All TOML keys + species lookup CSV columns |
 | [CLI Reference](docs/reference/cli-reference.md) | Complete CLI flags and options for all scripts |
 | [Pipeline Overview](docs/architecture/pipeline-overview.md) | Package architecture and data flow |
 | [Processing Logic](docs/architecture/processing-logic.md) | Per-step algorithm walkthrough |
@@ -425,7 +428,7 @@ python src/growpy/cli/generate_forest.py --skeleton-reduce 0.5 --skeleton-length
 | [PVE Attribute Reference](docs/reference/pve-attribute-reference.md) | PVE attributes and Grove mapping |
 | [Yield Table Calibration](docs/reference/yield-table-calibration.md) | Calibration methodology |
 | [USD Builder](docs/reference/usd-builder.md) | USD export internals |
-| [Module Audit](docs/internals/module-audit.md) | Module inventory and dependencies |
+| [Module Reference](docs/architecture/module-reference.md) | Per-module purpose, functions, inputs, outputs |
 | [Grove 2.3 API](docs/the_grove/) | Grove core API documentation |
 
 ## License

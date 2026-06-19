@@ -17,7 +17,8 @@ Procedural forest generation pipeline: CSV species/position data → The Grove 2
 | Standards | [docs/documentation_standards.md](docs/documentation_standards.md) |
 | Principles | [docs/principles.md](docs/principles.md) |
 | Quickstart | [docs/quickstart.md](docs/quickstart.md) |
-| Functional description | [docs/growpy-functional-description.md](docs/growpy-functional-description.md) |
+| Dataset workflow | [docs/guides/dataset-workflow.md](docs/guides/dataset-workflow.md) |
+| Forest generation | [docs/guides/forest-generation.md](docs/guides/forest-generation.md) |
 
 ## Source Layout
 

@@ -3,7 +3,7 @@
 Four-step pipeline for generating tree assets from The Grove 2.3 for Unreal Engine,
 plus dataset production tools for batch generation of multi-species assets.
 
-All scripts read defaults from `src/growpy/growpy.toml`. CLI arguments override TOML values.
+All scripts read defaults from the `config/*.toml` files (created by `growpy-init-config`). CLI arguments override TOML values.
 Run all scripts without arguments to use TOML defaults:
 
 ```bash
@@ -27,9 +27,9 @@ growpy-init-config --force              # Overwrite existing files
 **Output:** Copies all files from `growpy/config/templates/` (TOML files + `tree_asset_lookup.csv`)
 to target directory. Existing files are skipped unless `--force` is passed.
 
-All CLI scripts read from the package default `src/growpy/growpy.toml` by default; if you create
-a local config directory, update TOML settings to reference it via `growpy_toml` parameter or
-edit the package configuration directly.
+All CLI scripts read the `config/*.toml` files, deep-merged in sorted order. Point them at
+a different directory with the `GROWPY_CONFIG` environment variable. See
+[configuration.md](configuration.md) for the full key reference.
 
 ## Step 1: prepare_assets.py
 
@@ -141,7 +141,7 @@ Both variants are created by default for each twig:
 Generate height curves and age prediction models with intelligent early termination.
 Features automatic plateau detection to stop simulation when trees stop growing.
 
-When calibration is enabled in `growpy.toml [calibration]`, automatically calibrates
+When calibration is enabled in `growth_models.toml [calibration]`, automatically calibrates
 against yield tables and re-simulates with calibration applied.
 
 **Output per species:**
@@ -244,14 +244,14 @@ export flags, unreal settings (see `[forest]`, `[export]`, `[unreal]`).
 ## Helios++ OBJ Export
 
 OBJ/MTL export for Helios++ LiDAR simulation runs automatically in Step 4
-when `helios.export_obj = true` in growpy.toml. Configuration is in the `[helios]`
-section of growpy.toml.
+when `helios.export_obj = true` in `helios.toml`. Configuration is in the `[helios]`
+section of `helios.toml`.
 
 **TOML-configurable:** `export_obj`, `helios_scene`, `combined_obj` (see `[helios]`).
 
 ## Dataset Production
 
-Two integrated features automate batch production of tree assets across all 16 dataset
+Two integrated features automate batch production of tree assets across all 11 dataset
 species. See [../dataset/dataset-specification.md](../dataset/dataset-specification.md) for the full
 specification and [../dataset/dataset-overview.md](../dataset/dataset-overview.md) for production status.
 

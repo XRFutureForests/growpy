@@ -1,6 +1,7 @@
 """Tests for growpy.pipelines.dataset_csv_planner."""
 
 import math
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
@@ -8,6 +9,7 @@ import pytest
 from growpy.pipelines.dataset_csv_planner import (
     DENSITY_VARIANTS,
     OPEN_TREE_X,
+    _get_dataset_species,
     _polygon_neighbors,
     generate_merged_csv,
     synchronize_dataset_csvs,
@@ -174,3 +176,42 @@ class TestSynchronizeDatasetCsvs:
         synchronize_dataset_csvs(tmp_path)
         updated = pd.read_csv(all_csv)
         assert len(updated) == 1
+
+
+class TestGetDatasetSpecies:
+    """Tests for Dataset-column-driven species selection."""
+
+    def _lookup(self, dataset=("yes", "", "")):
+        return pd.DataFrame(
+            {
+                "Common Name": ["Norway spruce", "Grand fir", "Hornbeam"],
+                "Max Height": [35, 35, 20],
+                "Competition Group": ["slow_conifer", "slow_conifer", "fast_broadleaf"],
+                "Dataset": list(dataset),
+            }
+        )
+
+    def test_only_marked_rows_selected(self):
+        with patch(
+            "growpy.pipelines.dataset_csv_planner._get_lookup_table",
+            return_value=self._lookup(),
+        ):
+            result = _get_dataset_species()
+        assert result["Common Name"].tolist() == ["Norway spruce"]
+
+    def test_marker_is_case_insensitive(self):
+        with patch(
+            "growpy.pipelines.dataset_csv_planner._get_lookup_table",
+            return_value=self._lookup(dataset=("YES", "True", "")),
+        ):
+            result = _get_dataset_species()
+        assert set(result["Common Name"]) == {"Norway spruce", "Grand fir"}
+
+    def test_missing_dataset_column_raises(self):
+        lookup = self._lookup().drop(columns=["Dataset"])
+        with patch(
+            "growpy.pipelines.dataset_csv_planner._get_lookup_table",
+            return_value=lookup,
+        ):
+            with pytest.raises(KeyError, match="Dataset"):
+                _get_dataset_species()

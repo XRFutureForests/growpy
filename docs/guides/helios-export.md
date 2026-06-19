@@ -17,7 +17,7 @@ If you only want renders in Unreal, skip this guide — OBJ export is purely opt
 
 ## Configuration
 
-All Helios options live under `[helios]` in `growpy.toml`:
+All Helios options live under `[helios]` in `helios.toml`:
 
 ```toml
 [helios]

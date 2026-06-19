@@ -105,7 +105,7 @@ Defined in `pyproject.toml [project.scripts]` — all entry points in `src/growp
 
 | Command | Module | Purpose |
 |---------|--------|---------|
-| `growpy-init-config` | `cli.init_config:main` | Scaffold `growpy.toml` from bundled templates |
+| `growpy-init-config` | `cli.init_config:main` | Scaffold `config/*.toml` from bundled templates |
 | `growpy-prepare-assets` | `cli.prepare_assets:main` | Step 1: mirror Grove assets |
 | `growpy-convert-twigs` | `cli.convert_twigs:main` | Step 2: `.blend` → USD foliage |
 | `growpy-create-models` | `cli.create_growth_models:main` | Step 3: yield-table calibration |
@@ -193,7 +193,7 @@ Tests live alongside the source in `src/growpy/tests/`. See `docs/reference/test
 |----------|-----------|---------|
 | Python modules | `snake_case` | `forest_stages.py`, `yield_tables.py` |
 | CLI scripts | `snake_case` verbs | `prepare_assets.py`, `generate_forest.py` |
-| Config files | `snake_case` or `kebab-case` | `growpy.toml`, `tree_asset_lookup.csv` |
+| Config files | `snake_case` or `kebab-case` | `general.toml`, `tree_asset_lookup.csv` |
 | Doc files | `kebab-case` | `pipeline-overview.md`, `yield-table-calibration.md` |
 | USD output files | `<species>_<role>.usda` | `norway_spruce_foliage_skeletal.usda` |
 | Species directories | `kebab-case` | `norway-spruce/`, `european-beech/` |

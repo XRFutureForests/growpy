@@ -8,7 +8,7 @@
 quality = "high"
 # Maximum growth cycles per tree (1-250)
 # Trees exceeding this limit are capped (not scaled)
-growth_cycle_limit = 55
+growth_cycle_limit = 111
 # Number of grove.smooth() passes on branch angles (int, 0-20, 0 = disabled)
 # Each pass reduces sharp corner angles between branch segments.
 # Higher values = smoother, more organic branches; 10-20 for production.
@@ -26,7 +26,7 @@ height_interval = 5
 # Trees taller than this in the input CSV are clamped to this height
 # Reduces growth cycles and number of height stages for faster runs
 # 0 = no limit (use full CSV heights)
-max_height = 15
+max_height = 30
 
 # --- Export options ---
 [export]
@@ -38,7 +38,7 @@ usd_format = "usda"
 skeletal = true
 # Export static mesh assemblies (geometry only, no skeleton)
 # When both skeletal and static are enabled, static is derived from skeletal
-static = false
+static = true
 # Base twig density multiplier applied to all trees globally.
 # Values > 1.0 add synthetic twigs; values < 1.0 thin existing placements.
 # Compensates for twig loss from build_cutoff.

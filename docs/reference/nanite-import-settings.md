@@ -1,6 +1,6 @@
 # Nanite Import Settings for GrowPy Forests
 
-How `[unreal]` settings in [growpy.toml](../src/growpy/growpy.toml) map to UE
+How `[unreal]` settings in `unreal.toml` map to UE
 [`MeshNaniteSettings`](https://dev.epicgames.com/documentation/en-us/unreal-engine/python-api/class/MeshNaniteSettings),
 why each one matters for forest imports, and where the rationale comes from.
 

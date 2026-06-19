@@ -63,3 +63,6 @@ nanite_normal_precision = -1
 # Combined presets and PVE graphs are colocated with tree meshes
 # at <project_path>/<species>/<scene>/.
 generate_pve_presets = true
+# Generate the UE wind-import script that applies *_DynamicWind.json sidecars
+# to skeletal meshes (per-tree wind JSON is always exported regardless).
+generate_wind_data = true

@@ -8,8 +8,7 @@ implementation details and are intentionally omitted.
 This document is the lookup table for "where does X live and what does it do".
 For the layered import view, see [module-graph.md](module-graph.md). For the
 end-to-end process flow with clickable nodes, see
-[pipeline-overview.md](pipeline-overview.md). For the flat inventory
-(including standalone scripts), see [../internals/module-audit.md](../internals/module-audit.md).
+[pipeline-overview.md](pipeline-overview.md).
 
 > **Layout note (April 2026 refactor).** The `io/` package has been split into
 > three sub-packages: [`io/usd/`](../../src/growpy/io/usd/) (USD/Nanite
@@ -76,7 +75,7 @@ process_twig_textures}`, `config.pve_species_overrides`, `config.paths`.
 calibration in `<species>.seed.json`.
 
 **Reads:** `data/assets/presets/`, yield tables (local CSV or `pylometree`
-store), `growpy.toml [calibration]`.
+store), `growth_models.toml [calibration]`.
 **Writes:** `data/assets/growth_models/<species>.seed.json` with the
 `_yield_table_calibration` block, plus calibration plots.
 **Calls:** `core.grove.create_grove`, `utils.analysis.SpeciesGrowthAnalyzer`,
@@ -90,7 +89,7 @@ config, picks the multi-stage vs standard pipeline, then delegates. Imports
 `bpy` and `the_grove_23_core` (transitively via the pipeline modules).
 
 **Reads:** Forest CSV, foliage USDAs, `<species>.seed.json` (calibration),
-`growpy.toml [forest|export|unreal|helios|quality.<preset>]`.
+`forest.toml`/`unreal.toml`/`helios.toml`/`quality.toml` (`[forest|export|unreal|helios|quality.<preset>]`).
 **Writes:** `data/output/forest/<run>/<species>/{*.usda, *.obj, *.json,
 *_unreal_wind.json, *_unreal_pve.json, *_unreal_import.py}`.
 **Dispatches to:**
@@ -603,7 +602,7 @@ the import script. Consumed by [`tools/ue_exec.py`](../../src/growpy/tools/ue_ex
 
 ### [`config/core.py`](../../src/growpy/config/core.py)
 
-**Purpose:** Load `growpy.toml` and expose it as a `GrowPyConfig` object via
+**Purpose:** Load the `config/*.toml` files and expose them as a `GrowPyConfig` object via
 `get_config()`. Layered resolution: project root → user override → CLI
 override (`config.resolve(args)`).
 
@@ -655,7 +654,7 @@ step 3 (calibration) and step 4 (forest generation).
 ### [`config/quality.py`](../../src/growpy/config/quality.py)
 
 **Purpose:** Load LOD/quality presets (`ultra`, `high`, `medium`, `low`,
-`performance`) from `growpy.toml`.
+`performance`) from `quality.toml`.
 
 **Public:** `get_quality_preset(preset_name) -> dict`.
 

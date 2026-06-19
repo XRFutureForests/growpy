@@ -28,30 +28,37 @@ DENSITY_VARIANTS = {
     "bare": 0.0,
 }
 
-# Southern German forest species selection (4 conifer + 7 broadleaf).
-DATASET_SPECIES = [
-    "Norway spruce",
-    "European beech",
-    "Silver fir",
-    "Scots pine",
-    "European oak",
-    "Douglas fir",
-    "Sycamore maple",
-    "Common ash",
-    "Small-leaved linden",
-    "Silver birch",
-    "Wild cherry",
-]
+# Truthy markers for the tree_asset_lookup.csv "Dataset" column. A species is
+# part of the production dataset when this column is marked (and it has both
+# Max Height and Competition Group set). The "Dataset" column is the single
+# source that controls dataset membership.
+DATASET_MARKERS = frozenset({"yes", "true", "1", "x"})
 
 # X offset for open-grown tree to avoid light competition with cluster
 OPEN_TREE_X = 100.0
 
 
 def _get_dataset_species() -> pd.DataFrame:
-    """Load species with Max Height and Competition Group from lookup CSV."""
+    """Load production-dataset species from the lookup CSV.
+
+    A species belongs to the dataset when its ``Dataset`` column is marked
+    (see :data:`DATASET_MARKERS`) and it has both ``Max Height`` and
+    ``Competition Group`` set. The ``Dataset`` column is the only control for
+    dataset membership.
+    """
     df = _get_lookup_table()
-    dataset = df[df["Max Height"].notna() & df["Competition Group"].notna()].copy()
-    dataset = dataset[dataset["Common Name"].isin(DATASET_SPECIES)]
+    if "Dataset" not in df.columns:
+        raise KeyError(
+            "tree_asset_lookup.csv is missing the 'Dataset' column. Re-run "
+            "'growpy-init-config --force' to refresh it, or add a 'Dataset' "
+            "column and mark each species to include with 'yes'."
+        )
+    marker = df["Dataset"].fillna("").astype(str).str.strip().str.lower()
+    dataset = df[
+        marker.isin(DATASET_MARKERS)
+        & df["Max Height"].notna()
+        & df["Competition Group"].notna()
+    ].copy()
     dataset["Max Height"] = dataset["Max Height"].astype(int)
     return dataset
 

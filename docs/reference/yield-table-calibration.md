@@ -260,7 +260,7 @@ values.
 
 ## Configuration
 
-Species yield table mappings are in `growpy.toml`:
+Species yield table mappings are in `growth_models.toml` (`[calibration.species.*]`):
 
 ```toml
 [calibration.species."Norway spruce"]

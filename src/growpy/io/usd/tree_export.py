@@ -519,18 +519,25 @@ def strip_skeleton_from_usd(skeletal_path: Path, static_path: Path) -> bool:
     # Remove SkelBindingAPI from root apiSchemas
     _remove_api_schema(root_spec, "SkelBindingAPI")
 
-    # Find and remove skeleton child prim, strip skel properties from mesh
+    # Find and remove the skeleton child prim, and strip skel properties from
+    # the mesh. SdfChildrenView iteration yields child PrimSpec values (not
+    # names) on the bundled USD build, so use each item directly and delete by
+    # its name rather than indexing the view with a PrimSpec.
     skel_child = None
     mesh_child = None
     for child in root_spec.nameChildren:
-        child_spec = root_spec.nameChildren[child]
+        child_spec = (
+            child
+            if isinstance(child, Sdf.PrimSpec)
+            else root_spec.nameChildren[child]
+        )
         if child_spec.typeName == "Skeleton":
-            skel_child = child
+            skel_child = child_spec
         elif child_spec.typeName == "Mesh":
             mesh_child = child_spec
 
-    if skel_child:
-        del root_spec.nameChildren[skel_child]
+    if skel_child is not None:
+        del root_spec.nameChildren[skel_child.name]
 
     if mesh_child:
         _remove_api_schema(mesh_child, "SkelBindingAPI")
@@ -872,9 +879,11 @@ def _add_usd_materials(
         return mat
 
     # Create bark material with species-specific name
-    mat_name = (
-        f"{species_name.replace(' ', '_').lower()}_bark" if species_name else "bark"
-    )
+    if species_name:
+        safe = species_name.replace(" ", "_").replace("-", "_").lower()
+        mat_name = f"{safe}_bark"
+    else:
+        mat_name = "bark"
     bark_mat = create_material(mat_name, BARK_BROWN)
 
     # Apply MaterialBindingAPI schema first, then bind material
@@ -909,9 +918,11 @@ def _add_skeletal_materials(
         UsdGeom.Scope.Define(stage, materials_path)
 
         # Create bark material with species-specific name for unique Unreal assets
-        bark_mat_name = (
-            f"{species_name.replace(' ', '_').lower()}_bark" if species_name else "bark"
-        )
+        if species_name:
+            safe = species_name.replace(" ", "_").replace("-", "_").lower()
+            bark_mat_name = f"{safe}_bark"
+        else:
+            bark_mat_name = "bark"
         bark_mat = UsdShade.Material.Define(stage, f"{materials_path}/{bark_mat_name}")
         shader = UsdShade.Shader.Define(
             stage, f"{materials_path}/{bark_mat_name}/PreviewSurface"

@@ -158,8 +158,8 @@ Downstream consumers: Unreal Engine 5.7+ (via USD/Nanite + PVE JSON) and Helios+
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| FR-CFG-001 | Pipeline configuration SHALL be expressed in TOML (`growpy.toml`) with per-species and per-preset override support. | MUST |
-| FR-CFG-002 | The `growpy-init-config` command SHALL scaffold a default `growpy.toml` from bundled templates. | MUST |
+| FR-CFG-001 | Pipeline configuration SHALL be expressed in TOML (`config/*.toml`) with per-species and per-preset override support. | MUST |
+| FR-CFG-002 | The `growpy-init-config` command SHALL scaffold default `config/*.toml` files from bundled templates. | MUST |
 | FR-CFG-003 | All file paths SHALL be resolvable relative to the project root; no hardcoded absolute paths. | MUST |
 
 ### 3.7 Tooling and Diagnostics
