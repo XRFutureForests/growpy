@@ -11,7 +11,7 @@
 
 [general]
 # Random seed for reproducible tree generation (remove to randomize)
-random_seed = 42
+random_seed = 27
 # Default input CSV with tree positions and species
 # CSV columns: x, y, species, height (optional: z, fid, dbh)
 csv_file = "data/input/dataset/all_species.csv"

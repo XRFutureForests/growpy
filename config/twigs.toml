@@ -15,7 +15,7 @@ custom_twigs_dir = "data/input/custom_twigs"
 densify = true
 # Alpha threshold for silhouette trimming
 # 0.05-0.3 = minimal (conservative), 0.5 = moderate (recommended), 0.7 = aggressive
-alpha_trim = 0.95
+alpha_trim = 0.9
 # Target edge length for leaf-face pre-densification in millimeters.
 # Leaf edges are subdivided to this length before the alpha contour cut so the
 # silhouette has enough vertex density to carve through. Also controls Nanite
@@ -25,7 +25,7 @@ boundary_edge_mm = 0.5
 # Simplifies interior triangles while preserving alpha-trimmed silhouette edges.
 # Branch cylinders and boundary silhouette vertices are always protected.
 # Ignored when interior_edge_mm > 0.
-interior_decimate_ratio = 0.005
+interior_decimate_ratio = 0.000001
 # Target interior edge length in millimeters (0 = disabled, uses ratio instead)
 # When set, derives the decimation ratio automatically so interior faces
 # converge to this edge size regardless of input resolution.
@@ -33,4 +33,4 @@ interior_edge_mm = 0
 # Number of vertex rings inward from the mesh boundary to protect from decimation.
 # 0 = protect only boundary verts, 1 = also protect first interior ring, etc.
 # Higher values preserve silhouette fidelity but leave more faces unchanged.
-interior_boundary_rings = 0
+interior_boundary_rings = 3

@@ -4,10 +4,8 @@
 
 [growth_models]
 # Maximum growth cycles to simulate (1-250)
-# Automatically stops early when growth plateaus, or when --max-height is
-# reached (see [forest] max_height). Acts as a safety cap for slow-growing
-# species (e.g. norway_spruce/silver_fir) so they can reach the 25m target.
-cycles = 130
+# Automatically stops early when growth plateaus
+cycles = 30
 # Random seeds to average for robust curves (1-10)
 # Use 3+ for production, 1 for quick tests
 seeds = 1
@@ -18,10 +16,8 @@ height_threshold = 0.01
 # Lower values = earlier termination, prevents wasting time on plateaued trees
 max_cycles_without_growth = 3
 # Maximum simulation time per seed in seconds (10-3600)
-# Increase for complex species; prevents stuck simulations. european_beech,
-# european_oak, and scots_pine have higher per-cycle cost and need more time
-# to reach the 25m target height.
-timeout = 1800
+# Increase for complex species; prevents stuck simulations
+timeout = 600
 
 # --- Yield table calibration (integrated into create_growth_models.py) ---
 [calibration]
