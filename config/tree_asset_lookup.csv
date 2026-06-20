@@ -12,17 +12,17 @@ Common ash,common_ash,Fraxinus excelsior,3172358,Oleaceae - Ash.seed.json,OneLea
 Narrow-leaved ash,narrow_leaved_ash,Fraxinus angustifolia,7325877,Oleaceae - Narrow-leaved ash.seed.json,OneLeavedAshTwig,Oleaceae_Narrow-leaved_ash,#c6bdafff,#9ca780e3,,Ash25.jpg,,,,fast_broadleaf,
 One-leaved ash,one_leaved_ash,Fraxinus excelsior 'Diversifolia',,Oleaceae - One-leaved ash.seed.json,OneLeavedAshTwig,Oleaceae_One-leaved_ash,#c6bdafff,#a1ac7ee0,,Ash70.jpg,,,,fast_broadleaf,
 Downy birch,downy_birch,Betula pubescens,9118014,Betulaceae - Downy birch.seed.json,PaperBirchTwig,Betulaceae_Downy_birch,#e5e5d8ff,#66bf59ff,,Birch70.jpg,Birke,,,fast_broadleaf,
-Silver birch,silver_birch,Betula pendula,5331916,Betulaceae - Silver birch.seed.json,PaperBirchTwig,Betulaceae_Silver_birch,#bdb6abff,#939f82e1,"Birch,White birch",Birch70.jpg,Birke,25,8,fast_broadleaf,yes
+Silver birch,silver_birch,Betula pendula,5331916,Betulaceae - Silver birch.seed.json,PaperBirchTwig,Betulaceae_Silver_birch,#bdb6abff,#939f82e1,"Birch,White birch",Birch70.jpg,Birke,30,8,fast_broadleaf,yes
 Paper birch,paper_birch,Betula papyrifera,5332120,Betulaceae - Paper Birch.seed.json,PaperBirchTwig,Betulaceae_Paper_birch,#eaeae0ff,#60b751ff,,Birch70.jpg,,,,fast_broadleaf,
 Black alder,black_alder,Alnus glutinosa,2876213,Betulaceae - Alder.seed.json,BlackAlderTwig,Betulaceae_Alder,#4c3f33ff,#59a53fff,,BlackAlder35.jpg,Erle,25,7,fast_broadleaf,
 Hornbeam,hornbeam,Carpinus betulus,2875818,Betulaceae - Hornbeam.seed.json,HazelTwig,Betulaceae_Hornbeam,#b9b1a4ff,#94a081e5,,Beech60.jpg,Hainbuche,20,7,fast_broadleaf,
 Hazel,hazel,Corylus avellana,2875979,Betulaceae - Hazel.seed.json,HazelTwig,Betulaceae_Hazel,#b9b1a4ff,#97a381df,,Beech60.jpg,,,,fast_broadleaf,
 Field maple,field_maple,Acer campestre,3189863,Sapindaceae - Field maple.seed.json,FieldMapleTwig,Sapindaceae_Field_maple,#b0a695ff,#899684e3,Maple,MapleC65.jpg,,20,7,fast_broadleaf,
-Sycamore maple,sycamore_maple,Acer pseudoplatanus,3189870,Sapindaceae - Maple.seed.json,SycamoreMapleFallTwig,Sapindaceae_Maple,#b0a695ff,#8e9a83e1,"Maple,Sycamore",MapleA60.jpg,,25,10,slow_broadleaf,yes
+Sycamore maple,sycamore_maple,Acer pseudoplatanus,3189870,Sapindaceae - Maple.seed.json,SycamoreMapleFallTwig,Sapindaceae_Maple,#b0a695ff,#8e9a83e1,"Maple,Sycamore",MapleA60.jpg,,30,10,slow_broadleaf,yes
 Japanese maple,japanese_maple,Acer palmatum,3189882,Sapindaceae - Japanese maple.seed.json,JapeneseMapleAtropurpureumTwig,Sapindaceae_Japanese_maple,#66594cff,#993326ff,,MapleD40.jpg,,,,fast_broadleaf,
 Horse chestnut,horse_chestnut,Aesculus hippocastanum,3189815,Sapindaceae - Horse chestnut.seed.json,,Sapindaceae_Horse_chestnut,#8c7f72ff,#59b24cff,,HorseChestnut55.jpg,,,,slow_broadleaf,
-Small-leaved linden,small_leaved_linden,Tilia cordata,3152047,Malvaceae - Linden.seed.json,SmallLeavedLindenTwig,Malvaceae_Linden,#c4bfb3ff,#98a481de,,LargeLeavedLinden60.jpg,Winterlinde,25,10,fast_broadleaf,yes
-Wild cherry,wild_cherry,Prunus avium,3020791,Rosaceae - Wild cherry.seed.json,JapaneseCherryTwig,Rosaceae_Wild_cherry,#b9b1a4ff,#9ba680e1,,SweetChestnut40.jpg,,20,12,slow_broadleaf,yes
+Small-leaved linden,small_leaved_linden,Tilia cordata,3152047,Malvaceae - Linden.seed.json,SmallLeavedLindenTwig,Malvaceae_Linden,#c4bfb3ff,#98a481de,,LargeLeavedLinden60.jpg,Winterlinde,30,10,fast_broadleaf,yes
+Wild cherry,wild_cherry,Prunus avium,3020791,Rosaceae - Wild cherry.seed.json,JapaneseCherryTwig,Rosaceae_Wild_cherry,#b9b1a4ff,#9ba680e1,,SweetChestnut40.jpg,,30,12,slow_broadleaf,yes
 Japanese cherry,japanese_cherry,Prunus serrulata,3022609,Rosaceae - Japanese cherry.seed.json,JapaneseCherryTwig,Rosaceae_Japanese_cherry,#594c3fff,#51ad47ff,,SweetChestnut40.jpg,,,,fast_broadleaf,
 Rowan / Mountain ash,rowan_mountain_ash,Sorbus aucuparia,3012167,Rosaceae - Hawthorn.seed.json,OakLeafMountainAshTwig,Rosaceae_Hawthorn,#7f7266ff,#4c9938ff,,OakLeafMountainAsh40.jpg,,,,fast_broadleaf,
 Wild apple,wild_apple,Malus sylvestris,3001509,Rosaceae - Wild apple.seed.json,WildAppleTwig,Rosaceae_Wild_apple,#726659ff,#59b24cff,,MapleB60.jpg,,,,fast_broadleaf,

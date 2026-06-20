@@ -53,12 +53,16 @@ logger = logging.getLogger(__name__)
 
 
 def _load_species_max_heights(species_names: list[str]) -> dict[str, float]:
-    """Read each species' calibrated max_height (m) from its growth model metadata.
+    """Read each species' calibrated max-height ceiling (m) from its growth model.
 
-    The per-species max is written by step 3 calibration to
-    ``data/assets/growth_models/<species>/metadata.json``. It bounds milestone
-    capture in the simulation so trees never exceed the height their growth
-    curve predicts. Species without readable metadata are omitted (no ceiling).
+    Prefers the Chapman-Richards asymptote (``A``) in
+    ``data/assets/growth_models/<species>/growth_model_params.json``: it predicts
+    the height the live simulation can reach given enough cycles, independent of
+    how many cycles step 3's calibration pass was capped at. Falls back to
+    ``metadata.json``'s observed max_height (the calibration curve's literal
+    endpoint) for piecewise-linear models or missing params files. This bounds
+    milestone capture so trees never exceed the height their growth curve
+    predicts; species without any readable model are omitted (no ceiling).
     """
     from growpy.config.paths import get_assets_directory
     from growpy.utils.naming import standardize_species_name
@@ -66,7 +70,22 @@ def _load_species_max_heights(species_names: list[str]) -> dict[str, float]:
     models_dir = get_assets_directory() / "growth_models"
     result: dict[str, float] = {}
     for species in species_names:
-        meta_file = models_dir / standardize_species_name(species) / "metadata.json"
+        species_dir = models_dir / standardize_species_name(species)
+
+        params_file = species_dir / "growth_model_params.json"
+        if params_file.exists():
+            try:
+                with open(params_file, encoding="utf-8") as f:
+                    params = json.load(f)
+            except (OSError, json.JSONDecodeError):
+                params = {}
+            if params.get("model_type") == "chapman_richards":
+                a = params.get("A")
+                if a and float(a) > 0:
+                    result[species] = float(a)
+                    continue
+
+        meta_file = species_dir / "metadata.json"
         if not meta_file.exists():
             continue
         try:
