@@ -570,10 +570,11 @@ def _simulate_height_threshold_mode(
     cycle = 0
     pbar = tqdm(total=max_cycles, desc="Simulating growth cycles", unit="cycle", disable=not is_verbose())
 
-    # Track completed species and frozen grove indices to save memory.
-    # Once all trees of a species have captured all target milestones,
-    # their groves stop simulating (no more branch data accumulation).
-    completed_species: set = set()
+    # Track frozen grove indices to save memory. Once a grove's own trees
+    # have captured all their target milestones, that grove stops simulating
+    # (no more branch data accumulation), independent of any other grove of
+    # the same species (e.g. a fast open-grown tree no longer waits on its
+    # slower, shaded competition siblings before it stops growing).
     frozen_grove_indices: set = set()
 
     # Build species -> grove index mapping for freezing
@@ -581,10 +582,14 @@ def _simulate_height_threshold_mode(
     for grove_idx, (_grove, species_name, _tc, _fids) in enumerate(forest):
         species_grove_indices.setdefault(species_name, []).append(grove_idx)
 
-    # Build per-species target milestones for partial completion check
-    species_target_keys: dict[str, list[tuple[str, int]]] = {}
-    for key in target_milestones:
-        species_target_keys.setdefault(key[0], []).append(key)
+    # Build target_milestones lookup keys per grove for completion checks
+    grove_target_keys: dict[int, list[tuple[str, int]]] = {}
+    for grove_idx, (_grove, species_name, tree_count, _fids) in enumerate(forest):
+        offset = grove_offsets[grove_idx]
+        keys = [
+            (species_name, offset + tree_idx) for tree_idx in range(tree_count)
+        ]
+        grove_target_keys[grove_idx] = [k for k in keys if k in target_milestones]
 
     while cycle < max_cycles:
         cycle += 1
@@ -708,24 +713,24 @@ def _simulate_height_threshold_mode(
                         milestone_h,
                     )
 
-        # Freeze groves for species that completed all milestones
-        if target_milestones and species_target_keys:
+        # Freeze each grove individually once its own trees have captured
+        # all their milestones (see frozen_grove_indices comment above).
+        if target_milestones:
             for species_name in species_with_crossings:
-                if species_name in completed_species:
-                    continue
-                keys = species_target_keys.get(species_name, [])
-                if keys and all(
-                    target_milestones[k] <= captured.get(k, set()) for k in keys
-                ):
-                    completed_species.add(species_name)
-                    for gi in species_grove_indices.get(species_name, []):
-                        frozen_grove_indices.add(gi)
-                    logger.info(
-                        "[Species Complete] %s: all milestones captured, "
-                        "freezing %d grove(s) to save memory",
-                        species_name,
-                        len(species_grove_indices.get(species_name, [])),
-                    )
+                for grove_idx in species_grove_indices.get(species_name, []):
+                    if grove_idx in frozen_grove_indices:
+                        continue
+                    keys = grove_target_keys.get(grove_idx, [])
+                    if keys and all(
+                        target_milestones[k] <= captured.get(k, set()) for k in keys
+                    ):
+                        frozen_grove_indices.add(grove_idx)
+                        logger.info(
+                            "[Grove Complete] %s (grove %d): all milestones "
+                            "captured, freezing to save memory",
+                            species_name,
+                            grove_idx,
+                        )
 
         # Apply competition thinning only when a center competition tree
         # (fid < 100, individual_type=competition) crossed a milestone.

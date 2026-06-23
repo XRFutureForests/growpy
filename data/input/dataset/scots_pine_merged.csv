@@ -1,0 +1,6 @@
+fid,species,x,y,z,height,twig_density,individual_type
+1,Scots pine,100.0,0.0,0.0,30,1.0,open_grown
+2,Scots pine,0.0,0.0,0.0,30,1.0,competition
+101,Scots pine,2.75,0.0,0.0,30,1.0,competition
+102,Scots pine,-1.375,2.382,0.0,30,1.0,competition
+103,Scots pine,-1.375,-2.382,0.0,30,1.0,competition
