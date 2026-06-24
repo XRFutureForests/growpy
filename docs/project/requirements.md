@@ -278,7 +278,7 @@ Downstream consumers: Unreal Engine 5.7+ (via USD/Nanite + PVE JSON) and Helios+
 
 1. ISO/IEC/IEEE 29148:2018 — Systems and software engineering: Life cycle processes — Requirements engineering
 2. Chapman-Richards growth function: Richards (1959), Pienaar & Turnbull (1973)
-3. The Grove 2.3 documentation: [docs/the_grove/](../the_grove/)
+3. The Grove 2.3 documentation: [docs/reference/vendor/the-grove/](../reference/vendor/the-grove/)
 4. Yield table calibration details: [docs/reference/yield-table-calibration.md](../reference/yield-table-calibration.md)
 5. Forest CSV schema: [docs/architecture/data-flow.md](../architecture/data-flow.md)
 

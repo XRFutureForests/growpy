@@ -153,4 +153,4 @@ generate_forest.py --> data/output/forest/ (USD assemblies)
 | [Naming Conventions](naming-conventions.md) | Species and file naming |
 | [USD Builder](usd-builder.md) | USD export internals |
 | [Module Reference](../architecture/module-reference.md) | Per-module purpose, functions, inputs, outputs |
-| [Grove API](../the_grove/) | Grove core API documentation |
+| [Grove API](vendor/the-grove/core-api/) | Grove core API documentation |

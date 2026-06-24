@@ -3,6 +3,15 @@ Generate UE Python scripts that create PVE Graphs from combined presets.
 
 EXPERIMENTAL -- UE 5.7+ Procedural Vegetation Editor (PVE) plugin only.
 
+BROKEN ON UE 5.8: the Preset Loader node (``PVPresetLoaderSettings``) this
+module wires into every generated graph is deprecated in UE 5.8 and
+"produces no output" per the plugin source -- the class still exists so
+the old ``hasattr`` guard does not catch it. The generated script now
+aborts with a clear error on UE >= 5.8 instead of silently building
+non-functional graphs. See XRFF-250 and
+docs/05-PRESENTATION-TIER/pve-node-reference.md for the retargeting
+options (Growth Data JSON Importer / Grower Presets).
+
 Creates one ProceduralVegetation graph per species+scene directory. Each
 graph's PresetLoader points at a combined preset whose Variants TMap holds
 all height stages found in that directory. The graph wires one processing
@@ -71,6 +80,17 @@ SPECIES_TWIG_MAP = {species_twig_map}
 PVE_RECIPE_SUFFIX = "_stems_unreal_pve.json"
 
 
+def _is_ue_58_plus():
+    """Detect UE >= 5.8, where PVPresetLoaderSettings is a deprecated no-op."""
+    try:
+        version_str = unreal.SystemLibrary.get_engine_version()
+        major, minor = (int(p) for p in version_str.split("+")[0].split("-")[0].split(".")[:2])
+        return (major, minor) >= (5, 8)
+    except Exception as _e:
+        unreal.log_warning("[PVE-G] Could not parse engine version: %s" % _e)
+        return False
+
+
 def _have_pve_classes():
     """Check that the Procedural Vegetation Editor plugin is available."""
     for cls_name in (
@@ -85,6 +105,19 @@ def _have_pve_classes():
                 "[PVE-G] Missing unreal.%s -- plugin not enabled?" % cls_name
             )
             return False
+    # PVPresetLoaderSettings still exists on UE 5.8 but is deprecated and
+    # "produces no output" per the plugin source -- hasattr() above cannot
+    # detect this. Building the graph anyway would silently create
+    # non-functional Preset Loader nodes. See XRFF-250.
+    if _is_ue_58_plus():
+        unreal.log_error(
+            "[PVE-G] UE 5.8+ detected: PVPresetLoaderSettings is deprecated "
+            "and produces no output -- this script's graph-building path is "
+            "not usable as-is. See XRFF-250 and pve-node-reference.md for "
+            "retargeting options (Growth Data JSON Importer / Grower "
+            "Presets) before re-enabling this script."
+        )
+        return False
     return True
 
 

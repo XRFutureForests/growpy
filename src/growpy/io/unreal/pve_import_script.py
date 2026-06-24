@@ -13,6 +13,13 @@ Foliage Distributor, Bone Reduction) to act on growpy parameters.
 Both paths can run from the same growpy export — they are not mutually
 exclusive.
 
+NOTE on UE 5.8: this module only creates ``ProceduralVegetationPreset``
+DataAssets and does not wire a PVE graph, so it does not hit the
+deprecated Preset Loader node directly (see ``pve_graph_script.py``,
+which does). Whether ``ProceduralVegetationPreset`` itself still loads
+correctly on 5.8 is unconfirmed -- tracked in XRFF-250. The generated
+script logs a one-time warning on UE >= 5.8 pointing here.
+
 The runtime UE script walks the forest output directory recursively
 because growpy writes per-tree PVE recipes at:
 
@@ -112,6 +119,24 @@ def _have_pve_classes():
             "ProceduralVegetationPreset",
         )
     )
+
+
+def _warn_if_ue_58_plus():
+    """UE 5.8 deprecated the Preset Loader graph node (XRFF-250). Preset
+    creation here may still work, but downstream graph wiring will not --
+    warn once so this isn't discovered downstream instead."""
+    try:
+        version_str = unreal.SystemLibrary.get_engine_version()
+        major, minor = (int(p) for p in version_str.split("+")[0].split("-")[0].split(".")[:2])
+        if (major, minor) >= (5, 8):
+            unreal.log_warning(
+                "[PVE] UE 5.8+ detected: the Preset Loader node these "
+                "presets feed into a PVE graph is deprecated in 5.8 "
+                "(produces no output). Preset creation may still succeed, "
+                "but see XRFF-250 before wiring a graph around it."
+            )
+    except Exception as _e:
+        unreal.log_warning("[PVE] Could not parse engine version: %s" % _e)
 
 
 def _make_directory_path(path_str):
@@ -257,6 +282,8 @@ def main():
             "UE version < 5.7. Aborting."
         )
         return
+
+    _warn_if_ue_58_plus()
 
     if not os.path.isdir(FOREST_ROOT):
         unreal.log_error("[PVE] Forest root does not exist: %s" % FOREST_ROOT)

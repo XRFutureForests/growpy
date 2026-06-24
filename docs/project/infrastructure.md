@@ -70,7 +70,7 @@ GrowPy exposes no network services and binds no ports. All processing is local C
 | All other deps | conda-forge / defaults | See `environment.yml` for pinned versions |
 
 > The Grove 2.3 core modules (`src/the_grove_23/modules/`) must be obtained separately under commercial license.
-> See [The Grove setup guide](../the_grove/the_grove_core.md).
+> See [The Grove setup guide](../reference/vendor/the-grove/core-api/overview.md).
 
 ## 5. CI/CD Pipeline
 

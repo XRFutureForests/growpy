@@ -88,4 +88,6 @@ Low-level implementation and reverse-engineering notes.
 
 | | |
 |---|---|
-| [the_grove/](the_grove/) | Grove 2.3 core API documentation and website guides (third-party, kept verbatim) |
+| [reference/vendor/the-grove/](reference/vendor/the-grove/) | Grove 2.3 core API documentation and website guides (third-party, kept verbatim) |
+| [internals/the-grove-addon-analysis/](internals/the-grove-addon-analysis/) | First-party reverse-engineering analysis of the vendored Grove addon (not third-party) |
+| [architecture/the-grove-tldr.md](architecture/the-grove-tldr.md) | First-party dev onboarding summary of Grove's architecture |
