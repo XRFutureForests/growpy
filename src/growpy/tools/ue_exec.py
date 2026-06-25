@@ -21,6 +21,9 @@ Usage:
     # With resource limits:
     python -m growpy.tools.ue_exec data/output/forest/unreal_scripts/ --vram-limit 85
 
+    # Disable the auto-restart watchdog (e.g. on a machine with a huge pagefile):
+    python -m growpy.tools.ue_exec data/output/forest/unreal_scripts/ --restart-ram-limit 0
+
     # List UE editor instances:
     python -m growpy.tools.ue_exec --list-nodes
 """
@@ -30,12 +33,22 @@ import logging
 import re
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
 logger = logging.getLogger("growpy.ue_exec")
 
 BATCH_PATTERN = re.compile(r"^import_batch_(\d+)_.+\.py$")
+
+# Defaults for the auto-restart watchdog. Native Nanite/USD mesh builds leak
+# committed memory that cleanup/GC cannot reclaim (see docs/guides/unreal-import.md
+# troubleshooting); past a certain point Windows refuses to commit more pages
+# ("paging file is too small") and UE crashes. Per-file/per-mesh progress
+# tracking in the generated scripts makes killing and resuming UE safe, so we
+# do it proactively instead of waiting for the crash.
+DEFAULT_EDITOR_EXE = r"C:\Program Files\Epic Games\UE_5.7\Engine\Binaries\Win64\UnrealEditor.exe"
+DEFAULT_UPROJECT = r"D:\Unreal\XRLab\XRLab.uproject"
 
 # Scripts to run after all numbered batches (order preserved).
 # These depend on imported assets already existing in UE.
@@ -348,6 +361,193 @@ def _run_cleanup(port: int) -> None:
         logger.warning("  Cleanup script failed: %s", e)
 
 
+def _find_ue_pids() -> list[int]:
+    """Return PIDs of all running UnrealEditor processes."""
+    try:
+        import psutil
+    except ImportError:
+        return []
+    pids = []
+    for p in psutil.process_iter(["pid", "name"]):
+        try:
+            name = p.info.get("name") or ""
+            if name.lower().startswith("unrealeditor"):
+                pids.append(p.info["pid"])
+        except Exception:
+            pass
+    return pids
+
+
+def _kill_ue() -> bool:
+    """Forcefully terminate all UnrealEditor processes. Returns True if any were found."""
+    pids = _find_ue_pids()
+    if pids:
+        try:
+            import psutil
+
+            for pid in pids:
+                try:
+                    psutil.Process(pid).kill()
+                except Exception:
+                    pass
+            return True
+        except ImportError:
+            pass
+    try:
+        result = subprocess.run(
+            ["taskkill", "/F", "/IM", "UnrealEditor.exe"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def _launch_ue(editor_exe: str, uproject: str) -> None:
+    """Launch UnrealEditor.exe with the given project, detached from this process."""
+    subprocess.Popen(
+        [editor_exe, uproject],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        close_fds=True,
+    )
+
+
+def _ue_alive(timeout: float = 2.0) -> bool:
+    """Check whether a UE editor with Remote Execution is currently reachable."""
+    from growpy.io.unreal.ue_remote import discover_nodes
+
+    return bool(discover_nodes(timeout=timeout))
+
+
+def _wait_for_ue_reachable(timeout: float = 300.0, poll: float = 5.0) -> bool:
+    """Poll until a UE editor becomes reachable via Remote Execution, or time out."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if _ue_alive(timeout=3.0):
+            return True
+        time.sleep(poll)
+    return False
+
+
+def _restart_ue(editor_exe: str, uproject: str, timeout: float = 300.0) -> bool:
+    """Kill any running UE editor, relaunch it, and wait until reachable."""
+    _kill_ue()
+    time.sleep(3.0)
+    _launch_ue(editor_exe, uproject)
+    return _wait_for_ue_reachable(timeout=timeout)
+
+
+class _RamWatchdog:
+    """Background poller that kills UE proactively if RAM crosses a threshold.
+
+    Runs alongside a blocking remote-exec call. Killing UE mid-call makes the
+    blocked socket read raise a catchable ConnectionError, so the caller's
+    normal failure path -- combined with per-file resume in the generated
+    scripts -- handles the rest safely.
+    """
+
+    def __init__(self, ram_limit: float, poll_interval: float):
+        self.ram_limit = ram_limit
+        self.poll_interval = poll_interval
+        self._stop = threading.Event()
+        self._triggered = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        if self.ram_limit <= 0:
+            return
+        self._stop.clear()
+        self._triggered.clear()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            ram = _get_system_ram()
+            if ram is not None:
+                _, _, pct = ram
+                if pct >= self.ram_limit:
+                    logger.warning(
+                        "  [Watchdog] RAM %.1f%% >= restart threshold %.1f%% -- "
+                        "killing UE before it OOMs",
+                        pct,
+                        self.ram_limit,
+                    )
+                    self._triggered.set()
+                    _kill_ue()
+                    return
+            if self._stop.wait(self.poll_interval):
+                return
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=5)
+
+    @property
+    def triggered(self) -> bool:
+        return self._triggered.is_set()
+
+
+def _run_single_with_restart(
+    script_path: Path,
+    port: int,
+    timeout: float,
+    editor_exe: str,
+    uproject: str,
+    restart_ram_limit: float,
+    restart_poll_interval: float,
+    max_restarts: int,
+) -> tuple[bool, bool]:
+    """Run a script, auto-restarting UE on crash or RAM-threshold breach.
+
+    Per-file/per-mesh progress tracking in the generated scripts (done.txt)
+    makes it safe to kill UE and resend the same script -- already-completed
+    work is skipped. Returns the same (success, aborted_memory) tuple as
+    _run_single, after exhausting max_restarts if UE keeps going down.
+    """
+    attempts = 0
+    while True:
+        watchdog = _RamWatchdog(restart_ram_limit, restart_poll_interval)
+        watchdog.start()
+        try:
+            ok, aborted = _run_single(script_path, port, timeout)
+        finally:
+            watchdog.stop()
+
+        if ok or aborted:
+            return ok, aborted
+
+        # Failure with UE still reachable is a genuine script error, not a
+        # crash -- don't mask it with blind retries.
+        if _ue_alive():
+            return ok, aborted
+
+        attempts += 1
+        if attempts > max_restarts:
+            logger.error(
+                "  [Restart] UE down and exceeded max restarts (%d) for %s",
+                max_restarts,
+                script_path.name,
+            )
+            return False, False
+
+        logger.warning(
+            "  [Restart] UE not reachable (crashed or killed by watchdog) -- "
+            "restarting (attempt %d/%d) and resuming %s",
+            attempts,
+            max_restarts,
+            script_path.name,
+        )
+        if not _restart_ue(editor_exe, uproject):
+            logger.error("  [Restart] UE did not come back online within timeout.")
+            return False, False
+        logger.info("  [Restart] UE reachable again, retrying %s", script_path.name)
+
+
 def run_batches(
     scripts_dir: Path,
     port: int = 6776,
@@ -355,6 +555,11 @@ def run_batches(
     vram_limit: float = 75.0,
     ram_limit: float = 75.0,
     batch_delay: float = 10.0,
+    editor_exe: str = DEFAULT_EDITOR_EXE,
+    uproject: str = DEFAULT_UPROJECT,
+    restart_ram_limit: float = 82.0,
+    restart_poll_interval: float = 10.0,
+    max_restarts: int = 10,
 ) -> list[str]:
     """Execute batch scripts sequentially with resource monitoring.
 
@@ -373,6 +578,11 @@ def run_batches(
     for i, b in enumerate(batches):
         logger.info("  [%d/%d] %s", i + 1, len(batches), b.name)
     logger.info("VRAM limit: %.0f%%  |  RAM limit: %.0f%%", vram_limit, ram_limit)
+    if restart_ram_limit > 0:
+        logger.info(
+            "Auto-restart watchdog: RAM >= %.0f%% triggers UE kill+restart+resume",
+            restart_ram_limit,
+        )
     logger.info("")
 
     _print_resources("before import")
@@ -384,7 +594,16 @@ def run_batches(
         logger.info("%s Sending %s ...", label, batch_path.name)
         t0 = time.monotonic()
 
-        ok, aborted_memory = _run_single(batch_path, port, timeout)
+        ok, aborted_memory = _run_single_with_restart(
+            batch_path,
+            port,
+            timeout,
+            editor_exe,
+            uproject,
+            restart_ram_limit,
+            restart_poll_interval,
+            max_restarts,
+        )
         elapsed = time.monotonic() - t0
 
         if ok:
@@ -415,9 +634,22 @@ def run_batches(
                     vram_limit, ram_limit, poll_interval=15.0, timeout=300.0
                 )
                 if not settled:
-                    logger.warning(
-                        "  Resources still high -- proceeding (Nanite VRAM is persistent)"
-                    )
+                    _, ram_pct = _print_resources()
+                    if restart_ram_limit > 0 and ram_pct >= restart_ram_limit:
+                        logger.warning(
+                            "  RAM %.1f%% >= restart threshold %.1f%% after cleanup "
+                            "-- restarting UE before continuing",
+                            ram_pct,
+                            restart_ram_limit,
+                        )
+                        if not _restart_ue(editor_exe, uproject):
+                            logger.error(
+                                "  UE did not come back online -- next batch may fail."
+                            )
+                    else:
+                        logger.warning(
+                            "  Resources still high -- proceeding (Nanite VRAM is persistent)"
+                        )
             else:
                 time.sleep(batch_delay)
 
@@ -476,6 +708,38 @@ def main():
         help="Minimum delay in seconds between batches (default: 10)",
     )
     parser.add_argument(
+        "--editor-exe",
+        default=DEFAULT_EDITOR_EXE,
+        help=f"Path to UnrealEditor.exe for auto-restart (default: {DEFAULT_EDITOR_EXE})",
+    )
+    parser.add_argument(
+        "--uproject",
+        default=DEFAULT_UPROJECT,
+        help=f"Path to the .uproject file for auto-restart (default: {DEFAULT_UPROJECT})",
+    )
+    parser.add_argument(
+        "--restart-ram-limit",
+        type=float,
+        default=82.0,
+        help=(
+            "System RAM %% threshold that triggers an automatic UE kill+restart"
+            "+resume, both proactively during a script and after a failed "
+            "between-batch cleanup. 0 disables auto-restart (default: 82)"
+        ),
+    )
+    parser.add_argument(
+        "--restart-poll-interval",
+        type=float,
+        default=10.0,
+        help="Seconds between RAM checks for the auto-restart watchdog (default: 10)",
+    )
+    parser.add_argument(
+        "--max-restarts",
+        type=int,
+        default=10,
+        help="Max automatic UE restarts per script before giving up (default: 10)",
+    )
+    parser.add_argument(
         "--list-nodes",
         action="store_true",
         help="List discovered UE editor instances and exit",
@@ -519,6 +783,11 @@ def main():
             vram_limit=args.vram_limit,
             ram_limit=args.ram_limit,
             batch_delay=args.batch_delay,
+            editor_exe=args.editor_exe,
+            uproject=args.uproject,
+            restart_ram_limit=args.restart_ram_limit,
+            restart_poll_interval=args.restart_poll_interval,
+            max_restarts=args.max_restarts,
         )
         if failed:
             sys.exit(1)
@@ -534,7 +803,16 @@ def main():
         sys.exit(1)
 
     logger.info("Sending %s to UE editor...", target.name)
-    ok, aborted_memory = _run_single(target, args.port, args.timeout)
+    ok, aborted_memory = _run_single_with_restart(
+        target,
+        args.port,
+        args.timeout,
+        args.editor_exe,
+        args.uproject,
+        args.restart_ram_limit,
+        args.restart_poll_interval,
+        args.max_restarts,
+    )
     if aborted_memory:
         logger.error(
             "Batch aborted: UE private memory over limit. Restart UE and rerun."

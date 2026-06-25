@@ -8,7 +8,7 @@ European oak,european_oak,Quercus robur,2878688,Fagaceae - European oak.seed.jso
 Red oak,red_oak,Quercus rubra,2880539,Fagaceae - Red oak.seed.json,RedOakTwig,Fagaceae_Red_oak,#b8aea0ff,#9ca780de,Northern red oak,NorthernRedOak60.jpg,Roteiche,,,slow_broadleaf,
 White oak,white_oak,Quercus alba,2879737,Fagaceae - White oak.seed.json,EuropeanOakTwig,Fagaceae_White_oak,#998c7fff,#47932dff,,NorthernRedOak60.jpg,,,,slow_broadleaf,
 Sweet chestnut,sweet_chestnut,Castanea sativa,5333294,Fagaceae - Sweet chestnut.seed.json,,Fagaceae_Sweet_chestnut,#66594cff,#4ca53fff,,SweetChestnut40.jpg,Edelkastanie,,,slow_broadleaf,
-Common ash,common_ash,Fraxinus excelsior,3172358,Oleaceae - Ash.seed.json,OneLeavedAshTwig,Oleaceae_Ash,#c6bdafff,#a1ac7ee0,"Ash,European ash",Ash70.jpg,Esche,30,10,fast_broadleaf,yes
+Common ash,common_ash,Fraxinus excelsior,3172358,Oleaceae - Ash.seed.json,OneLeavedAshTwig,Oleaceae_Ash,#c6bdafff,#a1ac7ee0,"Ash,European ash",Ash70.jpg,Esche,30,10,fast_broadleaf_wide,yes
 Narrow-leaved ash,narrow_leaved_ash,Fraxinus angustifolia,7325877,Oleaceae - Narrow-leaved ash.seed.json,OneLeavedAshTwig,Oleaceae_Narrow-leaved_ash,#c6bdafff,#9ca780e3,,Ash25.jpg,,,,fast_broadleaf,
 One-leaved ash,one_leaved_ash,Fraxinus excelsior 'Diversifolia',,Oleaceae - One-leaved ash.seed.json,OneLeavedAshTwig,Oleaceae_One-leaved_ash,#c6bdafff,#a1ac7ee0,,Ash70.jpg,,,,fast_broadleaf,
 Downy birch,downy_birch,Betula pubescens,9118014,Betulaceae - Downy birch.seed.json,PaperBirchTwig,Betulaceae_Downy_birch,#e5e5d8ff,#66bf59ff,,Birch70.jpg,Birke,,,fast_broadleaf,
@@ -21,7 +21,7 @@ Field maple,field_maple,Acer campestre,3189863,Sapindaceae - Field maple.seed.js
 Sycamore maple,sycamore_maple,Acer pseudoplatanus,3189870,Sapindaceae - Maple.seed.json,SycamoreMapleFallTwig,Sapindaceae_Maple,#b0a695ff,#8e9a83e1,"Maple,Sycamore",MapleA60.jpg,,30,10,slow_broadleaf,yes
 Japanese maple,japanese_maple,Acer palmatum,3189882,Sapindaceae - Japanese maple.seed.json,JapeneseMapleAtropurpureumTwig,Sapindaceae_Japanese_maple,#66594cff,#993326ff,,MapleD40.jpg,,,,fast_broadleaf,
 Horse chestnut,horse_chestnut,Aesculus hippocastanum,3189815,Sapindaceae - Horse chestnut.seed.json,,Sapindaceae_Horse_chestnut,#8c7f72ff,#59b24cff,,HorseChestnut55.jpg,,,,slow_broadleaf,
-Small-leaved linden,small_leaved_linden,Tilia cordata,3152047,Malvaceae - Linden.seed.json,SmallLeavedLindenTwig,Malvaceae_Linden,#c4bfb3ff,#98a481de,,LargeLeavedLinden60.jpg,Winterlinde,30,10,fast_broadleaf,yes
+Small-leaved linden,small_leaved_linden,Tilia cordata,3152047,Malvaceae - Linden.seed.json,SmallLeavedLindenTwig,Malvaceae_Linden,#c4bfb3ff,#98a481de,,LargeLeavedLinden60.jpg,Winterlinde,30,10,fast_broadleaf_wide,yes
 Wild cherry,wild_cherry,Prunus avium,3020791,Rosaceae - Wild cherry.seed.json,JapaneseCherryTwig,Rosaceae_Wild_cherry,#b9b1a4ff,#9ba680e1,,SweetChestnut40.jpg,,30,12,slow_broadleaf,yes
 Japanese cherry,japanese_cherry,Prunus serrulata,3022609,Rosaceae - Japanese cherry.seed.json,JapaneseCherryTwig,Rosaceae_Japanese_cherry,#594c3fff,#51ad47ff,,SweetChestnut40.jpg,,,,fast_broadleaf,
 Rowan / Mountain ash,rowan_mountain_ash,Sorbus aucuparia,3012167,Rosaceae - Hawthorn.seed.json,OakLeafMountainAshTwig,Rosaceae_Hawthorn,#7f7266ff,#4c9938ff,,OakLeafMountainAsh40.jpg,,,,fast_broadleaf,

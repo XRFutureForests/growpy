@@ -38,14 +38,16 @@ usd_format = "usda"
 skeletal = true
 # Export static mesh assemblies (geometry only, no skeleton)
 # When both skeletal and static are enabled, static is derived from skeletal
-static = true
+# Disabled: UE 5.7/5.8 Nanite Assembly builder deadlocks on StaticMesh targets
+# (no skeleton) -- see docs/guides/unreal-import.md troubleshooting.
+static = false
 # Base twig density multiplier applied to all trees globally.
 # Values > 1.0 add synthetic twigs; values < 1.0 thin existing placements.
 # Compensates for twig loss from build_cutoff.
 # Per-tree scaling: the input CSV twig_density column is a scale factor
 # multiplied with this base (e.g., base=2.0, CSV=0.5 -> effective 1.0).
 # Range: 0.0 (no twigs) to 3.0+ (dense canopy)
-twig_density = 1
+twig_density = 5
 # Youth bias exponent for synthetic twig placement.
 # Controls how strongly additional twigs prefer younger branches.
 # 1.0 = linear (default), >1.0 = stronger youth preference, <1.0 = more uniform.

@@ -733,26 +733,31 @@ print("=" * 60)
 def _build_material_script(
     project_path: str,
     species_colors: dict[str, dict[str, tuple[float, float, float, float]]],
-    parent_material_path: str = (
-        "/ProceduralVegetationEditor/SampleAssets/Materials/MA_Foliage_Trees"
-    ),
+    parent_material_path: str | None = None,
 ) -> str:
     """Build Unreal Python code that assigns MA_Foliage_Trees-derived MICs to imports.
 
     Per species creates two Material Instance Constants under
     ``{IMPORT_PATH}/Materials/``:
 
-    * ``MI_<species>_Leaves`` with static switch ``DefaultLit Trunk = False``
-      and ``BaseColor Tint Leaves`` (+ ``Translucency Tint Leaves``) set from
-      the CSV.
-    * ``MI_<species>_Trunk`` with static switch ``DefaultLit Trunk = True``
-      and ``BaseColor Tint`` set from the CSV.
+    * ``MI_<species>_Leaves`` with static switch ``DefaultLit Trunk = False``,
+      ``BaseColor Tint Leaves`` (+ ``Translucency Tint Leaves``) set from the
+      CSV, and the per-species leaf BaseColor/Normal textures wired onto
+      whichever texture parameters the parent material exposes for leaves.
+    * ``MI_<species>_Trunk`` with static switch ``DefaultLit Trunk = True``,
+      ``BaseColor Tint`` set from the CSV, and the per-species bark
+      BaseColor/Normal textures wired the same way.
 
     Then walks all imported SkeletalMesh / StaticMesh assets and assigns
     the appropriate MIC to each material slot. Foliage is detected via
     ``Instances/`` path membership or slot/material names containing
     foliage/twig/leaf keywords.
     """
+    if parent_material_path is None:
+        # Project-local copy (see docs/guides/unreal-import.md troubleshooting):
+        # the plugin's own content path is fragile across UE versions/mount
+        # state, so we expect the master material duplicated into the project.
+        parent_material_path = f"{project_path}/Materials/MA_Foliage_Trees"
     colors_json = json.dumps(
         {s: {k: list(v) for k, v in d.items()} for s, d in species_colors.items()},
         indent=2,
@@ -864,6 +869,49 @@ def _set_vector(mic, name, rgba):
     return False
 
 
+def _set_texture(mic, name, texture):
+    try:
+        mel.set_material_instance_texture_parameter_value(mic, name, texture)
+        return True
+    except Exception as e:
+        unreal.log_warning(f"Could not set texture '{{name}}': {{e}}")
+    return False
+
+
+def _classify_texture_param(name):
+    """Map a master-material texture parameter name to a role, or None if unrecognized."""
+    lname = name.lower()
+    is_leaf = "leaf" in lname
+    if "normal" in lname:
+        return "leaf_normal" if is_leaf else "trunk_normal"
+    if any(tok in lname for tok in ("basecolor", "diffuse", "albedo", "color")):
+        return "leaf_diffuse" if is_leaf else "trunk_diffuse"
+    return None
+
+
+# Discover which texture parameters the parent material exposes so per-species
+# bark/leaf textures (BaseColor + Normal) can be wired onto the MICs below,
+# instead of falling back to the parent material's defaults.
+TEXTURE_PARAM_NAMES = {{}}  # role -> parameter name on the parent material
+if parent_mat is not None:
+    try:
+        all_tex_params = [str(p) for p in (mel.get_texture_parameter_names(parent_mat) or [])]
+    except Exception as e:
+        unreal.log_warning(f"Could not list texture parameters on parent material: {{e}}")
+        all_tex_params = []
+    print(f"Parent material texture parameters: {{all_tex_params}}")
+    for p in all_tex_params:
+        role = _classify_texture_param(p)
+        if role is None:
+            print(f"  [skip] unrecognized texture parameter '{{p}}'")
+            continue
+        if role in TEXTURE_PARAM_NAMES:
+            print(f"  [skip] duplicate role '{{role}}' for '{{p}}' (already using '{{TEXTURE_PARAM_NAMES[role]}}')")
+            continue
+        TEXTURE_PARAM_NAMES[role] = p
+        print(f"  [ok] texture role '{{role}}' -> parameter '{{p}}'")
+
+
 # ----------------------------------------------------------------------
 # Step 1: collect imported species by scanning mesh assets.
 # ----------------------------------------------------------------------
@@ -903,6 +951,54 @@ for ad in all_assets:
 
 print(f"Found {{len(mesh_assets)}} mesh assets covering {{len(species_found)}} species")
 
+
+# Collect per-species Texture2D assets (bark/leaf BaseColor + Normal) so they
+# can be wired onto the MICs in Step 2. Bark textures are named
+# "<...>_bark"/"<...>_bark_normal"; leaf textures keep their original Grove
+# filename, so a generic "normal" token is used to split diffuse vs. normal.
+species_textures = {{}}  # species -> {{"trunk_diffuse"/"trunk_normal"/"leaf_diffuse"/"leaf_normal": asset_data}}
+for ad in all_assets:
+    try:
+        cls = str(ad.asset_class_path.asset_name)
+    except Exception:
+        try:
+            cls = str(ad.asset_class)
+        except Exception:
+            cls = ""
+    if cls != "Texture2D":
+        continue
+    pkg = str(ad.package_name)
+    if pkg.startswith(MATERIALS_PATH):
+        continue
+
+    rel = pkg[len(IMPORT_PATH):].lstrip("/") if pkg.startswith(IMPORT_PATH) else pkg
+    parts = rel.split("/")
+    species = None
+    if parts and parts[0] == "Instances":
+        name = str(ad.asset_name)
+        for token in ("_foliage_", "_twigs_combined_", "_foliage"):
+            idx = name.find(token)
+            if idx > 0:
+                species = name[:idx]
+                break
+    elif parts:
+        species = parts[0]
+    if species is None or species not in species_found:
+        continue
+
+    name_lower = str(ad.asset_name).lower()
+    if "_bark_normal" in name_lower:
+        role = "trunk_normal"
+    elif "_bark" in name_lower:
+        role = "trunk_diffuse"
+    elif any(tok in name_lower for tok in ("normal", "_nrm", "_norm")):
+        role = "leaf_normal"
+    else:
+        role = "leaf_diffuse"
+    species_textures.setdefault(species, {{}}).setdefault(role, ad)
+
+print(f"Found textures for {{len(species_textures)}} species")
+
 # ----------------------------------------------------------------------
 # Step 2: create MICs per species.
 # ----------------------------------------------------------------------
@@ -916,12 +1012,19 @@ if parent_mat is not None:
         entry = {{}}
         leaf_rgba = colors.get("leaf")
         bark_rgba = colors.get("bark")
+        tex_bucket = species_textures.get(species, {{}})
         if leaf_rgba is not None:
             mic_l = _create_mic(f"MI_{{species}}_Leaves", parent_mat)
             if mic_l is not None:
                 _set_static_switch(mic_l, "DefaultLit Trunk", False)
                 _set_vector(mic_l, "BaseColor Tint Leaves", leaf_rgba)
                 _set_vector(mic_l, "Translucency Tint Leaves", leaf_rgba)
+                leaf_diff = tex_bucket.get("leaf_diffuse")
+                if leaf_diff is not None and "leaf_diffuse" in TEXTURE_PARAM_NAMES:
+                    _set_texture(mic_l, TEXTURE_PARAM_NAMES["leaf_diffuse"], leaf_diff.get_asset())
+                leaf_norm = tex_bucket.get("leaf_normal")
+                if leaf_norm is not None and "leaf_normal" in TEXTURE_PARAM_NAMES:
+                    _set_texture(mic_l, TEXTURE_PARAM_NAMES["leaf_normal"], leaf_norm.get_asset())
                 mel.update_material_instance(mic_l)
                 editor_asset_lib.save_loaded_asset(mic_l)
                 entry["leaves"] = mic_l
@@ -930,6 +1033,12 @@ if parent_mat is not None:
             if mic_t is not None:
                 _set_static_switch(mic_t, "DefaultLit Trunk", True)
                 _set_vector(mic_t, "BaseColor Tint", bark_rgba)
+                trunk_diff = tex_bucket.get("trunk_diffuse")
+                if trunk_diff is not None and "trunk_diffuse" in TEXTURE_PARAM_NAMES:
+                    _set_texture(mic_t, TEXTURE_PARAM_NAMES["trunk_diffuse"], trunk_diff.get_asset())
+                trunk_norm = tex_bucket.get("trunk_normal")
+                if trunk_norm is not None and "trunk_normal" in TEXTURE_PARAM_NAMES:
+                    _set_texture(mic_t, TEXTURE_PARAM_NAMES["trunk_normal"], trunk_norm.get_asset())
                 mel.update_material_instance(mic_t)
                 editor_asset_lib.save_loaded_asset(mic_t)
                 entry["trunk"] = mic_t

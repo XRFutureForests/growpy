@@ -112,6 +112,12 @@ ue_exec data/output/forest/unreal_scripts/growpy_nanite_voxelize.py
 
 If a batch OOMs, reduce `target_residency_kb` or split species manually.
 
+### Auto-restart watchdog
+
+Native Nanite/USD mesh builds leak committed memory that cleanup/GC cannot reclaim. Past a certain point Windows refuses to commit more pages ("the paging file is too small") and UE crashes outright. `ue_exec` runs a background RAM watchdog alongside every script: if system RAM crosses `--restart-ram-limit` (default 82%), it kills UE proactively, relaunches it, waits for Remote Execution to come back, and resends the same script. The same restart logic also fires reactively if UE crashes on its own. Per-file/per-mesh `done.txt` progress tracking in every generated script makes this safe -- already-completed work is skipped on resume.
+
+Tune with `--editor-exe`, `--uproject` (paths to your UE install and `.uproject`), `--restart-ram-limit 0` to disable, or `--max-restarts` to cap retries.
+
 ## DynamicWind
 
 Two delivery paths, pick one:
@@ -161,7 +167,8 @@ Configured via `[unreal.nanite]` in `unreal.toml`. The script walks every assemb
 
 - **"bone count exceeds 32767"**: run Step 4 with `--skeleton-reduce 0.5 --skeleton-length 2.5`. `skeleton-reduce` is the strongest lever.
 - **Twigs missing after import**: `Instances/` batch must run first. Check Content Browser at `/Game/GrowPy/Trees/Instances/`.
-- **Materials pink**: master material missing. Import `db_path` assets from Grove master or set `config.unreal_db_path` to correct Content path.
+- **Materials pink / "Parent material not found"**: `import_batch_98_materials.py` expects `MA_Foliage_Trees` duplicated into the project at `{db_path}/Materials/MA_Foliage_Trees`. Duplicate it from the ProceduralVegetationEditor plugin (`/ProceduralVegetationEditor/SampleAssets/Materials/MasterMaterials/MA_Foliage_Trees`) via `EditorAssetLibrary.duplicate_asset`, then re-run the batch.
+- **DataTable missing / "ST_TreeCatalogEntry struct not found"**: `import_batch_100_datatable.py` expects the struct at `{db_path}/ST_TreeCatalogEntry`. If it exists elsewhere in the project, duplicate it to that path (or set `config.unreal_db_path` to wherever it already lives) before re-running.
 - **VRAM climbs until crash**: lower `target_residency_kb`, split per-species batches, or disable voxelization on first pass.
 - **DynamicWind attributes stripped**: re-enable USD Importer → Preserve Custom Prims. Fallback: `wind_import.py` applies JSON sidecars.
 - **Redirectors in destination**: generated scripts call `_fixup_dest_redirectors` to clean stale references. Re-run if renames leave dangling paths.

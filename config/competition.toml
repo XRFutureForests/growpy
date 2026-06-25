@@ -28,3 +28,10 @@ thinning = [[10, 3.5], [15, 5.0], [20, 6.0]]
 [competition.groups.slow_broadleaf]
 planting_distance = 3.0                      # meters
 thinning = [[10, 4.5], [15, 6.0], [20, 7.0]]
+
+[competition.groups.fast_broadleaf_wide]
+# Same species as fast_broadleaf (common ash, small-leaved linden) but wider
+# spacing -- at 2.25 m planting distance these two stalled under shading and
+# never reached the 10-20 m competition export stages within growth_cycle_limit.
+planting_distance = 3.5                      # meters
+thinning = [[10, 5.0], [15, 6.5], [20, 7.5]]
