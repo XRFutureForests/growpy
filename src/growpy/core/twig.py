@@ -567,7 +567,7 @@ def densify_twig_placements(
         logger.debug("densify: no candidate faces available")
         return placements
 
-    # Normalise weights for random.choices
+    # Guard against degenerate weight vectors
     total_weight = sum(candidate_weights)
     if total_weight < 1e-12:
         return placements
@@ -599,8 +599,24 @@ def densify_twig_placements(
             if len(bone) >= 8:
                 bone_to_branch[bone_idx] = int(bone[7]) - branch_id_offset
 
-    # Sample faces and create synthetic placements
-    chosen_faces = rng.choices(candidate_faces, weights=candidate_weights, k=num_to_add)
+    # Weighted sampling WITHOUT replacement so each candidate face hosts at most
+    # one synthetic twig. Uses the Efraimidis-Spirakis key trick: assign each
+    # face a key of U^(1/w) and take the top-k by key — equivalent to weighted
+    # sampling without replacement in O(n log n).
+    n_sample = min(num_to_add, len(candidate_faces))
+    if n_sample < num_to_add:
+        logger.debug(
+            "densify: only %d candidate faces available for %d requested twigs; "
+            "capped to one twig per face",
+            n_sample,
+            num_to_add,
+        )
+    keys = [
+        rng.random() ** (1.0 / w) if w > 1e-12 else 0.0
+        for w in candidate_weights
+    ]
+    order = sorted(range(len(candidate_faces)), key=lambda i: -keys[i])
+    chosen_faces = [candidate_faces[i] for i in order[:n_sample]]
 
     added = 0
     for fi in chosen_faces:
@@ -634,6 +650,22 @@ def densify_twig_placements(
         if twig_bone_id is not None and bones_info:
             local_bone = twig_bone_id - bone_id_offset
             branch_id_for_twig = bone_to_branch.get(local_bone)
+            # Replace geometric face normal (radially outward from branch cylinder)
+            # with bone direction (along branch axis toward tip). Face normals make
+            # synthetic twigs point like spikes perpendicular to the branch, which
+            # causes foliage meshes to be edge-on and nearly invisible. Bone direction
+            # matches how Grove's own get_twig_directions() orients apical twigs.
+            if 0 <= local_bone < len(bones_info):
+                _bd = bones_info[local_bone]
+                if len(_bd) >= 4:
+                    _s, _e = _bd[2], _bd[3]
+                    if hasattr(_s, "x"):
+                        _dx, _dy, _dz = _e.x - _s.x, _e.y - _s.y, _e.z - _s.z
+                    else:
+                        _dx, _dy, _dz = _e[0] - _s[0], _e[1] - _s[1], _e[2] - _s[2]
+                    _blen = math.sqrt(_dx * _dx + _dy * _dy + _dz * _dz)
+                    if _blen > 1e-6:
+                        normal = (_dx / _blen, _dy / _blen, _dz / _blen)
 
         # Orientation: default Z-up in Grove space
         orientation = (0.0, 0.0, 1.0)

@@ -53,7 +53,7 @@ twig_density = 5
 # 1.0 = linear (default), >1.0 = stronger youth preference, <1.0 = more uniform.
 # At 2.0 a branch at youth=0.5 gets 25% weight vs 100% for the youngest.
 # Range: 0.0 (uniform placement) to 3.0+ (extreme youth preference)
-youth_bias = 1
+youth_bias = 0.25
 # Skip PVE preset JSON generation (saves ~3% export time)
 # PVE presets only needed for Unreal Procedural Vegetation Editor
 skip_pve_json = false

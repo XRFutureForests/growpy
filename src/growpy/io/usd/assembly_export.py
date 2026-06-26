@@ -964,19 +964,23 @@ def export_tree_as_nanite_assembly(
                         bone_parent_map[global_bone_id] = parent_bone_id
 
                     def find_nearest_existing_bone(old_bone_id: int) -> int:
-                        """Walk up parent chain to find nearest bone that exists in filtered skeleton."""
+                        """Walk up parent chain to find nearest bone in filtered skeleton."""
                         current = old_bone_id
-                        visited = set()
+                        visited: set[int] = set()
                         while current not in old_to_new_bone_map:
                             if current in visited or current not in bone_parent_map:
-                                # Cycle detected or reached end, fall back to root
-                                return 0
+                                break
                             visited.add(current)
                             parent = bone_parent_map[current]
-                            if parent == current:  # Root bone
-                                return 0
+                            if parent == current:  # reached grove root
+                                break
                             current = parent
-                        return old_to_new_bone_map[current]
+                        if current in old_to_new_bone_map:
+                            return old_to_new_bone_map[current]
+                        # No ancestor survived filtering; bind to grove root bone
+                        # (trunk base) rather than the artificial skeleton root joint.
+                        grove_root = old_to_new_bone_map.get(bone_id_offset)
+                        return grove_root if grove_root is not None else 0
 
                     # Update each twig placement's bone_id from OLD global to NEW filtered index
                     remapped_count = 0
