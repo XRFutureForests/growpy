@@ -473,7 +473,10 @@ def densify_twig_placements(
     Args:
         model: Grove model with faces, points, and per-vertex attributes.
         placements: Existing Grove placements from extract_twig_placements_from_model.
-        density: Target multiplier. 0.5 = keep half, 1.0 = no change, 2.0 = double.
+        density: Target multiplier relative to the surviving post-cutoff twig count.
+            1.0 = keep Grove's surviving placement count unchanged.
+            Set to (pre_cutoff / post_cutoff) to restore natural density when a
+            build_cutoff_thickness is active (e.g. 4.6 for cutoff=0.005).
         bones_info: Optional bone list for bone/branch assignment.
         seed: Random seed for reproducibility.
         scaled_points: Optional list of (x, y, z) tuples from the radially-scaled
@@ -513,6 +516,7 @@ def densify_twig_placements(
         return placements
 
     target_total = int(total_existing * density)
+
     num_to_add = target_total - total_existing
     if num_to_add <= 0:
         return placements

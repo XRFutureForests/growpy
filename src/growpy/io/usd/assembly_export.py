@@ -752,6 +752,7 @@ def export_tree_as_nanite_assembly(
     twig_placements_out: dict | None = None,
     instances_dir: Path | None = None,
 ) -> bool:
+
     """Export Grove tree as Unreal Engine Nanite Assembly.
 
     This function:
@@ -782,12 +783,17 @@ def export_tree_as_nanite_assembly(
         stems_file_suffix: Optional suffix for stems filename (e.g., "h4m4" produces
             {species}_h4m4_stems_skeletal.usda). Prevents overwrite in cycle mode.
         radial_scale: Radial scale factor for trunk mesh
-        twig_density: Per-tree density scale factor from the input CSV
-            twig_density column.  Multiplied with the TOML export_twig_density
-            base to produce the effective density.  None means scale 1.0.
+        twig_density: Per-tree density scale factor from the input CSV twig_density column.
+            Multiplied with the TOML export_twig_density base to produce the effective
+            density.  None means scale 1.0.
+        twig_density: Per-tree density scale factor from the input CSV twig_density column.
+            Multiplied with the TOML export_twig_density base to produce the effective
+            density. Set to (pre_cutoff/post_cutoff) ratio when build_cutoff_thickness > 0
+            to restore natural canopy density (e.g. 4.6 for cutoff=0.005 on a 20-cycle oak).
         instances_dir: Optional shared directory for twig USD files and textures.
             When set, twig files are copied here instead of alongside the assembly,
             and assembly references use relative paths to this directory.
+
 
     Returns:
         bool: Success status
@@ -932,6 +938,7 @@ def export_tree_as_nanite_assembly(
                             youth_bias=cfg.export_youth_bias,
                             scaled_points=_sp,
                         )
+
 
             # CRITICAL: Remap twig bone_ids from UNFILTERED to FILTERED indices
             # After filter_bones_for_mesh in tree export, bone indices are renumbered

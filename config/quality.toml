@@ -35,7 +35,7 @@ build_cutoff_thickness = 0.005
 build_blend = true
 build_end_cap = true
 skeleton_length = 1.25
-skeleton_reduce = 0.4
+skeleton_reduce = 0.25
 skeleton_bias = 0.5
 skeleton_connected = true
 
@@ -55,7 +55,7 @@ skeleton_connected = true
 resolution = 8
 resolution_reduce = 0.5
 build_cutoff_age = 0
-build_cutoff_thickness = 0.0
+build_cutoff_thickness = 0.005
 build_blend = true
 build_end_cap = true
 skeleton_length = 2.0

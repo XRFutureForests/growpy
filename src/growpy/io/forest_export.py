@@ -155,6 +155,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         # 3. NOW build models (with bone_id attributes already tagged)
         # Cutoff is allowed for skeletal meshes - bone filtering happens during export
         # to ensure skeleton only includes bones referenced by the mesh geometry
+
         with timer.track("build_models"):
             models = grove.build_models(
                 {
@@ -166,6 +167,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                     "build_end_cap": quality_params["build_end_cap"],
                 }
             )
+
 
         if not models:
             return exported
@@ -361,6 +363,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         twig_placements_out=captured_twig_placements,
                         instances_dir=instances_dir,
                     )
+
 
                 if export_success:
                     exported.append(str(usd_path))
