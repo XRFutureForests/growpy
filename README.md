@@ -433,17 +433,28 @@ python src/growpy/cli/generate_forest.py --skeleton-reduce 0.5 --skeleton-length
 
 ## License
 
-This project is licensed under the [Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/).
+[![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 
-You are free to use, share, and adapt this software for non-commercial purposes, provided you give appropriate credit. Commercial use is not permitted. See [LICENSE](LICENSE) for details.
+This project is licensed under the
+[Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/).
+You may use, share, and adapt it for **non-commercial** purposes with attribution;
+commercial use is not permitted. See [LICENSE](LICENSE). Note: CC BY-NC is not an
+OSI-approved license — this is intentional, to keep the project non-commercial.
 
-**The Grove 2.3** is a separate commercial product with its own license. Ensure you have proper licensing from [The Grove](https://www.thegrove3d.com) before use.
+**The Grove 2.3** is a separate commercial product with its own license. Ensure
+you have proper licensing from [The Grove](https://www.thegrove3d.com) before use.
 
 ## Citation
 
-If you use GrowPy or its outputs in a publication, presentation, or other work, please cite this project. See [CITATION.cff](CITATION.cff) for the machine-readable citation, or use:
+<!-- After the first Zenodo release, replace XXXXXXX and uncomment the badge. -->
+<!-- [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX) -->
 
-> Sperlich, M. (2026). GrowPy: Procedural Forest Generation for Unreal Engine. University of Freiburg. Available at: <https://gitlab.uni-freiburg.de/xr-future-forests-lab/growpy>
+If you use GrowPy or its outputs in a publication, please cite it. See
+[CITATION.cff](CITATION.cff) for machine-readable metadata, or:
+
+> Sperlich, M. (2026). GrowPy: Procedural Forest Generation for Unreal Engine.
+> University of Freiburg.
+> https://gitlab.uni-freiburg.de/xr-future-forests-lab/growpy
 
 ---
 

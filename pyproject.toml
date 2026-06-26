@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "growpy"
 version = "1.0.0"
 description = "Grove API Integration for Unreal Engine 5 Nanite"
-license = "AGPL-3.0-only"
+license = "CC-BY-NC-4.0"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

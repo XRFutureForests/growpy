@@ -4,7 +4,7 @@ title: "GrowPy - Procedural Forest Generation for Unreal Engine"
 type: software
 version: 0.1.0
 date-released: "2026-04-02"
-license: AGPL-3.0-only
+license: CC-BY-NC-4.0
 repository-code: "https://gitlab.uni-freiburg.de/xr-future-forests-lab/growpy"
 abstract: >-
   Procedural tree generation pipeline using The Grove 2.3, optimized for
