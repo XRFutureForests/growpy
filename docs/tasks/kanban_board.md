@@ -26,7 +26,7 @@
 | Skip When | You only need lifecycle policy or documentation standards. |
 | Canonical | No — working document |
 | Next Docs | [Task Rules](./README.md) |
-| Primary Sources | Linear (`geosense-ufr` workspace, `XRFF` team) |
+| Primary Sources | Linear (`xr-future-forests-lab` workspace, `XRFF` team) |
 
 ---
 
