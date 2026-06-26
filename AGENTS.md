@@ -24,16 +24,16 @@ Procedural forest generation pipeline: CSV species/position data → The Grove 2
 
 | Path | Contents |
 |------|----------|
-| `src/cli/` | argparse entry points for all CLI scripts |
-| `src/core/` | forest.py, tree.py, twig.py, skeleton.py, grove.py |
-| `src/pipelines/` | step_runner.py, forest_stages.py, forest_exports.py, dataset_csv_planner.py |
-| `src/io/usd/` | USD/Nanite exporters |
-| `src/io/unreal/` | PVE JSON, import scripts, wind |
-| `src/io/helios/` | OBJ export, Helios scene XML |
-| `src/config/` | TOML config, species overrides |
-| `src/utils/` | yield tables, analysis, logging, GBIF |
-| `src/tools/` | ue_exec, diagnostics |
-| `src/blender/` | grove_extract, twig_converter |
+| `src/growpy/cli/` | argparse entry points for all CLI scripts |
+| `src/growpy/core/` | forest.py, tree.py, twig.py, skeleton.py, grove.py |
+| `src/growpy/pipelines/` | step_runner.py, forest_stages.py, forest_exports.py, dataset_csv_planner.py |
+| `src/growpy/io/usd/` | USD/Nanite exporters |
+| `src/growpy/io/unreal/` | PVE JSON, import scripts, wind |
+| `src/growpy/io/helios/` | OBJ export, Helios scene XML |
+| `src/growpy/config/` | TOML config, species overrides |
+| `src/growpy/utils/` | yield tables, analysis, logging, GBIF |
+| `src/growpy/tools/` | ue_exec, diagnostics |
+| `src/growpy/blender/` | grove_extract, twig_converter |
 
 ## CLI Scripts
 

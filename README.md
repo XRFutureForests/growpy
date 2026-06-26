@@ -429,7 +429,7 @@ python src/growpy/cli/generate_forest.py --skeleton-reduce 0.5 --skeleton-length
 | [Yield Table Calibration](docs/reference/yield-table-calibration.md) | Calibration methodology |
 | [USD Builder](docs/reference/usd-builder.md) | USD export internals |
 | [Module Reference](docs/architecture/module-reference.md) | Per-module purpose, functions, inputs, outputs |
-| [Grove 2.3 API](docs/the_grove/) | Grove core API documentation |
+| [Grove 2.3 API](docs/reference/vendor/the-grove/) | Grove core API documentation |
 
 ## License
 

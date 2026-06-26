@@ -124,7 +124,7 @@ Backlog/Postponed → Todo → In Progress → To Review → Done
 |----------|-------|
 | Workspace | `xr-future-forests-lab` |
 | Team Name | XR Future Forests Lab |
-| Linear URL | `https://linear.app/xr-future-forests-lab` |
+| Linear URL | `https://linear.app/geosense-ufr` |
 
 ### Epic Operations
 

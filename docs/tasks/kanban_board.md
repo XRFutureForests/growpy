@@ -15,7 +15,7 @@
 - [Task Rules](./README.md)
 - [Reference Hub](../reference/README.md)
 - [Architecture](../project/architecture.md)
-- [Workspace Board](../../docs/tasks/kanban_board.md) — all epics across all repos
+- Workspace Board — all epics across all repos
 
 ## Agent Entry
 
@@ -58,7 +58,7 @@ This repo contributes to:
 | Epic 15 | Forest Generator | Scientific Infrastructure | [link](https://linear.app/geosense-ufr/issue/XRFF-137) |
 | Epic 2 | VR Forest: built virtual forest Ecosense | Immersive Teaching Platform | [link](https://linear.app/geosense-ufr/project/vr-forest-built-virtual-forest-ecosense-aea56156c668) |
 
-> For all epics across all repos, see the [workspace kanban board](../../docs/tasks/kanban_board.md).
+> For all epics across all repos, see the workspace kanban board in the xr-future-forests-lab repo.
 
 ---
 
@@ -143,4 +143,4 @@ No completed items tracked yet.
 
 - [tasks/README.md](./README.md) — Task system workflow and rules
 - [Reference Hub](../reference/README.md) — ADRs, guides, manuals
-- [Workspace Board](../../docs/tasks/kanban_board.md) — all repos overview
+- Workspace Board — all repos overview (see xr-future-forests-lab repo)

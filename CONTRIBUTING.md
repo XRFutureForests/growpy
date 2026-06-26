@@ -9,8 +9,7 @@ XR Future Forests Lab at the University of Freiburg.
 - **Suggest features** — especially new species, yield-table integrations, or
   Unreal-side workflow improvements.
 - **Submit merge requests** for bug fixes, docs, or pipeline enhancements.
-- **Improve documentation** — the 17-file `docs/` tree covers CLI usage,
-  dataset specification, yield-table calibration, and Grove API notes.
+- **Improve documentation** — see [`docs/README.md`](docs/README.md) for the full documentation index.
 
 ## License implications
 
