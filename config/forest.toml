@@ -47,7 +47,7 @@ static = false
 # Per-tree scaling: the input CSV twig_density column is a scale factor
 # multiplied with this base (e.g., base=2.0, CSV=0.5 -> effective 1.0).
 # Range: 0.0 (no twigs) to 3.0+ (dense canopy)
-twig_density = 1.5
+twig_density = 1.0
 # Youth bias exponent for synthetic twig placement.
 # Controls how strongly additional twigs prefer younger branches.
 # 1.0 = linear (default), >1.0 = stronger youth preference, <1.0 = more uniform.
@@ -56,7 +56,7 @@ twig_density = 1.5
 youth_bias = 0.5
 # Skip PVE preset JSON generation (saves ~3% export time)
 # PVE presets only needed for Unreal Procedural Vegetation Editor
-skip_pve_json = true
+skip_pve_json = false
 # Maximum skeleton joints for Nanite Assembly USD export.
 # Nanite encodes bone indices in 8-bit fields (max 256).
 # 0 = no limit (use for PVE native skeletal mesh path which has no constraint).
@@ -67,7 +67,7 @@ max_skeleton_joints = 0
 # Nanite mesh which can consume extreme amounts of RAM.
 # 0 = no limit.  5000 = safe default for 64 GB systems.
 # Instances beyond this limit are randomly removed (uniform across twig types).
-max_assembly_instances = 50000
+max_assembly_instances = 40000
 # Skip assembly validation (saves ~5-10% export time)
 skip_validation = true
 # Only export specific trees by fid (integer array)
