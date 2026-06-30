@@ -24,36 +24,9 @@ nanite_fallback_percent = 0.01
 # much heavier than intended. Setting this explicitly is the single biggest
 # import-perf win for forests where Nanite is always available.
 nanite_fallback_target = "percent_triangles"
-# Used only when fallback_target = "relative_error". Higher = coarser fallback.
-# Default 1.0 is conservative; try 2.0-4.0 for further build-time savings.
-nanite_fallback_relative_error = 1.0
-# Nanite trim relative error threshold (0.0 = auto).
-# Controls how aggressively Nanite simplifies internal LOD hierarchy.
-# Higher values allow coarser LODs, reducing build time and streaming data.
-# 0.0 = UE default (auto), try 1.0-3.0 for faster builds on organic meshes.
-# Epic recommends staying above 0.02; 0.04 is a good default.
-nanite_trim_relative_error = 0.0
-# Minimum always-resident Nanite data in KB per mesh (0 = single page).
-# Lower values reduce baseline VRAM per mesh. 0 is ideal for large forests
-# where only a few trees are close at any time.
-nanite_target_residency_kb = 0
 # Interpolate UVs during Nanite mesh simplification.
 # Should be true for textured meshes to avoid UV seam artifacts at distance.
 nanite_lerp_uvs = true
-# Maximum edge length factor for Nanite simplification (0.0 = disabled).
-# Prevents oversimplification of edges on deformable meshes (wind/WPO).
-# Set > 0 (e.g., 1.0) if trees use skeletal mesh wind animation.
-nanite_max_edge_length_factor = 0.0
-# Store explicit per-vertex tangents instead of deriving them implicitly.
-# false = smaller assets + faster builds (recommended for vegetation).
-# true only if a material specifically depends on baked tangent vectors.
-nanite_explicit_tangents = false
-# Position quantization precision (-1 = auto). Lower = smaller Nanite data.
-# Trees tolerate aggressive precision; -1 lets UE choose per-mesh.
-nanite_position_precision = -1
-# Normal quantization precision (-1 = auto). Lower = smaller Nanite data.
-# Vegetation usually tolerates coarse normals well.
-nanite_normal_precision = -1
 
 # --- PVE preset import (UE 5.7+ Procedural Vegetation Editor) ---
 # Generates a complementary UE Python script that creates
@@ -62,4 +35,4 @@ nanite_normal_precision = -1
 # Procedural Vegetation Editor plugin to be enabled in UE.
 # Combined presets and PVE graphs are colocated with tree meshes
 # at <project_path>/<species>/<scene>/.
-generate_pve_presets = true
+generate_pve_presets = false

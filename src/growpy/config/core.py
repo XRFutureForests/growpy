@@ -175,7 +175,6 @@ class GrowPyConfig:
     export_max_assembly_instances: int = (
         0  # 0 = no limit; cap twig instances per assembly
     )
-    export_skip_pve_json: bool = True
     export_skip_validation: bool = True
     export_twig_density: float = 1.0
     export_youth_bias: float = 1.0
@@ -189,20 +188,12 @@ class GrowPyConfig:
     unreal_generate_wind_data: bool = True
     unreal_nanite_fallback_percent: float = 0.01
     unreal_nanite_fallback_target: str = "percent_triangles"
-    unreal_nanite_fallback_relative_error: float = 1.0
-    unreal_nanite_trim_relative_error: float = 0.0
-    unreal_nanite_target_residency_kb: int = 0
     unreal_nanite_lerp_uvs: bool = True
-    unreal_nanite_max_edge_length_factor: float = 0.0
-    unreal_nanite_explicit_tangents: bool = False
-    unreal_nanite_position_precision: int = -1
-    unreal_nanite_normal_precision: int = -1
     unreal_db_path: str = "/Game/Assets/TheGrove"
     unreal_generate_pve_presets: bool = True
     unreal_pve_import_base: str = "/Game/Assets/TheGrove"
 
     # [twigs] - interior decimation
-    twigs_interior_decimate_ratio: float = 0.5
     twigs_interior_edge_mm: float = 0.0
     twigs_interior_boundary_rings: int = 1
 
@@ -233,8 +224,7 @@ class GrowPyConfig:
     yield_sources_preferred_region: str = ""
     yield_sources_preferred_site_index: float | None = None
 
-    # [dataset]
-    dataset_competition_neighbors: int = 3
+    competition_neighbors: int = 3
 
     def get_competition_group(self, species_name: str) -> dict[str, Any]:
         """Look up the competition group config for a species.
@@ -323,8 +313,6 @@ class GrowPyConfig:
             kwargs["twigs_alpha_trim"] = twigs["alpha_trim"]
         if "boundary_edge_mm" in twigs:
             kwargs["twigs_boundary_edge_mm"] = twigs["boundary_edge_mm"]
-        if "interior_decimate_ratio" in twigs:
-            kwargs["twigs_interior_decimate_ratio"] = twigs["interior_decimate_ratio"]
         if "interior_edge_mm" in twigs:
             kwargs["twigs_interior_edge_mm"] = twigs["interior_edge_mm"]
         if "interior_boundary_rings" in twigs:
@@ -384,8 +372,6 @@ class GrowPyConfig:
             kwargs["export_max_assembly_instances"] = int(
                 export["max_assembly_instances"]
             )
-        if "skip_pve_json" in export:
-            kwargs["export_skip_pve_json"] = export["skip_pve_json"]
         if "skip_validation" in export:
             kwargs["export_skip_validation"] = export["skip_validation"]
         # Backward compat: export.radial_scale -> calibration_align_dbh
@@ -421,40 +407,12 @@ class GrowPyConfig:
             kwargs["unreal_nanite_fallback_percent"] = float(
                 unreal["nanite_fallback_percent"]
             )
-        if "nanite_trim_relative_error" in unreal:
-            kwargs["unreal_nanite_trim_relative_error"] = float(
-                unreal["nanite_trim_relative_error"]
-            )
-        if "nanite_target_residency_kb" in unreal:
-            kwargs["unreal_nanite_target_residency_kb"] = int(
-                unreal["nanite_target_residency_kb"]
-            )
         if "nanite_lerp_uvs" in unreal:
             kwargs["unreal_nanite_lerp_uvs"] = unreal["nanite_lerp_uvs"]
-        if "nanite_max_edge_length_factor" in unreal:
-            kwargs["unreal_nanite_max_edge_length_factor"] = float(
-                unreal["nanite_max_edge_length_factor"]
-            )
         if "nanite_fallback_target" in unreal:
             kwargs["unreal_nanite_fallback_target"] = str(
                 unreal["nanite_fallback_target"]
             ).lower()
-        if "nanite_fallback_relative_error" in unreal:
-            kwargs["unreal_nanite_fallback_relative_error"] = float(
-                unreal["nanite_fallback_relative_error"]
-            )
-        if "nanite_explicit_tangents" in unreal:
-            kwargs["unreal_nanite_explicit_tangents"] = bool(
-                unreal["nanite_explicit_tangents"]
-            )
-        if "nanite_position_precision" in unreal:
-            kwargs["unreal_nanite_position_precision"] = int(
-                unreal["nanite_position_precision"]
-            )
-        if "nanite_normal_precision" in unreal:
-            kwargs["unreal_nanite_normal_precision"] = int(
-                unreal["nanite_normal_precision"]
-            )
         if "db_path" in unreal:
             kwargs["unreal_db_path"] = str(unreal["db_path"])
         if "generate_pve_presets" in unreal:
@@ -514,20 +472,17 @@ class GrowPyConfig:
             val = float(ys["preferred_site_index"])
             kwargs["yield_sources_preferred_site_index"] = val if val > 0 else None
 
-        # [dataset]
-        dataset = data.get("dataset", {})
-        if "competition_neighbors" in dataset:
-            n = int(dataset["competition_neighbors"])
-            if n not in (3, 4, 5, 6):
-                raise ValueError(
-                    f"dataset.competition_neighbors must be 3, 4, 5, or 6, got {n}"
-                )
-            kwargs["dataset_competition_neighbors"] = n
-
         # [competition]
         comp = data.get("competition", {})
         if "default_group" in comp:
             kwargs["competition_default_group"] = comp["default_group"]
+        if "competition_neighbors" in comp:
+            n = int(comp["competition_neighbors"])
+            if n not in (3, 4, 5, 6):
+                raise ValueError(
+                    f"competition.competition_neighbors must be 3, 4, 5, or 6, got {n}"
+                )
+            kwargs["competition_neighbors"] = n
         comp_groups = comp.get("groups", {})
         if comp_groups:
             kwargs["competition_groups"] = {
@@ -539,7 +494,7 @@ class GrowPyConfig:
         _known_sections = {
             "general", "assets", "twigs", "growth_models", "forest", "export",
             "density_variant", "unreal", "helios", "calibration", "yield_sources",
-            "dataset", "competition", "quality",
+            "competition", "quality",
         }
         for _section in data:
             if _section not in _known_sections:
@@ -601,7 +556,6 @@ class GrowPyConfig:
             # [export]
             "skeletal": "export_skeletal",
             "static": "export_static",
-            "skip_pve_json": "export_skip_pve_json",
             "skip_validation": "export_skip_validation",
             # [unreal]
             "import_to_unreal": "unreal_import_to_unreal",

@@ -54,9 +54,6 @@ twig_density = 1.0
 # At 2.0 a branch at youth=0.5 gets 25% weight vs 100% for the youngest.
 # Range: 0.0 (uniform placement) to 3.0+ (extreme youth preference)
 youth_bias = 0.5
-# Skip PVE preset JSON generation (saves ~3% export time)
-# PVE presets only needed for Unreal Procedural Vegetation Editor
-skip_pve_json = false
 # Maximum skeleton joints for Nanite Assembly USD export.
 # Nanite encodes bone indices in 8-bit fields (max 256).
 # 0 = no limit (use for PVE native skeletal mesh path which has no constraint).

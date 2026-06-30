@@ -153,7 +153,7 @@ def generate_dataset_csvs(output_dir: Path, density: str = "full") -> list:
     config = get_config()
     dataset = _get_dataset_species()
     twig_density = DENSITY_VARIANTS.get(density, 1.0)
-    competition_neighbors = config.dataset_competition_neighbors
+    competition_neighbors = config.competition_neighbors
 
     generated = []
     all_species_rows = []

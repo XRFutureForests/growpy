@@ -194,11 +194,6 @@ Unreal Engine Integration:
     )
     # Note: --skip-wind-json removed - wind data now embedded in USD skeleton
     parser.add_argument(
-        "--skip-pve-json",
-        action="store_true",
-        help="Skip PVE preset JSON generation (saves ~3%% of export time)",
-    )
-    parser.add_argument(
         "--skip-validation",
         action="store_true",
         help="Skip assembly validation (saves ~5-10%% of export time)",
@@ -344,7 +339,7 @@ Unreal Engine Integration:
                 preset_overrides.static_overrides,
             )
 
-        skip_pve_json = config.export_skip_pve_json
+        skip_pve_json = not config.unreal_generate_pve_presets
         skip_validation = config.export_skip_validation
 
         # Export-trees filter (config value already merged with CLI by resolve())
@@ -457,14 +452,7 @@ Unreal Engine Integration:
             nanite_cfg = {
                 "fallback_percent": config.unreal_nanite_fallback_percent,
                 "fallback_target": config.unreal_nanite_fallback_target,
-                "fallback_relative_error": config.unreal_nanite_fallback_relative_error,
-                "trim_relative_error": config.unreal_nanite_trim_relative_error,
-                "target_residency_kb": config.unreal_nanite_target_residency_kb,
                 "lerp_uvs": config.unreal_nanite_lerp_uvs,
-                "max_edge_length_factor": config.unreal_nanite_max_edge_length_factor,
-                "explicit_tangents": config.unreal_nanite_explicit_tangents,
-                "position_precision": config.unreal_nanite_position_precision,
-                "normal_precision": config.unreal_nanite_normal_precision,
             }
 
             import_script = generate_unreal_import_script(
