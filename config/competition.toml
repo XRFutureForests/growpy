@@ -12,6 +12,9 @@
 
 [competition]
 default_group = "slow_broadleaf"
+# Number of competition neighbors per center tree for dataset CSV generation (3-6).
+# Placed in a regular polygon: 3 = triangle, 4 = square, 5 = pentagon, 6 = hexagon.
+competition_neighbors = 3
 
 [competition.groups.fast_conifer]
 planting_distance = 2.25                     # meters between trees at planting

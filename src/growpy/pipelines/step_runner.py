@@ -255,14 +255,7 @@ def generate_unreal_scripts(output_dir: Path, include_static: bool = False) -> N
         "voxelization": config.unreal_voxelization,
         "fallback_percent": config.unreal_nanite_fallback_percent,
         "fallback_target": config.unreal_nanite_fallback_target,
-        "fallback_relative_error": config.unreal_nanite_fallback_relative_error,
-        "trim_relative_error": config.unreal_nanite_trim_relative_error,
-        "target_residency_kb": config.unreal_nanite_target_residency_kb,
         "lerp_uvs": config.unreal_nanite_lerp_uvs,
-        "max_edge_length_factor": config.unreal_nanite_max_edge_length_factor,
-        "explicit_tangents": config.unreal_nanite_explicit_tangents,
-        "position_precision": config.unreal_nanite_position_precision,
-        "normal_precision": config.unreal_nanite_normal_precision,
     }
 
     import_script = generate_unreal_import_script(

@@ -411,9 +411,7 @@ Output per twig:
             densify=config.twigs_densify,
             alpha_trim_threshold=min(max(0.0, config.twigs_alpha_trim), 1.0),
             boundary_edge_mm=max(0.01, config.twigs_boundary_edge_mm),
-            interior_decimate_ratio=min(
-                max(0.0, config.twigs_interior_decimate_ratio), 1.0
-            ),
+            interior_decimate_ratio=0.000001,
             interior_edge_mm=max(0.0, config.twigs_interior_edge_mm),
             interior_boundary_rings=max(0, int(config.twigs_interior_boundary_rings)),
         )
@@ -428,9 +426,7 @@ Output per twig:
             densify=config.twigs_densify,
             alpha_trim_threshold=min(max(0.0, config.twigs_alpha_trim), 1.0),
             boundary_edge_mm=max(0.01, config.twigs_boundary_edge_mm),
-            interior_decimate_ratio=min(
-                max(0.0, config.twigs_interior_decimate_ratio), 1.0
-            ),
+            interior_decimate_ratio=0.000001,
             interior_edge_mm=max(0.0, config.twigs_interior_edge_mm),
             interior_boundary_rings=max(0, int(config.twigs_interior_boundary_rings)),
         )
