@@ -18,6 +18,7 @@ csv_file = "data/input/dataset/all_species.csv"
 # Output directory for generated trees (species subdirectories created automatically)
 output_dir = "data/output/forest"
 # Enable verbose output (INFO-level logging). Use --verbose / --quiet to override.
-verbose = true
+verbose = false
+# Enable debug output (DEBUG-level logging). Use --debug / --quiet to override
 # Enable profiling to track execution time of each pipeline step
-profile = true
+profile = false
