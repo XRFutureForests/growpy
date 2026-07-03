@@ -26,8 +26,7 @@
     "claudeCode.allowDangerouslySkipPermissions": true,
     "claudeCode.useCtrlEnterToSend": false,
     "python-envs.workspaceSearchPaths": [
-        "./**/.venv",
-        "./.conda",
+        "./.conda"
     ],
     "python.defaultInterpreterPath": "${workspaceFolder}\\.conda\\python.exe",
     "mypy-type-checker.importStrategy": "useBundled",
