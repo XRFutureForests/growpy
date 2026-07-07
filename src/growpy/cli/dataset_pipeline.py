@@ -9,7 +9,7 @@ Orchestrates the four-step dataset workflow for all species:
 
 Each step is invoked as a subprocess so that bpy (required by step 4) is
 never imported into this process. Steps 1-3 use all_species.csv; step 4
-uses per-species merged CSVs (open + competition in one simulation).
+uses per-species merged CSVs (open-grown + surround, one tree each).
 
 Usage:
     python src/growpy/cli/dataset_pipeline.py --generate-csvs

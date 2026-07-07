@@ -66,10 +66,3 @@ preferred_region = ""
 # Per-species overrides in [calibration.species."..."] take priority.
 # 0 = no preference (auto-select by simulated grove h50)
 preferred_site_index = 0
-
-# --- Dataset CSV planner ---
-[dataset]
-# Number of competition neighbors around the center tree (3, 4, 5, or 6)
-# Neighbors are placed in a regular polygon at species-specific spacing.
-# 3 = equilateral triangle, 4 = square, 5 = pentagon, 6 = hexagon
-competition_neighbors = 3

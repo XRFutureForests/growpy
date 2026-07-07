@@ -23,7 +23,7 @@ templates in `src/growpy/config/templates/`.
 | `quality.toml` | `[quality.*]`, `[density_variant.*]` | named mesh/skeleton presets; named density variants |
 | `unreal.toml` | `[unreal]` | import-script generation, Unreal content path |
 | `helios.toml` | `[helios]`, `[helios.simplification]` | OBJ/MTL + Helios scene export (secondary feature) |
-| `competition.toml` | `[competition]`, `[competition.groups.*]` | planting distance + thinning schedule per silvicultural group |
+| `surround.toml` | `[surround]` | Grove Surround light-competition shell (density, distance, height, grow) for the `surround` dataset individual |
 
 ### Keys you will reach for most
 
@@ -55,7 +55,7 @@ One row per Grove species. The columns the pipeline reads:
 | `Yield Search` | search term used when ingesting yield tables |
 | `Max Height` | mature height in metres (required for dataset membership) |
 | `Competition Spacing` | informational spacing hint |
-| `Competition Group` | links to a `[competition.groups.*]` group (required for dataset membership) |
+| `Competition Group` | silvicultural group label; must be set for dataset membership |
 | `Dataset` | **single control for dataset membership** — mark `yes` to include the species in `dataset_pipeline.py` runs |
 
 To change which species the dataset produces, edit the `Dataset` column only (and

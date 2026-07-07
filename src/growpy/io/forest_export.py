@@ -323,7 +323,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         if variant_name
                         else format_density_for_filename(effective_twig_density)
                     )
-                    individual_short = "comp" if "comp" in individual_type else "open"
+                    individual_short = "surr" if "surr" in individual_type else "open"
                     species_title = (
                         species_clean.replace("_", " ").title().replace(" ", "_")
                     )

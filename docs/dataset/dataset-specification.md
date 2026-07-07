@@ -53,25 +53,26 @@ Each asset is defined by four orthogonal dimensions:
 
 ```
 Species (11)
-  └─ Individual (2)         open-grown, competition
+  └─ Individual (2)         open-grown, surround
        └─ Growth stage      every `height_interval` metres up to the height cap
             └─ Density (≤3)  full, reduced, bare (via [export] density_variants)
 ```
 
 ### Individual
 
-Each species is simulated as two individuals in a single run (see the generated
+Each species is simulated as two single-tree individuals (see the generated
 `{species}_merged.csv`):
 
 | Individual | Layout |
 |---|---|
-| `open_grown` | one tree (fid=1) placed at `x=100` to avoid light competition; wide crown, heavy branching |
-| `competition` | centre tree (fid=2) at the origin surrounded by neighbours (fid=101+) in a regular polygon at the group `planting_distance`; narrow crown, tall clear trunk |
+| `open_grown` | one tree (fid=1) placed at `x=100`, no light competition; wide crown, heavy branching |
+| `surround` | one tree (fid=2) at the origin with Grove's built-in **Surround** light-competition shell enabled; narrow crown, tall clear trunk |
 
-Neighbour count comes from config (`dataset_competition_neighbors`, default 3);
-spacing and thinning schedule come from the species' `Competition Group` in
-`config/competition.toml`. Only the open tree and the competition centre are
-exported; neighbours exist only to cast shade during simulation.
+The `surround` individual replaces the earlier multi-tree competition cluster:
+instead of planting neighbour trees and thinning them outward, Grove shades the
+single tree against a statistical shell (`enable_surround`), giving the same
+forest-grown form at a fraction of the cost. Shell parameters come from the
+`[surround]` section in `config/surround.toml`.
 
 ### Growth stage and density
 

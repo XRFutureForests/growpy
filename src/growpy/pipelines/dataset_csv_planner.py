@@ -4,19 +4,16 @@ Reads species metadata from tree_asset_lookup.csv (Max Height, Competition
 Group) and generates merged CSV files (open + competition combined) for each
 dataset species, plus an all-species CSV for pipeline steps 1-3.
 
-Competition layout: n neighbors in a regular polygon around the center tree,
-with initial spacing from the competition group's planting_distance
-(competition.toml). Trees start close together and are thinned outward
-during simulation as height milestones are reached.
+The "surround" individual uses Grove's built-in Surround light-competition
+shell instead of simulating neighbour trees, so each merged CSV holds just
+two single trees: one open-grown and one surround.
 """
 
 import logging
-import math
 from pathlib import Path
 
 import pandas as pd
 
-from growpy.config import get_config
 from growpy.config.paths import _get_lookup_table
 from growpy.utils.naming import standardize_species_name
 
@@ -34,7 +31,7 @@ DENSITY_VARIANTS = {
 # source that controls dataset membership.
 DATASET_MARKERS = frozenset({"yes", "true", "1", "x"})
 
-# X offset for open-grown tree to avoid light competition with cluster
+# X offset for open-grown tree to avoid light competition with the surround tree
 OPEN_TREE_X = 100.0
 
 
@@ -63,40 +60,18 @@ def _get_dataset_species() -> pd.DataFrame:
     return dataset
 
 
-def _polygon_neighbors(spacing: float, n: int = 3) -> list:
-    """Compute n regular-polygon neighbor positions at given spacing.
-
-    Places n neighbors at equal angular intervals around the center tree
-    (origin), each at the given spacing distance.
-
-    Args:
-        spacing: Distance from center to each neighbor.
-        n: Number of neighbors (3, 4, 5, or 6).
-
-    Returns list of (fid, x, y) tuples. Center tree is at origin (not included).
-    """
-    neighbors = []
-    for i in range(n):
-        angle = 2 * math.pi * i / n
-        x = round(spacing * math.cos(angle), 3)
-        y = round(spacing * math.sin(angle), 3)
-        neighbors.append((101 + i, x, y))
-    return neighbors
-
-
 def generate_merged_csv(
     species_name: str,
     max_height: int,
-    spacing: float,
     twig_density: float = 1.0,
-    competition_neighbors: int = 3,
 ) -> pd.DataFrame:
-    """Generate merged DataFrame: open tree + competition cluster in one simulation.
+    """Generate merged DataFrame: open-grown + surround tree in one file.
 
-    The open-grown tree (fid=1) is placed at (OPEN_TREE_X, 0, 0) to avoid
-    light competition. The competition center tree is fid=2 at origin.
-    Neighbors (fid=101+) are placed in a regular polygon around the center
-    tree at the planting distance (close spacing for young stands).
+    Both are single trees, each simulated in its own grove. The open-grown tree
+    (fid=1) is placed at (OPEN_TREE_X, 0, 0); the surround tree (fid=2) sits at
+    the origin and gets Grove's Surround light-competition shell enabled during
+    simulation (see growpy.core.grove.enable_surround), giving the tall, slender
+    forest-grown form without simulating any neighbour trees.
     """
     rows = [
         {
@@ -117,22 +92,9 @@ def generate_merged_csv(
             "z": 0.0,
             "height": max_height,
             "twig_density": twig_density,
-            "individual_type": "competition",
+            "individual_type": "surround",
         },
     ]
-    for fid, x, y in _polygon_neighbors(spacing, competition_neighbors):
-        rows.append(
-            {
-                "fid": fid,
-                "species": species_name,
-                "x": x,
-                "y": y,
-                "z": 0.0,
-                "height": max_height,
-                "twig_density": twig_density,
-                "individual_type": "competition",
-            }
-        )
     return pd.DataFrame(rows)
 
 
@@ -150,10 +112,8 @@ def generate_dataset_csvs(output_dir: Path, density: str = "full") -> list:
         List of generated CSV file paths.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    config = get_config()
     dataset = _get_dataset_species()
     twig_density = DENSITY_VARIANTS.get(density, 1.0)
-    competition_neighbors = config.competition_neighbors
 
     generated = []
     all_species_rows = []
@@ -162,12 +122,7 @@ def generate_dataset_csvs(output_dir: Path, density: str = "full") -> list:
         species = row["Common Name"]
         std_name = standardize_species_name(species)
         max_height = row["Max Height"]
-        group = config.get_competition_group(species)
-        spacing = group["planting_distance"]
-
-        merged_df = generate_merged_csv(
-            species, max_height, spacing, twig_density, competition_neighbors
-        )
+        merged_df = generate_merged_csv(species, max_height, twig_density)
         merged_path = output_dir / f"{std_name}_merged.csv"
         merged_df.to_csv(merged_path, index=False)
         generated.append(merged_path)

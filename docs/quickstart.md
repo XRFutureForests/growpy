@@ -46,7 +46,7 @@ growpy-init-config
 
 This copies the packaged templates into `./config/`: **9 TOML files**
 (`general`, `assets`, `twigs`, `growth_models`, `forest`, `quality`, `unreal`,
-`helios`, `competition`) plus `tree_asset_lookup.csv`. There is no single
+`helios`, `surround`) plus `tree_asset_lookup.csv`. There is no single
 `growpy.toml` — all `config/*.toml` files are deep-merged in sorted order and CLI
 flags override them. See [reference/configuration.md](reference/configuration.md).
 

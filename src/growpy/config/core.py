@@ -153,13 +153,7 @@ class GrowPyConfig:
     forest_include_grove_attributes: bool = False
     forest_height_interval: float = 5.0
     forest_max_height: float = 0.0  # 0 = no limit; >0 = cap tree heights (meters)
-    forest_competition_distance_increase: float = 0.0  # meters per height interval
     forest_export_trees: list = field(default_factory=list)
-
-    # [competition] - group-based spacing and thinning
-    # Dict: group_name -> {species: [...], planting_distance: float, thinning: [[h, d], ...]}
-    competition_groups: dict[str, dict[str, Any]] = field(default_factory=dict)
-    competition_default_group: str = "slow_broadleaf"
 
     # [surround] - single-tree light-competition shell (Grove's Surround feature).
     # Alternative to the multi-tree competition clusters: instead of simulating
@@ -233,50 +227,6 @@ class GrowPyConfig:
     )
     yield_sources_preferred_region: str = ""
     yield_sources_preferred_site_index: float | None = None
-
-    competition_neighbors: int = 3
-
-    def get_competition_group(self, species_name: str) -> dict[str, Any]:
-        """Look up the competition group config for a species.
-
-        Resolution order:
-        1. Competition Group column in tree_asset_lookup.csv
-        2. Falls back to competition_default_group
-
-        Returns the group dict with keys: planting_distance, thinning.
-        """
-        group_name = self.competition_default_group
-
-        try:
-            from .paths import _find_species_row
-
-            row = _find_species_row(species_name, use_gbif=False)
-            csv_group = str(row.get("Competition Group", "")).strip()
-            if csv_group:
-                group_name = csv_group
-        except (ValueError, KeyError):
-            pass
-
-        return self.competition_groups.get(
-            group_name,
-            {"planting_distance": 3.0, "thinning": []},
-        )
-
-    def get_thinning_target(
-        self, species_name: str, height_m: float
-    ) -> float | None:
-        """Get the thinning target distance for a species at a given height.
-
-        Returns the target distance in meters, or None if no thinning
-        schedule entry matches the given height.
-        """
-        group = self.get_competition_group(species_name)
-        thinning = group.get("thinning", [])
-        target = None
-        for trigger_h, target_d in thinning:
-            if height_m >= trigger_h:
-                target = target_d
-        return target
 
     @classmethod
     def from_toml(cls, toml_path: Path, set_as_global: bool = True) -> "GrowPyConfig":
@@ -359,10 +309,6 @@ class GrowPyConfig:
             kwargs["forest_height_interval"] = float(forest["height_interval"])
         if "max_height" in forest:
             kwargs["forest_max_height"] = float(forest["max_height"])
-        if "competition_distance_increase" in forest:
-            kwargs["forest_competition_distance_increase"] = float(
-                forest["competition_distance_increase"]
-            )
         # [export]
         export = data.get("export", {})
         if "usd_format" in export:
@@ -481,24 +427,6 @@ class GrowPyConfig:
         if "preferred_site_index" in ys:
             val = float(ys["preferred_site_index"])
             kwargs["yield_sources_preferred_site_index"] = val if val > 0 else None
-
-        # [competition]
-        comp = data.get("competition", {})
-        if "default_group" in comp:
-            kwargs["competition_default_group"] = comp["default_group"]
-        if "competition_neighbors" in comp:
-            n = int(comp["competition_neighbors"])
-            if n not in (3, 4, 5, 6):
-                raise ValueError(
-                    f"competition.competition_neighbors must be 3, 4, 5, or 6, got {n}"
-                )
-            kwargs["competition_neighbors"] = n
-        comp_groups = comp.get("groups", {})
-        if comp_groups:
-            kwargs["competition_groups"] = {
-                name: dict(cfg) for name, cfg in comp_groups.items()
-            }
-
         # [surround] - single-tree competition shell (replaces multi-tree clusters)
         surr = data.get("surround", {})
         if "enabled" in surr:
@@ -517,7 +445,7 @@ class GrowPyConfig:
         _known_sections = {
             "general", "assets", "twigs", "growth_models", "forest", "export",
             "density_variant", "unreal", "helios", "calibration", "yield_sources",
-            "competition", "surround", "quality",
+            "surround", "quality",
         }
         for _section in data:
             if _section not in _known_sections:
@@ -570,7 +498,6 @@ class GrowPyConfig:
             "include_grove_attributes": "forest_include_grove_attributes",
             "height_interval": "forest_height_interval",
             "max_height": "forest_max_height",
-            "competition_distance_increase": "forest_competition_distance_increase",
             # [forest.skeleton]
             "skeleton_length": "forest_skeleton_length",
             "skeleton_reduce": "forest_skeleton_reduce",

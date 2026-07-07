@@ -589,7 +589,7 @@ else:
         competition = False
         if m:
             species = m.group(1).replace("_", " ")
-            competition = m.group(2).lower() == "comp"
+            competition = m.group(2).lower() == "surr"  # surround = competed variant
             height_m = float(m.group(3))
             dbh_cm = float(m.group(4))
         else:
@@ -600,11 +600,11 @@ else:
                     break
             if not species:
                 species = asset_name
-            if "competition" in pkg_path.lower() or "/comp" in pkg_path.lower():
+            if "surround" in pkg_path.lower() or "/surr" in pkg_path.lower():
                 competition = True
 
         # Use assembly folder name as row name (unique per tree)
-        # e.g. "Hornbeam_comp_h05m_d04cm_full_assembly" not "SK_hornbeam_nanite_assembly"
+        # e.g. "Hornbeam_surr_h05m_d04cm_full_assembly" not "SK_hornbeam_nanite_assembly"
         # Full object path: PackageName.ObjectName (required for Soft Object References)
         rows.append({{
             "name": folder_name or asset_name,

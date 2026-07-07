@@ -12,7 +12,7 @@ Conventions used below: `module.function()` is a call, `[module.py]` is a clicka
 - [Step 4 — generate_forest](#step-4--generate_forest)
 - [Growth-simulation internals](#growth-simulation-internals)
 - [Height-milestone snapshot mode](#height-milestone-snapshot-mode)
-- [Competition thinning](#competition-thinning)
+- [Surround light competition](#surround-light-competition)
 - [Per-tree USD export](#per-tree-usd-export)
 - [Radial DBH scaling](#radial-dbh-scaling)
 - [Twig alpha-trim densification](#twig-alpha-trim-densification)
@@ -193,7 +193,7 @@ Key points:
 
 ### Context splitting (individual_type)
 
-When the CSV has an `individual_type` column (as produced by the dataset planner), `create_forest` groups trees by `(species, individual_type)` instead of just `species`. This keeps open-grown trees in their own grove so Grove's **intra-grove** shade (which is always-on and can't be disabled) doesn't kill isolated trees that share a species with a competition cluster.
+When the CSV has an `individual_type` column (as produced by the dataset planner), `create_forest` groups trees by `(species, individual_type)` instead of just `species`. This keeps each individual (e.g. `open_grown` vs `surround`) in its own single-tree grove so Grove's **intra-grove** shade (always-on) and the per-grove Surround shell do not interfere between independent growth contexts. `create_forest` enables Grove's Surround on any single-tree grove whose `individual_type == "surround"` (or when `[surround] enabled = true`).
 
 **Side effect:** a species may be represented by multiple groves. `_compute_grove_offsets` keeps each grove's tree indices globally unique within that species so snapshot merging stays consistent.
 
@@ -251,14 +251,21 @@ Design notes:
 
 ---
 
-## Competition thinning
+## Surround light competition
 
-When `[competition.groups.*]` is configured in `competition.toml`, the dataset workflow plants 3 neighbour trees (`fid >= 100`) around a central `competition` tree (`fid < 100`). As the central tree grows, the dataset planner can "thin" by moving the neighbours outward at every milestone. Two modes coexist:
+The competed individual (`individual_type == "surround"`) is a **single tree** that
+uses Grove's built-in Surround feature instead of a multi-tree cluster. In
+`create_forest`, any single-tree grove marked `surround` (or every single-tree
+grove when `[surround] enabled = true`) gets `enable_surround()` called on it,
+which sets `surround_enabled`/`surround_density`/`surround_distance`/
+`surround_height`/`surround_grow` on the grove's properties.
 
-1. **Group-based** (preferred). `target_distances = {species: target_m}` per milestone. Each neighbour is repositioned to its species-specific target distance from the origin via `grove.replant_tree`. The current distance is tracked in `neighbor_current_distances` so successive milestones move incrementally.
-2. **Legacy fixed increment.** When no `target_distances` are supplied but `competition_distance_increase > 0`, every neighbour shifts outward by the same amount per milestone event.
-
-Triggers are **only** milestones crossed by a center competition tree (fid < 100 with `individual_type == "competition"`). Neighbour and open-grown milestones do not thin.
+Grove then shades the tree against a statistical shell of virtual neighbours each
+cycle — no neighbour trees are planted or simulated, and there is no thinning
+step. This replaced the earlier competition-cluster workflow (planting `fid >= 100`
+neighbours and moving them outward at height milestones), removing the per-cycle
+cost of simulating N extra trees. Grove disables Surround when several trees share
+one grove, so this only applies to single-tree contexts.
 
 ---
 

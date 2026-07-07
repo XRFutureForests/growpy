@@ -181,7 +181,7 @@ def _discover_recipe_dirs(forest_root):
 def _dir_to_asset_name(json_dir, forest_root):
     """Derive a clean asset name from the directory relative path.
 
-    Example: european_beech/competition -> European_Beech_Competition
+    Example: european_beech/surround -> European_Beech_Surround
     """
     rel = os.path.relpath(json_dir, forest_root).replace("\\\\", "/")
     parts = rel.split("/")

@@ -45,14 +45,14 @@ class TestBuildIntervalColumns:
 
     def test_basic(self):
         entries = {
-            ("spruce", "comp"): {5: ("p1", "a1"), 10: ("p2", "a2"), 15: ("p3", "a3")},
+            ("spruce", "surr"): {5: ("p1", "a1"), 10: ("p2", "a2"), 15: ("p3", "a3")},
         }
         result = _build_interval_columns(entries, 5)
         assert result == [5, 10, 15]
 
     def test_snaps_to_interval(self):
         entries = {
-            ("spruce", "comp"): {7: ("p1", "a1"), 12: ("p2", "a2")},
+            ("spruce", "surr"): {7: ("p1", "a1"), 12: ("p2", "a2")},
         }
         result = _build_interval_columns(entries, 5)
         # 7 -> 5, 12 -> 10
@@ -60,7 +60,7 @@ class TestBuildIntervalColumns:
 
     def test_deduplicates(self):
         entries = {
-            ("spruce", "comp"): {6: ("p1", "a1"), 8: ("p2", "a2")},
+            ("spruce", "surr"): {6: ("p1", "a1"), 8: ("p2", "a2")},
         }
         # Both 6 and 8 snap to 10 with interval=10
         result = _build_interval_columns(entries, 10)
@@ -68,7 +68,7 @@ class TestBuildIntervalColumns:
 
     def test_excludes_zero(self):
         entries = {
-            ("spruce", "comp"): {1: ("p1", "a1")},
+            ("spruce", "surr"): {1: ("p1", "a1")},
         }
         # 1 snaps to 0 with interval=5; 0 < interval so excluded
         result = _build_interval_columns(entries, 5)
@@ -80,7 +80,7 @@ class TestBuildIntervalColumns:
 
     def test_multiple_species(self):
         entries = {
-            ("spruce", "comp"): {5: ("p1", "a1")},
+            ("spruce", "surr"): {5: ("p1", "a1")},
             ("beech", "open"): {10: ("p2", "a2"), 20: ("p3", "a3")},
         }
         result = _build_interval_columns(entries, 5)
@@ -107,22 +107,22 @@ class TestIconPattern:
     """Tests for the icon filename regex pattern."""
 
     def test_matches_front_view(self):
-        m = _ICON_PATTERN.match("norway_spruce_comp_h10m_d15cm_high_icon_front.png")
+        m = _ICON_PATTERN.match("norway_spruce_surr_h10m_d15cm_high_icon_front.png")
         assert m is not None
         assert m.group(1) == "norway_spruce"
-        assert m.group(2) == "comp"
+        assert m.group(2) == "surr"
         assert m.group(3) == "h10m"
         assert m.group(4) == "d15cm"
         assert m.group(5) == "high"
         assert m.group(6) == "front"
 
     def test_matches_side_view(self):
-        m = _ICON_PATTERN.match("norway_spruce_comp_h10m_d15cm_high_icon_side.png")
+        m = _ICON_PATTERN.match("norway_spruce_surr_h10m_d15cm_high_icon_side.png")
         assert m is not None
         assert m.group(6) == "side"
 
     def test_matches_top_view(self):
-        m = _ICON_PATTERN.match("norway_spruce_comp_h10m_d15cm_high_icon_top.png")
+        m = _ICON_PATTERN.match("norway_spruce_surr_h10m_d15cm_high_icon_top.png")
         assert m is not None
         assert m.group(6) == "top"
 
@@ -132,11 +132,11 @@ class TestIconPattern:
         assert m.group(2) == "open"
 
     def test_no_match_old_format(self):
-        m = _ICON_PATTERN.match("norway_spruce_comp_h10m_d15cm_high_icon.png")
+        m = _ICON_PATTERN.match("norway_spruce_surr_h10m_d15cm_high_icon.png")
         assert m is None
 
     def test_no_match_without_icon_suffix(self):
-        m = _ICON_PATTERN.match("norway_spruce_comp_h10m_d15cm_high.png")
+        m = _ICON_PATTERN.match("norway_spruce_surr_h10m_d15cm_high.png")
         assert m is None
 
     def test_no_match_random_name(self):

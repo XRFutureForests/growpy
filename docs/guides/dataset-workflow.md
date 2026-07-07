@@ -21,7 +21,7 @@ growpy-init-config            # writes starter config into ./config
 
 - **9 TOML files** — `general.toml`, `assets.toml`, `twigs.toml`,
   `growth_models.toml`, `forest.toml`, `quality.toml`, `unreal.toml`,
-  `helios.toml`, `competition.toml`. There is **no single `growpy.toml`**; every
+  `helios.toml`, `surround.toml`. There is **no single `growpy.toml`**; every
   `config/*.toml` is loaded and **deep-merged in sorted filename order**, then CLI
   flags override. (Resolution: dataclass defaults -> `config/*.toml` -> CLI.)
 - **`tree_asset_lookup.csv`** — the species catalogue (preset, twig, textures,
@@ -94,11 +94,11 @@ fast test runs.
 python src/growpy/cli/dataset_pipeline.py --pilot --steps 4 --max-height 15
 ```
 
-You normally do not edit the competition CSVs by hand — see the next section.
+You normally do not edit the merged CSVs by hand — see the next section.
 
 ---
 
-## 4. How the competition CSVs are generated
+## 4. How the merged CSVs are generated
 
 `--generate-csvs` reads `tree_asset_lookup.csv` and writes, per species, a
 `{species}_merged.csv` plus a combined `all_species.csv`, into
@@ -107,13 +107,12 @@ You normally do not edit the competition CSVs by hand — see the next section.
 | fid | role | position |
 |---|---|---|
 | `1` | open-grown (no light competition) | `x = 100, y = 0` |
-| `2` | competition centre (exported) | origin |
-| `101..` | competition neighbours | regular polygon at the group `planting_distance` |
+| `2` | surround (Grove Surround shell enabled) | origin |
 
-Neighbour count comes from config (`dataset_competition_neighbors`, default **3**);
-spacing and the thinning schedule come from the species' `Competition Group` in
-`config/competition.toml`. Neighbours participate in light competition during
-simulation but are not exported as assets.
+Both are single trees. The `surround` tree competes for light against Grove's
+built-in Surround shell instead of real neighbour trees, so there are no
+`fid >= 100` neighbours and no thinning step. Shell parameters come from the
+`[surround]` section in `config/surround.toml`.
 
 ```bash
 python src/growpy/cli/dataset_pipeline.py --generate-csvs                  # full twig density

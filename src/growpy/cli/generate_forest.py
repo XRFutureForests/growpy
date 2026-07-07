@@ -241,14 +241,6 @@ Unreal Engine Integration:
         "Trees taller than this in the CSV are clamped. 0 = no limit (default).",
     )
     parser.add_argument(
-        "--competition-distance-increase",
-        type=float,
-        default=None,
-        help="Move competition neighbor trees outward by this many meters at "
-        "each height interval to simulate thinning. 0 = no movement (default). "
-        "Only affects neighbor trees (fid >= 100) in height-threshold mode.",
-    )
-    parser.add_argument(
         "--export-trees",
         type=str,
         default=None,

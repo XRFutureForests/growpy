@@ -9,7 +9,7 @@ See [Dataset Specification](dataset-specification.md) for the full production pl
 | Metric | Value |
 |---|---|
 | Target species | 10 (5 conifer + 5 broadleaf) |
-| Individual types | 2 (open-grown, competition) |
+| Individual types | 2 (open-grown, surround) |
 | Height stages | 5--9 per species |
 | Density variants | 3 (full, reduced, bare) |
 | **Target total** | **~384 models** |
@@ -42,7 +42,7 @@ Preview images are generated during production (first density variant only). Lin
 
 #### European Beech
 
-| Height | Open Grown | Competition |
+| Height | Open Grown | Surround |
 |---|---|---|
 | 5 m | | |
 | 10 m | | |
@@ -53,7 +53,7 @@ Preview images are generated during production (first density variant only). Lin
 
 #### Norway Spruce
 
-| Height | Open Grown | Competition |
+| Height | Open Grown | Surround |
 |---|---|---|
 | 5 m | | |
 | 10 m | | |
@@ -67,7 +67,7 @@ Preview images are generated during production (first density variant only). Lin
 
 #### Scots Pine
 
-| Height | Open Grown | Competition |
+| Height | Open Grown | Surround |
 |---|---|---|
 | 5 m | | |
 | 10 m | | |
@@ -78,7 +78,7 @@ Preview images are generated during production (first density variant only). Lin
 
 #### Silver Fir
 
-| Height | Open Grown | Competition |
+| Height | Open Grown | Surround |
 |---|---|---|
 | 5 m | | |
 | 10 m | | |
@@ -90,7 +90,7 @@ Preview images are generated during production (first density variant only). Lin
 
 #### Douglas Fir
 
-| Height | Open Grown | Competition |
+| Height | Open Grown | Surround |
 |---|---|---|
 | 5 m | | |
 | 10 m | | |
@@ -104,7 +104,7 @@ Preview images are generated during production (first density variant only). Lin
 
 #### European Larch
 
-| Height | Open Grown | Competition |
+| Height | Open Grown | Surround |
 |---|---|---|
 | 5 m | | |
 | 10 m | | |
@@ -118,7 +118,7 @@ Preview images are generated during production (first density variant only). Lin
 
 #### European Oak
 
-| Height | Open Grown | Competition |
+| Height | Open Grown | Surround |
 |---|---|---|
 | 5 m | | |
 | 10 m | | |
@@ -129,7 +129,7 @@ Preview images are generated during production (first density variant only). Lin
 
 #### Common Ash
 
-| Height | Open Grown | Competition |
+| Height | Open Grown | Surround |
 |---|---|---|
 | 5 m | | |
 | 10 m | | |
@@ -140,7 +140,7 @@ Preview images are generated during production (first density variant only). Lin
 
 #### Sycamore Maple
 
-| Height | Open Grown | Competition |
+| Height | Open Grown | Surround |
 |---|---|---|
 | 5 m | | |
 | 10 m | | |
@@ -150,7 +150,7 @@ Preview images are generated during production (first density variant only). Lin
 
 #### Silver Birch
 
-| Height | Open Grown | Competition |
+| Height | Open Grown | Surround |
 |---|---|---|
 | 5 m | | |
 | 10 m | | |

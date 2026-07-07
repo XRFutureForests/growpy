@@ -61,7 +61,7 @@ conda run -n growpy python -m pytest src/growpy/tests/ -v
 | test_twig.py | core/twig.py | 18 | TwigPlacement, face center/normal, rotation matrix, quaternion conversion |
 | test_tree.py | core/tree.py | 19 | find_max_height, calculate_tree_height, calculate_dbh_at_height (interpolation) |
 | test_forest.py | core/forest.py | 7 | _split_bones_by_tree (per-tree bone splitting). Skipped if Grove API unavailable |
-| test_orchestration.py | core/orchestration/ | 30 | Hex neighbors, CSV generation, dataset planning, species resolution, step running |
+| test_orchestration.py | core/orchestration/ | 26 | Merged CSV generation (open-grown + surround), dataset planning, species resolution, step running |
 
 ### io/
 

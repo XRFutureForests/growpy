@@ -214,7 +214,7 @@ Pure simulation logic on top of `the_grove_23_core`. No imports from `io/`
 
 **Purpose:** Forest-level simulation on top of `the_grove_23_core`. The single
 biggest module in the package — owns the main simulation loop, growth modes
-(height-threshold vs cycle-based), and competition thinning.
+(height-threshold vs cycle-based), and per-grove Surround setup (`enable_surround`).
 
 **Public:**
 

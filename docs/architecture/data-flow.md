@@ -67,7 +67,7 @@ Optional columns:
 | `z` | float | `0.0` | Vertical offset; populated by `core.forest.create_forest` if missing |
 | `delay` | int | `0` | Cycles to wait before adding this tree to its grove (staggered planting) |
 | `fid` | int | row index | Original feature ID, preserved through the pipeline so per-tree outputs can be matched back to source rows |
-| `individual_type` | str | — | When present, trees are split into separate groves per `(species, individual_type)` to prevent intra-grove shade interfering between independent contexts (e.g. open-grown vs competition cluster) |
+| `individual_type` | str | — | When present, trees are split into separate groves per `(species, individual_type)` to prevent intra-grove shade interfering between independent contexts (e.g. `open_grown` vs `surround`). A single-tree grove tagged `surround` gets Grove's Surround shell enabled. |
 | `target_height_m`, `target_dbh_m` | float | — | If present, used by `calculate_growth_cycles_from_height()` to derive a per-tree `cycles` count |
 
 ## `seed.json` contract (the step 3 → step 4 handoff)

@@ -9,7 +9,6 @@ import pandas as pd
 from growpy.pipelines.dataset_csv_planner import (
     DENSITY_VARIANTS,
     OPEN_TREE_X,
-    _polygon_neighbors,
     generate_dataset_csvs,
     generate_merged_csv,
 )
@@ -32,63 +31,39 @@ from growpy.pipelines.step_runner import (
 # ---------------------------------------------------------------------------
 
 
-class TestPolygonNeighbors:
-    def test_returns_three_neighbors(self):
-        neighbors = _polygon_neighbors(10.0)
-        assert len(neighbors) == 3
-
-    def test_fids_101_to_103(self):
-        neighbors = _polygon_neighbors(10.0)
-        fids = [fid for fid, _, _ in neighbors]
-        assert fids == [101, 102, 103]
-
-    def test_spacing_used_as_x_offset(self):
-        spacing = 8.0
-        neighbors = _polygon_neighbors(spacing)
-        fid_101 = next(n for n in neighbors if n[0] == 101)
-        assert fid_101[1] == spacing  # (101, spacing, 0.0)
-
-    def test_symmetric_y_values(self):
-        neighbors = _polygon_neighbors(10.0)
-        by_fid = {fid: (x, y) for fid, x, y in neighbors}
-        assert by_fid[102][1] == -by_fid[103][1]  # mirror across x-axis
-
-
 class TestGenerateMergedCsv:
     def test_has_correct_fids(self):
-        df = generate_merged_csv("European Beech", 30, 8)
+        df = generate_merged_csv("European Beech", 30)
         fids = set(df["fid"].tolist())
-        assert 1 in fids  # open-grown
-        assert 2 in fids  # competition center
-        assert all(f in fids for f in range(101, 104))  # 3 neighbors
+        assert fids == {1, 2}  # open-grown + surround
 
     def test_open_tree_x_offset(self):
-        df = generate_merged_csv("European Beech", 30, 8)
+        df = generate_merged_csv("European Beech", 30)
         open_row = df[df["fid"] == 1].iloc[0]
         assert open_row["x"] == OPEN_TREE_X
 
-    def test_competition_center_at_origin(self):
-        df = generate_merged_csv("European Beech", 30, 8)
-        center = df[df["fid"] == 2].iloc[0]
-        assert center["x"] == 0.0
-        assert center["y"] == 0.0
+    def test_surround_tree_at_origin(self):
+        df = generate_merged_csv("European Beech", 30)
+        surround = df[df["fid"] == 2].iloc[0]
+        assert surround["x"] == 0.0
+        assert surround["y"] == 0.0
 
     def test_individual_type_labels(self):
-        df = generate_merged_csv("European Beech", 30, 8)
+        df = generate_merged_csv("European Beech", 30)
         assert df[df["fid"] == 1]["individual_type"].iloc[0] == "open_grown"
-        assert df[df["fid"] == 2]["individual_type"].iloc[0] == "competition"
+        assert df[df["fid"] == 2]["individual_type"].iloc[0] == "surround"
 
     def test_twig_density_applied(self):
-        df = generate_merged_csv("Norway Spruce", 25, 6, twig_density=0.5)
+        df = generate_merged_csv("Norway Spruce", 25, twig_density=0.5)
         assert (df["twig_density"] == 0.5).all()
 
     def test_species_column(self):
-        df = generate_merged_csv("Norway Spruce", 25, 6)
+        df = generate_merged_csv("Norway Spruce", 25)
         assert (df["species"] == "Norway Spruce").all()
 
     def test_total_rows(self):
-        df = generate_merged_csv("European Beech", 30, 8)
-        assert len(df) == 5  # 1 open + 1 center + 3 neighbors
+        df = generate_merged_csv("European Beech", 30)
+        assert len(df) == 2  # 1 open-grown + 1 surround
 
 
 class TestDensityVariants:

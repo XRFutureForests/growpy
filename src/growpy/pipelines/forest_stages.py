@@ -264,11 +264,6 @@ def generate_forest_stages(
     logger.info("  Height interval: %.0fm", effective_interval)
     logger.info("  Target height: %.0fm", effective_max_height)
     logger.info("  Cycle limit: %d (safety cap)", global_max_cycles)
-    if config.forest_competition_distance_increase > 0:
-        logger.info(
-            "  Competition thinning: %.1fm per interval",
-            config.forest_competition_distance_increase,
-        )
     logger.info("%s", "=" * 60)
 
     # All trees start at cycle 0 (no delay in multi-stage mode)
@@ -325,8 +320,6 @@ def generate_forest_stages(
             height_interval=effective_interval,
             max_height=effective_max_height,
             species_max_height=species_max_height,
-            competition_distance_increase=config.forest_competition_distance_increase,
-            forest_data=forest_data,
         )
 
     if not snapshots:
@@ -526,7 +519,7 @@ def generate_forest_stages(
                             else format_density_for_filename(effective_twig_density)
                         )
                         individual_short = (
-                            "comp" if "comp" in tree_individual_type else "open"
+                            "surr" if "surr" in tree_individual_type else "open"
                         )
                         species_title = (
                             species_clean.replace("_", " ").title().replace(" ", "_")

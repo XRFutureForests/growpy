@@ -265,7 +265,7 @@ step 4 (generate forest). Each step is invoked as a subprocess. Steps 1-3 use
 **CSV Generation:**
 
 Must be run once before step 4. Reads `tree_asset_lookup.csv` metadata and writes
-per-species merged CSVs (open-grown + competition in one simulation) plus
+per-species merged CSVs (open-grown + surround, one tree each) plus
 `all_species.csv` (one row per species, used by steps 1-3).
 
 ```bash
@@ -283,7 +283,7 @@ python src/growpy/cli/dataset_pipeline.py --generate-csvs --output-dir data/inpu
 
 | File | Contents |
 |---|---|
-| `data/input/dataset/{species}_merged.csv` | Open tree (fid=1) + competition cluster (fid=2 + neighbors) |
+| `data/input/dataset/{species}_merged.csv` | Open tree (fid=1) + surround tree (fid=2) |
 | `data/input/dataset/all_species.csv` | One row per species (for steps 1-3) |
 
 **Forest Production:**

@@ -18,7 +18,7 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 _ICON_PATTERN = re.compile(
-    r"^(.+?)_(comp|open)_(h\d+m)_(d\d+cm)_(.+?)_icon_(front|side|top)\.png$",
+    r"^(.+?)_(surr|open)_(h\d+m)_(d\d+cm)_(.+?)_icon_(front|side|top)\.png$",
     re.IGNORECASE,
 )
 
@@ -219,7 +219,7 @@ def build_dataset_dataframe(
         preset = _read_preset(preset_dir, species)
         growth = _read_growth_model(models_dir, species)
 
-        for ctx_short, ctx_display in [("comp", "competition"), ("open", "open_grown")]:
+        for ctx_short, ctx_display in [("surr", "surround"), ("open", "open_grown")]:
             key = (species, ctx_short)
             height_map = entries.get(key, {})
 
@@ -310,7 +310,7 @@ def generate_overview_markdown(
 
     for _, row in df.iterrows():
         species_display = row["species"].replace("_", " ").title()
-        ctx_display = "Competition" if row["context"] == "competition" else "Open Grown"
+        ctx_display = "Surround" if row["context"] == "surround" else "Open Grown"
         cells = []
         for col in icon_cols:
             if row[col]:

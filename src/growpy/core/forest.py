@@ -31,7 +31,7 @@ def create_forest(
     separate groves per (species, individual_type).  This prevents the Grove
     engine's intra-grove shade from interfering between independent growth
     contexts (e.g. an open-grown tree at x=100 sharing a grove with a
-    competition cluster at origin).
+    surround tree at the origin).
 
     Args:
         forest_data: DataFrame with columns: x, y, species, z (optional),
@@ -47,7 +47,7 @@ def create_forest(
         forest_data["z"] = 0.0
 
     # Split by individual_type when available to prevent intra-grove shade
-    # killing isolated open-grown trees in the same grove as competition clusters
+    # killing isolated open-grown trees that share a species with surround trees
     has_individual_type = (
         "individual_type" in forest_data.columns
         and forest_data["individual_type"].notna().any()
@@ -68,9 +68,9 @@ def create_forest(
             fid = int(row["fid"]) if "fid" in row else int(idx)
             fids.append(fid)
 
-        # Grove's Surround shell replaces multi-tree competition clusters for
-        # single-tree contexts: enable it when the tree opts in via
-        # individual_type == "surround", or when surround is globally enabled.
+        # Grove's Surround shell gives single-tree light competition: enable it
+        # when the tree opts in via individual_type == "surround", or when
+        # surround is globally enabled.
         cfg = get_config()
         itype = str(group_key[1]).strip() if has_individual_type else ""
         if len(species_data) == 1 and (itype == "surround" or cfg.surround_enabled):
@@ -259,8 +259,6 @@ def simulate_forest_growth_with_snapshots(
     height_interval: float = 0.0,
     max_height: float = 0.0,
     species_max_height: dict[str, float] | None = None,
-    competition_distance_increase: float = 0.0,
-    forest_data: pd.DataFrame | None = None,
 ) -> tuple[SnapshotData, dict[int, dict[str, dict[int, float]]]]:
     """Simulate forest growth and capture snapshots at height milestones.
 
@@ -355,8 +353,6 @@ def simulate_forest_growth_with_snapshots(
             species_overrides, preset_overrides, quality_params,
             max_height=max_height,
             species_max_height=species_max_height,
-            competition_distance_increase=competition_distance_increase,
-            forest_data=forest_data,
         )
     else:
         snapshots = _simulate_cycle_based_mode(
@@ -377,100 +373,6 @@ def simulate_forest_growth_with_snapshots(
     return snapshots, milestone_map
 
 
-def _apply_competition_thinning(
-    forest: list[tuple[gc.Grove, str, int, list[int]]],
-    forest_data: pd.DataFrame,
-    distance_increase: float,
-    thinning_count: int,
-    target_distances: dict[str, float] | None = None,
-    current_distances: dict[int, float] | None = None,
-) -> None:
-    """Move competition neighbor trees outward from center to simulate thinning.
-
-    Supports two modes:
-    1. **Group-based** (preferred): When ``target_distances`` and
-       ``current_distances`` are provided, repositions each neighbor to the
-       species-specific target distance from center.
-    2. **Legacy fixed-increment**: When ``target_distances`` is None, moves
-       all neighbors outward by ``distance_increase`` meters (old behavior).
-
-    Args:
-        forest: List of (grove, species_name, tree_count, fid_list) tuples.
-        forest_data: DataFrame with columns x, y, fid, individual_type.
-        distance_increase: Legacy meters to move outward per thinning event.
-        thinning_count: How many thinning events have been applied so far.
-        target_distances: Per-species absolute target distance from center.
-            When provided, overrides distance_increase.
-        current_distances: Mutable dict of fid -> current distance from center.
-            Updated in place after repositioning.
-    """
-    if not target_distances and distance_increase <= 0:
-        return
-
-    has_itype = "individual_type" in forest_data.columns
-    if not has_itype:
-        return
-
-    total_moved = 0
-
-    for grove, species_name, tree_count, fids in forest:
-        for tree_idx, fid in enumerate(fids):
-            if fid < 100:
-                continue
-
-            row = forest_data[forest_data["fid"] == fid]
-            if row.empty:
-                continue
-
-            itype = str(row.iloc[0].get("individual_type", "")).strip()
-            if itype != "competition":
-                continue
-
-            init_x = float(row.iloc[0]["x"])
-            init_y = float(row.iloc[0]["y"])
-            init_dist = math.sqrt(init_x * init_x + init_y * init_y)
-            if init_dist < 0.001:
-                continue
-
-            # Compute the radial displacement needed
-            if target_distances and current_distances is not None:
-                target = target_distances.get(species_name)
-                if target is None:
-                    continue
-                cur_dist = current_distances.get(fid, init_dist)
-                delta = target - cur_dist
-                if delta <= 0.01:
-                    continue
-                # Update tracking
-                current_distances[fid] = target
-            else:
-                delta = distance_increase
-
-            # Direction: along the initial position vector (radial from origin)
-            dx = (init_x / init_dist) * delta
-            dy = (init_y / init_dist) * delta
-
-            grove.replant_tree(tree_idx, gc.Vector(dx, dy, 0.0), gc.Rotation(gc.Vector(0, 0, 1), 0.0))
-            total_moved += 1
-
-    if total_moved > 0:
-        if target_distances:
-            targets_str = ", ".join(
-                f"{sp}: {d:.1f}m" for sp, d in target_distances.items()
-            )
-            logger.info(
-                "[Thinning] Moved %d neighbor tree(s) to target distances (%s)",
-                total_moved, targets_str,
-            )
-        else:
-            cumulative = distance_increase * (thinning_count + 1)
-            logger.info(
-                "[Thinning] Moved %d neighbor tree(s) outward by %.1fm "
-                "(cumulative: %.1fm from initial positions)",
-                total_moved, distance_increase, cumulative,
-            )
-
-
 def _simulate_height_threshold_mode(
     forest: list[tuple[gc.Grove, str, int, list[int]]],
     groves: list[gc.Grove],
@@ -482,8 +384,6 @@ def _simulate_height_threshold_mode(
     max_height: float = 0.0,
     species_max_height: dict[str, float] | None = None,
     plateau_cycles: int = 10,
-    competition_distance_increase: float = 0.0,
-    forest_data: pd.DataFrame | None = None,
 ) -> tuple[SnapshotData, dict[int, dict[str, dict[int, float]]]]:
     """Run simulation with height-threshold-based snapshots.
 
@@ -504,10 +404,6 @@ def _simulate_height_threshold_mode(
             milestones up to this height.  0 = run until max_cycles.
         plateau_cycles: Stop after this many consecutive cycles with no
             height increase across any tree (default: 10).
-        competition_distance_increase: Meters to move competition neighbor
-            trees outward at each height milestone (0 = disabled).
-        forest_data: DataFrame with tree positions and individual_type
-            (required when competition_distance_increase > 0).
     """
 
     snapshots: SnapshotData = {}
@@ -557,44 +453,6 @@ def _simulate_height_threshold_mode(
     # Plateau detection: track max height per tree across cycles
     prev_max_heights: dict[tuple[str, int], float] = {}
     cycles_without_growth = 0
-
-    # Competition thinning state
-    thinning_count = 0
-    use_legacy_thinning = (
-        competition_distance_increase > 0 and forest_data is not None
-    )
-
-    # Group-based thinning: look up config for per-species scheduling
-    from ..config.core import get_global_config
-    config = get_global_config()
-    use_group_thinning = (
-        config is not None
-        and bool(config.competition_groups)
-        and forest_data is not None
-    )
-
-    # Track current distance from center per neighbor fid (for group-based thinning)
-    neighbor_current_distances: dict[int, float] = {}
-    if use_group_thinning and forest_data is not None:
-        for _, row in forest_data.iterrows():
-            fid = int(row["fid"]) if "fid" in row.index else 0
-            if fid >= 100:
-                x, y = float(row["x"]), float(row["y"])
-                neighbor_current_distances[fid] = math.sqrt(x * x + y * y)
-
-    use_thinning = use_legacy_thinning or use_group_thinning
-
-    # Thinning triggers: only thin when a center competition tree (fid < 100,
-    # individual_type == "competition") crosses a milestone.  Neighbor trees
-    # (fid >= 100) and open-grown trees do not trigger thinning events.
-    thinning_trigger_fids: set = set()
-    if use_thinning and forest_data is not None:
-        has_itype = "individual_type" in forest_data.columns
-        for _, row in forest_data.iterrows():
-            fid = int(row["fid"]) if "fid" in row.index else 0
-            itype = str(row.get("individual_type", "")).strip() if has_itype else ""
-            if fid < 100 and itype == "competition":
-                thinning_trigger_fids.add(fid)
 
     cycle = 0
     pbar = tqdm(total=max_cycles, desc="Simulating growth cycles", unit="cycle", disable=not is_verbose())
@@ -760,47 +618,6 @@ def _simulate_height_threshold_mode(
                             species_name,
                             grove_idx,
                         )
-
-        # Apply competition thinning only when a center competition tree
-        # (fid < 100, individual_type=competition) crossed a milestone.
-        if use_thinning and thinning_trigger_fids:
-            # Collect species that triggered thinning and their milestone heights
-            triggered_species: dict[str, float] = {}
-            should_thin = False
-            for grove_idx, (_grove, species_name, _tc, fids) in enumerate(forest):
-                offset = grove_offsets[grove_idx]
-                for local_idx, fid in enumerate(fids):
-                    if fid in thinning_trigger_fids:
-                        global_idx = offset + local_idx
-                        if (
-                            species_name in new_crossings
-                            and global_idx in new_crossings[species_name]
-                        ):
-                            milestone_h = new_crossings[species_name][global_idx]
-                            triggered_species[species_name] = milestone_h
-                            should_thin = True
-            if should_thin:
-                if use_group_thinning and config is not None:
-                    # Group-based: compute per-species target distances
-                    target_dists: dict[str, float] = {}
-                    for sp, mh in triggered_species.items():
-                        target = config.get_thinning_target(sp, mh)
-                        if target is not None:
-                            target_dists[sp] = target
-                    if target_dists:
-                        _apply_competition_thinning(
-                            forest, forest_data,
-                            0.0, thinning_count,
-                            target_distances=target_dists,
-                            current_distances=neighbor_current_distances,
-                        )
-                else:
-                    # Legacy fixed-increment
-                    _apply_competition_thinning(
-                        forest, forest_data,
-                        competition_distance_increase, thinning_count,
-                    )
-                thinning_count += 1
 
         # Early stop: all target milestones captured
         if target_milestones and all(
