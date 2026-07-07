@@ -28,3 +28,23 @@ thinning = [[10, 3.5], [15, 5.0], [20, 6.0]]
 [competition.groups.slow_broadleaf]
 planting_distance = 3.0                      # meters
 thinning = [[10, 4.5], [15, 6.0], [20, 7.0]]
+
+
+# --- Surround: single-tree light-competition shell ---
+#
+# Grove's built-in Surround feature shades a tree against a statistical shell of
+# virtual neighbours instead of simulating real neighbour trees. This gives the
+# tall, slender, self-pruned form of a forest-grown tree at a fraction of the
+# cost of the multi-tree competition clusters above.
+#
+# Applied to single-tree groves whose individual_type == "surround", or to every
+# single-tree grove when enabled = true. Grove disables Surround when several
+# trees are simulated together in one grove, so this only affects single-tree
+# contexts.
+
+[surround]
+enabled = false   # true = enable on all single-tree groves
+density = 0.7     # surrounding tree density (0..1)
+distance = 7.0    # distance to the shell (meters)
+height = 5.0      # shell height (meters)
+grow = true       # shell grows together with the tree

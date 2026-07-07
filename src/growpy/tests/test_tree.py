@@ -191,6 +191,8 @@ class TestExtractGroveAttributes:
     def test_with_all_attributes(self):
         grove = SimpleNamespace(
             total_mass=100.0,
+            total_volume=0.05,
+            total_surface_area=8.0,
             number_of_branches=50,
             height=15.0,
             age=10,
@@ -198,6 +200,8 @@ class TestExtractGroveAttributes:
         )
         result = extract_grove_attributes(grove)
         assert result["total_mass"] == 100.0
+        assert result["total_volume"] == 0.05
+        assert result["total_surface_area"] == 8.0
         assert result["number_of_branches"] == 50
         assert result["height"] == 15.0
         assert result["age"] == 10

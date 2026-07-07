@@ -161,6 +161,16 @@ class GrowPyConfig:
     competition_groups: dict[str, dict[str, Any]] = field(default_factory=dict)
     competition_default_group: str = "slow_broadleaf"
 
+    # [surround] - single-tree light-competition shell (Grove's Surround feature).
+    # Alternative to the multi-tree competition clusters: instead of simulating
+    # neighbour trees, Grove shades the central tree against a statistical shell,
+    # which is far cheaper. Applied to groves whose individual_type == "surround".
+    surround_enabled: bool = False
+    surround_density: float = 0.7
+    surround_distance: float = 7.0
+    surround_height: float = 5.0
+    surround_grow: bool = True
+
     # Skeleton overrides - None means inherit from quality preset (CLI-only)
     forest_skeleton_length: float | None = None
     forest_skeleton_reduce: float | None = None
@@ -489,12 +499,25 @@ class GrowPyConfig:
                 name: dict(cfg) for name, cfg in comp_groups.items()
             }
 
+        # [surround] - single-tree competition shell (replaces multi-tree clusters)
+        surr = data.get("surround", {})
+        if "enabled" in surr:
+            kwargs["surround_enabled"] = bool(surr["enabled"])
+        if "density" in surr:
+            kwargs["surround_density"] = float(surr["density"])
+        if "distance" in surr:
+            kwargs["surround_distance"] = float(surr["distance"])
+        if "height" in surr:
+            kwargs["surround_height"] = float(surr["height"])
+        if "grow" in surr:
+            kwargs["surround_grow"] = bool(surr["grow"])
+
         # Warn about unrecognized top-level sections (usually a typo in the TOML);
         # such sections are otherwise silently ignored and defaults are used.
         _known_sections = {
             "general", "assets", "twigs", "growth_models", "forest", "export",
             "density_variant", "unreal", "helios", "calibration", "yield_sources",
-            "competition", "quality",
+            "competition", "surround", "quality",
         }
         for _section in data:
             if _section not in _known_sections:

@@ -11,9 +11,10 @@ import pandas as pd
 import the_grove_23_core as gc
 from tqdm import tqdm
 
+from ..config import get_config
 from ..config.preset_overrides import PresetOverrides, get_species_overrides
 from ..utils.log import is_verbose
-from .grove import add_tree_to_grove, create_grove
+from .grove import add_tree_to_grove, create_grove, enable_surround
 from .tree import extract_tree_measurements
 
 # Type alias for snapshot data
@@ -66,6 +67,34 @@ def create_forest(
             add_tree_to_grove(grove, position, delay)
             fid = int(row["fid"]) if "fid" in row else int(idx)
             fids.append(fid)
+
+        # Grove's Surround shell replaces multi-tree competition clusters for
+        # single-tree contexts: enable it when the tree opts in via
+        # individual_type == "surround", or when surround is globally enabled.
+        cfg = get_config()
+        itype = str(group_key[1]).strip() if has_individual_type else ""
+        if len(species_data) == 1 and (itype == "surround" or cfg.surround_enabled):
+            applied = enable_surround(
+                grove,
+                density=cfg.surround_density,
+                distance=cfg.surround_distance,
+                height=cfg.surround_height,
+                grow=cfg.surround_grow,
+            )
+            if applied:
+                logger.info(
+                    "Surround enabled for %s (density=%.2f distance=%.1f height=%.1f)",
+                    species_name,
+                    cfg.surround_density,
+                    cfg.surround_distance,
+                    cfg.surround_height,
+                )
+            else:
+                logger.warning(
+                    "Surround requested for %s but this Grove build does not "
+                    "expose surround properties",
+                    species_name,
+                )
 
         forest.append((grove, species_name, len(species_data), fids))
 
