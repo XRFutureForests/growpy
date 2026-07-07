@@ -6,6 +6,7 @@ import pytest
 
 from growpy.core.twig import (
     TwigPlacement,
+    extract_twig_placements_from_model,
     get_face_center_and_normal,
     normal_to_rotation_matrix,
     rotation_matrix_to_quaternion,
@@ -224,3 +225,69 @@ class TestNormalToRotationMatrixAdvanced:
             + matrix[0][2] * (matrix[1][0] * matrix[2][1] - matrix[1][1] * matrix[2][0])
         )
         assert det == pytest.approx(1.0, abs=2e-3)
+
+
+
+class _FakeModel:
+    """Minimal Grove-model stand-in for extract_twig_placements_from_model.
+
+    Living twigs expose ground-truth arrays (num_twigs placed); dead twigs only
+    have face attributes. Faces are independent triangles indexing `points`.
+    """
+
+    def __init__(self, faces, points, twig_long, twig_dead, num_twigs):
+        self.faces = faces
+        self.points = points
+        self.face_attribute_twig_long = twig_long
+        self.face_attribute_twig_dead = twig_dead
+        self._num_twigs = num_twigs
+
+    def get_twig_locations(self):
+        return [0.0, 0.0, 0.0] * self._num_twigs
+
+    def get_twig_directions(self):
+        return [0.0, 0.0, 1.0] * self._num_twigs
+
+    def get_twig_orientations(self):
+        return [0.0, 0.0, 1.0] * self._num_twigs
+
+
+def _build_model(num_dead_faces, num_living_faces, num_twigs_placed):
+    """Dead faces first, then living faces, so dead ones are all extracted
+    before the living array is exhausted."""
+    faces = []
+    points = []
+    twig_long = []
+    twig_dead = []
+    for i in range(num_dead_faces + num_living_faces):
+        base = i * 3
+        points.extend([(base, 0.0, 0.0), (base + 1, 0.0, 0.0), (base, 1.0, 0.0)])
+        faces.append([base, base + 1, base + 2])
+        is_dead = i < num_dead_faces
+        twig_dead.append(1 if is_dead else 0)
+        twig_long.append(0 if is_dead else 1)
+    return _FakeModel(faces, points, twig_long, twig_dead, num_twigs_placed)
+
+
+class TestDeadTwigDensityMatch:
+    """Dead twigs should be thinned to Grove's living-twig scatter density."""
+
+    def test_dead_thinned_to_living_scatter_ratio(self):
+        # 4 living candidate faces, Grove placed only 2 -> scatter ratio 0.5.
+        # 4 dead faces should be kept at ~0.5 -> 2.
+        model = _build_model(num_dead_faces=4, num_living_faces=4, num_twigs_placed=2)
+        placements = extract_twig_placements_from_model(model)
+        assert len(placements["twig_long"]) == 2
+        assert len(placements["twig_dead"]) == 2
+
+    def test_dead_unchanged_when_grove_places_all_living(self):
+        # Grove placed one twig per living face -> scatter ratio 1.0 -> keep all dead.
+        model = _build_model(num_dead_faces=3, num_living_faces=3, num_twigs_placed=3)
+        placements = extract_twig_placements_from_model(model)
+        assert len(placements["twig_dead"]) == 3
+
+    def test_no_living_faces_leaves_dead_unchanged(self):
+        # No living candidates -> ratio undefined -> dead placements untouched.
+        model = _build_model(num_dead_faces=3, num_living_faces=0, num_twigs_placed=0)
+        placements = extract_twig_placements_from_model(model)
+        assert len(placements["twig_dead"]) == 3

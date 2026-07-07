@@ -435,6 +435,39 @@ def extract_twig_placements_from_model(
         num_twigs,
     )
 
+    # Density-match dead twigs to Grove's living-twig scatter density.
+    # Grove exposes ground-truth arrays (get_twig_locations) only for LIVING
+    # twigs, so their counts already reflect how densely Grove scatters twigs.
+    # Dead twigs have no such array — every face_attribute_twig_dead face was
+    # turned into a placement above (1:1), which populates far more dead tips
+    # than Grove actually renders. Derive Grove's effective scatter fraction
+    # from the living twigs (placed / candidate faces) and keep only that
+    # fraction of dead placements, so dead twigs appear only where Grove would.
+    dead_list = placements.get("twig_dead")
+    if dead_list:
+        living_candidate_faces = 0
+        for _lt in ("twig_long", "twig_short", "twig_upward"):
+            _attr = twig_type_attrs.get(_lt)
+            if _attr:
+                living_candidate_faces += sum(1 for _v in _attr if _v > 0)
+        living_placed = sum(
+            len(placements.get(_lt, []))
+            for _lt in ("twig_long", "twig_short", "twig_upward")
+        )
+        if living_candidate_faces > 0:
+            scatter_ratio = min(1.0, living_placed / living_candidate_faces)
+            keep = int(len(dead_list) * scatter_ratio + 0.5)
+            if keep < len(dead_list):
+                random.Random(42).shuffle(dead_list)
+                removed = len(dead_list) - keep
+                placements["twig_dead"] = dead_list[:keep]
+                logger.info(
+                    "Dead-twig density match: kept %d/%d (Grove living scatter %.2f)",
+                    keep,
+                    keep + removed,
+                    scatter_ratio,
+                )
+
     all_bone_ids = [
         p.bone_id
         for plist in placements.values()

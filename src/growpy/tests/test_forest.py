@@ -3,13 +3,18 @@
 import pytest
 
 try:
+    import the_grove_23_core as _gc
+
     from growpy.core.forest import _compute_grove_offsets, _split_bones_by_tree
+    from growpy.core.grove import enable_surround
 
     _IMPORT_OK = True
 except (ImportError, OSError):
     _IMPORT_OK = False
+    _gc = None
     _split_bones_by_tree = None
     _compute_grove_offsets = None
+    enable_surround = None
 
 pytestmark = pytest.mark.skipif(
     not _IMPORT_OK,
@@ -108,3 +113,39 @@ class TestComputeGroveOffsets:
 
     def test_empty_forest(self):
         assert _compute_grove_offsets([]) == []
+
+
+
+class TestEnableSurround:
+    """Tests for enabling Grove's Surround shell on a grove."""
+
+    def test_sets_surround_properties(self):
+        grove = _gc.Grove()
+        grove.clear_trees()
+        applied = enable_surround(
+            grove, density=0.6, distance=10.0, height=5.0, grow=True
+        )
+        assert applied is True
+        props = grove.get_properties()
+        assert props.surround_enabled is True
+        assert props.surround_density == pytest.approx(0.6)
+        assert props.surround_distance == pytest.approx(10.0)
+        assert props.surround_height == pytest.approx(5.0)
+        assert props.surround_grow is True
+
+    def test_surround_reduces_branch_count(self):
+        # A tree grown with Surround competes for light and self-prunes, so it
+        # should end up with fewer branches than the same tree grown open.
+        def grow(surround):
+            g = _gc.Grove()
+            g.clear_trees()
+            g.set_random_seed(42)
+            if surround:
+                enable_surround(g, density=0.7, distance=7.0, height=5.0, grow=True)
+            g.add_new_tree(_gc.Vector(0, 0, 0), _gc.Vector(0, 0, 1), 0)
+            for _ in range(12):
+                g.weigh_and_bend()
+                g.simulate(1)
+            return g.number_of_branches
+
+        assert grow(surround=True) < grow(surround=False)

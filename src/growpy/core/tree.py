@@ -139,10 +139,15 @@ def extract_grove_attributes(grove: gc.Grove) -> dict[str, Any]:
         grove: Simulated Grove instance
 
     Returns:
-        Dict with keys: total_mass, number_of_branches, height, age, has_roots
+        Dict with keys: total_mass, total_volume, total_surface_area,
+        number_of_branches, height, age, has_roots. total_volume (m^3) and
+        total_surface_area (m^2) are Grove-computed biophysical quantities
+        useful for biomass / yield validation.
     """
     return {
         "total_mass": getattr(grove, "total_mass", None),
+        "total_volume": getattr(grove, "total_volume", None),
+        "total_surface_area": getattr(grove, "total_surface_area", None),
         "number_of_branches": getattr(grove, "number_of_branches", None),
         "height": getattr(grove, "height", None),
         "age": getattr(grove, "age", None),

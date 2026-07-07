@@ -67,3 +67,44 @@ def add_tree_to_grove(
     position_vector = gc.Vector(*position)
     direction_vector = gc.Vector(0, 0, 1)
     grove.add_new_tree(position_vector, direction_vector, delay)
+
+
+def enable_surround(
+    grove: gc.Grove,
+    density: float = 0.7,
+    distance: float = 7.0,
+    height: float = 5.0,
+    grow: bool = True,
+) -> bool:
+    """Enable Grove's built-in Surround light-competition shell on a grove.
+
+    Surround shades the tree(s) against a statistical shell of virtual
+    neighbours instead of simulating real neighbour trees, giving the tall,
+    slender, self-pruned form of a forest-grown tree at a fraction of the cost
+    of a multi-tree competition cluster.
+
+    Note: Grove disables Surround when a grove holds more than one simulated
+    tree together (multi-grove shade takes over), so this is meant for
+    single-tree groves.
+
+    Args:
+        grove: Grove instance to configure.
+        density: Surround tree density (0..1, Grove default 0.7).
+        distance: Distance to the surrounding shell in metres (Grove default 7).
+        height: Height of the surrounding shell in metres (Grove default 5).
+        grow: Whether the shell grows together with the tree (Grove default True).
+
+    Returns:
+        True if the surround properties were applied, False if the running
+        Grove build does not expose them.
+    """
+    props = grove.get_properties()
+    if not hasattr(props, "surround_enabled"):
+        return False
+    props.surround_enabled = True
+    props.surround_density = float(density)
+    props.surround_distance = float(distance)
+    props.surround_height = float(height)
+    props.surround_grow = bool(grow)
+    grove.set_properties(props)
+    return True
