@@ -809,7 +809,10 @@ def export_tree_as_nanite_assembly(
     try:
         # First, export using Grove's native USD
         try:
-            import the_grove_23_core as gc
+            import importlib.util
+
+            if importlib.util.find_spec("the_grove_23_core") is None:
+                return False
         except ImportError:
             return False
 

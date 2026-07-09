@@ -23,9 +23,6 @@ from .pve_skeleton_calculators import (
     calculate_branch_gradients as _calculate_branch_gradients,
 )
 from .pve_skeleton_calculators import (
-    calculate_branch_parents as _calculate_branch_parents,
-)
-from .pve_skeleton_calculators import (
     calculate_branch_parents_from_skeleton as _calculate_branch_parents_from_skeleton,
 )
 from .pve_skeleton_calculators import (

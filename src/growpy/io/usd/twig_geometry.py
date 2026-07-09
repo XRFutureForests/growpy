@@ -468,35 +468,6 @@ def _get_alpha_texture_for_geometry(tex_map: dict):
     return None, False
 
 
-def _build_vertex_alpha_map(mesh, alpha_img):
-    """Build per-vertex alpha map by sampling the alpha image at UVs.
-
-    Returns: dict vert_index -> alpha [0..1]
-    """
-    if alpha_img is None or not mesh.uv_layers.active:
-        return {}
-    pixels = alpha_img.load()
-    w, h = alpha_img.size
-    uv_layer = mesh.uv_layers.active.data
-    vert_alpha = {}
-    # Use averaged alpha over all loops touching the vertex
-    accum = {}
-    counts = {}
-    for poly in mesh.polygons:
-        for loop_idx in poly.loop_indices:
-            loop = mesh.loops[loop_idx]
-            vi = loop.vertex_index
-            uv = uv_layer[loop_idx].uv
-            x = int(max(0, min(w - 1, uv.x * (w - 1))))
-            y = int(max(0, min(h - 1, (1.0 - uv.y) * (h - 1))))
-            a = pixels[x, y] / 255.0
-            accum[vi] = accum.get(vi, 0.0) + a
-            counts[vi] = counts.get(vi, 0) + 1
-    for vi, total in accum.items():
-        vert_alpha[vi] = total / max(1, counts.get(vi, 1))
-    return vert_alpha
-
-
 def _detect_alpha_inversion(alpha_img):
     """Detect if alpha mask uses inverted convention (black=opaque).
 

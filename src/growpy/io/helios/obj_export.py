@@ -16,7 +16,6 @@ Material groups:
     twig_leaf - Twig leaf/needle planes (helios_spectra conifer or deciduous)
 """
 
-import json
 import logging
 from pathlib import Path
 
@@ -489,103 +488,6 @@ def _read_twig_instancer(
             break
 
     return positions, orientations, scales, proto_indices, proto_files
-
-
-def _read_twig_mesh(
-    twig_path: Path,
-) -> tuple[np.ndarray | None, np.ndarray | None]:
-    """Read twig mesh geometry from USDA file.
-
-    Returns:
-        Tuple of (vertices[N,3], faces[M,3]) or (None, None)
-    """
-    stage = Usd.Stage.Open(str(twig_path))
-    if not stage:
-        return None, None
-
-    # Find first mesh prim
-    mesh_prim = None
-    for prim in stage.Traverse():
-        if prim.IsA(UsdGeom.Mesh):
-            mesh_prim = prim
-            break
-
-    if mesh_prim is None:
-        return None, None
-
-    mesh = UsdGeom.Mesh(mesh_prim)
-    points = mesh.GetPointsAttr().Get()
-    face_indices = mesh.GetFaceVertexIndicesAttr().Get()
-    face_counts = mesh.GetFaceVertexCountsAttr().Get()
-
-    if not points or not face_indices:
-        return None, None
-
-    vertices = np.array([[p[0], p[1], p[2]] for p in points], dtype=np.float64)
-
-    # Handle mixed face sizes (triangles and quads)
-    faces = []
-    idx = 0
-    for count in face_counts:
-        if count == 3:
-            faces.append(face_indices[idx : idx + 3])
-        elif count == 4:
-            # Triangulate quad
-            a, b, c, d = face_indices[idx : idx + 4]
-            faces.append([a, b, c])
-            faces.append([a, c, d])
-        idx += count
-
-    if not faces:
-        return None, None
-
-    return vertices, np.array(faces, dtype=np.int64)
-
-
-def _read_twig_material(twig_path: Path) -> str | None:
-    """Extract diffuse texture filename from twig USD material.
-
-    Returns:
-        Relative texture path or None if not found.
-    """
-    try:
-        stage = Usd.Stage.Open(str(twig_path))
-        if not stage:
-            return None
-        for prim in stage.Traverse():
-            if not prim.IsA(UsdShade.Shader):
-                continue
-            shader = UsdShade.Shader(prim)
-            if shader.GetIdAttr().Get() != "UsdUVTexture":
-                continue
-            if "DiffuseTexture" not in str(prim.GetPath()):
-                continue
-            file_input = shader.GetInput("file")
-            if file_input:
-                val = file_input.Get()
-                if val:
-                    return str(val.resolvedPath or val.path)
-    except Exception:
-        pass
-    return None
-
-
-def _read_face_material_names(twig_path: Path) -> list[str] | None:
-    """Read sidecar face material names for a twig USD file.
-
-    Looks for a ``*_face_materials.json`` sidecar alongside the twig USDA.
-    Returns the list of Blender material names, or None if no sidecar found.
-    """
-    stem = twig_path.stem.replace("_skeletal", "").replace("_static", "")
-    sidecar_path = twig_path.parent / f"{stem}_face_materials.json"
-    if not sidecar_path.exists():
-        return None
-    try:
-        with open(sidecar_path) as f:
-            data = json.load(f)
-        return data.get("materials")
-    except Exception:
-        return None
 
 
 def _quat_to_rotation_matrix(w: float, x: float, y: float, z: float) -> np.ndarray:
