@@ -31,6 +31,7 @@ import logging
 import os
 import shutil
 import sys
+import time
 from pathlib import Path
 
 from growpy.io.usd.overview import generate_overview_markdown
@@ -43,6 +44,7 @@ from growpy.pipelines.dataset_job_planner import (
     list_all_species,
     resolve_species,
 )
+from growpy.pipelines.run_summary import generate_run_summary
 from growpy.pipelines.step_runner import (
     check_environment,
     generate_unreal_scripts,
@@ -355,6 +357,7 @@ def main():
         else:  # step 4
             workers = max(1, args.workers)
             use_parallel = workers > 1 and len(species_list) > 1 and not args.dry_run
+            elapsed_by_species: dict = {}
 
             if use_parallel:
                 logger.info(
@@ -362,7 +365,7 @@ def main():
                     len(species_list),
                     workers,
                 )
-                failed = run_parallel_step4(
+                failed, elapsed_by_species = run_parallel_step4(
                     species_list,
                     workers,
                     args.max_height,
@@ -372,13 +375,16 @@ def main():
             else:
                 failed = []
                 for species in species_list:
-                    if not run_species_step4(
+                    t0 = time.monotonic()
+                    ok = run_species_step4(
                         species,
                         DATASET_DIR,
                         args.dry_run,
                         args.max_height,
                         verbose=args.verbose,
-                    ):
+                    )
+                    elapsed_by_species[species] = time.monotonic() - t0
+                    if not ok:
                         failed.append(species)
 
             if failed:
@@ -407,6 +413,12 @@ def main():
             config.forest_height_interval,
             preset_dir=assets_dir / "presets",
             models_dir=assets_dir / "growth_models",
+        )
+        generate_run_summary(
+            config.output_dir,
+            species_list,
+            elapsed_by_species,
+            failed,
         )
 
     if 4 in steps and failed:

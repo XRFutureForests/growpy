@@ -13,6 +13,7 @@ consistency so the pipeline process never imports bpy.
 import logging
 import subprocess
 import sys
+import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
@@ -185,6 +186,7 @@ def run_species_step4(
 def _run_species_worker(args: tuple) -> tuple:
     """Top-level picklable worker for ProcessPoolExecutor."""
     species_name, dataset_dir, max_height, verbose = args
+    t0 = time.monotonic()
     ok = run_species_step4(
         species_name,
         dataset_dir,
@@ -192,7 +194,8 @@ def _run_species_worker(args: tuple) -> tuple:
         skip_unreal_scripts=True,
         verbose=verbose,
     )
-    return species_name, ok
+    elapsed = time.monotonic() - t0
+    return species_name, ok, elapsed
 
 
 def run_parallel_step4(
@@ -201,12 +204,13 @@ def run_parallel_step4(
     max_height: float,
     dataset_dir: Path,
     verbose: bool = False,
-) -> list:
+) -> tuple[list, dict]:
     """Run step 4 for multiple species in parallel.
 
-    Returns list of failed species names.
+    Returns (failed species names, elapsed seconds per species).
     """
     failed = []
+    elapsed_by_species: dict = {}
 
     with ProcessPoolExecutor(max_workers=workers) as pool:
         futures = {
@@ -218,14 +222,15 @@ def run_parallel_step4(
         for future in as_completed(futures):
             species_name = futures[future]
             try:
-                _, ok = future.result()
+                _, ok, elapsed = future.result()
+                elapsed_by_species[species_name] = elapsed
                 if not ok:
                     failed.append(species_name)
             except Exception:
                 logger.exception("Worker crashed for %s", species_name)
                 failed.append(species_name)
 
-    return failed
+    return failed, elapsed_by_species
 
 
 def generate_unreal_scripts(output_dir: Path, include_static: bool = False) -> None:
