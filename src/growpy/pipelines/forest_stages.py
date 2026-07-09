@@ -44,6 +44,7 @@ from growpy.utils.export_naming import (
     format_density_for_filename,
     format_height_for_filename,
 )
+from growpy.utils.naming import filename_safe_species_slug
 from growpy.utils.profiling import ProfileTimer
 
 GROWTH_CYCLE_LIMIT = 10
@@ -424,15 +425,7 @@ def generate_forest_stages(
                     continue
 
                 # Generate filename with height and DBH (tree ID is in folder name)
-                species_clean = (
-                    "".join(
-                        c for c in species_name if c.isalnum() or c in (" ", "-", "_")
-                    )
-                    .strip()
-                    .replace(" ", "_")
-                    .replace("-", "_")
-                    .lower()
-                )
+                species_clean = filename_safe_species_slug(species_name)
                 # Use milestone height for clean filenames (e.g., h04m, h08m)
                 # In height-threshold mode, the milestone is the exact threshold
                 # the tree crossed. In legacy mode, use actual height.

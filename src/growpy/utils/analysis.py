@@ -274,6 +274,27 @@ from .plotting import plot_growth_curves
 logger = logging.getLogger(__name__)
 
 
+def find_max_height_in_branch(branch: Any) -> float:
+    """Recursively find the maximum Z height across a branch and its side branches.
+
+    Walks ``branch.nodes`` and any ``node.side_branches`` recursively,
+    returning the highest ``node.pos.z`` value found (or 0.0 when the
+    branch has no nodes).
+    """
+    local_max = 0.0
+    if hasattr(branch, "nodes") and branch.nodes:
+        for node in branch.nodes:
+            if hasattr(node, "pos") and node.pos.z > local_max:
+                local_max = node.pos.z
+
+            if hasattr(node, "side_branches") and node.side_branches:
+                for side_branch in node.side_branches:
+                    side_max = find_max_height_in_branch(side_branch)
+                    if side_max > local_max:
+                        local_max = side_max
+    return local_max
+
+
 def _process_single_species_for_parallel(args_tuple):
     """Process a single species in a parallel worker.
 
@@ -642,25 +663,6 @@ class SpeciesGrowthAnalyzer:
 
                 if grove.trees and len(grove.trees) > 0:
                     tree = grove.trees[0]
-
-                    def find_max_height_in_branch(branch):
-                        local_max = 0.0
-                        if hasattr(branch, "nodes") and branch.nodes:
-                            for node in branch.nodes:
-                                if hasattr(node, "pos") and node.pos.z > local_max:
-                                    local_max = node.pos.z
-
-                                if (
-                                    hasattr(node, "side_branches")
-                                    and node.side_branches
-                                ):
-                                    for side_branch in node.side_branches:
-                                        side_max = find_max_height_in_branch(
-                                            side_branch
-                                        )
-                                        if side_max > local_max:
-                                            local_max = side_max
-                        return local_max
 
                     current_height = find_max_height_in_branch(tree)
                     current_dbh = self.calculate_dbh_at_height(tree, target_height=BREAST_HEIGHT_METERS)

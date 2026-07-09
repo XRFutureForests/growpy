@@ -59,80 +59,11 @@ POST_IMPORT_SCRIPTS = [
 ]
 
 
-def _get_gpu_vram() -> tuple[int, int, float] | None:
-    """Query GPU VRAM usage via nvidia-smi. Returns (used_mb, total_mb, pct)."""
-    try:
-        result = subprocess.run(
-            [
-                "nvidia-smi",
-                "--query-gpu=memory.used,memory.total",
-                "--format=csv,noheader,nounits",
-                "--id=0",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            parts = result.stdout.strip().split(",")
-            used = int(parts[0].strip())
-            total = int(parts[1].strip())
-            pct = round(used / total * 100, 1) if total > 0 else 0
-            return (used, total, pct)
-    except Exception:
-        pass
-    return None
-
-
-def _get_system_ram() -> tuple[int, int, float] | None:
-    """Query system RAM usage. Returns (used_mb, total_mb, pct)."""
-    try:
-        import psutil
-
-        mem = psutil.virtual_memory()
-        used = mem.used // (1024 * 1024)
-        total = mem.total // (1024 * 1024)
-        pct = round(mem.percent, 1)
-        return (used, total, pct)
-    except ImportError:
-        pass
-
-    # Fallback: Windows wmic
-    try:
-        result = subprocess.run(
-            [
-                "wmic",
-                "OS",
-                "get",
-                "FreePhysicalMemory,TotalVisibleMemorySize",
-                "/value",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            lines = result.stdout.strip().split("\n")
-            vals = {}
-            for line in lines:
-                if "=" in line:
-                    k, v = line.strip().split("=", 1)
-                    vals[k.strip()] = int(v.strip())
-            total_kb = vals.get("TotalVisibleMemorySize", 0)
-            free_kb = vals.get("FreePhysicalMemory", 0)
-            if total_kb > 0:
-                total = total_kb // 1024
-                used = (total_kb - free_kb) // 1024
-                pct = round(used / total * 100, 1)
-                return (used, total, pct)
-    except Exception:
-        pass
-    return None
-
-
-def _vram_bar(pct: float, width: int = 20) -> str:
-    filled = int(width * pct / 100)
-    return "#" * filled + "-" * (width - filled)
+from growpy.utils.vram import (
+    format_resource_bar as _vram_bar,
+    query_gpu_vram as _get_gpu_vram,
+    query_system_ram as _get_system_ram,
+)
 
 
 def _print_resources(context: str = "") -> tuple[float, float]:

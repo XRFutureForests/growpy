@@ -47,6 +47,23 @@ def standardize_species_name(common_name: str) -> str:
     return name.strip("_")
 
 
+def filename_safe_species_slug(species_name: str) -> str:
+    """Convert a species name to a filename-safe slug.
+
+    Like :func:`standardize_species_name` but also converts hyphens to
+    underscores and strips every character that is not alphanumeric,
+    space, hyphen, or underscore before slugifying. Use this for
+    export filenames where hyphens would collide with file naming
+    conventions.
+
+    Examples:
+        "European beech" -> "european_beech"
+        "Fagaceae - European oak" -> "fagaceae_european_oak"
+    """
+    cleaned = "".join(c for c in species_name if c.isalnum() or c in (" ", "-", "_"))
+    return cleaned.strip().replace(" ", "_").replace("-", "_").lower()
+
+
 # Standardized twig type mapping
 TWIG_NAME_MAPPINGS = {
     "apical": ["apical", "end", "long", "terminal", "tip"],
