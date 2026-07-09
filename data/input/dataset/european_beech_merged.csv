@@ -1,6 +1,3 @@
 fid,species,x,y,z,height,twig_density,individual_type
 1,European beech,100.0,0.0,0.0,30,1.0,open_grown
-2,European beech,0.0,0.0,0.0,30,1.0,competition
-101,European beech,3.0,0.0,0.0,30,1.0,competition
-102,European beech,-1.5,2.598,0.0,30,1.0,competition
-103,European beech,-1.5,-2.598,0.0,30,1.0,competition
+2,European beech,0.0,0.0,0.0,30,1.0,surround
