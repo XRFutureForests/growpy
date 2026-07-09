@@ -201,7 +201,9 @@ def _apply_smoothing(
     smooth_start = time.time()
     for grove, species_name, _, _ in forest:
         for _ in tqdm(
-            range(smooth_iterations), desc=f"Smoothing {species_name}", unit="iter",
+            range(smooth_iterations),
+            desc=f"Smoothing {species_name}",
+            unit="iter",
             disable=not is_verbose(),
         ):
             grove.smooth()
@@ -267,7 +269,12 @@ def simulate_forest_growth(
             )
 
     growth_start = time.time()
-    for cycle in tqdm(range(cycles), desc="Simulating growth cycles", unit="cycle", disable=not is_verbose()):
+    for cycle in tqdm(
+        range(cycles),
+        desc="Simulating growth cycles",
+        unit="cycle",
+        disable=not is_verbose(),
+    ):
         _run_single_growth_cycle(
             forest, groves, cycle, cycles, species_overrides, preset_overrides
         )
@@ -379,15 +386,25 @@ def simulate_forest_growth_with_snapshots(
 
     if use_height_mode:
         snapshots, milestone_map = _simulate_height_threshold_mode(
-            forest, groves, max_cycles, height_interval,
-            species_overrides, preset_overrides, quality_params,
+            forest,
+            groves,
+            max_cycles,
+            height_interval,
+            species_overrides,
+            preset_overrides,
+            quality_params,
             max_height=max_height,
             species_max_height=species_max_height,
         )
     else:
         snapshots = _simulate_cycle_based_mode(
-            forest, groves, max_cycles, snapshot_cycles,
-            species_overrides, preset_overrides, quality_params,
+            forest,
+            groves,
+            max_cycles,
+            snapshot_cycles,
+            species_overrides,
+            preset_overrides,
+            quality_params,
             species_snapshot_cycles,
         )
 
@@ -485,7 +502,12 @@ def _simulate_height_threshold_mode(
     cycles_without_growth = 0
 
     cycle = 0
-    pbar = tqdm(total=max_cycles, desc="Simulating growth cycles", unit="cycle", disable=not is_verbose())
+    pbar = tqdm(
+        total=max_cycles,
+        desc="Simulating growth cycles",
+        unit="cycle",
+        disable=not is_verbose(),
+    )
 
     # Track frozen grove indices to save memory. Once a grove's own trees
     # have captured all their target milestones, that grove stops simulating
@@ -503,9 +525,7 @@ def _simulate_height_threshold_mode(
     grove_target_keys: dict[int, list[tuple[str, int]]] = {}
     for grove_idx, (_grove, species_name, tree_count, _fids) in enumerate(forest):
         offset = grove_offsets[grove_idx]
-        keys = [
-            (species_name, offset + tree_idx) for tree_idx in range(tree_count)
-        ]
+        keys = [(species_name, offset + tree_idx) for tree_idx in range(tree_count)]
         grove_target_keys[grove_idx] = [k for k in keys if k in target_milestones]
 
     while cycle < max_cycles:
@@ -513,7 +533,12 @@ def _simulate_height_threshold_mode(
         pbar.update(1)
 
         _run_single_growth_cycle(
-            forest, groves, cycle - 1, max_cycles, species_overrides, preset_overrides,
+            forest,
+            groves,
+            cycle - 1,
+            max_cycles,
+            species_overrides,
+            preset_overrides,
             frozen_grove_indices=frozen_grove_indices,
         )
 
@@ -561,7 +586,8 @@ def _simulate_height_threshold_mode(
                 logger.info(
                     "Growth plateau detected: no height increase for %d "
                     "consecutive cycles. Stopping at cycle %d.",
-                    plateau_cycles, cycle,
+                    plateau_cycles,
+                    cycle,
                 )
                 break
 
@@ -597,7 +623,9 @@ def _simulate_height_threshold_mode(
                 for gidx in new_crossings.get(species_name, {})
             )
             if grove_has_crossing:
-                tree_data = _build_models_for_grove(grove, species_name, cycle, quality_params)
+                tree_data = _build_models_for_grove(
+                    grove, species_name, cycle, quality_params
+                )
                 if tree_data:
                     merged_data.setdefault(species_name, []).extend(tree_data)
                 else:
@@ -626,7 +654,8 @@ def _simulate_height_threshold_mode(
                     logger.warning(
                         "  %s tree %d: model None at milestone %.0fm, "
                         "will retry next cycle",
-                        species_name, global_idx,
+                        species_name,
+                        global_idx,
                         milestone_h,
                     )
 
@@ -661,7 +690,9 @@ def _simulate_height_threshold_mode(
             break
 
     pbar.close()
-    logger.info("  Height milestones captured: %d (in %d cycles)", total_captures, cycle)
+    logger.info(
+        "  Height milestones captured: %d (in %d cycles)", total_captures, cycle
+    )
     return snapshots, milestone_map
 
 
@@ -680,7 +711,9 @@ def _simulate_cycle_based_mode(
     next_snapshot_idx = 0
 
     for cycle in tqdm(
-        range(1, max_cycles + 1), desc="Simulating growth cycles", unit="cycle",
+        range(1, max_cycles + 1),
+        desc="Simulating growth cycles",
+        unit="cycle",
         disable=not is_verbose(),
     ):
         _run_single_growth_cycle(
@@ -744,9 +777,7 @@ def _build_models_for_grove(
         "resolution": quality_params.get("resolution", 24),
         "resolution_reduce": quality_params.get("resolution_reduce", 0.8),
         "build_cutoff_age": quality_params.get("build_cutoff_age", 0),
-        "build_cutoff_thickness": quality_params.get(
-            "build_cutoff_thickness", 0.01
-        ),
+        "build_cutoff_thickness": quality_params.get("build_cutoff_thickness", 0.01),
         "build_blend": quality_params.get("build_blend", True),
         "build_end_cap": quality_params.get("build_end_cap", True),
     }
@@ -768,9 +799,7 @@ def _build_models_for_grove(
         skeleton = skeletons[tree_idx] if tree_idx < len(skeletons) else None
         bones = tree_bones[tree_idx] if tree_idx < len(tree_bones) else []
         height, dbh = (
-            measurements[tree_idx]
-            if tree_idx < len(measurements)
-            else (0.0, 0.0)
+            measurements[tree_idx] if tree_idx < len(measurements) else (0.0, 0.0)
         )
         if model is None:
             logger.warning(

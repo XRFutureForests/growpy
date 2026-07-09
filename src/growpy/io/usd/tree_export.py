@@ -250,12 +250,12 @@ def build_tree_mesh(
             # For each non-trunk bone, find the parent trunk bone axis
             # so we can blend the scaling direction at junctions.
             # Walk parent chain until we hit a trunk bone.
-            parent_trunk_axis: list[tuple[float, float, float] | None] = [
-                None
-            ] * len(bones_info)
-            parent_trunk_start: list[tuple[float, float, float] | None] = [
-                None
-            ] * len(bones_info)
+            parent_trunk_axis: list[tuple[float, float, float] | None] = [None] * len(
+                bones_info
+            )
+            parent_trunk_start: list[tuple[float, float, float] | None] = [None] * len(
+                bones_info
+            )
             for idx in range(len(bones_info)):
                 if is_trunk_bone[idx]:
                     continue
@@ -527,9 +527,7 @@ def strip_skeleton_from_usd(skeletal_path: Path, static_path: Path) -> bool:
     mesh_child = None
     for child in root_spec.nameChildren:
         child_spec = (
-            child
-            if isinstance(child, Sdf.PrimSpec)
-            else root_spec.nameChildren[child]
+            child if isinstance(child, Sdf.PrimSpec) else root_spec.nameChildren[child]
         )
         if child_spec.typeName == "Skeleton":
             skel_child = child_spec

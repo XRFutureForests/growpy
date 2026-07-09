@@ -13,14 +13,15 @@ import re
 from pathlib import Path
 from typing import Any
 
-from growpy.utils.color import (
-    hex_to_linear_rgba as _hex_to_linear_rgba,
-    load_species_colors as _load_species_colors,
-    srgb_to_linear as _srgb_to_linear,
-)
+from growpy.utils.color import hex_to_linear_rgba as _hex_to_linear_rgba
+from growpy.utils.color import load_species_colors as _load_species_colors
+from growpy.utils.color import srgb_to_linear as _srgb_to_linear
+
 from .unreal_material_script import _build_material_script
 from .unreal_nanite_script import _NANITE_CONFIG_PREAMBLE
-from .unreal_vram_preamble import get_vram_monitor_preamble as _get_vram_monitor_preamble
+from .unreal_vram_preamble import (
+    get_vram_monitor_preamble as _get_vram_monitor_preamble,
+)
 
 logger = logging.getLogger(__name__)
 

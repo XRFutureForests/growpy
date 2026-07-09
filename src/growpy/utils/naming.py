@@ -98,9 +98,7 @@ TEXTURE_MODIFIERS = {
 }
 
 
-def standardize_twig_name(
-    original_name: str, species_name: str
-) -> tuple[str, dict]:
+def standardize_twig_name(original_name: str, species_name: str) -> tuple[str, dict]:
     """Convert Grove's CamelCase .blend filenames to snake_case USD output names.
 
     Parses semantic meaning from Grove's .blend file naming (e.g., type, variation)

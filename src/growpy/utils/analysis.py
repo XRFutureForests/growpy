@@ -496,7 +496,9 @@ class SpeciesGrowthAnalyzer:
         )
         return safe_name
 
-    def calculate_dbh_at_height(self, tree, target_height: float = BREAST_HEIGHT_METERS) -> float:
+    def calculate_dbh_at_height(
+        self, tree, target_height: float = BREAST_HEIGHT_METERS
+    ) -> float:
         """Calculate diameter at breast height using linear interpolation.
 
         Finds the closest nodes below and above the target height and interpolates
@@ -665,7 +667,9 @@ class SpeciesGrowthAnalyzer:
                     tree = grove.trees[0]
 
                     current_height = find_max_height_in_branch(tree)
-                    current_dbh = self.calculate_dbh_at_height(tree, target_height=BREAST_HEIGHT_METERS)
+                    current_dbh = self.calculate_dbh_at_height(
+                        tree, target_height=BREAST_HEIGHT_METERS
+                    )
 
                     if current_height > max_height_achieved:
                         max_height_achieved = current_height
@@ -705,10 +709,7 @@ class SpeciesGrowthAnalyzer:
                     )
                     break
 
-                if (
-                    self.target_height > 0
-                    and max_height_achieved >= self.target_height
-                ):
+                if self.target_height > 0 and max_height_achieved >= self.target_height:
                     logger.info(
                         f"Species {species}, seed {seed}: Reached target height "
                         f"{self.target_height:.1f}m after {cycle + 1} cycles "
@@ -920,7 +921,6 @@ class SpeciesGrowthAnalyzer:
         if species_filter:
             species_list = [s for s in species_list if s in species_filter]
 
-
         if parallel:
             return self._analyze_parallel(species_list, max_workers)
         else:
@@ -978,7 +978,11 @@ class SpeciesGrowthAnalyzer:
         # Avoid CPU oversubscription: each worker process runs numpy/scipy, which
         # each spawn their own BLAS thread pool. Cap inner threads (children inherit
         # these env vars on spawn) so we don't end up with max_workers x cores threads.
-        for _thread_var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
+        for _thread_var in (
+            "OMP_NUM_THREADS",
+            "OPENBLAS_NUM_THREADS",
+            "MKL_NUM_THREADS",
+        ):
             os.environ.setdefault(_thread_var, "1")
 
         process_args = [

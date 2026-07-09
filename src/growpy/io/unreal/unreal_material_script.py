@@ -14,6 +14,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+
 def _build_material_script(
     project_path: str,
     species_colors: dict[str, dict[str, tuple[float, float, float, float]]],

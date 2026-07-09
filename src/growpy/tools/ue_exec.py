@@ -47,7 +47,9 @@ BATCH_PATTERN = re.compile(r"^import_batch_(\d+)_.+\.py$")
 # ("paging file is too small") and UE crashes. Per-file/per-mesh progress
 # tracking in the generated scripts makes killing and resuming UE safe, so we
 # do it proactively instead of waiting for the crash.
-DEFAULT_EDITOR_EXE = r"C:\Program Files\Epic Games\UE_5.7\Engine\Binaries\Win64\UnrealEditor.exe"
+DEFAULT_EDITOR_EXE = (
+    r"C:\Program Files\Epic Games\UE_5.7\Engine\Binaries\Win64\UnrealEditor.exe"
+)
 DEFAULT_UPROJECT = r"D:\Unreal\XRLab\XRLab.uproject"
 
 # Scripts to run after all numbered batches (order preserved).
@@ -59,11 +61,9 @@ POST_IMPORT_SCRIPTS = [
 ]
 
 
-from growpy.utils.vram import (
-    format_resource_bar as _vram_bar,
-    query_gpu_vram as _get_gpu_vram,
-    query_system_ram as _get_system_ram,
-)
+from growpy.utils.vram import format_resource_bar as _vram_bar
+from growpy.utils.vram import query_gpu_vram as _get_gpu_vram
+from growpy.utils.vram import query_system_ram as _get_system_ram
 
 
 def _print_resources(context: str = "") -> tuple[float, float]:

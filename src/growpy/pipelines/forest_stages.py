@@ -100,7 +100,9 @@ def _load_species_max_heights(species_names: list[str]) -> dict[str, float]:
     return result
 
 
-def _write_species_info(species_dir: Path, species_name: str, species_clean: str) -> None:
+def _write_species_info(
+    species_dir: Path, species_name: str, species_clean: str
+) -> None:
     """Write species_info.json with GBIF taxon key and taxonomy to species output dir."""
     try:
         row = _find_species_row(species_name, use_gbif=False)
@@ -303,9 +305,7 @@ def generate_forest_stages(
     if species_max_height:
         logger.info(
             "  Per-species height ceilings: %s",
-            ", ".join(
-                f"{sp} {h:.1f}m" for sp, h in sorted(species_max_height.items())
-            ),
+            ", ".join(f"{sp} {h:.1f}m" for sp, h in sorted(species_max_height.items())),
         )
 
     # Run simulation with height-threshold-based snapshots

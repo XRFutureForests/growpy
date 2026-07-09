@@ -31,7 +31,9 @@ def get_hazel_growth_defaults() -> dict[str, Any]:
         with open(_HAZEL_DEFAULTS_PATH, encoding="utf-8") as f:
             return json.load(f)
     except (OSError, json.JSONDecodeError) as e:
-        logger.error("Failed to load Hazel defaults from %s: %s", _HAZEL_DEFAULTS_PATH, e)
+        logger.error(
+            "Failed to load Hazel defaults from %s: %s", _HAZEL_DEFAULTS_PATH, e
+        )
         return {}
 
 
