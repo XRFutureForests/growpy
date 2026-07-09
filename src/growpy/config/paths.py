@@ -232,7 +232,7 @@ def _normalize_grove_texture_name(texture_name: str) -> tuple:
     standardized = (
         re.sub(r"([A-Z])", r"_\1", stem).lower().lstrip("_").replace("__", "_")
     )
-    standardized = re.sub(r"([a-z])(\d)", r"\1_\2", standardized)
+    standardized = re.sub(r"([a-z]{2,})(\d)", r"\1_\2", standardized)
     return standardized, ext
 
 

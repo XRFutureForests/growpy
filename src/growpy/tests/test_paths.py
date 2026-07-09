@@ -33,6 +33,14 @@ class TestNormalizeGroveTextureName:
         assert stem == "birch"
         assert ext == ".jpg"
 
+    def test_single_letter_variant_code_not_split_from_number(self):
+        # "MapleA60" is Maple + variant code "A60", not a species word ending
+        # in letters directly before digits (c.f. Ash70 -> ash_70). The
+        # asset on disk is maple_a60_bark.jpg, not maple_a_60_bark.jpg.
+        stem, ext = _normalize_grove_texture_name("MapleA60.jpg")
+        assert stem == "maple_a60"
+        assert ext == ".jpg"
+
     def test_png_extension(self):
         _, ext = _normalize_grove_texture_name("SomeTex.png")
 
