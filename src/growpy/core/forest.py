@@ -3,7 +3,7 @@
 import logging
 import math
 import time
-from typing import Any
+from typing import Any, NamedTuple
 
 logger = logging.getLogger(__name__)
 
@@ -17,14 +17,44 @@ from ..utils.log import is_verbose
 from .grove import add_tree_to_grove, create_grove, enable_surround
 from .tree import extract_tree_measurements
 
-# Type alias for snapshot data
-# Dict[cycle, Dict[species, List[(model, skeleton, bones_info, height, dbh)]]]
-SnapshotData = dict[int, dict[str, list[tuple[Any, Any, Any, float, float]]]]
+
+class GroveEntry(NamedTuple):
+    """A single grove entry in the forest list.
+
+    NamedTuple so all existing positional unpacking keeps working while
+    callers gain readable ``entry.species_name`` / ``entry.tree_count``
+    access. Fields: ``(grove, species_name, tree_count, fids)``.
+    """
+
+    grove: Any
+    species_name: str
+    tree_count: int
+    fids: list[int]
+
+
+class TreeSnapshot(NamedTuple):
+    """Per-tree snapshot captured at a growth milestone.
+
+    NamedTuple for tuple-compatible unpacking plus named-field access.
+    Fields: ``(model, skeleton, bones_info, height, dbh)``.
+    """
+
+    model: Any
+    skeleton: Any
+    bones_info: list
+    height: float
+    dbh: float
+
+
+# Type aliases built on the named tuples.
+Forest = list[GroveEntry]
+# Dict[cycle, Dict[species, List[TreeSnapshot]]]
+SnapshotData = dict[int, dict[str, list[TreeSnapshot]]]
 
 
 def create_forest(
     forest_data: pd.DataFrame,
-) -> list[tuple[gc.Grove, str, int, list[int]]]:
+) -> Forest:
     """Create groves for each species in forest data.
 
     When *individual_type* is present in the DataFrame, trees are split into
@@ -96,13 +126,13 @@ def create_forest(
                     species_name,
                 )
 
-        forest.append((grove, species_name, len(species_data), fids))
+        forest.append(GroveEntry(grove, species_name, len(species_data), fids))
 
     return forest
 
 
 def _compute_grove_offsets(
-    forest: list[tuple[gc.Grove, str, int, list[int]]],
+    forest: Forest,
 ) -> list[int]:
     """Compute the species-global tree index offset for each grove.
 
@@ -120,7 +150,7 @@ def _compute_grove_offsets(
 
 
 def _run_single_growth_cycle(
-    forest: list[tuple[gc.Grove, str, int, list[int]]],
+    forest: Forest,
     groves: list[gc.Grove],
     cycle: int,
     total_cycles: int,
@@ -159,7 +189,7 @@ def _run_single_growth_cycle(
 
 
 def _apply_smoothing(
-    forest: list[tuple[gc.Grove, str, int, list[int]]],
+    forest: Forest,
     smooth_iterations: int,
 ) -> None:
     """Apply branch smoothing to all groves after simulation."""
@@ -182,7 +212,7 @@ def _apply_smoothing(
 
 
 def simulate_forest_growth(
-    forest: list[tuple[gc.Grove, str, int, list[int]]],
+    forest: Forest,
     cycles: int,
     smooth_iterations: int = 10,
     preset_overrides: PresetOverrides | None = None,
@@ -248,7 +278,7 @@ def simulate_forest_growth(
 
 
 def simulate_forest_growth_with_snapshots(
-    forest: list[tuple[gc.Grove, str, int, list[int]]],
+    forest: Forest,
     max_cycles: int,
     snapshot_cycles: list[int],
     smooth_iterations: int = 10,
@@ -374,7 +404,7 @@ def simulate_forest_growth_with_snapshots(
 
 
 def _simulate_height_threshold_mode(
-    forest: list[tuple[gc.Grove, str, int, list[int]]],
+    forest: Forest,
     groves: list[gc.Grove],
     max_cycles: int,
     height_interval: float,
@@ -572,12 +602,12 @@ def _simulate_height_threshold_mode(
                     merged_data.setdefault(species_name, []).extend(tree_data)
                 else:
                     merged_data.setdefault(species_name, []).extend(
-                        [(None, None, [], 0.0, 0.0)] * tree_count
+                        [TreeSnapshot(None, None, [], 0.0, 0.0)] * tree_count
                     )
             else:
                 # Placeholder for grove without crossings at this cycle
                 merged_data.setdefault(species_name, []).extend(
-                    [(None, None, [], 0.0, 0.0)] * tree_count
+                    [TreeSnapshot(None, None, [], 0.0, 0.0)] * tree_count
                 )
 
         for species_name in species_with_crossings:
@@ -636,7 +666,7 @@ def _simulate_height_threshold_mode(
 
 
 def _simulate_cycle_based_mode(
-    forest: list[tuple[gc.Grove, str, int, list[int]]],
+    forest: Forest,
     groves: list[gc.Grove],
     max_cycles: int,
     snapshot_cycles: list[int],
@@ -690,10 +720,10 @@ def _build_models_for_grove(
     species_name: str,
     cycle: int,
     quality_params: dict,
-) -> list[tuple[Any, Any, Any, float, float]]:
+) -> list[TreeSnapshot]:
     """Build skeleton, bones, and models for all trees in a grove.
 
-    Returns list of (model, skeleton, bones_info, height, dbh) per tree.
+    Returns list of TreeSnapshot (model, skeleton, bones_info, height, dbh) per tree.
     """
     skeleton_connected = quality_params.get("skeleton_connected", True)
     skeletons = grove.build_skeletons(skeleton_connected)
@@ -749,7 +779,7 @@ def _build_models_for_grove(
                 tree_idx,
                 cycle,
             )
-        tree_snapshots.append((model, skeleton, bones, height, dbh))
+        tree_snapshots.append(TreeSnapshot(model, skeleton, bones, height, dbh))
 
     if tree_snapshots:
         logger.info(

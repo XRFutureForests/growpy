@@ -26,6 +26,8 @@ Example:
 """
 
 from .forest import (
+    GroveEntry,
+    TreeSnapshot,
     create_forest,
     simulate_forest_growth,
     simulate_forest_growth_with_snapshots,
