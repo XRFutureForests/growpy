@@ -602,9 +602,7 @@ def cut_along_alpha_contour(
             for loop in face.loops:
                 vi = loop.vert.index
                 uv = loop[uv_layer].uv
-                a = _sample_alpha_at_uv(
-                    uv.x, uv.y, alpha_img, invert=invert_alpha
-                )
+                a = _sample_alpha_at_uv(uv.x, uv.y, alpha_img, invert=invert_alpha)
                 vert_alpha_sum[vi] = vert_alpha_sum.get(vi, 0.0) + a
                 prev = vert_uv_sum.get(vi, (0.0, 0.0))
                 vert_uv_sum[vi] = (prev[0] + uv.x, prev[1] + uv.y)
@@ -634,9 +632,7 @@ def cut_along_alpha_contour(
                 t_mid = 0.5 * (t_lo + t_hi)
                 u = uv_op[0] + t_mid * (uv_tr[0] - uv_op[0])
                 v = uv_op[1] + t_mid * (uv_tr[1] - uv_op[1])
-                a = _sample_alpha_at_uv(
-                    u, v, alpha_img, invert=invert_alpha
-                )
+                a = _sample_alpha_at_uv(u, v, alpha_img, invert=invert_alpha)
                 if a >= threshold:
                     t_lo = t_mid
                 else:

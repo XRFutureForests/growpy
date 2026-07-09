@@ -269,9 +269,11 @@ def _read_tree_components(
 
                 # Merge back: wood verts first, then leaf verts offset
                 raw_leaf_faces = raw_leaf_faces + len(wood_v)
-                raw_verts = np.vstack([wood_v, leaf_v]) if (
-                    len(wood_v) > 0 and len(leaf_v) > 0
-                ) else (wood_v if len(wood_v) > 0 else leaf_v)
+                raw_verts = (
+                    np.vstack([wood_v, leaf_v])
+                    if (len(wood_v) > 0 and len(leaf_v) > 0)
+                    else (wood_v if len(wood_v) > 0 else leaf_v)
+                )
 
             classified_protos[idx] = (raw_verts, raw_wood_faces, raw_leaf_faces)
             _classified_twig_cache[cache_key] = classified_protos[idx]
@@ -310,14 +312,21 @@ def _extract_tree_mesh(
         positions, orientations, scales, proto_indices, _ = instancer_data
         twig_wood_verts, twig_wood_faces, twig_leaf_verts, twig_leaf_faces = (
             _bake_classified_twig_instances(
-                classified_protos, positions, orientations, scales, proto_indices,
+                classified_protos,
+                positions,
+                orientations,
+                scales,
+                proto_indices,
             )
         )
 
     return (
-        trunk_verts, trunk_faces,
-        twig_wood_verts, twig_wood_faces,
-        twig_leaf_verts, twig_leaf_faces,
+        trunk_verts,
+        trunk_faces,
+        twig_wood_verts,
+        twig_wood_faces,
+        twig_leaf_verts,
+        twig_leaf_faces,
     )
 
 
@@ -736,8 +745,14 @@ def _write_obj_streaming(
 
         # Stream twig instance vertices
         proto_offsets, _ = _stream_classified_twig_vertices(
-            f, len(trunk_verts), classified_protos,
-            positions, orientations, scales, proto_indices, up_axis,
+            f,
+            len(trunk_verts),
+            classified_protos,
+            positions,
+            orientations,
+            scales,
+            proto_indices,
+            up_axis,
         )
 
         f.write("\n")
@@ -749,7 +764,9 @@ def _write_obj_streaming(
 
         # Twig faces by material
         wood_count, leaf_count = _write_classified_twig_faces(
-            f, classified_protos, proto_offsets,
+            f,
+            classified_protos,
+            proto_offsets,
         )
 
     return len(trunk_faces), wood_count, leaf_count
@@ -833,19 +850,22 @@ def write_combined_obj_streaming(
                                 current_mtl = mat
                         elif line.startswith("f "):
                             parts = line.strip().split()
-                            shifted = ["f"] + [
-                                str(int(p) + v_off) for p in parts[1:]
-                            ]
+                            shifted = ["f"] + [str(int(p) + v_off) for p in parts[1:]]
                             out.write(" ".join(shifted) + "\n")
                             total_faces += 1
     finally:
         temp_geom_path.unlink(missing_ok=True)
 
-    _write_helios_mtl(mtl_path, bark_texture=None, helios_spectra_leaves=helios_spectra_leaves)
+    _write_helios_mtl(
+        mtl_path, bark_texture=None, helios_spectra_leaves=helios_spectra_leaves
+    )
 
     logger.info(
         "Combined OBJ: %s (%d verts, %d faces, %d trees)",
-        output_path.name, total_verts, total_faces, len(tree_obj_paths),
+        output_path.name,
+        total_verts,
+        total_faces,
+        len(tree_obj_paths),
     )
     return output_path
 
@@ -1261,16 +1281,27 @@ def export_forest_obj(
             positions, orientations, scales, proto_indices, _ = instancer_data
             with _track("write_obj_streaming"):
                 bark_n, wood_n, leaf_n = _write_obj_streaming(
-                    obj_path, trunk_verts, trunk_faces,
-                    classified_protos, positions, orientations,
-                    scales, proto_indices, mtl_name, up_axis,
+                    obj_path,
+                    trunk_verts,
+                    trunk_faces,
+                    classified_protos,
+                    positions,
+                    orientations,
+                    scales,
+                    proto_indices,
+                    mtl_name,
+                    up_axis,
                 )
         else:
             # No twigs — write trunk-only OBJ
             with _track("write_obj_streaming"):
                 _write_obj(
-                    obj_path, trunk_verts, trunk_faces, None,
-                    mtl_name, up_axis=up_axis,
+                    obj_path,
+                    trunk_verts,
+                    trunk_faces,
+                    None,
+                    mtl_name,
+                    up_axis=up_axis,
                 )
                 bark_n, wood_n, leaf_n = len(trunk_faces), 0, 0
 
@@ -1279,7 +1310,10 @@ def export_forest_obj(
 
         logger.info(
             "OBJ export: %s (%d trunk + %d twig_wood + %d twig_leaf faces)",
-            obj_path.name, bark_n, wood_n, leaf_n,
+            obj_path.name,
+            bark_n,
+            wood_n,
+            leaf_n,
         )
         obj_files.append((obj_path, x, y, z, species_name))
         tree_obj_entries.append((obj_path, x, y, z))

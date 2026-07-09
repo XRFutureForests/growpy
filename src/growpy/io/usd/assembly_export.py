@@ -515,7 +515,6 @@ def create_assembly(
                         ]
                         instancer_prim.SetMetadata("apiSchemas", skel_binding_schemas)
 
-
                         # Extract joint names array from tree skeleton
                         # Joint names are hierarchical paths like "joint_0/joint_1/joint_2"
                         # The bone_id in each TwigPlacement is a direct index into this array
@@ -752,7 +751,6 @@ def export_tree_as_nanite_assembly(
     twig_placements_out: dict | None = None,
     instances_dir: Path | None = None,
 ) -> bool:
-
     """Export Grove tree as Unreal Engine Nanite Assembly.
 
     This function:
@@ -941,7 +939,6 @@ def export_tree_as_nanite_assembly(
                             youth_bias=cfg.export_youth_bias,
                             scaled_points=_sp,
                         )
-
 
             # CRITICAL: Remap twig bone_ids from UNFILTERED to FILTERED indices
             # After filter_bones_for_mesh in tree export, bone indices are renumbered
@@ -1566,9 +1563,7 @@ def create_species_assembly(
 
         # Create shared TwigPrototypes scope
         if twig_refs:
-            stage.DefinePrim(
-                f"/{assembly_name}/TwigPrototypes", "Scope"
-            )
+            stage.DefinePrim(f"/{assembly_name}/TwigPrototypes", "Scope")
 
             for twig_name, ref_path in twig_refs.items():
                 # Create prototype prim
