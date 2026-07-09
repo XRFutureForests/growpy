@@ -31,8 +31,15 @@ growpy/
 │   ├── preview.py               # Preview image generation
 │   ├── wind_json.py             # Dynamic wind JSON for Unreal
 │   ├── pve_grove_mapper.py      # PVE preset JSON generation
+│   ├── pve_skeleton_calculators.py  # Pure skeleton-topology calculators
+│   ├── pve_growth_defaults.py   # Hazel defaults (loads from JSON resource)
+│   ├── hazel_growth_defaults.json   # 656-value Hazel reference data
+│   ├── unreal_scripts.py        # Unreal import/cleanup script generation
+│   ├── unreal_vram_preamble.py  # VRAM/RSS monitor preamble (UE-embedded)
+│   ├── unreal_material_script.py # MA_Foliage_Trees MIC assignment
+│   ├── unreal_nanite_script.py  # Nanite assembly config preamble
 │   ├── texture_utils.py         # Texture processing and resizing
-│   └── unreal_scripts.py        # Unreal import/cleanup script generation
+│   └── forest_export.py         # Per-tree export orchestration
 ├── cli/               # Pipeline entry points
 │   ├── init_config.py              # Setup: Scaffold config/ directory (optional)
 │   ├── prepare_assets.py           # Step 1: Copy Grove assets
@@ -46,6 +53,7 @@ growpy/
 │   └── visualize_tree.py        # 2D tree rendering
 ├── utils/             # Shared utilities
 │   ├── analysis.py              # SpeciesGrowthAnalyzer
+│   ├── color.py                 # Color-space helpers (sRGB→linear RGBA)
 │   ├── export_naming.py         # Height/DBH/density filename formatting
 │   ├── gbif_species.py          # GBIF species name resolution
 │   ├── log.py                   # Logging configuration
@@ -53,6 +61,7 @@ growpy/
 │   ├── plotting.py              # Calibration comparison plots
 │   ├── profiling.py             # ProfileTimer for pipeline timing
 │   ├── pxr_init.py              # USD/Pixar library initialization
+│   ├── vram.py                  # GPU VRAM / system RAM monitoring
 │   └── yield_tables.py          # Yield table loading and calibration
 └── tests/             # Test suite (pytest)
 ```

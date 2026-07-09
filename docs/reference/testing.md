@@ -76,7 +76,7 @@ conda run -n growpy python -m pytest src/growpy/tests/ -v
 | test_mesh_simplify.py | io/mesh_simplify.py | 14 | classify_material, vertex extraction/reindexing, per-material proto split |
 | test_helios_scene.py | io/helios_scene.py | 9 | XML scene generation, part count, translate offsets, OBJ loader params |
 | test_overview.py | io/overview.py | 15 | _snap_to_interval,_build_interval_columns, _height_label, icon regex pattern |
-| test_unreal_scripts.py | io/unreal_scripts.py | 8 | Import block generation, consolidation script generation |
+| test_unreal_scripts.py | io/unreal_scripts.py + extracted sub-modules | 10 | Import block generation, consolidation script generation, VRAM preamble, material/nanite script extraction |
 
 ### utils/
 

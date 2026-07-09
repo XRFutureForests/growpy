@@ -110,13 +110,16 @@ SnapshotData = Dict[
     int,                                                    # cycle index
     Dict[
         str,                                                # species name
-        List[
-            Tuple[Any, Any, Any, float, float]              # per-tree tuple:
-            #     model, skeleton, bones_info, height, dbh
-        ]
+        List[TreeSnapshot]                                  # per-tree named tuple:
+        #     model, skeleton, bones_info, height, dbh
     ]
 ]
 ```
+
+`TreeSnapshot` is a `NamedTuple` (introduced 2026-07-09) so it is
+tuple-compatible with all existing positional unpacking while also providing
+named-field access (`snapshot.height`, `snapshot.dbh`). The forest list
+uses the same pattern via `GroveEntry(grove, species_name, tree_count, fids)`.
 
 This is what `simulate_forest_growth_with_snapshots()` returns and what every
 exporter in `io/` consumes. The five fields per tree:

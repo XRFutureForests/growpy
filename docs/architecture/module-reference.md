@@ -481,6 +481,15 @@ to import the exported assemblies (skeletal + static), apply materials, set
 Nanite attributes, configure DynamicWind data, and clean up old assets. Also
 produces VRAM-aware batch import scripts for large datasets.
 
+Three concerns were extracted into dedicated sub-modules (2026-07-09 refactor):
+
+- [`unreal_vram_preamble.py`](../../src/growpy/io/unreal/unreal_vram_preamble.py) —
+  the self-contained VRAM/RSS monitor snippet injected into batch scripts.
+- [`unreal_material_script.py`](../../src/growpy/io/unreal/unreal_material_script.py) —
+  MA_Foliage_Trees MIC assignment script generation.
+- [`unreal_nanite_script.py`](../../src/growpy/io/unreal/unreal_nanite_script.py) —
+  Nanite assembly post-import configuration preamble.
+
 **Public:**
 
 - `generate_unreal_import_script(output_dir, project_path, include_static=False)`
@@ -522,6 +531,13 @@ sub-module — see [../reference/pve-attribute-reference.md](../reference/pve-at
 for the schema details. The split exists so each concern (foliage instancer
 extraction, hierarchy parent arrays, schema templates, default growth params)
 can be unit-tested independently.
+
+> **2026-07-09 refactor:** `pve_growth_defaults.py` now loads the 656 Hazel
+> reference values from [`hazel_growth_defaults.json`](../../src/growpy/io/unreal/hazel_growth_defaults.json)
+> instead of a 770-line hardcoded dict. The pure skeleton-topology
+> calculators (generation, length-from-root, branch gradients, bud
+> directions, LOD gradients) were extracted to
+> [`pve_skeleton_calculators.py`](../../src/growpy/io/unreal/pve_skeleton_calculators.py).
 
 ### [`io/unreal/wind_import_script.py`](../../src/growpy/io/unreal/wind_import_script.py)
 
