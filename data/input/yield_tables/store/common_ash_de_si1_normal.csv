@@ -1,0 +1,12 @@
+age,height,dbh,species_latin,region,management,site_index,source,table_id,volume
+20,9.5,6.0,Fraxinus excelsior,DE,normal,1.0,forest_elements,fe_ash_wimmenauer_1919_29_si1,32.0
+30,15.0,12.0,Fraxinus excelsior,DE,normal,1.0,forest_elements,fe_ash_wimmenauer_1919_29_si1,118.0
+40,19.5,17.8,Fraxinus excelsior,DE,normal,1.0,forest_elements,fe_ash_wimmenauer_1919_29_si1,205.0
+50,22.5,22.2,Fraxinus excelsior,DE,normal,1.0,forest_elements,fe_ash_wimmenauer_1919_29_si1,268.0
+60,25.0,25.6,Fraxinus excelsior,DE,normal,1.0,forest_elements,fe_ash_wimmenauer_1919_29_si1,317.0
+70,26.8,29.0,Fraxinus excelsior,DE,normal,1.0,forest_elements,fe_ash_wimmenauer_1919_29_si1,354.0
+80,28.0,31.0,Fraxinus excelsior,DE,normal,1.0,forest_elements,fe_ash_wimmenauer_1919_29_si1,383.0
+90,29.0,33.0,Fraxinus excelsior,DE,normal,1.0,forest_elements,fe_ash_wimmenauer_1919_29_si1,406.0
+100,29.9,35.5,Fraxinus excelsior,DE,normal,1.0,forest_elements,fe_ash_wimmenauer_1919_29_si1,425.0
+110,30.7,37.8,Fraxinus excelsior,DE,normal,1.0,forest_elements,fe_ash_wimmenauer_1919_29_si1,441.0
+120,31.4,40.0,Fraxinus excelsior,DE,normal,1.0,forest_elements,fe_ash_wimmenauer_1919_29_si1,455.0

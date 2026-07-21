@@ -539,20 +539,23 @@ def plot_calibration_comparison(
             label="Grove (after calibration)",
         )
 
-    # Limit x-axis to the Grove data range so curves are clearly visible
-    grove_max_year = max(
+    # Show the full extent of all series. The yield table reference often
+    # covers a longer age range than the current Grove simulation, and
+    # keeping that visible is what makes long-term divergence between
+    # calibrated/uncalibrated and the reference legible.
+    max_year = max(
+        yield_ages[-1] if yield_ages else 0,
         uncal_years[-1] if uncal_years else 0,
         cal_years[-1] if calibrated_heights is not None else 0,
     )
-    if grove_max_year > 0:
-        ax1.set_xlim(0, grove_max_year * 1.15)
+    if max_year > 0:
+        ax1.set_xlim(0, max_year * 1.05)
 
     ax1.set_xlabel("Age (years)")
     ax1.set_ylabel("Height (m)")
     ax1.set_title("Height over Age")
     ax1.legend(loc="upper left")
     ax1.grid(True, alpha=0.3)
-    _add_flush_axis(ax1, flushes_per_year)
 
     # DBH comparison
     ax2 = axes[1]
@@ -601,20 +604,25 @@ def plot_calibration_comparison(
             label="Export DBH (radial scaling)",
         )
 
-    # Match x-axis range to the height plot
-    grove_max_year = max(
+    # Match x-axis range to the height plot (see comment above)
+    max_year = max(
+        yield_ages[-1] if yield_ages else 0,
         uncal_years[-1] if uncal_years else 0,
         (len(calibrated_dbhs) / flushes_per_year if calibrated_dbhs is not None else 0),
+        (
+            len(target_dbh_per_cycle) / flushes_per_year
+            if target_dbh_per_cycle is not None
+            else 0
+        ),
     )
-    if grove_max_year > 0:
-        ax2.set_xlim(0, grove_max_year * 1.15)
+    if max_year > 0:
+        ax2.set_xlim(0, max_year * 1.05)
 
     ax2.set_xlabel("Age (years)")
     ax2.set_ylabel("DBH (cm)")
     ax2.set_title("Diameter at Breast Height over Age")
     ax2.legend(loc="upper left")
     ax2.grid(True, alpha=0.3)
-    _add_flush_axis(ax2, flushes_per_year)
 
     plt.tight_layout()
 
@@ -663,7 +671,6 @@ def plot_grove_curves_only(
     ax1.set_title("Height over Age")
     ax1.legend(loc="upper left")
     ax1.grid(True, alpha=0.3)
-    _add_flush_axis(ax1, flushes_per_year)
 
     # DBH
     ax2 = axes[1]
@@ -681,7 +688,6 @@ def plot_grove_curves_only(
     ax2.set_title("Diameter at Breast Height over Age")
     ax2.legend(loc="upper left")
     ax2.grid(True, alpha=0.3)
-    _add_flush_axis(ax2, flushes_per_year)
 
     plt.tight_layout()
 

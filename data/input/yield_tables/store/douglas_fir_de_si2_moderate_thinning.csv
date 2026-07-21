@@ -1,0 +1,12 @@
+age,height,dbh,species_latin,region,management,site_index,source,table_id,volume
+25,11.55,11.5,Pseudotsuga menziesii,DE,moderate_thinning,2.5,forest_elements,fe_douglas_schober_moderate_1956_si2.5,129.0
+30,14.65,14.6,Pseudotsuga menziesii,DE,moderate_thinning,2.5,forest_elements,fe_douglas_schober_moderate_1956_si2.5,212.0
+35,17.75,18.2,Pseudotsuga menziesii,DE,moderate_thinning,2.5,forest_elements,fe_douglas_schober_moderate_1956_si2.5,291.0
+40,20.6,22.0,Pseudotsuga menziesii,DE,moderate_thinning,2.5,forest_elements,fe_douglas_schober_moderate_1956_si2.5,353.0
+45,22.95,25.8,Pseudotsuga menziesii,DE,moderate_thinning,2.5,forest_elements,fe_douglas_schober_moderate_1956_si2.5,398.0
+50,25.05,29.3,Pseudotsuga menziesii,DE,moderate_thinning,2.5,forest_elements,fe_douglas_schober_moderate_1956_si2.5,431.0
+55,26.9,32.4,Pseudotsuga menziesii,DE,moderate_thinning,2.5,forest_elements,fe_douglas_schober_moderate_1956_si2.5,459.0
+60,28.4,35.2,Pseudotsuga menziesii,DE,moderate_thinning,2.5,forest_elements,fe_douglas_schober_moderate_1956_si2.5,483.0
+65,29.7,37.8,Pseudotsuga menziesii,DE,moderate_thinning,2.5,forest_elements,fe_douglas_schober_moderate_1956_si2.5,503.0
+70,30.7,40.0,Pseudotsuga menziesii,DE,moderate_thinning,2.5,forest_elements,fe_douglas_schober_moderate_1956_si2.5,519.0
+75,31.55,41.8,Pseudotsuga menziesii,DE,moderate_thinning,2.5,forest_elements,fe_douglas_schober_moderate_1956_si2.5,533.0

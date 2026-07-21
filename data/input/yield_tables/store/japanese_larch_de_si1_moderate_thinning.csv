@@ -1,0 +1,11 @@
+age,height,dbh,species_latin,region,management,site_index,source,table_id,volume
+15,10.1,10.4,Larix kaempferi,DE,moderate_thinning,1.0,forest_elements,fe_japanlarch_schober_moderate_1953_si1,86.0
+20,13.5,13.5,Larix kaempferi,DE,moderate_thinning,1.0,forest_elements,fe_japanlarch_schober_moderate_1953_si1,143.0
+25,16.2,16.6,Larix kaempferi,DE,moderate_thinning,1.0,forest_elements,fe_japanlarch_schober_moderate_1953_si1,199.0
+30,18.8,19.4,Larix kaempferi,DE,moderate_thinning,1.0,forest_elements,fe_japanlarch_schober_moderate_1953_si1,255.0
+35,21.2,21.9,Larix kaempferi,DE,moderate_thinning,1.0,forest_elements,fe_japanlarch_schober_moderate_1953_si1,304.0
+40,23.2,24.2,Larix kaempferi,DE,moderate_thinning,1.0,forest_elements,fe_japanlarch_schober_moderate_1953_si1,342.0
+45,24.9,26.4,Larix kaempferi,DE,moderate_thinning,1.0,forest_elements,fe_japanlarch_schober_moderate_1953_si1,372.0
+50,26.3,28.4,Larix kaempferi,DE,moderate_thinning,1.0,forest_elements,fe_japanlarch_schober_moderate_1953_si1,396.0
+55,27.5,30.3,Larix kaempferi,DE,moderate_thinning,1.0,forest_elements,fe_japanlarch_schober_moderate_1953_si1,417.0
+60,28.5,32.1,Larix kaempferi,DE,moderate_thinning,1.0,forest_elements,fe_japanlarch_schober_moderate_1953_si1,435.0

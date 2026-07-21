@@ -1,0 +1,26 @@
+age,height,dbh,species_latin,region,management,site_index,source,table_id,volume
+20,8.1,8.6,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,
+25,10.55,10.8,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,82.0
+30,12.65,12.9,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,117.0
+35,14.55,14.8,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,148.0
+40,16.2,16.6,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,176.0
+45,17.7,18.25,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,199.0
+50,19.0,19.8,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,220.0
+55,20.2,21.3,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,239.0
+60,21.35,22.7,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,258.0
+65,22.35,24.0,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,274.0
+70,23.2,25.3,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,288.0
+75,24.05,26.6,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,301.0
+80,24.9,27.7,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,314.0
+85,25.55,29.0,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,325.0
+90,26.2,30.1,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,335.0
+95,26.75,31.2,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,345.0
+100,27.25,32.3,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,353.0
+105,27.75,33.4,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,361.0
+110,28.2,34.4,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,367.0
+115,28.6,35.4,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,373.0
+120,28.95,36.4,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,377.0
+125,29.25,37.4,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,380.0
+130,29.5,38.4,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,382.0
+135,29.75,39.3,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,384.0
+140,29.95,40.1,Larix decidua,DE,moderate_thinning,2.5,forest_elements,fe_larch_schober_moderate_1946_si2.5,385.0

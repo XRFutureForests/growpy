@@ -1,0 +1,18 @@
+age,height,dbh,species_latin,region,management,site_index,source,table_id,volume
+20,11.0,8.5,Quercus rubra,DE,normal,1.0,forest_elements,fe_redoak_bauer_1955_si1,37.0
+25,14.0,11.6,Quercus rubra,DE,normal,1.0,forest_elements,fe_redoak_bauer_1955_si1,74.0
+30,16.5,14.4,Quercus rubra,DE,normal,1.0,forest_elements,fe_redoak_bauer_1955_si1,109.0
+35,18.6,17.1,Quercus rubra,DE,normal,1.0,forest_elements,fe_redoak_bauer_1955_si1,141.0
+40,20.4,19.8,Quercus rubra,DE,normal,1.0,forest_elements,fe_redoak_bauer_1955_si1,170.0
+45,22.0,22.5,Quercus rubra,DE,normal,1.0,forest_elements,fe_redoak_bauer_1955_si1,198.0
+50,23.5,25.1,Quercus rubra,DE,normal,1.0,forest_elements,fe_redoak_bauer_1955_si1,225.0
+55,24.7,27.7,Quercus rubra,DE,normal,1.0,forest_elements,fe_redoak_bauer_1955_si1,250.0
+60,25.9,30.5,Quercus rubra,DE,normal,1.0,forest_elements,fe_redoak_bauer_1955_si1,275.0
+65,27.0,33.1,Quercus rubra,DE,normal,1.0,forest_elements,fe_redoak_bauer_1955_si1,299.0
+70,28.0,35.6,Quercus rubra,DE,normal,1.0,forest_elements,fe_redoak_bauer_1955_si1,323.0
+75,28.9,38.1,Quercus rubra,DE,normal,1.0,forest_elements,fe_redoak_bauer_1955_si1,346.0
+80,29.7,40.6,Quercus rubra,DE,normal,1.0,forest_elements,fe_redoak_bauer_1955_si1,367.0
+85,30.4,43.1,Quercus rubra,DE,normal,1.0,forest_elements,fe_redoak_bauer_1955_si1,388.0
+90,31.0,45.6,Quercus rubra,DE,normal,1.0,forest_elements,fe_redoak_bauer_1955_si1,408.0
+95,31.5,48.0,Quercus rubra,DE,normal,1.0,forest_elements,fe_redoak_bauer_1955_si1,426.0
+100,31.9,50.4,Quercus rubra,DE,normal,1.0,forest_elements,fe_redoak_bauer_1955_si1,442.0

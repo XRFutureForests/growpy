@@ -1,0 +1,10 @@
+age,height,dbh,species_latin,region,management,site_index,source,table_id,volume
+10,11.5,10.1,Populus x canescens,DE,normal,2.5,forest_elements,fe_poplar_blume_1949_si2.5,36.0
+15,16.0,14.9,Populus x canescens,DE,normal,2.5,forest_elements,fe_poplar_blume_1949_si2.5,64.0
+20,21.0,20.2,Populus x canescens,DE,normal,2.5,forest_elements,fe_poplar_blume_1949_si2.5,79.0
+25,25.0,26.4,Populus x canescens,DE,normal,2.5,forest_elements,fe_poplar_blume_1949_si2.5,81.0
+30,28.0,34.0,Populus x canescens,DE,normal,2.5,forest_elements,fe_poplar_blume_1949_si2.5,105.0
+35,30.0,40.1,Populus x canescens,DE,normal,2.5,forest_elements,fe_poplar_blume_1949_si2.5,155.0
+40,31.0,46.7,Populus x canescens,DE,normal,2.5,forest_elements,fe_poplar_blume_1949_si2.5,221.0
+45,32.0,51.1,Populus x canescens,DE,normal,2.5,forest_elements,fe_poplar_blume_1949_si2.5,278.0
+50,32.5,55.0,Populus x canescens,DE,normal,2.5,forest_elements,fe_poplar_blume_1949_si2.5,331.0
