@@ -1,26 +1,26 @@
 cff-version: 1.2.0
 message: "If you use this software or its outputs in a publication, please cite it as below."
-title: "GrowPy - Procedural Forest Generation for Unreal Engine"
+title: "GrowPy - A 3D Tree Model Library Generator for Unreal Engine using The Grove"
 type: software
 version: 0.1.0
 date-released: "2026-04-02"
 license: AGPL-3.0-or-later
 repository-code: "https://github.com/XRFutureForests/growpy"
 abstract: >-
-  Procedural tree generation pipeline using The Grove 2.3, optimized for
-  Unreal Engine 5 Nanite workflows. Provides yield-table-calibrated growth
-  models, multi-species light competition, customized leaf trimming, and
-  USD Nanite Assembly export for 16 southern German tree species.
+    Procedural tree generation pipeline using The Grove 2.3, optimized for
+    Unreal Engine 5 Nanite workflows. Provides yield-table-calibrated growth
+    models, multi-species light competition, customized leaf trimming, and
+    USD Nanite Assembly export for 16 southern German tree species.
 keywords:
-  - procedural generation
-  - tree modeling
-  - unreal engine
-  - nanite
-  - forestry
-  - usd
-  - the grove
+    - procedural generation
+    - tree modeling
+    - unreal engine
+    - nanite
+    - forestry
+    - usd
+    - the grove
 authors:
-  - family-names: "Sperlich"
-    given-names: "Maximilian"
-    orcid: "https://orcid.org/0009-0003-6131-6244"
-    affiliation: "University of Freiburg"
+    - family-names: "Sperlich"
+      given-names: "Maximilian"
+      orcid: "https://orcid.org/0009-0003-6131-6244"
+      affiliation: "University of Freiburg"

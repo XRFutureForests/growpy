@@ -1,0 +1,23 @@
+{
+    "title": "GrowPy - A 3D Tree Model Library Generator for Unreal Engine using The Grove",
+    "description": "Procedural tree generation pipeline using The Grove 2.3, optimized for Unreal Engine 5 Nanite workflows. Provides yield-table-calibrated growth models, multi-species light competition, customized leaf trimming, and USD Nanite Assembly export for 16 southern German tree species.",
+    "creators": [
+        {
+            "name": "Sperlich, Maximilian",
+            "affiliation": "University of Freiburg",
+            "orcid": "0009-0003-6131-6244"
+        }
+    ],
+    "license": "AGPL-3.0-or-later",
+    "upload_type": "software",
+    "access_right": "open",
+    "keywords": [
+        "procedural generation",
+        "tree modeling",
+        "unreal engine",
+        "nanite",
+        "forestry",
+        "usd",
+        "the grove"
+    ]
+}
