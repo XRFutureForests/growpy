@@ -1,0 +1,39 @@
+name: Mirror back to GitLab
+
+# GitLab (uni and .com) already push-mirror natively to this GitHub repo and
+# to each other. GitHub has no native mirroring feature, so this workflow
+# closes the loop: any commit pushed directly to GitHub is forwarded to both
+# GitLab remotes, keeping all three hosts in sync regardless of which one
+# received the original push.
+
+on:
+  push:
+    branches: ['**']
+    tags: ['**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror-back
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to gitlab.uni-freiburg.de
+        run: |
+          git remote add gitlab-uni "https://oauth2:${{ secrets.MIRROR_GITLAB_UNI_TOKEN }}@gitlab.uni-freiburg.de/xr-future-forests-lab/growpy.git"
+          git push gitlab-uni --all
+          git push gitlab-uni --tags
+
+      - name: Push to gitlab.com
+        run: |
+          git remote add gitlab-com "https://oauth2:${{ secrets.MIRROR_GITLABCOM_TOKEN }}@gitlab.com/xr-future-forests-lab/growpy.git"
+          git push gitlab-com --all
+          git push gitlab-com --tags
