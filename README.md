@@ -433,13 +433,13 @@ python src/growpy/cli/generate_forest.py --skeleton-reduce 0.5 --skeleton-length
 
 ## License
 
-[![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPLv3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
 This project is licensed under the
-[Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/).
-You may use, share, and adapt it for **non-commercial** purposes with attribution;
-commercial use is not permitted. See [LICENSE](LICENSE). Note: CC BY-NC is not an
-OSI-approved license — this is intentional, to keep the project non-commercial.
+[GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later)](https://www.gnu.org/licenses/agpl-3.0).
+You are free to use, study, modify, and redistribute this software. If you run a
+modified version on a server that users interact with over a network, you must
+make the modified source available to those users. See [LICENSE](LICENSE).
 
 **The Grove 2.3** is a separate commercial product with its own license. Ensure
 you have proper licensing from [The Grove](https://www.thegrove3d.com) before use.
@@ -454,7 +454,7 @@ If you use GrowPy or its outputs in a publication, please cite it. See
 
 > Sperlich, M. (2026). GrowPy: Procedural Forest Generation for Unreal Engine.
 > University of Freiburg.
-> https://gitlab.uni-freiburg.de/xr-future-forests-lab/growpy
+> https://github.com/XRFutureForests/growpy
 
 ---
 

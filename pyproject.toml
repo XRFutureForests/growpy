@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "growpy"
 version = "1.0.0"
 description = "Grove API Integration for Unreal Engine 5 Nanite"
-license = "CC-BY-NC-4.0"
+license = "AGPL-3.0-or-later"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -17,7 +17,7 @@ dependencies = [
     "scipy>=1.7.0",
     "matplotlib>=3.4.0",
     "Pillow>=9.0.0",
-    "pylometree @ git+https://gitlab.uni-freiburg.de/xr-future-forests-lab/pylometree.git",
+    "pylometree @ git+https://github.com/XRFutureForests/pylometree.git",
 ]
 
 [project.optional-dependencies]

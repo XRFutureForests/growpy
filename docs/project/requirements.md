@@ -194,12 +194,12 @@ Downstream consumers: Unreal Engine 5.7+ (via USD/Nanite + PVE JSON) and Helios+
 | `bpy` isolation | Steps importing `bpy` must run as subprocesses to avoid import conflicts |
 | USD format | `usd-core >=23.11`; layer-based instancing used for Nanite assembly |
 | Yield tables | German national yield tables only: Fichte Bayern, Buche Braunschweig, Eiche Ungarn |
-| License | CC-BY-NC-4.0 — non-commercial use only |
+| License | AGPL-3.0-or-later |
 
 ### 5.2 Regulatory / Licence Constraints
 
 - The Grove 2.3 is a commercial tool (thegrove3d.com); distributing its source or presets requires a valid licence.
-- All pipeline outputs and source code are released under CC-BY-NC-4.0.
+- All pipeline outputs and source code are released under AGPL-3.0-or-later.
 - `pylometree` is sourced from the University of Freiburg GitLab; access requires lab membership.
 
 ---

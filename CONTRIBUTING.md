@@ -5,21 +5,21 @@ XR Future Forests Lab at the University of Freiburg.
 
 ## Ways to contribute
 
-- **Report bugs** via the [GitLab issue tracker](https://gitlab.uni-freiburg.de/xr-future-forests-lab/growpy/-/issues).
+- **Report bugs** via the [GitHub issue tracker](https://github.com/XRFutureForests/growpy/issues).
 - **Suggest features** — especially new species, yield-table integrations, or
   Unreal-side workflow improvements.
-- **Submit merge requests** for bug fixes, docs, or pipeline enhancements.
+- **Submit pull requests** for bug fixes, docs, or pipeline enhancements.
 - **Improve documentation** — see [`docs/README.md`](docs/README.md) for the full documentation index.
 
 ## License implications
 
-growpy itself is released under **CC BY-NC 4.0** (non-commercial). See
+growpy itself is released under **AGPL-3.0-or-later**. See
 [LICENSE](LICENSE). Note that The Grove 2.3 engine is a separate commercial
 product from [thegrove3d.com](https://thegrove3d.com/) and is required at
 runtime for tree generation — your usage of growpy must comply with both
 licenses.
 
-Contributions are accepted under the same CC BY-NC 4.0 license.
+Contributions are accepted under the same AGPL-3.0-or-later license.
 
 ## Development workflow
 
@@ -28,9 +28,9 @@ Contributions are accepted under the same CC BY-NC 4.0 license.
 3. Install growpy editable: `pip install -e ".[dev,export]"`.
 4. Bootstrap user config: `growpy-init-config`.
 5. Run tests: `pytest`.
-6. Make focused changes — one logical change per merge request.
+6. Make focused changes — one logical change per pull request.
 7. Update `CHANGELOG.md` under `[Unreleased]` for user-visible changes.
-8. Open a merge request with a clear description.
+8. Open a pull request with a clear description.
 
 ## Repository structure
 

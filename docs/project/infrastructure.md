@@ -63,7 +63,7 @@ GrowPy exposes no network services and binds no ports. All processing is local C
 |---------|--------|-------|
 | `bpy` | PyPI (`pip`) | Blender Python API with bundled USD, MaterialX, OpenImageIO |
 | `usd-core >=23.11` | PyPI (`pip`) — optional extra `[export]` | Standalone OpenUSD runtime; install via `pip install -e ".[export]"` |
-| `pylometree` | Git — `git+https://gitlab.uni-freiburg.de/xr-future-forests-lab/pylometree.git` | Volume calculation library from XR Future Forests Lab |
+| `pylometree` | Git — `git+https://github.com/XRFutureForests/pylometree.git` | Volume calculation library from XR Future Forests Lab |
 | `tabula-py` | PyPI (`pip`) | PDF yield-table extraction; requires a Java 8+ runtime on `PATH` |
 | `openpyxl` | conda-forge | XLSX yield-table parsing (Kohlenstoff-Ertragstafeln) |
 | `openyieldtables` | PyPI (`pip`) | Real-world German yield-table calibration data |

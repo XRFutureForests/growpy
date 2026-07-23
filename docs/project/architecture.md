@@ -79,13 +79,13 @@ See [requirements.md](requirements.md) for the full functional requirements cata
 | `usd-core ≥23.11` | USD layer-based instancing required for Nanite-compatible assembly structure |
 | Python 3.12 / conda `growpy` env | All scripts must be invoked within this environment |
 | Local filesystem only | No network storage; all paths relative to project root |
-| CC-BY-NC-4.0 license | Non-commercial use only; Grove presets not redistributed |
+| AGPL-3.0-or-later license | Grove presets not redistributed (separate commercial license) |
 
 ### 2.2 Organizational Constraints
 
 - Team: Small research group (1–3 developers), XR Future Forests Lab, Uni Freiburg
 - Process: Linear-tracked issues; no formal sprint cadence
-- Compliance: CC-BY-NC-4.0; Grove commercial licence per user
+- Compliance: AGPL-3.0-or-later; Grove commercial licence per user
 
 ### 2.3 Conventions
 
