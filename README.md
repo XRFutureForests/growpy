@@ -1,5 +1,7 @@
 # GrowPy - Procedural Forest Generation
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21509856.svg)](https://doi.org/10.5281/zenodo.21509856)
+
 Procedural tree generation using The Grove 2.3, optimized for Unreal Engine 5 Nanite workflows. GrowPy provides a complete pipeline from species configuration to USD export, with yield-table-calibrated growth models and multi-species light competition.
 
 ## Overview
