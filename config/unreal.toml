@@ -11,7 +11,7 @@ project_path = "/Game/Assets/TheGrove"
 # Automatically set Nanite shape preservation to Voxelize on imported assemblies.
 # Voxelization produces the best visual quality but adds significant import time.
 # Set to false for faster testing iterations; re-enable for production exports.
-voxelization = false
+voxelization = true
 # Nanite fallback mesh triangle percentage (0.0-1.0).
 # The fallback mesh is used when Nanite is unavailable: complex collision
 # queries, ray tracing without Nanite RT, mobile, editor "Nanite off" view.
@@ -35,7 +35,7 @@ nanite_lerp_uvs = true
 # Procedural Vegetation Editor plugin to be enabled in UE.
 # Combined presets and PVE graphs are colocated with tree meshes
 # at <project_path>/<species>/<scene>/.
-generate_pve_presets = false
+generate_pve_presets = true
 # Generate the UE wind-import script that applies *_DynamicWind.json sidecars
 # to skeletal meshes (per-tree wind JSON is always exported regardless).
 generate_wind_data = true

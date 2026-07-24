@@ -3,12 +3,11 @@
 # Quality presets live in quality.toml; Unreal import settings in unreal.toml.
 
 [forest]
-# Quality preset: ultra, high, medium, low, performance
-# See [quality.*] sections in quality.toml for per-preset parameters
-quality = "high"
+# Quality preset name -- must match a [quality.<name>] section in quality.toml
+quality = "medium"
 # Maximum growth cycles per tree (1-250)
 # Trees exceeding this limit are capped (not scaled)
-growth_cycle_limit = 111
+growth_cycle_limit = 140
 # Number of grove.smooth() passes on branch angles (int, 0-20, 0 = disabled)
 # Each pass reduces sharp corner angles between branch segments.
 # Higher values = smoother, more organic branches; 10-20 for production.
@@ -26,34 +25,37 @@ height_interval = 5
 # Trees taller than this in the input CSV are clamped to this height
 # Reduces growth cycles and number of height stages for faster runs
 # 0 = no limit (use full CSV heights)
-max_height = 25
+max_height = 15
 
 # --- Export options ---
 [export]
 # USD file format: "usda" (ASCII, human-readable) or "usdc" (binary, smaller/faster)
 # Binary USDC files are ~50% smaller on disk and faster for UE to parse,
 # significantly reducing memory pressure during import.
-usd_format = "usda"
+usd_format = "usdc"
 # Export skeletal mesh assemblies (required for Unreal animation/wind)
 skeletal = true
 # Export static mesh assemblies (geometry only, no skeleton)
 # When both skeletal and static are enabled, static is derived from skeletal
 # Disabled: UE 5.7/5.8 Nanite Assembly builder deadlocks on StaticMesh targets
 # (no skeleton) -- see docs/guides/unreal-import.md troubleshooting.
-static = false
+static = true
 # Base twig density multiplier applied to all trees globally.
-# Values > 1.0 add synthetic twigs; values < 1.0 thin existing placements.
-# Compensates for twig loss from build_cutoff.
+# Default: auto-selects by species growth habit --
+# broadleaf species get twig_density_broadleaf, conifers get twig_density_conifer.
+# Uncomment to force a single uniform base for all species instead:
+# twig_density = 1.0
 # Per-tree scaling: the input CSV twig_density column is a scale factor
 # multiplied with this base (e.g., base=2.0, CSV=0.5 -> effective 1.0).
 # Range: 0.0 (no twigs) to 3.0+ (dense canopy)
-twig_density = 1.0
+twig_density_conifer = 1.0
+twig_density_broadleaf = 2.5
 # Youth bias exponent for synthetic twig placement.
 # Controls how strongly additional twigs prefer younger branches.
 # 1.0 = linear (default), >1.0 = stronger youth preference, <1.0 = more uniform.
 # At 2.0 a branch at youth=0.5 gets 25% weight vs 100% for the youngest.
 # Range: 0.0 (uniform placement) to 3.0+ (extreme youth preference)
-youth_bias = 0.5
+youth_bias = 2.0
 # Maximum skeleton joints for Nanite Assembly USD export.
 # Nanite encodes bone indices in 8-bit fields (max 256).
 # 0 = no limit (use for PVE native skeletal mesh path which has no constraint).
@@ -64,7 +66,7 @@ max_skeleton_joints = 0
 # Nanite mesh which can consume extreme amounts of RAM.
 # 0 = no limit.  5000 = safe default for 64 GB systems.
 # Instances beyond this limit are randomly removed (uniform across twig types).
-max_assembly_instances = 40000
+max_assembly_instances = 50000
 # Skip assembly validation (saves ~5-10% export time)
 skip_validation = true
 # Only export specific trees by fid (integer array)

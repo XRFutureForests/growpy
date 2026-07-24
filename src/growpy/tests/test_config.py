@@ -47,6 +47,18 @@ class TestGrowPyConfigDefaults:
         config = GrowPyConfig()
         assert config.export_static is False
 
+    def test_default_export_twig_density_is_none(self):
+        config = GrowPyConfig()
+        assert config.export_twig_density is None
+
+    def test_default_export_twig_density_conifer(self):
+        config = GrowPyConfig()
+        assert config.export_twig_density_conifer == 1.0
+
+    def test_default_export_twig_density_broadleaf(self):
+        config = GrowPyConfig()
+        assert config.export_twig_density_broadleaf == 2.5
+
     def test_default_growth_models_cycles(self):
         config = GrowPyConfig()
         assert config.growth_models_cycles == 25
@@ -91,6 +103,52 @@ verbose = true
         assert config.random_seed == 42  # default preserved
         assert config.forest_quality == "high"  # default preserved
 
+
+class TestGrowPyConfigSurroundSection:
+    """Tests for [surround] radii parsing."""
+
+    def test_default_surround_radii(self):
+        config = GrowPyConfig()
+        assert config.surround_radii == [0.0]
+
+    def test_loads_configured_radii_sorted(self, tmp_path):
+        toml_content = b"""
+[surround]
+radii = [15.0, 0.0, 7.0]
+"""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(toml_content)
+
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.surround_radii == [0.0, 7.0, 15.0]
+
+    def test_zero_radius_always_included(self, tmp_path):
+        toml_content = b"""
+[surround]
+radii = [7.0, 15.0]
+"""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(toml_content)
+
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.surround_radii == [0.0, 7.0, 15.0]
+
+    def test_surround_shape_params(self, tmp_path):
+        toml_content = b"""
+[surround]
+radii = [0.0, 7.0]
+density = 0.6
+height = 4.0
+grow = false
+"""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(toml_content)
+
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.surround_density == pytest.approx(0.6)
+        assert config.surround_height == pytest.approx(4.0)
+        assert config.surround_grow is False
+
     def test_toml_export_section(self, tmp_path):
         toml_content = b"""
 [export]
@@ -105,6 +163,20 @@ twig_density = 0.5
         assert config.export_skeletal is False
         assert config.export_static is True
         assert config.export_twig_density == 0.5
+
+    def test_toml_export_twig_density_conifer_broadleaf(self, tmp_path):
+        toml_content = b"""
+[export]
+twig_density_conifer = 0.8
+twig_density_broadleaf = 3.0
+"""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(toml_content)
+
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.export_twig_density is None
+        assert config.export_twig_density_conifer == 0.8
+        assert config.export_twig_density_broadleaf == 3.0
 
     def test_toml_density_variants(self, tmp_path):
         toml_content = b"""
@@ -239,3 +311,36 @@ class TestDensityVariants:
         )
         with pytest.raises(ValueError, match="missing"):
             config.get_density_variants()
+
+
+
+class TestGetTwigDensityBase:
+    """Tests for GrowPyConfig.get_twig_density_base species-type resolution."""
+
+    def test_explicit_override_wins_for_any_species(self, monkeypatch):
+        config = GrowPyConfig(export_twig_density=0.7)
+        monkeypatch.setattr(
+            "growpy.config.paths.get_species_growth_habit", lambda species: "broadleaf"
+        )
+        assert config.get_twig_density_base("European beech") == 0.7
+
+    def test_broadleaf_species_uses_broadleaf_default(self, monkeypatch):
+        config = GrowPyConfig()
+        monkeypatch.setattr(
+            "growpy.config.paths.get_species_growth_habit", lambda species: "broadleaf"
+        )
+        assert config.get_twig_density_base("European beech") == 2.5
+
+    def test_conifer_species_uses_conifer_default(self, monkeypatch):
+        config = GrowPyConfig()
+        monkeypatch.setattr(
+            "growpy.config.paths.get_species_growth_habit", lambda species: "conifer"
+        )
+        assert config.get_twig_density_base("Norway spruce") == 1.0
+
+    def test_unclassified_species_falls_back_to_conifer_default(self, monkeypatch):
+        config = GrowPyConfig()
+        monkeypatch.setattr(
+            "growpy.config.paths.get_species_growth_habit", lambda species: None
+        )
+        assert config.get_twig_density_base("Unknown species") == 1.0

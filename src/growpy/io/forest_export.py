@@ -42,13 +42,13 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     the old approach of recreating and re-simulating each tree individually.
 
     Args:
-        args: Tuple of (fids, grove_instance, species_name, output_dir, quality_params, mesh_type, verbose, timer, twig_densities, csv_dbh_map, individual_type_map)
+        args: Tuple of (fids, grove_instance, species_name, output_dir, quality_params, mesh_type, verbose, timer, twig_densities, csv_dbh_map, surround_radius_map)
               fids is a list of original CSV fid values for each tree in the grove
               verbose is boolean for verbose output
               timer is optional ProfileTimer instance
               twig_densities is a dict mapping fid -> twig_density scale factor (or empty dict)
               csv_dbh_map is a dict mapping fid -> dbh in meters (or empty dict)
-              individual_type_map is a dict mapping fid -> individual_type str (or empty dict)
+              surround_radius_map is a dict mapping fid -> surround radius in meters (or empty dict)
 
     Returns:
         List of exported file paths
@@ -101,7 +101,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         timer,
         twig_densities,
         csv_dbh_map,
-        individual_type_map,
+        surround_radius_map,
     ) = args
 
     # Use provided timer or create disabled one
@@ -273,7 +273,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             use_skeletal = mesh_type == "skeletal"
             use_static = mesh_type == "static"
             mesh_suffix = "skeletal" if use_skeletal else "static"
-            individual_type = individual_type_map.get(tree_fid)
+            tree_surround_radius = surround_radius_map.get(tree_fid)
 
             with timer.track("get_twig_usd_map"):
                 twig_usd_map = get_twig_usd_map_for_species(
@@ -316,14 +316,19 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 effective_model,
             ) in enumerate(export_iterations):
                 # Build output directory and filename prefix
-                if individual_type:
-                    tree_dir = output_dir / species_clean / individual_type
+                if tree_surround_radius is not None:
+                    radius_label = (
+                        "r0"
+                        if tree_surround_radius <= 0
+                        else f"r{tree_surround_radius:g}"
+                    )
+                    tree_dir = output_dir / species_clean / radius_label
                     density_str = (
                         variant_name
                         if variant_name
                         else format_density_for_filename(effective_twig_density)
                     )
-                    individual_short = "surr" if "surr" in individual_type else "open"
+                    individual_short = radius_label
                     species_title = (
                         species_clean.replace("_", " ").title().replace(" ", "_")
                     )
@@ -507,7 +512,7 @@ def export_individual_trees(
     When both are enabled, static is derived from skeletal by stripping skeleton prims.
 
     Args:
-        forest: List of (grove, species_name, tree_count, fid_list) from create_forest() + simulate_forest_growth()
+        forest: List of (grove, species_name, tree_count, fid_list, radius) from create_forest() + simulate_forest_growth()
         forest_data: DataFrame with tree data including species, growth_cycles
         output_dir: Directory to save export files
         config: GrowPy configuration
@@ -535,7 +540,8 @@ def export_individual_trees(
     grove_tasks = []
 
     # Build per-tree twig_density scale map from input CSV (if column exists).
-    # CSV twig_density is a multiplier applied to the TOML export_twig_density base.
+    # CSV twig_density is a multiplier applied to the TOML base (export_twig_density,
+    # or the species-type default from export_twig_density_conifer/broadleaf).
     # e.g. TOML base=0.8, CSV scale=0.5 -> effective density = 0.4
     twig_density_map: dict[int, float] = {}
     if "twig_density" in forest_data.columns:
@@ -553,15 +559,15 @@ def export_individual_trees(
             if pd.notna(val) and float(val) > 0:
                 csv_dbh_map[int(row["fid"])] = float(val) / 100.0  # cm -> m
 
-    # Build per-tree individual_type map for dataset naming
-    individual_type_map: dict[int, str] = {}
-    if "individual_type" in forest_data.columns:
+    # Build per-tree surround_radius map for dataset naming
+    surround_radius_map: dict[int, float] = {}
+    if "surround_radius" in forest_data.columns:
         for _, row in forest_data.iterrows():
-            val = row["individual_type"]
-            if pd.notna(val) and str(val).strip():
-                individual_type_map[int(row["fid"])] = str(val).strip()
+            val = row["surround_radius"]
+            if pd.notna(val):
+                surround_radius_map[int(row["fid"])] = float(val)
 
-    for grove, species_name, tree_count, fids in forest:
+    for grove, species_name, tree_count, fids, *_r in forest:
         if cfg.export_skeletal:
             # Skeletal task; static derivation happens inline when both enabled
             grove_tasks.append(
@@ -576,7 +582,7 @@ def export_individual_trees(
                     timer,
                     twig_density_map,
                     csv_dbh_map,
-                    individual_type_map,
+                    surround_radius_map,
                 )
             )
         elif cfg.export_static:
@@ -593,7 +599,7 @@ def export_individual_trees(
                     timer,
                     twig_density_map,
                     csv_dbh_map,
-                    individual_type_map,
+                    surround_radius_map,
                 )
             )
 

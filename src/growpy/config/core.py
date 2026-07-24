@@ -158,10 +158,10 @@ class GrowPyConfig:
     # [surround] - single-tree light-competition shell (Grove's Surround feature).
     # Alternative to the multi-tree competition clusters: instead of simulating
     # neighbour trees, Grove shades the central tree against a statistical shell,
-    # which is far cheaper. Applied to groves whose individual_type == "surround".
-    surround_enabled: bool = False
+    # which is far cheaper. A tree's surround_radius value (0 = none, >0 = shell
+    # distance in meters) picks which of these configured radii applies.
+    surround_radii: list = field(default_factory=lambda: [0.0])
     surround_density: float = 0.7
-    surround_distance: float = 7.0
     surround_height: float = 5.0
     surround_grow: bool = True
 
@@ -180,7 +180,13 @@ class GrowPyConfig:
         0  # 0 = no limit; cap twig instances per assembly
     )
     export_skip_validation: bool = True
-    export_twig_density: float = 1.0
+    # Base twig density multiplier. None (default) = auto-select by species
+    # growth habit via export_twig_density_conifer / export_twig_density_broadleaf
+    # (see tree_asset_lookup.csv Competition Group). Set explicitly in TOML to
+    # override uniformly for all species, restoring the old single-value behavior.
+    export_twig_density: float | None = None
+    export_twig_density_conifer: float = 1.0
+    export_twig_density_broadleaf: float = 2.5
     export_youth_bias: float = 1.0
     export_density_variants: list = field(default_factory=list)
     density_variant_defs: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -334,7 +340,13 @@ class GrowPyConfig:
         if "radial_scale" in export:
             kwargs["calibration_align_dbh"] = export["radial_scale"]
         if "twig_density" in export:
-            kwargs["export_twig_density"] = export["twig_density"]
+            kwargs["export_twig_density"] = float(export["twig_density"])
+        if "twig_density_conifer" in export:
+            kwargs["export_twig_density_conifer"] = float(export["twig_density_conifer"])
+        if "twig_density_broadleaf" in export:
+            kwargs["export_twig_density_broadleaf"] = float(
+                export["twig_density_broadleaf"]
+            )
         if "youth_bias" in export:
             kwargs["export_youth_bias"] = export["youth_bias"]
         if "export_trees" in export:
@@ -427,14 +439,16 @@ class GrowPyConfig:
         if "preferred_site_index" in ys:
             val = float(ys["preferred_site_index"])
             kwargs["yield_sources_preferred_site_index"] = val if val > 0 else None
-        # [surround] - single-tree competition shell (replaces multi-tree clusters)
+        # [surround] - single-tree competition shell (replaces multi-tree clusters).
+        # radii: 0 = no surround (open-grown baseline); >0 = shell distance (m).
+        # A tree's surround_radius value picks which configured radius applies.
         surr = data.get("surround", {})
-        if "enabled" in surr:
-            kwargs["surround_enabled"] = bool(surr["enabled"])
+        if "radii" in surr:
+            radii = {float(r) for r in surr["radii"]}
+            radii.add(0.0)
+            kwargs["surround_radii"] = sorted(radii)
         if "density" in surr:
             kwargs["surround_density"] = float(surr["density"])
-        if "distance" in surr:
-            kwargs["surround_distance"] = float(surr["distance"])
         if "height" in surr:
             kwargs["surround_height"] = float(surr["height"])
         if "grow" in surr:
@@ -579,18 +593,39 @@ class GrowPyConfig:
             result.append((name, self.density_variant_defs[name]))
         return result
 
+    def get_twig_density_base(self, species: str) -> float:
+        """Resolve the base twig-density multiplier for a species.
+
+        An explicit ``export_twig_density`` (set via [export] twig_density in
+        TOML) overrides everything uniformly, for back-compat with a single
+        global knob. Otherwise the species' growth habit (conifer/broadleaf,
+        from tree_asset_lookup.csv's Competition Group column) picks between
+        export_twig_density_conifer and export_twig_density_broadleaf.
+        Species without a resolvable growth habit fall back to the conifer
+        value (the more conservative default).
+        """
+        if self.export_twig_density is not None:
+            return self.export_twig_density
+
+        from .paths import get_species_growth_habit
+
+        habit = get_species_growth_habit(species)
+        if habit == "broadleaf":
+            return self.export_twig_density_broadleaf
+        return self.export_twig_density_conifer
+
     # Delegator methods to module-level functions
-    def get_preset_path(self, species: str) -> Path:
-        """Get preset path for species."""
+    def get_preset_path(self, species: str, radius: float = 0.0) -> Path:
+        """Get preset path for species, optionally for a specific surround radius."""
         from .paths import get_preset_path
 
-        return get_preset_path(species)
+        return get_preset_path(species, radius)
 
-    def get_growth_model_path(self, species: str) -> Path:
-        """Get growth model path for species."""
+    def get_growth_model_path(self, species: str, radius: float = 0.0) -> Path:
+        """Get growth model path for species, optionally for a specific surround radius."""
         from .paths import get_growth_model_path
 
-        return get_growth_model_path(species)
+        return get_growth_model_path(species, radius)
 
     @staticmethod
     def get_twig_files_by_type(species: str):

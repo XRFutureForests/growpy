@@ -2,6 +2,7 @@
 
 import argparse
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -31,39 +32,52 @@ from growpy.pipelines.step_runner import (
 # ---------------------------------------------------------------------------
 
 
+def _mock_radii(radii):
+    return patch(
+        "growpy.config.get_config",
+        return_value=SimpleNamespace(surround_radii=radii),
+    )
+
+
 class TestGenerateMergedCsv:
     def test_has_correct_fids(self):
-        df = generate_merged_csv("European Beech", 30)
+        with _mock_radii([0.0, 7.0]):
+            df = generate_merged_csv("European Beech", 30)
         fids = set(df["fid"].tolist())
-        assert fids == {1, 2}  # open-grown + surround
+        assert fids == {1, 2}
 
-    def test_open_tree_x_offset(self):
-        df = generate_merged_csv("European Beech", 30)
-        open_row = df[df["fid"] == 1].iloc[0]
-        assert open_row["x"] == OPEN_TREE_X
+    def test_open_grown_row_at_origin(self):
+        with _mock_radii([0.0, 7.0]):
+            df = generate_merged_csv("European Beech", 30)
+        open_row = df[df["surround_radius"] == 0.0].iloc[0]
+        assert open_row["x"] == 0.0
 
-    def test_surround_tree_at_origin(self):
-        df = generate_merged_csv("European Beech", 30)
-        surround = df[df["fid"] == 2].iloc[0]
-        assert surround["x"] == 0.0
+    def test_surround_row_offset(self):
+        with _mock_radii([0.0, 7.0]):
+            df = generate_merged_csv("European Beech", 30)
+        surround = df[df["surround_radius"] == 7.0].iloc[0]
+        assert surround["x"] == OPEN_TREE_X
         assert surround["y"] == 0.0
 
-    def test_individual_type_labels(self):
-        df = generate_merged_csv("European Beech", 30)
-        assert df[df["fid"] == 1]["individual_type"].iloc[0] == "open_grown"
-        assert df[df["fid"] == 2]["individual_type"].iloc[0] == "surround"
+    def test_surround_radius_values(self):
+        with _mock_radii([0.0, 7.0]):
+            df = generate_merged_csv("European Beech", 30)
+        assert sorted(df["surround_radius"].tolist()) == [0.0, 7.0]
 
     def test_twig_density_applied(self):
-        df = generate_merged_csv("Norway Spruce", 25, twig_density=0.5)
+        with _mock_radii([0.0, 7.0]):
+            df = generate_merged_csv("Norway Spruce", 25, twig_density=0.5)
         assert (df["twig_density"] == 0.5).all()
 
     def test_species_column(self):
-        df = generate_merged_csv("Norway Spruce", 25)
+        with _mock_radii([0.0, 7.0]):
+            df = generate_merged_csv("Norway Spruce", 25)
         assert (df["species"] == "Norway Spruce").all()
 
     def test_total_rows(self):
-        df = generate_merged_csv("European Beech", 30)
-        assert len(df) == 2  # 1 open-grown + 1 surround
+        with _mock_radii([0.0, 7.0]):
+            df = generate_merged_csv("European Beech", 30)
+        assert len(df) == 2
 
 
 class TestDensityVariants:

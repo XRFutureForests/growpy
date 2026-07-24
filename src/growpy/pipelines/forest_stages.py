@@ -293,7 +293,7 @@ def generate_forest_stages(
 
     # Build species-to-grove mapping for PVE JSON generation
     species_grove_map: dict[str, Any] = {}
-    for grove_obj, sp_name, _tc, _fids in forest:
+    for grove_obj, sp_name, _tc, _fids, *_r in forest:
         species_grove_map[sp_name] = grove_obj
 
     # Per-species height ceiling from each species' calibrated growth model.
@@ -331,7 +331,7 @@ def generate_forest_stages(
     output_dir.mkdir(parents=True, exist_ok=True)
     # Ensure shared instances directory exists (don't wipe -- other species may share it)
     instances_dir.mkdir(parents=True, exist_ok=True)
-    has_individual_type = "individual_type" in forest_data.columns
+    has_radius_col = "surround_radius" in forest_data.columns
     for sp in forest_data["species"].unique():
         sp_dir_name = (
             "".join(c for c in sp if c.isalnum() or c in (" ", "-", "_"))
@@ -340,11 +340,12 @@ def generate_forest_stages(
             .lower()
         )
         sp_dir = output_dir / sp_dir_name
-        if has_individual_type:
-            for itype in forest_data.loc[
-                forest_data["species"] == sp, "individual_type"
+        if has_radius_col:
+            for radius in forest_data.loc[
+                forest_data["species"] == sp, "surround_radius"
             ].unique():
-                sub = sp_dir / str(itype)
+                radius = float(radius) if pd.notna(radius) else 0.0
+                sub = sp_dir / ("r0" if radius <= 0 else f"r{radius:g}")
                 if sub.exists():
                     shutil.rmtree(sub)
         elif sp_dir.exists():
@@ -393,16 +394,16 @@ def generate_forest_stages(
                         and pd.notna(tree_row.get("twig_density"))
                         else None
                     )
-                    tree_individual_type = (
-                        str(tree_row["individual_type"]).strip()
-                        if "individual_type" in tree_row.index
-                        and pd.notna(tree_row.get("individual_type"))
-                        else None
+                    tree_surround_radius = (
+                        float(tree_row["surround_radius"])
+                        if "surround_radius" in tree_row.index
+                        and pd.notna(tree_row.get("surround_radius"))
+                        else 0.0
                     )
                 else:
                     fid = tree_idx + 1
                     tree_twig_density = None
-                    tree_individual_type = None
+                    tree_surround_radius = 0.0
 
                 if model is None:
                     logger.warning(
@@ -504,16 +505,19 @@ def generate_forest_stages(
                     export_iterations
                 ):
                     # Build output directory and filename prefix
-                    if tree_individual_type:
-                        tree_dir = output_dir / species_clean / tree_individual_type
+                    if has_radius_col:
+                        radius_label = (
+                            "r0"
+                            if tree_surround_radius <= 0
+                            else f"r{tree_surround_radius:g}"
+                        )
+                        tree_dir = output_dir / species_clean / radius_label
                         density_str = (
                             variant_name
                             if variant_name
                             else format_density_for_filename(effective_twig_density)
                         )
-                        individual_short = (
-                            "surr" if "surr" in tree_individual_type else "open"
-                        )
+                        individual_short = radius_label
                         species_title = (
                             species_clean.replace("_", " ").title().replace(" ", "_")
                         )

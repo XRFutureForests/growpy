@@ -131,6 +131,30 @@ def _find_species_row(species: str, use_gbif: bool = True) -> pd.Series:
     raise ValueError(f"Species '{species}' not found in lookup table")
 
 
+def get_species_growth_habit(species: str) -> str | None:
+    """Return the coarse growth habit for a species: "conifer" or "broadleaf".
+
+    Derived from the Competition Group column in tree_asset_lookup.csv (e.g.
+    "slow_conifer", "fast_broadleaf"). Returns None if the species can't be
+    resolved or the row has no Competition Group value.
+    """
+    try:
+        row = _find_species_row(species)
+    except ValueError:
+        return None
+
+    group = row.get("Competition Group")
+    if group is None or pd.isna(group):
+        return None
+
+    group = str(group).lower()
+    if "conifer" in group:
+        return "conifer"
+    if "broadleaf" in group:
+        return "broadleaf"
+    return None
+
+
 def get_data_directory() -> Path:
     """Get data directory path."""
     return get_project_root() / "data"
@@ -141,14 +165,23 @@ def get_assets_directory() -> Path:
     return get_data_directory() / "assets"
 
 
-def get_preset_path(species: str) -> Path:
-    """Get preset file path for species.
+def _radius_suffix(radius: float) -> str:
+    """Filename/dirname suffix for a surround radius ("" for the 0/baseline case)."""
+    return "" if not radius else f".r{radius:g}"
+
+
+def get_preset_path(species: str, radius: float = 0.0) -> Path:
+    """Get preset file path for species, optionally for a specific surround radius.
 
     The preset files are stored with standardized names (e.g., european_beech.seed.json)
     rather than the original Grove names (e.g., Fagaceae - Beech.seed.json).
 
     Args:
         species: Species name
+        radius: Surround radius (meters). 0 = base/open-grown preset
+            (``<name>.seed.json``). >0 looks for a radius-specific calibrated
+            preset (``<name>.r{radius}.seed.json``) first, falling back to the
+            base preset when no radius-specific calibration exists yet.
 
     Returns:
         Path to preset file
@@ -164,7 +197,15 @@ def get_preset_path(species: str) -> Path:
         )
 
     presets_dir = get_assets_directory() / "presets"
-    preset_path = presets_dir / f"{standardized_name}.seed.json"
+    preset_path = presets_dir / f"{standardized_name}{_radius_suffix(radius)}.seed.json"
+
+    if radius and not preset_path.exists():
+        logger.warning(
+            "No radius-specific preset for %s at radius=%s, falling back to base preset",
+            standardized_name,
+            radius,
+        )
+        preset_path = presets_dir / f"{standardized_name}.seed.json"
 
     # Fallback: try original Grove preset name if standardized doesn't exist
     if not preset_path.exists():
@@ -178,14 +219,18 @@ def get_preset_path(species: str) -> Path:
     return preset_path
 
 
-def get_growth_model_path(species: str) -> Path:
-    """Get growth model directory for species.
+def get_growth_model_path(species: str, radius: float = 0.0) -> Path:
+    """Get growth model directory for species, optionally for a specific surround radius.
 
     The growth model directories are stored with standardized names (e.g., norway_spruce)
     matching the Standardized Name column in the lookup table.
 
     Args:
         species: Species name
+        radius: Surround radius (meters). 0 = base growth model directory.
+            >0 looks for a radius-specific subdirectory (``<name>/r{radius}/``)
+            first, falling back to the base directory when no radius-specific
+            growth model exists yet.
 
     Returns:
         Path to growth model directory
@@ -193,25 +238,32 @@ def get_growth_model_path(species: str) -> Path:
     row = _find_species_row(species)
     models_dir = get_assets_directory() / "growth_models"
 
+    def _resolve(base: Path) -> Path | None:
+        if radius:
+            radius_dir = base / f"r{radius:g}"
+            if radius_dir.exists():
+                return radius_dir
+        return base if base.exists() else None
+
     # Use standardized name for directory lookup (growth_models use standardized names)
     standardized_name = row.get("Standardized Name", "")
     if standardized_name and not pd.isna(standardized_name):
-        model_path = models_dir / standardized_name
-        if model_path.exists():
-            return model_path
+        resolved = _resolve(models_dir / standardized_name)
+        if resolved:
+            return resolved
 
     # Fallback: try the Growth Model column (legacy family-based naming)
     model_name = row.get("Growth Model", "")
     if model_name and not pd.isna(model_name):
-        model_path = models_dir / model_name
-        if model_path.exists():
-            return model_path
+        resolved = _resolve(models_dir / model_name)
+        if resolved:
+            return resolved
 
     # Fallback: derive from Common Name
     common_name = str(row["Common Name"]).lower().replace(" ", "_").replace("/", "_")
-    model_path = models_dir / common_name
-    if model_path.exists():
-        return model_path
+    resolved = _resolve(models_dir / common_name)
+    if resolved:
+        return resolved
 
     raise FileNotFoundError(
         f"Growth model not found for species '{species}'. "

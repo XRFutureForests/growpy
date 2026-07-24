@@ -23,13 +23,14 @@ class GroveEntry(NamedTuple):
 
     NamedTuple so all existing positional unpacking keeps working while
     callers gain readable ``entry.species_name`` / ``entry.tree_count``
-    access. Fields: ``(grove, species_name, tree_count, fids)``.
+    access. Fields: ``(grove, species_name, tree_count, fids, radius)``.
     """
 
     grove: Any
     species_name: str
     tree_count: int
     fids: list[int]
+    radius: float = 0.0
 
 
 class TreeSnapshot(NamedTuple):
@@ -57,37 +58,44 @@ def create_forest(
 ) -> Forest:
     """Create groves for each species in forest data.
 
-    When *individual_type* is present in the DataFrame, trees are split into
-    separate groves per (species, individual_type).  This prevents the Grove
+    When *surround_radius* is present in the DataFrame, trees are split into
+    separate groves per (species, surround_radius).  This prevents the Grove
     engine's intra-grove shade from interfering between independent growth
     contexts (e.g. an open-grown tree at x=100 sharing a grove with a
-    surround tree at the origin).
+    surround tree at the origin), and lets each radius pick its own
+    radius-calibrated growth model (see config.get_preset_path).
 
     Args:
         forest_data: DataFrame with columns: x, y, species, z (optional),
-            delay (optional), fid (optional), individual_type (optional)
+            delay (optional), fid (optional), surround_radius (optional;
+            0 or absent = open-grown, >0 = Grove Surround shell distance
+            in meters)
 
     Returns:
-        List of tuples: (grove_instance, species_name, tree_count, fid_list)
+        List of tuples: (grove_instance, species_name, tree_count, fid_list, radius)
         fid_list contains the original CSV fids for each tree in the grove (in order).
-        When individual_type splitting is active, multiple entries may share the
-        same species_name (one per context).
+        When surround_radius splitting is active, multiple entries may share the
+        same species_name (one per radius).
     """
     if "z" not in forest_data.columns:
         forest_data["z"] = 0.0
 
-    # Split by individual_type when available to prevent intra-grove shade
+    # Split by surround_radius when available to prevent intra-grove shade
     # killing isolated open-grown trees that share a species with surround trees
-    has_individual_type = (
-        "individual_type" in forest_data.columns
-        and forest_data["individual_type"].notna().any()
+    has_radius_col = (
+        "surround_radius" in forest_data.columns
+        and forest_data["surround_radius"].notna().any()
     )
-    groupby_key = ["species", "individual_type"] if has_individual_type else "species"
+    if has_radius_col:
+        forest_data["surround_radius"] = forest_data["surround_radius"].fillna(0.0)
+    groupby_key = ["species", "surround_radius"] if has_radius_col else "species"
 
+    cfg = get_config()
     forest = []
     for group_key, species_data in forest_data.groupby(groupby_key, sort=False):
-        species_name = str(group_key[0]) if has_individual_type else str(group_key)
-        grove = create_grove(species_name)
+        species_name = str(group_key[0]) if has_radius_col else str(group_key)
+        surround_radius = float(group_key[1]) if has_radius_col else 0.0
+        grove = create_grove(species_name, radius=surround_radius)
 
         # Collect fids for this grove (use row index if fid column not present)
         fids = []
@@ -99,15 +107,12 @@ def create_forest(
             fids.append(fid)
 
         # Grove's Surround shell gives single-tree light competition: enable it
-        # when the tree opts in via individual_type == "surround", or when
-        # surround is globally enabled.
-        cfg = get_config()
-        itype = str(group_key[1]).strip() if has_individual_type else ""
-        if len(species_data) == 1 and (itype == "surround" or cfg.surround_enabled):
+        # whenever this group's surround_radius is nonzero.
+        if len(species_data) == 1 and surround_radius > 0:
             applied = enable_surround(
                 grove,
                 density=cfg.surround_density,
-                distance=cfg.surround_distance,
+                distance=surround_radius,
                 height=cfg.surround_height,
                 grow=cfg.surround_grow,
             )
@@ -116,7 +121,7 @@ def create_forest(
                     "Surround enabled for %s (density=%.2f distance=%.1f height=%.1f)",
                     species_name,
                     cfg.surround_density,
-                    cfg.surround_distance,
+                    surround_radius,
                     cfg.surround_height,
                 )
             else:
@@ -126,7 +131,9 @@ def create_forest(
                     species_name,
                 )
 
-        forest.append(GroveEntry(grove, species_name, len(species_data), fids))
+        forest.append(
+            GroveEntry(grove, species_name, len(species_data), fids, surround_radius)
+        )
 
     return forest
 
@@ -143,7 +150,7 @@ def _compute_grove_offsets(
     """
     offsets = []
     species_count: dict[str, int] = {}
-    for _grove, species_name, tree_count, _fids in forest:
+    for _grove, species_name, tree_count, *_rest in forest:
         offsets.append(species_count.get(species_name, 0))
         species_count[species_name] = species_count.get(species_name, 0) + tree_count
     return offsets
@@ -154,7 +161,7 @@ def _run_single_growth_cycle(
     groves: list[gc.Grove],
     cycle: int,
     total_cycles: int,
-    species_overrides: dict[str, PresetOverrides],
+    species_overrides: dict[tuple[str, float], PresetOverrides],
     preset_overrides: PresetOverrides | None,
     frozen_grove_indices: set | None = None,
 ) -> None:
@@ -166,11 +173,12 @@ def _run_single_growth_cycle(
     """
     frozen = frozen_grove_indices or set()
 
-    for grove_idx, (grove, species_name, _, _) in enumerate(forest):
+    for grove_idx, (grove, species_name, _, _, radius) in enumerate(forest):
         if grove_idx in frozen:
             continue
-        if species_name in species_overrides:
-            species_overrides[species_name].apply_to_grove(grove, cycle, total_cycles)
+        key = (species_name, radius)
+        if key in species_overrides:
+            species_overrides[key].apply_to_grove(grove, cycle, total_cycles)
         if preset_overrides and not preset_overrides.is_empty():
             preset_overrides.apply_to_grove(grove, cycle, total_cycles)
 
@@ -181,7 +189,7 @@ def _run_single_growth_cycle(
         for grove in groves:
             grove.calculate_shade_together(all_coords)
 
-    for grove_idx, (grove, _, _, _) in enumerate(forest):
+    for grove_idx, (grove, *_rest) in enumerate(forest):
         if grove_idx in frozen:
             continue
         grove.weigh_and_bend()
@@ -199,7 +207,7 @@ def _apply_smoothing(
     logger.info("PHASE 2: BRANCH SMOOTHING (%d iterations)", smooth_iterations)
 
     smooth_start = time.time()
-    for grove, species_name, _, _ in forest:
+    for grove, species_name, *_rest in forest:
         for _ in tqdm(
             range(smooth_iterations),
             desc=f"Smoothing {species_name}",
@@ -233,22 +241,24 @@ def simulate_forest_growth(
         2. CLI preset_overrides (if provided, overrides species curves)
 
     Args:
-        forest: List of (grove, species_name, tree_count, fid_list) tuples from create_forest()
+        forest: List of (grove, species_name, tree_count, fid_list, radius) tuples from create_forest()
         cycles: Number of growth cycles to simulate
         smooth_iterations: Number of smoothing iterations (default: 10, recommended: 10-20)
                           Set to 0 to disable smoothing entirely
         preset_overrides: Optional PresetOverrides for dynamic parameter adjustment (overrides species curves)
         use_species_curves: Load curves from species seed.json files (default: True)
     """
-    groves = [grove for grove, _, _, _ in forest]
+    groves = [grove for grove, *_rest in forest]
 
-    # Load per-species overrides from their seed.json files
-    species_overrides: dict[str, PresetOverrides] = {}
+    # Load per-species overrides from their seed.json files. Keyed by
+    # (species_name, radius) since a species may have multiple groves at
+    # different surround radii, each with its own radius-specific calibration.
+    species_overrides: dict[tuple[str, float], PresetOverrides] = {}
     if use_species_curves:
-        for grove, species_name, _, _ in forest:
-            species_ov = get_species_overrides(species_name)
+        for grove, species_name, _, _, radius in forest:
+            species_ov = get_species_overrides(species_name, radius)
             if not species_ov.is_empty():
-                species_overrides[species_name] = species_ov
+                species_overrides[(species_name, radius)] = species_ov
 
     logger.info("PHASE 1: GROWTH SIMULATION (%d cycles)", cycles)
     if preset_overrides and not preset_overrides.is_empty():
@@ -257,14 +267,18 @@ def simulate_forest_growth(
             len(preset_overrides.static_overrides),
             len(preset_overrides.interpolated_overrides),
         )
-    for sp, ov in species_overrides.items():
+    for (sp, sp_radius), ov in species_overrides.items():
         logger.info(
-            "  %s curves: %d from seed.json", sp, len(ov.interpolated_overrides)
+            "  %s (r=%.0f) curves: %d from seed.json",
+            sp,
+            sp_radius,
+            len(ov.interpolated_overrides),
         )
         if ov.cycle_array_overrides:
             logger.info(
-                "  %s cycle arrays: %d from seed.json (calibration)",
+                "  %s (r=%.0f) cycle arrays: %d from seed.json (calibration)",
                 sp,
+                sp_radius,
                 len(ov.cycle_array_overrides),
             )
 
@@ -308,7 +322,7 @@ def simulate_forest_growth_with_snapshots(
     When height_interval == 0, falls back to cycle-based snapshots (legacy).
 
     Args:
-        forest: List of (grove, species_name, tree_count, fid_list) tuples from create_forest()
+        forest: List of (grove, species_name, tree_count, fid_list, radius) tuples from create_forest()
         max_cycles: Maximum number of growth cycles (hard safety cap)
         snapshot_cycles: List of cycle numbers for cycle-based mode (used when height_interval==0)
         smooth_iterations: Number of smoothing iterations (default: 10)
@@ -331,20 +345,22 @@ def simulate_forest_growth_with_snapshots(
           Maps each snapshot to the milestone height each tree was captured at.
           Empty dict in legacy mode.
     """
-    groves = [grove for grove, _, _, _ in forest]
+    groves = [grove for grove, *_rest in forest]
     snapshots: SnapshotData = {}
     milestone_map: dict[int, dict[str, dict[int, float]]] = {}
 
     if quality_params is None:
         quality_params = {"vertices": 16}
 
-    # Load per-species overrides from their seed.json files
-    species_overrides: dict[str, PresetOverrides] = {}
+    # Load per-species overrides from their seed.json files. Keyed by
+    # (species_name, radius) since a species may have multiple groves at
+    # different surround radii, each with its own radius-specific calibration.
+    species_overrides: dict[tuple[str, float], PresetOverrides] = {}
     if use_species_curves:
-        for grove, species_name, _, _ in forest:
-            species_ov = get_species_overrides(species_name)
+        for grove, species_name, _, _, radius in forest:
+            species_ov = get_species_overrides(species_name, radius)
             if not species_ov.is_empty():
-                species_overrides[species_name] = species_ov
+                species_overrides[(species_name, radius)] = species_ov
 
     use_height_mode = height_interval > 0
 
@@ -371,14 +387,18 @@ def simulate_forest_growth_with_snapshots(
             len(preset_overrides.static_overrides),
             len(preset_overrides.interpolated_overrides),
         )
-    for sp, ov in species_overrides.items():
+    for (sp, sp_radius), ov in species_overrides.items():
         logger.info(
-            "  %s curves: %d from seed.json", sp, len(ov.interpolated_overrides)
+            "  %s (r=%.0f) curves: %d from seed.json",
+            sp,
+            sp_radius,
+            len(ov.interpolated_overrides),
         )
         if ov.cycle_array_overrides:
             logger.info(
-                "  %s cycle arrays: %d from seed.json (calibration)",
+                "  %s (r=%.0f) cycle arrays: %d from seed.json (calibration)",
                 sp,
+                sp_radius,
                 len(ov.cycle_array_overrides),
             )
 
@@ -425,7 +445,7 @@ def _simulate_height_threshold_mode(
     groves: list[gc.Grove],
     max_cycles: int,
     height_interval: float,
-    species_overrides: dict[str, PresetOverrides],
+    species_overrides: dict[tuple[str, float], PresetOverrides],
     preset_overrides: PresetOverrides | None,
     quality_params: dict,
     max_height: float = 0.0,
@@ -474,14 +494,14 @@ def _simulate_height_threshold_mode(
         return sc
 
     species_ceiling: dict[str, float] = {}
-    for _g, species_name, _tc, _f in forest:
+    for _g, species_name, _tc, _f, *_r in forest:
         if species_name not in species_ceiling:
             species_ceiling[species_name] = _ceiling_for(species_name)
 
     # Build set of target milestones per tree (for early-stop check), bounded by
     # each species' own ceiling.  Species without a ceiling run to plateau/cap.
     target_milestones: dict[tuple[str, int], set] = {}
-    for grove_idx, (_grove, species_name, tree_count, _fids) in enumerate(forest):
+    for grove_idx, (_grove, species_name, tree_count, _fids, *_r) in enumerate(forest):
         ceiling = species_ceiling.get(species_name, 0.0)
         if ceiling <= 0:
             continue
@@ -518,12 +538,12 @@ def _simulate_height_threshold_mode(
 
     # Build species -> grove index mapping for freezing
     species_grove_indices: dict[str, list[int]] = {}
-    for grove_idx, (_grove, species_name, _tc, _fids) in enumerate(forest):
+    for grove_idx, (_grove, species_name, _tc, _fids, *_r) in enumerate(forest):
         species_grove_indices.setdefault(species_name, []).append(grove_idx)
 
     # Build target_milestones lookup keys per grove for completion checks
     grove_target_keys: dict[int, list[tuple[str, int]]] = {}
-    for grove_idx, (_grove, species_name, tree_count, _fids) in enumerate(forest):
+    for grove_idx, (_grove, species_name, tree_count, _fids, *_r) in enumerate(forest):
         offset = grove_offsets[grove_idx]
         keys = [(species_name, offset + tree_idx) for tree_idx in range(tree_count)]
         grove_target_keys[grove_idx] = [k for k in keys if k in target_milestones]
@@ -547,7 +567,7 @@ def _simulate_height_threshold_mode(
         new_crossings: dict[str, dict[int, float]] = {}
         any_growth = False
 
-        for grove_idx, (grove, species_name, tree_count, fids) in enumerate(forest):
+        for grove_idx, (grove, species_name, tree_count, fids, *_r) in enumerate(forest):
             if grove_idx in frozen_grove_indices:
                 continue
             offset = grove_offsets[grove_idx]
@@ -612,7 +632,7 @@ def _simulate_height_threshold_mode(
 
         # Build models from groves and merge per species (supports split groves)
         merged_data: dict[str, list] = {}
-        for grove_idx, (grove, species_name, tree_count, fids) in enumerate(forest):
+        for grove_idx, (grove, species_name, tree_count, fids, *_r) in enumerate(forest):
             if species_name not in species_with_crossings:
                 continue
             offset = grove_offsets[grove_idx]
@@ -701,7 +721,7 @@ def _simulate_cycle_based_mode(
     groves: list[gc.Grove],
     max_cycles: int,
     snapshot_cycles: list[int],
-    species_overrides: dict[str, PresetOverrides],
+    species_overrides: dict[tuple[str, float], PresetOverrides],
     preset_overrides: PresetOverrides | None,
     quality_params: dict,
     species_snapshot_cycles: dict[str, dict[int, float]] | None,
@@ -729,7 +749,7 @@ def _simulate_cycle_based_mode(
 
             # Build models per grove and merge by species (supports split groves)
             merged_data: dict[str, list] = {}
-            for grove, species_name, tree_count, fids in forest:
+            for grove, species_name, tree_count, fids, *_r in forest:
                 if species_snapshot_cycles and species_name in species_snapshot_cycles:
                     if cycle not in species_snapshot_cycles[species_name]:
                         continue

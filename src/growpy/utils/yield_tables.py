@@ -360,12 +360,26 @@ def write_calibration_to_seed_json(
     target_dbh_per_cycle: list[float] | None = None,
     height_dbh_model: dict[str, float] | None = None,
     flushes_per_year: float = 1.0,
+    radius: float = 0.0,
 ) -> Path | None:
-    """Write calibration data to the species seed.json."""
+    """Write calibration data to the species seed.json.
+
+    Args:
+        radius: Surround radius (meters) this calibration was simulated
+            under. 0 writes the base preset directly. >0 writes a
+            radius-specific preset (cloned from the base preset on first
+            write for that radius) so different radii don't overwrite
+            each other's calibration.
+    """
+    from growpy.config.paths import _radius_suffix
     from growpy.utils.naming import standardize_species_name
 
     species_dir = standardize_species_name(species_name)
-    preset_path = presets_dir / f"{species_dir}.seed.json"
+    base_path = presets_dir / f"{species_dir}.seed.json"
+    preset_path = presets_dir / f"{species_dir}{_radius_suffix(radius)}.seed.json"
+
+    if radius and not preset_path.exists() and base_path.exists():
+        preset_path.write_text(base_path.read_text())
 
     if not preset_path.exists():
         logger.error("Preset not found: %s", preset_path)
@@ -409,6 +423,7 @@ def calibrate_species(
     yield_data: YieldTableData,
     presets_dir: Path,
     flushes_per_year: float | None = None,
+    radius: float = 0.0,
 ) -> bool:
     """Run full calibration for a single species and write results to seed.json.
 
@@ -420,17 +435,23 @@ def calibrate_species(
         presets_dir: Path to presets directory.
         flushes_per_year: Growth flushes per calendar year.
             None = auto-estimate from height curves (recommended).
+        radius: Surround radius (meters) this calibration was simulated
+            under (0 = open-grown). Writes to the radius-specific preset
+            (see write_calibration_to_seed_json).
 
     Returns:
         True if calibration was written successfully.
     """
+    from growpy.config.paths import _radius_suffix
     from growpy.utils.naming import standardize_species_name
 
     species_clean = standardize_species_name(species_name)
     max_cycles = len(grove_heights)
 
-    # Load base preset values
-    preset_path = presets_dir / f"{species_clean}.seed.json"
+    # Load base preset values (radius-specific if it already exists, else base)
+    preset_path = presets_dir / f"{species_clean}{_radius_suffix(radius)}.seed.json"
+    if not preset_path.exists():
+        preset_path = presets_dir / f"{species_clean}.seed.json"
     if not preset_path.exists():
         logger.error("Preset not found: %s", preset_path)
         return False
@@ -493,6 +514,7 @@ def calibrate_species(
         target_dbh_per_cycle=write_target_dbh,
         height_dbh_model=h_dbh_model,
         flushes_per_year=flushes_per_year,
+        radius=radius,
     )
 
     return result is not None

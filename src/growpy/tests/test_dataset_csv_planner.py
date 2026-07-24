@@ -1,5 +1,6 @@
 """Tests for growpy.pipelines.dataset_csv_planner."""
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pandas as pd
@@ -14,59 +15,88 @@ from growpy.pipelines.dataset_csv_planner import (
 )
 
 
+def _mock_radii(radii):
+    return patch(
+        "growpy.config.get_config",
+        return_value=SimpleNamespace(surround_radii=radii),
+    )
+
+
 class TestGenerateMergedCsv:
-    """Tests for merged CSV generation (open-grown + surround, one tree each)."""
+    """Tests for merged CSV generation (one row per configured surround radius)."""
 
     def test_returns_dataframe(self):
-        df = generate_merged_csv("Norway spruce", 30)
+        with _mock_radii([0.0, 7.0, 15.0]):
+            df = generate_merged_csv("Norway spruce", 30)
         assert isinstance(df, pd.DataFrame)
 
-    def test_two_rows_total(self):
-        df = generate_merged_csv("Test Species", 25)
-        assert len(df) == 2
+    def test_row_count_matches_radii(self):
+        with _mock_radii([0.0, 7.0, 15.0]):
+            df = generate_merged_csv("Test Species", 25)
+        assert len(df) == 3
 
     def test_fid_values(self):
-        df = generate_merged_csv("Test Species", 25)
-        fids = sorted(df["fid"].tolist())
-        assert fids == [1, 2]
+        with _mock_radii([0.0, 7.0, 15.0]):
+            df = generate_merged_csv("Test Species", 25)
+        assert sorted(df["fid"].tolist()) == [1, 2, 3]
 
-    def test_open_tree_at_offset(self):
-        df = generate_merged_csv("Test Species", 25)
-        open_row = df[df["fid"] == 1].iloc[0]
-        assert open_row["x"] == OPEN_TREE_X
-        assert open_row["individual_type"] == "open_grown"
+    def test_surround_radius_values(self):
+        with _mock_radii([0.0, 7.0, 15.0]):
+            df = generate_merged_csv("Test Species", 25)
+        assert sorted(df["surround_radius"].tolist()) == [0.0, 7.0, 15.0]
 
-    def test_surround_tree_at_origin(self):
-        df = generate_merged_csv("Test Species", 25)
-        surround = df[df["fid"] == 2].iloc[0]
-        assert surround["x"] == 0.0
-        assert surround["y"] == 0.0
-        assert surround["individual_type"] == "surround"
+    def test_open_grown_row_at_origin(self):
+        with _mock_radii([0.0, 7.0]):
+            df = generate_merged_csv("Test Species", 25)
+        open_row = df[df["surround_radius"] == 0.0].iloc[0]
+        assert open_row["x"] == 0.0
+
+    def test_rows_offset_along_x(self):
+        with _mock_radii([0.0, 7.0, 15.0]):
+            df = generate_merged_csv("Test Species", 25)
+        assert sorted(df["x"].tolist()) == [0.0, OPEN_TREE_X, OPEN_TREE_X * 2]
+
+    def test_single_radius(self):
+        with _mock_radii([0.0]):
+            df = generate_merged_csv("Test Species", 25)
+        assert len(df) == 1
+        assert df.iloc[0]["surround_radius"] == 0.0
 
     def test_species_propagated(self):
-        df = generate_merged_csv("European Beech", 32)
+        with _mock_radii([0.0, 7.0]):
+            df = generate_merged_csv("European Beech", 32)
         assert (df["species"] == "European Beech").all()
 
     def test_max_height_propagated(self):
-        df = generate_merged_csv("Test", 42)
+        with _mock_radii([0.0, 7.0]):
+            df = generate_merged_csv("Test", 42)
         assert (df["height"] == 42).all()
 
     def test_twig_density_default(self):
-        df = generate_merged_csv("Test", 25)
+        with _mock_radii([0.0, 7.0]):
+            df = generate_merged_csv("Test", 25)
         assert (df["twig_density"] == 1.0).all()
 
     def test_twig_density_custom(self):
-        df = generate_merged_csv("Test", 25, twig_density=0.5)
+        with _mock_radii([0.0, 7.0]):
+            df = generate_merged_csv("Test", 25, twig_density=0.5)
         assert (df["twig_density"] == 0.5).all()
 
     def test_all_z_zero(self):
-        df = generate_merged_csv("Test", 25)
+        with _mock_radii([0.0, 7.0]):
+            df = generate_merged_csv("Test", 25)
         assert (df["z"] == 0.0).all()
 
     def test_required_columns(self):
-        df = generate_merged_csv("Test", 25)
-        expected_cols = {"fid", "species", "x", "y", "z", "height", "twig_density", "individual_type"}
+        with _mock_radii([0.0, 7.0]):
+            df = generate_merged_csv("Test", 25)
+        expected_cols = {"fid", "species", "x", "y", "z", "height", "twig_density", "surround_radius"}
         assert expected_cols.issubset(set(df.columns))
+
+    def test_no_individual_type_column(self):
+        with _mock_radii([0.0, 7.0]):
+            df = generate_merged_csv("Test", 25)
+        assert "individual_type" not in df.columns
 
 
 class TestDensityVariants:

@@ -406,7 +406,7 @@ class SpeciesGrowthAnalyzer:
         self.growth_models = {}
         self.analysis_metadata = {}
 
-    def apply_species_preset(self, grove, species: str) -> bool:
+    def apply_species_preset(self, grove, species: str, radius: float = 0.0) -> bool:
         """Apply a species preset to a grove using direct file loading.
 
         Uses the original drop_decay/drop_weak values from the seed.json preset
@@ -415,12 +415,19 @@ class SpeciesGrowthAnalyzer:
         Args:
             grove: Grove object to apply preset to
             species: Species name (e.g., "Fagaceae - European oak")
+            radius: Surround radius (meters) to load a radius-specific
+                calibrated preset for, falling back to the base preset when
+                no radius-specific calibration exists yet.
 
         Returns:
             True if successful, False otherwise
         """
+        from growpy.config.paths import _radius_suffix
+
         try:
-            preset_file = self.presets_dir / f"{species}.seed.json"
+            preset_file = self.presets_dir / f"{species}{_radius_suffix(radius)}.seed.json"
+            if radius and not preset_file.exists():
+                preset_file = self.presets_dir / f"{species}.seed.json"
             if not preset_file.exists():
                 logger.error(f"Preset file not found: {preset_file}")
                 return False
@@ -560,12 +567,15 @@ class SpeciesGrowthAnalyzer:
         return interpolated_radius * 2.0
 
     def generate_height_curve_for_species(
-        self, species: str
+        self, species: str, radius: float = 0.0
     ) -> tuple[list[float], list[float], dict[str, Any]]:
         """Generate height and DBH curves for a species with multiple seeds.
 
         Args:
             species: Species name
+            radius: Surround radius (meters) to simulate under. 0 = open-grown
+                (no Grove Surround shell); >0 applies Grove's Surround shell at
+                this distance and loads the matching radius-specific preset.
 
         Returns:
             Tuple of (averaged_height_curve, averaged_dbh_curve, metadata)
@@ -586,7 +596,7 @@ class SpeciesGrowthAnalyzer:
         # Load species-specific overrides (includes yield table calibration)
         from growpy.config.preset_overrides import get_species_overrides
 
-        species_overrides = get_species_overrides(species)
+        species_overrides = get_species_overrides(species, radius)
 
         # Always apply longevity overrides during initial simulation (data collection).
         # The tree must survive long enough to produce usable height/DBH curves
@@ -608,13 +618,19 @@ class SpeciesGrowthAnalyzer:
                 len(species_overrides.static_overrides),
             )
 
+        if radius:
+            from growpy.config import get_config
+            from growpy.core.grove import enable_surround
+
+            surround_cfg = get_config()
+
         for seed in seed_progress:
             try:
                 grove = gc.Grove()
                 grove.clear_trees()
                 grove.set_random_seed(seed)
 
-                if not self.apply_species_preset(grove, species):
+                if not self.apply_species_preset(grove, species, radius):
                     logger.error(
                         f"Failed to apply species preset for {species} with seed {seed}"
                     )
@@ -625,6 +641,14 @@ class SpeciesGrowthAnalyzer:
                 continue
 
             grove.clear_trees()
+            if radius:
+                enable_surround(
+                    grove,
+                    density=surround_cfg.surround_density,
+                    distance=radius,
+                    height=surround_cfg.surround_height,
+                    grow=surround_cfg.surround_grow,
+                )
             grove.add_new_tree(gc.Vector(0, 0, 0), gc.Vector(0, 0, 1), 0)
 
             heights_this_seed = []
@@ -867,18 +891,19 @@ class SpeciesGrowthAnalyzer:
             model.fit(heights, cycles)
             return model
 
-    def _analyze_single_species(self, species: str) -> bool:
+    def _analyze_single_species(self, species: str, radius: float = 0.0) -> bool:
         """Core analysis logic for a single species.
 
         Args:
             species: Species name to analyze
+            radius: Surround radius (meters) to simulate under (0 = open-grown)
 
         Returns:
             True if successful, False otherwise
         """
         try:
             height_curve, dbh_curve, metadata = self.generate_height_curve_for_species(
-                species
+                species, radius
             )
             growth_model = self.create_growth_model_for_species(species, height_curve)
 
@@ -887,7 +912,7 @@ class SpeciesGrowthAnalyzer:
             self.growth_models[species] = growth_model
             self.analysis_metadata[species] = metadata
 
-            self.save_species_results(species)
+            self.save_species_results(species, radius)
             return True
 
         except SystemExit as e:
@@ -904,13 +929,18 @@ class SpeciesGrowthAnalyzer:
         parallel: bool = True,
         max_workers: int | None = None,
         species_filter: list | None = None,
+        radius: float = 0.0,
     ) -> dict[str, bool]:
         """Analyze all available species (sequential or parallel).
 
         Args:
-            parallel: Whether to use parallel processing (default: True)
+            parallel: Whether to use parallel processing (default: True).
+                Forced to False when radius > 0 -- the parallel worker path
+                does not yet support simulating under Surround.
             max_workers: Maximum number of parallel workers (default: CPU count - 1)
             species_filter: Optional list of species to process (if None, processes all)
+            radius: Surround radius (meters) to simulate all species under
+                (0 = open-grown, the default)
 
         Returns:
             Dictionary mapping species to success status
@@ -921,16 +951,27 @@ class SpeciesGrowthAnalyzer:
         if species_filter:
             species_list = [s for s in species_list if s in species_filter]
 
+        if parallel and radius:
+            logger.warning(
+                "Surround radius %.1f requested; parallel worker path doesn't "
+                "support it yet, falling back to sequential",
+                radius,
+            )
+            parallel = False
+
         if parallel:
             return self._analyze_parallel(species_list, max_workers)
         else:
-            return self._analyze_sequential(species_list)
+            return self._analyze_sequential(species_list, radius)
 
-    def _analyze_sequential(self, species_list: list[str]) -> dict[str, bool]:
+    def _analyze_sequential(
+        self, species_list: list[str], radius: float = 0.0
+    ) -> dict[str, bool]:
         """Analyze species sequentially.
 
         Args:
             species_list: List of species names to analyze
+            radius: Surround radius (meters) to simulate under (0 = open-grown)
 
         Returns:
             Dictionary mapping species to success status
@@ -944,7 +985,7 @@ class SpeciesGrowthAnalyzer:
 
         for species in progress:
             progress.set_description(f"Analyzing: {species[:30]}...")
-            results[species] = self._analyze_single_species(species)
+            results[species] = self._analyze_single_species(species, radius)
 
             if not results[species]:
                 logger.warning("FAILED %s", species)
@@ -1044,17 +1085,23 @@ class SpeciesGrowthAnalyzer:
 
         return results
 
-    def save_species_results(self, species: str):
+    def save_species_results(self, species: str, radius: float = 0.0):
         """Save results for a single species in its own subfolder.
 
         Args:
             species: Species name to save results for
+            radius: Surround radius (meters) these results were simulated
+                under (0 = open-grown). Written to a radius-specific
+                subfolder when > 0, so different radii don't overwrite
+                each other's output.
 
         Returns:
             Path to the species output directory
         """
         growth_model_name = self.get_growth_model_name_for_species(species)
         species_dir = self.output_dir / growth_model_name
+        if radius:
+            species_dir = species_dir / f"r{radius:g}"
         species_dir.mkdir(parents=True, exist_ok=True)
 
         if species in self.height_curves:
@@ -1103,7 +1150,13 @@ class SpeciesGrowthAnalyzer:
         # Inject flushes_per_year from calibration data if available
         metadata = self.analysis_metadata[species]
         if "flushes_per_year" not in metadata:
-            preset_path = self.presets_dir / f"{species}.seed.json"
+            from growpy.config.paths import _radius_suffix
+
+            preset_path = (
+                self.presets_dir / f"{species}{_radius_suffix(radius)}.seed.json"
+            )
+            if radius and not preset_path.exists():
+                preset_path = self.presets_dir / f"{species}.seed.json"
             if preset_path.exists():
                 with open(preset_path) as f:
                     cal = json.load(f).get("_yield_table_calibration", {})
@@ -1124,7 +1177,7 @@ class SpeciesGrowthAnalyzer:
 
         return species_dir
 
-    def save_growth_models(self):
+    def save_growth_models(self, radius: float = 0.0):
         """Save growth models in species-specific subfolders."""
         logger.info("Saving individual species results...")
         saved_count = 0
@@ -1135,7 +1188,7 @@ class SpeciesGrowthAnalyzer:
             leave=False,
             disable=not is_verbose(),
         ):
-            self.save_species_results(species)
+            self.save_species_results(species, radius)
             saved_count += 1
 
         logger.info("Saved %d species models to: %s", saved_count, self.output_dir)

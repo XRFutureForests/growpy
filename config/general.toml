@@ -19,6 +19,5 @@ csv_file = "data/input/dataset/all_species.csv"
 output_dir = "data/output/forest"
 # Enable verbose output (INFO-level logging). Use --verbose / --quiet to override.
 verbose = false
-# Enable debug output (DEBUG-level logging). Use --debug / --quiet to override
 # Enable profiling to track execution time of each pipeline step
 profile = false

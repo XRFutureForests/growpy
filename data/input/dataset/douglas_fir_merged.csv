@@ -1,3 +1,4 @@
-fid,species,x,y,z,height,twig_density,individual_type
-1,Douglas fir,100.0,0.0,0.0,45,1.0,open_grown
-2,Douglas fir,0.0,0.0,0.0,45,1.0,surround
+fid,species,x,y,z,height,twig_density,surround_radius
+1,Douglas fir,0.0,0.0,0.0,45,1.0,0.0
+2,Douglas fir,100.0,0.0,0.0,45,1.0,7.0
+3,Douglas fir,200.0,0.0,0.0,45,1.0,15.0

@@ -1,12 +1,16 @@
 """Dataset CSV generation: merged per-species CSVs and all-species CSV.
 
 Reads species metadata from tree_asset_lookup.csv (Max Height, Competition
-Group) and generates merged CSV files (open + competition combined) for each
-dataset species, plus an all-species CSV for pipeline steps 1-3.
+Group) and generates merged CSV files (one row per configured surround
+radius) for each dataset species, plus an all-species CSV for pipeline
+steps 1-3.
 
-The "surround" individual uses Grove's built-in Surround light-competition
-shell instead of simulating neighbour trees, so each merged CSV holds just
-two single trees: one open-grown and one surround.
+Each row's surround_radius column value selects its competition level:
+0 = open-grown (no Grove Surround shell), >0 = Grove's built-in Surround
+light-competition shell at that distance (see growpy.core.grove.enable_surround),
+giving the tall, slender, self-pruned form of a forest-grown tree without
+simulating any neighbour trees. The set of radii is configured in
+[surround].radii (config/surround.toml).
 """
 
 import logging
@@ -65,35 +69,29 @@ def generate_merged_csv(
     max_height: int,
     twig_density: float = 1.0,
 ) -> pd.DataFrame:
-    """Generate merged DataFrame: open-grown + surround tree in one file.
+    """Generate merged DataFrame: one single tree per configured surround radius.
 
-    Both are single trees, each simulated in its own grove. The open-grown tree
-    (fid=1) is placed at (OPEN_TREE_X, 0, 0); the surround tree (fid=2) sits at
-    the origin and gets Grove's Surround light-competition shell enabled during
-    simulation (see growpy.core.grove.enable_surround), giving the tall, slender
-    forest-grown form without simulating any neighbour trees.
+    Each row is simulated in its own grove, offset along x so they stay
+    visually distinct (OPEN_TREE_X apart). Radii come from
+    ``get_config().surround_radii`` -- 0 is open-grown, >0 gets Grove's
+    Surround light-competition shell enabled during simulation at that
+    distance (see growpy.core.grove.enable_surround).
     """
+    from growpy.config import get_config
+
+    radii = get_config().surround_radii
     rows = [
         {
-            "fid": 1,
+            "fid": i + 1,
             "species": species_name,
-            "x": OPEN_TREE_X,
+            "x": OPEN_TREE_X * i,
             "y": 0.0,
             "z": 0.0,
             "height": max_height,
             "twig_density": twig_density,
-            "individual_type": "open_grown",
-        },
-        {
-            "fid": 2,
-            "species": species_name,
-            "x": 0.0,
-            "y": 0.0,
-            "z": 0.0,
-            "height": max_height,
-            "twig_density": twig_density,
-            "individual_type": "surround",
-        },
+            "surround_radius": radius,
+        }
+        for i, radius in enumerate(radii)
     ]
     return pd.DataFrame(rows)
 

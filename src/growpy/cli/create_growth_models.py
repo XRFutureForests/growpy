@@ -28,13 +28,18 @@ from growpy.utils.naming import standardize_species_name
 logger = logging.getLogger(__name__)
 
 
-def _strip_previous_calibration(presets_dir: Path, species_list: list[str]) -> None:
+def _strip_previous_calibration(
+    presets_dir: Path, species_list: list[str], radius: float = 0.0
+) -> None:
     """Remove _yield_table_calibration from seed.json files for a clean baseline."""
     import json
 
+    from growpy.config.paths import _radius_suffix
+
+    suffix = _radius_suffix(radius)
     for species in species_list:
         species_clean = species.lower().replace(" ", "_")
-        preset_path = presets_dir / f"{species_clean}.seed.json"
+        preset_path = presets_dir / f"{species_clean}{suffix}.seed.json"
         if not preset_path.exists():
             continue
         with open(preset_path) as f:
@@ -80,6 +85,7 @@ def _run_calibration_pass(
     species_list: list[str],
     config,
     script_dir: Path,
+    radius: float = 0.0,
 ) -> tuple[list[str], dict[str, dict[str, Any]]]:
     """Run yield table calibration for species with available yield tables.
 
@@ -175,12 +181,15 @@ def _run_calibration_pass(
             yield_data=yield_data,
             presets_dir=presets_dir,
             flushes_per_year=fpy,
+            radius=radius,
         )
 
         # Read back fpy that was actually used (auto-estimated or explicit)
         import json as _json
 
-        _preset = presets_dir / f"{species_std}.seed.json"
+        from growpy.config.paths import _radius_suffix
+
+        _preset = presets_dir / f"{species_std}{_radius_suffix(radius)}.seed.json"
         _cal = {}
         if _preset.exists():
             with open(_preset) as _f:
@@ -207,6 +216,7 @@ def _generate_comparison_plots(
     calibrated_dbhs: dict[str, list[float]],
     config,
     script_dir: Path,
+    radius: float = 0.0,
 ) -> None:
     """Generate comparison plots for all calibrated species.
 
@@ -215,11 +225,13 @@ def _generate_comparison_plots(
     - Grove before calibration (raw simulation output)
     - Grove after calibration (re-simulated with overrides applied)
     """
+    from growpy.config.paths import _radius_suffix
     from growpy.config.preset_overrides import load_target_dbh_from_preset
     from growpy.utils.plotting import plot_calibration_comparison
 
     models_dir = script_dir / "data" / "assets" / "growth_models"
     presets_dir = script_dir / "data" / "assets" / "presets"
+    radius_suffix = _radius_suffix(radius)
 
     for species_std, info in calibration_info.items():
         common_name = info["common_name"]
@@ -235,7 +247,7 @@ def _generate_comparison_plots(
         cal_d = calibrated_dbhs.get(species_std)
 
         # Load target DBH from seed.json (applied at export via radial scaling)
-        preset_path = presets_dir / f"{species_std}.seed.json"
+        preset_path = presets_dir / f"{species_std}{radius_suffix}.seed.json"
         target_dbh = load_target_dbh_from_preset(preset_path)
 
         species_dir = models_dir / species_std
@@ -689,215 +701,227 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
     )
 
     do_calibrate = config.calibration_enabled and not args.no_calibrate
+    surround_radii = config.surround_radii
 
-    if args.species:
-        # --- Single species mode ---
-        # Normalize input so "Small-leaved linden" matches preset "small_leaved_linden"
-        args.species = standardize_species_name(args.species)
-        available_species = analyzer.get_available_species()
-        if args.species not in available_species:
-            logger.error(
-                "Species '%s' not found. Available: %s",
-                args.species,
-                available_species,
-            )
-            return 1
-
-        # Strip previous calibration for a clean baseline
-        if do_calibrate:
-            _strip_previous_calibration(presets_dir, [args.species])
-
-        # Generate height and DBH curves
-        height_curve, dbh_curve, metadata = analyzer.generate_height_curve_for_species(
-            args.species
-        )
-
-        # Create growth model
-        growth_model = analyzer.create_growth_model_for_species(
-            args.species, height_curve
-        )
-
-        # Store results
-        analyzer.height_curves[args.species] = height_curve
-        analyzer.dbh_curves[args.species] = dbh_curve
-        analyzer.growth_models[args.species] = growth_model
-        analyzer.analysis_metadata[args.species] = metadata
-
-        # Save initial results
-        analyzer.save_species_results(args.species)
-
-        # Calibration pass
-        if do_calibrate:
-            # Snapshot uncalibrated curves before calibration overwrites them
-            uncal_heights = {args.species: list(height_curve)}
-            uncal_dbhs = {args.species: list(dbh_curve)}
-
-            _save_uncalibrated_curves(
-                uncal_heights,
-                uncal_dbhs,
-                default_assets_dir / "growth_models",
-            )
-
+    for radius in surround_radii:
+        if len(surround_radii) > 1:
             logger.info("")
-            logger.info("=" * 60)
-            logger.info("  Calibration pass")
-            logger.info("=" * 60)
+            logger.info("#" * 60)
+            logger.info("  Surround radius: %.1f", radius)
+            logger.info("#" * 60)
 
-            calibrated, cal_info = _run_calibration_pass(
-                analyzer, [args.species], config, script_dir
+        if args.species:
+            # --- Single species mode ---
+            # Normalize input so "Small-leaved linden" matches preset "small_leaved_linden"
+            args.species = standardize_species_name(args.species)
+            available_species = analyzer.get_available_species()
+            if args.species not in available_species:
+                logger.error(
+                    "Species '%s' not found. Available: %s",
+                    args.species,
+                    available_species,
+                )
+                return 1
+
+            # Strip previous calibration for a clean baseline
+            if do_calibrate:
+                _strip_previous_calibration(presets_dir, [args.species], radius)
+
+            # Generate height and DBH curves
+            height_curve, dbh_curve, metadata = analyzer.generate_height_curve_for_species(
+                args.species, radius
             )
 
-            if calibrated:
-                logger.info("")
-                logger.info("=" * 60)
-                logger.info("  Re-simulating with calibration applied")
-                logger.info("=" * 60)
+            # Create growth model
+            growth_model = analyzer.create_growth_model_for_species(
+                args.species, height_curve
+            )
 
-                # Re-simulate with calibration
-                height_curve, dbh_curve, metadata = (
-                    analyzer.generate_height_curve_for_species(args.species)
-                )
-                growth_model = analyzer.create_growth_model_for_species(
-                    args.species, height_curve
-                )
+            # Store results
+            analyzer.height_curves[args.species] = height_curve
+            analyzer.dbh_curves[args.species] = dbh_curve
+            analyzer.growth_models[args.species] = growth_model
+            analyzer.analysis_metadata[args.species] = metadata
 
-                analyzer.height_curves[args.species] = height_curve
-                analyzer.dbh_curves[args.species] = dbh_curve
-                analyzer.growth_models[args.species] = growth_model
-                analyzer.analysis_metadata[args.species] = metadata
+            # Save initial results
+            analyzer.save_species_results(args.species, radius)
 
-            # Generate comparison plots after re-simulation
-            if config.calibration_plot and cal_info:
-                logger.info("")
-                logger.info("Generating comparison plots...")
-                _generate_comparison_plots(
-                    cal_info,
+            # Calibration pass
+            if do_calibrate:
+                # Snapshot uncalibrated curves before calibration overwrites them
+                uncal_heights = {args.species: list(height_curve)}
+                uncal_dbhs = {args.species: list(dbh_curve)}
+
+                _save_uncalibrated_curves(
                     uncal_heights,
                     uncal_dbhs,
-                    dict(analyzer.height_curves),
-                    dict(analyzer.dbh_curves),
-                    config,
-                    script_dir,
+                    default_assets_dir / "growth_models",
                 )
 
-        # Generate grove-only plots for uncalibrated species
-        if config.calibration_plot:
-            _generate_grove_only_plots(
-                analyzer, cal_info if do_calibrate else {}, config, script_dir
-            )
-
-        # Save final results
-        analyzer.save_growth_models()
-
-    else:
-        # --- Multi-species mode (from CSV) ---
-        try:
-            csv_species = _resolve_species_from_csv(csv_path)
-        except Exception as e:
-            logger.error("Error processing CSV file: %s", e)
-            return 1
-
-        if not csv_species:
-            logger.error("No matching species found in CSV")
-            return 1
-
-        available_species = analyzer.get_available_species()
-        species_to_process = [s for s in csv_species if s in available_species]
-
-        if not species_to_process:
-            logger.error(
-                "No available species to process. CSV species: %s, Available presets: %s",
-                csv_species,
-                available_species,
-            )
-            return 1
-
-        # Strip previous calibration for a clean baseline
-        if do_calibrate:
-            _strip_previous_calibration(presets_dir, species_to_process)
-
-        # Pass 1: initial simulation (uncalibrated)
-        logger.info("=" * 60)
-        logger.info("  Pass 1: Uncalibrated growth simulation")
-        logger.info("=" * 60)
-
-        results = analyzer.analyze_all_species(
-            parallel=False,
-            max_workers=None,
-            species_filter=species_to_process,
-        )
-
-        # Calibration + re-simulation pass
-        if do_calibrate:
-            successful = [s for s, ok in results.items() if ok]
-
-            # Snapshot uncalibrated curves before calibration overwrites them
-            uncal_heights = {
-                s: list(analyzer.height_curves[s])
-                for s in successful
-                if s in analyzer.height_curves
-            }
-            uncal_dbhs = {
-                s: list(analyzer.dbh_curves[s])
-                for s in successful
-                if s in analyzer.dbh_curves
-            }
-
-            _save_uncalibrated_curves(
-                uncal_heights,
-                uncal_dbhs,
-                default_assets_dir / "growth_models",
-            )
-
-            logger.info("")
-            logger.info("=" * 60)
-            logger.info("  Calibration pass")
-            logger.info("=" * 60)
-
-            calibrated, cal_info = _run_calibration_pass(
-                analyzer, successful, config, script_dir
-            )
-
-            if calibrated:
                 logger.info("")
                 logger.info("=" * 60)
-                logger.info(
-                    "  Pass 2: Re-simulating %d calibrated species",
-                    len(calibrated),
-                )
+                logger.info("  Calibration pass")
                 logger.info("=" * 60)
 
-                # Re-simulate only calibrated species
-                analyzer.analyze_all_species(
-                    parallel=False,
-                    max_workers=None,
-                    species_filter=calibrated,
+                calibrated, cal_info = _run_calibration_pass(
+                    analyzer, [args.species], config, script_dir, radius
                 )
-            else:
-                logger.info("No species calibrated — skipping re-simulation")
 
-            # Generate comparison plots after re-simulation
-            if config.calibration_plot and cal_info:
-                logger.info("")
-                logger.info("Generating comparison plots...")
-                _generate_comparison_plots(
-                    cal_info,
+                if calibrated:
+                    logger.info("")
+                    logger.info("=" * 60)
+                    logger.info("  Re-simulating with calibration applied")
+                    logger.info("=" * 60)
+
+                    # Re-simulate with calibration
+                    height_curve, dbh_curve, metadata = (
+                        analyzer.generate_height_curve_for_species(args.species, radius)
+                    )
+                    growth_model = analyzer.create_growth_model_for_species(
+                        args.species, height_curve
+                    )
+
+                    analyzer.height_curves[args.species] = height_curve
+                    analyzer.dbh_curves[args.species] = dbh_curve
+                    analyzer.growth_models[args.species] = growth_model
+                    analyzer.analysis_metadata[args.species] = metadata
+
+                # Generate comparison plots after re-simulation
+                if config.calibration_plot and cal_info:
+                    logger.info("")
+                    logger.info("Generating comparison plots...")
+                    _generate_comparison_plots(
+                        cal_info,
+                        uncal_heights,
+                        uncal_dbhs,
+                        dict(analyzer.height_curves),
+                        dict(analyzer.dbh_curves),
+                        config,
+                        script_dir,
+                        radius,
+                    )
+
+            # Generate grove-only plots for uncalibrated species
+            if config.calibration_plot:
+                _generate_grove_only_plots(
+                    analyzer, cal_info if do_calibrate else {}, config, script_dir
+                )
+
+            # Save final results
+            analyzer.save_growth_models(radius)
+
+        else:
+            # --- Multi-species mode (from CSV) ---
+            try:
+                csv_species = _resolve_species_from_csv(csv_path)
+            except Exception as e:
+                logger.error("Error processing CSV file: %s", e)
+                return 1
+
+            if not csv_species:
+                logger.error("No matching species found in CSV")
+                return 1
+
+            available_species = analyzer.get_available_species()
+            species_to_process = [s for s in csv_species if s in available_species]
+
+            if not species_to_process:
+                logger.error(
+                    "No available species to process. CSV species: %s, Available presets: %s",
+                    csv_species,
+                    available_species,
+                )
+                return 1
+
+            # Strip previous calibration for a clean baseline
+            if do_calibrate:
+                _strip_previous_calibration(presets_dir, species_to_process, radius)
+
+            # Pass 1: initial simulation (uncalibrated)
+            logger.info("=" * 60)
+            logger.info("  Pass 1: Uncalibrated growth simulation")
+            logger.info("=" * 60)
+
+            results = analyzer.analyze_all_species(
+                parallel=False,
+                max_workers=None,
+                species_filter=species_to_process,
+                radius=radius,
+            )
+
+            # Calibration + re-simulation pass
+            if do_calibrate:
+                successful = [s for s, ok in results.items() if ok]
+
+                # Snapshot uncalibrated curves before calibration overwrites them
+                uncal_heights = {
+                    s: list(analyzer.height_curves[s])
+                    for s in successful
+                    if s in analyzer.height_curves
+                }
+                uncal_dbhs = {
+                    s: list(analyzer.dbh_curves[s])
+                    for s in successful
+                    if s in analyzer.dbh_curves
+                }
+
+                _save_uncalibrated_curves(
                     uncal_heights,
                     uncal_dbhs,
-                    dict(analyzer.height_curves),
-                    dict(analyzer.dbh_curves),
-                    config,
-                    script_dir,
+                    default_assets_dir / "growth_models",
                 )
 
-        # Generate grove-only plots for uncalibrated species
-        if config.calibration_plot:
-            _generate_grove_only_plots(
-                analyzer, cal_info if do_calibrate else {}, config, script_dir
-            )
+                logger.info("")
+                logger.info("=" * 60)
+                logger.info("  Calibration pass")
+                logger.info("=" * 60)
 
-        # Save final results
-        analyzer.save_growth_models()
+                calibrated, cal_info = _run_calibration_pass(
+                    analyzer, successful, config, script_dir, radius
+                )
+
+                if calibrated:
+                    logger.info("")
+                    logger.info("=" * 60)
+                    logger.info(
+                        "  Pass 2: Re-simulating %d calibrated species",
+                        len(calibrated),
+                    )
+                    logger.info("=" * 60)
+
+                    # Re-simulate only calibrated species
+                    analyzer.analyze_all_species(
+                        parallel=False,
+                        max_workers=None,
+                        species_filter=calibrated,
+                        radius=radius,
+                    )
+                else:
+                    logger.info("No species calibrated — skipping re-simulation")
+
+                # Generate comparison plots after re-simulation
+                if config.calibration_plot and cal_info:
+                    logger.info("")
+                    logger.info("Generating comparison plots...")
+                    _generate_comparison_plots(
+                        cal_info,
+                        uncal_heights,
+                        uncal_dbhs,
+                        dict(analyzer.height_curves),
+                        dict(analyzer.dbh_curves),
+                        config,
+                        script_dir,
+                        radius,
+                    )
+
+            # Generate grove-only plots for uncalibrated species
+            if config.calibration_plot:
+                _generate_grove_only_plots(
+                    analyzer, cal_info if do_calibrate else {}, config, script_dir
+                )
+
+            # Save final results
+            analyzer.save_growth_models(radius)
 
     # Generate cross-species growth model report
     from growpy.utils.growth_report import generate_growth_model_report

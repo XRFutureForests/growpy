@@ -1,3 +1,4 @@
-fid,species,x,y,z,height,twig_density,individual_type
-1,European oak,100.0,0.0,0.0,30,1.0,open_grown
-2,European oak,0.0,0.0,0.0,30,1.0,surround
+fid,species,x,y,z,height,twig_density,surround_radius
+1,European oak,0.0,0.0,0.0,30,1.0,0.0
+2,European oak,100.0,0.0,0.0,30,1.0,7.0
+3,European oak,200.0,0.0,0.0,30,1.0,15.0

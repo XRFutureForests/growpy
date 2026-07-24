@@ -9,6 +9,7 @@ from growpy.config.paths import (
     _find_species_row,
     _get_lookup_table,
     _normalize_grove_texture_name,
+    get_species_growth_habit,
 )
 
 
@@ -123,3 +124,38 @@ class TestNormalizeGroveTextureNameExtra:
     def test_already_snake_case(self):
         stem, _ = _normalize_grove_texture_name("some_texture.jpg")
         assert stem == "some_texture"
+
+
+
+def _make_lookup_df_with_competition_group():
+    return pd.DataFrame(
+        {
+            "Common Name": ["European Beech", "Norway Spruce", "Silver Birch"],
+            "Standardized Name": ["european_beech", "norway_spruce", "silver_birch"],
+            "Scientific Name": ["Fagus sylvatica", "Picea abies", "Betula pendula"],
+            "Aliases": ["beech,fagus", "spruce", "birch,white birch"],
+            "Competition Group": ["slow_broadleaf", "slow_conifer", float("nan")],
+        }
+    )
+
+
+class TestGetSpeciesGrowthHabit:
+    """Tests for get_species_growth_habit."""
+
+    @patch("growpy.config.paths._get_lookup_table")
+    def test_broadleaf_species(self, mock_lookup):
+        mock_lookup.return_value = _make_lookup_df_with_competition_group()
+        _get_lookup_table.cache_clear()
+        assert get_species_growth_habit("European Beech") == "broadleaf"
+
+    @patch("growpy.config.paths._get_lookup_table")
+    def test_conifer_species(self, mock_lookup):
+        mock_lookup.return_value = _make_lookup_df_with_competition_group()
+        _get_lookup_table.cache_clear()
+        assert get_species_growth_habit("Norway Spruce") == "conifer"
+
+    @patch("growpy.config.paths._get_lookup_table")
+    def test_missing_competition_group_returns_none(self, mock_lookup):
+        mock_lookup.return_value = _make_lookup_df_with_competition_group()
+        _get_lookup_table.cache_clear()
+        assert get_species_growth_habit("Silver Birch") is None

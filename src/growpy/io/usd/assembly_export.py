@@ -782,12 +782,12 @@ def export_tree_as_nanite_assembly(
             {species}_h4m4_stems_skeletal.usda). Prevents overwrite in cycle mode.
         radial_scale: Radial scale factor for trunk mesh
         twig_density: Per-tree density scale factor from the input CSV twig_density column.
-            Multiplied with the TOML export_twig_density base to produce the effective
-            density.  None means scale 1.0.
-        twig_density: Per-tree density scale factor from the input CSV twig_density column.
-            Multiplied with the TOML export_twig_density base to produce the effective
-            density. Set to (pre_cutoff/post_cutoff) ratio when build_cutoff_thickness > 0
-            to restore natural canopy density (e.g. 4.6 for cutoff=0.005 on a 20-cycle oak).
+            Multiplied with the TOML base (export_twig_density, or the
+            species-type default from export_twig_density_conifer/broadleaf)
+            to produce the effective density. None means scale 1.0. Set to
+            (pre_cutoff/post_cutoff) ratio when build_cutoff_thickness > 0 to
+            restore natural canopy density (e.g. 4.6 for cutoff=0.005 on a
+            20-cycle oak).
         instances_dir: Optional shared directory for twig USD files and textures.
             When set, twig files are copied here instead of alongside the assembly,
             and assembly references use relative paths to this directory.
@@ -924,9 +924,10 @@ def export_tree_as_nanite_assembly(
 
                 cfg = get_config()
                 # CSV twig_density is a per-tree scale factor applied to the
-                # TOML base (export_twig_density).  When absent, scale is 1.0.
+                # TOML base (export_twig_density, or the species-type default
+                # from export_twig_density_conifer/broadleaf).  When absent, scale is 1.0.
                 twig_scale = twig_density if twig_density is not None else 1.0
-                effective_density = cfg.export_twig_density * twig_scale
+                effective_density = cfg.get_twig_density_base(species_name) * twig_scale
                 if effective_density != 1.0:
                     with _track("adjust_twig_density"):
                         from ...core.twig import densify_twig_placements

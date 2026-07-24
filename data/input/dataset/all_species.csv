@@ -1,12 +1,12 @@
 fid,species,x,y,z,height,twig_density
-1,European beech,0.0,0.0,0.0,30,1.0
+1,European beech,0.0,0.0,0.0,30,3.0
 2,Norway spruce,0.0,0.0,0.0,35,1.0
 3,Scots pine,0.0,0.0,0.0,30,1.0
 4,Silver fir,0.0,0.0,0.0,35,1.0
-5,European oak,0.0,0.0,0.0,30,1.0
-6,Common ash,0.0,0.0,0.0,30,1.0
-7,Silver birch,0.0,0.0,0.0,30,1.0
-8,Sycamore maple,0.0,0.0,0.0,30,1.0
-9,Small-leaved linden,0.0,0.0,0.0,30,1.0
-10,Wild cherry,0.0,0.0,0.0,30,1.0
+5,European oak,0.0,0.0,0.0,30,3.0
+6,Common ash,0.0,0.0,0.0,30,3.0
+7,Silver birch,0.0,0.0,0.0,30,3.0
+8,Sycamore maple,0.0,0.0,0.0,30,3.0
+9,Small-leaved linden,0.0,0.0,0.0,30,3.0
+10,Wild cherry,0.0,0.0,0.0,30,3.0
 11,Douglas fir,0.0,0.0,0.0,45,1.0

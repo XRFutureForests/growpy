@@ -1,11 +1,18 @@
 """Tests for growpy.core.forest pure-logic functions."""
 
+from unittest.mock import MagicMock, patch
+
+import pandas as pd
 import pytest
 
 try:
     import the_grove_23_core as _gc
 
-    from growpy.core.forest import _compute_grove_offsets, _split_bones_by_tree
+    from growpy.core.forest import (
+        _compute_grove_offsets,
+        _split_bones_by_tree,
+        create_forest,
+    )
     from growpy.core.grove import enable_surround
 
     _IMPORT_OK = True
@@ -14,6 +21,7 @@ except (ImportError, OSError):
     _gc = None
     _split_bones_by_tree = None
     _compute_grove_offsets = None
+    create_forest = None
     enable_surround = None
 
 pytestmark = pytest.mark.skipif(
@@ -149,3 +157,54 @@ class TestEnableSurround:
             return g.number_of_branches
 
         assert grow(surround=True) < grow(surround=False)
+
+
+class TestCreateForestSurroundRadius:
+    """Tests for create_forest's per-row surround_radius dispatch."""
+
+    def _run(self, rows):
+        df = pd.DataFrame(rows)
+        mock_grove = MagicMock()
+        with (
+            patch(
+                "growpy.core.forest.create_grove", return_value=mock_grove
+            ) as mock_create,
+            patch("growpy.core.forest.enable_surround") as mock_enable,
+        ):
+            create_forest(df)
+        return mock_create, mock_enable
+
+    def test_zero_radius_skips_surround(self):
+        mock_create, mock_enable = self._run(
+            [{"fid": 1, "species": "spruce", "x": 0.0, "y": 0.0, "surround_radius": 0.0}]
+        )
+        mock_create.assert_called_once_with("spruce", radius=0.0)
+        mock_enable.assert_not_called()
+
+    def test_nonzero_radius_enables_surround(self):
+        mock_create, mock_enable = self._run(
+            [{"fid": 1, "species": "spruce", "x": 0.0, "y": 0.0, "surround_radius": 7.0}]
+        )
+        mock_create.assert_called_once_with("spruce", radius=7.0)
+        mock_enable.assert_called_once()
+        _, kwargs = mock_enable.call_args
+        assert kwargs["distance"] == 7.0
+
+    def test_missing_column_defaults_to_open_grown(self):
+        mock_create, mock_enable = self._run(
+            [{"fid": 1, "species": "spruce", "x": 0.0, "y": 0.0}]
+        )
+        mock_create.assert_called_once_with("spruce", radius=0.0)
+        mock_enable.assert_not_called()
+
+    def test_multi_tree_group_skips_surround_even_if_nonzero(self):
+        # enable_surround only applies to single-tree groves (Grove disables
+        # Surround once several trees share a grove).
+        mock_create, mock_enable = self._run(
+            [
+                {"fid": 1, "species": "spruce", "x": 0.0, "y": 0.0, "surround_radius": 7.0},
+                {"fid": 2, "species": "spruce", "x": 1.0, "y": 0.0, "surround_radius": 7.0},
+            ]
+        )
+        mock_create.assert_called_once_with("spruce", radius=7.0)
+        mock_enable.assert_not_called()

@@ -5,14 +5,16 @@
 # tall, slender, self-pruned form of a forest-grown tree at a fraction of the
 # cost of the multi-tree competition clusters it replaces.
 #
-# Applied to single-tree groves whose individual_type == "surround" (as produced
-# by the dataset planner), or to every single-tree grove when enabled = true.
-# Grove disables Surround when several trees are simulated together in one grove,
-# so this only affects single-tree contexts.
+# Each tree's competition level is a plain number: its surround_radius column
+# value (in the dataset planner CSVs, or a real forest CSV) selects the shell
+# distance directly. 0 = no surround (open-grown). >0 = shell distance in
+# meters, and must be one of the values listed in `radii` below so a matching
+# calibrated growth model exists (see growth_models.toml / create-models step).
+# Grove disables Surround when several trees are simulated together in one
+# grove, so this only affects single-tree contexts.
 
 [surround]
-enabled = false   # true = enable on all single-tree groves
-density = 0.7     # surrounding tree density (0..1)
-distance = 7.0    # distance to the shell (meters)
-height = 5.0      # shell height (meters)
-grow = true       # shell grows together with the tree
+radii = [0.0, 7.0, 15.0]  # 0 = no surround; >0 = shell distance (meters)
+density = 0.7             # surrounding tree density (0..1), shared by all radii
+height = 5.0              # shell height (meters), shared by all radii
+grow = true               # shell grows together with the tree

@@ -20,7 +20,7 @@ alpha_trim = 0.9
 # Leaf edges are subdivided to this length before the alpha contour cut so the
 # silhouette has enough vertex density to carve through. Also controls Nanite
 # interior detail. 0.5 mm is a good default; lower = denser, higher = coarser.
-boundary_edge_mm = 0.5
+boundary_edge_mm = 1.0
 # Target interior edge length in millimeters (0 = maximum simplification; positive = target edge length).
 # When set, derives the decimation ratio automatically so interior faces
 # converge to this edge size regardless of input resolution.

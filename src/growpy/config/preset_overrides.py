@@ -627,11 +627,13 @@ def predict_dbh_from_height_model(
     return max(0.0, dbh_m)
 
 
-def get_species_overrides(species_name: str) -> PresetOverrides:
+def get_species_overrides(species_name: str, radius: float = 0.0) -> PresetOverrides:
     """Get preset overrides for a species from its seed.json file.
 
     Args:
         species_name: Species name (e.g., "Silver Fir")
+        radius: Surround radius (meters) to load a radius-specific calibrated
+            preset for, falling back to the base preset (default: 0.0).
 
     Returns:
         PresetOverrides loaded from the species preset, or empty if none defined
@@ -640,7 +642,7 @@ def get_species_overrides(species_name: str) -> PresetOverrides:
 
     config = get_config()
     try:
-        preset_path = config.get_preset_path(species_name)
+        preset_path = config.get_preset_path(species_name, radius)
         return load_curves_from_preset(preset_path)
     except Exception:
         logger.warning("Failed to load preset overrides for %s", species_name)
