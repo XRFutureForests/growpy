@@ -18,6 +18,12 @@ max_cycles_without_growth = 3
 # Maximum simulation time per seed in seconds (10-3600)
 # Increase for complex species; prevents stuck simulations
 timeout = 600
+# Target height in meters for calibration's simulations. Growth stops early
+# once reached, instead of always running `cycles` cycles.
+# 0 = no target (default) -- run to the yield table's full natural age range.
+# Independent of [forest] max_height in forest.toml (the step 4 export height
+# cap): that setting must NOT silently truncate calibration too.
+max_height = 0
 
 # --- Yield table calibration (integrated into create_growth_models.py) ---
 [calibration]

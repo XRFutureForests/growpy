@@ -25,9 +25,8 @@ height_interval = 5
 # Trees taller than this in the input CSV are clamped to this height
 # Reduces growth cycles and number of height stages for faster runs
 # 0 = no limit (use full CSV heights)
-# Also flows into step 3 (create_growth_models.py) as the calibration
-# simulation's target_height -- keep at 0 for full-length yield-table
-# calibration; only set >0 for quick testing runs.
+# This is a step-4 (export) setting only; step 3's calibration has its own
+# independent [growth_models] max_height in growth_models.toml.
 max_height = 0
 
 # --- Export options ---

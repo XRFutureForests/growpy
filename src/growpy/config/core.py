@@ -145,6 +145,11 @@ class GrowPyConfig:
     growth_models_height_threshold: float = 0.1
     growth_models_max_cycles_without_growth: int = 10
     growth_models_timeout: int = 900
+    # Target height (m) for calibration's Pass 1/Pass 2 simulations. 0 = no
+    # target (default; run to the yield table's natural age range). Distinct
+    # from forest_max_height (step 4 export cap) -- set independently so a
+    # quick-testing export height cap doesn't silently truncate calibration.
+    growth_models_max_height: float = 0.0
 
     # [forest]
     forest_quality: str = "high"
@@ -298,6 +303,8 @@ class GrowPyConfig:
             ]
         if "timeout" in gm:
             kwargs["growth_models_timeout"] = gm["timeout"]
+        if "max_height" in gm:
+            kwargs["growth_models_max_height"] = float(gm["max_height"])
 
         # [forest]
         forest = data.get("forest", {})
@@ -506,6 +513,7 @@ class GrowPyConfig:
             "height_threshold": "growth_models_height_threshold",
             "max_cycles_without_growth": "growth_models_max_cycles_without_growth",
             "timeout": "growth_models_timeout",
+            "growth_models_max_height": "growth_models_max_height",
             # [forest]
             "quality": "forest_quality",
             "growth_cycle_limit": "forest_growth_cycle_limit",

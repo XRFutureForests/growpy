@@ -577,11 +577,13 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
     )
     parser.add_argument(
         "--max-height",
+        dest="growth_models_max_height",
         type=float,
         default=None,
         help="Target tree height in meters. Growth simulation stops early once "
         "this height is reached, instead of always running --cycles cycles. "
-        "0 or unset = no target (default).",
+        "0 or unset = no target (default). Independent of [forest] max_height "
+        "in forest.toml (the step 4 export height cap).",
     )
     parser.add_argument(
         "--seeds",
@@ -697,7 +699,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         config.growth_models_height_threshold,
         config.growth_models_max_cycles_without_growth,
         config.growth_models_timeout,
-        config.forest_max_height,
+        config.growth_models_max_height,
     )
 
     do_calibrate = config.calibration_enabled and not args.no_calibrate
