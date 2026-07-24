@@ -14,10 +14,15 @@ seeds = 1
 height_threshold = 0.01
 # Stop after N consecutive cycles without significant growth (1-20)
 # Lower values = earlier termination, prevents wasting time on plateaued trees
-max_cycles_without_growth = 3
+# Kept generous so a temporary lull (e.g. while a per-cycle calibration
+# override array is exhausted and holding its last value) doesn't truncate
+# the growth curve well short of the yield table's full age range.
+max_cycles_without_growth = 30
 # Maximum simulation time per seed in seconds (10-3600)
 # Increase for complex species; prevents stuck simulations
-timeout = 600
+# Raised alongside max_cycles_without_growth/cycles so species that take the
+# full 140-cycle budget to reach yield-table ages don't time out early.
+timeout = 1800
 
 # --- Yield table calibration (integrated into create_growth_models.py) ---
 [calibration]
