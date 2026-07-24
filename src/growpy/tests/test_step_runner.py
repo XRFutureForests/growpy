@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from growpy.config import get_config
 from growpy.pipelines.step_runner import (
     STEP_SCRIPTS,
     _build_step4_command,
@@ -59,7 +60,11 @@ class TestBuildStep4Command:
         assert str(STEP_SCRIPTS[4]) in cmd[1]
         assert "test.csv" in cmd[2]
         assert "--export-trees" in cmd
-        assert "1,2" in cmd
+        # One fid per configured surround radius (merged CSVs have one row
+        # per radius) -- must not be hardcoded to fewer than that.
+        num_radii = len(get_config().surround_radii)
+        expected = ",".join(str(i) for i in range(1, num_radii + 1))
+        assert expected in cmd
 
     def test_with_max_height(self):
         cmd = _build_step4_command(Path("test.csv"), max_height=15.0)

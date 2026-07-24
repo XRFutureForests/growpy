@@ -167,7 +167,17 @@ def get_assets_directory() -> Path:
 
 def _radius_suffix(radius: float) -> str:
     """Filename/dirname suffix for a surround radius ("" for the 0/baseline case)."""
-    return "" if not radius else f".r{radius:g}"
+    return "" if not radius else f".r{radius:02g}"
+
+
+def radius_label(radius: float) -> str:
+    """Zero-padded directory/asset label for a surround radius (e.g. r00, r07, r15).
+
+    Unlike _radius_suffix(), this always returns a label (including for the
+    0/open-grown case) since it's used for standalone folder/filename
+    components (e.g. ``european_oak/r00/``) rather than a filename suffix.
+    """
+    return f"r{radius:02g}"
 
 
 def get_preset_path(species: str, radius: float = 0.0) -> Path:
@@ -240,7 +250,7 @@ def get_growth_model_path(species: str, radius: float = 0.0) -> Path:
 
     def _resolve(base: Path) -> Path | None:
         if radius:
-            radius_dir = base / f"r{radius:g}"
+            radius_dir = base / radius_label(radius)
             if radius_dir.exists():
                 return radius_dir
         return base if base.exists() else None

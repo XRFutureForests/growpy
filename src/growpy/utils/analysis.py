@@ -1098,10 +1098,12 @@ class SpeciesGrowthAnalyzer:
         Returns:
             Path to the species output directory
         """
+        from growpy.config.paths import radius_label
+
         growth_model_name = self.get_growth_model_name_for_species(species)
         species_dir = self.output_dir / growth_model_name
         if radius:
-            species_dir = species_dir / f"r{radius:g}"
+            species_dir = species_dir / radius_label(radius)
         species_dir.mkdir(parents=True, exist_ok=True)
 
         if species in self.height_curves:

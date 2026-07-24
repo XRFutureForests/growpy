@@ -22,7 +22,7 @@ from growpy import (
     GrowPyConfig,
     create_forest,
 )
-from growpy.config.paths import _find_species_row
+from growpy.config.paths import _find_species_row, radius_label
 from growpy.config.preset_overrides import PresetOverrides
 from growpy.config.quality import get_quality_preset
 from growpy.core.forest import simulate_forest_growth_with_snapshots
@@ -345,7 +345,7 @@ def generate_forest_stages(
                 forest_data["species"] == sp, "surround_radius"
             ].unique():
                 radius = float(radius) if pd.notna(radius) else 0.0
-                sub = sp_dir / ("r0" if radius <= 0 else f"r{radius:g}")
+                sub = sp_dir / radius_label(radius)
                 if sub.exists():
                     shutil.rmtree(sub)
         elif sp_dir.exists():
@@ -506,18 +506,14 @@ def generate_forest_stages(
                 ):
                     # Build output directory and filename prefix
                     if has_radius_col:
-                        radius_label = (
-                            "r0"
-                            if tree_surround_radius <= 0
-                            else f"r{tree_surround_radius:g}"
-                        )
-                        tree_dir = output_dir / species_clean / radius_label
+                        radius_lbl = radius_label(tree_surround_radius)
+                        tree_dir = output_dir / species_clean / radius_lbl
                         density_str = (
                             variant_name
                             if variant_name
                             else format_density_for_filename(effective_twig_density)
                         )
-                        individual_short = radius_label
+                        individual_short = radius_lbl
                         species_title = (
                             species_clean.replace("_", " ").title().replace(" ", "_")
                         )

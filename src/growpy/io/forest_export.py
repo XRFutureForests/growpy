@@ -61,6 +61,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     import gc as _gc_module
 
     from .. import get_config
+    from ..config.paths import radius_label
     from ..config.preset_overrides import (
         load_height_dbh_model_from_preset,
         load_target_dbh_from_preset,
@@ -317,18 +318,14 @@ def _export_single_tree_from_forest(args: tuple) -> list:
             ) in enumerate(export_iterations):
                 # Build output directory and filename prefix
                 if tree_surround_radius is not None:
-                    radius_label = (
-                        "r0"
-                        if tree_surround_radius <= 0
-                        else f"r{tree_surround_radius:g}"
-                    )
-                    tree_dir = output_dir / species_clean / radius_label
+                    radius_lbl = radius_label(tree_surround_radius)
+                    tree_dir = output_dir / species_clean / radius_lbl
                     density_str = (
                         variant_name
                         if variant_name
                         else format_density_for_filename(effective_twig_density)
                     )
-                    individual_short = radius_label
+                    individual_short = radius_lbl
                     species_title = (
                         species_clean.replace("_", " ").title().replace(" ", "_")
                     )

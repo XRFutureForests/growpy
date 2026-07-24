@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
+from growpy.config import get_config
 from growpy.pipelines.dataset_csv_planner import (
     DENSITY_VARIANTS,
     OPEN_TREE_X,
@@ -231,7 +232,11 @@ class TestBuildStep4Command:
     def test_includes_export_trees_flag(self):
         cmd = _build_step4_command(Path("some.csv"))
         assert "--export-trees" in cmd
-        assert "1,2" in cmd
+        # One fid per configured surround radius (merged CSVs have one row
+        # per radius) -- must not be hardcoded to fewer than that.
+        num_radii = len(get_config().surround_radii)
+        expected = ",".join(str(i) for i in range(1, num_radii + 1))
+        assert expected in cmd
 
     def test_max_height_included_when_nonzero(self):
         cmd = _build_step4_command(Path("some.csv"), max_height=15.0)

@@ -124,10 +124,16 @@ def _build_step4_command(
     verbose: bool = False,
 ) -> list:
     """Build the generate_forest.py command for a merged species CSV."""
+    from growpy.config import get_config
+
     cmd = [sys.executable, str(STEP_SCRIPTS[4]), str(csv_path)]
     if max_height > 0:
         cmd.extend(["--max-height", str(max_height)])
-    cmd.extend(["--export-trees", "1,2"])
+    # Merged CSVs have one row (fid) per configured surround radius, in order
+    # (see dataset_csv_planner.py). Export all of them, not just the first two.
+    num_radii = max(1, len(get_config().surround_radii))
+    export_trees = ",".join(str(i) for i in range(1, num_radii + 1))
+    cmd.extend(["--export-trees", export_trees])
     if skip_unreal_scripts:
         cmd.append("--no-unreal-scripts")
     if verbose:
