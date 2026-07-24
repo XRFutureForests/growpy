@@ -116,7 +116,7 @@ DISPLAY_GROWTH_COLUMNS = [
 def _parse_icon_files(forest_dir: Path) -> dict:
     """Scan forest output and return structured icon data.
 
-    Returns dict keyed by (species_clean, context) with values being
+    Returns dict keyed by (species_clean, radius_m) with values being
     dicts of {height_meters (int): (relative_path, absolute_path)}.
     Uses front-view icons only for overview display.
     """
@@ -130,11 +130,10 @@ def _parse_icon_files(forest_dir: Path) -> dict:
             continue
         species_title = m.group(1)
         radius_m = float(m.group(2))
-        context = "open" if radius_m <= 0 else "surr"
         height_label = m.group(3)
         rel_path = str(png.relative_to(forest_dir)).replace("\\", "/")
         species_clean = species_title.replace("_", " ").lower().replace(" ", "_")
-        key = (species_clean, context)
+        key = (species_clean, radius_m)
         height_m = int(re.findall(r"\d+", height_label)[0])
         entries.setdefault(key, {})[height_m] = (rel_path, str(png))
     return entries
@@ -213,16 +212,21 @@ def build_dataset_dataframe(
     interval = max(1, int(height_interval))
     columns = _build_interval_columns(entries, interval)
 
+    from growpy.config.paths import radius_label
+
     rows = []
     all_species = sorted(set(sp for sp, _ in entries.keys()))
+    all_radii = sorted(set(r for _, r in entries.keys()))
 
     for species in all_species:
         preset = _read_preset(preset_dir, species)
         growth = _read_growth_model(models_dir, species)
 
-        for ctx_short, ctx_display in [("surr", "surround"), ("open", "open_grown")]:
-            key = (species, ctx_short)
+        for radius_m in all_radii:
+            key = (species, radius_m)
             height_map = entries.get(key, {})
+            if not height_map:
+                continue
 
             snapped = {}
             for h, paths in height_map.items():
@@ -230,7 +234,7 @@ def build_dataset_dataframe(
                 if col >= interval:
                     snapped[col] = paths
 
-            row = {"species": species, "context": ctx_display}
+            row = {"species": species, "radius": radius_label(radius_m)}
 
             for col in columns:
                 label = _height_label(col)
@@ -284,7 +288,7 @@ def generate_overview_markdown(
 
     # Export CSV with all data (for ML consumption)
     csv_cols = (
-        ["species", "context"]
+        ["species", "radius"]
         + icon_cols
         + [c for c in PRESET_COLUMNS if c in df.columns]
         + [c for c in GROWTH_MODEL_COLUMNS if c in df.columns]
@@ -298,20 +302,20 @@ def generate_overview_markdown(
     lines.append("# Dataset Overview")
     lines.append("")
     lines.append(
-        f"Tree preview icons by species, growth context, "
+        f"Tree preview icons by species, surround radius, "
         f"and height interval ({interval}m steps)."
     )
     lines.append("")
 
     # Icon table
     col_headers = " | ".join(c.replace("icon_", "") for c in icon_cols)
-    lines.append(f"| Species | Context | {col_headers} |")
+    lines.append(f"| Species | Radius | {col_headers} |")
     separator = " | ".join(["---"] * (2 + len(icon_cols)))
     lines.append(f"| {separator} |")
 
     for _, row in df.iterrows():
         species_display = row["species"].replace("_", " ").title()
-        ctx_display = "Surround" if row["context"] == "surround" else "Open Grown"
+        radius_display = row["radius"]
         cells = []
         for col in icon_cols:
             if row[col]:
@@ -319,7 +323,7 @@ def generate_overview_markdown(
                 cells.append(f"![{label}]({row[col]})")
             else:
                 cells.append("")
-        lines.append(f"| {species_display} | {ctx_display} | {' | '.join(cells)} |")
+        lines.append(f"| {species_display} | {radius_display} | {' | '.join(cells)} |")
 
     lines.append("")
 
