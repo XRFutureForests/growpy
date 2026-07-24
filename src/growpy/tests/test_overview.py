@@ -107,36 +107,38 @@ class TestIconPattern:
     """Tests for the icon filename regex pattern."""
 
     def test_matches_front_view(self):
-        m = _ICON_PATTERN.match("norway_spruce_surr_h10m_d15cm_high_icon_front.png")
+        m = _ICON_PATTERN.match("Norway_Spruce_r7_h10m_d15cm_full_icon_front.png")
         assert m is not None
-        assert m.group(1) == "norway_spruce"
-        assert m.group(2) == "surr"
+        assert m.group(1) == "Norway_Spruce"
+        assert m.group(2) == "7"
         assert m.group(3) == "h10m"
         assert m.group(4) == "d15cm"
-        assert m.group(5) == "high"
+        assert m.group(5) == "full"
         assert m.group(6) == "front"
 
     def test_matches_side_view(self):
-        m = _ICON_PATTERN.match("norway_spruce_surr_h10m_d15cm_high_icon_side.png")
+        m = _ICON_PATTERN.match("Norway_Spruce_r7_h10m_d15cm_full_icon_side.png")
         assert m is not None
         assert m.group(6) == "side"
 
     def test_matches_top_view(self):
-        m = _ICON_PATTERN.match("norway_spruce_surr_h10m_d15cm_high_icon_top.png")
+        m = _ICON_PATTERN.match("Norway_Spruce_r7_h10m_d15cm_full_icon_top.png")
         assert m is not None
         assert m.group(6) == "top"
 
-    def test_matches_open_context(self):
-        m = _ICON_PATTERN.match("european_beech_open_h20m_d30cm_medium_icon_front.png")
+    def test_matches_open_grown_radius(self):
+        m = _ICON_PATTERN.match(
+            "European_Beech_r0_h20m_d30cm_full_icon_front.png"
+        )
         assert m is not None
-        assert m.group(2) == "open"
+        assert m.group(2) == "0"
 
     def test_no_match_old_format(self):
-        m = _ICON_PATTERN.match("norway_spruce_surr_h10m_d15cm_high_icon.png")
+        m = _ICON_PATTERN.match("Norway_Spruce_r7_h10m_d15cm_full_icon.png")
         assert m is None
 
     def test_no_match_without_icon_suffix(self):
-        m = _ICON_PATTERN.match("norway_spruce_surr_h10m_d15cm_high.png")
+        m = _ICON_PATTERN.match("Norway_Spruce_r7_h10m_d15cm_full.png")
         assert m is None
 
     def test_no_match_random_name(self):

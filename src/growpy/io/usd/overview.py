@@ -18,7 +18,7 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 _ICON_PATTERN = re.compile(
-    r"^(.+?)_(surr|open)_(h\d+m)_(d\d+cm)_(.+?)_icon_(front|side|top)\.png$",
+    r"^(.+?)_r(\d+(?:\.\d+)?)_(h\d+m)_(d\d+cm)_(.+?)_icon_(front|side|top)\.png$",
     re.IGNORECASE,
 )
 
@@ -129,7 +129,8 @@ def _parse_icon_files(forest_dir: Path) -> dict:
         if view != "front":
             continue
         species_title = m.group(1)
-        context = m.group(2)
+        radius_m = float(m.group(2))
+        context = "open" if radius_m <= 0 else "surr"
         height_label = m.group(3)
         rel_path = str(png.relative_to(forest_dir)).replace("\\", "/")
         species_clean = species_title.replace("_", " ").lower().replace(" ", "_")
