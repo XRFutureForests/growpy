@@ -14,21 +14,25 @@ seeds = 1
 height_threshold = 0.01
 # Stop after N consecutive cycles without significant growth (1-20)
 # Lower values = earlier termination, prevents wasting time on plateaued trees
-# Kept generous so a temporary lull (e.g. while a per-cycle calibration
-# override array is exhausted and holding its last value) doesn't truncate
-# the growth curve well short of the yield table's full age range.
-max_cycles_without_growth = 30
+max_cycles_without_growth = 15
 # Maximum simulation time per seed in seconds (10-3600)
 # Increase for complex species; prevents stuck simulations
-# Raised alongside max_cycles_without_growth/cycles so species that take the
-# full 140-cycle budget to reach yield-table ages don't time out early.
-timeout = 1800
+# Safety net only -- max_height below is the primary, cheap stopping signal.
+# Uncalibrated (Pass 1) growth was measured to NOT plateau within any
+# reasonable patience window when max_height=0 (unbounded): 9/11 species
+# ran the full 1800s timeout reaching only 58-125 cycles, ~4h54m total for
+# one radius's Pass 1 alone. Calibrated re-simulation (Pass 2) by contrast
+# decelerates per the yield table and is cheap regardless (~13min for all
+# 11 species combined in that same run) -- the height target below is what
+# keeps Pass 1 bounded without relying on the timeout to do the work.
+timeout = 400
 # Target height in meters for calibration's simulations. Growth stops early
 # once reached, instead of always running `cycles` cycles.
-# 0 = no target (default) -- run to the yield table's full natural age range.
+# 0 = no target -- DO NOT use 0 for full dataset runs (see timeout comment
+# above); a real target here is the primary time-bounding mechanism.
 # Independent of [forest] max_height in forest.toml (the step 4 export height
 # cap): that setting must NOT silently truncate calibration too.
-max_height = 0
+max_height = 20
 
 # --- Yield table calibration (integrated into create_growth_models.py) ---
 [calibration]
