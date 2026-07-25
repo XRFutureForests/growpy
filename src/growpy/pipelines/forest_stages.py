@@ -61,17 +61,37 @@ def _load_species_max_heights(species_names: list[str]) -> dict[str, float]:
     the height the live simulation can reach given enough cycles, independent of
     how many cycles step 3's calibration pass was capped at. Falls back to
     ``metadata.json``'s observed max_height (the calibration curve's literal
-    endpoint) for piecewise-linear models or missing params files. This bounds
-    milestone capture so trees never exceed the height their growth curve
-    predicts; species without any readable model are omitted (no ceiling).
+    endpoint) for piecewise-linear models, missing params files, or when the
+    asymptote is pinned at ``fit_chapman_richards``'s own upper bound
+    (``5 * observed_max_height`` -- a sign the fit never saw growth decelerate
+    and just saturated its cap instead of estimating a real asymptote). This
+    bounds milestone capture so trees never exceed the height their growth
+    curve predicts; species without any readable model are omitted (no ceiling).
     """
     from growpy.config.paths import get_assets_directory
     from growpy.utils.naming import standardize_species_name
+
+    # fit_chapman_richards() bounds A to [1.01, 5.0] * observed_max_height.
+    # A fit pinned at (or essentially at) that upper bound didn't converge to
+    # a real asymptote -- treat it as unreliable.
+    UNRELIABLE_ASYMPTOTE_RATIO = 4.9
 
     models_dir = get_assets_directory() / "growth_models"
     result: dict[str, float] = {}
     for species in species_names:
         species_dir = models_dir / standardize_species_name(species)
+
+        meta_file = species_dir / "metadata.json"
+        observed_max = 0.0
+        if meta_file.exists():
+            try:
+                with open(meta_file, encoding="utf-8") as f:
+                    meta = json.load(f)
+                mh = meta.get("max_height")
+                if mh:
+                    observed_max = float(mh)
+            except (OSError, json.JSONDecodeError):
+                pass
 
         params_file = species_dir / "growth_model_params.json"
         if params_file.exists():
@@ -82,21 +102,19 @@ def _load_species_max_heights(species_names: list[str]) -> dict[str, float]:
                 params = {}
             if params.get("model_type") == "chapman_richards":
                 a = params.get("A")
-                if a and float(a) > 0:
+                if (
+                    a
+                    and float(a) > 0
+                    and (
+                        observed_max <= 0
+                        or float(a) < UNRELIABLE_ASYMPTOTE_RATIO * observed_max
+                    )
+                ):
                     result[species] = float(a)
                     continue
 
-        meta_file = species_dir / "metadata.json"
-        if not meta_file.exists():
-            continue
-        try:
-            with open(meta_file, encoding="utf-8") as f:
-                meta = json.load(f)
-        except (OSError, json.JSONDecodeError):
-            continue
-        mh = meta.get("max_height")
-        if mh and float(mh) > 0:
-            result[species] = float(mh)
+        if observed_max > 0:
+            result[species] = observed_max
     return result
 
 
