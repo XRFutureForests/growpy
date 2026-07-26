@@ -67,6 +67,10 @@ ignore = ["E402"]
 "__init__.py" = ["F401"]
 
 [tool.ruff.lint.mccabe]
+# Inert unless "C90" is in `select` above. Left unselected deliberately: the
+# USD/Grove export paths carry a long tail of high-complexity functions and
+# enabling C901 today would add ~20 advisory findings to an existing backlog.
+# Re-enable by adding "C90" to select once that backlog is down.
 max-complexity = 15
 
 [tool.mypy]

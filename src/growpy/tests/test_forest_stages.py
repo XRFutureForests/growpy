@@ -31,6 +31,25 @@ class TestLoadSpeciesMaxHeights:
         )
 
     def test_prefers_chapman_richards_asymptote_over_truncated_metadata(self, tmp_path):
+        # A = 40.0 is well under the 4.9x observed-max cutoff (4.9 * 12.4 = 60.8),
+        # so it reads as a real asymptote rather than a fit pinned at its bound.
+        species_dir = tmp_path / "growth_models" / "common_ash"
+        species_dir.mkdir(parents=True)
+        (species_dir / "growth_model_params.json").write_text(
+            json.dumps({"model_type": "chapman_richards", "A": 40.0})
+        )
+        (species_dir / "metadata.json").write_text(
+            json.dumps({"max_height": 12.4})
+        )
+
+        with self._patch_assets_dir(tmp_path):
+            result = _load_species_max_heights(["Common ash"])
+
+        assert result == {"Common ash": 40.0}
+
+    def test_ignores_asymptote_pinned_at_fit_upper_bound(self, tmp_path):
+        # fit_chapman_richards bounds A to 5 * observed_max_height; a fit sitting
+        # at that bound never saw growth decelerate, so metadata wins instead.
         species_dir = tmp_path / "growth_models" / "common_ash"
         species_dir.mkdir(parents=True)
         (species_dir / "growth_model_params.json").write_text(
@@ -43,7 +62,7 @@ class TestLoadSpeciesMaxHeights:
         with self._patch_assets_dir(tmp_path):
             result = _load_species_max_heights(["Common ash"])
 
-        assert result == {"Common ash": 62.0}
+        assert result == {"Common ash": 12.4}
 
     def test_falls_back_to_metadata_for_piecewise_model(self, tmp_path):
         species_dir = tmp_path / "growth_models" / "common_ash"

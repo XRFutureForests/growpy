@@ -1,0 +1,48 @@
+name: CI
+
+# Runs on the GitHub mirror (see mirror-back.yml for the mirroring topology).
+# GitLab remains the canonical host; this is the only place the suite runs.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      # The Grove is commercial and not in the repo, so `pip install -e .` cannot
+      # run here (pyproject packages the_grove_23_core). Install the runtime deps
+      # directly and put src/ on the path instead.
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy pandas tqdm joblib scipy matplotlib Pillow pytest ruff
+          pip install "pylometree @ git+https://github.com/XRFutureForests/pylometree.git"
+
+      - name: Lint (bug-level rules — blocking)
+        run: ruff check --select F82,F63,F7,E9 src/growpy
+
+      - name: Lint (full rule set — advisory)
+        run: ruff check src/growpy
+        continue-on-error: true
+
+      - name: Test
+        env:
+          PYTHONPATH: src
+        run: pytest -q
