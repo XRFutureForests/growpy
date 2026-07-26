@@ -21,28 +21,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      # Build from environment.yml rather than a hand-maintained dependency
+      # list, so CI cannot drift from the documented dev setup. That file pins
+      # python=3.13 (bpy==5.1.2 ships cp313 wheels only) and caps numpy<2.3
+      # (2.4.x faults matplotlib's compiled Agg path) -- constraints a
+      # separate pip list would silently lose.
+      - uses: mamba-org/setup-micromamba@v2
         with:
-          python-version: '3.12'
-          cache: pip
-
-      # The Grove is commercial and not in the repo, so `pip install -e .` cannot
-      # run here (pyproject packages the_grove_23_core). Install the runtime deps
-      # directly and put src/ on the path instead.
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install numpy pandas tqdm joblib scipy matplotlib Pillow pytest ruff
-          pip install "pylometree @ git+https://github.com/XRFutureForests/pylometree.git"
+          environment-file: environment.yml
+          cache-environment: true
 
       - name: Lint (bug-level rules — blocking)
+        shell: micromamba-shell {0}
         run: ruff check --select F82,F63,F7,E9 src/growpy
 
       - name: Lint (full rule set — advisory)
+        shell: micromamba-shell {0}
         run: ruff check src/growpy
         continue-on-error: true
 
+      # The Grove is commercial and gitignored, so `the_grove_23_core` is absent
+      # here. The modules that need it guard the import and skip; everything
+      # else runs. pytest.ini already puts src/ on the path.
       - name: Test
-        env:
-          PYTHONPATH: src
+        shell: micromamba-shell {0}
         run: pytest -q

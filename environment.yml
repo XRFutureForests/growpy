@@ -15,9 +15,14 @@ dependencies:
   - pillow
   - openpyxl # XLSX yield table parsing (Kohlenstoff-Ertragstafeln)
   - scipy>=1.10
+  # Test and lint tooling. Without these, `conda env create -f environment.yml`
+  # produces an env that cannot run the documented `pytest` / `ruff check`
+  # commands. CI builds from this file, so they have to live here.
+  - pytest
+  - ruff
   - pip:
       - openyieldtables # For real-world yield data calibration
-      - bpy==5.1.2 # Blender Python API with bundled USD, MaterialX, OpenImageIO, etc. (pinned: latest with win_amd64 wheel for cp313)
+      - bpy==5.1.2 # Blender Python API with bundled USD, MaterialX, OpenImageIO, etc. (pinned: latest with cp313 wheels for win_amd64, manylinux_2_28_x86_64, macosx_11_0_arm64)
       - tabula-py # PDF yield table extraction (requires Java runtime)
       - python-dotenv>=1.0.0
       - pylometree @ git+https://github.com/XRFutureForests/pylometree.git
