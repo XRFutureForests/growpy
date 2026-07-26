@@ -25,9 +25,11 @@ except Exception:  # pragma: no cover - bpy missing (e.g. CI without Blender)
 # of every module that touches growpy.core raised ImportError and pytest
 # aborted the *entire* run with 0 tests executed.
 #
-# Skip just those modules instead, so the ~750 tests that need no Grove still
-# run. If a new test module starts importing growpy.core it will fail loudly
-# here rather than silently; add it to the list below.
+# Skip just those modules instead, so the 734 tests that need no Grove still
+# run. Note this only covers import-time failures: a module that reaches Grove
+# code lazily (as test_yield_tables did via growpy.utils.analysis) collects
+# fine and fails at run time instead, so it needs the import made lazy at the
+# source rather than an entry here.
 _GROVE_DEPENDENT = [
     "test_analysis.py",
     "test_assembly_export.py",

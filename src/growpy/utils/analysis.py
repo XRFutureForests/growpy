@@ -16,7 +16,6 @@ from typing import Any
 import joblib
 import numpy as np
 import pandas as pd
-import the_grove_23_core as gc
 from scipy.optimize import least_squares
 from tqdm import tqdm
 
@@ -422,6 +421,8 @@ class SpeciesGrowthAnalyzer:
         Returns:
             True if successful, False otherwise
         """
+        import the_grove_23_core as gc
+
         from growpy.config.paths import _radius_suffix
 
         try:
@@ -580,6 +581,8 @@ class SpeciesGrowthAnalyzer:
         Returns:
             Tuple of (averaged_height_curve, averaged_dbh_curve, metadata)
         """
+        import the_grove_23_core as gc
+
         all_height_curves = []
         all_dbh_curves = []
         seed_metadata = []
