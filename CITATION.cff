@@ -2,8 +2,8 @@ cff-version: 1.2.0
 message: "If you use this software or its outputs in a publication, please cite it as below."
 title: "GrowPy - A 3D Tree Model Library Generator for Unreal Engine using The Grove"
 type: software
-version: 0.2.0
-date-released: "2026-04-02"
+version: 0.3.0
+date-released: "2026-07-27"
 license: AGPL-3.0-or-later
 repository-code: "https://github.com/XRFutureForests/growpy"
 doi: 10.5281/zenodo.21509856
