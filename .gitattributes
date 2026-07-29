@@ -1,0 +1,9 @@
+# Dev-only tooling files that main intentionally does not track (see
+# CONTRIBUTING.md, "dev -> main merges"). merge=ours keeps main's side
+# (absent) when merging dev locally, instead of a modify/delete conflict.
+# Requires a one-time local `git config merge.ours.driver true` - this
+# has no effect on GitHub/GitLab's server-side merge.
+.claude/** merge=ours
+AGENTS.md merge=ours
+CLAUDE.md merge=ours
+.github/copilot-instructions.md merge=ours
