@@ -41,7 +41,7 @@ skeletal = true
 # When both skeletal and static are enabled, static is derived from skeletal
 # Disabled: UE 5.7/5.8 Nanite Assembly builder deadlocks on StaticMesh targets
 # (no skeleton) -- see docs/guides/unreal-import.md troubleshooting.
-static = true
+static = false
 # Base twig density multiplier applied to all trees globally.
 # Default: auto-selects by species growth habit --
 # broadleaf species get twig_density_broadleaf, conifers get twig_density_conifer.
@@ -68,7 +68,7 @@ max_skeleton_joints = 0
 # Nanite mesh which can consume extreme amounts of RAM.
 # 0 = no limit.  5000 = safe default for 64 GB systems.
 # Instances beyond this limit are randomly removed (uniform across twig types).
-max_assembly_instances = 50000
+max_assembly_instances = 23000
 # Skip assembly validation (saves ~5-10% export time)
 skip_validation = true
 # Only export specific trees by fid (integer array)

@@ -228,20 +228,65 @@ def create_assembly(
                 cfg = _get_config()
                 max_inst = cfg.export_max_assembly_instances
                 if max_inst > 0 and total_twigs > max_inst:
-                    import random as _cap_rng
+                    import numpy as _np
+                    from scipy.spatial import cKDTree as _cKDTree
 
-                    _cap_rng.seed(42)
+                    _rng = _np.random.default_rng(42)
+
+                    # Build a proximity-crowding weight across ALL twig types
+                    # combined, so overlap between different twig types (not
+                    # just within the same type) is penalized too.
+                    all_positions: list[tuple[float, float, float]] = []
+                    all_scales: list[float] = []
+                    type_of_global_idx: list[str] = []
+                    for twig_type, p_list in placements.items():
+                        for p in p_list:
+                            all_positions.append(p["position"])
+                            all_scales.append(p.get("scale", 1.0))
+                            type_of_global_idx.append(twig_type)
+
+                    positions_arr = _np.asarray(all_positions, dtype=_np.float64)
+                    scales_arr = _np.asarray(all_scales, dtype=_np.float64)
+
+                    tree = _cKDTree(positions_arr)
+                    # k=2: column 0 is self (distance 0), column 1 is the
+                    # nearest OTHER instance.
+                    nn_dist, nn_idx = tree.query(positions_arr, k=2)
+                    nearest_dist = nn_dist[:, 1]
+                    nearest_scale = scales_arr[nn_idx[:, 1]]
+
+                    # Comfortable-spacing ratio: distance to nearest neighbor
+                    # relative to both twigs' combined size. >1 = comfortably
+                    # spaced, <1 = likely overlapping -- weighted toward removal.
+                    combined_size = scales_arr + nearest_scale
+                    keep_weight = nearest_dist / _np.maximum(combined_size, 1e-6)
+                    keep_weight = _np.clip(keep_weight, 1e-3, None)
+
+                    # Group global weight indices back per twig type, in the
+                    # same order as placements[twig_type] so indices line up.
+                    per_type_indices: dict[str, list[int]] = {}
+                    for global_i, twig_type in enumerate(type_of_global_idx):
+                        per_type_indices.setdefault(twig_type, []).append(global_i)
+
                     ratio = max_inst / total_twigs
                     for twig_type in list(placements.keys()):
                         original = len(placements[twig_type])
                         keep = max(1, int(original * ratio))
-                        placements[twig_type] = _cap_rng.sample(
-                            placements[twig_type], keep
-                        )
+                        type_weights = keep_weight[per_type_indices[twig_type]]
+
+                        # Efraimidis-Spirakis weighted sampling without
+                        # replacement: keys = U^(1/weight), keep largest keys.
+                        u = _rng.random(len(type_weights))
+                        keys = u ** (1.0 / type_weights)
+                        order = _np.argsort(-keys)[:keep]
+                        placements[twig_type] = [
+                            placements[twig_type][i] for i in order
+                        ]
+
                     capped_total = sum(len(p) for p in placements.values())
                     logger.warning(
                         "Capped assembly instances from %d to %d "
-                        "(max_assembly_instances=%d)",
+                        "(max_assembly_instances=%d, proximity-weighted)",
                         total_twigs,
                         capped_total,
                         max_inst,
