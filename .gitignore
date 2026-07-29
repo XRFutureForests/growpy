@@ -41,7 +41,7 @@ venv/
 ENV/
 
 # IDE files
-.vscode/settings.json
+.vscode/
 .idea/
 *.swp
 *.swo
