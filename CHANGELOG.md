@@ -3,6 +3,19 @@
 All notable user-facing changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.1] - 2026-07-29
+
+### Removed
+
+- `.claude/`, `CLAUDE.md`, `AGENTS.md`, and `.github/copilot-instructions.md`
+  from `main` — dev-workflow tooling, not project documentation; they now
+  live on a `dev` branch instead.
+- A stale tracked `.coverage` report and personal `.vscode/` editor config
+  (which included an Unreal remote-python port and a Claude Code permission
+  flag) — both untracked, kept locally via `.gitignore`.
+- An orphaned `claude-code-skills` submodule gitlink with no matching
+  `.gitmodules` entry.
+
 ## [0.3.0] - 2026-07-27
 
 ### Added
