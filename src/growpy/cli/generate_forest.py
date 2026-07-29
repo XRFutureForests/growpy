@@ -5,6 +5,16 @@ Step 4 of the pipeline. Defaults from config/forest.toml, config/unreal.toml, co
 Argument parsing and dispatch only -- pipeline logic lives in
 `growpy.pipelines.forest_stages` and `growpy.pipelines.forest_exports`.
 See docs/cli-reference.md.
+
+Two ways to say what to build:
+
+* ``--species NAME`` -- dataset mode. The job rows (one per configured surround
+  radius) are derived from config: ``Max Height`` in tree_asset_lookup.csv and
+  ``[surround] radii``. No CSV is involved, so nothing can drift from config.
+* ``csv_file`` -- layout mode. A real spatial layout: x/y/z are positions, trees
+  of a species share a grove, and neighbours compete for light. This is the path
+  where growth-pacing calibration is meaningful ([calibration] enabled in
+  growth_models.toml, off by default).
 """
 
 import bpy
@@ -27,6 +37,49 @@ from growpy.pipelines.forest_stages import generate_forest_stages
 from growpy.utils.profiling import init_profiler
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_forest_data(args, config, project_root):
+    """Resolve the trees to build, from --species or from a CSV.
+
+    Two readings, one return type:
+
+    * ``--species NAME`` -- dataset mode. The job rows are derived entirely from
+      config (Max Height in tree_asset_lookup.csv, [surround] radii), so nothing
+      needs to be read from disk and nothing can drift from config.
+    * ``csv_file`` -- plot mode. A real spatial layout with meaningful
+      coordinates, supplied by the caller.
+
+    Returns None (after logging) when the input is unusable, so the caller can
+    exit non-zero.
+    """
+    import pandas as pd
+
+    if args.species:
+        from growpy.pipelines.dataset_csv_planner import build_job_matrix
+
+        try:
+            forest_data = build_job_matrix(args.species)
+        except (ValueError, KeyError) as e:
+            logger.error("Cannot build job rows for %s: %s", args.species, e)
+            return None
+        logger.info(
+            "Dataset mode: %s, %d job row(s) from config (radii %s)",
+            args.species,
+            len(forest_data),
+            ", ".join(f"{r:g}" for r in forest_data["surround_radius"]),
+        )
+        return forest_data
+
+    csv_path = config.csv_file
+    if not csv_path.is_absolute():
+        csv_path = project_root / csv_path
+    if not csv_path.exists():
+        logger.error("CSV file not found: %s", csv_path)
+        return None
+
+    logger.info("Layout mode: reading %s", csv_path)
+    return pd.read_csv(csv_path)
 
 
 def main():
@@ -92,6 +145,17 @@ Unreal Engine Integration:
         nargs="?",
         default=None,
         help="Path to CSV file with forest data (default: from config)",
+    )
+    parser.add_argument(
+        "--species",
+        type=str,
+        default=None,
+        metavar="NAME",
+        help=(
+            "Dataset mode: build this species' job rows from config "
+            "(tree_asset_lookup.csv Max Height + [surround] radii) instead of "
+            "reading a CSV. Mutually exclusive with the csv_file argument."
+        ),
     )
     parser.add_argument(
         "--output-dir",
@@ -308,12 +372,8 @@ Unreal Engine Integration:
     timer = init_profiler(enabled=config.profile)
 
     try:
-        csv_path = config.csv_file
-        if not csv_path.is_absolute():
-            csv_path = project_root / csv_path
-
-        if not csv_path.exists():
-            logger.error("CSV file not found: %s", csv_path)
+        forest_data = _resolve_forest_data(args, config, project_root)
+        if forest_data is None:
             return 1
 
         output_dir = config.output_dir
@@ -362,7 +422,7 @@ Unreal Engine Integration:
             if is_multistage:
                 # Multi-stage export mode: generate trees at height milestones
                 generate_forest_stages(
-                    csv_path,
+                    forest_data,
                     output_dir,
                     config,
                     config.forest_quality,
@@ -381,7 +441,7 @@ Unreal Engine Integration:
             else:
                 # Standard height-based export mode
                 generate_forest_exports(
-                    csv_path,
+                    forest_data,
                     output_dir,
                     config,
                     config.forest_quality,
@@ -410,7 +470,7 @@ Unreal Engine Integration:
                     simp_leaf = config.helios_simplification_leaf_per_species
                 export_forest_obj(
                     output_dir=output_dir,
-                    csv_path=csv_path,
+                    forest_data=forest_data,
                     generate_scene_xml=config.helios_helios_scene,
                     individual_obj=config.helios_individual_obj,
                     up_axis=config.helios_obj_up_axis,

@@ -41,8 +41,8 @@ script).
 `--generate-csvs`, `--ingest-yield-tables`, `--clean`, `--clean-store`,
 `--dry-run`, `--workers N`, `--max-height`.
 
-**Calls:** `pipelines.dataset_csv_planner.{generate_dataset_csvs,
-synchronize_dataset_csvs}`, `pipelines.dataset_job_planner.{resolve_species,
+**Calls:** `pipelines.dataset_csv_planner.generate_dataset_csvs`,
+`pipelines.dataset_job_planner.{resolve_species,
 list_all_species}`, `pipelines.step_runner.{check_environment, run_step123,
 run_species_step4, run_parallel_step4, generate_unreal_scripts}`,
 `io.usd.overview.generate_overview_markdown`.
@@ -52,7 +52,8 @@ run_species_step4, run_parallel_step4, generate_unreal_scripts}`,
 **Purpose:** Mirror Grove 2.3 source assets into `data/assets/` with
 standardised species names and directory layout.
 
-**Reads:** `src/the_grove_23/{presets,textures}/`, `tree_asset_lookup.csv`.
+**Reads:** `src/the_grove_23/{presets,textures}/`, `tree_asset_lookup.csv`
+(directly via `--dataset`, the default; or an explicit `--csv`).
 **Writes:** `data/assets/{presets,textures,twigs,pve_configs}/`.
 **Calls:** `utils.gbif_species`, `utils.naming`,
 `io.usd.texture_utils.{copy_and_resize_texture, ensure_power_of_2_textures,
@@ -64,7 +65,7 @@ process_twig_textures}`, `config.pve_species_overrides`, `config.paths`.
 `bpy` at module level — must run inside the conda env that bundles Blender.
 
 **Reads:** `data/assets/twigs/<twig>/source.blend`, species→twig map from
-`tree_asset_lookup.csv`.
+`tree_asset_lookup.csv` (via `--dataset`, the default; or an explicit `--csv`).
 **Writes:** `data/assets/twigs/<twig>/<species>_foliage_skeletal.usda`.
 **Calls:** `io.usd.twig_export.process_twig_file`, `io.usd.texture_utils`,
 `utils.pxr_init`, `utils.naming`.
@@ -74,8 +75,9 @@ process_twig_textures}`, `config.pve_species_overrides`, `config.paths`.
 **Purpose:** Run uncalibrated Grove growth, fit against yield tables, store
 calibration in `<species>.seed.json`.
 
-**Reads:** `data/assets/presets/`, yield tables (local CSV or `pylometree`
-store), `growth_models.toml [calibration]`.
+**Reads:** `data/assets/presets/`, species list from `tree_asset_lookup.csv`
+(via `--dataset`, the default; or `--species`/`--csv`), yield tables (local
+CSV or `pylometree` store), `growth_models.toml [calibration]`.
 **Writes:** `data/assets/growth_models/<species>.seed.json` with the
 `_yield_table_calibration` block, plus calibration plots.
 **Calls:** `core.grove.create_grove`, `utils.analysis.SpeciesGrowthAnalyzer`,
@@ -115,34 +117,43 @@ Pure orchestration. No `bpy` import in the dataset planning modules — only
 
 ### [`pipelines/dataset_csv_planner.py`](../../src/growpy/pipelines/dataset_csv_planner.py)
 
-**Purpose:** Build the per-species merged CSVs and the all-species CSV that
-feed steps 1–4.
+**Purpose:** Species selection and the config-driven dataset job matrix that
+feeds all four pipeline steps. Per-species merged CSVs and `all_species.csv`
+are an inspection dump only -- nothing in the pipeline reads them back.
 
 **Public:**
 
-- `generate_merged_csv(species_row, output_path, spacing) -> Path` — write a
-  merged CSV (open + competition columns) for a single species.
-- `generate_dataset_csvs(output_dir, density="full") -> list[Path]` — produce
-  per-species CSVs and `all_species.csv`. Returns the list of files written.
-- `synchronize_dataset_csvs(dataset_dir) -> None` — re-emit `all_species.csv`
-  from existing per-species CSVs (used after manual edits).
+- `build_job_matrix(species_name, twig_density=1.0) -> pd.DataFrame` -- one
+  row per configured surround radius, built entirely from config
+  (`tree_asset_lookup.csv` Max Height + `[surround].radii`). This is what
+  step 4 calls; no CSV file is involved.
+- `generate_merged_csv(species_name, max_height, twig_density=1.0) -> pd.DataFrame`
+  -- same rows as `build_job_matrix`, for writing to a `*_merged.csv` via
+  `--generate-csvs`.
+- `generate_dataset_csvs(output_dir, density="full") -> list[Path]` --
+  writes per-species merged CSVs and `all_species.csv` for inspection.
+- `_get_dataset_species() -> pd.DataFrame` -- species marked in
+  `tree_asset_lookup.csv`'s `Dataset` column; the single source of truth
+  every step resolves species from.
 
-**Calls:** `utils.naming`, `config.core`.
+**Calls:** `utils.naming`, `config.core`, `config.paths`.
 
 ### [`pipelines/dataset_job_planner.py`](../../src/growpy/pipelines/dataset_job_planner.py)
 
-**Purpose:** Resolve which species to run for a given CLI invocation, and
-discover the per-species CSV files on disk.
+**Purpose:** Resolve which species a given CLI invocation should run, from
+config -- not from files on disk.
 
 **Public:**
 
-- `find_species_csv(species_name, dataset_dir=DATASET_DIR) -> Path | None`
-- `list_all_species(dataset_dir=DATASET_DIR) -> list[str]`
+- `list_all_species(dataset_dir=DATASET_DIR) -> list[str]` -- standardized
+  names of every `Dataset`-marked species. The `dataset_dir` parameter is
+  unused; kept so existing callers need no change.
 - `display_names_from_stems(stems) -> list[str]`
-- `resolve_species(args, dataset_dir=DATASET_DIR) -> list[str]` — applies
-  `--all` / `--species` / `--pilot` selection logic.
+- `resolve_species(args, dataset_dir=DATASET_DIR) -> list[str]` -- applies
+  `--species` / `--pilot` / `--all` selection logic.
 
-**Constants:** `DATASET_DIR` — the project's canonical dataset CSV directory.
+**Constants:** `PILOT_SPECIES`, `DATASET_DIR` (default `--output-dir` for
+`--generate-csvs`).
 
 ### [`pipelines/step_runner.py`](../../src/growpy/pipelines/step_runner.py)
 
@@ -153,12 +164,17 @@ from step number to script. Runs step 4 in parallel via `ProcessPoolExecutor`.
 
 - `STEP_SCRIPTS: dict[int, Path]` — mapping `{1: prepare_assets.py, ...}`.
 - `check_environment() -> bool` — verifies `bpy` is importable.
-- `run_step123(step, csv_path, dry_run=False, extra_args=None) -> bool` —
-  sequential subprocess for one of steps 1–3.
-- `run_species_step4(species_name, dataset_dir, dry_run=False, max_height=0,
-  skip_unreal_scripts=False) -> bool` — single-species step-4 subprocess.
-- `run_parallel_step4(species_list, workers, max_height, dataset_dir) -> list`
-  — parallel pool. Returns list of failed species names.
+- `run_step123(step, csv_path=None, dataset_mode=False, dry_run=False,
+  extra_args=None) -> bool` — sequential subprocess for one of steps 1–3.
+  `dataset_mode=True` passes `--dataset` (config-driven, no CSV file crosses
+  the process boundary); otherwise `csv_path` is passed via `--csv`.
+- `run_species_step4(species_name, dry_run=False, max_height=0,
+  skip_unreal_scripts=False) -> bool` — single-species step-4 subprocess,
+  invoked with `--species NAME`; the child derives its own job rows from
+  config.
+- `run_parallel_step4(species_list, workers, max_height) -> tuple[list, dict]`
+  — parallel pool. Returns (failed species names, elapsed seconds per
+  species).
 - `generate_unreal_scripts(output_dir, include_static=False) -> None` —
   per-run Unreal import-script generator (called once after parallel step 4
   workers finish, to avoid race conditions).

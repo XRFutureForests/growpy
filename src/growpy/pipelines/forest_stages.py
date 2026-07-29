@@ -54,68 +54,91 @@ logger = logging.getLogger(__name__)
 
 
 def _load_species_max_heights(species_names: list[str]) -> dict[str, float]:
-    """Read each species' calibrated max-height ceiling (m) from its growth model.
+    """Resolve each species' milestone ceiling (m) from the authored lookup table.
 
-    Prefers the Chapman-Richards asymptote (``A``) in
-    ``data/assets/growth_models/<species>/growth_model_params.json``: it predicts
-    the height the live simulation can reach given enough cycles, independent of
-    how many cycles step 3's calibration pass was capped at. Falls back to
-    ``metadata.json``'s observed max_height (the calibration curve's literal
-    endpoint) for piecewise-linear models, missing params files, or when the
-    asymptote is pinned at ``fit_chapman_richards``'s own upper bound
-    (``5 * observed_max_height`` -- a sign the fit never saw growth decelerate
-    and just saturated its cap instead of estimating a real asymptote). This
-    bounds milestone capture so trees never exceed the height their growth
-    curve predicts; species without any readable model are omitted (no ceiling).
+    ``tree_asset_lookup.csv``'s ``Max Height`` column is the single source of
+    truth: it is what defines the dataset (see
+    ``dataset_csv_planner._get_dataset_species``) and therefore what the stage
+    count must follow.
+
+    This used to derive the ceiling from the simulated growth model instead,
+    which produced the wrong stage count for 10 of 11 dataset species. The
+    growth models are bounded by ``[growth_models] max_height`` (20 m), so their
+    Chapman-Richards asymptotes either pinned at the 5x guard and fell back to
+    the observed ~20 m -- truncating Douglas fir to 4 stages instead of 9 -- or,
+    where the fit did converge, ran away from the authored value entirely
+    (Scots pine: 55 m, i.e. 11 stages, for a species authored at 30 m).
+
+    Species missing from the lookup table are omitted, leaving them with no
+    ceiling (they run to plateau or the cycle cap).
     """
-    from growpy.config.paths import get_assets_directory
-    from growpy.utils.naming import standardize_species_name
+    from growpy.config.paths import _find_species_row
 
-    # fit_chapman_richards() bounds A to [1.01, 5.0] * observed_max_height.
-    # A fit pinned at (or essentially at) that upper bound didn't converge to
-    # a real asymptote -- treat it as unreliable.
-    UNRELIABLE_ASYMPTOTE_RATIO = 4.9
-
-    models_dir = get_assets_directory() / "growth_models"
     result: dict[str, float] = {}
     for species in species_names:
-        species_dir = models_dir / standardize_species_name(species)
+        try:
+            row = _find_species_row(species)
+        except ValueError:
+            logger.warning(
+                "No lookup entry for %s -- no height ceiling applied", species
+            )
+            continue
 
-        meta_file = species_dir / "metadata.json"
-        observed_max = 0.0
-        if meta_file.exists():
-            try:
-                with open(meta_file, encoding="utf-8") as f:
-                    meta = json.load(f)
-                mh = meta.get("max_height")
-                if mh:
-                    observed_max = float(mh)
-            except (OSError, json.JSONDecodeError):
-                pass
+        max_height = row.get("Max Height")
+        if max_height is None or pd.isna(max_height):
+            logger.warning(
+                "%s has no Max Height in tree_asset_lookup.csv -- "
+                "no height ceiling applied",
+                species,
+            )
+            continue
 
-        params_file = species_dir / "growth_model_params.json"
-        if params_file.exists():
-            try:
-                with open(params_file, encoding="utf-8") as f:
-                    params = json.load(f)
-            except (OSError, json.JSONDecodeError):
-                params = {}
-            if params.get("model_type") == "chapman_richards":
-                a = params.get("A")
-                if (
-                    a
-                    and float(a) > 0
-                    and (
-                        observed_max <= 0
-                        or float(a) < UNRELIABLE_ASYMPTOTE_RATIO * observed_max
-                    )
-                ):
-                    result[species] = float(a)
-                    continue
-
-        if observed_max > 0:
-            result[species] = observed_max
+        result[species] = float(max_height)
     return result
+
+
+def _warn_uncaptured_milestones(
+    milestone_map: dict,
+    species_max_height: dict[str, float],
+    interval: float,
+    max_cycles: int,
+) -> None:
+    """Warn when a species failed to capture every milestone up to its ceiling.
+
+    Falling short is silent otherwise -- the run simply exports fewer stages --
+    so a species that outgrows the cycle cap looks identical to one that was
+    never meant to go higher. Cycles needed is roughly ceiling / growth rate,
+    where the realized rate ranges about 0.23-0.55 m/cycle across the dataset
+    species, so a shortfall usually means ``[forest] growth_cycle_limit`` is
+    too low rather than anything being wrong with the species.
+    """
+    if not species_max_height:
+        return
+
+    captured: dict[str, set] = {}
+    for species_snapshots in milestone_map.values():
+        for species_name, tree_milestones in species_snapshots.items():
+            captured.setdefault(species_name, set()).update(tree_milestones.values())
+
+    for species, ceiling in sorted(species_max_height.items()):
+        expected = set()
+        m = interval
+        while m <= ceiling:
+            expected.add(m)
+            m += interval
+        missing = sorted(expected - captured.get(species, set()))
+        if missing:
+            logger.warning(
+                "%s reached only %.0fm of its %.0fm target: %d stage(s) missing "
+                "(%s). Raise [forest] growth_cycle_limit (currently %d) or lower "
+                "Max Height for this species.",
+                species,
+                max(captured.get(species, {0.0})),
+                ceiling,
+                len(missing),
+                ", ".join(f"{h:.0f}m" for h in missing),
+                max_cycles,
+            )
 
 
 def _write_species_info(
@@ -149,7 +172,7 @@ def _write_species_info(
 
 
 def generate_forest_stages(
-    csv_path: Path,
+    forest_data: pd.DataFrame,
     output_dir: Path,
     config: GrowPyConfig,
     quality: str = "high",
@@ -170,16 +193,19 @@ def generate_forest_stages(
     Exports multiple tree models at different heights from a single tree position,
     with height and DBH encoded in the filename for easy asset selection.
 
-    Height milestones (e.g., every 5m) are converted to growth cycles using
-    pre-trained growth models. Each species gets its own set of milestone
-    cycles, producing equal height spacing regardless of species growth rate.
+    Growth runs cycle by cycle and a stage is captured whenever a tree crosses
+    the next height milestone (e.g. every 5m). No growth model is consulted to
+    predict which cycle that will be, so how fast a species reaches a height
+    does not affect which stages are produced -- only how long it takes.
 
     CSV Format (requires height column):
         fid,species,x,y,z,height
         1,Norway spruce,0,0,0,35.0
 
     Args:
-        csv_path: Path to CSV file with forest data (requires: species, x, y, height)
+        forest_data: Trees to build (requires columns: species, x, y, height).
+            Either config-derived dataset job rows or a real spatial layout --
+            see growpy.cli.generate_forest._resolve_forest_data.
         output_dir: Directory to save export files
         config: GrowPy configuration
         quality: Quality preset name
@@ -194,12 +220,12 @@ def generate_forest_stages(
         skip_validation: If True, skip assembly validation
     """
     from growpy.config.preset_overrides import (
-        load_height_dbh_model_from_preset,
         load_target_dbh_from_preset,
         predict_dbh_from_height_model,
     )
     from growpy.io.usd.assembly_export import export_tree_as_nanite_assembly
     from growpy.io.usd.tree_export import get_twig_usd_map_for_species
+    from growpy.utils.allometry import correction_weight, get_height_dbh_model
     from growpy.utils.log import is_verbose
     from growpy.utils.profiling import ProfileTimer
 
@@ -219,38 +245,20 @@ def generate_forest_stages(
     if smooth_iterations is None:
         smooth_iterations = SMOOTH_ITERATIONS
 
-    if not csv_path.exists():
-        logger.error("CSV file not found: %s", csv_path)
+    # Validate the caller-supplied frame. Height is required: it is what the
+    # milestone ceiling is capped against.
+    required_columns = ["x", "y", "species", "height"]
+    missing_cols = [col for col in required_columns if col not in forest_data.columns]
+    if missing_cols:
+        logger.error("Missing required columns: %s", missing_cols)
+        logger.error("  Multi-stage mode requires height to bound milestones")
         return
 
-    # Load forest data
-    try:
-        with timer.track("load_csv"):
-            forest_data = pd.read_csv(csv_path)
-
-            # Check required columns - height is required for cycle calculation
-            required_columns = ["x", "y", "species", "height"]
-            missing_cols = [
-                col for col in required_columns if col not in forest_data.columns
-            ]
-            if missing_cols:
-                logger.error("Missing required columns: %s", missing_cols)
-                logger.error(
-                    "  Multi-stage mode requires height to calculate growth cycles"
-                )
-                return
-
-            # Ensure fid column exists
-            if "fid" not in forest_data.columns:
-                forest_data["fid"] = range(1, len(forest_data) + 1)
-
-            # Ensure z column exists
-            if "z" not in forest_data.columns:
-                forest_data["z"] = 0.0
-
-    except Exception as e:
-        logger.error("Error loading CSV: %s", e)
-        return
+    forest_data = forest_data.copy()
+    if "fid" not in forest_data.columns:
+        forest_data["fid"] = range(1, len(forest_data) + 1)
+    if "z" not in forest_data.columns:
+        forest_data["z"] = 0.0
 
     # Cap tree heights if max_height is configured
     if config.forest_max_height > 0:
@@ -314,9 +322,9 @@ def generate_forest_stages(
     for grove_obj, sp_name, _tc, _fids, *_r in forest:
         species_grove_map[sp_name] = grove_obj
 
-    # Per-species height ceiling from each species' calibrated growth model.
-    # Caps milestone capture so trees never exceed the height their growth curve
-    # predicts (and so the simulation stops once a species reaches its own max).
+    # Per-species height ceiling from the authored Max Height in the lookup
+    # table. Bounds milestone capture so a species stops once it reaches its
+    # own target height rather than running to the global cycle cap.
     species_max_height = _load_species_max_heights(
         list(forest_data["species"].unique())
     )
@@ -340,6 +348,12 @@ def generate_forest_stages(
             max_height=effective_max_height,
             species_max_height=species_max_height,
         )
+
+    # A species that never reaches its ceiling silently produces fewer stages,
+    # which is how the Douglas fir shortfall went unnoticed. Report it.
+    _warn_uncaptured_milestones(
+        milestone_map, species_max_height, effective_interval, global_max_cycles
+    )
 
     if not snapshots:
         logger.error("No snapshots captured during simulation")
@@ -450,14 +464,18 @@ def generate_forest_stages(
                 # the tree crossed. In legacy mode, use actual height.
                 height_for_filename = cycle_milestones.get(tree_idx, height)
                 height_str = format_height_for_filename(height_for_filename)
-                # Use yield table target DBH when available
-                # Prefer height-DBH model (allometric, height-driven) over age-indexed curve
+                # Target DBH comes from the species' height-DBH allometry, so it
+                # depends only on the height actually reached -- not on how many
+                # cycles that took, nor on any growth-pacing calibration.
                 grove_dbh = _dbh if _dbh else 0.0
                 filename_dbh = grove_dbh
                 target_dbh_m = None
                 if species_name not in h_dbh_model_cache:
-                    h_dbh_model_cache[species_name] = load_height_dbh_model_from_preset(
-                        config.get_preset_path(species_name)
+                    # Allometry artifact first (simulation-free, radius-invariant);
+                    # the seed.json calibration block is a fallback for presets
+                    # that have not been regenerated yet.
+                    h_dbh_model_cache[species_name] = get_height_dbh_model(
+                        species_name, config.get_preset_path(species_name)
                     )
                     if not h_dbh_model_cache[species_name]:
                         target_dbh_cache[species_name] = load_target_dbh_from_preset(
@@ -492,12 +510,22 @@ def generate_forest_stages(
                     logger.warning("Model triangulation failed for %s", species_name)
 
                 tree_radial_scale = 1.0
-                if config.calibration_align_dbh and target_dbh_m and grove_dbh > 0.001:
+                if (
+                    config.export_dbh_from_allometry
+                    and target_dbh_m
+                    and grove_dbh > 0.001
+                ):
                     tree_radial_scale = target_dbh_m / grove_dbh
                     if dbh_from_csv:
                         tree_radial_scale = max(0.1, min(tree_radial_scale, 5.0))
                     else:
                         tree_radial_scale = max(0.5, min(tree_radial_scale, 2.0))
+                        # Below the yield table's own height range the model is
+                        # extrapolating; fade the correction out and leave
+                        # Grove's pipe-model diameter alone for saplings.
+                        w = correction_weight(species_name, height)
+                        if w < 1.0:
+                            tree_radial_scale = 1.0 + (tree_radial_scale - 1.0) * w
 
                 # Use the actual DBH after clamped radial scaling for the filename,
                 # so the filename reflects what the exported mesh actually shows.

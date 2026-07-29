@@ -258,12 +258,12 @@ flowchart LR
 ```mermaid
 flowchart TB
     User[User] --> DP[cli/dataset_pipeline.py]
-    DP -->|--generate-csvs| CSVP[pipelines/dataset_csv_planner.py<br/>generate_dataset_csvs]
-    CSVP --> CSVs[/per-species merged CSVs<br/>+ all_species.csv/]
-    DP -->|--all / --species / --pilot| JP[pipelines/dataset_job_planner.py<br/>resolve_species + find_species_csv]
+    DP -->|--generate-csvs, inspection only| CSVP[pipelines/dataset_csv_planner.py<br/>generate_dataset_csvs]
+    CSVP --> CSVs[/per-species merged CSVs<br/>+ all_species.csv -- not read back/]
+    DP -->|--all / --species / --pilot| JP[pipelines/dataset_job_planner.py<br/>resolve_species + list_all_species]
     JP --> SR[pipelines/step_runner.py]
-    SR -->|"steps 1,2,3<br/>(all_species.csv)"| RUN123[run_step123<br/>subprocess]
-    SR -->|"step 4<br/>(per-species CSV)"| RUN4[run_parallel_step4<br/>ProcessPoolExecutor]
+    SR -->|"steps 1,2,3<br/>--dataset, config-driven"| RUN123[run_step123<br/>subprocess]
+    SR -->|"step 4<br/>--species NAME, config-driven"| RUN4[run_parallel_step4<br/>ProcessPoolExecutor]
     RUN123 --> Done1[Steps 1-3 complete]
     RUN4 --> Done4[Step 4 complete]
     Done4 --> OV[io/usd/overview.py<br/>generate_overview_markdown]

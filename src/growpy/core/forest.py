@@ -62,8 +62,8 @@ def create_forest(
     separate groves per (species, surround_radius).  This prevents the Grove
     engine's intra-grove shade from interfering between independent growth
     contexts (e.g. an open-grown tree at x=100 sharing a grove with a
-    surround tree at the origin), and lets each radius pick its own
-    radius-calibrated growth model (see config.get_preset_path).
+    surround tree at the origin).  All groves of a species share one preset --
+    the radius is applied by enable_surround() below, not by preset selection.
 
     Args:
         forest_data: DataFrame with columns: x, y, species, z (optional),
@@ -95,7 +95,7 @@ def create_forest(
     for group_key, species_data in forest_data.groupby(groupby_key, sort=False):
         species_name = str(group_key[0]) if has_radius_col else str(group_key)
         surround_radius = float(group_key[1]) if has_radius_col else 0.0
-        grove = create_grove(species_name, radius=surround_radius)
+        grove = create_grove(species_name)
 
         # Collect fids for this grove (use row index if fid column not present)
         fids = []
@@ -161,7 +161,7 @@ def _run_single_growth_cycle(
     groves: list[gc.Grove],
     cycle: int,
     total_cycles: int,
-    species_overrides: dict[tuple[str, float], PresetOverrides],
+    species_overrides: dict[str, PresetOverrides],
     preset_overrides: PresetOverrides | None,
     frozen_grove_indices: set | None = None,
 ) -> None:
@@ -173,12 +173,11 @@ def _run_single_growth_cycle(
     """
     frozen = frozen_grove_indices or set()
 
-    for grove_idx, (grove, species_name, _, _, radius) in enumerate(forest):
+    for grove_idx, (grove, species_name, _, _, _radius) in enumerate(forest):
         if grove_idx in frozen:
             continue
-        key = (species_name, radius)
-        if key in species_overrides:
-            species_overrides[key].apply_to_grove(grove, cycle, total_cycles)
+        if species_name in species_overrides:
+            species_overrides[species_name].apply_to_grove(grove, cycle, total_cycles)
         if preset_overrides and not preset_overrides.is_empty():
             preset_overrides.apply_to_grove(grove, cycle, total_cycles)
 
@@ -250,15 +249,17 @@ def simulate_forest_growth(
     """
     groves = [grove for grove, *_rest in forest]
 
-    # Load per-species overrides from their seed.json files. Keyed by
-    # (species_name, radius) since a species may have multiple groves at
-    # different surround radii, each with its own radius-specific calibration.
-    species_overrides: dict[tuple[str, float], PresetOverrides] = {}
+    # Load per-species overrides from their seed.json files. Keyed by species
+    # alone: surround is applied at simulation time, so every grove of a
+    # species shares one preset regardless of its competition variant.
+    species_overrides: dict[str, PresetOverrides] = {}
     if use_species_curves:
-        for grove, species_name, _, _, radius in forest:
-            species_ov = get_species_overrides(species_name, radius)
+        for _grove, species_name, _, _, _radius in forest:
+            if species_name in species_overrides:
+                continue
+            species_ov = get_species_overrides(species_name)
             if not species_ov.is_empty():
-                species_overrides[(species_name, radius)] = species_ov
+                species_overrides[species_name] = species_ov
 
     logger.info("PHASE 1: GROWTH SIMULATION (%d cycles)", cycles)
     if preset_overrides and not preset_overrides.is_empty():
@@ -267,18 +268,16 @@ def simulate_forest_growth(
             len(preset_overrides.static_overrides),
             len(preset_overrides.interpolated_overrides),
         )
-    for (sp, sp_radius), ov in species_overrides.items():
+    for sp, ov in species_overrides.items():
         logger.info(
-            "  %s (r=%.0f) curves: %d from seed.json",
+            "  %s curves: %d from seed.json",
             sp,
-            sp_radius,
             len(ov.interpolated_overrides),
         )
         if ov.cycle_array_overrides:
             logger.info(
-                "  %s (r=%.0f) cycle arrays: %d from seed.json (calibration)",
+                "  %s cycle arrays: %d from seed.json (calibration)",
                 sp,
-                sp_radius,
                 len(ov.cycle_array_overrides),
             )
 
@@ -352,15 +351,17 @@ def simulate_forest_growth_with_snapshots(
     if quality_params is None:
         quality_params = {"vertices": 16}
 
-    # Load per-species overrides from their seed.json files. Keyed by
-    # (species_name, radius) since a species may have multiple groves at
-    # different surround radii, each with its own radius-specific calibration.
-    species_overrides: dict[tuple[str, float], PresetOverrides] = {}
+    # Load per-species overrides from their seed.json files. Keyed by species
+    # alone: surround is applied at simulation time, so every grove of a
+    # species shares one preset regardless of its competition variant.
+    species_overrides: dict[str, PresetOverrides] = {}
     if use_species_curves:
-        for grove, species_name, _, _, radius in forest:
-            species_ov = get_species_overrides(species_name, radius)
+        for _grove, species_name, _, _, _radius in forest:
+            if species_name in species_overrides:
+                continue
+            species_ov = get_species_overrides(species_name)
             if not species_ov.is_empty():
-                species_overrides[(species_name, radius)] = species_ov
+                species_overrides[species_name] = species_ov
 
     use_height_mode = height_interval > 0
 
@@ -387,18 +388,16 @@ def simulate_forest_growth_with_snapshots(
             len(preset_overrides.static_overrides),
             len(preset_overrides.interpolated_overrides),
         )
-    for (sp, sp_radius), ov in species_overrides.items():
+    for sp, ov in species_overrides.items():
         logger.info(
-            "  %s (r=%.0f) curves: %d from seed.json",
+            "  %s curves: %d from seed.json",
             sp,
-            sp_radius,
             len(ov.interpolated_overrides),
         )
         if ov.cycle_array_overrides:
             logger.info(
-                "  %s (r=%.0f) cycle arrays: %d from seed.json (calibration)",
+                "  %s cycle arrays: %d from seed.json (calibration)",
                 sp,
-                sp_radius,
                 len(ov.cycle_array_overrides),
             )
 

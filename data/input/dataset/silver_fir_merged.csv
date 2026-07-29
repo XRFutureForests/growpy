@@ -1,4 +1,4 @@
 fid,species,x,y,z,height,twig_density,surround_radius
 1,Silver fir,0.0,0.0,0.0,35,1.0,0.0
-2,Silver fir,100.0,0.0,0.0,35,1.0,7.0
-3,Silver fir,200.0,0.0,0.0,35,1.0,15.0
+2,Silver fir,100.0,0.0,0.0,35,1.0,5.0
+3,Silver fir,200.0,0.0,0.0,35,1.0,10.0

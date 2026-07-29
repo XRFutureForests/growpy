@@ -63,9 +63,18 @@ class TestGrowPyConfigDefaults:
         config = GrowPyConfig()
         assert config.growth_models_cycles == 25
 
-    def test_default_calibration_enabled(self):
+    def test_calibration_off_by_default(self):
+        """Growth-pacing calibration is opt-in: it costs two Grove passes per
+        species and only matters for multi-tree co-growth, not for dataset
+        production, which grows trees to height milestones."""
         config = GrowPyConfig()
-        assert config.calibration_enabled is True
+        assert config.calibration_enabled is False
+
+    def test_dbh_from_allometry_on_by_default(self):
+        """DBH realisation is independent of calibration -- its input is the
+        allometry artifact, which needs no simulation."""
+        config = GrowPyConfig()
+        assert config.export_dbh_from_allometry is True
 
 
 class TestGrowPyConfigFromToml:

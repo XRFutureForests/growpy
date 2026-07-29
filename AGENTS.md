@@ -1,6 +1,6 @@
 # GrowPy
 
-Procedural forest generation pipeline: CSV species/position data → The Grove 2.3 growth simulation → USD Nanite assemblies for Unreal Engine 5.7+. Yield-table-calibrated multi-species light competition. Outputs USD assemblies, PVE JSON, OBJ for Helios++ LiDAR.
+Procedural tree/forest generation pipeline: CSV species data → The Grove 2.3 growth simulation → USD Nanite assemblies for Unreal Engine 5.7+. Trees grow to height milestones; stem diameter is realised at export from yield-table height-DBH allometry. Competition variants come from Grove's Surround shell. Outputs USD assemblies, PVE JSON, OBJ for Helios++ LiDAR.
 
 <!-- SCOPE: Canonical machine-facing entry point with repo map, critical rules, command overview, and links to detailed documentation ONLY. -->
 <!-- DOC_KIND: index -->
@@ -31,7 +31,7 @@ Procedural forest generation pipeline: CSV species/position data → The Grove 2
 | `src/growpy/io/unreal/` | PVE JSON, import scripts, wind |
 | `src/growpy/io/helios/` | OBJ export, Helios scene XML |
 | `src/growpy/config/` | TOML config, species overrides |
-| `src/growpy/utils/` | yield tables, analysis, logging, GBIF |
+| `src/growpy/utils/` | yield tables, allometry, analysis, logging, GBIF |
 | `src/growpy/tools/` | ue_exec, diagnostics |
 | `src/growpy/blender/` | grove_extract, twig_converter |
 
@@ -42,7 +42,8 @@ Procedural forest generation pipeline: CSV species/position data → The Grove 2
 | `growpy-init-config` | Initialise project TOML config |
 | `growpy-prepare-assets` | Prepare input assets |
 | `growpy-convert-twigs` | Convert twig meshes via Blender/Grove |
-| `growpy-create-models` | Create tree models |
+| `growpy-create-models` | Create tree models (growth simulation + yield-table pacing calibration) |
+| `growpy-build-allometry` | Fit height-DBH allometry from yield tables (no Grove simulation) |
 | `growpy-generate-forest` | Run full forest generation pipeline |
 | `growpy-dataset-pipeline` | Dataset CSV planning and execution |
 | `growpy-ue-exec` | Execute Unreal Engine import scripts |

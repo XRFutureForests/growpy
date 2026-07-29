@@ -1171,7 +1171,7 @@ CONIFER_KEYWORDS = [
 
 def export_forest_obj(
     output_dir: Path,
-    csv_path: Path,
+    forest_data: "pd.DataFrame",
     generate_scene_xml: bool = False,
     individual_obj: bool = False,
     up_axis: str = "y",
@@ -1191,7 +1191,8 @@ def export_forest_obj(
 
     Args:
         output_dir: Forest output directory containing species/tree_* subdirs.
-        csv_path: Input CSV with tree positions (x, y, z, fid columns).
+        forest_data: Tree positions (x, y, z, fid columns). For dataset job
+            rows the coordinates are cosmetic separation, not a real layout.
         generate_scene_xml: Generate Helios++ scene XML with tree positions.
         individual_obj: Also write individual per-tree OBJ files (default: False).
         up_axis: Coordinate up axis for OBJ output ("y" or "z").
@@ -1222,7 +1223,7 @@ def export_forest_obj(
 
     logger.info("HELIOS OBJ EXPORT (%d trees, streaming)", len(assembly_files))
 
-    forest_data = pd.read_csv(csv_path)
+    forest_data = forest_data.copy()
     if "fid" not in forest_data.columns:
         forest_data["fid"] = range(1, len(forest_data) + 1)
     if "z" not in forest_data.columns:

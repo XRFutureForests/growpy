@@ -102,7 +102,8 @@ You normally do not edit the merged CSVs by hand — see the next section.
 
 `--generate-csvs` reads `tree_asset_lookup.csv` and writes, per species, a
 `{species}_merged.csv` plus a combined `all_species.csv`, into
-`data/input/dataset/`:
+`data/input/dataset/`. These are an inspection dump only -- the pipeline
+builds the same rows from config directly (see §5) and never reads them back:
 
 | fid | role | position |
 |---|---|---|
@@ -132,11 +133,24 @@ the orchestrator):
 
 1. **prepare-assets** — copy Grove presets/textures/twigs into `data/assets/`
 2. **convert-twigs** — `.blend` -> `.usda` with alpha-trim densification
-3. **create-models** — simulate, (optionally) calibrate against yield tables, fit height-to-age
-4. **generate-forest** — per species, simulate with light competition and export Nanite assemblies
+3. **create-models** — simulate growth curves; growth-pacing calibration against
+   yield tables is opt-in (`[calibration] enabled`, off by default) and is only
+   needed for the CSV -> plot co-growth path
+4. **generate-forest** — per species, grow to height milestones and export Nanite
+   assemblies. Height-DBH allometry is rebuilt first (simulation-free, seconds)
+   and drives stem diameter at export
 
-`--steps` selects which run (default `4`; `all` = `1,2,3,4`). Steps 1-3 read
-`all_species.csv`; step 4 reads each `{species}_merged.csv`.
+`--steps` selects which run (default `4`; `all` = `1,2,3,4`). All four steps
+are config-driven by default: species selection comes from the `Dataset`
+column of `tree_asset_lookup.csv`, and no CSV file crosses the subprocess
+boundary. Steps 1-3 run with `--dataset`; step 4 runs per species with
+`--species NAME` and rebuilds that species' job rows (one per surround
+radius) from `tree_asset_lookup.csv` and `[surround] radii`.
+
+`--csv PATH` overrides steps 1-3 with an explicit species-lookup CSV instead.
+`--generate-csvs` still writes the per-species `*_merged.csv` files and
+`all_species.csv`, but only for inspection -- nothing in the pipeline reads
+them back.
 
 ```bash
 # full dataset from scratch (recommended single command)

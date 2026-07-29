@@ -10,8 +10,8 @@ from growpy.pipelines.dataset_csv_planner import (
     DENSITY_VARIANTS,
     OPEN_TREE_X,
     _get_dataset_species,
+    build_job_matrix,
     generate_merged_csv,
-    synchronize_dataset_csvs,
 )
 
 
@@ -112,51 +112,61 @@ class TestDensityVariants:
         assert DENSITY_VARIANTS["bare"] == 0.0
 
 
-class TestSynchronizeDatasetCsvs:
-    """Tests for CSV synchronization."""
+class TestBuildJobMatrix:
+    """The dataset job matrix is derived from config alone.
 
-    def test_no_op_when_no_all_species(self, tmp_path):
-        synchronize_dataset_csvs(tmp_path)
+    Nothing is read from disk and nothing needs regenerating, so the rows
+    cannot drift from config the way a CSV file could.
+    """
 
-    def test_no_op_when_missing_species_column(self, tmp_path):
-        all_csv = tmp_path / "all_species.csv"
-        pd.DataFrame({"fid": [1], "name": ["spruce"]}).to_csv(all_csv, index=False)
-        synchronize_dataset_csvs(tmp_path)
+    def _species_row(self, max_height=45):
+        return pd.Series({"Common Name": "Douglas fir", "Max Height": max_height})
 
-    def test_removes_orphan_merged_csv(self, tmp_path):
-        all_csv = tmp_path / "all_species.csv"
-        pd.DataFrame({"fid": [1], "species": ["Norway spruce"]}).to_csv(all_csv, index=False)
-        # Create matching merged CSV
-        (tmp_path / "norway_spruce_merged.csv").write_text("fid,species\n1,Norway spruce\n")
-        # Create orphan merged CSV (no matching entry in all_species)
-        (tmp_path / "silver_birch_merged.csv").write_text("fid,species\n1,Silver birch\n")
+    def _patched(self, max_height=45, radii=(0.0, 5.0, 10.0)):
+        return (
+            patch(
+                "growpy.config.paths._find_species_row",
+                return_value=self._species_row(max_height),
+            ),
+            _mock_radii(list(radii)),
+        )
 
-        synchronize_dataset_csvs(tmp_path)
-        assert not (tmp_path / "silver_birch_merged.csv").exists()
-        assert (tmp_path / "norway_spruce_merged.csv").exists()
+    def test_one_row_per_configured_radius(self):
+        find, radii = self._patched(radii=(0.0, 5.0, 10.0))
+        with find, radii:
+            df = build_job_matrix("Douglas fir")
+        assert len(df) == 3
+        assert sorted(df["surround_radius"]) == [0.0, 5.0, 10.0]
 
-    def test_removes_species_without_merged_csv(self, tmp_path):
-        all_csv = tmp_path / "all_species.csv"
-        pd.DataFrame({
-            "fid": [1, 2],
-            "species": ["Norway spruce", "European beech"],
-        }).to_csv(all_csv, index=False)
-        # Only create merged CSV for Norway spruce
-        (tmp_path / "norway_spruce_merged.csv").write_text("fid,species\n1,Norway spruce\n")
+    def test_height_comes_from_lookup_table(self):
+        find, radii = self._patched(max_height=45)
+        with find, radii:
+            df = build_job_matrix("Douglas fir")
+        assert (df["height"] == 45).all()
 
-        synchronize_dataset_csvs(tmp_path)
-        updated = pd.read_csv(all_csv)
-        assert len(updated) == 1
-        assert updated.iloc[0]["species"] == "Norway spruce"
+    def test_x_offsets_separate_the_variants(self):
+        find, radii = self._patched(radii=(0.0, 5.0, 10.0))
+        with find, radii:
+            df = build_job_matrix("Douglas fir")
+        assert df["x"].tolist() == [0.0, OPEN_TREE_X, 2 * OPEN_TREE_X]
+        assert (df["y"] == 0.0).all()
 
-    def test_no_changes_when_synchronized(self, tmp_path):
-        all_csv = tmp_path / "all_species.csv"
-        pd.DataFrame({"fid": [1], "species": ["Norway spruce"]}).to_csv(all_csv, index=False)
-        (tmp_path / "norway_spruce_merged.csv").write_text("fid,species\n1,Norway spruce\n")
+    def test_raises_without_max_height(self):
+        find = patch(
+            "growpy.config.paths._find_species_row",
+            return_value=pd.Series({"Common Name": "Mystery tree", "Max Height": None}),
+        )
+        with find, _mock_radii([0.0]), pytest.raises(ValueError, match="Max Height"):
+            build_job_matrix("Mystery tree")
 
-        synchronize_dataset_csvs(tmp_path)
-        updated = pd.read_csv(all_csv)
-        assert len(updated) == 1
+    def test_matches_generate_merged_csv(self):
+        """The in-memory matrix and the inspection CSV must not diverge."""
+        find, radii = self._patched(max_height=45, radii=(0.0, 5.0, 10.0))
+        with find, radii:
+            built = build_job_matrix("Douglas fir")
+        with _mock_radii([0.0, 5.0, 10.0]):
+            dumped = generate_merged_csv("Douglas fir", 45)
+        pd.testing.assert_frame_equal(built, dumped)
 
 
 class TestGetDatasetSpecies:

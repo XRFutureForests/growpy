@@ -34,23 +34,27 @@ timeout = 400
 # cap): that setting must NOT silently truncate calibration too.
 max_height = 20
 
-# --- Yield table calibration (integrated into create_growth_models.py) ---
+# --- Growth-pacing calibration (integrated into create_growth_models.py) ---
+# Aligns Grove's growth SPEED to a yield table's height-at-age curve. Costs two
+# Grove passes per species and only matters when several real trees are
+# co-simulated in one grove and their relative growth rates matter (the
+# CSV -> plot path).
+#
+# NOT needed for dataset production: trees there are grown to height milestones,
+# so how many cycles a species takes to reach a height does not change the
+# exported result -- only how long the run takes. Height-DBH realism comes from
+# the allometry artifact instead (growpy-build-allometry), which is fitted from
+# yield table columns alone and needs no simulation.
 [calibration]
-# When enabled, create_growth_models.py automatically calibrates against yield tables
-# after the initial simulation, then re-simulates with calibration applied.
-enabled = true
+enabled = false
 # Align grove height growth to yield table height curve.
-# Applies per-cycle grow_length multipliers from calibrated seed.json files during
-# simulation (step 4). Only affects overall growth speed, not branch shape.
-# When cycles exceed the calibration array length, the last value is held.
-# false = use original Grove grow_length values from seed.json (no height alignment)
+# Applies per-cycle grow_length multipliers from calibrated seed.json files
+# during simulation (step 4). Only has an effect when enabled = true above.
 align_height = true
-# Align grove trunk DBH to yield table DBH curve.
-# Applies radial scaling at export to match target DBH from calibrated seed.json files.
-# Scales trunk mesh perpendicular to bone axes at breast height (1.3m), blending
-# smoothly to 1.0 at the crown. Only affects trunk thickness, not branch shape.
-# false = export Grove geometry as-is (trunk may be thicker/thinner than yield table)
-align_dbh = true
+# DBH alignment moved to [export] dbh_from_allometry in forest.toml -- it is
+# independent of calibration, since its input is the allometry artifact rather
+# than a simulated curve. `align_dbh` here is still read as a deprecated alias.
+
 # Directory for local yield table CSVs.
 # Format: age,height,dbh (age in years, height in meters, dbh in centimeters)
 # File naming: <standardized_species_name>.csv (e.g., norway_spruce.csv)

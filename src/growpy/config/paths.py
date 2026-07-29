@@ -165,33 +165,25 @@ def get_assets_directory() -> Path:
     return get_data_directory() / "assets"
 
 
-def _radius_suffix(radius: float) -> str:
-    """Filename/dirname suffix for a surround radius ("" for the 0/baseline case)."""
-    return "" if not radius else f".r{radius:02g}"
-
-
 def radius_label(radius: float) -> str:
     """Zero-padded directory/asset label for a surround radius (e.g. r00, r07, r15).
 
-    Unlike _radius_suffix(), this always returns a label (including for the
-    0/open-grown case) since it's used for standalone folder/filename
-    components (e.g. ``european_oak/r00/``) rather than a filename suffix.
+    Used for standalone folder/filename components (e.g. ``european_oak/r00/``)
+    that separate the exported competition variants. Presets themselves are not
+    radius-specific: surround is applied at simulation time, so one preset
+    serves every variant of a species.
     """
     return f"r{radius:02g}"
 
 
-def get_preset_path(species: str, radius: float = 0.0) -> Path:
-    """Get preset file path for species, optionally for a specific surround radius.
+def get_preset_path(species: str) -> Path:
+    """Get preset file path for species.
 
     The preset files are stored with standardized names (e.g., european_beech.seed.json)
     rather than the original Grove names (e.g., Fagaceae - Beech.seed.json).
 
     Args:
         species: Species name
-        radius: Surround radius (meters). 0 = base/open-grown preset
-            (``<name>.seed.json``). >0 looks for a radius-specific calibrated
-            preset (``<name>.r{radius}.seed.json``) first, falling back to the
-            base preset when no radius-specific calibration exists yet.
 
     Returns:
         Path to preset file
@@ -207,15 +199,7 @@ def get_preset_path(species: str, radius: float = 0.0) -> Path:
         )
 
     presets_dir = get_assets_directory() / "presets"
-    preset_path = presets_dir / f"{standardized_name}{_radius_suffix(radius)}.seed.json"
-
-    if radius and not preset_path.exists():
-        logger.warning(
-            "No radius-specific preset for %s at radius=%s, falling back to base preset",
-            standardized_name,
-            radius,
-        )
-        preset_path = presets_dir / f"{standardized_name}.seed.json"
+    preset_path = presets_dir / f"{standardized_name}.seed.json"
 
     # Fallback: try original Grove preset name if standardized doesn't exist
     if not preset_path.exists():
@@ -229,18 +213,17 @@ def get_preset_path(species: str, radius: float = 0.0) -> Path:
     return preset_path
 
 
-def get_growth_model_path(species: str, radius: float = 0.0) -> Path:
-    """Get growth model directory for species, optionally for a specific surround radius.
+def get_growth_model_path(species: str) -> Path:
+    """Get growth model directory for species.
 
     The growth model directories are stored with standardized names (e.g., norway_spruce)
     matching the Standardized Name column in the lookup table.
 
+    Growth models are not radius-specific: surround is applied at simulation
+    time rather than baked into a separate calibrated model per radius.
+
     Args:
         species: Species name
-        radius: Surround radius (meters). 0 = base growth model directory.
-            >0 looks for a radius-specific subdirectory (``<name>/r{radius}/``)
-            first, falling back to the base directory when no radius-specific
-            growth model exists yet.
 
     Returns:
         Path to growth model directory
@@ -249,10 +232,6 @@ def get_growth_model_path(species: str, radius: float = 0.0) -> Path:
     models_dir = get_assets_directory() / "growth_models"
 
     def _resolve(base: Path) -> Path | None:
-        if radius:
-            radius_dir = base / radius_label(radius)
-            if radius_dir.exists():
-                return radius_dir
         return base if base.exists() else None
 
     # Use standardized name for directory lookup (growth_models use standardized names)

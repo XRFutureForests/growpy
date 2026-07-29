@@ -214,13 +214,15 @@ The dataset pipeline produces a systematic set of tree assets: 11 southern Germa
 
 ### Preparation
 
-Generate input CSVs from species metadata in `tree_asset_lookup.csv`:
-
+Species selection is config-driven, read directly from `tree_asset_lookup.csv`'s
+`Dataset` column -- no preparation step is required. Optionally dump the
+same rows to CSV for manual review:
 ```bash
-python src/growpy/cli/dataset_pipeline.py --generate-csvs             # Generate per-species CSVs
+python src/growpy/cli/dataset_pipeline.py --generate-csvs             # Optional -- for inspection only
 ```
 
-This produces `data/input/dataset/all_species.csv` (one row per species for steps 1-3) and `{species}_merged.csv` files (open-grown + competition layout per species).
+Writes `data/input/dataset/all_species.csv` and `{species}_merged.csv`
+files; nothing in the pipeline reads them back.
 
 ### Run pipeline for all species
 
@@ -228,10 +230,10 @@ This produces `data/input/dataset/all_species.csv` (one row per species for step
 # All steps in one command (recommended):
 python src/growpy/cli/dataset_pipeline.py --all --steps all --ingest-yield-tables
 
-# Or run individual steps:
-python src/growpy/cli/prepare_assets.py --csv data/input/dataset/all_species.csv
-python src/growpy/cli/convert_twigs.py --csv data/input/dataset/all_species.csv
-python src/growpy/cli/create_growth_models.py --csv data/input/dataset/all_species.csv --ingest-yield-tables
+# Or run individual steps (config-driven, no CSV needed):
+python src/growpy/cli/prepare_assets.py --dataset
+python src/growpy/cli/convert_twigs.py data/assets/twigs --dataset
+python src/growpy/cli/create_growth_models.py --dataset --ingest-yield-tables
 ```
 
 ### Configure the dataset run

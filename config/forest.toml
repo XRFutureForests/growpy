@@ -6,8 +6,11 @@
 # Quality preset name -- must match a [quality.<name>] section in quality.toml
 quality = "medium"
 # Maximum growth cycles per tree (1-250)
-# Trees exceeding this limit are capped (not scaled)
-growth_cycle_limit = 140
+# Trees exceeding this limit are capped (not scaled), silently losing their
+# upper height stages. Measured uncalibrated cycles-to-max-height: Douglas fir
+# 147 (45m), Norway spruce / silver fir 131 (35m), common ash 124 (30m); every
+# other dataset species is under 105. 160 clears the tallest with margin.
+growth_cycle_limit = 160
 # Number of grove.smooth() passes on branch angles (int, 0-20, 0 = disabled)
 # Each pass reduces sharp corner angles between branch segments.
 # Higher values = smoother, more organic branches; 10-20 for production.
@@ -17,7 +20,8 @@ smooth_iterations = 3
 include_grove_attributes = false
 # Multi-stage export: generate tree models at height intervals
 # Exports snapshots every N meters of height (e.g., 5 = 5m, 10m, 15m...)
-# Uses growth models to determine which cycle corresponds to each height milestone
+# Snapshots are captured when a tree actually crosses each milestone -- no
+# growth model predicts the cycle, so growth speed does not change the stages
 # Each snapshot includes height and DBH in the filename for easy asset selection
 # 0 = disabled (standard single height-based export)
 height_interval = 5
@@ -31,6 +35,14 @@ max_height = 0
 
 # --- Export options ---
 [export]
+# Scale exported stem meshes toward the DBH the species' height-DBH allometry
+# predicts for the height each tree actually reached. Independent of
+# [calibration] in growth_models.toml: the allometry artifact is fitted from
+# yield table columns alone (growpy-build-allometry, no Grove simulation), so
+# this stays useful with calibration off. Below the fitted height range the
+# correction fades out and Grove's own pipe-model diameter is kept.
+# Replaces the deprecated calibration.align_dbh / export.radial_scale keys.
+dbh_from_allometry = true
 # USD file format: "usda" (ASCII, human-readable) or "usdc" (binary, smaller/faster)
 # Binary USDC files are ~50% smaller on disk and faster for UE to parse,
 # significantly reducing memory pressure during import.

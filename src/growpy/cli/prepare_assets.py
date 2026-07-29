@@ -167,6 +167,12 @@ CSV Format Support:
         help="Copy ALL available Grove assets (uses comprehensive lookup table, ignores --csv)",
     )
     parser.add_argument(
+        "--dataset",
+        action="store_true",
+        help="Copy assets for species marked in tree_asset_lookup.csv's Dataset "
+        "column (config-driven, no CSV file needed). Takes precedence over --csv.",
+    )
+    parser.add_argument(
         "--resize-textures",
         action="store_true",
         default=None,
@@ -200,13 +206,6 @@ CSV Format Support:
     elif not grove_dir.is_absolute():
         grove_dir = project_root / grove_dir
 
-    # Resolve CSV path
-    csv_path = config.csv_file
-    if args.csv is not None:
-        csv_path = args.csv
-    elif not csv_path.is_absolute():
-        csv_path = project_root / csv_path
-
     resize_textures = config.resize_textures
 
     # Validate paths
@@ -214,22 +213,41 @@ CSV Format Support:
         logger.error("Grove directory not found: %s", grove_dir)
         return 1
 
-    # Override CSV if --all flag is set
-    if args.all:
-        from growpy.config.paths import _get_lookup_table_path
+    if args.dataset:
+        # Species marked in tree_asset_lookup.csv's Dataset column. Same
+        # DataFrame shape load_species_csv() produces for an asset-lookup CSV --
+        # Preset/Twig/Bark Texture/Common Name are already columns on that table --
+        # so no CSV file or GBIF resolution is needed.
+        from growpy.pipelines.dataset_csv_planner import _get_dataset_species
 
-        csv_path = _get_lookup_table_path()
+        try:
+            df = _get_dataset_species()
+        except Exception as e:
+            logger.error("Failed to resolve dataset species: %s", e)
+            return 1
+    else:
+        # Resolve CSV path
+        csv_path = config.csv_file
+        if args.csv is not None:
+            csv_path = args.csv
+        elif not csv_path.is_absolute():
+            csv_path = project_root / csv_path
 
-    if not csv_path.exists():
-        logger.error("CSV file not found: %s", csv_path)
-        return 1
+        # Override CSV if --all flag is set
+        if args.all:
+            from growpy.config.paths import _get_lookup_table_path
 
-    # Load species CSV
-    try:
-        df = load_species_csv(csv_path)
-    except Exception as e:
-        logger.error("Failed to load species CSV: %s", e)
-        return 1
+            csv_path = _get_lookup_table_path()
+
+        if not csv_path.exists():
+            logger.error("CSV file not found: %s", csv_path)
+            return 1
+
+        try:
+            df = load_species_csv(csv_path)
+        except Exception as e:
+            logger.error("Failed to load species CSV: %s", e)
+            return 1
 
     # Hardcode assets directory
     assets_dir = default_assets

@@ -259,14 +259,16 @@ specification and [../dataset/dataset-overview.md](../dataset/dataset-overview.m
 
 Full dataset production pipeline. Orchestrates all four steps across dataset species:
 step 1 (prepare assets), step 2 (convert twigs), step 3 (create growth models),
-step 4 (generate forest). Each step is invoked as a subprocess. Steps 1-3 use
-`all_species.csv`; step 4 runs one subprocess per species using per-species merged CSVs.
+step 4 (generate forest). Each step is invoked as a subprocess. All four steps
+are config-driven by default: species selection comes from `tree_asset_lookup.csv`'s
+`Dataset` column, and no CSV file crosses the subprocess boundary.
 
-**CSV Generation:**
+**CSV Generation (optional, inspection only):**
 
-Must be run once before step 4. Reads `tree_asset_lookup.csv` metadata and writes
-per-species merged CSVs (open-grown + surround, one tree each) plus
-`all_species.csv` (one row per species, used by steps 1-3).
+Not required for production -- every step already resolves species from
+`tree_asset_lookup.csv` directly. `--generate-csvs` writes the same rows to
+per-species merged CSVs plus `all_species.csv` for manual review; nothing in
+the pipeline reads them back.
 
 ```bash
 # Generate all CSV templates with full twig density
@@ -279,12 +281,12 @@ python src/growpy/cli/dataset_pipeline.py --generate-csvs --density reduced
 python src/growpy/cli/dataset_pipeline.py --generate-csvs --output-dir data/input/my_dataset
 ```
 
-**Dataset CSV Output:**
+**Dataset CSV Output (inspection only):**
 
 | File | Contents |
 |---|---|
 | `data/input/dataset/{species}_merged.csv` | Open tree (fid=1) + surround tree (fid=2) |
-| `data/input/dataset/all_species.csv` | One row per species (for steps 1-3) |
+| `data/input/dataset/all_species.csv` | One row per species |
 
 **Forest Production:**
 
@@ -328,10 +330,10 @@ python src/growpy/cli/dataset_pipeline.py --list
 | `--output-dir PATH` | Output directory for CSVs (default: `data/input/dataset`) |
 | `--density {full,reduced,bare}` | Twig density variant for CSV generation (default: full) |
 | `--steps STEPS` | Steps to run: comma-separated (1,2,3,4) or `all` (default: 4) |
-| `--csv PATH` | Override all_species.csv path for steps 1-3 |
+| `--csv PATH` | Run steps 1-3 from this species-lookup CSV instead of the config-driven default |
 | `--species TEXT` | Single species by common name (e.g. "European Beech") |
 | `--pilot` | Pilot species only (European Beech, Norway Spruce) |
-| `--all` | All species with merged CSV files in dataset directory |
+| `--all` | All species marked in `tree_asset_lookup.csv`'s `Dataset` column |
 | `--list` | List available species and exit |
 | `--dry-run` | Print commands without executing |
 | `--max-height FLOAT` | Cap tree heights for step 4 (for faster testing) |

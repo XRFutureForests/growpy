@@ -7,7 +7,6 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from growpy.config import get_config
 from growpy.pipelines.dataset_csv_planner import (
     DENSITY_VARIANTS,
     OPEN_TREE_X,
@@ -17,7 +16,6 @@ from growpy.pipelines.dataset_csv_planner import (
 from growpy.pipelines.dataset_job_planner import (
     PILOT_SPECIES,
     display_names_from_stems,
-    find_species_csv,
     list_all_species,
     resolve_species,
 )
@@ -150,33 +148,16 @@ class TestGenerateDatasetCsvs:
 
 
 class TestListAllSpecies:
-    def test_returns_stems_without_merged(self, tmp_path):
-        (tmp_path / "european_beech_merged.csv").write_text("fid\n1\n")
-        (tmp_path / "norway_spruce_merged.csv").write_text("fid\n1\n")
-        result = list_all_species(tmp_path)
+    """Membership comes from config, not from files on disk."""
+
+    def test_lists_species_marked_in_lookup_table(self):
+        result = list_all_species()
         assert "european_beech" in result
         assert "norway_spruce" in result
 
-    def test_empty_directory(self, tmp_path):
-        assert list_all_species(tmp_path) == []
-
-    def test_ignores_non_merged_csvs(self, tmp_path):
-        (tmp_path / "all_species.csv").write_text("fid\n1\n")
-        (tmp_path / "european_beech_merged.csv").write_text("fid\n1\n")
-        result = list_all_species(tmp_path)
-        assert result == ["european_beech"]
-
-
-class TestFindSpeciesCsv:
-    def test_finds_existing_csv(self, tmp_path):
-        csv = tmp_path / "european_beech_merged.csv"
-        csv.write_text("fid\n1\n")
-        result = find_species_csv("European Beech", tmp_path)
-        assert result == csv
-
-    def test_returns_none_if_missing(self, tmp_path):
-        result = find_species_csv("European Beech", tmp_path)
-        assert result is None
+    def test_files_on_disk_do_not_change_membership(self, tmp_path):
+        (tmp_path / "wild_cherry_merged.csv").write_text("fid\n1\n")
+        assert list_all_species(tmp_path) == list_all_species()
 
 
 class TestDisplayNamesFromStems:
@@ -199,11 +180,9 @@ class TestResolveSpecies:
         args = self._args(pilot=True)
         assert resolve_species(args) == list(PILOT_SPECIES)
 
-    def test_all_flag(self, tmp_path):
-        (tmp_path / "european_beech_merged.csv").write_text("fid\n1\n")
-        args = self._args(all=True)
-        result = resolve_species(args, tmp_path)
-        assert "European Beech" in result
+    def test_all_flag(self):
+        args = self._args(all=True)
+        assert "European beech" in resolve_species(args)
 
     def test_no_selection_returns_empty(self):
         args = self._args()
@@ -224,27 +203,25 @@ class TestStepScripts:
 
 
 class TestBuildStep4Command:
-    def test_includes_csv_path(self):
-        csv = Path("data/input/dataset/european_beech_merged.csv")
-        cmd = _build_step4_command(csv)
-        assert str(csv) in cmd
+    """Only what the child cannot derive crosses the process boundary."""
 
-    def test_includes_export_trees_flag(self):
-        cmd = _build_step4_command(Path("some.csv"))
-        assert "--export-trees" in cmd
-        # One fid per configured surround radius (merged CSVs have one row
-        # per radius) -- must not be hardcoded to fewer than that.
-        num_radii = len(get_config().surround_radii)
-        expected = ",".join(str(i) for i in range(1, num_radii + 1))
-        assert expected in cmd
+    def test_passes_species_not_a_csv(self):
+        cmd = _build_step4_command("European Beech")
+        assert "--species" in cmd
+        assert cmd[cmd.index("--species") + 1] == "European Beech"
+        assert not any(str(c).endswith(".csv") for c in cmd)
+
+    def test_no_export_trees_filter(self):
+        # The child builds every job row for the species itself.
+        assert "--export-trees" not in _build_step4_command("European Beech")
 
     def test_max_height_included_when_nonzero(self):
-        cmd = _build_step4_command(Path("some.csv"), max_height=15.0)
+        cmd = _build_step4_command("European Beech", max_height=15.0)
         assert "--max-height" in cmd
         assert "15.0" in cmd
 
     def test_max_height_excluded_when_zero(self):
-        cmd = _build_step4_command(Path("some.csv"), max_height=0)
+        cmd = _build_step4_command("European Beech", max_height=0)
         assert "--max-height" not in cmd
 
 
@@ -269,34 +246,41 @@ class TestRunStep123:
             result = run_step123(2, Path("all_species.csv"))
         assert result is False
 
+    def test_dataset_mode_passes_no_csv(self):
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        with patch(
+            "growpy.pipelines.step_runner.subprocess.run", return_value=mock_result
+        ) as mock_run:
+            run_step123(1, dataset_mode=True)
+        cmd = mock_run.call_args[0][0]
+        assert "--dataset" in cmd
+        assert "--csv" not in cmd
+
 
 class TestRunSpeciesStep4:
-    def test_dry_run_returns_true_without_subprocess(self, tmp_path):
-        csv = tmp_path / "european_beech_merged.csv"
-        csv.write_text("fid\n1\n")
+    """No CSV needs to exist -- the child derives its rows from config."""
+
+    def test_dry_run_returns_true_without_subprocess(self):
         with patch("growpy.pipelines.step_runner.subprocess.run") as mock_run:
-            result = run_species_step4("European Beech", tmp_path, dry_run=True)
+            result = run_species_step4("European Beech", dry_run=True)
         assert result is True
         mock_run.assert_not_called()
 
-    def test_returns_false_when_csv_missing(self, tmp_path):
-        result = run_species_step4("European Beech", tmp_path)
-        assert result is False
-
-    def test_returns_true_on_subprocess_success(self, tmp_path):
-        csv = tmp_path / "european_beech_merged.csv"
-        csv.write_text("fid\n1\n")
+    def test_returns_true_on_subprocess_success(self):
         mock_result = MagicMock()
         mock_result.returncode = 0
-        with patch("growpy.pipelines.step_runner.subprocess.run", return_value=mock_result):
-            result = run_species_step4("European Beech", tmp_path)
+        with patch(
+            "growpy.pipelines.step_runner.subprocess.run", return_value=mock_result
+        ):
+            result = run_species_step4("European Beech")
         assert result is True
 
-    def test_returns_false_on_subprocess_failure(self, tmp_path):
-        csv = tmp_path / "european_beech_merged.csv"
-        csv.write_text("fid\n1\n")
+    def test_returns_false_on_subprocess_failure(self):
         mock_result = MagicMock()
         mock_result.returncode = 1
-        with patch("growpy.pipelines.step_runner.subprocess.run", return_value=mock_result):
-            result = run_species_step4("European Beech", tmp_path)
+        with patch(
+            "growpy.pipelines.step_runner.subprocess.run", return_value=mock_result
+        ):
+            result = run_species_step4("European Beech")
         assert result is False

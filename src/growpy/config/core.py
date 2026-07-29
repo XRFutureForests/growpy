@@ -221,10 +221,16 @@ class GrowPyConfig:
     helios_simplification_ratios: dict = field(default_factory=dict)
     helios_simplification_leaf_per_species: dict = field(default_factory=dict)
 
-    # [calibration]
-    calibration_enabled: bool = True
+    # [calibration] -- growth-pacing calibration against yield tables.
+    # Off by default: it costs two Grove passes per species and only matters
+    # when several real trees are co-simulated in one grove (the CSV -> plot
+    # path). Dataset production grows trees to height milestones, where pacing
+    # does not affect the result.
+    calibration_enabled: bool = False
     calibration_align_height: bool = True
-    calibration_align_dbh: bool = True
+    # DBH realisation at export. Independent of calibration: its input is the
+    # height-DBH allometry artifact, which needs no simulation.
+    export_dbh_from_allometry: bool = True
     calibration_plot: bool = True
     calibration_yield_tables_dir: Path = field(
         default_factory=lambda: Path("data/input/yield_tables")
@@ -343,9 +349,9 @@ class GrowPyConfig:
             )
         if "skip_validation" in export:
             kwargs["export_skip_validation"] = export["skip_validation"]
-        # Backward compat: export.radial_scale -> calibration_align_dbh
+        # Deprecated alias: export.radial_scale -> export_dbh_from_allometry
         if "radial_scale" in export:
-            kwargs["calibration_align_dbh"] = export["radial_scale"]
+            kwargs["export_dbh_from_allometry"] = export["radial_scale"]
         if "twig_density" in export:
             kwargs["export_twig_density"] = float(export["twig_density"])
         if "twig_density_conifer" in export:
@@ -424,13 +430,13 @@ class GrowPyConfig:
             kwargs["calibration_enabled"] = cal["enabled"]
         if "align_height" in cal:
             kwargs["calibration_align_height"] = cal["align_height"]
-        if "align_dbh" in cal:
-            kwargs["calibration_align_dbh"] = cal["align_dbh"]
         if "plot" in cal:
             kwargs["calibration_plot"] = cal["plot"]
         if "yield_tables_dir" in cal:
             kwargs["calibration_yield_tables_dir"] = Path(cal["yield_tables_dir"])
-        # [calibration.species."Species Name"] -> {site_index, flushes_per_year, ...}
+        if "align_dbh" in cal:
+            # Deprecated alias: DBH realisation no longer belongs to calibration.
+            kwargs["export_dbh_from_allometry"] = cal["align_dbh"]
         cal_species = cal.get("species", {})
         if cal_species:
             kwargs["calibration_species"] = {
@@ -623,17 +629,17 @@ class GrowPyConfig:
         return self.export_twig_density_conifer
 
     # Delegator methods to module-level functions
-    def get_preset_path(self, species: str, radius: float = 0.0) -> Path:
-        """Get preset path for species, optionally for a specific surround radius."""
+    def get_preset_path(self, species: str) -> Path:
+        """Get preset path for species."""
         from .paths import get_preset_path
 
-        return get_preset_path(species, radius)
+        return get_preset_path(species)
 
-    def get_growth_model_path(self, species: str, radius: float = 0.0) -> Path:
-        """Get growth model path for species, optionally for a specific surround radius."""
+    def get_growth_model_path(self, species: str) -> Path:
+        """Get growth model path for species."""
         from .paths import get_growth_model_path
 
-        return get_growth_model_path(species, radius)
+        return get_growth_model_path(species)
 
     @staticmethod
     def get_twig_files_by_type(species: str):

@@ -63,11 +63,11 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     from .. import get_config
     from ..config.paths import radius_label
     from ..config.preset_overrides import (
-        load_height_dbh_model_from_preset,
         load_target_dbh_from_preset,
         predict_dbh_from_height_model,
     )
     from ..core.tree import calculate_dbh_at_height, calculate_tree_height
+    from ..utils.allometry import correction_weight, get_height_dbh_model
     from ..utils.export_naming import (
         format_dbh_for_filename,
         format_density_for_filename,
@@ -209,9 +209,11 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         built_cutoffs[cutoff_key] = grove.build_models(variant_opts)
                 variant_model_sets[vname] = built_cutoffs[cutoff_key]
 
-        # Load height-DBH model for post-hoc radial scaling (preferred: height-driven)
-        # Falls back to age-indexed target_dbh_curve if model not available
-        h_dbh_model = load_height_dbh_model_from_preset(config.get_preset_path(species))
+        # Height-DBH allometry drives post-hoc radial scaling: it depends only on
+        # the height reached, so it needs no growth-pacing calibration.  Resolved
+        # from the allometry artifact first, then the seed.json calibration block
+        # for presets that have not been regenerated yet.
+        h_dbh_model = get_height_dbh_model(species, config.get_preset_path(species))
         target_dbh_curve = (
             load_target_dbh_from_preset(config.get_preset_path(species))
             if not h_dbh_model
@@ -282,12 +284,22 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 )
 
             tree_radial_scale = 1.0
-            if config.calibration_align_dbh and target_dbh_m and grove_dbh_m > 0.001:
+            if (
+                config.export_dbh_from_allometry
+                and target_dbh_m
+                and grove_dbh_m > 0.001
+            ):
                 tree_radial_scale = target_dbh_m / grove_dbh_m
                 if dbh_from_csv:
                     tree_radial_scale = max(0.1, min(tree_radial_scale, 5.0))
                 else:
                     tree_radial_scale = max(0.5, min(tree_radial_scale, 2.0))
+                    # Below the yield table's own height range the model is
+                    # extrapolating; fade the correction out and leave Grove's
+                    # pipe-model diameter alone for saplings.
+                    w = correction_weight(species, tree_height_m)
+                    if w < 1.0:
+                        tree_radial_scale = 1.0 + (tree_radial_scale - 1.0) * w
 
             # Use the actual DBH after clamped radial scaling for the filename,
             # so the filename reflects what the exported mesh actually shows.

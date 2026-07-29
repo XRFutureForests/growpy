@@ -160,7 +160,12 @@ class TestEnableSurround:
 
 
 class TestCreateForestSurroundRadius:
-    """Tests for create_forest's per-row surround_radius dispatch."""
+    """Tests for create_forest's per-row surround_radius dispatch.
+
+    Surround is a pure runtime parameter: the radius must reach
+    enable_surround() and never create_grove(), since a species has one preset
+    regardless of which competition variant is being grown.
+    """
 
     def _run(self, rows):
         df = pd.DataFrame(rows)
@@ -178,23 +183,31 @@ class TestCreateForestSurroundRadius:
         mock_create, mock_enable = self._run(
             [{"fid": 1, "species": "spruce", "x": 0.0, "y": 0.0, "surround_radius": 0.0}]
         )
-        mock_create.assert_called_once_with("spruce", radius=0.0)
+        mock_create.assert_called_once_with("spruce")
         mock_enable.assert_not_called()
 
     def test_nonzero_radius_enables_surround(self):
         mock_create, mock_enable = self._run(
             [{"fid": 1, "species": "spruce", "x": 0.0, "y": 0.0, "surround_radius": 7.0}]
         )
-        mock_create.assert_called_once_with("spruce", radius=7.0)
+        mock_create.assert_called_once_with("spruce")
         mock_enable.assert_called_once()
         _, kwargs = mock_enable.call_args
         assert kwargs["distance"] == 7.0
+
+    def test_radius_never_reaches_create_grove(self):
+        """Preset selection must not depend on the competition variant."""
+        mock_create, _ = self._run(
+            [{"fid": 1, "species": "spruce", "x": 0.0, "y": 0.0, "surround_radius": 7.0}]
+        )
+        _, kwargs = mock_create.call_args
+        assert "radius" not in kwargs
 
     def test_missing_column_defaults_to_open_grown(self):
         mock_create, mock_enable = self._run(
             [{"fid": 1, "species": "spruce", "x": 0.0, "y": 0.0}]
         )
-        mock_create.assert_called_once_with("spruce", radius=0.0)
+        mock_create.assert_called_once_with("spruce")
         mock_enable.assert_not_called()
 
     def test_multi_tree_group_skips_surround_even_if_nonzero(self):
@@ -206,5 +219,5 @@ class TestCreateForestSurroundRadius:
                 {"fid": 2, "species": "spruce", "x": 1.0, "y": 0.0, "surround_radius": 7.0},
             ]
         )
-        mock_create.assert_called_once_with("spruce", radius=7.0)
+        mock_create.assert_called_once_with("spruce")
         mock_enable.assert_not_called()

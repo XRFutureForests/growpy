@@ -1,65 +1,67 @@
-"""Tests for growpy.pipelines.dataset_job_planner."""
+"""Tests for growpy.pipelines.dataset_job_planner.
+
+Species selection is a config question, not a filesystem one: it comes from the
+``Dataset`` column of tree_asset_lookup.csv. The old behaviour globbed
+``*_merged.csv``, which made a file's presence a second, hidden species switch
+that could silently disagree with config.
+"""
 
 import types
+from unittest.mock import patch
+
+import pandas as pd
 
 from growpy.pipelines.dataset_job_planner import (
     PILOT_SPECIES,
     display_names_from_stems,
-    find_species_csv,
     list_all_species,
     resolve_species,
 )
 
+DATASET_ROWS = pd.DataFrame(
+    {
+        "Common Name": ["Norway spruce", "European beech", "Silver birch"],
+        "Max Height": [35, 30, 30],
+    }
+)
 
-class TestFindSpeciesCsv:
-    """Tests for merged CSV file discovery."""
 
-    def test_finds_existing_merged_csv(self, tmp_path):
-        merged = tmp_path / "norway_spruce_merged.csv"
-        merged.write_text("fid,species\n1,Norway spruce\n")
-        result = find_species_csv("Norway Spruce", tmp_path)
-        assert result == merged
-
-    def test_returns_none_when_missing(self, tmp_path):
-        result = find_species_csv("Nonexistent Tree", tmp_path)
-        assert result is None
-
-    def test_standardizes_name(self, tmp_path):
-        merged = tmp_path / "european_beech_merged.csv"
-        merged.write_text("fid,species\n1,European beech\n")
-        result = find_species_csv("European Beech", tmp_path)
-        assert result == merged
+def _patch_dataset(rows=DATASET_ROWS):
+    return patch(
+        "growpy.pipelines.dataset_csv_planner._get_dataset_species",
+        return_value=rows,
+    )
 
 
 class TestListAllSpecies:
-    """Tests for listing available species."""
+    def test_lists_config_marked_species(self):
+        with _patch_dataset():
+            assert list_all_species() == [
+                "european_beech",
+                "norway_spruce",
+                "silver_birch",
+            ]
 
-    def test_empty_directory(self, tmp_path):
-        assert list_all_species(tmp_path) == []
+    def test_ignores_files_on_disk(self, tmp_path):
+        """A stray merged CSV must not add a species, and its absence must not
+        remove one."""
+        (tmp_path / "wild_cherry_merged.csv").write_text("")
+        with _patch_dataset():
+            result = list_all_species(tmp_path)
+        assert "wild_cherry" not in result
+        assert "norway_spruce" in result
 
-    def test_finds_merged_csvs(self, tmp_path):
-        (tmp_path / "norway_spruce_merged.csv").write_text("")
-        (tmp_path / "european_beech_merged.csv").write_text("")
-        result = list_all_species(tmp_path)
-        assert sorted(result) == ["european_beech", "norway_spruce"]
+    def test_empty_dataset_gives_empty_list(self):
+        empty = pd.DataFrame({"Common Name": [], "Max Height": []})
+        with _patch_dataset(empty):
+            assert list_all_species() == []
 
-    def test_ignores_non_merged_csvs(self, tmp_path):
-        (tmp_path / "all_species.csv").write_text("")
-        (tmp_path / "norway_spruce_merged.csv").write_text("")
-        result = list_all_species(tmp_path)
-        assert result == ["norway_spruce"]
-
-    def test_returns_sorted(self, tmp_path):
-        (tmp_path / "silver_birch_merged.csv").write_text("")
-        (tmp_path / "european_beech_merged.csv").write_text("")
-        (tmp_path / "norway_spruce_merged.csv").write_text("")
-        result = list_all_species(tmp_path)
-        assert result == ["european_beech", "norway_spruce", "silver_birch"]
+    def test_returns_sorted(self):
+        with _patch_dataset():
+            assert list_all_species() == sorted(list_all_species())
 
 
 class TestDisplayNamesFromStems:
-    """Tests for stem-to-display-name conversion."""
-
     def test_single_word(self):
         assert display_names_from_stems(["beech"]) == ["Beech"]
 
@@ -75,41 +77,48 @@ class TestDisplayNamesFromStems:
 
 
 class TestResolveSpecies:
-    """Tests for CLI argument species resolution."""
-
     def _make_args(self, **kwargs):
         args = types.SimpleNamespace(species=None, pilot=False, all=False)
         for k, v in kwargs.items():
             setattr(args, k, v)
         return args
 
-    def test_single_species(self, tmp_path):
+    def test_single_species(self):
         args = self._make_args(species="European Beech")
-        result = resolve_species(args, tmp_path)
-        assert result == ["European Beech"]
+        assert resolve_species(args) == ["European Beech"]
 
-    def test_pilot_species(self, tmp_path):
+    def test_pilot_species(self):
         args = self._make_args(pilot=True)
-        result = resolve_species(args, tmp_path)
-        assert result == list(PILOT_SPECIES)
+        assert resolve_species(args) == list(PILOT_SPECIES)
 
-    def test_all_species(self, tmp_path):
-        (tmp_path / "norway_spruce_merged.csv").write_text("")
-        (tmp_path / "european_beech_merged.csv").write_text("")
+    def test_all_species_comes_from_config(self):
         args = self._make_args(all=True)
-        result = resolve_species(args, tmp_path)
-        assert "European Beech" in result
-        assert "Norway Spruce" in result
+        with _patch_dataset():
+            result = resolve_species(args)
+        assert result == ["European beech", "Norway spruce", "Silver birch"]
 
-    def test_no_selection(self, tmp_path):
-        args = self._make_args()
-        result = resolve_species(args, tmp_path)
-        assert result == []
+    def test_all_species_preserves_common_name_punctuation(self):
+        """Must return the exact Common Name, not a round-trip through the
+        standardized stem -- .title()'d stems lose hyphens (e.g. a stem of
+        "small_leaved_linden" would come back as "Small Leaved Linden", not
+        the lookup table's actual "Small-leaved linden"), which then fails
+        exact matching in generate_forest.py."""
+        rows = pd.DataFrame(
+            {
+                "Common Name": ["Small-leaved linden"],
+                "Max Height": [25],
+            }
+        )
+        args = self._make_args(all=True)
+        with _patch_dataset(rows):
+            result = resolve_species(args)
+        assert result == ["Small-leaved linden"]
+
+    def test_no_selection(self):
+        assert resolve_species(self._make_args()) == []
 
 
 class TestPilotSpeciesConstant:
-    """Tests for pilot species list."""
-
     def test_contains_beech_and_spruce(self):
         assert "European Beech" in PILOT_SPECIES
         assert "Norway Spruce" in PILOT_SPECIES
