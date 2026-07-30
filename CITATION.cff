@@ -11,7 +11,7 @@ abstract: >-
     Procedural tree generation pipeline using The Grove 2.3, optimized for
     Unreal Engine 5 Nanite workflows. Provides yield-table-calibrated growth
     models, multi-species light competition, customized leaf trimming, and
-    USD Nanite Assembly export for 16 southern German tree species.
+    USD Nanite Assembly export for 11 southern German tree species.
 keywords:
     - procedural generation
     - tree modeling
@@ -27,5 +27,5 @@ authors:
       affiliation: "University of Freiburg"
     - family-names: "Jaksztat"
       given-names: "Tom"
-      orchid: "https://orcid.org/0009-0008-7540-2166"
+      orcid: "https://orcid.org/0009-0008-7540-2166"
       affiliation: "University of Freiburg"
