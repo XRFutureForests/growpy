@@ -450,8 +450,7 @@ you have proper licensing from [The Grove](https://www.thegrove3d.com) before us
 
 ## Citation
 
-<!-- After the first Zenodo release, replace XXXXXXX and uncomment the badge. -->
-<!-- [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX) -->
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21509856.svg)](https://doi.org/10.5281/zenodo.21509856)
 
 If you use GrowPy or its outputs in a publication, please cite it. See
 [CITATION.cff](CITATION.cff) for machine-readable metadata, or:
