@@ -209,6 +209,44 @@ twig_density_broadleaf = 3.0
         assert config.export_twig_density_conifer == 0.8
         assert config.export_twig_density_broadleaf == 3.0
 
+    def test_toml_helios_simplification_per_species(self, tmp_path):
+        toml_content = b"""
+[helios.simplification]
+enabled = true
+bark = 0.2
+wood = 0.2
+leaf = 0.5
+fruit = 0.2
+
+[helios.simplification.per_species.selected_european_oak]
+bark = 0.1
+wood = 0.05
+leaf = 0.25
+"""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(toml_content)
+
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.helios_simplification_enabled is True
+        assert config.helios_simplification_per_species == {
+            "selected_european_oak": {"bark": 0.1, "wood": 0.05, "leaf": 0.25}
+        }
+
+    def test_toml_helios_simplification_leaf_per_species_ignored_with_warning(
+        self, tmp_path, caplog
+    ):
+        toml_content = b"""
+[helios.simplification]
+enabled = true
+leaf_per_species = { selected_european_beech = 0.2 }
+"""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(toml_content)
+
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.helios_simplification_per_species == {}
+        assert "leaf_per_species" in caplog.text
+
     def test_toml_density_variants(self, tmp_path):
         toml_content = b"""
 [export]
@@ -528,3 +566,30 @@ class TestGetTwigDensityBase:
             "growpy.config.paths.get_species_growth_habit", lambda species: None
         )
         assert config.get_twig_density_base("Unknown species") == 1.0
+
+
+class TestGetSimplificationRatios:
+    """Tests for GrowPyConfig.get_simplification_ratios per-species merge."""
+
+    def test_unlisted_species_returns_all_globals(self):
+        config = GrowPyConfig(
+            helios_simplification_ratios={
+                "bark": 0.2, "wood": 0.2, "leaf": 0.5, "fruit": 0.2,
+            }
+        )
+        assert config.get_simplification_ratios("selected_scots_pine") == {
+            "bark": 0.2, "wood": 0.2, "leaf": 0.5, "fruit": 0.2,
+        }
+
+    def test_per_species_override_merges_over_globals(self):
+        config = GrowPyConfig(
+            helios_simplification_ratios={
+                "bark": 0.2, "wood": 0.2, "leaf": 0.5, "fruit": 0.2,
+            },
+            helios_simplification_per_species={
+                "selected_european_oak": {"bark": 0.1},
+            },
+        )
+        assert config.get_simplification_ratios("selected_european_oak") == {
+            "bark": 0.1, "wood": 0.2, "leaf": 0.5, "fruit": 0.2,
+        }

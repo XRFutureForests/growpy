@@ -46,6 +46,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `[helios.simplification.leaf_per_species]` is renamed to
+  `[helios.simplification.per_species.<species_clean>]` and now covers
+  bark/wood/leaf/fruit (previously leaf only). A `leaf_per_species` key still
+  present in config is ignored with a warning naming the new key; it was only
+  ever shipped commented-out in the template, so no user config depended on
+  the old key. (XRFF-307)
+
 - **Dataset production no longer reads or writes CSVs.** `generate-forest`
   gained `--species NAME`, which builds that species' job rows in memory from
   config alone (`Max Height` in tree_asset_lookup.csv, `[surround] radii`), and

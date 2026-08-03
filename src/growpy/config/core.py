@@ -213,7 +213,7 @@ class GrowPyConfig:
         "unreal_uproject": "environment-level path, config-only by design",
         "helios_simplification_enabled": "internal toggle, no CLI need identified",
         "helios_simplification_ratios": "nested dict structure, config-only",
-        "helios_simplification_leaf_per_species": "nested dict, config-only",
+        "helios_simplification_per_species": "nested dict, config-only",
         "calibration_align_height": "internal tuning, no CLI need identified",
         "calibration_plot": "dead CLI mapping removed in XRFF-292; config-only",
         "calibration_yield_tables_dir": "environment-level path, config-only",
@@ -343,7 +343,7 @@ class GrowPyConfig:
     helios_obj_up_axis: str = "y"
     helios_simplification_enabled: bool = False
     helios_simplification_ratios: dict = field(default_factory=dict)
-    helios_simplification_leaf_per_species: dict = field(default_factory=dict)
+    helios_simplification_per_species: dict = field(default_factory=dict)
 
     # [calibration] -- growth-pacing calibration against yield tables.
     # Off by default: it costs two Grove passes per species and only matters
@@ -554,9 +554,19 @@ class GrowPyConfig:
                 "leaf": simp.get("leaf", 1.0),
                 "fruit": simp.get("fruit", 1.0),
             }
-            kwargs["helios_simplification_leaf_per_species"] = simp.get(
-                "leaf_per_species", {}
-            )
+            if "leaf_per_species" in simp:
+                logger.warning(
+                    "[helios.simplification.leaf_per_species] is renamed to "
+                    "[helios.simplification.per_species.<species>] (covers "
+                    "bark/wood/leaf/fruit, not just leaf); the leaf_per_species "
+                    "key is ignored"
+                )
+            per_species = simp.get("per_species", {})
+            if per_species:
+                kwargs["helios_simplification_per_species"] = {
+                    species: {k: float(v) for k, v in overrides.items()}
+                    for species, overrides in per_species.items()
+                }
 
         # [calibration]
         cal = data.get("calibration", {})
@@ -704,6 +714,17 @@ class GrowPyConfig:
         if habit == "broadleaf":
             return self.export_twig_density_broadleaf
         return self.export_twig_density_conifer
+
+    def get_simplification_ratios(self, species_clean: str) -> dict[str, float]:
+        """Return Helios OBJ simplification ratios for a species.
+
+        Per-species overrides from [helios.simplification.per_species.<species>]
+        are merged over the global bark/wood/leaf/fruit defaults. Unknown
+        species or omitted materials fall back to the global values.
+        """
+        ratios = dict(self.helios_simplification_ratios)
+        ratios.update(self.helios_simplification_per_species.get(species_clean, {}))
+        return ratios
 
     # Delegator methods to module-level functions
     def get_preset_path(self, species: str) -> Path:

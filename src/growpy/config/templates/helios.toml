@@ -25,15 +25,20 @@ bark = 0.2
 # Twig wood simplification ratio (0.0-1.0)
 wood = 0.2
 # Leaf simplification ratio - global default (1.0 = keep all, critical for LAI accuracy)
-# Override per species in [helios.simplification.leaf_per_species] below.
+# Override per species in [helios.simplification.per_species.<species>] below.
 leaf = 0.5
 # Fruit simplification ratio (0.0-1.0, e.g. EuropeanOakFruits)
 fruit = 0.2
 
-# Per-species leaf simplification overrides.
-# Keys are species_clean names (lowercase, underscores). Species not listed
-# here fall back to the global "leaf" value above.
-[helios.simplification.leaf_per_species]
-# selected_european_beech = 0.2
-# selected_european_oak = 0.4
-# selected_scots_pine = 0.3
+# Per-species overrides for any subset of bark/wood/leaf/fruit. Keys are
+# species_clean names (lowercase, underscores). Omitted keys, and species
+# not listed here, fall back to the global values above.
+[helios.simplification.per_species]
+# [helios.simplification.per_species.selected_european_beech]
+# leaf = 0.2
+# [helios.simplification.per_species.selected_european_oak]
+# bark = 0.1
+# wood = 0.05
+# leaf = 0.25
+# [helios.simplification.per_species.selected_scots_pine]
+# leaf = 0.3

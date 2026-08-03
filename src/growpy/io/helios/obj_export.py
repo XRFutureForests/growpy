@@ -1205,7 +1205,7 @@ def export_forest_obj(
     up_axis: str = "y",
     timer=None,
     simplification_ratios: dict[str, float] | None = None,
-    leaf_per_species: dict[str, float] | None = None,
+    per_species_ratios: dict[str, dict[str, float]] | None = None,
 ) -> list[tuple[Path, float, float, float, str]]:
     """Export USDA tree assemblies to OBJ for Helios++ LiDAR simulation.
 
@@ -1287,13 +1287,11 @@ def export_forest_obj(
         is_conifer = any(kw in species_dir.lower() for kw in CONIFER_KEYWORDS)
         spectra = "conifer" if is_conifer else "deciduous"
 
-        # Resolve per-species leaf ratio override into the ratios dict
+        # Resolve per-species material ratio overrides into the ratios dict
         tree_ratios = None
         if simplification_ratios:
             tree_ratios = dict(simplification_ratios)
-            global_leaf = tree_ratios.get("leaf", 1.0)
-            species_leaf = (leaf_per_species or {}).get(species_dir, global_leaf)
-            tree_ratios["leaf"] = species_leaf
+            tree_ratios.update((per_species_ratios or {}).get(species_dir, {}))
 
         # Read components without baking (low RAM)
         with _track("read_tree_components"):
