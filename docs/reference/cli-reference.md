@@ -131,7 +131,7 @@ Both variants are created by default for each twig:
 | Flag | Description |
 |---|---|
 | `path` (positional, optional) | Path to twig directory or `.blend` file (default: from TOML `twigs.path`) |
-| `--no-densify` | Disable mesh densification |
+| `--densify` / `--no-densify` | Force mesh densification on/off (default: from TOML `twigs.densify`) |
 
 **TOML-configurable:** `path`, `densify`, `alpha_trim`, `smooth_boundary`, `smooth_iterations`,
 `smooth_factor`, `boundary_edge_mm` (see `[twigs]`).

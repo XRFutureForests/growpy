@@ -28,10 +28,7 @@ from pathlib import Path
 
 from growpy import get_config
 from growpy.config.preset_overrides import create_overrides_from_args
-from growpy.io.unreal.unreal_scripts import (
-    generate_unreal_cleanup_script,
-    generate_unreal_import_script,
-)
+from growpy.io.unreal.script_generation import generate_unreal_scripts
 from growpy.pipelines.forest_exports import generate_forest_exports
 from growpy.pipelines.forest_stages import generate_forest_stages
 from growpy.utils.profiling import init_profiler
@@ -80,6 +77,29 @@ def _resolve_forest_data(args, config, project_root):
 
     logger.info("Layout mode: reading %s", csv_path)
     return pd.read_csv(csv_path)
+
+
+
+def _resolve_static_export_for_obj(config) -> bool:
+    """Force static mesh export on when OBJ export needs it.
+
+    OBJ export's assembly discovery (obj_export.py::_find_assembly_files)
+    only globs *_assembly_static<ext> -- there is no skeletal fallback at
+    that level. [export] static defaults False (the UE 5.7/5.8 Nanite
+    Assembly builder deadlocks on StaticMesh targets), so without this,
+    requesting --export-obj on the live default config silently exports
+    zero trees.
+
+    Returns True if export_static was forced on.
+    """
+    do_export_obj = config.helios_export_obj or config.helios_helios_scene
+    if do_export_obj and not config.export_static:
+        logger.warning(
+            "OBJ export requires static mesh assemblies, enabling static mesh export"
+        )
+        config.export_static = True
+        return True
+    return False
 
 
 def main():
@@ -177,6 +197,13 @@ Unreal Engine Integration:
         help="Maximum growth cycles per tree (default: from config). Trees exceeding this will be scaled down proportionally",
     )
     parser.add_argument(
+        "--plateau-cycles",
+        type=int,
+        default=None,
+        help="Stop early after this many consecutive cycles with no height "
+        "increase across any tree (default: from config). 0 = run until max_cycles.",
+    )
+    parser.add_argument(
         "--smooth-iterations",
         type=int,
         default=None,
@@ -210,14 +237,13 @@ Unreal Engine Integration:
     )
     parser.add_argument(
         "--skeleton-connected",
-        type=str,
+        action=argparse.BooleanOptionalAction,
         default=None,
-        choices=["true", "false"],
         help="Use connected bone chains (true=more bones, false=fewer bones). Default: true",
     )
     parser.add_argument(
         "--import-to-unreal",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=None,
         help="Generate Unreal Python script for importing trees (execute in Unreal via VSCode extension)",
     )
@@ -229,8 +255,21 @@ Unreal Engine Integration:
     )
     parser.add_argument(
         "--include-grove-attributes",
-        action="store_true",
-        help="Include Grove metadata attributes (age, mass, vigor, etc.) in USD files for analysis (increases file size ~70%%). Note: PVE preset JSON files are always generated automatically",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Include Grove metadata attributes (age, mass, vigor, etc.) in USD files for analysis (increases file size ~70%%).",
+    )
+    parser.add_argument(
+        "--pve",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Generate PVE preset JSON files for Unreal import (default: from config).",
+    )
+    parser.add_argument(
+        "--wind",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Generate DynamicWind JSON for the USD skeleton (default: from config).",
     )
     parser.add_argument(
         "--preset-override",
@@ -242,7 +281,8 @@ Unreal Engine Integration:
     parser.add_argument(
         "-v",
         "--verbose",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help="Enable verbose output (INFO-level logging)",
     )
     parser.add_argument(
@@ -253,40 +293,42 @@ Unreal Engine Integration:
     )
     parser.add_argument(
         "--profile",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help="Enable profiling to track execution time of each processing step",
     )
     # Note: --skip-wind-json removed - wind data now embedded in USD skeleton
     parser.add_argument(
         "--skip-validation",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help="Skip assembly validation (saves ~5-10%% of export time)",
+    )
+    parser.add_argument(
+        "--previews",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Generate preview/export-control PNGs per tree (default: from config).",
+    )
+    parser.add_argument(
+        "--icons",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Generate front/side/top icon PNGs per tree (default: from config).",
     )
 
     # Mesh type export flags (independent, any combination works)
     parser.add_argument(
         "--skeletal",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=None,
-        help="Enable skeletal mesh export (default: from config, typically True)",
-    )
-    parser.add_argument(
-        "--no-skeletal",
-        action="store_true",
-        default=None,
-        help="Disable skeletal mesh export",
+        help="Enable/disable skeletal mesh export (default: from config)",
     )
     parser.add_argument(
         "--static",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=None,
-        help="Enable static mesh export (default: from config, typically False)",
-    )
-    parser.add_argument(
-        "--no-static",
-        action="store_true",
-        default=None,
-        help="Disable static mesh export",
+        help="Enable/disable static mesh export (default: from config)",
     )
 
     # Multi-stage export: generate trees at multiple growth stages from a single position
@@ -313,17 +355,20 @@ Unreal Engine Integration:
     # Helios++ OBJ/MTL export
     parser.add_argument(
         "--export-obj",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help="Export OBJ/MTL files for Helios++ LiDAR simulation (post-processes USDA files)",
     )
     parser.add_argument(
         "--helios-scene",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help="Generate Helios++ scene XML placing all tree OBJs at CSV positions (implies --export-obj)",
     )
     parser.add_argument(
         "--individual-obj",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help="Also write individual per-tree OBJ files (default: only combined OBJ)",
     )
     parser.add_argument(
@@ -354,12 +399,7 @@ Unreal Engine Integration:
     setup_logging(verbose=config.verbose)
 
     # Validate export flags
-    do_export_obj = config.helios_export_obj or config.helios_helios_scene
-    if do_export_obj and not config.export_skeletal and not config.export_static:
-        logger.warning(
-            "OBJ export requires mesh generation, enabling static mesh export"
-        )
-        config.export_static = True
+    _resolve_static_export_for_obj(config)
 
     if not config.export_skeletal and not config.export_static:
         logger.error(
@@ -428,6 +468,7 @@ Unreal Engine Integration:
                     config.forest_quality,
                     height_interval=config.forest_height_interval,
                     growth_cycle_limit=config.forest_growth_cycle_limit,
+                    plateau_cycles=config.forest_plateau_cycles,
                     smooth_iterations=config.forest_smooth_iterations,
                     include_grove_attributes=config.forest_include_grove_attributes,
                     verbose=config.verbose,
@@ -487,75 +528,9 @@ Unreal Engine Integration:
         if config.unreal_import_to_unreal and not getattr(
             args, "no_unreal_scripts", False
         ):
-            # Create combined twig wrappers for efficient UE import
-            from growpy.io.usd.assembly_export import create_combined_twig_usda
-
-            instances_dir = output_dir / "Instances"
-            if instances_dir.exists():
-                combined = create_combined_twig_usda(
-                    instances_dir, include_static=config.export_static
-                )
-                if combined:
-                    logger.info(
-                        "Created %d combined twig files for UE import",
-                        len(combined),
-                    )
-
-            nanite_cfg = {
-                "fallback_percent": config.unreal_nanite_fallback_percent,
-                "fallback_target": config.unreal_nanite_fallback_target,
-                "lerp_uvs": config.unreal_nanite_lerp_uvs,
-            }
-
-            import_script = generate_unreal_import_script(
-                output_dir,
-                config.unreal_project_path,
-                include_static=config.export_static,
-                voxelization=config.unreal_voxelization,
-                nanite_cfg=nanite_cfg,
-                db_path=config.unreal_db_path,
+            import_script, cleanup_script = generate_unreal_scripts(
+                output_dir, config, include_static=config.export_static
             )
-
-            cleanup_script = generate_unreal_cleanup_script(
-                output_dir,
-                config.unreal_project_path,
-                dry_run=True,  # Default to dry-run mode for safety
-            )
-
-            if config.unreal_generate_pve_presets:
-                from growpy.io.unreal.pve_foliage_data import generate_all_foliage_data
-                from growpy.io.unreal.pve_import_script import (
-                    build_species_twig_map,
-                    generate_pve_preset_import_script,
-                )
-
-                twig_map = build_species_twig_map()
-                foliage_files = generate_all_foliage_data(
-                    output_dir,
-                    import_base=config.unreal_pve_import_base,
-                    species_twig_map=twig_map,
-                )
-                logger.info(
-                    "Generated %d FoliageData.json files",
-                    len(foliage_files),
-                )
-                pve_script = generate_pve_preset_import_script(
-                    output_dir=output_dir / "unreal_scripts",
-                    forest_root=output_dir,
-                    import_base=config.unreal_pve_import_base,
-                    species_twig_map=twig_map,
-                )
-                logger.info("Generated PVE preset import script: %s", pve_script)
-
-                from growpy.io.unreal.pve_graph_script import generate_pve_graph_script
-
-                pve_graph_script = generate_pve_graph_script(
-                    output_dir=output_dir / "unreal_scripts",
-                    forest_root=output_dir,
-                    import_base=config.unreal_pve_import_base,
-                    species_twig_map=twig_map,
-                )
-                logger.info("Generated PVE graph builder script: %s", pve_graph_script)
 
             logger.info("\n%s", "=" * 60)
             logger.info("UNREAL SCRIPTS GENERATED")

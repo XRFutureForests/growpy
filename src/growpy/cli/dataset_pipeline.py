@@ -37,6 +37,7 @@ import sys
 import time
 from pathlib import Path
 
+from growpy.io.unreal.script_generation import generate_unreal_scripts
 from growpy.io.usd.overview import generate_overview_markdown
 from growpy.pipelines.dataset_csv_planner import generate_dataset_csvs
 from growpy.pipelines.dataset_job_planner import (
@@ -47,7 +48,6 @@ from growpy.pipelines.dataset_job_planner import (
 from growpy.pipelines.run_summary import generate_run_summary
 from growpy.pipelines.step_runner import (
     check_environment,
-    generate_unreal_scripts,
     run_parallel_step4,
     run_species_step4,
     run_step123,
@@ -231,6 +231,36 @@ def main():
         help="Ingest yield tables from external providers before step 3 calibration.",
     )
     parser.add_argument(
+        "--calibrate",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override step 3 calibration for this run only (default: from TOML).",
+    )
+    parser.add_argument(
+        "--pve",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override step 4 PVE preset generation this run (default: from TOML).",
+    )
+    parser.add_argument(
+        "--wind",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override step 4 wind-data generation this run (default: from TOML).",
+    )
+    parser.add_argument(
+        "--previews",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override step 4 preview/export-control PNGs this run (default: TOML).",
+    )
+    parser.add_argument(
+        "--icons",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override step 4 icon PNGs this run (default: from TOML).",
+    )
+    parser.add_argument(
         "--clean",
         action="store_true",
         help="Clean output directories for each step before running. "
@@ -258,6 +288,18 @@ def main():
     if args.quiet:
         args.verbose = False
     setup_logging(verbose=args.verbose)
+
+    # Provenance: make this run's TOML-override switches visible in the log.
+    # None means "use config/*.toml" for that switch.
+    logger.info(
+        "Effective switches: calibrate=%s pve=%s wind=%s previews=%s icons=%s "
+        "(None = from TOML)",
+        args.calibrate,
+        args.pve,
+        args.wind,
+        args.previews,
+        args.icons,
+    )
 
     # --generate-csvs: generate CSVs, then continue or exit
     if args.generate_csvs:
@@ -334,6 +376,8 @@ def main():
                 extra.append("--ingest-yield-tables")
                 if args.clean_store:
                     extra.append("--clean-store")
+            if step == 3 and args.calibrate is not None:
+                extra.append("--calibrate" if args.calibrate else "--no-calibrate")
             # Pass --species to step 3 so calibration is limited to one species
             if step == 3 and args.species:
                 extra.extend(["--species", args.species])
@@ -371,6 +415,10 @@ def main():
                     workers,
                     args.max_height,
                     verbose=args.verbose,
+                    pve=args.pve,
+                    wind=args.wind,
+                    previews=args.previews,
+                    icons=args.icons,
                 )
             else:
                 failed = []
@@ -381,6 +429,10 @@ def main():
                         args.dry_run,
                         args.max_height,
                         verbose=args.verbose,
+                        pve=args.pve,
+                        wind=args.wind,
+                        previews=args.previews,
+                        icons=args.icons,
                     )
                     elapsed_by_species[species] = time.monotonic() - t0
                     if not ok:
@@ -398,7 +450,7 @@ def main():
             _out = _cfg.output_dir
             if not _out.is_absolute():
                 _out = Path(__file__).parent.parent.parent.parent / _out
-            generate_unreal_scripts(_out, include_static=_cfg.export_static)
+            generate_unreal_scripts(_out, _cfg, include_static=_cfg.export_static)
 
     # Generate dataset overview after step 4 (even if some species failed)
     if 4 in steps and not args.dry_run:
@@ -418,6 +470,7 @@ def main():
             species_list,
             elapsed_by_species,
             failed,
+            config,
         )
 
     if 4 in steps and failed:

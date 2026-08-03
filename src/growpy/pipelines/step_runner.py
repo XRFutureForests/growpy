@@ -147,12 +147,20 @@ def _build_step4_command(
     max_height: float = 0,
     skip_unreal_scripts: bool = False,
     verbose: bool = False,
+    pve: bool | None = None,
+    wind: bool | None = None,
+    previews: bool | None = None,
+    icons: bool | None = None,
 ) -> list:
     """Build the generate_forest.py command for one dataset species.
 
     Passes only what the child cannot derive. The child builds every job row
     for the species itself from config, so there is no CSV to hand over and
     no --export-trees filter to compute: it exports all the rows it built.
+
+    pve/wind/previews/icons are tri-state (None = use TOML default) and are
+    only appended when explicitly set, mirroring resolve()'s CLI-over-TOML
+    semantics.
     """
     cmd = [sys.executable, str(STEP_SCRIPTS[4]), "--species", species_name]
     if max_height > 0:
@@ -161,6 +169,14 @@ def _build_step4_command(
         cmd.append("--no-unreal-scripts")
     if verbose:
         cmd.append("--verbose")
+    if pve is not None:
+        cmd.append("--pve" if pve else "--no-pve")
+    if wind is not None:
+        cmd.append("--wind" if wind else "--no-wind")
+    if previews is not None:
+        cmd.append("--previews" if previews else "--no-previews")
+    if icons is not None:
+        cmd.append("--icons" if icons else "--no-icons")
     return cmd
 
 
@@ -170,6 +186,10 @@ def run_species_step4(
     max_height: float = 0,
     skip_unreal_scripts: bool = False,
     verbose: bool = False,
+    pve: bool | None = None,
+    wind: bool | None = None,
+    previews: bool | None = None,
+    icons: bool | None = None,
 ) -> bool:
     """Run generate_forest.py for one dataset species.
 
@@ -178,7 +198,14 @@ def run_species_step4(
     from pathlib import Path as PathlibPath
 
     cmd = _build_step4_command(
-        species_name, max_height, skip_unreal_scripts, verbose
+        species_name,
+        max_height,
+        skip_unreal_scripts,
+        verbose,
+        pve,
+        wind,
+        previews,
+        icons,
     )
 
     if dry_run:
@@ -210,13 +237,17 @@ def run_species_step4(
 
 def _run_species_worker(args: tuple) -> tuple:
     """Top-level picklable worker for ProcessPoolExecutor."""
-    species_name, max_height, verbose = args
+    species_name, max_height, verbose, pve, wind, previews, icons = args
     t0 = time.monotonic()
     ok = run_species_step4(
         species_name,
         max_height=max_height,
         skip_unreal_scripts=True,
         verbose=verbose,
+        pve=pve,
+        wind=wind,
+        previews=previews,
+        icons=icons,
     )
     elapsed = time.monotonic() - t0
     return species_name, ok, elapsed
@@ -227,6 +258,10 @@ def run_parallel_step4(
     workers: int,
     max_height: float,
     verbose: bool = False,
+    pve: bool | None = None,
+    wind: bool | None = None,
+    previews: bool | None = None,
+    icons: bool | None = None,
 ) -> tuple[list, dict]:
     """Run step 4 for multiple species in parallel.
 
@@ -238,7 +273,8 @@ def run_parallel_step4(
     with ProcessPoolExecutor(max_workers=workers) as pool:
         futures = {
             pool.submit(
-                _run_species_worker, (species, max_height, verbose)
+                _run_species_worker,
+                (species, max_height, verbose, pve, wind, previews, icons),
             ): species
             for species in species_list
         }
@@ -254,106 +290,3 @@ def run_parallel_step4(
                 failed.append(species_name)
 
     return failed, elapsed_by_species
-
-
-def generate_unreal_scripts(output_dir: Path, include_static: bool = False) -> None:
-    """Generate Unreal import/cleanup scripts after all species have been exported.
-
-    Called once after parallel step 4 workers finish, instead of per-species, to
-    avoid race conditions from concurrent script deletion/regeneration.
-    """
-    from growpy.config.core import get_config
-    from growpy.io.unreal.unreal_scripts import (
-        generate_unreal_cleanup_script,
-        generate_unreal_import_script,
-    )
-    from growpy.io.usd.assembly_export import create_combined_twig_usda
-
-    config = get_config()
-
-    instances_dir = output_dir / "Instances"
-    if instances_dir.exists():
-        combined = create_combined_twig_usda(
-            instances_dir, include_static=include_static
-        )
-        if combined:
-            logger.info("Created %d combined twig files for UE import", len(combined))
-
-    nanite_cfg = {
-        "voxelization": config.unreal_voxelization,
-        "fallback_percent": config.unreal_nanite_fallback_percent,
-        "fallback_target": config.unreal_nanite_fallback_target,
-        "lerp_uvs": config.unreal_nanite_lerp_uvs,
-    }
-
-    import_script = generate_unreal_import_script(
-        output_dir,
-        config.unreal_project_path,
-        include_static=include_static,
-        voxelization=config.unreal_voxelization,
-        nanite_cfg=nanite_cfg,
-        db_path=config.unreal_db_path,
-    )
-
-    cleanup_script = generate_unreal_cleanup_script(
-        output_dir,
-        config.unreal_project_path,
-        dry_run=True,
-    )
-
-    logger.info("Generated Unreal scripts: %s, %s", import_script, cleanup_script)
-
-    # DynamicWind import script (runs before PVE to apply wind data first)
-    if config.unreal_generate_wind_data:
-        from growpy.io.unreal.wind_import_script import generate_wind_import_script
-
-        wind_script = generate_wind_import_script(
-            output_dir=output_dir / "unreal_scripts",
-            forest_root=output_dir,
-            import_base=config.unreal_pve_import_base,
-        )
-        logger.info("Generated DynamicWind import script: %s", wind_script)
-
-    if config.unreal_generate_pve_presets:
-        from growpy.io.unreal.pve_foliage_data import generate_all_foliage_data
-        from growpy.io.unreal.pve_import_script import (
-            build_species_twig_map,
-            generate_pve_preset_import_script,
-        )
-
-        twig_map = build_species_twig_map()
-        foliage_files = generate_all_foliage_data(
-            output_dir,
-            import_base=config.unreal_pve_import_base,
-            species_twig_map=twig_map,
-        )
-        logger.info("Generated %d FoliageData.json files", len(foliage_files))
-        pve_script = generate_pve_preset_import_script(
-            output_dir=output_dir / "unreal_scripts",
-            forest_root=output_dir,
-            import_base=config.unreal_pve_import_base,
-            species_twig_map=twig_map,
-        )
-        logger.info("Generated PVE preset import script: %s", pve_script)
-
-        from growpy.io.unreal.pve_graph_script import generate_pve_graph_script
-
-        pve_graph_script = generate_pve_graph_script(
-            output_dir=output_dir / "unreal_scripts",
-            forest_root=output_dir,
-            import_base=config.unreal_pve_import_base,
-            species_twig_map=twig_map,
-        )
-        logger.info("Generated PVE graph builder script: %s", pve_graph_script)
-
-    # Nanite voxelize script (run after UE restart for best VRAM headroom)
-    if config.unreal_import_to_unreal and config.unreal_voxelization:
-        from growpy.io.unreal.nanite_voxelize_script import (
-            generate_nanite_voxelize_script,
-        )
-
-        voxelize_script = generate_nanite_voxelize_script(
-            output_dir=output_dir / "unreal_scripts",
-            import_path=config.unreal_project_path,
-        )
-        logger.info("Generated Nanite voxelize script: %s", voxelize_script)

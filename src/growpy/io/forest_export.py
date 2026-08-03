@@ -20,7 +20,6 @@ of the io/cli restructure). See `docs/architecture/generate-forest-refactoring-p
 from __future__ import annotations
 
 import logging
-from itertools import groupby
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -66,6 +65,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         load_target_dbh_from_preset,
         predict_dbh_from_height_model,
     )
+    from ..core.forest import build_density_variant_model_sets, split_bones_by_tree
     from ..core.tree import calculate_dbh_at_height, calculate_tree_height
     from ..utils.allometry import correction_weight, get_height_dbh_model
     from ..utils.export_naming import (
@@ -175,39 +175,23 @@ def _export_single_tree_from_forest(args: tuple) -> list:
 
         # Slice bones list for each tree in grove
         with timer.track("slice_bones"):
-            bones_grouped = [list(g) for k, g in groupby(bones, lambda x: x[0])]
-            tree_bones = [
-                bones_grouped[i]
-                + (bones_grouped[i + 1] if i + 1 < len(bones_grouped) else [])
-                for i in range(0, len(bones_grouped), 2)
-            ]
+            tree_bones = split_bones_by_tree(bones, len(grove.trees))
 
         # Build additional model sets for density variants with different cutoffs
         density_variants = config.get_density_variants()
         variant_model_sets: dict[str, list] = {}
         if density_variants:
-            base_cutoff = (
-                quality_params["build_cutoff_age"],
-                quality_params["build_cutoff_thickness"],
+            base_build_options = {
+                "resolution": quality_params["resolution"],
+                "resolution_reduce": quality_params["resolution_reduce"],
+                "build_cutoff_age": quality_params["build_cutoff_age"],
+                "build_cutoff_thickness": quality_params["build_cutoff_thickness"],
+                "build_blend": quality_params["build_blend"],
+                "build_end_cap": quality_params["build_end_cap"],
+            }
+            variant_model_sets = build_density_variant_model_sets(
+                grove, models, base_build_options, density_variants, timer=timer
             )
-            built_cutoffs: dict[tuple, list] = {base_cutoff: models}
-            for vname, vcfg in density_variants:
-                cutoff_key = (
-                    vcfg.get("build_cutoff_age", base_cutoff[0]),
-                    vcfg.get("build_cutoff_thickness", base_cutoff[1]),
-                )
-                if cutoff_key not in built_cutoffs:
-                    variant_opts = {
-                        "resolution": quality_params["resolution"],
-                        "resolution_reduce": quality_params["resolution_reduce"],
-                        "build_cutoff_age": cutoff_key[0],
-                        "build_cutoff_thickness": cutoff_key[1],
-                        "build_blend": quality_params["build_blend"],
-                        "build_end_cap": quality_params["build_end_cap"],
-                    }
-                    with timer.track(f"build_models_{vname}"):
-                        built_cutoffs[cutoff_key] = grove.build_models(variant_opts)
-                variant_model_sets[vname] = built_cutoffs[cutoff_key]
 
         # Height-DBH allometry drives post-hoc radial scaling: it depends only on
         # the height reached, so it needs no growth-pacing calibration.  Resolved

@@ -88,6 +88,58 @@ class TestBuildStep4Command:
         cmd = _build_step4_command("European Beech")
         assert "--no-unreal-scripts" not in cmd
 
+    def test_pve_appended_when_true(self):
+        cmd = _build_step4_command("European Beech", pve=True)
+        assert "--pve" in cmd
+
+    def test_no_pve_appended_when_false(self):
+        cmd = _build_step4_command("European Beech", pve=False)
+        assert "--no-pve" in cmd
+
+    def test_pve_omitted_when_none(self):
+        cmd = _build_step4_command("European Beech", pve=None)
+        assert "--pve" not in cmd
+        assert "--no-pve" not in cmd
+
+    def test_wind_appended_when_true(self):
+        cmd = _build_step4_command("European Beech", wind=True)
+        assert "--wind" in cmd
+
+    def test_no_wind_appended_when_false(self):
+        cmd = _build_step4_command("European Beech", wind=False)
+        assert "--no-wind" in cmd
+
+    def test_wind_omitted_when_none(self):
+        cmd = _build_step4_command("European Beech", wind=None)
+        assert "--wind" not in cmd
+        assert "--no-wind" not in cmd
+
+    def test_previews_appended_when_true(self):
+        cmd = _build_step4_command("European Beech", previews=True)
+        assert "--previews" in cmd
+
+    def test_no_previews_appended_when_false(self):
+        cmd = _build_step4_command("European Beech", previews=False)
+        assert "--no-previews" in cmd
+
+    def test_previews_omitted_when_none(self):
+        cmd = _build_step4_command("European Beech", previews=None)
+        assert "--previews" not in cmd
+        assert "--no-previews" not in cmd
+
+    def test_icons_appended_when_true(self):
+        cmd = _build_step4_command("European Beech", icons=True)
+        assert "--icons" in cmd
+
+    def test_no_icons_appended_when_false(self):
+        cmd = _build_step4_command("European Beech", icons=False)
+        assert "--no-icons" in cmd
+
+    def test_icons_omitted_when_none(self):
+        cmd = _build_step4_command("European Beech", icons=None)
+        assert "--icons" not in cmd
+        assert "--no-icons" not in cmd
+
 
 class TestBuildStep123Command:
     """Tests for step 1-3 command construction."""

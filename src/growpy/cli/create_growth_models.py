@@ -534,6 +534,9 @@ Examples:
     # Skip calibration even when enabled in config
     python src/growpy/cli/create_growth_models.py --no-calibrate
 
+    # Force calibration even when disabled in config
+    python src/growpy/cli/create_growth_models.py --calibrate
+
 CSV Format Support:
     Automatically handles forest placement CSV (x,y,species) or asset lookup CSV (Common Name,Preset)
 
@@ -612,9 +615,10 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         "takes precedence over --csv.",
     )
     parser.add_argument(
-        "--no-calibrate",
-        action="store_true",
-        help="Skip calibration even when enabled in config/growth_models.toml",
+        "--calibrate",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable/disable calibration (default: from config/growth_models.toml)",
     )
     parser.add_argument(
         "--ingest-yield-tables",
@@ -638,7 +642,8 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
     )
     parser.add_argument(
         "--verbose",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help="Enable verbose output (INFO-level logging)",
     )
     parser.add_argument(
@@ -699,7 +704,7 @@ Note: Run prepare_assets.py first to copy species presets from Grove installatio
         config.growth_models_max_height,
     )
 
-    do_calibrate = config.calibration_enabled and not args.no_calibrate
+    do_calibrate = config.calibration_enabled
 
     if args.species:
         # --- Single species mode ---

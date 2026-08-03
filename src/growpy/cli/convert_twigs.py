@@ -304,9 +304,10 @@ Output per twig:
     )
     # Geometry processing flags (enabled by default for Nanite-friendly high poly twigs)
     parser.add_argument(
-        "--no-densify",
-        action="store_true",
-        help="Disable mesh densification (subdivision)",
+        "--densify",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable/disable mesh densification (subdivision). Default: from config.",
     )
     parser.add_argument(
         "--alpha-trim",
@@ -325,8 +326,16 @@ Output per twig:
         "Only transition edges (opaque->transparent) are subdivided.",
     )
     parser.add_argument(
+        "--interior-edge-mm",
+        type=float,
+        default=None,
+        help="Target interior edge length in mm (default: from config, 0=disabled). "
+        "When > 0, derives interior-face decimation ratio automatically.",
+    )
+    parser.add_argument(
         "--verbose",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help="Enable verbose output (INFO-level logging)",
     )
     parser.add_argument(

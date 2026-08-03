@@ -47,6 +47,14 @@ class TestGrowPyConfigDefaults:
         config = GrowPyConfig()
         assert config.export_static is False
 
+    def test_default_export_previews(self):
+        config = GrowPyConfig()
+        assert config.export_previews is True
+
+    def test_default_export_icons(self):
+        config = GrowPyConfig()
+        assert config.export_icons is True
+
     def test_default_export_twig_density_is_none(self):
         config = GrowPyConfig()
         assert config.export_twig_density is None
@@ -173,6 +181,20 @@ twig_density = 0.5
         assert config.export_static is True
         assert config.export_twig_density == 0.5
 
+
+    def test_toml_export_previews_and_icons(self, tmp_path):
+        toml_content = b"""
+[export]
+previews = false
+icons = false
+"""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(toml_content)
+
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.export_previews is False
+        assert config.export_icons is False
+
     def test_toml_export_twig_density_conifer_broadleaf(self, tmp_path):
         toml_content = b"""
 [export]
@@ -249,6 +271,135 @@ class TestGrowPyConfigResolve:
         config.resolve(Args())
         assert config.verbose is True
 
+    def test_resolve_cli_false_overrides_toml_true(self):
+        """A bool config field defaulting True can be forced False from the CLI."""
+        config = GrowPyConfig(export_skeletal=True)
+
+        class Args:
+            skeletal = False
+
+        config.resolve(Args())
+        assert config.export_skeletal is False
+
+    def test_resolve_cli_true_overrides_toml_false(self):
+        """A bool config field defaulting False can be forced True from the CLI."""
+        config = GrowPyConfig(export_static=False)
+
+        class Args:
+            static = True
+
+        config.resolve(Args())
+        assert config.export_static is True
+
+    def test_resolve_no_flag_keeps_toml_value(self):
+        """Omitting the flag (None) leaves the TOML/default value untouched."""
+        config = GrowPyConfig(export_skeletal=False)
+
+        class Args:
+            skeletal = None
+
+        config.resolve(Args())
+        assert config.export_skeletal is False
+
+    def test_resolve_densify_maps_to_twigs_densify(self):
+        """--densify/--no-densify now goes through the generic mapping, replacing
+        the old no_densify special case."""
+        config = GrowPyConfig(twigs_densify=True)
+
+        class Args:
+            densify = False
+
+        config.resolve(Args())
+        assert config.twigs_densify is False
+
+
+class TestCliMappingsConsistency:
+    """Regression guard for the resolve() CLI_MAPPINGS drift found in the
+    2026-07-31 growpy review (XRFF-292): a mapping pointing at a CLI arg no
+    parser defines, or the reverse -- a TOML-settable field with no CLI
+    override and no acknowledgment that this is intentional.
+    """
+
+    @staticmethod
+    def _cli_defined_dests() -> set[str]:
+        """Every argparse dest (or positional arg name) defined in cli/*.py."""
+        import ast
+        from pathlib import Path
+
+        cli_dir = Path(__file__).resolve().parents[1] / "cli"
+        dests: set[str] = set()
+        for path in cli_dir.glob("*.py"):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "add_argument"
+                ):
+                    continue
+                dest = None
+                option_strings = []
+                for arg in node.args:
+                    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                        if arg.value.startswith("--"):
+                            option_strings.append(arg.value)
+                        elif not arg.value.startswith("-"):
+                            dest = arg.value
+                for kw in node.keywords:
+                    if kw.arg == "dest" and isinstance(kw.value, ast.Constant):
+                        dest = kw.value.value
+                if dest is None and option_strings:
+                    dest = option_strings[-1].lstrip("-").replace("-", "_")
+                if dest:
+                    dests.add(dest)
+        return dests
+
+    @staticmethod
+    def _toml_settable_fields() -> set[str]:
+        """Every GrowPyConfig field from_toml() can populate, found from its
+        ``kwargs["field_name"] = ...`` assignment targets."""
+        import ast
+        import inspect
+        import textwrap
+
+        source = textwrap.dedent(inspect.getsource(GrowPyConfig.from_toml))
+        tree = ast.parse(source)
+        fields: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Store):
+                if isinstance(node.value, ast.Name) and node.value.id == "kwargs":
+                    key = node.slice
+                    if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                        fields.add(key.value)
+        return fields
+
+    def test_cli_mappings_keys_have_backing_cli_arg(self):
+        cli_dests = self._cli_defined_dests()
+        orphans = set(GrowPyConfig.CLI_MAPPINGS) - cli_dests
+        assert not orphans, (
+            f"CLI_MAPPINGS keys with no backing CLI parser: {sorted(orphans)}"
+        )
+
+    def test_toml_settable_fields_have_mapping_or_are_allowlisted(self):
+        toml_fields = self._toml_settable_fields()
+        covered = set(GrowPyConfig.CLI_MAPPINGS.values()) | set(
+            GrowPyConfig.TOML_ONLY_FIELDS
+        )
+        uncovered = toml_fields - covered
+        assert not uncovered, (
+            f"TOML-settable fields with no CLI_MAPPINGS entry and no "
+            f"TOML_ONLY_FIELDS allowlist reason: {sorted(uncovered)}"
+        )
+
+    def test_toml_only_fields_are_not_also_cli_mapped(self):
+        """An allowlist entry claiming 'no CLI override' should actually have none."""
+        overlap = set(GrowPyConfig.TOML_ONLY_FIELDS) & set(
+            GrowPyConfig.CLI_MAPPINGS.values()
+        )
+        assert not overlap, f"Fields both allowlisted and CLI-mapped: {sorted(overlap)}"
+
+
+
 
 class TestGlobalConfig:
     """Tests for global config singleton management."""
@@ -320,6 +471,30 @@ class TestDensityVariants:
         )
         with pytest.raises(ValueError, match="missing"):
             config.get_density_variants()
+
+    def test_unknown_key_raises(self):
+        """XRFF-288: an unrecognized override key would otherwise silently
+        do nothing, so it must fail loudly at config-load time instead."""
+        config = GrowPyConfig(
+            export_density_variants=["bare"],
+            density_variant_defs={"bare": {"twig_density": 0.0, "typo_key": 1.0}},
+        )
+        with pytest.raises(ValueError, match="typo_key"):
+            config.get_density_variants()
+
+    def test_valid_keys_do_not_raise(self):
+        config = GrowPyConfig(
+            export_density_variants=["bare"],
+            density_variant_defs={
+                "bare": {
+                    "twig_density": 0.0,
+                    "build_cutoff_age": 5,
+                    "build_cutoff_thickness": 0.02,
+                }
+            },
+        )
+        variants = config.get_density_variants()
+        assert variants[0][0] == "bare"
 
 
 

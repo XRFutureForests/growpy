@@ -47,10 +47,12 @@ BATCH_PATTERN = re.compile(r"^import_batch_(\d+)_.+\.py$")
 # ("paging file is too small") and UE crashes. Per-file/per-mesh progress
 # tracking in the generated scripts makes killing and resuming UE safe, so we
 # do it proactively instead of waiting for the crash.
-DEFAULT_EDITOR_EXE = (
-    r"C:\Program Files\Epic Games\UE_5.7\Engine\Binaries\Win64\UnrealEditor.exe"
-)
-DEFAULT_UPROJECT = r"D:\Unreal\XRLab\XRLab.uproject"
+# No hardcoded default here on purpose -- these are machine-specific absolute
+# paths and this package is pip-installable and publicly mirrored. Configure
+# via [unreal] editor_exe / uproject in config, or --editor-exe / --uproject
+# on the CLI. Example values:
+#   editor_exe = r"C:\Program Files\Epic Games\UE_5.7\Engine\Binaries\Win64\UnrealEditor.exe"
+#   uproject   = r"D:\Unreal\XRLabDemo\XRLabDemo.uproject"
 
 # Scripts to run after all numbered batches (order preserved).
 # These depend on imported assets already existing in UE.
@@ -486,8 +488,8 @@ def run_batches(
     vram_limit: float = 75.0,
     ram_limit: float = 75.0,
     batch_delay: float = 10.0,
-    editor_exe: str = DEFAULT_EDITOR_EXE,
-    uproject: str = DEFAULT_UPROJECT,
+    editor_exe: str | None = None,
+    uproject: str | None = None,
     restart_ram_limit: float = 82.0,
     restart_poll_interval: float = 10.0,
     max_restarts: int = 10,
@@ -640,13 +642,19 @@ def main():
     )
     parser.add_argument(
         "--editor-exe",
-        default=DEFAULT_EDITOR_EXE,
-        help=f"Path to UnrealEditor.exe for auto-restart (default: {DEFAULT_EDITOR_EXE})",
+        default=None,
+        help=(
+            "Path to UnrealEditor.exe for auto-restart. Falls back to "
+            "[unreal] editor_exe in config if not given."
+        ),
     )
     parser.add_argument(
         "--uproject",
-        default=DEFAULT_UPROJECT,
-        help=f"Path to the .uproject file for auto-restart (default: {DEFAULT_UPROJECT})",
+        default=None,
+        help=(
+            "Path to the .uproject file for auto-restart. Falls back to "
+            "[unreal] uproject in config if not given."
+        ),
     )
     parser.add_argument(
         "--restart-ram-limit",
@@ -699,6 +707,19 @@ def main():
         for i, node in enumerate(nodes):
             logger.info("  [%d] %s", i, node.get("node_id", "unknown"))
         sys.exit(0)
+
+    from growpy.config.core import get_config
+
+    config = get_config()
+    editor_exe = args.editor_exe or config.unreal_editor_exe or None
+    uproject = args.uproject or config.unreal_uproject or None
+    if args.restart_ram_limit > 0 and (not editor_exe or not uproject):
+        parser.error(
+            "Auto-restart watchdog is enabled (--restart-ram-limit > 0) but "
+            "editor_exe/uproject could not be resolved. Set [unreal] editor_exe "
+            "and uproject in config, pass --editor-exe/--uproject explicitly, "
+            "or disable the watchdog with --restart-ram-limit 0."
+        )
 
     if not args.target:
         parser.error("A target script or directory is required.")

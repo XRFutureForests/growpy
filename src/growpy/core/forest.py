@@ -37,7 +37,7 @@ class TreeSnapshot(NamedTuple):
     """Per-tree snapshot captured at a growth milestone.
 
     NamedTuple for tuple-compatible unpacking plus named-field access.
-    Fields: ``(model, skeleton, bones_info, height, dbh)``.
+    Fields: ``(model, skeleton, bones_info, height, dbh, variant_models)``.
     """
 
     model: Any
@@ -45,6 +45,10 @@ class TreeSnapshot(NamedTuple):
     bones_info: list
     height: float
     dbh: float
+    # {variant_name: this tree's model at that variant's build-cutoff}.
+    # Empty when no density variants are configured (see
+    # build_density_variant_model_sets() / XRFF-288).
+    variant_models: dict = {}
 
 
 # Type aliases built on the named tuples.
@@ -309,6 +313,7 @@ def simulate_forest_growth_with_snapshots(
     height_interval: float = 0.0,
     max_height: float = 0.0,
     species_max_height: dict[str, float] | None = None,
+    plateau_cycles: int = 10,
 ) -> tuple[SnapshotData, dict[int, dict[str, dict[int, float]]]]:
     """Simulate forest growth and capture snapshots at height milestones.
 
@@ -414,6 +419,7 @@ def simulate_forest_growth_with_snapshots(
             quality_params,
             max_height=max_height,
             species_max_height=species_max_height,
+            plateau_cycles=plateau_cycles,
         )
     else:
         snapshots = _simulate_cycle_based_mode(
@@ -767,6 +773,63 @@ def _simulate_cycle_based_mode(
     return snapshots
 
 
+def build_density_variant_model_sets(
+    grove: gc.Grove,
+    base_models: list,
+    base_build_options: dict,
+    density_variants: list[tuple[str, dict]],
+    timer: Any = None,
+) -> dict[str, list]:
+    """Build one model set per distinct build-cutoff among density variants.
+
+    Variants that don't override build_cutoff_age/build_cutoff_thickness
+    share ``base_models`` (already built with ``base_build_options``); each
+    distinct (age, thickness) pair triggers exactly one extra
+    ``grove.build_models()`` call, shared by every variant that requests
+    that same pair.
+
+    Shared between Pipeline A (dataset mode, via _build_models_for_grove
+    above) and Pipeline B (layout mode, io/forest_export.py) so both honour
+    a variant's build_cutoff_* overrides identically -- see XRFF-288.
+
+    Args:
+        base_models: grove.build_models() output for base_build_options,
+            reused for any variant whose cutoff matches the base cutoff.
+        density_variants: [(variant_name, variant_config)] from
+            GrowPyConfig.get_density_variants().
+        timer: Optional ProfileTimer; each extra build is tracked as
+            f"build_models_{variant_name}" when provided.
+
+    Returns:
+        {variant_name: models} -- grove.build_models()'s per-tree list for
+        that variant's cutoff.
+    """
+    base_cutoff = (
+        base_build_options["build_cutoff_age"],
+        base_build_options["build_cutoff_thickness"],
+    )
+    built_cutoffs: dict[tuple, list] = {base_cutoff: base_models}
+    variant_model_sets: dict[str, list] = {}
+    for vname, vcfg in density_variants:
+        cutoff_key = (
+            vcfg.get("build_cutoff_age", base_cutoff[0]),
+            vcfg.get("build_cutoff_thickness", base_cutoff[1]),
+        )
+        if cutoff_key not in built_cutoffs:
+            variant_opts = {
+                **base_build_options,
+                "build_cutoff_age": cutoff_key[0],
+                "build_cutoff_thickness": cutoff_key[1],
+            }
+            if timer is not None:
+                with timer.track(f"build_models_{vname}"):
+                    built_cutoffs[cutoff_key] = grove.build_models(variant_opts)
+            else:
+                built_cutoffs[cutoff_key] = grove.build_models(variant_opts)
+        variant_model_sets[vname] = built_cutoffs[cutoff_key]
+    return variant_model_sets
+
+
 def _build_models_for_grove(
     grove: gc.Grove,
     species_name: str,
@@ -790,7 +853,7 @@ def _build_models_for_grove(
         skeleton_bias,
         skeleton_connected,
     )
-    tree_bones = _split_bones_by_tree(all_bones, len(grove.trees))
+    tree_bones = split_bones_by_tree(all_bones, len(grove.trees))
 
     build_options = {
         "resolution": quality_params.get("resolution", 24),
@@ -812,6 +875,18 @@ def _build_models_for_grove(
             cycle,
         )
 
+    # Build one extra model set per distinct density-variant build-cutoff.
+    # Variants that don't override build_cutoff_age/build_cutoff_thickness
+    # share `models` above; each distinct (age, thickness) pair triggers
+    # exactly one extra grove.build_models() call, shared by every variant
+    # that requests that same pair. See build_density_variant_model_sets().
+    density_variants = quality_params.get("density_variants") or []
+    variant_model_sets: dict[str, list] = {}
+    if density_variants:
+        variant_model_sets = build_density_variant_model_sets(
+            grove, models, build_options, density_variants
+        )
+
     tree_snapshots = []
     for tree_idx in range(len(grove.trees)):
         model = models[tree_idx] if tree_idx < len(models) else None
@@ -827,7 +902,13 @@ def _build_models_for_grove(
                 tree_idx,
                 cycle,
             )
-        tree_snapshots.append(TreeSnapshot(model, skeleton, bones, height, dbh))
+        tree_variant_models = {
+            vname: (vmodels[tree_idx] if tree_idx < len(vmodels) else None)
+            for vname, vmodels in variant_model_sets.items()
+        }
+        tree_snapshots.append(
+            TreeSnapshot(model, skeleton, bones, height, dbh, tree_variant_models)
+        )
 
     if tree_snapshots:
         logger.info(
@@ -841,7 +922,7 @@ def _build_models_for_grove(
     return tree_snapshots
 
 
-def _split_bones_by_tree(all_bones: list, num_trees: int) -> list[list]:
+def split_bones_by_tree(all_bones: list, num_trees: int) -> list[list]:
     """Split combined bone list into per-tree bone lists.
 
     Grove's tag_bone_id() returns bones for all trees combined, ordered by

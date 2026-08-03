@@ -46,6 +46,7 @@ ensure_pxr_with_unreal_schema()
 from pxr import Gf, Sdf, Usd, UsdGeom
 
 from ...config.core import get_config as _get_config
+from ...config.paths import twig_ext as _twig_ext
 from ...core.twig import extract_twig_placements_from_model
 
 
@@ -1715,7 +1716,7 @@ def create_combined_twig_usda(
 
     combined_files = []
 
-    ext = _usd_ext()
+    ext = _twig_ext(_get_config())
 
     for mesh_type in mesh_types:
         suffix = f"_{mesh_type}"

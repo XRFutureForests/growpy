@@ -174,13 +174,14 @@ CSV Format Support:
     )
     parser.add_argument(
         "--resize-textures",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=None,
         help="Resize textures to power-of-2 for Unreal (slow, skip by default)",
     )
     parser.add_argument(
         "--verbose",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help="Enable verbose output (INFO-level logging)",
     )
     parser.add_argument(
@@ -288,16 +289,22 @@ CSV Format Support:
         dst_file = dst_presets / f"{standardized_name}.seed.json"
 
         if src_file.exists():
-            # Skip if destination already has calibration data embedded —
-            # overwriting would destroy the yield table calibration from step 3.
+            # Skip if destination already has calibration data or a manually
+            # tuned "{param}_curve" ramp override embedded — overwriting would
+            # destroy step 3's yield table calibration or a hand-added
+            # protective curve (e.g. drop_decay_curve/drop_weak_curve, used to
+            # prevent Grove's structural collapse at high cycle counts -- see
+            # docs/reference/grove-preset-reference.md).
             if dst_file.exists():
                 try:
                     import json as _json
                     with open(dst_file) as _f:
                         _existing = _json.load(_f)
-                    if "_yield_table_calibration" in _existing:
+                    has_curve = any(k.endswith("_curve") for k in _existing)
+                    if "_yield_table_calibration" in _existing or has_curve:
                         logger.debug(
-                            "Preset %s has calibration data — skipping overwrite",
+                            "Preset %s has calibration data or curve overrides — "
+                            "skipping overwrite",
                             dst_file.name,
                         )
                         stats["presets_copied"] += 1

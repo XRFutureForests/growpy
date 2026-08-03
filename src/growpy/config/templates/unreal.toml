@@ -36,3 +36,9 @@ nanite_lerp_uvs = true
 # Combined presets and PVE graphs are colocated with tree meshes
 # at <project_path>/<species>/<scene>/.
 generate_pve_presets = false
+
+# --- ue_exec auto-restart watchdog (tools/ue_exec.py) ---
+# Machine-specific absolute paths -- leave commented out and pass
+# --editor-exe/--uproject instead, or fill these in for your machine.
+# editor_exe = "C:\\Program Files\\Epic Games\\UE_5.7\\Engine\\Binaries\\Win64\\UnrealEditor.exe"
+# uproject = "C:\\Path\\To\\YourProject.uproject"

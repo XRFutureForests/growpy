@@ -8,6 +8,10 @@
 import_to_unreal = true
 # Unreal content path for imported assets in Content Browser
 project_path = "/Game/Assets/TheGrove"
+# Path to the ST_TreeCatalogEntry struct (and where DT_TreeCatalog gets
+# created). Lives under /Content/Templates in the project, not under
+# project_path -- the old /Game/Assets/TheGrove location is no longer used.
+db_path = "/Game/Templates"
 # Automatically set Nanite shape preservation to Voxelize on imported assemblies.
 # Voxelization produces the best visual quality but adds significant import time.
 # Set to false for faster testing iterations; re-enable for production exports.
@@ -39,3 +43,11 @@ generate_pve_presets = false
 # Generate the UE wind-import script that applies *_DynamicWind.json sidecars
 # to skeletal meshes (per-tree wind JSON is always exported regardless).
 generate_wind_data = true
+
+# --- ue_exec auto-restart watchdog (tools/ue_exec.py) ---
+# Machine-specific absolute paths -- not committed with real values since this
+# config file ships in a public repo. Set these to use the watchdog without
+# passing --editor-exe/--uproject on every invocation. --editor-exe/--uproject
+# always take priority when given.
+# editor_exe = "C:\\Program Files\\Epic Games\\UE_5.7\\Engine\\Binaries\\Win64\\UnrealEditor.exe"
+# uproject = "D:\\Unreal\\XRLabDemo\\XRLabDemo.uproject"

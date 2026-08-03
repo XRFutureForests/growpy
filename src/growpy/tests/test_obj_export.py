@@ -6,6 +6,7 @@ from growpy.io.helios.obj_export import (
     WOOD_MATERIAL_KEYWORDS,
     _bake_twig_instances,
     _classified_twig_cache,
+    _find_assembly_files,
     _fmt_vert,
     _quat_to_rotation_matrix,
     _resolve_to_static,
@@ -165,3 +166,69 @@ class TestBakeTwigInstances:
         assert len(faces) == 2
         # Second face should have offset indices
         np.testing.assert_array_equal(faces[1], [3, 4, 5])
+
+
+class _FakeConfig:
+    """Minimal stand-in for GrowPyConfig -- resolvers only read export_usd_format."""
+
+    def __init__(self, export_usd_format: str):
+        self.export_usd_format = export_usd_format
+
+
+class TestFindAssemblyFiles:
+    """Tests for _find_assembly_files layout/extension discovery (XRFF-281)."""
+
+    def test_discovers_tree_layout_usdc(self, tmp_path):
+        target = tmp_path / "european_beech" / "tree_0001"
+        target.mkdir(parents=True)
+        (target / "european_beech_assembly_static.usdc").touch()
+
+        found = _find_assembly_files(tmp_path, _FakeConfig("usdc"))
+        assert found == [target / "european_beech_assembly_static.usdc"]
+
+    def test_discovers_tree_layout_usda(self, tmp_path):
+        target = tmp_path / "european_beech" / "tree_0001"
+        target.mkdir(parents=True)
+        (target / "european_beech_assembly_static.usda").touch()
+
+        found = _find_assembly_files(tmp_path, _FakeConfig("usda"))
+        assert found == [target / "european_beech_assembly_static.usda"]
+
+    def test_wrong_extension_not_matched(self, tmp_path):
+        target = tmp_path / "european_beech" / "tree_0001"
+        target.mkdir(parents=True)
+        (target / "european_beech_assembly_static.usda").touch()
+
+        # Config says usdc, only a .usda file exists on disk -- must not match.
+        assert _find_assembly_files(tmp_path, _FakeConfig("usdc")) == []
+
+    def test_ignores_dataset_mode_layout(self, tmp_path):
+        # Dataset mode writes species/rNN/, not species/tree_NNNN/ -- the
+        # decided scope for XRFF-281 is layout mode only (see module docstring
+        # on _find_assembly_files), so these must not be discovered.
+        target = tmp_path / "european_beech" / "r00"
+        target.mkdir(parents=True)
+        (target / "european_beech_assembly_static.usdc").touch()
+
+        assert _find_assembly_files(tmp_path, _FakeConfig("usdc")) == []
+
+
+
+class TestExportForestObjEmptyDiagnostic:
+    """Empty discovery must name the searched pattern, not fail silently (XRFF-297)."""
+
+    def test_empty_result_names_pattern(self, tmp_path, caplog):
+        import logging
+
+        import pandas as pd
+
+        from growpy.io.helios.obj_export import export_forest_obj
+
+        forest_data = pd.DataFrame({"fid": [], "x": [], "y": [], "z": []})
+        with caplog.at_level(logging.WARNING):
+            result = export_forest_obj(tmp_path, forest_data)
+
+        assert result == []
+        messages = " ".join(r.message for r in caplog.records)
+        assert "assembly_static" in messages
+        assert str(tmp_path) in messages

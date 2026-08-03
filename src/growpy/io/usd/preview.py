@@ -5,7 +5,6 @@ mesh/skeleton data for visual QA.
 """
 
 import logging
-import re
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -458,88 +457,82 @@ def generate_export_control_image(
     view_bounds: list | None = None,
     stems_file_base: str | None = None,
 ) -> None:
-    """Render control image from exported USDA stems mesh and skeleton.
+    """Render control image from the exported stems mesh and skeleton.
 
-    Reads back the actual exported files to verify what Unreal will import.
-    Shows mesh edges (green) and skeleton joints (red) in 3 orthogonal views.
+    Reads back the actual exported USD stage via the USD API (so this works
+    for both '.usda' and '.usdc') to verify what Unreal will import. Shows
+    mesh edges (green) and skeleton joints (red) in 3 orthogonal views.
 
     Args:
-        tree_dir: Directory containing exported USDA files.
+        tree_dir: Directory containing the tree's exported files.
         species_clean: Snake_case species name (used for title only).
         file_prefix: Base filename prefix (e.g., 'european_beech_h15m_d10cm').
         timer: ProfileTimer instance.
         view_bounds: Optional axis bounds from preview image for matching.
         stems_file_base: Base name for stems file lookup. When provided, uses
-            this instead of file_prefix to locate stems USDA (e.g.,
+            this instead of file_prefix to locate the stems USD (e.g.,
             'european_beech_h15m_d10cm' when file_prefix includes variant info).
     """
     try:
         import matplotlib.pyplot as plt
         import numpy as np
         from matplotlib.collections import LineCollection
+        from ...utils.pxr_init import ensure_pxr_with_unreal_schema
+
+        ensure_pxr_with_unreal_schema()
+        from pxr import Usd, UsdGeom, UsdSkel
+
+        from ...config.core import get_config
+        from ...config.paths import stems_path as _stems_path
 
         with timer.track("generate_export_control"):
             base = stems_file_base if stems_file_base else file_prefix
-            stems_path = tree_dir / f"{base}_stems_skeletal.usda"
-            if not stems_path.exists():
-                stems_path = tree_dir / f"{base}_stems_static.usda"
-            if not stems_path.exists():
+            config = get_config()
+            path = _stems_path(tree_dir, base, "skeletal", config)
+            if not path.exists():
+                path = _stems_path(tree_dir, base, "static", config)
+            if not path.exists():
                 return
 
-            content = stems_path.read_text(encoding="utf-8")
-
-            # Parse mesh points
-            match = re.search(r"point3f\[\] points\s*=\s*\[", content)
-            if not match:
+            stage = Usd.Stage.Open(str(path))
+            if stage is None:
                 return
-            start = match.end()
-            depth, pos = 1, start
-            while depth > 0 and pos < len(content):
-                if content[pos] == "[":
-                    depth += 1
-                elif content[pos] == "]":
-                    depth -= 1
-                pos += 1
-            coords = re.findall(r"\(\s*([^)]+)\)", content[start : pos - 1])
-            if not coords:
+
+            # Mesh points/edges from the first Mesh prim in the stage.
+            mesh_points = None
+            edges: set[tuple[int, int]] = set()
+            for prim in stage.Traverse():
+                if not prim.IsA(UsdGeom.Mesh):
+                    continue
+                mesh = UsdGeom.Mesh(prim)
+                points = mesh.GetPointsAttr().Get()
+                if not points:
+                    continue
+                mesh_points = np.array([[p[0], p[1], p[2]] for p in points])
+                face_counts = mesh.GetFaceVertexCountsAttr().Get() or []
+                face_indices = mesh.GetFaceVertexIndicesAttr().Get() or []
+                offset = 0
+                for count in face_counts:
+                    face = face_indices[offset : offset + count]
+                    offset += count
+                    for i in range(len(face)):
+                        edges.add(tuple(sorted((face[i], face[(i + 1) % len(face)]))))
+                break  # one mesh per stems file
+
+            if mesh_points is None:
                 return
-            mesh_points = np.array(
-                [[float(v.strip()) for v in c.split(",")[:3]] for c in coords]
-            )
 
-            # Parse face indices for edge rendering
-            face_match = re.search(
-                r"int\[\] faceVertexIndices\s*=\s*\[([^\]]+)\]", content
-            )
-            edges = set()
-            if face_match:
-                indices = [int(x.strip()) for x in face_match.group(1).split(",")]
-                for i in range(0, len(indices) - 2, 3):
-                    for a, b in [(0, 1), (1, 2), (2, 0)]:
-                        edges.add(tuple(sorted([indices[i + a], indices[i + b]])))
-
-            # Parse skeleton joint positions from bindTransforms
+            # Skeleton joint positions (translation component of each joint's
+            # world-space bind transform) from the first Skeleton prim.
             skel_points = []
-            bt_match = re.search(
-                r"matrix4d\[\] bindTransforms\s*=\s*\[", content
-            )
-            if bt_match:
-                bt_start = bt_match.end()
-                bt_depth, bt_pos = 1, bt_start
-                while bt_depth > 0 and bt_pos < len(content):
-                    if content[bt_pos] == "[":
-                        bt_depth += 1
-                    elif content[bt_pos] == "]":
-                        bt_depth -= 1
-                    bt_pos += 1
-                matrices = re.findall(
-                    r"\(\s*\([^)]*\)[^)]*\([^)]*\)[^)]*\([^)]*\)[^)]*\(([^)]*)\)\s*\)",
-                    content[bt_start : bt_pos - 1],
-                )
-                for m in matrices:
-                    vals = [float(v.strip()) for v in m.split(",")]
-                    if len(vals) >= 3:
-                        skel_points.append(vals[:3])
+            for prim in stage.Traverse():
+                if not prim.IsA(UsdSkel.Skeleton):
+                    continue
+                bind_transforms = UsdSkel.Skeleton(prim).GetBindTransformsAttr().Get()
+                for m in bind_transforms or []:
+                    t = m.ExtractTranslation()
+                    skel_points.append([t[0], t[1], t[2]])
+                break  # one skeleton per stems file
             skel_points = np.array(skel_points) if skel_points else np.empty((0, 3))
 
             # Center everything at origin for clean plots.

@@ -17,6 +17,7 @@ Material groups:
 """
 
 import logging
+import re
 from pathlib import Path
 
 import bpy
@@ -28,6 +29,11 @@ if hasattr(bpy.utils, "expose_bundled_modules"):
     bpy.utils.expose_bundled_modules()
 
 from pxr import Sdf, Usd, UsdGeom, UsdShade
+
+from growpy.config.core import get_config as _get_config
+from growpy.config.paths import static_assembly_glob as _static_assembly_glob
+from growpy.config.paths import tree_ext as _tree_ext
+from growpy.config.paths import twig_ext as _twig_ext
 
 WOOD_MATERIAL_KEYWORDS = ("bark", "branch", "wood", "dead", "stem", "twig")
 
@@ -42,9 +48,30 @@ def clear_twig_cache() -> None:
     _classified_twig_cache.clear()
 
 
-def _resolve_to_static(filename: str) -> str:
-    """Convert a skeletal USDA filename to its static counterpart."""
-    return filename.replace("_skeletal.usda", "_static.usda")
+def _resolve_to_static(filename: str, twig_ext: str = ".usda") -> str:
+    """Convert a skeletal twig filename to its static counterpart.
+
+    Twig files are always written with :func:`growpy.config.paths.twig_ext`
+    (``.usda`` today, independent of ``[export] usd_format``) -- pass that
+    resolved value rather than relying on the default.
+    """
+    return filename.replace(f"_skeletal{twig_ext}", f"_static{twig_ext}")
+
+
+def _find_assembly_files(output_dir: Path, config) -> list[Path]:
+    """Discover static assembly files under layout mode (species/tree_NNNN/).
+
+    OBJ export operates on layout mode only (species/tree_NNNN/ from a
+    placement CSV). Dataset-mode output (species/rNN/) is not a supported
+    input -- those coordinates are cosmetic separation, not real positions
+    a Helios scene could bake in. See docs/guides/helios-export.md.
+
+    Extension-agnostic: resolved from ``[export] usd_format`` via
+    :func:`growpy.config.paths.static_assembly_glob`, so this matches
+    whether the active format is ``usda`` or ``usdc``.
+    """
+    return sorted(output_dir.glob(f"*/tree_*/{_static_assembly_glob(config)}"))
+
 
 
 def _read_twig_mesh_classified(
@@ -175,15 +202,16 @@ def _read_tree_components(
         instancer_data: (positions, orientations, scales, proto_indices, proto_files) or None
     """
     tree_dir = assembly_usda_path.parent
+    ext = _tree_ext(_get_config())
 
-    # Prefer static USDA for OBJ export (no skeleton needed, has material bindings)
-    stem_files = list(tree_dir.glob("*_stems_static.usda"))
+    # Prefer static USD for OBJ export (no skeleton needed, has material bindings)
+    stem_files = list(tree_dir.glob(f"*_stems_static{ext}"))
     if not stem_files:
-        stem_files = list(tree_dir.glob("*_static.usda"))
+        stem_files = list(tree_dir.glob(f"*_static{ext}"))
     if not stem_files:
-        stem_files = list(tree_dir.glob("*_stems_skeletal.usda"))
+        stem_files = list(tree_dir.glob(f"*_stems_skeletal{ext}"))
     if not stem_files:
-        stem_files = list(tree_dir.glob("*_skeletal.usda"))
+        stem_files = list(tree_dir.glob(f"*_skeletal{ext}"))
     if not stem_files:
         logger.warning("OBJ export: No stem USDA found in %s", tree_dir)
         return None
@@ -224,7 +252,7 @@ def _read_tree_components(
             )
 
         for idx, twig_file in proto_files.items():
-            static_file = _resolve_to_static(twig_file)
+            static_file = _resolve_to_static(twig_file, _twig_ext(_get_config()))
             twig_path = tree_dir / static_file
             if not twig_path.exists():
                 twig_path = tree_dir / twig_file
@@ -1214,11 +1242,26 @@ def export_forest_obj(
 
     clear_twig_cache()
 
-    # Find static assembly USDA files (OBJ export uses static mesh data)
-    assembly_files = sorted(output_dir.glob("*/tree_*/*_assembly_static.usda"))
+    config = _get_config()
+    if not config.export_static:
+        logger.warning(
+            "OBJ export requested but [export] static = false -- static "
+            "assemblies are never written, so no assembly files exist to "
+            "discover. Enable [export] static (or --static) and re-run."
+        )
+
+    assembly_files = _find_assembly_files(output_dir, config)
 
     if not assembly_files:
-        logger.warning("OBJ export: No assembly USDA files found")
+        logger.warning(
+            "OBJ export: no assembly files found under %s matching "
+            "*/tree_*/%s (layout mode only). Most likely cause: "
+            "[export] static = false, or output_dir is dataset-mode output "
+            "(species/rNN/) rather than a layout run -- see "
+            "docs/guides/helios-export.md#scope-layout-mode-only.",
+            output_dir,
+            _static_assembly_glob(config),
+        )
         return []
 
     logger.info("HELIOS OBJ EXPORT (%d trees, streaming)", len(assembly_files))
@@ -1236,7 +1279,7 @@ def export_forest_obj(
 
     for assembly_path in sorted(assembly_files):
         tree_dir_name = assembly_path.parent.name
-        tree_id_str = tree_dir_name.replace("tree_", "")
+        tree_match = re.match(r"tree_(\d+)$", tree_dir_name)
 
         species_dir = assembly_path.parent.parent.name
         species_name = species_dir.replace("_", " ").title()
@@ -1264,12 +1307,26 @@ def export_forest_obj(
         trunk_verts, trunk_faces, classified_protos, instancer_data = components
 
         # Look up CSV position
-        try:
-            fid = int(tree_id_str)
-            row = forest_data[forest_data["fid"] == fid].iloc[0]
-            x, y, z = float(row["x"]), float(row["y"]), float(row["z"])
-        except (ValueError, IndexError):
-            x, y, z = 0.0, 0.0, 0.0
+        x, y, z = 0.0, 0.0, 0.0
+        if tree_match is None:
+            logger.warning(
+                "OBJ export: %s is not a tree_NNNN directory -- using position "
+                "(0, 0, 0)",
+                tree_dir_name,
+            )
+        else:
+            fid = int(tree_match.group(1))
+            matches = forest_data[forest_data["fid"] == fid]
+            if matches.empty:
+                logger.warning(
+                    "OBJ export: no CSV row for fid=%d (%s) -- using position "
+                    "(0, 0, 0)",
+                    fid,
+                    tree_dir_name,
+                )
+            else:
+                row = matches.iloc[0]
+                x, y, z = float(row["x"]), float(row["y"]), float(row["z"])
 
         # Write per-tree OBJ via streaming (always, needed for combined OBJ too)
         tree_dir = assembly_path.parent

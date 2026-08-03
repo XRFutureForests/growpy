@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from growpy.io.usd import assembly_export
 from growpy.io.usd.assembly_export import (
     _build_joint_parent_indices,
     _copied_twig_cache,
@@ -10,6 +11,7 @@ from growpy.io.usd.assembly_export import (
     _sanitize_prim_name,
     clear_twig_copy_cache,
     create_assembly,
+    create_combined_twig_usda,
 )
 
 
@@ -142,3 +144,32 @@ class TestCreateAssemblyUniqueNaming:
         assert name_a != name_b
         assert name_a == "european_oak_r00_h05m_d04cm_full_assembly"
         assert name_b == "european_oak_r00_h12m_d18cm_full_assembly"
+
+
+
+class TestCreateCombinedTwigUsda:
+    """Regression: the wrapper glob must use the twig extension, not the
+    configured tree extension -- twigs are always .usda regardless of
+    [export] usd_format.
+    """
+
+    def test_finds_usda_twigs_when_tree_format_is_usdc(self, tmp_path, monkeypatch):
+        class _FakeConfig:
+            export_usd_format = "usdc"
+
+        monkeypatch.setattr(assembly_export, "_get_config", lambda: _FakeConfig())
+
+        instances_dir = tmp_path / "Instances"
+        instances_dir.mkdir()
+        (instances_dir / "european_beech_foliage_a_skeletal.usda").write_text(
+            "#usda 1.0\n"
+        )
+        (instances_dir / "european_beech_foliage_b_skeletal.usda").write_text(
+            "#usda 1.0\n"
+        )
+
+        result = create_combined_twig_usda(instances_dir)
+
+        assert len(result) == 1
+        assert result[0].name == "european_beech_twigs_combined_skeletal.usda"
+        assert result[0].exists()

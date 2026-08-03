@@ -11,6 +11,17 @@ quality = "medium"
 # 147 (45m), Norway spruce / silver fir 131 (35m), common ash 124 (30m); every
 # other dataset species is under 105. 160 clears the tallest with margin.
 growth_cycle_limit = 160
+# Consecutive no-height-growth cycles (< 1cm gain) before a species' remaining
+# active surround-radius grove(s) are declared plateaued and simulation stops
+# early, short of growth_cycle_limit above. Height-milestone dataset
+# production shares this single counter across whichever radius groves for a
+# species are still growing (each radius freezes independently once it
+# captures all its own milestones) -- a heavily-shaded grove (e.g. r08/r16)
+# can hit a genuine temporary lull under Grove's own shading/pruning dynamics
+# well before growth_cycle_limit, silently truncating its upper height
+# stages. Raised from the code default of 10: observed real stalls of
+# 7-9 consecutive cycles for some species/radius combos reaching 15-20m.
+plateau_cycles = 25
 # Number of grove.smooth() passes on branch angles (int, 0-20, 0 = disabled)
 # Each pass reduces sharp corner angles between branch segments.
 # Higher values = smoother, more organic branches; 10-20 for production.
@@ -31,7 +42,7 @@ height_interval = 5
 # 0 = no limit (use full CSV heights)
 # This is a step-4 (export) setting only; step 3's calibration has its own
 # independent [growth_models] max_height in growth_models.toml.
-max_height = 0
+max_height = 20
 
 # --- Export options ---
 [export]
@@ -63,18 +74,18 @@ static = false
 # multiplied with this base (e.g., base=2.0, CSV=0.5 -> effective 1.0).
 # Range: 0.0 (no twigs) to 3.0+ (dense canopy)
 twig_density_conifer = 1.0
-twig_density_broadleaf = 3.5
+twig_density_broadleaf = 2.0
 # Youth bias exponent for synthetic twig placement.
 # Controls how strongly additional twigs prefer younger branches.
 # 1.0 = linear (default), >1.0 = stronger youth preference, <1.0 = more uniform.
 # At 2.0 a branch at youth=0.5 gets 25% weight vs 100% for the youngest.
 # Range: 0.0 (uniform placement) to 3.0+ (extreme youth preference)
-youth_bias = 1.25
+youth_bias = 2.0
 # Maximum skeleton joints for Nanite Assembly USD export.
 # Nanite encodes bone indices in 8-bit fields (max 256).
 # 0 = no limit (use for PVE native skeletal mesh path which has no constraint).
 # 250 = safe default for Nanite Assembly USD import path.
-max_skeleton_joints = 0
+max_skeleton_joints = 250
 # Maximum twig instances per Nanite Assembly.
 # During UE import, NaniteAssemblyRootAPI expands all instances into a combined
 # Nanite mesh which can consume extreme amounts of RAM.
