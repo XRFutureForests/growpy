@@ -895,9 +895,8 @@ def write_combined_obj_streaming(
     finally:
         temp_geom_path.unlink(missing_ok=True)
 
-    _write_helios_mtl(
-        mtl_path, bark_texture=None, helios_spectra_leaves=helios_spectra_leaves
-    )
+    source_mtl_files = [obj_path.with_suffix(".mtl") for obj_path, _ in tree_offsets]
+    _write_combined_mtl(mtl_path, source_mtl_files, helios_spectra_leaves)
 
     logger.info(
         "Combined OBJ: %s (%d verts, %d faces, %d trees)",
@@ -907,6 +906,62 @@ def write_combined_obj_streaming(
         len(tree_obj_paths),
     )
     return output_path
+
+
+def _write_combined_mtl(
+    mtl_path: Path,
+    source_mtl_files: list[Path],
+    helios_spectra_leaves: str = "deciduous",
+) -> None:
+    """Merge material definitions from individual tree MTL files into one combined MTL.
+
+    Deduplicates materials by name, keeping the first definition encountered.
+    Per-tree material prefixes (see growpy.io.helios.classification) make
+    every tree's materials distinct, so this preserves per-tree classification
+    codes and per-species leaf spectra in the combined OBJ -- regenerating a
+    fixed bark/twig_wood/twig_leaf MTL instead would leave any prefixed
+    material referenced by the combined OBJ (usemtl) without a matching
+    definition (newmtl), which Helios++ silently falls back to defaults for.
+    """
+    seen_materials: dict[str, list[str]] = {}
+
+    for src_mtl in source_mtl_files:
+        if not src_mtl.exists():
+            continue
+        current_name = None
+        current_lines: list[str] = []
+        with open(src_mtl) as f:
+            for line in f:
+                if line.startswith("newmtl "):
+                    if current_name and current_name not in seen_materials:
+                        seen_materials[current_name] = current_lines
+                    current_name = line.strip().split(maxsplit=1)[1]
+                    current_lines = [line]
+                elif current_name is not None:
+                    current_lines.append(line)
+        if current_name and current_name not in seen_materials:
+            seen_materials[current_name] = current_lines
+
+    if not seen_materials:
+        # Fallback if no MTL files found
+        _write_helios_mtl(
+            mtl_path, bark_texture=None, helios_spectra_leaves=helios_spectra_leaves
+        )
+        return
+
+    with open(mtl_path, "w") as f:
+        f.write("# Helios++ combined forest material\n\n")
+        # Write bark first (if present, unprefixed) for readability
+        if "bark" in seen_materials:
+            for line in seen_materials["bark"]:
+                f.write(line)
+            f.write("\n")
+        for mat_name in sorted(seen_materials.keys()):
+            if mat_name == "bark":
+                continue
+            for line in seen_materials[mat_name]:
+                f.write(line)
+            f.write("\n")
 
 
 def _find_bark_texture(tree_dir: Path) -> Path | None:

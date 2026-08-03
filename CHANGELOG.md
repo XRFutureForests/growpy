@@ -7,6 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Combined Helios OBJ export regenerated a fixed bark/twig_wood/twig_leaf
+  MTL instead of merging the per-tree MTLs it actually referenced. Harmless
+  while all per-tree OBJs used exactly those three unprefixed names, but a
+  per-tree material prefix (XRFF-309's classification codes) would have
+  made the combined OBJ reference materials the combined MTL never defines,
+  silently losing every classification code. `_write_combined_mtl` now
+  merges the source MTLs (dedup by name, first definition wins) instead of
+  regenerating a fixed material set. Ported from main_tom. (XRFF-310)
+
 - `simulate_forest_growth_with_snapshots()` crashed with `ValueError: too many
   values to unpack (expected 2)` for every species in the dataset job-matrix
   path -- a leftover `for (sp, sp_radius), ov in species_overrides.items():`
