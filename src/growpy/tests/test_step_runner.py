@@ -4,10 +4,10 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from growpy.config import get_config
 from growpy.pipelines.step_runner import (
     STEP_SCRIPTS,
     _build_step4_command,
+    _build_step123_command,
     check_environment,
     run_species_step4,
     run_step123,
@@ -55,34 +55,118 @@ class TestBuildStep4Command:
     """Tests for step 4 command construction."""
 
     def test_basic_command(self):
-        cmd = _build_step4_command(Path("test.csv"))
+        cmd = _build_step4_command("European Beech")
         assert cmd[0] == sys.executable
         assert str(STEP_SCRIPTS[4]) in cmd[1]
-        assert "test.csv" in cmd[2]
-        assert "--export-trees" in cmd
-        # One fid per configured surround radius (merged CSVs have one row
-        # per radius) -- must not be hardcoded to fewer than that.
-        num_radii = len(get_config().surround_radii)
-        expected = ",".join(str(i) for i in range(1, num_radii + 1))
-        assert expected in cmd
+        assert cmd[2] == "--species"
+        assert cmd[3] == "European Beech"
+
+    def test_passes_no_csv(self):
+        cmd = _build_step4_command("European Beech")
+        assert not any(str(c).endswith(".csv") for c in cmd)
+
+    def test_no_export_trees_filter(self):
+        # The child builds every job row for the species itself, so there is
+        # nothing to filter down to.
+        assert "--export-trees" not in _build_step4_command("European Beech")
 
     def test_with_max_height(self):
-        cmd = _build_step4_command(Path("test.csv"), max_height=15.0)
+        cmd = _build_step4_command("European Beech", max_height=15.0)
         assert "--max-height" in cmd
         idx = cmd.index("--max-height")
         assert cmd[idx + 1] == "15.0"
 
     def test_without_max_height(self):
-        cmd = _build_step4_command(Path("test.csv"), max_height=0)
+        cmd = _build_step4_command("European Beech", max_height=0)
         assert "--max-height" not in cmd
 
     def test_skip_unreal_scripts(self):
-        cmd = _build_step4_command(Path("test.csv"), skip_unreal_scripts=True)
+        cmd = _build_step4_command("European Beech", skip_unreal_scripts=True)
         assert "--no-unreal-scripts" in cmd
 
     def test_no_unreal_scripts_by_default(self):
-        cmd = _build_step4_command(Path("test.csv"))
+        cmd = _build_step4_command("European Beech")
         assert "--no-unreal-scripts" not in cmd
+
+    def test_pve_appended_when_true(self):
+        cmd = _build_step4_command("European Beech", pve=True)
+        assert "--pve" in cmd
+
+    def test_no_pve_appended_when_false(self):
+        cmd = _build_step4_command("European Beech", pve=False)
+        assert "--no-pve" in cmd
+
+    def test_pve_omitted_when_none(self):
+        cmd = _build_step4_command("European Beech", pve=None)
+        assert "--pve" not in cmd
+        assert "--no-pve" not in cmd
+
+    def test_wind_appended_when_true(self):
+        cmd = _build_step4_command("European Beech", wind=True)
+        assert "--wind" in cmd
+
+    def test_no_wind_appended_when_false(self):
+        cmd = _build_step4_command("European Beech", wind=False)
+        assert "--no-wind" in cmd
+
+    def test_wind_omitted_when_none(self):
+        cmd = _build_step4_command("European Beech", wind=None)
+        assert "--wind" not in cmd
+        assert "--no-wind" not in cmd
+
+    def test_previews_appended_when_true(self):
+        cmd = _build_step4_command("European Beech", previews=True)
+        assert "--previews" in cmd
+
+    def test_no_previews_appended_when_false(self):
+        cmd = _build_step4_command("European Beech", previews=False)
+        assert "--no-previews" in cmd
+
+    def test_previews_omitted_when_none(self):
+        cmd = _build_step4_command("European Beech", previews=None)
+        assert "--previews" not in cmd
+        assert "--no-previews" not in cmd
+
+    def test_icons_appended_when_true(self):
+        cmd = _build_step4_command("European Beech", icons=True)
+        assert "--icons" in cmd
+
+    def test_no_icons_appended_when_false(self):
+        cmd = _build_step4_command("European Beech", icons=False)
+        assert "--no-icons" in cmd
+
+    def test_icons_omitted_when_none(self):
+        cmd = _build_step4_command("European Beech", icons=None)
+        assert "--icons" not in cmd
+        assert "--no-icons" not in cmd
+
+
+class TestBuildStep123Command:
+    """Tests for step 1-3 command construction."""
+
+    def test_dataset_mode_passes_no_csv(self):
+        cmd = _build_step123_command(1, dataset_mode=True)
+        assert "--dataset" in cmd
+        assert "--csv" not in cmd
+        assert not any(str(c).endswith(".csv") for c in cmd)
+
+    def test_csv_mode_passes_path(self):
+        cmd = _build_step123_command(
+            2, dataset_mode=False, csv_path=Path("data/all.csv")
+        )
+        assert "--csv" in cmd
+        assert str(Path("data/all.csv")) in cmd
+        assert "--dataset" not in cmd
+
+    def test_verbose_appended(self):
+        cmd = _build_step123_command(3, dataset_mode=True, verbose=True)
+        assert "--verbose" in cmd
+
+    def test_extra_args_appended(self):
+        cmd = _build_step123_command(
+            3, dataset_mode=True, extra_args=["--ingest-yield-tables"]
+        )
+        assert "--ingest-yield-tables" in cmd
 
 
 class TestRunStep123:
@@ -93,6 +177,14 @@ class TestRunStep123:
         result = run_step123(1, Path("all.csv"), dry_run=True)
         assert result is True
         mock_run.assert_not_called()
+
+    @patch("growpy.pipelines.step_runner.subprocess.run")
+    def test_dataset_mode_passes_no_csv(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        run_step123(1, dataset_mode=True)
+        cmd = mock_run.call_args[0][0]
+        assert "--dataset" in cmd
+        assert "--csv" not in cmd
 
     @patch("growpy.pipelines.step_runner.subprocess.run")
     def test_success_returns_true(self, mock_run):
@@ -123,34 +215,34 @@ class TestRunStep123:
 
 
 class TestRunSpeciesStep4:
-    """Tests for per-species step 4 execution."""
+    """Tests for per-species step 4 execution.
 
-    @patch("growpy.pipelines.step_runner.find_species_csv")
-    def test_returns_false_when_no_csv(self, mock_find):
-        mock_find.return_value = None
-        result = run_species_step4("Unknown Species", Path("dataset"))
-        assert result is False
+    No CSV needs to exist: the child rebuilds its job rows from config, so
+    there is no file to look up and nothing to fail on when one is absent.
+    """
 
     @patch("growpy.pipelines.step_runner.subprocess.run")
-    @patch("growpy.pipelines.step_runner.find_species_csv")
-    def test_dry_run_returns_true(self, mock_find, mock_run):
-        mock_find.return_value = Path("test_merged.csv")
-        result = run_species_step4("European Beech", Path("dataset"), dry_run=True)
+    def test_dry_run_returns_true(self, mock_run):
+        result = run_species_step4("European Beech", dry_run=True)
         assert result is True
         mock_run.assert_not_called()
 
     @patch("growpy.pipelines.step_runner.subprocess.run")
-    @patch("growpy.pipelines.step_runner.find_species_csv")
-    def test_success_returns_true(self, mock_find, mock_run):
-        mock_find.return_value = Path("beech_merged.csv")
+    def test_success_returns_true(self, mock_run):
         mock_run.return_value = MagicMock(returncode=0)
-        result = run_species_step4("European Beech", Path("dataset"))
+        result = run_species_step4("European Beech")
         assert result is True
 
     @patch("growpy.pipelines.step_runner.subprocess.run")
-    @patch("growpy.pipelines.step_runner.find_species_csv")
-    def test_failure_returns_false(self, mock_find, mock_run):
-        mock_find.return_value = Path("beech_merged.csv")
+    def test_failure_returns_false(self, mock_run):
         mock_run.return_value = MagicMock(returncode=1)
-        result = run_species_step4("European Beech", Path("dataset"))
+        result = run_species_step4("European Beech")
         assert result is False
+
+    @patch("growpy.pipelines.step_runner.subprocess.run")
+    def test_species_reaches_the_child(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        run_species_step4("Douglas fir")
+        cmd = mock_run.call_args[0][0]
+        assert "--species" in cmd
+        assert "Douglas fir" in cmd

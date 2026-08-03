@@ -10,6 +10,11 @@ import pandas as pd
 
 from growpy.utils.naming import camel_to_snake
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from growpy.config.core import GrowPyConfig
+
 logger = logging.getLogger(__name__)
 
 # GBIF integration for species name resolution
@@ -165,33 +170,114 @@ def get_assets_directory() -> Path:
     return get_data_directory() / "assets"
 
 
-def _radius_suffix(radius: float) -> str:
-    """Filename/dirname suffix for a surround radius ("" for the 0/baseline case)."""
-    return "" if not radius else f".r{radius:02g}"
-
-
 def radius_label(radius: float) -> str:
     """Zero-padded directory/asset label for a surround radius (e.g. r00, r07, r15).
 
-    Unlike _radius_suffix(), this always returns a label (including for the
-    0/open-grown case) since it's used for standalone folder/filename
-    components (e.g. ``european_oak/r00/``) rather than a filename suffix.
+    Used for standalone folder/filename components (e.g. ``european_oak/r00/``)
+    that separate the exported competition variants. Presets themselves are not
+    radius-specific: surround is applied at simulation time, so one preset
+    serves every variant of a species.
     """
     return f"r{radius:02g}"
 
 
-def get_preset_path(species: str, radius: float = 0.0) -> Path:
-    """Get preset file path for species, optionally for a specific surround radius.
+def tree_ext(config: "GrowPyConfig") -> str:
+    """File extension for tree/assembly USD output (e.g. '.usda' or '.usdc').
+
+    Driven by ``[export] usd_format``. This is the tree axis of the format
+    question -- twigs are a separate, independent axis (see :func:`twig_ext`);
+    do not use this to glob twig files.
+    """
+    return f".{config.export_usd_format}"
+
+
+def twig_ext(config: "GrowPyConfig") -> str:
+    """File extension for twig USD output.
+
+    Twigs are always written ``.usda`` by ``convert_twigs.py``, independent of
+    ``[export] usd_format``. Kept distinct from :func:`tree_ext` (rather than
+    reusing it) because conflating the two is exactly what breaks the
+    combined twig wrapper glob when ``usd_format = "usdc"``.
+    """
+    del config  # Not format-driven today; kept for a uniform call signature.
+    return ".usda"
+
+
+def assembly_glob(config: "GrowPyConfig") -> str:
+    """Recursive glob pattern for a skeletal Nanite assembly file.
+
+    Matches ``<prefix>_assembly<ext>`` under either output layout (dataset
+    mode ``species/rNN/`` or layout mode ``species/tree_NNNN/``), and
+    regardless of the density-variant label baked into ``<prefix>`` (e.g.
+    ``..._full_assembly``, ``..._dense_assembly`` -- do not hardcode the
+    default "full" label, or counts silently go to zero whenever
+    ``[export] density_variants`` is configured). Intended for use with
+    ``Path.rglob()`` from a species or output directory.
+    """
+    return f"*_assembly{tree_ext(config)}"
+
+
+def static_assembly_glob(config: "GrowPyConfig") -> str:
+    """Recursive glob pattern for a static-mesh assembly file.
+
+    Matches ``<prefix>_assembly_static<ext>`` under either output layout.
+    Intended for use with ``Path.rglob()``.
+    """
+    return f"*_assembly_static{tree_ext(config)}"
+
+
+def stems_path(tree_dir: Path, base: str, kind: str, config: "GrowPyConfig") -> Path:
+    """Resolve the expected stems USD path for a tree.
+
+    Args:
+        tree_dir: Directory containing the tree's exported files.
+        base: Filename prefix (e.g. 'european_beech_h15m_d10cm').
+        kind: 'skeletal' or 'static'.
+        config: Active GrowPyConfig (determines the tree extension).
+
+    Returns the expected path; it may not exist (e.g. skeletal export was
+    disabled). Callers needing a skeletal-then-static fallback should call
+    this once per kind and check ``.exists()``.
+    """
+    if kind not in ("skeletal", "static"):
+        raise ValueError(f"kind must be 'skeletal' or 'static', got {kind!r}")
+    return tree_dir / f"{base}_stems_{kind}{tree_ext(config)}"
+
+
+def tree_output_dir(
+    output_dir: Path,
+    species_clean: str,
+    *,
+    radius: float | None = None,
+    fid: int | None = None,
+) -> Path:
+    """Resolve a tree's output directory under either layout.
+
+    Dataset mode (``radius`` given): ``output_dir/species_clean/r<NN>/``
+    (competition-radius variants share one directory).
+    Layout mode (``fid`` given): ``output_dir/species_clean/tree_<NNNN>/``
+    (one directory per individual tree).
+
+    Exactly one of ``radius``/``fid`` must be given -- they select the two
+    mutually exclusive output layouts (see forest_stages.py vs
+    forest_export.py).
+    """
+    if (radius is None) == (fid is None):
+        raise ValueError("tree_output_dir requires exactly one of radius or fid")
+    species_dir = output_dir / species_clean
+    if radius is not None:
+        return species_dir / radius_label(radius)
+    return species_dir / f"tree_{int(fid):04d}"
+
+
+def get_preset_path(species: str) -> Path:
+    """Get preset file path for species.
 
     The preset files are stored with standardized names (e.g., european_beech.seed.json)
     rather than the original Grove names (e.g., Fagaceae - Beech.seed.json).
 
     Args:
         species: Species name
-        radius: Surround radius (meters). 0 = base/open-grown preset
-            (``<name>.seed.json``). >0 looks for a radius-specific calibrated
-            preset (``<name>.r{radius}.seed.json``) first, falling back to the
-            base preset when no radius-specific calibration exists yet.
 
     Returns:
         Path to preset file
@@ -207,15 +293,7 @@ def get_preset_path(species: str, radius: float = 0.0) -> Path:
         )
 
     presets_dir = get_assets_directory() / "presets"
-    preset_path = presets_dir / f"{standardized_name}{_radius_suffix(radius)}.seed.json"
-
-    if radius and not preset_path.exists():
-        logger.warning(
-            "No radius-specific preset for %s at radius=%s, falling back to base preset",
-            standardized_name,
-            radius,
-        )
-        preset_path = presets_dir / f"{standardized_name}.seed.json"
+    preset_path = presets_dir / f"{standardized_name}.seed.json"
 
     # Fallback: try original Grove preset name if standardized doesn't exist
     if not preset_path.exists():
@@ -229,18 +307,17 @@ def get_preset_path(species: str, radius: float = 0.0) -> Path:
     return preset_path
 
 
-def get_growth_model_path(species: str, radius: float = 0.0) -> Path:
-    """Get growth model directory for species, optionally for a specific surround radius.
+def get_growth_model_path(species: str) -> Path:
+    """Get growth model directory for species.
 
     The growth model directories are stored with standardized names (e.g., norway_spruce)
     matching the Standardized Name column in the lookup table.
 
+    Growth models are not radius-specific: surround is applied at simulation
+    time rather than baked into a separate calibrated model per radius.
+
     Args:
         species: Species name
-        radius: Surround radius (meters). 0 = base growth model directory.
-            >0 looks for a radius-specific subdirectory (``<name>/r{radius}/``)
-            first, falling back to the base directory when no radius-specific
-            growth model exists yet.
 
     Returns:
         Path to growth model directory
@@ -249,10 +326,6 @@ def get_growth_model_path(species: str, radius: float = 0.0) -> Path:
     models_dir = get_assets_directory() / "growth_models"
 
     def _resolve(base: Path) -> Path | None:
-        if radius:
-            radius_dir = base / radius_label(radius)
-            if radius_dir.exists():
-                return radius_dir
         return base if base.exists() else None
 
     # Use standardized name for directory lookup (growth_models use standardized names)

@@ -29,7 +29,7 @@ max_height = 0
 [calibration]
 # When enabled, create_growth_models.py automatically calibrates against yield tables
 # after the initial simulation, then re-simulates with calibration applied.
-enabled = true
+enabled = false
 # Align grove height growth to yield table height curve.
 # Applies per-cycle grow_length multipliers from calibrated seed.json files during
 # simulation (step 4). Only affects overall growth speed, not branch shape.
@@ -41,7 +41,7 @@ align_height = true
 # Scales trunk mesh perpendicular to bone axes at breast height (1.3m), blending
 # smoothly to 1.0 at the crown. Only affects trunk thickness, not branch shape.
 # false = export Grove geometry as-is (trunk may be thicker/thinner than yield table)
-align_dbh = true
+# align_dbh moved to [export] dbh_from_allometry in forest.toml (deprecated alias)
 # Directory for local yield table CSVs.
 # Format: age,height,dbh (age in years, height in meters, dbh in centimeters)
 # File naming: <standardized_species_name>.csv (e.g., norway_spruce.csv)

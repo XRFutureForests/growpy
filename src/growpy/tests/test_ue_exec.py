@@ -88,3 +88,97 @@ class TestUeExecMain:
             pytest.raises(SystemExit),
         ):
             main()
+
+
+class _FakeConfig:
+    def __init__(self, editor_exe: str = "", uproject: str = ""):
+        self.unreal_editor_exe = editor_exe
+        self.unreal_uproject = uproject
+
+
+class TestUeExecRestartConfigValidation:
+    """Regression (XRFF-295): the auto-restart watchdog must fail fast with
+    an actionable message when editor_exe/uproject can't be resolved, rather
+    than discovering a stale/missing path mid-run.
+    """
+
+    def test_watchdog_enabled_without_config_fails_fast(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("growpy.config.core.get_config", lambda: _FakeConfig())
+        script = tmp_path / "test.py"
+        script.write_text("pass")
+        monkeypatch.setattr("sys.argv", ["ue_exec", str(script)])
+
+        from growpy.tools.ue_exec import main
+
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        assert exc_info.value.code == 2
+
+    def test_watchdog_disabled_skips_validation(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("growpy.config.core.get_config", lambda: _FakeConfig())
+        monkeypatch.setattr(
+            "growpy.tools.ue_exec._run_single_with_restart",
+            lambda *a, **k: (True, False),
+        )
+        script = tmp_path / "test.py"
+        script.write_text("pass")
+        monkeypatch.setattr(
+            "sys.argv", ["ue_exec", str(script), "--restart-ram-limit", "0"]
+        )
+
+        from growpy.tools.ue_exec import main
+
+        assert main() is None
+
+    def test_config_values_resolve_when_no_cli_arg_given(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(
+            "growpy.config.core.get_config",
+            lambda: _FakeConfig("C:/UE/UnrealEditor.exe", "D:/Proj/Proj.uproject"),
+        )
+        monkeypatch.setattr(
+            "growpy.tools.ue_exec._run_single_with_restart",
+            lambda *a, **k: (True, False),
+        )
+        script = tmp_path / "test.py"
+        script.write_text("pass")
+        monkeypatch.setattr("sys.argv", ["ue_exec", str(script)])
+
+        from growpy.tools.ue_exec import main
+
+        assert main() is None
+
+    def test_cli_arg_overrides_config(self, monkeypatch, tmp_path):
+        """--editor-exe/--uproject win even when config also sets them."""
+        monkeypatch.setattr(
+            "growpy.config.core.get_config",
+            lambda: _FakeConfig("C:/Config/Editor.exe", "C:/Config/Proj.uproject"),
+        )
+        captured = {}
+
+        def _fake_run(script_path, port, timeout, editor_exe, uproject, *rest):
+            captured["editor_exe"] = editor_exe
+            captured["uproject"] = uproject
+            return True, False
+
+        monkeypatch.setattr(
+            "growpy.tools.ue_exec._run_single_with_restart", _fake_run
+        )
+        script = tmp_path / "test.py"
+        script.write_text("pass")
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "ue_exec",
+                str(script),
+                "--editor-exe",
+                "C:/CLI/Editor.exe",
+                "--uproject",
+                "C:/CLI/Proj.uproject",
+            ],
+        )
+
+        from growpy.tools.ue_exec import main
+
+        main()
+        assert captured["editor_exe"] == "C:/CLI/Editor.exe"
+        assert captured["uproject"] == "C:/CLI/Proj.uproject"

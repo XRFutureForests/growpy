@@ -50,6 +50,10 @@ FPY_MIN = 0.5
 FPY_MAX = 2.0
 FPY_RMSE_THRESHOLD = 0.25  # relative RMSE above which fpy is untrusted
 
+# Yield table rows below this DBH describe a stand that has only just reached
+# breast height; they are excluded from the log-space height-DBH fit.
+MIN_FIT_DBH_M = 0.01
+
 
 def _build_yield_height_interpolator(
     yield_ages: list[float],
@@ -173,57 +177,72 @@ def estimate_flushes_per_year(
 def fit_height_dbh_model(
     yield_heights: list[float],
     yield_dbhs: list[float],
+    min_dbh_m: float = MIN_FIT_DBH_M,
 ) -> dict[str, float] | None:
     """Fit a power model DBH = a * H^b from yield table height/DBH pairs.
 
-    Uses the allometric relationship between tree height and stem diameter
-    to predict DBH from height, independent of age alignment.
+    Uses the allometric relationship between tree height and stem diameter to
+    predict DBH from height, independent of age alignment.
+
+    The fit is done in log-log space, where the power law is linear.  That
+    minimises *relative* error, so a 2x miss on a sapling weighs as heavily as
+    a 2x miss on a mature stem.  Optimising raw residuals instead lets the
+    large-diameter rows dominate and systematically underestimates small
+    trees -- by up to 58% inside a table's own height range, which matters
+    because dataset height stages start well below the table's mid-range.
+
+    Rows below *min_dbh_m* are dropped: some tables open with the stand barely
+    at breast height (e.g. 0.3 cm), and in log space such a near-zero point
+    dominates the whole fit.
 
     Returns:
-        Dict with keys 'a', 'b', 'r_squared', or None if fit fails.
+        Dict with keys 'a', 'b', 'r_squared', 'max_rel_err', 'n_points',
+        or None if the fit fails.
     """
-    from scipy.optimize import least_squares
-
     h = np.array(yield_heights, dtype=float)
     d = np.array(yield_dbhs, dtype=float)
 
-    # Filter to valid positive pairs
-    mask = (h > 0) & (d > 0)
-    h, d = h[mask], d[mask]
+    positive = (h > 0) & (d > 0)
+    keep = positive & (d >= min_dbh_m)
+    dropped = int((positive & ~keep).sum())
+    h, d = h[keep], d[keep]
 
     if len(h) < 3:
         logger.warning("  Too few h/d pairs (%d) for height-DBH model", len(h))
         return None
 
-    def power_func(x, a, b):
-        return a * np.power(x, b)
-
     try:
-        # Initial guess from log-log linear regression
-        log_h, log_d = np.log(h), np.log(d)
-        b0 = np.polyfit(log_h, log_d, 1)
-        p0 = [np.exp(b0[1]), b0[0]]
+        b, log_a = np.polyfit(np.log(h), np.log(d), 1)
+        a, b = float(np.exp(log_a)), float(b)
 
-        def _residuals(params):
-            return power_func(h, *params) - d
-
-        result = least_squares(_residuals, x0=p0, method="lm", max_nfev=5000)
-        a, b = float(result.x[0]), float(result.x[1])
-
-        pred = power_func(h, a, b)
+        pred = a * np.power(h, b)
         ss_res = np.sum((d - pred) ** 2)
         ss_tot = np.sum((d - np.mean(d)) ** 2)
         r_sq = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
+        max_rel = float(np.max(np.abs(pred - d) / d))
 
+        if dropped:
+            logger.info(
+                "  dropped %d row(s) below %.1f cm DBH before fitting",
+                dropped,
+                min_dbh_m * 100,
+            )
         logger.info(
-            "  height-DBH model: DBH = %.4f * H^%.4f, R²=%.4f",
+            "  height-DBH model: DBH = %.4f * H^%.4f, R2=%.4f, max rel err=%.0f%%",
             a,
             b,
             r_sq,
+            max_rel * 100,
         )
-        return {"a": round(a, 6), "b": round(b, 6), "r_squared": round(r_sq, 6)}
+        return {
+            "a": round(a, 6),
+            "b": round(b, 6),
+            "r_squared": round(r_sq, 6),
+            "max_rel_err": round(max_rel, 6),
+            "n_points": int(len(h)),
+        }
 
-    except (RuntimeError, ValueError) as e:
+    except (RuntimeError, ValueError, np.linalg.LinAlgError) as e:
         logger.warning("  height-DBH model fit failed: %s", e)
         return None
 
@@ -360,26 +379,17 @@ def write_calibration_to_seed_json(
     target_dbh_per_cycle: list[float] | None = None,
     height_dbh_model: dict[str, float] | None = None,
     flushes_per_year: float = 1.0,
-    radius: float = 0.0,
 ) -> Path | None:
     """Write calibration data to the species seed.json.
 
-    Args:
-        radius: Surround radius (meters) this calibration was simulated
-            under. 0 writes the base preset directly. >0 writes a
-            radius-specific preset (cloned from the base preset on first
-            write for that radius) so different radii don't overwrite
-            each other's calibration.
+    One preset per species: surround is applied at simulation time rather than
+    baked into a radius-specific calibrated preset, so there is nothing
+    radius-dependent to keep apart here.
     """
-    from growpy.config.paths import _radius_suffix
     from growpy.utils.naming import standardize_species_name
 
     species_dir = standardize_species_name(species_name)
-    base_path = presets_dir / f"{species_dir}.seed.json"
-    preset_path = presets_dir / f"{species_dir}{_radius_suffix(radius)}.seed.json"
-
-    if radius and not preset_path.exists() and base_path.exists():
-        preset_path.write_text(base_path.read_text())
+    preset_path = presets_dir / f"{species_dir}.seed.json"
 
     if not preset_path.exists():
         logger.error("Preset not found: %s", preset_path)
@@ -423,9 +433,11 @@ def calibrate_species(
     yield_data: YieldTableData,
     presets_dir: Path,
     flushes_per_year: float | None = None,
-    radius: float = 0.0,
 ) -> bool:
     """Run full calibration for a single species and write results to seed.json.
+
+    Growth-pacing calibration is not radius-specific: surround is applied at
+    simulation time, so one calibrated preset serves every competition variant.
 
     Args:
         species_name: Common name (e.g., "Norway spruce").
@@ -435,23 +447,16 @@ def calibrate_species(
         presets_dir: Path to presets directory.
         flushes_per_year: Growth flushes per calendar year.
             None = auto-estimate from height curves (recommended).
-        radius: Surround radius (meters) this calibration was simulated
-            under (0 = open-grown). Writes to the radius-specific preset
-            (see write_calibration_to_seed_json).
 
     Returns:
         True if calibration was written successfully.
     """
-    from growpy.config.paths import _radius_suffix
     from growpy.utils.naming import standardize_species_name
 
     species_clean = standardize_species_name(species_name)
     max_cycles = len(grove_heights)
 
-    # Load base preset values (radius-specific if it already exists, else base)
-    preset_path = presets_dir / f"{species_clean}{_radius_suffix(radius)}.seed.json"
-    if not preset_path.exists():
-        preset_path = presets_dir / f"{species_clean}.seed.json"
+    preset_path = presets_dir / f"{species_clean}.seed.json"
     if not preset_path.exists():
         logger.error("Preset not found: %s", preset_path)
         return False
@@ -514,7 +519,6 @@ def calibrate_species(
         target_dbh_per_cycle=write_target_dbh,
         height_dbh_model=h_dbh_model,
         flushes_per_year=flushes_per_year,
-        radius=radius,
     )
 
     return result is not None

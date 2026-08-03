@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 def generate_forest_exports(
-    csv_path: Path,
+    forest_data: pd.DataFrame,
     output_dir: Path,
     config: GrowPyConfig,
     quality: str = "high",
@@ -62,7 +62,7 @@ def generate_forest_exports(
     (unreal:dynamicWind:jointNames, unreal:dynamicWind:jointSimulationGroups).
 
     Args:
-        csv_path: Path to CSV file with forest data
+        forest_data: Trees to build (requires columns: species, x, y, height)
         output_dir: Directory to save export files
         config: GrowPy configuration
         quality: Quality preset name ('ultra', 'high', 'medium', 'low', 'performance')
@@ -92,29 +92,25 @@ def generate_forest_exports(
     if smooth_iterations is None:
         smooth_iterations = SMOOTH_ITERATIONS
 
-    if not csv_path.exists():
-        logger.error("CSV file not found: %s", csv_path)
+    # Validate the caller-supplied frame (z is added by create_forest if absent).
+    required_columns = ["x", "y", "species", "height"]
+    missing_cols = [col for col in required_columns if col not in forest_data.columns]
+    if missing_cols:
+        logger.error("Missing required columns: %s", missing_cols)
         return
 
-    # Load forest data
-    try:
-        with timer.track("load_csv"):
-            forest_data = pd.read_csv(csv_path)
-            required_columns = ["x", "y", "species", "height"]
-
-            # Check required columns
-            missing_cols = [
-                col for col in required_columns if col not in forest_data.columns
-            ]
-            if missing_cols:
-                logger.error("Missing required columns: %s", missing_cols)
-                return
-
-            # Z column will be added by create_forest if missing
-
-    except Exception as e:
-        logger.error("Error loading CSV: %s", e)
+    if config.export_mode == "helios":
+        logger.error(
+            "export_mode = 'helios' (direct OBJ export) is only implemented for "
+            "the multi-stage pipeline ([forest] height_interval > 0, the default). "
+            "This run has height_interval = 0, which selects the standard "
+            "growth-cycle pipeline (generate_forest_exports) -- helios direct "
+            "export is not supported there. Set height_interval > 0, or use "
+            "export_mode = 'unreal' with this pipeline."
+        )
         return
+
+    forest_data = forest_data.copy()
 
     # Cap tree heights if max_height is configured
     if config.forest_max_height > 0:

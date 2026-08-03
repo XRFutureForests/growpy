@@ -17,7 +17,7 @@ import os
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, ClassVar, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +119,124 @@ class GrowPyConfig:
     override config values via the resolve() method.
     """
 
+    # CLI arg name -> config field name, used by resolve() below. Hoisted to a
+    # class attribute (rather than a resolve()-local dict) so tests can assert
+    # every key is backed by a real CLI parser and every value either has an
+    # entry here or is on the TOML_ONLY_FIELDS allowlist (see test_config.py) --
+    # the drift this stops recurring is documented in XRFF-292.
+    CLI_MAPPINGS: ClassVar[dict[str, str]] = {
+        # [general]
+        "csv_file": "csv_file",
+        "csv": "csv_file",
+        "output_dir": "output_dir",
+        "verbose": "verbose",
+        "profile": "profile",
+        # [assets]
+        "grove_dir": "grove_dir",
+        "resize_textures": "resize_textures",
+        # [twigs]
+        "alpha_trim": "twigs_alpha_trim",
+        "boundary_edge_mm": "twigs_boundary_edge_mm",
+        "interior_edge_mm": "twigs_interior_edge_mm",
+        "densify": "twigs_densify",
+        # [growth_models]
+        "cycles": "growth_models_cycles",
+        "seeds": "growth_models_seeds",
+        "height_threshold": "growth_models_height_threshold",
+        "max_cycles_without_growth": "growth_models_max_cycles_without_growth",
+        "timeout": "growth_models_timeout",
+        "growth_models_max_height": "growth_models_max_height",
+        # [forest]
+        "quality": "forest_quality",
+        "growth_cycle_limit": "forest_growth_cycle_limit",
+        "plateau_cycles": "forest_plateau_cycles",
+        "include_grove_attributes": "forest_include_grove_attributes",
+        "height_interval": "forest_height_interval",
+        "max_height": "forest_max_height",
+        # [forest.skeleton]
+        "skeleton_length": "forest_skeleton_length",
+        "skeleton_reduce": "forest_skeleton_reduce",
+        "skeleton_bias": "forest_skeleton_bias",
+        "skeleton_connected": "forest_skeleton_connected",
+        # [export]
+        "skeletal": "export_skeletal",
+        "static": "export_static",
+        "skip_validation": "export_skip_validation",
+        "previews": "export_previews",
+        "icons": "export_icons",
+        # [unreal]
+        "import_to_unreal": "unreal_import_to_unreal",
+        "unreal_project_path": "unreal_project_path",
+        "pve": "unreal_generate_pve_presets",
+        "wind": "unreal_generate_wind_data",
+        # [helios]
+        "export_obj": "helios_export_obj",
+        "helios_scene": "helios_helios_scene",
+        "individual_obj": "helios_individual_obj",
+        "obj_up_axis": "helios_obj_up_axis",
+        "classification": "helios_classification",
+        # [calibration]
+        "calibrate": "calibration_enabled",
+    }
+
+    # GrowPyConfig fields that from_toml() can set but that intentionally have
+    # no CLI override (no `resolve()` mapping). Every field from_toml() can
+    # populate must appear either here or as a CLI_MAPPINGS value -- enforced
+    # by test_config.py::test_toml_settable_fields_have_mapping_or_are_allowlisted.
+    TOML_ONLY_FIELDS: ClassVar[dict[str, str]] = {
+        "random_seed": "determinism seed, not meant to vary per invocation",
+        "twigs_path": "path override via CLI positional arg, outside resolve()",
+        "custom_twigs_dir": "internal override, no CLI need identified",
+        "twigs_interior_boundary_rings": "fine-tuning param, no CLI need identified",
+        "forest_smooth_iterations": "CLI-settable via the smooth_iterations "
+        "special-case in resolve(), not this dict",
+        "forest_export_trees": "CLI-settable via the export_trees special-case "
+        "in resolve(), not this dict",
+        "export_usd_format": "CLI override deferred to XRFF-277 (path/format epic)",
+        "export_mode": "scenario-level choice (unreal vs helios pipeline), config-only",
+        "export_max_skeleton_joints": "internal tuning, no CLI need identified",
+        "export_max_assembly_instances": "internal tuning, no CLI need identified",
+        "export_dbh_from_allometry": "internal tuning, no CLI need identified",
+        "export_twig_density": "internal tuning, no CLI need identified",
+        "export_twig_density_conifer": "internal tuning, no CLI need identified",
+        "export_twig_density_broadleaf": "internal tuning, no CLI need identified",
+        "export_youth_bias": "internal tuning, no CLI need identified",
+        "export_density_variants": "scenario-level choice, config-only by design",
+        "density_variant_defs": "nested dict structure, config-only by design",
+        "unreal_voxelization": "internal toggle, no CLI need identified",
+        # "unreal_generate_wind_data" removed: now CLI-mapped via --wind (XRFF-293).
+        "unreal_nanite_fallback_percent": "internal tuning, no CLI need identified",
+        "unreal_nanite_lerp_uvs": "internal toggle, no CLI need identified",
+        "unreal_nanite_fallback_target": "internal tuning, no CLI need identified",
+        "unreal_db_path": "environment-level path, config-only by design",
+        # "unreal_generate_pve_presets" removed: now CLI-mapped via --pve (XRFF-293).
+        "unreal_pve_import_base": "environment-level path, config-only by design",
+        "unreal_editor_exe": "environment-level path, config-only by design",
+        "unreal_uproject": "environment-level path, config-only by design",
+        "helios_simplification_enabled": "internal toggle, no CLI need identified",
+        "helios_simplification_ratios": "nested dict structure, config-only",
+        "helios_simplification_per_species": "nested dict, config-only",
+        "calibration_align_height": "internal tuning, no CLI need identified",
+        "calibration_plot": "dead CLI mapping removed in XRFF-292; config-only",
+        "calibration_yield_tables_dir": "environment-level path, config-only",
+        "calibration_species": "nested dict structure, config-only by design",
+        "yield_sources_store_dir": "environment-level path, config-only by design",
+        "yield_sources_preferred_region": "scenario-level setting, config-only",
+        "yield_sources_preferred_site_index": "scenario-level setting, config-only",
+        "surround_radii": "scenario-level setting, config-only by design",
+        "surround_density": "scenario-level setting, config-only by design",
+        "surround_height": "scenario-level setting, config-only by design",
+        "surround_grow": "scenario-level setting, config-only by design",
+    }
+
+    # Keys a [density_variant.*] dict may override from the active quality
+    # preset (config/quality.toml). Anything else is almost certainly a typo,
+    # since it would silently do nothing -- see get_density_variants() (XRFF-288).
+    DENSITY_VARIANT_KEYS: ClassVar[frozenset[str]] = frozenset(
+        {"twig_density", "build_cutoff_age", "build_cutoff_thickness"}
+    )
+
+
     # [general]
     random_seed: int | None = 42
     csv_file: Path = field(default_factory=lambda: Path("data/input/test.csv"))
@@ -154,6 +272,7 @@ class GrowPyConfig:
     # [forest]
     forest_quality: str = "high"
     forest_growth_cycle_limit: int = 65
+    forest_plateau_cycles: int = 10
     forest_smooth_iterations: int = 10
     forest_include_grove_attributes: bool = False
     forest_height_interval: float = 5.0
@@ -178,8 +297,20 @@ class GrowPyConfig:
 
     # [export]
     export_usd_format: str = "usda"  # "usda" (ASCII) or "usdc" (binary)
+    # "unreal" runs the full USD/Nanite/PVE pipeline. "helios" writes OBJ
+    # directly from the Grove model per tree, skipping USD/skeleton/PVE/Unreal
+    # script generation entirely for that tree (see pipelines/forest_stages.py
+    # export_obj_direct). Twig prototype meshes still come from the small,
+    # pre-existing per-species twig USD assets -- only the trunk and the
+    # per-instance twig placement math bypass USD.
+    export_mode: str = "unreal"
     export_skeletal: bool = True
     export_static: bool = False
+    # Preview PNGs, export-control PNGs, and front/side/top icon PNGs are
+    # generated once per tree (not per density variant). Both default true so
+    # the current always-on behavior is unchanged -- see XRFF-290.
+    export_previews: bool = True
+    export_icons: bool = True
     export_max_skeleton_joints: int = 0  # 0 = no limit; 250 = Nanite Assembly USD
     export_max_assembly_instances: int = (
         0  # 0 = no limit; cap twig instances per assembly
@@ -207,6 +338,8 @@ class GrowPyConfig:
     unreal_db_path: str = "/Game/Assets/TheGrove"
     unreal_generate_pve_presets: bool = True
     unreal_pve_import_base: str = "/Game/Assets/TheGrove"
+    unreal_editor_exe: str = ""  # ue_exec auto-restart watchdog; empty = not configured
+    unreal_uproject: str = ""  # ue_exec auto-restart watchdog; empty = not configured
 
     # [twigs] - interior decimation
     twigs_interior_edge_mm: float = 0.0
@@ -217,14 +350,21 @@ class GrowPyConfig:
     helios_helios_scene: bool = False
     helios_individual_obj: bool = False
     helios_obj_up_axis: str = "y"
+    helios_classification: bool = False
     helios_simplification_enabled: bool = False
     helios_simplification_ratios: dict = field(default_factory=dict)
-    helios_simplification_leaf_per_species: dict = field(default_factory=dict)
+    helios_simplification_per_species: dict = field(default_factory=dict)
 
-    # [calibration]
-    calibration_enabled: bool = True
+    # [calibration] -- growth-pacing calibration against yield tables.
+    # Off by default: it costs two Grove passes per species and only matters
+    # when several real trees are co-simulated in one grove (the CSV -> plot
+    # path). Dataset production grows trees to height milestones, where pacing
+    # does not affect the result.
+    calibration_enabled: bool = False
     calibration_align_height: bool = True
-    calibration_align_dbh: bool = True
+    # DBH realisation at export. Independent of calibration: its input is the
+    # height-DBH allometry artifact, which needs no simulation.
+    export_dbh_from_allometry: bool = True
     calibration_plot: bool = True
     calibration_yield_tables_dir: Path = field(
         default_factory=lambda: Path("data/input/yield_tables")
@@ -312,6 +452,8 @@ class GrowPyConfig:
             kwargs["forest_quality"] = forest["quality"]
         if "growth_cycle_limit" in forest:
             kwargs["forest_growth_cycle_limit"] = forest["growth_cycle_limit"]
+        if "plateau_cycles" in forest:
+            kwargs["forest_plateau_cycles"] = forest["plateau_cycles"]
         if "smooth_iterations" in forest:
             kwargs["forest_smooth_iterations"] = forest["smooth_iterations"]
         if "include_grove_attributes" in forest:
@@ -331,6 +473,13 @@ class GrowPyConfig:
                     f"export.usd_format must be 'usda' or 'usdc', got '{fmt}'"
                 )
             kwargs["export_usd_format"] = fmt
+        if "mode" in export:
+            mode = export["mode"].lower()
+            if mode not in ("unreal", "helios"):
+                raise ValueError(
+                    f"export.mode must be 'unreal' or 'helios', got '{mode}'"
+                )
+            kwargs["export_mode"] = mode
         if "skeletal" in export:
             kwargs["export_skeletal"] = export["skeletal"]
         if "static" in export:
@@ -343,9 +492,13 @@ class GrowPyConfig:
             )
         if "skip_validation" in export:
             kwargs["export_skip_validation"] = export["skip_validation"]
-        # Backward compat: export.radial_scale -> calibration_align_dbh
+        if "previews" in export:
+            kwargs["export_previews"] = bool(export["previews"])
+        if "icons" in export:
+            kwargs["export_icons"] = bool(export["icons"])
+        # Deprecated alias: export.radial_scale -> export_dbh_from_allometry
         if "radial_scale" in export:
-            kwargs["calibration_align_dbh"] = export["radial_scale"]
+            kwargs["export_dbh_from_allometry"] = export["radial_scale"]
         if "twig_density" in export:
             kwargs["export_twig_density"] = float(export["twig_density"])
         if "twig_density_conifer" in export:
@@ -394,6 +547,10 @@ class GrowPyConfig:
             kwargs["unreal_generate_pve_presets"] = bool(unreal["generate_pve_presets"])
         if "pve_import_base" in unreal:
             kwargs["unreal_pve_import_base"] = str(unreal["pve_import_base"])
+        if "editor_exe" in unreal:
+            kwargs["unreal_editor_exe"] = str(unreal["editor_exe"])
+        if "uproject" in unreal:
+            kwargs["unreal_uproject"] = str(unreal["uproject"])
 
         # [helios]
         helios = data.get("helios", {})
@@ -405,6 +562,8 @@ class GrowPyConfig:
             kwargs["helios_individual_obj"] = helios["individual_obj"]
         if "obj_up_axis" in helios:
             kwargs["helios_obj_up_axis"] = helios["obj_up_axis"]
+        if "classification" in helios:
+            kwargs["helios_classification"] = bool(helios["classification"])
         simp = helios.get("simplification", {})
         if simp:
             kwargs["helios_simplification_enabled"] = simp.get("enabled", False)
@@ -414,9 +573,19 @@ class GrowPyConfig:
                 "leaf": simp.get("leaf", 1.0),
                 "fruit": simp.get("fruit", 1.0),
             }
-            kwargs["helios_simplification_leaf_per_species"] = simp.get(
-                "leaf_per_species", {}
-            )
+            if "leaf_per_species" in simp:
+                logger.warning(
+                    "[helios.simplification.leaf_per_species] is renamed to "
+                    "[helios.simplification.per_species.<species>] (covers "
+                    "bark/wood/leaf/fruit, not just leaf); the leaf_per_species "
+                    "key is ignored"
+                )
+            per_species = simp.get("per_species", {})
+            if per_species:
+                kwargs["helios_simplification_per_species"] = {
+                    species: {k: float(v) for k, v in overrides.items()}
+                    for species, overrides in per_species.items()
+                }
 
         # [calibration]
         cal = data.get("calibration", {})
@@ -424,13 +593,13 @@ class GrowPyConfig:
             kwargs["calibration_enabled"] = cal["enabled"]
         if "align_height" in cal:
             kwargs["calibration_align_height"] = cal["align_height"]
-        if "align_dbh" in cal:
-            kwargs["calibration_align_dbh"] = cal["align_dbh"]
         if "plot" in cal:
             kwargs["calibration_plot"] = cal["plot"]
         if "yield_tables_dir" in cal:
             kwargs["calibration_yield_tables_dir"] = Path(cal["yield_tables_dir"])
-        # [calibration.species."Species Name"] -> {site_index, flushes_per_year, ...}
+        if "align_dbh" in cal:
+            # Deprecated alias: DBH realisation no longer belongs to calibration.
+            kwargs["export_dbh_from_allometry"] = cal["align_dbh"]
         cal_species = cal.get("species", {})
         if cal_species:
             kwargs["calibration_species"] = {
@@ -491,89 +660,20 @@ class GrowPyConfig:
             args: argparse.Namespace with CLI arguments.
                   Attribute names should match the CLI arg names (with underscores).
         """
-        # Mapping: CLI arg name -> config field name
+        # Mapping: CLI arg name -> config field name (see CLI_MAPPINGS above).
         # Only override when the CLI value is not None (was explicitly provided)
-        cli_mappings = {
-            # [general]
-            "csv_file": "csv_file",
-            "csv": "csv_file",
-            "output_dir": "output_dir",
-            "verbose": "verbose",
-            "profile": "profile",
-            # [assets]
-            "grove_dir": "grove_dir",
-            "resize_textures": "resize_textures",
-            # [twigs]
-            "alpha_trim": "twigs_alpha_trim",
-            "boundary_edge_mm": "twigs_boundary_edge_mm",
-            "interior_edge_mm": "twigs_interior_edge_mm",
-            # [growth_models]
-            "cycles": "growth_models_cycles",
-            "seeds": "growth_models_seeds",
-            "height_threshold": "growth_models_height_threshold",
-            "max_cycles_without_growth": "growth_models_max_cycles_without_growth",
-            "timeout": "growth_models_timeout",
-            "growth_models_max_height": "growth_models_max_height",
-            # [forest]
-            "quality": "forest_quality",
-            "growth_cycle_limit": "forest_growth_cycle_limit",
-            "include_grove_attributes": "forest_include_grove_attributes",
-            "height_interval": "forest_height_interval",
-            "max_height": "forest_max_height",
-            # [forest.skeleton]
-            "skeleton_length": "forest_skeleton_length",
-            "skeleton_reduce": "forest_skeleton_reduce",
-            "skeleton_bias": "forest_skeleton_bias",
-            "skeleton_connected": "forest_skeleton_connected",
-            # [export]
-            "skeletal": "export_skeletal",
-            "static": "export_static",
-            "skip_validation": "export_skip_validation",
-            # [unreal]
-            "import_to_unreal": "unreal_import_to_unreal",
-            "unreal_project_path": "unreal_project_path",
-            # [helios]
-            "export_obj": "helios_export_obj",
-            "helios_scene": "helios_helios_scene",
-            "individual_obj": "helios_individual_obj",
-            "obj_up_axis": "helios_obj_up_axis",
-            # [calibration]
-            "calibrate": "calibration_enabled",
-            "plot": "calibration_plot",
-        }
+        cli_mappings = self.CLI_MAPPINGS
 
         for cli_name, config_name in cli_mappings.items():
             cli_val = getattr(args, cli_name, None)
             if cli_val is not None:
-                # For bool flags from store_true, they default to False (not None),
-                # so only override if True
-                if isinstance(cli_val, bool):
-                    if cli_val:
-                        setattr(self, config_name, cli_val)
-                else:
-                    setattr(self, config_name, cli_val)
+                setattr(self, config_name, cli_val)
 
         # Special handling: --smooth-iterations comes from generate_forest.py
         # (convert_twigs.py no longer defines it — twigs have no smoothing step)
         si = getattr(args, "smooth_iterations", None)
         if si is not None:
             self.forest_smooth_iterations = si
-
-        # Special handling: --no-densify inverts the flag
-        no_densify = getattr(args, "no_densify", None)
-        if no_densify:
-            self.twigs_densify = False
-
-        # Special handling: --no-skeletal / --no-static invert flags
-        if getattr(args, "no_skeletal", None):
-            self.export_skeletal = False
-        if getattr(args, "no_static", None):
-            self.export_static = False
-
-        # Special handling: --skeleton-connected comes as string "true"/"false" from CLI
-        sc = getattr(args, "skeleton_connected", None)
-        if sc is not None and isinstance(sc, str):
-            self.forest_skeleton_connected = sc.lower() == "true"
 
         # Special handling: --export-trees is a comma-separated string from CLI
         et = getattr(args, "export_trees", None)
@@ -588,7 +688,11 @@ class GrowPyConfig:
         return f".{self.export_usd_format}"
 
     def get_density_variants(self) -> list[tuple[str, dict[str, Any]]]:
-        """Return [(variant_name, config_dict)] when active, else empty list."""
+        """Return [(variant_name, config_dict)] when active, else empty list.
+
+        Each variant dict may only override keys in DENSITY_VARIANT_KEYS; an
+        unknown key raises rather than silently doing nothing.
+        """
         if not self.export_density_variants:
             return []
         result = []
@@ -598,7 +702,15 @@ class GrowPyConfig:
                     f"Density variant '{name}' not defined "
                     f"in [density_variant.{name}]"
                 )
-            result.append((name, self.density_variant_defs[name]))
+            vcfg = self.density_variant_defs[name]
+            unknown = set(vcfg) - self.DENSITY_VARIANT_KEYS
+            if unknown:
+                raise ValueError(
+                    f"Density variant '{name}' has unknown key(s) "
+                    f"{sorted(unknown)}; valid overrides are "
+                    f"{sorted(self.DENSITY_VARIANT_KEYS)}"
+                )
+            result.append((name, vcfg))
         return result
 
     def get_twig_density_base(self, species: str) -> float:
@@ -622,18 +734,29 @@ class GrowPyConfig:
             return self.export_twig_density_broadleaf
         return self.export_twig_density_conifer
 
+    def get_simplification_ratios(self, species_clean: str) -> dict[str, float]:
+        """Return Helios OBJ simplification ratios for a species.
+
+        Per-species overrides from [helios.simplification.per_species.<species>]
+        are merged over the global bark/wood/leaf/fruit defaults. Unknown
+        species or omitted materials fall back to the global values.
+        """
+        ratios = dict(self.helios_simplification_ratios)
+        ratios.update(self.helios_simplification_per_species.get(species_clean, {}))
+        return ratios
+
     # Delegator methods to module-level functions
-    def get_preset_path(self, species: str, radius: float = 0.0) -> Path:
-        """Get preset path for species, optionally for a specific surround radius."""
+    def get_preset_path(self, species: str) -> Path:
+        """Get preset path for species."""
         from .paths import get_preset_path
 
-        return get_preset_path(species, radius)
+        return get_preset_path(species)
 
-    def get_growth_model_path(self, species: str, radius: float = 0.0) -> Path:
-        """Get growth model path for species, optionally for a specific surround radius."""
+    def get_growth_model_path(self, species: str) -> Path:
+        """Get growth model path for species."""
         from .paths import get_growth_model_path
 
-        return get_growth_model_path(species, radius)
+        return get_growth_model_path(species)
 
     @staticmethod
     def get_twig_files_by_type(species: str):

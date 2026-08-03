@@ -535,10 +535,15 @@ def load_curves_from_preset(preset_path: Path) -> PresetOverrides:
     if calibration and isinstance(calibration, dict):
         grow_length_per_cycle = calibration.get("grow_length_per_cycle")
         if grow_length_per_cycle and isinstance(grow_length_per_cycle, list):
-            # Enforce survival floor: grow_length below 50% of base kills
-            # some trees depending on random seed (Grove engine limitation).
+            # Enforce survival floor: grow_length too far below base triggers
+            # a Grove engine limitation -- decelerating growth interacts with
+            # branch-dropping (drop_decay/drop_weak) until the tree cascades
+            # into irreversible dieback. Verified directly: silver birch's
+            # calibration decelerates to a 50%-of-base floor and reliably
+            # collapses around cycle 47 (h~14m); raising the floor to 70%
+            # eliminates the collapse (grows cleanly past 18m, no instability).
             base_gl = preset_data.get("grow_length", 0.3)
-            floor = base_gl * 0.5
+            floor = base_gl * 0.7
             grow_length_per_cycle = [max(v, floor) for v in grow_length_per_cycle]
             overrides.cycle_array_overrides.append(
                 CycleArrayOverride(param="grow_length", values=grow_length_per_cycle)
@@ -627,13 +632,15 @@ def predict_dbh_from_height_model(
     return max(0.0, dbh_m)
 
 
-def get_species_overrides(species_name: str, radius: float = 0.0) -> PresetOverrides:
+def get_species_overrides(species_name: str) -> PresetOverrides:
     """Get preset overrides for a species from its seed.json file.
+
+    Not radius-specific: surround is applied at simulation time, so a species
+    has one preset and one set of overrides regardless of which competition
+    variant is being grown.
 
     Args:
         species_name: Species name (e.g., "Silver Fir")
-        radius: Surround radius (meters) to load a radius-specific calibrated
-            preset for, falling back to the base preset (default: 0.0).
 
     Returns:
         PresetOverrides loaded from the species preset, or empty if none defined
@@ -642,7 +649,7 @@ def get_species_overrides(species_name: str, radius: float = 0.0) -> PresetOverr
 
     config = get_config()
     try:
-        preset_path = config.get_preset_path(species_name, radius)
+        preset_path = config.get_preset_path(species_name)
         return load_curves_from_preset(preset_path)
     except Exception:
         logger.warning("Failed to load preset overrides for %s", species_name)

@@ -17,6 +17,53 @@ do not match forestry yield tables out of the box. The key challenges:
    (e.g. `thicken_base_scale`, `thicken_base_buttress`, `thicken_base_shape`) have
    zero effect at breast height (1.3m) because they only modify the trunk base.
 
+## Two Separate Concerns
+
+Yield tables feed two independent things. Keeping them apart is what lets dataset
+production skip the expensive one.
+
+| | Height-DBH allometry | Growth-pacing calibration |
+|---|---|---|
+| Question answered | "How thick is this species at height H?" | "How fast does this species reach height H?" |
+| Input | Yield table height + DBH columns | Yield table + a full Grove simulation |
+| Depends on age? | No -- height indexes it directly | Yes, it aligns cycles to calendar age |
+| Depends on surround radius? | No -- shading changes growth rate, not the diameter carried at a height | Yes, a shaded tree paces differently |
+| Cost | Seconds | Two Grove passes per species |
+| Artifact | `data/assets/allometry/<species>.json` | `_yield_table_calibration` in `<species>.seed.json` |
+| Built by | `growpy-build-allometry` | `growpy-create-models` |
+
+**Dataset production needs only the allometry.** Trees are grown to height
+milestones (`forest_stages.py` runs in height-threshold mode and never consults a
+growth model to predict cycles), so pacing is irrelevant to the result -- only to
+how long the run takes. DBH is realised at export from the height actually
+measured.
+
+**Growth-pacing calibration belongs to the CSV -> plot path**, where several real
+trees are co-simulated in one grove and their relative growth rates matter.
+Note that Grove disables Surround for multi-tree groves, so surround-based
+competition and true co-growth are mutually exclusive by construction.
+
+### Why the allometry is fitted in log-log space
+
+`fit_height_dbh_model` fits `DBH = a * H^b` by linear regression on `log H` vs
+`log D`. In log space the power law is linear and the residual being minimised is
+*relative*, so a 2x miss on a sapling counts as heavily as a 2x miss on a mature
+stem. Minimising raw residuals instead lets the large-diameter rows dominate and
+systematically underestimates small trees -- for Douglas fir the table gives
+12.1 cm at 12.9 m while such a fit predicted 5.0 cm, an error *inside* the
+table's own range. Rows below 1 cm DBH are excluded: they describe a stand only
+just reaching breast height, and in log space such a near-zero point dominates
+everything else.
+
+### Below the fitted range
+
+Yield tables usually start at pole stage, so the smallest dataset stages sit
+below the fitted range and a downward-extrapolated power law drifts toward
+implausibly slender stems. Each artifact records `height_range_m`, and
+`allometry.correction_weight()` fades the radial correction to zero at half the
+fitted lower bound -- leaving Grove's physically derived pipe-model diameter in
+place for saplings the table never described.
+
 ## Calibrated Species
 
 | Species | Yield Table | ID | YC | Base grow_length | Base thicken_tips |

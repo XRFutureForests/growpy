@@ -1,16 +1,28 @@
-"""Dataset CSV generation: merged per-species CSVs and all-species CSV.
+"""Dataset job rows, and optional CSV dumps of them.
 
-Reads species metadata from tree_asset_lookup.csv (Max Height, Competition
-Group) and generates merged CSV files (one row per configured surround
-radius) for each dataset species, plus an all-species CSV for pipeline
-steps 1-3.
+The job matrix is a **job matrix**, not a spatial layout. Each row is one
+dataset asset to produce -- species x surround radius, expanded at export into
+height stages and density variants. The ``x``/``y``/``z`` columns carry no
+spatial meaning: ``OPEN_TREE_X`` merely offsets each row so the variants stay
+visually distinct, and each row is simulated in its own grove regardless.
 
-Each row's surround_radius column value selects its competition level:
-0 = open-grown (no Grove Surround shell), >0 = Grove's built-in Surround
-light-competition shell at that distance (see growpy.core.grove.enable_surround),
-giving the tall, slender, self-pruned form of a forest-grown tree without
-simulating any neighbour trees. The set of radii is configured in
-[surround].radii (config/surround.toml).
+Every value is derived from config -- ``Max Height`` and dataset membership from
+tree_asset_lookup.csv, radii from ``[surround].radii`` -- so :func:`build_job_matrix`
+needs nothing but a species name. Step 4 calls it directly; the ``*_merged.csv``
+files that :func:`generate_dataset_csvs` writes are an inspection aid that
+nothing reads back. They used to be the pipeline's input, which made them a
+cache of config that could silently drift from it.
+
+Contrast a CSV handed to ``growpy-generate-forest`` directly, where positions
+are real, trees share a grove, and neighbours actually compete for light.
+Growth-pacing calibration belongs to that path, not this one. Note that Grove
+disables Surround once several trees share a grove, so surround-based
+competition and true co-growth are mutually exclusive by construction.
+
+Each row's surround_radius selects its competition level: 0 = open-grown (no
+shell), >0 = Grove's built-in Surround light-competition shell at that distance
+(see growpy.core.grove.enable_surround), giving the tall, slender, self-pruned
+form of a forest-grown tree without simulating neighbour trees.
 """
 
 import logging
@@ -64,19 +76,42 @@ def _get_dataset_species() -> pd.DataFrame:
     return dataset
 
 
-def generate_merged_csv(
+def build_job_matrix(
     species_name: str,
-    max_height: int,
     twig_density: float = 1.0,
 ) -> pd.DataFrame:
-    """Generate merged DataFrame: one single tree per configured surround radius.
+    """Build one species' dataset job rows from config alone.
 
-    Each row is simulated in its own grove, offset along x so they stay
-    visually distinct (OPEN_TREE_X apart). Radii come from
-    ``get_config().surround_radii`` -- 0 is open-grown, >0 gets Grove's
-    Surround light-competition shell enabled during simulation at that
-    distance (see growpy.core.grove.enable_surround).
+    One row per configured surround radius. Every value is derived --
+    ``Max Height`` from tree_asset_lookup.csv, radii from [surround].radii --
+    so this needs no input beyond the species name, and nothing about it can
+    drift from config the way a CSV on disk can.
+
+    Each row is simulated in its own grove, offset along x so the variants stay
+    visually distinct (OPEN_TREE_X apart). That offset is cosmetic: the rows are
+    a job matrix, not a spatial layout (see the module docstring).
+
+    Raises:
+        ValueError: if the species has no Max Height in the lookup table.
     """
+    from growpy.config.paths import _find_species_row
+
+    row = _find_species_row(species_name)
+    max_height = row.get("Max Height")
+    if max_height is None or pd.isna(max_height):
+        raise ValueError(
+            f"{species_name} has no Max Height in tree_asset_lookup.csv; "
+            "cannot build dataset job rows for it."
+        )
+    return _job_rows(str(row["Common Name"]), int(max_height), twig_density)
+
+
+def _job_rows(
+    species_name: str,
+    max_height: int,
+    twig_density: float,
+) -> pd.DataFrame:
+    """One row per configured surround radius. Single source for job rows."""
     from growpy.config import get_config
 
     radii = get_config().surround_radii
@@ -94,6 +129,20 @@ def generate_merged_csv(
         for i, radius in enumerate(radii)
     ]
     return pd.DataFrame(rows)
+
+
+def generate_merged_csv(
+    species_name: str,
+    max_height: int,
+    twig_density: float = 1.0,
+) -> pd.DataFrame:
+    """Job rows for one species, for writing to an inspection CSV.
+
+    Nothing in the pipeline reads these CSVs any more -- step 4 builds the same
+    rows in memory via :func:`build_job_matrix`. Kept so ``--generate-csvs`` can
+    still dump the matrix for eyeballing.
+    """
+    return _job_rows(species_name, max_height, twig_density)
 
 
 def generate_dataset_csvs(output_dir: Path, density: str = "full") -> list:
@@ -147,55 +196,3 @@ def generate_dataset_csvs(output_dir: Path, density: str = "full") -> list:
     return generated
 
 
-def synchronize_dataset_csvs(dataset_dir: Path) -> None:
-    """Ensure all_species.csv and *_merged.csv files cover the same species.
-
-    Removes rows from all_species.csv for species without a merged CSV,
-    and deletes merged CSVs for species not listed in all_species.csv.
-    """
-    all_species_path = dataset_dir / "all_species.csv"
-    if not all_species_path.exists():
-        return
-
-    all_df = pd.read_csv(all_species_path)
-    if "species" not in all_df.columns:
-        return
-
-    # Species in all_species.csv (standardized name -> row index)
-    all_species_std = {
-        standardize_species_name(s): s for s in all_df["species"].tolist()
-    }
-
-    # Species with merged CSVs on disk
-    merged_std = {
-        p.stem.replace("_merged", "") for p in dataset_dir.glob("*_merged.csv")
-    }
-
-    common = set(all_species_std.keys()) & merged_std
-    only_in_all = set(all_species_std.keys()) - merged_std
-    only_in_merged = merged_std - set(all_species_std.keys())
-
-    if not only_in_all and not only_in_merged:
-        return
-
-    # Remove orphan merged CSVs
-    for std_name in sorted(only_in_merged):
-        orphan = dataset_dir / f"{std_name}_merged.csv"
-        if orphan.exists():
-            orphan.unlink()
-            logger.warning("Removed orphan merged CSV: %s", orphan.name)
-
-    # Filter all_species.csv to common species only
-    if only_in_all:
-        keep = all_df["species"].apply(lambda s: standardize_species_name(s) in common)
-        removed = all_df[~keep]["species"].tolist()
-        all_df = all_df[keep].reset_index(drop=True)
-        all_df["fid"] = range(1, len(all_df) + 1)
-        all_df.to_csv(all_species_path, index=False)
-        for name in removed:
-            logger.warning("Removed from all_species.csv (no merged CSV): %s", name)
-
-    logger.info(
-        "Dataset synchronized: %d species in both all_species.csv and merged CSVs.",
-        len(common),
-    )

@@ -11,7 +11,9 @@ from growpy.io.helios.mesh_simplify import (
     _extract_and_simplify,
     _simplify_proto_by_material,
     classify_material,
+    simplify_trunk_mesh,
 )
+import growpy.io.helios.mesh_simplify as mesh_simplify_module
 
 
 class TestClassifyMaterial:
@@ -122,7 +124,7 @@ class TestSimplifyProtoByMaterial:
 
         out_verts, out_faces, out_mats = _simplify_proto_by_material(
             verts, faces, face_mats, mat_names,
-            wood_ratio=1.0, leaf_ratio=1.0, fruit_ratio=1.0,
+            bark_ratio=1.0, wood_ratio=1.0, leaf_ratio=1.0, fruit_ratio=1.0,
             global_offset=0,
         )
 
@@ -138,7 +140,7 @@ class TestSimplifyProtoByMaterial:
 
         out_verts, out_faces, out_mats = _simplify_proto_by_material(
             verts, faces, face_mats, ["bark"],
-            wood_ratio=1.0, leaf_ratio=1.0, fruit_ratio=1.0,
+            bark_ratio=1.0, wood_ratio=1.0, leaf_ratio=1.0, fruit_ratio=1.0,
             global_offset=0,
         )
 
@@ -154,8 +156,106 @@ class TestSimplifyProtoByMaterial:
 
         _, out_faces, _ = _simplify_proto_by_material(
             verts, faces, face_mats, ["leaf_mat"],
-            wood_ratio=1.0, leaf_ratio=1.0, fruit_ratio=1.0,
+            bark_ratio=1.0, wood_ratio=1.0, leaf_ratio=1.0, fruit_ratio=1.0,
             global_offset=100,
         )
 
         assert out_faces.min() >= 100
+
+
+class TestChunkedTrunkDecimation:
+    """Tests for chunked decimation on very large trunk meshes.
+
+    _decimate_with_bpy is monkeypatched throughout -- these tests exercise
+    the chunking/reassembly logic, not Blender's actual decimation, so they
+    run without bpy/The Grove installed.
+    """
+
+    @staticmethod
+    def _make_stacked_mesh(num_faces):
+        """Build num_faces disjoint triangles stacked along Z (one per integer z)."""
+        verts = []
+        faces = []
+        for i in range(num_faces):
+            base = len(verts)
+            verts.extend([[0.0, 0.0, float(i)], [1.0, 0.0, float(i)], [0.0, 1.0, float(i)]])
+            faces.append([base, base + 1, base + 2])
+        return np.array(verts, dtype=np.float64), np.array(faces, dtype=np.int64)
+
+    @staticmethod
+    def _fake_decimate(calls):
+        def _decimate(vertices, faces_in, ratio):
+            calls.append(len(faces_in))
+            keep = max(1, int(len(faces_in) * ratio))
+            return vertices, faces_in[:keep]
+        return _decimate
+
+    def test_below_chunk_limit_calls_decimate_once(self, monkeypatch):
+        monkeypatch.setattr(mesh_simplify_module, "CHUNK_FACE_LIMIT", 10)
+        verts, faces = self._make_stacked_mesh(10)
+        calls = []
+        monkeypatch.setattr(
+            mesh_simplify_module, "_decimate_with_bpy", self._fake_decimate(calls)
+        )
+
+        _, dec_faces, dec_uvs = simplify_trunk_mesh(verts, faces, None, 0.5)
+
+        assert len(calls) == 1
+        assert dec_uvs is None
+
+    def test_above_chunk_limit_splits_into_multiple_chunks(self, monkeypatch):
+        monkeypatch.setattr(mesh_simplify_module, "CHUNK_FACE_LIMIT", 10)
+        verts, faces = self._make_stacked_mesh(30)
+        calls = []
+        monkeypatch.setattr(
+            mesh_simplify_module, "_decimate_with_bpy", self._fake_decimate(calls)
+        )
+
+        _, dec_faces, dec_uvs = simplify_trunk_mesh(verts, faces, None, 0.5)
+
+        assert len(calls) > 1
+        # Roughly ratio * input (30 * 0.5 = 15), allowing for per-chunk rounding.
+        assert 10 <= len(dec_faces) <= 20
+        assert dec_uvs is None
+
+
+class TestBarkWoodRatioSplit:
+    """Tests that bark and wood take independent simplification ratios."""
+
+    def test_distinct_ratios_produce_different_face_counts(self, monkeypatch):
+        def fake_decimate(vertices, faces_in, ratio):
+            keep = max(1, int(len(faces_in) * ratio))
+            return vertices, faces_in[:keep]
+        monkeypatch.setattr(mesh_simplify_module, "_decimate_with_bpy", fake_decimate)
+
+        num_bark, num_wood = 4, 4
+        verts = []
+        faces = []
+        face_mats = []
+        for i in range(num_bark):
+            base = len(verts)
+            verts.extend([[0, 0, i], [1, 0, i], [0, 1, i]])
+            faces.append([base, base + 1, base + 2])
+            face_mats.append(0)
+        for i in range(num_wood):
+            base = len(verts)
+            verts.extend([[10, 0, i], [11, 0, i], [10, 1, i]])
+            faces.append([base, base + 1, base + 2])
+            face_mats.append(1)
+
+        verts = np.array(verts, dtype=np.float64)
+        faces = np.array(faces, dtype=np.int64)
+        face_mats = np.array(face_mats, dtype=np.int32)
+        mat_names = ["bark", "twig_wood"]
+
+        _, _, out_mats = _simplify_proto_by_material(
+            verts, faces, face_mats, mat_names,
+            bark_ratio=0.25, wood_ratio=0.75, leaf_ratio=1.0, fruit_ratio=1.0,
+            global_offset=0,
+        )
+
+        bark_kept = int(np.sum(out_mats == 0))
+        wood_kept = int(np.sum(out_mats == 1))
+        assert bark_kept == 1
+        assert wood_kept == 3
+        assert bark_kept != wood_kept

@@ -6,7 +6,12 @@
 # Quality preset name -- must match a [quality.<name>] section in quality.toml
 quality = "high"
 # Maximum growth cycles per tree (1-250)
-# Trees exceeding this limit are capped (not scaled)
+# Trees exceeding this limit are capped (not scaled) -- a tree that has not
+# reached its target height yet simply stops, silently losing its upper height
+# stages. This starter value keeps first runs quick; raise it for production.
+# Cycles needed ~= target height / realized growth rate (roughly 0.23-0.55
+# m/cycle depending on species), so a 30m tree needs 55-130 cycles and a 45m
+# tree about 150.
 growth_cycle_limit = 55
 # Number of grove.smooth() passes on branch angles (int, 0-20, 0 = disabled)
 # Each pass reduces sharp corner angles between branch segments.
@@ -17,7 +22,8 @@ smooth_iterations = 3
 include_grove_attributes = false
 # Multi-stage export: generate tree models at height intervals
 # Exports snapshots every N meters of height (e.g., 5 = 5m, 10m, 15m...)
-# Uses growth models to determine which cycle corresponds to each height milestone
+# Snapshots are captured when a tree actually crosses each milestone -- no
+# growth model predicts the cycle, so growth speed does not change the stages
 # Each snapshot includes height and DBH in the filename for easy asset selection
 # 0 = disabled (standard single height-based export)
 height_interval = 5
@@ -29,10 +35,19 @@ max_height = 15
 
 # --- Export options ---
 [export]
+# Scale stems toward the allometry-predicted DBH for the height reached.
+# Independent of [calibration]: the allometry needs no Grove simulation.
+dbh_from_allometry = true
 # USD file format: "usda" (ASCII, human-readable) or "usdc" (binary, smaller/faster)
 # Binary USDC files are ~50% smaller on disk and faster for UE to parse,
 # significantly reducing memory pressure during import.
 usd_format = "usda"
+# Export target. "unreal" runs the full USD/Nanite/PVE pipeline. "helios"
+# writes OBJ directly from the Grove model per tree for Helios++ LiDAR
+# simulation, skipping USD/skeleton/PVE/Unreal script generation for that
+# tree (see [helios] for OBJ export settings). Twig prototype meshes still
+# come from the small, pre-existing per-species twig USD assets.
+mode = "unreal"
 # Export skeletal mesh assemblies (required for Unreal animation/wind)
 skeletal = true
 # Export static mesh assemblies (geometry only, no skeleton)

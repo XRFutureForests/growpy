@@ -46,7 +46,21 @@ ensure_pxr_with_unreal_schema()
 from pxr import Gf, Sdf, Usd, UsdGeom
 
 from ...config.core import get_config as _get_config
+from ...config.paths import twig_ext as _twig_ext
 from ...core.twig import extract_twig_placements_from_model
+
+
+def _sanitize_prim_name(name: str) -> str:
+    """Sanitize a string into a valid, unique USD prim identifier.
+
+    Non-alphanumeric characters become underscores and a leading digit
+    gets an underscore prefix (USD prim names must start with a letter
+    or underscore).
+    """
+    cleaned = "".join(c if c.isalnum() or c == "_" else "_" for c in name)
+    if cleaned and cleaned[0].isdigit():
+        cleaned = f"_{cleaned}"
+    return cleaned.lower()
 
 
 def _usd_ext() -> str:
@@ -136,7 +150,15 @@ def create_assembly(
         # Root Xform with NaniteAssemblyRootAPI
         # Sanitize species name: replace spaces and hyphens with underscores for valid USD path
         sanitized_name = species_name.replace(" ", "_").replace("-", "_").lower()
-        assembly_name = f"{sanitized_name}_nanite_assembly"
+        # The assembly's own prim/default-prim name must be unique PER EXPORTED
+        # FILE, not just per species: Unreal derives the imported SkeletalMesh
+        # asset name from this prim, and every height/DBH/density/radius variant
+        # of a species is imported into the same destination folder. A
+        # species-only name here made every variant overwrite the last one
+        # imported (`import_task.replace_existing = True`). output_path already
+        # carries the full unique identity (see forest_stages.py's file_prefix),
+        # so derive the prim name from it instead.
+        assembly_name = _sanitize_prim_name(output_path.stem)
         root_prim = stage.DefinePrim(f"/{assembly_name}", "Xform")
         stage.SetDefaultPrim(root_prim)
 
@@ -1694,7 +1716,7 @@ def create_combined_twig_usda(
 
     combined_files = []
 
-    ext = _usd_ext()
+    ext = _twig_ext(_get_config())
 
     for mesh_type in mesh_types:
         suffix = f"_{mesh_type}"

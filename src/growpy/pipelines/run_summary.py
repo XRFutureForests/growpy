@@ -12,6 +12,7 @@ import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
+from growpy.config.paths import assembly_glob
 from growpy.utils.naming import standardize_species_name
 
 logger = logging.getLogger(__name__)
@@ -25,10 +26,10 @@ CSV_FIELDNAMES = [
 ]
 
 
-def _count_assemblies(species_dir: Path) -> int:
+def _count_assemblies(species_dir: Path, config) -> int:
     if not species_dir.exists():
         return 0
-    return sum(1 for _ in species_dir.rglob("*_full_assembly.usda"))
+    return sum(1 for _ in species_dir.rglob(assembly_glob(config)))
 
 
 def _format_duration(seconds: float) -> str:
@@ -47,6 +48,7 @@ def generate_run_summary(
     species_list: list,
     elapsed_by_species: dict,
     failed: list,
+    config,
 ) -> Path:
     """Write dataset_run_summary.md/.csv for a completed step-4 dataset run.
 
@@ -57,6 +59,7 @@ def generate_run_summary(
         elapsed_by_species: Wall-clock seconds spent per species, keyed by
             the same names as species_list.
         failed: Species names (matching species_list) that failed step 4.
+        config: Active GrowPyConfig (determines the assembly file extension).
 
     Returns the path to the generated markdown file.
     """
@@ -64,7 +67,7 @@ def generate_run_summary(
     rows = []
     for species in species_list:
         std_name = standardize_species_name(species)
-        assemblies = _count_assemblies(output_dir / std_name)
+        assemblies = _count_assemblies(output_dir / std_name, config)
         elapsed = elapsed_by_species.get(species, 0.0)
         status = "FAILED" if std_name in failed_std else "OK"
         rows.append(

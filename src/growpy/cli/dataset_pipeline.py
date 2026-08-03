@@ -8,8 +8,11 @@ Orchestrates the four-step dataset workflow for all species:
   Step 4 (generate-forest):  generate tree meshes per species (one subprocess each)
 
 Each step is invoked as a subprocess so that bpy (required by step 4) is
-never imported into this process. Steps 1-3 use all_species.csv; step 4
-uses per-species merged CSVs (open-grown + surround, one tree each).
+never imported into this process. All four steps are config-driven by
+default: species selection comes from tree_asset_lookup.csv's Dataset column,
+no CSV file crosses the process boundary. --csv overrides steps 1-3 with an
+explicit species-lookup CSV; --generate-csvs writes per-species merged CSVs
+for inspection only -- nothing in the pipeline reads them back.
 
 Usage:
     python src/growpy/cli/dataset_pipeline.py --generate-csvs
@@ -34,11 +37,9 @@ import sys
 import time
 from pathlib import Path
 
+from growpy.io.unreal.script_generation import generate_unreal_scripts
 from growpy.io.usd.overview import generate_overview_markdown
-from growpy.pipelines.dataset_csv_planner import (
-    generate_dataset_csvs,
-    synchronize_dataset_csvs,
-)
+from growpy.pipelines.dataset_csv_planner import generate_dataset_csvs
 from growpy.pipelines.dataset_job_planner import (
     DATASET_DIR,
     list_all_species,
@@ -47,7 +48,6 @@ from growpy.pipelines.dataset_job_planner import (
 from growpy.pipelines.run_summary import generate_run_summary
 from growpy.pipelines.step_runner import (
     check_environment,
-    generate_unreal_scripts,
     run_parallel_step4,
     run_species_step4,
     run_step123,
@@ -169,14 +169,14 @@ def main():
         ),
     )
 
-    # CSV override for steps 1-3
+    # CSV override for steps 1-3 (default: config-driven, no CSV needed)
     parser.add_argument(
         "--csv",
         type=Path,
         default=None,
         help=(
-            "Path to all_species CSV for steps 1-3 "
-            "(default: data/input/dataset/all_species.csv)."
+            "Run steps 1-3 from this species-lookup CSV instead of the "
+            "config-driven default (tree_asset_lookup.csv Dataset column)."
         ),
     )
 
@@ -231,6 +231,36 @@ def main():
         help="Ingest yield tables from external providers before step 3 calibration.",
     )
     parser.add_argument(
+        "--calibrate",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override step 3 calibration for this run only (default: from TOML).",
+    )
+    parser.add_argument(
+        "--pve",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override step 4 PVE preset generation this run (default: from TOML).",
+    )
+    parser.add_argument(
+        "--wind",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override step 4 wind-data generation this run (default: from TOML).",
+    )
+    parser.add_argument(
+        "--previews",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override step 4 preview/export-control PNGs this run (default: TOML).",
+    )
+    parser.add_argument(
+        "--icons",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override step 4 icon PNGs this run (default: from TOML).",
+    )
+    parser.add_argument(
         "--clean",
         action="store_true",
         help="Clean output directories for each step before running. "
@@ -259,6 +289,18 @@ def main():
         args.verbose = False
     setup_logging(verbose=args.verbose)
 
+    # Provenance: make this run's TOML-override switches visible in the log.
+    # None means "use config/*.toml" for that switch.
+    logger.info(
+        "Effective switches: calibrate=%s pve=%s wind=%s previews=%s icons=%s "
+        "(None = from TOML)",
+        args.calibrate,
+        args.pve,
+        args.wind,
+        args.previews,
+        args.icons,
+    )
+
     # --generate-csvs: generate CSVs, then continue or exit
     if args.generate_csvs:
         logger.info("Generating dataset CSVs in %s", args.output_dir)
@@ -269,9 +311,9 @@ def main():
 
     # --list: show available species and exit
     if args.list:
-        stems = list_all_species(DATASET_DIR)
+        stems = list_all_species()
         if not stems:
-            print("No species found. Run --generate-csvs first.")
+            print("No species marked for the dataset in tree_asset_lookup.csv.")
         for stem in stems:
             print(stem.replace("_", " ").title())
         return 0
@@ -282,22 +324,9 @@ def main():
     except argparse.ArgumentTypeError as exc:
         parser.error(str(exc))
 
-    # Determine all_species CSV path (for steps 1-3)
-    all_species_csv = args.csv or (DATASET_DIR / "all_species.csv")
-
-    # Synchronize all_species.csv and merged CSVs before running steps
-    if not args.dry_run:
-        synchronize_dataset_csvs(DATASET_DIR)
-
-    # Guard: ensure all_species.csv exists if running steps 1-3
-    steps_123 = [s for s in steps if s in (1, 2, 3)]
-    if steps_123 and not args.dry_run and not all_species_csv.exists():
-        logger.error(
-            "all_species.csv not found: %s\n"
-            "Run --generate-csvs first to create the dataset CSV files.",
-            all_species_csv,
-        )
-        raise SystemExit(1)
+    # Steps 1-3 default to config-driven species selection (--dataset, no CSV
+    # file crosses the process boundary); an explicit --csv overrides that.
+    dataset_mode_123 = not args.csv
 
     # Determine species list (only needed for step 4)
     species_list = []
@@ -306,16 +335,29 @@ def main():
             parser.error(
                 "Step 4 requires a species selection: --species, --pilot, or --all."
             )
-        species_list = resolve_species(args, DATASET_DIR)
+        species_list = resolve_species(args)
         if not species_list:
             logger.error(
-                "No species found in %s. Run --generate-csvs first.", DATASET_DIR
+                "No species selected. Mark species for the dataset in "
+                "tree_asset_lookup.csv (Dataset column)."
             )
             raise SystemExit(1)
 
     # Guard: bpy check before any step 4 execution
     if 4 in steps and not args.dry_run and not check_environment():
         raise SystemExit(1)
+
+    # Step 4 realises DBH at export from the height-DBH allometry.  Building it
+    # is simulation-free (seconds) and its artifacts live under the gitignored
+    # data/assets/, so rebuild here rather than trusting a previous run to have
+    # left them behind.
+    if 4 in steps and not args.dry_run:
+        from growpy.pipelines.dataset_csv_planner import _get_dataset_species
+        from growpy.utils.allometry import build_all_allometries
+
+        logger.info("Building height-DBH allometry from yield tables...")
+        written = build_all_allometries(list(_get_dataset_species()["Common Name"]))
+        logger.info("  %d allometry artifact(s) ready", len(written))
 
     # --clean implies --clean-store for step 3
     if args.clean:
@@ -334,6 +376,8 @@ def main():
                 extra.append("--ingest-yield-tables")
                 if args.clean_store:
                     extra.append("--clean-store")
+            if step == 3 and args.calibrate is not None:
+                extra.append("--calibrate" if args.calibrate else "--no-calibrate")
             # Pass --species to step 3 so calibration is limited to one species
             if step == 3 and args.species:
                 extra.extend(["--species", args.species])
@@ -345,7 +389,8 @@ def main():
             extra = extra or None
             ok = run_step123(
                 step,
-                all_species_csv,
+                csv_path=args.csv,
+                dataset_mode=dataset_mode_123,
                 dry_run=args.dry_run,
                 extra_args=extra,
                 verbose=args.verbose,
@@ -369,8 +414,11 @@ def main():
                     species_list,
                     workers,
                     args.max_height,
-                    DATASET_DIR,
                     verbose=args.verbose,
+                    pve=args.pve,
+                    wind=args.wind,
+                    previews=args.previews,
+                    icons=args.icons,
                 )
             else:
                 failed = []
@@ -378,10 +426,13 @@ def main():
                     t0 = time.monotonic()
                     ok = run_species_step4(
                         species,
-                        DATASET_DIR,
                         args.dry_run,
                         args.max_height,
                         verbose=args.verbose,
+                        pve=args.pve,
+                        wind=args.wind,
+                        previews=args.previews,
+                        icons=args.icons,
                     )
                     elapsed_by_species[species] = time.monotonic() - t0
                     if not ok:
@@ -399,7 +450,7 @@ def main():
             _out = _cfg.output_dir
             if not _out.is_absolute():
                 _out = Path(__file__).parent.parent.parent.parent / _out
-            generate_unreal_scripts(_out, include_static=_cfg.export_static)
+            generate_unreal_scripts(_out, _cfg, include_static=_cfg.export_static)
 
     # Generate dataset overview after step 4 (even if some species failed)
     if 4 in steps and not args.dry_run:
@@ -419,6 +470,7 @@ def main():
             species_list,
             elapsed_by_species,
             failed,
+            config,
         )
 
     if 4 in steps and failed:

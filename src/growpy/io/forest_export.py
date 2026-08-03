@@ -20,7 +20,6 @@ of the io/cli restructure). See `docs/architecture/generate-forest-refactoring-p
 from __future__ import annotations
 
 import logging
-from itertools import groupby
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -63,11 +62,12 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     from .. import get_config
     from ..config.paths import radius_label
     from ..config.preset_overrides import (
-        load_height_dbh_model_from_preset,
         load_target_dbh_from_preset,
         predict_dbh_from_height_model,
     )
+    from ..core.forest import build_density_variant_model_sets, split_bones_by_tree
     from ..core.tree import calculate_dbh_at_height, calculate_tree_height
+    from ..utils.allometry import correction_weight, get_height_dbh_model
     from ..utils.export_naming import (
         format_dbh_for_filename,
         format_density_for_filename,
@@ -175,43 +175,29 @@ def _export_single_tree_from_forest(args: tuple) -> list:
 
         # Slice bones list for each tree in grove
         with timer.track("slice_bones"):
-            bones_grouped = [list(g) for k, g in groupby(bones, lambda x: x[0])]
-            tree_bones = [
-                bones_grouped[i]
-                + (bones_grouped[i + 1] if i + 1 < len(bones_grouped) else [])
-                for i in range(0, len(bones_grouped), 2)
-            ]
+            tree_bones = split_bones_by_tree(bones, len(grove.trees))
 
         # Build additional model sets for density variants with different cutoffs
         density_variants = config.get_density_variants()
         variant_model_sets: dict[str, list] = {}
         if density_variants:
-            base_cutoff = (
-                quality_params["build_cutoff_age"],
-                quality_params["build_cutoff_thickness"],
+            base_build_options = {
+                "resolution": quality_params["resolution"],
+                "resolution_reduce": quality_params["resolution_reduce"],
+                "build_cutoff_age": quality_params["build_cutoff_age"],
+                "build_cutoff_thickness": quality_params["build_cutoff_thickness"],
+                "build_blend": quality_params["build_blend"],
+                "build_end_cap": quality_params["build_end_cap"],
+            }
+            variant_model_sets = build_density_variant_model_sets(
+                grove, models, base_build_options, density_variants, timer=timer
             )
-            built_cutoffs: dict[tuple, list] = {base_cutoff: models}
-            for vname, vcfg in density_variants:
-                cutoff_key = (
-                    vcfg.get("build_cutoff_age", base_cutoff[0]),
-                    vcfg.get("build_cutoff_thickness", base_cutoff[1]),
-                )
-                if cutoff_key not in built_cutoffs:
-                    variant_opts = {
-                        "resolution": quality_params["resolution"],
-                        "resolution_reduce": quality_params["resolution_reduce"],
-                        "build_cutoff_age": cutoff_key[0],
-                        "build_cutoff_thickness": cutoff_key[1],
-                        "build_blend": quality_params["build_blend"],
-                        "build_end_cap": quality_params["build_end_cap"],
-                    }
-                    with timer.track(f"build_models_{vname}"):
-                        built_cutoffs[cutoff_key] = grove.build_models(variant_opts)
-                variant_model_sets[vname] = built_cutoffs[cutoff_key]
 
-        # Load height-DBH model for post-hoc radial scaling (preferred: height-driven)
-        # Falls back to age-indexed target_dbh_curve if model not available
-        h_dbh_model = load_height_dbh_model_from_preset(config.get_preset_path(species))
+        # Height-DBH allometry drives post-hoc radial scaling: it depends only on
+        # the height reached, so it needs no growth-pacing calibration.  Resolved
+        # from the allometry artifact first, then the seed.json calibration block
+        # for presets that have not been regenerated yet.
+        h_dbh_model = get_height_dbh_model(species, config.get_preset_path(species))
         target_dbh_curve = (
             load_target_dbh_from_preset(config.get_preset_path(species))
             if not h_dbh_model
@@ -282,12 +268,22 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 )
 
             tree_radial_scale = 1.0
-            if config.calibration_align_dbh and target_dbh_m and grove_dbh_m > 0.001:
+            if (
+                config.export_dbh_from_allometry
+                and target_dbh_m
+                and grove_dbh_m > 0.001
+            ):
                 tree_radial_scale = target_dbh_m / grove_dbh_m
                 if dbh_from_csv:
                     tree_radial_scale = max(0.1, min(tree_radial_scale, 5.0))
                 else:
                     tree_radial_scale = max(0.5, min(tree_radial_scale, 2.0))
+                    # Below the yield table's own height range the model is
+                    # extrapolating; fade the correction out and leave Grove's
+                    # pipe-model diameter alone for saplings.
+                    w = correction_weight(species, tree_height_m)
+                    if w < 1.0:
+                        tree_radial_scale = 1.0 + (tree_radial_scale - 1.0) * w
 
             # Use the actual DBH after clamped radial scaling for the filename,
             # so the filename reflects what the exported mesh actually shows.

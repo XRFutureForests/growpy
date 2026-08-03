@@ -7,13 +7,16 @@ import the_grove_23_core as gc
 from ..config import get_config
 
 
-def create_grove(species: str | None = None, radius: float = 0.0) -> gc.Grove:
+def create_grove(species: str | None = None) -> gc.Grove:
     """Create a new Grove instance with optional species preset.
+
+    Surround radius is deliberately not a parameter: a species has one preset
+    regardless of which competition variant is being grown. The radius is
+    applied at simulation time by :func:`enable_surround`, not by selecting a
+    different preset file.
 
     Args:
         species: Optional species name for loading preset
-        radius: Surround radius (meters) to select a radius-specific calibrated
-            preset for. 0 = base/open-grown preset (default).
 
     Returns:
         Initialized Grove instance
@@ -26,7 +29,7 @@ def create_grove(species: str | None = None, radius: float = 0.0) -> gc.Grove:
         grove.set_random_seed(config.random_seed)
 
     if species:
-        preset_path = config.get_preset_path(species, radius)
+        preset_path = config.get_preset_path(species)
         with open(preset_path) as f:
             preset_json = f.read()
         properties = gc.io.properties_from_json_string(preset_json)

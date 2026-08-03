@@ -17,7 +17,9 @@ Material groups:
 """
 
 import logging
+import re
 from pathlib import Path
+from typing import Any
 
 import bpy
 import numpy as np
@@ -28,6 +30,26 @@ if hasattr(bpy.utils, "expose_bundled_modules"):
     bpy.utils.expose_bundled_modules()
 
 from pxr import Sdf, Usd, UsdGeom, UsdShade
+
+from growpy.config.core import get_config as _get_config
+from growpy.config.paths import static_assembly_glob as _static_assembly_glob
+from growpy.config.paths import tree_ext as _tree_ext
+from growpy.config.paths import twig_ext as _twig_ext
+from growpy.io.helios.classification import (
+    MAX_TREES,
+    build_classification_codes,
+    build_material_prefix,
+    validate_classification_fids,
+    validate_classification_materials,
+    validate_classification_species,
+)
+from growpy.core.twig import (
+    normal_to_rotation_matrix,
+    rotation_matrix_to_quaternion,
+)
+from growpy.core.twig import (
+    extract_twig_placements_from_model as _extract_twig_placements_from_model,
+)
 
 WOOD_MATERIAL_KEYWORDS = ("bark", "branch", "wood", "dead", "stem", "twig")
 
@@ -42,9 +64,30 @@ def clear_twig_cache() -> None:
     _classified_twig_cache.clear()
 
 
-def _resolve_to_static(filename: str) -> str:
-    """Convert a skeletal USDA filename to its static counterpart."""
-    return filename.replace("_skeletal.usda", "_static.usda")
+def _resolve_to_static(filename: str, twig_ext: str = ".usda") -> str:
+    """Convert a skeletal twig filename to its static counterpart.
+
+    Twig files are always written with :func:`growpy.config.paths.twig_ext`
+    (``.usda`` today, independent of ``[export] usd_format``) -- pass that
+    resolved value rather than relying on the default.
+    """
+    return filename.replace(f"_skeletal{twig_ext}", f"_static{twig_ext}")
+
+
+def _find_assembly_files(output_dir: Path, config) -> list[Path]:
+    """Discover static assembly files under layout mode (species/tree_NNNN/).
+
+    OBJ export operates on layout mode only (species/tree_NNNN/ from a
+    placement CSV). Dataset-mode output (species/rNN/) is not a supported
+    input -- those coordinates are cosmetic separation, not real positions
+    a Helios scene could bake in. See docs/guides/helios-export.md.
+
+    Extension-agnostic: resolved from ``[export] usd_format`` via
+    :func:`growpy.config.paths.static_assembly_glob`, so this matches
+    whether the active format is ``usda`` or ``usdc``.
+    """
+    return sorted(output_dir.glob(f"*/tree_*/{_static_assembly_glob(config)}"))
+
 
 
 def _read_twig_mesh_classified(
@@ -152,6 +195,269 @@ def _read_twig_mesh_classified(
     return vertices, np.empty((0, 3), dtype=np.int64), all_faces
 
 
+def _scale_trunk_points_radially(
+    points: list, radial_scale: float,
+) -> list[tuple[float, float, float]]:
+    """Scale Grove model points horizontally (X/Z) toward the target DBH.
+
+    Matches the radial-only scaling the USD export path applies via
+    radial_scale: it corrects trunk *diameter* toward the height-DBH
+    allometry target (see pipelines/forest_stages.py::compute_radial_scale),
+    while height (Y, in Grove's native Y-up space) is left unchanged.
+
+    Args:
+        points: Grove model points (objects with .x/.y/.z, e.g. model.points)
+        radial_scale: Horizontal scale factor (1.0 = no change)
+
+    Returns:
+        List of (x, y, z) tuples
+    """
+    if radial_scale == 1.0:
+        return [(p.x, p.y, p.z) for p in points]
+    return [(p.x * radial_scale, p.y, p.z * radial_scale) for p in points]
+
+
+def _read_twig_prototypes_for_direct_export(
+    twig_placements: dict[str, list],
+    twig_usd_map: dict[str, list[Path]],
+    twig_ext: str,
+) -> tuple[dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]], dict[str, int]]:
+    """Resolve one representative static prototype mesh per twig type.
+
+    Direct export has no PointInstancer, so there is no per-instance
+    prototype-variant selection: all instances of a twig type share the
+    first USD file listed for that type in twig_usd_map. This trades the
+    USD assembly path's per-instance visual variety (e.g. twig_short
+    variants a/b/c/d) for a fully USD-independent trunk+twig write --
+    Helios++ LiDAR simulation does not care which twig mesh variant is used.
+
+    Args:
+        twig_placements: {twig_type: [TwigPlacement, ...]} from
+            extract_twig_placements_from_model.
+        twig_usd_map: {twig_type: [usd_path, ...]}.
+        twig_ext: Twig USD extension ("usda" or "usdc"), for resolving the
+            static variant of a skeletal twig file.
+
+    Returns:
+        (classified_protos, type_to_proto_idx) where classified_protos maps
+        a synthetic prototype index to (verts, wood_faces, leaf_faces), and
+        type_to_proto_idx maps twig_type to that same index.
+    """
+    classified_protos: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+    type_to_proto_idx: dict[str, int] = {}
+
+    for twig_type, placement_list in twig_placements.items():
+        if not placement_list:
+            continue
+        twig_files = twig_usd_map.get(twig_type)
+        if not twig_files:
+            continue
+
+        twig_path = Path(twig_files[0])
+        static_name = _resolve_to_static(twig_path.name, twig_ext)
+        static_path = twig_path.parent / static_name
+        if not static_path.exists():
+            static_path = twig_path
+        if not static_path.exists():
+            continue
+
+        verts, wood_faces, leaf_faces = _read_twig_mesh_classified(static_path)
+        if verts is None:
+            continue
+
+        proto_idx = len(classified_protos)
+        classified_protos[proto_idx] = (verts, wood_faces, leaf_faces)
+        type_to_proto_idx[twig_type] = proto_idx
+
+    return classified_protos, type_to_proto_idx
+
+
+def _twig_placements_to_instance_arrays(
+    twig_placements: dict[str, list],
+    type_to_proto_idx: dict[str, int],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Convert Grove TwigPlacement objects into instance transform arrays.
+
+    Returns arrays in the same shape _write_obj_streaming expects from a USD
+    PointInstancer read. Orientations are unit quaternions (w, x, y, z),
+    derived from each placement's facing normal the same way the USD
+    skeletal/static assembly path does (growpy.core.twig
+    .normal_to_rotation_matrix -> rotation_matrix_to_quaternion).
+    placement.bone_id/branch_id are ignored: those exist for skeletal
+    binding, which a static baked OBJ has no use for.
+
+    Returns:
+        (positions, orientations, scales, proto_indices)
+    """
+    positions: list[tuple[float, float, float]] = []
+    orientations: list[tuple[float, float, float, float]] = []
+    scales: list[float] = []
+    proto_indices: list[int] = []
+
+    for twig_type, placement_list in twig_placements.items():
+        proto_idx = type_to_proto_idx.get(twig_type)
+        if proto_idx is None:
+            continue
+        for placement in placement_list:
+            rot_matrix = normal_to_rotation_matrix(placement.normal)
+            quat = rotation_matrix_to_quaternion(rot_matrix)
+            positions.append(placement.position)
+            orientations.append(quat)
+            scales.append(placement.scale)
+            proto_indices.append(proto_idx)
+
+    if not positions:
+        return (
+            np.empty((0, 3), dtype=np.float64),
+            np.empty((0, 4), dtype=np.float64),
+            np.empty(0, dtype=np.float64),
+            np.empty(0, dtype=np.int64),
+        )
+
+    return (
+        np.array(positions, dtype=np.float64),
+        np.array(orientations, dtype=np.float64),
+        np.array(scales, dtype=np.float64),
+        np.array(proto_indices, dtype=np.int64),
+    )
+
+
+def convert_tree_to_obj_direct(
+    model: Any,
+    twig_usd_map: dict[str, list[Path]],
+    output_dir: Path,
+    species_name: str,
+    tree_id: str,
+    radial_scale: float = 1.0,
+    bones_info: list | None = None,
+    helios_spectra_leaves: str = "deciduous",
+    simplification_ratios: dict[str, float] | None = None,
+    mat_prefix: str = "",
+    classification_codes: dict[str, int] | None = None,
+    up_axis: str = "y",
+) -> Path | None:
+    """Convert a Grove model directly to OBJ, bypassing USD/skeleton/Nanite
+    entirely for the trunk (export_mode = "helios", see config/core.py).
+
+    Twig prototype meshes are still read from the small, pre-existing
+    per-species twig USD assets (growpy-convert-twigs output) -- those are
+    shared static assets, not per-tree data, so reading them costs nothing
+    like re-parsing a multi-million-vertex trunk from USD would. Twig
+    per-instance placement (position/orientation/scale) is computed via
+    growpy.core.twig.extract_twig_placements_from_model, the same
+    USD-independent function the assembly export path uses before writing
+    placements into a USD PointInstancer -- so placement itself is identical
+    between the two export modes, only the trunk and the destination format
+    differ.
+
+    Args:
+        model: Grove model (post grow_nodes/build_models), providing
+            .points and .faces (see growpy.io.usd.tree_export for the same
+            access pattern).
+        twig_usd_map: {twig_type: [usd_path, ...]} from
+            get_twig_usd_map_for_species. Only the first path per type is
+            used -- see _read_twig_prototypes_for_direct_export.
+        output_dir: Directory to write the OBJ/MTL pair.
+        species_name: Species name for spectra/material lookup.
+        tree_id: Tree identifier for file naming.
+        radial_scale: Horizontal (X/Z) trunk scale toward the DBH allometry
+            target, matching compute_radial_scale()'s output.
+        bones_info: Optional skeleton bones, passed through to
+            extract_twig_placements_from_model for branch-based twig
+            attachment selection (has no effect on the OBJ output itself,
+            which is unskinned, but keeps placement selection consistent
+            with the USD path).
+        simplification_ratios: {'bark': r, 'wood': r, 'leaf': r, 'fruit': r}.
+            None disables simplification.
+        mat_prefix: Per-tree material name prefix (see
+            growpy.io.helios.classification).
+        classification_codes: Per-material Helios classification codes.
+
+    Returns:
+        Path to the generated OBJ file, or None if the model has no mesh.
+    """
+    species_clean = species_name.replace(" ", "_").replace("-", "_").lower()
+    helios_name = f"{species_clean}_tree_{tree_id}_helios"
+    obj_path = output_dir / f"{helios_name}.obj"
+    mtl_name = f"{helios_name}.mtl"
+    mtl_path = output_dir / mtl_name
+
+    raw_points = list(model.points)
+    raw_faces = list(model.faces)
+    if not raw_points or not raw_faces:
+        logger.warning("Direct OBJ export: model has no mesh for tree %s", tree_id)
+        return None
+
+    scaled_points = _scale_trunk_points_radially(raw_points, radial_scale)
+    trunk_verts = np.array(scaled_points, dtype=np.float64)
+    trunk_faces = np.array(raw_faces, dtype=np.int64)
+
+    if simplification_ratios:
+        bark_ratio = simplification_ratios.get("bark", 1.0)
+        if bark_ratio < 1.0 and len(trunk_faces) > 0:
+            from growpy.io.helios.mesh_simplify import simplify_trunk_mesh
+
+            trunk_verts, trunk_faces, _ = simplify_trunk_mesh(
+                trunk_verts, trunk_faces, None, bark_ratio,
+            )
+
+    twig_ext = _twig_ext(_get_config())
+    twig_placements = _extract_twig_placements_from_model(
+        model, bones_info=bones_info, scaled_points=scaled_points,
+    )
+
+    classified_protos, type_to_proto_idx = _read_twig_prototypes_for_direct_export(
+        twig_placements, twig_usd_map, twig_ext,
+    )
+
+    if simplification_ratios and classified_protos:
+        wood_ratio = simplification_ratios.get("wood", 1.0)
+        leaf_ratio = simplification_ratios.get("leaf", 1.0)
+        if wood_ratio < 1.0 or leaf_ratio < 1.0:
+            from growpy.io.helios.mesh_simplify import _extract_and_simplify
+
+            for proto_idx, (verts, wood_faces, leaf_faces) in list(
+                classified_protos.items()
+            ):
+                wood_v, wood_f = _extract_and_simplify(verts, wood_faces, wood_ratio)
+                leaf_v, leaf_f = _extract_and_simplify(verts, leaf_faces, leaf_ratio)
+                leaf_f = leaf_f + len(wood_v)
+                merged_v = (
+                    np.vstack([wood_v, leaf_v])
+                    if (len(wood_v) > 0 and len(leaf_v) > 0)
+                    else (wood_v if len(wood_v) > 0 else leaf_v)
+                )
+                classified_protos[proto_idx] = (merged_v, wood_f, leaf_f)
+
+    positions, orientations, scales, proto_indices = _twig_placements_to_instance_arrays(
+        twig_placements, type_to_proto_idx,
+    )
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if len(proto_indices) > 0:
+        _write_obj_streaming(
+            obj_path, trunk_verts, trunk_faces, classified_protos,
+            positions, orientations, scales, proto_indices,
+            mtl_name, up_axis, mat_prefix=mat_prefix,
+        )
+    else:
+        _write_obj(
+            obj_path, trunk_verts, trunk_faces, None, mtl_name,
+            up_axis=up_axis, mat_prefix=mat_prefix,
+        )
+
+    is_conifer = any(kw in species_clean for kw in CONIFER_KEYWORDS)
+    spectra = "conifer" if is_conifer else helios_spectra_leaves
+    bark_texture = _find_bark_texture(output_dir)
+    _write_helios_mtl(
+        mtl_path, bark_texture, spectra,
+        classification_codes=classification_codes, mat_prefix=mat_prefix,
+    )
+
+    return obj_path
+
+
 def _read_tree_components(
     assembly_usda_path: Path,
     simplification_ratios: dict[str, float] | None = None,
@@ -175,15 +481,16 @@ def _read_tree_components(
         instancer_data: (positions, orientations, scales, proto_indices, proto_files) or None
     """
     tree_dir = assembly_usda_path.parent
+    ext = _tree_ext(_get_config())
 
-    # Prefer static USDA for OBJ export (no skeleton needed, has material bindings)
-    stem_files = list(tree_dir.glob("*_stems_static.usda"))
+    # Prefer static USD for OBJ export (no skeleton needed, has material bindings)
+    stem_files = list(tree_dir.glob(f"*_stems_static{ext}"))
     if not stem_files:
-        stem_files = list(tree_dir.glob("*_static.usda"))
+        stem_files = list(tree_dir.glob(f"*_static{ext}"))
     if not stem_files:
-        stem_files = list(tree_dir.glob("*_stems_skeletal.usda"))
+        stem_files = list(tree_dir.glob(f"*_stems_skeletal{ext}"))
     if not stem_files:
-        stem_files = list(tree_dir.glob("*_skeletal.usda"))
+        stem_files = list(tree_dir.glob(f"*_skeletal{ext}"))
     if not stem_files:
         logger.warning("OBJ export: No stem USDA found in %s", tree_dir)
         return None
@@ -224,7 +531,7 @@ def _read_tree_components(
             )
 
         for idx, twig_file in proto_files.items():
-            static_file = _resolve_to_static(twig_file)
+            static_file = _resolve_to_static(twig_file, _twig_ext(_get_config()))
             twig_path = tree_dir / static_file
             if not twig_path.exists():
                 twig_path = tree_dir / twig_file
@@ -664,6 +971,7 @@ def _write_classified_twig_faces(
     f,
     classified_protos: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]],
     proto_instance_offsets: dict[int, list[int]],
+    mat_prefix: str = "",
 ) -> tuple[int, int]:
     """Write twig faces grouped by wood/leaf material using streamed offsets.
 
@@ -680,7 +988,7 @@ def _write_classified_twig_faces(
         if idx in classified_protos
     )
     if has_wood:
-        f.write("\nusemtl twig_wood\n")
+        f.write(f"\nusemtl {mat_prefix}twig_wood\n")
         for proto_idx in sorted(proto_instance_offsets.keys()):
             if proto_idx not in classified_protos:
                 continue
@@ -700,7 +1008,7 @@ def _write_classified_twig_faces(
         if idx in classified_protos
     )
     if has_leaf:
-        f.write("\nusemtl twig_leaf\n")
+        f.write(f"\nusemtl {mat_prefix}twig_leaf\n")
         for proto_idx in sorted(proto_instance_offsets.keys()):
             if proto_idx not in classified_protos:
                 continue
@@ -727,6 +1035,7 @@ def _write_obj_streaming(
     proto_indices: np.ndarray,
     mtl_name: str,
     up_axis: str = "y",
+    mat_prefix: str = "",
 ) -> tuple[int, int, int]:
     """Write a single tree OBJ by streaming twig instances to disk.
 
@@ -758,7 +1067,7 @@ def _write_obj_streaming(
         f.write("\n")
 
         # Trunk faces
-        f.write("usemtl bark\n")
+        f.write(f"usemtl {mat_prefix}bark\n")
         for face in trunk_faces:
             f.write(f"f {face[0]+1} {face[1]+1} {face[2]+1}\n")
 
@@ -767,6 +1076,7 @@ def _write_obj_streaming(
             f,
             classified_protos,
             proto_offsets,
+            mat_prefix,
         )
 
     return len(trunk_faces), wood_count, leaf_count
@@ -856,9 +1166,8 @@ def write_combined_obj_streaming(
     finally:
         temp_geom_path.unlink(missing_ok=True)
 
-    _write_helios_mtl(
-        mtl_path, bark_texture=None, helios_spectra_leaves=helios_spectra_leaves
-    )
+    source_mtl_files = [obj_path.with_suffix(".mtl") for obj_path, _ in tree_offsets]
+    _write_combined_mtl(mtl_path, source_mtl_files, helios_spectra_leaves)
 
     logger.info(
         "Combined OBJ: %s (%d verts, %d faces, %d trees)",
@@ -868,6 +1177,62 @@ def write_combined_obj_streaming(
         len(tree_obj_paths),
     )
     return output_path
+
+
+def _write_combined_mtl(
+    mtl_path: Path,
+    source_mtl_files: list[Path],
+    helios_spectra_leaves: str = "deciduous",
+) -> None:
+    """Merge material definitions from individual tree MTL files into one combined MTL.
+
+    Deduplicates materials by name, keeping the first definition encountered.
+    Per-tree material prefixes (see growpy.io.helios.classification) make
+    every tree's materials distinct, so this preserves per-tree classification
+    codes and per-species leaf spectra in the combined OBJ -- regenerating a
+    fixed bark/twig_wood/twig_leaf MTL instead would leave any prefixed
+    material referenced by the combined OBJ (usemtl) without a matching
+    definition (newmtl), which Helios++ silently falls back to defaults for.
+    """
+    seen_materials: dict[str, list[str]] = {}
+
+    for src_mtl in source_mtl_files:
+        if not src_mtl.exists():
+            continue
+        current_name = None
+        current_lines: list[str] = []
+        with open(src_mtl) as f:
+            for line in f:
+                if line.startswith("newmtl "):
+                    if current_name and current_name not in seen_materials:
+                        seen_materials[current_name] = current_lines
+                    current_name = line.strip().split(maxsplit=1)[1]
+                    current_lines = [line]
+                elif current_name is not None:
+                    current_lines.append(line)
+        if current_name and current_name not in seen_materials:
+            seen_materials[current_name] = current_lines
+
+    if not seen_materials:
+        # Fallback if no MTL files found
+        _write_helios_mtl(
+            mtl_path, bark_texture=None, helios_spectra_leaves=helios_spectra_leaves
+        )
+        return
+
+    with open(mtl_path, "w") as f:
+        f.write("# Helios++ combined forest material\n\n")
+        # Write bark first (if present, unprefixed) for readability
+        if "bark" in seen_materials:
+            for line in seen_materials["bark"]:
+                f.write(line)
+            f.write("\n")
+        for mat_name in sorted(seen_materials.keys()):
+            if mat_name == "bark":
+                continue
+            for line in seen_materials[mat_name]:
+                f.write(line)
+            f.write("\n")
 
 
 def _find_bark_texture(tree_dir: Path) -> Path | None:
@@ -902,6 +1267,7 @@ def _write_obj(
     twig_wood_faces: np.ndarray | None = None,
     twig_leaf_verts: np.ndarray | None = None,
     twig_leaf_faces: np.ndarray | None = None,
+    mat_prefix: str = "",
 ) -> None:
     """Write Wavefront OBJ file with bark, twig_wood, twig_leaf material groups."""
     has_uvs = trunk_uvs is not None and len(trunk_uvs) > 0
@@ -946,7 +1312,7 @@ def _write_obj(
         f.write("\n")
 
         # Trunk faces (bark material)
-        f.write("usemtl bark\n")
+        f.write(f"usemtl {mat_prefix}bark\n")
         if has_uvs:
             for fi, face in enumerate(trunk_faces):
                 uv_base = fi * 3
@@ -960,7 +1326,7 @@ def _write_obj(
         # Twig wood faces
         wood_offset = trunk_vert_count
         if len(twig_wood_faces) > 0:
-            f.write("\nusemtl twig_wood\n")
+            f.write(f"\nusemtl {mat_prefix}twig_wood\n")
             for face in twig_wood_faces:
                 v0 = face[0] + wood_offset + 1
                 v1 = face[1] + wood_offset + 1
@@ -975,7 +1341,7 @@ def _write_obj(
         # Twig leaf faces
         leaf_offset = trunk_vert_count + len(twig_wood_verts)
         if len(twig_leaf_faces) > 0:
-            f.write("\nusemtl twig_leaf\n")
+            f.write(f"\nusemtl {mat_prefix}twig_leaf\n")
             for face in twig_leaf_faces:
                 v0 = face[0] + leaf_offset + 1
                 v1 = face[1] + leaf_offset + 1
@@ -1113,18 +1479,31 @@ def _write_helios_mtl(
     mtl_path: Path,
     bark_texture: Path | None,
     helios_spectra_leaves: str = "deciduous",
+    classification_codes: dict[str, int] | None = None,
+    mat_prefix: str = "",
 ) -> None:
     """Write Helios-compatible MTL file with bark, twig_wood, twig_leaf materials.
 
     Helios++ uses custom MTL properties:
         helios_spectra  - ECOSTRESS spectral library identifier
-        helios_classification - ASPRS point classification (4 = high vegetation)
+        helios_classification - ASPRS point classification (4 = high vegetation),
+            or a per-tree Helios classification code when classification_codes
+            is provided -- see growpy.io.helios.classification.
+
+    With classification_codes=None and mat_prefix="" (the defaults), output is
+    unchanged from before per-tree classification support existed.
     """
+
+    def _get_classification(material_class: str) -> int:
+        if classification_codes:
+            return classification_codes.get(material_class, 4)
+        return 4
+
     with open(mtl_path, "w") as f:
         f.write("# Helios++ compatible material\n\n")
 
         # Bark material (trunk/branches)
-        f.write("newmtl bark\n")
+        f.write(f"newmtl {mat_prefix}bark\n")
         f.write("Ka 0.1 0.1 0.1\n")
         f.write("Kd 0.4 0.3 0.2\n")
         f.write("Ks 0.05 0.05 0.05\n")
@@ -1132,25 +1511,25 @@ def _write_helios_mtl(
             rel_texture = f"textures/{bark_texture.name}"
             f.write(f"map_Kd {rel_texture}\n")
         f.write("helios_spectra wood\n")
-        f.write("helios_classification 4\n")
+        f.write(f"helios_classification {_get_classification('bark')}\n")
         f.write("\n")
 
         # Twig wood material (twig branch cylinders)
-        f.write("newmtl twig_wood\n")
+        f.write(f"newmtl {mat_prefix}twig_wood\n")
         f.write("Ka 0.1 0.1 0.1\n")
         f.write("Kd 0.35 0.25 0.15\n")
         f.write("Ks 0.05 0.05 0.05\n")
         f.write("helios_spectra wood\n")
-        f.write("helios_classification 4\n")
+        f.write(f"helios_classification {_get_classification('wood')}\n")
         f.write("\n")
 
         # Twig leaf material (leaf/needle planes)
-        f.write("newmtl twig_leaf\n")
+        f.write(f"newmtl {mat_prefix}twig_leaf\n")
         f.write("Ka 0.1 0.15 0.05\n")
         f.write("Kd 0.3 0.5 0.15\n")
         f.write("Ks 0.2 0.2 0.2\n")
         f.write(f"helios_spectra {helios_spectra_leaves}\n")
-        f.write("helios_classification 4\n")
+        f.write(f"helios_classification {_get_classification('leaf')}\n")
 
 
 CONIFER_KEYWORDS = [
@@ -1171,13 +1550,13 @@ CONIFER_KEYWORDS = [
 
 def export_forest_obj(
     output_dir: Path,
-    csv_path: Path,
+    forest_data: "pd.DataFrame",
     generate_scene_xml: bool = False,
     individual_obj: bool = False,
     up_axis: str = "y",
     timer=None,
     simplification_ratios: dict[str, float] | None = None,
-    leaf_per_species: dict[str, float] | None = None,
+    per_species_ratios: dict[str, dict[str, float]] | None = None,
 ) -> list[tuple[Path, float, float, float, str]]:
     """Export USDA tree assemblies to OBJ for Helios++ LiDAR simulation.
 
@@ -1191,7 +1570,8 @@ def export_forest_obj(
 
     Args:
         output_dir: Forest output directory containing species/tree_* subdirs.
-        csv_path: Input CSV with tree positions (x, y, z, fid columns).
+        forest_data: Tree positions (x, y, z, fid columns). For dataset job
+            rows the coordinates are cosmetic separation, not a real layout.
         generate_scene_xml: Generate Helios++ scene XML with tree positions.
         individual_obj: Also write individual per-tree OBJ files (default: False).
         up_axis: Coordinate up axis for OBJ output ("y" or "z").
@@ -1213,16 +1593,70 @@ def export_forest_obj(
 
     clear_twig_cache()
 
-    # Find static assembly USDA files (OBJ export uses static mesh data)
-    assembly_files = sorted(output_dir.glob("*/tree_*/*_assembly_static.usda"))
+    config = _get_config()
+    if not config.export_static:
+        logger.warning(
+            "OBJ export requested but [export] static = false -- static "
+            "assemblies are never written, so no assembly files exist to "
+            "discover. Enable [export] static (or --static) and re-run."
+        )
+
+    assembly_files = _find_assembly_files(output_dir, config)
 
     if not assembly_files:
-        logger.warning("OBJ export: No assembly USDA files found")
+        logger.warning(
+            "OBJ export: no assembly files found under %s matching "
+            "*/tree_*/%s (layout mode only). Most likely cause: "
+            "[export] static = false, or output_dir is dataset-mode output "
+            "(species/rNN/) rather than a layout run -- see "
+            "docs/guides/helios-export.md#scope-layout-mode-only.",
+            output_dir,
+            _static_assembly_glob(config),
+        )
         return []
 
     logger.info("HELIOS OBJ EXPORT (%d trees, streaming)", len(assembly_files))
 
-    forest_data = pd.read_csv(csv_path)
+    if config.helios_classification:
+        from growpy.config.paths import get_twig_files_by_type
+
+        species_clean_list = sorted({f.parent.parent.name for f in assembly_files})
+        classification_fids = []
+        for f in assembly_files:
+            m = re.match(r"tree_(\d+)$", f.parent.name)
+            if m:
+                classification_fids.append(int(m.group(1)))
+
+        errors = validate_classification_species(species_clean_list)
+        fid_errors, fid_warnings = validate_classification_fids(classification_fids)
+        errors.extend(fid_errors)
+
+        for species_clean in species_clean_list:
+            species_display = species_clean.replace("_", " ").title()
+            twig_files_by_type = get_twig_files_by_type(species_display)
+            all_twig_files = [p for files in twig_files_by_type.values() for p in files]
+            if not all_twig_files:
+                errors.append(f"No twig files found for '{species_clean}'")
+                continue
+            errors.extend(
+                validate_classification_materials(species_clean, all_twig_files[0].parent)
+            )
+
+        if errors:
+            logger.error("Helios classification validation failed:")
+            for err in errors:
+                logger.error("  - %s", err)
+            raise SystemExit(1)
+
+        for warn in fid_warnings:
+            logger.warning(warn)
+
+        logger.info(
+            "Helios classification: ENABLED (%d species validated)",
+            len(species_clean_list),
+        )
+
+    forest_data = forest_data.copy()
     if "fid" not in forest_data.columns:
         forest_data["fid"] = range(1, len(forest_data) + 1)
     if "z" not in forest_data.columns:
@@ -1235,7 +1669,7 @@ def export_forest_obj(
 
     for assembly_path in sorted(assembly_files):
         tree_dir_name = assembly_path.parent.name
-        tree_id_str = tree_dir_name.replace("tree_", "")
+        tree_match = re.match(r"tree_(\d+)$", tree_dir_name)
 
         species_dir = assembly_path.parent.parent.name
         species_name = species_dir.replace("_", " ").title()
@@ -1243,13 +1677,21 @@ def export_forest_obj(
         is_conifer = any(kw in species_dir.lower() for kw in CONIFER_KEYWORDS)
         spectra = "conifer" if is_conifer else "deciduous"
 
-        # Resolve per-species leaf ratio override into the ratios dict
+        # Per-tree Helios classification: fid 1-9 get a coded material prefix;
+        # fid > 9 fall back to the default class (see validate_classification_fids).
+        cls_codes = None
+        cls_prefix = ""
+        if config.helios_classification and tree_match is not None:
+            classification_fid = int(tree_match.group(1))
+            if 1 <= classification_fid <= MAX_TREES:
+                cls_codes = build_classification_codes(classification_fid)
+                cls_prefix = build_material_prefix(classification_fid)
+
+        # Resolve per-species material ratio overrides into the ratios dict
         tree_ratios = None
         if simplification_ratios:
             tree_ratios = dict(simplification_ratios)
-            global_leaf = tree_ratios.get("leaf", 1.0)
-            species_leaf = (leaf_per_species or {}).get(species_dir, global_leaf)
-            tree_ratios["leaf"] = species_leaf
+            tree_ratios.update((per_species_ratios or {}).get(species_dir, {}))
 
         # Read components without baking (low RAM)
         with _track("read_tree_components"):
@@ -1263,12 +1705,26 @@ def export_forest_obj(
         trunk_verts, trunk_faces, classified_protos, instancer_data = components
 
         # Look up CSV position
-        try:
-            fid = int(tree_id_str)
-            row = forest_data[forest_data["fid"] == fid].iloc[0]
-            x, y, z = float(row["x"]), float(row["y"]), float(row["z"])
-        except (ValueError, IndexError):
-            x, y, z = 0.0, 0.0, 0.0
+        x, y, z = 0.0, 0.0, 0.0
+        if tree_match is None:
+            logger.warning(
+                "OBJ export: %s is not a tree_NNNN directory -- using position "
+                "(0, 0, 0)",
+                tree_dir_name,
+            )
+        else:
+            fid = int(tree_match.group(1))
+            matches = forest_data[forest_data["fid"] == fid]
+            if matches.empty:
+                logger.warning(
+                    "OBJ export: no CSV row for fid=%d (%s) -- using position "
+                    "(0, 0, 0)",
+                    fid,
+                    tree_dir_name,
+                )
+            else:
+                row = matches.iloc[0]
+                x, y, z = float(row["x"]), float(row["y"]), float(row["z"])
 
         # Write per-tree OBJ via streaming (always, needed for combined OBJ too)
         tree_dir = assembly_path.parent
@@ -1291,6 +1747,7 @@ def export_forest_obj(
                     proto_indices,
                     mtl_name,
                     up_axis,
+                    mat_prefix=cls_prefix,
                 )
         else:
             # No twigs — write trunk-only OBJ
@@ -1302,11 +1759,15 @@ def export_forest_obj(
                     None,
                     mtl_name,
                     up_axis=up_axis,
+                    mat_prefix=cls_prefix,
                 )
                 bark_n, wood_n, leaf_n = len(trunk_faces), 0, 0
 
         bark_texture = _find_bark_texture(tree_dir)
-        _write_helios_mtl(mtl_path, bark_texture, spectra)
+        _write_helios_mtl(
+            mtl_path, bark_texture, spectra,
+            classification_codes=cls_codes, mat_prefix=cls_prefix,
+        )
 
         logger.info(
             "OBJ export: %s (%d trunk + %d twig_wood + %d twig_leaf faces)",

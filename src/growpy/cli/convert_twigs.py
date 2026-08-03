@@ -296,11 +296,18 @@ Output per twig:
         default=None,
         help="Path to species CSV - only twigs for CSV species will be converted (default: from config)",
     )
+    parser.add_argument(
+        "--dataset",
+        action="store_true",
+        help="Filter to species marked in tree_asset_lookup.csv's Dataset column "
+        "(config-driven, no CSV file needed). Takes precedence over --csv.",
+    )
     # Geometry processing flags (enabled by default for Nanite-friendly high poly twigs)
     parser.add_argument(
-        "--no-densify",
-        action="store_true",
-        help="Disable mesh densification (subdivision)",
+        "--densify",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable/disable mesh densification (subdivision). Default: from config.",
     )
     parser.add_argument(
         "--alpha-trim",
@@ -319,8 +326,16 @@ Output per twig:
         "Only transition edges (opaque->transparent) are subdivided.",
     )
     parser.add_argument(
+        "--interior-edge-mm",
+        type=float,
+        default=None,
+        help="Target interior edge length in mm (default: from config, 0=disabled). "
+        "When > 0, derives interior-face decimation ratio automatically.",
+    )
+    parser.add_argument(
         "--verbose",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help="Enable verbose output (INFO-level logging)",
     )
     parser.add_argument(
@@ -351,9 +366,24 @@ Output per twig:
         logger.error("Path not found: %s", twig_path)
         return 1
 
-    # Load CSV filter if provided
+    # Resolve twig filter: config-driven dataset species, an explicit CSV, or none
     twig_filter = None
-    if csv_path and str(csv_path) != "":
+    if args.dataset:
+        # Species marked in tree_asset_lookup.csv's Dataset column. Only the Twig
+        # column is needed -- species identity itself is never used past this.
+        import pandas as pd
+
+        from growpy.pipelines.dataset_csv_planner import _get_dataset_species
+
+        dataset_df = _get_dataset_species()
+        twig_filter = []
+        for _, row in dataset_df.iterrows():
+            twig_name = str(row.get("Twig", ""))
+            if twig_name in ["—", "", "nan"] or pd.isna(row.get("Twig")):
+                continue
+            twig_filter.append(twig_name.strip())
+        twig_filter = list(set(twig_filter))
+    elif csv_path and str(csv_path) != "":
         if not csv_path.exists():
             # If using default CSV and it doesn't exist, skip filtering
             pass

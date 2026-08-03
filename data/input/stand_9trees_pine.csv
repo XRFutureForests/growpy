@@ -1,0 +1,10 @@
+fid,species,x,y,z,dbh,height,twig_density
+1,Selected Scots pine,-10,10,0,0.0,10,1
+2,Selected Scots pine,0,10,0,0.0,10,1
+3,Selected Scots pine,10,10,0,0.0,10,1
+4,Selected Scots pine,-10,0,0,0.0,10,1
+5,Selected Scots pine,0,0,0,0.0,10,1
+6,Selected Scots pine,10,0,0,0.0,10,1
+7,Selected Scots pine,-10,-10,0,0.0,10,1
+8,Selected Scots pine,0,-10,0,0.0,10,1
+9,Selected Scots pine,10,-10,0,0.0,10,1

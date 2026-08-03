@@ -37,7 +37,7 @@ class TreeSnapshot(NamedTuple):
     """Per-tree snapshot captured at a growth milestone.
 
     NamedTuple for tuple-compatible unpacking plus named-field access.
-    Fields: ``(model, skeleton, bones_info, height, dbh)``.
+    Fields: ``(model, skeleton, bones_info, height, dbh, variant_models)``.
     """
 
     model: Any
@@ -45,6 +45,10 @@ class TreeSnapshot(NamedTuple):
     bones_info: list
     height: float
     dbh: float
+    # {variant_name: this tree's model at that variant's build-cutoff}.
+    # Empty when no density variants are configured (see
+    # build_density_variant_model_sets() / XRFF-288).
+    variant_models: dict = {}
 
 
 # Type aliases built on the named tuples.
@@ -62,8 +66,8 @@ def create_forest(
     separate groves per (species, surround_radius).  This prevents the Grove
     engine's intra-grove shade from interfering between independent growth
     contexts (e.g. an open-grown tree at x=100 sharing a grove with a
-    surround tree at the origin), and lets each radius pick its own
-    radius-calibrated growth model (see config.get_preset_path).
+    surround tree at the origin).  All groves of a species share one preset --
+    the radius is applied by enable_surround() below, not by preset selection.
 
     Args:
         forest_data: DataFrame with columns: x, y, species, z (optional),
@@ -95,7 +99,7 @@ def create_forest(
     for group_key, species_data in forest_data.groupby(groupby_key, sort=False):
         species_name = str(group_key[0]) if has_radius_col else str(group_key)
         surround_radius = float(group_key[1]) if has_radius_col else 0.0
-        grove = create_grove(species_name, radius=surround_radius)
+        grove = create_grove(species_name)
 
         # Collect fids for this grove (use row index if fid column not present)
         fids = []
@@ -161,7 +165,7 @@ def _run_single_growth_cycle(
     groves: list[gc.Grove],
     cycle: int,
     total_cycles: int,
-    species_overrides: dict[tuple[str, float], PresetOverrides],
+    species_overrides: dict[str, PresetOverrides],
     preset_overrides: PresetOverrides | None,
     frozen_grove_indices: set | None = None,
 ) -> None:
@@ -173,12 +177,11 @@ def _run_single_growth_cycle(
     """
     frozen = frozen_grove_indices or set()
 
-    for grove_idx, (grove, species_name, _, _, radius) in enumerate(forest):
+    for grove_idx, (grove, species_name, _, _, _radius) in enumerate(forest):
         if grove_idx in frozen:
             continue
-        key = (species_name, radius)
-        if key in species_overrides:
-            species_overrides[key].apply_to_grove(grove, cycle, total_cycles)
+        if species_name in species_overrides:
+            species_overrides[species_name].apply_to_grove(grove, cycle, total_cycles)
         if preset_overrides and not preset_overrides.is_empty():
             preset_overrides.apply_to_grove(grove, cycle, total_cycles)
 
@@ -250,15 +253,17 @@ def simulate_forest_growth(
     """
     groves = [grove for grove, *_rest in forest]
 
-    # Load per-species overrides from their seed.json files. Keyed by
-    # (species_name, radius) since a species may have multiple groves at
-    # different surround radii, each with its own radius-specific calibration.
-    species_overrides: dict[tuple[str, float], PresetOverrides] = {}
+    # Load per-species overrides from their seed.json files. Keyed by species
+    # alone: surround is applied at simulation time, so every grove of a
+    # species shares one preset regardless of its competition variant.
+    species_overrides: dict[str, PresetOverrides] = {}
     if use_species_curves:
-        for grove, species_name, _, _, radius in forest:
-            species_ov = get_species_overrides(species_name, radius)
+        for _grove, species_name, _, _, _radius in forest:
+            if species_name in species_overrides:
+                continue
+            species_ov = get_species_overrides(species_name)
             if not species_ov.is_empty():
-                species_overrides[(species_name, radius)] = species_ov
+                species_overrides[species_name] = species_ov
 
     logger.info("PHASE 1: GROWTH SIMULATION (%d cycles)", cycles)
     if preset_overrides and not preset_overrides.is_empty():
@@ -267,18 +272,16 @@ def simulate_forest_growth(
             len(preset_overrides.static_overrides),
             len(preset_overrides.interpolated_overrides),
         )
-    for (sp, sp_radius), ov in species_overrides.items():
+    for sp, ov in species_overrides.items():
         logger.info(
-            "  %s (r=%.0f) curves: %d from seed.json",
+            "  %s curves: %d from seed.json",
             sp,
-            sp_radius,
             len(ov.interpolated_overrides),
         )
         if ov.cycle_array_overrides:
             logger.info(
-                "  %s (r=%.0f) cycle arrays: %d from seed.json (calibration)",
+                "  %s cycle arrays: %d from seed.json (calibration)",
                 sp,
-                sp_radius,
                 len(ov.cycle_array_overrides),
             )
 
@@ -310,6 +313,7 @@ def simulate_forest_growth_with_snapshots(
     height_interval: float = 0.0,
     max_height: float = 0.0,
     species_max_height: dict[str, float] | None = None,
+    plateau_cycles: int = 10,
 ) -> tuple[SnapshotData, dict[int, dict[str, dict[int, float]]]]:
     """Simulate forest growth and capture snapshots at height milestones.
 
@@ -352,15 +356,17 @@ def simulate_forest_growth_with_snapshots(
     if quality_params is None:
         quality_params = {"vertices": 16}
 
-    # Load per-species overrides from their seed.json files. Keyed by
-    # (species_name, radius) since a species may have multiple groves at
-    # different surround radii, each with its own radius-specific calibration.
-    species_overrides: dict[tuple[str, float], PresetOverrides] = {}
+    # Load per-species overrides from their seed.json files. Keyed by species
+    # alone: surround is applied at simulation time, so every grove of a
+    # species shares one preset regardless of its competition variant.
+    species_overrides: dict[str, PresetOverrides] = {}
     if use_species_curves:
-        for grove, species_name, _, _, radius in forest:
-            species_ov = get_species_overrides(species_name, radius)
+        for _grove, species_name, _, _, _radius in forest:
+            if species_name in species_overrides:
+                continue
+            species_ov = get_species_overrides(species_name)
             if not species_ov.is_empty():
-                species_overrides[(species_name, radius)] = species_ov
+                species_overrides[species_name] = species_ov
 
     use_height_mode = height_interval > 0
 
@@ -387,18 +393,16 @@ def simulate_forest_growth_with_snapshots(
             len(preset_overrides.static_overrides),
             len(preset_overrides.interpolated_overrides),
         )
-    for (sp, sp_radius), ov in species_overrides.items():
+    for sp, ov in species_overrides.items():
         logger.info(
-            "  %s (r=%.0f) curves: %d from seed.json",
+            "  %s curves: %d from seed.json",
             sp,
-            sp_radius,
             len(ov.interpolated_overrides),
         )
         if ov.cycle_array_overrides:
             logger.info(
-                "  %s (r=%.0f) cycle arrays: %d from seed.json (calibration)",
+                "  %s cycle arrays: %d from seed.json (calibration)",
                 sp,
-                sp_radius,
                 len(ov.cycle_array_overrides),
             )
 
@@ -415,6 +419,7 @@ def simulate_forest_growth_with_snapshots(
             quality_params,
             max_height=max_height,
             species_max_height=species_max_height,
+            plateau_cycles=plateau_cycles,
         )
     else:
         snapshots = _simulate_cycle_based_mode(
@@ -768,6 +773,63 @@ def _simulate_cycle_based_mode(
     return snapshots
 
 
+def build_density_variant_model_sets(
+    grove: gc.Grove,
+    base_models: list,
+    base_build_options: dict,
+    density_variants: list[tuple[str, dict]],
+    timer: Any = None,
+) -> dict[str, list]:
+    """Build one model set per distinct build-cutoff among density variants.
+
+    Variants that don't override build_cutoff_age/build_cutoff_thickness
+    share ``base_models`` (already built with ``base_build_options``); each
+    distinct (age, thickness) pair triggers exactly one extra
+    ``grove.build_models()`` call, shared by every variant that requests
+    that same pair.
+
+    Shared between Pipeline A (dataset mode, via _build_models_for_grove
+    above) and Pipeline B (layout mode, io/forest_export.py) so both honour
+    a variant's build_cutoff_* overrides identically -- see XRFF-288.
+
+    Args:
+        base_models: grove.build_models() output for base_build_options,
+            reused for any variant whose cutoff matches the base cutoff.
+        density_variants: [(variant_name, variant_config)] from
+            GrowPyConfig.get_density_variants().
+        timer: Optional ProfileTimer; each extra build is tracked as
+            f"build_models_{variant_name}" when provided.
+
+    Returns:
+        {variant_name: models} -- grove.build_models()'s per-tree list for
+        that variant's cutoff.
+    """
+    base_cutoff = (
+        base_build_options["build_cutoff_age"],
+        base_build_options["build_cutoff_thickness"],
+    )
+    built_cutoffs: dict[tuple, list] = {base_cutoff: base_models}
+    variant_model_sets: dict[str, list] = {}
+    for vname, vcfg in density_variants:
+        cutoff_key = (
+            vcfg.get("build_cutoff_age", base_cutoff[0]),
+            vcfg.get("build_cutoff_thickness", base_cutoff[1]),
+        )
+        if cutoff_key not in built_cutoffs:
+            variant_opts = {
+                **base_build_options,
+                "build_cutoff_age": cutoff_key[0],
+                "build_cutoff_thickness": cutoff_key[1],
+            }
+            if timer is not None:
+                with timer.track(f"build_models_{vname}"):
+                    built_cutoffs[cutoff_key] = grove.build_models(variant_opts)
+            else:
+                built_cutoffs[cutoff_key] = grove.build_models(variant_opts)
+        variant_model_sets[vname] = built_cutoffs[cutoff_key]
+    return variant_model_sets
+
+
 def _build_models_for_grove(
     grove: gc.Grove,
     species_name: str,
@@ -791,7 +853,7 @@ def _build_models_for_grove(
         skeleton_bias,
         skeleton_connected,
     )
-    tree_bones = _split_bones_by_tree(all_bones, len(grove.trees))
+    tree_bones = split_bones_by_tree(all_bones, len(grove.trees))
 
     build_options = {
         "resolution": quality_params.get("resolution", 24),
@@ -813,6 +875,18 @@ def _build_models_for_grove(
             cycle,
         )
 
+    # Build one extra model set per distinct density-variant build-cutoff.
+    # Variants that don't override build_cutoff_age/build_cutoff_thickness
+    # share `models` above; each distinct (age, thickness) pair triggers
+    # exactly one extra grove.build_models() call, shared by every variant
+    # that requests that same pair. See build_density_variant_model_sets().
+    density_variants = quality_params.get("density_variants") or []
+    variant_model_sets: dict[str, list] = {}
+    if density_variants:
+        variant_model_sets = build_density_variant_model_sets(
+            grove, models, build_options, density_variants
+        )
+
     tree_snapshots = []
     for tree_idx in range(len(grove.trees)):
         model = models[tree_idx] if tree_idx < len(models) else None
@@ -828,7 +902,13 @@ def _build_models_for_grove(
                 tree_idx,
                 cycle,
             )
-        tree_snapshots.append(TreeSnapshot(model, skeleton, bones, height, dbh))
+        tree_variant_models = {
+            vname: (vmodels[tree_idx] if tree_idx < len(vmodels) else None)
+            for vname, vmodels in variant_model_sets.items()
+        }
+        tree_snapshots.append(
+            TreeSnapshot(model, skeleton, bones, height, dbh, tree_variant_models)
+        )
 
     if tree_snapshots:
         logger.info(
@@ -842,7 +922,7 @@ def _build_models_for_grove(
     return tree_snapshots
 
 
-def _split_bones_by_tree(all_bones: list, num_trees: int) -> list[list]:
+def split_bones_by_tree(all_bones: list, num_trees: int) -> list[list]:
     """Split combined bone list into per-tree bone lists.
 
     Grove's tag_bone_id() returns bones for all trees combined, ordered by

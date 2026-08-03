@@ -11,6 +11,13 @@ from growpy.pipelines.run_summary import (
 )
 
 
+class _FakeConfig:
+    """Minimal stand-in for GrowPyConfig -- generate_run_summary only reads export_usd_format."""
+
+    def __init__(self, export_usd_format: str = "usda"):
+        self.export_usd_format = export_usd_format
+
+
 class TestFormatDuration:
     """Tests for human-readable elapsed-time formatting."""
 
@@ -30,10 +37,10 @@ class TestFormatDuration:
 
 
 class TestCountAssemblies:
-    """Tests for counting *_full_assembly.usda files under a species dir."""
+    """Tests for counting *_assembly.usda files under a species dir."""
 
     def test_missing_dir_returns_zero(self, tmp_path):
-        assert _count_assemblies(tmp_path / "nonexistent") == 0
+        assert _count_assemblies(tmp_path / "nonexistent", _FakeConfig()) == 0
 
     def test_counts_nested_assemblies(self, tmp_path):
         species_dir = tmp_path / "common_ash"
@@ -41,8 +48,24 @@ class TestCountAssemblies:
         (species_dir / "surround").mkdir(parents=True)
         (species_dir / "open_grown" / "a_full_assembly.usda").write_text("x")
         (species_dir / "surround" / "b_full_assembly.usda").write_text("x")
-        (species_dir / "surround" / "not_an_assembly.usda").write_text("x")
-        assert _count_assemblies(species_dir) == 2
+        (species_dir / "surround" / "readme.usda").write_text("x")
+        assert _count_assemblies(species_dir, _FakeConfig()) == 2
+
+    def test_counts_usdc_assemblies(self, tmp_path):
+        species_dir = tmp_path / "common_ash"
+        species_dir.mkdir(parents=True)
+        (species_dir / "a_full_assembly.usdc").write_text("x")
+        assert _count_assemblies(species_dir, _FakeConfig("usdc")) == 1
+        assert _count_assemblies(species_dir, _FakeConfig("usda")) == 0
+
+    def test_counts_non_default_density_labels(self, tmp_path):
+        """Regression: must not hardcode the default 'full' density label --
+        [export] density_variants produces '..._dense_assembly.ext' etc."""
+        species_dir = tmp_path / "common_ash"
+        species_dir.mkdir(parents=True)
+        (species_dir / "a_dense_assembly.usda").write_text("x")
+        (species_dir / "b_sparse_assembly.usda").write_text("x")
+        assert _count_assemblies(species_dir, _FakeConfig()) == 2
 
 
 class TestGenerateRunSummary:
@@ -63,6 +86,7 @@ class TestGenerateRunSummary:
             ["European Beech", "Common Ash"],
             {"European Beech": 6863.0, "Common Ash": 397.0},
             failed=[],
+            config=_FakeConfig(),
         )
 
         assert md_path.exists()
@@ -88,6 +112,7 @@ class TestGenerateRunSummary:
             ["Sycamore Maple"],
             {"Sycamore Maple": 120.0},
             failed=["Sycamore Maple"],
+            config=_FakeConfig(),
         )
 
         md_text = md_path.read_text(encoding="utf-8")
@@ -103,8 +128,8 @@ class TestGenerateRunSummary:
     def test_csv_accumulates_across_runs(self, tmp_path):
         self._make_species_output(tmp_path, "common_ash", 6)
 
-        generate_run_summary(tmp_path, ["Common Ash"], {"Common Ash": 397.0}, [])
-        generate_run_summary(tmp_path, ["Common Ash"], {"Common Ash": 410.0}, [])
+        generate_run_summary(tmp_path, ["Common Ash"], {"Common Ash": 397.0}, [], _FakeConfig())
+        generate_run_summary(tmp_path, ["Common Ash"], {"Common Ash": 410.0}, [], _FakeConfig())
 
         with open(
             tmp_path / "dataset_run_summary.csv", newline="", encoding="utf-8"
@@ -114,7 +139,7 @@ class TestGenerateRunSummary:
 
     def test_missing_species_output_dir_counts_zero(self, tmp_path):
         md_path = generate_run_summary(
-            tmp_path, ["Wild Cherry"], {"Wild Cherry": 211.0}, []
+            tmp_path, ["Wild Cherry"], {"Wild Cherry": 211.0}, [], _FakeConfig()
         )
         md_text = md_path.read_text(encoding="utf-8")
         assert "| wild_cherry | 0 |" in md_text

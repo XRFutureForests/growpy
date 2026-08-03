@@ -9,7 +9,13 @@ from growpy.config.paths import (
     _find_species_row,
     _get_lookup_table,
     _normalize_grove_texture_name,
+    assembly_glob,
     get_species_growth_habit,
+    static_assembly_glob,
+    stems_path,
+    tree_ext,
+    tree_output_dir,
+    twig_ext,
 )
 
 
@@ -159,3 +165,84 @@ class TestGetSpeciesGrowthHabit:
         mock_lookup.return_value = _make_lookup_df_with_competition_group()
         _get_lookup_table.cache_clear()
         assert get_species_growth_habit("Silver Birch") is None
+
+
+class _FakeConfig:
+    """Minimal stand-in for GrowPyConfig -- resolvers only read export_usd_format."""
+
+    def __init__(self, export_usd_format: str):
+        self.export_usd_format = export_usd_format
+
+
+class TestTreeAndTwigExt:
+    """tree_ext follows config; twig_ext is always .usda."""
+
+    @pytest.mark.parametrize("fmt", ["usda", "usdc"])
+    def test_tree_ext_follows_config(self, fmt):
+        assert tree_ext(_FakeConfig(fmt)) == f".{fmt}"
+
+    @pytest.mark.parametrize("fmt", ["usda", "usdc"])
+    def test_twig_ext_always_usda(self, fmt):
+        assert twig_ext(_FakeConfig(fmt)) == ".usda"
+
+
+class TestAssemblyGlobs:
+    """assembly_glob / static_assembly_glob track tree_ext, not twig_ext,
+    and must not hardcode a density-variant label.
+    """
+
+    @pytest.mark.parametrize("fmt", ["usda", "usdc"])
+    def test_assembly_glob(self, fmt):
+        assert assembly_glob(_FakeConfig(fmt)) == f"*_assembly.{fmt}"
+
+    @pytest.mark.parametrize("fmt", ["usda", "usdc"])
+    def test_static_assembly_glob(self, fmt):
+        assert static_assembly_glob(_FakeConfig(fmt)) == f"*_assembly_static.{fmt}"
+
+    @pytest.mark.parametrize("fmt", ["usda", "usdc"])
+    def test_assembly_glob_matches_both_layouts_and_density_labels(self, fmt, tmp_path):
+        config = _FakeConfig(fmt)
+        dataset_dir = tmp_path / "european_oak" / "r00"
+        layout_dir = tmp_path / "european_oak" / "tree_0007"
+        dataset_dir.mkdir(parents=True)
+        layout_dir.mkdir(parents=True)
+        (dataset_dir / f"European_Oak_r00_h05m_d04cm_full_assembly.{fmt}").write_text("x")
+        (dataset_dir / f"European_Oak_r00_h12m_d18cm_dense_assembly.{fmt}").write_text("x")
+        (layout_dir / f"european_oak_h05m_d04cm_full_assembly.{fmt}").write_text("x")
+        (dataset_dir / f"some_other_file.{fmt}").write_text("x")
+
+        matches = sorted((tmp_path / "european_oak").rglob(assembly_glob(config)))
+        assert len(matches) == 3
+
+
+class TestStemsPath:
+    """stems_path resolves skeletal/static x both extensions."""
+
+    @pytest.mark.parametrize("fmt", ["usda", "usdc"])
+    @pytest.mark.parametrize("kind", ["skeletal", "static"])
+    def test_stems_path(self, kind, fmt, tmp_path):
+        config = _FakeConfig(fmt)
+        result = stems_path(tmp_path, "european_beech_h15m_d10cm", kind, config)
+        assert result == tmp_path / f"european_beech_h15m_d10cm_stems_{kind}.{fmt}"
+
+    def test_stems_path_rejects_invalid_kind(self, tmp_path):
+        with pytest.raises(ValueError, match="kind must be"):
+            stems_path(tmp_path, "base", "solid", _FakeConfig("usda"))
+
+
+class TestTreeOutputDir:
+    """tree_output_dir picks dataset-mode vs layout-mode shape."""
+
+    def test_dataset_mode_uses_radius_label(self, tmp_path):
+        result = tree_output_dir(tmp_path, "european_oak", radius=8.0)
+        assert result == tmp_path / "european_oak" / "r08"
+
+    def test_layout_mode_uses_zero_padded_fid(self, tmp_path):
+        result = tree_output_dir(tmp_path, "european_oak", fid=7)
+        assert result == tmp_path / "european_oak" / "tree_0007"
+
+    def test_requires_exactly_one_of_radius_or_fid(self, tmp_path):
+        with pytest.raises(ValueError, match="exactly one"):
+            tree_output_dir(tmp_path, "european_oak")
+        with pytest.raises(ValueError, match="exactly one"):
+            tree_output_dir(tmp_path, "european_oak", radius=8.0, fid=7)

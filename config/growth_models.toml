@@ -34,23 +34,42 @@ timeout = 400
 # cap): that setting must NOT silently truncate calibration too.
 max_height = 20
 
-# --- Yield table calibration (integrated into create_growth_models.py) ---
+# --- Growth-pacing calibration (integrated into create_growth_models.py) ---
+# Aligns Grove's growth SPEED to a yield table's height-at-age curve. Costs two
+# Grove passes per species and only matters when several real trees are
+# co-simulated in one grove and their relative growth rates matter (the
+# CSV -> plot path).
+#
+# NOT needed for dataset production: trees there are grown to height milestones,
+# so how many cycles a species takes to reach a height does not change the
+# exported result -- only how long the run takes. Height-DBH realism comes from
+# the allometry artifact instead (growpy-build-allometry), which is fitted from
+# yield table columns alone and needs no simulation.
 [calibration]
-# When enabled, create_growth_models.py automatically calibrates against yield tables
-# after the initial simulation, then re-simulates with calibration applied.
-enabled = true
+enabled = false
 # Align grove height growth to yield table height curve.
-# Applies per-cycle grow_length multipliers from calibrated seed.json files during
-# simulation (step 4). Only affects overall growth speed, not branch shape.
-# When cycles exceed the calibration array length, the last value is held.
-# false = use original Grove grow_length values from seed.json (no height alignment)
+# Applies per-cycle grow_length multipliers AND any generic "{param}_curve"
+# ramp overrides (see docs/reference/grove-preset-reference.md) from a
+# species' seed.json during simulation (step 4). Independent of enabled
+# above -- step 4 checks this flag directly and loads whatever a species'
+# seed.json carries, calibration-derived or not.
+# Must be true for the drop_decay_curve/drop_weak_curve ramps added to
+# norway_spruce/silver_fir/silver_birch to take effect (see those
+# seed.json files) -- without a gradual ramp-in, those species' static
+# drop_decay/drop_weak values combine with Grove's own growth-deceleration
+# to collapse the tree's structure (confirmed via per-cycle node-count
+# tracing: healthy growth to near-target height, then a multi-cycle node
+# crash with no recovery) before reaching the 20m dataset target.
+# Safe to leave true now that fresh presets (data/assets/presets/*.seed.json)
+# carry no baked-in _yield_table_calibration data -- prepare_assets.py's
+# copy-skip guard (see its comment) preserves both that block and any
+# "_curve" key, so a clean re-copy won't reintroduce the old
+# decelerating-grow_length bug this flag was previously turned off to avoid.
 align_height = true
-# Align grove trunk DBH to yield table DBH curve.
-# Applies radial scaling at export to match target DBH from calibrated seed.json files.
-# Scales trunk mesh perpendicular to bone axes at breast height (1.3m), blending
-# smoothly to 1.0 at the crown. Only affects trunk thickness, not branch shape.
-# false = export Grove geometry as-is (trunk may be thicker/thinner than yield table)
-align_dbh = true
+# DBH alignment moved to [export] dbh_from_allometry in forest.toml -- it is
+# independent of calibration, since its input is the allometry artifact rather
+# than a simulated curve. `align_dbh` here is still read as a deprecated alias.
+
 # Directory for local yield table CSVs.
 # Format: age,height,dbh (age in years, height in meters, dbh in centimeters)
 # File naming: <standardized_species_name>.csv (e.g., norway_spruce.csv)

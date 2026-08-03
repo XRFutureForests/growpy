@@ -346,14 +346,26 @@ print(f"Found {{len(assemblies)}} nanite assembly skeletal meshes")
 if not assemblies:
     print("No assemblies found -- skipping DataTable creation")
 else:
-    # Step 2: Parse metadata from package path
-    # Folder convention: Species_Name_comp_h05m_d15cm_full_assembly
-    # Asset name is SK_species_nanite_assembly (no height/dbh info)
-    _PATTERN = re.compile(
-        r"(.+?)_(comp|open)_h(\\d+)m_d(\\d+)cm_(.+?)_assembly",
+    # Step 2: Parse metadata from the asset name. As of the growpy
+    # create_assembly() prim-naming fix, the asset name is unique PER
+    # EXPORTED VARIANT (species + radius + height + DBH + density), not
+    # just per species, so it is always safe to use directly as RowName.
+    #
+    # Asset name convention (see assembly_export.create_assembly and
+    # forest_stages.py):
+    #   {{Species}}_r{{RR}}_h{{HH}}m_d{{DD}}cm_{{density}}_assembly  (radius mode)
+    #   {{species}}_h{{HH}}m_d{{DD}}cm[_{{density}}]_assembly  (no-radius mode)
+    # Unreal may prefix imported skeletal mesh assets with "SK_".
+    _PATTERN_RADIUS = re.compile(
+        r"^(?:sk_)?(.+?)_r(\\d+)_h(\\d+)m_d(\\d+)cm_(.+)_assembly$",
         re.IGNORECASE,
     )
-    # Known species folder names for fallback matching
+    _PATTERN_SIMPLE = re.compile(
+        r"^(?:sk_)?(.+?)_h(\\d+)m_d(\\d+)cm(?:_(.+))?_assembly$",
+        re.IGNORECASE,
+    )
+    # Known species folder names, used only as a last-resort fallback when
+    # the asset name doesn't match either naming convention above.
     _SPECIES_FOLDERS = {{
         "austrian_pine", "black_alder", "common_ash", "douglas_fir",
         "european_beech", "european_larch", "european_oak", "field_maple",
@@ -364,40 +376,37 @@ else:
     }}
     rows = []
     for asset_name, pkg_path in assemblies:
-        # Search all path parts for the height/dbh pattern (folder name)
-        parts = pkg_path.split("/")
-        m = None
-        folder_name = ""
-        for p in parts:
-            m = _PATTERN.search(p)
-            if m:
-                folder_name = p
-                break
         species = ""
         height_m = 0.0
         dbh_cm = 0.0
         competition = False
+
+        m = _PATTERN_RADIUS.match(asset_name)
         if m:
-            species = m.group(1).replace("_", " ")
-            competition = m.group(2).lower() == "surr"  # surround = competed variant
+            species = m.group(1).replace("_", " ").title()
+            radius = int(m.group(2))
+            competition = radius > 0  # 0 = open-grown, >0 = Surround-competed
             height_m = float(m.group(3))
             dbh_cm = float(m.group(4))
         else:
-            # Fallback: find species folder name in path
-            for p in parts:
+            m = _PATTERN_SIMPLE.match(asset_name)
+            if m:
+                species = m.group(1).replace("_", " ").title()
+                height_m = float(m.group(2))
+                dbh_cm = float(m.group(3))
+
+        if not species:
+            # Fallback: find a known species folder name in the package path
+            for p in pkg_path.split("/"):
                 if p.lower() in _SPECIES_FOLDERS:
                     species = p.replace("_", " ").title()
                     break
             if not species:
                 species = asset_name
-            if "surround" in pkg_path.lower() or "/surr" in pkg_path.lower():
-                competition = True
 
-        # Use assembly folder name as row name (unique per tree)
-        # e.g. "Hornbeam_surr_h05m_d04cm_full_assembly" not "SK_hornbeam_nanite_assembly"
         # Full object path: PackageName.ObjectName (required for Soft Object References)
         rows.append({{
-            "name": folder_name or asset_name,
+            "name": asset_name,
             "pkg": f"{{pkg_path}}.{{asset_name}}",
             "species": species,
             "height": height_m,
@@ -716,6 +725,20 @@ if _world:
         except Exception:
             pass
     print("Rendering settings restored")
+
+# Persist newly-imported assets before this batch ends. Without this, a
+# RAM-watchdog kill+restart during a *later* batch discards all unsaved
+# in-memory work -- including this batch's, even though it already printed
+# a clean "N imported, 0 failed" summary. UE dropped a hard kill has no
+# chance to save, so an earlier successful-but-unsaved batch is silently
+# lost while later batches (saved or re-imported after the restart) survive.
+try:
+    _saved = unreal.EditorAssetLibrary.save_directory(
+        IMPORT_PATH, only_if_is_dirty=True, recursive=True
+    )
+    print(f"Saved dirty assets under {{IMPORT_PATH}}: {{_saved}}")
+except Exception as _e:
+    print(f"WARNING: could not save {{IMPORT_PATH}}: {{_e}}")
 
 print("")
 print("=" * 60)

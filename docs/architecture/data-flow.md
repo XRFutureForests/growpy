@@ -173,8 +173,9 @@ fail loudly if a file is missing. The closest thing to validation is:
   spawning any subprocess.
 - `assembly_export.validate_assembly()` — post-write check that the USD
   matches the Nanite schema. Run inside step 4 itself.
-- `dataset_csv_planner.synchronize_dataset_csvs()` — re-emits
-  `all_species.csv` from per-species CSVs so they can't drift apart.
+- `dataset_csv_planner._get_dataset_species()` — the single source of
+  species membership (tree_asset_lookup.csv's Dataset column). All four
+  pipeline steps resolve species through this, not through a CSV on disk.
 
 If you add a new field to the `seed.json` calibration block, the only place
 it needs to be added is `config/preset_overrides.py`. There is no separate

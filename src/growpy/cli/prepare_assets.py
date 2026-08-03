@@ -167,14 +167,21 @@ CSV Format Support:
         help="Copy ALL available Grove assets (uses comprehensive lookup table, ignores --csv)",
     )
     parser.add_argument(
-        "--resize-textures",
+        "--dataset",
         action="store_true",
+        help="Copy assets for species marked in tree_asset_lookup.csv's Dataset "
+        "column (config-driven, no CSV file needed). Takes precedence over --csv.",
+    )
+    parser.add_argument(
+        "--resize-textures",
+        action=argparse.BooleanOptionalAction,
         default=None,
         help="Resize textures to power-of-2 for Unreal (slow, skip by default)",
     )
     parser.add_argument(
         "--verbose",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help="Enable verbose output (INFO-level logging)",
     )
     parser.add_argument(
@@ -200,13 +207,6 @@ CSV Format Support:
     elif not grove_dir.is_absolute():
         grove_dir = project_root / grove_dir
 
-    # Resolve CSV path
-    csv_path = config.csv_file
-    if args.csv is not None:
-        csv_path = args.csv
-    elif not csv_path.is_absolute():
-        csv_path = project_root / csv_path
-
     resize_textures = config.resize_textures
 
     # Validate paths
@@ -214,22 +214,41 @@ CSV Format Support:
         logger.error("Grove directory not found: %s", grove_dir)
         return 1
 
-    # Override CSV if --all flag is set
-    if args.all:
-        from growpy.config.paths import _get_lookup_table_path
+    if args.dataset:
+        # Species marked in tree_asset_lookup.csv's Dataset column. Same
+        # DataFrame shape load_species_csv() produces for an asset-lookup CSV --
+        # Preset/Twig/Bark Texture/Common Name are already columns on that table --
+        # so no CSV file or GBIF resolution is needed.
+        from growpy.pipelines.dataset_csv_planner import _get_dataset_species
 
-        csv_path = _get_lookup_table_path()
+        try:
+            df = _get_dataset_species()
+        except Exception as e:
+            logger.error("Failed to resolve dataset species: %s", e)
+            return 1
+    else:
+        # Resolve CSV path
+        csv_path = config.csv_file
+        if args.csv is not None:
+            csv_path = args.csv
+        elif not csv_path.is_absolute():
+            csv_path = project_root / csv_path
 
-    if not csv_path.exists():
-        logger.error("CSV file not found: %s", csv_path)
-        return 1
+        # Override CSV if --all flag is set
+        if args.all:
+            from growpy.config.paths import _get_lookup_table_path
 
-    # Load species CSV
-    try:
-        df = load_species_csv(csv_path)
-    except Exception as e:
-        logger.error("Failed to load species CSV: %s", e)
-        return 1
+            csv_path = _get_lookup_table_path()
+
+        if not csv_path.exists():
+            logger.error("CSV file not found: %s", csv_path)
+            return 1
+
+        try:
+            df = load_species_csv(csv_path)
+        except Exception as e:
+            logger.error("Failed to load species CSV: %s", e)
+            return 1
 
     # Hardcode assets directory
     assets_dir = default_assets
@@ -270,16 +289,22 @@ CSV Format Support:
         dst_file = dst_presets / f"{standardized_name}.seed.json"
 
         if src_file.exists():
-            # Skip if destination already has calibration data embedded —
-            # overwriting would destroy the yield table calibration from step 3.
+            # Skip if destination already has calibration data or a manually
+            # tuned "{param}_curve" ramp override embedded — overwriting would
+            # destroy step 3's yield table calibration or a hand-added
+            # protective curve (e.g. drop_decay_curve/drop_weak_curve, used to
+            # prevent Grove's structural collapse at high cycle counts -- see
+            # docs/reference/grove-preset-reference.md).
             if dst_file.exists():
                 try:
                     import json as _json
                     with open(dst_file) as _f:
                         _existing = _json.load(_f)
-                    if "_yield_table_calibration" in _existing:
+                    has_curve = any(k.endswith("_curve") for k in _existing)
+                    if "_yield_table_calibration" in _existing or has_curve:
                         logger.debug(
-                            "Preset %s has calibration data — skipping overwrite",
+                            "Preset %s has calibration data or curve overrides — "
+                            "skipping overwrite",
                             dst_file.name,
                         )
                         stats["presets_copied"] += 1
