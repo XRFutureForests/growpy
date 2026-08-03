@@ -31,6 +31,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 21 curated `stand_*.csv` fixtures under `data/input/` (`stand_1tree_*` through
+  `stand_9trees_*`), covering single-species and mixed stands of all six
+  `selected_*` species that Helios classification supports. Converted from
+  main_tom's schema (`fid,species,x,y,dbh,height,z`) to dev's
+  (`fid,species,x,y,z,dbh,height,twig_density`). The natural test inputs for
+  classification (`stand_9trees_*` uses the full fid 1-9 code range) and for
+  `export_mode = "helios"` runs. (XRFF-312)
+- `Dockerfile`, `run_docker.sh`, and `.gitlab-ci.yml` for running
+  resource-limited (CPU/RAM-capped) growpy jobs in a container, e.g. large
+  `export_mode = "helios"` stands. `run_docker.sh` takes core/memory limits
+  as arguments and an optional `GROWPY_MESH_DIR` env var for mounting
+  external mesh data read-only. `.gitlab-ci.yml` only disables GitLab Auto
+  DevOps; there is no CI on this project by policy. Added `.dockerignore`
+  (excludes `data/output`, `data/tmp`, `.git`, caches) so the build context
+  doesn't include multi-GB generated output. Ported from main_tom, adapted
+  for dev's `the_grove_23` module path and curated `environment.yml`
+  (main_tom's is an uncurated `conda env export` dump; not ported).
+  (XRFF-312)
+
 - `[export] mode = "helios"` (default `"unreal"`): writes each tree's OBJ/MTL
   directly from the Grove model, bypassing USD, skeleton binding, and Nanite
   Assembly entirely for the trunk. Twig prototype meshes still come from the

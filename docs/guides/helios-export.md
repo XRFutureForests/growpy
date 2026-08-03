@@ -37,10 +37,15 @@ wood    = 0.2                # keep 20% of twig-wood triangles
 leaf    = 0.5                # keep 50% of leaf triangles
 fruit   = 0.2                # keep 20% of fruit triangles (e.g. EuropeanOakFruits)
 
-[helios.simplification.leaf_per_species]
-# Species-specific overrides (optional)
-"norway_spruce" = 0.7        # keep more needles for conifers
-"european_beech" = 0.4
+# Per-species overrides for any subset of bark/wood/leaf/fruit. Omitted
+# keys, and species not listed here, fall back to the globals above.
+[helios.simplification.per_species.norway_spruce]
+leaf = 0.7                   # keep more needles for conifers
+
+[helios.simplification.per_species.selected_european_oak]
+bark = 0.1
+wood = 0.05
+leaf = 0.25
 ```
 
 You can also override from the CLI:
@@ -97,7 +102,55 @@ Faces are classified by material name during export (see [`obj_export.WOOD_MATER
 | `twig_wood` | twig-level stems, dead wood | `helios_spectra` wood |
 | `twig_leaf` | leaves / needles | `helios_spectra` `conifer` or `deciduous` |
 
-Conifer/deciduous choice is keyword-based on the species folder name. Override per-species with `[helios.simplification.leaf_per_species]`.
+Conifer/deciduous choice is keyword-based on the species folder name. Override per-species with `[helios.simplification.per_species.<species>]`.
+
+## Per-tree classification codes
+
+For labeled point clouds (e.g. training data for tree/species segmentation), enable per-tree Helios++ classification codes:
+
+```toml
+[helios]
+classification = true
+```
+
+Each material gets a two-digit code `[material][fid]` (11–29), fitting the Helios++/LAS classification range (0–31):
+
+- **material**: `1` = leaf, `2` = wood (covers bark, twig wood, fruit)
+- **fid**: `1`–`9`, taken from the CSV `fid` column
+- **`0`** is reserved for the ground plane — add ground geometry to the Helios scene separately with `helios_classification = 0`; GrowPy does not generate it
+
+Species is joined on `fid` against the input CSV in post-processing, giving a three-digit `[material][fid][species]` code.
+
+**Requirements:**
+
+- Species must be `selected_*` variants (see `SPECIES_CODES` in [`growpy.io.helios.classification`](../../src/growpy/io/helios/classification.py)) — the `stand_*.csv` fixtures under `data/input/` use these.
+- Each species needs at least one leaf and one wood material in its twig assets (checked via `*_face_materials.json` sidecars from `growpy-convert-twigs`).
+- Validation runs once before export and raises with a list of errors if either requirement fails.
+
+**Trees beyond fid 9:** the code space only covers `fid` 1–9, since Helios++/LAS classification is 0–31. Trees with `fid > 9` fall back to class `4` (ASPRS "high vegetation") instead of failing the run. A single warning per run states the exact split, e.g.:
+
+```
+WARNING: Helios classification covers only fid 1-9 (LAS class range is 0-31).
+WARNING:   47 trees in this run; fid 1-9 get per-tree codes 11-29,
+WARNING:   the remaining 38 trees (fid 10-47) fall back to class 4 (high vegetation).
+```
+
+To label every tree in a run, split the stand into batches of 9 trees or fewer (see the `stand_9trees_*.csv` fixtures for the largest fully-coded example).
+
+## Direct export (bypass USD)
+
+`[export] mode = "helios"` (default: `"unreal"`) writes each tree's OBJ/MTL directly from the Grove model during Step 4, instead of post-processing a USD assembly:
+
+```toml
+[export]
+mode = "helios"
+```
+
+What this skips: the trunk mesh never goes through USD — no skeleton binding, no Nanite Assembly, no PVE JSON, no Unreal script generation for that tree. This is the difference between completing and running out of RAM for very large meshes (30M+ vertices).
+
+What it still uses: twig **prototype** meshes (the small, shared per-species twig assets from `growpy-convert-twigs`) are still read from their static USD files — those are cheap, pre-existing static assets, not per-tree data. Twig **placement** (position/orientation/scale per instance) is computed via the same `extract_twig_placements_from_model` function the USD assembly path uses internally, so placement is identical between the two modes.
+
+`export_mode = "helios"` composes with per-species simplification ratios and per-tree classification codes above. It is only implemented for the default multi-stage pipeline (`[forest] height_interval > 0`); setting `height_interval = 0` (the standard growth-cycle pipeline) together with `export_mode = "helios"` logs an error and skips export rather than silently falling back to the USD path.
 
 ## Running Helios++
 
@@ -121,6 +174,18 @@ A minimal survey XML that references the generated scene:
 ```
 
 See the [Helios++ docs](https://github.com/3dgeo-heidelberg/helios/wiki) for scanner configuration and survey templates.
+
+## Running large batches in a container
+
+For large stands or `export_mode = "helios"` runs with big meshes, `run_docker.sh` launches a resource-limited Jupyter container (CPU/RAM caps via Docker cgroups) so a single run can't take down the host:
+
+```bash
+./run_docker.sh              # defaults: 20 cores, 100 GB RAM
+./run_docker.sh 10 50        # 10 cores, 50 GB RAM
+GROWPY_MESH_DIR=/path/to/meshes ./run_docker.sh   # mount external mesh/point-cloud data read-only
+```
+
+Builds from the repo's `Dockerfile`, mounts the repo read-write, and exposes Jupyter on `http://127.0.0.1:8889` (token `growpy`).
 
 ## Simplification tuning tips
 

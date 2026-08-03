@@ -1,0 +1,16 @@
+Dockerfile
+.git
+.github
+.gitlab-ci.yml
+.devcontainer
+.claude
+.vscode
+.hex-skills
+claude-code-skills
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.conda
+.coverage
+data/output
+data/tmp

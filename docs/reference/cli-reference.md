@@ -249,6 +249,14 @@ section of `helios.toml`.
 
 **TOML-configurable:** `export_obj`, `helios_scene`, `combined_obj` (see `[helios]`).
 
+`--classification` (or `[helios] classification = true`) enables per-tree Helios++
+classification codes for labeled point clouds -- see
+[guides/helios-export.md#per-tree-classification-codes](../guides/helios-export.md#per-tree-classification-codes).
+
+`[export] mode = "helios"` writes OBJ directly from the Grove model, bypassing
+USD/skeleton/Nanite Assembly for the trunk -- see
+[guides/helios-export.md#direct-export-bypass-usd](../guides/helios-export.md#direct-export-bypass-usd).
+
 ## Dataset Production
 
 Two integrated features automate batch production of tree assets across all 11 dataset
