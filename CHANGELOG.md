@@ -22,6 +22,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Trunk meshes above 10M faces (`CHUNK_FACE_LIMIT`) are decimated in
+  spatial Z-axis chunks instead of in one Blender pass, keeping peak RAM
+  proportional to chunk size instead of total mesh size. Ported from
+  main_tom. (XRFF-308)
+
 - Height-DBH allometry (`DBH = a * H^b`) is now a first-class, standalone
   artifact at `data/assets/allometry/<species>.json`, built by the new
   `growpy-build-allometry` CLI. The fit needs only a yield table's height and
@@ -52,6 +57,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   present in config is ignored with a warning naming the new key; it was only
   ever shipped commented-out in the template, so no user config depended on
   the old key. (XRFF-307)
+
+- Bark and twig wood now take independent Helios simplification ratios
+  (`bark` / `wood`), instead of sharing a single `wood` ratio. (XRFF-308)
 
 - **Dataset production no longer reads or writes CSVs.** `generate-forest`
   gained `--species NAME`, which builds that species' job rows in memory from
