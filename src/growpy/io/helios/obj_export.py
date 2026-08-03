@@ -34,6 +34,14 @@ from growpy.config.core import get_config as _get_config
 from growpy.config.paths import static_assembly_glob as _static_assembly_glob
 from growpy.config.paths import tree_ext as _tree_ext
 from growpy.config.paths import twig_ext as _twig_ext
+from growpy.io.helios.classification import (
+    MAX_TREES,
+    build_classification_codes,
+    build_material_prefix,
+    validate_classification_fids,
+    validate_classification_materials,
+    validate_classification_species,
+)
 
 WOOD_MATERIAL_KEYWORDS = ("bark", "branch", "wood", "dead", "stem", "twig")
 
@@ -692,6 +700,7 @@ def _write_classified_twig_faces(
     f,
     classified_protos: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]],
     proto_instance_offsets: dict[int, list[int]],
+    mat_prefix: str = "",
 ) -> tuple[int, int]:
     """Write twig faces grouped by wood/leaf material using streamed offsets.
 
@@ -708,7 +717,7 @@ def _write_classified_twig_faces(
         if idx in classified_protos
     )
     if has_wood:
-        f.write("\nusemtl twig_wood\n")
+        f.write(f"\nusemtl {mat_prefix}twig_wood\n")
         for proto_idx in sorted(proto_instance_offsets.keys()):
             if proto_idx not in classified_protos:
                 continue
@@ -728,7 +737,7 @@ def _write_classified_twig_faces(
         if idx in classified_protos
     )
     if has_leaf:
-        f.write("\nusemtl twig_leaf\n")
+        f.write(f"\nusemtl {mat_prefix}twig_leaf\n")
         for proto_idx in sorted(proto_instance_offsets.keys()):
             if proto_idx not in classified_protos:
                 continue
@@ -755,6 +764,7 @@ def _write_obj_streaming(
     proto_indices: np.ndarray,
     mtl_name: str,
     up_axis: str = "y",
+    mat_prefix: str = "",
 ) -> tuple[int, int, int]:
     """Write a single tree OBJ by streaming twig instances to disk.
 
@@ -786,7 +796,7 @@ def _write_obj_streaming(
         f.write("\n")
 
         # Trunk faces
-        f.write("usemtl bark\n")
+        f.write(f"usemtl {mat_prefix}bark\n")
         for face in trunk_faces:
             f.write(f"f {face[0]+1} {face[1]+1} {face[2]+1}\n")
 
@@ -795,6 +805,7 @@ def _write_obj_streaming(
             f,
             classified_protos,
             proto_offsets,
+            mat_prefix,
         )
 
     return len(trunk_faces), wood_count, leaf_count
@@ -930,6 +941,7 @@ def _write_obj(
     twig_wood_faces: np.ndarray | None = None,
     twig_leaf_verts: np.ndarray | None = None,
     twig_leaf_faces: np.ndarray | None = None,
+    mat_prefix: str = "",
 ) -> None:
     """Write Wavefront OBJ file with bark, twig_wood, twig_leaf material groups."""
     has_uvs = trunk_uvs is not None and len(trunk_uvs) > 0
@@ -974,7 +986,7 @@ def _write_obj(
         f.write("\n")
 
         # Trunk faces (bark material)
-        f.write("usemtl bark\n")
+        f.write(f"usemtl {mat_prefix}bark\n")
         if has_uvs:
             for fi, face in enumerate(trunk_faces):
                 uv_base = fi * 3
@@ -988,7 +1000,7 @@ def _write_obj(
         # Twig wood faces
         wood_offset = trunk_vert_count
         if len(twig_wood_faces) > 0:
-            f.write("\nusemtl twig_wood\n")
+            f.write(f"\nusemtl {mat_prefix}twig_wood\n")
             for face in twig_wood_faces:
                 v0 = face[0] + wood_offset + 1
                 v1 = face[1] + wood_offset + 1
@@ -1003,7 +1015,7 @@ def _write_obj(
         # Twig leaf faces
         leaf_offset = trunk_vert_count + len(twig_wood_verts)
         if len(twig_leaf_faces) > 0:
-            f.write("\nusemtl twig_leaf\n")
+            f.write(f"\nusemtl {mat_prefix}twig_leaf\n")
             for face in twig_leaf_faces:
                 v0 = face[0] + leaf_offset + 1
                 v1 = face[1] + leaf_offset + 1
@@ -1141,18 +1153,31 @@ def _write_helios_mtl(
     mtl_path: Path,
     bark_texture: Path | None,
     helios_spectra_leaves: str = "deciduous",
+    classification_codes: dict[str, int] | None = None,
+    mat_prefix: str = "",
 ) -> None:
     """Write Helios-compatible MTL file with bark, twig_wood, twig_leaf materials.
 
     Helios++ uses custom MTL properties:
         helios_spectra  - ECOSTRESS spectral library identifier
-        helios_classification - ASPRS point classification (4 = high vegetation)
+        helios_classification - ASPRS point classification (4 = high vegetation),
+            or a per-tree Helios classification code when classification_codes
+            is provided -- see growpy.io.helios.classification.
+
+    With classification_codes=None and mat_prefix="" (the defaults), output is
+    unchanged from before per-tree classification support existed.
     """
+
+    def _get_classification(material_class: str) -> int:
+        if classification_codes:
+            return classification_codes.get(material_class, 4)
+        return 4
+
     with open(mtl_path, "w") as f:
         f.write("# Helios++ compatible material\n\n")
 
         # Bark material (trunk/branches)
-        f.write("newmtl bark\n")
+        f.write(f"newmtl {mat_prefix}bark\n")
         f.write("Ka 0.1 0.1 0.1\n")
         f.write("Kd 0.4 0.3 0.2\n")
         f.write("Ks 0.05 0.05 0.05\n")
@@ -1160,25 +1185,25 @@ def _write_helios_mtl(
             rel_texture = f"textures/{bark_texture.name}"
             f.write(f"map_Kd {rel_texture}\n")
         f.write("helios_spectra wood\n")
-        f.write("helios_classification 4\n")
+        f.write(f"helios_classification {_get_classification('bark')}\n")
         f.write("\n")
 
         # Twig wood material (twig branch cylinders)
-        f.write("newmtl twig_wood\n")
+        f.write(f"newmtl {mat_prefix}twig_wood\n")
         f.write("Ka 0.1 0.1 0.1\n")
         f.write("Kd 0.35 0.25 0.15\n")
         f.write("Ks 0.05 0.05 0.05\n")
         f.write("helios_spectra wood\n")
-        f.write("helios_classification 4\n")
+        f.write(f"helios_classification {_get_classification('wood')}\n")
         f.write("\n")
 
         # Twig leaf material (leaf/needle planes)
-        f.write("newmtl twig_leaf\n")
+        f.write(f"newmtl {mat_prefix}twig_leaf\n")
         f.write("Ka 0.1 0.15 0.05\n")
         f.write("Kd 0.3 0.5 0.15\n")
         f.write("Ks 0.2 0.2 0.2\n")
         f.write(f"helios_spectra {helios_spectra_leaves}\n")
-        f.write("helios_classification 4\n")
+        f.write(f"helios_classification {_get_classification('leaf')}\n")
 
 
 CONIFER_KEYWORDS = [
@@ -1266,6 +1291,45 @@ def export_forest_obj(
 
     logger.info("HELIOS OBJ EXPORT (%d trees, streaming)", len(assembly_files))
 
+    if config.helios_classification:
+        from growpy.config.paths import get_twig_files_by_type
+
+        species_clean_list = sorted({f.parent.parent.name for f in assembly_files})
+        classification_fids = []
+        for f in assembly_files:
+            m = re.match(r"tree_(\d+)$", f.parent.name)
+            if m:
+                classification_fids.append(int(m.group(1)))
+
+        errors = validate_classification_species(species_clean_list)
+        fid_errors, fid_warnings = validate_classification_fids(classification_fids)
+        errors.extend(fid_errors)
+
+        for species_clean in species_clean_list:
+            species_display = species_clean.replace("_", " ").title()
+            twig_files_by_type = get_twig_files_by_type(species_display)
+            all_twig_files = [p for files in twig_files_by_type.values() for p in files]
+            if not all_twig_files:
+                errors.append(f"No twig files found for '{species_clean}'")
+                continue
+            errors.extend(
+                validate_classification_materials(species_clean, all_twig_files[0].parent)
+            )
+
+        if errors:
+            logger.error("Helios classification validation failed:")
+            for err in errors:
+                logger.error("  - %s", err)
+            raise SystemExit(1)
+
+        for warn in fid_warnings:
+            logger.warning(warn)
+
+        logger.info(
+            "Helios classification: ENABLED (%d species validated)",
+            len(species_clean_list),
+        )
+
     forest_data = forest_data.copy()
     if "fid" not in forest_data.columns:
         forest_data["fid"] = range(1, len(forest_data) + 1)
@@ -1286,6 +1350,16 @@ def export_forest_obj(
 
         is_conifer = any(kw in species_dir.lower() for kw in CONIFER_KEYWORDS)
         spectra = "conifer" if is_conifer else "deciduous"
+
+        # Per-tree Helios classification: fid 1-9 get a coded material prefix;
+        # fid > 9 fall back to the default class (see validate_classification_fids).
+        cls_codes = None
+        cls_prefix = ""
+        if config.helios_classification and tree_match is not None:
+            classification_fid = int(tree_match.group(1))
+            if 1 <= classification_fid <= MAX_TREES:
+                cls_codes = build_classification_codes(classification_fid)
+                cls_prefix = build_material_prefix(classification_fid)
 
         # Resolve per-species material ratio overrides into the ratios dict
         tree_ratios = None
@@ -1347,6 +1421,7 @@ def export_forest_obj(
                     proto_indices,
                     mtl_name,
                     up_axis,
+                    mat_prefix=cls_prefix,
                 )
         else:
             # No twigs — write trunk-only OBJ
@@ -1358,11 +1433,15 @@ def export_forest_obj(
                     None,
                     mtl_name,
                     up_axis=up_axis,
+                    mat_prefix=cls_prefix,
                 )
                 bark_n, wood_n, leaf_n = len(trunk_faces), 0, 0
 
         bark_texture = _find_bark_texture(tree_dir)
-        _write_helios_mtl(mtl_path, bark_texture, spectra)
+        _write_helios_mtl(
+            mtl_path, bark_texture, spectra,
+            classification_codes=cls_codes, mat_prefix=cls_prefix,
+        )
 
         logger.info(
             "OBJ export: %s (%d trunk + %d twig_wood + %d twig_leaf faces)",

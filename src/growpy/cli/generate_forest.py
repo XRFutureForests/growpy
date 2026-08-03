@@ -373,6 +373,13 @@ Unreal Engine Integration:
         help="Also write individual per-tree OBJ files (default: only combined OBJ)",
     )
     parser.add_argument(
+        "--classification",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Per-tree Helios++ classification codes for labeled point clouds "
+        "(requires 'selected_*' species and fid 1-9; see docs/guides/helios-export.md)",
+    )
+    parser.add_argument(
         "--obj-up-axis",
         type=str,
         default=None,

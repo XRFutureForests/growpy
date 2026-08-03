@@ -10,6 +10,7 @@ from growpy.io.helios.obj_export import (
     _fmt_vert,
     _quat_to_rotation_matrix,
     _resolve_to_static,
+    _write_helios_mtl,
     clear_twig_cache,
 )
 
@@ -232,3 +233,51 @@ class TestExportForestObjEmptyDiagnostic:
         messages = " ".join(r.message for r in caplog.records)
         assert "assembly_static" in messages
         assert str(tmp_path) in messages
+
+
+class TestWriteHeliosMtl:
+    """Tests for _write_helios_mtl, including the classification regression guard."""
+
+    def test_default_args_unchanged_from_pre_classification_output(self, tmp_path):
+        """With classification_codes=None and mat_prefix="" (the defaults),
+        output must be identical to before per-tree classification existed.
+        """
+        mtl_path = tmp_path / "tree.mtl"
+        _write_helios_mtl(mtl_path, bark_texture=None, helios_spectra_leaves="deciduous")
+        content = mtl_path.read_text()
+
+        assert "newmtl bark\n" in content
+        assert "newmtl twig_wood\n" in content
+        assert "newmtl twig_leaf\n" in content
+        assert content.count("helios_classification 4\n") == 3
+        assert "t01_" not in content
+
+    def test_classification_codes_applied_per_material(self, tmp_path):
+        mtl_path = tmp_path / "tree.mtl"
+        codes = {"bark": 23, "wood": 23, "leaf": 13, "fruit": 23}
+        _write_helios_mtl(
+            mtl_path,
+            bark_texture=None,
+            helios_spectra_leaves="deciduous",
+            classification_codes=codes,
+            mat_prefix="t03_",
+        )
+        content = mtl_path.read_text()
+
+        assert "newmtl t03_bark\n" in content
+        assert "newmtl t03_twig_wood\n" in content
+        assert "newmtl t03_twig_leaf\n" in content
+        assert content.count("helios_classification 23\n") == 2
+        assert content.count("helios_classification 13\n") == 1
+
+    def test_missing_material_in_codes_falls_back_to_four(self, tmp_path):
+        mtl_path = tmp_path / "tree.mtl"
+        _write_helios_mtl(
+            mtl_path,
+            bark_texture=None,
+            helios_spectra_leaves="deciduous",
+            classification_codes={},
+            mat_prefix="t01_",
+        )
+        content = mtl_path.read_text()
+        assert content.count("helios_classification 4\n") == 3

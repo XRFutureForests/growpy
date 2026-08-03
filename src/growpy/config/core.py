@@ -174,6 +174,7 @@ class GrowPyConfig:
         "helios_scene": "helios_helios_scene",
         "individual_obj": "helios_individual_obj",
         "obj_up_axis": "helios_obj_up_axis",
+        "classification": "helios_classification",
         # [calibration]
         "calibrate": "calibration_enabled",
     }
@@ -341,6 +342,7 @@ class GrowPyConfig:
     helios_helios_scene: bool = False
     helios_individual_obj: bool = False
     helios_obj_up_axis: str = "y"
+    helios_classification: bool = False
     helios_simplification_enabled: bool = False
     helios_simplification_ratios: dict = field(default_factory=dict)
     helios_simplification_per_species: dict = field(default_factory=dict)
@@ -545,6 +547,8 @@ class GrowPyConfig:
             kwargs["helios_individual_obj"] = helios["individual_obj"]
         if "obj_up_axis" in helios:
             kwargs["helios_obj_up_axis"] = helios["obj_up_axis"]
+        if "classification" in helios:
+            kwargs["helios_classification"] = bool(helios["classification"])
         simp = helios.get("simplification", {})
         if simp:
             kwargs["helios_simplification_enabled"] = simp.get("enabled", False)

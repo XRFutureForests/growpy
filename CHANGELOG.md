@@ -22,6 +22,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Per-tree Helios++ classification codes for labeled point clouds:
+  `[helios] classification = true` (or `--classification`) encodes a
+  two-digit `[material][fid]` code (11-29) per material, fitting the
+  0-31 LAS classification range. Requires `selected_*` species variants
+  and at least leaf + wood materials per species; fid 0 is reserved for
+  the ground plane. Trees with fid > 9 fall back to the default class
+  (4, high vegetation) since the code space only covers fid 1-9 -- the
+  run logs an explicit warning naming the exact coded/uncoded split.
+  New `growpy.io.helios.classification` module. Ported from main_tom. (XRFF-309)
+
 - Trunk meshes above 10M faces (`CHUNK_FACE_LIMIT`) are decimated in
   spatial Z-axis chunks instead of in one Blender pass, keeping peak RAM
   proportional to chunk size instead of total mesh size. Ported from

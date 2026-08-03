@@ -14,6 +14,14 @@ helios_scene = false
 # OBJ coordinate up axis: "y" (standard OBJ/Blender) or "z" (matches USD/Helios)
 obj_up_axis = "y"
 
+# Per-tree Helios++ classification codes for labeled point clouds.
+# Two-digit code [material][fid]: material 1=leaf, 2=wood; fid 1-9 from CSV.
+# fid 0 is reserved for the ground plane. Requires "selected_*" species
+# variants (see SPECIES_CODES in growpy.io.helios.classification) and at
+# least leaf + wood materials per species.
+# Trees with fid > 9 fall back to class 4 (see run warnings).
+classification = false
+
 # Material-aware mesh simplification applied in-memory before OBJ write.
 # Reduces file size and Helios++ processing time without re-reading/re-writing files.
 # Material classification: "bark" = trunk/branch, "wood" = twig wood sub-materials,
