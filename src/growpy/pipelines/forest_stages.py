@@ -407,6 +407,52 @@ def derive_static(ctx: TreeExportContext) -> None:
         instances_dir=ctx.instances_dir,
     )
 
+
+def export_obj_direct(ctx: TreeExportContext) -> None:
+    """Write this tree+variant directly to Helios++ OBJ/MTL, bypassing
+    USD/skeleton/Nanite Assembly entirely (config.export_mode == "helios").
+
+    Sets ctx.usd_path (the produced .obj path -- see TreeExportContext field
+    naming, shared with export_assembly()) and ctx.export_success. Wind/PVE
+    JSON, previews, icons, and static derivation do not apply in this mode --
+    none of that is meaningful for an unskinned LiDAR mesh -- so STAGES
+    never runs for a helios-mode tree; see generate_forest_stages().
+    """
+    from growpy.io.helios.classification import (
+        MAX_TREES,
+        build_classification_codes,
+        build_material_prefix,
+    )
+    from growpy.io.helios.obj_export import convert_tree_to_obj_direct
+
+    cfg = ctx.cfg
+    simplification_ratios = None
+    if cfg.helios_simplification_enabled:
+        simplification_ratios = cfg.get_simplification_ratios(ctx.species_clean)
+
+    mat_prefix = ""
+    classification_codes = None
+    if cfg.helios_classification and 1 <= ctx.fid <= MAX_TREES:
+        classification_codes = build_classification_codes(ctx.fid)
+        mat_prefix = build_material_prefix(ctx.fid)
+
+    obj_path = convert_tree_to_obj_direct(
+        model=ctx.model,
+        twig_usd_map=ctx.twig_usd_map,
+        output_dir=ctx.tree_dir,
+        species_name=ctx.species_name,
+        tree_id=str(ctx.fid),
+        radial_scale=ctx.radial_scale,
+        bones_info=ctx.bones_info,
+        simplification_ratios=simplification_ratios,
+        mat_prefix=mat_prefix,
+        classification_codes=classification_codes,
+        up_axis=cfg.helios_obj_up_axis,
+    )
+
+    ctx.usd_path = obj_path
+    ctx.export_success = obj_path is not None
+
 # Post-assembly stage registry: (name, gate, stage_fn, once_per_tree).
 #
 # `gate(ctx)` decides whether the stage runs at all -- False logs a debug
@@ -814,6 +860,26 @@ def generate_forest_stages(
                             tree_dir.parent, species_name, species_clean
                         )
                         _species_info_written.add(species_clean)
+
+                    if config.export_mode == "helios":
+                        # Direct OBJ export bypasses USD/Nanite entirely --
+                        # none of the STAGES (wind/PVE/previews/icons/static)
+                        # apply to an unskinned LiDAR mesh.
+                        with timer.track("stage_export_obj_direct"):
+                            export_obj_direct(ctx)
+
+                        if ctx.export_success:
+                            exported_files.append(str(ctx.usd_path))
+                            logger.info("  Exported (OBJ): %s", ctx.usd_path.name)
+                        else:
+                            logger.warning(
+                                "  OBJ export failed for tree %d (%s) at cycle %d (h=%.1fm)",
+                                fid,
+                                species_name,
+                                cycle,
+                                height,
+                            )
+                        continue
 
                     # Export as Nanite Assembly
                     with timer.track("stage_assembly"):

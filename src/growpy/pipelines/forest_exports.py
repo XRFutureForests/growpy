@@ -99,6 +99,17 @@ def generate_forest_exports(
         logger.error("Missing required columns: %s", missing_cols)
         return
 
+    if config.export_mode == "helios":
+        logger.error(
+            "export_mode = 'helios' (direct OBJ export) is only implemented for "
+            "the multi-stage pipeline ([forest] height_interval > 0, the default). "
+            "This run has height_interval = 0, which selects the standard "
+            "growth-cycle pipeline (generate_forest_exports) -- helios direct "
+            "export is not supported there. Set height_interval > 0, or use "
+            "export_mode = 'unreal' with this pipeline."
+        )
+        return
+
     forest_data = forest_data.copy()
 
     # Cap tree heights if max_height is configured

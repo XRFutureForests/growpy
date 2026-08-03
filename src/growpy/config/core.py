@@ -193,6 +193,7 @@ class GrowPyConfig:
         "forest_export_trees": "CLI-settable via the export_trees special-case "
         "in resolve(), not this dict",
         "export_usd_format": "CLI override deferred to XRFF-277 (path/format epic)",
+        "export_mode": "scenario-level choice (unreal vs helios pipeline), config-only",
         "export_max_skeleton_joints": "internal tuning, no CLI need identified",
         "export_max_assembly_instances": "internal tuning, no CLI need identified",
         "export_dbh_from_allometry": "internal tuning, no CLI need identified",
@@ -296,6 +297,13 @@ class GrowPyConfig:
 
     # [export]
     export_usd_format: str = "usda"  # "usda" (ASCII) or "usdc" (binary)
+    # "unreal" runs the full USD/Nanite/PVE pipeline. "helios" writes OBJ
+    # directly from the Grove model per tree, skipping USD/skeleton/PVE/Unreal
+    # script generation entirely for that tree (see pipelines/forest_stages.py
+    # export_obj_direct). Twig prototype meshes still come from the small,
+    # pre-existing per-species twig USD assets -- only the trunk and the
+    # per-instance twig placement math bypass USD.
+    export_mode: str = "unreal"
     export_skeletal: bool = True
     export_static: bool = False
     # Preview PNGs, export-control PNGs, and front/side/top icon PNGs are
@@ -465,6 +473,13 @@ class GrowPyConfig:
                     f"export.usd_format must be 'usda' or 'usdc', got '{fmt}'"
                 )
             kwargs["export_usd_format"] = fmt
+        if "mode" in export:
+            mode = export["mode"].lower()
+            if mode not in ("unreal", "helios"):
+                raise ValueError(
+                    f"export.mode must be 'unreal' or 'helios', got '{mode}'"
+                )
+            kwargs["export_mode"] = mode
         if "skeletal" in export:
             kwargs["export_skeletal"] = export["skeletal"]
         if "static" in export:

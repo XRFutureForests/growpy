@@ -209,6 +209,31 @@ twig_density_broadleaf = 3.0
         assert config.export_twig_density_conifer == 0.8
         assert config.export_twig_density_broadleaf == 3.0
 
+    def test_toml_export_mode_helios(self, tmp_path):
+        toml_content = b"""
+[export]
+mode = "helios"
+"""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(toml_content)
+
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.export_mode == "helios"
+
+    def test_toml_export_mode_default_is_unreal(self):
+        assert GrowPyConfig().export_mode == "unreal"
+
+    def test_toml_export_mode_rejects_invalid_value(self, tmp_path):
+        toml_content = b"""
+[export]
+mode = "bogus"
+"""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(toml_content)
+
+        with pytest.raises(ValueError, match="export.mode"):
+            GrowPyConfig.from_toml(toml_file, set_as_global=False)
+
     def test_toml_helios_simplification_per_species(self, tmp_path):
         toml_content = b"""
 [helios.simplification]

@@ -42,6 +42,12 @@ dbh_from_allometry = true
 # Binary USDC files are ~50% smaller on disk and faster for UE to parse,
 # significantly reducing memory pressure during import.
 usd_format = "usda"
+# Export target. "unreal" runs the full USD/Nanite/PVE pipeline. "helios"
+# writes OBJ directly from the Grove model per tree for Helios++ LiDAR
+# simulation, skipping USD/skeleton/PVE/Unreal script generation for that
+# tree (see [helios] for OBJ export settings). Twig prototype meshes still
+# come from the small, pre-existing per-species twig USD assets.
+mode = "unreal"
 # Export skeletal mesh assemblies (required for Unreal animation/wind)
 skeletal = true
 # Export static mesh assemblies (geometry only, no skeleton)

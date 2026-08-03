@@ -31,6 +31,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `[export] mode = "helios"` (default `"unreal"`): writes each tree's OBJ/MTL
+  directly from the Grove model, bypassing USD, skeleton binding, and Nanite
+  Assembly entirely for the trunk. Twig prototype meshes still come from the
+  small, pre-existing per-species twig USD assets (shared static assets, not
+  per-tree data); twig placement uses the same USD-independent
+  `extract_twig_placements_from_model` the assembly path uses internally, so
+  placement is identical between modes. Composes with per-tree Helios
+  classification codes and simplification ratios. Only implemented for the
+  multi-stage pipeline (`[forest] height_interval > 0`, the default); the
+  standard growth-cycle pipeline logs an error and refuses the combination
+  rather than silently running the USD path. Ported from main_tom, adapted:
+  main_tom's version also skipped twig-placement USD writes for the whole
+  assembly; here twig prototypes (not placement) still resolve via the
+  existing static-USD reader, since duplicating that skeletal-attachment
+  math without a way to verify it against real Grove growth was judged too
+  risky for a port. (XRFF-311)
+
 - Per-tree Helios++ classification codes for labeled point clouds:
   `[helios] classification = true` (or `--classification`) encodes a
   two-digit `[material][fid]` code (11-29) per material, fitting the

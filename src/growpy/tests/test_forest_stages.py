@@ -23,6 +23,7 @@ from growpy.pipelines.forest_stages import (
     STAGES,
     compute_radial_scale,
     derive_static,
+    export_obj_direct,
     export_assembly,
     resolve_target_dbh,
     write_icons,
@@ -223,6 +224,94 @@ class TestExportAssembly:
         ):
             export_assembly(ctx)
         mock_handle.assert_called_once_with(err)
+
+
+class TestExportObjDirect:
+    """Tests for export_obj_direct (XRFF-311, config.export_mode == "helios")."""
+
+    def test_success_sets_obj_path_and_flag(self, tmp_path):
+        ctx = _make_ctx(tree_dir=tmp_path)
+        obj_path = tmp_path / "european_beech_tree_1_helios.obj"
+        with patch(
+            "growpy.io.helios.obj_export.convert_tree_to_obj_direct",
+            return_value=obj_path,
+        ) as mock_convert:
+            export_obj_direct(ctx)
+
+        assert ctx.export_success is True
+        assert ctx.usd_path == obj_path
+        mock_convert.assert_called_once()
+        assert mock_convert.call_args.kwargs["model"] is ctx.model
+        assert mock_convert.call_args.kwargs["twig_usd_map"] is ctx.twig_usd_map
+        assert mock_convert.call_args.kwargs["tree_id"] == str(ctx.fid)
+
+    def test_failure_sets_flag_false(self, tmp_path):
+        ctx = _make_ctx(tree_dir=tmp_path)
+        with patch(
+            "growpy.io.helios.obj_export.convert_tree_to_obj_direct",
+            return_value=None,
+        ):
+            export_obj_direct(ctx)
+        assert ctx.export_success is False
+        assert ctx.usd_path is None
+
+    def test_no_classification_by_default(self, tmp_path):
+        ctx = _make_ctx(tree_dir=tmp_path)
+        with patch(
+            "growpy.io.helios.obj_export.convert_tree_to_obj_direct",
+            return_value=tmp_path / "x.obj",
+        ) as mock_convert:
+            export_obj_direct(ctx)
+        assert mock_convert.call_args.kwargs["mat_prefix"] == ""
+        assert mock_convert.call_args.kwargs["classification_codes"] is None
+
+    def test_classification_enabled_builds_codes_and_prefix(self, tmp_path):
+        ctx = _make_ctx(tree_dir=tmp_path, fid=3)
+        ctx.cfg.helios_classification = True
+        with patch(
+            "growpy.io.helios.obj_export.convert_tree_to_obj_direct",
+            return_value=tmp_path / "x.obj",
+        ) as mock_convert:
+            export_obj_direct(ctx)
+        assert mock_convert.call_args.kwargs["mat_prefix"] == "t03_"
+        assert mock_convert.call_args.kwargs["classification_codes"] == {
+            "leaf": 13, "wood": 23, "bark": 23, "fruit": 23,
+        }
+
+    def test_classification_enabled_fid_above_max_falls_back(self, tmp_path):
+        ctx = _make_ctx(tree_dir=tmp_path, fid=10)
+        ctx.cfg.helios_classification = True
+        with patch(
+            "growpy.io.helios.obj_export.convert_tree_to_obj_direct",
+            return_value=tmp_path / "x.obj",
+        ) as mock_convert:
+            export_obj_direct(ctx)
+        assert mock_convert.call_args.kwargs["mat_prefix"] == ""
+        assert mock_convert.call_args.kwargs["classification_codes"] is None
+
+    def test_simplification_ratios_passed_when_enabled(self, tmp_path):
+        ctx = _make_ctx(tree_dir=tmp_path)
+        ctx.cfg.helios_simplification_enabled = True
+        ctx.cfg.helios_simplification_ratios = {
+            "bark": 0.2, "wood": 0.2, "leaf": 0.5, "fruit": 0.2,
+        }
+        with patch(
+            "growpy.io.helios.obj_export.convert_tree_to_obj_direct",
+            return_value=tmp_path / "x.obj",
+        ) as mock_convert:
+            export_obj_direct(ctx)
+        assert mock_convert.call_args.kwargs["simplification_ratios"] == {
+            "bark": 0.2, "wood": 0.2, "leaf": 0.5, "fruit": 0.2,
+        }
+
+    def test_simplification_ratios_none_when_disabled(self, tmp_path):
+        ctx = _make_ctx(tree_dir=tmp_path)
+        with patch(
+            "growpy.io.helios.obj_export.convert_tree_to_obj_direct",
+            return_value=tmp_path / "x.obj",
+        ) as mock_convert:
+            export_obj_direct(ctx)
+        assert mock_convert.call_args.kwargs["simplification_ratios"] is None
 
 
 class TestWriteWindJson:
