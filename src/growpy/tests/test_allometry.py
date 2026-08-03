@@ -143,6 +143,38 @@ class TestArtifactRoundTrip:
         monkeypatch.setattr(allometry, "get_allometry_dir", lambda: tmp_path)
         assert load_species_allometry("nonexistent") is None
 
+    def test_load_is_cached_across_calls(self, tmp_path, monkeypatch):
+        """load_species_allometry() must not re-read the JSON on every call
+        (XRFF-283) -- it runs once per tree per export stage in production."""
+        monkeypatch.setattr(allometry, "get_allometry_dir", lambda: tmp_path)
+        record = {
+            "species": "european_larch",
+            "height_dbh_model": {"a": 0.001, "b": 1.7},
+            "height_range_m": [5.0, 32.0],
+        }
+        write_species_allometry(record)
+        assert load_species_allometry("european_larch") == record
+
+        path = allometry._artifact_path("european_larch")
+        path.write_text(json.dumps({"species": "tampered"}), encoding="utf-8")
+        # Still the cached (pre-tamper) value, not a fresh disk read.
+        assert load_species_allometry("european_larch") == record
+
+    def test_write_refreshes_cache(self, tmp_path, monkeypatch):
+        """write_species_allometry() must keep the cache in sync with disk."""
+        monkeypatch.setattr(allometry, "get_allometry_dir", lambda: tmp_path)
+        first = {
+            "species": "silver_fir",
+            "height_dbh_model": {"a": 0.002, "b": 1.6},
+            "height_range_m": [6.0, 30.0],
+        }
+        write_species_allometry(first)
+        assert load_species_allometry("silver_fir") == first
+
+        second = {**first, "height_dbh_model": {"a": 0.003, "b": 1.55}}
+        write_species_allometry(second)
+        assert load_species_allometry("silver_fir") == second
+
 
 class TestGetHeightDbhModel:
     """The artifact wins; seed.json calibration is only a migration fallback."""

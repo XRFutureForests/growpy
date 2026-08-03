@@ -288,6 +288,42 @@ class TestWritePveJson:
         assert mock_gen.call_args.kwargs["tree_index"] == 3
         assert mock_gen.call_args.kwargs["grove"] is ctx.grove
 
+    def test_forwards_twig_density_for_variant(self):
+        """Density variants must get their own twig_density in the PVE JSON
+        (XRFF-283) -- otherwise reduced/bare variants render with base foliage."""
+        ctx = _make_ctx(
+            use_skeletal=True, skip_pve_json=False, twig_density=0.3
+        )
+        with patch(
+            "growpy.io.unreal.pve_grove_mapper.generate_pve_from_grove"
+        ) as mock_gen:
+            write_pve_json(ctx)
+        assert mock_gen.call_args.kwargs["twig_density"] == 0.3
+
+    def test_defaults_twig_density_when_unset(self):
+        ctx = _make_ctx(use_skeletal=True, skip_pve_json=False, twig_density=None)
+        with patch(
+            "growpy.io.unreal.pve_grove_mapper.generate_pve_from_grove"
+        ) as mock_gen:
+            write_pve_json(ctx)
+        assert mock_gen.call_args.kwargs["twig_density"] == 1.0
+
+    def test_pve_config_dir_independent_of_cwd(self):
+        """pve_config_dir must resolve via get_project_root(), not a CWD-relative
+        Path("data/assets/pve_configs") (XRFF-283)."""
+        ctx = _make_ctx(use_skeletal=True, skip_pve_json=False)
+        with patch(
+            "growpy.pipelines.forest_stages.get_data_directory",
+            return_value=Path("/resolved/data"),
+        ) as mock_data_dir, patch(
+            "growpy.io.unreal.pve_grove_mapper.generate_pve_from_grove"
+        ) as mock_gen:
+            write_pve_json(ctx)
+        mock_data_dir.assert_called_once()
+        assert mock_gen.call_args.kwargs["pve_config_dir"] == Path(
+            "/resolved/data"
+        ) / "assets" / "pve_configs"
+
 
 class TestWritePreviews:
     """Tests for write_previews (XRFF-289)."""
@@ -369,10 +405,12 @@ class TestStagesRegistry:
         names = [name for name, *_ in STAGES]
         assert names == ["wind_json", "pve_json", "preview", "icons", "static_derive"]
 
-    def test_all_stages_are_once_per_tree(self):
-        """None of these run per density variant -- only for variant_idx == 0."""
-        for name, _gate, _fn, once_per_tree in STAGES:
-            assert once_per_tree is True, f"{name} should be once_per_tree"
+    def test_once_per_tree_flags(self):
+        """pve_json now runs per density variant (XRFF-283); the rest stay once_per_tree."""
+        once_per_tree_by_name = {name: once for name, _gate, _fn, once in STAGES}
+        assert once_per_tree_by_name["pve_json"] is False
+        for name in ("wind_json", "preview", "icons", "static_derive"):
+            assert once_per_tree_by_name[name] is True, f"{name} should be once_per_tree"
 
     def test_stage_functions_match_extracted_functions(self):
         expected = {

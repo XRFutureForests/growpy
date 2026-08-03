@@ -37,6 +37,12 @@ ALLOMETRY_DIRNAME = "allometry"
 # zero at BLEND_FLOOR_FRAC of it.
 BLEND_FLOOR_FRAC = 0.5
 
+# load_species_allometry() is called once per tree per export stage (directly
+# and via get_height_dbh_model()/correction_weight()); cache by resolved
+# artifact path so a dataset run doesn't re-read the same per-species JSON
+# from disk hundreds of times. write_species_allometry() keeps this in sync.
+_allometry_cache: dict[str, dict | None] = {}
+
 
 def get_allometry_dir() -> Path:
     """Directory holding per-species allometry artifacts."""
@@ -167,20 +173,30 @@ def write_species_allometry(record: dict) -> Path:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(record, f, indent=2)
+    _allometry_cache[str(out_path)] = record
     return out_path
 
 
 def load_species_allometry(species: str) -> dict | None:
-    """Load a species' allometry artifact, or None when absent/unreadable."""
+    """Load a species' allometry artifact, or None when absent/unreadable.
+
+    Cached by resolved artifact path (see _allometry_cache).
+    """
     path = _artifact_path(species)
+    key = str(path)
+    if key in _allometry_cache:
+        return _allometry_cache[key]
     if not path.exists():
+        _allometry_cache[key] = None
         return None
     try:
         with open(path, encoding="utf-8") as f:
-            return json.load(f)
+            record = json.load(f)
     except (OSError, json.JSONDecodeError) as e:
         logger.warning("Could not read allometry artifact %s: %s", path, e)
-        return None
+        record = None
+    _allometry_cache[key] = record
+    return record
 
 
 def get_height_dbh_model(species: str, preset_path: Path | None = None) -> dict | None:

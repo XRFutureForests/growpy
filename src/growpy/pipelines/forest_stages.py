@@ -23,7 +23,7 @@ from growpy import (
     GrowPyConfig,
     create_forest,
 )
-from growpy.config.paths import _find_species_row, radius_label
+from growpy.config.paths import _find_species_row, get_data_directory, radius_label
 from growpy.config.preset_overrides import (
     PresetOverrides,
     load_target_dbh_from_preset,
@@ -337,7 +337,7 @@ def write_pve_json(ctx: TreeExportContext) -> None:
     from growpy.io.unreal.pve_grove_mapper import generate_pve_from_grove
 
     pve_json_path = ctx.tree_dir / f"{ctx.file_prefix}_stems_unreal_pve.json"
-    pve_config_dir = Path("data/assets/pve_configs")
+    pve_config_dir = get_data_directory() / "assets" / "pve_configs"
     try:
         with ctx.timer.track("generate_pve_json"):
             generate_pve_from_grove(
@@ -349,6 +349,7 @@ def write_pve_json(ctx: TreeExportContext) -> None:
                 skeleton=ctx.skeleton,
                 bones_info=ctx.bones_info,
                 verbose=True,
+                twig_density=ctx.twig_density if ctx.twig_density is not None else 1.0,
                 pve_config_dir=pve_config_dir,
             )
     except Exception as pve_error:
@@ -418,7 +419,7 @@ StageGate = Callable[[TreeExportContext], bool]
 StageFn = Callable[[TreeExportContext], None]
 STAGES: list[tuple[str, StageGate, StageFn, bool]] = [
     ("wind_json", lambda c: c.cfg.unreal_generate_wind_data, write_wind_json, True),
-    ("pve_json", lambda c: not c.skip_pve_json, write_pve_json, True),
+    ("pve_json", lambda c: not c.skip_pve_json, write_pve_json, False),
     ("preview", lambda c: c.cfg.export_previews, write_previews, True),
     ("icons", lambda c: c.cfg.export_icons, write_icons, True),
     ("static_derive", lambda c: c.cfg.export_static, derive_static, True),

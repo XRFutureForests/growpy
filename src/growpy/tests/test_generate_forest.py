@@ -1,6 +1,8 @@
-"""Tests for growpy.cli.generate_forest._resolve_static_export_for_obj."""
+"""Tests for growpy.cli.generate_forest._resolve_static_export_for_obj and CLI arg validation."""
 
-from growpy.cli.generate_forest import _resolve_static_export_for_obj
+import pytest
+
+from growpy.cli.generate_forest import _resolve_static_export_for_obj, main
 
 
 class _FakeConfig:
@@ -45,3 +47,20 @@ class TestResolveStaticExportForObj:
         forced = _resolve_static_export_for_obj(config)
         assert forced is False
         assert config.export_static is True
+
+
+class TestSpeciesCsvMutualExclusion:
+    """XRFF-283: --species and csv_file are documented as mutually exclusive
+    but were not enforced -- the CSV was silently ignored when both were given.
+    """
+
+    def test_rejects_species_and_csv_file_together(self, monkeypatch, capsys, tmp_path):
+        csv_path = tmp_path / "forest.csv"
+        csv_path.write_text("x,y,species,height\n")
+        monkeypatch.setattr(
+            "sys.argv", ["generate_forest.py", str(csv_path), "--species", "Hazel"]
+        )
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        assert exc_info.value.code == 2
+        assert "mutually exclusive" in capsys.readouterr().err

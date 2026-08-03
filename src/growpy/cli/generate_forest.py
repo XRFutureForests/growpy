@@ -31,6 +31,7 @@ from growpy.config.preset_overrides import create_overrides_from_args
 from growpy.io.unreal.script_generation import generate_unreal_scripts
 from growpy.pipelines.forest_exports import generate_forest_exports
 from growpy.pipelines.forest_stages import generate_forest_stages
+from growpy.utils.naming import filename_safe_species_slug
 from growpy.utils.profiling import init_profiler
 
 logger = logging.getLogger(__name__)
@@ -386,6 +387,11 @@ Unreal Engine Integration:
 
     args = parser.parse_args()
 
+    if args.species and args.csv_file is not None:
+        parser.error(
+            "--species and csv_file are mutually exclusive -- pass one or the other"
+        )
+
     # Resolve config: TOML defaults + CLI overrides
     config = get_config()
     config.resolve(args)
@@ -551,18 +557,22 @@ Unreal Engine Integration:
             logger.info("- USD Importer plugin enabled")
             logger.info("- Editor Scripting Utilities plugin enabled")
 
-        # Pipeline completion summary (always visible, even in quiet mode)
+        # Pipeline completion summary (always visible, even in quiet mode).
+        # Scoped to this run's own species dirs -- output_dir is shared by every
+        # parallel step-4 worker, so an unscoped glob reports a cumulative count
+        # from every species already exported, not just this run's.
         total_time = timer.get_total_time() if timer.enabled else 0
-        skip_dirs = {"unreal_scripts", "Instances", "helios"}
-        tree_count = (
-            len(list(output_dir.glob(f"*/**/*_assembly*{config.usd_ext}")))
-            if output_dir.exists()
-            else 0
+        run_species_dirs = sorted(
+            {filename_safe_species_slug(sp) for sp in forest_data["species"].unique()}
         )
-        species_dirs = (
-            [d for d in output_dir.iterdir() if d.is_dir() and d.name not in skip_dirs]
-            if output_dir.exists()
-            else []
+        species_dirs = [
+            output_dir / sp_dir
+            for sp_dir in run_species_dirs
+            if (output_dir / sp_dir).is_dir()
+        ]
+        tree_count = sum(
+            len(list(sp_dir.glob(f"**/*_assembly*{config.usd_ext}")))
+            for sp_dir in species_dirs
         )
         summary_parts = [
             f"{tree_count} assemblies",
