@@ -7,3 +7,4 @@
 AGENTS.md merge=ours
 CLAUDE.md merge=ours
 .github/copilot-instructions.md merge=ours
+claude-code-skills merge=ours
