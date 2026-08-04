@@ -103,7 +103,7 @@ def _run_calibration_pass(
     presets_dir = analyzer.presets_dir
 
     # Resolve yield tables dir
-    yield_tables_dir = config.calibration_yield_tables_dir
+    yield_tables_dir = config.yield_sources_yield_tables_dir
     if not yield_tables_dir.is_absolute():
         yield_tables_dir = script_dir / yield_tables_dir
 

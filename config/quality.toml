@@ -12,6 +12,16 @@
 #   build_cutoff_age      - Skip branches younger than N growth cycles (Grove default 0)
 #   build_cutoff_thickness - Min branch diameter in meters to include (Grove default 0.0,
 #                           e.g. 0.005 = skip branches thinner than 5 mm)
+#                           CAUTION: raising this to cut mesh triangle count (e.g. for
+#                           conifer species with dense fine branching) removes the
+#                           youngest branches first -- exactly where Grove places most
+#                           twigs. Grove does not compensate foliage placement for
+#                           dropped branches, so the crown reads as too sparse. This
+#                           also removes the branch attachment points a custom
+#                           foliage-density method would otherwise pack twigs onto, so
+#                           even repacking remaining young branches at max density
+#                           cannot fill a crown that lost branches outright. Prefer
+#                           other levers (voxelization, resolution) for perf work.
 #   build_blend           - Extra geometry for smooth branch junctions (Grove default true)
 #   build_end_cap         - Close off open branch ends with geometry (Grove default true)
 #

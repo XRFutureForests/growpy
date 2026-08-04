@@ -93,7 +93,7 @@ def build_species_allometry(
     if yield_tables_dir is None:
         from growpy.config.paths import get_project_root
 
-        yield_tables_dir = config.calibration_yield_tables_dir
+        yield_tables_dir = config.yield_sources_yield_tables_dir
         if not yield_tables_dir.is_absolute():
             yield_tables_dir = get_project_root() / yield_tables_dir
 

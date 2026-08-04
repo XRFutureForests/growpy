@@ -45,9 +45,12 @@ generate_pve_presets = false
 generate_wind_data = true
 
 # --- ue_exec auto-restart watchdog (tools/ue_exec.py) ---
+# Separate from the import-script generation above: read only by the
+# standalone ue_exec.py watchdog tool, not by generate_forest.py.
 # Machine-specific absolute paths -- not committed with real values since this
 # config file ships in a public repo. Set these to use the watchdog without
 # passing --editor-exe/--uproject on every invocation. --editor-exe/--uproject
 # always take priority when given.
+[unreal.watchdog]
 # editor_exe = "C:\\Program Files\\Epic Games\\UE_5.7\\Engine\\Binaries\\Win64\\UnrealEditor.exe"
 # uproject = "D:\\Unreal\\XRLabDemo\\XRLabDemo.uproject"

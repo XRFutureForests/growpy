@@ -58,6 +58,12 @@ dbh_from_allometry = true
 # Binary USDC files are ~50% smaller on disk and faster for UE to parse,
 # significantly reducing memory pressure during import.
 usd_format = "usdc"
+# Export target. "unreal" runs the full USD/Nanite/PVE pipeline. "helios"
+# writes OBJ directly from the Grove model per tree for Helios++ LiDAR
+# simulation, skipping USD/skeleton/PVE/Unreal script generation for that
+# tree (see helios.toml for OBJ export settings). Twig prototype meshes still
+# come from the small, pre-existing per-species twig USD assets.
+mode = "unreal"
 # Export skeletal mesh assemblies (required for Unreal animation/wind)
 skeletal = true
 # Export static mesh assemblies (geometry only, no skeleton)
@@ -85,7 +91,7 @@ youth_bias = 2.0
 # Nanite encodes bone indices in 8-bit fields (max 256).
 # 0 = no limit (use for PVE native skeletal mesh path which has no constraint).
 # 250 = safe default for Nanite Assembly USD import path.
-max_skeleton_joints = 250
+max_skeleton_joints = 8192
 # Maximum twig instances per Nanite Assembly.
 # During UE import, NaniteAssemblyRootAPI expands all instances into a combined
 # Nanite mesh which can consume extreme amounts of RAM.

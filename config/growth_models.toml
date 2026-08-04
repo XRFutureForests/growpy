@@ -70,22 +70,21 @@ align_height = true
 # independent of calibration, since its input is the allometry artifact rather
 # than a simulated curve. `align_dbh` here is still read as a deprecated alias.
 
-# Directory for local yield table CSVs.
-# Format: age,height,dbh (age in years, height in meters, dbh in centimeters)
-# File naming: <standardized_species_name>.csv (e.g., norway_spruce.csv)
-yield_tables_dir = "data/input/yield_tables"
 # Generate comparison plots (even without calibration)
 # Plots are saved alongside growth models in data/assets/growth_models/<species>/
 plot = true
-# Yield table resolution order per species:
-#   1. Local CSV in yield_tables_dir (by standardized name)
-#   2. Ingested store (pylometree-ingest output in yield_sources.store_dir)
-# Species without yield data use uncalibrated Grove output for both height and DBH.
 
-# --- Yield table store ---
-# Pre-ingested yield tables from pylometree providers.
-# Run: pylometree-ingest --store-dir data/input/yield_tables/store
+# --- Yield table sources ---
+# Two yield-data sources, tried in order per species. Species without yield
+# data in either source use uncalibrated Grove output for both height and DBH.
 [yield_sources]
+# 1. Local CSV directory (by standardized species name).
+# Format: age,height,dbh (age in years, height in meters, dbh in centimeters)
+# File naming: <standardized_species_name>.csv (e.g., norway_spruce.csv)
+yield_tables_dir = "data/input/yield_tables"
+# 2. Ingested store, used when no local CSV matches -- pre-ingested yield
+# tables from pylometree providers.
+# Run: pylometree-ingest --store-dir data/input/yield_tables/store
 # Directory for the normalized yield table store (ingested CSVs + manifest)
 store_dir = "data/input/yield_tables/store"
 # Preferred region filter for table selection (case-insensitive exact match)
@@ -100,4 +99,3 @@ preferred_region = ""
 # Per-species overrides in [calibration.species."..."] take priority.
 # 0 = no preference (auto-select by simulated grove h50)
 preferred_site_index = 0
-

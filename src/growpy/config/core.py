@@ -218,9 +218,9 @@ class GrowPyConfig:
         "helios_simplification_per_species": "nested dict, config-only",
         "calibration_align_height": "internal tuning, no CLI need identified",
         "calibration_plot": "dead CLI mapping removed in XRFF-292; config-only",
-        "calibration_yield_tables_dir": "environment-level path, config-only",
         "calibration_species": "nested dict structure, config-only by design",
         "yield_sources_store_dir": "environment-level path, config-only by design",
+        "yield_sources_yield_tables_dir": "environment-level path, config-only",
         "yield_sources_preferred_region": "scenario-level setting, config-only",
         "yield_sources_preferred_site_index": "scenario-level setting, config-only",
         "surround_radii": "scenario-level setting, config-only by design",
@@ -366,13 +366,13 @@ class GrowPyConfig:
     # height-DBH allometry artifact, which needs no simulation.
     export_dbh_from_allometry: bool = True
     calibration_plot: bool = True
-    calibration_yield_tables_dir: Path = field(
-        default_factory=lambda: Path("data/input/yield_tables")
-    )
     # Per-species overrides: {species_name: {site_index, flushes_per_year, ...}}
     calibration_species: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     # [yield_sources]
+    yield_sources_yield_tables_dir: Path = field(
+        default_factory=lambda: Path("data/input/yield_tables")
+    )
     yield_sources_store_dir: Path = field(
         default_factory=lambda: Path("data/input/yield_tables/store")
     )
@@ -547,10 +547,11 @@ class GrowPyConfig:
             kwargs["unreal_generate_pve_presets"] = bool(unreal["generate_pve_presets"])
         if "pve_import_base" in unreal:
             kwargs["unreal_pve_import_base"] = str(unreal["pve_import_base"])
-        if "editor_exe" in unreal:
-            kwargs["unreal_editor_exe"] = str(unreal["editor_exe"])
-        if "uproject" in unreal:
-            kwargs["unreal_uproject"] = str(unreal["uproject"])
+        watchdog = unreal.get("watchdog", {})
+        if "editor_exe" in watchdog:
+            kwargs["unreal_editor_exe"] = str(watchdog["editor_exe"])
+        if "uproject" in watchdog:
+            kwargs["unreal_uproject"] = str(watchdog["uproject"])
 
         # [helios]
         helios = data.get("helios", {})
@@ -595,8 +596,6 @@ class GrowPyConfig:
             kwargs["calibration_align_height"] = cal["align_height"]
         if "plot" in cal:
             kwargs["calibration_plot"] = cal["plot"]
-        if "yield_tables_dir" in cal:
-            kwargs["calibration_yield_tables_dir"] = Path(cal["yield_tables_dir"])
         if "align_dbh" in cal:
             # Deprecated alias: DBH realisation no longer belongs to calibration.
             kwargs["export_dbh_from_allometry"] = cal["align_dbh"]
@@ -610,6 +609,8 @@ class GrowPyConfig:
         ys = data.get("yield_sources", {})
         if "store_dir" in ys:
             kwargs["yield_sources_store_dir"] = Path(ys["store_dir"])
+        if "yield_tables_dir" in ys:
+            kwargs["yield_sources_yield_tables_dir"] = Path(ys["yield_tables_dir"])
         if "preferred_region" in ys:
             kwargs["yield_sources_preferred_region"] = ys["preferred_region"]
         if "preferred_site_index" in ys:

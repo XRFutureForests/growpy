@@ -38,7 +38,10 @@ nanite_lerp_uvs = true
 generate_pve_presets = false
 
 # --- ue_exec auto-restart watchdog (tools/ue_exec.py) ---
+# Separate from the import-script generation above: read only by the
+# standalone ue_exec.py watchdog tool, not by generate_forest.py.
 # Machine-specific absolute paths -- leave commented out and pass
 # --editor-exe/--uproject instead, or fill these in for your machine.
+[unreal.watchdog]
 # editor_exe = "C:\\Program Files\\Epic Games\\UE_5.7\\Engine\\Binaries\\Win64\\UnrealEditor.exe"
 # uproject = "C:\\Path\\To\\YourProject.uproject"
