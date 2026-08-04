@@ -55,17 +55,15 @@ class TestGrowPyConfigDefaults:
         config = GrowPyConfig()
         assert config.export_icons is True
 
-    def test_default_export_twig_density_is_none(self):
+    def test_default_export_twig_density_is_natural(self):
+        # 1.0 == Grove's natural density, since cutoff losses are now recovered
+        # rather than compensated for by a multiplier.
         config = GrowPyConfig()
-        assert config.export_twig_density is None
+        assert config.export_twig_density == 1.0
 
-    def test_default_export_twig_density_conifer(self):
+    def test_default_twig_reattach_threshold(self):
         config = GrowPyConfig()
-        assert config.export_twig_density_conifer == 1.0
-
-    def test_default_export_twig_density_broadleaf(self):
-        config = GrowPyConfig()
-        assert config.export_twig_density_broadleaf == 2.5
+        assert config.export_twig_reattach_threshold == 0.01
 
     def test_default_growth_models_cycles(self):
         config = GrowPyConfig()
@@ -181,7 +179,6 @@ twig_density = 0.5
         assert config.export_static is True
         assert config.export_twig_density == 0.5
 
-
     def test_toml_export_previews_and_icons(self, tmp_path):
         toml_content = b"""
 [export]
@@ -195,19 +192,20 @@ icons = false
         assert config.export_previews is False
         assert config.export_icons is False
 
-    def test_toml_export_twig_density_conifer_broadleaf(self, tmp_path):
-        toml_content = b"""
-[export]
-twig_density_conifer = 0.8
-twig_density_broadleaf = 3.0
-"""
-        toml_file = tmp_path / "growpy.toml"
-        toml_file.write_bytes(toml_content)
+    def test_toml_retired_per_habit_density_keys_raise(self, tmp_path):
+        # These were hand-set guesses at the cutoff loss. Failing loudly beats
+        # silently ignoring them and shipping a crown at the wrong density.
+        for key in ("twig_density_conifer", "twig_density_broadleaf"):
+            toml_file = tmp_path / f"growpy_{key}.toml"
+            toml_file.write_bytes(f"[export]\n{key} = 0.8\n".encode())
+            with pytest.raises(ValueError, match="was retired"):
+                GrowPyConfig.from_toml(toml_file, set_as_global=False)
 
+    def test_toml_twig_reattach_threshold(self, tmp_path):
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(b"[export]\ntwig_reattach_threshold = 0.05\n")
         config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
-        assert config.export_twig_density is None
-        assert config.export_twig_density_conifer == 0.8
-        assert config.export_twig_density_broadleaf == 3.0
+        assert config.export_twig_reattach_threshold == 0.05
 
     def test_toml_export_mode_helios(self, tmp_path):
         toml_content = b"""
@@ -462,8 +460,6 @@ class TestCliMappingsConsistency:
         assert not overlap, f"Fields both allowlisted and CLI-mapped: {sorted(overlap)}"
 
 
-
-
 class TestGlobalConfig:
     """Tests for global config singleton management."""
 
@@ -560,37 +556,40 @@ class TestDensityVariants:
         assert variants[0][0] == "bare"
 
 
-
 class TestGetTwigDensityBase:
-    """Tests for GrowPyConfig.get_twig_density_base species-type resolution."""
+    """get_twig_density_base is now species-independent.
 
-    def test_explicit_override_wins_for_any_species(self, monkeypatch):
+    The per-habit constants it used to resolve existed only to guess at the twig
+    loss from build_cutoff_thickness. Recovery restores those twigs exactly, per
+    tree, so the multiplier is purely artistic and must not vary by species.
+    """
+
+    def test_returns_configured_density(self):
         config = GrowPyConfig(export_twig_density=0.7)
-        monkeypatch.setattr(
-            "growpy.config.paths.get_species_growth_habit", lambda species: "broadleaf"
-        )
         assert config.get_twig_density_base("European beech") == 0.7
 
-    def test_broadleaf_species_uses_broadleaf_default(self, monkeypatch):
-        config = GrowPyConfig()
+    def test_default_is_natural_density(self):
+        assert GrowPyConfig().get_twig_density_base("European oak") == 1.0
+
+    def test_identical_across_growth_habits(self, monkeypatch):
+        # Would have returned 2.5 vs 1.0 before; a beech and a spruce must now
+        # get the same multiplier, because each tree self-calibrates.
+        config = GrowPyConfig(export_twig_density=1.3)
         monkeypatch.setattr(
             "growpy.config.paths.get_species_growth_habit", lambda species: "broadleaf"
         )
-        assert config.get_twig_density_base("European beech") == 2.5
-
-    def test_conifer_species_uses_conifer_default(self, monkeypatch):
-        config = GrowPyConfig()
+        broadleaf = config.get_twig_density_base("European beech")
         monkeypatch.setattr(
             "growpy.config.paths.get_species_growth_habit", lambda species: "conifer"
         )
-        assert config.get_twig_density_base("Norway spruce") == 1.0
+        assert config.get_twig_density_base("Norway spruce") == broadleaf == 1.3
 
-    def test_unclassified_species_falls_back_to_conifer_default(self, monkeypatch):
-        config = GrowPyConfig()
+    def test_unclassified_species_resolves(self, monkeypatch):
+        config = GrowPyConfig(export_twig_density=0.9)
         monkeypatch.setattr(
             "growpy.config.paths.get_species_growth_habit", lambda species: None
         )
-        assert config.get_twig_density_base("Unknown species") == 1.0
+        assert config.get_twig_density_base("Unknown species") == 0.9
 
 
 class TestGetSimplificationRatios:
@@ -599,22 +598,34 @@ class TestGetSimplificationRatios:
     def test_unlisted_species_returns_all_globals(self):
         config = GrowPyConfig(
             helios_simplification_ratios={
-                "bark": 0.2, "wood": 0.2, "leaf": 0.5, "fruit": 0.2,
+                "bark": 0.2,
+                "wood": 0.2,
+                "leaf": 0.5,
+                "fruit": 0.2,
             }
         )
         assert config.get_simplification_ratios("selected_scots_pine") == {
-            "bark": 0.2, "wood": 0.2, "leaf": 0.5, "fruit": 0.2,
+            "bark": 0.2,
+            "wood": 0.2,
+            "leaf": 0.5,
+            "fruit": 0.2,
         }
 
     def test_per_species_override_merges_over_globals(self):
         config = GrowPyConfig(
             helios_simplification_ratios={
-                "bark": 0.2, "wood": 0.2, "leaf": 0.5, "fruit": 0.2,
+                "bark": 0.2,
+                "wood": 0.2,
+                "leaf": 0.5,
+                "fruit": 0.2,
             },
             helios_simplification_per_species={
                 "selected_european_oak": {"bark": 0.1},
             },
         )
         assert config.get_simplification_ratios("selected_european_oak") == {
-            "bark": 0.1, "wood": 0.2, "leaf": 0.5, "fruit": 0.2,
+            "bark": 0.1,
+            "wood": 0.2,
+            "leaf": 0.5,
+            "fruit": 0.2,
         }

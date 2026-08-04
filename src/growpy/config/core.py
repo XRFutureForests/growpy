@@ -198,8 +198,7 @@ class GrowPyConfig:
         "export_max_assembly_instances": "internal tuning, no CLI need identified",
         "export_dbh_from_allometry": "internal tuning, no CLI need identified",
         "export_twig_density": "internal tuning, no CLI need identified",
-        "export_twig_density_conifer": "internal tuning, no CLI need identified",
-        "export_twig_density_broadleaf": "internal tuning, no CLI need identified",
+        "export_twig_reattach_threshold": "internal tuning, no CLI need identified",
         "export_youth_bias": "internal tuning, no CLI need identified",
         "export_density_variants": "scenario-level choice, config-only by design",
         "density_variant_defs": "nested dict structure, config-only by design",
@@ -235,7 +234,6 @@ class GrowPyConfig:
     DENSITY_VARIANT_KEYS: ClassVar[frozenset[str]] = frozenset(
         {"twig_density", "build_cutoff_age", "build_cutoff_thickness"}
     )
-
 
     # [general]
     random_seed: int | None = 42
@@ -316,13 +314,21 @@ class GrowPyConfig:
         0  # 0 = no limit; cap twig instances per assembly
     )
     export_skip_validation: bool = True
-    # Base twig density multiplier. None (default) = auto-select by species
-    # growth habit via export_twig_density_conifer / export_twig_density_broadleaf
-    # (see tree_asset_lookup.csv Competition Group). Set explicitly in TOML to
-    # override uniformly for all species, restoring the old single-value behavior.
-    export_twig_density: float | None = None
-    export_twig_density_conifer: float = 1.0
-    export_twig_density_broadleaf: float = 2.5
+    # Crown density multiplier relative to Grove's NATURAL twig density.
+    # 1.0 = exactly what Grove grew. Twigs deleted by build_cutoff_thickness are
+    # restored by recovery (see core.twig.recover_cutoff_twig_placements), so
+    # this is a purely artistic knob and no longer has to compensate for the
+    # cutoff. The per-tree CSV twig_density column multiplies with it.
+    #
+    # It replaced export_twig_density_conifer / export_twig_density_broadleaf,
+    # which were hand-set compensation guesses. Measured cutoff losses vary far
+    # more within a growth habit than between habits (oak 2.09x vs beech 5.43x;
+    # spruce 1.04x vs pine 2.20x) and also move with tree age and cutoff, so no
+    # per-habit constant could track them.
+    export_twig_density: float = 1.0
+    # Distance (m) beyond which a twig orphaned by the cutoff is pulled back
+    # onto the surviving surface instead of left where Grove placed it.
+    export_twig_reattach_threshold: float = 0.01
     export_youth_bias: float = 1.0
     export_density_variants: list = field(default_factory=list)
     density_variant_defs: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -501,12 +507,20 @@ class GrowPyConfig:
             kwargs["export_dbh_from_allometry"] = export["radial_scale"]
         if "twig_density" in export:
             kwargs["export_twig_density"] = float(export["twig_density"])
-        if "twig_density_conifer" in export:
-            kwargs["export_twig_density_conifer"] = float(export["twig_density_conifer"])
-        if "twig_density_broadleaf" in export:
-            kwargs["export_twig_density_broadleaf"] = float(
-                export["twig_density_broadleaf"]
+        if "twig_reattach_threshold" in export:
+            kwargs["export_twig_reattach_threshold"] = float(
+                export["twig_reattach_threshold"]
             )
+        for _retired in ("twig_density_conifer", "twig_density_broadleaf"):
+            if _retired in export:
+                raise ValueError(
+                    f"[export] {_retired} was retired: it was a hand-set guess at "
+                    "how many twigs build_cutoff_thickness deletes, and the real "
+                    "loss varies more within a growth habit than between habits. "
+                    "Those twigs are now recovered from Grove directly. Use "
+                    "[export] twig_density as a plain multiplier on natural "
+                    "density (1.0 = as grown)."
+                )
         if "youth_bias" in export:
             kwargs["export_youth_bias"] = export["youth_bias"]
         if "export_trees" in export:
@@ -634,9 +648,19 @@ class GrowPyConfig:
         # Warn about unrecognized top-level sections (usually a typo in the TOML);
         # such sections are otherwise silently ignored and defaults are used.
         _known_sections = {
-            "general", "assets", "twigs", "growth_models", "forest", "export",
-            "density_variant", "unreal", "helios", "calibration", "yield_sources",
-            "surround", "quality",
+            "general",
+            "assets",
+            "twigs",
+            "growth_models",
+            "forest",
+            "export",
+            "density_variant",
+            "unreal",
+            "helios",
+            "calibration",
+            "yield_sources",
+            "surround",
+            "quality",
         }
         for _section in data:
             if _section not in _known_sections:
@@ -700,8 +724,7 @@ class GrowPyConfig:
         for name in self.export_density_variants:
             if name not in self.density_variant_defs:
                 raise ValueError(
-                    f"Density variant '{name}' not defined "
-                    f"in [density_variant.{name}]"
+                    f"Density variant '{name}' not defined in [density_variant.{name}]"
                 )
             vcfg = self.density_variant_defs[name]
             unknown = set(vcfg) - self.DENSITY_VARIANT_KEYS
@@ -715,25 +738,15 @@ class GrowPyConfig:
         return result
 
     def get_twig_density_base(self, species: str) -> float:
-        """Resolve the base twig-density multiplier for a species.
+        """Return the crown-density multiplier relative to natural density.
 
-        An explicit ``export_twig_density`` (set via [export] twig_density in
-        TOML) overrides everything uniformly, for back-compat with a single
-        global knob. Otherwise the species' growth habit (conifer/broadleaf,
-        from tree_asset_lookup.csv's Competition Group column) picks between
-        export_twig_density_conifer and export_twig_density_broadleaf.
-        Species without a resolvable growth habit fall back to the conifer
-        value (the more conservative default).
+        Species-independent by design. The per-habit constants this replaced
+        existed only to guess at the twig loss from build_cutoff_thickness;
+        recovery now restores those twigs exactly, per tree, so the multiplier
+        is purely artistic. ``species`` is retained for call-site compatibility.
         """
-        if self.export_twig_density is not None:
-            return self.export_twig_density
-
-        from .paths import get_species_growth_habit
-
-        habit = get_species_growth_habit(species)
-        if habit == "broadleaf":
-            return self.export_twig_density_broadleaf
-        return self.export_twig_density_conifer
+        del species  # density is no longer species-dependent
+        return self.export_twig_density
 
     def get_simplification_ratios(self, species_clean: str) -> dict[str, float]:
         """Return Helios OBJ simplification ratios for a species.

@@ -53,18 +53,17 @@ skeletal = true
 # Export static mesh assemblies (geometry only, no skeleton)
 # When both skeletal and static are enabled, static is derived from skeletal
 static = false
-# Base twig density multiplier applied to all trees globally.
-# Default: auto-selects by species growth habit -- broadleaf species get
-# twig_density_broadleaf, conifers get twig_density_conifer (see below).
-# Uncomment to force a single uniform base for all species instead:
-# twig_density = 1.0
+# Crown density multiplier, relative to Grove's NATURAL twig density.
+# 1.0 = exactly what Grove grew. Twigs that build_cutoff_thickness deletes are
+# restored from Grove directly (twig recovery), so this no longer compensates
+# for the cutoff -- it is a purely artistic knob.
 # Values > 1.0 add synthetic twigs; values < 1.0 thin existing placements.
-# Compensates for twig loss from build_cutoff.
-# Per-tree scaling: the input CSV twig_density column is a scale factor
-# multiplied with this base (e.g., base=2.0, CSV=0.5 -> effective 1.0).
-# Range: 0.0 (no twigs) to 3.0+ (dense canopy)
-twig_density_conifer = 1.0
-twig_density_broadleaf = 2.5
+# The per-tree CSV twig_density column multiplies with this base.
+# Range: 0.0 (no twigs) to 2.0+ (denser than natural)
+twig_density = 1.0
+# Distance (m) beyond which a twig orphaned by the cutoff is pulled back onto
+# the surviving surface and re-aimed, instead of left where Grove placed it.
+twig_reattach_threshold = 0.01
 # Youth bias exponent for synthetic twig placement.
 # Controls how strongly additional twigs prefer younger branches.
 # 1.0 = linear (default), >1.0 = stronger youth preference, <1.0 = more uniform.
@@ -80,9 +79,11 @@ max_skeleton_joints = 0
 # Maximum twig instances per Nanite Assembly.
 # During UE import, NaniteAssemblyRootAPI expands all instances into a combined
 # Nanite mesh which can consume extreme amounts of RAM.
-# 0 = no limit.  5000 = safe default for 64 GB systems.
-# Instances beyond this limit are randomly removed (uniform across twig types).
-max_assembly_instances = 4096
+# 0 = no limit.
+# Instances beyond this limit are removed proximity-weighted (crowded twigs go
+# first). With twig recovery active this cap, not twig_density, is what limits
+# the crown on mature trees -- a 10 m oak reaches ~52k instances naturally.
+max_assembly_instances = 100000
 # Skip assembly validation (saves ~5-10% export time)
 skip_validation = true
 # Only export specific trees by fid (integer array)

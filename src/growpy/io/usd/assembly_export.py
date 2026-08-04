@@ -1041,6 +1041,9 @@ def export_tree_as_nanite_assembly(
                             model,
                             bones_info=bones_info if not use_static_mesh else None,
                             scaled_points=_sp,
+                            reattach_threshold=(
+                                _get_config().export_twig_reattach_threshold
+                            ),
                         )
                         for twig_type, plist in recovered.items():
                             twig_placements.setdefault(twig_type, []).extend(plist)
