@@ -42,7 +42,7 @@ height_interval = 5
 # 0 = no limit (use full CSV heights)
 # This is a step-4 (export) setting only; step 3's calibration has its own
 # independent [growth_models] max_height in growth_models.toml.
-max_height = 20
+max_height = 15
 
 # --- Export options ---
 [export]

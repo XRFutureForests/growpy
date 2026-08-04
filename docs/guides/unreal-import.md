@@ -9,7 +9,7 @@ GrowPy emits USD Nanite Assemblies ready for UE 5.7+. This guide covers the full
 | **Engine** | Unreal Engine 5.7+ (Nanite Assembly needs 5.7) |
 | **Plugins** | USD Importer, Nanite (experimental), Nanite Foliage (experimental), Dynamic Wind (experimental), Python Editor Script Plugin |
 | **Project settings** | USD Importer → "Use Nanite" enabled; Remote Execution enabled (for auto-import from VS Code) |
-| **Host-side** | Python packages `unreal-stubs` optional; `ue_exec` for remote-exec |
+| **Host-side** | Python packages `unreal-stubs` optional; `growpy-ue-exec` for remote-exec |
 
 ## What Step 4 produces for UE
 
@@ -84,22 +84,22 @@ normal_precision         = -1
 Order matters — twigs first, then per-species, then sidecars:
 
 ```bash
-# From host, via ue_exec (remote python):
-ue_exec data/output/forest/unreal_scripts/import_batch_00_instances.py
-ue_exec data/output/forest/unreal_scripts/import_batch_01_norway_spruce.py
-ue_exec data/output/forest/unreal_scripts/import_batch_02_european_beech.py
+# From host, via growpy-ue-exec (remote python):
+growpy-ue-exec data/output/forest/unreal_scripts/import_batch_00_instances.py
+growpy-ue-exec data/output/forest/unreal_scripts/import_batch_01_norway_spruce.py
+growpy-ue-exec data/output/forest/unreal_scripts/import_batch_02_european_beech.py
 # ... one per species
 
 # Sidecars
-ue_exec data/output/forest/unreal_scripts/wind_import.py
-ue_exec data/output/forest/unreal_scripts/pve_preset_import.py
-ue_exec data/output/forest/unreal_scripts/pve_graph_builder.py
+growpy-ue-exec data/output/forest/unreal_scripts/wind_import.py
+growpy-ue-exec data/output/forest/unreal_scripts/pve_preset_import.py
+growpy-ue-exec data/output/forest/unreal_scripts/pve_graph_builder.py
 
 # After UE restart (best VRAM headroom):
-ue_exec data/output/forest/unreal_scripts/growpy_nanite_voxelize.py
+growpy-ue-exec data/output/forest/unreal_scripts/growpy_nanite_voxelize.py
 ```
 
-`ue_exec` routes via UE's Remote Execution Protocol. Alternative: paste the file contents into the Python console inside UE.
+`growpy-ue-exec` routes via UE's Remote Execution Protocol. Alternative: paste the file contents into the Python console inside UE.
 
 ### Batch sizing
 
@@ -114,9 +114,9 @@ If a batch OOMs, reduce `target_residency_kb` or split species manually.
 
 ### Auto-restart watchdog
 
-Native Nanite/USD mesh builds leak committed memory that cleanup/GC cannot reclaim. Past a certain point Windows refuses to commit more pages ("the paging file is too small") and UE crashes outright. `ue_exec` runs a background RAM watchdog alongside every script: if system RAM crosses `--restart-ram-limit` (default 82%), it kills UE proactively, relaunches it, waits for Remote Execution to come back, and resends the same script. The same restart logic also fires reactively if UE crashes on its own. Per-file/per-mesh `done.txt` progress tracking in every generated script makes this safe -- already-completed work is skipped on resume.
+Native Nanite/USD mesh builds leak committed memory that cleanup/GC cannot reclaim. Past a certain point Windows refuses to commit more pages ("the paging file is too small") and UE crashes outright. `growpy-ue-exec` runs a background RAM watchdog alongside every script: if system RAM crosses `--restart-ram-limit` (default 82%), it kills UE proactively, relaunches it, waits for Remote Execution to come back, and resends the same script. The same restart logic also fires reactively if UE crashes on its own. Per-file/per-mesh `done.txt` progress tracking in every generated script makes this safe -- already-completed work is skipped on resume.
 
-The watchdog needs to know your UE install and `.uproject` path to relaunch it. Resolution order: `--editor-exe` / `--uproject` on the CLI, then `[unreal] editor_exe` / `uproject` in config, in that order. Neither is hardcoded (they're machine-specific absolute paths and this package is publicly mirrored) -- if the watchdog is enabled (`--restart-ram-limit` > 0, the default) and neither source resolves a value, `ue_exec` refuses to start with an actionable error instead of failing mid-import. Pass `--restart-ram-limit 0` to disable the watchdog entirely (no path needed then); `--max-restarts` caps retries.
+The watchdog needs to know your UE install and `.uproject` path to relaunch it. Resolution order: `--editor-exe` / `--uproject` on the CLI, then `[unreal] editor_exe` / `uproject` in config, in that order. Neither is hardcoded (they're machine-specific absolute paths and this package is publicly mirrored) -- if the watchdog is enabled (`--restart-ram-limit` > 0, the default) and neither source resolves a value, `growpy-ue-exec` refuses to start with an actionable error instead of failing mid-import. Pass `--restart-ram-limit 0` to disable the watchdog entirely (no path needed then); `--max-restarts` caps retries.
 
 ## DynamicWind
 
@@ -158,7 +158,7 @@ Voxelization gives Nanite streaming at distance (fallback mesh representation). 
 
 ```bash
 # restart UE editor first
-ue_exec data/output/forest/unreal_scripts/growpy_nanite_voxelize.py
+growpy-ue-exec data/output/forest/unreal_scripts/growpy_nanite_voxelize.py
 ```
 
 Configured via `[unreal.nanite]` in `unreal.toml`. The script walks every assembly under `project_path` and calls `_set_nanite_shape_voxelize`.

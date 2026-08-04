@@ -183,11 +183,13 @@ def build_tree_mesh(
         # branches scale proportionally with the trunk. Full correction
         # at breast height, 30% correction retained at the crown.
         #
-        # Scale direction: at branch-trunk junctions, the scaling axis
-        # transitions from the trunk axis (at the connection surface) to
-        # the branch axis (further along the branch). This prevents gaps
-        # when shrinking — branch-base vertices follow the trunk surface
-        # inward rather than collapsing toward their own branch centerline.
+        # Scale direction: at every bone-to-bone junction (trunk-to-branch
+        # and branch-to-sub-branch alike), the scaling axis transitions
+        # smoothly between the parent bone's axis and the child bone's axis
+        # near the connection, applied symmetrically on both the parent-
+        # owned and child-owned sides of the seam. This prevents gaps and
+        # cracks at connection points regardless of which bone Grove
+        # happened to weight a given seam vertex to.
         #
         # Requires bones_info + vertex bone IDs; skipped otherwise.
         if (
@@ -209,13 +211,14 @@ def build_tree_mesh(
 
             bone_id_offset = min(vertex_bone_ids)
 
-            # Trunk branch_id = first bone's branch_id (bone index 7)
-            trunk_branch_id = int(bones_info[0][7]) if len(bones_info[0]) >= 8 else -1
-
-            # Build per-bone data
+            # Build per-bone axis/start plus direct parent/child links.
+            # Every bone-to-bone connection (trunk-to-branch and
+            # branch-to-sub-branch alike) is handled the same way below —
+            # there is no special-casing of which branch order a bone
+            # belongs to.
             bone_axes = []
             bone_starts = []
-            bone_branch_ids = []
+            bone_parent: list[int | None] = []
             for bone in bones_info:
                 sp, ep = bone[2], bone[3]
                 dx = ep.x - sp.x
@@ -228,8 +231,9 @@ def build_tree_mesh(
                 else:
                     bone_axes.append((0.0, 1.0, 0.0))
                 bone_starts.append((sp.x, sp.y, sp.z))
-                bone_branch_ids.append(
-                    int(bone[7]) if len(bone) >= 8 else trunk_branch_id
+                parent_local = bone[1] - bone_id_offset
+                bone_parent.append(
+                    parent_local if 0 <= parent_local < len(bones_info) else None
                 )
 
             # Normalize bone_starts to local space.
@@ -242,87 +246,41 @@ def build_tree_mesh(
                 for bx, by, bz in bone_starts
             ]
 
-            # Determine which bones are trunk (order 0) vs branch
-            is_trunk_bone = [
-                bone_branch_ids[i] == trunk_branch_id for i in range(len(bones_info))
-            ]
+            # Invert parent links so each bone knows its direct children.
+            bone_children: dict[int, list[int]] = {}
+            for idx, parent_local in enumerate(bone_parent):
+                if parent_local is not None:
+                    bone_children.setdefault(parent_local, []).append(idx)
 
-            # For each non-trunk bone, find the parent trunk bone axis
-            # so we can blend the scaling direction at junctions.
-            # Walk parent chain until we hit a trunk bone.
-            parent_trunk_axis: list[tuple[float, float, float] | None] = [None] * len(
-                bones_info
-            )
-            parent_trunk_start: list[tuple[float, float, float] | None] = [None] * len(
-                bones_info
-            )
-            for idx in range(len(bones_info)):
-                if is_trunk_bone[idx]:
-                    continue
-                cur = idx
-                visited = set()
-                while cur >= 0 and cur not in visited:
-                    visited.add(cur)
-                    parent_global = bones_info[cur][1]
-                    parent_local = parent_global - bone_id_offset
-                    if parent_local < 0 or parent_local >= len(bones_info):
-                        break
-                    if is_trunk_bone[parent_local]:
-                        parent_trunk_axis[idx] = bone_axes[parent_local]
-                        parent_trunk_start[idx] = bone_starts[parent_local]
-                        break
-                    cur = parent_local
-
-            # Cumulative bone-chain distance from the first non-trunk bone
-            # (branch root) to each bone along the branch. Used to blend
-            # the scaling axis from trunk direction to branch direction.
-            branch_root_of = {}
-            for idx in range(len(bones_info)):
-                if is_trunk_bone[idx] or parent_trunk_axis[idx] is None:
-                    continue
-                # Walk parent chain to find first non-trunk bone (root)
-                cur = idx
-                visited = set()
-                root = idx
-                while cur >= 0 and cur not in visited:
-                    visited.add(cur)
-                    parent_global = bones_info[cur][1]
-                    parent_local = parent_global - bone_id_offset
-                    if parent_local < 0 or parent_local >= len(bones_info):
-                        break
-                    if is_trunk_bone[parent_local]:
-                        root = cur
-                        break
-                    root = parent_local
-                    cur = parent_local
-                branch_root_of[idx] = root
-
-            junction_chain_dist = {}
-            for idx in branch_root_of:
-                root = branch_root_of[idx]
-                if idx == root:
-                    junction_chain_dist[idx] = 0.0
-                else:
-                    dist = 0.0
-                    cur = idx
-                    visited = set()
-                    while cur != root and cur >= 0 and cur not in visited:
-                        visited.add(cur)
-                        parent_global = bones_info[cur][1]
-                        parent_local = parent_global - bone_id_offset
-                        if parent_local < 0 or parent_local >= len(bones_info):
-                            break
-                        csx, csy, csz = bone_starts[cur]
-                        cpx, cpy, cpz = bone_starts[parent_local]
-                        ddx, ddy, ddz = csx - cpx, csy - cpy, csz - cpz
-                        dist += math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz)
-                        cur = parent_local
-                    junction_chain_dist[idx] = dist
-
-            # Distance over which the scaling axis transitions from trunk
-            # to branch direction. Must exceed trunk radius so surface
-            # vertices at the junction follow the trunk surface.
+            # Distance (meters) over which the scaling axis transitions
+            # across a bone-to-bone junction. Must exceed a branch's own
+            # radius so surface vertices at the connection follow the
+            # wider parent's surface instead of collapsing toward the
+            # child's own centerline.
             axis_blend_dist = 0.5
+
+            def _lerp_frame(
+                ax: float, ay: float, az: float,
+                bx: float, by: float, bz: float,
+                target_idx: int,
+                weight: float,
+            ) -> tuple[float, float, float, float, float, float]:
+                """Blend (axis, origin) toward target_idx's own frame by `weight`."""
+                tax, tay, taz = bone_axes[target_idx]
+                tbx, tby, tbz = bone_starts[target_idx]
+                nax = ax + (tax - ax) * weight
+                nay = ay + (tay - ay) * weight
+                naz = az + (taz - az) * weight
+                ln = math.sqrt(nax * nax + nay * nay + naz * naz)
+                if ln > 1e-6:
+                    inv_ln = 1.0 / ln
+                    nax *= inv_ln
+                    nay *= inv_ln
+                    naz *= inv_ln
+                nbx = bx + (tbx - bx) * weight
+                nby = by + (tby - by) * weight
+                nbz = bz + (tbz - bz) * weight
+                return nax, nay, naz, nbx, nby, nbz
 
             usd_points = []
             for i, p in enumerate(points):
@@ -346,51 +304,65 @@ def build_tree_mesh(
                     usd_points.append(Gf.Vec3f(p.x, p.y, p.z))
                     continue
 
-                # Determine scaling axis and reference point.
-                # Trunk bones: use own axis directly.
-                # Branch bones near junction: blend from trunk axis to
-                # branch axis so vertices at the connection surface move
-                # with the trunk rather than toward the branch centerline.
-                if (
-                    not is_trunk_bone[local_idx]
-                    and parent_trunk_axis[local_idx] is not None
-                ):
-                    chain_d = junction_chain_dist.get(local_idx, 0.0)
-                    jax, jay, jaz = bone_axes[local_idx]
-                    jsx, jsy, jsz = bone_starts[local_idx]
-                    along = max(
-                        0.0,
-                        (p.x - jsx) * jax + (p.y - jsy) * jay + (p.z - jsz) * jaz,
-                    )
-                    dist_along = chain_d + along
-                    if dist_along >= axis_blend_dist:
-                        # Far enough from junction — use branch axis
-                        ax, ay, az = jax, jay, jaz
-                        bx, by, bz = jsx, jsy, jsz
-                    else:
-                        # Blend axis: trunk axis -> branch axis
-                        at = dist_along / axis_blend_dist
-                        at = at * at * (3.0 - 2.0 * at)
-                        pt_axis = parent_trunk_axis[local_idx] or (0.0, 1.0, 0.0)
-                        pt_start = parent_trunk_start[local_idx] or (0.0, 0.0, 0.0)
-                        tax, tay, taz = pt_axis
-                        ax = tax + (jax - tax) * at
-                        ay = tay + (jay - tay) * at
-                        az = taz + (jaz - taz) * at
-                        ln = math.sqrt(ax * ax + ay * ay + az * az)
-                        if ln > 1e-6:
-                            inv_ln = 1.0 / ln
-                            ax *= inv_ln
-                            ay *= inv_ln
-                            az *= inv_ln
-                        # Blend reference point: trunk start -> bone start
-                        tbx, tby, tbz = pt_start
-                        bx = tbx + (jsx - tbx) * at
-                        by = tby + (jsy - tby) * at
-                        bz = tbz + (jsz - tbz) * at
-                else:
-                    ax, ay, az = bone_axes[local_idx]
-                    bx, by, bz = bone_starts[local_idx]
+                # Start from this vertex's own bone frame.
+                ax, ay, az = bone_axes[local_idx]
+                bx, by, bz = bone_starts[local_idx]
+
+                # Near this bone's own start: blend toward the parent bone
+                # so vertices right at the connection move with the wider
+                # parent surface instead of snapping to this bone's own
+                # direction.
+                parent_local = bone_parent[local_idx]
+                if parent_local is not None:
+                    vx0, vy0, vz0 = p.x - bx, p.y - by, p.z - bz
+                    along = max(0.0, vx0 * ax + vy0 * ay + vz0 * az)
+                    if along < axis_blend_dist:
+                        w = 1.0 - along / axis_blend_dist
+                        w = w * w * (3.0 - 2.0 * w)
+                        ax, ay, az, bx, by, bz = _lerp_frame(
+                            ax, ay, az, bx, by, bz, parent_local, w
+                        )
+
+                # Near where a child bone begins: blend toward that child
+                # so the parent surface matches the child's own blended
+                # axis at the same connection. This applies regardless of
+                # whether Grove happened to weight this specific vertex to
+                # the parent or to the child bone — otherwise the two
+                # halves of the same seam scale along different axes and
+                # tear apart once radial_scale != 1.0.
+                children = bone_children.get(local_idx)
+                if children:
+                    best_along = None
+                    best_child = None
+                    for child_idx in children:
+                        cax, cay, caz = bone_axes[child_idx]
+                        csx, csy, csz = bone_starts[child_idx]
+                        cvx, cvy, cvz = p.x - csx, p.y - csy, p.z - csz
+                        cdot = cvx * cax + cvy * cay + cvz * caz
+                        along = max(0.0, cdot)
+                        if along >= axis_blend_dist:
+                            continue
+                        perp_x = cvx - cdot * cax
+                        perp_y = cvy - cdot * cay
+                        perp_z = cvz - cdot * caz
+                        perp_dist = math.sqrt(
+                            perp_x * perp_x + perp_y * perp_y + perp_z * perp_z
+                        )
+                        child_bone = bones_info[child_idx]
+                        child_radius = (
+                            child_bone[4] if len(child_bone) >= 5 else axis_blend_dist
+                        )
+                        if perp_dist > child_radius * 2.0:
+                            continue
+                        if best_along is None or along < best_along:
+                            best_along = along
+                            best_child = child_idx
+                    if best_child is not None:
+                        w = best_along / axis_blend_dist
+                        w = w * w * (3.0 - 2.0 * w)
+                        ax, ay, az, bx, by, bz = _lerp_frame(
+                            ax, ay, az, bx, by, bz, best_child, w
+                        )
 
                 vx, vy, vz = p.x - bx, p.y - by, p.z - bz
                 dot = vx * ax + vy * ay + vz * az
