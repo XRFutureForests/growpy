@@ -13,6 +13,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Grove's twig frame quaternion, (w, x, y, z). Rotating +X by it reproduces
+# get_twig_directions() exactly, so it carries the growth direction AND the
+# phyllotactic roll Grove derives from the species preset.
+IDENTITY_QUAT = (1.0, 0.0, 0.0, 0.0)
+
 
 @dataclass
 class TwigPlacement:
@@ -21,11 +26,8 @@ class TwigPlacement:
     type: str  # 'twig_long', 'twig_short', 'twig_upward', 'twig_dead'
     position: tuple[float, float, float]
     normal: tuple[float, float, float]  # Facing direction (from get_twig_directions)
-    orientation: tuple[float, float, float] = (
-        0.0,
-        0.0,
-        1.0,
-    )  # Up vector (from get_twig_orientations)
+    orientation: tuple[float, float, float, float] = IDENTITY_QUAT
+    # Grove's twig frame quaternion (w, x, y, z) from get_twig_orientations()
     scale: float = 1.0
     bone_id: int | None = None  # Direct bone ID from point_attribute_bone_id
     branch_id: int | None = None  # Branch ID for binding to branch_X joints
@@ -169,6 +171,79 @@ def rotation_matrix_to_quaternion(
         return (1.0, 0.0, 0.0, 0.0)
 
 
+# Angle between a twig's growth direction and its parent branch axis. 0 deg lays
+# the twig flat along the bark, so its leaves fan straight into the branch mesh;
+# 90 deg stands it edge-on. Real twigs leave the branch somewhere in between.
+DEFAULT_TWIG_BRANCH_ANGLE_RAD = math.radians(50.0)
+
+
+def _normalize(v: tuple[float, float, float]) -> tuple[float, float, float] | None:
+    """Return the unit vector, or None when the input is degenerate."""
+    length = math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+    if length < 1e-12:
+        return None
+    return (v[0] / length, v[1] / length, v[2] / length)
+
+
+def _face_area(vertices: list, face: list[int]) -> float:
+    """Area of a polygon face via fan triangulation."""
+    if len(face) < 3:
+        return 0.0
+    v0 = vertices[face[0]]
+    total = 0.0
+    for k in range(1, len(face) - 1):
+        a = vertices[face[k]]
+        b = vertices[face[k + 1]]
+        ux, uy, uz = a[0] - v0[0], a[1] - v0[1], a[2] - v0[2]
+        wx, wy, wz = b[0] - v0[0], b[1] - v0[1], b[2] - v0[2]
+        cx = uy * wz - uz * wy
+        cy = uz * wx - ux * wz
+        cz = ux * wy - uy * wx
+        total += 0.5 * math.sqrt(cx * cx + cy * cy + cz * cz)
+    return total
+
+
+def direction_to_quaternion(
+    direction: tuple[float, float, float],
+    reference: tuple[float, float, float] | None = None,
+) -> tuple[float, float, float, float]:
+    """Quaternion (w, x, y, z) rotating +X onto ``direction``.
+
+    Grove twig assets grow along +X from their pivot, so the growth direction is
+    the frame's X axis. ``reference`` (normally the parent branch axis) resolves
+    the roll about that axis, keeping the leaf plane oriented relative to the
+    branch instead of to an arbitrary world axis.
+    """
+    x_axis = _normalize(direction)
+    if x_axis is None:
+        return IDENTITY_QUAT
+    ref = _normalize(reference) if reference is not None else None
+    if ref is None:
+        ref = (0.0, 0.0, 1.0)
+    d = ref[0] * x_axis[0] + ref[1] * x_axis[1] + ref[2] * x_axis[2]
+    z_axis = _normalize(
+        (ref[0] - d * x_axis[0], ref[1] - d * x_axis[1], ref[2] - d * x_axis[2])
+    )
+    if z_axis is None:
+        alt = (1.0, 0.0, 0.0) if abs(x_axis[0]) < 0.9 else (0.0, 1.0, 0.0)
+        d = alt[0] * x_axis[0] + alt[1] * x_axis[1] + alt[2] * x_axis[2]
+        z_axis = _normalize(
+            (alt[0] - d * x_axis[0], alt[1] - d * x_axis[1], alt[2] - d * x_axis[2])
+        ) or (0.0, 0.0, 1.0)
+    y_axis = (
+        z_axis[1] * x_axis[2] - z_axis[2] * x_axis[1],
+        z_axis[2] * x_axis[0] - z_axis[0] * x_axis[2],
+        z_axis[0] * x_axis[1] - z_axis[1] * x_axis[0],
+    )
+    return rotation_matrix_to_quaternion(
+        [
+            [x_axis[0], y_axis[0], z_axis[0]],
+            [x_axis[1], y_axis[1], z_axis[1]],
+            [x_axis[2], y_axis[2], z_axis[2]],
+        ]
+    )
+
+
 def extract_twig_placements_from_model(
     model: Any,
     twig_types: list[str] | None = None,
@@ -197,12 +272,11 @@ def extract_twig_placements_from_model(
 
     placements = {twig_type: [] for twig_type in twig_types}
 
-    # Use Grove API methods for twig data - these return flat lists with 3 floats per twig
+    # Grove twig arrays. Locations and directions hold 3 floats per twig;
+    # orientations hold a unit QUATERNION -- 4 floats per twig, (w, x, y, z).
     twig_locations = model.get_twig_locations()  # [x1, y1, z1, x2, y2, z2, ...]
     twig_directions = model.get_twig_directions()  # [dx1, dy1, dz1, dx2, dy2, dz2, ...]
-    twig_orientations = (
-        model.get_twig_orientations()
-    )  # [ox1, oy1, oz1, ox2, oy2, oz2, ...]
+    twig_orientations = model.get_twig_orientations()  # [w1, x1, y1, z1, w2, ...]
 
     # Calculate number of twigs from flat array length
     num_twigs = len(twig_locations) // 3
@@ -216,13 +290,23 @@ def extract_twig_placements_from_model(
             f"but twig_directions has {num_directions}. Grove API returned inconsistent data."
         )
 
+    # Orientations are quaternions (stride 4). Reading them at stride 3 yields
+    # non-unit garbage, so verify the stride rather than trusting it.
+    num_orientations = len(twig_orientations) // 4
+    if twig_orientations and num_orientations != num_twigs:
+        raise ValueError(
+            f"Twig array length mismatch: twig_locations has {num_twigs} twigs "
+            f"but twig_orientations has {num_orientations} quaternions "
+            f"({len(twig_orientations)} floats). Grove API returned inconsistent data."
+        )
+
     if verbose:
         logger.debug("TWIG EXTRACTION: %d twigs in Grove API arrays", num_twigs)
         logger.debug(
             "  twig_locations=%d  twig_directions=%d  twig_orientations=%d",
             len(twig_locations) // 3,
             len(twig_directions) // 3,
-            len(twig_orientations) // 3,
+            len(twig_orientations) // 4,
         )
 
     # Extract bone IDs for binding - prefer branch-based approach if available
@@ -334,7 +418,7 @@ def extract_twig_placements_from_model(
                 inv_n = 1.0 / n
                 position = (cx * inv_n, cy * inv_n, cz * inv_n)
                 normal = (0.0, 0.0, 1.0)
-                orientation = (0.0, 0.0, 1.0)
+                orientation = IDENTITY_QUAT
             else:
                 # Living twig — index into Grove arrays
                 if twig_idx >= num_twigs:
@@ -362,12 +446,14 @@ def extract_twig_placements_from_model(
                     twig_directions[base_idx + 1],
                     twig_directions[base_idx + 2],
                 )
-                orientation = (0.0, 0.0, 1.0)
-                if twig_orientations and base_idx + 2 < len(twig_orientations):
+                orientation = IDENTITY_QUAT
+                quat_idx = twig_idx * 4
+                if twig_orientations and quat_idx + 3 < len(twig_orientations):
                     orientation = (
-                        twig_orientations[base_idx],
-                        twig_orientations[base_idx + 1],
-                        twig_orientations[base_idx + 2],
+                        twig_orientations[quat_idx],
+                        twig_orientations[quat_idx + 1],
+                        twig_orientations[quat_idx + 2],
+                        twig_orientations[quat_idx + 3],
                     )
 
             # BONE & BRANCH ASSIGNMENT:
@@ -494,6 +580,7 @@ def densify_twig_placements(
     bones_info: list | None = None,
     seed: int = 42,
     youth_bias: float = 1.0,
+    branch_angle: float = DEFAULT_TWIG_BRANCH_ANGLE_RAD,
     scaled_points: list[tuple[float, float, float]] | None = None,
 ) -> dict[str, list[TwigPlacement]]:
     """Adjust twig placement count to match a target density multiplier.
@@ -512,6 +599,8 @@ def densify_twig_placements(
             build_cutoff_thickness is active (e.g. 4.6 for cutoff=0.005).
         bones_info: Optional bone list for bone/branch assignment.
         seed: Random seed for reproducibility.
+        branch_angle: Angle in radians between a synthetic twig's growth
+            direction and its parent branch axis.
         scaled_points: Optional list of (x, y, z) tuples from the radially-scaled
             mesh. When provided, face centroids for synthetic placements are
             computed from these instead of model.points.
@@ -579,6 +668,14 @@ def densify_twig_placements(
     if max_age < 1e-6:
         max_age = 1.0
 
+    # Vertex coords as tuples, for face centre/area/normal maths below.
+    if scaled_points is not None:
+        verts = scaled_points
+    else:
+        verts = [
+            (p.x, p.y, p.z) if hasattr(p, "x") else (p[0], p[1], p[2]) for p in points
+        ]
+
     candidate_faces = []
     candidate_weights = []
     for fi in range(num_faces):
@@ -597,8 +694,16 @@ def densify_twig_placements(
         # Skip very old faces (trunk base, etc.)
         if youth < 0.01:
             continue
+        # Weight by face AREA as well as youth. Sampling faces uniformly makes
+        # twig density track TESSELLATION density rather than bark area:
+        # junction blend geometry and thin branches carry many tiny faces and
+        # would otherwise collect a hugely disproportionate share of twigs.
+        area = _face_area(verts, face)
+        if area <= 0.0:
+            continue
+        youth_weight = youth**youth_bias if youth_bias != 1.0 else youth
         candidate_faces.append(fi)
-        candidate_weights.append(youth ** youth_bias if youth_bias != 1.0 else youth)
+        candidate_weights.append(area * youth_weight)
 
     if not candidate_faces:
         logger.debug("densify: no candidate faces available")
@@ -617,12 +722,6 @@ def densify_twig_placements(
         type_dist = {t: 1.0 / len(living_types) for t in living_types}
     else:
         type_dist = {t: type_counts[t] / total_living for t in living_types}
-
-    # Pre-compute vertex coords as tuples for face center calculation
-    if scaled_points is not None:
-        verts = scaled_points
-    else:
-        verts = [(p.x, p.y, p.z) if hasattr(p, "x") else (p[0], p[1], p[2]) for p in points]
 
     # Bone assignment helpers
     bone_ids = getattr(model, "point_attribute_bone_id", None)
@@ -669,8 +768,8 @@ def densify_twig_placements(
                 chosen_type = t
                 break
 
-        # Compute face center and normal
-        center, normal = get_face_center_and_normal(verts, face)
+        # Compute face center and outward normal
+        center, face_normal = get_face_center_and_normal(verts, face)
 
         # Bone assignment via vertex voting (same as extract_twig_placements_from_model)
         twig_bone_id = None
@@ -684,34 +783,58 @@ def densify_twig_placements(
             if bone_counts:
                 twig_bone_id = max(bone_counts, key=bone_counts.get)
 
+        bone_axis = None
         if twig_bone_id is not None and bones_info:
             local_bone = twig_bone_id - bone_id_offset
             branch_id_for_twig = bone_to_branch.get(local_bone)
-            # Replace geometric face normal (radially outward from branch cylinder)
-            # with bone direction (along branch axis toward tip). Face normals make
-            # synthetic twigs point like spikes perpendicular to the branch, which
-            # causes foliage meshes to be edge-on and nearly invisible. Bone direction
-            # matches how Grove's own get_twig_directions() orients apical twigs.
             if 0 <= local_bone < len(bones_info):
                 _bd = bones_info[local_bone]
                 if len(_bd) >= 4:
                     _s, _e = _bd[2], _bd[3]
                     if hasattr(_s, "x"):
-                        _dx, _dy, _dz = _e.x - _s.x, _e.y - _s.y, _e.z - _s.z
+                        _delta = (_e.x - _s.x, _e.y - _s.y, _e.z - _s.z)
                     else:
-                        _dx, _dy, _dz = _e[0] - _s[0], _e[1] - _s[1], _e[2] - _s[2]
-                    _blen = math.sqrt(_dx * _dx + _dy * _dy + _dz * _dz)
-                    if _blen > 1e-6:
-                        normal = (_dx / _blen, _dy / _blen, _dz / _blen)
+                        _delta = (_e[0] - _s[0], _e[1] - _s[1], _e[2] - _s[2])
+                    bone_axis = _normalize(_delta)
 
-        # Orientation: default Z-up in Grove space
-        orientation = (0.0, 0.0, 1.0)
+        # Emergence direction. The face normal alone points straight out of the
+        # bark, leaving foliage edge-on; the bone axis alone is TANGENT to the
+        # bark, which buries half of each twig's leaves inside the branch. Tilt
+        # the face's own outward normal toward the branch axis instead, so the
+        # twig leaves the surface at a natural angle from where it is attached.
+        normal = face_normal
+        if bone_axis is not None:
+            axial = (
+                face_normal[0] * bone_axis[0]
+                + face_normal[1] * bone_axis[1]
+                + face_normal[2] * bone_axis[2]
+            )
+            radial = _normalize(
+                (
+                    face_normal[0] - axial * bone_axis[0],
+                    face_normal[1] - axial * bone_axis[1],
+                    face_normal[2] - axial * bone_axis[2],
+                )
+            )
+            if radial is not None:
+                cos_t = math.cos(branch_angle)
+                sin_t = math.sin(branch_angle)
+                normal = (
+                    _normalize(
+                        (
+                            cos_t * bone_axis[0] + sin_t * radial[0],
+                            cos_t * bone_axis[1] + sin_t * radial[1],
+                            cos_t * bone_axis[2] + sin_t * radial[2],
+                        )
+                    )
+                    or face_normal
+                )
 
         placement = TwigPlacement(
             type=chosen_type,
             position=center,
             normal=normal,
-            orientation=orientation,
+            orientation=direction_to_quaternion(normal, bone_axis),
             scale=1.0,
             bone_id=twig_bone_id,
             branch_id=branch_id_for_twig,

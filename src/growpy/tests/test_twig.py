@@ -5,7 +5,11 @@ import math
 import pytest
 
 from growpy.core.twig import (
+    IDENTITY_QUAT,
     TwigPlacement,
+    _face_area,
+    densify_twig_placements,
+    direction_to_quaternion,
     extract_twig_placements_from_model,
     get_face_center_and_normal,
     normal_to_rotation_matrix,
@@ -25,7 +29,7 @@ class TestTwigPlacement:
         assert tp.scale == 1.0
         assert tp.bone_id is None
         assert tp.branch_id is None
-        assert tp.orientation == (0.0, 0.0, 1.0)
+        assert tp.orientation == IDENTITY_QUAT
 
     def test_to_dict(self):
         tp = TwigPlacement(
@@ -235,12 +239,13 @@ class _FakeModel:
     have face attributes. Faces are independent triangles indexing `points`.
     """
 
-    def __init__(self, faces, points, twig_long, twig_dead, num_twigs):
+    def __init__(self, faces, points, twig_long, twig_dead, num_twigs, orientations=None):
         self.faces = faces
         self.points = points
         self.face_attribute_twig_long = twig_long
         self.face_attribute_twig_dead = twig_dead
         self._num_twigs = num_twigs
+        self._orientations = orientations
 
     def get_twig_locations(self):
         return [0.0, 0.0, 0.0] * self._num_twigs
@@ -249,10 +254,13 @@ class _FakeModel:
         return [0.0, 0.0, 1.0] * self._num_twigs
 
     def get_twig_orientations(self):
-        return [0.0, 0.0, 1.0] * self._num_twigs
+        # Grove returns a unit quaternion per twig: 4 floats, (w, x, y, z).
+        if self._orientations is not None:
+            return self._orientations
+        return [1.0, 0.0, 0.0, 0.0] * self._num_twigs
 
 
-def _build_model(num_dead_faces, num_living_faces, num_twigs_placed):
+def _build_model(num_dead_faces, num_living_faces, num_twigs_placed, orientations=None):
     """Dead faces first, then living faces, so dead ones are all extracted
     before the living array is exhausted."""
     faces = []
@@ -266,7 +274,9 @@ def _build_model(num_dead_faces, num_living_faces, num_twigs_placed):
         is_dead = i < num_dead_faces
         twig_dead.append(1 if is_dead else 0)
         twig_long.append(0 if is_dead else 1)
-    return _FakeModel(faces, points, twig_long, twig_dead, num_twigs_placed)
+    return _FakeModel(
+        faces, points, twig_long, twig_dead, num_twigs_placed, orientations
+    )
 
 
 class TestDeadTwigDensityMatch:
@@ -291,3 +301,194 @@ class TestDeadTwigDensityMatch:
         model = _build_model(num_dead_faces=3, num_living_faces=0, num_twigs_placed=0)
         placements = extract_twig_placements_from_model(model)
         assert len(placements["twig_dead"]) == 3
+
+
+class TestTwigOrientationQuaternion:
+    """Grove's get_twig_orientations() is 4 floats per twig, not 3.
+
+    Reading it at stride 3 silently hands each twig a misaligned slice of the
+    next one's quaternion, so the values are not even unit-length.
+    """
+
+    def test_default_orientation_is_identity_quaternion(self):
+        tp = TwigPlacement(
+            type="twig_long", position=(0.0, 0.0, 0.0), normal=(0.0, 0.0, 1.0)
+        )
+        assert len(tp.orientation) == 4
+        assert tp.orientation == IDENTITY_QUAT
+
+    def test_orientation_read_at_stride_four(self):
+        # Two twigs with distinguishable quaternions. At stride 3 the second
+        # twig would receive (0.5, 0.5, 0.0) instead of its own quaternion.
+        quats = [0.5, 0.5, 0.5, 0.5, 0.0, 0.0, 0.0, 1.0]
+        model = _build_model(0, 2, 2, orientations=quats)
+        placements = extract_twig_placements_from_model(model)
+        got = [p.orientation for p in placements["twig_long"]]
+        assert got == [(0.5, 0.5, 0.5, 0.5), (0.0, 0.0, 0.0, 1.0)]
+
+    def test_stride_three_orientation_data_raises(self):
+        # 2 twigs' worth of stride-3 data is 6 floats, not 2 quaternions.
+        model = _build_model(0, 2, 2, orientations=[0.0, 0.0, 1.0] * 2)
+        with pytest.raises(ValueError, match="twig_orientations"):
+            extract_twig_placements_from_model(model)
+
+    def test_missing_orientations_fall_back_to_identity(self):
+        model = _build_model(0, 2, 2, orientations=[])
+        placements = extract_twig_placements_from_model(model)
+        assert all(p.orientation == IDENTITY_QUAT for p in placements["twig_long"])
+
+
+class TestDirectionToQuaternion:
+    """The quaternion must rotate +X (Grove's twig growth axis) onto direction."""
+
+    @staticmethod
+    def _rotate_x(q):
+        w, x, y, z = q
+        return (
+            1 - 2 * (y * y + z * z),
+            2 * (x * y + z * w),
+            2 * (x * z - y * w),
+        )
+
+    @pytest.mark.parametrize(
+        "direction",
+        [
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0),
+            (0.0, 0.0, -1.0),
+            (0.577, 0.577, 0.577),
+            (-0.3, 0.6, -0.74),
+        ],
+    )
+    def test_maps_x_axis_onto_direction(self, direction):
+        q = direction_to_quaternion(direction)
+        length = math.sqrt(sum(c * c for c in direction))
+        expected = tuple(c / length for c in direction)
+        assert self._rotate_x(q) == pytest.approx(expected, abs=1e-5)
+
+    def test_result_is_unit_quaternion(self):
+        q = direction_to_quaternion((0.3, -0.5, 0.81), (0.0, 0.0, 1.0))
+        assert math.sqrt(sum(c * c for c in q)) == pytest.approx(1.0, abs=1e-6)
+
+    def test_degenerate_direction_returns_identity(self):
+        assert direction_to_quaternion((0.0, 0.0, 0.0)) == IDENTITY_QUAT
+
+    def test_reference_parallel_to_direction_still_valid(self):
+        # Gram-Schmidt degenerates here; must fall back rather than divide by ~0.
+        q = direction_to_quaternion((0.0, 0.0, 1.0), (0.0, 0.0, 1.0))
+        assert math.sqrt(sum(c * c for c in q)) == pytest.approx(1.0, abs=1e-6)
+        assert self._rotate_x(q) == pytest.approx((0.0, 0.0, 1.0), abs=1e-5)
+
+
+class TestFaceArea:
+    """Face area drives twig density per unit bark, not per face."""
+
+    def test_unit_right_triangle(self):
+        verts = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)]
+        assert _face_area(verts, [0, 1, 2]) == pytest.approx(0.5)
+
+    def test_unit_square_quad(self):
+        verts = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0), (0.0, 1.0, 0.0)]
+        assert _face_area(verts, [0, 1, 2, 3]) == pytest.approx(1.0)
+
+    def test_degenerate_face_is_zero(self):
+        verts = [(0.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)]
+        assert _face_area(verts, [0, 1, 2]) == pytest.approx(0.0)
+
+    def test_face_with_too_few_vertices_is_zero(self):
+        verts = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)]
+        assert _face_area(verts, [0, 1]) == 0.0
+
+
+class _CylinderModel:
+    """One branch segment along +Z, for synthetic twig direction tests."""
+
+    def __init__(self, segments=12, radius=0.1, length=2.0):
+        self.points = []
+        for z in (0.0, length):
+            for k in range(segments):
+                angle = 2 * math.pi * k / segments
+                self.points.append(
+                    (radius * math.cos(angle), radius * math.sin(angle), z)
+                )
+        self.faces = []
+        for k in range(segments):
+            nxt = (k + 1) % segments
+            self.faces.append([k, nxt, segments + nxt, segments + k])
+        n_faces = len(self.faces)
+        self.face_attribute_twig_long = [0] * n_faces
+        self.face_attribute_twig_short = [0] * n_faces
+        self.face_attribute_twig_upward = [0] * n_faces
+        self.face_attribute_twig_dead = [0] * n_faces
+        self.point_attribute_bone_id = [0] * len(self.points)
+        self.point_attribute_age = [0.0] * len(self.points)
+
+
+class TestDensifiedTwigDirection:
+    """Synthetic twigs must leave the bark at an angle, not lie along it.
+
+    The previous implementation overwrote the face normal with the bone axis,
+    which is TANGENT to the branch surface: every synthetic twig then lay flat
+    along the bark and half of its leaf fan was driven inside the branch mesh.
+    """
+
+    BONES = [(True, 0, (0.0, 0.0, 0.0), (0.0, 0.0, 2.0), 0.1, 1.0, True, 0)]
+
+    def _densify(self, branch_angle=None):
+        model = _CylinderModel()
+        seed = TwigPlacement(
+            type="twig_long", position=(0.1, 0.0, 1.0), normal=(1.0, 0.0, 0.0)
+        )
+        placements = {
+            "twig_long": [seed],
+            "twig_short": [],
+            "twig_upward": [],
+            "twig_dead": [],
+        }
+        kwargs = {} if branch_angle is None else {"branch_angle": branch_angle}
+        out = densify_twig_placements(
+            model, placements, density=5.0, bones_info=self.BONES, **kwargs
+        )
+        return [p for p in out["twig_long"] if p is not seed]
+
+    @staticmethod
+    def _angle_to_axis(normal):
+        # Branch axis is +Z for _CylinderModel.
+        length = math.sqrt(sum(c * c for c in normal))
+        return math.degrees(math.acos(max(-1.0, min(1.0, normal[2] / length))))
+
+    def test_synthetic_twigs_were_added(self):
+        assert len(self._densify()) > 0
+
+    def test_direction_is_not_tangent_to_branch(self):
+        # The old bug produced 0 deg (straight along the axis); a pure face
+        # normal would give 90 deg. Both are tangent-or-edge-on failure modes.
+        for placement in self._densify():
+            angle = self._angle_to_axis(placement.normal)
+            assert 15.0 < angle < 85.0
+
+    def test_direction_matches_requested_branch_angle(self):
+        for placement in self._densify(branch_angle=math.radians(30.0)):
+            assert self._angle_to_axis(placement.normal) == pytest.approx(30.0, abs=1.0)
+
+    def test_direction_has_outward_radial_component(self):
+        # The twig must point away from the branch centreline, otherwise it is
+        # buried inside the mesh.
+        for placement in self._densify():
+            px, py, _ = placement.position
+            nx, ny, _ = placement.normal
+            assert px * nx + py * ny > 0.0
+
+    def test_orientation_is_unit_quaternion_matching_direction(self):
+        for placement in self._densify():
+            q = placement.orientation
+            assert len(q) == 4
+            assert math.sqrt(sum(c * c for c in q)) == pytest.approx(1.0, abs=1e-6)
+            w, x, y, z = q
+            rotated = (
+                1 - 2 * (y * y + z * z),
+                2 * (x * y + z * w),
+                2 * (x * z - y * w),
+            )
+            assert rotated == pytest.approx(placement.normal, abs=1e-5)

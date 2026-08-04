@@ -15,6 +15,7 @@ from typing import Any
 
 import bpy
 
+from ..core.twig import IDENTITY_QUAT
 from .skeleton_builder import (
     build_joint_hierarchy,
     calculate_vertex_weights,
@@ -462,7 +463,12 @@ def _add_twig_instances(
             nrm = p.get("normal", (1.0, 0.0, 0.0))
             scl = float(p.get("scale", 1.0))
 
-            q = _normal_to_quaternion(nrm)
+            # Prefer Grove's own twig quaternion: it carries the growth
+            # direction AND the phyllotactic roll. Deriving the frame from the
+            # direction vector alone has to invent the roll from a world axis.
+            q = p.get("orientation")
+            if not q or len(q) != 4 or tuple(q) == IDENTITY_QUAT:
+                q = _normal_to_quaternion(nrm)
             positions.append(Gf.Vec3f(float(pos[0]), float(pos[1]), float(pos[2])))
             orientations.append(
                 Gf.Quath(float(q[0]), float(q[1]), float(q[2]), float(q[3]))

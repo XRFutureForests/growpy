@@ -117,9 +117,9 @@ def build_tree_mesh(
         include_skeleton: If True and skeleton provided, add skeleton structure (skeletal mesh)
         include_grove_attributes: If True, add Grove metadata attributes as primvars (for analysis)
         scaled_points_out: Optional mutable list. When provided and radial_scale != 1.0,
-            filled with (x, y, z) tuples of the final mesh points in Grove's Y-up
-            coordinate space (before USD axis swap). Used by assembly export to
-            compute twig face centroids from the scaled mesh.
+            filled with (x, y, z) tuples of the final mesh points in Grove's
+            Z-up coordinate space (written to USD unswapped). Used by assembly
+            export to compute twig face centroids from the scaled mesh.
 
     Returns:
         bool: True if USD file was created successfully
@@ -198,7 +198,7 @@ def build_tree_mesh(
             and getattr(model, "point_attribute_bone_id", None)
         ):
             vertex_bone_ids = model.point_attribute_bone_id
-            tree_height = max((p.y for p in points), default=0.0)
+            tree_height = max((p.z for p in points), default=0.0)
             breast_height = BREAST_HEIGHT_METERS
             blend_start = breast_height
             blend_end = max(breast_height + 1.0, tree_height * 0.85)
@@ -218,6 +218,7 @@ def build_tree_mesh(
             # belongs to.
             bone_axes = []
             bone_starts = []
+            bone_lengths = []
             bone_parent: list[int | None] = []
             for bone in bones_info:
                 sp, ep = bone[2], bone[3]
@@ -225,11 +226,12 @@ def build_tree_mesh(
                 dy = ep.y - sp.y
                 dz = ep.z - sp.z
                 length = math.sqrt(dx * dx + dy * dy + dz * dz)
+                bone_lengths.append(length)
                 if length > 1e-6:
                     inv = 1.0 / length
                     bone_axes.append((dx * inv, dy * inv, dz * inv))
                 else:
-                    bone_axes.append((0.0, 1.0, 0.0))
+                    bone_axes.append((0.0, 0.0, 1.0))
                 bone_starts.append((sp.x, sp.y, sp.z))
                 parent_local = bone[1] - bone_id_offset
                 bone_parent.append(
@@ -252,12 +254,23 @@ def build_tree_mesh(
                 if parent_local is not None:
                     bone_children.setdefault(parent_local, []).append(idx)
 
-            # Distance (meters) over which the scaling axis transitions
-            # across a bone-to-bone junction. Must exceed a branch's own
-            # radius so surface vertices at the connection follow the
-            # wider parent's surface instead of collapsing toward the
-            # child's own centerline.
-            axis_blend_dist = 0.5
+            # Distance (meters) over which the scaling axis transitions across a
+            # bone-to-bone junction, computed PER BONE. It must exceed a
+            # branch's own radius so surface vertices at the connection follow
+            # the wider parent's surface instead of collapsing toward the
+            # child's own centerline -- but a single fixed distance (previously
+            # 0.5 m) is longer than most bones. Over half of a mature tree's
+            # bones are shorter than that, so the parent-side and child-side
+            # blends overlapped across the whole bone and its own axis was never
+            # used, smearing the scaling direction on every short branch.
+            # Capping at 40% of each bone's length leaves at least the middle
+            # fifth of every bone scaling along its own axis.
+            AXIS_BLEND_MAX = 0.5
+            AXIS_BLEND_LENGTH_FRACTION = 0.4
+            bone_blend_dist = [
+                max(1e-4, min(AXIS_BLEND_MAX, AXIS_BLEND_LENGTH_FRACTION * length))
+                for length in bone_lengths
+            ]
 
             def _lerp_frame(
                 ax: float, ay: float, az: float,
@@ -291,12 +304,12 @@ def build_tree_mesh(
                 # blending to crown_scale at blend_end. crown_scale
                 # keeps partial correction so branches don't appear
                 # under/oversized relative to the trunk.
-                if p.y <= blend_start:
+                if p.z <= blend_start:
                     s = radial_scale
-                elif p.y >= blend_end:
+                elif p.z >= blend_end:
                     s = crown_scale
                 else:
-                    t = (p.y - blend_start) / blend_range
+                    t = (p.z - blend_start) / blend_range
                     t = t * t * (3.0 - 2.0 * t)
                     s = radial_scale + (crown_scale - radial_scale) * t
 
@@ -314,10 +327,11 @@ def build_tree_mesh(
                 # direction.
                 parent_local = bone_parent[local_idx]
                 if parent_local is not None:
+                    blend_self = bone_blend_dist[local_idx]
                     vx0, vy0, vz0 = p.x - bx, p.y - by, p.z - bz
                     along = max(0.0, vx0 * ax + vy0 * ay + vz0 * az)
-                    if along < axis_blend_dist:
-                        w = 1.0 - along / axis_blend_dist
+                    if along < blend_self:
+                        w = 1.0 - along / blend_self
                         w = w * w * (3.0 - 2.0 * w)
                         ax, ay, az, bx, by, bz = _lerp_frame(
                             ax, ay, az, bx, by, bz, parent_local, w
@@ -334,13 +348,15 @@ def build_tree_mesh(
                 if children:
                     best_along = None
                     best_child = None
+                    best_blend = None
                     for child_idx in children:
+                        child_blend = bone_blend_dist[child_idx]
                         cax, cay, caz = bone_axes[child_idx]
                         csx, csy, csz = bone_starts[child_idx]
                         cvx, cvy, cvz = p.x - csx, p.y - csy, p.z - csz
                         cdot = cvx * cax + cvy * cay + cvz * caz
                         along = max(0.0, cdot)
-                        if along >= axis_blend_dist:
+                        if along >= child_blend:
                             continue
                         perp_x = cvx - cdot * cax
                         perp_y = cvy - cdot * cay
@@ -350,15 +366,16 @@ def build_tree_mesh(
                         )
                         child_bone = bones_info[child_idx]
                         child_radius = (
-                            child_bone[4] if len(child_bone) >= 5 else axis_blend_dist
+                            child_bone[4] if len(child_bone) >= 5 else child_blend
                         )
                         if perp_dist > child_radius * 2.0:
                             continue
                         if best_along is None or along < best_along:
                             best_along = along
                             best_child = child_idx
+                            best_blend = child_blend
                     if best_child is not None:
-                        w = best_along / axis_blend_dist
+                        w = best_along / best_blend
                         w = w * w * (3.0 - 2.0 * w)
                         ax, ay, az, bx, by, bz = _lerp_frame(
                             ax, ay, az, bx, by, bz, best_child, w

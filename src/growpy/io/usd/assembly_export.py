@@ -233,6 +233,7 @@ def create_assembly(
                             {
                                 "position": p.position,
                                 "normal": p.normal,
+                                "orientation": p.orientation,
                                 "scale": p.scale,
                                 "bone_id": p.bone_id,
                                 "branch_id": p.branch_id,  # CRITICAL: branch_id for binding to branch_X joints
@@ -536,17 +537,27 @@ def create_assembly(
                         )
 
                         from growpy.core.twig import (
+                            IDENTITY_QUAT,
                             normal_to_rotation_matrix,
                             rotation_matrix_to_quaternion,
                         )
 
                         for placement in placement_list:
                             pos = placement["position"]
-                            normal = placement["normal"]
                             twig_scale = placement.get("scale", 1.0)
 
-                            rot_matrix = normal_to_rotation_matrix(normal)
-                            quat = rotation_matrix_to_quaternion(rot_matrix)
+                            # Grove supplies a per-twig unit quaternion carrying
+                            # both the growth direction and the phyllotactic roll
+                            # it derives from the species preset. Prefer it.
+                            # Rebuilding the frame from the direction vector alone
+                            # (the fallback) has to invent the roll from a fixed
+                            # world axis, which also flips discontinuously.
+                            quat = placement.get("orientation")
+                            if not quat or len(quat) != 4 or quat == IDENTITY_QUAT:
+                                rot_matrix = normal_to_rotation_matrix(
+                                    placement["normal"]
+                                )
+                                quat = rotation_matrix_to_quaternion(rot_matrix)
 
                             # Randomly select among available prototypes for this type
                             proto_idx = _rng.choice(type_proto_indices)
