@@ -169,9 +169,37 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 }
             )
 
-
         if not models:
             return exported
+
+        # Companion build with the cutoff disabled, so twig recovery can restore
+        # the twigs the cutoff deletes instead of approximating them with a
+        # density multiplier. Grove's twig arrays are identical at any mesh
+        # resolution, so the cheapest build suffices -- only its twigs are used.
+        precut_models: list = []
+        if (
+            quality_params["build_cutoff_thickness"]
+            or quality_params["build_cutoff_age"]
+        ):
+            try:
+                with timer.track("build_models_precutoff"):
+                    precut_models = grove.build_models(
+                        {
+                            "resolution": 4,
+                            "resolution_reduce": 1.0,
+                            "build_cutoff_age": 0,
+                            "build_cutoff_thickness": 0.0,
+                            "build_blend": False,
+                            "build_end_cap": False,
+                        }
+                    )
+            except Exception:
+                logger.warning(
+                    "%s: pre-cutoff build failed; twig recovery unavailable",
+                    species,
+                    exc_info=True,
+                )
+                precut_models = []
 
         # Slice bones list for each tree in grove
         with timer.track("slice_bones"):
@@ -211,6 +239,9 @@ def _export_single_tree_from_forest(args: tuple) -> list:
         for model_idx in range(num_trees):
             # Get current tree's data
             model = models[model_idx]
+            precut_model = (
+                precut_models[model_idx] if model_idx < len(precut_models) else None
+            )
             skeleton = skeletons[model_idx]
             bones_for_tree = tree_bones[model_idx]
 
@@ -341,6 +372,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                     captured_twig_placements = {}
                     export_success = export_tree_as_nanite_assembly(
                         model=effective_model,
+                        precut_model=precut_model,
                         skeleton=skeleton if use_skeletal else None,
                         bones_info=bones_for_tree if use_skeletal else None,
                         output_path=usd_path,
@@ -361,7 +393,6 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         twig_placements_out=captured_twig_placements,
                         instances_dir=instances_dir,
                     )
-
 
                 if export_success:
                     exported.append(str(usd_path))
