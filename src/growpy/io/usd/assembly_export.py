@@ -336,9 +336,9 @@ def create_assembly(
                 # Flatten all twig variants into a single prototype list.
                 # twig_type_to_proto_indices maps grove type -> list of proto indices
                 # so each placement can randomly pick among them.
-                remapped_twig_paths: list[tuple[str, Path, Path]] = (
-                    []
-                )  # (grove_type, output_path, source_path)
+                remapped_twig_paths: list[
+                    tuple[str, Path, Path]
+                ] = []  # (grove_type, output_path, source_path)
                 for grove_type, source_paths in twig_usd_paths.items():
                     for source_twig_path in source_paths:
                         output_twig_path = twig_dest_dir / source_twig_path.name
@@ -809,6 +809,20 @@ def create_assembly(
         return False
 
 
+def _raw_twig_positions(model: Any) -> list[tuple[float, float, float]]:
+    """Grove's unmodified twig locations for a built model, as (x, y, z).
+
+    Recovery matches pre- and post-cutoff twigs by position, so both sides must
+    use Grove's raw coordinates -- not the radially-scaled face centroids that
+    extract_twig_placements_from_model substitutes when DBH scaling is active.
+    """
+    try:
+        flat = model.get_twig_locations()
+    except Exception:
+        return []
+    return [(flat[i], flat[i + 1], flat[i + 2]) for i in range(0, len(flat) - 2, 3)]
+
+
 def export_tree_as_nanite_assembly(
     model: Any,
     skeleton: Any | None,
@@ -828,6 +842,7 @@ def export_tree_as_nanite_assembly(
     twig_density: float | None = None,
     twig_placements_out: dict | None = None,
     instances_dir: Path | None = None,
+    precut_model: Any | None = None,
 ) -> bool:
     """Export Grove tree as Unreal Engine Nanite Assembly.
 
@@ -869,6 +884,12 @@ def export_tree_as_nanite_assembly(
         instances_dir: Optional shared directory for twig USD files and textures.
             When set, twig files are copied here instead of alongside the assembly,
             and assembly references use relative paths to this directory.
+        precut_model: Optional model built with build_cutoff_thickness=0 from
+            the same grove. When given, twigs the cutoff deleted are recovered
+            from it with Grove's own positions and quaternions instead of being
+            approximated by the twig_density multiplier. A cheap low-resolution
+            build is enough -- its twig arrays are identical to a full-
+            resolution one.
 
 
     Returns:
@@ -995,17 +1016,59 @@ def export_tree_as_nanite_assembly(
                     logger.exception("Twig extraction failed")
                     twig_placements = None
 
+            # Restore the twigs build_cutoff_thickness deleted. Grove drops the
+            # branches below the threshold but does not redistribute the twigs
+            # that sat on them, so the crown silently thins (52% of a 20-cycle
+            # oak, 82% of a beech). Recovering Grove's own lost twigs keeps
+            # their authentic positions, directions and phyllotactic
+            # quaternions, and self-calibrates per tree -- unlike a per-species
+            # density constant, which cannot track the loss ratio because it
+            # varies with species, age and cutoff alike.
+            recovered_count = 0
+            if twig_placements and precut_model is not None:
+                with _track("recover_cutoff_twigs"):
+                    try:
+                        from ...core.twig import recover_cutoff_twig_placements
+
+                        precut_placements = extract_twig_placements_from_model(
+                            precut_model,
+                            bones_info=bones_info if not use_static_mesh else None,
+                        )
+                        raw_cut_positions = _raw_twig_positions(model)
+                        recovered = recover_cutoff_twig_placements(
+                            precut_placements,
+                            raw_cut_positions,
+                            model,
+                            bones_info=bones_info if not use_static_mesh else None,
+                            scaled_points=_sp,
+                        )
+                        for twig_type, plist in recovered.items():
+                            twig_placements.setdefault(twig_type, []).extend(plist)
+                            recovered_count += len(plist)
+                    except Exception:
+                        logger.exception(
+                            "Twig recovery failed; falling back to the "
+                            "configured density multiplier"
+                        )
+                        recovered_count = 0
+
             # Adjust twig count: density > 1.0 adds synthetic placements on
             # non-twig faces; density < 1.0 randomly thins existing placements
             if twig_placements:
                 from ...config import get_config
 
                 cfg = get_config()
-                # CSV twig_density is a per-tree scale factor applied to the
-                # TOML base (export_twig_density, or the species-type default
-                # from export_twig_density_conifer/broadleaf).  When absent, scale is 1.0.
+                # CSV twig_density is a per-tree scale factor. Once recovery has
+                # restored the cutoff losses the canopy is already at Grove's
+                # natural density, so the species-type base (which existed only
+                # to guess at that compensation) must not be applied on top.
                 twig_scale = twig_density if twig_density is not None else 1.0
-                effective_density = cfg.get_twig_density_base(species_name) * twig_scale
+                if recovered_count > 0:
+                    effective_density = twig_scale
+                else:
+                    effective_density = (
+                        cfg.get_twig_density_base(species_name) * twig_scale
+                    )
                 if effective_density != 1.0:
                     with _track("adjust_twig_density"):
                         from ...core.twig import densify_twig_placements

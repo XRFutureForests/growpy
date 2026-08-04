@@ -53,6 +53,9 @@ class TreeExportContext:
 
     # Reassigned once per density-variant iteration.
     model: Any = None
+    # Same tree built with build_cutoff_thickness=0, so the twigs the cutoff
+    # deleted can be recovered rather than approximated. None when unavailable.
+    precut_model: Any = None
     variant_name: str | None = None
     variant_idx: int = 0
     twig_density: float | None = None

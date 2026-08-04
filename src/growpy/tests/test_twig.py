@@ -8,6 +8,8 @@ from growpy.core.twig import (
     IDENTITY_QUAT,
     TwigPlacement,
     _face_area,
+    recover_cutoff_twig_placements,
+    shortest_arc_quaternion,
     densify_twig_placements,
     direction_to_quaternion,
     extract_twig_placements_from_model,
@@ -231,7 +233,6 @@ class TestNormalToRotationMatrixAdvanced:
         assert det == pytest.approx(1.0, abs=2e-3)
 
 
-
 class _FakeModel:
     """Minimal Grove-model stand-in for extract_twig_placements_from_model.
 
@@ -239,7 +240,9 @@ class _FakeModel:
     have face attributes. Faces are independent triangles indexing `points`.
     """
 
-    def __init__(self, faces, points, twig_long, twig_dead, num_twigs, orientations=None):
+    def __init__(
+        self, faces, points, twig_long, twig_dead, num_twigs, orientations=None
+    ):
         self.faces = faces
         self.points = points
         self.face_attribute_twig_long = twig_long
@@ -492,3 +495,152 @@ class TestDensifiedTwigDirection:
                 2 * (x * z - y * w),
             )
             assert rotated == pytest.approx(placement.normal, abs=1e-5)
+
+
+class _PlaneModel:
+    """Flat surviving surface in the z=0 plane, for twig recovery tests."""
+
+    def __init__(self):
+        self.points = [
+            (-1.0, -1.0, 0.0),
+            (1.0, -1.0, 0.0),
+            (1.0, 1.0, 0.0),
+            (-1.0, 1.0, 0.0),
+        ]
+        self.faces = [[0, 1, 2, 3]]
+        self.point_attribute_bone_id = [7, 7, 7, 7]
+        self.face_attribute_branch_id = [3]
+
+
+def _twig(position, normal=(0.0, 0.0, 1.0), quat=(1.0, 0.0, 0.0, 0.0)):
+    return TwigPlacement(
+        type="twig_long", position=position, normal=normal, orientation=quat
+    )
+
+
+class TestShortestArcQuaternion:
+    """Re-aiming a recovered twig must carry its roll along, not reset it."""
+
+    @staticmethod
+    def _rotate(q, v):
+        w, x, y, z = q
+        vx, vy, vz = v
+        return (
+            (1 - 2 * (y * y + z * z)) * vx
+            + 2 * (x * y - z * w) * vy
+            + 2 * (x * z + y * w) * vz,
+            2 * (x * y + z * w) * vx
+            + (1 - 2 * (x * x + z * z)) * vy
+            + 2 * (y * z - x * w) * vz,
+            2 * (x * z - y * w) * vx
+            + 2 * (y * z + x * w) * vy
+            + (1 - 2 * (x * x + y * y)) * vz,
+        )
+
+    def test_rotates_from_onto_to(self):
+        q = shortest_arc_quaternion((1.0, 0.0, 0.0), (0.0, 1.0, 0.0))
+        assert self._rotate(q, (1.0, 0.0, 0.0)) == pytest.approx(
+            (0.0, 1.0, 0.0), abs=1e-6
+        )
+
+    def test_identical_vectors_give_identity(self):
+        assert (
+            shortest_arc_quaternion((0.0, 0.0, 1.0), (0.0, 0.0, 1.0)) == IDENTITY_QUAT
+        )
+
+    def test_antiparallel_vectors_rotate_180_degrees(self):
+        q = shortest_arc_quaternion((0.0, 0.0, 1.0), (0.0, 0.0, -1.0))
+        assert math.sqrt(sum(c * c for c in q)) == pytest.approx(1.0, abs=1e-6)
+        assert self._rotate(q, (0.0, 0.0, 1.0)) == pytest.approx(
+            (0.0, 0.0, -1.0), abs=1e-6
+        )
+
+    def test_degenerate_input_returns_identity(self):
+        assert (
+            shortest_arc_quaternion((0.0, 0.0, 0.0), (0.0, 0.0, 1.0)) == IDENTITY_QUAT
+        )
+
+
+class TestRecoverCutoffTwigPlacements:
+    """build_cutoff_thickness deletes branches without redistributing their
+    twigs; recovery restores exactly those, reattached to the surviving mesh.
+    """
+
+    def test_surviving_twigs_are_not_recovered(self):
+        precut = {"twig_long": [_twig((0.1, 0.2, 0.001))]}
+        out = recover_cutoff_twig_placements(precut, [(0.1, 0.2, 0.001)], _PlaneModel())
+        assert out == {}
+
+    def test_lost_twig_is_recovered(self):
+        precut = {"twig_long": [_twig((0.1, 0.2, 0.001)), _twig((0.3, 0.4, 0.001))]}
+        out = recover_cutoff_twig_placements(precut, [(0.1, 0.2, 0.001)], _PlaneModel())
+        assert [p.position for p in out["twig_long"]] == [(0.3, 0.4, 0.001)]
+
+    def test_empty_cut_set_recovers_everything(self):
+        precut = {"twig_long": [_twig((0.1, 0.2, 0.001))]}
+        out = recover_cutoff_twig_placements(precut, [], _PlaneModel())
+        assert len(out["twig_long"]) == 1
+
+    def test_near_surface_twig_keeps_position_and_orientation(self):
+        quat = (0.5, 0.5, 0.5, 0.5)
+        precut = {"twig_long": [_twig((0.1, 0.2, 0.002), (1.0, 0.0, 0.0), quat)]}
+        out = recover_cutoff_twig_placements(
+            precut, [], _PlaneModel(), reattach_threshold=0.01
+        )
+        got = out["twig_long"][0]
+        assert got.position == pytest.approx((0.1, 0.2, 0.002), abs=1e-9)
+        assert got.orientation == quat
+        assert got.normal == (1.0, 0.0, 0.0)
+
+    def test_far_orphan_is_pulled_onto_the_surface(self):
+        # 50 mm above the plane, well beyond the 10 mm threshold.
+        precut = {"twig_long": [_twig((0.1, 0.2, 0.05), (1.0, 0.0, 0.0))]}
+        out = recover_cutoff_twig_placements(
+            precut, [], _PlaneModel(), reattach_threshold=0.01
+        )
+        got = out["twig_long"][0]
+        assert got.position == pytest.approx((0.1, 0.2, 0.0), abs=1e-6)
+        # Re-aimed along the direction the deleted shoot ran (straight up).
+        assert got.normal == pytest.approx((0.0, 0.0, 1.0), abs=1e-6)
+
+    def test_recovered_twig_binds_to_the_host_face(self):
+        precut = {"twig_long": [_twig((0.1, 0.2, 0.001))]}
+        out = recover_cutoff_twig_placements(precut, [], _PlaneModel(), bones_info=None)
+        got = out["twig_long"][0]
+        assert got.bone_id == 7
+        assert got.branch_id == 3
+
+    def test_scaled_points_displace_the_recovered_twig(self):
+        # Surface lifted 0.5 m by radial scaling; a near-surface twig must
+        # follow it rather than staying behind inside the branch.
+        model = _PlaneModel()
+        scaled = [(x, y, z + 0.5) for (x, y, z) in model.points]
+        precut = {"twig_long": [_twig((0.1, 0.2, 0.002))]}
+        out = recover_cutoff_twig_placements(precut, [], model, scaled_points=scaled)
+        assert out["twig_long"][0].position == pytest.approx(
+            (0.1, 0.2, 0.502), abs=1e-6
+        )
+
+    def test_mismatched_scaled_points_are_ignored(self):
+        model = _PlaneModel()
+        precut = {"twig_long": [_twig((0.1, 0.2, 0.002))]}
+        out = recover_cutoff_twig_placements(
+            precut, [], model, scaled_points=[(0.0, 0.0, 0.0)]
+        )
+        assert out["twig_long"][0].position == pytest.approx(
+            (0.1, 0.2, 0.002), abs=1e-9
+        )
+
+    def test_twig_type_is_preserved(self):
+        precut = {
+            "twig_long": [_twig((0.1, 0.2, 0.001))],
+            "twig_short": [
+                TwigPlacement(
+                    type="twig_short",
+                    position=(0.3, 0.1, 0.001),
+                    normal=(0.0, 0.0, 1.0),
+                )
+            ],
+        }
+        out = recover_cutoff_twig_placements(precut, [], _PlaneModel())
+        assert set(out) == {"twig_long", "twig_short"}

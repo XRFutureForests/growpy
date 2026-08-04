@@ -37,7 +37,8 @@ class TreeSnapshot(NamedTuple):
     """Per-tree snapshot captured at a growth milestone.
 
     NamedTuple for tuple-compatible unpacking plus named-field access.
-    Fields: ``(model, skeleton, bones_info, height, dbh, variant_models)``.
+    Fields: ``(model, skeleton, bones_info, height, dbh, variant_models,
+    precut_model)``.
     """
 
     model: Any
@@ -49,6 +50,9 @@ class TreeSnapshot(NamedTuple):
     # Empty when no density variants are configured (see
     # build_density_variant_model_sets() / XRFF-288).
     variant_models: dict = {}
+    # Same tree built with build_cutoff_thickness=0, so twig recovery can
+    # restore the twigs the cutoff deleted. None when unavailable.
+    precut_model: Any = None
 
 
 # Type aliases built on the named tuples.
@@ -572,7 +576,9 @@ def _simulate_height_threshold_mode(
         new_crossings: dict[str, dict[int, float]] = {}
         any_growth = False
 
-        for grove_idx, (grove, species_name, tree_count, fids, *_r) in enumerate(forest):
+        for grove_idx, (grove, species_name, tree_count, fids, *_r) in enumerate(
+            forest
+        ):
             if grove_idx in frozen_grove_indices:
                 continue
             offset = grove_offsets[grove_idx]
@@ -637,7 +643,9 @@ def _simulate_height_threshold_mode(
 
         # Build models from groves and merge per species (supports split groves)
         merged_data: dict[str, list] = {}
-        for grove_idx, (grove, species_name, tree_count, fids, *_r) in enumerate(forest):
+        for grove_idx, (grove, species_name, tree_count, fids, *_r) in enumerate(
+            forest
+        ):
             if species_name not in species_with_crossings:
                 continue
             offset = grove_offsets[grove_idx]
@@ -864,6 +872,33 @@ def _build_models_for_grove(
         "build_end_cap": quality_params.get("build_end_cap", True),
     }
     models = grove.build_models(build_options)
+
+    # Companion build with the cutoff disabled, so the export can recover the
+    # twigs the cutoff deletes instead of guessing a density multiplier. Grove
+    # returns identical twig arrays regardless of mesh resolution, so this is
+    # built at the cheapest resolution -- only its twig data is used.
+    precut_models: list = []
+    if build_options["build_cutoff_thickness"] or build_options["build_cutoff_age"]:
+        try:
+            precut_models = grove.build_models(
+                {
+                    **build_options,
+                    "resolution": 4,
+                    "resolution_reduce": 1.0,
+                    "build_blend": False,
+                    "build_end_cap": False,
+                    "build_cutoff_age": 0,
+                    "build_cutoff_thickness": 0.0,
+                }
+            )
+        except Exception:
+            logger.warning(
+                "  %s: pre-cutoff build failed; twig recovery unavailable",
+                species_name,
+                exc_info=True,
+            )
+            precut_models = []
+
     measurements = extract_tree_measurements(grove)
 
     if len(models) < len(grove.trees):
@@ -907,7 +942,15 @@ def _build_models_for_grove(
             for vname, vmodels in variant_model_sets.items()
         }
         tree_snapshots.append(
-            TreeSnapshot(model, skeleton, bones, height, dbh, tree_variant_models)
+            TreeSnapshot(
+                model,
+                skeleton,
+                bones,
+                height,
+                dbh,
+                tree_variant_models,
+                precut_models[tree_idx] if tree_idx < len(precut_models) else None,
+            )
         )
 
     if tree_snapshots:

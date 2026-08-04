@@ -273,8 +273,12 @@ def build_tree_mesh(
             ]
 
             def _lerp_frame(
-                ax: float, ay: float, az: float,
-                bx: float, by: float, bz: float,
+                ax: float,
+                ay: float,
+                az: float,
+                bx: float,
+                by: float,
+                bz: float,
                 target_idx: int,
                 weight: float,
             ) -> tuple[float, float, float, float, float, float]:
@@ -1202,9 +1206,7 @@ def _build_usdskel_from_bones(
     # Build joints using bones_info
     bone_id_to_joint_path = {}
     bone_positions = {}
-    branch_id_to_joint_path = (
-        {}
-    )  # Maps local branch_id to joint path ending with branch_X
+    branch_id_to_joint_path = {}  # Maps local branch_id to joint path ending with branch_X
 
     # Create lookup dict for bones_info by global bone ID
     bones_info_dict = {}

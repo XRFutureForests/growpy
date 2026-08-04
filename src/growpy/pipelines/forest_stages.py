@@ -241,11 +241,7 @@ def compute_radial_scale(ctx: TreeExportContext) -> None:
     reflects the actually-exported mesh after clamping.
     """
     radial_scale = 1.0
-    if (
-        ctx.cfg.export_dbh_from_allometry
-        and ctx.target_dbh_m
-        and ctx.grove_dbh > 0.001
-    ):
+    if ctx.cfg.export_dbh_from_allometry and ctx.target_dbh_m and ctx.grove_dbh > 0.001:
         radial_scale = ctx.target_dbh_m / ctx.grove_dbh
         if ctx.dbh_from_csv:
             radial_scale = max(0.1, min(radial_scale, 5.0))
@@ -278,6 +274,7 @@ def export_assembly(ctx: TreeExportContext) -> None:
     try:
         ctx.export_success = export_tree_as_nanite_assembly(
             model=ctx.model,
+            precut_model=ctx.precut_model,
             skeleton=ctx.skeleton if ctx.use_skeletal else None,
             bones_info=ctx.bones_info if ctx.use_skeletal else None,
             output_path=ctx.usd_path,
@@ -453,6 +450,7 @@ def export_obj_direct(ctx: TreeExportContext) -> None:
     ctx.usd_path = obj_path
     ctx.export_success = obj_path is not None
 
+
 # Post-assembly stage registry: (name, gate, stage_fn, once_per_tree).
 #
 # `gate(ctx)` decides whether the stage runs at all -- False logs a debug
@@ -470,8 +468,6 @@ STAGES: list[tuple[str, StageGate, StageFn, bool]] = [
     ("icons", lambda c: c.cfg.export_icons, write_icons, True),
     ("static_derive", lambda c: c.cfg.export_static, derive_static, True),
 ]
-
-
 
 
 def generate_forest_stages(
@@ -718,6 +714,7 @@ def generate_forest_stages(
                 height,
                 _dbh,
                 variant_models,
+                precut_model,
             ) in enumerate(tree_data_list):
                 # Get tree's fid and max cycles before skip checks
                 if tree_idx < len(species_rows):
@@ -828,6 +825,7 @@ def generate_forest_stages(
                     ctx.variant_idx = variant_idx
                     ctx.twig_density = effective_twig_density
                     ctx.model = effective_model
+                    ctx.precut_model = precut_model
 
                     # Build output directory and filename prefix
                     if has_radius_col:
