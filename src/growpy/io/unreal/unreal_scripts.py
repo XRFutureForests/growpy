@@ -312,7 +312,13 @@ DB_PATH = "{db_path}"
 STRUCT_NAME = "ST_TreeCatalogEntry"
 DATATABLE_NAME = "DT_TreeCatalog"
 STRUCT_PATH = DB_PATH + "/" + STRUCT_NAME
-DATATABLE_PATH = DB_PATH + "/" + DATATABLE_NAME
+# The struct is the reusable schema and stays in DB_PATH (Templates). The
+# DataTable is per-dataset working data, not template data -- it is never
+# created/filled/deleted in DB_PATH. It lives under IMPORT_PATH instead,
+# duplicated from a DB_PATH copy the first time (if one exists there) so any
+# hand-authored template DataTable in Templates is left untouched.
+TEMPLATE_DATATABLE_PATH = DB_PATH + "/" + DATATABLE_NAME
+DATATABLE_PATH = IMPORT_PATH + "/" + DATATABLE_NAME
 
 asset_registry = unreal.AssetRegistryHelpers.get_asset_registry()
 asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
@@ -470,20 +476,39 @@ else:
     if tree_struct is not None:
         print(f"Using struct: {{STRUCT_PATH}}")
 
-        # Delete existing DataTable if present (recreate with fresh data)
+        # Delete existing working DataTable if present (recreate with fresh
+        # data). Only ever touches DATATABLE_PATH (under IMPORT_PATH) -- the
+        # Templates copy at TEMPLATE_DATATABLE_PATH, if any, is never deleted
+        # or modified by this script.
         if editor_asset_lib.does_asset_exist(DATATABLE_PATH):
             editor_asset_lib.delete_asset(DATATABLE_PATH)
             print(f"Deleted existing DataTable: {{DATATABLE_PATH}}")
 
-        # Create DataTable with the struct as row type
-        try:
-            dt_factory = unreal.DataTableFactory()
-            dt_factory.set_editor_property("struct", tree_struct)
-            data_table = asset_tools.create_asset(
-                DATATABLE_NAME, DB_PATH, unreal.DataTable, dt_factory
-            )
-        except Exception as e:
-            unreal.log_warning(f"Could not create DataTable: {{e}}")
+        # Prefer duplicating a hand-authored template from DB_PATH (Templates)
+        # so any preset row-editor settings on it carry over; fall back to
+        # creating fresh from the struct if no template DataTable exists there.
+        if editor_asset_lib.does_asset_exist(TEMPLATE_DATATABLE_PATH):
+            try:
+                data_table = editor_asset_lib.duplicate_asset(
+                    TEMPLATE_DATATABLE_PATH, DATATABLE_PATH
+                )
+                if data_table is not None:
+                    print(
+                        f"Duplicated template DataTable: {{TEMPLATE_DATATABLE_PATH}} "
+                        f"-> {{DATATABLE_PATH}}"
+                    )
+            except Exception as e:
+                unreal.log_warning(f"Could not duplicate template DataTable: {{e}}")
+
+        if data_table is None:
+            try:
+                dt_factory = unreal.DataTableFactory()
+                dt_factory.set_editor_property("struct", tree_struct)
+                data_table = asset_tools.create_asset(
+                    DATATABLE_NAME, IMPORT_PATH, unreal.DataTable, dt_factory
+                )
+            except Exception as e:
+                unreal.log_warning(f"Could not create DataTable: {{e}}")
 
         if data_table is not None:
             print(f"Created DataTable: {{DATATABLE_PATH}}")
