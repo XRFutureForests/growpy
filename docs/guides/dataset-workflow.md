@@ -175,6 +175,7 @@ Common selections and options:
 | `--workers 4` | parallel species for step 4 (default `min(4, cpu_count)`) |
 | `--max-height 15` | cap height for faster step-3/step-4 runs |
 | `--dry-run` | print the subprocess commands without executing |
+| `--no-previews --no-icons` | skip the preview, export-control and icon PNGs |
 
 A full 11-species run takes roughly half an hour on a workstation and needs a
 licensed Grove install plus `bpy`.

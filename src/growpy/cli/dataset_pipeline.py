@@ -26,6 +26,11 @@ Usage:
     python src/growpy/cli/dataset_pipeline.py --generate-csvs
     python src/growpy/cli/dataset_pipeline.py --pilot --steps 4
 
+    # Production run: skip the inspection PNGs (preview, export-control and
+    # icons). They are not dataset payload and cost roughly a quarter of
+    # step 4's runtime:
+    python src/growpy/cli/dataset_pipeline.py --all --steps 4 --no-previews --no-icons
+
 See docs/dataset-specification.md for the step-by-step production guide.
 """
 
@@ -133,6 +138,7 @@ def main():
             "  %(prog)s --pilot --dry-run\n"
             "  %(prog)s --all --steps all\n"
             "  %(prog)s --species 'European Beech' --steps 4 --max-height 15\n"
+            "  %(prog)s --all --steps 4 --no-previews --no-icons\n"
         ),
     )
 
@@ -252,13 +258,20 @@ def main():
         "--previews",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Override step 4 preview/export-control PNGs this run (default: TOML).",
+        help=(
+            "Override step 4 preview/export-control PNGs this run (default: TOML). "
+            "Inspection aids only -- together with --no-icons, disabling these "
+            "cuts roughly a quarter off step 4 runtime."
+        ),
     )
     parser.add_argument(
         "--icons",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Override step 4 icon PNGs this run (default: from TOML).",
+        help=(
+            "Override step 4 icon PNGs this run (default: from TOML). "
+            "Inspection aids only -- see --previews."
+        ),
     )
     parser.add_argument(
         "--clean",

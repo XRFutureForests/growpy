@@ -311,6 +311,9 @@ python src/growpy/cli/dataset_pipeline.py --pilot
 # All species, step 4 only
 python src/growpy/cli/dataset_pipeline.py --all
 
+# All species, step 4 only, without the inspection PNGs (production runs)
+python src/growpy/cli/dataset_pipeline.py --all --steps 4 --no-previews --no-icons
+
 # Full pipeline (steps 1-4) for all species
 python src/growpy/cli/dataset_pipeline.py --all --steps all
 
@@ -348,6 +351,8 @@ python src/growpy/cli/dataset_pipeline.py --list
 | `--workers INT` | Parallel workers for step 4 (default: min(4, cpu_count)) |
 | `--ingest-yield-tables` | Ingest yield tables from external providers before step 3 calibration |
 | `--clean-store` | Clear existing yield table store before re-ingestion (requires `--ingest-yield-tables`) |
+| `--previews` / `--no-previews` | Override step 4 preview and export-control PNG generation (default: from TOML) |
+| `--icons` / `--no-icons` | Override step 4 icon PNG generation (default: from TOML) |
 
 ## Diagnostic Tools
 
