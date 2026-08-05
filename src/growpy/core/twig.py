@@ -370,6 +370,12 @@ def extract_twig_placements_from_model(
                     branch_root_bones[local_branch_id] = bone_idx
 
     faces = model.faces
+    # Grove rebuilds the entire point list on every `.points` access (~19 ms at
+    # 685k points), and the dead-twig branch in the face loop below reads it once
+    # per face -- on a pre-cutoff oak that was 8.4k rebuilds, ~2.7 min per
+    # exported stage. Materialise it once here instead. Only that branch needs
+    # it: when scaled_points is given the centroid is computed from there.
+    points = None if scaled_points is not None else list(model.points)
 
     # Get twig type attributes for all faces
     twig_type_attrs = {}
@@ -410,9 +416,8 @@ def extract_twig_placements_from_model(
                         cy += sp[1]
                         cz += sp[2]
                 else:
-                    pts = model.points
                     for vi in face:
-                        p = pts[vi]
+                        p = points[vi]
                         if hasattr(p, "x"):
                             cx += p.x
                             cy += p.y
@@ -777,7 +782,14 @@ def recover_cutoff_twig_placements(
         logger.warning("Twig recovery: cut model has no vertices, skipping")
         return recovered
 
-    tris, tri_owner = _triangulate_faces(cut_model.faces)
+    # Materialise once. cut_model.faces is a Grove property that rebuilds the
+    # entire face list on every access (~17 ms at 91k faces), and the recovery
+    # loop below indexes it once per orphaned twig -- reading it through the
+    # attribute there made this function O(orphans x faces) and dominated
+    # dataset production. A plain list also indexes ~220x faster than the
+    # sequence Grove returns.
+    faces = list(cut_model.faces)
+    tris, tri_owner = _triangulate_faces(faces)
     if not tris:
         logger.warning("Twig recovery: cut model has no faces, skipping")
         return recovered
@@ -840,7 +852,7 @@ def recover_cutoff_twig_placements(
     reattached = 0
     for i, placement in enumerate(lost):
         face_idx = int(tri_owner_arr[best_tri[i]])
-        face = cut_model.faces[face_idx]
+        face = faces[face_idx]
 
         twig_bone_id = None
         if bone_ids:
