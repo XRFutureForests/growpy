@@ -16,6 +16,7 @@ from growpy.core.twig import (
     get_face_center_and_normal,
     normal_to_rotation_matrix,
     rotation_matrix_to_quaternion,
+    thin_placements_to_limit,
 )
 
 
@@ -644,3 +645,59 @@ class TestRecoverCutoffTwigPlacements:
         }
         out = recover_cutoff_twig_placements(precut, [], _PlaneModel())
         assert set(out) == {"twig_long", "twig_short"}
+
+
+class TestThinPlacementsToLimit:
+    """Tests for thin_placements_to_limit."""
+
+    @staticmethod
+    def _crowd(n, twig_type="twig_long", offset=0.0):
+        return [
+            TwigPlacement(
+                type=twig_type,
+                position=(float(i) + offset, 0.0, 0.0),
+                normal=(0.0, 0.0, 1.0),
+            )
+            for i in range(n)
+        ]
+
+    def test_returns_input_untouched_when_under_limit(self):
+        placements = {"twig_long": self._crowd(10)}
+        assert thin_placements_to_limit(placements, 100) is placements
+
+    def test_disabled_when_limit_is_zero(self):
+        placements = {"twig_long": self._crowd(10)}
+        assert thin_placements_to_limit(placements, 0) is placements
+
+    def test_thins_to_the_limit(self):
+        out = thin_placements_to_limit({"twig_long": self._crowd(100)}, 10)
+        assert sum(len(v) for v in out.values()) == 10
+
+    def test_does_not_mutate_the_input(self):
+        placements = {"twig_long": self._crowd(100)}
+        thin_placements_to_limit(placements, 10)
+        assert len(placements["twig_long"]) == 100
+
+    def test_preserves_type_keys_and_mix(self):
+        placements = {
+            "twig_long": self._crowd(80, "twig_long"),
+            "twig_short": self._crowd(20, "twig_short", offset=0.5),
+        }
+        out = thin_placements_to_limit(placements, 50)
+        assert set(out) == {"twig_long", "twig_short"}
+        # Every type is thinned by the same ratio, so the mix is preserved.
+        assert len(out["twig_long"]) == 40
+        assert len(out["twig_short"]) == 10
+
+    def test_empty_type_survives_as_empty(self):
+        placements = {"twig_long": self._crowd(100), "twig_dead": []}
+        out = thin_placements_to_limit(placements, 10)
+        assert out["twig_dead"] == []
+
+    def test_deterministic_for_a_given_seed(self):
+        placements = {"twig_long": self._crowd(100)}
+        a = thin_placements_to_limit(placements, 10)
+        b = thin_placements_to_limit(placements, 10)
+        assert [p.position for p in a["twig_long"]] == [
+            p.position for p in b["twig_long"]
+        ]

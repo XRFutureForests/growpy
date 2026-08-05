@@ -928,6 +928,90 @@ def recover_cutoff_twig_placements(
     return recovered
 
 
+def thin_placements_to_limit(
+    placements: dict[str, list[TwigPlacement]],
+    max_instances: int,
+    seed: int = 42,
+) -> dict[str, list[TwigPlacement]]:
+    """Thin twig placements down to ``max_instances``, crowded twigs first.
+
+    Unreal's NaniteAssemblyRootAPI expands every instance into one combined
+    Nanite build, so an uncapped crown can exhaust GPU/system RAM on import.
+    Instances are dropped with a probability weighted by how crowded each twig
+    is -- the distance to its nearest neighbour relative to their combined
+    size -- so overlapping twigs go before comfortably spaced ones. The weight
+    is computed across all twig types together (so overlap *between* types
+    counts too), then each type is thinned by the same ratio, preserving the
+    type mix.
+
+    The selection depends only on position and scale, never on bone or branch
+    ids, so this can be applied at any point after the placements are final and
+    before the assembly is written. Applying it early keeps the per-twig bone
+    remap from processing instances that are about to be discarded.
+
+    Args:
+        placements: Twig placements keyed by twig type.
+        max_instances: Instance ceiling. 0 or less disables thinning.
+        seed: Seed for the weighted sampling, so crowns are reproducible.
+
+    Returns:
+        A new dict with the same keys, thinned. The input is never modified.
+        Returned unchanged when already at or below the limit.
+    """
+    total = sum(len(p) for p in placements.values())
+    if max_instances <= 0 or total <= max_instances:
+        return placements
+
+    import numpy as np
+    from scipy.spatial import cKDTree
+
+    rng = np.random.default_rng(seed)
+
+    all_positions: list[tuple[float, float, float]] = []
+    all_scales: list[float] = []
+    type_of_global_idx: list[str] = []
+    for twig_type, p_list in placements.items():
+        for p in p_list:
+            all_positions.append(p.position)
+            all_scales.append(p.scale)
+            type_of_global_idx.append(twig_type)
+
+    positions_arr = np.asarray(all_positions, dtype=np.float64)
+    scales_arr = np.asarray(all_scales, dtype=np.float64)
+
+    # k=2: column 0 is the twig itself (distance 0), column 1 its nearest other.
+    nn_dist, nn_idx = cKDTree(positions_arr).query(positions_arr, k=2)
+    nearest_dist = nn_dist[:, 1]
+    nearest_scale = scales_arr[nn_idx[:, 1]]
+
+    # Comfortable-spacing ratio: >1 = well spaced, <1 = likely overlapping.
+    combined_size = scales_arr + nearest_scale
+    keep_weight = np.clip(
+        nearest_dist / np.maximum(combined_size, 1e-6), 1e-3, None
+    )
+
+    per_type_indices: dict[str, list[int]] = {}
+    for global_i, twig_type in enumerate(type_of_global_idx):
+        per_type_indices.setdefault(twig_type, []).append(global_i)
+
+    ratio = max_instances / total
+    thinned: dict[str, list[TwigPlacement]] = {}
+    for twig_type, p_list in placements.items():
+        if not p_list:
+            thinned[twig_type] = []
+            continue
+        keep = max(1, int(len(p_list) * ratio))
+        type_weights = keep_weight[per_type_indices[twig_type]]
+        # Efraimidis-Spirakis weighted sampling without replacement:
+        # keys = U^(1/weight), keep the largest keys.
+        u = rng.random(len(type_weights))
+        keys = u ** (1.0 / type_weights)
+        order = np.argsort(-keys)[:keep]
+        thinned[twig_type] = [p_list[i] for i in order]
+
+    return thinned
+
+
 def densify_twig_placements(
     model: Any,
     placements: dict[str, list[TwigPlacement]],

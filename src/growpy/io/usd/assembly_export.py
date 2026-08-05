@@ -225,6 +225,17 @@ def create_assembly(
 
             # Use twig placements extracted from Grove model
             if twig_placements:
+                # Safety net: the cap is normally applied earlier, in
+                # export_tree_as_nanite_assembly, so the per-twig bone remap
+                # never processes instances that get discarded here. This is a
+                # no-op when the caller already thinned.
+                from ...core.twig import thin_placements_to_limit
+
+                twig_placements = thin_placements_to_limit(
+                    twig_placements,
+                    _get_config().export_max_assembly_instances,
+                )
+
                 # Convert TwigPlacement objects to dict format
                 placements = {}
                 for twig_type, placement_list in twig_placements.items():
@@ -245,75 +256,6 @@ def create_assembly(
                 for twig_type, p_list in placements.items():
                     logger.info("  %s: %d instances", twig_type, len(p_list))
 
-                # Cap instance count to prevent OOM during Nanite Assembly build.
-                # NaniteAssemblyRootAPI triggers a combined Nanite build that
-                # expands all instances; this can easily exceed GPU/system RAM.
-                cfg = _get_config()
-                max_inst = cfg.export_max_assembly_instances
-                if max_inst > 0 and total_twigs > max_inst:
-                    import numpy as _np
-                    from scipy.spatial import cKDTree as _cKDTree
-
-                    _rng = _np.random.default_rng(42)
-
-                    # Build a proximity-crowding weight across ALL twig types
-                    # combined, so overlap between different twig types (not
-                    # just within the same type) is penalized too.
-                    all_positions: list[tuple[float, float, float]] = []
-                    all_scales: list[float] = []
-                    type_of_global_idx: list[str] = []
-                    for twig_type, p_list in placements.items():
-                        for p in p_list:
-                            all_positions.append(p["position"])
-                            all_scales.append(p.get("scale", 1.0))
-                            type_of_global_idx.append(twig_type)
-
-                    positions_arr = _np.asarray(all_positions, dtype=_np.float64)
-                    scales_arr = _np.asarray(all_scales, dtype=_np.float64)
-
-                    tree = _cKDTree(positions_arr)
-                    # k=2: column 0 is self (distance 0), column 1 is the
-                    # nearest OTHER instance.
-                    nn_dist, nn_idx = tree.query(positions_arr, k=2)
-                    nearest_dist = nn_dist[:, 1]
-                    nearest_scale = scales_arr[nn_idx[:, 1]]
-
-                    # Comfortable-spacing ratio: distance to nearest neighbor
-                    # relative to both twigs' combined size. >1 = comfortably
-                    # spaced, <1 = likely overlapping -- weighted toward removal.
-                    combined_size = scales_arr + nearest_scale
-                    keep_weight = nearest_dist / _np.maximum(combined_size, 1e-6)
-                    keep_weight = _np.clip(keep_weight, 1e-3, None)
-
-                    # Group global weight indices back per twig type, in the
-                    # same order as placements[twig_type] so indices line up.
-                    per_type_indices: dict[str, list[int]] = {}
-                    for global_i, twig_type in enumerate(type_of_global_idx):
-                        per_type_indices.setdefault(twig_type, []).append(global_i)
-
-                    ratio = max_inst / total_twigs
-                    for twig_type in list(placements.keys()):
-                        original = len(placements[twig_type])
-                        keep = max(1, int(original * ratio))
-                        type_weights = keep_weight[per_type_indices[twig_type]]
-
-                        # Efraimidis-Spirakis weighted sampling without
-                        # replacement: keys = U^(1/weight), keep largest keys.
-                        u = _rng.random(len(type_weights))
-                        keys = u ** (1.0 / type_weights)
-                        order = _np.argsort(-keys)[:keep]
-                        placements[twig_type] = [
-                            placements[twig_type][i] for i in order
-                        ]
-
-                    capped_total = sum(len(p) for p in placements.values())
-                    logger.warning(
-                        "Capped assembly instances from %d to %d "
-                        "(max_assembly_instances=%d, proximity-weighted)",
-                        total_twigs,
-                        capped_total,
-                        max_inst,
-                    )
             else:
                 placements = {}
                 logger.warning("No twig placements available!")
@@ -1083,6 +1025,30 @@ def export_tree_as_nanite_assembly(
                             bones_info=bones_info if not use_static_mesh else None,
                             youth_bias=cfg.export_youth_bias,
                             scaled_points=_sp,
+                        )
+
+            # Thin to the assembly instance cap here, before the per-twig bone
+            # remap below and before twig_placements_out is published, so
+            # neither spends work on instances the assembly would discard.
+            # The selection uses only position and scale, so capping here is
+            # equivalent to capping at assembly-write time.
+            if twig_placements:
+                with _track("cap_twig_instances"):
+                    from ...core.twig import thin_placements_to_limit
+
+                    _max_inst = _get_config().export_max_assembly_instances
+                    _before = sum(len(p) for p in twig_placements.values())
+                    twig_placements = thin_placements_to_limit(
+                        twig_placements, _max_inst
+                    )
+                    _after = sum(len(p) for p in twig_placements.values())
+                    if _after < _before:
+                        logger.warning(
+                            "Capped assembly instances from %d to %d "
+                            "(max_assembly_instances=%d, proximity-weighted)",
+                            _before,
+                            _after,
+                            _max_inst,
                         )
 
             # CRITICAL: Remap twig bone_ids from UNFILTERED to FILTERED indices
