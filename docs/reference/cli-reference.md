@@ -350,9 +350,16 @@ python src/growpy/cli/dataset_pipeline.py --list
 | `--max-height FLOAT` | Cap tree heights for step 4 (for faster testing) |
 | `--workers INT` | Parallel workers for step 4 (default: min(4, cpu_count)) |
 | `--ingest-yield-tables` | Ingest yield tables from external providers before step 3 calibration |
+| `--clean` | Wipe each step's output directories before running (implies `--clean-store` for step 3) |
 | `--clean-store` | Clear existing yield table store before re-ingestion (requires `--ingest-yield-tables`) |
+| `--calibrate` / `--no-calibrate` | Override step 3 calibration for this run only (default: from TOML) |
+| `--pve` / `--no-pve` | Override step 4 PVE preset generation (default: from TOML) |
+| `--wind` / `--no-wind` | Override step 4 wind-data generation (default: from TOML) |
 | `--previews` / `--no-previews` | Override step 4 preview and export-control PNG generation (default: from TOML) |
 | `--icons` / `--no-icons` | Override step 4 icon PNG generation (default: from TOML) |
+| `--profile` / `--no-profile` | Override step 4 profiling (default: from TOML). Prints a per-stage timing report from each species subprocess |
+| `-v`, `--verbose` | INFO-level logging; the pipeline logs only warnings and errors otherwise |
+| `-q`, `--quiet` | Suppress INFO-level logging (warnings and errors only) |
 
 ## Diagnostic Tools
 
