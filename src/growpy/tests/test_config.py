@@ -47,13 +47,15 @@ class TestGrowPyConfigDefaults:
         config = GrowPyConfig()
         assert config.export_static is False
 
-    def test_default_export_previews(self):
+    def test_previews_off_by_default(self):
+        """Visual QA aid; only the icons feed dataset_overview.md/.csv."""
         config = GrowPyConfig()
-        assert config.export_previews is True
+        assert config.export_previews is False
 
-    def test_default_export_control_images(self):
+    def test_export_control_images_off_by_default(self):
+        """QA aid nothing downstream consumes, and the costliest image stage."""
         config = GrowPyConfig()
-        assert config.export_control_images is True
+        assert config.export_control_images is False
 
     def test_default_export_icons(self):
         config = GrowPyConfig()

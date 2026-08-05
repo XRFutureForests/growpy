@@ -305,15 +305,18 @@ class GrowPyConfig:
     export_mode: str = "unreal"
     export_skeletal: bool = True
     export_static: bool = False
-    # Preview PNGs, export-control PNGs, and front/side/top icon PNGs are
-    # generated once per tree (not per density variant). All default true so
-    # the current always-on behavior is unchanged -- see XRFF-290.
-    # export_control_images is gated separately from export_previews because
-    # the export-control render is by far the most expensive of the three:
-    # 15.4% of a full dataset run, about 3x the preview image itself.
-    export_previews: bool = True
-    export_control_images: bool = True
+    # Per-tree PNGs, generated once per tree rather than per density variant
+    # (XRFF-290). Only the icons are a dataset deliverable: dataset_overview.md
+    # and dataset_overview.csv are built from them. The preview (branch
+    # architecture from the skeleton polylines) and the export-control render
+    # (mesh edges + skeleton joints, read back from the exported USD) are
+    # visual QA aids that nothing downstream consumes, and together they are
+    # ~27% of a full dataset run -- the export-control alone is 15.4%. Both
+    # default off; enable per run with --previews / --export-control when
+    # inspecting a specific tree.
     export_icons: bool = True
+    export_previews: bool = False
+    export_control_images: bool = False
     export_max_skeleton_joints: int = 0  # 0 = no limit; 250 = Nanite Assembly USD
     export_max_assembly_instances: int = (
         0  # 0 = no limit; cap twig instances per assembly

@@ -175,8 +175,8 @@ Common selections and options:
 | `--workers 4` | parallel species for step 4 (default `min(4, cpu_count)`) |
 | `--max-height 15` | cap height for faster step-3/step-4 runs |
 | `--dry-run` | print the subprocess commands without executing |
-| `--no-export-control` | skip the export-control PNG -- the most expensive image stage on its own (~15% of a run) |
-| `--no-previews --no-export-control --no-icons` | skip every inspection PNG (~27% of a run) |
+| `--previews --export-control` | re-enable the visual QA renders (branch preview, and mesh edges + skeleton joints); both off by default, ~27% of a run |
+| `--no-icons` | also skip the overview icons -- but `dataset_overview.md`/`.csv` are built from them |
 
 A full 11-species run takes roughly half an hour on a workstation and needs a
 licensed Grove install plus `bpy`.

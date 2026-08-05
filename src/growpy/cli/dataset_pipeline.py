@@ -26,10 +26,10 @@ Usage:
     python src/growpy/cli/dataset_pipeline.py --generate-csvs
     python src/growpy/cli/dataset_pipeline.py --pilot --steps 4
 
-    # Production run: skip the inspection PNGs. --no-export-control alone drops
-    # the most expensive one (~15% of step 4); all three together are ~27%:
+    # The visual QA renders (branch preview, mesh edges + skeleton joints) are
+    # off by default -- turn them on when inspecting a specific tree:
     python src/growpy/cli/dataset_pipeline.py --all --steps 4 \
-        --no-previews --no-export-control --no-icons
+        --previews --export-control
 
 See docs/dataset-specification.md for the step-by-step production guide.
 """
@@ -138,8 +138,7 @@ def main():
             "  %(prog)s --pilot --dry-run\n"
             "  %(prog)s --all --steps all\n"
             "  %(prog)s --species 'European Beech' --steps 4 --max-height 15\n"
-            "  %(prog)s --all --steps 4 --no-export-control\n"
-            "  %(prog)s --all --steps 4 --no-previews --no-export-control --no-icons\n"
+            "  %(prog)s --all --steps 4 --previews --export-control\n"
         ),
     )
 
@@ -260,9 +259,9 @@ def main():
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
-            "Override step 4 preview PNGs this run (default: from TOML). "
-            "Inspection aids only. The export-control render has its own flag "
-            "now, --export-control; all three together are ~27%% of step 4."
+            "Generate step 4 preview PNGs (branch architecture from the "
+            "skeleton). Visual QA aid, off by default -- dataset_overview.md "
+            "is built from --icons, not from these."
         ),
     )
     parser.add_argument(
@@ -270,9 +269,9 @@ def main():
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
-            "Override step 4 export-control PNGs this run (default: from TOML). "
-            "The most expensive image stage on its own: 15.4%% of a full "
-            "dataset run, about 3x the preview it used to be bundled with."
+            "Generate step 4 export-control PNGs (mesh edges + skeleton "
+            "joints). QA aid, off by default: nothing downstream reads it and "
+            "it is 15.4%% of a full dataset run, roughly 3x the preview."
         ),
     )
     parser.add_argument(

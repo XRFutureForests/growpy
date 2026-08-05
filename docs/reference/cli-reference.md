@@ -311,11 +311,9 @@ python src/growpy/cli/dataset_pipeline.py --pilot
 # All species, step 4 only
 python src/growpy/cli/dataset_pipeline.py --all
 
-# All species, step 4 only, dropping just the costly export-control render
-python src/growpy/cli/dataset_pipeline.py --all --steps 4 --no-export-control
-
-# ...or every inspection PNG (production runs)
-python src/growpy/cli/dataset_pipeline.py --all --steps 4 --no-previews --no-export-control --no-icons
+# Turn the visual QA renders back on for a tree you are inspecting
+# (both are off by default; a plain run produces only the overview icons)
+python src/growpy/cli/dataset_pipeline.py --all --steps 4 --previews --export-control
 
 # Full pipeline (steps 1-4) for all species
 python src/growpy/cli/dataset_pipeline.py --all --steps all
@@ -358,9 +356,9 @@ python src/growpy/cli/dataset_pipeline.py --list
 | `--calibrate` / `--no-calibrate` | Override step 3 calibration for this run only (default: from TOML) |
 | `--pve` / `--no-pve` | Override step 4 PVE preset generation (default: from TOML) |
 | `--wind` / `--no-wind` | Override step 4 wind-data generation (default: from TOML) |
-| `--previews` / `--no-previews` | Override step 4 preview PNG generation (default: from TOML) |
-| `--export-control` / `--no-export-control` | Override step 4 export-control PNG generation (default: from TOML). The most expensive image stage on its own: ~15% of a full run |
-| `--icons` / `--no-icons` | Override step 4 icon PNG generation (default: from TOML) |
+| `--previews` / `--no-previews` | Preview PNG: branch architecture from the skeleton. Visual QA aid, **off by default** |
+| `--export-control` / `--no-export-control` | Export-control PNG: mesh edges + skeleton joints, a QA aid nothing downstream consumes. **Off by default** -- ~15% of a full run |
+| `--icons` / `--no-icons` | Override step 4 icon PNG generation (default: from TOML). `dataset_overview.md` and `dataset_overview.csv` are built from these |
 | `--profile` / `--no-profile` | Override step 4 profiling (default: from TOML). Prints a per-stage timing report from each species subprocess |
 | `-v`, `--verbose` | INFO-level logging; the pipeline logs only warnings and errors otherwise |
 | `-q`, `--quiet` | Suppress INFO-level logging (warnings and errors only) |

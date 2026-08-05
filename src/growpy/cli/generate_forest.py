@@ -310,8 +310,8 @@ Unreal Engine Integration:
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
-            "Generate the preview PNG per tree (default: from config). "
-            "The export-control render has its own flag, --export-control."
+            "Generate the preview PNG per tree (branch architecture from the "
+            "skeleton). Visual QA aid, off by default; see --export-control."
         ),
     )
     parser.add_argument(
@@ -319,9 +319,9 @@ Unreal Engine Integration:
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
-            "Generate the export-control PNG per tree (default: from config). "
-            "Separate from --previews because it is the most expensive image "
-            "stage by a wide margin."
+            "Generate the export-control PNG per tree: mesh edges plus "
+            "skeleton joints, read back from the exported USD. QA aid, off by "
+            "default -- it is the costliest image stage by a wide margin."
         ),
     )
     parser.add_argument(
