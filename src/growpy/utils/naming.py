@@ -64,13 +64,25 @@ def filename_safe_species_slug(species_name: str) -> str:
     return cleaned.strip().replace(" ", "_").replace("-", "_").lower()
 
 
-# Standardized twig type mapping
-TWIG_NAME_MAPPINGS = {
+# Grove's twig slots. The Grove picks exactly one per twig object, testing
+# lateral, then apical, then upward, then "dead" and taking the first match
+# (the_grove_23 Twigs.py).
+TWIG_TYPE_MAPPINGS = {
     "apical": ["apical", "end", "long", "terminal", "tip"],
     "lateral": ["lateral", "side", "short", "laterall"],
     "upward": ["upward", "up"],
-    "dead": ["dead", "fall", "winter", "bare"],
+    "dead": ["dead"],
+}
+
+# Foliage season variants, orthogonal to the slot above. A fall or winter twig
+# is a COMPLETE twig whose leaves are coloured (or shed) for the season -- an
+# alternative to the summer set, not Grove's dead-twig slot. Folding fall and
+# winter into "dead" stamped a dead token onto autumn foliage, which
+# io/usd/tree_export.py then read back as a dead-twig asset.
+TWIG_SEASON_MAPPINGS = {
     "summer": ["summer", "spring", "green"],
+    "fall": ["fall", "autumn"],
+    "winter": ["winter", "bare"],
 }
 
 # Texture type classifications with extended keywords
@@ -128,7 +140,7 @@ def standardize_twig_name(original_name: str, species_name: str) -> tuple[str, d
     }
 
     # Detect twig type
-    for standard_type, keywords in TWIG_NAME_MAPPINGS.items():
+    for standard_type, keywords in TWIG_TYPE_MAPPINGS.items():
         if any(kw in name_lower for kw in keywords):
             metadata["type"] = standard_type
             break
@@ -150,12 +162,12 @@ def standardize_twig_name(original_name: str, species_name: str) -> tuple[str, d
                 metadata["variation"] = letter
                 break
 
-    # Detect season
-    for season_type, keywords in TWIG_NAME_MAPPINGS.items():
-        if season_type in ["summer", "dead"] and any(
-            kw in name_lower for kw in keywords
-        ):
+    # Detect season (independent of the slot above: a fall apical twig is an
+    # apical twig with autumn leaves)
+    for season_type, keywords in TWIG_SEASON_MAPPINGS.items():
+        if any(kw in name_lower for kw in keywords):
             metadata["season"] = season_type
+            break
 
     # Build standardized name
     parts = []

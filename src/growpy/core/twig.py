@@ -209,6 +209,43 @@ def _face_area(vertices: list, face: list[int]) -> float:
     return total
 
 
+def _polygon_normal(
+    face_verts: list[tuple[float, float, float]],
+) -> tuple[float, float, float]:
+    """Newell normal of a polygon given its vertex coordinates.
+
+    Grove documents the twig duplication triangle's normal as the twig's
+    orientation, so this recovers a growth direction straight from the mesh for
+    faces that have no entry in the twig arrays.
+    """
+    normal = [0.0, 0.0, 0.0]
+    n = len(face_verts)
+    for i in range(n):
+        v1 = face_verts[i]
+        v2 = face_verts[(i + 1) % n]
+        normal[0] += (v1[1] - v2[1]) * (v1[2] + v2[2])
+        normal[1] += (v1[2] - v2[2]) * (v1[0] + v2[0])
+        normal[2] += (v1[0] - v2[0]) * (v1[1] + v2[1])
+    return _normalize((normal[0], normal[1], normal[2])) or (0.0, 0.0, 1.0)
+
+
+def _quat_forward(
+    q: tuple[float, float, float, float],
+) -> tuple[float, float, float]:
+    """The +X axis rotated by a (w, x, y, z) unit quaternion.
+
+    Grove's twig frame carries the growth direction on +X, so this recovers a
+    twig's direction from its quaternion (measured against
+    get_twig_directions(): 0.00 deg error).
+    """
+    w, x, y, z = q
+    return (
+        1.0 - 2.0 * (y * y + z * z),
+        2.0 * (x * y + w * z),
+        2.0 * (x * z - w * y),
+    )
+
+
 def direction_to_quaternion(
     direction: tuple[float, float, float],
     reference: tuple[float, float, float] | None = None,
@@ -376,6 +413,12 @@ def extract_twig_placements_from_model(
     # exported stage. Materialise it once here instead. Only that branch needs
     # it: when scaled_points is given the centroid is computed from there.
     points = None if scaled_points is not None else list(model.points)
+    # Grove's get_twig_* arrays cover LIVING twigs only, but the mesh still
+    # carries a full frame for the dead ones: point_attribute_orientation holds
+    # the twig duplication triangle's quaternion. Measured on a 12-cycle oak it
+    # reproduces get_twig_orientations() to 0.00 deg on every living twig face,
+    # and every dead face carries a unit quaternion too.
+    point_orientations = getattr(model, "point_attribute_orientation", None)
 
     # Get twig type attributes for all faces
     twig_type_attrs = {}
@@ -405,31 +448,49 @@ def extract_twig_placements_from_model(
 
             # Dead twigs have face attributes but NO entries in Grove's
             # twig location/direction/orientation arrays (those only hold
-            # living twigs).  Use face centroid + default vectors instead.
+            # living twigs). Take their frame off the mesh instead: Grove
+            # documents the duplication triangle's normal as the twig's
+            # orientation, and point_attribute_orientation carries the same
+            # quaternion it exposes for living twigs.
             if is_dead:
-                cx, cy, cz = 0.0, 0.0, 0.0
-                n = len(face)
                 if scaled_points is not None:
-                    for vi in face:
-                        sp = scaled_points[vi]
-                        cx += sp[0]
-                        cy += sp[1]
-                        cz += sp[2]
+                    face_verts = [scaled_points[vi] for vi in face]
                 else:
+                    face_verts = []
                     for vi in face:
                         p = points[vi]
                         if hasattr(p, "x"):
-                            cx += p.x
-                            cy += p.y
-                            cz += p.z
+                            face_verts.append((p.x, p.y, p.z))
                         else:
-                            cx += p[0]
-                            cy += p[1]
-                            cz += p[2]
-                inv_n = 1.0 / n
-                position = (cx * inv_n, cy * inv_n, cz * inv_n)
-                normal = (0.0, 0.0, 1.0)
+                            face_verts.append((p[0], p[1], p[2]))
+                inv_n = 1.0 / len(face_verts)
+                position = (
+                    sum(v[0] for v in face_verts) * inv_n,
+                    sum(v[1] for v in face_verts) * inv_n,
+                    sum(v[2] for v in face_verts) * inv_n,
+                )
                 orientation = IDENTITY_QUAT
+                if point_orientations is not None and len(face) > 0:
+                    vert_idx = face[0]
+                    if vert_idx < len(point_orientations):
+                        q = point_orientations[vert_idx]
+                        if q is not None and len(q) == 4:
+                            orientation = (
+                                float(q[0]),
+                                float(q[1]),
+                                float(q[2]),
+                                float(q[3]),
+                            )
+                if orientation == IDENTITY_QUAT:
+                    # No quaternion available: fall back to the triangle normal,
+                    # which is the orientation Grove documents. Building the
+                    # quaternion here rather than leaving it identity keeps the
+                    # exporter off its constant world-axis fallback, which would
+                    # aim every dead twig in the same direction.
+                    normal = _polygon_normal(face_verts)
+                    orientation = direction_to_quaternion(normal)
+                else:
+                    normal = _quat_forward(orientation)
             else:
                 # Living twig — index into Grove arrays
                 if twig_idx >= num_twigs:
@@ -746,23 +807,30 @@ def recover_cutoff_twig_placements(
     import numpy as np
     from scipy.spatial import cKDTree
 
+    cut_tree = None
+
     lost: list[TwigPlacement] = []
     survived_count = 0
-    if cut_twig_positions:
-        cut_tree = cKDTree(np.asarray(cut_twig_positions, dtype=np.float64))
-        for plist in precut_placements.values():
-            if not plist:
-                continue
-            pts = np.asarray([p.position for p in plist], dtype=np.float64)
-            dist, _ = cut_tree.query(pts, k=1)
-            for placement, d in zip(plist, dist):
-                if d <= match_tolerance:
-                    survived_count += 1
-                else:
-                    lost.append(placement)
-    else:
-        for plist in precut_placements.values():
+    # twig_dead is excluded: cut_twig_positions holds Grove's LIVING twig
+    # locations only, and dead placements are face centroids, so every one of
+    # them would fail to match and be "recovered" on top of the dead placements
+    # the cut model already produced. They are not lost to the cutoff anyway --
+    # the cut model marks its own dead faces.
+    for twig_type, plist in precut_placements.items():
+        if not plist or twig_type == "twig_dead":
+            continue
+        if not cut_twig_positions:
             lost.extend(plist)
+            continue
+        if cut_tree is None:
+            cut_tree = cKDTree(np.asarray(cut_twig_positions, dtype=np.float64))
+        pts = np.asarray([p.position for p in plist], dtype=np.float64)
+        dist, _ = cut_tree.query(pts, k=1)
+        for placement, d in zip(plist, dist):
+            if d <= match_tolerance:
+                survived_count += 1
+            else:
+                lost.append(placement)
 
     recovered: dict[str, list[TwigPlacement]] = {}
     if not lost:

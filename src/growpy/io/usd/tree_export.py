@@ -1504,13 +1504,23 @@ def get_twig_usd_map_for_species(
 
     twig_usd_map: dict[str, list[Path]] = {}
 
-    # Map Grove attribute names to twig file keywords
+    # Map Grove attribute names to twig file keywords.
+    #
+    # twig_dead is deliberately narrow and is resolved last. Grove's own slot
+    # detection (the_grove_23 Twigs.py) tests lateral, then apical, then upward,
+    # then "dead", first match wins -- so a name carrying a living-type token is
+    # that type and never a dead twig. "fall"/"winter" are seasons, not Grove's
+    # dead-twig slot: growpy's own standardize_twig_name stamps a "dead" season
+    # token onto FALL foliage (utils/naming.py), so matching those here made an
+    # ordinary autumn apical twig register as a dead-twig asset and rendered
+    # Grove's dead positions with it.
     type_mapping = {
         "twig_long": ["apical", "long", "end", "terminal", "foliage_a_", "foliage_c_"],
         "twig_short": ["lateral", "short", "side", "foliage_b_", "foliage_d_"],
         "twig_upward": ["upward", "up", "foliage_e_"],
-        "twig_dead": ["dead", "fall", "winter"],
+        "twig_dead": ["dead"],
     }
+    living_types = ("twig_long", "twig_short", "twig_upward")
 
     def _resolve_usd_path(twig_paths):
         """Find a valid USD file path from a list of twig paths."""
@@ -1547,15 +1557,23 @@ def get_twig_usd_map_for_species(
                         return usd_file
         return None
 
-    # Collect ALL matching twig files per grove type
+    # Collect ALL matching twig files per grove type. Files already claimed by a
+    # living type are withheld from twig_dead, mirroring Grove's first-match-wins
+    # precedence; dict order puts twig_dead last so the set is complete by then.
+    claimed_by_living: set[str] = set()
     for grove_type, keywords in type_mapping.items():
         matched_paths = []
         for keyword in keywords:
             for twig_type, twig_paths in twig_files_by_type.items():
-                if keyword in twig_type.lower():
-                    resolved = _resolve_usd_path(twig_paths)
-                    if resolved and resolved not in matched_paths:
-                        matched_paths.append(resolved)
+                if keyword not in twig_type.lower():
+                    continue
+                if grove_type in living_types:
+                    claimed_by_living.add(twig_type)
+                elif twig_type in claimed_by_living:
+                    continue
+                resolved = _resolve_usd_path(twig_paths)
+                if resolved and resolved not in matched_paths:
+                    matched_paths.append(resolved)
         if matched_paths:
             twig_usd_map[grove_type] = matched_paths
 

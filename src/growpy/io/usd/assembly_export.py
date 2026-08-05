@@ -1027,6 +1027,37 @@ def export_tree_as_nanite_assembly(
                             scaled_points=_sp,
                         )
 
+            # Dead twigs are instanced only when the species actually ships a
+            # dead-twig model; create_nanite_assembly and the Helios OBJ export
+            # both skip the type otherwise. Drop them before the cap so they do
+            # not spend instance budget that living twigs then get thinned to
+            # free -- on the 2026-08-05 sycamore maple they were half the crown
+            # and every one was discarded at write time.
+            if twig_placements and twig_placements.get("twig_dead"):
+                if twig_usd_paths is None:
+                    with _track("twig_lookup"):
+                        try:
+                            from .tree_export import get_twig_usd_map_for_species
+
+                            twig_usd_paths = get_twig_usd_map_for_species(
+                                species_name,
+                                prefer_skeletal=True,
+                                prefer_static=False,
+                            )
+                        except Exception:
+                            twig_usd_paths = None
+                if not (twig_usd_paths or {}).get("twig_dead"):
+                    _dead_count = len(twig_placements["twig_dead"])
+                    twig_placements = {
+                        t: p for t, p in twig_placements.items() if t != "twig_dead"
+                    }
+                    logger.info(
+                        "Dropped %d dead-twig placements before the instance cap: "
+                        "%s ships no dead-twig asset, so none would be instanced",
+                        _dead_count,
+                        species_name,
+                    )
+
             # Thin to the assembly instance cap here, before the per-twig bone
             # remap below and before twig_placements_out is published, so
             # neither spends work on instances the assembly would discard.
