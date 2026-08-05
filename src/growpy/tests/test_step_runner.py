@@ -153,6 +153,27 @@ class TestBuildStep4Command:
         assert "--profile" not in cmd
         assert "--no-profile" not in cmd
 
+    def test_export_control_appended_when_true(self):
+        cmd = _build_step4_command("European Beech", export_control=True)
+        assert "--export-control" in cmd
+
+    def test_no_export_control_appended_when_false(self):
+        cmd = _build_step4_command("European Beech", export_control=False)
+        assert "--no-export-control" in cmd
+
+    def test_export_control_omitted_when_none(self):
+        cmd = _build_step4_command("European Beech", export_control=None)
+        assert "--export-control" not in cmd
+        assert "--no-export-control" not in cmd
+
+    def test_export_control_is_independent_of_previews(self):
+        # The point of the split: keep the preview, drop the costly control render.
+        cmd = _build_step4_command(
+            "European Beech", previews=True, export_control=False
+        )
+        assert "--previews" in cmd
+        assert "--no-export-control" in cmd
+
 
 class TestBuildStep123Command:
     """Tests for step 1-3 command construction."""

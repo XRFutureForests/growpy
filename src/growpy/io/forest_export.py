@@ -485,14 +485,18 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         preview_bounds = _generate_preview_image(
                             tree_dir, species_clean, file_prefix, skeleton, timer
                         )
-                        _generate_export_control_image(
-                            tree_dir,
-                            species_clean,
-                            file_prefix,
-                            timer,
-                            view_bounds=preview_bounds,
-                            stems_file_base=stems_base,
-                        )
+                        # The export-control render is the most expensive of
+                        # the image stages, so it has its own gate -- mirrors
+                        # the export_control stage in forest_stages.py.
+                        if config.export_control_images:
+                            _generate_export_control_image(
+                                tree_dir,
+                                species_clean,
+                                file_prefix,
+                                timer,
+                                view_bounds=preview_bounds,
+                                stems_file_base=stems_base,
+                            )
                         _generate_icon_image(tree_dir, file_prefix, skeleton, timer)
 
             # MEMORY OPTIMIZATION: Clear this tree's data immediately after export

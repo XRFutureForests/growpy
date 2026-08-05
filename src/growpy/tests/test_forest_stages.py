@@ -26,6 +26,7 @@ from growpy.pipelines.forest_stages import (
     export_obj_direct,
     export_assembly,
     resolve_target_dbh,
+    write_export_control,
     write_icons,
     write_previews,
     write_pve_json,
@@ -417,21 +418,52 @@ class TestWritePveJson:
 class TestWritePreviews:
     """Tests for write_previews (XRFF-289)."""
 
-    def test_generates_preview_and_export_control(self):
+    def test_generates_preview_and_stashes_bounds(self):
+        ctx = _make_ctx(dims_suffix="h10m_d15cm")
+        with patch(
+            "growpy.pipelines.forest_stages._generate_preview_image",
+            return_value="bounds",
+        ) as mock_preview:
+            write_previews(ctx)
+        mock_preview.assert_called_once()
+        assert ctx.preview_bounds == "bounds"
+
+    def test_does_not_generate_the_export_control_image(self):
+        # Split into its own stage so it can be disabled independently.
         ctx = _make_ctx(dims_suffix="h10m_d15cm")
         with (
             patch(
                 "growpy.pipelines.forest_stages._generate_preview_image",
                 return_value="bounds",
-            ) as mock_preview,
+            ),
             patch(
                 "growpy.pipelines.forest_stages._generate_export_control_image"
             ) as mock_control,
         ):
             write_previews(ctx)
-        mock_preview.assert_called_once()
+        mock_control.assert_not_called()
+
+
+class TestWriteExportControl:
+    """Tests for write_export_control, split out of write_previews."""
+
+    def test_uses_the_preview_bounds_when_previews_ran(self):
+        ctx = _make_ctx(dims_suffix="h10m_d15cm")
+        ctx.preview_bounds = "bounds"
+        with patch(
+            "growpy.pipelines.forest_stages._generate_export_control_image"
+        ) as mock_control:
+            write_export_control(ctx)
         mock_control.assert_called_once()
         assert mock_control.call_args.kwargs["view_bounds"] == "bounds"
+
+    def test_falls_back_to_its_own_bounds_when_previews_are_off(self):
+        ctx = _make_ctx(dims_suffix="h10m_d15cm")
+        with patch(
+            "growpy.pipelines.forest_stages._generate_export_control_image"
+        ) as mock_control:
+            write_export_control(ctx)
+        assert mock_control.call_args.kwargs["view_bounds"] is None
 
 
 class TestWriteIcons:
@@ -492,13 +524,26 @@ class TestStagesRegistry:
 
     def test_stage_names_and_order(self):
         names = [name for name, *_ in STAGES]
-        assert names == ["wind_json", "pve_json", "preview", "icons", "static_derive"]
+        assert names == [
+            "wind_json",
+            "pve_json",
+            "preview",
+            "export_control",
+            "icons",
+            "static_derive",
+        ]
 
     def test_once_per_tree_flags(self):
         """pve_json now runs per density variant (XRFF-283); the rest stay once_per_tree."""
         once_per_tree_by_name = {name: once for name, _gate, _fn, once in STAGES}
         assert once_per_tree_by_name["pve_json"] is False
-        for name in ("wind_json", "preview", "icons", "static_derive"):
+        for name in (
+            "wind_json",
+            "preview",
+            "export_control",
+            "icons",
+            "static_derive",
+        ):
             assert once_per_tree_by_name[name] is True, f"{name} should be once_per_tree"
 
     def test_stage_functions_match_extracted_functions(self):
@@ -506,6 +551,7 @@ class TestStagesRegistry:
             "wind_json": write_wind_json,
             "pve_json": write_pve_json,
             "preview": write_previews,
+            "export_control": write_export_control,
             "icons": write_icons,
             "static_derive": derive_static,
         }

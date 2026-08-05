@@ -163,6 +163,7 @@ class GrowPyConfig:
         "static": "export_static",
         "skip_validation": "export_skip_validation",
         "previews": "export_previews",
+        "export_control": "export_control_images",
         "icons": "export_icons",
         # [unreal]
         "import_to_unreal": "unreal_import_to_unreal",
@@ -305,9 +306,13 @@ class GrowPyConfig:
     export_skeletal: bool = True
     export_static: bool = False
     # Preview PNGs, export-control PNGs, and front/side/top icon PNGs are
-    # generated once per tree (not per density variant). Both default true so
+    # generated once per tree (not per density variant). All default true so
     # the current always-on behavior is unchanged -- see XRFF-290.
+    # export_control_images is gated separately from export_previews because
+    # the export-control render is by far the most expensive of the three:
+    # 15.4% of a full dataset run, about 3x the preview image itself.
     export_previews: bool = True
+    export_control_images: bool = True
     export_icons: bool = True
     export_max_skeleton_joints: int = 0  # 0 = no limit; 250 = Nanite Assembly USD
     export_max_assembly_instances: int = (
@@ -500,6 +505,8 @@ class GrowPyConfig:
             kwargs["export_skip_validation"] = export["skip_validation"]
         if "previews" in export:
             kwargs["export_previews"] = bool(export["previews"])
+        if "export_control" in export:
+            kwargs["export_control_images"] = bool(export["export_control"])
         if "icons" in export:
             kwargs["export_icons"] = bool(export["icons"])
         # Deprecated alias: export.radial_scale -> export_dbh_from_allometry

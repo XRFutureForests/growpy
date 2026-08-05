@@ -7,8 +7,8 @@ derivation) can be an independently testable function taking a single
 
 One instance is built per tree. Its variant-scoped fields (`model`,
 `variant_name`, `variant_idx`, `twig_density`, `tree_dir`, `file_prefix`,
-`usd_path`, `twig_placements`, `export_success`, `static_path`) are
-reassigned once per density-variant iteration -- see
+`usd_path`, `twig_placements`, `export_success`, `static_path`,
+`preview_bounds`) are reassigned once per density-variant iteration -- see
 `generate_forest_stages()`.
 """
 
@@ -68,3 +68,8 @@ class TreeExportContext:
     twig_placements: dict = field(default_factory=dict)
     export_success: bool = False
     static_path: str | None = None
+
+    # Set by write_previews(); read by write_export_control() so the control
+    # render is framed like the preview. Stays None when previews are off, in
+    # which case the control image picks its own bounds.
+    preview_bounds: list | None = None

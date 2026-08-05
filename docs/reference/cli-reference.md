@@ -311,8 +311,11 @@ python src/growpy/cli/dataset_pipeline.py --pilot
 # All species, step 4 only
 python src/growpy/cli/dataset_pipeline.py --all
 
-# All species, step 4 only, without the inspection PNGs (production runs)
-python src/growpy/cli/dataset_pipeline.py --all --steps 4 --no-previews --no-icons
+# All species, step 4 only, dropping just the costly export-control render
+python src/growpy/cli/dataset_pipeline.py --all --steps 4 --no-export-control
+
+# ...or every inspection PNG (production runs)
+python src/growpy/cli/dataset_pipeline.py --all --steps 4 --no-previews --no-export-control --no-icons
 
 # Full pipeline (steps 1-4) for all species
 python src/growpy/cli/dataset_pipeline.py --all --steps all
@@ -355,7 +358,8 @@ python src/growpy/cli/dataset_pipeline.py --list
 | `--calibrate` / `--no-calibrate` | Override step 3 calibration for this run only (default: from TOML) |
 | `--pve` / `--no-pve` | Override step 4 PVE preset generation (default: from TOML) |
 | `--wind` / `--no-wind` | Override step 4 wind-data generation (default: from TOML) |
-| `--previews` / `--no-previews` | Override step 4 preview and export-control PNG generation (default: from TOML) |
+| `--previews` / `--no-previews` | Override step 4 preview PNG generation (default: from TOML) |
+| `--export-control` / `--no-export-control` | Override step 4 export-control PNG generation (default: from TOML). The most expensive image stage on its own: ~15% of a full run |
 | `--icons` / `--no-icons` | Override step 4 icon PNG generation (default: from TOML) |
 | `--profile` / `--no-profile` | Override step 4 profiling (default: from TOML). Prints a per-stage timing report from each species subprocess |
 | `-v`, `--verbose` | INFO-level logging; the pipeline logs only warnings and errors otherwise |

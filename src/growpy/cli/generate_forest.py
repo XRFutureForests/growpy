@@ -309,7 +309,20 @@ Unreal Engine Integration:
         "--previews",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Generate preview/export-control PNGs per tree (default: from config).",
+        help=(
+            "Generate the preview PNG per tree (default: from config). "
+            "The export-control render has its own flag, --export-control."
+        ),
+    )
+    parser.add_argument(
+        "--export-control",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Generate the export-control PNG per tree (default: from config). "
+            "Separate from --previews because it is the most expensive image "
+            "stage by a wide margin."
+        ),
     )
     parser.add_argument(
         "--icons",

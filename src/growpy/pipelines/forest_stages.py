@@ -360,18 +360,31 @@ def write_pve_json(ctx: TreeExportContext) -> None:
 
 
 def write_previews(ctx: TreeExportContext) -> None:
-    """Generate the preview image and export-control image for this tree."""
-    stems_base = f"{ctx.species_clean}_{ctx.dims_suffix}"
-    preview_bounds = _generate_preview_image(
+    """Generate the 2D preview image for this tree.
+
+    Stashes the resulting view bounds on the context so write_export_control()
+    can frame its render identically when both stages run.
+    """
+    ctx.preview_bounds = _generate_preview_image(
         ctx.tree_dir, ctx.species_clean, ctx.file_prefix, ctx.skeleton, ctx.timer
     )
+
+
+def write_export_control(ctx: TreeExportContext) -> None:
+    """Generate the export-control image for this tree.
+
+    Gated separately from write_previews because this is by far the most
+    expensive of the image stages -- 15.4% of a full dataset run, roughly 3x
+    the preview itself. When previews are disabled ctx.preview_bounds is None
+    and the control render picks its own bounds.
+    """
     _generate_export_control_image(
         ctx.tree_dir,
         ctx.species_clean,
         ctx.file_prefix,
         ctx.timer,
-        view_bounds=preview_bounds,
-        stems_file_base=stems_base,
+        view_bounds=ctx.preview_bounds,
+        stems_file_base=f"{ctx.species_clean}_{ctx.dims_suffix}",
     )
 
 
@@ -465,6 +478,12 @@ STAGES: list[tuple[str, StageGate, StageFn, bool]] = [
     ("wind_json", lambda c: c.cfg.unreal_generate_wind_data, write_wind_json, True),
     ("pve_json", lambda c: not c.skip_pve_json, write_pve_json, False),
     ("preview", lambda c: c.cfg.export_previews, write_previews, True),
+    (
+        "export_control",
+        lambda c: c.cfg.export_control_images,
+        write_export_control,
+        True,
+    ),
     ("icons", lambda c: c.cfg.export_icons, write_icons, True),
     ("static_derive", lambda c: c.cfg.export_static, derive_static, True),
 ]

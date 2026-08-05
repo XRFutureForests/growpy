@@ -51,6 +51,10 @@ class TestGrowPyConfigDefaults:
         config = GrowPyConfig()
         assert config.export_previews is True
 
+    def test_default_export_control_images(self):
+        config = GrowPyConfig()
+        assert config.export_control_images is True
+
     def test_default_export_icons(self):
         config = GrowPyConfig()
         assert config.export_icons is True
@@ -183,6 +187,7 @@ twig_density = 0.5
         toml_content = b"""
 [export]
 previews = false
+export_control = false
 icons = false
 """
         toml_file = tmp_path / "growpy.toml"
@@ -190,6 +195,7 @@ icons = false
 
         config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
         assert config.export_previews is False
+        assert config.export_control_images is False
         assert config.export_icons is False
 
     def test_toml_retired_per_habit_density_keys_raise(self, tmp_path):
