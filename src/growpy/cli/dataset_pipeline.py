@@ -293,8 +293,12 @@ def main():
     )
     parser.add_argument(
         "--profile",
-        action="store_true",
-        help="Enable profiling to track execution time of each processing step",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Override step 4 profiling this run (default: from TOML). Prints a "
+            "per-stage timing report from each species subprocess."
+        ),
     )
 
     args = parser.parse_args()
@@ -306,12 +310,14 @@ def main():
     # None means "use config/*.toml" for that switch.
     logger.info(
         "Effective switches: calibrate=%s pve=%s wind=%s previews=%s icons=%s "
+        "profile=%s "
         "(None = from TOML)",
         args.calibrate,
         args.pve,
         args.wind,
         args.previews,
         args.icons,
+        args.profile,
     )
 
     # --generate-csvs: generate CSVs, then continue or exit
@@ -432,6 +438,7 @@ def main():
                     wind=args.wind,
                     previews=args.previews,
                     icons=args.icons,
+                    profile=args.profile,
                 )
             else:
                 failed = []
@@ -446,6 +453,7 @@ def main():
                         wind=args.wind,
                         previews=args.previews,
                         icons=args.icons,
+                        profile=args.profile,
                     )
                     elapsed_by_species[species] = time.monotonic() - t0
                     if not ok:

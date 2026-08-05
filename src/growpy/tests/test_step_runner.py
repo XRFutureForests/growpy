@@ -140,6 +140,19 @@ class TestBuildStep4Command:
         assert "--icons" not in cmd
         assert "--no-icons" not in cmd
 
+    def test_profile_appended_when_true(self):
+        cmd = _build_step4_command("European Beech", profile=True)
+        assert "--profile" in cmd
+
+    def test_no_profile_appended_when_false(self):
+        cmd = _build_step4_command("European Beech", profile=False)
+        assert "--no-profile" in cmd
+
+    def test_profile_omitted_when_none(self):
+        cmd = _build_step4_command("European Beech", profile=None)
+        assert "--profile" not in cmd
+        assert "--no-profile" not in cmd
+
 
 class TestBuildStep123Command:
     """Tests for step 1-3 command construction."""

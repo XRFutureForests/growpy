@@ -151,6 +151,7 @@ def _build_step4_command(
     wind: bool | None = None,
     previews: bool | None = None,
     icons: bool | None = None,
+    profile: bool | None = None,
 ) -> list:
     """Build the generate_forest.py command for one dataset species.
 
@@ -158,8 +159,8 @@ def _build_step4_command(
     for the species itself from config, so there is no CSV to hand over and
     no --export-trees filter to compute: it exports all the rows it built.
 
-    pve/wind/previews/icons are tri-state (None = use TOML default) and are
-    only appended when explicitly set, mirroring resolve()'s CLI-over-TOML
+    pve/wind/previews/icons/profile are tri-state (None = use TOML default) and
+    are only appended when explicitly set, mirroring resolve()'s CLI-over-TOML
     semantics.
     """
     cmd = [sys.executable, str(STEP_SCRIPTS[4]), "--species", species_name]
@@ -177,6 +178,8 @@ def _build_step4_command(
         cmd.append("--previews" if previews else "--no-previews")
     if icons is not None:
         cmd.append("--icons" if icons else "--no-icons")
+    if profile is not None:
+        cmd.append("--profile" if profile else "--no-profile")
     return cmd
 
 
@@ -190,6 +193,7 @@ def run_species_step4(
     wind: bool | None = None,
     previews: bool | None = None,
     icons: bool | None = None,
+    profile: bool | None = None,
 ) -> bool:
     """Run generate_forest.py for one dataset species.
 
@@ -206,6 +210,7 @@ def run_species_step4(
         wind,
         previews,
         icons,
+        profile,
     )
 
     if dry_run:
@@ -237,7 +242,7 @@ def run_species_step4(
 
 def _run_species_worker(args: tuple) -> tuple:
     """Top-level picklable worker for ProcessPoolExecutor."""
-    species_name, max_height, verbose, pve, wind, previews, icons = args
+    species_name, max_height, verbose, pve, wind, previews, icons, profile = args
     t0 = time.monotonic()
     ok = run_species_step4(
         species_name,
@@ -248,6 +253,7 @@ def _run_species_worker(args: tuple) -> tuple:
         wind=wind,
         previews=previews,
         icons=icons,
+        profile=profile,
     )
     elapsed = time.monotonic() - t0
     return species_name, ok, elapsed
@@ -262,6 +268,7 @@ def run_parallel_step4(
     wind: bool | None = None,
     previews: bool | None = None,
     icons: bool | None = None,
+    profile: bool | None = None,
 ) -> tuple[list, dict]:
     """Run step 4 for multiple species in parallel.
 
@@ -274,7 +281,7 @@ def run_parallel_step4(
         futures = {
             pool.submit(
                 _run_species_worker,
-                (species, max_height, verbose, pve, wind, previews, icons),
+                (species, max_height, verbose, pve, wind, previews, icons, profile),
             ): species
             for species in species_list
         }
