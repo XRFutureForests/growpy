@@ -83,15 +83,32 @@ static = false
 # than between habits (oak 2.09x vs beech 5.43x; spruce 1.04x vs pine 2.20x)
 # and shift with tree age and cutoff, so no per-habit constant could track them.
 #
-# 0.5 rather than 1.0: at Grove's natural density the crown reads as too dense
-# in Blender on BOTH habits (broadleaf and conifer alike), and the resulting
-# twig instance counts pushed UE past 92% VRAM and crashed the editor mid
-# import. Halving is the only working density lever -- Grove's own seed
-# twig_density is inert in the core API, so density cannot be reduced during
-# growth. Thinning here is random within each twig type, which preserves the
-# spatial distribution statistically; overlap is handled separately by
+# 0.04, down from 0.5, set 2026-08-06 against published leaf-area allometry
+# rather than by eye. Measured on silver fir h15m (d=18cm, r00): at 0.5 the
+# crown carried 2,473 m2 of one-sided leaf area against 38.6-146 m2 from
+# Forrester et al. 2017 (DOI 10.1016/j.foreco.2017.04.011), i.e. 17-64x too
+# much depending on which DBH the equation is fed. Implied needle dry mass at
+# 0.5 was 458 kg on a tree whose entire aboveground biomass is 288 kg -- the
+# old density was physically impossible, which is what crashed the UE import:
+# 22,723 instances x 107,876 faces expands to 2.45 BILLION triangles at import,
+# versus 147M at 0.03. See XRFF-272/273/318.
+#
+# 0.04 is deliberately at the top of the defensible band (crown LAI ~13 against
+# a real 4-9), chosen for looks after 0.03 read slightly thin in Blender. The
+# honest fix for "correct leaf area but looks sparse" is a SMALLER twig asset,
+# not more leaf area: every instance is the same 39x35cm, 0.109 m2 spray at
+# scale 1.0 regardless of tree size, so ~1,400 of them cannot help but leave
+# gaps in a 90 m2 crown shell.
+#
+# This is still a single global constant and cannot be right for every tree:
+# the over-density factor grew 20x -> 56x -> 64x across the same silver fir's
+# h05m/h10m/h15m stages, because Grove's twig count scales ~size^3 while real
+# leaf area scales DBH^1.9. XRFF-273 replaces this with a per-tree target.
+#
+# Thinning is random within each twig type, which preserves the spatial
+# distribution statistically; overlap is handled separately by
 # twig_min_spacing_ratio during recovery.
-twig_density = 0.5
+twig_density = 0.04
 # Distance (m) beyond which a twig orphaned by the cutoff is pulled back onto
 # the surviving surface and re-aimed, instead of left where Grove placed it.
 # Most orphans sit ~1 mm out; long-shoot species (Scots pine) strand a third of
