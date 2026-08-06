@@ -32,7 +32,15 @@ timeout = 400
 # above); a real target here is the primary time-bounding mechanism.
 # Independent of [forest] max_height in forest.toml (the step 4 export height
 # cap): that setting must NOT silently truncate calibration too.
-max_height = 20
+#
+# 15 rather than 20 to match [forest] max_height in forest.toml: calibrating
+# over exactly the exported height range means the height-DBH fit is never
+# extrapolated in production, and the trimmed cycles are the expensive ones --
+# per-cycle cost grows superlinearly with tree size (Douglas fir: 1.1 s/cycle
+# early, 30+ s/cycle past 15 m; it reached 15 m at cycle 42 but 20 m only at
+# 57). Raise this together with the forest cap if taller trees are exported,
+# so calibration always covers at least the export range.
+max_height = 15
 
 # --- Growth-pacing calibration (integrated into create_growth_models.py) ---
 # Aligns Grove's growth SPEED to a yield table's height-at-age curve. Costs two
@@ -46,7 +54,12 @@ max_height = 20
 # the allometry artifact instead (growpy-build-allometry), which is fitted from
 # yield table columns alone and needs no simulation.
 [calibration]
-enabled = false
+# Enabled 2026-08-05 to test growth pacing: uncalibrated Douglas fir reached
+# 20 m only at cycle 64 and carried 86.7 cm DBH where the si1 yield table has
+# 18.3 cm at 19.75 m. Aligning height pacing should reach target height in
+# FEWER cycles, which also thins the crown (fewer shoots -> fewer twigs) and
+# brings DBH down. Bounded by max_height above, so the passes stay short.
+enabled = true
 # Align grove height growth to yield table height curve.
 # Applies per-cycle grow_length multipliers AND any generic "{param}_curve"
 # ramp overrides (see docs/reference/grove-preset-reference.md) from a

@@ -45,7 +45,7 @@ build_cutoff_thickness = 0.0
 build_blend = true
 build_end_cap = true
 skeleton_length = 0.5
-skeleton_reduce = 0.125
+skeleton_reduce = 0.25
 skeleton_bias = 0.5
 skeleton_connected = true
 
@@ -57,7 +57,7 @@ build_cutoff_thickness = 0.00125
 build_blend = true
 build_end_cap = true
 skeleton_length = 1.25
-skeleton_reduce = 0.125
+skeleton_reduce = 0.35
 skeleton_bias = 0.5
 skeleton_connected = true
 
@@ -65,11 +65,11 @@ skeleton_connected = true
 resolution = 12
 resolution_reduce = 0.75
 build_cutoff_age = 0
-build_cutoff_thickness = 0.0025
+build_cutoff_thickness = 0.002
 build_blend = true
 build_end_cap = true
 skeleton_length = 1.5
-skeleton_reduce = 0.25
+skeleton_reduce = 0.5
 skeleton_bias = 0.5
 skeleton_connected = true
 

@@ -82,12 +82,32 @@ static = false
 # guesses at the cutoff loss. Measured losses vary more within a growth habit
 # than between habits (oak 2.09x vs beech 5.43x; spruce 1.04x vs pine 2.20x)
 # and shift with tree age and cutoff, so no per-habit constant could track them.
-twig_density = 1.0
+#
+# 0.5 rather than 1.0: at Grove's natural density the crown reads as too dense
+# in Blender on BOTH habits (broadleaf and conifer alike), and the resulting
+# twig instance counts pushed UE past 92% VRAM and crashed the editor mid
+# import. Halving is the only working density lever -- Grove's own seed
+# twig_density is inert in the core API, so density cannot be reduced during
+# growth. Thinning here is random within each twig type, which preserves the
+# spatial distribution statistically; overlap is handled separately by
+# twig_min_spacing_ratio during recovery.
+twig_density = 0.5
 # Distance (m) beyond which a twig orphaned by the cutoff is pulled back onto
 # the surviving surface and re-aimed, instead of left where Grove placed it.
 # Most orphans sit ~1 mm out; long-shoot species (Scots pine) strand a third of
 # theirs 10-100 mm out, which would otherwise read as floating foliage.
 twig_reattach_threshold = 0.01
+# Restore the twigs build_cutoff_thickness deleted (twig recovery).
+# Set false to export Grove's surviving placements untouched -- the reference
+# for judging compensation. Note Grove's own seed twig_density is inert in the
+# core API (1.0 / 0.25 / 0.0 all grow the same count), so with recovery off the
+# only remaining density lever is export twig_density below.
+twig_recovery = true
+# Reject a recovered twig once it lands closer than this fraction of the
+# tree's own median living-twig spacing to an already-placed twig. Branches
+# cut close together otherwise stack several compensation twigs on top of
+# each other, reading as an unnatural dense tuft. 0 disables the guard.
+twig_min_spacing_ratio = 0.5
 # Youth bias exponent for synthetic twig placement.
 # Controls how strongly additional twigs prefer younger branches.
 # 1.0 = linear (default), >1.0 = stronger youth preference, <1.0 = more uniform.
@@ -98,7 +118,7 @@ youth_bias = 2.0
 # Nanite encodes bone indices in 8-bit fields (max 256).
 # 0 = no limit (use for PVE native skeletal mesh path which has no constraint).
 # 250 = safe default for Nanite Assembly USD import path.
-max_skeleton_joints = 8192
+max_skeleton_joints = 500
 # Maximum twig instances per Nanite Assembly.
 # During UE import, NaniteAssemblyRootAPI expands all instances into a combined
 # Nanite mesh which can consume extreme amounts of RAM.
