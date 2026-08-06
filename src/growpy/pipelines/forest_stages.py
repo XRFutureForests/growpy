@@ -399,10 +399,19 @@ def write_export_control(ctx: TreeExportContext) -> None:
 
 
 def write_icons(ctx: TreeExportContext) -> None:
-    """Generate front/side/top icon images for this tree."""
+    """Generate front/side/top icon images for this tree.
+
+    Passes twig placements so each view also gets a ``_twigs`` variant. The
+    plain icons stay unchanged -- dataset_overview.csv references those.
+    """
     for _view in ("front", "side", "top"):
         _generate_icon_image(
-            ctx.tree_dir, ctx.file_prefix, ctx.skeleton, ctx.timer, view=_view
+            ctx.tree_dir,
+            ctx.file_prefix,
+            ctx.skeleton,
+            ctx.timer,
+            view=_view,
+            twig_placements=ctx.twig_placements,
         )
 
 

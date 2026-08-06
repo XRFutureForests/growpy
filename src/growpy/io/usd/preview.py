@@ -140,8 +140,18 @@ def generate_preview_image(
                 ("Top (X vs Y)", 0, 1, "X (m)", "Y (m)"),
             ]
 
-            # Twig positions, centred with the same offset as the branches so
-            # the two rows overlay in the same coordinate frame.
+            # Twig placements are ALREADY tree-local (near the origin), while
+            # skeleton.points are in grove-world coordinates -- dataset groves
+            # are split per (species, surround_radius) and sit at X ~ 0/100/200
+            # so their shade shells cannot interact, which is what center_xy
+            # above corrects for. Verified against the exported assembly: the
+            # PointInstancer is authored from these placements verbatim (no
+            # translation) and its positions are within a couple of metres of
+            # the origin for r00, r08 and r16 alike.
+            #
+            # So twigs must NOT have center_xy applied. Doing so shifted them
+            # by exactly the grove offset -- 100 m at r08 and 200 m at r16 --
+            # while r00 looked correct because its offset is ~0.
             twig_xyz = None
             if twig_placements:
                 _tp = [
@@ -151,7 +161,30 @@ def generate_preview_image(
                 ]
                 if _tp:
                     twig_xyz = np.asarray(_tp, dtype=float)
-                    twig_xyz[:, :2] -= center_xy
+                    # Sanity check rather than a silent mis-plot: if a future
+                    # caller ever passes grove-world placements, say so instead
+                    # of drawing them 100 m off the branches.
+                    # np.ptp(), not ndarray.ptp(): the method was removed in
+                    # NumPy 2.
+                    _span = max(
+                        float(np.ptp(points[:, 0])),
+                        float(np.ptp(points[:, 1])),
+                        1.0,
+                    )
+                    _off = max(
+                        abs(float(np.median(twig_xyz[:, 0]))),
+                        abs(float(np.median(twig_xyz[:, 1]))),
+                    )
+                    if _off > 5.0 * _span:
+                        logger.warning(
+                            "Twig placements for %s look like grove-world "
+                            "coordinates (median XY offset %.1f m vs branch "
+                            "span %.1f m); preview twig row may be misaligned",
+                            file_prefix,
+                            _off,
+                            _span,
+                        )
+
 
             n_rows = 2 if twig_xyz is not None else 1
             fig, axes = plt.subplots(
@@ -186,7 +219,7 @@ def generate_preview_image(
                         segs,
                         linewidths=ws,
                         colors="#3b2a1a",
-                        alpha=0.18 if show_twigs else 1.0,
+                        alpha=1.0,
                         capstyle="round",
                         joinstyle="round",
                     )
@@ -238,11 +271,21 @@ def generate_icon_image(
     timer,
     size_px: int = 512,
     view: str | None = None,
+    twig_placements=None,
 ) -> None:
     """Render a minimal icon on a square canvas.
 
     Produces a clean silhouette suitable for catalog thumbnails. No axis,
     grid, title, or other annotations are drawn.
+
+    When ``twig_placements`` is given, a SECOND file is written alongside the
+    plain icon with the twig instance positions drawn over the branches
+    (``..._icon_{view}_twigs.png``). The plain icon is still written unchanged,
+    because it is the dataset deliverable that dataset_overview.csv points at.
+
+    Note this stage stays once-per-tree, unlike the preview: icons are a
+    per-tree catalog deliverable. With density variants active the twig icon
+    therefore shows variant 0 only -- use the preview for per-variant density.
 
     Args:
         tree_dir: Directory to save icon image.
@@ -254,6 +297,11 @@ def generate_icon_image(
             "top" (X vs Y). When None (default), produces side view and
             saves as ``{file_prefix}_icon.png`` for backward compatibility.
             When set, saves as ``{file_prefix}_icon_{view}.png``.
+        twig_placements: Optional ``{twig_type: [TwigPlacement, ...]}``. These
+            are tree-local while skeleton.points are grove-world, so the
+            skeleton is centred on its own XY mean here to put both in the same
+            frame (invisible in the output -- the axes are off and the limits
+            are derived from the data either way).
     """
     if skeleton is None:
         return
@@ -266,6 +314,22 @@ def generate_icon_image(
             points = np.array(skeleton.points)
             if len(points) == 0:
                 return
+
+            # Twig placements are tree-local; skeleton.points are grove-world
+            # (dataset groves sit at X ~ 0/100/200 per surround radius). Centre
+            # the skeleton so both share a frame. Harmless for the plain icon:
+            # axes are off and the limits come from the data.
+            twig_xyz = None
+            if twig_placements:
+                _tp = [
+                    p.position
+                    for plist in twig_placements.values()
+                    for p in plist
+                ]
+                if _tp:
+                    twig_xyz = np.asarray(_tp, dtype=float)
+                    points = points.copy()
+                    points[:, :2] -= np.mean(points[:, :2], axis=0)
 
             radii = None
             if hasattr(skeleton, "point_attribute_radius"):
@@ -365,8 +429,28 @@ def generate_icon_image(
                 png_path, dpi=dpi,
                 facecolor="white",
             )
-            plt.close(fig)
             logger.info("  Icon: %s", png_path.name)
+
+            # Twig variant: same framing, foliage drawn over the branches.
+            # Written as a second file so the plain icon the dataset overview
+            # references stays byte-for-byte what it was.
+            if twig_xyz is not None:
+                ax.scatter(
+                    twig_xyz[:, ax_h],
+                    twig_xyz[:, ax_v],
+                    s=4,
+                    c="#1f7a1f",
+                    alpha=0.5,
+                    linewidths=0,
+                    zorder=3,
+                )
+                twig_path = tree_dir / f"{file_prefix}{suffix}_twigs.png"
+                fig.savefig(twig_path, dpi=dpi, facecolor="white")
+                logger.info(
+                    "  Icon: %s (%d twigs)", twig_path.name, len(twig_xyz)
+                )
+
+            plt.close(fig)
     except Exception as e:
         logger.warning("Icon generation failed for %s: %s", file_prefix, e)
 
