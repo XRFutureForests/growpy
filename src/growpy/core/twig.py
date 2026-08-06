@@ -182,6 +182,16 @@ DEFAULT_TWIG_BRANCH_ANGLE_RAD = math.radians(50.0)
 # of theirs 10-100 mm out, which reads as floating foliage.
 DEFAULT_TWIG_REATTACH_THRESHOLD = 0.01
 
+# Branches removed close together each leave behind a reattached twig, and
+# those orphans keep their pre-cutoff position -- so several compensation
+# twigs can land on top of each other, or on top of twigs that already
+# survived nearby, reading as an unnatural dense tuft. A recovered twig is
+# rejected once it lands closer than this fraction of the tree's own median
+# living-twig spacing, so the crowding guard self-calibrates to how dense
+# THIS crown's real twigs already are rather than using a fixed distance.
+# 0 disables the guard.
+DEFAULT_TWIG_MIN_SPACING_RATIO = 0.5
+
 
 def _normalize(v: tuple[float, float, float]) -> tuple[float, float, float] | None:
     """Return the unit vector, or None when the input is degenerate."""
@@ -189,6 +199,17 @@ def _normalize(v: tuple[float, float, float]) -> tuple[float, float, float] | No
     if length < 1e-12:
         return None
     return (v[0] / length, v[1] / length, v[2] / length)
+
+
+def _grid_cell(
+    p: tuple[float, float, float], cell_size: float
+) -> tuple[int, int, int]:
+    """Spatial hash bucket for ``p`` at the given cell size."""
+    return (
+        math.floor(p[0] / cell_size),
+        math.floor(p[1] / cell_size),
+        math.floor(p[2] / cell_size),
+    )
 
 
 def _face_area(vertices: list, face: list[int]) -> float:
@@ -761,6 +782,7 @@ def recover_cutoff_twig_placements(
     reattach_threshold: float = DEFAULT_TWIG_REATTACH_THRESHOLD,
     match_tolerance: float = 1e-6,
     candidate_faces: int = 16,
+    min_spacing_ratio: float = DEFAULT_TWIG_MIN_SPACING_RATIO,
 ) -> dict[str, list[TwigPlacement]]:
     """Return the twigs that ``build_cutoff_thickness`` deleted, reattached.
 
@@ -799,6 +821,11 @@ def recover_cutoff_twig_placements(
             having survived.
         candidate_faces: Nearest faces examined per orphan when finding the
             closest surface point.
+        min_spacing_ratio: Reject a recovered twig once it lands closer than
+            this fraction of the tree's own median living-twig spacing to an
+            already-placed twig (survivor or already-recovered). Keeps
+            branches that were cut close together from stacking several
+            compensation twigs on top of each other. 0 disables the guard.
 
     Returns:
         Dict of twig type to the recovered TwigPlacement objects. Empty when
@@ -918,6 +945,49 @@ def recover_cutoff_twig_placements(
         branch_id_offset = int(bones_info[0][7])
 
     reattached = 0
+    skipped_crowded = 0
+
+    min_spacing = 0.0
+    if min_spacing_ratio > 0.0 and len(cut_twig_positions) >= 2:
+        survivor_arr = np.asarray(cut_twig_positions, dtype=np.float64)
+        nn_dist, _ = cKDTree(survivor_arr).query(survivor_arr, k=2)
+        min_spacing = float(np.median(nn_dist[:, 1])) * min_spacing_ratio
+
+    # Spatial hash of every position a twig already occupies, seeded with the
+    # survivors so recovered twigs are also kept clear of them. Grown as each
+    # recovered twig is accepted, so later orphans see earlier acceptances.
+    accepted_positions: list[tuple[float, float, float]] = list(cut_twig_positions)
+    spacing_grid: dict[tuple[int, int, int], list[int]] = {}
+    if min_spacing > 0.0:
+        for idx, p in enumerate(accepted_positions):
+            spacing_grid.setdefault(_grid_cell(p, min_spacing), []).append(idx)
+
+    def _too_close(p: tuple[float, float, float]) -> bool:
+        if min_spacing <= 0.0:
+            return False
+        cx, cy, cz = _grid_cell(p, min_spacing)
+        min_sq = min_spacing * min_spacing
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for dz in (-1, 0, 1):
+                    for idx in spacing_grid.get((cx + dx, cy + dy, cz + dz), ()):
+                        q = accepted_positions[idx]
+                        d2 = (
+                            (p[0] - q[0]) ** 2
+                            + (p[1] - q[1]) ** 2
+                            + (p[2] - q[2]) ** 2
+                        )
+                        if d2 < min_sq:
+                            return True
+        return False
+
+    def _accept(p: tuple[float, float, float]) -> None:
+        if min_spacing <= 0.0:
+            return
+        idx = len(accepted_positions)
+        accepted_positions.append(p)
+        spacing_grid.setdefault(_grid_cell(p, min_spacing), []).append(idx)
+
     for i, placement in enumerate(lost):
         face_idx = int(tri_owner_arr[best_tri[i]])
         face = faces[face_idx]
@@ -936,6 +1006,7 @@ def recover_cutoff_twig_placements(
         if face_branch_ids is not None and face_idx < len(face_branch_ids):
             branch_id = face_branch_ids[face_idx] - branch_id_offset
 
+        far_reattach = False
         if best_dist[i] <= reattach_threshold:
             # Close enough to the surviving bark to stay where Grove put it;
             # only follow whatever displacement radial scaling applied locally.
@@ -970,6 +1041,16 @@ def recover_cutoff_twig_placements(
                     shortest_arc_quaternion(placement.normal, outward),
                     placement.orientation,
                 )
+            far_reattach = True
+
+        # Skip rather than stack: a branch cut close to an already-placed
+        # twig gets no compensation twig at all, instead of one crowding on
+        # top of it.
+        if _too_close(position):
+            skipped_crowded += 1
+            continue
+        _accept(position)
+        if far_reattach:
             reattached += 1
 
         recovered.setdefault(placement.type, []).append(
@@ -986,11 +1067,13 @@ def recover_cutoff_twig_placements(
 
     logger.info(
         "Twig recovery: restored %d twigs lost to cutoff (%d survived, "
-        "%d re-aimed onto the surface beyond %.0f mm): %s",
-        len(lost),
+        "%d re-aimed onto the surface beyond %.0f mm, %d skipped as too "
+        "crowded): %s",
+        len(lost) - skipped_crowded,
         survived_count,
         reattached,
         reattach_threshold * 1000.0,
+        skipped_crowded,
         {t: len(p) for t, p in recovered.items()},
     )
     return recovered

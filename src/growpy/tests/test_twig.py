@@ -646,6 +646,55 @@ class TestRecoverCutoffTwigPlacements:
         out = recover_cutoff_twig_placements(precut, [], _PlaneModel())
         assert set(out) == {"twig_long", "twig_short"}
 
+    def test_recovered_twig_crowding_a_survivor_is_skipped(self):
+        survivors = [(0.0, 0.0, 0.001), (0.5, 0.0, 0.001), (1.0, 0.0, 0.001)]
+        precut = {
+            "twig_long": [
+                _twig(survivors[0]),
+                _twig(survivors[1]),
+                _twig(survivors[2]),
+                _twig((0.0001, 0.0, 0.001)),  # lost, crowds survivors[0]
+                _twig((0.9, 0.9, 0.001)),  # lost, well clear of every survivor
+            ]
+        }
+        out = recover_cutoff_twig_placements(precut, survivors, _PlaneModel())
+        assert len(out["twig_long"]) == 1
+        assert out["twig_long"][0].position == pytest.approx(
+            (0.9, 0.9, 0.001), abs=1e-9
+        )
+
+    def test_recovered_twigs_are_thinned_when_they_crowd_each_other(self):
+        survivors = [(0.0, 0.0, 0.001), (0.5, 0.0, 0.001), (1.0, 0.0, 0.001)]
+        precut = {
+            "twig_long": [
+                _twig(survivors[0]),
+                _twig(survivors[1]),
+                _twig(survivors[2]),
+                _twig((-0.9, -0.9, 0.001)),
+                _twig((-0.85, -0.9, 0.001)),  # lost, crowds the twig above
+            ]
+        }
+        out = recover_cutoff_twig_placements(precut, survivors, _PlaneModel())
+        assert len(out["twig_long"]) == 1
+        assert out["twig_long"][0].position == pytest.approx(
+            (-0.9, -0.9, 0.001), abs=1e-9
+        )
+
+    def test_min_spacing_ratio_zero_disables_crowding_guard(self):
+        survivors = [(0.0, 0.0, 0.001), (0.5, 0.0, 0.001), (1.0, 0.0, 0.001)]
+        precut = {
+            "twig_long": [
+                _twig(survivors[0]),
+                _twig(survivors[1]),
+                _twig(survivors[2]),
+                _twig((0.0001, 0.0, 0.001)),
+            ]
+        }
+        out = recover_cutoff_twig_placements(
+            precut, survivors, _PlaneModel(), min_spacing_ratio=0.0
+        )
+        assert len(out["twig_long"]) == 1
+
 
 class TestThinPlacementsToLimit:
     """Tests for thin_placements_to_limit."""

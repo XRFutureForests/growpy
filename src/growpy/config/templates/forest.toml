@@ -64,6 +64,11 @@ twig_density = 1.0
 # Distance (m) beyond which a twig orphaned by the cutoff is pulled back onto
 # the surviving surface and re-aimed, instead of left where Grove placed it.
 twig_reattach_threshold = 0.01
+# Reject a recovered twig once it lands closer than this fraction of the
+# tree's own median living-twig spacing to an already-placed twig. Branches
+# cut close together otherwise stack several compensation twigs on top of
+# each other. 0 disables the guard.
+twig_min_spacing_ratio = 0.5
 # Youth bias exponent for synthetic twig placement.
 # Controls how strongly additional twigs prefer younger branches.
 # 1.0 = linear (default), >1.0 = stronger youth preference, <1.0 = more uniform.

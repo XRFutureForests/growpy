@@ -200,6 +200,10 @@ class GrowPyConfig:
         "export_dbh_from_allometry": "internal tuning, no CLI need identified",
         "export_twig_density": "internal tuning, no CLI need identified",
         "export_twig_reattach_threshold": "internal tuning, no CLI need identified",
+        "export_twig_recovery": "internal toggle, no CLI need identified",
+        "twigs_planar_angle": "internal tuning, no CLI need identified",
+        "twigs_planar_angle_per_twig": "nested dict structure, config-only by design",
+        "export_twig_min_spacing_ratio": "internal tuning, no CLI need identified",
         "export_youth_bias": "internal tuning, no CLI need identified",
         "export_density_variants": "scenario-level choice, config-only by design",
         "density_variant_defs": "nested dict structure, config-only by design",
@@ -253,6 +257,24 @@ class GrowPyConfig:
         default_factory=lambda: Path("data/input/custom_twigs")
     )
     twigs_densify: bool = True
+    # Max angle (degrees) between adjacent faces still counted as coplanar when
+    # generalising a twig after the alpha contour cut. Densification only
+    # exists to give that cut fine edges to carve; afterwards the flat interior
+    # carries no shape and dissolving it back costs nothing visually. Boundary
+    # edges have a single adjacent face and are never dissolve candidates, so
+    # the carved outline is preserved exactly. Result is re-triangulated.
+    # 0 disables the pass.
+    twigs_planar_angle: float = 1.0
+    # Per-twig overrides of twigs_planar_angle, keyed on the twig OBJECT name as
+    # printed by the "Planar dissolve:" log line (e.g. "OneLeavedAshSideTwig").
+    # Twigs whose leaves meet at shallow angles lose a little edge fidelity at
+    # the global setting and want a smaller value; needle twigs tolerate more.
+    twigs_planar_angle_per_twig: dict[str, float] = field(default_factory=dict)
+    # NOTE: Grove's own seed twig_density is INERT in the core API -- measured
+    # on a 20-cycle Douglas fir, 1.0 / 0.25 / 0.0 all yield 11,606 living twigs
+    # (0.0 does not even disable them). It is a Blender-addon-only setting, so
+    # crown density cannot be reduced at the source; the only working lever is
+    # post-hoc thinning via export_twig_density below.
     twigs_alpha_trim: float = 0.75
     twigs_boundary_edge_mm: float = 0.5
 
@@ -337,6 +359,17 @@ class GrowPyConfig:
     # Distance (m) beyond which a twig orphaned by the cutoff is pulled back
     # onto the surviving surface instead of left where Grove placed it.
     export_twig_reattach_threshold: float = 0.01
+    # Restore the twigs build_cutoff_thickness deleted. False exports Grove's
+    # surviving placements untouched, which is the reference for judging
+    # whether compensation over- or under-fills the crown: with it off the
+    # crown sits below Grove's true (cutoff-free) density, with it on it
+    # approaches that density from underneath.
+    export_twig_recovery: bool = True
+    # Reject a recovered twig once it lands closer than this fraction of the
+    # tree's own median living-twig spacing to an already-placed twig, so
+    # branches cut close together don't stack compensation twigs on top of
+    # each other. 0 disables the guard.
+    export_twig_min_spacing_ratio: float = 0.5
     export_youth_bias: float = 1.0
     export_density_variants: list = field(default_factory=list)
     density_variant_defs: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -434,6 +467,12 @@ class GrowPyConfig:
             kwargs["custom_twigs_dir"] = Path(twigs["custom_twigs_dir"])
         if "densify" in twigs:
             kwargs["twigs_densify"] = twigs["densify"]
+        if "planar_angle" in twigs:
+            kwargs["twigs_planar_angle"] = float(twigs["planar_angle"])
+        if "planar_angle_per_twig" in twigs:
+            kwargs["twigs_planar_angle_per_twig"] = {
+                str(k): float(v) for k, v in twigs["planar_angle_per_twig"].items()
+            }
         if "alpha_trim" in twigs:
             kwargs["twigs_alpha_trim"] = twigs["alpha_trim"]
         if "boundary_edge_mm" in twigs:
@@ -520,6 +559,12 @@ class GrowPyConfig:
         if "twig_reattach_threshold" in export:
             kwargs["export_twig_reattach_threshold"] = float(
                 export["twig_reattach_threshold"]
+            )
+        if "twig_recovery" in export:
+            kwargs["export_twig_recovery"] = bool(export["twig_recovery"])
+        if "twig_min_spacing_ratio" in export:
+            kwargs["export_twig_min_spacing_ratio"] = float(
+                export["twig_min_spacing_ratio"]
             )
         for _retired in ("twig_density_conifer", "twig_density_broadleaf"):
             if _retired in export:

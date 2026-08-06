@@ -71,6 +71,19 @@ class TestGrowPyConfigDefaults:
         config = GrowPyConfig()
         assert config.export_twig_reattach_threshold == 0.01
 
+    def test_default_twig_min_spacing_ratio(self):
+        config = GrowPyConfig()
+        assert config.export_twig_min_spacing_ratio == 0.5
+
+    def test_twig_recovery_on_by_default(self):
+        config = GrowPyConfig()
+        assert config.export_twig_recovery is True
+
+    def test_default_twigs_planar_angle(self):
+        config = GrowPyConfig()
+        assert config.twigs_planar_angle == 1.0
+
+
     def test_default_growth_models_cycles(self):
         config = GrowPyConfig()
         assert config.growth_models_cycles == 25
@@ -214,6 +227,25 @@ icons = false
         toml_file.write_bytes(b"[export]\ntwig_reattach_threshold = 0.05\n")
         config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
         assert config.export_twig_reattach_threshold == 0.05
+
+    def test_toml_twig_min_spacing_ratio(self, tmp_path):
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(b"[export]\ntwig_min_spacing_ratio = 0.75\n")
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.export_twig_min_spacing_ratio == 0.75
+
+    def test_toml_twig_recovery_off(self, tmp_path):
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(b"[export]\ntwig_recovery = false\n")
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.export_twig_recovery is False
+
+    def test_toml_twigs_planar_angle(self, tmp_path):
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(b"[twigs]\nplanar_angle = 2.5\n")
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.twigs_planar_angle == 2.5
+
 
     def test_toml_export_mode_helios(self, tmp_path):
         toml_content = b"""

@@ -967,7 +967,11 @@ def export_tree_as_nanite_assembly(
             # density constant, which cannot track the loss ratio because it
             # varies with species, age and cutoff alike.
             recovered_count = 0
-            if twig_placements and precut_model is not None:
+            if (
+                twig_placements
+                and precut_model is not None
+                and _get_config().export_twig_recovery
+            ):
                 with _track("recover_cutoff_twigs"):
                     try:
                         from ...core.twig import recover_cutoff_twig_placements
@@ -986,6 +990,9 @@ def export_tree_as_nanite_assembly(
                             reattach_threshold=(
                                 _get_config().export_twig_reattach_threshold
                             ),
+                            min_spacing_ratio=(
+                                _get_config().export_twig_min_spacing_ratio
+                            ),
                         )
                         for twig_type, plist in recovered.items():
                             twig_placements.setdefault(twig_type, []).extend(plist)
@@ -1003,17 +1010,22 @@ def export_tree_as_nanite_assembly(
                 from ...config import get_config
 
                 cfg = get_config()
-                # CSV twig_density is a per-tree scale factor. Once recovery has
-                # restored the cutoff losses the canopy is already at Grove's
-                # natural density, so the species-type base (which existed only
-                # to guess at that compensation) must not be applied on top.
+                # Crown density = configured base x the per-tree CSV/variant
+                # scale. Both apply whether or not recovery ran.
+                #
+                # The base used to be skipped after a successful recovery, back
+                # when it was a per-habit guess at the cutoff loss and would
+                # have double-counted. It is now a plain artistic multiplier, so
+                # skipping it silently ignored [export] twig_density on every
+                # tree with a cutoff active -- i.e. exactly when someone reaches
+                # for it to thin an overloaded crown. It is also the only
+                # working density lever: Grove's own seed twig_density is inert
+                # in the core API (1.0 / 0.25 / 0.0 all grow the same twig
+                # count), so this must not be bypassed.
                 twig_scale = twig_density if twig_density is not None else 1.0
-                if recovered_count > 0:
-                    effective_density = twig_scale
-                else:
-                    effective_density = (
-                        cfg.get_twig_density_base(species_name) * twig_scale
-                    )
+                effective_density = (
+                    cfg.get_twig_density_base(species_name) * twig_scale
+                )
                 if effective_density != 1.0:
                     with _track("adjust_twig_density"):
                         from ...core.twig import densify_twig_placements
