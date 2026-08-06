@@ -151,6 +151,8 @@ def process_twig_directory(
     interior_decimate_ratio: float = 0.0,
     interior_edge_mm: float = 0.0,
     interior_boundary_rings: int = 1,
+    planar_angle: float = 1.0,
+    planar_angle_per_twig: dict[str, float] | None = None,
 ) -> dict[str, list[Path]]:
     """Process all twig blend files in a directory.
 
@@ -232,6 +234,8 @@ def process_twig_directory(
                 interior_decimate_ratio=interior_decimate_ratio,
                 interior_edge_mm=interior_edge_mm,
                 interior_boundary_rings=interior_boundary_rings,
+                planar_angle=planar_angle,
+                planar_angle_per_twig=planar_angle_per_twig,
             )
 
             if exported_files:
@@ -444,6 +448,8 @@ Output per twig:
             interior_decimate_ratio=0.000001,
             interior_edge_mm=max(0.0, config.twigs_interior_edge_mm),
             interior_boundary_rings=max(0, int(config.twigs_interior_boundary_rings)),
+            planar_angle=max(0.0, config.twigs_planar_angle),
+            planar_angle_per_twig=config.twigs_planar_angle_per_twig,
         )
     elif twig_path.is_dir():
         # Directory
@@ -459,6 +465,8 @@ Output per twig:
             interior_decimate_ratio=0.000001,
             interior_edge_mm=max(0.0, config.twigs_interior_edge_mm),
             interior_boundary_rings=max(0, int(config.twigs_interior_boundary_rings)),
+            planar_angle=max(0.0, config.twigs_planar_angle),
+            planar_angle_per_twig=config.twigs_planar_angle_per_twig,
         )
     else:
         return 1

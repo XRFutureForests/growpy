@@ -848,6 +848,69 @@ def _is_likely_tube_component(component, boundary_edge_set):
     return False
 
 
+def planar_dissolve(obj, angle_deg: float = 1.0) -> tuple[int, int, int, int]:
+    """Merge coplanar faces without moving the silhouette.
+
+    Densification subdivides flat leaf interiors into thousands of coplanar
+    triangles for one reason only: to give ``cut_along_alpha_contour`` fine
+    enough edges to carve an accurate outline. Once that outline exists the
+    interior tessellation carries no shape information -- it is a flat sheet
+    described by far more triangles than it needs.
+
+    Dissolving edges whose two adjacent faces are within ``angle_deg`` merges
+    those flat regions back into n-gons, which are then re-triangulated. The
+    carved outline survives because a boundary edge has only one adjacent face
+    and so is never a dissolve candidate. This is shape-preserving by
+    construction, unlike collapse decimation, which moves vertices and erodes
+    exactly the silhouette the contour cut just paid for.
+
+    Delimiters keep material, UV, seam and sharp boundaries intact so texture
+    mapping and the bark/leaf split are unaffected.
+
+    Args:
+        obj: Blender mesh object, called AFTER the alpha contour cut.
+        angle_deg: Max angle between adjacent faces still treated as coplanar.
+            Small values (~1 deg) merge only genuinely flat regions.
+
+    Returns:
+        (faces_before, faces_after, boundary_edges_before, boundary_edges_after).
+        The two boundary counts are the outline-preservation check: they should
+        be near-identical, dropping only where redundant collinear points sat
+        on a straight run of contour.
+    """
+    import math
+
+    mesh = obj.data
+    if not mesh or angle_deg <= 0.0:
+        return (0, 0, 0, 0)
+
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+
+    faces_before = len(bm.faces)
+    boundary_before = sum(1 for e in bm.edges if len(e.link_faces) == 1)
+
+    bmesh.ops.dissolve_limit(
+        bm,
+        angle_limit=math.radians(angle_deg),
+        verts=list(bm.verts),
+        edges=list(bm.edges),
+        delimit={"MATERIAL", "UV", "SEAM", "SHARP"},
+    )
+    # Back to triangles: the exporter and Nanite both want a triangulated mesh,
+    # and an n-gon fan over a flat region costs (n - 2) triangles instead of the
+    # hundreds the densified version carried.
+    bmesh.ops.triangulate(bm, faces=list(bm.faces))
+
+    faces_after = len(bm.faces)
+    boundary_after = sum(1 for e in bm.edges if len(e.link_faces) == 1)
+
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.update()
+    return (faces_before, faces_after, boundary_before, boundary_after)
+
+
 def _apply_interior_decimate(
     obj,
     ratio: float = 0.5,

@@ -13,14 +13,49 @@ custom_twigs_dir = "data/input/custom_twigs"
 # When false, .blend twig meshes are exported to USD as-is without any modification
 # When true, enables the sub-options below for Nanite-friendly high-poly silhouettes
 densify = true
+# Generalisation after the alpha contour cut: max angle (degrees) between two
+# adjacent faces still treated as coplanar and merged.
+#
+# Densification exists only to give the contour cut fine edges to carve. Once
+# the outline is cut, the flat leaf interior is described by far more triangles
+# than its shape needs. Dissolving those merges them back and re-triangulates;
+# boundary edges have a single adjacent face and are never dissolve candidates,
+# so the carved outline is preserved. Measured on Pacific Silver Fir: 287,543
+# -> 91,713 faces with surface area +0.04% and an identical bounding box.
+#
+# Whole dataset at 1.0 deg: 3,194,052 -> 885,618 faces (3.6x). Broadleaves gain
+# most (ash 13.7x, linden 12.4x, beech 12.3x) since their leaves are large flat
+# sheets; needle twigs gain least (2.4-3.7x) because a needle is nearly all
+# silhouette and correctly left alone.
+#
+# Lower = gentler (keeps more edge fidelity), higher = more merging.
+# 0 disables the pass. Requires re-running growpy-convert-twigs to take effect.
+#
+# 0.1 rather than 1.0: on One-leaved ash the boundary points sit in a narrow
+# angular band between 0.1 and 0.5 deg, so 1.0 deg shaved real outline detail
+# (24.9% of boundary points, with visible edge artefacts) while 0.5 deg barely
+# helped. 0.1 deg keeps 43 more outline points for only 5% more faces on that
+# twig, and reduction is essentially unchanged (8.0x vs 8.4x). A uniform 0.1
+# avoids tracking per-twig exceptions.
+planar_angle = 0.1
+# Per-twig overrides live in [twigs.planar_angle_per_twig] at the end of this
+# file -- a TOML sub-table would otherwise capture every key after it.
 # Alpha threshold for silhouette trimming
 # 0.05-0.3 = minimal (conservative), 0.5 = moderate (recommended), 0.7 = aggressive
 alpha_trim = 0.9
 # Target edge length for leaf-face pre-densification in millimeters.
 # Leaf edges are subdivided to this length before the alpha contour cut so the
 # silhouette has enough vertex density to carve through. Also controls Nanite
-# interior detail. 0.5 mm is a good default; lower = denser, higher = coarser.
-boundary_edge_mm = 1.0
+# interior detail.
+#
+# 0.25 rather than 1.0: the alpha masks are effectively binary (One-leaved ash
+# measured 55.5% below 0.5 alpha, 43.5% above 0.99, under 1% in between), so
+# the contour cut always finds the same true edge and the only thing limiting
+# outline smoothness is how finely the MESH can follow it. At 1.0 mm the
+# silhouette was a visible 1 mm staircase. 0.25 mm quadruples outline detail
+# (ash end twig: 476 -> 1,842 boundary edges) and the planar dissolve absorbs
+# the extra density, so the finished twig costs only ~1.6x more faces.
+boundary_edge_mm = 0.25
 # Target interior edge length in millimeters (0 = maximum simplification; positive = target edge length).
 # When set, derives the decimation ratio automatically so interior faces
 # converge to this edge size regardless of input resolution.
@@ -29,3 +64,10 @@ interior_edge_mm = 0
 # 0 = protect only boundary verts, 1 = also protect first interior ring, etc.
 # Higher values preserve silhouette fidelity but leave more faces unchanged.
 interior_boundary_rings = 1
+
+# Per-twig planar_angle overrides, keyed on the twig OBJECT name exactly as
+# printed by the "Planar dissolve:" log line. For twigs whose leaves meet at
+# shallow angles and lose a little edge fidelity at the global setting.
+# MUST stay last: a sub-table captures every key that follows it.
+[twigs.planar_angle_per_twig]
+# (Empty: global planar_angle 0.1 deg suits every twig measured so far.)
