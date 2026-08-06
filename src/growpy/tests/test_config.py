@@ -83,6 +83,26 @@ class TestGrowPyConfigDefaults:
         config = GrowPyConfig()
         assert config.twigs_planar_angle == 1.0
 
+    def test_twig_density_per_species_empty_by_default(self):
+        config = GrowPyConfig()
+        assert config.export_twig_density_per_species == {}
+
+    def test_twig_density_base_falls_back_to_global(self):
+        config = GrowPyConfig(export_twig_density=0.25)
+        assert config.get_twig_density_base("Silver fir") == 0.25
+
+    def test_twig_density_base_prefers_per_species(self):
+        config = GrowPyConfig(
+            export_twig_density=0.25,
+            export_twig_density_per_species={"silver_fir": 0.016},
+        )
+        assert config.get_twig_density_base("silver_fir") == 0.016
+        # Common names must resolve to the same entry as standardized ones,
+        # because the export call site passes the common name.
+        assert config.get_twig_density_base("Silver fir") == 0.016
+        # A species with no override still gets the global value.
+        assert config.get_twig_density_base("Common ash") == 0.25
+
 
     def test_default_growth_models_cycles(self):
         config = GrowPyConfig()

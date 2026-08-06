@@ -199,6 +199,7 @@ class GrowPyConfig:
         "export_max_assembly_instances": "internal tuning, no CLI need identified",
         "export_dbh_from_allometry": "internal tuning, no CLI need identified",
         "export_twig_density": "internal tuning, no CLI need identified",
+        "export_twig_density_per_species": "nested dict structure, config-only by design",
         "export_twig_reattach_threshold": "internal tuning, no CLI need identified",
         "export_twig_recovery": "internal toggle, no CLI need identified",
         "twigs_planar_angle": "internal tuning, no CLI need identified",
@@ -356,6 +357,12 @@ class GrowPyConfig:
     # spruce 1.04x vs pine 2.20x) and also move with tree age and cutoff, so no
     # per-habit constant could track them.
     export_twig_density: float = 1.0
+    # Per-species override of export_twig_density, keyed on standardized name
+    # (e.g. "douglas_fir"). Required rather than optional: the density needed to
+    # match literature leaf area spans ~60x across the dataset because it tracks
+    # each species' twig prototype size, not Grove's placement. See
+    # get_twig_density_base().
+    export_twig_density_per_species: dict[str, float] = field(default_factory=dict)
     # Distance (m) beyond which a twig orphaned by the cutoff is pulled back
     # onto the surviving surface instead of left where Grove placed it.
     export_twig_reattach_threshold: float = 0.01
@@ -556,6 +563,11 @@ class GrowPyConfig:
             kwargs["export_dbh_from_allometry"] = export["radial_scale"]
         if "twig_density" in export:
             kwargs["export_twig_density"] = float(export["twig_density"])
+        if "twig_density_per_species" in export:
+            kwargs["export_twig_density_per_species"] = {
+                str(k): float(v)
+                for k, v in export["twig_density_per_species"].items()
+            }
         if "twig_reattach_threshold" in export:
             kwargs["export_twig_reattach_threshold"] = float(
                 export["twig_reattach_threshold"]
@@ -795,12 +807,24 @@ class GrowPyConfig:
     def get_twig_density_base(self, species: str) -> float:
         """Return the crown-density multiplier relative to natural density.
 
-        Species-independent by design. The per-habit constants this replaced
-        existed only to guess at the twig loss from build_cutoff_thickness;
-        recovery now restores those twigs exactly, per tree, so the multiplier
-        is purely artistic. ``species`` is retained for call-site compatibility.
+        Resolves ``[export.twig_density_per_species]`` first, falling back to
+        the global ``[export] twig_density``. Per-species values are required,
+        not a nicety: measured 2026-08-06, the density each species needs to
+        hit its literature leaf area spans ~60x (douglas_fir 0.016 vs
+        common_ash 0.96), because it is dominated by how much leaf area that
+        species' twig prototype carries -- 0.109 m2 for the shared fir spray
+        against 0.023 m2 for ash -- not by Grove's placement. A single global
+        constant is therefore wrong for almost every species at once.
+
+        Accepts either a common name ("Silver fir") or an already-standardized
+        one ("silver_fir"); both resolve to the same entry.
         """
-        del species  # density is no longer species-dependent
+        from growpy.utils.naming import standardize_species_name
+
+        if self.export_twig_density_per_species:
+            key = standardize_species_name(species)
+            if key in self.export_twig_density_per_species:
+                return self.export_twig_density_per_species[key]
         return self.export_twig_density
 
     def get_simplification_ratios(self, species_clean: str) -> dict[str, float]:

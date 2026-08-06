@@ -102,13 +102,18 @@ static = false
 #
 # This is still a single global constant and cannot be right for every tree:
 # the over-density factor grew 20x -> 56x -> 64x across the same silver fir's
-# h05m/h10m/h15m stages, because Grove's twig count scales ~size^3 while real
-# leaf area scales DBH^1.9. XRFF-273 replaces this with a per-tree target.
+# h05m/h10m/h15m stages. XRFF-273 replaces this with a per-tree target.
 #
 # Thinning is random within each twig type, which preserves the spatial
 # distribution statistically; overlap is handled separately by
 # twig_min_spacing_ratio during recovery.
+#
+# This global value now applies only to species with no entry in
+# [export.twig_density_per_species] below.
 twig_density = 0.04
+# Per-species values live in [export.twig_density_per_species] at the END of
+# this file -- a TOML sub-table captures every key that follows it, so it
+# cannot sit here in the middle of [export].
 # Distance (m) beyond which a twig orphaned by the cutoff is pulled back onto
 # the surviving surface and re-aimed, instead of left where Grove placed it.
 # Most orphans sit ~1 mm out; long-shoot species (Scots pine) strand a third of
@@ -159,3 +164,48 @@ export_trees = []
 # When active, CSV twig_density column is ignored.
 # Variant definitions are in quality.toml under [density_variant.*].
 density_variants = [] # e.g., ["full", "reduced", "bare"]
+
+
+# Per-species crown density, keyed on standardized name. Overrides
+# [export] twig_density above for the species listed.
+#
+# MUST STAY LAST in this file: a TOML sub-table captures every key that
+# follows it, so any [export] key placed after this would silently land
+# inside this table instead.
+#
+# Back-solved 2026-08-06 from a measured dataset run: every species was
+# exported at a uniform 0.04, its actual one-sided leaf area computed as
+# sum(instances_i x prototype_leaf_area_i) from the per-twig sidecars, and
+# compared against Forrester et al. 2017 (DOI 10.1016/j.foreco.2017.04.011).
+# value = 0.04 / measured_ratio, using the mean over the three surround radii
+# at h15m.
+#
+# The spread is 103x (silver_fir 0.0078 to common_ash 0.80), so a single global
+# constant cannot serve the dataset. It is driven mostly by how much leaf area
+# each species' twig prototype carries -- the shared fir spray is 0.109 m2
+# against 0.023 m2 for ash -- NOT by Grove's placement. Note common_ash lands
+# near Grove's natural density: its crown was never over-dense, and the
+# "crowns are 20-70x too dense" finding was specific to the three species
+# sharing the large fir spray.
+#
+# Calibrated on h15m deliberately. Required density also varies within a
+# species across height stages (conifers need ~3x more at h05m than at h15m),
+# and h15m is both the heaviest asset and the one that blows UE's memory
+# budget, so it is the safe stage to pin. Consequence: h05m/h10m conifers come
+# out sparser than target. Fixing that properly needs the per-tree resolver
+# (XRFF-273).
+#
+# Re-derive after any change to twig assets, quality preset, or growth
+# calibration -- all three move the measured ratio.
+[export.twig_density_per_species]
+silver_fir = 0.0078          # measured 5.14x at 0.04
+small_leaved_linden = 0.0097 # measured 4.12x
+norway_spruce = 0.0105       # measured 3.80x
+douglas_fir = 0.0169         # measured 2.37x
+scots_pine = 0.0181          # measured 2.21x
+wild_cherry = 0.0331         # measured 1.21x
+sycamore_maple = 0.114       # measured 0.35x -- was too SPARSE at 0.04
+european_beech = 0.138       # measured 0.29x -- too sparse
+european_oak = 0.148         # measured 0.27x -- too sparse
+silver_birch = 0.200         # measured 0.20x -- too sparse (only 1 h15m stage)
+common_ash = 0.800           # measured 0.05x -- 20x too sparse at 0.04

@@ -1213,7 +1213,13 @@ def densify_twig_placements(
         for twig_type, plist in placements.items():
             if not plist:
                 continue
-            keep_count = max(0, int(len(plist) * keep_ratio + 0.5))
+            # Floor of 1: a twig type that had placements must keep at least
+            # one. Without this, a small tree thinned hard rounds to zero and
+            # exports with NO foliage at all -- measured on a 5 m / 2 cm-DBH
+            # wild cherry whose 4 total placements became 0 at density 0.04,
+            # shipping three completely bald assets. A slightly-too-dense
+            # sapling is a cosmetic error; a leafless tree is a broken asset.
+            keep_count = max(1, int(len(plist) * keep_ratio + 0.5))
             if keep_count >= len(plist):
                 continue
             rng.shuffle(plist)
