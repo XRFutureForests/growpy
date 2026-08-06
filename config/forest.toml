@@ -199,7 +199,12 @@ density_variants = [] # e.g., ["full", "reduced", "bare"]
 # calibration -- all three move the measured ratio.
 [export.twig_density_per_species]
 silver_fir = 0.0078          # measured 5.14x at 0.04
-small_leaved_linden = 0.0097 # measured 4.12x
+# 0.139, NOT the 0.0097 first derived. That came from a directory still holding
+# six stale 0.5-density linden files -- linden's DBH shifted between runs, so
+# they did not overwrite and were averaged in, inflating the ratio ~14x.
+# Verified after moving them to data/output/_stale_from_0.5_run/. Lesson: check
+# for duplicate stage/radius files before back-solving from a measured run.
+small_leaved_linden = 0.139   # re-measured 0.07x at 0.0097
 norway_spruce = 0.0105       # measured 3.80x
 douglas_fir = 0.0169         # measured 2.37x
 scots_pine = 0.0181          # measured 2.21x
