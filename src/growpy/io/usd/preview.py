@@ -18,6 +18,7 @@ def generate_preview_image(
     file_prefix: str,
     skeleton,
     timer,
+    twig_placements=None,
 ) -> list | None:
     """Draw branch structure from skeleton polylines as 3-axis preview.
 
@@ -25,15 +26,29 @@ def generate_preview_image(
     projections. Filters out the thinnest twigs to reveal main branch
     architecture.
 
+    When ``twig_placements`` is given the figure gains a second row showing the
+    same three views with the twig instance positions scattered over the
+    branches. The branch-only row is kept because the two answer different
+    questions: row 1 is branch architecture, row 2 is where the foliage
+    actually sits and how densely. Without the twig row the image is identical
+    at every twig density -- the branch skeleton does not depend on it -- so it
+    cannot be used to judge crown density at all.
+
     Args:
         tree_dir: Directory to save preview image.
         species_clean: Snake_case species name (used for title only).
         file_prefix: Base filename prefix (e.g., 'european_beech_h15m_d10cm').
         skeleton: Grove skeleton object with points and polylines.
         timer: ProfileTimer instance.
+        twig_placements: Optional ``{twig_type: [TwigPlacement, ...]}`` as
+            written by the assembly export, i.e. final positions after
+            recovery, thinning and the instance cap. None or empty falls back
+            to the single-row branch-only layout.
 
     Returns:
-        List of (xlim, ylim) tuples per view for axis matching, or None.
+        List of (xlim, ylim) tuples per view for axis matching, or None. Always
+        the three branch-row views, so the export-control render frames itself
+        identically whether or not the twig row was drawn.
     """
     if skeleton is None:
         return None
@@ -125,37 +140,88 @@ def generate_preview_image(
                 ("Top (X vs Y)", 0, 1, "X (m)", "Y (m)"),
             ]
 
-            fig, axes = plt.subplots(1, 3, figsize=(18, 7))
-            fig.suptitle(f"{title} ({height:.1f}m)", fontsize=14, fontweight="bold")
+            # Twig positions, centred with the same offset as the branches so
+            # the two rows overlay in the same coordinate frame.
+            twig_xyz = None
+            if twig_placements:
+                _tp = [
+                    p.position
+                    for plist in twig_placements.values()
+                    for p in plist
+                ]
+                if _tp:
+                    twig_xyz = np.asarray(_tp, dtype=float)
+                    twig_xyz[:, :2] -= center_xy
+
+            n_rows = 2 if twig_xyz is not None else 1
+            fig, axes = plt.subplots(
+                n_rows, 3, figsize=(18, 7 * n_rows), squeeze=False
+            )
+            n_twigs = 0 if twig_xyz is None else len(twig_xyz)
+            suptitle = f"{title} ({height:.1f}m)"
+            if twig_xyz is not None:
+                suptitle += f" -- {n_twigs:,} twig instances"
+            fig.suptitle(suptitle, fontsize=14, fontweight="bold")
 
             ax_points = 7 * 72
             reference_height = 30.0
             pts_per_meter = ax_points / reference_height
 
-            for ax, (view_name, ax_h, ax_v, xlabel, ylabel) in zip(axes, views):
-                segs = []
-                ws = []
-                for p0, p1, r in filtered:
-                    segs.append([(p0[ax_h], p0[ax_v]), (p1[ax_h], p1[ax_v])])
-                    ws.append(r * 2 * pts_per_meter)
+            for row in range(n_rows):
+                show_twigs = row == 1
+                for ax, (view_name, ax_h, ax_v, xlabel, ylabel) in zip(
+                    axes[row], views
+                ):
+                    segs = []
+                    ws = []
+                    for p0, p1, r in filtered:
+                        segs.append(
+                            [(p0[ax_h], p0[ax_v]), (p1[ax_h], p1[ax_v])]
+                        )
+                        ws.append(r * 2 * pts_per_meter)
 
-                lc = LineCollection(
-                    segs, linewidths=ws, colors="#3b2a1a", alpha=1.0,
-                    capstyle="round", joinstyle="round",
-                )
-                ax.add_collection(lc)
-                ax.set_aspect("equal")
-                ax.autoscale()
-                ax.set_xlabel(xlabel)
-                ax.set_ylabel(ylabel)
-                ax.set_title(view_name)
-                ax.grid(True, alpha=0.2)
+                    # A LineCollection belongs to one axes, so build a fresh
+                    # one per panel rather than sharing across rows.
+                    lc = LineCollection(
+                        segs,
+                        linewidths=ws,
+                        colors="#3b2a1a",
+                        alpha=0.18 if show_twigs else 1.0,
+                        capstyle="round",
+                        joinstyle="round",
+                    )
+                    ax.add_collection(lc)
+
+                    if show_twigs:
+                        # Plain round points: overlapping dots read as density,
+                        # which is the whole purpose of this row.
+                        ax.scatter(
+                            twig_xyz[:, ax_h],
+                            twig_xyz[:, ax_v],
+                            s=6,
+                            c="#1f7a1f",
+                            alpha=0.5,
+                            linewidths=0,
+                            zorder=3,
+                        )
+
+                    ax.set_aspect("equal")
+                    ax.autoscale()
+                    ax.set_xlabel(xlabel)
+                    ax.set_ylabel(ylabel)
+                    ax.set_title(
+                        f"{view_name} + {n_twigs:,} twigs"
+                        if show_twigs
+                        else view_name
+                    )
+                    ax.grid(True, alpha=0.2)
 
             plt.tight_layout()
             png_path = tree_dir / f"{file_prefix}_preview.png"
             fig.savefig(png_path, dpi=150, bbox_inches="tight", facecolor="white")
 
-            view_bounds = [(ax.get_xlim(), ax.get_ylim()) for ax in axes]
+            # Branch row only: export-control matches against these.
+            view_bounds = [(ax.get_xlim(), ax.get_ylim()) for ax in axes[0]]
 
             plt.close(fig)
             logger.info("  Preview: %s", png_path.name)

@@ -483,7 +483,12 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                         # 2D preview image
                         stems_base = f"{species_clean}_{dims_suffix}"
                         preview_bounds = _generate_preview_image(
-                            tree_dir, species_clean, file_prefix, skeleton, timer
+                            tree_dir,
+                            species_clean,
+                            file_prefix,
+                            skeleton,
+                            timer,
+                            twig_placements=captured_twig_placements or None,
                         )
                         # The export-control render is the most expensive of
                         # the image stages, so it has its own gate -- mirrors

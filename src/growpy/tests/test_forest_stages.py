@@ -534,12 +534,17 @@ class TestStagesRegistry:
         ]
 
     def test_once_per_tree_flags(self):
-        """pve_json now runs per density variant (XRFF-283); the rest stay once_per_tree."""
+        """pve_json (XRFF-283) and preview run per density variant; the rest don't.
+
+        preview draws twig positions, which are exactly what a density variant
+        changes -- running it once per tree would label variant 0's crown as
+        every other variant's.
+        """
         once_per_tree_by_name = {name: once for name, _gate, _fn, once in STAGES}
         assert once_per_tree_by_name["pve_json"] is False
+        assert once_per_tree_by_name["preview"] is False
         for name in (
             "wind_json",
-            "preview",
             "export_control",
             "icons",
             "static_derive",

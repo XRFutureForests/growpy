@@ -360,13 +360,23 @@ def write_pve_json(ctx: TreeExportContext) -> None:
 
 
 def write_previews(ctx: TreeExportContext) -> None:
-    """Generate the 2D preview image for this tree.
+    """Generate the 2D preview image for this tree+variant.
 
     Stashes the resulting view bounds on the context so write_export_control()
     can frame its render identically when both stages run.
+
+    Passes the final twig placements so the preview gets its foliage row. This
+    is why the stage is NOT once_per_tree: the branch skeleton is identical
+    across density variants, so a once-per-tree preview would show variant 0's
+    crown and silently label it as every other variant's.
     """
     ctx.preview_bounds = _generate_preview_image(
-        ctx.tree_dir, ctx.species_clean, ctx.file_prefix, ctx.skeleton, ctx.timer
+        ctx.tree_dir,
+        ctx.species_clean,
+        ctx.file_prefix,
+        ctx.skeleton,
+        ctx.timer,
+        twig_placements=ctx.twig_placements,
     )
 
 
@@ -477,7 +487,9 @@ StageFn = Callable[[TreeExportContext], None]
 STAGES: list[tuple[str, StageGate, StageFn, bool]] = [
     ("wind_json", lambda c: c.cfg.unreal_generate_wind_data, write_wind_json, True),
     ("pve_json", lambda c: not c.skip_pve_json, write_pve_json, False),
-    ("preview", lambda c: c.cfg.export_previews, write_previews, True),
+    # Not once_per_tree: the preview now draws twig positions, which differ per
+    # density variant (see write_previews).
+    ("preview", lambda c: c.cfg.export_previews, write_previews, False),
     (
         "export_control",
         lambda c: c.cfg.export_control_images,

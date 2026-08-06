@@ -46,6 +46,63 @@ class TestGeneratePreviewImage:
         assert result is not None
         assert isinstance(result, list)
 
+    def _skeleton(self):
+        skeleton = MagicMock()
+        skeleton.points = [
+            (0.0, 0.0, 0.0), (0.0, 0.0, 5.0), (1.0, 0.0, 3.0),
+        ]
+        skeleton.poly_lines = [[0, 1], [0, 2]]
+        skeleton.point_attribute_radius = [0.1, 0.05, 0.03]
+        return skeleton
+
+    def _placements(self, n):
+        return {"twig_long": [MagicMock(position=(0.1 * i, 0.0, 1.0 + 0.1 * i))
+                              for i in range(n)]}
+
+    def test_twig_row_adds_a_second_row_of_views(self, tmp_path):
+        """Twig placements must change the image; without them density is invisible."""
+        (tmp_path / "bare").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "withtwigs").mkdir(parents=True, exist_ok=True)
+        bare = generate_preview_image(
+            tmp_path / "bare", "test_tree", "t_h10m", self._skeleton(),
+            self._mock_timer(),
+        )
+        withtwigs = generate_preview_image(
+            tmp_path / "withtwigs", "test_tree", "t_h10m", self._skeleton(),
+            self._mock_timer(), twig_placements=self._placements(20),
+        )
+        # Contract preserved: three branch-row bounds either way, so the
+        # export-control render still frames itself identically.
+        assert len(bare) == 3
+        assert len(withtwigs) == 3
+        b = (tmp_path / "bare" / "t_h10m_preview.png").read_bytes()
+        w = (tmp_path / "withtwigs" / "t_h10m_preview.png").read_bytes()
+        assert b != w, "twig row did not change the rendered image"
+        assert len(w) > len(b), "twig row should add content, not replace it"
+
+    def test_density_changes_the_image(self, tmp_path):
+        """The whole point: two densities must not render identically."""
+        for name, n in (("sparse", 5), ("dense", 400)):
+            (tmp_path / name).mkdir(parents=True, exist_ok=True)
+            generate_preview_image(
+                tmp_path / name, "test_tree", "t_h10m", self._skeleton(),
+                self._mock_timer(), twig_placements=self._placements(n),
+            )
+        sparse = (tmp_path / "sparse" / "t_h10m_preview.png").read_bytes()
+        dense = (tmp_path / "dense" / "t_h10m_preview.png").read_bytes()
+        assert sparse != dense
+
+    def test_empty_placements_fall_back_to_single_row(self, tmp_path):
+        for name, tp in (("none", None), ("empty", {}), ("emptylist", {"twig_long": []})):
+            (tmp_path / name).mkdir(parents=True, exist_ok=True)
+            generate_preview_image(
+                tmp_path / name, "test_tree", "t_h10m", self._skeleton(),
+                self._mock_timer(), twig_placements=tp,
+            )
+        ref = (tmp_path / "none" / "t_h10m_preview.png").read_bytes()
+        for name in ("empty", "emptylist"):
+            assert (tmp_path / name / "t_h10m_preview.png").read_bytes() == ref
+
 
 class TestGenerateExportControlImage:
     """Regression: must read the stems USD via the pxr API (works for both
