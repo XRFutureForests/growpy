@@ -991,7 +991,20 @@ def generate_unreal_import_script(
     # Material batch: create MA_Foliage_Trees-derived MICs and assign to meshes
     species_colors = _load_species_colors()
     if species_colors:
-        materials_code = _build_material_script(project_path, species_colors)
+        # Parent material resolves from db_path (the reusable-template dir),
+        # not project_path/Materials. The two are different things: the created
+        # MICs are per-dataset working data and stay under IMPORT_PATH, while
+        # MA_Foliage_Trees is hand-authored template data living alongside
+        # ST_TreeCatalogEntry -- which the DataTable script below already
+        # resolves from db_path. Without this the batch aborts via
+        # unreal.log_error ("Parent material not found"), which goes to UE's
+        # log and not to ue_exec's stdout, so the batch still reports as
+        # completed and every tree silently keeps its raw USD materials.
+        materials_code = _build_material_script(
+            project_path,
+            species_colors,
+            parent_material_path=f"{db_path}/MA_Foliage_Trees",
+        )
         materials_name = "import_batch_98_materials.py"
         materials_label = "Assign MA_Foliage_Trees material instances"
         (script_dir / materials_name).write_text(materials_code, encoding="utf-8")

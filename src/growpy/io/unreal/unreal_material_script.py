@@ -39,9 +39,14 @@ def _build_material_script(
     foliage/twig/leaf keywords.
     """
     if parent_material_path is None:
-        # Project-local copy (see docs/guides/unreal-import.md troubleshooting):
-        # the plugin's own content path is fragile across UE versions/mount
-        # state, so we expect the master material duplicated into the project.
+        # Fallback only. Callers should pass the configured [unreal] db_path
+        # (the reusable-template dir, e.g. /Game/Templates) -- see
+        # generate_unreal_import_script. This default expects the master
+        # material duplicated into the project because the plugin's own content
+        # path is fragile across UE versions/mount state
+        # (docs/guides/unreal-import.md troubleshooting), but it does NOT match
+        # a project that keeps MA_Foliage_Trees alongside ST_TreeCatalogEntry
+        # in the template dir, which is the normal layout.
         parent_material_path = f"{project_path}/Materials/MA_Foliage_Trees"
     colors_json = json.dumps(
         {s: {k: list(v) for k, v in d.items()} for s, d in species_colors.items()},
