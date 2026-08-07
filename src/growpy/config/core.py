@@ -165,6 +165,7 @@ class GrowPyConfig:
         "previews": "export_previews",
         "export_control": "export_control_images",
         "icons": "export_icons",
+        "icon_components": "export_icon_components",
         # [unreal]
         "import_to_unreal": "unreal_import_to_unreal",
         "unreal_project_path": "unreal_project_path",
@@ -340,6 +341,13 @@ class GrowPyConfig:
     export_icons: bool = True
     export_previews: bool = False
     export_control_images: bool = False
+    # Per-view branches/twigsonly/skeleton/merged component files alongside
+    # the plain/twigs icon pair (see io/usd/preview.py generate_icon_image).
+    # Off by default, same reasoning as export_previews/export_control_images
+    # above: a QA aid nothing downstream reads, and it roughly quadruples the
+    # icons stage's per-tree image count. Only meaningful when export_icons
+    # is also on.
+    export_icon_components: bool = False
     export_max_skeleton_joints: int = 0  # 0 = no limit; 250 = Nanite Assembly USD
     export_max_assembly_instances: int = (
         0  # 0 = no limit; cap twig instances per assembly
@@ -558,6 +566,8 @@ class GrowPyConfig:
             kwargs["export_control_images"] = bool(export["export_control"])
         if "icons" in export:
             kwargs["export_icons"] = bool(export["icons"])
+        if "icon_components" in export:
+            kwargs["export_icon_components"] = bool(export["icon_components"])
         # Deprecated alias: export.radial_scale -> export_dbh_from_allometry
         if "radial_scale" in export:
             kwargs["export_dbh_from_allometry"] = export["radial_scale"]

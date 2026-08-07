@@ -330,6 +330,16 @@ Unreal Engine Integration:
         default=None,
         help="Generate front/side/top icon PNGs per tree (default: from config).",
     )
+    parser.add_argument(
+        "--icon-components",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Also generate separate branches/twigsonly/skeleton/merged "
+            "component PNGs per icon view (default: from config). Only "
+            "meaningful when --icons is also on."
+        ),
+    )
 
     # Mesh type export flags (independent, any combination works)
     parser.add_argument(

@@ -11,6 +11,126 @@ logger = logging.getLogger(__name__)
 
 _VIEW_AXES = {"front": (0, 2), "side": (1, 2), "top": (0, 1)}
 
+# Colours for the per-component icon layers (generate_icon_image's
+# export_components path). Branch (#3b2a1a) and twig (#1f7a1f) colours match
+# the pre-existing plain/twigs icon literals exactly so the merged layer reads
+# consistently with them; skeleton colours are new since bone chains/joints
+# are not drawn anywhere else in this module's icon output.
+_BRANCH_COLOR = "#3b2a1a"
+_TWIG_COLOR = "#1f7a1f"
+_SKELETON_LINE_COLOR = "#b23a3a"
+_SKELETON_JOINT_COLOR = "#7a1f1f"
+
+
+def _square_limits(
+    xs, ys, margin_frac: float = 0.05
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Square, centred (xlim, ylim) covering ``xs``/``ys`` with a margin.
+
+    Mirrors the padding math generate_icon_image already uses to fill its
+    square canvas, factored out so every per-component icon layer for a given
+    tree+view can be handed the exact same limits.
+    """
+    xlo, xhi = float(xs.min()), float(xs.max())
+    ylo, yhi = float(ys.min()), float(ys.max())
+    span = max(xhi - xlo, yhi - ylo, 1e-6)
+    xcenter = (xlo + xhi) / 2
+    ycenter = (ylo + yhi) / 2
+    margin = span * margin_frac
+    half = span / 2 + margin
+    return (xcenter - half, xcenter + half), (ycenter - half, ycenter + half)
+
+
+def _save_icon_layer(
+    path: Path,
+    fig_inches: float,
+    dpi: int,
+    xlim: tuple[float, float],
+    ylim: tuple[float, float],
+    branch_segs=None,
+    branch_widths=None,
+    twig_xyz=None,
+    ax_h: int | None = None,
+    ax_v: int | None = None,
+    bone_segs=None,
+    joint_xy=None,
+    legend: bool = False,
+) -> None:
+    """Render one component-icon PNG (branches / twigs / skeleton / merged).
+
+    Draws whichever of (branch_segs, bone_segs+joint_xy, twig_xyz) are
+    provided into a single square canvas at the given shared ``xlim``/
+    ``ylim``, so every layer for one tree+view lands in the same pixel
+    positions. ``legend`` adds a small legend proxy per drawn layer (used
+    for the merged plot only).
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.collections import LineCollection
+    from matplotlib.lines import Line2D
+
+    fig, ax = plt.subplots(1, 1, figsize=(fig_inches, fig_inches))
+    handles = []
+
+    if branch_segs:
+        lc = LineCollection(
+            branch_segs, linewidths=branch_widths, colors=_BRANCH_COLOR,
+            alpha=1.0, capstyle="round", joinstyle="round",
+        )
+        ax.add_collection(lc)
+        if legend:
+            handles.append(Line2D([0], [0], color=_BRANCH_COLOR, lw=3, label="Branches"))
+
+    if bone_segs:
+        lc2 = LineCollection(
+            bone_segs, linewidths=0.8, colors=_SKELETON_LINE_COLOR,
+            alpha=0.9, zorder=4,
+        )
+        ax.add_collection(lc2)
+        if joint_xy:
+            jx = [p[0] for p in joint_xy]
+            jy = [p[1] for p in joint_xy]
+            ax.scatter(
+                jx, jy, s=5, c=_SKELETON_JOINT_COLOR, zorder=5, linewidths=0,
+            )
+        if legend:
+            handles.append(
+                Line2D(
+                    [0], [0], color=_SKELETON_LINE_COLOR, lw=1.5,
+                    marker="o", markersize=4,
+                    markerfacecolor=_SKELETON_JOINT_COLOR, markeredgewidth=0,
+                    label="Skeleton",
+                )
+            )
+
+    if twig_xyz is not None and len(twig_xyz):
+        ax.scatter(
+            twig_xyz[:, ax_h], twig_xyz[:, ax_v], s=4, c=_TWIG_COLOR,
+            alpha=0.5, linewidths=0, zorder=3,
+        )
+        if legend:
+            handles.append(
+                Line2D(
+                    [0], [0], linestyle="None", marker="o",
+                    markerfacecolor=_TWIG_COLOR, markeredgewidth=0,
+                    markersize=5, alpha=0.7, label="Twigs",
+                )
+            )
+
+    ax.set_aspect("equal")
+    ax.set_xlim(*xlim)
+    ax.set_ylim(*ylim)
+    ax.axis("off")
+    fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
+
+    if legend and handles:
+        ax.legend(
+            handles=handles, loc="upper right", fontsize=6, framealpha=0.75,
+            handlelength=1.4, borderpad=0.4, labelspacing=0.4,
+        )
+
+    fig.savefig(path, dpi=dpi, facecolor="white")
+    plt.close(fig)
+
 
 def generate_preview_image(
     tree_dir: Path,
@@ -272,6 +392,8 @@ def generate_icon_image(
     size_px: int = 512,
     view: str | None = None,
     twig_placements=None,
+    bones_info=None,
+    export_components: bool = False,
 ) -> None:
     """Render a minimal icon on a square canvas.
 
@@ -286,6 +408,17 @@ def generate_icon_image(
     Note this stage stays once-per-tree, unlike the preview: icons are a
     per-tree catalog deliverable. With density variants active the twig icon
     therefore shows variant 0 only -- use the preview for per-variant density.
+
+    When ``export_components`` is True, FOUR additional files are written:
+    ``..._icon_{view}_branches.png``, ``..._twigsonly.png``, ``..._skeleton.png``
+    (only when ``bones_info`` is non-empty) and ``..._merged.png``. All four
+    share one set of axis limits -- the union of every layer's data for this
+    tree+view -- so flipping between them lines features up pixel-for-pixel.
+    The branches layer keeps the same 25th-percentile-radius filter as the
+    plain/twigs icons (thinnest twigs/branch tips dropped) so it matches what
+    those two already show; see the module-level filter below. This is
+    additive and gated purely by the caller (see forest_stages.write_icons /
+    GrowPyConfig.export_icon_components) -- it costs nothing when False.
 
     Args:
         tree_dir: Directory to save icon image.
@@ -302,6 +435,18 @@ def generate_icon_image(
             skeleton is centred on its own XY mean here to put both in the same
             frame (invisible in the output -- the axes are off and the limits
             are derived from the data either way).
+        bones_info: Optional list of bone tuples from Grove's
+            ``grove.tag_bone_id()`` -- ``(is_tree_root, parent_bone_id,
+            start_point, end_point, radius, mass, is_branch_root,
+            branch_id)`` (see core/skeleton.py). Only used when
+            ``export_components`` is True, to draw the skeleton layer: one
+            line segment per bone plus a marker at every joint (bone
+            endpoint). Drawn from the raw, unfiltered list -- i.e. before the
+            mesh-vertex-based filtering ``filter_bones_for_mesh`` applies at
+            actual skeletal-mesh export time -- so the joint count/spread
+            shown here is an upper bound on what ships in the skinned USD.
+        export_components: When True, also write the four per-component
+            files described above.
     """
     if skeleton is None:
         return
@@ -320,6 +465,7 @@ def generate_icon_image(
             # the skeleton so both share a frame. Harmless for the plain icon:
             # axes are off and the limits come from the data.
             twig_xyz = None
+            center_xy = None
             if twig_placements:
                 _tp = [
                     p.position
@@ -329,7 +475,8 @@ def generate_icon_image(
                 if _tp:
                     twig_xyz = np.asarray(_tp, dtype=float)
                     points = points.copy()
-                    points[:, :2] -= np.mean(points[:, :2], axis=0)
+                    center_xy = np.mean(points[:, :2], axis=0)
+                    points[:, :2] -= center_xy
 
             radii = None
             if hasattr(skeleton, "point_attribute_radius"):
@@ -451,6 +598,79 @@ def generate_icon_image(
                 )
 
             plt.close(fig)
+
+            # Per-component layers: branches / twigs-only / skeleton / merged.
+            # Additive files, all sharing ONE set of axis limits (the union of
+            # every layer's data) so the four line up pixel-for-pixel. See the
+            # export_components docstring section above.
+            if export_components:
+                bone_segs = []
+                joint_xy = []
+                if bones_info:
+                    offset_xy = (
+                        center_xy if center_xy is not None else np.zeros(2)
+                    )
+                    for bone in bones_info:
+                        start_pt, end_pt = bone[2], bone[3]
+                        p0 = (
+                            start_pt.x - offset_xy[0],
+                            start_pt.y - offset_xy[1],
+                            start_pt.z,
+                        )
+                        p1 = (
+                            end_pt.x - offset_xy[0],
+                            end_pt.y - offset_xy[1],
+                            end_pt.z,
+                        )
+                        bone_segs.append(
+                            [(p0[ax_h], p0[ax_v]), (p1[ax_h], p1[ax_v])]
+                        )
+                        joint_xy.append((p0[ax_h], p0[ax_v]))
+                        joint_xy.append((p1[ax_h], p1[ax_v]))
+
+                union_xs = [pt[0] for seg in segs for pt in seg]
+                union_ys = [pt[1] for seg in segs for pt in seg]
+                for seg in bone_segs:
+                    union_xs.extend([seg[0][0], seg[1][0]])
+                    union_ys.extend([seg[0][1], seg[1][1]])
+                if twig_xyz is not None and len(twig_xyz):
+                    union_xs.extend(twig_xyz[:, ax_h].tolist())
+                    union_ys.extend(twig_xyz[:, ax_v].tolist())
+
+                xlim, ylim = _square_limits(
+                    np.array(union_xs), np.array(union_ys)
+                )
+
+                _save_icon_layer(
+                    tree_dir / f"{file_prefix}{suffix}_branches.png",
+                    fig_inches, dpi, xlim, ylim,
+                    branch_segs=segs, branch_widths=ws,
+                )
+                if twig_xyz is not None and len(twig_xyz):
+                    _save_icon_layer(
+                        tree_dir / f"{file_prefix}{suffix}_twigsonly.png",
+                        fig_inches, dpi, xlim, ylim,
+                        twig_xyz=twig_xyz, ax_h=ax_h, ax_v=ax_v,
+                    )
+                if bone_segs:
+                    _save_icon_layer(
+                        tree_dir / f"{file_prefix}{suffix}_skeleton.png",
+                        fig_inches, dpi, xlim, ylim,
+                        bone_segs=bone_segs, joint_xy=joint_xy,
+                    )
+                _save_icon_layer(
+                    tree_dir / f"{file_prefix}{suffix}_merged.png",
+                    fig_inches, dpi, xlim, ylim,
+                    branch_segs=segs, branch_widths=ws,
+                    twig_xyz=twig_xyz, ax_h=ax_h, ax_v=ax_v,
+                    bone_segs=bone_segs, joint_xy=joint_xy,
+                    legend=True,
+                )
+                logger.info(
+                    "  Icon components: %s (%d bones)",
+                    f"{file_prefix}{suffix}",
+                    len(bone_segs),
+                )
     except Exception as e:
         logger.warning("Icon generation failed for %s: %s", file_prefix, e)
 

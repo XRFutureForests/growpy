@@ -403,6 +403,11 @@ def write_icons(ctx: TreeExportContext) -> None:
 
     Passes twig placements so each view also gets a ``_twigs`` variant. The
     plain icons stay unchanged -- dataset_overview.csv references those.
+
+    When ``ctx.cfg.export_icon_components`` is on, also passes bones_info so
+    each view additionally gets separate branches/twigsonly/skeleton/merged
+    component files (see generate_icon_image). Off by default -- a
+    production run does not pay for these unless asked.
     """
     for _view in ("front", "side", "top"):
         _generate_icon_image(
@@ -412,6 +417,8 @@ def write_icons(ctx: TreeExportContext) -> None:
             ctx.timer,
             view=_view,
             twig_placements=ctx.twig_placements,
+            bones_info=ctx.bones_info if ctx.use_skeletal else None,
+            export_components=ctx.cfg.export_icon_components,
         )
 
 

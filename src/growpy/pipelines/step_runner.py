@@ -153,6 +153,7 @@ def _build_step4_command(
     export_control: bool | None = None,
     icons: bool | None = None,
     profile: bool | None = None,
+    icon_components: bool | None = None,
 ) -> list:
     """Build the generate_forest.py command for one dataset species.
 
@@ -160,9 +161,9 @@ def _build_step4_command(
     for the species itself from config, so there is no CSV to hand over and
     no --export-trees filter to compute: it exports all the rows it built.
 
-    pve, wind, previews, export_control, icons and profile are tri-state
-    (None = use the TOML default) and are only appended when explicitly set,
-    mirroring resolve()'s CLI-over-TOML semantics.
+    pve, wind, previews, export_control, icons, icon_components and profile
+    are tri-state (None = use the TOML default) and are only appended when
+    explicitly set, mirroring resolve()'s CLI-over-TOML semantics.
     """
     cmd = [sys.executable, str(STEP_SCRIPTS[4]), "--species", species_name]
     if max_height > 0:
@@ -183,6 +184,10 @@ def _build_step4_command(
         )
     if icons is not None:
         cmd.append("--icons" if icons else "--no-icons")
+    if icon_components is not None:
+        cmd.append(
+            "--icon-components" if icon_components else "--no-icon-components"
+        )
     if profile is not None:
         cmd.append("--profile" if profile else "--no-profile")
     return cmd
@@ -200,6 +205,7 @@ def run_species_step4(
     export_control: bool | None = None,
     icons: bool | None = None,
     profile: bool | None = None,
+    icon_components: bool | None = None,
 ) -> bool:
     """Run generate_forest.py for one dataset species.
 
@@ -218,6 +224,7 @@ def run_species_step4(
         export_control,
         icons,
         profile,
+        icon_components=icon_components,
     )
 
     if dry_run:
@@ -259,6 +266,7 @@ def _run_species_worker(args: tuple) -> tuple:
         export_control,
         icons,
         profile,
+        icon_components,
     ) = args
     t0 = time.monotonic()
     ok = run_species_step4(
@@ -272,6 +280,7 @@ def _run_species_worker(args: tuple) -> tuple:
         export_control=export_control,
         icons=icons,
         profile=profile,
+        icon_components=icon_components,
     )
     elapsed = time.monotonic() - t0
     return species_name, ok, elapsed
@@ -288,6 +297,7 @@ def run_parallel_step4(
     export_control: bool | None = None,
     icons: bool | None = None,
     profile: bool | None = None,
+    icon_components: bool | None = None,
 ) -> tuple[list, dict]:
     """Run step 4 for multiple species in parallel.
 
@@ -310,6 +320,7 @@ def run_parallel_step4(
                     export_control,
                     icons,
                     profile,
+                    icon_components,
                 ),
             ): species
             for species in species_list

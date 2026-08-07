@@ -7,11 +7,20 @@ Parses USDA text files without USD libraries, extracting key metrics:
 - Twig instance count (from assembly PointInstancers)
 - Radial profile at breast height (1.3m)
 
+The text-based parsing above only works on ``.usda`` (ASCII) files. The
+live default is ``[export] usd_format = "usdc"`` (binary) -- see
+``config/forest.toml`` -- so ``--triangle-budget`` below uses the ``pxr``
+USD API instead, which handles both formats identically and works on the
+composed (reference-resolved) stage rather than raw text.
+
 Usage:
     python src/growpy/tools/analyze_usda.py data/output/forest/norway_spruce/tree_0001/
     python src/growpy/tools/analyze_usda.py path/to/specific_stems_skeletal.usda
+    python src/growpy/tools/analyze_usda.py --triangle-budget path/to/assembly.usdc \
+        --json out.json
 """
 
+import json
 import math
 import re
 import sys
@@ -172,7 +181,8 @@ def print_stats(stats: dict) -> None:
         non_tri = stats.get("non_triangle_faces", 0)
         if non_tri:
             print(
-                f"  NON-TRIANGLE:  {non_tri} faces! values={stats.get('non_triangle_values')}"
+                f"  NON-TRIANGLE:  {non_tri} faces! "
+                f"values={stats.get('non_triangle_values')}"
             )
         print(f"  Joints:        {stats.get('joint_count', '?')}")
         print(f"  Height:        {stats.get('height', '?'):.2f} m")
@@ -194,7 +204,8 @@ def print_stats(stats: dict) -> None:
             for h in sorted(profile.keys()):
                 r = profile[h]
                 print(
-                    f"  {h:5.0f}m | {r['count']:5d} | {r['max_r']:10.4f} | {r['mean_r']:10.4f}"
+                    f"  {h:5.0f}m | {r['count']:5d} | {r['max_r']:10.4f} | "
+                    f"{r['mean_r']:10.4f}"
                 )
 
     elif stats["type"] == "assembly":
@@ -202,6 +213,273 @@ def print_stats(stats: dict) -> None:
         print(f"  Has twigs:     {stats.get('has_twigs')}")
         print(f"  Twig instances:{stats.get('twig_instances')}")
         print(f"  Stems ref:     {stats.get('stems_ref')}")
+
+
+# --- Triangle-budget report (pxr-based, works on .usda and .usdc) -------
+#
+# Every twig prototype ships a sidecar next to its source .usda, named
+# ``<twig_asset_name>_leaf_area.json`` (produced by the XRFF-274 leaf-area
+# measurement pass), e.g.:
+#   {"leaf_area_m2": 0.1088, "leaf_faces": 107876, "total_faces": 107876,
+#    "leaf_material_indices": [0]}
+# where ``<twig_asset_name>`` is the prototype's file stem with
+# "_skeletal"/"_static" stripped (see io/usd/assembly_export.py, which
+# names both the reference target AND the prototype's sole child prim
+# exactly this). ``total_faces`` from the sidecar is preferred over
+# counting faces from the composed USD mesh (cheap, and the source of
+# truth used elsewhere in the pipeline); the USD mesh is only walked as a
+# fallback when a sidecar is missing.
+
+_SIDECAR_CACHE: dict[str, dict | None] = {}
+
+
+def _default_twigs_root() -> Path:
+    from growpy.config.paths import get_project_root
+
+    return get_project_root() / "data" / "assets" / "twigs"
+
+
+def _find_leaf_area_sidecar(twig_asset_name: str, twigs_root: Path) -> dict | None:
+    """Look up ``<twig_asset_name>_leaf_area.json`` under ``twigs_root``.
+
+    Cached per (twigs_root, twig_asset_name) since a single triangle-budget
+    run over a forest can re-encounter the same prototype across many
+    assemblies (up to ~18 prototypes per species, ~97 sidecars total).
+    """
+    cache_key = f"{twigs_root}::{twig_asset_name}"
+    if cache_key in _SIDECAR_CACHE:
+        return _SIDECAR_CACHE[cache_key]
+
+    result = None
+    if twigs_root.exists():
+        matches = list(twigs_root.rglob(f"{twig_asset_name}_leaf_area.json"))
+        if matches:
+            try:
+                result = json.loads(matches[0].read_text())
+            except (json.JSONDecodeError, OSError) as e:
+                print(f"  Warning: could not read sidecar {matches[0]}: {e}")
+                result = None
+
+    _SIDECAR_CACHE[cache_key] = result
+    return result
+
+
+def _count_mesh_faces_pxr(prim) -> int:
+    """Sum faceVertexCounts length across every Mesh prim under ``prim``."""
+    from pxr import Usd, UsdGeom
+
+    total = 0
+    for p in Usd.PrimRange(prim):
+        if p.GetTypeName() == "Mesh":
+            mesh = UsdGeom.Mesh(p)
+            attr = mesh.GetFaceVertexCountsAttr()
+            if attr:
+                counts = attr.Get()
+                if counts:
+                    total += len(counts)
+    return total
+
+
+def analyze_triangle_budget(
+    assembly_path: Path, twigs_root: Path | None = None
+) -> dict:
+    """Report the twig-instance triangle budget for a Nanite assembly.
+
+    Uses the ``pxr`` USD API (works for both ``.usda`` and ``.usdc``,
+    unlike the regex-based helpers above) on the composed stage, so
+    prototype references are already resolved.
+
+    Requires the growpy conda env: ``pxr`` only imports safely after
+    ``growpy.utils.pxr_init.ensure_pxr_with_unreal_schema()`` has run (a
+    bare ``from pxr import Usd`` fails with a DLL error outside it). That
+    call is made lazily inside this function so importing this module
+    stays cheap for callers that only need the text-parsing helpers above.
+    """
+    from growpy.utils.pxr_init import ensure_pxr_with_unreal_schema
+
+    ensure_pxr_with_unreal_schema()
+    from pxr import Usd, UsdGeom, UsdSkel
+
+    if twigs_root is None:
+        twigs_root = _default_twigs_root()
+
+    stage = Usd.Stage.Open(str(assembly_path))
+    if stage is None:
+        raise ValueError(f"Could not open USD stage: {assembly_path}")
+
+    stats: dict = {
+        "file": str(assembly_path),
+        "type": "triangle_budget",
+        "file_size_bytes": assembly_path.stat().st_size,
+    }
+
+    instancer_prim = None
+    for prim in stage.Traverse():
+        if prim.GetTypeName() == "PointInstancer":
+            instancer_prim = prim
+            break
+
+    if instancer_prim is None:
+        stats["twig_instances"] = 0
+        stats["twig_instances_per_prototype"] = {}
+        stats["prototype_faces"] = {}
+        stats["prototype_face_source"] = {}
+        stats["expanded_triangles"] = 0
+        stats["leaf_area_m2"] = 0.0
+        stats["leaf_area_m2_incomplete"] = False
+    else:
+        instancer = UsdGeom.PointInstancer(instancer_prim)
+        proto_indices = list(instancer.GetProtoIndicesAttr().Get() or [])
+        stats["twig_instances"] = len(proto_indices)
+
+        from collections import Counter
+
+        idx_counts = Counter(proto_indices)
+        proto_targets = instancer.GetPrototypesRel().GetTargets()
+
+        instances_per_proto: dict[str, int] = {}
+        prototype_faces: dict[str, int] = {}
+        prototype_face_source: dict[str, str] = {}
+        expanded_triangles = 0
+        leaf_area_m2 = 0.0
+        leaf_area_incomplete = False
+
+        for i, proto_path in enumerate(proto_targets):
+            proto_prim = stage.GetPrimAtPath(proto_path)
+            proto_name = proto_prim.GetName() if proto_prim else str(proto_path)
+            n_instances = idx_counts.get(i, 0)
+            instances_per_proto[proto_name] = n_instances
+
+            # Prototype prims wrap a single child named after the twig
+            # asset (see io/usd/assembly_export.py: the reference target
+            # is always "{proto_name_xform}/{twig_asset_name}"). That
+            # child's name IS the sidecar's key.
+            children = list(proto_prim.GetChildren()) if proto_prim else []
+            twig_asset_name = children[0].GetName() if children else proto_name
+
+            sidecar = _find_leaf_area_sidecar(twig_asset_name, twigs_root)
+            if sidecar is not None and "total_faces" in sidecar:
+                face_count = int(sidecar["total_faces"])
+                prototype_face_source[proto_name] = "sidecar"
+            else:
+                face_count = _count_mesh_faces_pxr(children[0]) if children else 0
+                prototype_face_source[proto_name] = "usd_mesh"
+
+            prototype_faces[proto_name] = face_count
+            expanded_triangles += n_instances * face_count
+
+            if sidecar is not None and "leaf_area_m2" in sidecar:
+                leaf_area_m2 += n_instances * float(sidecar["leaf_area_m2"])
+            else:
+                leaf_area_incomplete = True
+
+        stats["twig_instances_per_prototype"] = instances_per_proto
+        stats["prototype_faces"] = prototype_faces
+        stats["prototype_face_source"] = prototype_face_source
+        stats["expanded_triangles"] = expanded_triangles
+        stats["leaf_area_m2"] = leaf_area_m2
+        stats["leaf_area_m2_incomplete"] = leaf_area_incomplete
+
+    stats["leaf_area_m2_is_sanity_check_only"] = True
+    stats["leaf_area_m2_caveat"] = (
+        "Direction-of-error signal only, NOT a pass/fail gate. Prototypes "
+        "are biased in physical size (e.g. the shared Pacific silver fir "
+        "spray measures 0.109 m^2 vs 0.023 m^2 for one-leaved ash), so "
+        "leaf area computed by multiplying instance counts through "
+        "whichever prototypes got assigned is distorted relative to the "
+        "tree's true foliage area."
+    )
+
+    # Skeleton joints: report the primary (tree) skeleton specifically,
+    # since that's what drives UE skeletal-mesh import limits -- not the
+    # small, shared, per-twig-prototype skeletons (usually 1 joint each).
+    # Full breakdown is still included for transparency.
+    skeletons = []
+    for prim in stage.Traverse():
+        if prim.IsA(UsdSkel.Skeleton):
+            joints_attr = UsdSkel.Skeleton(prim).GetJointsAttr()
+            joints = joints_attr.Get() if joints_attr else None
+            skeletons.append(
+                {
+                    "path": str(prim.GetPath()),
+                    "joint_count": len(joints) if joints else 0,
+                }
+            )
+    tree_skeletons = [s for s in skeletons if "TwigPrototypes" not in s["path"]]
+    primary = (
+        tree_skeletons[0] if tree_skeletons else (skeletons[0] if skeletons else None)
+    )
+    stats["skeleton_joints"] = primary["joint_count"] if primary else 0
+    stats["skeleton_joints_by_prim"] = skeletons
+
+    # Referenced stems file(s): pulled from the composed stage's actual
+    # used layers rather than regex, so this works for both formats and
+    # doesn't depend on a particular reference-syntax convention.
+    stems_files = []
+    for layer in stage.GetUsedLayers():
+        real_path = layer.realPath
+        if not real_path:
+            continue
+        p = Path(real_path)
+        if p.resolve() == assembly_path.resolve():
+            continue
+        if "stems" in p.stem.lower():
+            stems_files.append(p)
+    stats["stems_ref_files"] = [
+        {"file": str(p), "file_size_bytes": p.stat().st_size}
+        for p in stems_files
+        if p.exists()
+    ]
+
+    return stats
+
+
+def print_triangle_budget(stats: dict) -> None:
+    """Pretty-print an ``analyze_triangle_budget`` result."""
+    print(f"\n{'=' * 60}")
+    print(f"File: {stats['file']}")
+    print("Type: triangle_budget")
+    print(f"{'=' * 60}")
+    print(f"  File size:          {stats['file_size_bytes']:,} bytes")
+    print(f"  Twig instances:     {stats['twig_instances']:,}")
+    print(f"  Expanded triangles: {stats['expanded_triangles']:,}")
+    print(f"  Skeleton joints:    {stats['skeleton_joints']}")
+    print(
+        f"  Leaf area (sanity check only, NOT a gate): "
+        f"{stats['leaf_area_m2']:.4f} m^2"
+        + (
+            " [INCOMPLETE: some prototypes had no sidecar]"
+            if stats.get("leaf_area_m2_incomplete")
+            else ""
+        )
+    )
+
+    proto_faces = stats.get("prototype_faces", {})
+    if proto_faces:
+        print("\n  Prototype        | Instances | Faces      | Source")
+        print("  -----------------+-----------+------------+--------")
+        counts = stats.get("twig_instances_per_prototype", {})
+        sources = stats.get("prototype_face_source", {})
+        for name, faces in proto_faces.items():
+            print(
+                f"  {name[:17]:<17}| {counts.get(name, 0):>9,} | {faces:>10,} | "
+                f"{sources.get(name, '?')}"
+            )
+
+    for sf in stats.get("stems_ref_files", []):
+        print(f"\n  Stems ref: {sf['file']} ({sf['file_size_bytes']:,} bytes)")
+
+
+def _find_assembly_files(target: Path) -> list[Path]:
+    """Locate assembly USD files (.usda or .usdc) under ``target``."""
+    if target.is_file():
+        return [target] if "assembly" in target.name else []
+    if target.is_dir():
+        files = set(target.rglob("*assembly*.usda")) | set(
+            target.rglob("*assembly*.usdc")
+        )
+        return sorted(files)
+    return []
 
 
 def analyze_tree_dir(tree_dir: Path) -> None:
@@ -226,9 +504,48 @@ def main():
 
     parser = argparse.ArgumentParser(description="Analyze USDA tree export files.")
     parser.add_argument("target", type=Path, help="Path to tree dir or USDA file")
+    parser.add_argument(
+        "--triangle-budget",
+        action="store_true",
+        help="Report twig-instance triangle budget for assembly file(s) under "
+        "target (.usda or .usdc). Uses pxr -- run inside the growpy conda env.",
+    )
+    parser.add_argument(
+        "--json",
+        type=Path,
+        default=None,
+        help="With --triangle-budget, write the record(s) to this JSON file.",
+    )
+    parser.add_argument(
+        "--twigs-dir",
+        type=Path,
+        default=None,
+        help="With --triangle-budget, override the twig asset root used for "
+        "leaf-area/face sidecar lookup (default: <project_root>/data/assets/twigs).",
+    )
     args = parser.parse_args()
 
     target = args.target
+
+    if args.triangle_budget:
+        assembly_files = _find_assembly_files(target)
+        if not assembly_files:
+            print(f"No assembly USD files found under {target}")
+            return 1
+        records = []
+        for f in assembly_files:
+            try:
+                stats = analyze_triangle_budget(f, twigs_root=args.twigs_dir)
+            except Exception as e:
+                print(f"Error analyzing {f}: {e}")
+                continue
+            print_triangle_budget(stats)
+            records.append(stats)
+        if args.json is not None:
+            args.json.parent.mkdir(parents=True, exist_ok=True)
+            args.json.write_text(json.dumps(records, indent=2))
+            print(f"\nWrote JSON: {args.json}")
+        return 0 if records else 1
 
     if target.is_dir():
         # Could be a tree dir or a species dir with multiple trees

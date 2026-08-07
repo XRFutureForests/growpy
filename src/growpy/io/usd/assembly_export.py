@@ -1004,6 +1004,52 @@ def export_tree_as_nanite_assembly(
                         )
                         recovered_count = 0
 
+            # Dead twigs are instanced only when the species actually ships a
+            # dead-twig model; create_nanite_assembly and the Helios OBJ export
+            # both skip the type otherwise.
+            #
+            # Ordering note, so this is not "fixed" again: dropping them here
+            # rather than after densify_twig_placements does NOT change the
+            # living twig count. densify thins each twig type independently by
+            # the same ratio (`keep_count = max(1, len(plist) * keep_ratio)`
+            # per type), so twig_dead is thinned inside its own bucket and
+            # never draws budget from twig_long/twig_upward. Verified
+            # 2026-08-07 on the r00 pilot: silver fir h05/h10 exported 30 and
+            # 145 instances with the drop on either side of densify.
+            #
+            # The budget dead twigs genuinely can steal is the GLOBAL one in
+            # thin_placements_to_limit, which caps across all types at once --
+            # that is what the 2026-08-05 sycamore maple fix addressed, and
+            # this block already sits ahead of it. Dropping ahead of densify
+            # too is kept only because it makes effective_density mean a
+            # multiplier on the twigs that will actually be instanced, which
+            # composes more predictably once the cap is also binding.
+            if twig_placements and twig_placements.get("twig_dead"):
+                if twig_usd_paths is None:
+                    with _track("twig_lookup"):
+                        try:
+                            from .tree_export import get_twig_usd_map_for_species
+
+                            twig_usd_paths = get_twig_usd_map_for_species(
+                                species_name,
+                                prefer_skeletal=True,
+                                prefer_static=False,
+                            )
+                        except Exception:
+                            twig_usd_paths = None
+                if not (twig_usd_paths or {}).get("twig_dead"):
+                    _dead_count = len(twig_placements["twig_dead"])
+                    twig_placements = {
+                        t: p for t, p in twig_placements.items() if t != "twig_dead"
+                    }
+                    logger.info(
+                        "Dropped %d dead-twig placements before the density "
+                        "adjustment: %s ships no dead-twig asset, so none "
+                        "would be instanced",
+                        _dead_count,
+                        species_name,
+                    )
+
             # Adjust twig count: density > 1.0 adds synthetic placements on
             # non-twig faces; density < 1.0 randomly thins existing placements
             if twig_placements:
@@ -1038,37 +1084,6 @@ def export_tree_as_nanite_assembly(
                             youth_bias=cfg.export_youth_bias,
                             scaled_points=_sp,
                         )
-
-            # Dead twigs are instanced only when the species actually ships a
-            # dead-twig model; create_nanite_assembly and the Helios OBJ export
-            # both skip the type otherwise. Drop them before the cap so they do
-            # not spend instance budget that living twigs then get thinned to
-            # free -- on the 2026-08-05 sycamore maple they were half the crown
-            # and every one was discarded at write time.
-            if twig_placements and twig_placements.get("twig_dead"):
-                if twig_usd_paths is None:
-                    with _track("twig_lookup"):
-                        try:
-                            from .tree_export import get_twig_usd_map_for_species
-
-                            twig_usd_paths = get_twig_usd_map_for_species(
-                                species_name,
-                                prefer_skeletal=True,
-                                prefer_static=False,
-                            )
-                        except Exception:
-                            twig_usd_paths = None
-                if not (twig_usd_paths or {}).get("twig_dead"):
-                    _dead_count = len(twig_placements["twig_dead"])
-                    twig_placements = {
-                        t: p for t, p in twig_placements.items() if t != "twig_dead"
-                    }
-                    logger.info(
-                        "Dropped %d dead-twig placements before the instance cap: "
-                        "%s ships no dead-twig asset, so none would be instanced",
-                        _dead_count,
-                        species_name,
-                    )
 
             # Thin to the assembly instance cap here, before the per-twig bone
             # remap below and before twig_placements_out is published, so

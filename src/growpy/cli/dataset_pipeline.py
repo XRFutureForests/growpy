@@ -284,6 +284,16 @@ def main():
         ),
     )
     parser.add_argument(
+        "--icon-components",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Override step 4 icon-component PNGs this run (default: from "
+            "TOML). Adds separate branches/twigsonly/skeleton/merged PNGs "
+            "per icon view. Only meaningful when --icons is also on."
+        ),
+    )
+    parser.add_argument(
         "--clean",
         action="store_true",
         help="Clean output directories for each step before running. "
@@ -320,7 +330,7 @@ def main():
     # None means "use config/*.toml" for that switch.
     logger.info(
         "Effective switches: calibrate=%s pve=%s wind=%s previews=%s "
-        "export_control=%s icons=%s profile=%s "
+        "export_control=%s icons=%s icon_components=%s profile=%s "
         "(None = from TOML)",
         args.calibrate,
         args.pve,
@@ -328,6 +338,7 @@ def main():
         args.previews,
         args.export_control,
         args.icons,
+        args.icon_components,
         args.profile,
     )
 
@@ -450,6 +461,7 @@ def main():
                     previews=args.previews,
                     export_control=args.export_control,
                     icons=args.icons,
+                    icon_components=args.icon_components,
                     profile=args.profile,
                 )
             else:
@@ -466,6 +478,7 @@ def main():
                         previews=args.previews,
                         export_control=args.export_control,
                         icons=args.icons,
+                        icon_components=args.icon_components,
                         profile=args.profile,
                     )
                     elapsed_by_species[species] = time.monotonic() - t0
