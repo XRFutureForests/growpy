@@ -306,7 +306,38 @@ Per-asset admission checklist (all required to count):
 | Date | Assets admitted | / 639 | Species x stages x radii covered | Notes |
 |---|---|---|---|---|
 | 2026-08-07 | **9** | 1.4% | `silver_fir`, `european_beech`, `common_ash` x h05/h10/h15 x r00 only | Superseded by the audit below — the count was wrong. |
-| 2026-08-13 | **11 present, 0 audited** | 1.7% present | `common_ash` x3, `european_beech` x3, `silver_fir` x3, `norway_spruce` x2 — all r00 | Direct UE inventory of `/Game/Assets/TheGrove` (XRLabDB). **11 assemblies, not 9** — the extra two are `norway_spruce` h05/h10, imported 16:28/16:40, outside the 3-species pilot. A further **2** sit in `/Game/Assets/TheGrove_dec25` (`silver_fir` h05/h10, imported 17:41/17:48 at the decimated prototype), for 13 across both paths. **None of the 13 has been audited against the admission checklist**, so admitted coverage is still effectively 0 — "present" is not "admitted". All predate round 3, so densities are stale. XRFF-322. |
+| 2026-08-13 | **0 admitted** (13 present) | 0% | — | First real admission audit, run against XRLabDB over Remote Execution. **13 assemblies present** — 11 in `/Game/Assets/TheGrove` (`common_ash` x3, `european_beech` x3, `silver_fir` x3, **`norway_spruce` x2** outside the pilot) and 2 in `/Game/Assets/TheGrove_dec25` (`silver_fir` h05/h10 at the decimated prototype). **Not 9, as previously recorded.** But **0 of 13 pass the checklist** — see the audit below. All predate round 3, so densities are stale too. XRFF-322. |
+
+### Admission audit — 2026-08-13, XRLabDB, all 13 present assemblies
+
+| Checklist item | Result |
+|---|---|
+| Nanite assembly imports cleanly | **13 / 13 pass** — all present, `nanite_settings.enabled = True` |
+| Materials resolve under `db_path` | **13 / 13 pass** — 2 slots each, zero `/Engine/` or `DefaultMaterial` fallbacks |
+| DynamicWind present | **0 / 13** — `get_asset_user_data_of_class(DynamicWindSkeletalData)` returns `None` on every one |
+| PVE preset wired | **0 / 13** — zero `ProceduralVegetationPreset` assets exist anywhere under `/Game` |
+| `DT_TreeCatalog` row | **0 / 13** — the table exists at `/Game/Templates` with the correct `ST_TreeCatalogEntry` row struct, but **0 rows** |
+
+**None of the three failures is a missing-plugin artifact.** Both plugins are loaded and
+their classes resolve: `/Script/DynamicWind.DynamicWindSkeletalData` and
+`/Script/DynamicWind.DynamicWindData` both load, and `unreal.ProceduralVegetationPreset`,
+`ProceduralVegetationGraph` and `ProceduralVegetationFactory` are all present.
+`/Game/Templates` even holds a `Wind_TransformProvider` DynamicWindData asset. The
+infrastructure is in place; the post-import steps simply never landed on these assets.
+
+**Root cause found and fixed (commit `e87e35e`).** The wind and PVE scripts take their
+search root from `unreal_pve_import_base`, while the assembly import uses
+`unreal_project_path` — two config keys for one concept, whose defaults did not even agree
+(`/Game/GrowPy` vs `/Game/Assets/TheGrove`), and no config file in the repo ever set the
+former. The pilot config points `project_path` at `TheGrove_dec25`, so assemblies imported
+there while wind and PVE searched `TheGrove`. Nothing warned. `pve_import_base` now
+defaults to empty and resolves to `project_path`; setting it explicitly still splits the two
+for anyone who wants that.
+
+**The catalog step itself works** — it had simply never been run. Executing
+`import_batch_100_datatable.py` against `TheGrove_dec25` found its 2 assemblies, parsed
+their metadata, duplicated the Templates table and populated 2 rows, first try. So the
+remaining gap is operational, not a second defect.
 
 Conifer height-LOD ladder is **on the critical path**, not an optimization: without it, 4 of
 11 species (those reaching 35-45 m) are structurally incapable of reaching their upper height
