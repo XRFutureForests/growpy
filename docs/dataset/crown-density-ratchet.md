@@ -325,19 +325,35 @@ their classes resolve: `/Script/DynamicWind.DynamicWindSkeletalData` and
 `/Game/Templates` even holds a `Wind_TransformProvider` DynamicWindData asset. The
 infrastructure is in place; the post-import steps simply never landed on these assets.
 
-**Root cause found and fixed (commit `e87e35e`).** The wind and PVE scripts take their
-search root from `unreal_pve_import_base`, while the assembly import uses
+**Three independent faults, each of which alone would have left the checklist failing.**
+
+**1. Wind went to the wrong path (commit `e87e35e`, XRFF-328).** The wind and PVE scripts
+take their search root from `unreal_pve_import_base`, while the assembly import uses
 `unreal_project_path` — two config keys for one concept, whose defaults did not even agree
 (`/Game/GrowPy` vs `/Game/Assets/TheGrove`), and no config file in the repo ever set the
 former. The pilot config points `project_path` at `TheGrove_dec25`, so assemblies imported
-there while wind and PVE searched `TheGrove`. Nothing warned. `pve_import_base` now
-defaults to empty and resolves to `project_path`; setting it explicitly still splits the two
-for anyone who wants that.
+there while wind searched `TheGrove`. Nothing warned. `pve_import_base` now defaults to
+empty and resolves to `project_path`.
 
-**The catalog step itself works** — it had simply never been run. Executing
+**2. PVE was switched off.** The pilot config carried `generate_pve_presets = false`, which
+sets `skip_pve_json = True` (`generate_forest.py:470`), so no PVE preset or graph script was
+generated at all and no per-tree recipe was written. Enabled 2026-08-13.
+
+**3. PVE recipe generation was broken anyway (commit `646e8f5`, XRFF-329).** With the flag
+on, `generate_pve_from_grove()` raised `too many values to unpack (expected 3)` on **every
+tree**, and `write_pve_json()` swallowed it into a warning. `TwigPlacement.orientation` is
+Grove's twig frame quaternion — four floats, `(w, x, y, z)` scalar-first — and the extractor
+passed it to a helper that unpacks three, under a stale comment calling it an `(x, y, z)` up
+vector. **This is the same Grove-orientation-is-a-quaternion mismatch already fixed once on
+the twig-placement side; it has now bitten twice.** Fixed with `quaternion_to_pve_up()`,
+which rotates local +Z using the same formulation as `_quat_forward`.
+
+Fault 2 masked fault 3: while PVE was off, the broken code was never reached, so enabling
+the flag alone would have produced warnings and still no presets.
+
+**The catalog step, by contrast, works** — it had simply never been run. Executing
 `import_batch_100_datatable.py` against `TheGrove_dec25` found its 2 assemblies, parsed
-their metadata, duplicated the Templates table and populated 2 rows, first try. So the
-remaining gap is operational, not a second defect.
+their metadata, duplicated the Templates table and populated 2 rows, first try.
 
 Conifer height-LOD ladder is **on the critical path**, not an optimization: without it, 4 of
 11 species (those reaching 35-45 m) are structurally incapable of reaching their upper height
