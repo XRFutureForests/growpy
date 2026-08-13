@@ -150,7 +150,7 @@ if _w:
         "r.D3D12.FreeUnusedResources",
     ):
         try:
-            unreal.KismetSystemLibrary.execute_console_command(_w, _cmd)
+            unreal.SystemLibrary.execute_console_command(_w, _cmd)
         except Exception:
             pass
 try:
@@ -205,7 +205,7 @@ if _w:
         "r.Nanite.Streaming.MaxPendingPages 32",
     ):
         try:
-            unreal.KismetSystemLibrary.execute_console_command(_w, _cmd)
+            unreal.SystemLibrary.execute_console_command(_w, _cmd)
         except Exception:
             pass
 print("CLEANUP COMPLETE")
@@ -490,7 +490,7 @@ def run_batches(
     batch_delay: float = 10.0,
     editor_exe: str | None = None,
     uproject: str | None = None,
-    restart_ram_limit: float = 82.0,
+    restart_ram_limit: float = 95.0,
     restart_poll_interval: float = 10.0,
     max_restarts: int = 10,
 ) -> list[str]:
@@ -659,11 +659,19 @@ def main():
     parser.add_argument(
         "--restart-ram-limit",
         type=float,
-        default=82.0,
+        default=95.0,
         help=(
             "System RAM %% threshold that triggers an automatic UE kill+restart"
             "+resume, both proactively during a script and after a failed "
-            "between-batch cleanup. 0 disables auto-restart (default: 82)"
+            "between-batch cleanup. 0 disables auto-restart (default: 95).\n"
+            "Raised from 82 on 2026-08-07: a single silver_fir h15 Nanite "
+            "assembly (122.4M expanded triangles) peaks at 85.1%% RAM on a "
+            "63.5 GB machine and takes 61 minutes to build. At 82 the "
+            "watchdog killed the editor mid-build every time, relaunched, "
+            "retried the same asset and looped forever without ever "
+            "reporting a failure. Any limit below the peak a legitimate "
+            "asset needs is unbreakable, so the threshold must sit above "
+            "the heaviest asset in the dataset, not below it."
         ),
     )
     parser.add_argument(

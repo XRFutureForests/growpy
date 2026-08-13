@@ -139,7 +139,7 @@ else:
                 "r.D3D12.FreeUnusedResources",
             ):
                 try:
-                    unreal.KismetSystemLibrary.execute_console_command(_w, _cmd)
+                    unreal.SystemLibrary.execute_console_command(_w, _cmd)
                 except Exception:
                     pass
             # Re-enable Nanite pool and streaming at reduced caps
@@ -149,7 +149,7 @@ else:
                 "r.Nanite.Streaming.MaxPendingPages 32",
             ):
                 try:
-                    unreal.KismetSystemLibrary.execute_console_command(_w, _re_cmd)
+                    unreal.SystemLibrary.execute_console_command(_w, _re_cmd)
                 except Exception:
                     pass
 
@@ -677,7 +677,7 @@ _VRAM_SAVED = {{}}
 if _world:
     # Drop all quality to Medium for reduced VRAM during import
     try:
-        unreal.KismetSystemLibrary.execute_console_command(_world, "scalability 1")
+        unreal.SystemLibrary.execute_console_command(_world, "scalability 1")
     except Exception:
         pass
     for _vk, _vv in (
@@ -695,7 +695,7 @@ if _world:
         ("r.AllowCachedUniformExpressions", "0"),
     ):
         try:
-            unreal.KismetSystemLibrary.execute_console_command(_world, f"{{_vk}} {{_vv}}")
+            unreal.SystemLibrary.execute_console_command(_world, f"{{_vk}} {{_vv}}")
         except Exception:
             pass
     print("VRAM management active (Lumen/VSM off, Nanite capped, RT Nanite off)")
@@ -729,7 +729,7 @@ skipped_count = 0
 # --- Restore rendering settings ---
 if _world:
     try:
-        unreal.KismetSystemLibrary.execute_console_command(_world, "scalability 3")
+        unreal.SystemLibrary.execute_console_command(_world, "scalability 3")
     except Exception:
         pass
     for _rk, _rv in (
@@ -746,7 +746,7 @@ if _world:
         ("r.AllowCachedUniformExpressions", "1"),
     ):
         try:
-            unreal.KismetSystemLibrary.execute_console_command(_world, f"{{_rk}} {{_rv}}")
+            unreal.SystemLibrary.execute_console_command(_world, f"{{_rk}} {{_rv}}")
         except Exception:
             pass
     print("Rendering settings restored")

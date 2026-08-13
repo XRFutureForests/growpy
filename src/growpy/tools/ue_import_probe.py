@@ -387,7 +387,7 @@ def run_import_probe(
     timeout: float = 0,
     editor_exe: str | None = None,
     uproject: str | None = None,
-    restart_ram_limit: float = 82.0,
+    restart_ram_limit: float = 95.0,
     restart_poll_interval: float = 10.0,
     max_restarts: int = 10,
     sample_interval: float = 5.0,
@@ -649,7 +649,7 @@ def main() -> None:
         default=None,
         help="Path to the .uproject file for auto-restart (falls back to config).",
     )
-    parser.add_argument("--restart-ram-limit", type=float, default=82.0)
+    parser.add_argument("--restart-ram-limit", type=float, default=95.0)
     parser.add_argument("--restart-poll-interval", type=float, default=10.0)
     parser.add_argument("--max-restarts", type=int, default=10)
     parser.add_argument(
