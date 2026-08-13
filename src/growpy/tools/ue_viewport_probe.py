@@ -5,54 +5,69 @@ generate-a-script-and-deliver-via-Remote-Execution pattern already used by
 ``growpy.io.unreal.nanite_voxelize_script``, ``wind_import_script``, and
 ``pve_import_script`` -- that, inside the editor:
 
-1. Loads a blank scratch level (the same ``Template_Default`` trick
-   ``growpy.tools.ue_exec``'s ``_UE_CLEANUP_SCRIPT`` uses to reclaim Nanite
-   VRAM) and never saves it, so nothing in the project is touched.
+1. Loads a blank scratch map (transient, never written to disk) and
+   **verifies it actually loaded**, aborting rather than falling through
+   into whatever level the user had open.
 2. Places N assemblies at deterministic transforms.
-3. Spawns exactly one directional light and two cameras (front/side) at
-   the fixed transforms baked into this module -- see the "DETERMINISTIC
-   CONSTANTS" section below. Any pre-existing Light actors in the scratch
-   level are removed first so lighting is fully determined by this script,
-   not by whatever the map template happens to ship with.
-4. Captures front/side screenshots to a known path.
-5. Measures frame time over a fixed wall-clock window and reports how many
-   frames the average covers.
+3. Spawns exactly one directional light at the fixed transform baked into
+   this module -- see the "DETERMINISTIC CONSTANTS" section below. Any
+   pre-existing Light actors in the scratch map are removed first so
+   lighting is fully determined by this script.
+4. Captures front/side images through ``SceneCapture2D`` actors carrying
+   the fixed camera constants.
+5. Measures render cost and editor tick rate, and reports how many samples
+   / frames each number covers.
 6. Writes a JSON result file to disk (host-readable) -- mirroring
    ``unreal_scripts._build_datatable_script``'s "always save to disk first"
-   pattern, so a partial failure downstream (e.g. screenshot capture
-   raising) does not lose whatever succeeded.
+   pattern, so a partial failure downstream does not lose what succeeded.
 
-Frame-time API caveat (read before trusting the numbers)
-----------------------------------------------------------
-This was authored without a running UE 5.7 editor to test against (see the
-HARD CONSTRAINT this tool was built under), so neither Python API below
-could be verified live. The generated script tries them in order and
-records which one actually worked:
+The Remote Execution tick model (verified against UE 5.7.4)
+-----------------------------------------------------------
+A script delivered over Remote Execution runs **synchronously on the game
+thread**. While it runs the editor does not tick, so:
 
-* Primary: the console commands ``StartFPSChart`` / ``StopFPSChart``
-  (``FPerformanceMonitor``, part of UE's engine-level performance-profiling
-  surface since UE4, invoked the same way ``ue_exec``'s cleanup script
-  invokes other console commands -- via
-  ``KismetSystemLibrary.execute_console_command``). Stopping the chart
-  writes a CSV under ``<Project>/Saved/Profiling/FPSChartStats/`` that
-  includes both the frame count and the average frame time for the
-  window; the script locates the newest CSV after stopping and parses it.
-  This is chosen as primary because it is a stable, long-documented
-  console-command surface rather than a specific Python reflection symbol
-  that could differ by engine version.
-* Fallback: sampling ``unreal.SystemLibrary.get_frame_count()`` before and
-  after a fixed ``time.sleep()`` window and dividing elapsed wall-clock
-  time by the frame delta. This mirrors the Blueprint "Get Frame Count"
-  node (``UKismetSystemLibrary::GetFrameCount``), which has existed since
-  early UE4 and is very likely still exposed, but note this counts engine
-  ticks, not necessarily viewport redraws, when the editor viewport is not
-  in realtime mode -- the generated script forces realtime on the active
-  viewport first (``unreal.LevelEditorSubsystem.editor_set_game_view``/
-  viewport realtime toggle, again multi-strategy) to make this
-  meaningful, but that toggle itself could not be verified live either.
+* ``time.sleep()`` inside the script measures nothing -- ``get_frame_count()``
+  cannot advance, because no frame can be rendered until the script returns.
+* Anything that *queues* work for a later tick never completes before the
+  script returns. That is why ``AutomationLibrary.take_high_res_screenshot``
+  and the ``HighResShot`` console command both failed here: the returned
+  ``AutomationEditorTask`` stayed pending. Worse, those abandoned requests
+  outlive the script's Python scope and crashed the editor
+  (EXCEPTION_ACCESS_VIOLATION in python311.dll) once GC collected them.
 
-If both fail, the script records ``"frame_time_ms": null`` with an
-explicit reason string rather than fabricating a number.
+Two mechanisms work instead, and this module uses both:
+
+* **Synchronous rendering** -- ``SceneCaptureComponent2D.capture_scene()``
+  renders the scene to a render target on demand, with no dependency on
+  the editor viewport, its realtime flag, or its visibility.
+  ``RenderingLibrary.export_render_target`` then writes a PNG. This is the
+  screenshot path, and it is deterministic: framing comes entirely from the
+  capture component's transform/FOV, never from the viewport's size or the
+  user's editor layout.
+* **Arm-and-collect** -- ``unreal.register_slate_post_tick_callback`` *does*
+  fire on real editor ticks after the script returns. Frame timing is armed
+  in the script and accumulated across genuine ticks; the callback rewrites
+  the result JSON with ``"complete": true`` when the window closes. The host
+  polls that file rather than blocking the editor.
+
+Frame-time caveat (read before trusting the number)
+---------------------------------------------------
+``UEditorEngine::ShouldThrottleCPUUsage()`` clamps the editor to 3.0 Hz
+whenever its window is not the foreground application -- the usual state
+when driving it over Remote Execution. Measured backgrounded: 333.4 ms/tick
+with a 331.9-336.1 ms spread, invariant to scene content, with the Slate
+delta pinned at exactly 125 ms. No lever reachable from Python defeats
+this: ``Slate.bAllowThrottling``, ``t.IdleWhenNotForeground`` and
+``t.MaxFPS`` were all already 0, and ``EditorPerformanceSettings``
+exposes no properties through Python reflection. Only giving the editor
+window foreground focus lifts it -- measured 35.0 ms/tick over 143 frames
+with the same scene once focused.
+
+So ``frame_time_ms`` is a *real* measurement over *real* counted frames,
+but while ``editor_throttled`` is true it reports the idle floor and says
+nothing about how expensive the assemblies are to draw. ``render_time_ms``
+-- timed ``capture_scene()`` calls with a GPU flush -- is the number that
+actually tracks scene cost, and it is unaffected by the throttle.
 """
 
 from __future__ import annotations
@@ -61,12 +76,13 @@ import argparse
 import json
 import logging
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("growpy.ue_viewport_probe")
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "2.0"
 
 # --- DETERMINISTIC CONSTANTS -------------------------------------------
 # These are baked into every generated script byte-for-byte identically.
@@ -101,6 +117,25 @@ DEFAULT_MEASUREMENT_WINDOW_S = 5.0
 DEFAULT_SCREENSHOT_WIDTH = 1920
 DEFAULT_SCREENSHOT_HEIGHT = 1080
 
+# Number of timed capture_scene() renders used for render_time_ms.
+RENDER_SAMPLE_COUNT = 10
+
+# Transient scratch map. new_map_from_template with save_existing_map=False
+# writes nothing to disk and raises no save prompt -- unlike
+# LevelEditorSubsystem.new_level(asset_path), which *saves a new level
+# asset* at the path it is given and therefore fails outright against
+# /Engine paths.
+SCRATCH_LEVEL_TEMPLATE = "/Engine/Maps/Templates/Template_Default"
+
+# UEditorEngine::ShouldThrottleCPUUsage() pins a background editor to ~3 Hz.
+EDITOR_THROTTLE_HZ = 3.0
+# Above this per-frame cost the editor is idle-bound, not scene-bound, so
+# frame_time_ms says nothing about asset cost. Deliberately a wide
+# threshold rather than a narrow band around the 3 Hz floor: measured
+# backgrounded rates vary (333.4 ms with 3 assemblies, 277.9 ms with 9),
+# while a focused editor rendering the same scene sat at 35.0 ms.
+EDITOR_IDLE_FRAME_MS = 100.0
+
 RESULT_JSON_NAME = "growpy_viewport_probe_result.json"
 SCRIPT_NAME = "growpy_viewport_probe.py"
 
@@ -112,12 +147,13 @@ def _fmt_tuple(t: tuple[float, ...]) -> str:
 _SCRIPT_BODY = '''"""
 GrowPy Viewport Probe - Auto-generated (schema v{schema_version}).
 
-Places {count} assembly/assemblies at deterministic transforms in a scratch
-level, sets a fixed camera and fixed lighting (see the constants below --
-these are baked in by the host-side generator and must be byte-identical
-across probe rounds), captures front/side screenshots, and measures frame
-time. Writes a JSON result file next to this script so the host-side probe
-can read it back after Remote Execution returns.
+Places {count} assembly/assemblies at deterministic transforms in a transient
+scratch map, sets fixed lighting and fixed capture cameras (see the constants
+below -- these are baked in by the host-side generator and must be
+byte-identical across probe rounds), exports front/side PNGs via SceneCapture2D,
+times scene rendering, and then arms a slate post-tick callback that measures
+the editor tick rate across real frames. Writes a JSON result file next to this
+script; the host polls it for "complete": true.
 
 Execute in Unreal Engine:
 1. Right-click > "Execute Python File in Unreal"
@@ -125,7 +161,6 @@ Execute in Unreal Engine:
 """
 
 import gc
-import glob
 import json
 import os
 import time
@@ -136,12 +171,14 @@ SCHEMA_VERSION = "{schema_version}"
 ASSET_PATHS = {asset_paths!r}
 RESULT_JSON_PATH = r"{result_json_path}"
 SCREENSHOT_DIR = r"{screenshot_dir}"
-FRONT_SCREENSHOT_PATH = os.path.join(SCREENSHOT_DIR, "front.png")
-SIDE_SCREENSHOT_PATH = os.path.join(SCREENSHOT_DIR, "side.png")
 SCREENSHOT_WIDTH = {width}
 SCREENSHOT_HEIGHT = {height}
 MEASUREMENT_WINDOW_S = {measurement_window_s}
 ROW_SPACING_CM = {row_spacing}
+RENDER_SAMPLE_COUNT = {render_samples}
+SCRATCH_LEVEL_TEMPLATE = "{scratch_template}"
+EDITOR_THROTTLE_HZ = {throttle_hz}
+EDITOR_IDLE_FRAME_MS = {idle_frame_ms}
 
 # --- Deterministic camera/lighting constants (see ue_viewport_probe.py) ---
 CAMERA_FOV_DEG = {camera_fov}
@@ -157,6 +194,11 @@ EXPOSURE_ISO = {exposure_iso}
 EXPOSURE_APERTURE_FSTOP = {exposure_aperture}
 EXPOSURE_SHUTTER_SPEED = {exposure_shutter}
 
+VIEWS = (
+    ("front", FRONT_CAMERA_LOCATION, FRONT_CAMERA_ROTATION),
+    ("side", SIDE_CAMERA_LOCATION, SIDE_CAMERA_ROTATION),
+)
+
 
 def _get_editor_world():
     """Mirrors unreal_scripts._get_ue_world's dual-strategy lookup."""
@@ -167,6 +209,14 @@ def _get_editor_world():
         pass
     try:
         return unreal.EditorLevelLibrary.get_editor_world()
+    except Exception:
+        return None
+
+
+def _world_path():
+    w = _get_editor_world()
+    try:
+        return str(w.get_path_name()) if w is not None else None
     except Exception:
         return None
 
@@ -191,10 +241,24 @@ def _get_all_level_actors():
         return []
 
 
+def _rotator(rotation):
+    """Build an unreal.Rotator from a (pitch, yaw, roll) tuple.
+
+    unreal.Rotator's POSITIONAL order is (roll, pitch, yaw) -- verified
+    live: unreal.Rotator(0, 90, 0).get_forward_vector() is (0, 0, 1),
+    i.e. pitched straight up, not yawed to +Y. The constants in this
+    module are documented as (pitch, yaw, roll), so they must be passed
+    by keyword or the side camera stares at the sky and the sun points
+    somewhere other than SUN_ROTATION says.
+    """
+    pitch, yaw, roll = rotation
+    return unreal.Rotator(pitch=pitch, yaw=yaw, roll=roll)
+
+
 def _spawn_actor(actor_class, location, rotation):
     """Multi-strategy actor spawn (EditorActorSubsystem, then legacy)."""
     loc = unreal.Vector(*location)
-    rot = unreal.Rotator(*rotation)
+    rot = _rotator(rotation)
     sub = _get_actor_subsystem()
     if sub is not None:
         try:
@@ -211,7 +275,7 @@ def _spawn_actor(actor_class, location, rotation):
 def _spawn_actor_from_object(asset, location, rotation):
     """Multi-strategy asset-actor spawn, mirroring the same fallback shape."""
     loc = unreal.Vector(*location)
-    rot = unreal.Rotator(*rotation)
+    rot = _rotator(rotation)
     sub = _get_actor_subsystem()
     if sub is not None:
         try:
@@ -225,28 +289,51 @@ def _spawn_actor_from_object(asset, location, rotation):
     return None
 
 
-def _new_scratch_level():
-    """Load a blank template level without saving -- same trick ue_exec's
-    _UE_CLEANUP_SCRIPT uses to release Nanite VRAM. Nothing here is ever
-    persisted to disk."""
-    try:
-        sub = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
-        sub.new_level("/Engine/Maps/Templates/Template_Default")
-        return True
-    except Exception:
-        pass
-    try:
-        unreal.EditorLevelLibrary.new_level("/Engine/Maps/Templates/Template_Default")
-        return True
-    except Exception as e:
-        print(f"  Could not load scratch level: {{e}}")
-        return False
+def _new_scratch_map():
+    """Open a transient blank map, discarding the current one without saving.
+
+    EditorLoadingAndSavingUtils.new_map_from_template(path, save_existing_map)
+    creates an in-memory world and writes no asset. LevelEditorSubsystem's
+    new_level()/new_level_from_template() are deliberately NOT used: their
+    asset_path argument is a *destination to save a new level asset to*, so
+    passing an /Engine template path fails and -- if the caller ignores the
+    return value -- leaves the user's own level open to be spawned into.
+
+    Returns (ok, note).
+    """
+    before = _world_path()
+    # new_blank_map first: Template_Default ships a SkyDome whose sky
+    # material stamps "YOUR SCENE CONTAINS A SKYDOME MESH..." across every
+    # captured frame, which would swamp a screenshot diff. A blank map
+    # leaves only what this script spawns.
+    for label, fn in (
+        (
+            "new_blank_map",
+            lambda: unreal.EditorLoadingAndSavingUtils.new_blank_map(False),
+        ),
+        (
+            "new_map_from_template",
+            lambda: unreal.EditorLoadingAndSavingUtils.new_map_from_template(
+                SCRATCH_LEVEL_TEMPLATE, False
+            ),
+        ),
+    ):
+        try:
+            fn()
+        except Exception as e:
+            print(f"  {{label}} raised: {{e}}")
+            continue
+        after = _world_path()
+        if after is not None and after != before:
+            return True, f"{{label}} -> {{after}} (was {{before}})"
+        print(f"  {{label}} did not change the open world (still {{after}})")
+    return False, f"scratch map did not load; editor world still {{before}}"
 
 
 def _clear_existing_lights():
     """Remove any Light-derived actors the template map ships with, so
     lighting is fully determined by SUN_ROTATION/SUN_INTENSITY_LUX below,
-    not by whatever Template_Default happens to contain."""
+    not by whatever the template happens to contain."""
     removed = 0
     for actor in _get_all_level_actors():
         try:
@@ -259,122 +346,139 @@ def _clear_existing_lights():
     return removed
 
 
-def _set_manual_exposure(camera_actor):
-    """Fix exposure so screenshots don't shift with scene content."""
+def _apply_manual_exposure(capture_component):
+    """Fix exposure so captures don't shift with scene content."""
     try:
-        cam_comp = camera_actor.camera_component
-        pp = cam_comp.post_process_settings
-        pp.set_editor_property("bOverride_AutoExposureMethod", True)
+        pp = capture_component.get_editor_property("post_process_settings")
+        pp.set_editor_property("override_auto_exposure_method", True)
         pp.set_editor_property(
             "auto_exposure_method", unreal.AutoExposureMethod.AEM_MANUAL
         )
-        pp.set_editor_property("bOverride_AutoExposureBias", True)
+        pp.set_editor_property("override_auto_exposure_bias", True)
         pp.set_editor_property("auto_exposure_bias", EXPOSURE_BIAS)
-        pp.set_editor_property("bOverride_CameraISO", True)
+        pp.set_editor_property("override_camera_iso", True)
         pp.set_editor_property("camera_iso", EXPOSURE_ISO)
-        pp.set_editor_property("bOverride_DepthOfFieldFstop", True)
+        pp.set_editor_property("override_camera_shutter_speed", True)
+        pp.set_editor_property("camera_shutter_speed", 1.0 / EXPOSURE_SHUTTER_SPEED)
+        pp.set_editor_property("override_depth_of_field_fstop", True)
         pp.set_editor_property("depth_of_field_fstop", EXPOSURE_APERTURE_FSTOP)
-        cam_comp.post_process_settings = pp
-        cam_comp.set_editor_property("field_of_view", CAMERA_FOV_DEG)
+        capture_component.set_editor_property("post_process_settings", pp)
         return True
     except Exception as e:
-        print(f"  Could not fix camera exposure/FOV: {{e}}")
+        print(f"  Could not fix capture exposure: {{e}}")
         return False
 
 
-def _take_screenshot(camera_actor, out_path):
-    """Multi-strategy screenshot capture: AutomationLibrary first (ties the
-    shot to a specific camera), console-command HighResShot as fallback
-    (ties to whichever viewport/camera is currently active)."""
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+def _make_capture(world, location, rotation):
+    """Spawn a SceneCapture2D carrying the fixed camera constants.
+
+    Returns (actor, component, render_target) or (None, None, None).
+
+    SceneCapture2D is used rather than AutomationLibrary.take_high_res_screenshot
+    because the latter only queues a request for a later viewport draw, which
+    never arrives inside a Remote Execution call -- see the module docstring.
+    """
     try:
-        unreal.AutomationLibrary.take_high_res_screenshot(
-            SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT, out_path,
-            camera=camera_actor.camera_component,
+        rt = unreal.RenderingLibrary.create_render_target2d(
+            world,
+            SCREENSHOT_WIDTH,
+            SCREENSHOT_HEIGHT,
+            unreal.TextureRenderTargetFormat.RTF_RGBA8,
         )
-        time.sleep(2.0)  # screenshot capture is asynchronous
-        if os.path.isfile(out_path):
-            return "automation_library"
+        actor = _spawn_actor(unreal.SceneCapture2D, location, rotation)
+        if actor is None:
+            return None, None, None
+        comp = actor.capture_component2d
+        comp.set_editor_property("texture_target", rt)
+        comp.set_editor_property("fov_angle", CAMERA_FOV_DEG)
+        comp.set_editor_property(
+            "capture_source", unreal.SceneCaptureSource.SCS_FINAL_COLOR_LDR
+        )
+        comp.set_editor_property("capture_every_frame", False)
+        comp.set_editor_property("capture_on_movement", False)
+        _apply_manual_exposure(comp)
+        return actor, comp, rt
     except Exception as e:
-        print(f"  take_high_res_screenshot failed: {{e}}")
+        print(f"  Could not build SceneCapture2D: {{e}}")
+        return None, None, None
+
+
+def _flush_gpu(world, render_target):
+    """Force the render thread to finish the pending capture.
+
+    read_render_target_raw_pixel flushes rendering commands before reading,
+    so timing a capture_scene() + this pair measures real render work rather
+    than the cost of enqueueing a command.
+    """
+    unreal.RenderingLibrary.read_render_target_raw_pixel(world, render_target, 0, 0)
+
+
+def _export_png(world, render_target, name):
+    """Export the render target to SCREENSHOT_DIR/<name>.png. Returns path or None."""
+    os.makedirs(SCREENSHOT_DIR, exist_ok=True)
+    filename = name + ".png"
+    out_path = os.path.join(SCREENSHOT_DIR, filename)
+    if os.path.isfile(out_path):
+        os.remove(out_path)
     try:
-        world = _get_editor_world()
-        if world is not None:
-            cmd = 'HighResShot {{}}x{{}} filename="{{}}"'.format(
-                SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT, out_path
-            )
-            unreal.KismetSystemLibrary.execute_console_command(world, cmd)
-            time.sleep(3.0)
-            if os.path.isfile(out_path):
-                return "console_highresshot"
+        unreal.RenderingLibrary.export_render_target(
+            world, render_target, SCREENSHOT_DIR, filename
+        )
     except Exception as e:
-        print(f"  HighResShot console command failed: {{e}}")
+        print(f"  export_render_target failed for {{name}}: {{e}}")
+        return None
+    if os.path.isfile(out_path) and os.path.getsize(out_path) > 0:
+        # Normalise separators: SCREENSHOT_DIR is baked in with forward
+        # slashes but os.path.join adds a backslash on Windows, which makes
+        # the recorded path awkward to diff across rounds.
+        return out_path.replace("\\\\", "/")
+    print(f"  export_render_target produced no file for {{name}}")
     return None
 
 
-def _measure_frame_time_via_fps_chart(world):
-    """Primary strategy: StartFPSChart/StopFPSChart console commands,
-    parsing the CSV they write under Saved/Profiling/FPSChartStats/."""
-    try:
-        saved_dir = unreal.Paths.project_saved_dir()
-        saved_dir = unreal.Paths.convert_relative_path_to_full(saved_dir)
-        chart_dir = os.path.join(saved_dir, "Profiling", "FPSChartStats")
-        csv_glob = os.path.join(chart_dir, "**", "*.csv")
-        before = set(glob.glob(csv_glob, recursive=True))
-        unreal.KismetSystemLibrary.execute_console_command(world, "StartFPSChart")
-        time.sleep(MEASUREMENT_WINDOW_S)
-        unreal.KismetSystemLibrary.execute_console_command(world, "StopFPSChart")
-        time.sleep(1.0)
-        after = set(glob.glob(csv_glob, recursive=True))
-        new_only = after - before
-        new_files = sorted(new_only or after, key=os.path.getmtime)
-        if not new_files:
-            return None, 0, "no FPSChartStats CSV appeared after StopFPSChart"
-        csv_path = new_files[-1]
-        with open(csv_path, "r") as f:
-            header = f.readline().strip().split(",")
-            row = f.readline().strip().split(",")
-        cols = {{h.strip().lower(): v for h, v in zip(header, row)}}
-        frame_count = None
-        for key in ("frame count", "framecount", "numframes"):
-            if key in cols:
-                frame_count = int(float(cols[key]))
-                break
-        avg_ms = None
-        for key in ("avg frametime", "avgframetime", "average frame time"):
-            if key in cols:
-                avg_ms = float(cols[key])
-                break
-        if avg_ms is None and frame_count:
-            avg_ms = (MEASUREMENT_WINDOW_S * 1000.0) / frame_count
-        if avg_ms is None:
-            return (
-                None,
-                frame_count or 0,
-                f"could not find frame-time column in {{csv_path}}",
-            )
-        return avg_ms, frame_count or 0, f"StartFPSChart/StopFPSChart CSV: {{csv_path}}"
-    except Exception as e:
-        return None, 0, f"FPS chart strategy raised: {{e}}"
+def _median(values):
+    s = sorted(values)
+    n = len(s)
+    if not n:
+        return None
+    if n % 2:
+        return s[n // 2]
+    return 0.5 * (s[n // 2 - 1] + s[n // 2])
 
 
-def _measure_frame_time_via_frame_count(world):
-    """Fallback strategy: sample SystemLibrary.get_frame_count() before/after
-    a fixed sleep. Counts engine ticks, not confirmed to equal viewport
-    redraws outside of realtime/PIE -- see module docstring caveat."""
+def _time_renders(world, comp, render_target):
+    """Time RENDER_SAMPLE_COUNT synchronous renders, plus the flush baseline.
+
+    Returns (render_stats, baseline_stats), each a dict or None.
+    """
     try:
-        f0 = unreal.SystemLibrary.get_frame_count()
-        t0 = time.perf_counter()
-        time.sleep(MEASUREMENT_WINDOW_S)
-        f1 = unreal.SystemLibrary.get_frame_count()
-        t1 = time.perf_counter()
-        frame_delta = f1 - f0
-        if frame_delta <= 0:
-            return None, 0, "get_frame_count() did not advance during the window"
-        avg_ms = (t1 - t0) * 1000.0 / frame_delta
-        return avg_ms, frame_delta, "SystemLibrary.get_frame_count() delta"
+        # Baseline: the readback/flush cost alone, with no capture queued.
+        base = []
+        for _ in range(RENDER_SAMPLE_COUNT):
+            t0 = time.perf_counter()
+            _flush_gpu(world, render_target)
+            base.append((time.perf_counter() - t0) * 1000.0)
+
+        samples = []
+        for _ in range(RENDER_SAMPLE_COUNT):
+            t0 = time.perf_counter()
+            comp.capture_scene()
+            _flush_gpu(world, render_target)
+            samples.append((time.perf_counter() - t0) * 1000.0)
+
+        def _stats(vals):
+            return {{
+                "samples": len(vals),
+                "median_ms": _median(vals),
+                "mean_ms": sum(vals) / len(vals),
+                "min_ms": min(vals),
+                "max_ms": max(vals),
+            }}
+
+        return _stats(samples), _stats(base)
     except Exception as e:
-        return None, 0, f"get_frame_count strategy raised: {{e}}"
+        print(f"  Render timing failed: {{e}}")
+        return None, None
 
 
 def main():
@@ -384,14 +488,23 @@ def main():
 
     result = {{
         "schema_version": SCHEMA_VERSION,
+        "complete": False,
         "engine_version": None,
+        "scratch_map": None,
         "asset_count_requested": len(ASSET_PATHS),
         "asset_count_placed": 0,
         "screenshots": {{}},
+        "screenshot_method": "scene_capture_2d",
+        "render_time_ms": None,
+        "render_time_stats": None,
+        "render_flush_baseline": None,
+        "render_time_method": None,
         "frame_time_ms": None,
+        "frame_rate_hz": None,
         "frame_count_measured": 0,
         "measurement_window_s": MEASUREMENT_WINDOW_S,
         "frame_time_method": None,
+        "editor_throttled": None,
         "frame_time_notes": [],
         "camera_constants": {{
             "fov_deg": CAMERA_FOV_DEG,
@@ -408,11 +521,6 @@ def main():
         "errors": [],
     }}
 
-    try:
-        result["engine_version"] = unreal.SystemLibrary.get_engine_version()
-    except Exception as e:
-        result["errors"].append(f"get_engine_version failed: {{e}}")
-
     def _save_result():
         # Always write, even on partial failure -- mirrors
         # unreal_scripts._build_datatable_script's "save to disk first".
@@ -420,13 +528,29 @@ def main():
             os.makedirs(os.path.dirname(RESULT_JSON_PATH), exist_ok=True)
             with open(RESULT_JSON_PATH, "w") as f:
                 json.dump(result, f, indent=2, default=str)
-            print(f"Wrote result JSON: {{RESULT_JSON_PATH}}")
         except Exception as e:
             print(f"  ** Could not write result JSON: {{e}}")
 
-    if not _new_scratch_level():
-        result["errors"].append("Could not load scratch level; aborting.")
+    def _finish(reason):
+        """Terminal path for a run that cannot measure frame time."""
+        result["complete"] = True
+        result["frame_time_notes"].append(reason)
         _save_result()
+        print(f"Viewport probe aborted: {{reason}}")
+
+    try:
+        result["engine_version"] = unreal.SystemLibrary.get_engine_version()
+    except Exception as e:
+        result["errors"].append(f"get_engine_version failed: {{e}}")
+
+    # --- Scratch map. Abort rather than touch the user's open level. ---
+    ok, note = _new_scratch_map()
+    result["scratch_map"] = note
+    if not ok:
+        result["errors"].append(
+            "Refusing to place actors: " + note
+        )
+        _finish("no scratch map, nothing measured")
         return
 
     _clear_existing_lights()
@@ -462,71 +586,155 @@ def main():
     else:
         result["errors"].append("Could not spawn DirectionalLight")
 
-    # --- Fixed cameras + screenshots ---
     world = _get_editor_world()
+    if world is None:
+        result["errors"].append("No editor world after scratch map load.")
+        _finish("no editor world")
+        return
 
-    front_cam = _spawn_actor(
-        unreal.CameraActor, FRONT_CAMERA_LOCATION, FRONT_CAMERA_ROTATION
-    )
-    if front_cam is not None:
-        _set_manual_exposure(front_cam)
-        method = _take_screenshot(front_cam, FRONT_SCREENSHOT_PATH)
-        result["screenshots"]["front"] = {{
-            "path": FRONT_SCREENSHOT_PATH if method else None,
-            "method": method,
+    # --- Fixed-camera captures (synchronous; no viewport involvement) ---
+    spawned_captures = []
+    for name, location, rotation in VIEWS:
+        actor, comp, rt = _make_capture(world, location, rotation)
+        if comp is None:
+            result["errors"].append(f"Could not create {{name}} SceneCapture2D")
+            result["screenshots"][name] = {{"path": None, "method": None}}
+            continue
+        spawned_captures.append((actor, rt, comp))
+        try:
+            comp.capture_scene()
+            _flush_gpu(world, rt)
+        except Exception as e:
+            result["errors"].append(f"{{name}} capture_scene failed: {{e}}")
+        path = _export_png(world, rt, name)
+        result["screenshots"][name] = {{
+            "path": path,
+            "method": "scene_capture_2d" if path else None,
         }}
-        if not method:
-            result["errors"].append(
-                "Front screenshot capture failed (both strategies)."
-            )
-    else:
-        result["errors"].append("Could not spawn front CameraActor")
-
-    side_cam = _spawn_actor(
-        unreal.CameraActor, SIDE_CAMERA_LOCATION, SIDE_CAMERA_ROTATION
-    )
-    if side_cam is not None:
-        _set_manual_exposure(side_cam)
-        method = _take_screenshot(side_cam, SIDE_SCREENSHOT_PATH)
-        result["screenshots"]["side"] = {{
-            "path": SIDE_SCREENSHOT_PATH if method else None,
-            "method": method,
-        }}
-        if not method:
-            result["errors"].append("Side screenshot capture failed (both strategies).")
-    else:
-        result["errors"].append("Could not spawn side CameraActor")
-
-    # --- Frame time ---
-    if world is not None:
-        avg_ms, frame_count, note = _measure_frame_time_via_fps_chart(world)
-        if avg_ms is None:
-            result["frame_time_notes"].append(f"FPS chart strategy failed: {{note}}")
-            avg_ms, frame_count, note = _measure_frame_time_via_frame_count(world)
-            if avg_ms is not None:
-                result["frame_time_method"] = "get_frame_count_delta"
+        if path:
+            print(f"Captured {{name}}: {{path}}")
         else:
-            result["frame_time_method"] = "fps_chart_csv"
-        result["frame_time_notes"].append(note)
-        result["frame_time_ms"] = avg_ms
-        result["frame_count_measured"] = frame_count
-    else:
-        result["errors"].append("No editor world -- skipped frame-time measurement.")
+            result["errors"].append(f"{{name.capitalize()}} capture failed to export.")
+
+    # --- Render cost (unaffected by the editor idle throttle) ---
+    if spawned_captures:
+        _actor, rt, comp = spawned_captures[0]
+        stats, baseline = _time_renders(world, comp, rt)
+        if stats is not None:
+            result["render_time_stats"] = stats
+            result["render_time_ms"] = stats["median_ms"]
+            result["render_flush_baseline"] = baseline
+            result["render_time_method"] = (
+                "scene_capture_2d capture_scene()+GPU flush, "
+                f"{{SCREENSHOT_WIDTH}}x{{SCREENSHOT_HEIGHT}}, front camera"
+            )
+        else:
+            result["errors"].append("Render timing produced no samples.")
+
+    # --- Tear down capture actors before the tick window opens ---
+    for actor, rt, _comp in spawned_captures:
+        try:
+            actor.destroy_actor()
+        except Exception:
+            pass
+        try:
+            unreal.RenderingLibrary.release_render_target2d(rt)
+        except Exception:
+            pass
 
     gc.collect()
-    unreal.SystemLibrary.collect_garbage()
+    try:
+        unreal.SystemLibrary.collect_garbage()
+    except Exception:
+        pass
 
     _save_result()
-
-    print("")
-    print("=" * 60)
     print(
-        f"Viewport probe complete: {{placed}}/{{len(ASSET_PATHS)}} placed, "
-        f"frame_time_ms={{result['frame_time_ms']}}, "
-        f"method={{result['frame_time_method']}}, "
-        f"{{len(result['errors'])}} error(s)"
+        f"Synchronous phase done; arming a {{MEASUREMENT_WINDOW_S}}s tick "
+        "measurement. The host polls the result JSON for completion."
     )
-    print("=" * 60)
+
+    # --- Frame time: arm-and-collect across real editor ticks ---
+    # A slate post-tick callback is the only way to observe frames from
+    # Python: this script blocks the game thread, so sleeping here and
+    # sampling get_frame_count() around the sleep measures zero frames.
+    state = {{"t0": None, "f0": None, "n": 0, "handle": None, "done": False}}
+
+    def _on_tick(_delta_seconds):
+        if state["done"]:
+            return
+        now = time.perf_counter()
+        if state["t0"] is None:
+            # Discard the first tick: it straddles this script's own
+            # execution and would inflate the window.
+            state["t0"] = now
+            try:
+                state["f0"] = unreal.SystemLibrary.get_frame_count()
+            except Exception:
+                state["f0"] = None
+            return
+        state["n"] += 1
+        elapsed = now - state["t0"]
+        if elapsed < MEASUREMENT_WINDOW_S:
+            return
+
+        state["done"] = True
+        try:
+            unreal.unregister_slate_post_tick_callback(state["handle"])
+        except Exception as e:
+            print(f"  unregister_slate_post_tick_callback failed: {{e}}")
+
+        frames = state["n"]
+        engine_frames = None
+        try:
+            if state["f0"] is not None:
+                engine_frames = unreal.SystemLibrary.get_frame_count() - state["f0"]
+        except Exception:
+            pass
+
+        per_frame_ms = elapsed * 1000.0 / frames if frames else None
+        result["frame_time_ms"] = per_frame_ms
+        result["frame_count_measured"] = frames
+        result["measurement_window_s"] = elapsed
+        result["frame_time_method"] = "slate_post_tick_wall_clock"
+        result["frame_time_notes"].append(
+            f"{{frames}} slate post-tick callbacks over {{elapsed:.3f}}s"
+            + (
+                f"; engine frame counter advanced {{engine_frames}}"
+                if engine_frames is not None
+                else ""
+            )
+        )
+
+        result["frame_rate_hz"] = 1000.0 / per_frame_ms if per_frame_ms else None
+        throttled = per_frame_ms is not None and per_frame_ms >= EDITOR_IDLE_FRAME_MS
+        result["editor_throttled"] = bool(throttled)
+        if throttled:
+            result["frame_time_notes"].append(
+                f"{{per_frame_ms:.1f}} ms/frame "
+                f"({{1000.0 / per_frame_ms:.1f}} Hz) is at the idle floor "
+                "UEditorEngine::ShouldThrottleCPUUsage() imposes on a "
+                "background editor (~{{:.0f}} Hz), NOT a measure of scene "
+                "cost -- compare it against render_time_ms. To get a real "
+                "editor frame time, re-run with the editor window focused "
+                "in the foreground.".format(EDITOR_THROTTLE_HZ)
+            )
+        if frames < 2:
+            result["frame_time_notes"].append(
+                "Fewer than 2 frames counted -- this number is noise."
+            )
+
+        result["complete"] = True
+        _save_result()
+        print(
+            f"Frame timing complete: {{per_frame_ms}} ms over {{frames}} frame(s)."
+        )
+
+    try:
+        state["handle"] = unreal.register_slate_post_tick_callback(_on_tick)
+    except Exception as e:
+        result["errors"].append(f"Could not arm tick measurement: {{e}}")
+        _finish(f"register_slate_post_tick_callback failed: {{e}}")
 
 
 main()
@@ -546,6 +754,7 @@ def generate_viewport_probe_script(
     Returns the path to the generated script. Does not deliver it -- see
     :func:`run_viewport_probe` for that.
     """
+    output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     script_path = output_dir / SCRIPT_NAME
     result_json_path = output_dir / RESULT_JSON_NAME
@@ -562,6 +771,10 @@ def generate_viewport_probe_script(
         height=height,
         measurement_window_s=measurement_window_s,
         row_spacing=ASSEMBLY_ROW_SPACING_CM,
+        render_samples=RENDER_SAMPLE_COUNT,
+        scratch_template=SCRATCH_LEVEL_TEMPLATE,
+        throttle_hz=EDITOR_THROTTLE_HZ,
+        idle_frame_ms=EDITOR_IDLE_FRAME_MS,
         camera_fov=CAMERA_FOV_DEG,
         front_cam_loc=_fmt_tuple(FRONT_CAMERA_LOCATION),
         front_cam_rot=_fmt_tuple(FRONT_CAMERA_ROTATION),
@@ -581,6 +794,47 @@ def generate_viewport_probe_script(
     return script_path
 
 
+def _read_payload(result_json_path: Path) -> dict[str, Any] | None:
+    if not result_json_path.is_file():
+        return None
+    try:
+        return json.loads(result_json_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        logger.debug("Result JSON at %s not readable yet: %s", result_json_path, e)
+        return None
+
+
+def _collect_payload(
+    result_json_path: Path,
+    *,
+    timeout_s: float,
+    poll_interval_s: float,
+) -> dict[str, Any] | None:
+    """Poll the result JSON until the in-editor script marks it complete.
+
+    Remote Execution returns as soon as the script's synchronous phase ends;
+    the frame-time measurement is still running on later editor ticks and
+    rewrites this file when it finishes. Polling from the host keeps the
+    editor free to tick -- blocking inside the editor would measure nothing.
+    """
+    deadline = time.monotonic() + timeout_s
+    payload = None
+    while True:
+        candidate = _read_payload(result_json_path)
+        if candidate is not None:
+            payload = candidate
+            if payload.get("complete"):
+                return payload
+        if time.monotonic() >= deadline:
+            if payload is not None:
+                payload.setdefault("frame_time_notes", []).append(
+                    f"Host stopped polling after {timeout_s:.1f}s with "
+                    "'complete' still false; frame-time fields may be missing."
+                )
+            return payload
+        time.sleep(poll_interval_s)
+
+
 def run_viewport_probe(
     output_dir: Path,
     asset_paths: list[str],
@@ -591,13 +845,16 @@ def run_viewport_probe(
     port: int = 6776,
     timeout: float = 0,
     dry_run: bool = False,
+    collect_timeout_s: float | None = None,
+    poll_interval_s: float = 0.5,
 ) -> dict[str, Any]:
     """Generate the viewport probe script and, unless dry_run, deliver it.
 
     dry_run writes the script to disk and returns it without touching the
     network/UE at all. A live run delivers the script over Remote
-    Execution (``ue_remote.run_file``, same primitive ue_exec uses) and
-    reads back the JSON result file the script writes.
+    Execution (``ue_remote.run_file``, same primitive ue_exec uses), then
+    polls the JSON result file until the in-editor tick measurement marks
+    it complete.
     """
     output_dir = Path(output_dir)
     script_path = generate_viewport_probe_script(
@@ -642,17 +899,21 @@ def run_viewport_probe(
         line.get("output", "") for line in (remote_result.get("output") or [])
     ]
 
-    payload = None
-    if result_json_path.is_file():
-        try:
-            payload = json.loads(result_json_path.read_text(encoding="utf-8"))
-        except Exception as e:
-            logger.error("Could not parse result JSON at %s: %s", result_json_path, e)
+    # The editor only ticks once the script returns, so the frame-time
+    # window elapses after remote-exec has already handed control back.
+    if collect_timeout_s is None:
+        collect_timeout_s = measurement_window_s + 15.0
+    payload = _collect_payload(
+        result_json_path,
+        timeout_s=collect_timeout_s,
+        poll_interval_s=poll_interval_s,
+    )
 
     return {
         "dry_run": False,
         "ok": remote_success and payload is not None and not payload.get("errors"),
         "remote_exec_success": remote_success,
+        "measurement_complete": bool(payload and payload.get("complete")),
         "result_json_path": str(result_json_path),
         "payload": payload,
         "raw_output": output_lines,
@@ -672,18 +933,44 @@ def _print_summary(record: dict[str, Any]) -> None:
         print("Script ran but no result JSON was found/parsed.")
         return
     print(f"Engine version:      {payload.get('engine_version')}")
+    print(f"Scratch map:         {payload.get('scratch_map')}")
     print(
         f"Assemblies placed:   {payload.get('asset_count_placed')}"
         f"/{payload.get('asset_count_requested')}"
     )
     for view, info in (payload.get("screenshots") or {}).items():
         print(f"Screenshot [{view:>5}]: {info.get('path')} (via {info.get('method')})")
+
+    stats = payload.get("render_time_stats") or {}
+    baseline = payload.get("render_flush_baseline") or {}
+    print(
+        f"Render time:         {payload.get('render_time_ms')} ms (median of "
+        f"{stats.get('samples')} sample(s), "
+        f"min {stats.get('min_ms')} / max {stats.get('max_ms')})"
+    )
+    if baseline:
+        print(
+            f"  flush baseline:    {baseline.get('median_ms')} ms median "
+            f"({baseline.get('samples')} sample(s), readback only, no render)"
+        )
+    if payload.get("render_time_method"):
+        print(f"  method:            {payload['render_time_method']}")
+
+    frames = payload.get("frame_count_measured") or 0
+    hz = payload.get("frame_rate_hz")
     print(
         f"Frame time:          {payload.get('frame_time_ms')} ms "
-        f"over {payload.get('frame_count_measured')} frame(s) "
+        + (f"({hz:.1f} Hz) " if isinstance(hz, (int, float)) else "")
+        + f"over {frames} frame(s) "
         f"in a {payload.get('measurement_window_s')}s window "
         f"(method: {payload.get('frame_time_method')})"
     )
+    if payload.get("editor_throttled"):
+        print("  ** editor throttled -- frame time is an idle floor, not scene cost.")
+    if frames and frames < 2:
+        print("  ** single-frame measurement -- this is noise, not a frame time.")
+    if not payload.get("complete"):
+        print("  ** measurement did not complete within the host polling window.")
     for note in payload.get("frame_time_notes") or []:
         print(f"  note: {note}")
     if payload.get("errors"):
@@ -695,9 +982,10 @@ def _print_summary(record: dict[str, Any]) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Places assemblies at deterministic transforms in a scratch UE "
-            "level, sets a fixed camera/lighting, captures front/side "
-            "screenshots, and measures frame time via Remote Execution."
+            "Places assemblies at deterministic transforms in a transient UE "
+            "scratch map, sets fixed capture cameras/lighting, exports "
+            "front/side PNGs, and measures render and frame time via Remote "
+            "Execution."
         ),
     )
     parser.add_argument(
@@ -734,6 +1022,15 @@ def main() -> None:
         type=float,
         default=DEFAULT_MEASUREMENT_WINDOW_S,
         help="Frame-time measurement window in seconds (default 5.0).",
+    )
+    parser.add_argument(
+        "--collect-timeout",
+        type=float,
+        default=None,
+        help=(
+            "Seconds to poll the result JSON for the in-editor frame-time "
+            "measurement to finish (default: measurement window + 15)."
+        ),
     )
     parser.add_argument("--port", type=int, default=6776)
     parser.add_argument("--timeout", type=float, default=0)
@@ -781,6 +1078,7 @@ def main() -> None:
         port=args.port,
         timeout=args.timeout,
         dry_run=args.dry_run,
+        collect_timeout_s=args.collect_timeout,
     )
 
     if args.dry_run:
