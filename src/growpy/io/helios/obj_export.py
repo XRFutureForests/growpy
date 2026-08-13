@@ -19,10 +19,17 @@ Material groups:
 import logging
 import re
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import bpy
 import numpy as np
+
+if TYPE_CHECKING:
+    # export_forest_obj annotates forest_data as "pd.DataFrame", but pandas is
+    # imported lazily inside the function body. Without this the annotation
+    # names something that is never bound at module scope -- ruff F821, which
+    # is in CI's blocking rule set.
+    import pandas as pd
 
 logger = logging.getLogger(__name__)
 
