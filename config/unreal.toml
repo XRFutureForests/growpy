@@ -12,6 +12,14 @@ project_path = "/Game/Assets/TheGrove"
 # created). Lives under /Content/Templates in the project, not under
 # project_path -- the old /Game/Assets/TheGrove location is no longer used.
 db_path = "/Game/Templates"
+# Content Browser base the wind and PVE post-import scripts search for
+# assemblies. Leave unset (or empty) so it follows project_path -- assemblies
+# import to project_path, so wind data and PVE presets have to look for them
+# there. Setting it to something else deliberately splits the two, which is
+# almost never what you want: the assemblies still import fine and then silently
+# fail every wind/PVE check, because the post-import scripts are searching a
+# path that has no assemblies in it.
+# pve_import_base = ""
 # Automatically set Nanite shape preservation to Voxelize on imported assemblies.
 # Voxelization produces the best visual quality but adds significant import time.
 # Set to false for faster testing iterations; re-enable for production exports.

@@ -399,7 +399,11 @@ class GrowPyConfig:
     unreal_nanite_lerp_uvs: bool = True
     unreal_db_path: str = "/Game/Assets/TheGrove"
     unreal_generate_pve_presets: bool = True
-    unreal_pve_import_base: str = "/Game/Assets/TheGrove"
+    # Content Browser base for the wind/PVE post-import scripts. Empty means
+    # "follow unreal_project_path", which is what you want: assemblies import to
+    # project_path, so wind data and PVE presets have to look for them there.
+    # Set explicitly only to deliberately split them across two paths.
+    unreal_pve_import_base: str = ""
     unreal_editor_exe: str = ""  # ue_exec auto-restart watchdog; empty = not configured
     unreal_uproject: str = ""  # ue_exec auto-restart watchdog; empty = not configured
 
@@ -440,6 +444,15 @@ class GrowPyConfig:
     )
     yield_sources_preferred_region: str = ""
     yield_sources_preferred_site_index: float | None = None
+
+    def __post_init__(self) -> None:
+        # An unset pve_import_base follows project_path. Before this, it carried
+        # its own default, so any config that set project_path away from that
+        # default silently sent the wind and PVE scripts to a path with no
+        # assemblies in it -- no warning, no error, just assets that import fine
+        # and then fail every wind/PVE check downstream.
+        if not self.unreal_pve_import_base:
+            self.unreal_pve_import_base = self.unreal_project_path
 
     @classmethod
     def from_toml(cls, toml_path: Path, set_as_global: bool = True) -> "GrowPyConfig":

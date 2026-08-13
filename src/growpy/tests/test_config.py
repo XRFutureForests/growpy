@@ -158,6 +158,55 @@ verbose = true
         assert config.forest_quality == "high"  # default preserved
 
 
+class TestPveImportBaseFollowsProjectPath:
+    """An unset pve_import_base must follow project_path.
+
+    It used to carry its own default, so a config that pointed project_path
+    somewhere else silently sent the wind and PVE post-import scripts to a path
+    with no assemblies in it. The assemblies imported fine and then failed every
+    wind/PVE check downstream, with no warning.
+    """
+
+    def test_unset_follows_project_path(self):
+        config = GrowPyConfig(unreal_project_path="/Game/Assets/TheGrove_dec25")
+        assert config.unreal_pve_import_base == "/Game/Assets/TheGrove_dec25"
+
+    def test_unset_follows_project_path_default(self):
+        config = GrowPyConfig()
+        assert config.unreal_pve_import_base == config.unreal_project_path
+
+    def test_explicit_value_is_preserved(self):
+        config = GrowPyConfig(
+            unreal_project_path="/Game/Assets/TheGrove_dec25",
+            unreal_pve_import_base="/Game/Somewhere/Else",
+        )
+        assert config.unreal_pve_import_base == "/Game/Somewhere/Else"
+
+    def test_toml_project_path_propagates(self, tmp_path):
+        toml_content = b"""
+[unreal]
+project_path = "/Game/Assets/TheGrove_dec25"
+"""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(toml_content)
+
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.unreal_project_path == "/Game/Assets/TheGrove_dec25"
+        assert config.unreal_pve_import_base == "/Game/Assets/TheGrove_dec25"
+
+    def test_toml_explicit_override_still_splits(self, tmp_path):
+        toml_content = b"""
+[unreal]
+project_path = "/Game/Assets/TheGrove_dec25"
+pve_import_base = "/Game/Assets/TheGrove"
+"""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(toml_content)
+
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.unreal_pve_import_base == "/Game/Assets/TheGrove"
+
+
 class TestGrowPyConfigSurroundSection:
     """Tests for [surround] radii parsing."""
 
