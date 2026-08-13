@@ -8,8 +8,23 @@ becomes the baseline. Every later round sets each ceiling at the best value achi
 so far that still passed the other gates. A ceiling is never loosened to make a round
 pass — a regression is recorded as a regression.
 
-Related Linear issues: XRFF-272 (parent), XRFF-273 (per-tree resolver), XRFF-274 (Done —
-per-prototype leaf area), XRFF-318 (pylometree Forrester registration).
+**Linear home: XRFF-320** — "growpy: 639-model dataset catalog via the crown-density
+ratchet". This doc stays the source of truth for measurements (round log, gate metrics,
+per-species rationale); XRFF-320 and its children track the deliverables. Keep both in
+sync — a round that changes coverage or a ceiling should update the relevant issue too.
+
+| Issue | Scope |
+|---|---|
+| XRFF-321 | D8 — which twig prototype the recorded Gate-2 import validated (blocks Gate 3) |
+| XRFF-322 | Re-import the pilot slice at round-3 densities + admission-checklist audit |
+| XRFF-323 | Conifer h15+ import cost at 639 scale (61 min/asset) |
+| XRFF-324 | Conifer height-LOD ladder (critical path, 4 of 11 species) |
+| XRFF-325 | Gate 4 — first in-editor frame-time measurement |
+| XRFF-326 | Extend from the 3-species pilot to all 11 species x 3 radii |
+| XRFF-327 | Rule out `max_skeleton_joints = 1000` as a Gate-2 failure cause |
+
+Also related: XRFF-272 (allometric leaf-area parent), XRFF-273 (per-tree resolver),
+XRFF-274 (Done — per-prototype leaf area), XRFF-318 (pylometree Forrester registration).
 
 ---
 
