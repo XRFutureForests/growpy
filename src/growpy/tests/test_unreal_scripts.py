@@ -54,6 +54,23 @@ class TestBuildImportBlock:
         block = _build_import_block("/p", "d", "l")
         assert "except Exception as e:" in block
 
+    def test_emits_a_per_asset_record_on_every_path(self):
+        """Per-batch wall-clock cannot tell a build from a skip -- a batch
+        that skipped everything looks like a fast build (XRFF-323)."""
+        block = _build_import_block("/p", "d", "my_label")
+        for outcome in ("skipped", "{_outcome}", "error"):
+            assert f"[ASSET] outcome={outcome} " in block
+        assert '_outcome = "imported"' in block
+        assert '_outcome = "failed"' in block
+        assert block.count("label=my_label") == 3
+
+    def test_per_asset_timing_spans_the_gc_and_vram_settle(self):
+        """An asset's real cost includes the cleanup that follows it, so the
+        record is emitted after _wait_for_vram, not at the import call."""
+        block = _build_import_block("/p", "d", "l")
+        assert block.index("_t0 = time.time()") < block.index("_wait_for_vram")
+        assert block.index("_wait_for_vram") < block.index("[ASSET] outcome={_outcome}")
+
 
 class TestBuildConsolidationScript:
     """Tests for twig consolidation script generation."""

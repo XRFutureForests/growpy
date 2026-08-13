@@ -30,7 +30,9 @@ invisible:
   ``imported_count``/``failed_count`` bookkeeping surfaces in the final
   "Batch complete: N imported, M skipped, K failed" print (captured via
   the remote-exec response's stdout capture), or (b) the requested label
-  never lands in ``done.txt`` (see ``missing_labels`` below).
+  never lands in ``done.txt`` (see ``missing_labels`` below), or (c) the
+  batch's per-asset ``[ASSET] outcome=... seconds=... label=...`` records
+  say so (see ``assets`` below).
 * ``unreal.log_warning``/``unreal.log_error`` calls (used throughout the
   generated scripts for per-slot/per-parameter failures, e.g. in
   ``unreal_material_script.py``) go to UE's Output Log. Whether they are
@@ -80,6 +82,10 @@ _LABEL_PATTERN = re.compile(r'if "([^"]+)" in _completed_files:')
 _SUMMARY_PATTERN = re.compile(
     r"Batch '.*?' complete: (\d+) imported, (\d+) skipped, (\d+) failed"
 )
+
+# Per-asset record emitted by unreal_scripts._build_import_block. The label
+# comes last so a label containing spaces still parses.
+_ASSET_PATTERN = re.compile(r"\[ASSET\] outcome=(\w+) seconds=([0-9.]+) label=(.+)")
 
 # Final summary line printed by unreal_material_script._build_material_script.
 _MATERIALS_SUMMARY_PATTERN = re.compile(
@@ -232,6 +238,25 @@ def _parse_summary(output_text: str) -> tuple[int | None, int | None, int | None
     if not m:
         return None, None, None
     return int(m.group(1)), int(m.group(2)), int(m.group(3))
+
+
+def _parse_asset_records(output_text: str) -> list[dict[str, Any]]:
+    """Per-asset outcome and wall-clock, as emitted by the batch script.
+
+    Batch duration alone cannot separate a build from a skip: a batch that
+    skipped every asset finishes in seconds and looks exactly like a fast
+    build. That misreading is what put a 3.9 s "build" of three broadleaf
+    assemblies into the Gate-2 table and made the 639-model wall-clock
+    projection worthless (XRFF-323).
+    """
+    return [
+        {
+            "outcome": m.group(1),
+            "seconds": float(m.group(2)),
+            "label": m.group(3).strip(),
+        }
+        for m in _ASSET_PATTERN.finditer(output_text)
+    ]
 
 
 class _ResourceSampler:
@@ -480,9 +505,25 @@ def run_import_probe(
         completed_labels = _read_done_txt(batch_path) if requested_labels else []
         missing_labels = sorted(set(requested_labels) - set(completed_labels))
         imported, skipped, failed = _parse_summary(output_text)
+        assets = _parse_asset_records(output_text)
+        built = [a for a in assets if a["outcome"] == "imported"]
+        built_seconds = round(sum(a["seconds"] for a in built), 2)
 
         notes: list[str] = []
         ue_side_failure = False
+
+        if requested_labels and not assets:
+            notes.append(
+                "No per-asset [ASSET] records in output -- this batch script "
+                "predates the per-asset instrumentation. Regenerate it before "
+                "using this run in a wall-clock projection."
+            )
+        elif assets and not built:
+            notes.append(
+                f"Nothing was built: all {len(assets)} asset(s) were skipped "
+                "or failed. This batch's duration is not a build cost and "
+                "must not be used in a wall-clock projection."
+            )
         if requested_labels and missing_labels:
             ue_side_failure = True
             notes.append(
@@ -555,6 +596,9 @@ def run_import_probe(
             "summary_imported": imported,
             "summary_skipped": skipped,
             "summary_failed": failed,
+            "assets": assets,
+            "built_count": len(built),
+            "built_seconds": built_seconds,
             "ue_side_failure_suspected": ue_side_failure,
             "notes": notes,
         }
@@ -611,6 +655,18 @@ def _print_summary(record: dict[str, Any]) -> None:
         for note in r["notes"]:
             print(f"    note: {note}")
     print("")
+
+    per_asset = [r for r in record["results"] if r.get("assets")]
+    if per_asset:
+        print("Per-asset wall-clock (only 'imported' rows are a build cost):")
+        for r in per_asset:
+            print(
+                f"  {r['batch']}  --  {r['built_count']} built in "
+                f"{r['built_seconds']:.1f}s of {r['duration_s']:.1f}s"
+            )
+            for a in r["assets"]:
+                print(f"    {a['outcome']:<9}{a['seconds']:>9.1f}s  {a['label']}")
+        print("")
 
 
 def main() -> None:

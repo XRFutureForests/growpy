@@ -22,6 +22,7 @@ from growpy.tools.ue_import_probe import (
     OrderingError,
     ProbeError,
     _classify_batch,
+    _parse_asset_records,
     _parse_requested_labels,
     _parse_summary,
     _read_done_txt,
@@ -163,6 +164,36 @@ class TestParseSummary:
 
     def test_no_match_returns_none_triplet(self):
         assert _parse_summary("nothing here") == (None, None, None)
+
+
+class TestParseAssetRecords:
+    """Per-asset records are what separate a build from a skip; the batch
+    summary line alone cannot (XRFF-323)."""
+
+    def test_parses_outcome_seconds_and_label(self):
+        text = (
+            "  [ASSET] outcome=imported seconds=3671.8 label=Silver_Fir_h15m\n"
+            "  [ASSET] outcome=skipped seconds=0.0 label=Silver_Fir_h05m\n"
+        )
+        assert _parse_asset_records(text) == [
+            {
+                "outcome": "imported",
+                "seconds": 3671.8,
+                "label": "Silver_Fir_h15m",
+            },
+            {"outcome": "skipped", "seconds": 0.0, "label": "Silver_Fir_h05m"},
+        ]
+
+    def test_separates_a_skipped_batch_from_a_fast_build(self):
+        skipped = "\n".join(
+            f"  [ASSET] outcome=skipped seconds=0.0 label=t{i}" for i in range(3)
+        )
+        records = _parse_asset_records(skipped)
+        assert len(records) == 3
+        assert not [r for r in records if r["outcome"] == "imported"]
+
+    def test_no_records_returns_empty(self):
+        assert _parse_asset_records("Batch 'x' complete: 3 imported") == []
 
 
 class TestRunImportProbeSetup:

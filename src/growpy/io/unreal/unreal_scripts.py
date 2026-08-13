@@ -50,9 +50,12 @@ def _build_import_block(
     config_block = ""
 
     return f"""
+_t0 = time.time()
+_outcome = "error"
 if "{label}" in _completed_files:
     skipped_count += 1
     print(f"  Skipped (already imported): {label}")
+    print(f"  [ASSET] outcome=skipped seconds={{time.time() - _t0:.1f}} label={label}")
 else:
     try:
         import_task = unreal.AssetImportTask()
@@ -104,11 +107,13 @@ else:
 
         if import_task.imported_object_paths:
             imported_count += 1
+            _outcome = "imported"
             _record_file_done("{label}")
             print(f"  Imported: {label}")
 {config_block}
         else:
             failed_count += 1
+            _outcome = "failed"
             unreal.log_warning("Failed to import: {label}")
 
         _log_rss("post {label}")
@@ -162,6 +167,17 @@ else:
         # Adaptive wait: pause until VRAM settles below threshold
         _wait_for_vram("{label}", min_delay=IMPORT_DELAY)
 
+        # Machine-parseable per-asset record, read by
+        # growpy.tools.ue_import_probe. Timed to here rather than to the
+        # import call because the GC and VRAM settle are part of what an
+        # asset actually costs in a run. Without this only per-batch
+        # wall-clock exists, which is how a batch that skipped every asset
+        # was once recorded as having built three in 3.9 s (XRFF-323).
+        print(
+            f"  [ASSET] outcome={{_outcome}} "
+            f"seconds={{time.time() - _t0:.1f}} label={label}"
+        )
+
         _ws = _log_rss("gc   {label}")
         if _ws > RSS_LIMIT_GB:
             print("")
@@ -175,6 +191,10 @@ else:
     except Exception as e:
         failed_count += 1
         unreal.log_error(f"Error importing {label}: {{e}}")
+        print(
+            f"  [ASSET] outcome=error "
+            f"seconds={{time.time() - _t0:.1f}} label={label}"
+        )
 """
 
 
