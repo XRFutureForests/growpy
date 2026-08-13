@@ -14,7 +14,7 @@ seeds = 1
 height_threshold = 0.01
 # Stop after N consecutive cycles without significant growth (1-20)
 # Lower values = earlier termination, prevents wasting time on plateaued trees
-max_cycles_without_growth = 15
+max_cycles_without_growth = 5
 # Maximum simulation time per seed in seconds (10-3600)
 # Increase for complex species; prevents stuck simulations
 # Safety net only -- max_height below is the primary, cheap stopping signal.
@@ -25,7 +25,7 @@ max_cycles_without_growth = 15
 # decelerates per the yield table and is cheap regardless (~13min for all
 # 11 species combined in that same run) -- the height target below is what
 # keeps Pass 1 bounded without relying on the timeout to do the work.
-timeout = 400
+timeout = 300
 # Target height in meters for calibration's simulations. Growth stops early
 # once reached, instead of always running `cycles` cycles.
 # 0 = no target -- DO NOT use 0 for full dataset runs (see timeout comment

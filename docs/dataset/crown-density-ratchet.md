@@ -84,11 +84,16 @@ Establishes the observed values. No ceilings exist until this completes.
 
 ### Starting config state — read this before comparing anything
 
-The working tree carried **uncommitted** config changes when the loop started. These were
-not made by this loop. Round 0 measures the **working tree** state, because that is
-literally the current config; HEAD is recorded for comparison.
+These config values were carried **uncommitted** in the working tree when the loop
+started, and rounds 0-3 all measured them. Their provenance was unknown at the time, so
+the loop recorded them as unexplained drift against HEAD.
 
-| Key | HEAD | Working tree (round-0 baseline) |
+**Resolved 2026-08-13 — owner confirms these are the intended config, not drift.** They
+are now committed, so HEAD and the working tree agree and the "old HEAD" column below is
+history only. Nothing about rounds 0-3 changes: they measured the intended values all
+along.
+
+| Key | Old HEAD (pre-2026-08-13) | Committed value (round-0 baseline) |
 |---|---|---|
 | `[forest] quality` | `medium` | `high` |
 | `[forest] plateau_cycles` | 25 | 5 |
@@ -109,16 +114,27 @@ Unchanged and load-bearing: `[export.twig_density_per_species]` (all 11 entries)
 
 **Two flags on the baseline itself:**
 
-1. `build_cutoff_thickness` is **already raised** in the working tree (0.00125 -> 0.0025
-   at `[quality.high]`). This is the guardrail parameter: raising it removes the youngest
+1. `build_cutoff_thickness` sits at 0.0025, double the old HEAD value of 0.00125 at
+   `[quality.high]`. This is the guardrail parameter: raising it removes the youngest
    branches first, which is exactly where Grove places twigs, and it deletes the
    attachment points recovery would otherwise repack onto. The loop will **not** raise it
    further and will not use it to buy triangles. It is recorded here so that a later
    "crowns are hard to fill" finding is attributed correctly.
+
+   **This also closes out the ~3x stem-triangle fit gap** (see "Stem side" below). With
+   0.0025 confirmed intended rather than accidental, the carried-forward
+   `S(h) = 25,285 . h^2.476` fit is simply obsolete — it was fitted at the thinner cutoff,
+   before this value was adopted, and doubling the cutoff prunes exactly the fine
+   branching that would explain a 2-3x drop in stem triangle count. No revert experiment
+   is needed: **discard that fit and use the measured column.**
+   `pilot_config/quality.toml` independently describes this parameter as "purely a mesh
+   triangle-budget lever" with recovery active, which is consistent with that reading.
 2. `max_skeleton_joints = 1000` contradicts its own config comment, which states that
    Nanite encodes bone indices in 8-bit fields and that 250 is the safe Nanite-Assembly
    value. This is a candidate Gate-2 failure cause **independent of density**, and must be
-   ruled out before any import crash is blamed on crown density.
+   ruled out before any import crash is blamed on crown density. Round 2 set this to 250
+   in the pilot config and recorded "joint limit cleared"; the repo-level 1000 stands, so
+   this contradiction is still open.
 
 ### Results — Gate 1 (measured 2026-08-07)
 
@@ -688,15 +704,16 @@ them back to. The instance-count fit at least reproduces measured h05/h10/h15 wi
 degrades gracefully at h25 (+13.5%, a plausible extrapolation miss) — consistent with being a
 real fit that's just old. **The stem fit missing by a uniform ~3x at a point inside its own
 claimed range is not what a real regression's extrapolation error looks like; it looks like the
-formula (or the conditions it was fitted under) is simply wrong.** One plausible, evidence-
-grounded but **unconfirmed** hypothesis: round 0's own baseline table (this doc, "Starting
-config state") records `[quality.high] build_cutoff_thickness` was raised from 0.00125 to 0.0025
-in the working tree at some point before this session — doubling the thinnest-branch cutoff
-would prune a large fraction of a conifer's fine branching and could plausibly cut stem triangle
-count by something in the 2-3x range on its own. If the stem fit predates that change, it would
-explain the gap without needing the fit itself to be wrong. **Not tested this session** —
-reverting `build_cutoff_thickness` and re-measuring would confirm or rule this out cheaply, no
-UE needed. Whatever the cause, **trust the measured column, not either fit**, going forward.
+formula (or the conditions it was fitted under) is simply wrong.** The hypothesis raised here
+was that `[quality.high] build_cutoff_thickness` had been raised from 0.00125 to 0.0025 before
+this session — doubling the thinnest-branch cutoff prunes a large fraction of a conifer's fine
+branching and could plausibly cut stem triangle count by 2-3x on its own — so a stem fit
+predating that change would explain the gap without the fit itself being wrong.
+
+**Settled 2026-08-13:** the owner confirmed 0.0025 is the intended value (see "Starting config
+state"), and it is now committed. So the fit is obsolete rather than wrong — it was fitted
+under a cutoff the project no longer uses. **No revert experiment is needed; retire
+`S(h) = 25,285 . h^2.476` and trust the measured column, not either fit.**
 
 ### Combined budget, real numbers — the picture is much better than feared
 
@@ -721,7 +738,8 @@ it's "does a real Gate-2 import confirm this," which needs UE.
   therefore whether *any* combined-total number in the table above has ever been through a real
   import. Needs a UE session: check what's currently imported, or re-import deliberately with
   the prototype size logged.
-- The ~3x over-prediction in the old stem-triangle fit — flagged, not root-caused.
+- ~~The ~3x over-prediction in the old stem-triangle fit~~ — **resolved 2026-08-13**: the fit
+  predates the committed `build_cutoff_thickness = 0.0025` and is retired, not re-fitted.
 - h30/h35 data for any metric — not generated this session. The twig instance-count fit is
   already known to under-predict by double digits at h25; do not extrapolate either fit past
   h25 for planning purposes.

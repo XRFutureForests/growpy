@@ -4,7 +4,7 @@
 
 [forest]
 # Quality preset name -- must match a [quality.<name>] section in quality.toml
-quality = "medium"
+quality = "high"
 # Maximum growth cycles per tree (1-250)
 # Trees exceeding this limit are capped (not scaled), silently losing their
 # upper height stages. Measured uncalibrated cycles-to-max-height: Douglas fir
@@ -21,7 +21,7 @@ growth_cycle_limit = 160
 # well before growth_cycle_limit, silently truncating its upper height
 # stages. Raised from the code default of 10: observed real stalls of
 # 7-9 consecutive cycles for some species/radius combos reaching 15-20m.
-plateau_cycles = 25
+plateau_cycles = 5
 # Number of grove.smooth() passes on branch angles (int, 0-20, 0 = disabled)
 # Each pass reduces sharp corner angles between branch segments.
 # Higher values = smoother, more organic branches; 10-20 for production.
@@ -110,7 +110,7 @@ static = false
 #
 # This global value now applies only to species with no entry in
 # [export.twig_density_per_species] below.
-twig_density = 0.04
+twig_density = 0.2
 # Per-species values live in [export.twig_density_per_species] at the END of
 # this file -- a TOML sub-table captures every key that follows it, so it
 # cannot sit here in the middle of [export].
@@ -129,18 +129,18 @@ twig_recovery = true
 # tree's own median living-twig spacing to an already-placed twig. Branches
 # cut close together otherwise stack several compensation twigs on top of
 # each other, reading as an unnatural dense tuft. 0 disables the guard.
-twig_min_spacing_ratio = 0.5
+twig_min_spacing_ratio = 0.75
 # Youth bias exponent for synthetic twig placement.
 # Controls how strongly additional twigs prefer younger branches.
 # 1.0 = linear (default), >1.0 = stronger youth preference, <1.0 = more uniform.
 # At 2.0 a branch at youth=0.5 gets 25% weight vs 100% for the youngest.
 # Range: 0.0 (uniform placement) to 3.0+ (extreme youth preference)
-youth_bias = 2.0
+youth_bias = 1.5
 # Maximum skeleton joints for Nanite Assembly USD export.
 # Nanite encodes bone indices in 8-bit fields (max 256).
 # 0 = no limit (use for PVE native skeletal mesh path which has no constraint).
 # 250 = safe default for Nanite Assembly USD import path.
-max_skeleton_joints = 500
+max_skeleton_joints = 1000
 # Maximum twig instances per Nanite Assembly.
 # During UE import, NaniteAssemblyRootAPI expands all instances into a combined
 # Nanite mesh which can consume extreme amounts of RAM.
