@@ -307,7 +307,8 @@ Per-asset admission checklist (all required to count):
 |---|---|---|---|---|
 | 2026-08-07 | **9** | 1.4% | `silver_fir`, `european_beech`, `common_ash` x h05/h10/h15 x r00 only | Superseded by the audit below — the count was wrong. |
 | 2026-08-13 | **0 admitted** (13 present) | 0% | — | First real admission audit, run against XRLabDB over Remote Execution. **13 assemblies present** — 11 in `/Game/Assets/TheGrove` (`common_ash` x3, `european_beech` x3, `silver_fir` x3, **`norway_spruce` x2** outside the pilot) and 2 in `/Game/Assets/TheGrove_dec25` (`silver_fir` h05/h10 at the decimated prototype). **Not 9, as previously recorded.** But **0 of 13 pass the checklist** — see the audit below. All predate round 3, so densities are stale too. XRFF-322. |
-| 2026-08-13 (later) | **9** — 4 of 5 items verified, PVE unverified | 1.4% | `common_ash`, `european_beech`, `silver_fir` x h05/h10/h15 x r00 | **First time the checklist has ever passed.** Round-3 densities re-imported to a new path `/Game/Assets/TheGrove_r3`, leaving `TheGrove` and `_dec25` intact. Nanite, materials, DynamicWind and `DT_TreeCatalog` row all **9/9 verified**. PVE is the caveat — see below. XRFF-322. |
+| 2026-08-13 (later) | **9** — 4 of 5 items verified, PVE failing | 1.4% | `common_ash`, `european_beech`, `silver_fir` x h05/h10/h15 x r00 | **First time four of the five items have ever passed.** Round-3 densities re-imported to a new path `/Game/Assets/TheGrove_r3`, leaving `TheGrove` and `_dec25` intact. Nanite, materials, DynamicWind and `DT_TreeCatalog` row all **9/9 verified**. PVE graphs were created but left **empty** — the wiring never ran. XRFF-322, XRFF-330. |
+| 2026-08-13 (after XRFF-330) | **9** — 5 of 5 items verified | 1.4% | `common_ash`, `european_beech`, `silver_fir` x h05/h10/h15 x r00 | **First time the full checklist has ever passed.** The graph builder was fixed and re-run against XRLabDB: 3/3 `ProceduralVegetation` graphs wired, 28 nodes each (1 Preset Loader + 3 variant chains x 9), every edge verified connected. XRFF-330. |
 
 ### Admission audit — 2026-08-13, XRLabDB, all 13 present assemblies
 
@@ -368,11 +369,11 @@ presets, PVE graphs.
 | Materials resolve under `db_path` | **9 / 9 verified** — 2 slots each, zero `/Engine/` fallbacks |
 | DynamicWind present | **9 / 9 verified** — `get_asset_user_data_of_class` returns data, 3 simulation groups each |
 | `DT_TreeCatalog` row | **9 / 9 verified** — `TheGrove_r3/DT_TreeCatalog`, 9 rows, keyed by assembly name |
-| PVE preset wired into the graph | **assets exist, wiring UNVERIFIED** — see below |
+| PVE preset wired into the graph | **0 / 9 as run** — the graphs were created empty; **9 / 9 after the XRFF-330 fix and re-run**, see below |
 
-**The PVE item is not proven.** 15 PVE assets were created (9 per-tree presets, 3 per-species
-presets, 3 `ProceduralVegetation` graphs), but the graph builder could not complete the
-wiring on UE 5.7.4:
+**The PVE item fails; it is no longer merely unproven.** 15 PVE assets were
+created (9 per-tree presets, 3 per-species presets, 3 `ProceduralVegetation`
+graphs), but the graph builder aborted before adding a single node on UE 5.7.4:
 
 ```
 [PVE-G] get graph property failed: Property 'Graph' for attribute 'graph' on
@@ -381,15 +382,41 @@ wiring on UE 5.7.4:
 [PVE-G] Could not obtain inner graph for PVG_Common_Ash_R00
 ```
 
-Independently confirmed: **none of the 15 PVE assets exposes any graph/variant/preset
-property through Python reflection at all**, so the wiring cannot be verified from a script
-even in principle on this engine version. An audit that checks "a preset asset exists beside
-the assembly" — which is what this round's audit actually checked — is weaker than the
-checklist wording and must not be reported as the checklist passing. Tracked as XRFF-330;
-likely the same UE API drift already noted in XRFF-250.
+Reading the plugin source settles it without opening the editor.
+`ProceduralVegetationFactory` always calls `UProceduralVegetation::CreateGraph()`,
+which creates an **empty** `UProceduralVegetationGraph` subobject; nothing else
+in the plugin adds nodes to it (`CreateGraphFromPreset`, which would, is dead
+code in 5.7 — no caller). The builder is the only thing that was going to wire
+them, and it never got a handle. So all three graphs hold zero nodes.
 
-**So: 9 admitted on four items, with PVE outstanding.** Verify the graphs by hand in the
-editor before treating these 9 as fully admitted.
+**Three separate defects sat behind that one line** (XRFF-330, fixed):
+
+1. **The accessor.** `Graph` is a bare `UPROPERTY()` — no `EditAnywhere`, no
+   `BlueprintReadOnly` — so `PropertyAccessUtil` refuses the read, and
+   `GetGraph()` is plain C++, never a `UFUNCTION`, so it was never callable
+   from Python in any version. The graph is reachable as a named subobject:
+   `unreal.find_object(pv_asset, "ProceduralVegetationGraph")`.
+2. **A node class that does not exist.** The chain led with
+   `PVCurveSettings`; the plugin ships `PVCarveSettings`. The `hasattr` guard
+   quietly dropped the first node of every chain.
+3. **The silence itself.** Remote Execution reports success unless the script
+   raises, and the builder logged errors and then printed `Done.`. It now
+   verifies every edge by reading the pin back (`AddEdge` returns its `To` node
+   whether or not the edge was made) and raises on any failure.
+
+The earlier claim that "none of the 15 PVE assets exposes any graph/variant
+property through Python reflection at all" was **wrong**, and it is what made
+this look unverifiable. `preset_variations`, the graph's `nodes`, node
+`input_pins`/`output_pins`, and `PCGPin.is_connected()` are all readable — see
+[pve-python-api.md](../reference/pve-python-api.md). PVE is auditable from a
+script after all.
+
+**Re-run after the fix, same day, same editor: 3/3 graphs wired.** Each
+`PVG_*` now holds **28 nodes** — one Preset Loader plus 3 variant chains of 9
+(`Carve → Gravity → Scale → RemoveBranches → MeshBuilder → BoneReduction →
+FoliagePalette → FoliageDistributor → Output`) — with every edge read back as
+connected, confirmed by an independent read-only probe. **All five checklist
+items now pass on the 9 pilot assemblies.**
 
 **Wind reported "9 applied, 9 failed out of 18".** The 9 failures are `douglas_fir`,
 `norway_spruce` and `scots_pine` — species whose wind JSON is still on disk from the earlier

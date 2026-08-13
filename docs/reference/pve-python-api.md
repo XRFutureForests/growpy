@@ -48,9 +48,59 @@ or when you want PVE Graph processing on top of growpy parameters.
 - [`unreal.ProceduralVegetationGraph`](https://dev.epicgames.com/documentation/en-us/unreal-engine/python-api/class/ProceduralVegetationGraph?application_version=5.7)
   — extends `PCGGraph`. The actual node graph (Preset Loader, Carve, Gravity,
   Foliage Distributor, Mesh Builder, Output, ...). Exposes `nodes`,
-  `input_node`, `output_node`, `user_parameters`, `generation_radii`. Could
-  in principle be authored programmatically; for now we only create the
-  preset DataAsset and let users wire the graph manually.
+  `input_node`, `output_node`, `user_parameters`, `generation_radii`.
+- `unreal.ProceduralVegetation` — the asset the factory actually creates. Its
+  graph lives in the private `Graph` UPROPERTY; see below.
+
+## Reaching the graph inside a ProceduralVegetation asset (UE 5.7)
+
+`ProceduralVegetationFactory` creates a `UProceduralVegetation`, not a graph.
+The graph is an inner subobject, and **neither documented accessor works from
+Python on 5.7**:
+
+- `get_editor_property("graph")` fails with *"Property 'Graph' ... is protected
+  and cannot be read"*. `UProceduralVegetation::Graph` is a bare `UPROPERTY()`
+  with no `EditAnywhere` and no `BlueprintReadOnly`, and
+  `PropertyAccessUtil::CanGetPropertyValue` denies any property carrying none of
+  `CPF_Edit | CPF_BlueprintVisible | CPF_BlueprintAssignable`. The word
+  "protected" in the message is about that flag test, not C++ access.
+- `call_method("GetGraph")` fails because `GetGraph()` is plain C++, never a
+  `UFUNCTION`. It has never been callable from Python and is not a 5.7
+  regression.
+
+The graph is reachable by name instead. `UProceduralVegetation::CreateGraph()`
+— which the factory always calls — creates it as
+`NewObject<UProceduralVegetationGraph>(this, PV::DefaultGraphName)`, where
+`DefaultGraphName` is the literal `"ProceduralVegetationGraph"`:
+
+```python
+graph = unreal.find_object(pv_asset, "ProceduralVegetationGraph")
+```
+
+Once held, the graph is a normal `UPCGGraph`: `add_node_copy`, `add_edge`,
+`nodes`, and `force_notification_for_editor` are all `BlueprintCallable` or
+`BlueprintReadOnly`. See `_get_inner_graph` in
+[pve_graph_script.py](../src/growpy/io/unreal/pve_graph_script.py) and XRFF-330.
+
+### What can be verified from Python
+
+The PVE assets are not opaque — the properties that matter are edit- or
+blueprint-visible, so a wired graph can be audited without opening the editor:
+
+| Read | Where | Tells you |
+|---|---|---|
+| `preset_variations` | `ProceduralVegetationPreset` (VisibleAnywhere) | which recipes `UpdateDataAsset` actually parsed |
+| `nodes` | the inner graph (BlueprintReadOnly) | the chain was built at all |
+| `input_pins` / `output_pins` | `PCGNode` (BlueprintReadOnly) | per-variant pins exist |
+| `properties.label`, `is_connected()` | `PCGPin` | each edge really landed |
+| `node_title`, `get_settings()` | `PCGNode` | which node is which |
+
+`ProceduralVegetationPreset.Variants` itself is *not* readable (bare
+`UPROPERTY()`), which is why `preset_variations` is the entry point.
+
+`UPCGGraph::AddEdge` returns its `To` node whether or not the edge was made — a
+missing pin only logs to `LogPCG` — so wiring must always be read back, never
+assumed from a non-null return.
 
 ## What growpy already produces
 
@@ -116,9 +166,8 @@ project as parallel UObjects.
 
 ### Limitations of current scaffolding
 
-- Does **not** author the `ProceduralVegetationGraph` (the node graph that
-  consumes the preset). Users still need to set up a graph manually or load
-  a saved one — same as the MegaPlants/Quixel workflow.
+- The preset import script does **not** author the `ProceduralVegetationGraph`.
+  That is `pve_graph_script.py`'s job, run as a separate post-import step.
 - Uses `set_editor_property` with `DirectoryPath` structs; the exact struct
   shape may vary across UE 5.7 patches. Tested API expectations are based on
   the public Python API reference — if `DirectoryPath()` constructor is
@@ -128,10 +177,10 @@ project as parallel UObjects.
 
 ## Future directions
 
-1. **Author the PVE Graph** programmatically. The `nodes` array on
-   `ProceduralVegetationGraph` is exposed; we could prebuild a graph that
-   wires Preset Loader → Foliage Distributor → Mesh Builder → Output for
-   each species and save it as a UAsset alongside the preset.
+1. ~~**Author the PVE Graph** programmatically.~~ Done —
+   `pve_graph_script.py` builds one graph per species+scene directory and wires
+   a Preset Loader → ... → Output chain per variant. See the accessor notes
+   above.
 2. **Round-trip wind data**. The Dynamic Wind asset action can also be
    driven from Python — the existing growpy wind JSON could be applied
    directly via `unreal.AssetTools` after PVE completes its skeletal mesh

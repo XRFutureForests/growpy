@@ -17,7 +17,7 @@ graph's PresetLoader points at a combined preset whose Variants TMap holds
 all height stages found in that directory. The graph wires one processing
 chain per variant following the Epic PVE tutorial node order:
 
-    PresetLoader -> Curve -> Gravity -> Scale -> RemoveBranches ->
+    PresetLoader -> Carve -> Gravity -> Scale -> RemoveBranches ->
     MeshBuilder -> BoneReduction -> FoliagePalette ->
     FoliageDistributor -> Output
 
@@ -34,9 +34,11 @@ Directory layout expected::
 UE Python API used (UE 5.7+, Experimental):
 - unreal.ProceduralVegetationFactory     - graph asset factory
 - unreal.ProceduralVegetationPreset      - combined preset DataAsset
-- unreal.ProceduralVegetationGraph       - PCG graph (inner object)
+- unreal.ProceduralVegetationGraph       - PCG graph (inner subobject; not
+                                           reachable as a property, see
+                                           _get_inner_graph)
 - unreal.PVPresetLoaderSettings          - preset loader node
-- unreal.PVCurveSettings                 - curve node
+- unreal.PVCarveSettings                 - carve node
 - unreal.PVGravitySettings               - gravity node
 - unreal.PVScaleSettings                 - scale node
 - unreal.PVRemoveBranchesSettings        - remove branches node
@@ -131,7 +133,7 @@ NODE_X_SPACING = 350
 NODE_Y_SPACING = 250
 
 CHAIN_NODE_TYPES = [
-    ("PVCurveSettings", "Curve"),
+    ("PVCarveSettings", "Carve"),
     ("PVGravitySettings", "Gravity"),
     ("PVScaleSettings", "Scale"),
     ("PVRemoveBranchesSettings", "RemoveBranches"),
@@ -149,6 +151,100 @@ def _position_node(node, x, y):
         node.set_node_position(int(x), int(y))
     except Exception:
         pass
+
+
+# The inner graph is a subobject of the ProceduralVegetation asset, created
+# under this fixed name by UProceduralVegetation::CreateGraph(). Reflection
+# cannot reach it on UE 5.7: the `Graph` UPROPERTY carries neither EditAnywhere
+# nor BlueprintReadOnly, so PropertyAccessUtil::CanGetPropertyValue denies the
+# read ("is protected and cannot be read"), and GetGraph() is plain C++, never a
+# UFUNCTION. Looking the subobject up by outer + name sidesteps both. XRFF-330.
+INNER_GRAPH_NAME = "ProceduralVegetationGraph"
+
+
+def _get_inner_graph(graph_asset, graph_name):
+    """Return the ProceduralVegetationGraph inside a ProceduralVegetation asset."""
+    for finder, label in (
+        (unreal.find_object, "find_object"),
+        (unreal.load_object, "load_object"),
+    ):
+        try:
+            graph = finder(graph_asset, INNER_GRAPH_NAME)
+        except Exception as _e:
+            unreal.log_warning(
+                "[PVE-G] %s failed for %s: %s" % (label, graph_name, _e)
+            )
+            continue
+        if graph is not None:
+            return graph
+
+    # Only reachable if a future engine version exposes the property.
+    try:
+        return graph_asset.get_editor_property("graph")
+    except Exception as _e:
+        unreal.log_warning("[PVE-G] get graph property failed: %s" % _e)
+    return None
+
+
+def _pin_named(node, prop_name, label):
+    """Return the pin with the given label from input_pins / output_pins."""
+    try:
+        pins = node.get_editor_property(prop_name)
+    except Exception as _e:
+        unreal.log_warning("[PVE-G] could not read %s: %s" % (prop_name, _e))
+        return None
+    for pin in pins or []:
+        try:
+            props = pin.get_editor_property("properties")
+            if str(props.get_editor_property("label")) == str(label):
+                return pin
+        except Exception:
+            continue
+    return None
+
+
+def _add_verified_edge(graph, from_node, from_pin, to_node, to_pin, ctx):
+    """Wire one edge and read the connection back.
+
+    UPCGGraph::AddEdge returns the `To` node whether or not the edge was made --
+    a missing or incompatible pin only logs to LogPCG -- so nothing short of
+    re-reading the pin proves the chain is connected.
+    """
+    graph.add_edge(from_node, from_pin, to_node, to_pin)
+    pin = _pin_named(to_node, "input_pins", to_pin)
+    if pin is not None and pin.is_connected():
+        return True
+    unreal.log_error(
+        "[PVE-G] %s: edge %s.%s -> %s.%s did not connect"
+        % (ctx, from_node.get_name(), from_pin, to_node.get_name(), to_pin)
+    )
+    return False
+
+
+def _sanitize_mesh_name(name):
+    """Mirror PV::SanitizeFolderName: keep only object-path-safe characters."""
+    return "".join(c if (c.isalnum() or c in "_-") else "_" for c in str(name))
+
+
+def _name_output_node(node, settings, variant_name):
+    """Title the Output node and name its exported mesh after the variant.
+
+    Without the mesh name every variant chain in the graph exports under the
+    same default, which is why PVE's own CreateGraphFromPreset sets
+    ExportSettings.MeshName per variant.
+    """
+    try:
+        node.set_editor_property("node_title", variant_name)
+    except Exception as _e:
+        unreal.log_warning("[PVE-G] node_title set failed: %s" % _e)
+    if settings is None:
+        return
+    try:
+        export = settings.get_editor_property("export_settings")
+        export.set_editor_property("mesh_name", _sanitize_mesh_name(variant_name))
+        settings.set_editor_property("export_settings", export)
+    except Exception as _e:
+        unreal.log_warning("[PVE-G] export mesh_name set failed: %s" % _e)
 
 
 def _ensure_foliage_data(json_dir):
@@ -298,8 +394,10 @@ def _create_pve_graph(graph_name, graph_package, preset, variant_names):
     """Create a PVE graph following the Epic tutorial node chain order.
 
     Per-variant chain (skips unavailable node types):
-        Curve -> Gravity -> Scale -> RemoveBranches -> MeshBuilder ->
+        Carve -> Gravity -> Scale -> RemoveBranches -> MeshBuilder ->
         BoneReduction -> FoliagePalette -> FoliageDistributor -> Output
+
+    Returns True only when every variant's chain is wired end to end.
     """
     asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
     full_path = "%s/%s" % (graph_package, graph_name)
@@ -351,24 +449,17 @@ def _create_pve_graph(graph_name, graph_package, preset, variant_names):
                     "loaded %s" % full_path
                 )
     if graph_asset is None:
-        unreal.log_warning(
+        unreal.log_error(
             "[PVE-G] Failed to create graph: %s at %s" % (graph_name, graph_package)
         )
-        return None
+        return False
 
-    graph = None
-    try:
-        graph = graph_asset.get_editor_property("graph")
-    except Exception as _e:
-        unreal.log_warning("[PVE-G] get graph property failed: %s" % _e)
+    graph = _get_inner_graph(graph_asset, graph_name)
     if graph is None:
-        try:
-            graph = graph_asset.call_method("GetGraph")
-        except Exception as _e:
-            unreal.log_warning("[PVE-G] GetGraph call failed: %s" % _e)
-    if graph is None:
-        unreal.log_warning("[PVE-G] Could not obtain inner graph for %s" % graph_name)
-        return graph_asset
+        unreal.log_error(
+            "[PVE-G] Could not obtain inner graph for %s" % graph_name
+        )
+        return False
 
     # Filter chain to node types available in this UE build
     available_chain = []
@@ -387,10 +478,26 @@ def _create_pve_graph(graph_name, graph_package, preset, variant_names):
     loader_y = (len(variant_names) - 1) * NODE_Y_SPACING // 2
     _position_node(loader_node, 0, loader_y)
 
+    ok = True
+    wired = 0
+
     for i, vname in enumerate(variant_names):
+        # The loader's output pins are derived from the preset's Variants map,
+        # so a variant with no pin means UpdateDataAsset never parsed its
+        # recipe and the whole chain below would wire onto nothing.
+        if _pin_named(loader_node, "output_pins", vname) is None:
+            unreal.log_error(
+                "[PVE-G] %s: preset exposes no variant pin '%s' -- recipe not "
+                "loaded (check FoliageData.json and UpdateDataAsset)"
+                % (graph_name, vname)
+            )
+            ok = False
+            continue
+
         row_y = i * NODE_Y_SPACING
         prev_node = loader_node
         prev_pin = vname
+        chain_ok = True
 
         for j, (cls_name, label) in enumerate(available_chain):
             settings_cls = getattr(unreal, cls_name)
@@ -400,14 +507,19 @@ def _create_pve_graph(graph_name, graph_package, preset, variant_names):
             _position_node(node, col_x, row_y)
 
             if cls_name == "PVOutputSettings":
-                try:
-                    node.set_editor_property("node_title", vname)
-                except Exception:
-                    pass
+                _name_output_node(node, settings, vname)
 
-            graph.add_edge(prev_node, prev_pin, node, "In")
+            if not _add_verified_edge(
+                graph, prev_node, prev_pin, node, "In", graph_name
+            ):
+                chain_ok = False
             prev_node = node
             prev_pin = "Out"
+
+        if chain_ok:
+            wired += 1
+        else:
+            ok = False
 
     try:
         graph.call_method("ForceNotificationForEditor")
@@ -416,34 +528,33 @@ def _create_pve_graph(graph_name, graph_package, preset, variant_names):
 
     unreal.EditorAssetLibrary.save_loaded_asset(graph_asset)
     unreal.log(
-        "[PVE-G] Created graph %s with %d variant chain(s) x %d node(s) each"
-        % (graph_name, len(variant_names), len(available_chain))
+        "[PVE-G] %s: %d/%d variant chain(s) wired x %d node(s) each"
+        % (graph_name, wired, len(variant_names), len(available_chain))
     )
-    return graph_asset
+    return ok
 
 
 def main():
     if not _have_pve_classes():
-        unreal.log_error(
+        raise RuntimeError(
             "[PVE-G] Procedural Vegetation Editor plugin not enabled or "
             "UE version < 5.7. Aborting."
         )
-        return
 
     if not os.path.isdir(FOREST_ROOT):
-        unreal.log_error("[PVE-G] Forest root does not exist: %s" % FOREST_ROOT)
-        return
+        raise RuntimeError("[PVE-G] Forest root does not exist: %s" % FOREST_ROOT)
 
     recipe_dirs = _discover_recipe_dirs(FOREST_ROOT)
     if not recipe_dirs:
-        unreal.log_warning(
+        raise RuntimeError(
             "[PVE-G] No *%s files found under %s" % (PVE_RECIPE_SUFFIX, FOREST_ROOT)
         )
-        return
 
     unreal.log(
         "[PVE-G] Found %d species/scene directory(ies)" % len(recipe_dirs)
     )
+
+    failures = []
 
     for json_dir, variant_names in sorted(recipe_dirs.items()):
         _ensure_foliage_data(json_dir)
@@ -468,9 +579,23 @@ def main():
             trunk_material_name=trunk_mat,
         )
         if preset is None:
+            failures.append(preset_name)
             continue
 
-        _create_pve_graph(graph_name, package_path, preset, variant_names)
+        if not _create_pve_graph(graph_name, package_path, preset, variant_names):
+            failures.append(graph_name)
+
+    wired = len(recipe_dirs) - len(failures)
+    unreal.log("[PVE-G] SUMMARY: %d/%d graph(s) wired" % (wired, len(recipe_dirs)))
+
+    if failures:
+        # Raising is what makes this visible. Remote Execution reports success
+        # unless the script raises, so logging errors and then printing 'Done.'
+        # is exactly how a total wiring failure survived a whole audit round.
+        raise RuntimeError(
+            "[PVE-G] %d of %d PVE graph(s) failed to wire: %s"
+            % (len(failures), len(recipe_dirs), ", ".join(failures))
+        )
 
     unreal.log("[PVE-G] Done.")
 
