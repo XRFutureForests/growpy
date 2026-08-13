@@ -305,7 +305,8 @@ Per-asset admission checklist (all required to count):
 
 | Date | Assets admitted | / 639 | Species x stages x radii covered | Notes |
 |---|---|---|---|---|
-| 2026-08-07 | **9** | 1.4% | `silver_fir`, `european_beech`, `common_ash` x h05/h10/h15 x r00 only | Measured: the Gate-2 2026-08-07 run put 9 assemblies into `/Game/Assets/TheGrove` on XRLabDB, zero crashes. **Caveat:** these were imported at round-2 twig-density values. Round 3 is retuning `common_ash`/`european_beech` density in the pilot config only -- Gate 1 doesn't need UE, so these 9 do NOT yet reflect round-3 density until re-imported (re-import to a new path per operational hazard #8, never overwrite in place). PVE/DynamicWind/materials/`DT_TreeCatalog` status for these 9 not yet audited against the checklist above -- assume incomplete until checked. |
+| 2026-08-07 | **9** | 1.4% | `silver_fir`, `european_beech`, `common_ash` x h05/h10/h15 x r00 only | Superseded by the audit below — the count was wrong. |
+| 2026-08-13 | **11 present, 0 audited** | 1.7% present | `common_ash` x3, `european_beech` x3, `silver_fir` x3, `norway_spruce` x2 — all r00 | Direct UE inventory of `/Game/Assets/TheGrove` (XRLabDB). **11 assemblies, not 9** — the extra two are `norway_spruce` h05/h10, imported 16:28/16:40, outside the 3-species pilot. A further **2** sit in `/Game/Assets/TheGrove_dec25` (`silver_fir` h05/h10, imported 17:41/17:48 at the decimated prototype), for 13 across both paths. **None of the 13 has been audited against the admission checklist**, so admitted coverage is still effectively 0 — "present" is not "admitted". All predate round 3, so densities are stale. XRFF-322. |
 
 Conifer height-LOD ladder is **on the critical path**, not an optimization: without it, 4 of
 11 species (those reaching 35-45 m) are structurally incapable of reaching their upper height
@@ -503,7 +504,7 @@ round can detect it. Joint counts must be re-checked when height stages are exte
 
 | Gate | Ceiling | Set by |
 |---|---|---|
-| 3 — expanded triangles | **122.4 M** per assembly, **status downgraded — see D8** | `silver_fir` h15, round 2, computed from a 107,876-face prototype that measurably no longer matches the live twig asset (now 26,969 faces, same tree now measures 30.6 M). Not known whether the recorded Gate-2 import actually validated 122.4 M or the smaller real number. Historical: 147 M imported cleanly, 2.45 B crashed (also pre-dates the current prototype, same caveat applies). |
+| 3 — expanded triangles | **122.4 M** per assembly, **real-import-confirmed (D8 resolved 2026-08-13)** | `silver_fir` h15, round 2: 1,135 instances x 107,876 faces = 122,439,260. Verified in XRLabDB — the h15 assembly's `SK_pacific_silver_fir_foliage` carries **108,665 verts**, matching the 107,876-face prototype, imported 16:02:41. Historical: 147 M imported cleanly, 2.45 B crashed. |
 | 3 — skeleton joints | **advisory only**, not a gate (see D4) | owner: "not a hard limit but a suggestion" |
 | 1 — `blob_saturation` | **0.690 is a FAIL**, not a ceiling | `common_ash` h15; passing trees measure 0.123–0.257 |
 | 2 — import wall-clock | **3 671.8 s** per batch | `silver_fir` (one asset built) |
@@ -625,39 +626,52 @@ structurally incapable of getting there without it, regardless of any further de
 **RETRACTION, same session:** the first version of this section built a twig-decimation ladder
 on top of a 107,876-face "full" prototype baseline, per this session's own resume-protocol
 carried-forward notes and this doc's own round-2 log (`silver_fir` h15, 1,135 instances,
-122.4 M expanded triangles = 1,135 x 107,876). **That baseline is stale.** Measured directly
-just now with `growpy-analyze-usda --triangle-budget` against the actual files on disk:
+122.4 M expanded triangles = 1,135 x 107,876). **That baseline no longer matches what is on
+disk.** Measured with `growpy-analyze-usda --triangle-budget` against the actual files:
 
 ```
 silver_fir h15 (same 1,135 instances as round 2): 30,609,815 expanded triangles
 Prototype pacificsilverfirf: 1,135 instances x 26,969 faces (sidecar-reported)
 ```
 
-**26,969 is the round-2 0.25-decimation candidate face count, not 107,876.** The live twig
-asset (`data/assets/twigs/pacific_silver_fir_twig/`, gitignored, not in version control) is
-already the decimated prototype — filesystem mtime 2026-08-07 16:38-16:39, before this session
-started. This session did not change it. **D8 — unresolved: it is not known whether round 2's
-recorded Gate-2 import (3,671.8 s, 85.1% peak RAM, "3/3 OK") ran against the 107,876-face or
-the 26,969-face prototype**, because the ratchet doesn't record time-of-day and the asset
-directory isn't version-controlled, so there is no way to date the swap precisely from this
-session. This matters a lot: if the real Gate-2 import validated the *smaller* prototype, the
-"122.4 M ceiling, confirmed safe" line in the Gate 3 ceilings table is describing a triangle
-count nothing was ever actually measured importing (round 2's own detail table computed
-122.4 M using the 107,876 figure that was apparently already wrong by the time it was
-imported). **Do not trust the 122.4 M figure as a real-import-confirmed ceiling until this is
-resolved** — flag prominently for the next session with UE access: confirm which prototype
-size the recorded 61-minute import actually used, by checking whichever `.usda`/`.usdc` the UE
-project currently has imported, or by re-running Gate 2 deliberately against a *known* fixed
-prototype and recording the swap explicitly next time.
+26,969 is the round-2 0.25-decimation candidate face count. The live twig asset
+(`data/assets/twigs/pacific_silver_fir_twig/`, gitignored, not in version control) is the
+decimated prototype — filesystem mtime 2026-08-07 16:38-16:39.
 
-**Strong lead, not yet confirmed:** the pilot config's `[unreal] project_path` is
-`/Game/Assets/TheGrove_dec25` — not `/Game/Assets/TheGrove` as this doc's own Gate-2 section
-says. "`dec25`" most plausibly reads as "decimated at 0.25," which would mean this path was
-already set up specifically to hold the decimated-prototype import and is likely a *different*
-target than round 2's recorded import, not a collision. If so, checking that path's actual
-contents (empty, or already holding a prior decimated-prototype test) is the fastest way to
-resolve D8 once UE is reachable — before running any new import against it, per operational
-hazard #8.
+### D8 — RESOLVED 2026-08-13, in favour of the recorded ceiling
+
+The open question was whether round 2's recorded Gate-2 import (3,671.8 s, 85.1% peak RAM,
+"3/3 OK") ran against the 107,876-face or the 26,969-face prototype. **It ran against the
+107,876-face one.** Confirmed by direct inventory of XRLabDB over Remote Execution — the
+assemblies carry their twig prototype as a child `SkeletalMesh`, so its size is readable
+per-assembly, and `.uasset` mtimes date each import:
+
+| Asset | Prototype verts | Imported |
+|---|---|---|
+| `TheGrove/silver_fir/.../Silver_Fir_r00_h15m_d18cm_full_assembly` | **108,665** | 16:02:41 |
+| `TheGrove/silver_fir/...h05`, `...h10` | 108,665 | 12:52, 12:59 |
+| `TheGrove/norway_spruce/...h05`, `...h10` | 108,665 | 16:28, 16:40 |
+| `TheGrove_dec25/silver_fir/...h05`, `...h10` | **31,312** | 17:41, 17:48 |
+
+The two clusters sit 3.47x apart and map cleanly onto the two face counts (108,665 verts to
+107,876 faces, ratio 1.007; 31,312 to 26,969, ratio 1.161 — decimation raises the vert/face
+ratio via UV seam splits). **1,135 x 107,876 = 122,439,260**, reproducing the recorded 122.4 M
+exactly.
+
+The timeline is now unambiguous and self-consistent: the h15 import completed at 16:02, the
+twig asset was decimated on disk at 16:38-16:39, and `TheGrove_dec25` was imported afterwards
+at 17:41-17:48 as a separate decimated-prototype trial. The `dec25` = "decimated at 0.25"
+reading was correct, and it is a **later, different** target — not a collision with round 2's
+import. It holds h05 and h10 only; **h15 was never imported at the decimated prototype.**
+
+**Consequences:**
+- The Gate-3 ceiling of 122.4 M is real-import-confirmed. Restored in the ceilings table.
+- The 61-minute / 85.1%-RAM Gate-2 cost is the cost of the **full** prototype, so XRFF-323's
+  scaling problem is real and not an artifact of mis-attributed prototype size.
+- The combined-budget table below compares against a figure that is now trustworthy.
+- `douglas_fir` shares this prototype, so the same reading applies to it.
+
+Record the prototype face count alongside every future Gate-2 run so this cannot recur.
 
 **Practical consequence, though: this is good news, not bad.** Whatever the history, the
 *currently deployed* prototype is the smaller one, and it is already real-data-measured across
@@ -685,10 +699,9 @@ beyond h15, not a number to plan a ceiling around. **Re-fit this session on all 
 (log-log least squares, `silver_fir`, r00, density 0.025): `N(h) = 2.155 . h^2.332`, errors
 -2%/+0.3%/+5%/+1.6%/-5.2% at h05/h10/h15/h20/h25 respectively — tighter and more even than the
 old fit at every point, use this one instead if extrapolating past h25 until a real h30/h35
-measurement exists. **Using the twig-only figure this doc
-previously (and possibly wrongly) treated as a real-import-confirmed ceiling, 122.4 M, h25's
-111.5 M sits under it with real, current-prototype numbers** — i.e. even without D8 being
-resolved, twig-only cost at h25 is not obviously a problem. h30/h35 need their own real
+measurement exists. **Against the 122.4 M ceiling — now real-import-confirmed (D8 resolved) —
+h25's twig-only 111.5 M sits under it** with real, current-prototype numbers, so twig-only cost
+at h25 is not obviously a problem. h30/h35 need their own real
 generation-and-measure pass before claiming anything; do not extrapolate the instance-count
 fit that far given the h25 miss above.
 
@@ -732,7 +745,7 @@ under a cutoff the project no longer uses. **No revert experiment is needed; ret
 
 ### Combined budget, real numbers — the picture is much better than feared
 
-| Height | Twig triangles (measured) | Stem triangles (measured) | **Combined total** | vs the (now-suspect) 122.4 M figure |
+| Height | Twig triangles (measured) | Stem triangles (measured) | **Combined total** | vs the 122.4 M import-confirmed ceiling |
 |---|---|---|---|---|
 | h05 | 2.5 M | 0.46 M | 3.0 M | 4% |
 | h10 | 12.5 M | 2.4 M | 14.9 M | 12% |
@@ -741,26 +754,26 @@ under a cutoff the project no longer uses. **No revert experiment is needed; ret
 | h25 | 111.5 M | 25.4 M | 136.9 M | 112% |
 
 Every number in this table is a real measurement from this session — no fits, no projections.
-Combined cost at h25 (136.9 M) is only modestly above the old 122.4 M reference, and that
-reference is itself now flagged unreliable (D8). **The practical read: with the twig prototype
-that is actually live today, conifers reaching into the h20-h25 range looks realistic on
-triangle budget alone** — the open question is no longer "is there a triangle-budget crisis,"
-it's "does a real Gate-2 import confirm this," which needs UE.
+Combined cost at h25 (136.9 M) is only modestly above the 122.4 M reference, and that reference
+is now confirmed to have really been imported (D8 resolved 2026-08-13 — it took 61 minutes at
+85.1% peak RAM). **The practical read: on triangle budget alone, conifers reaching into the
+h20-h25 range is realistic** — but note the cost of getting there is the 61-minute import, not
+just the triangle count. The open question is no longer "is there a triangle-budget crisis,"
+it's the wall-clock one tracked in XRFF-323.
 
 ### What this design pass does NOT resolve
 
-- **D8** — which prototype size round 2's recorded Gate-2 import actually validated, and
-  therefore whether *any* combined-total number in the table above has ever been through a real
-  import. Needs a UE session: check what's currently imported, or re-import deliberately with
-  the prototype size logged.
+- ~~**D8** — which prototype size round 2's recorded Gate-2 import validated~~ — **resolved
+  2026-08-13**: the 107,876-face one, confirmed by UE inventory. 122.4 M is real. See the D8
+  section above.
 - ~~The ~3x over-prediction in the old stem-triangle fit~~ — **resolved 2026-08-13**: the fit
   predates the committed `build_cutoff_thickness = 0.0025` and is retired, not re-fitted.
 - h30/h35 data for any metric — not generated this session. The twig instance-count fit is
   already known to under-predict by double digits at h25; do not extrapolate either fit past
   h25 for planning purposes.
 - Whether `douglas_fir`'s ~45 m target (the tallest of the four conifers) is reachable — no
-  data for that species at height beyond its own pilot stages yet, and Douglas fir shares the
-  same twig prototype so the D8 question applies to it too.
+  data for that species at height beyond its own pilot stages yet. It shares the same twig
+  prototype, so the confirmed 107,876-face cost applies to it too.
 - A real Gate-2 import at h20 or h25 to confirm the combined-budget numbers above actually
   import cleanly, not just add up on paper.
 
