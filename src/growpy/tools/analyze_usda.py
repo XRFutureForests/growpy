@@ -425,11 +425,21 @@ def analyze_triangle_budget(
             continue
         if "stems" in p.stem.lower():
             stems_files.append(p)
-    stats["stems_ref_files"] = [
-        {"file": str(p), "file_size_bytes": p.stat().st_size}
-        for p in stems_files
-        if p.exists()
-    ]
+    stats["stems_ref_files"] = []
+    for p in stems_files:
+        if not p.exists():
+            continue
+        stems_stage = Usd.Stage.Open(str(p))
+        triangle_count = (
+            _count_mesh_faces_pxr(stems_stage.GetPseudoRoot()) if stems_stage else 0
+        )
+        stats["stems_ref_files"].append(
+            {
+                "file": str(p),
+                "file_size_bytes": p.stat().st_size,
+                "triangle_count": triangle_count,
+            }
+        )
 
     return stats
 
@@ -467,7 +477,10 @@ def print_triangle_budget(stats: dict) -> None:
             )
 
     for sf in stats.get("stems_ref_files", []):
-        print(f"\n  Stems ref: {sf['file']} ({sf['file_size_bytes']:,} bytes)")
+        print(
+            f"\n  Stems ref: {sf['file']} ({sf['file_size_bytes']:,} bytes, "
+            f"{sf['triangle_count']:,} triangles)"
+        )
 
 
 def _find_assembly_files(target: Path) -> list[Path]:
