@@ -647,21 +647,70 @@ watchdog restarts (watchdog disabled — see below).
 cold import.** Re-importing the same batches into a fresh path (`TheGrove_r3`, XRFF-322)
 measured:
 
-| batch | 2026-08-07 recorded | 2026-08-13 measured (cold, new path) |
+| batch | 2026-08-07 recorded | 2026-08-14 measured (cold, empty path) | error |
+|---|---|---|---|
+| `import_batch_00_instances` (3 twig prototypes) | 3.9 s | **27.8 s** | 7x |
+| `common_ash` (3 trees) | 3.9 s | **372.6 s** (6.2 min) | 96x |
+| `european_beech` (3 trees) | 4.1 s | **1 797.4 s** (30.0 min) | 438x |
+| `silver_fir` (3 trees) | 3 671.8 s | **5 031.4 s** (83.9 min) | 1.4x |
+| **total** | 3 683.7 s (61.4 min) | **7 229.2 s (120.5 min)** | 2.0x |
+
+Per asset, all `outcome=imported`, **0 skipped and 0 failed across all 12**:
+
+| stage | `common_ash` | `european_beech` | `silver_fir` |
+|---|---|---|---|
+| h05 | 10.0 s | 30.7 s | 27.1 s |
+| h10 | 22.1 s | 392.5 s | 524.9 s |
+| h15 | **340.5 s** | **1 374.2 s** | **4 479.4 s** (74.7 min) |
+
+**"The broadleaves are free by comparison" is dead.** It was wrong by 96x on ash and 438x
+on beech. A single `european_beech` h15 costs 22.9 minutes -- the same cost class as the
+conifer asset this whole line of work was built around. The 2026-08-07 broadleaf rows timed
+a *skip*, not a build.
+
+Instances batch, per prototype: `european_beech_twigs` 14.3 s, `one_leaved_ash_twigs` 6.9 s,
+`pacific_silver_fir_twigs` 6.6 s. Every number in this section is recorded inline on purpose
+-- the raw record lands under `data/output/`, which is gitignored, so a file reference alone
+would not survive the machine.
+
+Method, for reproducibility: batch scripts regenerated with the per-asset `[ASSET]`
+instrumentation (XRFF-323) and pointed at a **new empty path** `/Game/Assets/TheGrove_r4_cold`;
+four stale `*_done.txt` resume files archived first (leaving them would have skipped every
+asset -- the exact failure being corrected); editor restarted for a cold baseline (53% RAM
+with the project loaded, vs 75.6% after a long session).
+
+### Cost scales with height, steeply -- that is the real finding
+
+Log-log fit of `cost(h) = a * h^k` on the three measured stages per species:
+
+| species | k | h05 -> h15 growth |
 |---|---|---|
-| `common_ash` (3 trees) | 3.9 s | completed within a ~10 min window |
-| `european_beech` (3 trees) | 4.1 s | **~40 min** |
-| `silver_fir` (3 trees) | 3 671.8 s | **~81 min** — h05 22 s, h10 ~8 min, **h15 ~73 min** |
+| `common_ash` | 2.99 | 34x |
+| `european_beech` | 3.48 | 45x |
+| `silver_fir` | **4.61** | **165x** |
 
-Three orders of magnitude on beech is not measurement noise. The most likely reading is
-that the 2026-08-07 broadleaf batches **skipped assets already present in the target path**
-and timed the skip, not the build — which is consistent with them being the second import
-into `TheGrove` that day. Whatever the cause, **the "broadleaves are free by comparison"
-conclusion below does not hold**, and the 639-model wall-clock projection is materially
-worse than this table implies.
+Conifers scale worst, and every stage above h15 is unmeasured. Two projections, and the
+distance between them is the point:
 
-Do not plan scale-out against the recorded broadleaf numbers. Re-measure Gate 2 cold, into
-an empty path, and record whether each asset was built or skipped. Tracked in XRFF-323.
+* **Mostly-measured floor** -- h05/h10/h15 only, which is 33 of the 71 stages (297 of 639
+  models, 46%), using the measured per-species totals: **69.3 h = 2.9 days** of continuous
+  import.
+* **Full 639 extrapolated** -- same fits carried to each species' `Max Height`: **~5 800 h
+  = ~242 days**. `douglas_fir` alone is 59% of it, because it runs to h45 on the conifer
+  exponent.
+
+**Do not plan against the 242-day figure.** It extrapolates a 3-point fit three times past
+its fitted range; `(45/15)^4.61` is a factor of 152. Its value is only as an
+order-of-magnitude signal: on the current import path the 639-model target is not
+reachable, and the gap is not close. The floor is the number to trust, and it already
+costs ~3 days for the *cheapest* 46% of the catalog.
+
+If the conifer exponent holds, per-asset cost runs 4.7 h at h20, 13.1 h at h25, 30.4 h at
+h30 and 61.8 h at h35. **A single h20 or h25 import measurement would collapse most of this
+uncertainty** -- it is the highest-value next measurement, and XRFF-324 needs it too.
+
+Tracked in XRFF-323.
+
 
 
 **D6 — `silver_fir` h15 cannot be imported with the default watchdog.** That single
@@ -680,10 +729,10 @@ Options, none yet chosen:
 - reduce `silver_fir` density (Gate 1 regression — it is only just in band at 0.221)
 - accept that the heaviest conifer assets need a watchdog-off import pass
 
-**Wall-clock implication for scale-out:** 61 minutes for one asset. The full dataset target
-is 639 models. Conifer h15 assets at this triangle count are not viable at that scale
-without either a density reduction or a different import strategy. The broadleaves are
-free by comparison (3.9–4.1 s per 3-asset batch).
+**Wall-clock implication for scale-out:** superseded by the cold re-measure above. h15 is
+74.7 minutes for `silver_fir`, and the broadleaves are **not** free -- `european_beech` h15
+is 22.9 minutes. See "Cost scales with height, steeply" above for the current numbers and
+projections.
 
 **Operational note — `conda run` buffers stdout.** `conda run <cmd>` captures output and
 releases it only on process exit; it needs `--no-capture-output` to stream. During this
