@@ -950,6 +950,96 @@ h20-h25 range is realistic** — but note the cost of getting there is the 61-mi
 just the triangle count. The open question is no longer "is there a triangle-budget crisis,"
 it's the wall-clock one tracked in XRFF-323.
 
+### Second pass, 2026-08-14/15 -- round-3 densities, and h30 attempted for real
+
+The twig/stem tables above are **round 2**, at `silver_fir = 0.025`. The live config is
+**round 3, `silver_fir = 0.0078`** (`[export.twig_density_per_species]`), so those numbers
+describe a tree 3.2x heavier than the pipeline now produces. Re-measured at live density
+with `growpy-analyze-usda --triangle-budget`:
+
+| radius | stage | twig inst | twig tris | stem tris | **combined** | of 122.4 M |
+|---|---|---|---|---|---|---|
+| r00 | h05 | 31 | 0.84 M | 0.47 M | 1.31 M | 1% |
+| r00 | h10 | 160 | 4.3 M | 2.8 M | 7.1 M | 6% |
+| r00 | h15 | 424 | 11.4 M | 8.4 M | 19.9 M | 16% |
+| r00 | h20 | 793 | 21.4 M | 17.2 M | **38.5 M** | 31% |
+| r00 | h25 | 1 328 | 35.8 M | 29.5 M | **65.3 M** | **53%** |
+| r08 | h05/h10/h15 | 26 / 63 / 63 | | | 1.1 / 2.8 / 3.1 M | 1-3% |
+| r16 | h05/h10/h15/h20 | 31 / 128 / 158 / 165 | | | 1.3 / 5.7 / 7.8 / 8.2 M | 1-7% |
+
+Round-2 -> round-3 instance ratios are 3.03x / 2.89x / 2.68x / 2.89x / 3.11x at h05..h25,
+matching the density change. **The h25 triangle-budget problem is gone**: 65.3 M against the
+import-confirmed 122.4 M ceiling, where round 2 sat at 136.9 M (112%). Extrapolated, h30
+lands near 86% -- still under.
+
+**Triangles are no longer the ladder's constraint. Generation memory is.**
+
+### h30: simulated, export failed on a MemoryError, run reported OK
+
+First attempt to get past where two earlier ones died
+(`--species "Silver Fir" --steps 4 --max-height 30`, sampled at 20 s):
+
+Simulation **succeeded** -- 30.2 m at cycle 102, `[Grove Complete] all milestones captured`.
+Export **failed**:
+
+```
+MemoryError
+USD export failed:
+  Type mismatch for </silver_fir_stems/silver_fir_stems_mesh.primvars:st>:
+  expected 'VtArray<GfVec2f>', got 'vector<VtValue,allocator<VtValue> >'
+  tree_export.py:432 in build_tree_mesh -> uv_primvar.Set(usd_uvs)
+  Export failed for tree 1 (Silver fir) at cycle 102 (h=30.2m)
+```
+
+A `MemoryError` hits while building the UV array, `usd_uvs` is left as an untyped fallback
+list, and `.Set()` is called on it anyway -- so USD reports a **type mismatch** and anyone
+reading the last line chases a schema bug instead of memory. The pipeline then printed
+`Step 4 [Silver Fir]: OK` and **exited 0**, leaving a **0-byte**
+`silver_fir_h30m_d41cm_stems_skeletal.usdc`. The import scripts correctly omit it.
+
+**The memory curve -- what the hazard never had:**
+
+| point | host RAM | growpy RSS |
+|---|---|---|
+| baseline, editor closed first | 41.7% | -- |
+| through h15/h20 | 59-60% | 13-14 GB |
+| **h25 milestone (cycle 86)** | **70%** | **22 GB** |
+| h30 reached (cycle 102) | 86% | 35 GB |
+| **export peak** | **99%** | **48.7 GB** |
+
+Per-cycle time tracks it: 2.89 s/cycle at c41, 5.75 at c70, 11.27 at c86.
+
+**h30 needs ~49 GB.** The earlier attempts ran with the editor resident at ~34 GB on a
+63.5 GB machine, leaving ~30 GB, so they died in the h25 -> h30 segment -- exactly where an
+identical h25 command "completed cleanly" minutes before. **Do not generate h30+ with the
+editor open.** Closing it first is what let this attempt reach h30 at all.
+
+### The 2026-08-07 hazard note was wrong on all three counts
+
+Recorded there: "killed externally twice, zero output and zero files written", blamed on
+"resource pressure from accumulated stale processes".
+
+| claim | status |
+|---|---|
+| stale Python processes caused it | **wrong** -- they are MCP servers (`unreal-engine-mcp`, `notebooklm-mcp`, `markitdown-mcp`), parent+child shim pairs from one client startup: ~214 MB and ~2 s CPU across six, over 18 h |
+| zero output | **not evidence** -- `growpy-dataset-pipeline` prints nothing without `-v`; its progress is INFO and the root logger sits at WARNING |
+| zero files written | **expected for any death before the export phase** -- USD export runs only after every grove finishes simulating |
+
+Drop the pre-flight process sweep. The real precondition is **memory headroom**.
+
+### Stage drops -- the ladder came out uneven
+
+Export logged `Skipping Silver fir tree N (fid=M) at cycle C: model is None` at several
+milestones, and the delivered ladder is ragged: r00 reached h25, **r08 stopped at h15**,
+**r16 stopped at h20**. Undiagnosed. Read any "h20/h25 coverage" claim per radius, not per
+species.
+
+### Import timings are good to about +/-30%, not to the digit
+
+The same `silver_fir` h15 asset measured **74.7 min** cold and **100.9 min** later the same
+day; h10 moved 524.9 s -> 692.1 s. Treat the wall-clock projections above as
+order-of-magnitude.
+
 ### What this design pass does NOT resolve
 
 - ~~**D8** — which prototype size round 2's recorded Gate-2 import validated~~ — **resolved
@@ -957,14 +1047,19 @@ it's the wall-clock one tracked in XRFF-323.
   section above.
 - ~~The ~3x over-prediction in the old stem-triangle fit~~ — **resolved 2026-08-13**: the fit
   predates the committed `build_cutoff_thickness = 0.0025` and is retired, not re-fitted.
-- h30/h35 data for any metric — not generated this session. The twig instance-count fit is
-  already known to under-predict by double digits at h25; do not extrapolate either fit past
-  h25 for planning purposes.
-- Whether `douglas_fir`'s ~45 m target (the tallest of the four conifers) is reachable — no
-  data for that species at height beyond its own pilot stages yet. It shares the same twig
-  prototype, so the confirmed 107,876-face cost applies to it too.
-- A real Gate-2 import at h20 or h25 to confirm the combined-budget numbers above actually
-  import cleanly, not just add up on paper.
+- ~~h30/h35 data for any metric~~ -- **partially resolved 2026-08-14**: h30 simulates and its
+  memory cost is measured, but **no h30 asset exists** -- the export died on a `MemoryError`.
+  h35 is untouched, and `silver_fir`'s allometry is fitted only to 30.85 m, so h35 would
+  extrapolate DBH.
+- Why the export failed beyond the `MemoryError` itself, and why a `MemoryError` is allowed to
+  surface as a USD type mismatch rather than aborting the export.
+- Why radii drop stages (`model is None`).
+- ~~Whether `douglas_fir`'s ~45 m target is reachable~~ -- **DBH is not its limit**: its
+  allometry covers **54.6 m**, the widest in the catalog. Generation memory is. The species
+  with a real allometry ceiling is **`scots_pine` at 25.2 m**, and nothing guards the upper
+  bound -- `allometry.correction_weight()` fades only *below* the fitted floor, so above the
+  fitted range the power law is applied at full weight with no clamp and no warning.
+- A real Gate-2 import at h20 or h25 -- **h05/h10/h15 done, h20/h25 in progress 2026-08-15.**
 
 ---
 
