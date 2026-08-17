@@ -294,6 +294,18 @@ def main():
         ),
     )
     parser.add_argument(
+        "--icons-only",
+        action="store_true",
+        help=(
+            "Fast path for parameter tuning / visual debugging: step 4 writes "
+            "only icon PNGs (branches + twigs, no skeleton) straight from the "
+            "Grove model per species, skipping USD/Nanite/wind/PVE/previews/ "
+            "export-control and the calibration/DBH/height-scaling and "
+            "bone-tagging work those need. Overrides --previews/--export-control/ "
+            "--pve/--wind (all skipped regardless)."
+        ),
+    )
+    parser.add_argument(
         "--clean",
         action="store_true",
         help="Clean output directories for each step before running. "
@@ -331,7 +343,7 @@ def main():
     logger.info(
         "Effective switches: calibrate=%s pve=%s wind=%s previews=%s "
         "export_control=%s icons=%s icon_components=%s profile=%s "
-        "(None = from TOML)",
+        "icons_only=%s (None = from TOML)",
         args.calibrate,
         args.pve,
         args.wind,
@@ -340,6 +352,7 @@ def main():
         args.icons,
         args.icon_components,
         args.profile,
+        args.icons_only,
     )
 
     # --generate-csvs: generate CSVs, then continue or exit
@@ -463,6 +476,7 @@ def main():
                     icons=args.icons,
                     icon_components=args.icon_components,
                     profile=args.profile,
+                    icons_only=args.icons_only,
                 )
             else:
                 failed = []
@@ -480,6 +494,7 @@ def main():
                         icons=args.icons,
                         icon_components=args.icon_components,
                         profile=args.profile,
+                        icons_only=args.icons_only,
                     )
                     elapsed_by_species[species] = time.monotonic() - t0
                     if not ok:

@@ -325,7 +325,11 @@ class GrowPyConfig:
     # script generation entirely for that tree (see pipelines/forest_stages.py
     # export_obj_direct). Twig prototype meshes still come from the small,
     # pre-existing per-species twig USD assets -- only the trunk and the
-    # per-instance twig placement math bypass USD.
+    # per-instance twig placement math bypass USD. "icons_only" skips USD/
+    # Nanite/wind/PVE/previews/export-control entirely and writes just the
+    # icon PNGs (branches + twigs, separate and merged) straight from the
+    # Grove model -- see export_icons_only. For parameter tuning / visual
+    # debugging runs where the mesh itself is not needed.
     export_mode: str = "unreal"
     export_skeletal: bool = True
     export_static: bool = False
@@ -556,9 +560,10 @@ class GrowPyConfig:
             kwargs["export_usd_format"] = fmt
         if "mode" in export:
             mode = export["mode"].lower()
-            if mode not in ("unreal", "helios"):
+            if mode not in ("unreal", "helios", "icons_only"):
                 raise ValueError(
-                    f"export.mode must be 'unreal' or 'helios', got '{mode}'"
+                    f"export.mode must be 'unreal', 'helios', or 'icons_only', "
+                    f"got '{mode}'"
                 )
             kwargs["export_mode"] = mode
         if "skeletal" in export:
@@ -588,8 +593,7 @@ class GrowPyConfig:
             kwargs["export_twig_density"] = float(export["twig_density"])
         if "twig_density_per_species" in export:
             kwargs["export_twig_density_per_species"] = {
-                str(k): float(v)
-                for k, v in export["twig_density_per_species"].items()
+                str(k): float(v) for k, v in export["twig_density_per_species"].items()
             }
         if "twig_reattach_threshold" in export:
             kwargs["export_twig_reattach_threshold"] = float(

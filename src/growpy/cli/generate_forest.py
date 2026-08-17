@@ -80,7 +80,6 @@ def _resolve_forest_data(args, config, project_root):
     return pd.read_csv(csv_path)
 
 
-
 def _resolve_static_export_for_obj(config) -> bool:
     """Force static mesh export on when OBJ export needs it.
 
@@ -340,6 +339,18 @@ Unreal Engine Integration:
             "meaningful when --icons is also on."
         ),
     )
+    parser.add_argument(
+        "--icons-only",
+        action="store_true",
+        help=(
+            "Fast path for parameter tuning / visual debugging: write only "
+            "the icon PNGs (branches + twigs, no skeleton) straight from the "
+            "Grove model, skipping USD/Nanite/wind/PVE/previews/export-control "
+            "and the calibration/DBH/height-scaling and bone-tagging work "
+            "those need. Sets export_mode = 'icons_only'; --skeletal/--static "
+            "are ignored."
+        ),
+    )
 
     # Mesh type export flags (independent, any combination works)
     parser.add_argument(
@@ -426,6 +437,11 @@ Unreal Engine Integration:
     config = get_config()
     config.resolve(args)
 
+    # export_mode is a scenario-level choice (config-only, no CLI_MAPPINGS
+    # entry -- see config/core.py), so --icons-only is applied here instead.
+    if args.icons_only:
+        config.export_mode = "icons_only"
+
     # --quiet overrides --verbose and config
     if args.quiet:
         config.verbose = False
@@ -437,7 +453,12 @@ Unreal Engine Integration:
     # Validate export flags
     _resolve_static_export_for_obj(config)
 
-    if not config.export_skeletal and not config.export_static:
+    # icons_only writes no mesh at all, so neither flag applies to it.
+    if (
+        config.export_mode != "icons_only"
+        and not config.export_skeletal
+        and not config.export_static
+    ):
         logger.error(
             "No mesh export types enabled. "
             "Enable at least one of: --skeletal, --static, or --export-obj"

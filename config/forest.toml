@@ -19,8 +19,13 @@ growth_cycle_limit = 160
 # captures all its own milestones) -- a heavily-shaded grove (e.g. r08/r16)
 # can hit a genuine temporary lull under Grove's own shading/pruning dynamics
 # well before growth_cycle_limit, silently truncating its upper height
-# stages. Raised from the code default of 10: observed real stalls of
-# 7-9 consecutive cycles for some species/radius combos reaching 15-20m.
+# stages. Below the code default of 10 -- and below the 7-9 consecutive
+# cycles observed for genuine temporary stalls on some species/radius combos
+# reaching 15-20m -- so it trades some of those recoverable lulls for a
+# faster ratchet loop; owner-confirmed intentional (2026-08-13, 7eb273b).
+# Expect r08/r16 previews to fall short of the r00 sibling's upper height
+# stages under this setting -- that is this knob working as configured, not
+# a bug; raise it past 9 if those upper stages are needed.
 plateau_cycles = 5
 # Number of grove.smooth() passes on branch angles (int, 0-20, 0 = disabled)
 # Each pass reduces sharp corner angles between branch segments.

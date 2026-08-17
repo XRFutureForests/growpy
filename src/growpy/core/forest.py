@@ -848,56 +848,80 @@ def _build_models_for_grove(
 
     Returns list of TreeSnapshot (model, skeleton, bones_info, height, dbh) per tree.
     """
+    icons_only = quality_params.get("icons_only", False)
     skeleton_connected = quality_params.get("skeleton_connected", True)
     skeletons = grove.build_skeletons(skeleton_connected)
 
-    skeleton_length = quality_params.get("skeleton_length", 2.0)
-    skeleton_reduce = quality_params.get("skeleton_reduce", 0.4)
-    skeleton_bias = quality_params.get("skeleton_bias", 0.5)
+    if icons_only:
+        # Bone tagging exists purely for skinning/binding an assembly export;
+        # icons_only never binds twigs to bones, so skip it entirely.
+        tree_bones: list = [[] for _ in range(len(grove.trees))]
+    else:
+        skeleton_length = quality_params.get("skeleton_length", 2.0)
+        skeleton_reduce = quality_params.get("skeleton_reduce", 0.4)
+        skeleton_bias = quality_params.get("skeleton_bias", 0.5)
 
-    all_bones = grove.tag_bone_id(
-        skeleton_length,
-        skeleton_reduce**2,
-        skeleton_bias,
-        skeleton_connected,
-    )
-    tree_bones = split_bones_by_tree(all_bones, len(grove.trees))
+        all_bones = grove.tag_bone_id(
+            skeleton_length,
+            skeleton_reduce**2,
+            skeleton_bias,
+            skeleton_connected,
+        )
+        tree_bones = split_bones_by_tree(all_bones, len(grove.trees))
 
-    build_options = {
-        "resolution": quality_params.get("resolution", 24),
-        "resolution_reduce": quality_params.get("resolution_reduce", 0.8),
-        "build_cutoff_age": quality_params.get("build_cutoff_age", 0),
-        "build_cutoff_thickness": quality_params.get("build_cutoff_thickness", 0.01),
-        "build_blend": quality_params.get("build_blend", True),
-        "build_end_cap": quality_params.get("build_end_cap", True),
-    }
-    models = grove.build_models(build_options)
+    if icons_only:
+        # Icons read twig positions/directions and the skeleton above, never
+        # mesh geometry -- build at the cheapest resolution, no blend/end-cap,
+        # and with the cutoff disabled so twig extraction sees Grove's full
+        # raw output directly (no recovery pass needed, nothing was cut).
+        build_options = {
+            "resolution": 4,
+            "resolution_reduce": 1.0,
+            "build_cutoff_age": 0,
+            "build_cutoff_thickness": 0.0,
+            "build_blend": False,
+            "build_end_cap": False,
+        }
+        models = grove.build_models(build_options)
+        precut_models: list = []
+    else:
+        build_options = {
+            "resolution": quality_params.get("resolution", 24),
+            "resolution_reduce": quality_params.get("resolution_reduce", 0.8),
+            "build_cutoff_age": quality_params.get("build_cutoff_age", 0),
+            "build_cutoff_thickness": quality_params.get(
+                "build_cutoff_thickness", 0.01
+            ),
+            "build_blend": quality_params.get("build_blend", True),
+            "build_end_cap": quality_params.get("build_end_cap", True),
+        }
+        models = grove.build_models(build_options)
 
-    # Companion build with the cutoff disabled, so the export can recover the
-    # twigs the cutoff deletes instead of guessing a density multiplier. Grove
-    # returns identical twig arrays regardless of mesh resolution, so this is
-    # built at the cheapest resolution -- only its twig data is used.
-    precut_models: list = []
-    if build_options["build_cutoff_thickness"] or build_options["build_cutoff_age"]:
-        try:
-            precut_models = grove.build_models(
-                {
-                    **build_options,
-                    "resolution": 4,
-                    "resolution_reduce": 1.0,
-                    "build_blend": False,
-                    "build_end_cap": False,
-                    "build_cutoff_age": 0,
-                    "build_cutoff_thickness": 0.0,
-                }
-            )
-        except Exception:
-            logger.warning(
-                "  %s: pre-cutoff build failed; twig recovery unavailable",
-                species_name,
-                exc_info=True,
-            )
-            precut_models = []
+        # Companion build with the cutoff disabled, so the export can recover the
+        # twigs the cutoff deletes instead of guessing a density multiplier. Grove
+        # returns identical twig arrays regardless of mesh resolution, so this is
+        # built at the cheapest resolution -- only its twig data is used.
+        precut_models = []
+        if build_options["build_cutoff_thickness"] or build_options["build_cutoff_age"]:
+            try:
+                precut_models = grove.build_models(
+                    {
+                        **build_options,
+                        "resolution": 4,
+                        "resolution_reduce": 1.0,
+                        "build_blend": False,
+                        "build_end_cap": False,
+                        "build_cutoff_age": 0,
+                        "build_cutoff_thickness": 0.0,
+                    }
+                )
+            except Exception:
+                logger.warning(
+                    "  %s: pre-cutoff build failed; twig recovery unavailable",
+                    species_name,
+                    exc_info=True,
+                )
+                precut_models = []
 
     measurements = extract_tree_measurements(grove)
 
