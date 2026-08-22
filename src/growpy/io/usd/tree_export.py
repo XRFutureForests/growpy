@@ -47,8 +47,11 @@ from __future__ import annotations
 
 import logging
 import math
+from array import array as _pyarray
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 from ...utils.pxr_init import ensure_pxr_with_unreal_schema
 
@@ -299,7 +302,11 @@ def build_tree_mesh(
                 nbz = bz + (tbz - bz) * weight
                 return nax, nay, naz, nbx, nby, nbz
 
-            usd_points = []
+            # Preallocated typed buffer, filled by index: the scaled path runs
+            # over every vertex (7M+ on an h15 open-grown conifer), and a
+            # Python list of that many Gf.Vec3f is memory this export cannot
+            # afford. Same output, one array instead of N objects.
+            pts_out = np.empty((len(points), 3), dtype=np.float32)
             for i, p in enumerate(points):
                 local_idx = vertex_bone_ids[i] - bone_id_offset
                 local_idx = max(0, min(local_idx, len(bone_axes) - 1))
@@ -318,7 +325,9 @@ def build_tree_mesh(
                     s = radial_scale + (crown_scale - radial_scale) * t
 
                 if abs(s - 1.0) < 1e-6:
-                    usd_points.append(Gf.Vec3f(p.x, p.y, p.z))
+                    pts_out[i, 0] = p.x
+                    pts_out[i, 1] = p.y
+                    pts_out[i, 2] = p.z
                     continue
 
                 # Start from this vertex's own bone frame.
@@ -388,48 +397,84 @@ def build_tree_mesh(
                 vx, vy, vz = p.x - bx, p.y - by, p.z - bz
                 dot = vx * ax + vy * ay + vz * az
                 px, py, pz = vx - dot * ax, vy - dot * ay, vz - dot * az
-                usd_points.append(
-                    Gf.Vec3f(
-                        p.x + (s - 1.0) * px,
-                        p.y + (s - 1.0) * py,
-                        p.z + (s - 1.0) * pz,
-                    )
-                )
+                pts_out[i, 0] = p.x + (s - 1.0) * px
+                pts_out[i, 1] = p.y + (s - 1.0) * py
+                pts_out[i, 2] = p.z + (s - 1.0) * pz
+
+            usd_points = Vt.Vec3fArray.FromNumpy(pts_out)
+            del pts_out
         else:
-            usd_points = [Gf.Vec3f(p.x, p.y, p.z) for p in points]
+            # Same reasoning as the faces/UV block below: stream straight into
+            # a typed buffer instead of building 7M+ Gf.Vec3f Python objects.
+            pts_flat = np.fromiter(
+                (c for p in points for c in (p.x, p.y, p.z)),
+                dtype=np.float32,
+                count=len(points) * 3,
+            )
+            usd_points = Vt.Vec3fArray.FromNumpy(pts_flat.reshape(-1, 3))
+            del pts_flat
 
         # Export scaled vertex positions for twig face centroid computation.
         # Assembly export uses these to place twigs on the already-scaled mesh
         # instead of applying a separate radial transform.
         if scaled_points_out is not None and radial_scale != 1.0:
-            scaled_points_out.extend((pt[0], pt[1], pt[2]) for pt in usd_points)
+            # One numpy view, not 7M tuples. Consumers only ever index this
+            # (scaled_points[vi][0..2]) or np.asarray() it, both of which work
+            # on an (N, 3) array -- and the asarray becomes a no-op copy.
+            scaled_points_out.append(np.asarray(usd_points, dtype=np.float32))
 
-        # Convert faces to USD format
-        face_vertex_counts = [len(face) for face in faces]
-        face_vertex_indices = []
+        # Convert faces to USD format.
+        #
+        # Typed buffers rather than Python lists throughout this block. These
+        # are the largest arrays in the export and Python-object copies of them
+        # are what put an open-grown 25 m conifer out of reach: profiled on an
+        # h15 open-grown silver fir (155k branches, 7.0M points, 6.6M faces,
+        # 24.9M face-varying UVs), list(model.uvs) alone cost 3.4 GB and
+        # list(model.faces) 1.5 GB, against ~200 MB and ~130 MB for the
+        # equivalent typed arrays. h25 is roughly 3x larger again.
+        #
+        # array('i') keeps 4 bytes per index while still supporting append in a
+        # single pass; the index total is not known up front because caps are
+        # triangles while the shaft is quads, so it cannot be preallocated.
+        face_counts_buf = _pyarray("i")
+        face_indices_buf = _pyarray("i")
         for face in faces:
-            face_vertex_indices.extend(face)
+            face_counts_buf.append(len(face))
+            face_indices_buf.extend(face)
 
         # Set mesh topology
         mesh.CreatePointsAttr(usd_points)
-        mesh.CreateFaceVertexCountsAttr(face_vertex_counts)
-        mesh.CreateFaceVertexIndicesAttr(face_vertex_indices)
+        mesh.CreateFaceVertexCountsAttr(
+            Vt.IntArray.FromNumpy(np.frombuffer(face_counts_buf, dtype=np.int32))
+        )
+        mesh.CreateFaceVertexIndicesAttr(
+            Vt.IntArray.FromNumpy(np.frombuffer(face_indices_buf, dtype=np.int32))
+        )
+        del face_counts_buf, face_indices_buf
 
         # Add UVs for texture mapping
         # CRITICAL: UVs are required for bark textures to display correctly
         if uvs and len(uvs) > 0:
             primvars_api = UsdGeom.PrimvarsAPI(mesh)
 
-            # Convert Grove UVs to USD format
-            # Grove UVs are tuples (u, v)
-            usd_uvs = [Gf.Vec2f(uv[0], uv[1]) for uv in uvs]
+            # Grove UVs are (u, v) tuples, one per face-vertex, so this is the
+            # biggest array of the lot. np.fromiter with an explicit count
+            # allocates the result once and streams into it -- no intermediate
+            # Python list of tuples and no list of Gf.Vec2f.
+            uv_count = len(uvs)
+            uv_flat = np.fromiter(
+                (c for uv in uvs for c in (uv[0], uv[1])),
+                dtype=np.float32,
+                count=uv_count * 2,
+            )
 
             # Create UV primvar with faceVarying interpolation
             # faceVarying means one UV per face-vertex (matches face_vertex_indices)
             uv_primvar = primvars_api.CreatePrimvar(
                 "st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.faceVarying
             )
-            uv_primvar.Set(usd_uvs)
+            uv_primvar.Set(Vt.Vec2fArray.FromNumpy(uv_flat.reshape(uv_count, 2)))
+            del uv_flat
 
         # Add all model attributes from Grove (face and point attributes)
         # These provide rich data for analysis but add ~70% file size

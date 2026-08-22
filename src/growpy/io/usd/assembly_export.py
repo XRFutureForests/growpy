@@ -936,7 +936,9 @@ def export_tree_as_nanite_assembly(
 
         # Pass scaled points to twig extraction so positions come from
         # face centroids of the already-scaled mesh (None when no scaling).
-        _sp = _scaled_pts if _scaled_pts else None
+        # build_tree_mesh appends a single (N, 3) float32 array rather than a
+        # list of N tuples -- same indexing, a fraction of the memory.
+        _sp = _scaled_pts[0] if _scaled_pts else None
 
         # Extract twig placements from Grove model BEFORE creating assembly
         twig_placements = None
