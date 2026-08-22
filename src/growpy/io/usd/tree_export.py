@@ -418,10 +418,15 @@ def build_tree_mesh(
         # Assembly export uses these to place twigs on the already-scaled mesh
         # instead of applying a separate radial transform.
         if scaled_points_out is not None and radial_scale != 1.0:
-            # One numpy view, not 7M tuples. Consumers only ever index this
-            # (scaled_points[vi][0..2]) or np.asarray() it, both of which work
-            # on an (N, 3) array -- and the asarray becomes a no-op copy.
-            scaled_points_out.append(np.asarray(usd_points, dtype=np.float32))
+            # Deliberately plain float tuples, not the numpy array the rest
+            # of this function now uses. Twig placement positions derived
+            # from these end up in Gf.Vec3f/Gf.Quath, which are Boost.Python
+            # bindings that accept float but reject numpy.float32 -- and the
+            # numpy scalars propagate silently through centroid and normal
+            # arithmetic before failing deep in the assembly export. The
+            # memory saved here is not worth leaking a dtype across three
+            # module boundaries.
+            scaled_points_out.extend((pt[0], pt[1], pt[2]) for pt in usd_points)
 
         # Convert faces to USD format.
         #

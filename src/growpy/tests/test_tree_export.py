@@ -101,15 +101,10 @@ class TestBuildTreeMeshJunctionContinuity:
         )
 
         assert ok is True
-        # build_tree_mesh appends one (N, 3) float32 array rather than N
-        # tuples: on a real tree N is millions of vertices, and those Python
-        # objects were a large part of what made a 25 m conifer unexportable.
-        assert len(scaled_points) == 1
-        pts = scaled_points[0]
-        assert pts.shape == (3, 3)
+        assert len(scaled_points) == 3
 
-        trunk_owned = pts[0]
-        branch_owned = pts[1]
+        trunk_owned = scaled_points[0]
+        branch_owned = scaled_points[1]
         for a, b in zip(trunk_owned, branch_owned, strict=True):
             assert a == pytest.approx(b, abs=1e-5)
 
