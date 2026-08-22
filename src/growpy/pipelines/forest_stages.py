@@ -17,7 +17,6 @@ from typing import Any
 
 import bpy  # noqa: F401  (required; generate_forest_stages runs Grove via bpy)
 import pandas as pd
-from tqdm import tqdm
 
 from growpy import (
     GrowPyConfig,
@@ -661,8 +660,6 @@ def generate_forest_stages(
     Returns:
         Count of captured milestone stages that failed to export (0 = clean).
     """
-    from growpy.utils.log import is_verbose
-
     if timer is None:
         timer = ProfileTimer(enabled=False)
 
@@ -776,56 +773,6 @@ def generate_forest_stages(
             ", ".join(f"{sp} {h:.1f}m" for sp, h in sorted(species_max_height.items())),
         )
 
-    # Run simulation with height-threshold-based snapshots
-    with timer.track("simulate_with_snapshots"):
-        snapshots, milestone_map = simulate_forest_growth_with_snapshots(
-            forest,
-            max_cycles=global_max_cycles,
-            snapshot_cycles=[],
-            smooth_iterations=smooth_iterations,
-            preset_overrides=preset_overrides,
-            use_species_curves=config.calibration_align_height,
-            quality_params=quality_params,
-            height_interval=effective_interval,
-            max_height=effective_max_height,
-            species_max_height=species_max_height,
-            plateau_cycles=plateau_cycles if plateau_cycles is not None else 10,
-        )
-
-    # A species that never reaches its ceiling silently produces fewer stages,
-    # which is how the Douglas fir shortfall went unnoticed. Report it.
-    # Per-radius so a shortfall specific to one surround-radius variant (the
-    # heavily-shaded r08/r16, typically) is not masked by a less-competed
-    # sibling (r00) reaching the same species' ceiling.
-    species_tree_radii: dict[str, list[float]] = {}
-    if "surround_radius" in forest_data.columns:
-        for sp_name, group in forest_data.groupby("species", sort=False):
-            species_tree_radii[sp_name] = [
-                float(r) if pd.notna(r) else 0.0 for r in group["surround_radius"]
-            ]
-    _warn_uncaptured_milestones(
-        milestone_map,
-        species_max_height,
-        effective_interval,
-        global_max_cycles,
-        run_max_height=effective_max_height,
-        tree_radius_labels=species_tree_radii,
-    )
-
-
-    # Every milestone the simulation captured is a stage that MUST reach disk.
-    # Anything short of that is a silent hole in the dataset, so count it and
-    # let the caller fail the run.
-    captured_stage_count = sum(
-        len(trees)
-        for per_species in milestone_map.values()
-        for trees in per_species.values()
-    )
-    exported_stage_count = 0
-    if not snapshots:
-        logger.error("No snapshots captured during simulation")
-        return 1
-
     # Clean stale exports (only subdirectories that this CSV will write to)
     output_dir.mkdir(parents=True, exist_ok=True)
     # Ensure shared instances directory exists (don't wipe -- other species may share it)
@@ -850,9 +797,10 @@ def generate_forest_stages(
         elif sp_dir.exists():
             shutil.rmtree(sp_dir)
 
-    # Export each snapshot
+    # Stages are exported as the simulation captures them (see _export_cycle),
+    # not in a phase of their own -- so there is no total to announce here.
     logger.info("\n%s", "=" * 60)
-    logger.info("PHASE 3: EXPORTING STAGES (%d cycles)", len(snapshots))
+    logger.info("PHASE 2/3: SIMULATING AND EXPORTING STAGES")
     logger.info("%s", "=" * 60)
 
     # Cache height-DBH models and fallback curves per species for radial scaling
@@ -873,9 +821,21 @@ def generate_forest_stages(
 
     exported_files = []
     _species_info_written: set = set()
-    for cycle, species_snapshots in tqdm(
-        snapshots.items(), desc="Exporting stages", disable=not is_verbose()
-    ):
+    # Counts stages that actually reached disk, so the run can be compared
+    # against the milestones the simulation captured and fail if any is missing.
+    # Must be bound before _export_cycle below, which declares it nonlocal.
+    exported_stage_count = 0
+
+    def _export_cycle(cycle, species_snapshots, milestone_map):
+        """Export one captured milestone cycle, then let it be freed.
+
+        Invoked by the simulation as each cycle's models are built (see
+        simulate_forest_growth_with_snapshots' on_capture) rather than from
+        a phase running after every stage is already in memory: holding
+        h05..h25 of an open-grown 25 m conifer at once measured 37 GB and
+        died with MemoryError on a 63.5 GB host.
+        """
+        nonlocal exported_stage_count
         for species_name, tree_data_list in species_snapshots.items():
             # Get fids and max cycles for this species from forest data
             species_rows = forest_data[forest_data["species"] == species_name]
@@ -1122,6 +1082,53 @@ def generate_forest_stages(
                             height,
                         )
 
+
+    # A species that never reaches its ceiling silently produces fewer stages,
+    # which is how the Douglas fir shortfall went unnoticed. Report it.
+    # Per-radius so a shortfall specific to one surround-radius variant (the
+    # heavily-shaded r08/r16, typically) is not masked by a less-competed
+    # sibling (r00) reaching the same species' ceiling.
+    species_tree_radii: dict[str, list[float]] = {}
+    if "surround_radius" in forest_data.columns:
+        for sp_name, group in forest_data.groupby("species", sort=False):
+            species_tree_radii[sp_name] = [
+                float(r) if pd.notna(r) else 0.0 for r in group["surround_radius"]
+            ]
+
+    # Run simulation with height-threshold-based snapshots
+    with timer.track("simulate_with_snapshots"):
+        snapshots, milestone_map = simulate_forest_growth_with_snapshots(
+            forest,
+            max_cycles=global_max_cycles,
+            snapshot_cycles=[],
+            smooth_iterations=smooth_iterations,
+            preset_overrides=preset_overrides,
+            use_species_curves=config.calibration_align_height,
+            quality_params=quality_params,
+            height_interval=effective_interval,
+            max_height=effective_max_height,
+            species_max_height=species_max_height,
+            plateau_cycles=plateau_cycles if plateau_cycles is not None else 10,
+            on_capture=_export_cycle,
+        )
+
+    _warn_uncaptured_milestones(
+        milestone_map,
+        species_max_height,
+        effective_interval,
+        global_max_cycles,
+        run_max_height=effective_max_height,
+        tree_radius_labels=species_tree_radii,
+    )
+
+    # Every milestone the simulation captured is a stage that MUST reach disk.
+    # Anything short of that is a silent hole in the dataset, so count it and
+    # let the caller fail the run.
+    captured_stage_count = sum(
+        len(trees)
+        for per_species in milestone_map.values()
+        for trees in per_species.values()
+    )
     logger.info("\nExported %d tree stage files", len(exported_files))
 
     shortfall = captured_stage_count - exported_stage_count

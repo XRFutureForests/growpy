@@ -69,18 +69,23 @@ enabled = true
 # species' seed.json during simulation (step 4). Independent of enabled
 # above -- step 4 checks this flag directly and loads whatever a species'
 # seed.json carries, calibration-derived or not.
-# Must be true for the drop_decay_curve/drop_weak_curve ramps added to
-# norway_spruce/silver_fir/silver_birch to take effect (see those
-# seed.json files) -- without a gradual ramp-in, those species' static
-# drop_decay/drop_weak values combine with Grove's own growth-deceleration
-# to collapse the tree's structure (confirmed via per-cycle node-count
-# tracing: healthy growth to near-target height, then a multi-cycle node
-# crash with no recovery) before reaching the 20m dataset target.
-# Safe to leave true now that fresh presets (data/assets/presets/*.seed.json)
-# carry no baked-in _yield_table_calibration data -- prepare_assets.py's
-# copy-skip guard (see its comment) preserves both that block and any
-# "_curve" key, so a clean re-copy won't reintroduce the old
-# decelerating-grow_length bug this flag was previously turned off to avoid.
+#
+# MUST BE TRUE for the drop_decay_curve/drop_weak_curve ramps to take effect.
+# Those ramps are what stop 7 of the 11 dataset species from losing structure
+# outright under sustained shade -- see config/preset_patches.json for the
+# per-species measurements and config/forest.toml [forest] plateau_cycles for
+# why the failure looked like a plateau. With align_height = false those
+# species grow to 12-23 m at r05 and then collapse to 0.6-13 m, and the
+# pipeline still exits 0.
+#
+# The ramps live in config/preset_patches.json (tracked) and are written into
+# data/assets/presets/*.seed.json by step 1. They used to be described here as
+# already applied to norway_spruce/silver_fir/silver_birch when in fact no
+# preset carried them: data/assets/ is gitignored, so a preset-only edit had
+# nowhere durable to live. prepare_assets.py's copy-skip guard preserves both
+# the _yield_table_calibration block and any "_curve" key, and now reapplies
+# the tracked patch on the skip path too, so neither a clean rebuild nor an
+# incremental one loses them.
 align_height = true
 # DBH alignment moved to [export] dbh_from_allometry in forest.toml -- it is
 # independent of calibration, since its input is the allometry artifact rather

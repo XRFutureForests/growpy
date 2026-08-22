@@ -348,6 +348,7 @@ def simulate_forest_growth_with_snapshots(
     max_height: float = 0.0,
     species_max_height: dict[str, float] | None = None,
     plateau_cycles: int = 10,
+    on_capture: Any = None,
 ) -> tuple[SnapshotData, dict[int, dict[str, dict[int, float]]]]:
     """Simulate forest growth and capture snapshots at height milestones.
 
@@ -375,6 +376,13 @@ def simulate_forest_growth_with_snapshots(
             species' calibrated growth model). When set, each species stops capturing
             milestones above its own max and is considered complete at that height.
             Combined with max_height by taking the lower of the two when both apply.
+        on_capture: Optional ``fn(cycle, {species: [TreeSnapshot, ...]},
+            milestone_map)`` invoked as soon as a cycle's models are built. When
+            given, that cycle is handed over and immediately dropped instead of
+            being retained until the end, so peak memory is one milestone rather
+            than the whole ladder -- the difference between fitting in RAM and
+            not, for an open-grown 25 m conifer. The returned SnapshotData is
+            then empty by design; milestone_map is still complete.
 
     Returns:
         Tuple of:
@@ -454,6 +462,7 @@ def simulate_forest_growth_with_snapshots(
             max_height=max_height,
             species_max_height=species_max_height,
             plateau_cycles=plateau_cycles,
+            on_capture=on_capture,
         )
     else:
         snapshots = _simulate_cycle_based_mode(
@@ -490,6 +499,7 @@ def _simulate_height_threshold_mode(
     max_height: float = 0.0,
     species_max_height: dict[str, float] | None = None,
     plateau_cycles: int = 10,
+    on_capture: Any = None,
 ) -> tuple[SnapshotData, dict[int, dict[str, dict[int, float]]]]:
     """Run simulation with height-threshold-based snapshots.
 
@@ -725,6 +735,19 @@ def _simulate_height_threshold_mode(
                         global_idx,
                         milestone_h,
                     )
+
+        # Hand this cycle straight to the caller and drop it. Retaining every
+        # milestone until an export phase at the end is what made an open-grown
+        # 25 m conifer impossible to build: models are the bulk of the memory,
+        # and holding h05..h25 at once measured 37 GB before export even began
+        # (MemoryError on a 63.5 GB host). Exporting at capture caps the
+        # retained geometry at a single milestone instead of the whole ladder.
+        # Safe to do here rather than after simulation: every model and skeleton
+        # was already built from this cycle's grove state, and the later
+        # _apply_smoothing() pass mutates grove nodes, not the built models.
+        if on_capture is not None and snapshots.get(cycle):
+            on_capture(cycle, snapshots[cycle], milestone_map)
+            del snapshots[cycle]
 
         # Freeze each grove individually once its own trees have captured
         # all their milestones (see frozen_grove_indices comment above).
