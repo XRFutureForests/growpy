@@ -616,8 +616,18 @@ def generate_forest_stages(
     skip_validation: bool = False,
     skeleton_overrides: dict[str, Any] | None = None,
     export_tree_ids: set | None = None,
-) -> None:
+) -> int:
     """Generate trees at multiple growth stages using height-based milestones.
+
+    Returns the number of milestone stages that the simulation captured but that
+    failed to export. Zero means every captured stage reached disk. The caller
+    turns a non-zero count into a non-zero exit code -- without that, an export
+    failure is a single warning line in a log nobody reads while the process
+    still exits 0, `Step 4 [X]: OK` is printed, and the stage is simply missing
+    from the dataset. Counting *captured* milestones rather than a fixed matrix
+    size is deliberate: a shaded radius legitimately plateaus below 25 m, so a
+    static expectation would cry wolf on every run.
+
 
     Exports multiple tree models at different heights from a single tree position,
     with height and DBH encoded in the filename for easy asset selection.
@@ -647,6 +657,9 @@ def generate_forest_stages(
         timer: Optional ProfileTimer for tracking execution times
         skip_pve_json: If True, skip PVE preset JSON generation
         skip_validation: If True, skip assembly validation
+
+    Returns:
+        Count of captured milestone stages that failed to export (0 = clean).
     """
     from growpy.utils.log import is_verbose
 
@@ -673,7 +686,7 @@ def generate_forest_stages(
     if missing_cols:
         logger.error("Missing required columns: %s", missing_cols)
         logger.error("  Multi-stage mode requires height to bound milestones")
-        return
+        return 1
 
     forest_data = forest_data.copy()
     if "fid" not in forest_data.columns:
@@ -799,9 +812,19 @@ def generate_forest_stages(
         tree_radius_labels=species_tree_radii,
     )
 
+
+    # Every milestone the simulation captured is a stage that MUST reach disk.
+    # Anything short of that is a silent hole in the dataset, so count it and
+    # let the caller fail the run.
+    captured_stage_count = sum(
+        len(trees)
+        for per_species in milestone_map.values()
+        for trees in per_species.values()
+    )
+    exported_stage_count = 0
     if not snapshots:
         logger.error("No snapshots captured during simulation")
-        return
+        return 1
 
     # Clean stale exports (only subdirectories that this CSV will write to)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1055,6 +1078,7 @@ def generate_forest_stages(
                         with timer.track("stage_icons_only"):
                             export_icons_only(ctx)
                         if ctx.export_success:
+                            exported_stage_count += 1
                             logger.info("  Icons: %s", ctx.file_prefix)
                         else:
                             logger.warning(
@@ -1072,6 +1096,8 @@ def generate_forest_stages(
                         export_assembly(ctx)
 
                     if ctx.export_success:
+                        if variant_idx == 0:
+                            exported_stage_count += 1
                         exported_files.append(str(ctx.usd_path))
                         logger.info("  Exported: %s", ctx.usd_path.name)
 
@@ -1097,3 +1123,18 @@ def generate_forest_stages(
                         )
 
     logger.info("\nExported %d tree stage files", len(exported_files))
+
+    shortfall = captured_stage_count - exported_stage_count
+    if shortfall > 0:
+        logger.error(
+            "%d of %d captured milestone stage(s) failed to export. The dataset "
+            "is INCOMPLETE -- see the 'Export failed' / 'model is None' warnings "
+            "above for which trees and cycles.",
+            shortfall,
+            captured_stage_count,
+        )
+    else:
+        logger.info(
+            "All %d captured milestone stage(s) exported", captured_stage_count
+        )
+    return max(0, shortfall)

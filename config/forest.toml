@@ -16,19 +16,25 @@ growth_cycle_limit = 160
 # early, short of growth_cycle_limit above. Height-milestone dataset
 # production shares this single counter across whichever radius groves for a
 # species are still growing (each radius freezes independently once it
-# captures all its own milestones) -- a heavily-shaded grove (e.g. r08/r16)
-# can hit a genuine temporary lull under Grove's own shading/pruning dynamics
-# well before growth_cycle_limit, silently truncating its upper height
-# stages. Below the code default of 10; owner-confirmed intentional
-# (2026-08-13, 7eb273b), trading some recoverable lulls for a faster ratchet
-# loop. Verified 2026-08-17 that raising it does not reliably recover those
-# stages, though: re-running the 25m preview set's short species at 15 (up
-# from 5) reproduced the exact same r08/r16 shortfalls -- each of those
-# stalls held for the full 15-cycle window with zero height gain, not just
-# the 7-9 cycles the original note here assumed. Expect r08/r16 previews to
-# fall short of the r00 sibling's upper height stages under Grove's own
-# shading/pruning dynamics -- that is this knob (and Grove's competition
-# model) working as configured, not a bug.
+# captures all its own milestones). Below the code default of 10;
+# owner-confirmed intentional (2026-08-13, 7eb273b).
+#
+# 2026-08-22: this knob was NOT the cause of the missing upper stages, and the
+# note that used to sit here -- "expect shaded radii to fall short ... that is
+# this knob and Grove's competition model working as configured, not a bug" --
+# was wrong. Per-cycle height tracing (data/tmp/run25m/seed_probe.py) shows the
+# shaded trees do not stall, they LOSE STRUCTURE: at r05, common_ash peaked at
+# 23.4 m and ended at 0.6 m, silver_birch 12.3 -> 1.4, norway_spruce 17.1 ->
+# 6.5, silver_fir 18.1 -> 5.1, wild_cherry 20.6 -> 4.4, scots_pine 20.5 ->
+# 13.6, european_oak 19.6 -> 12.7. Seven of eleven species. Plateau detection
+# ratchets on historical maximum height, so a collapsing tree reads as a
+# plateaued one and the ladder simply ends -- which is why raising
+# plateau_cycles to 15 changed nothing and looked like confirmation.
+#
+# The cause is Grove's structural collapse at high cycle counts under sustained
+# shade, and the remedy is the documented drop_decay_curve/drop_weak_curve
+# ease-in ramps now carried in config/preset_patches.json. With them,
+# norway_spruce and silver_fir both reach the full h25 ladder at r05.
 plateau_cycles = 5
 # Number of grove.smooth() passes on branch angles (int, 0-20, 0 = disabled)
 # Each pass reduces sharp corner angles between branch segments.
@@ -49,8 +55,12 @@ height_interval = 5
 # Reduces growth cycles and number of height stages for faster runs
 # 0 = no limit (use full CSV heights)
 # This is a step-4 (export) setting only; step 3's calibration has its own
-# independent [growth_models] max_height in growth_models.toml.
-max_height = 15
+# independent [growth_models] max_height in growth_models.toml -- keep the two
+# in step, so calibration always covers at least the exported range.
+# 25 (2026-08-22): the dataset target is the h05/h10/h15/h20/h25 ladder at four
+# surround radii. Raising this without raising the calibration cap would export
+# h20/h25 off the end of the fitted curves.
+max_height = 25
 
 # --- Export options ---
 [export]

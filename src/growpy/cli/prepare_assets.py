@@ -115,6 +115,64 @@ def load_species_csv(csv_path: Path, use_gbif: bool = True) -> pd.DataFrame:
     return df
 
 
+def _load_preset_patches() -> dict:
+    """Read config/preset_patches.json, the tracked home for per-species edits.
+
+    ``data/assets/`` is gitignored, so an edit made only to a copied preset is
+    invisible to review and is erased by the next clean rebuild -- which is how
+    the drop_decay_curve/drop_weak_curve ramps went missing while the docs, the
+    copy-skip guard below and growth_models.toml all still described them as
+    applied. Keeping them here makes a clean rebuild reproduce them.
+
+    Returns an empty dict when the file is absent, so this stays optional.
+    """
+    import json as _json
+
+    from growpy.config.core import _find_config_dir
+
+    # Follows GROWPY_CONFIG, so a pilot config dir can carry its own patches.
+    config_dir = _find_config_dir()
+    if config_dir is None:
+        return {}
+    patch_file = config_dir / "preset_patches.json"
+    if not patch_file.exists():
+        return {}
+    try:
+        with open(patch_file, encoding="utf-8") as f:
+            data = _json.load(f)
+    except (OSError, ValueError) as exc:
+        logger.warning("Could not read %s: %s -- no patches applied", patch_file, exc)
+        return {}
+    # Keys starting with "_" are prose (rationale for each entry), not species.
+    return {k: v for k, v in data.items() if not k.startswith("_")}
+
+
+def _apply_preset_patch(preset_path: Path, patch: dict | None) -> None:
+    """Merge one species' tracked patch into a freshly copied preset.
+
+    Shallow merge: a patch key replaces the Grove value outright. Keys ending in
+    ``_curve`` are not Grove properties -- growpy's PresetOverrides reads them
+    and applies them per cycle (see config/preset_overrides.py).
+    """
+    if not patch:
+        return
+
+    import json as _json
+
+    with open(preset_path, encoding="utf-8") as f:
+        preset = _json.load(f)
+    preset.update(patch)
+    with open(preset_path, "w", encoding="utf-8") as f:
+        _json.dump(preset, f, indent=4)
+    logger.info(
+        "Patched %s with %d key(s) from preset_patches.json: %s",
+        preset_path.name,
+        len(patch),
+        ", ".join(sorted(patch)),
+    )
+
+
+
 def main():
     """CSV-driven asset preparation - only copy assets for species in CSV."""
     parser = argparse.ArgumentParser(
@@ -275,6 +333,7 @@ CSV Format Support:
     # Copy presets with standardized naming
     src_presets = grove_dir / "presets"
     dst_presets = assets_dir / "presets"
+    preset_patches = _load_preset_patches()
 
     for _, row in df.iterrows():
         preset_file = row["Preset"]
@@ -307,11 +366,22 @@ CSV Format Support:
                             "skipping overwrite",
                             dst_file.name,
                         )
+                        # Still reapply the tracked patch. The guard protects
+                        # step 3's calibration from being clobbered by a fresh
+                        # copy; it must not also block a config-declared patch
+                        # from reaching a preset that already exists, or the
+                        # patch would only ever land on a clean rebuild.
+                        # _apply_preset_patch is a shallow update with fixed
+                        # values, so repeating it is a no-op.
+                        _apply_preset_patch(
+                            dst_file, preset_patches.get(standardized_name)
+                        )
                         stats["presets_copied"] += 1
                         continue
                 except Exception:
                     pass
             shutil.copy2(src_file, dst_file)
+            _apply_preset_patch(dst_file, preset_patches.get(standardized_name))
             stats["presets_copied"] += 1
         else:
             logger.warning("Preset not found: %s (for %s)", preset_file, common_name)

@@ -14,8 +14,8 @@ from tqdm import tqdm
 from ..config import get_config
 from ..config.preset_overrides import PresetOverrides, get_species_overrides
 from ..utils.log import is_verbose
-from .grove import add_tree_to_grove, create_grove, enable_surround
-from .tree import extract_tree_measurements
+from .grove import add_tree_to_grove, create_grove, disable_surround, enable_surround
+from .tree import extract_tree_heights, extract_tree_measurements
 
 
 class GroveEntry(NamedTuple):
@@ -115,7 +115,10 @@ def create_forest(
             fids.append(fid)
 
         # Grove's Surround shell gives single-tree light competition: enable it
-        # whenever this group's surround_radius is nonzero.
+        # whenever this group's surround_radius is nonzero, and turn it OFF
+        # explicitly when it is zero. The explicit off matters because Surround
+        # is a preset property and 4 of the 11 dataset species ship it enabled
+        # (see disable_surround) -- without it, r00 is not open-grown for those.
         if len(species_data) == 1 and surround_radius > 0:
             applied = enable_surround(
                 grove,
@@ -138,6 +141,9 @@ def create_forest(
                     "expose surround properties",
                     species_name,
                 )
+        elif surround_radius <= 0:
+            if disable_surround(grove):
+                logger.info("Surround disabled for %s (open-grown)", species_name)
 
         forest.append(
             GroveEntry(grove, species_name, len(species_data), fids, surround_radius)
@@ -172,12 +178,19 @@ def _run_single_growth_cycle(
     species_overrides: dict[str, PresetOverrides],
     preset_overrides: PresetOverrides | None,
     frozen_grove_indices: set | None = None,
+    shade_cache: dict | None = None,
 ) -> None:
     """Run one growth cycle: apply overrides, shade competition, simulate.
 
     Args:
         frozen_grove_indices: Set of grove indices to skip simulation for.
             Frozen groves still contribute shade geometry but do not grow.
+        shade_cache: Optional dict reused across cycles to hold each frozen
+            grove's shade geometry. A frozen grove is skipped by both
+            weigh_and_bend() and simulate(), so its geometry cannot change --
+            rebuilding it every cycle is pure waste, and it is the *largest*
+            grove that freezes first (the open-grown r00 tree finishes its
+            milestone ladder long before the shaded radii finish theirs).
     """
     frozen = frozen_grove_indices or set()
 
@@ -191,9 +204,26 @@ def _run_single_growth_cycle(
 
     if len(groves) > 1:
         all_coords = []
-        for grove in groves:
-            all_coords.extend(grove.build_shade_geometry_flat())
-        for grove in groves:
+        for grove_idx, grove in enumerate(groves):
+            if grove_idx in frozen:
+                if shade_cache is None:
+                    all_coords.extend(grove.build_shade_geometry_flat())
+                    continue
+                cached = shade_cache.get(grove_idx)
+                if cached is None:
+                    cached = list(grove.build_shade_geometry_flat())
+                    shade_cache[grove_idx] = cached
+                all_coords.extend(cached)
+            else:
+                if shade_cache is not None:
+                    shade_cache.pop(grove_idx, None)
+                all_coords.extend(grove.build_shade_geometry_flat())
+        for grove_idx, grove in enumerate(groves):
+            # Shading a frozen grove changes nothing: it is about to be skipped
+            # by simulate() anyway. Its geometry still went into all_coords
+            # above, so it keeps shading everyone else.
+            if grove_idx in frozen:
+                continue
             grove.calculate_shade_together(all_coords)
 
     for grove_idx, (grove, *_rest) in enumerate(forest):
@@ -544,6 +574,9 @@ def _simulate_height_threshold_mode(
     # the same species (e.g. a fast open-grown tree no longer waits on its
     # slower, shaded competition siblings before it stops growing).
     frozen_grove_indices: set = set()
+    # Shade geometry of frozen groves, rebuilt once per freeze (see
+    # _run_single_growth_cycle). Keyed by grove index.
+    frozen_shade_cache: dict = {}
 
     # Build species -> grove index mapping for freezing
     species_grove_indices: dict[str, list[int]] = {}
@@ -569,6 +602,7 @@ def _simulate_height_threshold_mode(
             species_overrides,
             preset_overrides,
             frozen_grove_indices=frozen_grove_indices,
+            shade_cache=frozen_shade_cache,
         )
 
         # Cheaply measure heights at every cycle (skip frozen groves)
@@ -582,8 +616,8 @@ def _simulate_height_threshold_mode(
             if grove_idx in frozen_grove_indices:
                 continue
             offset = grove_offsets[grove_idx]
-            measurements = extract_tree_measurements(grove)
-            for tree_idx, (height, _dbh) in enumerate(measurements):
+            heights = extract_tree_heights(grove, tree_count)
+            for tree_idx, height in enumerate(heights):
                 global_idx = offset + tree_idx
                 key = (species_name, global_idx)
 

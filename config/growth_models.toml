@@ -33,14 +33,17 @@ timeout = 300
 # Independent of [forest] max_height in forest.toml (the step 4 export height
 # cap): that setting must NOT silently truncate calibration too.
 #
-# 15 rather than 20 to match [forest] max_height in forest.toml: calibrating
-# over exactly the exported height range means the height-DBH fit is never
-# extrapolated in production, and the trimmed cycles are the expensive ones --
-# per-cycle cost grows superlinearly with tree size (Douglas fir: 1.1 s/cycle
-# early, 30+ s/cycle past 15 m; it reached 15 m at cycle 42 but 20 m only at
-# 57). Raise this together with the forest cap if taller trees are exported,
-# so calibration always covers at least the export range.
-max_height = 15
+# 25 to match [forest] max_height in forest.toml: calibrating over exactly the
+# exported height range means the height-DBH fit is never extrapolated in
+# production. The trimmed cycles are the expensive ones -- per-cycle cost grows
+# superlinearly with tree size (Douglas fir: 1.1 s/cycle early, 30+ s/cycle past
+# 15 m; it reached 15 m at cycle 42 but 20 m only at 57) -- so raising this is
+# not free. Raise it together with the forest cap whenever taller trees are
+# exported, so calibration always covers at least the export range.
+#
+# 2026-08-22: 15 -> 25 for the h05..h25 dataset ladder. Watch `timeout` below:
+# Pass 1 is uncalibrated and now has 10 more metres to climb per seed.
+max_height = 25
 
 # --- Growth-pacing calibration (integrated into create_growth_models.py) ---
 # Aligns Grove's growth SPEED to a yield table's height-at-age curve. Costs two

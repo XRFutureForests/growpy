@@ -113,3 +113,26 @@ def enable_surround(
     props.surround_grow = bool(grow)
     grove.set_properties(props)
     return True
+
+
+def disable_surround(grove: gc.Grove) -> bool:
+    """Turn Grove's Surround shell off on a grove.
+
+    Needed because Surround is a *preset* property: 4 of the 11 dataset species
+    (european_beech, norway_spruce, scots_pine, silver_fir) ship
+    ``surround_enabled = true`` in their Grove 2.3 seed.json, so a grove built
+    from those presets is already competing against a shell before growpy asks
+    for one. Without this the r00 "open-grown" variant is open-grown for 7
+    species and forest-grown at the preset's own distance (8-10 m) for the other
+    4 -- the same label on two different growth regimes.
+
+    Returns:
+        True if the surround properties were applied, False if the running
+        Grove build does not expose them.
+    """
+    props = grove.get_properties()
+    if not hasattr(props, "surround_enabled"):
+        return False
+    props.surround_enabled = False
+    grove.set_properties(props)
+    return True

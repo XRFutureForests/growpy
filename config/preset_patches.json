@@ -1,0 +1,103 @@
+{
+    "_README": [
+        "Per-species edits applied on top of the Grove 2.3 seed.json when step 1",
+        "(prepare-assets) copies it into the gitignored data/assets/presets/.",
+        "",
+        "This file exists because data/assets/ is gitignored: a preset edit made",
+        "only there is invisible to review and disappears on the next clean",
+        "rebuild. That is not hypothetical -- the drop_decay_curve/drop_weak_curve",
+        "ramps below were documented in docs/reference/grove-preset-reference.md,",
+        "guarded by prepare_assets.py's copy-skip check, and referenced by",
+        "config/growth_models.toml as already applied, yet were absent from every",
+        "preset on disk. Keep species tuning here, not only in data/assets/.",
+        "",
+        "Keys are standardized species names (tree_asset_lookup.csv 'Standardized",
+        "Name'). Values are merged shallowly into the preset dict.",
+        "",
+        "Grove properties (plain numbers/bools) are passed straight to Grove.",
+        "Keys ending in _curve are a growpy convention, not Grove properties:",
+        "src/growpy/config/preset_overrides.py reads them into PresetOverrides and",
+        "applies them per cycle during simulation.",
+        "",
+        "Anything here is a DELIBERATE departure from the Grove author's preset,",
+        "so every entry carries a why."
+    ],
+
+    "_why_drop_curves": [
+        "PROBLEM. Under Grove's Surround shell, 7 of the 11 dataset species grow",
+        "normally to 12-23 m and then lose structure outright. Measured",
+        "2026-08-22 at r05 (the tightest configured radius) with",
+        "data/tmp/run25m/seed_probe.py, tracing height every cycle -- peak height",
+        "reached vs height when the run stopped:",
+        "",
+        "  common_ash      23.4 -> 0.6      silver_birch    12.3 -> 1.4",
+        "  wild_cherry     20.6 -> 4.4      silver_fir      18.1 -> 5.1",
+        "  norway_spruce   17.1 -> 6.5      european_oak    19.6 -> 12.7",
+        "  scots_pine      20.5 -> 13.6",
+        "",
+        "  (douglas_fir, european_beech, small_leaved_linden and sycamore_maple",
+        "   hold 25 m and need no patch.)",
+        "",
+        "WHY IT WENT UNNOTICED. Step 4's plateau detector ratchets on historical",
+        "maximum height, so a collapsing tree reads as a plateaued one: the run",
+        "stops, the milestone ladder just ends short, and the pipeline still exits",
+        "0. Raising plateau_cycles from 5 to 15 changed nothing, which was read at",
+        "the time as confirming 'Grove's competition model working as configured'.",
+        "It is not -- the tree is falling apart.",
+        "",
+        "WHAT CAUSES IT. Sustained shade, not the yield-table calibration: the",
+        "same collapse happens with the calibration curve off, never happens at",
+        "r00, and scots_pine at r05 reaches 25 m clean when uncalibrated.",
+        "",
+        "FIX. Ease drop_decay / drop_weak in from 0 instead of applying them from",
+        "cycle 0 -- the remedy documented in",
+        "docs/reference/grove-preset-reference.md under 'Preventing tree death",
+        "(recommended for high cycle counts)'. Each ramp ENDS at that species'",
+        "own Grove value, so the mature tree is unchanged; only how quickly the",
+        "drop terms come into force differs.",
+        "",
+        "RESULT at r05, calibrated (same probe): every patched species reaches the",
+        "full h05..h25 ladder and holds its height --",
+        "  common_ash 25.6, scots_pine 25.2, norway_spruce 25.2, silver_fir 25.2,",
+        "  wild_cherry 25.3, silver_birch and european_oak likewise recovered.",
+        "silver_fir also verified at r10 (25.2, was 19.1 -> 10.8).",
+        "",
+        "Re-check this table after any change to surround radii/density, to the",
+        "yield-table calibration, or to growth_cycle_limit."
+    ],
+
+    "common_ash": {
+        "drop_decay_curve": {"start": 0.0, "end": 0.8, "easing": "ease_in", "power": 3.0},
+        "drop_weak_curve": {"start": 0.0, "end": 0.15, "easing": "ease_in", "power": 3.0}
+    },
+
+    "european_oak": {
+        "drop_decay_curve": {"start": 0.0, "end": 1.0, "easing": "ease_in", "power": 3.0},
+        "drop_weak_curve": {"start": 0.0, "end": 0.3, "easing": "ease_in", "power": 3.0}
+    },
+
+    "norway_spruce": {
+        "drop_decay_curve": {"start": 0.0, "end": 0.3, "easing": "ease_in", "power": 3.0},
+        "drop_weak_curve": {"start": 0.0, "end": 0.3, "easing": "ease_in", "power": 3.0}
+    },
+
+    "scots_pine": {
+        "drop_decay_curve": {"start": 0.0, "end": 0.3, "easing": "ease_in", "power": 3.0},
+        "drop_weak_curve": {"start": 0.0, "end": 0.3, "easing": "ease_in", "power": 3.0}
+    },
+
+    "silver_birch": {
+        "drop_decay_curve": {"start": 0.0, "end": 0.6, "easing": "ease_in", "power": 3.0},
+        "drop_weak_curve": {"start": 0.0, "end": 0.5, "easing": "ease_in", "power": 3.0}
+    },
+
+    "silver_fir": {
+        "drop_decay_curve": {"start": 0.0, "end": 0.3, "easing": "ease_in", "power": 3.0},
+        "drop_weak_curve": {"start": 0.0, "end": 0.3, "easing": "ease_in", "power": 3.0}
+    },
+
+    "wild_cherry": {
+        "drop_decay_curve": {"start": 0.0, "end": 0.4, "easing": "ease_in", "power": 3.0},
+        "drop_weak_curve": {"start": 0.0, "end": 0.3, "easing": "ease_in", "power": 3.0}
+    }
+}

@@ -515,10 +515,14 @@ Unreal Engine Integration:
         # Detect multi-stage mode (config value already merged with CLI by resolve())
         is_multistage = config.forest_height_interval > 0
 
+        # Non-zero once any captured milestone stage fails to reach disk, so a
+        # partial dataset cannot exit 0 and be reported as OK.
+        stage_shortfall = 0
+
         with timer.track("total_forest_generation"):
             if is_multistage:
                 # Multi-stage export mode: generate trees at height milestones
-                generate_forest_stages(
+                stage_shortfall = generate_forest_stages(
                     forest_data,
                     output_dir,
                     config,
@@ -639,6 +643,14 @@ Unreal Engine Integration:
     except Exception as e:
         logger.error("Forest generation failed: %s", e)
         logger.debug("Traceback:", exc_info=True)
+        return 1
+
+    if stage_shortfall > 0:
+        logger.error(
+            "Exiting non-zero: %d milestone stage(s) were simulated but never "
+            "written.",
+            stage_shortfall,
+        )
         return 1
 
     return 0
