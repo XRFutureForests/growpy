@@ -120,3 +120,60 @@ twig_density = 0.6
 
 [density_variant.bare]
 twig_density = 0.25
+
+# Tall-stage preset for dataset production. Selected per stage via
+# [forest] quality_above_height in forest.toml, not by [forest] quality.
+#
+# Measured on an open-grown silver fir at h20 (273,421 branches), which is the
+# heaviest thing the dataset builds:
+#
+#   res reduce  cutoff      points       faces         uvs
+#    16   0.50  0.0025  12,371,707  11,589,558  43,916,482   <- [quality.high]
+#    12   0.75  0.0025   5,288,077   4,505,928  16,949,056   <- [quality.medium]
+#    12   0.75  0.0050     489,898     341,390   1,264,282   <- here
+#    12   0.75  0.0120      95,496      62,502     230,497
+#
+# build_cutoff_thickness is the lever that matters, and it behaves as a cliff
+# rather than a slope: 0.0025 -> 0.005 removes 10.8x the points, because a
+# mature conifer's branch count is dominated by sub-5mm twiglets. Resolution
+# alone only buys 2.3x, which is why the stock "medium" preset was not enough
+# to make h20/h25 exportable (it reached 47 GB and still ran out of memory).
+#
+# The usual objection to raising build_cutoff_thickness -- that it deletes the
+# young branches where Grove places twigs -- DOES bite, and the cost lands on
+# twig recovery rather than on the crown. Measured on the same h20 tree, out of
+# 131,764 living twig placements in the cutoff-free reference build:
+#
+#   cutoff   mesh points   twigs surviving   orphans to reattach
+#   0.0025     5,288,077           125,519                 6,245   (95.3%)
+#   0.0035     5,288,077           125,519                 6,245   (95.3%)  <- identical
+#   0.0040     1,938,038            17,437               114,327   (13.2%)
+#   0.0050       489,898               107               131,657   ( 0.1%)
+#
+# Recovery restores the orphans exactly (positions, directions, phyllotactic
+# quaternions), so the crown is NOT sparse -- but reattaching 131k of them is
+# itself expensive, and at h25 that is what the export runs out of memory on.
+# Note also that the cutoff is quantised: 0.0025, 0.003 and 0.0035 produce a
+# bit-identical mesh, so there is no gradual trade to tune between them. The
+# cliff is at 0.004.
+#
+# 0.005 is chosen deliberately: it is the only value that makes the h20/h25
+# MESH affordable (490k points against 12.4M at [quality.high]), and the mesh
+# is the larger of the two costs -- at 0.0025 the export runs out of memory at
+# h20, before it can reach h25 at all.
+#
+# Applied only to h20/h25 at r00 in production: those are the biggest trees in
+# the matrix (507,554 branches at h25 against 359,562 for r05), a 5mm branch on
+# a 25m tree is well below what Nanite resolves in VR, and h05-h15 plus every
+# shaded radius stay on [quality.high].
+[quality.dataset_tall]
+resolution = 12
+resolution_reduce = 0.75
+build_cutoff_age = 0
+build_cutoff_thickness = 0.005
+build_blend = true
+build_end_cap = true
+skeleton_length = 1.0
+skeleton_reduce = 0.333
+skeleton_bias = 0.5
+skeleton_connected = true
