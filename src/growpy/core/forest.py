@@ -349,6 +349,8 @@ def simulate_forest_growth_with_snapshots(
     species_max_height: dict[str, float] | None = None,
     plateau_cycles: int = 10,
     on_capture: Any = None,
+    tall_quality_params: dict | None = None,
+    tall_quality_threshold: float = 0.0,
 ) -> tuple[SnapshotData, dict[int, dict[str, dict[int, float]]]]:
     """Simulate forest growth and capture snapshots at height milestones.
 
@@ -463,6 +465,8 @@ def simulate_forest_growth_with_snapshots(
             species_max_height=species_max_height,
             plateau_cycles=plateau_cycles,
             on_capture=on_capture,
+            tall_quality_params=tall_quality_params,
+            tall_quality_threshold=tall_quality_threshold,
         )
     else:
         snapshots = _simulate_cycle_based_mode(
@@ -500,6 +504,8 @@ def _simulate_height_threshold_mode(
     species_max_height: dict[str, float] | None = None,
     plateau_cycles: int = 10,
     on_capture: Any = None,
+    tall_quality_params: dict | None = None,
+    tall_quality_threshold: float = 0.0,
 ) -> tuple[SnapshotData, dict[int, dict[str, dict[int, float]]]]:
     """Run simulation with height-threshold-based snapshots.
 
@@ -700,8 +706,26 @@ def _simulate_height_threshold_mode(
                 for gidx in new_crossings.get(species_name, {})
             )
             if grove_has_crossing:
+                # Tall stages may build at a coarser preset. Mesh cost climbs
+                # with tree size much faster than visible detail (an open-grown
+                # silver fir: 4.5M points at h10, 7.0M at h15, ~23M at h25), so
+                # the top of the ladder can dominate the whole dataset's cost.
+                # Chosen per grove from the milestone its own tree is crossing,
+                # so a shaded variant that is still short keeps full quality at
+                # the same cycle a taller sibling drops to the coarse preset.
+                grove_qp = quality_params
+                if tall_quality_params is not None and tall_quality_threshold > 0:
+                    grove_milestones = [
+                        m
+                        for gidx, m in new_crossings.get(species_name, {}).items()
+                        if offset <= gidx < offset + tree_count
+                    ]
+                    if grove_milestones and max(grove_milestones) >= (
+                        tall_quality_threshold
+                    ):
+                        grove_qp = tall_quality_params
                 tree_data = _build_models_for_grove(
-                    grove, species_name, cycle, quality_params
+                    grove, species_name, cycle, grove_qp
                 )
                 if tree_data:
                     merged_data.setdefault(species_name, []).extend(tree_data)
@@ -748,6 +772,15 @@ def _simulate_height_threshold_mode(
         if on_capture is not None and snapshots.get(cycle):
             on_capture(cycle, snapshots[cycle], milestone_map)
             del snapshots[cycle]
+            # merged_data and tree_data still reference the same TreeSnapshots,
+            # and merged_data is only rebuilt at the NEXT milestone -- so
+            # without this the stage just exported stays resident through all
+            # the cycles leading up to the next one, and two full stages are
+            # alive at once while that one is being built. A stage is ~5 GB of
+            # models for a mature open-grown conifer, so this is not bookkeeping.
+            merged_data.clear()
+            tree_data = None
+            del tree_data
 
         # Freeze each grove individually once its own trees have captured
         # all their milestones (see frozen_grove_indices comment above).

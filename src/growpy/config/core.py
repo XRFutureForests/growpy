@@ -233,6 +233,13 @@ class GrowPyConfig:
         "surround_density": "scenario-level setting, config-only by design",
         "surround_height": "scenario-level setting, config-only by design",
         "surround_grow": "scenario-level setting, config-only by design",
+        "forest_quality_above_height": (
+            "dataset-shape setting, config-only: it pairs with a threshold and "
+            "is set per production pass, not per invocation"
+        ),
+        "forest_quality_above_height_threshold": (
+            "dataset-shape setting, config-only; see forest_quality_above_height"
+        ),
     }
 
     # Keys a [density_variant.*] dict may override from the active quality
@@ -294,6 +301,14 @@ class GrowPyConfig:
 
     # [forest]
     forest_quality: str = "high"
+    # Alternate quality preset for tall milestone stages, and the height (m) at
+    # or above which it applies. "" disables it and every stage uses
+    # forest_quality. Exists because mesh cost scales with tree size far faster
+    # than perceived detail: an open-grown silver fir meshes to 4.5M points at
+    # h10, 7.0M at h15 and ~23M projected at h25 -- a 1.07 GB stems file at h15
+    # alone, and the h25 export exhausts a 63.5 GB host.
+    forest_quality_above_height: str = ""
+    forest_quality_above_height_threshold: float = 0.0
     forest_growth_cycle_limit: int = 65
     forest_plateau_cycles: int = 10
     forest_smooth_iterations: int = 10
@@ -535,6 +550,12 @@ class GrowPyConfig:
         forest = data.get("forest", {})
         if "quality" in forest:
             kwargs["forest_quality"] = forest["quality"]
+        if "quality_above_height" in forest:
+            kwargs["forest_quality_above_height"] = forest["quality_above_height"]
+        if "quality_above_height_threshold" in forest:
+            kwargs["forest_quality_above_height_threshold"] = float(
+                forest["quality_above_height_threshold"]
+            )
         if "growth_cycle_limit" in forest:
             kwargs["forest_growth_cycle_limit"] = forest["growth_cycle_limit"]
         if "plateau_cycles" in forest:

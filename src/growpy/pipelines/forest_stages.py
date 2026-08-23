@@ -756,6 +756,38 @@ def generate_forest_stages(
             quality_params[key] = value
         logger.info("[Skeleton Overrides] Applied: %s", skeleton_overrides)
 
+    # Optional coarser preset for the tall stages. Mesh cost scales with tree
+    # size far faster than visible detail does -- an open-grown silver fir is
+    # 4.5M points at h10, 7.0M at h15 and ~23M projected at h25 -- so the top
+    # of the ladder can cost more than the rest of the dataset combined while
+    # adding branch detail no viewer resolves. Control flags (icons_only,
+    # skip_pve_json, density_variants, ...) are carried over unchanged; only
+    # the mesh/skeleton keys come from the alternate preset.
+    tall_quality_params = None
+    tall_quality_threshold = float(config.forest_quality_above_height_threshold or 0.0)
+    if config.forest_quality_above_height and tall_quality_threshold > 0:
+        tall_quality_params = {
+            **quality_params,
+            **get_quality_preset(config.forest_quality_above_height),
+        }
+        # Re-apply the two the caller forces after preset lookup above.
+        tall_quality_params["skeleton_bias"] = 0.5
+        tall_quality_params["skeleton_connected"] = True
+        if skeleton_overrides:
+            for key, value in skeleton_overrides.items():
+                tall_quality_params[key] = value
+        logger.info(
+            "Stages at or above %.0fm build with the '%s' preset (res %s -> %s, "
+            "cutoff %s -> %s); below that, '%s'",
+            tall_quality_threshold,
+            config.forest_quality_above_height,
+            quality_params.get("resolution"),
+            tall_quality_params.get("resolution"),
+            quality_params.get("build_cutoff_thickness"),
+            tall_quality_params.get("build_cutoff_thickness"),
+            quality,
+        )
+
     # Build species-to-grove mapping for PVE JSON generation
     species_grove_map: dict[str, Any] = {}
     for grove_obj, sp_name, _tc, _fids, *_r in forest:
@@ -1110,6 +1142,8 @@ def generate_forest_stages(
             species_max_height=species_max_height,
             plateau_cycles=plateau_cycles if plateau_cycles is not None else 10,
             on_capture=_export_cycle,
+            tall_quality_params=tall_quality_params,
+            tall_quality_threshold=tall_quality_threshold,
         )
 
     _warn_uncaptured_milestones(
