@@ -1076,7 +1076,68 @@ order-of-magnitude.
   spray regardless of tree size or crown position. A crown can therefore be at correct
   leaf area and still read sparse: ~1,400 fixed-size sprays cannot fill a 90 m² crown
   shell. The lever for that is a **smaller/subdivided twig asset**, not more leaf area.
-- **`build_cutoff_thickness` is not a triangle-budget lever.** Use voxelization,
-  `resolution`, or `max_assembly_instances` instead.
+- **`build_cutoff_thickness` IS the triangle-budget lever, and `resolution` is not**
+  (amended 2026-08-23, measured -- see "Open-grown h20/h25" below). On an h20 open-grown
+  silver fir, dropping `resolution` 16 -> 8 with `resolution_reduce` 0.5 -> 0.95 moved the
+  mesh from 12,371,707 points to 5,287,045, and *everything below res 12 was identical*
+  (5,288,077 at res 12) because `resolution_reduce` already floors the thin branches --
+  only the trunk responds to base resolution. `build_cutoff_thickness` 0.0025 -> 0.005 on
+  the same tree gives 489,898 points, a 10.8x cut, because a mature conifer's branch count
+  is dominated by sub-5mm twiglets.
+  The original warning was about crown sparseness, and **twig recovery now answers it** --
+  orphans are restored exactly rather than lost. What raising the cutoff actually costs is
+  *recovery work*: twig survival falls from 95.3% at 0.0025 to 0.1% at 0.005, so recovery
+  reattaches 131,657 orphans instead of 6,245. Budget for that, not for a thin crown.
+  The cutoff is also **quantised** -- 0.0025, 0.003 and 0.0035 produce a bit-identical
+  mesh; the cliff is at 0.004.
 - **`[export] static = false` stays false** — the UE 5.7/5.8 Nanite Assembly builder
   deadlocks on StaticMesh targets.
+
+
+---
+
+## Open-grown h20/h25 (2026-08-23)
+
+The h05..h25 x r00/r05/r10/r15 dataset run surfaced a cost this doc had never
+measured, because **r00 had never actually been open-grown**. Surround is a
+*preset* property and four dataset species ship `surround_enabled = true`
+(european_beech 10 m, norway_spruce 9.5 m, scots_pine 10 m, silver_fir 9.5 m);
+`create_forest()` only ever enabled surround and never disabled it. Every r00
+measurement in this doc above -- including **"22 GB at the h25 milestone"** --
+was therefore taken on a *shaded* tree. Fixed in 0be41dc.
+
+A genuinely open-grown silver fir is far bigger, and the numbers move with it:
+
+| stage | branches | mesh points @ [quality.high] | stems .usdc |
+|---|---|---|---|
+| h10 | ~100,024 | 4,515,590 | 252.6 MB |
+| h15 | 155,325 | 7,030,216 | 1,069.3 MB |
+| h20 | 273,421 | 12,371,707 | -- (OOM at high) |
+| h25 | 423,952 | 19,095,895 | -- (OOM at high) |
+
+At `[quality.high]` the h20 export exhausts a 63.5 GB host and never reaches
+h25. Three memory defects were fixed first (all in the pipeline, none of them
+this):
+
+1. **The whole ladder was retained** until an export phase at the end -- 37 GB
+   before export began. Now each milestone is exported as it is captured
+   (`on_capture`, db10906).
+2. **The previous stage stayed referenced** by `merged_data` until the next
+   milestone, so two full stages were alive at once. Released after capture.
+3. **24.9M face-varying UVs** (3.5x the point count) were materialised as Python
+   lists of tuples and then of `Gf.Vec2f`. Typed `Vt` arrays instead: 36b5445
+   took `build_tree_mesh` from +6.27 GB to +0.29 GB.
+
+Together those make memory *fall* between stages -- RSS drops 38.3 -> 3.2 GB
+the moment a stage finishes exporting -- but they do not shrink a 19M-point
+mesh. That needs `[quality.dataset_tall]` (cutoff 0.005, res 12), applied to
+h20/h25 at r00 only. Everything at h15 and below, and every shaded radius,
+stays on `[quality.high]`.
+
+Resulting ladder, silver_fir r00:
+
+    h05 32.7 MB | h10 252.6 MB | h15 1069.3 MB | h20 48.3 MB | h25 105.4 MB
+
+**Open question for Gate 2:** h15 -> h20 is a ~20x step down in mesh density
+between adjacent stages. It is invisible in the icons, which render from the
+skeleton rather than the mesh, so it has to be judged in the editor.
