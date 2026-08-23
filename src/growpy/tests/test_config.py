@@ -103,7 +103,6 @@ class TestGrowPyConfigDefaults:
         # A species with no override still gets the global value.
         assert config.get_twig_density_base("Common ash") == 0.25
 
-
     def test_default_growth_models_cycles(self):
         config = GrowPyConfig()
         assert config.growth_models_cycles == 25
@@ -225,7 +224,21 @@ radii = [15.0, 0.0, 7.0]
         config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
         assert config.surround_radii == [0.0, 7.0, 15.0]
 
-    def test_zero_radius_always_included(self, tmp_path):
+    def test_radii_taken_literally_without_forcing_zero(self, tmp_path):
+        """A configured radii list is used as written -- 0.0 is NOT injected.
+
+        This used to force an open-grown baseline into every set, so
+        ``radii = [7.0, 15.0]`` resolved to [0.0, 7.0, 15.0]. That made it
+        impossible to build one radius on its own, and because
+        generate_forest_stages wipes a radius subdirectory before writing it,
+        a run meant to add one radius would also delete an existing, complete
+        r00 and rewrite it under that run's config. Observed 2026-08-23: a
+        shaded pass destroyed 15 finished r00 stage-cells.
+
+        Wanting a baseline in the dataset is still right -- it just belongs to
+        whoever writes the config (config/surround.toml lists 0.0 explicitly),
+        not to the parser, which should not disagree with the file it read.
+        """
         toml_content = b"""
 [surround]
 radii = [7.0, 15.0]
@@ -234,7 +247,14 @@ radii = [7.0, 15.0]
         toml_file.write_bytes(toml_content)
 
         config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
-        assert config.surround_radii == [0.0, 7.0, 15.0]
+        assert config.surround_radii == [7.0, 15.0]
+
+    def test_single_radius_stays_single(self, tmp_path):
+        """The per-radius production passes depend on this exactly."""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(b"[surround]\nradii = [5.0]\n")
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.surround_radii == [5.0]
 
     def test_surround_shape_params(self, tmp_path):
         toml_content = b"""
@@ -314,7 +334,6 @@ icons = false
         toml_file.write_bytes(b"[twigs]\nplanar_angle = 2.5\n")
         config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
         assert config.twigs_planar_angle == 2.5
-
 
     def test_toml_export_mode_helios(self, tmp_path):
         toml_content = b"""

@@ -750,9 +750,17 @@ class GrowPyConfig:
         # A tree's surround_radius value picks which configured radius applies.
         surr = data.get("surround", {})
         if "radii" in surr:
-            radii = {float(r) for r in surr["radii"]}
-            radii.add(0.0)
-            kwargs["surround_radii"] = sorted(radii)
+            # Take the list literally. This used to force 0.0 into every
+            # configured set to guarantee an open-grown baseline, which made it
+            # impossible to build one radius on its own: `radii = [5.0]` silently
+            # became [0.0, 5.0]. That matters because generate_forest_stages
+            # wipes each radius subdirectory before writing, so a run intended to
+            # add r05 also DELETED an existing, complete r00 and regenerated it
+            # under whatever config that run happened to carry. Observed
+            # 2026-08-23: a shaded pass destroyed 15 finished r00 stage-cells,
+            # and because it rewrote them the assembly count kept climbing while
+            # data was being lost. Callers that want the baseline list 0.0.
+            kwargs["surround_radii"] = sorted({float(r) for r in surr["radii"]})
         if "density" in surr:
             kwargs["surround_density"] = float(surr["density"])
         if "height" in surr:
