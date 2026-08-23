@@ -14,7 +14,7 @@
 # grove, so this only affects single-tree contexts.
 
 [surround]
-radii = [0.0, 5.0, 10.0, 15.0]  # 0 = no surround; >0 = shell distance (meters)
+radii = [0.0, 8.0, 18.0]  # 0 = no surround; >0 = shell distance (meters)
 density = 0.75             # surrounding tree density (0..1), shared by all radii
 height = 0.5              # shell height (meters), shared by all radii
 grow = true               # shell grows together with the tree
