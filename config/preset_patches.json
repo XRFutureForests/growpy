@@ -177,5 +177,46 @@
             "easing": "ease_in",
             "transition_cycle": 8
         }
+    },
+    "_why_european_oak": [
+        "european_oak's ramp is for FORM, not survival -- it is the one species",
+        "here that does not collapse without a ramp. It ships drop_decay = 1.0, the",
+        "highest of the eleven (common_ash 0.8, european_beech 0.6, the conifers",
+        "0.3), and with the yield-table height pacing on top it sheds crown as fast",
+        "as it builds it. Measured at r00 (open-grown, no shell at all), no ramp:",
+        "",
+        "  Grove DBH   h15 71.3 cm  ->  h20 78.1 cm  ->  h25 78.1 cm",
+        "",
+        "The trunk stops thickening entirely over the last 5 m, because the crown",
+        "driving that growth is gone. The icon shows an OPEN-GROWN oak with a long",
+        "bare bole and a small top crown -- forest-grown form on a tree with no",
+        "competition. For contrast, european_beech over the same span goes",
+        "91.6 -> 136.1 -> 186.3 cm and common_ash r00 comes out correctly broad and",
+        "low-crowned with no patch at all.",
+        "",
+        "With transition_cycle 8 at r00: 25.0 m held, 522,374 branches, broad",
+        "rounded crown from ~25% height, spreading lateral limbs. Comparable to the",
+        "ash that already looked right.",
+        "",
+        "This is NOT a general licence to damp shedding. The ramp reaches full Grove",
+        "drop_decay by roughly cycle 30 and oak does not reach h25 until cycle 65,",
+        "so the mature tree sheds exactly as the Grove author specified; only the",
+        "sapling is protected. Anything that suppresses drop across the whole run",
+        "(as easing power 3.0 did) is the bug this file exists to document, not a",
+        "precedent."
+    ],
+    "european_oak": {
+        "drop_decay_curve": {
+            "start": 0.0,
+            "end": 1.0,
+            "easing": "ease_in",
+            "transition_cycle": 8
+        },
+        "drop_weak_curve": {
+            "start": 0.0,
+            "end": 0.3,
+            "easing": "ease_in",
+            "transition_cycle": 8
+        }
     }
 }
