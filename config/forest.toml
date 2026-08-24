@@ -89,6 +89,23 @@ skeletal = true
 # Disabled: UE 5.7/5.8 Nanite Assembly builder deadlocks on StaticMesh targets
 # (no skeleton) -- see docs/guides/unreal-import.md troubleshooting.
 static = false
+
+# Per-tree preview PNGs. dataset_overview.md/.csv are built from `icons`.
+icons = true
+# Per-view component PNGs alongside the plain/twigs pair: branches-only,
+# TWIGS-ONLY, skeleton and merged (io/usd/preview.py generate_icon_image).
+# On because the twigs-only view is the only one that shows crown density
+# without branch strokes on top of it, which is what the plain _twigs overlay
+# cannot separate. Roughly quadruples the icons stage's image count; the icons
+# stage is a small fraction of a run, so this is worth it for a dataset that
+# gets judged visually.
+icon_components = true
+# Left OFF deliberately. `previews` re-draws branch architecture, which the
+# plain icon already shows, and `export_control` (mesh edges + skeleton joints
+# read back from the exported USD) is 15.4% of a full run on its own. Enable
+# per-run with --previews / --export-control when inspecting one tree.
+previews = false
+export_control = false
 # Crown density multiplier, relative to Grove's NATURAL twig density.
 # 1.0 = exactly what Grove grew. Twigs that build_cutoff_thickness deletes are
 # restored from Grove directly (twig recovery), so this no longer has to

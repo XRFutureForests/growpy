@@ -70,63 +70,87 @@
         "collapse pull in OPPOSITE directions -- verify height is held AND the crown",
         "has a visible bole, not just one of the two."
     ],
-    "common_ash": {
-        "drop_decay_curve": {
-            "start": 0.0,
-            "end": 0.8,
-            "easing": "ease_in",
-            "transition_cycle": 8
-        },
-        "drop_weak_curve": {
-            "start": 0.0,
-            "end": 0.15,
-            "easing": "ease_in",
-            "transition_cycle": 8
-        }
-    },
-    "european_oak": {
-        "drop_decay_curve": {
-            "start": 0.0,
-            "end": 1.0,
-            "easing": "ease_in",
-            "transition_cycle": 8
-        },
-        "drop_weak_curve": {
-            "start": 0.0,
-            "end": 0.3,
-            "easing": "ease_in",
-            "transition_cycle": 8
-        }
-    },
-    "norway_spruce": {
-        "drop_decay_curve": {
-            "start": 0.0,
-            "end": 0.3,
-            "easing": "ease_in",
-            "transition_cycle": 8
-        },
-        "drop_weak_curve": {
-            "start": 0.0,
-            "end": 0.3,
-            "easing": "ease_in",
-            "transition_cycle": 8
-        }
-    },
-    "scots_pine": {
-        "drop_decay_curve": {
-            "start": 0.0,
-            "end": 0.3,
-            "easing": "ease_in",
-            "transition_cycle": 8
-        },
-        "drop_weak_curve": {
-            "start": 0.0,
-            "end": 0.3,
-            "easing": "ease_in",
-            "transition_cycle": 8
-        }
-    },
-    "silver_birch": {
+    "_why_no_drop_curves": [
+        "There are deliberately NO active patches right now. The history matters,",
+        "because the obvious fix here is wrong and was tried:",
+        "",
+        "2026-08-22. Under the surround shell, 7 of 11 species grew to 12-23 m and",
+        "then lost structure outright (common_ash 23.4 -> 0.6 m, silver_birch",
+        "12.3 -> 1.4, norway_spruce 17.1 -> 6.5, ...). Step 4's plateau detector",
+        "ratchets on historical max height, so a collapsing tree reads as a plateaued",
+        "one and the pipeline still exits 0.",
+        "",
+        "The fix applied was drop_decay_curve/drop_weak_curve ramps easing the drop",
+        "terms in from 0 -- documented in docs/reference/grove-preset-reference.md",
+        "under 'Preventing tree death'. It stopped the collapse and ruined the trees.",
+        "With easing ease_in power 3.0 the ramp is value = t^3 across the WHOLE run,",
+        "so at cycle 48 of 160 a tree applied 2.7% of its drop rate. Self-pruning was",
+        "effectively off for the entire exported range: opaque crowns with no visible",
+        "bole, foliage to ground level, secondary crowns low on the stem, 1.48M",
+        "branches on a shaded oak, and h20 exports dying inside Grove at ~50 GB.",
+        "",
+        "2026-08-24. The ramps were treating a symptom. The cause is shade INTENSITY:",
+        "config/surround.toml density was 0.75, which is lethal at close range.",
+        "Measured at r08 with Grove's own drop rates and no ramps at all:",
+        "",
+        "    species          density 0.75              density 0.50",
+        "    norway_spruce    COLLAPSE 18.1 -> 4.5 m    holds 25.3 m, 291,554 br",
+        "    european_oak     25 m bare whip, 11,517 br holds 25.2 m,  25,988 br",
+        "",
+        "At density 0.5 nothing collapses, so no ramp is needed and Grove's shedding",
+        "runs exactly as the preset author intended. See config/surround.toml.",
+        "",
+        "IF A SPECIES EVER COLLAPSES AGAIN: check surround density and radius FIRST.",
+        "Only add a ramp for the specific species that needs it, use transition_cycle",
+        "(not power), and verify the crown still has a visible bole afterwards --",
+        "collapse and crown density pull in opposite directions and it is easy to",
+        "fix one by destroying the other.",
+        "",
+        "Crown FORM, as distinct from survival, has its own Grove-native levers and",
+        "they are the right place to tune: add_fork (probability a branch becomes a",
+        "co-dominant second stem -- european_oak ships 0.5, the highest in the set),",
+        "turn_up_in_shade (a shaded lower branch turning up to compete -- 0.33 on",
+        "norway_spruce/silver_fir/douglas_fir) and auto_prune_low (height below which",
+        "branches are shed -- 0.5 m on those same conifers). scots_pine is the",
+        "in-repo control: same family, turn_up_in_shade 0.0 and auto_prune_low 3.0,",
+        "and it shows none of the secondary-stem behaviour."
+    ],
+    "_why_these_two_only": [
+        "Only two species need a ramp at the current shell (r08, density 0.5).",
+        "Screened all 11 at r08 with NO ramps, calibrated, 2026-08-24 --",
+        "peak height vs height when the run stopped:",
+        "",
+        "  common_ash     25.05 -> 25.05 ok      scots_pine      25.27 -> 25.27 ok",
+        "  douglas_fir    25.29 -> 25.29 ok      silver_birch    25.19 -> 25.19 ok",
+        "  european_beech 25.32 -> 25.32 ok      silver_fir      25.26 -> 25.26 ok",
+        "  european_oak   25.27 -> 25.27 ok      sycamore_maple  25.04 -> 25.04 ok",
+        "  norway_spruce  25.26 -> 25.26 ok",
+        "",
+        "  small_leaved_linden  22.85 ->  2.54  COLLAPSE",
+        "  wild_cherry          19.23 ->  3.25  COLLAPSE",
+        "",
+        "Note small_leaved_linden was one of the four species that needed NO patch",
+        "at the old r05/0.75 shell and collapses at r08/0.5. Collapse susceptibility",
+        "is a property of the SHELL CONFIGURATION, not of the species -- which is",
+        "why the r05-era ramp list must never be carried forward across a radius or",
+        "density change. Re-screen instead.",
+        "",
+        "A softer shell was tried first, since it leaves Grove's shedding alone:",
+        "at density 0.35 linden recovers (25.0 m, 79,345 br) but wild_cherry still",
+        "collapses (21.65 -> 4.16). A per-species density would also make r08 mean",
+        "something different for two species than for the other nine, so both get a",
+        "ramp at the shared 0.5 instead.",
+        "",
+        "Each ramp ENDS at that species' own Grove drop values, so the mature tree",
+        "is unchanged; only how fast the drop terms engage differs. transition_cycle",
+        "(never power) -- see the history above for what power 3.0 did.",
+        "",
+        "  small_leaved_linden  tc8 @ 0.5 -> 25.22 m held, 148,065 branches",
+        "  wild_cherry          tc8 @ 0.5 -> 25.02 m held,  61,170 branches",
+        "",
+        "Both verified visually to keep a bole and open branch architecture."
+    ],
+    "small_leaved_linden": {
         "drop_decay_curve": {
             "start": 0.0,
             "end": 0.6,
@@ -135,21 +159,7 @@
         },
         "drop_weak_curve": {
             "start": 0.0,
-            "end": 0.5,
-            "easing": "ease_in",
-            "transition_cycle": 8
-        }
-    },
-    "silver_fir": {
-        "drop_decay_curve": {
-            "start": 0.0,
-            "end": 0.3,
-            "easing": "ease_in",
-            "transition_cycle": 8
-        },
-        "drop_weak_curve": {
-            "start": 0.0,
-            "end": 0.3,
+            "end": 0.2,
             "easing": "ease_in",
             "transition_cycle": 8
         }

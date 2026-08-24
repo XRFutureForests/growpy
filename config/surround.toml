@@ -15,6 +15,20 @@
 
 [surround]
 radii = [0.0, 8.0, 18.0]  # 0 = no surround; >0 = shell distance (meters)
-density = 0.75             # surrounding tree density (0..1), shared by all radii
+density = 0.5             # surrounding tree density (0..1), shared by all radii
+# Was 0.75. Grove's shade shell at 0.75 is lethal at close range, and the damage
+# is NOT gradual: at r08 with Grove's own drop rates, norway_spruce peaks at
+# 18.1 m and falls back to 4.5 m, while european_oak survives to 25 m as a bare
+# whip (11,517 branches, crown only in the top ~15%). At 0.5, same seeds, same
+# untouched shedding, both hold 25 m with correct forest form -- spruce 291,554
+# branches with a single unbroken leader, oak 25,988 with a clear bole through
+# the lower half. 0.3 was also measured and overshoots: the oak reads open-grown
+# (105,917 branches, crown from ~15% height), which erases the distinction from
+# r00. Measured 2026-08-24, data/tmp/run25m/seed_probe.py.
+#
+# This supersedes the drop_decay/drop_weak ramps that used to live in
+# config/preset_patches.json. Those existed only to stop the collapse this
+# density causes, and they did it by suppressing self-pruning, which is what
+# produced the opaque crowns in the 2026-08-23 dataset.
 height = 0.5              # shell height (meters), shared by all radii
 grow = true               # shell grows together with the tree

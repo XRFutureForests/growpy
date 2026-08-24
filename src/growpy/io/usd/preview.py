@@ -18,6 +18,22 @@ _VIEW_AXES = {"front": (0, 2), "side": (1, 2), "top": (0, 1)}
 # are not drawn anywhere else in this module's icon output.
 _BRANCH_COLOR = "#3b2a1a"
 _TWIG_COLOR = "#1f7a1f"
+# Twig dots are drawn semi-transparent so OVERLAP reads as density: the whole
+# point of the twig preview is telling a thin crown edge from a saturated core.
+# At the previous 0.5 that failed -- two coincident dots already composite to
+# 0.75 over white, so any real crown went flat dark green almost everywhere and
+# the only visible structure was the gaps. At 0.18 it takes roughly a dozen
+# stacked dots to saturate, which puts the gradient inside the range a crown
+# actually spans.
+#
+# NOTE for tools/icon_crown_metrics.py: it detects twig pixels by channel
+# relation (G meaningfully above R and B) plus "changed from the branch-only
+# image", never by exact colour match, so it keeps working -- but it is MORE
+# sensitive to this constant than to anything else here, and Gate-1 crown_fill
+# numbers recorded at 0.5 are not comparable to numbers taken at 0.18.
+# Re-baseline docs/dataset/crown-density-ratchet.md before comparing rounds.
+_TWIG_ALPHA = 0.18
+_TWIG_MARKER_SIZE = 4
 _SKELETON_LINE_COLOR = "#b23a3a"
 _SKELETON_JOINT_COLOR = "#7a1f1f"
 
@@ -125,9 +141,9 @@ def _save_icon_layer(
         ax.scatter(
             twig_xyz[:, ax_h],
             twig_xyz[:, ax_v],
-            s=4,
+            s=_TWIG_MARKER_SIZE,
             c=_TWIG_COLOR,
-            alpha=0.5,
+            alpha=_TWIG_ALPHA,
             linewidths=0,
             zorder=3,
         )
@@ -387,8 +403,8 @@ def generate_preview_image(
                             twig_xyz[:, ax_h],
                             twig_xyz[:, ax_v],
                             s=6,
-                            c="#1f7a1f",
-                            alpha=0.5,
+                            c=_TWIG_COLOR,
+                            alpha=_TWIG_ALPHA,
                             linewidths=0,
                             zorder=3,
                         )
@@ -667,9 +683,9 @@ def generate_icon_image(
                 ax.scatter(
                     twig_xyz[:, ax_h],
                     twig_xyz[:, ax_v],
-                    s=4,
-                    c="#1f7a1f",
-                    alpha=0.5,
+                    s=_TWIG_MARKER_SIZE,
+                    c=_TWIG_COLOR,
+                    alpha=_TWIG_ALPHA,
                     linewidths=0,
                     zorder=3,
                 )

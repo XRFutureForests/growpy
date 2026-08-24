@@ -154,22 +154,47 @@ def _apply_preset_patch(preset_path: Path, patch: dict | None) -> None:
     ``_curve`` are not Grove properties -- growpy's PresetOverrides reads them
     and applies them per cycle (see config/preset_overrides.py).
     """
-    if not patch:
-        return
-
     import json as _json
+
+    patch = patch or {}
 
     with open(preset_path, encoding="utf-8") as f:
         preset = _json.load(f)
+
+    # Retract "{param}_curve" ramps that config no longer declares. Without
+    # this the patch file can only ever ADD: data/assets/ is gitignored and the
+    # copy-skip guard above refuses to overwrite any preset carrying a _curve,
+    # so a ramp deleted from preset_patches.json would survive on disk forever
+    # and keep shaping the dataset with nothing in review to show for it. That
+    # is how the drop_decay_curve/drop_weak_curve ramps outlived the reason for
+    # their existence (see config/preset_patches.json for the full history).
+    stale = [
+        k for k in preset
+        if k.endswith("_curve") and k not in patch
+    ]
+    for k in stale:
+        del preset[k]
+
+    if not patch and not stale:
+        return
+
     preset.update(patch)
     with open(preset_path, "w", encoding="utf-8") as f:
         _json.dump(preset, f, indent=4)
-    logger.info(
-        "Patched %s with %d key(s) from preset_patches.json: %s",
-        preset_path.name,
-        len(patch),
-        ", ".join(sorted(patch)),
-    )
+    if patch:
+        logger.info(
+            "Patched %s with %d key(s) from preset_patches.json: %s",
+            preset_path.name,
+            len(patch),
+            ", ".join(sorted(patch)),
+        )
+    if stale:
+        logger.info(
+            "Retracted %d undeclared curve override(s) from %s: %s",
+            len(stale),
+            preset_path.name,
+            ", ".join(sorted(stale)),
+        )
 
 
 
