@@ -99,6 +99,15 @@ def _copy_twig_file_cached(source_path: "Path", dest_dir: "Path") -> "Path":
     return dest_path
 
 
+class MissingTwigPrototypesError(RuntimeError):
+    """A tree grew twigs but no prototype USD exists to instance them with.
+
+    Deliberately its own type so create_assembly's broad `except Exception ->
+    return False` cannot swallow it: this is a build-input error the operator
+    must fix (re-run step 2), not a per-tree failure worth continuing past.
+    """
+
+
 def create_assembly(
     tree_usd_path: Path,
     output_path: Path,
@@ -218,6 +227,26 @@ def create_assembly(
             )
             skeleton_path = f"/{assembly_name}/{tree_mesh_name}/{ref_skel_name}"
             skeleton_rel.SetTargets([Sdf.Path(skeleton_path)])
+
+        # A tree that grew twigs but has no prototype to instance them with is a
+        # broken asset, not an asset without foliage. This used to pass silently:
+        # `if twig_usd_paths:` simply skipped the whole block, the assembly was
+        # written with nothing but the tree reference (~1 KB against the 0.7-4 MB
+        # a real one takes), and step 4 still reported "All N captured milestone
+        # stage(s) exported". A whole 20-cell run was produced that way on
+        # 2026-08-24 after data/output/forest/Instances/ -- where step 2 puts the
+        # converted twig USDs -- was deleted along with the rest of the output
+        # directory. Nothing downstream noticed until the file sizes were read by
+        # hand. Fail here instead: the fix is to re-run step 2 (convert-twigs).
+        if twig_placements and not twig_usd_paths:
+            placement_total = sum(len(v) for v in twig_placements.values())
+            raise MissingTwigPrototypesError(
+                f"{species_name}: {placement_total} twig placement(s) were extracted "
+                f"but no twig prototype USDs were supplied, so the assembly would "
+                f"contain no foliage. This usually means the converted twig assets "
+                f"are missing -- re-run step 2 (growpy-convert-twigs) to rebuild "
+                f"them, then re-run step 4."
+            )
 
         # Add twigs if provided
         if twig_usd_paths:
@@ -744,6 +773,12 @@ def create_assembly(
 
     except ImportError:
         return False
+    except MissingTwigPrototypesError:
+        # Never downgrade this to `return False`: a missing twig prototype set
+        # is an input error affecting EVERY tree in the run, and swallowing it
+        # is what let a 20-cell run of foliage-free 1 KB assemblies report
+        # success on 2026-08-24.
+        raise
     except Exception:
         import traceback
 
