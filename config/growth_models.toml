@@ -57,11 +57,10 @@ max_height = 25
 # the allometry artifact instead (growpy-build-allometry), which is fitted from
 # yield table columns alone and needs no simulation.
 [calibration]
-# Enabled 2026-08-05 to test growth pacing: uncalibrated Douglas fir reached
-# 20 m only at cycle 64 and carried 86.7 cm DBH where the si1 yield table has
-# 18.3 cm at 19.75 m. Aligning height pacing should reach target height in
-# FEWER cycles, which also thins the crown (fewer shoots -> fewer twigs) and
-# brings DBH down. Bounded by max_height above, so the passes stay short.
+# Was enabled 2026-08-05 to test growth pacing (uncalibrated Douglas fir reached
+# 20 m only at cycle 64 and carried 86.7 cm DBH against 18.3 cm at 19.75 m in
+# the si1 yield table). That reasoning still holds for the CSV -> plot path; it
+# does not hold for dataset production, and the cost turned out to be severe:
 # Disabled 2026-08-24. The yield-table grow_length pacing DESTROYS two species.
 # Screened at r08, corrected shell, no preset patches
 # (data/tmp/run25m/export_mutation_test.py), peak vs final height:
@@ -83,30 +82,25 @@ max_height = 25
 # calibration off -- so yield-table fidelity survives where it actually lands.
 # The dataclass default for calibration_enabled is False for the same reason.
 enabled = false
-# Align grove height growth to yield table height curve.
-# Applies per-cycle grow_length multipliers AND any generic "{param}_curve"
-# ramp overrides (see docs/reference/grove-preset-reference.md) from a
-# species' seed.json during simulation (step 4). Independent of enabled
-# above -- step 4 checks this flag directly and loads whatever a species'
-# seed.json carries, calibration-derived or not.
+# Align grove height growth to the yield table height curve. Applies the
+# per-cycle grow_length multipliers AND any generic "{param}_curve" ramp
+# overrides from a species' seed.json during simulation (step 4).
 #
-# MUST BE TRUE for the drop_decay_curve/drop_weak_curve ramps to take effect.
-# Those ramps are what stop 7 of the 11 dataset species from losing structure
-# outright under sustained shade -- see config/preset_patches.json for the
-# per-species measurements and config/forest.toml [forest] plateau_cycles for
-# why the failure looked like a plateau. With align_height = false those
-# species grow to 12-23 m at r05 and then collapse to 0.6-13 m, and the
-# pipeline still exits 0.
+# Disabled 2026-08-24, together with `enabled` above. These two are INDEPENDENT
+# and that is a trap: `enabled` only governs whether step 3 COMPUTES the
+# calibration, while this flag governs whether step 4 APPLIES the per-cycle
+# arrays already sitting in each seed.json. Setting enabled = false alone
+# changed nothing -- step 4 kept logging "cycle arrays: 1 from seed.json
+# (calibration)" for all 11 species, and silver_birch/wild_cherry would have
+# collapsed exactly as before. Both must be false to actually stop the pacing.
 #
-# The ramps live in config/preset_patches.json (tracked) and are written into
-# data/assets/presets/*.seed.json by step 1. They used to be described here as
-# already applied to norway_spruce/silver_fir/silver_birch when in fact no
-# preset carried them: data/assets/ is gitignored, so a preset-only edit had
-# nowhere durable to live. prepare_assets.py's copy-skip guard preserves both
-# the _yield_table_calibration block and any "_curve" key, and now reapplies
-# the tracked patch on the skip path too, so neither a clean rebuild nor an
-# incremental one loses them.
-align_height = true
+# NOTE the coupling: this flag also gates the generic "{param}_curve" ramp
+# overrides (drop_decay_curve etc.). With it false, a ramp added to
+# config/preset_patches.json will NOT take effect. There are deliberately no
+# ramps right now -- 11/11 species hold 25 m without them -- but if one is ever
+# needed again this must go back to true, and the pacing arrays must then be
+# stripped from the affected seed.json instead.
+align_height = false
 # DBH alignment moved to [export] dbh_from_allometry in forest.toml -- it is
 # independent of calibration, since its input is the allometry artifact rather
 # than a simulated curve. `align_dbh` here is still read as a deprecated alias.
