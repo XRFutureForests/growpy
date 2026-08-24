@@ -15,20 +15,39 @@
 
 [surround]
 radii = [0.0, 8.0, 18.0]  # 0 = no surround; >0 = shell distance (meters)
-density = 0.5             # surrounding tree density (0..1), shared by all radii
-# Was 0.75. Grove's shade shell at 0.75 is lethal at close range, and the damage
-# is NOT gradual: at r08 with Grove's own drop rates, norway_spruce peaks at
-# 18.1 m and falls back to 4.5 m, while european_oak survives to 25 m as a bare
-# whip (11,517 branches, crown only in the top ~15%). At 0.5, same seeds, same
-# untouched shedding, both hold 25 m with correct forest form -- spruce 291,554
-# branches with a single unbroken leader, oak 25,988 with a clear bole through
-# the lower half. 0.3 was also measured and overshoots: the oak reads open-grown
-# (105,917 branches, crown from ~15% height), which erases the distinction from
-# r00. Measured 2026-08-24, data/tmp/run25m/seed_probe.py.
+density = 0.75            # surrounding tree density (0..1), shared by all radii
+# Restored to 0.75 (the originally specified value) on 2026-08-24. It was
+# briefly lowered to 0.5 because 0.75 looked lethal -- norway_spruce collapsing
+# 18.1 -> 4.5 m at r08 and european_oak reduced to a bare whip. Both were
+# actually caused by `grow = true` below, not by density: with the shell fixed,
+# all 11 species hold 25 m at 0.75 with no preset patches at all.
 #
-# This supersedes the drop_decay/drop_weak ramps that used to live in
-# config/preset_patches.json. Those existed only to stop the collapse this
-# density causes, and they did it by suppressing self-pruning, which is what
-# produced the opaque crowns in the 2026-08-23 dataset.
-height = 0.5              # shell height (meters), shared by all radii
-grow = true               # shell grows together with the tree
+# Shell height, and whether the shell tracks the tree's own height.
+#
+# These two were 0.5 / true and that combination is what caused every
+# "structural collapse" chased through 2026-08-22..24. With grow = true the
+# neighbour shell rises with the tree FOREVER: no matter how tall it gets, it is
+# still shaded exactly as much as when it was a sapling. No tree can ever become
+# dominant, so under sustained shade it eventually loses structure outright.
+#
+# A/B on norway_spruce at r08, same seed (512), same density, same calibration,
+# nothing differing but these two keys (data/tmp/run25m/export_mutation_test.py):
+#
+#     height 0.5, grow = true   ->  reached 15 m, peak 19.91 -> final 1.07 m
+#                                   (109-cycle stall: collapse)
+#     height 6.5, grow = false  ->  reached 25.0 m, held 25.10, zero stalls
+#
+# 6.5 / false is what every Grove preset ships. The preset author's model is a
+# stand of fixed-height neighbours that a dominant tree overtops -- which is
+# also what happens in a real stand, and it produces the classic forest form:
+# early suppression self-prunes the lower stem, then the crown develops free
+# above the neighbours. That is the silhouette we want and could not get by
+# tuning drop rates.
+#
+# Everything built on top of the old values is therefore suspect. The
+# drop_decay/drop_weak ramps in config/preset_patches.json existed only to keep
+# trees alive under a shell they could never escape, and they did it by
+# suppressing self-pruning -- which is what produced the opaque, bole-less
+# crowns in the 2026-08-23 dataset. Re-screen before trusting any of them.
+height = 6.5              # shell height (meters), shared by all radii
+grow = false              # shell does NOT track the tree -- it can outgrow it

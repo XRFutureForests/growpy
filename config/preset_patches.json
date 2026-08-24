@@ -150,34 +150,6 @@
         "",
         "Both verified visually to keep a bole and open branch architecture."
     ],
-    "small_leaved_linden": {
-        "drop_decay_curve": {
-            "start": 0.0,
-            "end": 0.6,
-            "easing": "ease_in",
-            "transition_cycle": 8
-        },
-        "drop_weak_curve": {
-            "start": 0.0,
-            "end": 0.2,
-            "easing": "ease_in",
-            "transition_cycle": 8
-        }
-    },
-    "wild_cherry": {
-        "drop_decay_curve": {
-            "start": 0.0,
-            "end": 0.4,
-            "easing": "ease_in",
-            "transition_cycle": 8
-        },
-        "drop_weak_curve": {
-            "start": 0.0,
-            "end": 0.3,
-            "easing": "ease_in",
-            "transition_cycle": 8
-        }
-    },
     "_why_european_oak": [
         "european_oak's ramp is for FORM, not survival -- it is the one species",
         "here that does not collapse without a ramp. It ships drop_decay = 1.0, the",
@@ -205,18 +177,18 @@
         "(as easing power 3.0 did) is the bug this file exists to document, not a",
         "precedent."
     ],
-    "european_oak": {
-        "drop_decay_curve": {
-            "start": 0.0,
-            "end": 1.0,
-            "easing": "ease_in",
-            "transition_cycle": 8
-        },
-        "drop_weak_curve": {
-            "start": 0.0,
-            "end": 0.3,
-            "easing": "ease_in",
-            "transition_cycle": 8
-        }
-    }
+    "_status_2026_08_24": [
+        "ALL PATCHES CLEARED pending a re-screen under the corrected surround shell.",
+        "",
+        "Every ramp previously in this file was derived while config/surround.toml",
+        "had height = 0.5 and grow = true, i.e. a neighbour shell that rose with the",
+        "tree forever and could never be escaped. That setting -- not the species,",
+        "not their drop rates -- caused the collapses. See config/surround.toml for",
+        "the A/B: same spruce, same seed, grow = true collapses 19.91 -> 1.07 m,",
+        "grow = false holds 25.10 m with zero stalls.",
+        "",
+        "So the entire ramp list was fitted to an artefact. Re-screen all 11 species",
+        "against the corrected shell and add back ONLY what still fails, with the",
+        "measurement recorded next to it."
+    ]
 }
