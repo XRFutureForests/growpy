@@ -125,15 +125,17 @@ def create_forest(
                 density=cfg.surround_density,
                 distance=surround_radius,
                 height=cfg.surround_height,
-                grow=cfg.surround_grow,
+                grow=cfg.get_surround_grow(species_name),
             )
             if applied:
                 logger.info(
-                    "Surround enabled for %s (density=%.2f distance=%.1f height=%.1f)",
+                    "Surround enabled for %s (density=%.2f distance=%.1f "
+                    "height=%.1f grow=%s)",
                     species_name,
                     cfg.surround_density,
                     surround_radius,
                     cfg.surround_height,
+                    cfg.get_surround_grow(species_name),
                 )
             else:
                 logger.warning(

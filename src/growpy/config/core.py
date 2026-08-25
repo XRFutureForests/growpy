@@ -201,6 +201,7 @@ class GrowPyConfig:
         "export_dbh_from_allometry": "internal tuning, no CLI need identified",
         "export_twig_density": "internal tuning, no CLI need identified",
         "export_twig_density_per_species": "nested dict structure, config-only by design",
+        "surround_grow_per_species": "nested dict structure, config-only by design",
         "export_twig_reattach_threshold": "internal tuning, no CLI need identified",
         "export_twig_recovery": "internal toggle, no CLI need identified",
         "twigs_planar_angle": "internal tuning, no CLI need identified",
@@ -390,6 +391,17 @@ class GrowPyConfig:
     # each species' twig prototype size, not Grove's placement. See
     # get_twig_density_base().
     export_twig_density_per_species: dict[str, float] = field(default_factory=dict)
+    # Per-species override for the surround shell tracking the tree. Conifers
+    # and broadleaves respond so differently to a growing shell that one global
+    # value cannot serve both: measured 2026-08-25 at r08, grow = true takes
+    # european_oak to a realistic crown (0.52 of open-grown at density 0.4-0.5)
+    # but reduces norway_spruce to a bottlebrush at EVERY density down to 0.2
+    # (crown 0.22-0.39 of open, foliage hugging the stem, no conical taper) --
+    # its monopodial architecture (add_only_on_end 1.0) collapses laterally
+    # under sustained shade instead of narrowing. Conifers therefore keep
+    # grow = false; broadleaves get true.
+    surround_grow_per_species: dict[str, bool] = field(default_factory=dict)
+
     # Distance (m) beyond which a twig orphaned by the cutoff is pulled back
     # onto the surviving surface instead of left where Grove placed it.
     export_twig_reattach_threshold: float = 0.01
@@ -767,6 +779,10 @@ class GrowPyConfig:
             kwargs["surround_height"] = float(surr["height"])
         if "grow" in surr:
             kwargs["surround_grow"] = bool(surr["grow"])
+        if "grow_per_species" in surr:
+            kwargs["surround_grow_per_species"] = {
+                str(k): bool(v) for k, v in surr["grow_per_species"].items()
+            }
 
         # Warn about unrecognized top-level sections (usually a typo in the TOML);
         # such sections are otherwise silently ignored and defaults are used.
@@ -859,6 +875,21 @@ class GrowPyConfig:
                 )
             result.append((name, vcfg))
         return result
+
+    def get_surround_grow(self, species: str) -> bool:
+        """Whether the surround shell tracks this species' height.
+
+        Resolves ``[surround.grow_per_species]`` first, falling back to the
+        global ``[surround] grow``. Accepts a common name ("Silver fir") or a
+        standardized one ("silver_fir").
+        """
+        from growpy.utils.naming import standardize_species_name
+
+        if self.surround_grow_per_species:
+            key = standardize_species_name(species)
+            if key in self.surround_grow_per_species:
+                return self.surround_grow_per_species[key]
+        return self.surround_grow
 
     def get_twig_density_base(self, species: str) -> float:
         """Return the crown-density multiplier relative to natural density.

@@ -14,8 +14,13 @@
 # grove, so this only affects single-tree contexts.
 
 [surround]
-radii = [0.0, 8.0, 18.0]  # 0 = no surround; >0 = shell distance (meters)
-density = 0.75            # surrounding tree density (0..1), shared by all radii
+radii = [0.0, 8.0, 16.0]  # 0 = no surround; >0 = shell distance (meters)
+# NOTE: 16 m is beyond the 4-10 m range docs/reference/grove-preset-reference.md
+# documents for surround_distance. Grove accepts it, but the shell is far enough
+# away that its effect is weak -- the earlier r18 variant came out nearly
+# indistinguishable from r00. Kept because a wide, weakly-competed variant is
+# wanted in the matrix; do not read it as a strongly-shaded case.
+density = 0.45            # surrounding tree density (0..1), shared by all radii
 # Restored to 0.75 (the originally specified value) on 2026-08-24. It was
 # briefly lowered to 0.5 because 0.75 looked lethal -- norway_spruce collapsing
 # 18.1 -> 4.5 m at r08 and european_oak reduced to a bare whip. Both were
@@ -50,4 +55,32 @@ density = 0.75            # surrounding tree density (0..1), shared by all radii
 # suppressing self-pruning -- which is what produced the opaque, bole-less
 # crowns in the 2026-08-23 dataset. Re-screen before trusting any of them.
 height = 6.5              # shell height (meters), shared by all radii
-grow = false              # shell does NOT track the tree -- it can outgrow it
+grow = false              # DEFAULT (conifers); broadleaves override below
+
+# Per-species override of `grow`. Conifers and broadleaves respond so
+# differently to a growing shell that one value cannot serve both. Measured
+# 2026-08-25 at r08, crown width as a fraction of that species' own open-grown
+# r00 crown (data/tmp/run25m/export_mutation_test.py, confirmed against the
+# rendered icons):
+#
+#   european_oak, grow = true   d0.40 -> 0.52   d0.50 -> 0.64   realistic
+#   norway_spruce, grow = true  d0.20 -> 0.39 ... d0.75 -> 0.22, bottlebrush at
+#                               EVERY density -- foliage hugging the stem with
+#                               no conical taper, never a narrow forest crown
+#
+# A conifer's monopodial architecture (add_only_on_end = 1.0, whorled laterals)
+# collapses laterally under sustained shade rather than narrowing, so it needs
+# the static shell. Broadleaves rebuild laterally and narrow properly.
+#
+# density is 0.45: oak's realistic band is 0.40-0.50, and above ~0.6 it becomes
+# a whip with the crown confined to the top quarter.
+[surround.grow_per_species]
+common_ash = true
+european_beech = true
+european_oak = true
+silver_birch = true
+small_leaved_linden = true
+sycamore_maple = true
+wild_cherry = true
+# conifers omitted deliberately -- they fall through to `grow = false` above:
+# douglas_fir, norway_spruce, scots_pine, silver_fir
