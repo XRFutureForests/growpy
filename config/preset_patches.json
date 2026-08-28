@@ -245,6 +245,7 @@
         "25 m at full Grove drop rates -- the 2026-08-25 r00 pass exported all five",
         "stages for every species with no patches at all -- so their patches are",
         "removed rather than left in place unnecessarily.",
+        "wild_cherry joined them 2026-08-25: it reached only 15 m at r08 in production under the growing shell at Grove's 0.4/0.3. At 0.6 of those it holds 25.2 m with 65,466 branches against 134,541 open-grown. Its crown WIDTH barely responds to the shell at any setting (20.2 m either way), so for this species competition shows up as branch density rather than narrowing -- consistent with it having the highest apical dominance in the set (favor_end 0.6), which lets it outrun shading before it bites.",
         "",
         "Values here are ABSOLUTE, deliberately. Deriving them by scaling the preset on disk compounds: data/assets/presets may already hold a scaled value from an earlier run, and re-scaling took silver_birch 0.6 -> 0.36 -> 0.216 before it was caught. Grove originals for reference: silver_birch 0.6/0.5, small_leaved_linden 0.6/0.2."
     ],
@@ -255,5 +256,9 @@
     "small_leaved_linden": {
         "drop_decay": 0.36,
         "drop_weak": 0.12
+    },
+    "wild_cherry": {
+        "drop_decay": 0.24,
+        "drop_weak": 0.18
     }
 }
