@@ -290,11 +290,23 @@ reason with saturation.
 
 ## Catalog coverage
 
-**The deliverable is 639 models live in XRLabDB (UE 5.7.4), not a passing gate report.**
-11 species x 6-9 height stages x 3 surround radii (r00/r08/r16, per `config/surround.toml`
-`radii = [0.0, 8.0, 16.0]`). Track this every round, not just gate metrics. An asset only
-counts once it is actually present in `/Game/Assets/TheGrove` in UE with the full checklist
-below satisfied -- generating a USD file that was never imported is not coverage.
+**The deliverable is models live in XRLabDB (UE 5.7.4), not a passing gate report.**
+An asset only counts once it is actually present in `/Game/Assets/TheGrove` in UE with
+the full checklist below satisfied -- generating a USD file that was never imported is
+not coverage. Track this every round, not just gate metrics.
+
+Two targets:
+
+| | Species | Stages | Radii | Densities | Total |
+|---|---|---|---|---|---|
+| Full ladder | 11 | 6-9 (71 total) | 3 | 3 | **639** |
+| Configured run | 11 | 5 (h05-h25) | 3 | 1 | **165** |
+
+The 639 needs the density axis as well as the stage axis -- `71 x 3 = 213`, not 639.
+The configured run is what `config/` produces today: `[forest] max_height = 25` and an
+empty `[export] density_variants`, for the cost reasons in the height-LOD section
+below. All 165 exist as USD in `data/output/forest/`; the `/ 639` column in the table
+below is kept against the standing target so historical rows stay comparable.
 
 Per-asset admission checklist (all required to count):
 - Nanite assembly imports cleanly (Gate 2)

@@ -57,9 +57,16 @@ height_interval = 5
 # This is a step-4 (export) setting only; step 3's calibration has its own
 # independent [growth_models] max_height in growth_models.toml -- keep the two
 # in step, so calibration always covers at least the exported range.
-# 25 (2026-08-22): the dataset target is the h05/h10/h15/h20/h25 ladder at four
-# surround radii. Raising this without raising the calibration cap would export
-# h20/h25 off the end of the fitted curves.
+# 25 (2026-08-22): the dataset target is the h05/h10/h15/h20/h25 ladder at the
+# three surround radii in [surround] radii (r00/r08/r16). Raising this without
+# raising the calibration cap would export h20/h25 off the end of the fitted
+# curves.
+#
+# This cap is why a full run produces 165 assemblies (11 species x 5 stages x 3
+# radii x 1 density variant), not the 639 of the full per-species ladder: above
+# h25 the tall conifers need the height-LOD ladder (XRFF-324) that does not
+# exist yet -- at [quality.high] an open-grown silver fir already exhausts a
+# 63.5 GB host at h20. See docs/dataset/dataset-overview.md.
 max_height = 25
 
 # --- Export options ---
