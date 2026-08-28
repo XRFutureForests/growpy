@@ -65,7 +65,7 @@ density = 0.45            # surrounding tree density (0..1), shared by all radii
 # suppressing self-pruning -- which is what produced the opaque, bole-less
 # crowns in the 2026-08-23 dataset. Re-screen before trusting any of them.
 height = 6.5              # shell height (meters), shared by all radii
-grow = false              # DEFAULT (conifers); broadleaves override below
+grow = true               # shell tracks the tree -- sustained competition
 
 # Per-species override of `grow`. Conifers and broadleaves respond so
 # differently to a growing shell that one value cannot serve both. Measured
@@ -84,26 +84,34 @@ grow = false              # DEFAULT (conifers); broadleaves override below
 #
 # density is 0.45: oak's realistic band is 0.40-0.50, and above ~0.6 it becomes
 # a whip with the crown confined to the top quarter.
-[surround.grow_per_species]
-common_ash = true
-european_beech = true
-european_oak = true
-silver_birch = true
-small_leaved_linden = true
-sycamore_maple = true
-wild_cherry = true
-# conifers omitted deliberately -- they fall through to `grow = false` above:
-# douglas_fir, norway_spruce, scots_pine, silver_fir
 
-# Per-species override of `density`. Empty: every species uses the 0.45 global
-# above. Read by GrowPyConfig.get_surround_density().
+# Per-species shell density, calibrated 2026-08-28 against published forest
+# allometry by measuring the EXPORTED assemblies (growpy-crown-metrics reads the
+# TwigInstances PointInstancer, so these are real metres of foliage envelope,
+# not an icon proxy).
 #
-# Add a species here when its measured crown width misses the published
-# crown-diameter/height ratio for that species (spruce 0.22, beech 0.30).
-# Measure first -- `growpy-crown-metrics data/output/forest --stage h25m` reports
-# crown diameter, crown base and crown ratio per species per radius straight off
-# the exported assemblies. As of the 2026-08-28 run, with grow_per_species
-# applied, no species needs an override: beech comes in at 29.8 m open-grown and
-# 8.9 m at r08, i.e. the shell is biting.
+# Targets: crown diameter / height ~0.22 for spruce and ~0.30 for beech, and a
+# crown ratio of 0.52-0.68 -- Sharma et al. 2017, Silva Fennica 51(5):1740
+# (n=5526 spruce, 5666 beech) and Silva Fennica's companion HCB model in PLOS
+# One 12(10):e0186394. Open-grown r00 is deliberately NOT held to these.
+#
+# One global density cannot work. Each species has a THRESHOLD, not a gradient,
+# and the thresholds span 0.38 to 0.90: at a shared 0.45 douglas_fir was already
+# past its cliff (crown ratio 0.39) while european_beech had not reached its own
+# (0.93). That is exactly why earlier rounds produced "some species slimmer,
+# others untouched".
+#
+# 44 coarse arms + 20 refinement arms, all through the real pipeline. Sweep data
+# in data/tmp/run25m/sweep_out/.
 [surround.density_per_species]
-
+common_ash = 0.75
+douglas_fir = 0.38
+european_beech = 0.9
+european_oak = 0.45
+norway_spruce = 0.7
+scots_pine = 0.55
+silver_birch = 0.6
+silver_fir = 0.7
+small_leaved_linden = 0.9
+sycamore_maple = 0.65
+wild_cherry = 0.7

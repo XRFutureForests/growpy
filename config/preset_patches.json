@@ -229,36 +229,81 @@
         "regardless of align_height."
     ],
     "_why_drop_patches": [
-        "Only the two BROADLEAVES that cannot survive a growing shell are patched.",
+        "config/surround.toml runs grow = true for every species: the neighbour",
+        "shell tracks the tree, so competition is sustained instead of ending once",
+        "the tree outgrows a fixed-height shell.",
         "",
-        "config/surround.toml now sets grow per species: broadleaves get a shell",
-        "that tracks the tree (sustained competition, crowns actually narrow),",
-        "conifers keep the static shell (a growing one turns them into a",
-        "bottlebrush at every density -- see that file for the measurements).",
+        "Five species cannot survive that at Grove's own drop rates and are scaled",
+        "to 0.6 of them. Screened at r08 with calibration off:",
         "",
-        "Under a GROWING shell at Grove's own drop rates, silver_birch and",
-        "small_leaved_linden collapse; the other five broadleaves hold 25 m",
-        "untouched. Scaling those two to 0.6 of their own values fixes it.",
+        "  at scale 1.00  norway_spruce, silver_fir, silver_birch and",
+        "                 small_leaved_linden collapse; wild_cherry stalled at 15 m",
+        "                 in production",
+        "  at scale 0.60  all of them hold 25 m",
         "",
-        "norway_spruce and silver_fir were patched the same way earlier ONLY",
-        "because they were then also on grow = true. On the static shell they hold",
-        "25 m at full Grove drop rates -- the 2026-08-25 r00 pass exported all five",
-        "stages for every species with no patches at all -- so their patches are",
-        "removed rather than left in place unnecessarily.",
-        "wild_cherry joined them 2026-08-25: it reached only 15 m at r08 in production under the growing shell at Grove's 0.4/0.3. At 0.6 of those it holds 25.2 m with 65,466 branches against 134,541 open-grown. Its crown WIDTH barely responds to the shell at any setting (20.2 m either way), so for this species competition shows up as branch density rather than narrowing -- consistent with it having the highest apical dominance in the set (favor_end 0.6), which lets it outrun shading before it bites.",
+        "The other six keep Grove's values untouched.",
         "",
-        "Values here are ABSOLUTE, deliberately. Deriving them by scaling the preset on disk compounds: data/assets/presets may already hold a scaled value from an earlier run, and re-scaling took silver_birch 0.6 -> 0.36 -> 0.216 before it was caught. Grove originals for reference: silver_birch 0.6/0.5, small_leaved_linden 0.6/0.2."
+        "Values are ABSOLUTE. Deriving them by scaling data/assets/presets",
+        "compounds, because that preset may already carry a scaled value from an",
+        "earlier run -- silver_birch went 0.6 -> 0.36 -> 0.216 that way once.",
+        "Grove originals: norway_spruce 0.3/0.3, silver_fir 0.3/0.3,",
+        "silver_birch 0.6/0.5, small_leaved_linden 0.6/0.2, wild_cherry 0.4/0.3."
     ],
+    "norway_spruce": {
+        "drop_decay": 0.18,
+        "drop_weak": 0.18
+    },
+    "silver_fir": {
+        "drop_decay": 0.18,
+        "drop_weak": 0.18
+    },
     "silver_birch": {
         "drop_decay": 0.36,
-        "drop_weak": 0.3
+        "drop_weak": 0.3,
+        "add_regenerate": 0.3
     },
     "small_leaved_linden": {
         "drop_decay": 0.36,
-        "drop_weak": 0.12
+        "drop_weak": 0.12,
+        "add_regenerate": 0.65
     },
     "wild_cherry": {
         "drop_decay": 0.24,
         "drop_weak": 0.18
-    }
+    },
+    "european_beech": {
+        "add_regenerate": 0.87
+    },
+    "common_ash": {
+        "add_chance": 0.7
+    },
+    "_why_crown_shape": [
+        "add_regenerate is the CROWN BASE lever. It controls whether shed branches",
+        "regrow, so a high value pins the live crown to the ground no matter how",
+        "much competition is applied. The three species whose crown base would not",
+        "lift at ANY density are the three highest in the set (silver_birch 0.9,",
+        "european_beech 1.0, small_leaved_linden 0.9); every species that calibrated",
+        "on density alone sits at 0.0-0.7. Measured at r08, crown base in metres:",
+        "",
+        "  silver_birch         0.9 -> 3.3 m    0.3 -> 5.6 m   (ratio 0.87 -> 0.77)",
+        "  european_beech       1.0 -> 5.8 m    0.9 -> 6.8 m   (ratio 0.76 -> 0.73)",
+        "  small_leaved_linden  0.9 -> 3.1 m    0.5 -> 14.4 m  (ratio 0.88 -> 0.42)",
+        "",
+        "beech 0.87 and linden 0.65 are interpolated onto the 0.52-0.68 crown-ratio",
+        "band from those brackets; the full run verifies them.",
+        "",
+        "common_ash gets add_chance 0.70 instead: its crown is ~2x too wide at the",
+        "SOURCE (33.7 m open-grown, against 15-20 m for a real ash), and density",
+        "cannot fix a baseline that is already double. Cutting branch LENGTH",
+        "(grow_length 0.48 and 0.40) killed it outright -- it has no survival margin",
+        "-- while cutting branch COUNT narrows it 31.4 -> 25.6 m and it lives. Still",
+        "well above target; recorded as a known deviation, not a fix.",
+        "",
+        "NOT applied, and why: european_beech turn_to_horizon (0.53, unique in the",
+        "set) looked like the obvious width lever and is inert -- 0.25 matches",
+        "baseline and 0.0 kills the tree. wild_cherry got worse from add_chance",
+        "(crown 14.1 -> 22.1 m: fewer branches means less self-shading, so it keeps",
+        "its lower crown) and its density response is non-monotonic near the",
+        "threshold, so it runs on density alone."
+    ]
 }
