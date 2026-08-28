@@ -21,11 +21,21 @@ radii = [0.0, 8.0, 16.0]  # 0 = no surround; >0 = shell distance (meters)
 # indistinguishable from r00. Kept because a wide, weakly-competed variant is
 # wanted in the matrix; do not read it as a strongly-shaded case.
 density = 0.45            # surrounding tree density (0..1), shared by all radii
-# Restored to 0.75 (the originally specified value) on 2026-08-24. It was
+# History, because the value has moved twice for different reasons. It was
 # briefly lowered to 0.5 because 0.75 looked lethal -- norway_spruce collapsing
 # 18.1 -> 4.5 m at r08 and european_oak reduced to a bare whip. Both were
-# actually caused by `grow = true` below, not by density: with the shell fixed,
-# all 11 species hold 25 m at 0.75 with no preset patches at all.
+# actually caused by `grow = true` below, not by density, so 0.75 was restored
+# 2026-08-24 once the shell was fixed: all 11 species hold 25 m at 0.75 with no
+# preset patches at all.
+#
+# Lowered again to 0.45 on 2026-08-25, for the reason recorded at
+# [surround.grow_per_species] below: 0.40-0.50 is european_oak's realistic band,
+# and above ~0.6 it becomes a whip.
+#
+# A single global is a poor fit for the whole set, which is what
+# [surround.density_per_species] below exists for. Do not tune this number for
+# one species -- measure with `growpy-crown-metrics` and override that species
+# instead.
 #
 # Shell height, and whether the shell tracks the tree's own height.
 #
@@ -84,3 +94,16 @@ sycamore_maple = true
 wild_cherry = true
 # conifers omitted deliberately -- they fall through to `grow = false` above:
 # douglas_fir, norway_spruce, scots_pine, silver_fir
+
+# Per-species override of `density`. Empty: every species uses the 0.45 global
+# above. Read by GrowPyConfig.get_surround_density().
+#
+# Add a species here when its measured crown width misses the published
+# crown-diameter/height ratio for that species (spruce 0.22, beech 0.30).
+# Measure first -- `growpy-crown-metrics data/output/forest --stage h25m` reports
+# crown diameter, crown base and crown ratio per species per radius straight off
+# the exported assemblies. As of the 2026-08-28 run, with grow_per_species
+# applied, no species needs an override: beech comes in at 29.8 m open-grown and
+# 8.9 m at r08, i.e. the shell is biting.
+[surround.density_per_species]
+

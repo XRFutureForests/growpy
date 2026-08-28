@@ -202,6 +202,7 @@ class GrowPyConfig:
         "export_twig_density": "internal tuning, no CLI need identified",
         "export_twig_density_per_species": "nested dict structure, config-only by design",
         "surround_grow_per_species": "nested dict structure, config-only by design",
+        "surround_density_per_species": "nested dict structure, config-only by design",
         "export_twig_reattach_threshold": "internal tuning, no CLI need identified",
         "export_twig_recovery": "internal toggle, no CLI need identified",
         "twigs_planar_angle": "internal tuning, no CLI need identified",
@@ -401,6 +402,21 @@ class GrowPyConfig:
     # under sustained shade instead of narrowing. Conifers therefore keep
     # grow = false; broadleaves get true.
     surround_grow_per_species: dict[str, bool] = field(default_factory=dict)
+    # Per-species shell density, for when one global value cannot serve the
+    # set. The motivating case was measured BEFORE surround_grow_per_species
+    # existed: at density 0.45 european_beech carried a 27.5 m crown at r08 --
+    # wider than the widest beech in a 5,666-tree field dataset (19.7 m, Sharma
+    # et al. 2017, Silva Fennica 51(5):1740) -- while at 0.75 it came in near
+    # 14.5 m, and european_oak became a whip above ~0.5.
+    #
+    # The grow split fixed that case on its own: re-measured on the 2026-08-28
+    # run (growpy-crown-metrics, h25m), beech is 29.8 m at r00 and 8.9 m at
+    # r08, so the override table is empty. Kept because the knob is the right
+    # place to correct a single species against published
+    # crown-diameter/height ratios (spruce 0.22, beech 0.30) without moving the
+    # global for everyone.
+    surround_density_per_species: dict[str, float] = field(default_factory=dict)
+
 
     # Distance (m) beyond which a twig orphaned by the cutoff is pulled back
     # onto the surviving surface instead of left where Grove placed it.
@@ -779,6 +795,10 @@ class GrowPyConfig:
             kwargs["surround_height"] = float(surr["height"])
         if "grow" in surr:
             kwargs["surround_grow"] = bool(surr["grow"])
+        if "density_per_species" in surr:
+            kwargs["surround_density_per_species"] = {
+                str(k): float(v) for k, v in surr["density_per_species"].items()
+            }
         if "grow_per_species" in surr:
             kwargs["surround_grow_per_species"] = {
                 str(k): bool(v) for k, v in surr["grow_per_species"].items()
@@ -875,6 +895,16 @@ class GrowPyConfig:
                 )
             result.append((name, vcfg))
         return result
+
+    def get_surround_density(self, species: str) -> float:
+        """Shell density for this species, falling back to [surround] density."""
+        from growpy.utils.naming import standardize_species_name
+
+        if self.surround_density_per_species:
+            key = standardize_species_name(species)
+            if key in self.surround_density_per_species:
+                return self.surround_density_per_species[key]
+        return self.surround_density
 
     def get_surround_grow(self, species: str) -> bool:
         """Whether the surround shell tracks this species' height.
