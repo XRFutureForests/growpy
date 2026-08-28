@@ -265,7 +265,7 @@
     "small_leaved_linden": {
         "drop_decay": 0.36,
         "drop_weak": 0.12,
-        "add_regenerate": 0.65
+        "add_regenerate": 0.71
     },
     "wild_cherry": {
         "drop_decay": 0.24,
@@ -304,6 +304,8 @@
         "baseline and 0.0 kills the tree. wild_cherry got worse from add_chance",
         "(crown 14.1 -> 22.1 m: fewer branches means less self-shading, so it keeps",
         "its lower crown) and its density response is non-monotonic near the",
-        "threshold, so it runs on density alone."
+        "threshold, so it runs on density alone.",
+        "",
+        "2026-08-28, corrected after the full run measured the interpolated values: small_leaved_linden 0.65 came out at crown ratio 0.31 (over-suppressed) and european_beech 0.87 at 0.73 (under-suppressed) -- wrong in OPPOSITE directions, so neither was a systematic offset. Re-set to 0.78 and 0.84 respectively, bracketed by the measured pairs (linden 0.5->0.42, 0.9->0.88; beech 0.80->0.24, 0.87->0.73)."
     ]
 }

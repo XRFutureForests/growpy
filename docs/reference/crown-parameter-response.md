@@ -182,6 +182,24 @@ crowns with no visible bole. If a ramp is ever needed again, use
   (0.66 -> 0.73, 0.68 -> 0.84, 0.70 -> 0.39) and at 0.66 comes out *wider* than
   open-grown. It runs on density alone.
 * **`silver_birch` plateaus at crown ratio 0.77**, short of the 0.68 ceiling.
+* **`european_beech` and `small_leaved_linden` cannot have their crown base
+  placed precisely.** Their `add_regenerate` response near the threshold jumps
+  the target band instead of crossing it, and for beech it is not even
+  monotonic:
+
+  | species | value | crown ratio |
+  |---|---|---|
+  | european_beech | 0.80 | 0.24 |
+  | european_beech | 0.84 | 0.81 |
+  | european_beech | 0.87 | 0.73 |
+  | small_leaved_linden | 0.65 | 0.31 |
+  | small_leaved_linden | 0.78 | 0.86 |
+
+  Repeat runs of the SAME beech configuration also differ (r08 ratio 0.73 then
+  0.81; r16 0.50 then 0.37) despite a fixed seed, so these two are genuinely
+  unstable in this region rather than merely finely tuned. An inverse model
+  should treat a requested crown base on these species as approximate, and
+  verify by measurement rather than trusting the parameter.
 
 ---
 
