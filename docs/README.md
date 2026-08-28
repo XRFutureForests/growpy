@@ -30,6 +30,7 @@ Look-up docs: CLI flags, configuration, Python API, domain concepts.
 | [reference/configuration.md](reference/configuration.md) | Every TOML key + `tree_asset_lookup.csv` columns (incl. `Dataset`) |
 | [reference/package-api.md](reference/package-api.md) | Python API for embedding growpy |
 | [reference/grove-preset-reference.md](reference/grove-preset-reference.md) | Grove growth parameters and cycle-based curves |
+| [reference/crown-parameter-response.md](reference/crown-parameter-response.md) | Which knob moves which crown property, per species, measured |
 | [reference/pve-attribute-reference.md](reference/pve-attribute-reference.md) | PVE JSON schema and Grove-to-UE mapping |
 | [reference/pve-python-api.md](reference/pve-python-api.md) | PVE Python API reference |
 | [reference/grove-api-attributes.md](reference/grove-api-attributes.md) | Grove 2.3 API attribute reference |
