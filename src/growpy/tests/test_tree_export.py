@@ -108,3 +108,100 @@ class TestBuildTreeMeshJunctionContinuity:
         for a, b in zip(trunk_owned, branch_owned, strict=True):
             assert a == pytest.approx(b, abs=1e-5)
 
+
+
+class TestBuildTreeMeshFailureHandling:
+    """Regression tests for how a failed export reports and cleans up.
+
+    `Usd.Stage.CreateNew` writes the file the moment it is called, so every
+    failure path between it and `stage.Save()` used to leave a 0-byte .usdc
+    behind while the step still reported OK (XRFF-331). A `MemoryError` was
+    additionally reported as whatever USD call came next, which pointed
+    debugging at the UV handling instead of at the host's memory (XRFF-333).
+    """
+
+    def _model(self, uvs_exc=None):
+        pt = Vector3(0.0, 0.0, 0.0)
+
+        class _Model:
+            points = [pt, pt, pt]
+            faces = [[0, 1, 2]]
+            point_attribute_bone_id = [0, 0, 0]
+
+            @property
+            def uvs(self):
+                if uvs_exc is not None:
+                    raise uvs_exc
+                return []
+
+        return _Model()
+
+    def test_memory_error_is_reported_as_memory(self, tmp_path, caplog):
+        out = tmp_path / "oom_tree.usda"
+
+        ok = build_tree_mesh(
+            model=self._model(uvs_exc=MemoryError()),
+            skeleton=None,
+            output_path=out,
+            species_name="silver_fir",
+            tree_id="0001",
+            include_skeleton=False,
+        )
+
+        assert ok is False
+        text = caplog.text
+        assert "Out of memory" in text
+        assert "silver_fir" in text
+        # The counts bound before the failure are reported, so the log says how
+        # big the mesh was when the host ran out.
+        assert "3 points" in text
+        # And it must not blame USD, which is what sent the original
+        # investigation into this module's primvar handling.
+        assert "USD export failed" not in text
+
+    def test_memory_error_leaves_no_partial_artifact(self, tmp_path):
+        out = tmp_path / "oom_tree.usda"
+
+        build_tree_mesh(
+            model=self._model(uvs_exc=MemoryError()),
+            skeleton=None,
+            output_path=out,
+            species_name="silver_fir",
+            tree_id="0001",
+            include_skeleton=False,
+        )
+
+        assert not out.exists()
+
+    def test_generic_failure_leaves_no_partial_artifact(self, tmp_path):
+        out = tmp_path / "broken_tree.usda"
+
+        ok = build_tree_mesh(
+            model=self._model(uvs_exc=RuntimeError("boom")),
+            skeleton=None,
+            output_path=out,
+            species_name="common_ash",
+            tree_id="0001",
+            include_skeleton=False,
+        )
+
+        assert ok is False
+        # A consumer globbing *_stems_skeletal.usdc must not find an empty file
+        # sitting where a real asset should be.
+        assert not out.exists()
+
+    def test_successful_export_keeps_its_file(self, tmp_path):
+        out = tmp_path / "good_tree.usda"
+
+        ok = build_tree_mesh(
+            model=self._model(),
+            skeleton=None,
+            output_path=out,
+            species_name="common_ash",
+            tree_id="0001",
+            include_skeleton=False,
+        )
+
+        assert ok is True
+        assert out.exists()
+        assert out.stat().st_size > 0

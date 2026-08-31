@@ -528,9 +528,71 @@ def build_tree_mesh(
         stage.Save()
         return True
 
-    except Exception as e:
-        logger.error("USD export failed: %s", e, exc_info=True)
+    except MemoryError:
+        # Name memory as the cause when memory is the cause (XRFF-333). The
+        # generic handler below reports whatever USD call happened to be next
+        # in line, and read bottom-up that traceback points at the primvar --
+        # which sent a debugging session into this module's UV handling when
+        # the actual condition was an out-of-memory host.
+        logger.error(
+            "Out of memory building the USD mesh for %s (%s): %s points, %s "
+            "faces, %s face-varying UVs. This is a host memory limit, not a "
+            "USD error. Use a coarser preset for this stage "
+            "([quality.dataset_tall] raises build_cutoff_thickness, which is "
+            "the triangle-budget lever) rather than looking for a schema bug.",
+            species_name or "unknown species",
+            output_path.name,
+            _safe_len(locals().get("points")),
+            _safe_len(locals().get("faces")),
+            _safe_len(locals().get("uvs")),
+        )
+        stage = None
+        _discard_partial_export(output_path)
         return False
+
+    except Exception as e:
+        logger.error(
+            "USD export failed for %s: %s", output_path.name, e, exc_info=True
+        )
+        stage = None
+        _discard_partial_export(output_path)
+        return False
+
+
+def _safe_len(value: Any) -> str:
+    """Length of `value` for a log line, or "?" if it does not have one.
+
+    Called only from the failure handlers, where a local may be unbound or hold
+    a partially built buffer. A diagnostic must never raise on its way out.
+    """
+    try:
+        return f"{len(value):,}"
+    except Exception:
+        return "?"
+
+
+def _discard_partial_export(output_path: Path) -> None:
+    """Delete the file `Usd.Stage.CreateNew` left behind by a failed export.
+
+    CreateNew writes the file the moment it is called, so any failure before
+    `stage.Save()` leaves a 0-byte .usdc on disk (XRFF-331). Nothing
+    downstream checks size, so a consumer globbing `*_stems_skeletal.usdc`
+    would pick the empty file up as if it were a real asset.
+
+    If the layer is still held open the unlink can fail; say so loudly rather
+    than leave a silent empty artifact for someone to trip over later.
+    """
+    try:
+        if output_path.exists():
+            output_path.unlink()
+            logger.info("Removed incomplete export artifact: %s", output_path.name)
+    except OSError as exc:
+        logger.warning(
+            "Could not remove the incomplete export artifact %s: %s. It is a "
+            "partial file, not a usable asset -- delete it before re-running.",
+            output_path,
+            exc,
+        )
 
 
 def strip_skeleton_from_usd(skeletal_path: Path, static_path: Path) -> bool:
