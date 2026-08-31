@@ -857,6 +857,12 @@ def generate_forest_stages(
     # against the milestones the simulation captured and fail if any is missing.
     # Must be bound before _export_cycle below, which declares it nonlocal.
     exported_stage_count = 0
+    # (species, surround_radius) -> cycles at which a captured milestone was
+    # lost because Grove returned no model. Mutated in place from
+    # _export_cycle, so it needs no nonlocal declaration. Reported per radius
+    # at the end: a species that reaches h25 open-grown but loses stages at
+    # r08 must not be recorded as reaching h25 outright (XRFF-334).
+    radius_missed: dict[tuple[str, float], list[int]] = {}
 
     def _export_cycle(cycle, species_snapshots, milestone_map):
         """Export one captured milestone cycle, then let it be freed.
@@ -903,13 +909,38 @@ def generate_forest_stages(
                     tree_surround_radius = 0.0
 
                 if model is None:
-                    logger.warning(
-                        "  Skipping %s tree %d (fid=%d) at cycle %d: model is None",
-                        species_name,
-                        tree_idx,
-                        fid,
-                        cycle,
-                    )
+                    # `model is None` is not a growth statement. It means
+                    # grove.build_models() returned a shorter list than
+                    # grove.trees for this cycle, so models[tree_idx] was out
+                    # of range (see core/forest.py's build_models shortfall
+                    # warning). A tree that simply never grew tall enough does
+                    # not appear here at all -- it just never crosses the
+                    # milestone. Reporting the internal state made a build
+                    # shortfall look like expected shading behaviour, and left
+                    # per-species coverage claims ambiguous across radii
+                    # (XRFF-334).
+                    #
+                    # Only warn where a milestone was actually expected. Grove
+                    # returns a short list on every captured cycle once it
+                    # starts, so warning unconditionally buried the signal in
+                    # one line per tree per cycle.
+                    if tree_idx in milestone_map.get(cycle, {}).get(
+                        species_name, {}
+                    ):
+                        radius_missed.setdefault(
+                            (species_name, tree_surround_radius), []
+                        ).append(cycle)
+                        logger.warning(
+                            "  %s r%02d (fid=%d): Grove built no model at cycle "
+                            "%d, so its h%.0fm milestone was lost. This is a "
+                            "build shortfall, not slower growth under shade -- "
+                            "the stage will be missing from this radius only.",
+                            species_name,
+                            int(tree_surround_radius),
+                            fid,
+                            cycle,
+                            milestone_map[cycle][species_name][tree_idx],
+                        )
                     continue
 
                 # Only export trees that triggered a milestone crossing at this
@@ -1165,12 +1196,27 @@ def generate_forest_stages(
     )
     logger.info("\nExported %d tree stage files", len(exported_files))
 
+    # Per-radius coverage, so "silver_fir reaches h25" can never be recorded
+    # from an open-grown run alone while r08/r16 quietly stopped lower
+    # (XRFF-334).
+    if radius_missed:
+        logger.warning("\nStages lost to Grove build shortfalls, by radius:")
+        for (sp_name, radius), cycles in sorted(radius_missed.items()):
+            logger.warning(
+                "  %s r%02d: %d stage(s) lost at cycle(s) %s. Coverage for this "
+                "species must be stated per radius, not per species.",
+                sp_name,
+                int(radius),
+                len(cycles),
+                ", ".join(str(c) for c in sorted(cycles)),
+            )
+
     shortfall = captured_stage_count - exported_stage_count
     if shortfall > 0:
         logger.error(
             "%d of %d captured milestone stage(s) failed to export. The dataset "
-            "is INCOMPLETE -- see the 'Export failed' / 'model is None' warnings "
-            "above for which trees and cycles.",
+            "is INCOMPLETE -- see the 'Export failed' / 'build shortfall' "
+            "warnings above for which trees, radii and cycles.",
             shortfall,
             captured_stage_count,
         )
