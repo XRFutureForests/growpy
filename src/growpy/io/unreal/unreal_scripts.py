@@ -105,12 +105,26 @@ else:
         except Exception as _ace:
             print(f"  finish_all_compilation err: {{_ace}}")
 
-        if import_task.imported_object_paths:
+        if import_task.imported_object_paths and _package_saved_to_disk(
+            import_task.imported_object_paths
+        ):
             imported_count += 1
             _outcome = "imported"
             _record_file_done("{label}")
             print(f"  Imported: {label}")
 {config_block}
+        elif import_task.imported_object_paths:
+            # Objects exist in memory but no package reached disk. Deliberately
+            # NOT recorded as done: done.txt is the resume contract, so a false
+            # entry means a re-run skips this asset forever and the coverage
+            # count inherits the gap silently (XRFF-332).
+            failed_count += 1
+            _outcome = "failed"
+            unreal.log_warning(
+                "Objects created but no package reached disk (disk full, or a "
+                "permissions/path problem): {label} -- NOT recorded as done, "
+                "re-run to retry"
+            )
         else:
             failed_count += 1
             _outcome = "failed"
@@ -728,6 +742,35 @@ if os.path.isfile(_BATCH_PROGRESS):
     if _completed_files:
         print(f"Resuming: {{len(_completed_files)}} files already imported")
         print(f"Delete {batch_progress_name} to re-import all\\n")
+
+_CONTENT_DIR = unreal.Paths.convert_relative_path_to_full(
+    unreal.Paths.project_content_dir()
+)
+
+def _package_saved_to_disk(object_paths):
+    """True if at least one imported object's package is a real file on disk.
+
+    `import_task.imported_object_paths` being non-empty means UE created the
+    objects, not that the package was written. With import_task.save = True the
+    save can still fail -- a full disk, or a permissions or path problem -- and
+    nothing re-checked it. Recording done.txt on the object paths alone made
+    the resume contract lie: the asset was skipped on every later run because
+    the batch believed it was finished (XRFF-332).
+    """
+    for _op in object_paths or []:
+        _pkg = str(_op)
+        _tail = _pkg.rsplit("/", 1)[-1]
+        if "." in _tail:
+            # Strip the ObjectName suffix: /Game/A/SK_x.SK_x -> /Game/A/SK_x
+            _pkg = _pkg[: len(_pkg) - len(_tail) + _tail.index(".")]
+        if not _pkg.startswith("/Game/"):
+            continue
+        _rel = _pkg[len("/Game/") :].replace("/", os.sep)
+        for _ext in (".uasset", ".umap"):
+            _fp = os.path.join(_CONTENT_DIR, _rel + _ext)
+            if os.path.isfile(_fp) and os.path.getsize(_fp) > 0:
+                return True
+    return False
 
 def _record_file_done(label):
     """Append a completed file label to the batch progress file."""

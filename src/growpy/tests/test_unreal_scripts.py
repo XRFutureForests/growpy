@@ -4,6 +4,7 @@
 from growpy.io.unreal.unreal_scripts import (
     _build_consolidation_script,
     _build_import_block,
+    _write_batch_script,
 )
 
 
@@ -93,3 +94,65 @@ class TestBuildConsolidationScript:
     def test_instances_subpath(self):
         script = _build_consolidation_script("/Game/Trees")
         assert 'INSTANCES_PATH = IMPORT_PATH + "/Instances"' in script
+
+
+class TestImportBlockDoneMarker:
+    """Regression tests for the done.txt resume contract (XRFF-332).
+
+    `import_task.imported_object_paths` being non-empty only means UE created
+    the objects. With `import_task.save = True` the save can still fail -- a
+    full disk did exactly this on 2026-08-15 -- and the marker was written
+    anyway, so every later run skipped an asset that was never on disk.
+    """
+
+    def _block(self):
+        return _build_import_block(
+            file_path="/path/to/tree.usda",
+            dest_path="silver_fir/r00",
+            label="Silver_Fir_r00_h20m_d26cm_full_assembly",
+        )
+
+    def test_done_marker_requires_a_package_on_disk(self):
+        block = self._block()
+        # The marker is gated on the disk check, not on imported_object_paths
+        # alone.
+        assert "_package_saved_to_disk(" in block
+        marker_at = block.index("_record_file_done(")
+        guard_at = block.index("_package_saved_to_disk(")
+        assert guard_at < marker_at
+
+    def test_objects_without_a_package_count_as_failed(self):
+        block = self._block()
+        assert "elif import_task.imported_object_paths:" in block
+        assert "NOT recorded as done" in block
+        # The operator needs to know a re-run will retry it, since the whole
+        # point is that the asset is absent rather than done.
+        assert "re-run to retry" in block
+
+
+class TestPackageSavedToDiskHelper:
+    """The preamble helper that backs the done.txt guard."""
+
+    def _preamble(self, tmp_path):
+        script = tmp_path / "import_batch_06_silver_fir.py"
+        _write_batch_script(
+            script_path=script,
+            project_path="/Game/Assets/TheGrove",
+            batch_label="silver_fir",
+            import_blocks="",
+            file_count=0,
+        )
+        return script.read_text(encoding="utf-8")
+
+    def test_helper_is_defined_before_use(self, tmp_path):
+        text = self._preamble(tmp_path)
+        assert "def _package_saved_to_disk(object_paths):" in text
+        assert "_CONTENT_DIR" in text
+        # Size check as well as existence: a 0-byte .uasset is not a saved
+        # package either.
+        assert "os.path.getsize(_fp) > 0" in text
+
+    def test_generated_script_is_valid_python(self, tmp_path):
+        import ast
+
+        ast.parse(self._preamble(tmp_path))
