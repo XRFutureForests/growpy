@@ -73,6 +73,64 @@ skeleton_reduce = 0.5
 skeleton_bias = 0.5
 skeleton_connected = true
 
+# Mesh-aggressive preset for species whose stem meshes are too large for the
+# UE Nanite/skinned-mesh build to handle. Measured on 2026-08-31: a stem mesh
+# of ~12.9M triangles drives the UE importer to 56.7 GB of 57.1 GB available
+# and takes 3h51m for one tree, while ~7.9M imports in 24 min. At [quality.high]
+# the tallest beech/spruce/silver-fir stems reach ~63M triangles (~24.5M even at
+# [quality.medium]), so those species need this preset to import at all.
+#
+# Skeleton values deliberately match [quality.high]: bone count does not drive
+# the import cost -- stem triangle count does -- and cutting bones only degrades
+# DynamicWind. Reducing mesh resolution without touching the skeleton keeps wind
+# animation fidelity intact.
+[quality.low]
+resolution = 8
+resolution_reduce = 0.9
+build_cutoff_age = 0
+# Measured 2026-09-01 on silver_fir h25 (baseline 0.0025 = 24.6M tris, 272,996
+# twigs surviving, which is ~2,900 instances after twig_density_per_species):
+#   0.01  -> 0.37M tris but ZERO twigs. A 10 mm cutoff strips every
+#            foliage-bearing branch, and twig recovery cannot restore foliage
+#            once the attachment points are gone. Do not use.
+#   0.004 -> 8.86M tris (2.8x down, inside the importable band) while the final
+#            assembly still carries 2,612 twig instances vs 2,959 for the
+#            near-identical norway_spruce at 0.0025 -- only ~12% sparser.
+# The pool shrinks 8.7x but the crown barely moves, because the per-species
+# twig density (silver_fir 0.0078) already discards >99% of surviving twigs and
+# placement is bounded by min-spacing, not by pool size. That is what makes
+# 0.004 safe here and 0.01 not. Always measure twig survival AND final instance
+# count before changing this.
+build_cutoff_thickness = 0.004
+build_blend = true
+build_end_cap = true
+skeleton_length = 1.0
+skeleton_reduce = 0.333
+skeleton_bias = 0.5
+skeleton_connected = true
+
+# Broadleaf counterpart to [quality.low]. Same mesh resolution, gentler cutoff.
+#
+# [quality.low]'s 0.004 cutoff suits conifers because their per-species twig
+# density discards >99% of the pool, so shrinking the pool barely touches the
+# crown (silver_fir -12%, norway_spruce actually +19%). Broadleaves discard far
+# less -- european_beech = 0.138 keeps ~14% -- so the same cutoff propagates
+# straight through: measured 2026-09-01, beech h25 at 0.004 fell to 28,439 twig
+# instances from 52,320 natural, while its stem mesh overshot to 3.96M triangles
+# when anything up to ~8M imports fine. 0.003 spends that headroom on crown
+# instead. Use this preset for broadleaf species that need stem reduction.
+[quality.performance]
+resolution = 8
+resolution_reduce = 0.9
+build_cutoff_age = 0
+build_cutoff_thickness = 0.003
+build_blend = true
+build_end_cap = true
+skeleton_length = 1.0
+skeleton_reduce = 0.333
+skeleton_bias = 0.5
+skeleton_connected = true
+
 [quality.helios]
 resolution = 9
 resolution_reduce = 0.75
