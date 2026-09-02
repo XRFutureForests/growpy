@@ -221,6 +221,204 @@ def extract_subtree_mesh(
     return part
 
 
+def harvested_branch_ids(
+    children: Sequence[Sequence[int]], roots: Iterable[int]
+) -> set[int]:
+    """Union of `subtree_branch_ids()` over every cut point in a cut set."""
+    ids: set[int] = set()
+    for root in roots:
+        ids |= subtree_branch_ids(children, root)
+    return ids
+
+
+class ComplementModel:
+    """A read-only view of a Grove model with the harvested parts removed.
+
+    XRFF-362. The base mesh under a compound assembly must be the exact
+    complement of the parts placed on it, and `build_cutoff_thickness` does not
+    produce that: at cut diameter 0.030 Grove's cutoff leaves 19 branches out of
+    11,685 while the cut set is computed on the full-resolution tree, so the two
+    meshes describe different trees and every part hangs in mid-air (median
+    placement-to-mesh distance 0.739 m).
+
+    Selecting by the inverse face mask instead makes the halves complementary by
+    construction, whatever Grove's cutoff happens to mean.
+
+    The view presents the same attribute surface `build_tree_mesh` reads, at the
+    same cardinalities -- per-face `face_attribute_*`, per-point
+    `point_attribute_*` (with `point_attribute_normals` at three floats per
+    point), per-face-corner `uvs` and `uv_islands` -- so it can be passed to
+    `build_tree_mesh` in place of the model it wraps.
+
+    Points are compacted, not merely left unreferenced: the full-resolution
+    18-cycle beech carries 546,923 points against 424,752 faces, and shipping
+    the crown's vertices in a mesh that no longer has crown faces would dominate
+    the file.
+    """
+
+    def __init__(
+        self,
+        model: Any,
+        part_branch_ids: Iterable[int],
+        drop_twig_faces: bool = True,
+    ) -> None:
+        excluded = set(part_branch_ids)
+
+        # Grove properties rebuild their whole list per access -- hoisting two
+        # in-loop reads is what took dataset production from 44 min per 17
+        # assemblies to 10 min per 99. Read each exactly once.
+        src_faces = model.faces
+        src_points = model.points
+        src_uvs = model.uvs
+        face_branch_ids = model.face_attribute_branch_id
+
+        twig_mask: list[bool] | None = None
+        if drop_twig_faces:
+            # A compound assembly places real baked parts at these markers, so
+            # a surviving marker quad renders as a stray flat quad in the base
+            # mesh. Same four arrays `bake_prototypes` masks with.
+            long_ = model.face_attribute_twig_long
+            short = model.face_attribute_twig_short
+            upward = model.face_attribute_twig_upward
+            dead = model.face_attribute_twig_dead
+            twig_mask = [
+                bool(long_[i] or short[i] or upward[i] or dead[i])
+                for i in range(len(src_faces))
+            ]
+
+        # Destination faces produced per SOURCE face: 0 for a dropped face, 1
+        # while the view is untriangulated, and the fan count afterwards. A
+        # plain keep/drop mask cannot survive `triangulate()`, because a kept
+        # quad then owns two destination faces while still consuming one slot
+        # in every source-length `face_attribute_*` array.
+        face_repeat: list[int] = []
+        faces: list[list[int]] = []
+        uvs: list[tuple[float, float]] = []
+        point_map: dict[int, int] = {}
+        kept_points: list[int] = []
+
+        corner_offset = 0
+        for face_index, face in enumerate(src_faces):
+            offset = corner_offset
+            corner_offset += len(face)
+
+            if face_branch_ids[face_index] in excluded or (
+                twig_mask is not None and twig_mask[face_index]
+            ):
+                face_repeat.append(0)
+                continue
+
+            face_repeat.append(1)
+            local_face = []
+            for index in face:
+                local = point_map.get(index)
+                if local is None:
+                    local = len(kept_points)
+                    point_map[index] = local
+                    kept_points.append(index)
+                local_face.append(local)
+            faces.append(local_face)
+            for corner in range(len(face)):
+                uv = src_uvs[offset + corner]
+                uvs.append((float(uv[0]), float(uv[1])))
+
+        self._model = model
+        self._face_repeat = face_repeat
+        self._kept_points = kept_points
+        self._src_face_count = len(src_faces)
+        self._src_point_count = len(src_points)
+        self._cache: dict[str, Any] = {}
+
+        self.points = [src_points[i] for i in kept_points]
+        self.faces = faces
+        self.uvs = uvs
+
+    def triangulate(self) -> None:
+        """Fan-triangulate this view's own faces, leaving the source untouched.
+
+        `assembly_export` calls `model.triangulate()` before `build_tree_mesh`.
+        Forwarding that to the wrapped model would triangulate the very arrays
+        this view was sliced from -- and `bake_prototypes` cannot tolerate it
+        either, because it indexes Grove's living-twig arrays by position in
+        face order and splitting each marker quad into two triangles would
+        double-count every twig.
+        """
+        if all(len(face) == TRIANGLE for face in self.faces):
+            return
+
+        faces: list[list[int]] = []
+        uvs: list[tuple[float, float]] = []
+        repeat: list[int] = []
+        destination = 0
+        corner_offset = 0
+        for count in self._face_repeat:
+            if not count:
+                repeat.append(0)
+                continue
+            fanned = 0
+            for _ in range(count):
+                face = self.faces[destination]
+                arity = len(face)
+                corner_uvs = self.uvs[corner_offset : corner_offset + arity]
+                corner_offset += arity
+                destination += 1
+                triangles, triangle_uvs = _fan_triangulate(face, corner_uvs)
+                faces.extend(list(t) for t in triangles)
+                uvs.extend(triangle_uvs)
+                fanned += len(triangles)
+            repeat.append(fanned)
+
+        self.faces = faces
+        self.uvs = uvs
+        self._face_repeat = repeat
+        self._cache = {}
+
+    @property
+    def dropped_faces(self) -> int:
+        """Source faces removed, against the source model's face total."""
+        return sum(1 for count in self._face_repeat if not count)
+
+    def _filter_face(self, values: Sequence[Any]) -> list[Any]:
+        out: list[Any] = []
+        for value, count in zip(values, self._face_repeat, strict=False):
+            if count == 1:
+                out.append(value)
+            elif count:
+                out.extend([value] * count)
+        return out
+
+    def _filter_point(self, values: Sequence[Any]) -> list[Any] | None:
+        count = len(values)
+        if count == self._src_point_count:
+            return [values[i] for i in self._kept_points]
+        if count == self._src_point_count * 3:
+            # `point_attribute_normals` is a flat xyz stream, not one entry
+            # per point (1,640,769 floats for 546,923 points).
+            out: list[Any] = []
+            for i in self._kept_points:
+                out.extend(values[i * 3 : i * 3 + 3])
+            return out
+        return None
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("_"):
+            raise AttributeError(name)
+        if name in self._cache:
+            return self._cache[name]
+
+        value = getattr(self._model, name)
+        filtered: Any = value
+        if name.startswith("face_attribute_"):
+            filtered = self._filter_face(value)
+        elif name.startswith("point_attribute_"):
+            filtered = self._filter_point(value) or value
+        elif name == "uv_islands" and value:
+            filtered = self.uvs
+
+        self._cache[name] = filtered
+        return filtered
+
+
 def _normalise(vector: Sequence[float]) -> tuple[float, float, float]:
     length = math.sqrt(sum(c * c for c in vector))
     if length == 0.0:
@@ -228,29 +426,101 @@ def _normalise(vector: Sequence[float]) -> tuple[float, float, float]:
     return (vector[0] / length, vector[1] / length, vector[2] / length)
 
 
+def _cross(a: Sequence[float], b: Sequence[float]) -> tuple[float, float, float]:
+    return (
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    )
+
+
+def _basis_to_quat(
+    forward: Sequence[float],
+    right: Sequence[float],
+    up: Sequence[float],
+) -> tuple[float, float, float, float]:
+    """Quaternion taking `forward`/`right`/`up` onto +X/+Y/+Z.
+
+    The rotation matrix whose ROWS are the basis vectors maps each onto its
+    axis, since row_i . basis_j is the Kronecker delta for an orthonormal set.
+    Shepperd's method picks the largest diagonal term so the square root never
+    loses precision near a half turn.
+    """
+    m = (tuple(forward), tuple(right), tuple(up))
+    trace = m[0][0] + m[1][1] + m[2][2]
+    if trace > 0.0:
+        s = math.sqrt(trace + 1.0) * 2.0
+        quat = (
+            0.25 * s,
+            (m[2][1] - m[1][2]) / s,
+            (m[0][2] - m[2][0]) / s,
+            (m[1][0] - m[0][1]) / s,
+        )
+    elif m[0][0] > m[1][1] and m[0][0] > m[2][2]:
+        s = math.sqrt(1.0 + m[0][0] - m[1][1] - m[2][2]) * 2.0
+        quat = (
+            (m[2][1] - m[1][2]) / s,
+            0.25 * s,
+            (m[0][1] + m[1][0]) / s,
+            (m[0][2] + m[2][0]) / s,
+        )
+    elif m[1][1] > m[2][2]:
+        s = math.sqrt(1.0 + m[1][1] - m[0][0] - m[2][2]) * 2.0
+        quat = (
+            (m[0][2] - m[2][0]) / s,
+            (m[0][1] + m[1][0]) / s,
+            0.25 * s,
+            (m[1][2] + m[2][1]) / s,
+        )
+    else:
+        s = math.sqrt(1.0 + m[2][2] - m[0][0] - m[1][1]) * 2.0
+        quat = (
+            (m[1][0] - m[0][1]) / s,
+            (m[0][2] + m[2][0]) / s,
+            (m[1][2] + m[2][1]) / s,
+            0.25 * s,
+        )
+    length = math.sqrt(sum(c * c for c in quat)) or 1.0
+    return (quat[0] / length, quat[1] / length, quat[2] / length, quat[3] / length)
+
+
 def align_to_forward_quat(
     direction: Sequence[float],
+    reference_up: Sequence[float] = (0.0, 0.0, 1.0),
 ) -> tuple[float, float, float, float]:
-    """Shortest-arc quaternion (w, x, y, z) rotating `direction` onto +X.
+    """Quaternion (w, x, y, z) rotating `direction` onto +X, roll pinned by up.
 
     +X because that is the axis `core.twig._quat_forward` rotates: the
     PointInstancer orientation carries a twig's growth direction on its local
     +X, so a baked part has to present its own axis there too.
+
+    **Not** shortest-arc, which was the original implementation. Shortest-arc
+    pins one axis and leaves rotation ABOUT that axis free, so a prototype baked
+    from one medoid's roll is re-used at every placement with whatever roll the
+    minimal rotation happens to produce. Measured on an 18-cycle silver_fir:
+    roll against world-up scattered to a median of 28 deg, 35% of parts beyond
+    45 deg and 16% beyond 90 deg -- their sprays effectively upside down. A
+    conifer reads as a bottlebrush instead of flat, layered sprays; a broadleaf
+    hides it, because its foliage is near-isotropic about the branch axis.
+
+    Building a full orthonormal basis against `reference_up` makes roll a
+    function of the branch direction alone, so a part is authored and placed in
+    the same frame and its foliage keeps a consistent relationship to gravity.
     """
-    dx, dy, dz = _normalise(direction)
-    dot = dx  # dot((dx, dy, dz), (1, 0, 0))
-
-    if dot > 1.0 - 1e-9:
+    forward = _normalise(direction)
+    if all(c == 0.0 for c in direction):
         return (1.0, 0.0, 0.0, 0.0)
-    if dot < -1.0 + 1e-9:
-        # Antiparallel: any axis perpendicular to X gives a half turn.
-        return (0.0, 0.0, 0.0, 1.0)
 
-    # cross(direction, +X) = (dy*0 - dz*0, dz*1 - dx*0, dx*0 - dy*1)
-    cross = (0.0, dz, -dy)
-    w = 1.0 + dot
-    length = math.sqrt(w * w + sum(c * c for c in cross))
-    return (w / length, cross[0] / length, cross[1] / length, cross[2] / length)
+    right = _cross(reference_up, forward)
+    if math.sqrt(sum(c * c for c in right)) < 1e-6:
+        # Branch parallel to the reference up (a leader, typically): any
+        # perpendicular will do, so long as it is chosen deterministically.
+        right = _cross((1.0, 0.0, 0.0), forward)
+        if math.sqrt(sum(c * c for c in right)) < 1e-6:
+            right = _cross((0.0, 1.0, 0.0), forward)
+    right = _normalise(right)
+    up = _normalise(_cross(forward, right))
+    return _basis_to_quat(forward, right, up)
 
 
 def _rotate(
@@ -429,6 +699,8 @@ def write_compound_part_usd(
     output_path: Path,
     part_name: str | None = None,
     material_source: Path | None = None,
+    bark_species: str | None = None,
+    skeletal: bool = False,
 ) -> Path:
     """Write one welded part as a standalone prototype USD.
 
@@ -443,12 +715,20 @@ def write_compound_part_usd(
         output_path: Destination `.usda`. A `_static` suffix is conventional.
         part_name: Root prim name. Defaults to the stem minus `_static`/`_skeletal`.
         material_source: Twig prototype USD whose `Materials` scope is copied in,
-            so the part's subsets bind to the species' real leaf and bark
-            materials rather than to nothing.
+            so the part's subsets bind to the species' real leaf materials
+            rather than to nothing.
+        bark_species: Species whose *tree* bark material the woody faces should
+            bind. Without it they inherit the twig prototype's same-named bark,
+            which samples the foliage atlas (XRFF-363).
+        skeletal: Author the part as a `SkelRoot` with a single-joint skeleton,
+            the form a SKELETAL Nanite Assembly requires of its prototypes.
+            Handed a static prototype, UE logs "Failed to find Skeletal Mesh
+            asset for PointInstancer prototype" and silently builds no assembly
+            at all (XRFF-366).
     """
     _ensure_pxr()
 
-    from pxr import Sdf, Usd, UsdGeom, Vt
+    from pxr import Sdf, Usd, UsdGeom, UsdSkel, Vt
 
     part.validate()
 
@@ -461,7 +741,12 @@ def write_compound_part_usd(
     UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
     UsdGeom.SetStageMetersPerUnit(stage, 1.0)
 
-    root = UsdGeom.Xform.Define(stage, f"/{part_name}")
+    if skeletal:
+        root = UsdSkel.Root.Define(stage, f"/{part_name}")
+        root.GetPrim().SetTypeName("SkelRoot")
+        UsdSkel.BindingAPI.Apply(root.GetPrim())
+    else:
+        root = UsdGeom.Xform.Define(stage, f"/{part_name}")
     stage.SetDefaultPrim(root.GetPrim())
 
     mesh = UsdGeom.Mesh.Define(stage, f"/{part_name}/{part_name}_mesh")
@@ -502,8 +787,11 @@ def write_compound_part_usd(
             subset.CreateFamilyNameAttr("materialBind")
             subset.CreateIndicesAttr(Vt.IntArray(face_indices))
 
+    if skeletal:
+        _add_part_skeleton(stage, part_name, mesh, len(part.points))
+
     if material_source is not None:
-        _copy_materials(stage, part_name, part, material_source)
+        _copy_materials(stage, part_name, part, material_source, bark_species)
         _stage_textures(material_source, output_path.parent)
 
     stage.GetRootLayer().Save()
@@ -518,6 +806,50 @@ def write_compound_part_usd(
     return output_path
 
 
+def _add_part_skeleton(stage: Any, part_name: str, mesh: Any, num_points: int) -> None:
+    """Give a part the single-joint skeleton a skeletal assembly demands.
+
+    Mirrors `twig_export`'s skeletal twig exactly, because that is the shape
+    `assembly_export` and the UE importer already accept: one joint named
+    `twig_root`, its bind transform rotated -90 degrees about Z so the bone
+    points along +X (the axis a part is authored on), and rigid dual-bone
+    skinning -- every vertex on joint 0 at full weight with a zero-weight second
+    influence.
+
+    Nanite assembly parts are unskinned regardless (*"the vertices of skeletal
+    assembly parts are not skinned, so they only animate rigidly in their bind
+    pose"*), so this skeleton does not deform anything. It exists so the part
+    reaches the assembly as a Part on the skeletal root at all.
+    """
+    from pxr import Gf, Sdf, UsdSkel, Vt
+
+    skel_path = Sdf.Path(f"/{part_name}").AppendChild(f"{part_name}_skel")
+    skel = UsdSkel.Skeleton.Define(stage, skel_path)
+
+    transform = Gf.Matrix4d(1.0)
+    transform.SetRotateOnly(Gf.Rotation(Gf.Vec3d(0, 0, 1), -90.0))
+    transform.SetTranslateOnly(Gf.Vec3d(0.0, 0.0, 0.0))
+
+    skel.CreateJointsAttr(["twig_root"])
+    skel.CreateBindTransformsAttr(Vt.Matrix4dArray([transform]))
+    skel.CreateRestTransformsAttr(Vt.Matrix4dArray([transform]))
+    # [-1] marks the root joint as parentless; without it Unreal cannot read
+    # the hierarchy.
+    skel.GetPrim().CreateAttribute(
+        "jointIndices",
+        Sdf.ValueTypeNames.IntArray,
+        custom=False,
+        variability=Sdf.VariabilityUniform,
+    ).Set(Vt.IntArray([-1]))
+
+    binding = UsdSkel.BindingAPI.Apply(mesh.GetPrim())
+    binding.CreateSkeletonRel().SetTargets([skel_path])
+    binding.CreateJointIndicesPrimvar(False, 2).Set(Vt.IntArray([0, 0] * num_points))
+    binding.CreateJointWeightsPrimvar(False, 2).Set(
+        Vt.FloatArray([1.0, 0.0] * num_points)
+    )
+
+
 def _stage_textures(material_source: Path, output_dir: Path) -> int:
     """Copy the twig prototype's `textures/` next to the baked part.
 
@@ -528,9 +860,10 @@ def _stage_textures(material_source: Path, output_dir: Path) -> int:
     way when it copies a prototype into the instances directory.
     """
     source_dir = material_source.parent / "textures"
-    if not source_dir.is_dir() or source_dir.resolve() == (
-        output_dir / "textures"
-    ).resolve():
+    if (
+        not source_dir.is_dir()
+        or source_dir.resolve() == (output_dir / "textures").resolve()
+    ):
         return 0
 
     import shutil
@@ -551,11 +884,21 @@ def _stage_textures(material_source: Path, output_dir: Path) -> int:
     return copied
 
 
-
 def _copy_materials(
-    stage: Any, part_name: str, part: PartMesh, material_source: Path
+    stage: Any,
+    part_name: str,
+    part: PartMesh,
+    material_source: Path,
+    bark_species: str | None = None,
 ) -> None:
-    """Copy a twig prototype's Materials scope in and bind the subsets to it."""
+    """Copy a twig prototype's Materials scope in and bind the subsets to it.
+
+    When `bark_species` is given, the twig's own `<species>_bark` is replaced by
+    the tree bark material `tree_export` authors for the stems mesh. The twig's
+    bark samples the FOLIAGE atlas, and Grove's woody faces carry Grove's bark
+    UVs, so indexing that atlas with them tiles leaves across the wood -- which
+    is exactly what the imported part showed (XRFF-363).
+    """
     _ensure_pxr()
 
     from pxr import Sdf, Usd, UsdShade
@@ -589,11 +932,38 @@ def _copy_materials(
         logger.warning("failed to copy Materials from %s", material_source)
         return
 
-    available = {
+    # What the twig prototype actually shipped, snapshotted BEFORE the tree bark
+    # is authored in. 17 of the 48 static twig prototypes carry no GeomSubsets
+    # and so ship a single combined leaf+bark material; the fallback below keys
+    # off that count and must not see the material we add ourselves.
+    twig_materials = {
         p.GetName(): p
         for p in stage.GetPrimAtPath(target_scope).GetChildren()
         if p.GetTypeName() == "Material"
     }
+    available = dict(twig_materials)
+
+    if bark_species:
+        from .tree_export import _add_skeletal_materials
+
+        bark_name = f"{bark_species}_bark"
+        stage.RemovePrim(target_scope.AppendChild(bark_name))
+        _add_skeletal_materials(
+            stage,
+            stage.GetPrimAtPath(f"/{part_name}/{part_name}_mesh"),
+            f"/{part_name}",
+            bark_species,
+        )
+        bark = stage.GetPrimAtPath(target_scope.AppendChild(bark_name))
+        if bark and bark.IsValid():
+            available[bark_name] = bark
+        else:
+            logger.warning(
+                "compound part %s: tree bark material %r was not authored",
+                part_name,
+                bark_name,
+            )
+
     if not available:
         return
 
@@ -610,10 +980,11 @@ def _copy_materials(
         if not (prim and prim.IsValid()):
             return
         target = available.get(name)
-        if target is None and len(available) == 1:
+        if target is None and len(twig_materials) == 1:
             # A twig with no subsets ships one combined leaf+bark material; the
-            # woody faces legitimately share it.
-            target = next(iter(available.values()))
+            # faces it covers legitimately share it. Keyed on what the TWIG
+            # shipped, so authoring the tree bark in does not disarm it.
+            target = next(iter(twig_materials.values()))
             logger.info(
                 "compound part %s: no material named %r in %s, binding the "
                 "prototype's single combined material instead",

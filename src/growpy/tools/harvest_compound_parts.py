@@ -296,11 +296,20 @@ def find_cut_set_adaptive(
 
 
 def subtree_stats(
-    records: list[BranchRecord], metrics: dict[str, list], root: int
+    records: list[BranchRecord],
+    metrics: dict[str, list],
+    root: int,
+    twig_totals: list[int] | None = None,
 ) -> dict[str, float]:
-    """Descriptors for the subtree hanging off `root`."""
+    """Descriptors for the subtree hanging off `root`.
+
+    `twig_totals` (from `count_subtree_twigs`) adds the foliage load. Without it
+    the descriptor is pure branch geometry, and clustering cannot tell a leafy
+    subtree from a bare stub of the same shape (XRFF-386).
+    """
     base = records[root]
     return {
+        "twigs": float(twig_totals[root]) if twig_totals is not None else 0.0,
         "branches": metrics["branches"][root],
         "nodes": metrics["nodes"][root],
         "tips": metrics["tips"][root],
@@ -364,8 +373,16 @@ def _descriptor(stats: dict[str, float]) -> list[float]:
 
     Log-scales the count and length terms because subtree sizes span orders of
     magnitude; up-alignment is already in [-1, 1].
+
+    `twigs` is load-bearing, not decorative. A prototype is a SHARED mesh, so an
+    instance renders its medoid's welded twigs rather than its own -- and without
+    a foliage term the medoid search cannot separate a leafy subtree from a bare
+    stub of the same shape. On a conifer, where 56.5% of cut subtrees carry no
+    twigs at all, that put 5 of 7 medoids on bare stubs and left 88.7% of the
+    crown rendering no needles (XRFF-386). Beech masked it: its stubs bear leaves.
     """
     return [
+        math.log1p(stats.get("twigs", 0.0)),
         math.log1p(stats["tips"]),
         math.log1p(stats["total_length"]),
         math.log1p(stats["span"]),
@@ -381,6 +398,7 @@ def cluster_prototypes(
     k: int,
     seed: int = 42,
     sample_size: int = 1500,
+    twig_totals: list[int] | None = None,
 ) -> tuple[list[int], list[int], list[dict[str, float]]]:
     """k-medoids over the cut set. Returns (medoid branch ids, assignment, stats).
 
@@ -389,7 +407,7 @@ def cluster_prototypes(
     """
     import random
 
-    stats = [subtree_stats(records, metrics, idx) for idx in cut]
+    stats = [subtree_stats(records, metrics, idx, twig_totals) for idx in cut]
     vectors = [_descriptor(s) for s in stats]
 
     # Standardise so no single descriptor dominates the distance.
@@ -494,6 +512,243 @@ def build_reference_model(grove: Any, quality: dict[str, Any] | None = None) -> 
     if not models:
         raise SystemExit("build_models produced no models")
     return models[0]
+
+
+def prepare_skeleton(
+    grove: Any, quality: dict[str, Any] | None = None
+) -> tuple[Any, list]:
+    """Build skeletons and tag bone ids, in the order Grove requires.
+
+    `build_skeletons` -> `tag_bone_id` -> `build_models`. Called out of line
+    because the ordering is load-bearing: `point_attribute_bone_id` only
+    carries real bone ids on a model built *after* tagging, and the compound
+    base mesh needs them to export skeletal (XRFF-366).
+    """
+    params = quality or {}
+    connected = params.get("skeleton_connected", True)
+    skeletons = grove.build_skeletons(connected)
+    bones = grove.tag_bone_id(
+        params.get("skeleton_length", 2.0),
+        params.get("skeleton_reduce", 0.4) ** 2,  # squared, as Grove's UI does
+        params.get("skeleton_bias", 0.5),
+        connected,
+    )
+    return (skeletons[0] if skeletons else None), bones
+
+
+def export_base_mesh(
+    model: Any,
+    records: list[BranchRecord],
+    cut: list[int],
+    output_path: Path,
+    species: str,
+    skeleton: Any = None,
+    bones_info: list | None = None,
+    tree_id: str = "compound",
+) -> dict[str, Any]:
+    """Write the stems USD as the exact complement of the harvested parts.
+
+    XRFF-362. Deriving it from `build_cutoff_thickness` instead leaves two
+    meshes describing different trees -- at cut diameter 0.030 Grove's cutoff
+    keeps 19 branches of 11,685, so 96.2% of parts land more than 2 cm from any
+    surviving geometry and visibly float. The inverse face mask is complementary
+    by construction.
+    """
+    from growpy.core.skeleton import filter_bones_for_mesh
+    from growpy.io.usd.compound_part_export import (
+        ComplementModel,
+        harvested_branch_ids,
+    )
+    from growpy.io.usd.tree_export import build_tree_mesh
+
+    children = [rec.children for rec in records]
+    part_ids = harvested_branch_ids(children, cut)
+    base = ComplementModel(model, part_ids)
+    base.triangulate()
+
+    # `build_tree_mesh` drops bones no base-mesh vertex references and RENUMBERS
+    # the survivors, so a raw Grove bone id is not an index into the authored
+    # joint list. Recompute the same map here and hand it back: the assembly's
+    # bindJoints are indices into exactly this list, and an id past its end makes
+    # UE discard the whole PointInstancer (XRFF-384/385).
+    bone_map: dict[int, int] = {}
+    if bones_info:
+        _, bone_map = filter_bones_for_mesh(base, bones_info, 0)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    ok = build_tree_mesh(
+        model=base,
+        skeleton=skeleton,
+        bones_info=bones_info,
+        output_path=output_path,
+        up_axis="Z",
+        include_skeleton=skeleton is not None,
+        species_name=species,
+        tree_id=tree_id,
+    )
+    if not ok:
+        raise SystemExit(f"base mesh export failed: {output_path}")
+
+    return {
+        "file": str(output_path),
+        "file_bytes": output_path.stat().st_size,
+        "points": len(base.points),
+        "faces": len(base.faces),
+        "dropped_faces": base.dropped_faces,
+        "branches_in_parts": len(part_ids),
+        "branches_in_base": len(set(base.face_attribute_branch_id)),
+        "skeletal": skeleton is not None,
+        "bone_map": bone_map,
+        "joints": len(bone_map),
+    }
+
+
+def cut_point_bone_ids(
+    model: Any, cut: list[int], bone_map: dict[int, int] | None = None
+) -> dict[int, int]:
+    """Majority-vote a bone id for each cut branch from its own vertices.
+
+    `assembly_export` uses `TwigPlacement.bone_id` as a direct index into the
+    stems skeleton's joint names, and that is what puts an instance on a bone
+    the wind system drives (XRFF-366). `extract_twig_placements_from_model`
+    derives it for an ordinary twig by voting `point_attribute_bone_id` over the
+    twig marker face's vertices; a compound part replaces a whole subtree, so
+    the vote runs over the cut branch's own faces instead.
+
+    Requires a model built AFTER `tag_bone_id` -- see `prepare_skeleton`.
+
+    `bone_map` is `export_base_mesh`'s old-to-new bone map. It is not optional in
+    practice: the vote runs over the FULL model, but the joint list is authored
+    from the BASE mesh, which drops every bone no surviving vertex references and
+    renumbers the rest. On an 18-cycle silver_fir that is one bone of 31, and
+    passing the raw ids through puts 15 of 708 placements past the end of a
+    30-joint list -- enough for UE to discard the entire PointInstancer and build
+    no assembly at all (XRFF-384/385). Where the winning bone did not survive,
+    fall back to the best-voted bone that did rather than dropping the placement.
+    """
+    bone_ids = getattr(model, "point_attribute_bone_id", None)
+    if not bone_ids:
+        return {}
+
+    wanted = {branch + 1: branch for branch in cut}
+    faces = model.faces
+    face_branch_ids = model.face_attribute_branch_id
+
+    votes: dict[int, dict[int, int]] = {branch: {} for branch in cut}
+    for face_index, face in enumerate(faces):
+        branch = wanted.get(face_branch_ids[face_index])
+        if branch is None:
+            continue
+        tally = votes[branch]
+        for index in face:
+            if index < len(bone_ids):
+                bone = bone_ids[index]
+                tally[bone] = tally.get(bone, 0) + 1
+
+    if bone_map is None:
+        return {
+            branch: max(tally, key=tally.get)
+            for branch, tally in votes.items()
+            if tally
+        }
+
+    resolved: dict[int, int] = {}
+    for branch, tally in votes.items():
+        survivors = {b: n for b, n in tally.items() if b in bone_map}
+        if survivors:
+            resolved[branch] = bone_map[max(survivors, key=survivors.get)]
+    return resolved
+
+
+def export_compound_assembly(
+    stems_usd: Path,
+    output_path: Path,
+    records: list[BranchRecord],
+    cut: list[int],
+    assignment: list[int],
+    prototype_paths: list[Path],
+    species: str,
+    bone_ids: dict[int, int] | None = None,
+    tree_id: str = "compound",
+    use_skeletal_mesh: bool = True,
+    instances_dir: Path | None = None,
+    max_instances: int = 0,
+) -> dict[str, Any]:
+    """Place one baked part per cut point and write the assembly USD.
+
+    The part is authored base-at-origin along +X, the same frame Grove's twig
+    quaternion assumes, so the placement quaternion is built from the cut
+    branch's own direction.
+
+    Each placement carries its cluster assignment rather than letting
+    `assembly_export` draw a prototype at random: compound prototypes span 51 to
+    139,500 faces, so a random draw both mismatches the branch and inflates the
+    flattened fallback total to instances x MEAN (XRFF-365).
+    """
+    from growpy.core.twig import TwigPlacement
+    from growpy.io.usd.assembly_export import create_assembly
+    from growpy.io.usd.compound_part_export import placement_quat_for_direction
+
+    bone_ids = bone_ids or {}
+    placed = list(range(len(cut)))
+    if max_instances and len(cut) > max_instances:
+        # An even subsample rather than a prefix: the cut set is in walker
+        # order, so a prefix would take one side of the crown.
+        step = len(cut) / max_instances
+        placed = [int(i * step) for i in range(max_instances)]
+
+    placements = {
+        "twig_long": [
+            TwigPlacement(
+                type="twig_long",
+                position=records[cut[i]].base_pos,
+                normal=records[cut[i]].base_dir,
+                orientation=placement_quat_for_direction(records[cut[i]].base_dir),
+                scale=1.0,
+                bone_id=bone_ids.get(cut[i]),
+                prototype=assignment[i],
+            )
+            for i in placed
+        ]
+    }
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    ok = create_assembly(
+        stems_usd,
+        output_path,
+        species,
+        tree_id=tree_id,
+        twig_usd_paths={"twig_long": list(prototype_paths)},
+        use_skeletal_mesh=use_skeletal_mesh,
+        twig_placements=placements,
+        validate=False,
+        instances_dir=instances_dir,
+    )
+    if not ok:
+        raise SystemExit(f"assembly export failed: {output_path}")
+
+    # Preflight before the file can reach UE: a dangling reference writes fine,
+    # opens fine in pxr, and then crashes the editor inside the Nanite
+    # hierarchy encoder (XRFF-367).
+    from growpy.tools.preflight_assembly import check_assembly, log_report
+
+    report = check_assembly(output_path)
+    log_report(report)
+    if report["errors"]:
+        raise SystemExit(
+            f"{output_path.name}: {len(report['errors'])} unresolved "
+            "reference(s) -- do NOT import this, it will crash the editor"
+        )
+
+    return {
+        "flattened_triangles": report["flattened_triangles"],
+        "file": str(output_path),
+        "file_bytes": output_path.stat().st_size,
+        "instances": len(placed),
+        "prototypes": len(prototype_paths),
+        "skeletal": use_skeletal_mesh,
+        "bound_instances": sum(1 for i in placed if bone_ids.get(cut[i]) is not None),
+    }
 
 
 def bake_prototypes(
@@ -609,6 +864,20 @@ def bake_prototypes(
             output_dir / f"{name}_static.usda",
             part_name=name,
             material_source=twig_usd,
+            bark_species=species,
+        )
+        # Both variants, as the twig pipeline ships: a SKELETAL assembly needs
+        # skeletal prototypes -- handed static ones UE logs "Failed to find
+        # Skeletal Mesh asset for PointInstancer prototype" and builds no
+        # assembly at all -- while the static one is what OBJ/Helios export and
+        # a static assembly consume (XRFF-366).
+        skeletal_path = write_compound_part_usd(
+            part,
+            output_dir / f"{name}_skeletal.usda",
+            part_name=name,
+            material_source=twig_usd,
+            bark_species=species,
+            skeletal=True,
         )
         lo, hi = part.bounds()
         stats = subtree_stats(records, metrics, branch)
@@ -618,6 +887,7 @@ def bake_prototypes(
                 "name": name,
                 "branch": branch,
                 "file": str(path),
+                "skeletal_file": str(skeletal_path),
                 "file_bytes": path.stat().st_size,
                 "points": len(part.points),
                 "faces": len(part.faces),
@@ -634,7 +904,6 @@ def bake_prototypes(
         )
 
     return report
-
 
 
 def grow_grove(species: str, cycles: int, seed: int) -> Any:
@@ -719,6 +988,38 @@ def main() -> None:
             "(e.g. data/output/forest/Instances/european_beech_foliage_a_static.usda)"
         ),
     )
+    parser.add_argument(
+        "--base-mesh",
+        type=Path,
+        help=(
+            "write the stems USD as the complement of the harvested parts "
+            "(XRFF-362) -- every branch NOT inside a part, not a "
+            "build_cutoff_thickness product"
+        ),
+    )
+    parser.add_argument(
+        "--skeletal",
+        action="store_true",
+        help="export the base mesh and assembly skeletal, not static (XRFF-366)",
+    )
+    parser.add_argument(
+        "--assembly",
+        type=Path,
+        help=(
+            "write the Nanite Assembly here, placing one baked part per cut "
+            "point. Requires --bake and --base-mesh."
+        ),
+    )
+    parser.add_argument(
+        "--max-instances",
+        type=int,
+        default=0,
+        help=(
+            "cap the assembly's instance count by even subsample. UE flattens "
+            "instances x part triangles to build the Nanite fallback, and that "
+            "total is what governs import time (XRFF-364). 0 places them all."
+        ),
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -729,14 +1030,22 @@ def main() -> None:
     records = flatten_branches(tree)
     metrics = precompute_subtrees(records)
 
-    # The twig band needs a built model, so it is only available when baking.
+    # The twig band and the base mesh both need a built model.
     model = None
     twig_totals = None
-    if args.bake:
-        if args.twig_usd is None:
+    skeleton = None
+    bones_info = None
+    if args.assembly and not (args.bake and args.base_mesh):
+        raise SystemExit("--assembly requires both --bake and --base-mesh")
+    if args.bake or args.base_mesh:
+        if args.bake and args.twig_usd is None:
             raise SystemExit("--bake requires --twig-usd")
-        if not args.twig_usd.is_file():
+        if args.twig_usd is not None and not args.twig_usd.is_file():
             raise SystemExit(f"twig USD not found: {args.twig_usd}")
+        if args.skeletal:
+            # Before build_models, or point_attribute_bone_id carries nothing.
+            skeleton, bones_info = prepare_skeleton(grove)
+            logger.info("skeleton: %d bones tagged", len(bones_info))
         model = build_reference_model(grove)
         twig_totals = count_subtree_twigs(model, records)
         logger.info(
@@ -858,7 +1167,7 @@ def main() -> None:
         raise SystemExit(f"no branches cross a {args.cut_diameter} m cut diameter")
 
     medoids, assignment, stats = cluster_prototypes(
-        records, metrics, cut, args.clusters
+        records, metrics, cut, args.clusters, twig_totals=twig_totals
     )
     in_parts = sum(metrics["branches"][idx] for idx in cut)
     logger.info(
@@ -937,6 +1246,29 @@ def main() -> None:
         args.json.write_text(json.dumps(manifest, indent=2))
         logger.info("manifest written to %s", args.json)
 
+    base: dict[str, Any] = {}
+    if args.base_mesh:
+        base = export_base_mesh(
+            model,
+            records,
+            cut,
+            args.base_mesh,
+            args.species,
+            skeleton=skeleton,
+            bones_info=bones_info,
+        )
+        logger.info(
+            "base mesh (%s): %d points, %d faces across %d branches, "
+            "%d source faces dropped, %.1f MB -> %s",
+            "skeletal" if base["skeletal"] else "static",
+            base["points"],
+            base["faces"],
+            base["branches_in_base"],
+            base["dropped_faces"],
+            base["file_bytes"] / 1e6,
+            Path(base["file"]).name,
+        )
+
     if args.bake:
         report = bake_prototypes(
             model,
@@ -997,6 +1329,36 @@ def main() -> None:
             )
         )
         logger.info("size report written to %s", report_path)
+
+        if args.assembly:
+            asm = export_compound_assembly(
+                args.base_mesh,
+                args.assembly,
+                records,
+                cut,
+                assignment,
+                [Path(r["skeletal_file" if args.skeletal else "file"]) for r in report],
+                args.species,
+                bone_ids=(
+                    cut_point_bone_ids(model, cut, base.get("bone_map"))
+                    if args.skeletal
+                    else None
+                ),
+                use_skeletal_mesh=args.skeletal,
+                instances_dir=args.bake,
+                max_instances=args.max_instances,
+            )
+            logger.info(
+                "assembly (%s): %d instances over %d prototypes, "
+                "%d bound to a bone, %.1fM flattened triangles, %.2f MB -> %s",
+                "skeletal" if asm["skeletal"] else "static",
+                asm["instances"],
+                asm["prototypes"],
+                asm["bound_instances"],
+                asm["flattened_triangles"] / 1e6,
+                asm["file_bytes"] / 1e6,
+                Path(asm["file"]).name,
+            )
 
 
 if __name__ == "__main__":

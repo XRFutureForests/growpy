@@ -11,9 +11,11 @@ from types import SimpleNamespace
 import pytest
 
 from growpy.io.usd.compound_part_export import (
+    ComplementModel,
     PartMesh,
     align_to_forward_quat,
     extract_subtree_mesh,
+    harvested_branch_ids,
     merge_mesh,
     normalise_part_frame,
     quat_multiply,
@@ -112,6 +114,134 @@ class TestExtractSubtreeMesh:
         assert set(part.face_materials) == {0}
 
 
+class _FakeModel:
+    """The attribute surface `build_tree_mesh` reads off a Grove model.
+
+    Three quads and one triangle: branch 1 carries quads 0 and 1, branch 2
+    carries quad 2 (a twig marker) and the triangle. 16 corners in total.
+    """
+
+    def __init__(self):
+        self.points = [_vec(float(i), 0.0, 0.0) for i in range(9)]
+        self.faces = [[0, 1, 2, 3], [1, 2, 4, 5], [4, 5, 6, 7], [6, 7, 8]]
+        self.uvs = [(float(i), float(i) * 2) for i in range(15)]
+        self.face_attribute_branch_id = [1, 1, 2, 2]
+        self.face_attribute_branch_id_parent = [0, 1, 1, 2]
+        self.face_attribute_twig_long = [False, False, True, False]
+        self.face_attribute_twig_short = [False, False, False, False]
+        self.face_attribute_twig_upward = [False, False, False, False]
+        self.face_attribute_twig_dead = [False, False, False, False]
+        self.point_attribute_bone_id = list(range(9))
+        # A flat xyz stream, the shape Grove uses for normals.
+        self.point_attribute_normals = [float(i) for i in range(27)]
+        self.location = _vec(0.0, 0.0, 0.0)
+
+    def triangulate(self):  # pragma: no cover - must never be reached
+        raise AssertionError("the view must not triangulate the source model")
+
+
+class TestHarvestedBranchIds:
+    def test_unions_every_cut_point_subtree(self):
+        children = [[1, 2], [3], [4], [], []]
+        assert harvested_branch_ids(children, [1, 2]) == {2, 4, 3, 5}
+
+    def test_no_roots_selects_nothing(self):
+        assert harvested_branch_ids([[]], []) == set()
+
+
+class TestComplementModel:
+    """XRFF-362: the base mesh is the inverse face mask, not a cutoff product."""
+
+    def test_drops_faces_inside_a_part(self):
+        base = ComplementModel(_FakeModel(), {1}, drop_twig_faces=False)
+        assert len(base.faces) == 2  # branch 2's quad and triangle survive
+        assert base.dropped_faces == 2
+
+    def test_is_complementary_with_extract_subtree_mesh(self):
+        # The whole point of the issue: the two halves partition the source.
+        model = _FakeModel()
+        part = extract_subtree_mesh(
+            model.faces,
+            model.points,
+            model.uvs,
+            model.face_attribute_branch_id,
+            {1},
+            twig_face_mask=None,
+        )
+        base = ComplementModel(model, {1}, drop_twig_faces=False)
+        # Two source quads fan to four triangles in the part; the base keeps
+        # the other two source faces.
+        assert len(part.faces) == 4
+        assert len(base.faces) + 2 == len(model.faces)
+
+    def test_compacts_points_and_remaps_indices(self):
+        base = ComplementModel(_FakeModel(), {1}, drop_twig_faces=False)
+        assert len(base.points) == 5  # points 4..8
+        assert all(0 <= i < 5 for face in base.faces for i in face)
+
+    def test_slices_face_varying_uvs_by_corner_offset(self):
+        base = ComplementModel(_FakeModel(), {1}, drop_twig_faces=False)
+        # Quad 2 starts at corner 8, the triangle at corner 12.
+        assert base.uvs[0] == (8.0, 16.0)
+        assert base.uvs[4] == (12.0, 24.0)
+        assert len(base.uvs) == sum(len(f) for f in base.faces)
+
+    def test_drops_twig_marker_faces_by_default(self):
+        # A compound assembly places real parts at these markers, so a
+        # surviving marker renders as a stray flat quad.
+        base = ComplementModel(_FakeModel(), set())
+        assert len(base.faces) == 3
+
+    def test_keeps_twig_marker_faces_when_asked(self):
+        base = ComplementModel(_FakeModel(), set(), drop_twig_faces=False)
+        assert len(base.faces) == 4
+
+    def test_face_attributes_follow_the_kept_faces(self):
+        base = ComplementModel(_FakeModel(), {1}, drop_twig_faces=False)
+        assert base.face_attribute_branch_id == [2, 2]
+        assert base.face_attribute_branch_id_parent == [1, 2]
+
+    def test_point_attributes_follow_the_kept_points(self):
+        base = ComplementModel(_FakeModel(), {1}, drop_twig_faces=False)
+        assert base.point_attribute_bone_id == [4, 5, 6, 7, 8]
+
+    def test_flat_xyz_point_attributes_are_gathered_in_threes(self):
+        base = ComplementModel(_FakeModel(), {1}, drop_twig_faces=False)
+        assert len(base.point_attribute_normals) == len(base.points) * 3
+        assert base.point_attribute_normals[:3] == [12.0, 13.0, 14.0]
+
+    def test_passes_unrecognised_attributes_through(self):
+        base = ComplementModel(_FakeModel(), {1})
+        assert base.location.x == 0.0
+
+    def test_triangulate_fans_the_view_not_the_source(self):
+        model = _FakeModel()
+        base = ComplementModel(model, {1}, drop_twig_faces=False)
+        base.triangulate()  # _FakeModel.triangulate would raise
+        assert all(len(face) == 3 for face in base.faces)
+        assert len(base.faces) == 3  # quad -> 2 triangles, plus the triangle
+        assert len(base.uvs) == 9
+
+    def test_triangulate_keeps_face_attributes_aligned(self):
+        base = ComplementModel(_FakeModel(), {1}, drop_twig_faces=False)
+        base.triangulate()
+        # The quad's branch id is repeated across both of its triangles.
+        assert base.face_attribute_branch_id == [2, 2, 2]
+        assert len(base.face_attribute_branch_id) == len(base.faces)
+
+    def test_triangulate_is_idempotent(self):
+        base = ComplementModel(_FakeModel(), {1}, drop_twig_faces=False)
+        base.triangulate()
+        faces, uvs = list(base.faces), list(base.uvs)
+        base.triangulate()
+        assert base.faces == faces and base.uvs == uvs
+
+    def test_excluding_everything_leaves_an_empty_mesh(self):
+        base = ComplementModel(_FakeModel(), {1, 2})
+        assert base.faces == [] and base.points == []
+        assert base.face_attribute_branch_id == []
+
+
 class TestAlignToForwardQuat:
     """+X is the forward axis: `core.twig._quat_forward` rotates +X."""
 
@@ -158,6 +288,60 @@ class TestAlignToForwardQuat:
 
     def test_zero_direction_does_not_divide_by_zero(self):
         assert align_to_forward_quat((0.0, 0.0, 0.0)) == (1.0, 0.0, 0.0, 0.0)
+
+    @pytest.mark.parametrize(
+        "direction",
+        [
+            (0.0, 1.0, 0.0),
+            (0.3, -0.7, 0.65),
+            (0.5, 0.5, -0.7),
+            (-0.2, 0.1, -0.97),
+            (2.0, 2.0, 2.0),
+        ],
+    )
+    def test_roll_about_the_forward_axis_is_pinned_by_world_up(self, direction):
+        """The frame must fix roll, not just the forward axis.
+
+        A shortest-arc rotation satisfies every other test in this class while
+        leaving rotation ABOUT the branch free, so a prototype baked from one
+        medoid's roll gets re-used at arbitrary roll everywhere else. On a
+        conifer that turned flat sprays into a bottlebrush -- 35% of parts more
+        than 45 deg off upright and 16% effectively upside down -- while beech
+        hid it entirely, its foliage being near-isotropic about the branch.
+
+        The property that pins it: the part's local +Z must come back
+        perpendicular to the branch and in the plane the branch makes with world
+        up, i.e. as upright as that branch allows.
+        """
+        from growpy.io.usd.compound_part_export import placement_quat_for_direction
+
+        length = math.sqrt(sum(c * c for c in direction))
+        unit = tuple(c / length for c in direction)
+        quat = placement_quat_for_direction(unit)
+        up = self._rotate(quat, (0.0, 0.0, 1.0))
+
+        # Perpendicular to the branch.
+        assert sum(up[i] * unit[i] for i in range(3)) == pytest.approx(0.0, abs=1e-6)
+        # Coplanar with world up and the branch: the triple product vanishes.
+        world_up = (0.0, 0.0, 1.0)
+        triple = (
+            up[0] * (unit[1] * world_up[2] - unit[2] * world_up[1])
+            - up[1] * (unit[0] * world_up[2] - unit[2] * world_up[0])
+            + up[2] * (unit[0] * world_up[1] - unit[1] * world_up[0])
+        )
+        assert triple == pytest.approx(0.0, abs=1e-6)
+        # And on the upright side of that plane, not inverted.
+        assert up[2] > 0.0
+
+    def test_a_vertical_leader_still_yields_a_usable_frame(self):
+        """The one direction where world up cannot pin roll must not blow up."""
+        for direction in ((0.0, 0.0, 1.0), (0.0, 0.0, -1.0)):
+            quat = align_to_forward_quat(direction)
+            assert math.sqrt(sum(c * c for c in quat)) == pytest.approx(1.0, abs=1e-6)
+            result = self._rotate(quat, direction)
+            assert result[0] == pytest.approx(1.0, abs=1e-6)
+            assert result[1] == pytest.approx(0.0, abs=1e-6)
+            assert result[2] == pytest.approx(0.0, abs=1e-6)
 
 
 class TestQuatMultiply:
@@ -225,9 +409,7 @@ class TestNormalisePartFrame:
 
     def test_preserves_lengths(self):
         part = self._part_along((0.4, -0.5, 0.766), (1.0, 1.0, 1.0))
-        before = [
-            math.dist(p, part.points[0]) for p in part.points
-        ]
+        before = [math.dist(p, part.points[0]) for p in part.points]
         normalise_part_frame(part, (1.0, 1.0, 1.0), (0.4, -0.5, 0.766))
         after = [math.dist(p, part.points[0]) for p in part.points]
         assert after == pytest.approx(before, abs=1e-6)
@@ -584,8 +766,6 @@ class TestCompoundProfileCannotClobberDatasetAssets:
         assert code == 0
 
 
-
-
 class TestWriteCompoundPartUsd:
     """The pxr write path. It occupies the same prototype slot as a twig asset,
     so it has to satisfy the same contracts `assembly_export` and
@@ -707,6 +887,77 @@ class TestWriteCompoundPartUsd:
         assert set(back.materials) == set(written.materials)
         assert back.face_materials == written.face_materials
 
+    def test_skeletal_part_is_a_skel_root_with_one_joint(self, tmp_path):
+        # A SKELETAL Nanite Assembly refuses a static prototype: UE logs
+        # "Failed to find Skeletal Mesh asset for PointInstancer prototype"
+        # and then silently builds no assembly at all (XRFF-366).
+        from growpy.io.usd.compound_part_export import write_compound_part_usd
+        from pxr import Usd, UsdSkel
+
+        path = write_compound_part_usd(
+            self._part(),
+            tmp_path / "beech_compound_p00_skeletal.usda",
+            part_name="beech_compound_p00",
+            skeletal=True,
+        )
+        stage = Usd.Stage.Open(str(path))
+        root = stage.GetPrimAtPath("/beech_compound_p00")
+        assert root.GetTypeName() == "SkelRoot"
+        skel = UsdSkel.Skeleton(
+            stage.GetPrimAtPath("/beech_compound_p00/beech_compound_p00_skel")
+        )
+        assert list(skel.GetJointsAttr().Get()) == ["twig_root"]
+        assert len(skel.GetBindTransformsAttr().Get()) == 1
+
+    def test_skeletal_part_binds_every_vertex_rigidly_to_the_root_joint(self, tmp_path):
+        from growpy.io.usd.compound_part_export import write_compound_part_usd
+        from pxr import Usd, UsdSkel
+
+        part = self._part()
+        path = write_compound_part_usd(
+            part,
+            tmp_path / "beech_compound_p00_skeletal.usda",
+            part_name="beech_compound_p00",
+            skeletal=True,
+        )
+        stage = Usd.Stage.Open(str(path))
+        mesh = next(p for p in stage.Traverse() if p.GetTypeName() == "Mesh")
+        binding = UsdSkel.BindingAPI(mesh)
+        assert binding.GetSkeletonRel().GetTargets() == [
+            "/beech_compound_p00/beech_compound_p00_skel"
+        ]
+        # Dual-bone format, matching the shipped skeletal twigs.
+        indices = binding.GetJointIndicesPrimvar()
+        weights = binding.GetJointWeightsPrimvar()
+        assert indices.GetElementSize() == 2
+        assert len(indices.Get()) == len(part.points) * 2
+        assert list(weights.Get()[:4]) == [1.0, 0.0, 1.0, 0.0]
+
+    def test_the_static_part_gains_no_skeleton(self, tmp_path):
+        from pxr import Usd
+
+        stage = Usd.Stage.Open(str(self._write(tmp_path)))
+        assert stage.GetPrimAtPath("/beech_compound_p00").GetTypeName() == "Xform"
+        assert not [p for p in stage.Traverse() if p.GetTypeName() == "Skeleton"]
+
+    def test_the_skeletal_part_keeps_its_material_subsets(self, tmp_path):
+        # The mesh moves under a SkelRoot; the GeomSubsets must come with it.
+        from growpy.io.usd.compound_part_export import write_compound_part_usd
+        from pxr import Usd
+
+        path = write_compound_part_usd(
+            self._part(),
+            tmp_path / "beech_compound_p00_skeletal.usda",
+            part_name="beech_compound_p00",
+            skeletal=True,
+        )
+        stage = Usd.Stage.Open(str(path))
+        mesh = next(p for p in stage.Traverse() if p.GetTypeName() == "Mesh")
+        names = {
+            c.GetName() for c in mesh.GetChildren() if c.GetTypeName() == "GeomSubset"
+        }
+        assert names == {"beech_bark", "beech_leaf"}
+
 
 class TestStageTextures:
     """Relative `@./textures/...@` asset paths resolve against the layer that
@@ -753,6 +1004,153 @@ class TestStageTextures:
         assert _stage_textures(source, source.parent) == 0
 
 
+class TestCompoundPartBarkMaterial:
+    """XRFF-363: the woody faces must render as bark, not as the leaf atlas.
+
+    The imported part showed `MI_european_beech_bark_5_TwoSided` -- green and
+    leafy -- because the harvested woody faces bound the material of that name
+    inside the TWIG prototype's copied scope, and a twig's bark samples the
+    foliage atlas. Grove's woody faces carry Grove's own bark UVs, so indexing
+    that atlas with them tiles leaves across the wood.
+    """
+
+    def _twig(self, tmp_path, materials):
+        """A minimal twig prototype whose Materials scope can be copied."""
+        from pxr import Sdf, Usd, UsdGeom, UsdShade
+
+        path = tmp_path / "twig" / "twig_static.usda"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        stage = Usd.Stage.CreateNew(str(path))
+        root = UsdGeom.Xform.Define(stage, "/twig")
+        stage.SetDefaultPrim(root.GetPrim())
+        UsdGeom.Scope.Define(stage, "/twig/Materials")
+        for name, texture in materials.items():
+            UsdShade.Material.Define(stage, f"/twig/Materials/{name}")
+            shader = UsdShade.Shader.Define(
+                stage, f"/twig/Materials/{name}/DiffuseTexture"
+            )
+            shader.CreateIdAttr("UsdUVTexture")
+            shader.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
+                f"./textures/{texture}"
+            )
+        stage.GetRootLayer().Save()
+        return path
+
+    def _part(self, materials):
+        return PartMesh(
+            points=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)],
+            faces=[(0, 1, 2), (0, 1, 3)],
+            uvs=[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)] * 2,
+            face_materials=[0, 1],
+            materials=materials,
+        )
+
+    def _write(self, tmp_path, twig, part, bark_species):
+        from growpy.io.usd.compound_part_export import write_compound_part_usd
+
+        return write_compound_part_usd(
+            part,
+            tmp_path / "out" / "beech_compound_p00_static.usda",
+            part_name="beech_compound_p00",
+            material_source=twig,
+            bark_species=bark_species,
+        )
+
+    def _textures(self, stage, material_path):
+        from pxr import Usd, UsdShade
+
+        prim = stage.GetPrimAtPath(material_path)
+        files = []
+        for child in Usd.PrimRange(prim):
+            shader = UsdShade.Shader(child)
+            if child.GetTypeName() != "Shader":
+                continue
+            value = shader.GetInput("file")
+            if value and value.Get():
+                files.append(value.Get().path)
+        return files
+
+    def _bound(self, stage, prim_path):
+        from pxr import UsdShade
+
+        prim = stage.GetPrimAtPath(prim_path)
+        return UsdShade.MaterialBindingAPI(prim).GetDirectBinding().GetMaterialPath()
+
+    def test_the_woody_subset_does_not_bind_the_twigs_foliage_atlas(self, tmp_path):
+        from pxr import Usd
+
+        twig = self._twig(
+            tmp_path,
+            {
+                "beech_bark": "beech_foliage_diffuse.png",  # the twig's bark
+                "beech_leaf": "beech_foliage_diffuse.png",
+            },
+        )
+        path = self._write(
+            tmp_path, twig, self._part(["beech_bark", "beech_leaf"]), "beech"
+        )
+        stage = Usd.Stage.Open(str(path))
+        mesh = "/beech_compound_p00/beech_compound_p00_mesh"
+        bark = self._bound(stage, f"{mesh}/beech_bark")
+        assert bark == "/beech_compound_p00/Materials/beech_bark"
+        assert "beech_foliage_diffuse.png" not in self._textures(stage, bark)
+
+    def test_the_leaf_subset_still_binds_the_twigs_leaf_material(self, tmp_path):
+        from pxr import Usd
+
+        twig = self._twig(
+            tmp_path,
+            {"beech_bark": "twig_bark.png", "beech_leaf": "beech_foliage.png"},
+        )
+        path = self._write(
+            tmp_path, twig, self._part(["beech_bark", "beech_leaf"]), "beech"
+        )
+        stage = Usd.Stage.Open(str(path))
+        mesh = "/beech_compound_p00/beech_compound_p00_mesh"
+        leaf = self._bound(stage, f"{mesh}/beech_leaf")
+        assert self._textures(stage, leaf) == ["./textures/beech_foliage.png"]
+
+    def test_a_twig_with_one_combined_material_still_binds_its_leaves(self, tmp_path):
+        # 17 of the 48 shipped static twig prototypes carry no GeomSubsets and
+        # ship a single combined leaf+bark material. Authoring the tree bark in
+        # must not disarm the fallback that binds that one material.
+        from pxr import Usd
+
+        twig = self._twig(tmp_path, {"fir_combined": "fir_foliage.png"})
+        path = self._write(tmp_path, twig, self._part(["fir_bark", "fir_leaf"]), "fir")
+        stage = Usd.Stage.Open(str(path))
+        mesh = "/beech_compound_p00/beech_compound_p00_mesh"
+        leaf = self._bound(stage, f"{mesh}/fir_leaf")
+        assert leaf == "/beech_compound_p00/Materials/fir_combined"
+
+    def test_the_woody_subset_prefers_the_tree_bark_over_the_combined_material(
+        self, tmp_path
+    ):
+        from pxr import Usd
+
+        twig = self._twig(tmp_path, {"fir_combined": "fir_foliage.png"})
+        path = self._write(tmp_path, twig, self._part(["fir_bark", "fir_leaf"]), "fir")
+        stage = Usd.Stage.Open(str(path))
+        mesh = "/beech_compound_p00/beech_compound_p00_mesh"
+        bark = self._bound(stage, f"{mesh}/fir_bark")
+        assert bark == "/beech_compound_p00/Materials/fir_bark"
+
+    def test_without_bark_species_the_twigs_bark_is_left_alone(self, tmp_path):
+        # The parameter is opt-in, so the previous behaviour has to survive.
+        from pxr import Usd
+
+        twig = self._twig(
+            tmp_path,
+            {"beech_bark": "twig_bark.png", "beech_leaf": "beech_foliage.png"},
+        )
+        path = self._write(
+            tmp_path, twig, self._part(["beech_bark", "beech_leaf"]), None
+        )
+        stage = Usd.Stage.Open(str(path))
+        bark = "/beech_compound_p00/Materials/beech_bark"
+        assert self._textures(stage, bark) == ["./textures/twig_bark.png"]
+
+
 class TestOutputRootMustLeaveTheSourceTree:
     """Requiring --output-root is not enough on its own.
 
@@ -790,16 +1188,19 @@ class TestOutputRootMustLeaveTheSourceTree:
     ):
         twigs = tmp_path / "twigs"
         (twigs / "compound").mkdir(parents=True)
-        assert self._run(
-            self._argv(twigs, twigs / "compound", tmp_path), monkeypatch
-        ) == 1
+        assert (
+            self._run(self._argv(twigs, twigs / "compound", tmp_path), monkeypatch) == 1
+        )
 
     def test_a_sibling_output_root_is_allowed(self, monkeypatch, tmp_path):
         twigs = tmp_path / "twigs"
         twigs.mkdir()
-        assert self._run(
-            self._argv(twigs, tmp_path / "compound_twigs", tmp_path), monkeypatch
-        ) == 0
+        assert (
+            self._run(
+                self._argv(twigs, tmp_path / "compound_twigs", tmp_path), monkeypatch
+            )
+            == 0
+        )
 
 
 class TestCompoundProfileTomlParsing:

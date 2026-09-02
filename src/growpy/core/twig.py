@@ -31,6 +31,14 @@ class TwigPlacement:
     scale: float = 1.0
     bone_id: int | None = None  # Direct bone ID from point_attribute_bone_id
     branch_id: int | None = None  # Branch ID for binding to branch_X joints
+    prototype: int | None = None
+    # Index into this twig type's prototype list. None means "any", and
+    # `assembly_export` then draws one at random -- right for 1:1 twigs, where
+    # every prototype is the same size and the draw is free variation. A
+    # compound part is not: prototypes span 51 to 139,500 faces, so a random
+    # draw puts the wrong-sized part on the branch and inflates the flattened
+    # fallback total to instances x MEAN rather than the sum actually
+    # needed (XRFF-365).
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
@@ -42,6 +50,7 @@ class TwigPlacement:
             "scale": self.scale,
             "bone_id": self.bone_id,
             "branch_id": self.branch_id,
+            "prototype": self.prototype,
         }
 
 

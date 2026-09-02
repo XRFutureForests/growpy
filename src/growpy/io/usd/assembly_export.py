@@ -277,6 +277,7 @@ def create_assembly(
                                 "scale": p.scale,
                                 "bone_id": p.bone_id,
                                 "branch_id": p.branch_id,  # CRITICAL: branch_id for binding to branch_X joints
+                                "prototype": p.prototype,
                             }
                             for p in placement_list
                         ]
@@ -530,8 +531,17 @@ def create_assembly(
                                 )
                                 quat = rotation_matrix_to_quaternion(rot_matrix)
 
-                            # Randomly select among available prototypes for this type
-                            proto_idx = _rng.choice(type_proto_indices)
+                            # Honour an explicit prototype assignment; fall
+                            # back to a random draw, which is the right answer
+                            # for 1:1 twigs (uniform size, free variation) and
+                            # the wrong one for compound parts (XRFF-365).
+                            assigned = placement.get("prototype")
+                            if assigned is not None and 0 <= assigned < len(
+                                type_proto_indices
+                            ):
+                                proto_idx = type_proto_indices[assigned]
+                            else:
+                                proto_idx = _rng.choice(type_proto_indices)
 
                             all_positions.append(Gf.Vec3f(pos[0], pos[1], pos[2]))
                             all_orientations.append(
@@ -607,6 +617,7 @@ def create_assembly(
                         # Debug: Track bone_id usage
                         bone_id_usage = {}
                         invalid_bone_ids = []
+                        invalid_bone_count = 0
 
                         # Iterate through placements in same order as instance creation
                         # CRITICAL: Must match instance creation loop logic exactly
@@ -654,14 +665,27 @@ def create_assembly(
                                         bone_id_usage.get(bone_id, 0) + 1
                                     )
                                 else:
-                                    # Fallback to tree root if bone_id is invalid
+                                    # Fallback to the tree root if bone_id is
+                                    # invalid -- and it must be the skeleton's
+                                    # OWN root name. `tree_export` authors
+                                    # "tree_root", never "root", and a bindJoints
+                                    # token UE cannot resolve is not skipped per
+                                    # instance: UE drops it, the array stops
+                                    # matching instance count, and the WHOLE
+                                    # PointInstancer is discarded -- the import
+                                    # "succeeds" with no assembly (XRFF-384).
+                                    root_joint = joint_names[0]
                                     if use_dual_binding:
-                                        bind_joints.extend(["root", "root"])
+                                        bind_joints.extend([root_joint, root_joint])
                                         bind_weights.extend([1.0, 0.0])
                                     else:
-                                        bind_joints.append("root")
+                                        bind_joints.append(root_joint)
                                         bind_weights.append(1.0)
-                                    # Track invalid bone_ids
+                                    # Track invalid bone_ids. Count them all
+                                    # -- the sample below stops at 10, and
+                                    # reporting its length under-reports the
+                                    # real total (XRFF-385).
+                                    invalid_bone_count += 1
                                     if len(invalid_bone_ids) < 10:
                                         invalid_bone_ids.append(
                                             (bone_id, len(joint_names))
@@ -688,12 +712,17 @@ def create_assembly(
                                 logger.debug("  Bone ID usage: %s", dict(sorted_usage))
                         if invalid_bone_ids:
                             logger.warning(
-                                "%d invalid bone_ids (bone_id, joint_count):",
+                                "%d invalid bone_ids, showing %d "
+                                "(bone_id, joint_count):",
+                                invalid_bone_count,
                                 len(invalid_bone_ids),
                             )
                             for bid, jcount in invalid_bone_ids:
                                 logger.warning(
-                                    "  bone_id=%d, joint_names length=%d",
+                                    # %s, not %d: a placement whose bone did not
+                                    # survive base-mesh filtering arrives as None
+                                    # and must still be reportable.
+                                    "  bone_id=%s, joint_names length=%d",
                                     bid,
                                     jcount,
                                 )
