@@ -65,6 +65,27 @@ interior_edge_mm = 0
 # Higher values preserve silhouette fidelity but leave more faces unchanged.
 interior_boundary_rings = 1
 
+# --- Compound-part conversion profile (XRFF-356/359) ---
+# Everything above is tuned for a single small twig seen close up, and costs
+# 7,565 faces on one exported beech twig. A compound foliage part welds a whole
+# subtree's worth of twigs into ONE mesh (Nanite Assemblies cannot nest), so
+# that per-twig fidelity multiplies: measured on a 25-cycle european_beech at
+# cut diameter 0.030 m, the mean part carries 19 twigs and the largest 361 --
+# 144k and 2.73M faces respectively. Each leaf is also far smaller on screen
+# inside a part than it is on a twig seen alone, so the detail is wasted there.
+#
+# These four keys mirror the close-range ones above and are selected per output
+# role via GrowPyConfig.get_twig_conversion_profile("compound"). Commenting one
+# out falls back to the close-range value, so leaving the whole block commented
+# reproduces current behaviour exactly.
+#
+# Candidate starting point, not yet measured against a UE import:
+# compound_boundary_edge_mm = 1.0
+# compound_planar_angle = 1.0
+# compound_alpha_trim = 0.9
+# compound_interior_edge_mm = 0
+
+
 # Per-twig planar_angle overrides, keyed on the twig OBJECT name exactly as
 # printed by the "Planar dissolve:" log line. For twigs whose leaves meet at
 # shallow angles and lose a little edge fidelity at the global setting.

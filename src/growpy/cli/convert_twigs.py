@@ -153,6 +153,7 @@ def process_twig_directory(
     interior_boundary_rings: int = 1,
     planar_angle: float = 1.0,
     planar_angle_per_twig: dict[str, float] | None = None,
+    output_root: Path | None = None,
 ) -> dict[str, list[Path]]:
     """Process all twig blend files in a directory.
 
@@ -213,7 +214,15 @@ def process_twig_directory(
     ):
         try:
             twig_dir_name = blend_file.parent.name
-            output_dir = blend_file.parent
+            # Default: write beside the .blend, which is where every consumer
+            # looks. `output_root` mirrors the per-twig folder underneath it
+            # instead, so a second conversion profile cannot overwrite the
+            # dataset's own assets (XRFF-359).
+            if output_root is None:
+                output_dir = blend_file.parent
+            else:
+                output_dir = output_root / twig_dir_name
+                output_dir.mkdir(parents=True, exist_ok=True)
 
             # Always use the twig's native name (directory without _twig suffix).
             # Species that share a twig (e.g. Norway spruce using PacificSilverFirTwig)
@@ -295,6 +304,35 @@ Output per twig:
         help="Path to twig directory or single .blend file (default: from config)",
     )
     parser.add_argument(
+        # NOT --profile: CLI_MAPPINGS already binds "profile" to the profiling
+        # flag, so that name would set config.profile to "twig".
+        "--conversion-profile",
+        choices=["twig", "compound"],
+        default="twig",
+        help=(
+            "Conversion profile (XRFF-359). 'twig' is the close-range default "
+            "used for the dataset's own twig assets. 'compound' applies the "
+            "coarser [twigs] compound_* settings, for twigs that will be welded "
+            "into a compound foliage part where each leaf is far smaller on "
+            "screen. The trimming and densification still happen here, per "
+            "twig -- welding comes afterwards and cannot do them, because a "
+            "welded part has lost the per-leaf alpha texture association the "
+            "contour cut needs."
+        ),
+    )
+    parser.add_argument(
+        "--output-root",
+        type=Path,
+        default=None,
+        help=(
+            "Write converted twigs under this directory (one folder per twig) "
+            "instead of beside each .blend. Required with "
+            "--conversion-profile compound, whose coarser output would "
+            "otherwise overwrite the dataset's own close-range assets, so it "
+            "must be OUTSIDE the twig source tree."
+        ),
+    )
+    parser.add_argument(
         "--csv",
         type=Path,
         default=None,
@@ -350,6 +388,16 @@ Output per twig:
     )
     args = parser.parse_args()
 
+    if args.conversion_profile != "twig" and args.output_root is None:
+        logger.error(
+            "--conversion-profile %s needs --output-root: converted twigs are "
+            "written beside their .blend under the same names, so a second "
+            "profile would overwrite the dataset's close-range assets.",
+            args.conversion_profile,
+        )
+        return 1
+
+
     # Resolve config: TOML defaults + CLI overrides
     config.resolve(args)
     if args.quiet:
@@ -360,6 +408,31 @@ Output per twig:
     twig_path = args.path if args.path is not None else config.twigs_path
     if not twig_path.is_absolute():
         twig_path = project_root / twig_path
+
+    # Presence of --output-root is not enough. `process_twig_directory` writes to
+    # `output_root / <twig folder>`, which for --output-root data/assets/twigs is
+    # byte-identical to the default "beside the .blend" path -- so the most
+    # natural-looking value silently defeats the guard above. The coarse assets
+    # would also land inside the tree that three consumers discover twigs in by
+    # rglob (analyze_usda, leaf_geometry, twig_silhouette), where a duplicate
+    # basename is resolved by filesystem order.
+    if args.output_root is not None:
+        output_root = args.output_root
+        if not output_root.is_absolute():
+            output_root = project_root / output_root
+        resolved_root = output_root.resolve()
+        resolved_source = twig_path.resolve()
+        if resolved_root == resolved_source or resolved_source in resolved_root.parents:
+            logger.error(
+                "--output-root %s is inside the twig source tree %s: converted "
+                "twigs would land on the assets being read from. Choose a "
+                "directory outside it.",
+                resolved_root,
+                resolved_source,
+            )
+            return 1
+        args.output_root = output_root
+
 
     # Resolve CSV path
     csv_path = config.csv_file
@@ -434,6 +507,46 @@ Output per twig:
                 logger.error("Error processing CSV file: %s", e)
                 return 1
 
+    # The two profiles differ only in these four knobs; everything else about
+    # the conversion, including the alpha contour cut and the densification it
+    # depends on, is identical (XRFF-359).
+    # Flags the user actually typed. argparse leaves these None otherwise, and
+    # resolve() has already written them onto the base fields, so the compound
+    # profile must not override them.
+    typed = {
+        key
+        for key, value in (
+            ("alpha_trim", args.alpha_trim),
+            ("boundary_edge_mm", args.boundary_edge_mm),
+            ("interior_edge_mm", args.interior_edge_mm),
+        )
+        if value is not None
+    }
+    profile = config.get_twig_conversion_profile(args.conversion_profile, typed)
+    if args.conversion_profile != "twig":
+        logger.info(
+            "Conversion profile '%s': boundary_edge_mm=%.3f planar_angle=%.3f "
+            "alpha_trim=%.3f interior_edge_mm=%.3f",
+            args.conversion_profile,
+            profile["boundary_edge_mm"],
+            profile["planar_angle"],
+            profile["alpha_trim"],
+            profile["interior_edge_mm"],
+        )
+
+    convert_kwargs = {
+        "include_skeleton": True,
+        "densify": config.twigs_densify,
+        "alpha_trim_threshold": min(max(0.0, profile["alpha_trim"]), 1.0),
+        "boundary_edge_mm": max(0.01, profile["boundary_edge_mm"]),
+        "interior_decimate_ratio": 0.000001,
+        "interior_edge_mm": max(0.0, profile["interior_edge_mm"]),
+        "interior_boundary_rings": max(0, int(config.twigs_interior_boundary_rings)),
+        "planar_angle": max(0.0, profile["planar_angle"]),
+        "planar_angle_per_twig": config.twigs_planar_angle_per_twig,
+        "output_root": args.output_root,
+    }
+
     if twig_path.is_file() and twig_path.suffix == ".blend":
         # Single file
         process_twig_directory(
@@ -441,15 +554,7 @@ Output per twig:
             ["usda"],
             True,
             twig_filter,
-            include_skeleton=True,
-            densify=config.twigs_densify,
-            alpha_trim_threshold=min(max(0.0, config.twigs_alpha_trim), 1.0),
-            boundary_edge_mm=max(0.01, config.twigs_boundary_edge_mm),
-            interior_decimate_ratio=0.000001,
-            interior_edge_mm=max(0.0, config.twigs_interior_edge_mm),
-            interior_boundary_rings=max(0, int(config.twigs_interior_boundary_rings)),
-            planar_angle=max(0.0, config.twigs_planar_angle),
-            planar_angle_per_twig=config.twigs_planar_angle_per_twig,
+            **convert_kwargs,
         )
     elif twig_path.is_dir():
         # Directory
@@ -458,15 +563,7 @@ Output per twig:
             ["usda"],
             True,
             twig_filter,
-            include_skeleton=True,
-            densify=config.twigs_densify,
-            alpha_trim_threshold=min(max(0.0, config.twigs_alpha_trim), 1.0),
-            boundary_edge_mm=max(0.01, config.twigs_boundary_edge_mm),
-            interior_decimate_ratio=0.000001,
-            interior_edge_mm=max(0.0, config.twigs_interior_edge_mm),
-            interior_boundary_rings=max(0, int(config.twigs_interior_boundary_rings)),
-            planar_angle=max(0.0, config.twigs_planar_angle),
-            planar_angle_per_twig=config.twigs_planar_angle_per_twig,
+            **convert_kwargs,
         )
     else:
         return 1

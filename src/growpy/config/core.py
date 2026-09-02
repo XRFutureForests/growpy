@@ -15,6 +15,7 @@ To seed a fresh project with a starter config/ directory, run
 import logging
 import os
 import tomllib
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Optional
@@ -207,6 +208,14 @@ class GrowPyConfig:
         "export_twig_recovery": "internal toggle, no CLI need identified",
         "twigs_planar_angle": "internal tuning, no CLI need identified",
         "twigs_planar_angle_per_twig": "nested dict structure, config-only by design",
+        "twigs_compound_boundary_edge_mm": "conversion profile, selected by "
+        "output role rather than by CLI",
+        "twigs_compound_planar_angle": "conversion profile, selected by "
+        "output role rather than by CLI",
+        "twigs_compound_alpha_trim": "conversion profile, selected by "
+        "output role rather than by CLI",
+        "twigs_compound_interior_edge_mm": "conversion profile, selected by "
+        "output role rather than by CLI",
         "export_twig_min_spacing_ratio": "internal tuning, no CLI need identified",
         "export_youth_bias": "internal tuning, no CLI need identified",
         "export_density_variants": "scenario-level choice, config-only by design",
@@ -288,6 +297,18 @@ class GrowPyConfig:
     # post-hoc thinning via export_twig_density below.
     twigs_alpha_trim: float = 0.75
     twigs_boundary_edge_mm: float = 0.5
+    # Compound-part conversion profile (XRFF-359). The settings above were
+    # tuned for a single small twig seen close up, which costs 7,565 faces on
+    # one exported beech twig. A compound part carries a whole subtree's worth
+    # of them -- measured on a 25-cycle beech at cut 0.030, the mean part
+    # carries 19 twigs and the largest 361, i.e. 144k and 2.73M faces -- and
+    # each leaf is much smaller on screen there, so the fidelity is wasted.
+    # None means "fall back to the close-range value", so the compound profile
+    # defaults to current behaviour until it is set.
+    twigs_compound_boundary_edge_mm: float | None = None
+    twigs_compound_planar_angle: float | None = None
+    twigs_compound_alpha_trim: float | None = None
+    twigs_compound_interior_edge_mm: float | None = None
 
     # [growth_models]
     growth_models_cycles: int = 25
@@ -501,6 +522,54 @@ class GrowPyConfig:
         if not self.unreal_pve_import_base:
             self.unreal_pve_import_base = self.unreal_project_path
 
+    # Conversion knobs shared by both twig profiles, in (config field, TOML key)
+    # form. The compound profile mirrors each one with a `compound_` prefix.
+    _TWIG_PROFILE_KEYS: ClassVar[tuple[str, ...]] = (
+        "boundary_edge_mm",
+        "planar_angle",
+        "alpha_trim",
+        "interior_edge_mm",
+    )
+
+    def get_twig_conversion_profile(
+        self, role: str = "twig", explicit: Iterable[str] | None = None
+    ) -> dict[str, float]:
+        """Conversion settings for one output role (XRFF-359).
+
+        Two roles share one pipeline:
+
+        * ``"twig"`` -- a single small twig seen close up, the settings the
+          dataset has always used.
+        * ``"compound"`` -- a twig destined to be welded into a compound
+          foliage part, where it is one of ~19 in the same mesh and much
+          smaller on screen, so the close-range fidelity is wasted.
+
+        Any compound key left unset falls back to its close-range value, so
+        adding the role changes nothing until the profile is configured.
+
+        Args:
+            role: Which profile to resolve.
+            explicit: Keys the caller set on the command line. `resolve()` has
+                already written those onto the base fields, and a TOML compound
+                value must not silently beat a flag the user typed -- every
+                other flag in this CLI wins over TOML.
+        """
+        if role not in ("twig", "compound"):
+            raise ValueError(
+                f"unknown twig conversion role {role!r}; expected 'twig' or 'compound'"
+            )
+
+        typed = set(explicit or ())
+        profile = {}
+        for key in self._TWIG_PROFILE_KEYS:
+            base = getattr(self, f"twigs_{key}")
+            if role == "compound" and key not in typed:
+                override = getattr(self, f"twigs_compound_{key}")
+                if override is not None:
+                    base = override
+            profile[key] = base
+        return profile
+
     @classmethod
     def from_toml(cls, toml_path: Path, set_as_global: bool = True) -> "GrowPyConfig":
         """Create config from a TOML file or directory.
@@ -556,6 +625,26 @@ class GrowPyConfig:
             kwargs["twigs_interior_edge_mm"] = twigs["interior_edge_mm"]
         if "interior_boundary_rings" in twigs:
             kwargs["twigs_interior_boundary_rings"] = twigs["interior_boundary_rings"]
+        # Compound-part conversion profile (XRFF-359); absent keys stay None
+        # and fall back to the close-range values above.
+        #
+        # Spelled out rather than looped: test_config's drift guard
+        # (test_toml_settable_fields_have_mapping_or_are_allowlisted) walks this
+        # function's AST and only sees kwargs keys that are literal strings, so a
+        # loop would make these four invisible to it and the TOML_ONLY_FIELDS
+        # entries above inert.
+        if "compound_boundary_edge_mm" in twigs:
+            kwargs["twigs_compound_boundary_edge_mm"] = float(
+                twigs["compound_boundary_edge_mm"]
+            )
+        if "compound_planar_angle" in twigs:
+            kwargs["twigs_compound_planar_angle"] = float(twigs["compound_planar_angle"])
+        if "compound_alpha_trim" in twigs:
+            kwargs["twigs_compound_alpha_trim"] = float(twigs["compound_alpha_trim"])
+        if "compound_interior_edge_mm" in twigs:
+            kwargs["twigs_compound_interior_edge_mm"] = float(
+                twigs["compound_interior_edge_mm"]
+            )
 
         # [growth_models]
         gm = data.get("growth_models", {})
