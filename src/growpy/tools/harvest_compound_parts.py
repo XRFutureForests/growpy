@@ -490,6 +490,27 @@ def cluster_prototypes(
         for vec in normed
     ]
 
+    # A leafy subtree must never take a twigless prototype, whatever the
+    # descriptor distance says. The foliage term makes that rare, but it cannot
+    # make it impossible: a conifer's cut set is bimodal -- 56.5% of a silver_fir's
+    # subtrees carry no twigs at all -- so several medoids are legitimately bare,
+    # and a lightly-foliaged subtree can still sit nearest one of them. Measured
+    # before this guard, the four topmost cut points on a silver_fir all carried
+    # twigs and all rendered bare, leaving the leader tip visibly naked while the
+    # crown-wide average looked acceptable. Nearest LEAFY medoid instead: the
+    # shape match degrades slightly, rendering nothing does not degrade, it fails.
+    if twig_totals is not None:
+        leafy = [c for c, m in enumerate(medoids) if twig_totals[cut[sample[m]]] > 0]
+        if leafy:
+            for i, branch in enumerate(cut):
+                if (
+                    twig_totals[branch] > 0
+                    and not twig_totals[cut[sample[medoids[assignment[i]]]]]
+                ):
+                    assignment[i] = min(
+                        leafy, key=lambda c: dist(normed[i], medoid_vectors[c])
+                    )
+
     return [cut[sample[m]] for m in medoids], assignment, stats
 
 
