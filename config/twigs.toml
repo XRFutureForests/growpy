@@ -89,6 +89,32 @@ interior_boundary_rings = 1
 # Per-twig planar_angle overrides, keyed on the twig OBJECT name exactly as
 # printed by the "Planar dissolve:" log line. For twigs whose leaves meet at
 # shallow angles and lose a little edge fidelity at the global setting.
-# MUST stay last: a sub-table captures every key that follows it.
+# Both sub-tables MUST stay last: a sub-table captures every key that follows it.
 [twigs.planar_angle_per_twig]
 # (Empty: global planar_angle 0.1 deg suits every twig measured so far.)
+
+
+# Per-twig boundary_edge_mm overrides, same object-name key (XRFF-412).
+#
+# densify_mesh_to_target_edge targets an ABSOLUTE edge length so that one
+# asset's variants come out at a consistent density, but its MAX_DENSIFY_FACES
+# guard caps each OBJECT independently. When the global target is too fine for
+# the largest variant to reach, that variant stops at the cap while the small
+# ones keep subdividing -- so the small ones end up HEAVIER per unit leaf area
+# than the whole spray, which is the opposite of what a size ladder is for.
+#
+# PacificSilverFirTwig is the case: measured 2026-09-03, its six fine variants
+# cost 5.8M faces/m2 against the full spray's 0.99M at the global 0.25. At 2.0
+# every member lands at 0.84-1.13M faces/m2 and the fine tier drops from
+# 7.2-11.7 MB to 1.36-2.20 MB. The full spray is BYTE-IDENTICAL at 0.25 and
+# 2.0 -- it never reached the finer target anyway -- so this changes only the
+# new variants, not the asset the dataset already ships.
+[twigs.boundary_edge_mm_per_twig]
+PacificSilverFirTwig = 2.0
+PacificSilverFirTwigA = 2.0
+PacificSilverFirTwigB = 2.0
+PacificSilverFirTwigC = 2.0
+PacificSilverFirTwigD = 2.0
+PacificSilverFirTwigE = 2.0
+PacificSilverFirTwigF = 2.0
+PacificSilverFirTwigG = 2.0

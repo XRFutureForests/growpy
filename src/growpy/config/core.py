@@ -208,6 +208,8 @@ class GrowPyConfig:
         "export_twig_recovery": "internal toggle, no CLI need identified",
         "twigs_planar_angle": "internal tuning, no CLI need identified",
         "twigs_planar_angle_per_twig": "nested dict structure, config-only by design",
+        "twigs_boundary_edge_mm_per_twig": "nested dict structure, "
+        "config-only by design",
         "twigs_compound_boundary_edge_mm": "conversion profile, selected by "
         "output role rather than by CLI",
         "twigs_compound_planar_angle": "conversion profile, selected by "
@@ -290,6 +292,13 @@ class GrowPyConfig:
     # Twigs whose leaves meet at shallow angles lose a little edge fidelity at
     # the global setting and want a smaller value; needle twigs tolerate more.
     twigs_planar_angle_per_twig: dict[str, float] = field(default_factory=dict)
+    # Per-twig overrides of twigs_boundary_edge_mm, keyed on the same twig
+    # OBJECT name. The densification target is absolute so that one asset's
+    # variants come out at a consistent density, but MAX_DENSIFY_FACES caps
+    # each object independently -- so when the target is too fine for the
+    # largest variant to reach, the small ones subdivide far past it and end up
+    # heavier per unit leaf area than the whole spray (XRFF-412).
+    twigs_boundary_edge_mm_per_twig: dict[str, float] = field(default_factory=dict)
     # NOTE: Grove's own seed twig_density is INERT in the core API -- measured
     # on a 20-cycle Douglas fir, 1.0 / 0.25 / 0.0 all yield 11,606 living twigs
     # (0.0 does not even disable them). It is a Blender-addon-only setting, so
@@ -616,6 +625,10 @@ class GrowPyConfig:
         if "planar_angle_per_twig" in twigs:
             kwargs["twigs_planar_angle_per_twig"] = {
                 str(k): float(v) for k, v in twigs["planar_angle_per_twig"].items()
+            }
+        if "boundary_edge_mm_per_twig" in twigs:
+            kwargs["twigs_boundary_edge_mm_per_twig"] = {
+                str(k): float(v) for k, v in twigs["boundary_edge_mm_per_twig"].items()
             }
         if "alpha_trim" in twigs:
             kwargs["twigs_alpha_trim"] = twigs["alpha_trim"]

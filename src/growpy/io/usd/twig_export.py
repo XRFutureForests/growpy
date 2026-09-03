@@ -700,6 +700,7 @@ def process_twig_file(
     alpha_trim_threshold=0.0,
     alpha_trim_method="all",
     boundary_edge_mm=0.5,
+    boundary_edge_mm_per_twig=None,
     boundary_band_mm=1.0,
     interior_decimate_ratio=0.0,
     interior_edge_mm=0.0,
@@ -728,6 +729,12 @@ def process_twig_file(
         boundary_edge_mm: Target leaf edge length in millimeters for pre-densification
             before the alpha contour cut (default: 0.5). Smaller values = denser
             mesh and finer Nanite detail; larger values = faster export, coarser mesh.
+        boundary_edge_mm_per_twig: Optional per-object overrides of
+            boundary_edge_mm, keyed on the twig OBJECT name (the same key
+            planar_angle_per_twig uses). Needed where one asset ships variants
+            of very different sizes: the target is absolute, but the
+            MAX_DENSIFY_FACES cap is per object, so a small variant subdivides
+            much further than a large one before the cap stops it (XRFF-412).
         boundary_band_mm: Distance from silhouette in mm to include (default: 1.0)
         interior_decimate_ratio: Fallback decimation ratio for interior faces (0-1).
             Ignored when interior_edge_mm > 0.
@@ -998,9 +1005,18 @@ def process_twig_file(
                     and alpha_img is not None
                     and alpha_trim_threshold > 0.0
                 ):
+                    # Per-twig override, same key as planar_angle_per_twig below.
+                    # The absolute target only delivers the "consistent density
+                    # across twig sizes" its docstring promises when it actually
+                    # binds: MAX_DENSIFY_FACES is a per-OBJECT cap, so a small
+                    # variant of the same asset subdivides far further than a
+                    # large one before hitting it (XRFF-412).
+                    obj_edge_mm = (boundary_edge_mm_per_twig or {}).get(
+                        obj.name, boundary_edge_mm
+                    )
                     densify_mesh_to_target_edge(
                         obj,
-                        target_edge_mm=boundary_edge_mm,
+                        target_edge_mm=obj_edge_mm,
                         material_indices=leaf_mats,
                         max_iterations=8,
                     )
