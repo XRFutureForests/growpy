@@ -46,7 +46,7 @@ DEFAULT_SHOOT_MIN_M = 0.06
 
 
 def _loose_parts(mesh):
-    """Connected components of `mesh`, with extent, centre, faces and area."""
+    """Connected components of `mesh`, with extent, centre, faces, area, coords."""
     import bmesh
 
     bm = bmesh.new()
@@ -93,6 +93,9 @@ def _loose_parts(mesh):
                     sum(ys) / len(ys),
                     sum(zs) / len(zs),
                 ),
+                # Needed to measure a needle's distance to a shoot's GEOMETRY
+                # rather than to its centroid -- see `_sub_sprays`.
+                "coords": [(c.x, c.y, c.z) for c in co],
             }
         )
     return parts
@@ -103,7 +106,19 @@ def _sub_sprays(parts, shoot_min_m):
 
     Every face of every part lands in exactly one sub-spray, so the groups
     partition the source mesh.
+
+    "Nearest" is measured to the shoot's own GEOMETRY, not to its centroid. A
+    shoot's centroid sits at its middle, so a needle out at the distal tip can
+    be closer to a neighbouring shoot's centre than to its own shoot's -- and
+    the tip is exactly where a conifer spray's shoots run alongside each other.
+    Measured on `PacificSilverFirTwig` before this: the 191 mm shoot behind
+    variant `c` kept needles only to 60 mm and rendered 77 mm of bare stick,
+    while 213 needles lying within 30 mm of that shoot's own axis had been
+    handed to four neighbouring sub-sprays. The art was complete; the rule was
+    wrong.
     """
+    import numpy as np
+
     shoots = [p for p in parts if p["diag"] >= shoot_min_m]
     needles = [p for p in parts if p["diag"] < shoot_min_m]
     if not shoots:
@@ -125,13 +140,15 @@ def _sub_sprays(parts, shoot_min_m):
         }
         for s in shoots
     ]
+    # Nearest vertex stands in for nearest point on the surface: a shoot is a
+    # dense tube beside needles a few millimetres across, so the two agree well
+    # within the spacing that decides the assignment.
+    shoot_points = [np.asarray(s["coords"], dtype=float) for s in shoots]
     for needle in needles:
+        centre = np.asarray(needle["centre"], dtype=float)
         nearest = min(
             range(len(groups)),
-            key=lambda i: sum(
-                (a - b) ** 2
-                for a, b in zip(needle["centre"], groups[i]["centre"], strict=True)
-            ),
+            key=lambda i: float(((shoot_points[i] - centre) ** 2).sum(axis=1).min()),
         )
         groups[nearest]["faces"].extend(needle["faces"])
         groups[nearest]["area"] += needle["area"]

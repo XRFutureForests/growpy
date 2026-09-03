@@ -208,18 +208,29 @@ class TestLibraryPackagePaths:
         without = library_package_path("/Game/Lib", "stage", "part")
         assert with_slash == without
 
-    def test_asset_paths_cover_the_parts_and_the_residual_twig(self):
+    def test_asset_paths_cover_the_parts_and_every_residual_twig(self):
         library = _library(
             [{"file": "p00_skeletal.usda", "package_path": "/Game/Lib/p00"}]
         )
-        library["residual_twig"] = {
-            "name": "fir_foliage",
-            "file": "fir_foliage_skeletal.usda",
-            "package_path": "/Game/Lib/fir_foliage",
-        }
+        # A twig ladder puts a different variant on each of Grove's types, and
+        # every one of them needs its own package path or the rewrite silently
+        # drops that type's whole share of the crown.
+        library["residual_twigs"] = [
+            {
+                "name": "fir_foliage_a",
+                "file": "fir_foliage_a_skeletal.usda",
+                "package_path": "/Game/Lib/fir_foliage_a",
+            },
+            {
+                "name": "fir_foliage_c",
+                "file": "fir_foliage_c_skeletal.usda",
+                "package_path": "/Game/Lib/fir_foliage_c",
+            },
+        ]
         assert library_asset_paths(library) == {
             "p00_skeletal.usda": "/Game/Lib/p00",
-            "fir_foliage_skeletal.usda": "/Game/Lib/fir_foliage",
+            "fir_foliage_a_skeletal.usda": "/Game/Lib/fir_foliage_a",
+            "fir_foliage_c_skeletal.usda": "/Game/Lib/fir_foliage_c",
         }
 
     def test_asset_paths_survive_a_library_with_no_residual_twig(self):

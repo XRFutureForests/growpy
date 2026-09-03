@@ -50,6 +50,15 @@ DEFAULT_SWEEP = (0.004, 0.006, 0.008, 0.010, 0.012, 0.016, 0.020, 0.030, 0.040)
 # MegaPlants lands every shipped preset near this instance count per tree.
 TARGET_INSTANCES = 1000
 
+# Grove's living twig types, in the order the CLI resolves their assets. Grove
+# carries NO per-twig scale -- these four types (the fourth, twig_dead, has no
+# asset) are its only size signal, and it places them by position: measured on
+# an 18-cycle silver_fir, twig_long sits at the branch TIPS (median position
+# along the parent branch 1.00) and is 89.9% of the twigs in the top quarter of
+# the crown, while twig_short sits mid-branch (median 0.27) and twig_upward is
+# the single apex twig. So a size ladder is applied through the TYPE.
+LIVING_TWIG_TYPES = ("twig_long", "twig_short", "twig_upward")
+
 # Size band for one compound part. A part is instanced rigidly, so an
 # oversized one reads as a stiff limb in wind and repeats visibly.
 DEFAULT_MAX_TIPS = 40
@@ -754,7 +763,7 @@ def residual_twig_placements(
     from growpy.core.twig import extract_twig_placements_from_model
     from growpy.io.usd.compound_part_export import harvested_branch_ids
 
-    twig_types = ["twig_long", "twig_short", "twig_upward"]
+    twig_types = list(LIVING_TWIG_TYPES)
     children = [rec.children for rec in records]
     in_parts = harvested_branch_ids(children, cut)
 
@@ -847,7 +856,7 @@ def export_compound_assembly(
     use_skeletal_mesh: bool = True,
     instances_dir: Path | None = None,
     max_instances: int = 0,
-    residual_twig_usd: Path | None = None,
+    residual_twig_usd: dict[str, Path] | None = None,
     model: Any = None,
     bones_info: list | None = None,
     bone_map: dict[int, int] | None = None,
@@ -900,21 +909,31 @@ def export_compound_assembly(
     }
 
     residual_total = 0
-    if residual_twig_usd is not None and model is not None:
-        twig_asset = residual_twig_asset(residual_twig_usd, use_skeletal_mesh)
+    if residual_twig_usd and model is not None:
+        assets = {
+            twig_type: residual_twig_asset(path, use_skeletal_mesh)
+            for twig_type, path in residual_twig_usd.items()
+        }
         for twig_type, items in residual_twig_placements(
             model, records, cut, bones_info, bone_map
         ).items():
-            # Every type names the same file, and `create_assembly` dedups
-            # prototypes by filename, so they share one prototype index.
-            twig_usd_paths[twig_type] = [twig_asset]
+            asset = assets.get(twig_type)
+            if asset is None:
+                continue
+            # One asset per type, and `create_assembly` dedups prototypes by
+            # filename, so types sharing a variant share one prototype index.
+            twig_usd_paths[twig_type] = [asset]
             placements[twig_type] = items
             residual_total += len(items)
         logger.info(
-            "residual twigs: %d placed 1:1 from %s across %d type(s)",
+            "residual twigs: %d placed 1:1 across %d type(s): %s",
             residual_total,
-            twig_asset.name,
             len(placements) - 1,
+            ", ".join(
+                f"{twig_type}={twig_usd_paths[twig_type][0].name}"
+                for twig_type in LIVING_TWIG_TYPES
+                if twig_type in placements
+            ),
         )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -963,7 +982,7 @@ def bake_prototypes(
     records: list[BranchRecord],
     metrics: dict[str, list],
     medoids: list[int],
-    twig_usd: Path,
+    twig_usd: dict[str, Path],
     output_dir: Path,
     species: str,
     include_twig_marker_faces: bool = False,
@@ -980,6 +999,13 @@ def bake_prototypes(
     texture and UVs, and once N twigs share one welded mesh that association is
     gone. Welding is strictly the last step. See XRFF-359 for the coarser
     conversion profile a compound-bound twig should be converted at.
+
+    `twig_usd` maps each of Grove's living twig types to the variant welded at
+    its placements, so a size ladder reaches the crown the way Grove itself
+    varies foliage -- twig_long at the branch tips and through the upper crown,
+    twig_short mid-branch, twig_upward at the apex (see LIVING_TWIG_TYPES).
+    Every variant of one twig asset shares its textures, so the material comes
+    from a single member of the map.
     """
     # Absolute, not relative: this tool is run as a script
     # (`python src/growpy/tools/harvest_compound_parts.py`), where a relative
@@ -1013,14 +1039,24 @@ def bake_prototypes(
     # Grove's living-twig arrays are indexed by position in face order, the
     # same coupling `extract_twig_placements_from_model` relies on.
     twig_index_of_face: dict[int, int] = {}
+    twig_type_of_face: dict[int, str] = {}
     twig_index = 0
     for i in range(face_count):
         if long_[i] or short[i] or upward[i]:
             twig_index_of_face[i] = twig_index
+            twig_type_of_face[i] = (
+                "twig_long" if long_[i] else "twig_short" if short[i] else "twig_upward"
+            )
             twig_index += 1
 
     children = [rec.children for rec in records]
-    leaf = load_prototype_mesh(twig_usd)
+    # One load per DISTINCT file: several types usually name the same variant.
+    meshes: dict[Path, Any] = {}
+    for path in twig_usd.values():
+        if path not in meshes:
+            meshes[path] = load_prototype_mesh(path)
+    leaves = {twig_type: meshes[path] for twig_type, path in twig_usd.items()}
+    material_source = twig_usd[LIVING_TWIG_TYPES[0]]
     output_dir.mkdir(parents=True, exist_ok=True)
 
     report: list[dict[str, Any]] = []
@@ -1038,17 +1074,19 @@ def bake_prototypes(
         woody_faces = len(part.faces)
 
         welded = 0
+        welded_by_type: dict[str, int] = {}
         for i in range(face_count):
             if face_branch_ids[i] not in ids:
                 continue
             index = twig_index_of_face.get(i)
             if index is None:
                 continue
+            twig_type = twig_type_of_face[i]
             base = index * 3
             quat = index * 4
             merge_mesh(
                 part,
-                leaf,
+                leaves[twig_type],
                 translation=(
                     twig_locations[base],
                     twig_locations[base + 1],
@@ -1062,6 +1100,7 @@ def bake_prototypes(
                 ),
             )
             welded += 1
+            welded_by_type[twig_type] = welded_by_type.get(twig_type, 0) + 1
 
         rec = records[branch]
         quat = normalise_part_frame(part, rec.base_pos, rec.base_dir)
@@ -1070,7 +1109,7 @@ def bake_prototypes(
             part,
             output_dir / f"{name}_static.usda",
             part_name=name,
-            material_source=twig_usd,
+            material_source=material_source,
             bark_species=species,
         )
         # Both variants, as the twig pipeline ships: a SKELETAL assembly needs
@@ -1082,7 +1121,7 @@ def bake_prototypes(
             part,
             output_dir / f"{name}_skeletal.usda",
             part_name=name,
-            material_source=twig_usd,
+            material_source=material_source,
             bark_species=species,
             skeletal=True,
         )
@@ -1100,6 +1139,7 @@ def bake_prototypes(
                 "faces": len(part.faces),
                 "woody_faces": woody_faces,
                 "welded_twigs": welded,
+                "welded_twigs_by_type": welded_by_type,
                 "materials": list(part.materials),
                 "normalise_quat_wxyz": list(quat),
                 "local_extent": [hi[a] - lo[a] for a in range(3)],
@@ -1117,7 +1157,7 @@ def bake_prototypes(
 # make an older library.json assign a tree WRONGLY rather than merely
 # differently -- an assignment computed against stale means/devs is silently
 # plausible, so the mismatch has to be refused rather than tolerated.
-LIBRARY_SCHEMA = 1
+LIBRARY_SCHEMA = 2
 
 
 def write_part_library(
@@ -1131,7 +1171,7 @@ def write_part_library(
     package_root: str,
     source: dict[str, Any],
     skeletal: bool = True,
-    residual_twig_usd: Path | None = None,
+    residual_twig_usd: dict[str, Path] | None = None,
 ) -> dict[str, Any]:
     """Bake the species part library and the manifest later trees assign against.
 
@@ -1151,10 +1191,11 @@ def write_part_library(
     holds -- not the source subtree's twig total. They usually agree, and where
     they do not it is the part that renders.
 
-    `residual_twig_usd` joins the library as an ordinary member. A hybrid
-    assembly instances the 1:1 twig alongside the compound parts, so it needs a
-    package path exactly as they do, and it belongs in the same stage for the
-    same material-sharing reason.
+    `residual_twig_usd` maps each living twig type to the variant its residual
+    1:1 twigs are placed from, and every DISTINCT variant joins the library as
+    an ordinary member. A hybrid assembly instances those twigs alongside the
+    compound parts, so each needs a package path exactly as they do, and they
+    belong in the same stage for the same material-sharing reason.
     """
     import shutil
 
@@ -1166,29 +1207,38 @@ def write_part_library(
     key = "skeletal_file" if skeletal else "file"
     members = [(row["name"], Path(row[key])) for row in report]
 
-    residual: dict[str, Any] | None = None
-    if residual_twig_usd is not None:
-        twig_source = residual_twig_asset(residual_twig_usd, skeletal)
-        # The library references its members relatively, so the twig has to sit
-        # beside it. Its textures are already staged: `bake_prototypes` copies
-        # the whole `textures/` of this same twig next to the parts.
-        twig_local = output_dir / twig_source.name
-        if not twig_local.exists():
-            shutil.copy2(twig_source, twig_local)
-        twig_name = twig_local.stem.replace("_skeletal", "").replace("_static", "")
-        members.append((twig_name, twig_local))
-        residual = {
-            "name": twig_name,
-            "file": twig_local.name,
-            "package_path": "",
-        }
+    residual: list[dict[str, Any]] = []
+    if residual_twig_usd:
+        for twig_type in LIVING_TWIG_TYPES:
+            path = residual_twig_usd.get(twig_type)
+            if path is None:
+                continue
+            twig_source = residual_twig_asset(path, skeletal)
+            # The library references its members relatively, so the twig has to
+            # sit beside it. Its textures are already staged: `bake_prototypes`
+            # copies the whole `textures/` of this same twig next to the parts.
+            twig_local = output_dir / twig_source.name
+            if not twig_local.exists():
+                shutil.copy2(twig_source, twig_local)
+            if any(entry["file"] == twig_local.name for entry in residual):
+                # Types sharing a variant share one library member.
+                continue
+            twig_name = twig_local.stem.replace("_skeletal", "").replace("_static", "")
+            members.append((twig_name, twig_local))
+            residual.append(
+                {
+                    "name": twig_name,
+                    "file": twig_local.name,
+                    "package_path": "",
+                }
+            )
 
     library_usd = write_part_library_usd(
         members, output_dir / f"{species}_library.usda"
     )
-    if residual is not None:
-        residual["package_path"] = library_package_path(
-            package_root, library_usd.stem, residual["name"]
+    for entry in residual:
+        entry["package_path"] = library_package_path(
+            package_root, library_usd.stem, entry["name"]
         )
 
     # Recomputed rather than threaded out of `cluster_prototypes`: the inputs
@@ -1232,14 +1282,14 @@ def write_part_library(
             "cut_points": len(cut),
         },
         "prototypes": prototypes,
-        "residual_twig": residual,
+        "residual_twigs": residual,
     }
     manifest_path = output_dir / f"{species}_library.json"
     manifest_path.write_text(json.dumps(library, indent=2))
     logger.info(
         "part library: %d prototypes%s under %s -> %s",
         len(prototypes),
-        " + the 1:1 twig" if residual else "",
+        f" + {len(residual)} 1:1 twig variant(s)" if residual else "",
         library["package_root"],
         manifest_path.name,
     )
@@ -1250,9 +1300,8 @@ def write_part_library(
 def library_asset_paths(library: dict[str, Any]) -> dict[str, str]:
     """Prototype filename -> UE package path, for an external-ref rewrite."""
     paths = {p["file"]: p["package_path"] for p in library["prototypes"]}
-    residual = library.get("residual_twig")
-    if residual:
-        paths[residual["file"]] = residual["package_path"]
+    for entry in library.get("residual_twigs") or []:
+        paths[entry["file"]] = entry["package_path"]
     return paths
 
 
@@ -1390,6 +1439,18 @@ def main() -> None:
             "(e.g. data/output/forest/Instances/european_beech_foliage_a_static.usda)"
         ),
     )
+    for twig_type in LIVING_TWIG_TYPES:
+        parser.add_argument(
+            f"--twig-usd-{twig_type.removeprefix('twig_')}",
+            type=Path,
+            help=(
+                f"twig USD for Grove's {twig_type} placements, overriding "
+                "--twig-usd. Grove carries no per-twig scale, so its types are "
+                "where a size ladder is applied: twig_long sits at the branch "
+                "TIPS and dominates the upper crown, twig_short mid-branch, "
+                "twig_upward at the apex"
+            ),
+        )
     parser.add_argument(
         "--base-mesh",
         type=Path,
@@ -1478,6 +1539,21 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
+    # Grove's living twig types map to the variant welded into a part and
+    # placed at that type's residual 1:1 positions. Without an override every
+    # type takes --twig-usd, which is the single-asset behaviour this tool had.
+    twig_usd_by_type: dict[str, Path] = {}
+    for twig_type in LIVING_TWIG_TYPES:
+        override = getattr(args, f"twig_usd_{twig_type.removeprefix('twig_')}")
+        path = override or args.twig_usd
+        if path is not None:
+            twig_usd_by_type[twig_type] = path
+    if len(set(twig_usd_by_type.values())) > 1:
+        logger.info(
+            "twig ladder: %s",
+            ", ".join(f"{t}={p.name}" for t, p in twig_usd_by_type.items()),
+        )
+
     adaptive = not args.no_adaptive
     grove = grow_grove(args.species, args.cycles, args.seed)
     tree = grove.trees[0]
@@ -1508,8 +1584,9 @@ def main() -> None:
     if args.bake or args.base_mesh or args.assign_from_library:
         if args.bake and args.twig_usd is None:
             raise SystemExit("--bake requires --twig-usd")
-        if args.twig_usd is not None and not args.twig_usd.is_file():
-            raise SystemExit(f"twig USD not found: {args.twig_usd}")
+        for path in dict.fromkeys(twig_usd_by_type.values()):
+            if not path.is_file():
+                raise SystemExit(f"twig USD not found: {path}")
         if args.skeletal:
             # Before build_models, or point_attribute_bone_id carries nothing.
             skeleton, bones_info = prepare_skeleton(grove)
@@ -1522,8 +1599,8 @@ def main() -> None:
             len(records),
         )
 
-    residual_twig_usd = None if args.no_residual_twigs else args.twig_usd
-    if args.assembly and residual_twig_usd is None:
+    residual_twig_usd = None if args.no_residual_twigs else twig_usd_by_type
+    if args.assembly and not residual_twig_usd:
         raise SystemExit(
             "--assembly needs --twig-usd for the residual 1:1 twigs, or "
             "--no-residual-twigs to place compound parts alone"
@@ -1783,7 +1860,7 @@ def main() -> None:
             records,
             metrics,
             medoids,
-            args.twig_usd,
+            twig_usd_by_type,
             args.bake,
             args.species,
         )
@@ -1826,7 +1903,7 @@ def main() -> None:
                     "max_tips": args.max_tips,
                     "max_span": args.max_span,
                     "max_twigs": args.max_twigs,
-                    "twig_usd": str(args.twig_usd),
+                    "twig_usd": {t: str(p) for t, p in twig_usd_by_type.items()},
                     "instances": len(cut),
                     "base_branches": len(records) - in_parts,
                     "forward_axis": "+X (the PointInstancer quaternion rotates +X, "
@@ -1856,7 +1933,7 @@ def main() -> None:
                     "max_tips": args.max_tips,
                     "max_span": args.max_span,
                     "max_twigs": args.max_twigs,
-                    "twig_usd": str(args.twig_usd),
+                    "twig_usd": {t: str(p) for t, p in twig_usd_by_type.items()},
                     "clusters": args.clusters,
                 },
                 skeletal=args.skeletal,
