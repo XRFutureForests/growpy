@@ -21,7 +21,12 @@ dependencies = [
     "scipy>=1.7.0",
     "matplotlib>=3.4.0",
     "Pillow>=9.0.0",
-    "pylometree @ git+https://github.com/XRFutureForests/pylometree.git",
+    # Pinned to a commit, not the default branch. Unpinned this resolved to
+    # `main`, which sits at 0.1.2 while the work happens on `dev` (0.3.0) --
+    # so the pipeline was silently running 14 commits behind, without the
+    # Forrester leaf-area equations the crown-density calibration needs.
+    # Repin when pylometree next merges dev to main for a Zenodo release.
+    "pylometree @ git+https://github.com/XRFutureForests/pylometree.git@d67e8bf53f04b5aadc3509cc52b059d1f0c9f767",
 ]
 
 [project.optional-dependencies]
@@ -43,6 +48,7 @@ growpy-analyze-usda = "growpy.tools.analyze_usda:main"
 growpy-derive-twig-ladder = "growpy.tools.derive_twig_ladder:main"
 growpy-icon-metrics = "growpy.tools.icon_crown_metrics:main"
 growpy-crown-metrics = "growpy.tools.crown_metrics:main"
+growpy-calibrate-crown-density = "growpy.tools.calibrate_crown_density:main"
 growpy-ue-import-probe = "growpy.tools.ue_import_probe:main"
 growpy-ue-viewport-probe = "growpy.tools.ue_viewport_probe:main"
 growpy-preflight-assembly = "growpy.tools.preflight_assembly:main"

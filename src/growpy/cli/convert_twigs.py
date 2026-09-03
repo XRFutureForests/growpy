@@ -571,7 +571,49 @@ Output per twig:
     else:
         return 1
 
+    _write_leaf_geometry_sidecars(twig_path)
     return 0
+
+
+def _write_leaf_geometry_sidecars(twig_path: Path) -> None:
+    """Measure each converted prototype's leaf/wood split (XRFF-274).
+
+    The `<prototype>_leaf_area.json` sidecar `twig_export` writes tags leaves by
+    MATERIAL, so on an asset that ships one material for the whole twig it
+    reports the woody shoot as leaf: every fir ladder variant came out with
+    `leaf_faces == total_faces`, overstating leaf area by 8-35%. The split here
+    is topological instead, and lands beside it as
+    `<prototype>_leaf_area_geom.json` -- it does not overwrite the material one,
+    so a caller chooses which basis it wants (see `crown_geometry.compute_lai`'s
+    `leaf_area_provisional` flag).
+
+    Written here rather than left to a separate tool because a crown density
+    calibrated against leaf area is only reproducible if a clean run of the
+    pipeline regenerates the number it was calibrated on.
+    """
+    from growpy.utils.leaf_geometry import run_over_all_twigs
+
+    root = twig_path.parent if twig_path.is_file() else twig_path
+    try:
+        results = run_over_all_twigs(root)
+    except Exception as exc:  # noqa: BLE001 -- diagnostic, never fatal
+        # The conversion itself has already succeeded and been written; a
+        # measurement failure must not discard it.
+        logger.warning("leaf/wood split not measured for %s: %s", root, exc)
+        return
+    if not results:
+        return
+    wood = sum(r.get("wood_area_m2", 0.0) or 0.0 for r in results)
+    leaf = sum(r.get("leaf_area_m2", 0.0) or 0.0 for r in results)
+    total = leaf + wood
+    logger.info(
+        "leaf/wood split: %d prototype(s), %.5f m2 leaf + %.5f m2 wood "
+        "(%.1f%% wood) -> *_leaf_area_geom.json",
+        len(results),
+        leaf,
+        wood,
+        100.0 * wood / total if total else 0.0,
+    )
 
 
 if __name__ == "__main__":
