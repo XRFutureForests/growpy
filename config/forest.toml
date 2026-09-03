@@ -240,15 +240,34 @@ density_variants = [] # e.g., ["full", "reduced", "bare"]
 # Re-derive after any change to twig assets, quality preset, or growth
 # calibration -- all three move the measured ratio.
 [export.twig_density_per_species]
-silver_fir = 0.0078          # measured 5.14x at 0.04
+# The three PacificSilverFirTwig species below were re-derived 2026-09-03 by the
+# method at the top of this table: export at the current density, measure the
+# crown's one-sided leaf area as sum(instances_i x prototype_leaf_area_i) off
+# the exported PointInstancer, and divide by the ratio to the Forrester target.
+# Two things had moved since the 2026-08-06 back-solve. That twig asset was a
+# single 0.10888 m2 spray and now ships a derived 8-variant size ladder, over
+# which `get_twig_usd_map_for_species` draws uniformly -- verified on the
+# exported assemblies, 413-474 instances of each of the 8, mean 0.02444 m2 per
+# twig. And the growth/recovery pool moved too, which is why simply rescaling
+# the density by the asset ratio did NOT reproduce the old leaf area: it landed
+# 1.14x (silver fir) to 1.89x (Douglas fir) over target.
+#
+# Measured means over the three h15m surround radii, against the 38.6 m2
+# Forrester pooled-conifer target: silver_fir 44.1, norway_spruce 59.2,
+# douglas_fir 72.9. Note the target is for d=18 cm while these h15m trees are
+# d=14-29 cm; Forrester's LEAF-AREA coefficients are not in the repo (pylometree
+# registers only the AGB form), so per-DBH targets cannot be computed here and
+# the three radii are averaged against the one target, as before. Note also that
+# per-tree leaf area now varies with the draw, which spans 20x.
+silver_fir = 0.0304          # measured 1.14x at 0.0347
 # 0.139, NOT the 0.0097 first derived. That came from a directory still holding
 # six stale 0.5-density linden files -- linden's DBH shifted between runs, so
 # they did not overwrite and were averaged in, inflating the ratio ~14x.
 # Verified after moving them to data/output/_stale_from_0.5_run/. Lesson: check
 # for duplicate stage/radius files before back-solving from a measured run.
 small_leaved_linden = 0.139   # re-measured 0.07x at 0.0097
-norway_spruce = 0.0105       # measured 3.80x
-douglas_fir = 0.0169         # measured 2.37x
+norway_spruce = 0.0305       # measured 1.53x at 0.0468
+douglas_fir = 0.0399         # measured 1.89x at 0.0753
 scots_pine = 0.0181          # measured 2.21x
 wild_cherry = 0.0331         # measured 1.21x
 sycamore_maple = 0.114       # measured 0.35x -- was too SPARSE at 0.04
