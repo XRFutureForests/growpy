@@ -2,6 +2,18 @@
 #
 # Quality presets are selected by [forest] quality in config/forest.toml.
 # Any omitted key falls back to the built-in default in quality.py.
+#
+# NOTE (XRFF-404): a preset name sets TWO independent things, and they are worth
+# telling apart when tuning. See digital-twin-db/docs/level-of-detail-vocabulary.md.
+#
+#   render resolution  - how finely existing geometry is tessellated:
+#                        resolution, resolution_reduce
+#   structural detail  - which parts of the tree exist at all:
+#                        build_cutoff_age, build_cutoff_thickness, skeleton_*
+#
+# A structurally complete tree at low tessellation is a reasonable ask that a
+# single preset name cannot express. Neither is "LoD": that word is reserved for
+# the CityGML representation ladder (LoD0-4) stored in the database.
 
 # Mesh Parameters (Grove defaults from Properties.py / build_models API):
 #   resolution            - Cross-section vertex count at trunk base (int, 8-32,

@@ -685,8 +685,11 @@ step 3 (calibration) and step 4 (forest generation).
 
 ### [`config/quality.py`](../../src/growpy/config/quality.py)
 
-**Purpose:** Load LOD/quality presets (`ultra`, `high`, `medium`, `low`,
-`performance`) from `quality.toml`.
+**Purpose:** Load quality presets (`ultra`, `high`, `medium`, `low`,
+`performance`) from `quality.toml`. Each preset sets both *render resolution*
+(tessellation) and *structural detail* (which parts exist) — two independent
+axes, neither of which is "LoD" in the CityGML sense the database uses. See
+`digital-twin-db/docs/level-of-detail-vocabulary.md` (XRFF-404).
 
 **Public:** `get_quality_preset(preset_name) -> dict`.
 
