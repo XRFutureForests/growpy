@@ -1618,6 +1618,21 @@ def get_twig_usd_map_for_species(
 
     # Map Grove attribute names to twig file keywords.
     #
+    # WORD tokens only. A trailing letter is a VARIANT, not a type: growpy
+    # builds one variant per mesh object in a twig .blend, and for an asset
+    # whose ladder was derived by `growpy-derive-twig-ladder` those letters are
+    # ordered by SIZE. The letter rules that used to live here
+    # (`foliage_a_`/`foliage_c_` -> twig_long, `foliage_b_`/`foliage_d_` ->
+    # twig_short, `foliage_e_` -> twig_upward) were guessing a type from a
+    # letter, and on a size ladder the guess is meaningless: giving
+    # PacificSilverFirTwig a 7-variant ladder silently dropped its `f`, `g` and
+    # the original full spray from the 1:1 path altogether -- for silver fir,
+    # Norway spruce, grand fir and Douglas fir, which all share that asset --
+    # while landing `a` and `c` on the branch tips for no reason. Species that
+    # name their objects the way Grove does (birch, oak, ash, sycamore, pine:
+    # apical/lateral/upward) are unaffected; a letter-only set now falls to the
+    # variety fallback below, which is what it always should have done.
+    #
     # twig_dead is deliberately narrow and is resolved last. Grove's own slot
     # detection (the_grove_23 Twigs.py) tests lateral, then apical, then upward,
     # then "dead", first match wins -- so a name carrying a living-type token is
@@ -1627,9 +1642,9 @@ def get_twig_usd_map_for_species(
     # ordinary autumn apical twig register as a dead-twig asset and rendered
     # Grove's dead positions with it.
     type_mapping = {
-        "twig_long": ["apical", "long", "end", "terminal", "foliage_a_", "foliage_c_"],
-        "twig_short": ["lateral", "short", "side", "foliage_b_", "foliage_d_"],
-        "twig_upward": ["upward", "up", "foliage_e_"],
+        "twig_long": ["apical", "long", "end", "terminal"],
+        "twig_short": ["lateral", "short", "side"],
+        "twig_upward": ["upward", "up"],
         "twig_dead": ["dead"],
     }
     living_types = ("twig_long", "twig_short", "twig_upward")
@@ -1689,8 +1704,41 @@ def get_twig_usd_map_for_species(
         if matched_paths:
             twig_usd_map[grove_type] = matched_paths
 
-    # If no type-specific matches found, assign all available twigs to all grove types
-    # randomly. This handles species with non-standard naming.
+    # Variants carrying no type token at all, in a set where some others do:
+    # scots_pine ships `apical_c` and `lateral_c` beside a plain `a`, `b` and an
+    # unsuffixed spray. They are variety within the types the set does name, so
+    # they join those rather than being dropped -- the letter rules used to pick
+    # them up by accident, and removing those rules must not lose them. Only the
+    # types that already matched are extended, so a species gains no type Grove
+    # would then render with a stand-in.
+    if twig_usd_map:
+        dead_tokens = type_mapping["twig_dead"]
+        leftovers = []
+        for twig_type, twig_paths in twig_files_by_type.items():
+            if twig_type in claimed_by_living:
+                continue
+            if any(token in twig_type.lower() for token in dead_tokens):
+                continue
+            resolved = _resolve_usd_path(twig_paths)
+            if resolved and resolved not in leftovers:
+                leftovers.append(resolved)
+        for grove_type in living_types:
+            if grove_type not in twig_usd_map:
+                continue
+            for path in leftovers:
+                if path not in twig_usd_map[grove_type]:
+                    twig_usd_map[grove_type].append(path)
+
+    # No type token anywhere in the set: the variants are variety, not types --
+    # a letter-only twig directory (european_beech a-e, PacificSilverFirTwig's
+    # derived ladder) or non-standard naming. Every variant then serves every
+    # living type, which uses all the art instead of guessing a type per file.
+    # Note the draw between them is RANDOM (`TwigPlacement.prototype = None`),
+    # which assumes the variants are interchangeable in size. That holds for
+    # beech (0.0094-0.0217 m2) and not for a derived SIZE ladder
+    # (PacificSilverFirTwig spans 0.0053-0.1089 m2, 20x), so a ladder species'
+    # crown leaf area varies per draw and its twig_density must be re-derived
+    # against the mean of the set rather than one asset.
     # twig_dead is excluded: without a dedicated dead-twig asset, dead positions
     # should be skipped (assembly_export does this when the type has no prototypes)
     # rather than filled with living foliage at the default upright orientation.
