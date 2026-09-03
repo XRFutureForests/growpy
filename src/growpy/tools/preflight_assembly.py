@@ -163,6 +163,23 @@ def check_assembly(usd_path: Path) -> dict[str, Any]:
             report["flattened_triangles"] = len(positions) * mean
         report["flattened_triangles_if_random"] = len(positions) * mean
 
+    # External-ref form (XRFF-389): the parts are named by UE package path, so
+    # there is no local geometry to flatten -- but the placements are still
+    # countable, and leaving instances at zero would read as an empty assembly.
+    # The package paths themselves cannot be resolved from here; a wrong one
+    # yields an assembly with no parts and an import that reports success.
+    mesh_asset_path = "unreal:naniteAssembly:meshAssetPath"
+    external = [p for p in stage.Traverse() if p.HasAttribute(mesh_asset_path)]
+    if external:
+        report["instances"] = len(external)
+        report["external_refs"] = sorted(
+            {
+                str(p.GetAttribute(mesh_asset_path).Get())
+                for p in external
+            }
+        )
+        report["prototypes"] = len(report["external_refs"])
+
     return report
 
 
@@ -190,6 +207,16 @@ def log_report(report: dict[str, Any]) -> None:
                 "superlinear here -- 3.0M measured at ~2 h (XRFF-364)",
                 report["flattened_triangles"] / 1e6,
             )
+    for package_path in report.get("external_refs", []):
+        logger.info("  REF  %s", package_path)
+    if report.get("external_refs"):
+        logger.info(
+            "  %d placements over %d shared parts (external-ref form; the "
+            "package paths are resolved by UE, not here)",
+            report["instances"],
+            report["prototypes"],
+        )
+
     for error in report["errors"]:
         logger.error("  ERROR %s", error)
 

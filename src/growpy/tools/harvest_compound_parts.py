@@ -390,6 +390,58 @@ def _descriptor(stats: dict[str, float]) -> list[float]:
         stats["max_depth"] / 5.0,
     ]
 
+# The descriptor terms, in order, recorded in a stored library so a manifest
+# read back later is self-describing.
+DESCRIPTOR_TERMS = (
+    "log1p(twigs)",
+    "log1p(tips)",
+    "log1p(total_length)",
+    "log1p(span)",
+    "up_alignment",
+    "max_depth/5",
+)
+
+
+def descriptor_vectors(
+    records: list[BranchRecord],
+    metrics: dict[str, list],
+    cut: list[int],
+    twig_totals: list[int] | None = None,
+) -> tuple[list[dict[str, float]], list[list[float]]]:
+    """Raw (un-normalised) descriptors for every cut point, with their stats."""
+    stats = [subtree_stats(records, metrics, idx, twig_totals) for idx in cut]
+    return stats, [_descriptor(s) for s in stats]
+
+
+def apply_normalisation(
+    vectors: list[list[float]], means: list[float], devs: list[float]
+) -> list[list[float]]:
+    return [[(v[d] - means[d]) / devs[d] for d in range(len(means))] for v in vectors]
+
+
+def normalise_descriptors(
+    vectors: list[list[float]],
+) -> tuple[list[list[float]], list[float], list[float]]:
+    """Standardise so no single descriptor term dominates the distance.
+
+    The means and devs come back out because a stored part library has to
+    record them: a tree assigned against a library must normalise with the
+    BAKE-TIME statistics, not its own, or the same subtree lands on a different
+    prototype depending only on which tree it was measured in (XRFF-389).
+    """
+    dims = len(vectors[0])
+    means = [sum(v[d] for v in vectors) / len(vectors) for d in range(dims)]
+    devs = []
+    for d in range(dims):
+        var = sum((v[d] - means[d]) ** 2 for v in vectors) / len(vectors)
+        devs.append(math.sqrt(var) or 1.0)
+    return apply_normalisation(vectors, means, devs), means, devs
+
+
+def descriptor_distance(a: list[float], b: list[float]) -> float:
+    """Squared euclidean distance -- only the ordering is ever used."""
+    return sum((x - y) ** 2 for x, y in zip(a, b))
+
 
 def cluster_prototypes(
     records: list[BranchRecord],
@@ -407,20 +459,10 @@ def cluster_prototypes(
     """
     import random
 
-    stats = [subtree_stats(records, metrics, idx, twig_totals) for idx in cut]
-    vectors = [_descriptor(s) for s in stats]
+    stats, vectors = descriptor_vectors(records, metrics, cut, twig_totals)
+    normed = normalise_descriptors(vectors)[0]
 
-    # Standardise so no single descriptor dominates the distance.
-    dims = len(vectors[0])
-    means = [sum(v[d] for v in vectors) / len(vectors) for d in range(dims)]
-    devs = []
-    for d in range(dims):
-        var = sum((v[d] - means[d]) ** 2 for v in vectors) / len(vectors)
-        devs.append(math.sqrt(var) or 1.0)
-    normed = [[(v[d] - means[d]) / devs[d] for d in range(dims)] for v in vectors]
-
-    def dist(a: list[float], b: list[float]) -> float:
-        return sum((x - y) ** 2 for x, y in zip(a, b))
+    dist = descriptor_distance
 
     k = min(k, len(normed))
     rng = random.Random(seed)
@@ -681,6 +723,117 @@ def cut_point_bone_ids(
     return resolved
 
 
+def residual_twig_placements(
+    model: Any,
+    records: list[BranchRecord],
+    cut: list[int],
+    bones_info: list | None = None,
+    bone_map: dict[int, int] | None = None,
+) -> dict[str, list]:
+    """Grove's own twigs on the branches the base mesh KEEPS (XRFF-392).
+
+    A compound part renders the foliage of the subtree it replaces, so a twig
+    whose branch was never harvested is rendered by NOTHING: the base mesh drops
+    every twig marker face -- a surviving marker quad reads as a stray flat quad
+    under a real part -- and no part covers it.
+
+    Measured on an 18-cycle silver_fir that is 58 of 3,204 living twigs. 1.8%
+    sounds ignorable, and is not: they sit on the trunk and the leader, which
+    `find_cut_set_adaptive` can never harvest because it requires
+    ``rec.parent >= 0`` and a Grove trunk is ONE branch record. Eleven of the 58
+    are in the top metre and one is the single upward twig, which is the bare
+    apex you can see on every compound fir.
+
+    They are placed 1:1 from the ordinary twig prototype, at Grove's own
+    positions and orientations -- the same asset and the same frames the
+    non-compound path uses.
+
+    Dead twigs are left out: `create_assembly` has no dead-twig asset to place
+    them with and skips them on the 1:1 path too.
+    """
+    from growpy.core.twig import extract_twig_placements_from_model
+    from growpy.io.usd.compound_part_export import harvested_branch_ids
+
+    twig_types = ["twig_long", "twig_short", "twig_upward"]
+    children = [rec.children for rec in records]
+    in_parts = harvested_branch_ids(children, cut)
+
+    # Filter on the RAW `face_attribute_branch_id`, never on
+    # `TwigPlacement.branch_id`. `harvested_branch_ids` speaks Grove's face
+    # attribute, which is `walker_index + 1`; a placement's `branch_id` has had
+    # `bones_info[0][7]` subtracted from that to turn forest-global ids into
+    # per-tree local ones. The harvester grows one tree, so today that offset
+    # is zero and the two happen to coincide -- which is exactly what makes the
+    # substitution attractive and wrong. `subtree_branch_ids` warns against it
+    # in its own docstring.
+    branch_of_face = model.face_attribute_branch_id
+    attrs = {t: getattr(model, f"face_attribute_{t}") for t in twig_types}
+    branch_by_type: dict[str, list[int]] = {t: [] for t in twig_types}
+    for face_idx in range(len(branch_of_face)):
+        for twig_type in twig_types:
+            if attrs[twig_type][face_idx]:
+                # One type per face, the same assumption the extractor makes.
+                branch_by_type[twig_type].append(branch_of_face[face_idx])
+                break
+
+    everything = extract_twig_placements_from_model(
+        model,
+        twig_types=twig_types,
+        bones_info=bones_info,
+    )
+
+    residual: dict[str, list] = {}
+    for twig_type, items in everything.items():
+        branches = branch_by_type[twig_type]
+        if len(branches) != len(items):
+            # Both walk the faces in the same order for the same types, so a
+            # mismatch means that assumption broke. Placing on a shifted
+            # correspondence would scatter twigs across the wrong branches.
+            raise SystemExit(
+                f"{twig_type}: {len(branches)} marker faces against "
+                f"{len(items)} extracted placements -- face order no longer "
+                "lines up, so residual twigs cannot be matched to branches"
+            )
+        kept = []
+        for placement, branch in zip(items, branches, strict=True):
+            if branch in in_parts:
+                continue
+            # One prototype per type, so index 0 -- and it must be explicit or
+            # `assembly_export` draws at random (XRFF-365).
+            placement.prototype = 0
+            if bone_map is not None:
+                placement.bone_id = (
+                    bone_map.get(placement.bone_id)
+                    if placement.bone_id is not None
+                    else None
+                )
+            kept.append(placement)
+        if kept:
+            residual[twig_type] = kept
+
+    return residual
+
+
+def residual_twig_asset(twig_usd: Path, skeletal: bool) -> Path:
+    """The twig prototype variant a compound assembly of this kind can place.
+
+    `--twig-usd` names the STATIC twig, because that is what `bake_prototypes`
+    welds. A skeletal assembly handed a static prototype does not fail: UE logs
+    "Failed to find Skeletal Mesh asset for PointInstancer prototype" and
+    silently builds no assembly at all (F2, XRFF-366). So resolve the sibling
+    rather than pass the static one through.
+    """
+    if not skeletal or "_skeletal" in twig_usd.stem:
+        return twig_usd
+    sibling = twig_usd.with_name(twig_usd.name.replace("_static", "_skeletal"))
+    if not sibling.is_file():
+        raise SystemExit(
+            f"a skeletal assembly needs a skeletal twig prototype for the "
+            f"residual twigs, and {sibling.name} is not beside {twig_usd.name}"
+        )
+    return sibling
+
+
 def export_compound_assembly(
     stems_usd: Path,
     output_path: Path,
@@ -694,6 +847,10 @@ def export_compound_assembly(
     use_skeletal_mesh: bool = True,
     instances_dir: Path | None = None,
     max_instances: int = 0,
+    residual_twig_usd: Path | None = None,
+    model: Any = None,
+    bones_info: list | None = None,
+    bone_map: dict[int, int] | None = None,
 ) -> dict[str, Any]:
     """Place one baked part per cut point and write the assembly USD.
 
@@ -705,6 +862,12 @@ def export_compound_assembly(
     `assembly_export` draw a prototype at random: compound prototypes span 51 to
     139,500 faces, so a random draw both mismatches the branch and inflates the
     flattened fallback total to instances x MEAN (XRFF-365).
+
+    With `residual_twig_usd` and `model` the assembly is HYBRID, which is what
+    it was always meant to be: compound parts stand in for the subtrees the base
+    mesh gave up, and Grove's own twigs are placed 1:1 wherever the base mesh
+    kept the branch they grew on. Without them the crown is missing every twig
+    on the trunk and the leader -- see `residual_twig_placements`.
     """
     from growpy.core.twig import TwigPlacement
     from growpy.io.usd.assembly_export import create_assembly
@@ -718,10 +881,13 @@ def export_compound_assembly(
         step = len(cut) / max_instances
         placed = [int(i * step) for i in range(max_instances)]
 
-    placements = {
-        "twig_long": [
+    # Keyed by what they are, not by a grove twig type: these are compound
+    # parts, and the residual twigs below keep their real types alongside them.
+    twig_usd_paths: dict[str, list[Path]] = {"compound_part": list(prototype_paths)}
+    placements: dict[str, list] = {
+        "compound_part": [
             TwigPlacement(
-                type="twig_long",
+                type="compound_part",
                 position=records[cut[i]].base_pos,
                 normal=records[cut[i]].base_dir,
                 orientation=placement_quat_for_direction(records[cut[i]].base_dir),
@@ -733,13 +899,31 @@ def export_compound_assembly(
         ]
     }
 
+    residual_total = 0
+    if residual_twig_usd is not None and model is not None:
+        twig_asset = residual_twig_asset(residual_twig_usd, use_skeletal_mesh)
+        for twig_type, items in residual_twig_placements(
+            model, records, cut, bones_info, bone_map
+        ).items():
+            # Every type names the same file, and `create_assembly` dedups
+            # prototypes by filename, so they share one prototype index.
+            twig_usd_paths[twig_type] = [twig_asset]
+            placements[twig_type] = items
+            residual_total += len(items)
+        logger.info(
+            "residual twigs: %d placed 1:1 from %s across %d type(s)",
+            residual_total,
+            twig_asset.name,
+            len(placements) - 1,
+        )
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     ok = create_assembly(
         stems_usd,
         output_path,
         species,
         tree_id=tree_id,
-        twig_usd_paths={"twig_long": list(prototype_paths)},
+        twig_usd_paths=twig_usd_paths,
         use_skeletal_mesh=use_skeletal_mesh,
         twig_placements=placements,
         validate=False,
@@ -765,7 +949,9 @@ def export_compound_assembly(
         "flattened_triangles": report["flattened_triangles"],
         "file": str(output_path),
         "file_bytes": output_path.stat().st_size,
-        "instances": len(placed),
+        "instances": len(placed) + residual_total,
+        "parts": len(placed),
+        "residual_twigs": residual_total,
         "prototypes": len(prototype_paths),
         "skeletal": use_skeletal_mesh,
         "bound_instances": sum(1 for i in placed if bone_ids.get(cut[i]) is not None),
@@ -927,6 +1113,201 @@ def bake_prototypes(
     return report
 
 
+# Bumped when the descriptor or the manifest layout changes in a way that would
+# make an older library.json assign a tree WRONGLY rather than merely
+# differently -- an assignment computed against stale means/devs is silently
+# plausible, so the mismatch has to be refused rather than tolerated.
+LIBRARY_SCHEMA = 1
+
+
+def write_part_library(
+    output_dir: Path,
+    species: str,
+    report: list[dict[str, Any]],
+    records: list[BranchRecord],
+    metrics: dict[str, list],
+    cut: list[int],
+    twig_totals: list[int] | None,
+    package_root: str,
+    source: dict[str, Any],
+    skeletal: bool = True,
+    residual_twig_usd: Path | None = None,
+) -> dict[str, Any]:
+    """Bake the species part library and the manifest later trees assign against.
+
+    Two artefacts, both required by XRFF-389:
+
+    * ONE USD stage referencing every part, because parts imported as separate
+      tasks do not share materials -- four separately-imported parts produced
+      five material slots where the single stage produced two (F24);
+    * ``<species>_library.json``, recording each prototype's UE package path,
+      the foliage it actually carries and its NORMALISED descriptor, alongside
+      the bake-time ``means``/``devs``. All three are load-bearing: the
+      descriptor's first term is a twig count (XRFF-386), the leafy-prototype
+      guard needs the foliage (XRFF-387), and a tree that normalised against
+      its own cut set would land the same subtree on a different prototype.
+
+    The recorded foliage is ``welded_twigs`` -- what the baked part actually
+    holds -- not the source subtree's twig total. They usually agree, and where
+    they do not it is the part that renders.
+
+    `residual_twig_usd` joins the library as an ordinary member. A hybrid
+    assembly instances the 1:1 twig alongside the compound parts, so it needs a
+    package path exactly as they do, and it belongs in the same stage for the
+    same material-sharing reason.
+    """
+    import shutil
+
+    from growpy.io.usd.extref_assembly import (
+        library_package_path,
+        write_part_library_usd,
+    )
+
+    key = "skeletal_file" if skeletal else "file"
+    members = [(row["name"], Path(row[key])) for row in report]
+
+    residual: dict[str, Any] | None = None
+    if residual_twig_usd is not None:
+        twig_source = residual_twig_asset(residual_twig_usd, skeletal)
+        # The library references its members relatively, so the twig has to sit
+        # beside it. Its textures are already staged: `bake_prototypes` copies
+        # the whole `textures/` of this same twig next to the parts.
+        twig_local = output_dir / twig_source.name
+        if not twig_local.exists():
+            shutil.copy2(twig_source, twig_local)
+        twig_name = twig_local.stem.replace("_skeletal", "").replace("_static", "")
+        members.append((twig_name, twig_local))
+        residual = {
+            "name": twig_name,
+            "file": twig_local.name,
+            "package_path": "",
+        }
+
+    library_usd = write_part_library_usd(
+        members, output_dir / f"{species}_library.usda"
+    )
+    if residual is not None:
+        residual["package_path"] = library_package_path(
+            package_root, library_usd.stem, residual["name"]
+        )
+
+    # Recomputed rather than threaded out of `cluster_prototypes`: the inputs
+    # are identical and the computation deterministic, and widening a 3-tuple
+    # that a dozen call sites already unpack is not worth it for this.
+    vectors = descriptor_vectors(records, metrics, cut, twig_totals)[1]
+    normed, means, devs = normalise_descriptors(vectors)
+    position = {branch: i for i, branch in enumerate(cut)}
+
+    prototypes = [
+        {
+            "id": row["prototype"],
+            "name": row["name"],
+            "branch": row["branch"],
+            "package_path": library_package_path(
+                package_root, library_usd.stem, row["name"]
+            ),
+            # The variant the assembly actually references, which is what an
+            # external-ref rewrite keys its package paths by.
+            "file": Path(row[key]).name,
+            "skeletal_file": Path(row["skeletal_file"]).name,
+            "static_file": Path(row["file"]).name,
+            "twigs": row["welded_twigs"],
+            "faces": row["faces"],
+            "descriptor": normed[position[row["branch"]]],
+        }
+        for row in report
+    ]
+
+    library = {
+        "schema": LIBRARY_SCHEMA,
+        "species": species,
+        "source": source,
+        "library_usd": library_usd.name,
+        "package_root": package_root.rstrip("/"),
+        "skeletal": skeletal,
+        "descriptor": {
+            "terms": list(DESCRIPTOR_TERMS),
+            "means": means,
+            "devs": devs,
+            "cut_points": len(cut),
+        },
+        "prototypes": prototypes,
+        "residual_twig": residual,
+    }
+    manifest_path = output_dir / f"{species}_library.json"
+    manifest_path.write_text(json.dumps(library, indent=2))
+    logger.info(
+        "part library: %d prototypes%s under %s -> %s",
+        len(prototypes),
+        " + the 1:1 twig" if residual else "",
+        library["package_root"],
+        manifest_path.name,
+    )
+    library["path"] = str(manifest_path)
+    return library
+
+
+def library_asset_paths(library: dict[str, Any]) -> dict[str, str]:
+    """Prototype filename -> UE package path, for an external-ref rewrite."""
+    paths = {p["file"]: p["package_path"] for p in library["prototypes"]}
+    residual = library.get("residual_twig")
+    if residual:
+        paths[residual["file"]] = residual["package_path"]
+    return paths
+
+
+def load_part_library(path: Path) -> dict[str, Any]:
+    library = json.loads(path.read_text())
+    if library.get("schema") != LIBRARY_SCHEMA:
+        raise SystemExit(
+            f"{path}: library schema {library.get('schema')!r}, "
+            f"expected {LIBRARY_SCHEMA} -- re-bake it"
+        )
+    library["path"] = str(path)
+    return library
+
+
+def assign_against_library(
+    records: list[BranchRecord],
+    metrics: dict[str, list],
+    cut: list[int],
+    twig_totals: list[int] | None,
+    library: dict[str, Any],
+) -> list[int]:
+    """Nearest stored prototype for every cut point (XRFF-358, XRFF-389).
+
+    `cluster_prototypes` derives medoids and assignment together from one tree.
+    This is the other half, and the half that makes a library shareable: a tree
+    assigned against prototypes baked from a DIFFERENT tree. It normalises with
+    the library's bake-time statistics, never its own.
+    """
+    means = library["descriptor"]["means"]
+    devs = library["descriptor"]["devs"]
+    prototypes = library["prototypes"]
+    medoids = [p["descriptor"] for p in prototypes]
+
+    vectors = descriptor_vectors(records, metrics, cut, twig_totals)[1]
+    normed = apply_normalisation(vectors, means, devs)
+    assignment = [
+        min(range(len(medoids)), key=lambda c: descriptor_distance(vec, medoids[c]))
+        for vec in normed
+    ]
+
+    # The same guard `cluster_prototypes` applies, but against the prototype's
+    # MEASURED foliage rather than its source subtree's: a part with no welded
+    # twigs renders nothing whatever its descriptor promised (XRFF-387).
+    if twig_totals is not None:
+        leafy = [c for c, p in enumerate(prototypes) if p["twigs"] > 0]
+        if leafy:
+            for i, branch in enumerate(cut):
+                if twig_totals[branch] > 0 and not prototypes[assignment[i]]["twigs"]:
+                    assignment[i] = min(
+                        leafy,
+                        key=lambda c: descriptor_distance(normed[i], medoids[c]),
+                    )
+    return assignment
+
+
 def grow_grove(species: str, cycles: int, seed: int) -> Any:
     """Simulate one reference tree headless via the_grove_23_core."""
     import the_grove_23_core as gc
@@ -1028,7 +1409,7 @@ def main() -> None:
         type=Path,
         help=(
             "write the Nanite Assembly here, placing one baked part per cut "
-            "point. Requires --bake and --base-mesh."
+            "point. Requires --base-mesh, plus --bake or --assign-from-library."
         ),
     )
     parser.add_argument(
@@ -1041,6 +1422,58 @@ def main() -> None:
             "total is what governs import time (XRFF-364). 0 places them all."
         ),
     )
+    parser.add_argument(
+        "--library",
+        action="store_true",
+        help=(
+            "also bake the one-stage part library and its manifest into the "
+            "--bake directory, so other trees can name the parts by UE package "
+            "path instead of embedding a copy each (XRFF-389). The parts must "
+            "sit beside the library stage, which is why this is a flag on "
+            "--bake rather than its own directory."
+        ),
+    )
+    parser.add_argument(
+        "--library-package",
+        default="/Game/CompoundLib",
+        help=(
+            "UE content folder the library stage will be imported into. The "
+            "part package paths in an external-ref assembly are derived from "
+            "it, and a wrong one yields an assembly with no parts and an "
+            "import that still reports success (default /Game/CompoundLib)"
+        ),
+    )
+    parser.add_argument(
+        "--extref-assembly",
+        type=Path,
+        help=(
+            "also write the assembly in external-ref form, naming the parts by "
+            "UE package path instead of embedding them. Requires --assembly "
+            "and a library (--library or --assign-from-library), and must be "
+            "written to the same directory as --assembly."
+        ),
+    )
+    parser.add_argument(
+        "--assign-from-library",
+        type=Path,
+        help=(
+            "assign this tree's cut set against an already-baked "
+            "<species>_library.json and take the prototypes from there, "
+            "instead of clustering and baking this tree's own. Replaces --bake."
+        ),
+    )
+    parser.add_argument(
+        "--no-residual-twigs",
+        action="store_true",
+        help=(
+            "place ONLY compound parts. By default the assembly is hybrid: "
+            "Grove's own twigs are also placed 1:1 wherever the base mesh kept "
+            "the branch they grew on, because a compound part renders only the "
+            "foliage of the subtree it replaced and the trunk and the leader "
+            "are never harvested (XRFF-392)."
+        ),
+    )
+
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -1056,9 +1489,23 @@ def main() -> None:
     twig_totals = None
     skeleton = None
     bones_info = None
-    if args.assembly and not (args.bake and args.base_mesh):
-        raise SystemExit("--assembly requires both --bake and --base-mesh")
-    if args.bake or args.base_mesh:
+    if args.assign_from_library and args.bake:
+        raise SystemExit("--assign-from-library replaces --bake, it does not add to it")
+    if args.assembly and not args.base_mesh:
+        raise SystemExit("--assembly requires --base-mesh")
+    if args.assembly and not (args.bake or args.assign_from_library):
+        raise SystemExit("--assembly requires --bake or --assign-from-library")
+    if args.extref_assembly:
+        if not args.assembly:
+            raise SystemExit("--extref-assembly requires --assembly")
+        if not (args.library or args.assign_from_library):
+            raise SystemExit(
+                "--extref-assembly names parts by package path, so it requires "
+                "--library (bake one) or --assign-from-library (reuse one)"
+            )
+    if args.library and not args.bake:
+        raise SystemExit("--library requires --bake")
+    if args.bake or args.base_mesh or args.assign_from_library:
         if args.bake and args.twig_usd is None:
             raise SystemExit("--bake requires --twig-usd")
         if args.twig_usd is not None and not args.twig_usd.is_file():
@@ -1073,6 +1520,13 @@ def main() -> None:
             "reference model: %d living twigs across %d branches",
             twig_totals[0],
             len(records),
+        )
+
+    residual_twig_usd = None if args.no_residual_twigs else args.twig_usd
+    if args.assembly and residual_twig_usd is None:
+        raise SystemExit(
+            "--assembly needs --twig-usd for the residual 1:1 twigs, or "
+            "--no-residual-twigs to place compound parts alone"
         )
     height = max(r.base_pos[2] for r in records)
     logger.info(
@@ -1187,41 +1641,69 @@ def main() -> None:
     if not cut:
         raise SystemExit(f"no branches cross a {args.cut_diameter} m cut diameter")
 
-    medoids, assignment, stats = cluster_prototypes(
-        records, metrics, cut, args.clusters, twig_totals=twig_totals
-    )
+    library: dict[str, Any] | None = None
+    if args.assign_from_library:
+        library = load_part_library(args.assign_from_library)
+        if library["species"] != args.species:
+            raise SystemExit(
+                f"{args.assign_from_library.name} was baked for "
+                f"{library['species']}, not {args.species}"
+            )
+        assignment = assign_against_library(
+            records, metrics, cut, twig_totals, library
+        )
+        medoids = []
+        stats = descriptor_vectors(records, metrics, cut, twig_totals)[0]
+    else:
+        medoids, assignment, stats = cluster_prototypes(
+            records, metrics, cut, args.clusters, twig_totals=twig_totals
+        )
     in_parts = sum(metrics["branches"][idx] for idx in cut)
+    prototype_count = len(library["prototypes"]) if library else len(medoids)
     logger.info(
         "cut diameter %.3f m -> %d instances, %d prototypes, "
         "%d branches left in the base mesh",
         args.cut_diameter,
         len(cut),
-        len(medoids),
+        prototype_count,
         len(records) - in_parts,
     )
-    logger.info(
-        "\n%-6s %-8s %-7s %-8s %-8s %-8s %s",
-        "proto",
-        "members",
-        "tips",
-        "len(m)",
-        "span(m)",
-        "up",
-        "branch",
-    )
-    for c, branch_id in enumerate(medoids):
-        members = sum(1 for a in assignment if a == c)
-        s = subtree_stats(records, metrics, branch_id)
+    if library:
+        # The medoids' own branch ids index the tree the LIBRARY was baked
+        # from, not this one, so nothing local can be reported about them.
+        logger.info("\n%-6s %-30s %-9s %s", "proto", "name", "members", "twigs")
+        for c, proto in enumerate(library["prototypes"]):
+            logger.info(
+                "%-6d %-30s %-9d %d",
+                c,
+                proto["name"],
+                sum(1 for a in assignment if a == c),
+                proto["twigs"],
+            )
+    else:
         logger.info(
-            "%-6d %-8d %-7d %-8.2f %-8.2f %-8.2f %d",
-            c,
-            members,
-            s["tips"],
-            s["total_length"],
-            s["span"],
-            s["up_alignment"],
-            branch_id,
+            "\n%-6s %-8s %-7s %-8s %-8s %-8s %s",
+            "proto",
+            "members",
+            "tips",
+            "len(m)",
+            "span(m)",
+            "up",
+            "branch",
         )
+        for c, branch_id in enumerate(medoids):
+            members = sum(1 for a in assignment if a == c)
+            s = subtree_stats(records, metrics, branch_id)
+            logger.info(
+                "%-6d %-8d %-7d %-8.2f %-8.2f %-8.2f %d",
+                c,
+                members,
+                s["tips"],
+                s["total_length"],
+                s["span"],
+                s["up_alignment"],
+                branch_id,
+            )
 
     total_tips = sum(s["tips"] for s in stats)
     logger.info(
@@ -1244,15 +1726,19 @@ def main() -> None:
             "max_span": args.max_span,
             "instances": len(cut),
             "base_branches": len(records) - in_parts,
-            "prototypes": [
-                {
-                    "id": c,
-                    "branch": branch_id,
-                    "members": sum(1 for a in assignment if a == c),
-                    "stats": subtree_stats(records, metrics, branch_id),
-                }
-                for c, branch_id in enumerate(medoids)
-            ],
+            "prototypes": (
+                library["prototypes"]
+                if library
+                else [
+                    {
+                        "id": c,
+                        "branch": branch_id,
+                        "members": sum(1 for a in assignment if a == c),
+                        "stats": subtree_stats(records, metrics, branch_id),
+                    }
+                    for c, branch_id in enumerate(medoids)
+                ]
+            ),
             "placements": [
                 {
                     "branch": branch_id,
@@ -1290,6 +1776,7 @@ def main() -> None:
             Path(base["file"]).name,
         )
 
+    report: list[dict[str, Any]] = []
     if args.bake:
         report = bake_prototypes(
             model,
@@ -1351,34 +1838,107 @@ def main() -> None:
         )
         logger.info("size report written to %s", report_path)
 
-        if args.assembly:
-            asm = export_compound_assembly(
-                args.base_mesh,
-                args.assembly,
-                records,
-                cut,
-                assignment,
-                [Path(r["skeletal_file" if args.skeletal else "file"]) for r in report],
+        if args.library:
+            library = write_part_library(
+                args.bake,
                 args.species,
-                bone_ids=(
-                    cut_point_bone_ids(model, cut, base.get("bone_map"))
-                    if args.skeletal
-                    else None
-                ),
-                use_skeletal_mesh=args.skeletal,
-                instances_dir=args.bake,
-                max_instances=args.max_instances,
+                report,
+                records,
+                metrics,
+                cut,
+                twig_totals,
+                args.library_package,
+                source={
+                    "cycles": args.cycles,
+                    "seed": args.seed,
+                    "cut_diameter": args.cut_diameter,
+                    "adaptive": adaptive,
+                    "max_tips": args.max_tips,
+                    "max_span": args.max_span,
+                    "max_twigs": args.max_twigs,
+                    "twig_usd": str(args.twig_usd),
+                    "clusters": args.clusters,
+                },
+                skeletal=args.skeletal,
+                residual_twig_usd=residual_twig_usd,
             )
+
+    if args.assembly:
+        # In library mode the parts already sit beside the library manifest;
+        # otherwise they are the ones just baked.
+        parts_dir = (
+            Path(library["path"]).parent if args.assign_from_library else args.bake
+        )
+        if library:
+            if library.get("skeletal", True) != args.skeletal:
+                raise SystemExit(
+                    f"{Path(library['path']).name} was baked "
+                    f"{'skeletal' if library.get('skeletal', True) else 'static'}; "
+                    f"this assembly is "
+                    f"{'skeletal' if args.skeletal else 'static'}"
+                )
+            key = "skeletal_file" if args.skeletal else "static_file"
+            prototype_files = [parts_dir / p[key] for p in library["prototypes"]]
+        else:
+            prototype_files = [
+                Path(r["skeletal_file" if args.skeletal else "file"]) for r in report
+            ]
+
+        asm = export_compound_assembly(
+            args.base_mesh,
+            args.assembly,
+            records,
+            cut,
+            assignment,
+            prototype_files,
+            args.species,
+            bone_ids=(
+                cut_point_bone_ids(model, cut, base.get("bone_map"))
+                if args.skeletal
+                else None
+            ),
+            use_skeletal_mesh=args.skeletal,
+            instances_dir=parts_dir,
+            max_instances=args.max_instances,
+            residual_twig_usd=residual_twig_usd,
+            model=model,
+            bones_info=bones_info,
+            bone_map=base.get("bone_map") if args.skeletal else None,
+        )
+        logger.info(
+            "assembly (%s): %d instances (%d compound parts + %d 1:1 twigs) "
+            "over %d prototypes, %d parts bound to a bone, "
+            "%.1fM flattened triangles, %.2f MB -> %s",
+            "skeletal" if asm["skeletal"] else "static",
+            asm["instances"],
+            asm["parts"],
+            asm["residual_twigs"],
+            asm["prototypes"],
+            asm["bound_instances"],
+            asm["flattened_triangles"] / 1e6,
+            asm["file_bytes"] / 1e6,
+            Path(asm["file"]).name,
+        )
+
+        if args.extref_assembly:
+            from growpy.io.usd.extref_assembly import (
+                convert_assembly_to_external_refs,
+            )
+
+            ext = convert_assembly_to_external_refs(
+                args.assembly,
+                args.extref_assembly,
+                library_asset_paths(library),
+            )
+            # No ratio against the embedded form: the embedded assembly is
+            # small too, and its cost is the part FILES it drags along, which
+            # this one does not have at all.
             logger.info(
-                "assembly (%s): %d instances over %d prototypes, "
-                "%d bound to a bone, %.1fM flattened triangles, %.2f MB -> %s",
-                "skeletal" if asm["skeletal"] else "static",
-                asm["instances"],
-                asm["prototypes"],
-                asm["bound_instances"],
-                asm["flattened_triangles"] / 1e6,
-                asm["file_bytes"] / 1e6,
-                Path(asm["file"]).name,
+                "external-ref assembly: %.2f MB, referencing NO part files -- "
+                "its %d prototypes come from %s, imported once per species",
+                ext["file_bytes"] / 1e6,
+                ext["prototypes"],
+                library["package_root"],
             )
 
 
