@@ -147,35 +147,44 @@ def measure_assembly(
     return leaf_area, instances, unmatched, used
 
 
+def _covers(entry: Any, dbh_cm: float) -> bool:
+    """Was this equation fitted over a range that includes `dbh_cm`?"""
+    d_min = entry.parameters.get("d_min")
+    d_max = entry.parameters.get("d_max")
+    if d_min is None or d_max is None:
+        return True  # no range recorded: nothing to test against
+    return d_min <= dbh_cm <= d_max
+
+
 def forrester_leaf_area(scientific_name: str, dbh_cm: float) -> tuple[float, str, bool]:
     """Published one-sided leaf area. Returns ``(m2, model id, extrapolated)``.
 
-    ``extrapolated`` is True when the tree's diameter falls outside the range
-    the equation was fitted over. It is not a detail: Prunus avium's leaf-area
-    fit covers d 1-10 cm and Betula pendula's 1-14 cm, so a mature tree of
-    either is far outside, and a power law with beta 1.4-2.4 climbs steeply
-    past its data. A ratio computed against such a target says more about the
-    extrapolation than about the crown.
+    Prefers the species' own equation, but falls back to the pooled fit when the
+    species one would EXTRAPOLATE and the pooled one covers the diameter. That
+    is not a preference for pooling: a power law with beta 1.4-2.4 climbs
+    steeply past its data, so a target from outside the fitted range measures
+    the extrapolation rather than the crown. Prunus avium's leaf-area fit covers
+    d 1-10 cm and Betula pendula's 1-14 cm, while the pooled broadleaved fit
+    spans 0.1-88.2 cm and comfortably covers a mature tree of either.
+
+    ``extrapolated`` stays True only when NO available equation covers the tree,
+    so the caller can still refuse to trust the number.
     """
     from pylometree.registry.published import registry
+
+    genus = scientific_name.split()[0].lower()
+    pooled_key = "conifers" if genus in _CONIFER_GENERA else "broadleaved"
+    pooled = registry.get(f"forrester2017_{pooled_key}_la")
 
     matches = [
         entry
         for entry in registry.query(model_type="leaf_area", species=scientific_name)
         if entry.species
     ]
-    if matches:
-        entry = matches[0]
-    else:
-        genus = scientific_name.split()[0].lower()
-        pooled = "conifers" if genus in _CONIFER_GENERA else "broadleaved"
-        entry = registry.get(f"forrester2017_{pooled}_la")
-    d_min = entry.parameters.get("d_min")
-    d_max = entry.parameters.get("d_max")
-    outside = bool(
-        d_min is not None and d_max is not None and not (d_min <= dbh_cm <= d_max)
-    )
-    return float(entry.fn(dsob=dbh_cm)), entry.model_id, outside
+    entry = matches[0] if matches else pooled
+    if not _covers(entry, dbh_cm) and _covers(pooled, dbh_cm):
+        entry = pooled
+    return float(entry.fn(dsob=dbh_cm)), entry.model_id, not _covers(entry, dbh_cm)
 
 
 def calibrate(
