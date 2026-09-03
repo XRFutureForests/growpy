@@ -136,6 +136,43 @@ def find_textures_for_material(
 
     return texture_map
 
+def _derive_ladder_if_single_object(blend_file: Path) -> None:
+    """Split a one-object twig .blend into a foliage size ladder (XRFF-412).
+
+    growpy builds one USD variant per mesh OBJECT in a twig .blend, so an asset
+    modelled as a single spray gives the whole crown one leaf size. Most assets
+    ship several -- PaperBirchTwig 18, EuropeanBeechTwig 5 -- but
+    PacificSilverFirTwig ships exactly one 0.109 m2 spray, shared by silver fir,
+    Norway spruce, Douglas fir and Sitka spruce, and that single size is what
+    forced those species to crown densities an order of magnitude below the
+    broadleaves.
+
+    Derived here, in the conversion, rather than by hand: step 1 of the dataset
+    pipeline re-copies the pristine Grove assets, so a `--clean` run would
+    otherwise silently drop the ladder and revert those species to the one
+    spray -- taking the crown densities calibrated against the ladder with it.
+
+    Only fires on a genuinely single-object asset, so an artist who ships their
+    own variants keeps them untouched.
+    """
+    import bpy
+
+    from growpy.tools.derive_twig_ladder import main as derive_main
+
+    bpy.ops.wm.open_mainfile(filepath=str(blend_file))
+    meshes = [o for o in bpy.data.objects if o.type == "MESH"]
+    if len(meshes) != 1:
+        return
+
+    logger.info(
+        "%s ships one mesh object -- deriving a foliage size ladder from it",
+        blend_file.name,
+    )
+    if derive_main([str(blend_file)]) != 0:
+        logger.warning("ladder derivation failed for %s, converting as-is", blend_file)
+
+
+
 
 def process_twig_directory(
     twig_dir: Path,
@@ -203,6 +240,8 @@ def process_twig_directory(
     if not blend_files:
         return {}
 
+    for blend_file in blend_files:
+        _derive_ladder_if_single_object(blend_file)
     # Import twig_export module directly
     from growpy.io.usd.twig_export import process_twig_file
 

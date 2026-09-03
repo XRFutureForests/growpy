@@ -295,7 +295,7 @@ def plan_ladder(parts, fine, cluster_size, shoot_min_m):
     return plan, ordered, n_needles
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Split a single-object twig .blend into a foliage size ladder, "
@@ -336,7 +336,7 @@ def main() -> int:
         "--dry-run", action="store_true", help="report the ladder without writing"
     )
     parser.add_argument("-v", "--verbose", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO, format="%(message)s"
