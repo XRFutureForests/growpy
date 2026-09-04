@@ -191,7 +191,7 @@ max_skeleton_joints = 1000
 # first), which thins the crown -- so with twig recovery active this cap, not
 # twig_density, becomes the binding constraint on mature trees. A 10 m oak
 # reaches ~52k instances at natural density and a 15 m one goes well beyond.
-max_assembly_instances = 100000
+max_assembly_instances = 40000
 # Skip assembly validation (saves ~5-10% export time)
 skip_validation = true
 # Only export specific trees by fid (integer array)

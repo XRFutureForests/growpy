@@ -67,7 +67,7 @@ def _clean_step(step: int) -> None:
 
     Step 1: data/assets/{presets,textures,twigs,pve_configs}/
     Step 2: *.usda files under data/assets/twigs/
-    Step 3: data/assets/growth_models/ + yield table store
+    Step 3: data/assets/growth_models/
     Step 4: data/output/forest/
     """
     from growpy.config.paths import get_assets_directory, get_data_directory
@@ -95,10 +95,11 @@ def _clean_step(step: int) -> None:
         if models_dir.exists():
             shutil.rmtree(models_dir)
             logger.info("Cleaned %s", models_dir)
-        store_dir = data / "input" / "yield_tables" / "store"
-        if store_dir.exists():
-            shutil.rmtree(store_dir)
-            logger.info("Cleaned yield table store: %s", store_dir)
+        # The yield table store under data/input/ is NOT cleaned here. Nothing
+        # in a plain --clean run repopulates it -- step 3 only re-ingests when
+        # --ingest-yield-tables is given -- so deleting it would leave
+        # calibration running against an empty store. When ingestion does run,
+        # it clears the store itself first (see _ingest_yield_tables(clean=)).
     elif step == 4:
         forest_dir = data / "output" / "forest"
         if forest_dir.exists():
