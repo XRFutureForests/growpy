@@ -823,6 +823,89 @@ def residual_twig_placements(
     return residual
 
 
+def twig_coverage_by_height(
+    model: Any,
+    records: list[BranchRecord],
+    cut: list[int],
+    bands: int = 10,
+    bones_info: list | None = None,
+) -> list[dict[str, Any]]:
+    """Where every living twig's foliage comes from, banded by height (XRFF-392).
+
+    A twig is rendered either by the compound part standing in for its subtree,
+    or -- if the base mesh kept its branch -- by a residual 1:1 placement. The
+    two populations are complementary by construction, so a hybrid assembly
+    covers 100% and the interesting question is not whether a band is covered
+    but BY WHAT: coverage that is entirely residual means no part reaches there.
+
+    This is reported by the harvester rather than by a side diagnostic because
+    the failure it guards against was invisible to the crown-wide average.
+    Before the hybrid, part coverage decayed from ~93% mid-crown to 0% at the
+    apex on beech and to 44% in the fir's top band, and the tree read as broken
+    exactly where a viewer looks.
+    """
+    from growpy.core.twig import extract_twig_placements_from_model
+    from growpy.io.usd.compound_part_export import harvested_branch_ids
+
+    children = [rec.children for rec in records]
+    in_parts = harvested_branch_ids(children, cut)
+
+    # Same face-order correspondence `residual_twig_placements` relies on, and
+    # the same reason for using the RAW face attribute rather than a
+    # placement's branch_id (F32).
+    branch_of_face = model.face_attribute_branch_id
+    attrs = {t: getattr(model, f"face_attribute_{t}") for t in LIVING_TWIG_TYPES}
+    branch_by_type: dict[str, list[int]] = {t: [] for t in LIVING_TWIG_TYPES}
+    for face_idx in range(len(branch_of_face)):
+        for twig_type in LIVING_TWIG_TYPES:
+            if attrs[twig_type][face_idx]:
+                branch_by_type[twig_type].append(branch_of_face[face_idx])
+                break
+
+    everything = extract_twig_placements_from_model(
+        model, twig_types=list(LIVING_TWIG_TYPES), bones_info=bones_info
+    )
+    twigs: list[tuple[float, bool]] = []
+    for twig_type, items in everything.items():
+        branches = branch_by_type[twig_type]
+        if len(branches) != len(items):
+            raise SystemExit(
+                f"{twig_type}: {len(branches)} marker faces against {len(items)} "
+                "placements -- face order no longer lines up"
+            )
+        for placement, branch in zip(items, branches, strict=True):
+            twigs.append((placement.position[2], branch in in_parts))
+    if not twigs:
+        return []
+
+    top = max(z for z, _ in twigs)
+    bottom = min(z for z, _ in twigs)
+    span = (top - bottom) or 1.0
+    rows: list[dict[str, Any]] = []
+    for i in range(bands):
+        lo = bottom + span * i / bands
+        hi = bottom + span * (i + 1) / bands
+        band = [
+            covered
+            for z, covered in twigs
+            if lo <= z < hi or (i == bands - 1 and z == hi)
+        ]
+        if not band:
+            continue
+        in_part = sum(1 for c in band if c)
+        rows.append(
+            {
+                "z_low": lo,
+                "z_high": hi,
+                "twigs": len(band),
+                "in_part": in_part,
+                "residual": len(band) - in_part,
+                "part_fraction": in_part / len(band),
+            }
+        )
+    return rows
+
+
 def residual_twig_asset(twig_usd: Path, skeletal: bool) -> Path:
     """The twig prototype variant a compound assembly of this kind can place.
 
@@ -1745,6 +1828,47 @@ def main() -> None:
         prototype_count,
         len(records) - in_parts,
     )
+
+    # XRFF-392: a crown-wide average hid the apex going bare, so report where
+    # each height band's foliage comes from. Reported off the cut set rather
+    # than off a built assembly, so it can be measured without paying for a
+    # bake -- a beech compound bake is minutes of work to answer one question.
+    if model is not None:
+        hybrid = residual_twig_usd is not None
+        coverage = twig_coverage_by_height(model, records, cut, bones_info=bones_info)
+        if coverage:
+            logger.info(
+                "\ntwig coverage by height (%s)",
+                "hybrid: parts + residual 1:1" if hybrid else "compound parts only",
+            )
+            logger.info(
+                "%-16s %8s %9s %9s %9s",
+                "band (m)",
+                "twigs",
+                "in part",
+                "residual",
+                "covered",
+            )
+            worst = 1.0
+            for row in coverage:
+                covered = row["in_part"] + (row["residual"] if hybrid else 0)
+                worst = min(worst, covered / row["twigs"])
+                logger.info(
+                    "%-16s %8d %9d %9d %8.1f%%",
+                    f"{row['z_low']:.2f}-{row['z_high']:.2f}",
+                    row["twigs"],
+                    row["in_part"],
+                    row["residual"],
+                    100.0 * covered / row["twigs"],
+                )
+            logger.info(
+                "worst band %.1f%% covered; %d of %d twigs sit on a branch the "
+                "base mesh keeps, so only a residual 1:1 placement reaches them",
+                100.0 * worst,
+                sum(r["residual"] for r in coverage),
+                sum(r["twigs"] for r in coverage),
+            )
+
     if library:
         # The medoids' own branch ids index the tree the LIBRARY was baked
         # from, not this one, so nothing local can be reported about them.
