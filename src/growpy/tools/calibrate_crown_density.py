@@ -193,6 +193,117 @@ def forrester_leaf_area(scientific_name: str, dbh_cm: float) -> tuple[float, str
     return float(entry.fn(dsob=dbh_cm)), entry.model_id, not _covers(entry, dbh_cm)
 
 
+def calibrate_compound(
+    species: str,
+    twigs_root: Path,
+    lookup_csv: Path,
+    cycles: int,
+    seed: int,
+    cut_diameter: float,
+    max_tips: int,
+    max_span: float,
+    max_twigs: int,
+    clusters: int,
+) -> dict[str, Any]:
+    """Pick the twig variant a species' compound parts should weld (XRFF-358).
+
+    The compound path has NO density knob. `twig_density` thins Grove's twigs on
+    the 1:1 path, but a compound prototype welds every twig in the subtree it
+    stands in for, and `create_assembly` takes no density argument. So crown
+    leaf area is fixed by the cut set and by ONE discrete choice -- which twig
+    variant gets welded -- and calibrating it means picking the variant whose
+    total lands nearest the published target, not solving for a multiplier.
+
+    Evaluated without baking any geometry. Leaf area is
+    ``sum over placements of (assigned prototype's twig count) x (variant leaf
+    area)`` plus the residual 1:1 twigs, and every term is known from the cut
+    set, the clustering and the twig sidecars. A bake would cost minutes per
+    candidate and tell us nothing more.
+
+    Measured on the reference tree the LIBRARY is baked from, which is the tree
+    whose prototypes every other tree of that species will instance. Dataset
+    trees of other sizes will land elsewhere -- the same stage bias the 1:1
+    table carries (XRFF-273).
+    """
+    from growpy.tools.harvest_compound_parts import (
+        build_reference_model,
+        cluster_prototypes,
+        count_subtree_twigs,
+        find_cut_set_adaptive,
+        flatten_branches,
+        grow_grove,
+        precompute_subtrees,
+        prepare_skeleton,
+        residual_twig_placements,
+    )
+
+    grove = grow_grove(species, cycles, seed)
+    records = flatten_branches(grove.trees[0])
+    metrics = precompute_subtrees(records)
+    _, bones_info = prepare_skeleton(grove)
+    model = build_reference_model(grove)
+    twig_totals = count_subtree_twigs(model, records)
+
+    cut = find_cut_set_adaptive(
+        records, metrics, cut_diameter / 2.0, max_tips, max_span, twig_totals,
+        max_twigs,
+    )
+    medoids, assignment, _ = cluster_prototypes(
+        records, metrics, cut, clusters, seed, twig_totals=twig_totals
+    )
+    # An instance renders its MEDOID's foliage, not its own subtree's, so the
+    # crown's welded twig count is the sum over placements of the assigned
+    # prototype's count -- not the tree's own twig total.
+    welded = sum(twig_totals[medoids[a]] for a in assignment)
+    residual = sum(
+        len(items)
+        for items in residual_twig_placements(model, records, cut, bones_info).values()
+    )
+
+    dbh_cm = records[0].base_radius * 200.0
+    scientific = _species_lookup(lookup_csv).get(species, species)
+    target, model_id, extrapolated = forrester_leaf_area(scientific, dbh_cm)
+
+    areas, geom_backed = leaf_area_by_prototype(twigs_root)
+    # The species' own twig set, resolved the way the rest of growpy resolves
+    # it -- several species share one twig asset, so a name-prefix guess would
+    # miss (silver fir's variants are all `pacific_silver_fir_*`).
+    from growpy.config import get_twig_files_by_type
+
+    species_keys = set()
+    for paths in get_twig_files_by_type(species).values():
+        for path in paths:
+            stem = path.stem.replace("_static", "").replace("_skeletal", "")
+            species_keys.add(stem.replace("_", "").lower())
+    species_twigs = {k: a for k, a in areas.items() if k in species_keys}
+
+    candidates = []
+    for key, area in sorted(species_twigs.items(), key=lambda kv: kv[1]):
+        leaf = (welded + residual) * area
+        candidates.append(
+            {
+                "variant": key,
+                "leaf_area_per_twig_m2": area,
+                "crown_leaf_area_m2": leaf,
+                "ratio": leaf / target if target else float("nan"),
+                "geom_basis": key in geom_backed,
+            }
+        )
+    return {
+        "species": species,
+        "scientific_name": scientific,
+        "dbh_cm": dbh_cm,
+        "welded_twigs": welded,
+        "residual_twigs": residual,
+        "instances": len(cut),
+        "prototypes": len(medoids),
+        "target_m2": target,
+        "model": model_id,
+        "extrapolated": extrapolated,
+        "candidates": candidates,
+    }
+
+
 def calibrate(
     forest_dir: Path,
     twigs_root: Path,
@@ -284,6 +395,77 @@ def calibrate(
     return report
 
 
+def _report_compound(args: Any) -> int:
+    """Print the compound-path variant table for one species."""
+    result = calibrate_compound(
+        args.compound,
+        args.twigs_root,
+        args.csv,
+        args.cycles,
+        args.seed,
+        args.cut_diameter,
+        args.max_tips,
+        args.max_span,
+        args.max_twigs,
+        args.clusters,
+    )
+    if not result["candidates"]:
+        logger.error(
+            "%s: no twig variants found under %s", args.compound, args.twigs_root
+        )
+        return 1
+
+    logger.info(
+        "\n%s (%s): d=%.1f cm, %d cut points over %d prototypes",
+        result["species"],
+        result["scientific_name"],
+        result["dbh_cm"],
+        result["instances"],
+        result["prototypes"],
+    )
+    logger.info(
+        "crown renders %d welded + %d residual 1:1 = %d twigs, "
+        "target %.1f m2 from %s%s",
+        result["welded_twigs"],
+        result["residual_twigs"],
+        result["welded_twigs"] + result["residual_twigs"],
+        result["target_m2"],
+        result["model"],
+        " (EXTRAPOLATED)" if result["extrapolated"] else "",
+    )
+    logger.info(
+        "\n%-38s %11s %10s %7s %s",
+        "variant",
+        "m2/twig",
+        "crown m2",
+        "ratio",
+        "basis",
+    )
+    best = min(result["candidates"], key=lambda c: abs(c["ratio"] - 1.0))
+    for cand in result["candidates"]:
+        logger.info(
+            "%-38s %11.5f %10.1f %7.2f %s%s",
+            cand["variant"],
+            cand["leaf_area_per_twig_m2"],
+            cand["crown_leaf_area_m2"],
+            cand["ratio"],
+            "geom" if cand["geom_basis"] else "material",
+            "   <-- closest" if cand is best else "",
+        )
+    logger.info(
+        "\nuse %s: %.2fx target. The lever is discrete, so a ratio far from 1 "
+        "means this species needs a finer ladder, not a different density.",
+        best["variant"],
+        best["ratio"],
+    )
+    if args.json:
+        args.json.parent.mkdir(parents=True, exist_ok=True)
+        args.json.write_text(json.dumps(result, indent=2))
+        logger.info("report written to %s", args.json)
+    return 0
+
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
@@ -324,9 +506,30 @@ def main(argv: list[str] | None = None) -> int:
         help="use every exported stage instead of one",
     )
     parser.add_argument("--json", type=Path, help="also write the full report here")
+    parser.add_argument(
+        "--compound",
+        metavar="SPECIES",
+        help=(
+            "calibrate the COMPOUND path for one species instead of reading "
+            "exported 1:1 assemblies. The compound path has no density knob -- "
+            "a prototype welds every twig of the subtree it replaces -- so this "
+            "reports which twig variant lands nearest the published target, "
+            "evaluated without baking any geometry."
+        ),
+    )
+    parser.add_argument("--cycles", type=int, default=18)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--cut-diameter", type=float, default=0.030)
+    parser.add_argument("--max-tips", type=int, default=60)
+    parser.add_argument("--max-span", type=float, default=2.0)
+    parser.add_argument("--max-twigs", type=int, default=150)
+    parser.add_argument("--clusters", type=int, default=7)
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    if args.compound:
+        return _report_compound(args)
 
     if not args.forest_dir.is_dir():
         logger.error("no such forest directory: %s", args.forest_dir)
