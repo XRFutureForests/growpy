@@ -1440,9 +1440,22 @@ def assign_against_library(
     return assignment
 
 
-def grow_grove(species: str, cycles: int, seed: int) -> Any:
-    """Simulate one reference tree headless via the_grove_23_core."""
+def grow_grove(
+    species: str, cycles: int, seed: int, target_height: float | None = None
+) -> Any:
+    """Simulate one reference tree headless via the_grove_23_core.
+
+    With `target_height` the tree is grown until it first reaches that height,
+    the way the dataset's own height-milestone mode does, and `cycles` becomes
+    a safety cap rather than the target. This matters because the library baked
+    here supplies the prototypes every tree of the species instances: at the
+    harvester's 18-cycle default a silver fir is d=7.0 cm against dataset trees
+    of d=11-36 cm, so a fixed cycle count bakes parts from a sapling and hands
+    them to mature crowns (XRFF-358).
+    """
     import the_grove_23_core as gc
+
+    from growpy.utils.analysis import find_max_height_in_branch
 
     preset_path = Path("data/assets/presets") / f"{species}.seed.json"
     if not preset_path.is_file():
@@ -1455,7 +1468,37 @@ def grow_grove(species: str, cycles: int, seed: int) -> Any:
     grove.set_properties(gc.io.properties_from_json_string(json.dumps(preset)))
     grove.clear_trees()
     grove.add_new_tree(gc.Vector(0, 0, 0), gc.Vector(0, 0, 1), 0)
-    grove.simulate(cycles)
+
+    if target_height is None:
+        grove.simulate(cycles)
+    else:
+        grown = 0
+        height = 0.0
+        while grown < cycles:
+            grove.simulate(1)
+            grown += 1
+            if not grove.trees:
+                continue
+            height = find_max_height_in_branch(grove.trees[0])
+            if height >= target_height:
+                break
+        if height < target_height:
+            logger.warning(
+                "%s reached only %.1f m of the %.1f m target in %d cycles -- "
+                "the library is baked from a smaller tree than asked for",
+                species,
+                height,
+                target_height,
+                grown,
+            )
+        else:
+            logger.info(
+                "%s reached %.1f m at cycle %d (target %.1f m)",
+                species,
+                height,
+                grown,
+                target_height,
+            )
 
     if not grove.trees:
         raise SystemExit(f"{species}: simulation produced no trees")
@@ -1474,6 +1517,18 @@ def main() -> None:
     parser.add_argument("species", help="preset stem, e.g. european_beech")
     parser.add_argument("--cycles", type=int, default=25)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--target-height",
+        type=float,
+        default=None,
+        help=(
+            "grow until the tree first reaches this height in metres instead "
+            "of running a fixed --cycles, which then acts as a safety cap. Use "
+            "it to bake a library from a tree the size of the ones that will "
+            "instance its prototypes: at the 18-cycle default a silver fir is "
+            "d=7 cm while the dataset's own firs run d=11-36 cm (XRFF-358)."
+        ),
+    )
     parser.add_argument(
         "--sweep",
         action="store_true",
@@ -1638,7 +1693,7 @@ def main() -> None:
         )
 
     adaptive = not args.no_adaptive
-    grove = grow_grove(args.species, args.cycles, args.seed)
+    grove = grow_grove(args.species, args.cycles, args.seed, args.target_height)
     tree = grove.trees[0]
     records = flatten_branches(tree)
     metrics = precompute_subtrees(records)

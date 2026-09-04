@@ -204,6 +204,7 @@ def calibrate_compound(
     max_span: float,
     max_twigs: int,
     clusters: int,
+    target_height: float | None = None,
 ) -> dict[str, Any]:
     """Pick the twig variant a species' compound parts should weld (XRFF-358).
 
@@ -237,7 +238,7 @@ def calibrate_compound(
         residual_twig_placements,
     )
 
-    grove = grow_grove(species, cycles, seed)
+    grove = grow_grove(species, cycles, seed, target_height)
     records = flatten_branches(grove.trees[0])
     metrics = precompute_subtrees(records)
     _, bones_info = prepare_skeleton(grove)
@@ -408,6 +409,7 @@ def _report_compound(args: Any) -> int:
         args.max_span,
         args.max_twigs,
         args.clusters,
+        args.target_height,
     )
     if not result["candidates"]:
         logger.error(
@@ -524,6 +526,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-span", type=float, default=2.0)
     parser.add_argument("--max-twigs", type=int, default=150)
     parser.add_argument("--clusters", type=int, default=7)
+    parser.add_argument(
+        "--target-height",
+        type=float,
+        default=None,
+        help=(
+            "grow the reference tree to this height instead of a fixed "
+            "--cycles. A library must be baked from a tree the size of "
+            "those that will instance its prototypes, so calibrate at the "
+            "height you intend to bake at."
+        ),
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
