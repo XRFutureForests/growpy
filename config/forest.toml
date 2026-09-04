@@ -240,38 +240,42 @@ density_variants = [] # e.g., ["full", "reduced", "bare"]
 # Re-derive after any change to twig assets, quality preset, or growth
 # calibration -- all three move the measured ratio.
 [export.twig_density_per_species]
-# The three PacificSilverFirTwig species below were re-derived 2026-09-03 by the
-# method at the top of this table: export at the current density, measure the
-# crown's one-sided leaf area as sum(instances_i x prototype_leaf_area_i) off
-# the exported PointInstancer, and divide by the ratio to the Forrester target.
-# Two things had moved since the 2026-08-06 back-solve. That twig asset was a
-# single 0.10888 m2 spray and now ships a derived 8-variant size ladder, over
-# which `get_twig_usd_map_for_species` draws uniformly -- verified on the
-# exported assemblies, 413-474 instances of each of the 8, mean 0.02444 m2 per
-# twig. And the growth/recovery pool moved too, which is why simply rescaling
-# the density by the asset ratio did NOT reproduce the old leaf area: it landed
-# 1.14x (silver fir) to 1.89x (Douglas fir) over target.
+# Every value below was back-solved 2026-09-04 by `growpy-calibrate-crown-
+# density`, which is this table's own documented method made repeatable: export
+# at the configured density, measure each crown's ONE-SIDED leaf area as
+# sum(instances_i x prototype_leaf_area_i) off the exported PointInstancer, and
+# divide by the ratio to the published target. Re-run that tool after any change
+# to twig assets, quality preset or growth calibration, and re-export FIRST --
+# it reads areas off disk and densities out of this file, so a stale export
+# quietly yields a wrong suggestion.
 #
-# Measured means over the three h15m surround radii, against the 38.6 m2
-# Forrester pooled-conifer target: silver_fir 44.1, norway_spruce 59.2,
-# douglas_fir 72.9. Note the target is for d=18 cm while these h15m trees are
-# d=14-29 cm; Forrester's LEAF-AREA coefficients are not in the repo (pylometree
-# registers only the AGB form), so per-DBH targets cannot be computed here and
-# the three radii are averaged against the one target, as before. Note also that
-# per-tree leaf area now varies with the draw, which spans 20x.
-silver_fir = 0.0304          # measured 1.14x at 0.0347
-# 0.139, NOT the 0.0097 first derived. That came from a directory still holding
-# six stale 0.5-density linden files -- linden's DBH shifted between runs, so
-# they did not overwrite and were averaged in, inflating the ratio ~14x.
-# Verified after moving them to data/output/_stale_from_0.5_run/. Lesson: check
-# for duplicate stage/radius files before back-solving from a measured run.
-small_leaved_linden = 0.139   # re-measured 0.07x at 0.0097
-norway_spruce = 0.0305       # measured 1.53x at 0.0468
-douglas_fir = 0.0399         # measured 1.89x at 0.0753
-scots_pine = 0.0181          # measured 2.21x
-wild_cherry = 0.0331         # measured 1.21x
-sycamore_maple = 0.114       # measured 0.35x -- was too SPARSE at 0.04
-european_beech = 0.138       # measured 0.29x -- too sparse
-european_oak = 0.148         # measured 0.27x -- too sparse
-silver_birch = 0.200         # measured 0.20x -- too sparse (only 1 h15m stage)
-common_ash = 0.800           # measured 0.05x -- 20x too sparse at 0.04
+# Two things changed under this round, and both moved every species.
+#
+# Targets are now per TREE. Forrester et al. (2017) leaf-area equations live in
+# pylometree (model_type "leaf_area") and are evaluated at each tree's own
+# diameter, instead of comparing a mean over three radii against one 38.6 m2
+# figure -- that figure being the pooled-conifer fit at d=18 cm, while these
+# h15m trees run d=14-30 cm. Eight species get a species-specific fit; Abies
+# alba, Acer pseudoplatanus and Tilia cordata have none and use the pooled one.
+# Betula pendula and Prunus avium have one but it was fitted over d 1-14 and
+# 1-10 cm, so mature trees fall back to the pooled broadleaved fit rather than
+# extrapolate a power law past its data.
+#
+# Leaf area is now measured leaf-only. The `<prototype>_leaf_area.json` sidecars
+# tag leaves by MATERIAL, so on any asset shipping one material the woody shoot
+# counted as leaf -- 8.7% of apparent leaf area across the converted library,
+# 35% on the worst fir variant. `convert-twigs` now also writes the topological
+# `_leaf_area_geom.json` split, and every species below reads it.
+#
+# Measured on a clean full run: 11 species, 32 h15m trees, all on the geom basis.
+common_ash = 1.0307          # measured 0.78x at 0.800
+douglas_fir = 0.0959         # measured 0.42x at 0.0399
+european_beech = 0.2231      # measured 0.62x at 0.138
+european_oak = 0.1764        # measured 0.84x at 0.148
+norway_spruce = 0.0556       # measured 0.55x at 0.0305
+scots_pine = 0.0343          # measured 0.53x at 0.0181
+silver_birch = 0.1276        # measured 1.57x at 0.200 -- pooled fit
+silver_fir = 0.0428          # measured 0.71x at 0.0304 -- pooled fit
+small_leaved_linden = 0.3119 # measured 0.45x at 0.139 -- pooled fit
+sycamore_maple = 0.0535      # measured 2.13x at 0.114 -- pooled fit
+wild_cherry = 0.0320         # measured 1.04x at 0.0331 -- pooled fit

@@ -3,7 +3,13 @@
 
 The method `config/forest.toml` documents, made repeatable:
 
-1. Export the dataset at whatever densities are configured now.
+1. Export the dataset at whatever densities are configured now. This step is
+   load-bearing and the tool cannot check it: the ratio divides a leaf area
+   measured from files on disk by a density read from the CURRENT config, so an
+   export predating a config change silently yields a wrong suggestion. Seen in
+   practice -- Douglas fir and Norway spruce exports made at 0.0753/0.0468 and
+   read against a config since changed to 0.0399/0.0305 came out 1.89x and 1.53x
+   off, exactly the density ratios. Re-export before calibrating.
 2. For each exported tree, measure the crown's ONE-SIDED leaf area as
    ``sum(instances_i x prototype_leaf_area_i)`` straight off the assembly's
    PointInstancer -- the instance counts are what ``twig_density`` sets, and the
