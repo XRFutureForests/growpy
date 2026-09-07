@@ -60,6 +60,16 @@ POST_IMPORT_SCRIPTS = [
     "growpy_wind_import.py",
     "growpy_pve_preset_import.py",
     "growpy_pve_graph_builder.py",
+    # Voxelize last of the mesh passes: it rewrites Nanite settings and queues a
+    # rebuild per assembly, so it wants whatever VRAM headroom is left. It was
+    # generated but absent from this list until 2026-09-04, which is why every
+    # imported growpy asset carried shape_preservation=NONE while the MegaPlants
+    # reference assets use VOXELIZE. It keeps a done-marker and resumes, so a
+    # watchdog restart mid-pass is recoverable.
+    "growpy_nanite_voxelize.py",
+    # Prune after voxelize: deletes the SK_*_stems sources, which are ~78% of a
+    # tree folder and have no hard referencers.
+    "growpy_prune_intermediates.py",
 ]
 
 
@@ -458,6 +468,19 @@ def _run_single_with_restart(
         # crash -- don't mask it with blind retries.
         if _ue_alive():
             return ok, aborted
+
+        # --restart-ram-limit 0 documents itself as "disables auto-restart", but
+        # only the RAM watchdog honoured it: an unreachable editor was restarted
+        # regardless. On 2026-09-07 that silently relaunched a user's editor
+        # twice after a GPU crash, during a session where restarting had not
+        # been agreed. Treat 0 as "never launch UE on my behalf", everywhere.
+        if not restart_ram_limit:
+            logger.error(
+                "  [Restart] UE not reachable and auto-restart is disabled "
+                "(--restart-ram-limit 0); leaving the editor alone. %s did not run.",
+                script_path.name,
+            )
+            return False, False
 
         attempts += 1
         if attempts > max_restarts:

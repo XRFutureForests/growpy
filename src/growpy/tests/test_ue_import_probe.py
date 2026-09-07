@@ -62,10 +62,14 @@ class TestClassifyBatch:
     def test_post_import(self, tmp_path):
         assert _cls(tmp_path, "growpy_wind_import.py") == CATEGORY_POST_IMPORT
         assert _cls(tmp_path, "growpy_pve_preset_import.py") == CATEGORY_POST_IMPORT
+        # Both joined POST_IMPORT_SCRIPTS on 2026-09-04. Voxelize had been
+        # generated but never run, which left every imported asset on
+        # shape_preservation=NONE; prune removes the SK_*_stems sources.
+        assert _cls(tmp_path, "growpy_nanite_voxelize.py") == CATEGORY_POST_IMPORT
+        assert _cls(tmp_path, "growpy_prune_intermediates.py") == CATEGORY_POST_IMPORT
 
     def test_unknown(self, tmp_path):
         assert _cls(tmp_path, "clean_assets.py") == CATEGORY_UNKNOWN
-        assert _cls(tmp_path, "growpy_nanite_voxelize.py") == CATEGORY_UNKNOWN
 
 
 class TestValidateOrdering:

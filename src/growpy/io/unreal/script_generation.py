@@ -122,4 +122,16 @@ def generate_unreal_scripts(
         )
         logger.info("Generated Nanite voxelize script: %s", voxelize_script)
 
+    # Prune the SK_*_stems import intermediates once assemblies exist.
+    if config.unreal_import_to_unreal:
+        from growpy.io.unreal.prune_intermediates_script import (
+            generate_prune_intermediates_script,
+        )
+
+        prune_script = generate_prune_intermediates_script(
+            output_dir=output_dir / "unreal_scripts",
+            import_path=config.unreal_project_path,
+        )
+        logger.info("Generated prune intermediates script: %s", prune_script)
+
     return import_script, cleanup_script
