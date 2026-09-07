@@ -60,5 +60,5 @@ generate_wind_data = true
 # passing --editor-exe/--uproject on every invocation. --editor-exe/--uproject
 # always take priority when given.
 [unreal.watchdog]
-# editor_exe = "C:\\Program Files\\Epic Games\\UE_5.7\\Engine\\Binaries\\Win64\\UnrealEditor.exe"
-# uproject = "D:\\Unreal\\XRLabDemo\\XRLabDemo.uproject"
+# editor_exe = "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Binaries\\Win64\\UnrealEditor.exe"
+# uproject = "D:\\Unreal\\XRLabDB 5.8\\XRLabDB.uproject"
