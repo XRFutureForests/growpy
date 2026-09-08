@@ -73,6 +73,41 @@ def _alpha_channel(candidates: dict[str, Path], size):
     return Image.new("L", size, 255)
 
 
+def _foliage_maps(twig_dir: Path) -> dict[str, Path]:
+    """The `<name>_foliage_diffuse` / `_foliage_normal` pair, when present.
+
+    These are the maps the skeletal twig USD binds, i.e. the ones the foliage
+    prototype actually renders with. The sibling `<name>_twig_*` atlas belongs
+    to the woody shoot.
+    """
+    found: dict[str, Path] = {}
+    textures = twig_dir / "textures"
+    if not textures.is_dir():
+        return found
+    # Rank: an asset can ship _diffuse_top and _diffuse_bottom for the two
+    # sides of a leaf. The USD binds the _top one, so prefer it; plain
+    # _diffuse next; _bottom only as a last resort.
+    ranked: dict[str, tuple[int, Path]] = {}
+    for path in sorted(textures.iterdir()):
+        if not path.is_file() or "_pve_" in path.name:
+            continue
+        stem = path.stem.lower()
+        if "_foliage_normal" in stem:
+            role, rank = "normal", 0
+        elif "_foliage_diffuse_top" in stem:
+            role, rank = "diffuse", 0
+        elif "_foliage_diffuse_bottom" in stem:
+            role, rank = "diffuse", 2
+        elif "_foliage_diffuse" in stem:
+            role, rank = "diffuse", 1
+        else:
+            continue
+        current = ranked.get(role)
+        if current is None or rank < current[0]:
+            ranked[role] = (rank, path)
+    return {role: path for role, (_, path) in ranked.items()}
+
+
 def pack_asset(twig_dir: Path, dry_run: bool = False) -> dict[str, object]:
     """Write the Base Color and Normal maps for one twig asset directory."""
     # `twig_export` imports bmesh at module scope, and bmesh is not importable
@@ -100,7 +135,21 @@ def pack_asset(twig_dir: Path, dry_run: bool = False) -> dict[str, object]:
             stem = stem[: -len(token)]
             break
 
-    diffuse = _load(candidates["diffuse"]).convert("RGB")
+    # Prefer the FOLIAGE maps over whatever the generic ranking picked. A twig
+    # asset ships two atlases -- <name>_twig_* for the woody shoot and
+    # <name>_foliage_* for the leaves -- and _gather_texture_candidates ranks
+    # the twig one first, so the packed Base Color carried the bark image and
+    # leaves rendered with branch texture on them. The skeletal twig USD, which
+    # is what becomes the foliage prototype in UE, binds only the foliage pair:
+    #     european_beech_foliage_diffuse.png
+    #     european_beech_foliage_normal.png
+    # so that is the pair this map has to carry.
+    foliage = _foliage_maps(twig_dir)
+    diffuse_src = foliage.get("diffuse", candidates["diffuse"])
+    if diffuse_src is not candidates["diffuse"]:
+        logger.info("%s: packing foliage diffuse %s", name, diffuse_src.name)
+
+    diffuse = _load(diffuse_src).convert("RGB")
     alpha = _alpha_channel(candidates, diffuse.size)
     base = Image.merge("RGBA", (*diffuse.split(), alpha))
     base_path = textures / f"{stem}{BASECOLOR_SUFFIX}"
@@ -108,8 +157,9 @@ def pack_asset(twig_dir: Path, dry_run: bool = False) -> dict[str, object]:
         base.save(base_path)
     result["basecolor"] = base_path.name
 
-    if "normal" in candidates:
-        normal = _load(candidates["normal"]).convert("RGB")
+    normal_src = foliage.get("normal", candidates.get("normal"))
+    if normal_src is not None:
+        normal = _load(normal_src).convert("RGB")
         if "translucent" in candidates:
             trans = _load(candidates["translucent"]).convert("L")
             if trans.size != normal.size:
