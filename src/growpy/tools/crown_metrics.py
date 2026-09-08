@@ -67,7 +67,12 @@ def _proto_key(name: str) -> str:
     Comparing on a normalised key keeps the two sides in step without either
     having to know how the other spells it.
     """
-    return "".join(c for c in name.lower() if c.isalnum())
+    stem = str(name)
+    for prefix in ("SK_", "SM_", "T_"):
+        if stem.startswith(prefix):
+            stem = stem[len(prefix):]
+            break
+    return "".join(c for c in stem.lower() if c.isalnum())
 
 
 def load_leaf_areas(twig_dir: Path) -> dict[str, float]:
@@ -106,7 +111,19 @@ def measure_assembly(
     proto_idx = None
     proto_names: list[str] = []
     scales = None
+    # External-ref assemblies (XRFF-389) carry one Xform per placement instead
+    # of a PointInstancer, so read those when no instancer is present.
+    parts_pos: list[tuple[float, float, float]] = []
+    parts_asset: list[str] = []
     for prim in stage.Traverse():
+        if prim.GetName().startswith("Twig_"):
+            attr = prim.GetAttribute("unreal:naniteAssembly:meshAssetPath")
+            xf = prim.GetAttribute("xformOp:translate")
+            if attr and xf and xf.Get() is not None:
+                t = xf.Get()
+                parts_pos.append((float(t[0]), float(t[1]), float(t[2])))
+                parts_asset.append(str(attr.Get() or "").rsplit("/", 1)[-1])
+            continue
         if prim.GetTypeName() == "PointInstancer":
             inst = UsdGeom.PointInstancer(prim)
             arr = inst.GetPositionsAttr().Get()
@@ -120,6 +137,12 @@ def measure_assembly(
             if sc:
                 scales = np.asarray([(v[0], v[1], v[2]) for v in sc], dtype=float)
             break
+    if pts is None and parts_pos:
+        pts = np.asarray(parts_pos, dtype=float)
+        names = sorted(set(parts_asset))
+        proto_names = names
+        index = {n: i for i, n in enumerate(names)}
+        proto_idx = np.asarray([index[a] for a in parts_asset], dtype=int)
     if pts is None or len(pts) < 8:
         return None
 
