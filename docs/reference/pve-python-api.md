@@ -80,7 +80,7 @@ graph = unreal.find_object(pv_asset, "ProceduralVegetationGraph")
 Once held, the graph is a normal `UPCGGraph`: `add_node_copy`, `add_edge`,
 `nodes`, and `force_notification_for_editor` are all `BlueprintCallable` or
 `BlueprintReadOnly`. See `_get_inner_graph` in
-[pve_graph_script.py](../src/growpy/io/unreal/pve_graph_script.py) and XRFF-330.
+[pve_graph_script.py](../../src/growpy/io/unreal/pve_graph_script.py) and XRFF-330.
 
 ### What can be verified from Python
 
@@ -105,8 +105,8 @@ assumed from a non-null return.
 ## What growpy already produces
 
 The current pipeline already emits PVE JSON recipes — see
-[pve_grove_mapper.map_grove_to_pve](../src/growpy/io/unreal/pve_grove_mapper.py)
-and [pve_schema.py](../src/growpy/io/unreal/pve_schema.py). Files land in
+[pve_grove_mapper.map_grove_to_pve](../../src/growpy/io/unreal/pve_grove_mapper.py)
+and [pve_schema.py](../../src/growpy/io/unreal/pve_schema.py). Files land in
 `data/assets/pve_configs/<species>_pve.json` with the Quixel Megaplants
 schema (globalAttributes, points, primitives). The JSONs are species
 overrides that calibrate PVE growth simulation against growpy/yield-table
@@ -118,7 +118,7 @@ the editor.
 
 ## New: PVE preset import script generator
 
-[pve_import_script.py](../src/growpy/io/unreal/pve_import_script.py)
+[pve_import_script.py](../../src/growpy/io/unreal/pve_import_script.py)
 generates a UE Python script that:
 
 1. Walks the forest root recursively at runtime for
@@ -187,7 +187,7 @@ project as parallel UObjects.
    build.
 3. **Bone reduction targets** from yield-table data. PVE's Bone Reduction
    node accepts target counts; growpy already knows the target bone budgets
-   per distance class (see [unreal-vegetation.md](unreal-vegetation.md)
+   per distance class (see the `unreal-vegetation` note in the lab vault
    notes on bone-count targeting).
 
 ## Sources

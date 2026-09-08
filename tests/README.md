@@ -12,7 +12,7 @@
 
 ## Quick Navigation
 
-- [Testing Strategy](../docs/reference/guides/testing-strategy.md)
+- [Testing Strategy](../docs/reference/testing.md)
 - [Task Rules](../docs/tasks/README.md)
 - [Kanban Board](../docs/tasks/kanban_board.md)
 - [Guides](../docs/reference/guides/)
@@ -25,7 +25,7 @@
 | Read When | You need to find tests, run them, or understand the local test layout. |
 | Skip When | You only need general testing philosophy. |
 | Canonical | Yes |
-| Next Docs | [Testing Strategy](../docs/reference/guides/testing-strategy.md) |
+| Next Docs | [Testing Strategy](../docs/reference/testing.md) |
 | Primary Sources | `src/growpy/tests/`, `pyproject.toml` |
 
 ---
@@ -40,7 +40,7 @@ This directory contains manual test scripts and test results infrastructure. Aut
 
 **Test your code, not frameworks.** Focus on business logic and integration usage — pipeline step execution, allometry model correctness, USD asset output validity, species lookup behavior. Avoid testing numpy internals, pandas read logic, or USD framework defaults.
 
-**Risk-based testing:** Automate only Priority `>=15` scenarios (`Business Impact x Probability`). Each test should satisfy the usefulness criteria in [testing-strategy.md](../docs/reference/guides/testing-strategy.md).
+**Risk-based testing:** Automate only Priority `>=15` scenarios (`Business Impact x Probability`). Each test should satisfy the usefulness criteria in [testing-strategy.md](../docs/reference/testing.md).
 
 ---
 

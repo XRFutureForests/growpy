@@ -243,7 +243,7 @@ Test scope:
 
 Each test must pass all 6 usefulness criteria: Risk Priority ≥15, Confidence ROI, Behavioral, Predictive, Specific, Non-Duplicative. No numerical targets — test count driven by risk assessment.
 
-**Reference:** [Risk-Based Testing Guide](../reference/guides/risk-based-testing-guide.md)
+**Reference:** [Testing](../reference/testing.md)
 
 ---
 
