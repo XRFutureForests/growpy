@@ -1063,10 +1063,18 @@ def generate_unreal_import_script(
         # unreal.log_error ("Parent material not found"), which goes to UE's
         # log and not to ue_exec's stdout, so the batch still reports as
         # completed and every tree silently keeps its raw USD materials.
+        from .pve_import_script import build_species_twig_map
+
+        try:
+            _twig_map = build_species_twig_map()
+        except Exception as exc:  # noqa: BLE001 -- degrade, never block the import
+            logger.warning("Could not build species->twig map: %s", exc)
+            _twig_map = {}
         materials_code = _build_material_script(
             project_path,
             species_colors,
             parent_material_path=f"{db_path}/MA_Foliage_Trees",
+            species_twig_map=_twig_map,
         )
         materials_name = "import_batch_98_materials.py"
         materials_label = "Assign MA_Foliage_Trees material instances"

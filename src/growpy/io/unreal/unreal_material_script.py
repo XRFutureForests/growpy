@@ -19,6 +19,7 @@ def _build_material_script(
     project_path: str,
     species_colors: dict[str, dict[str, tuple[float, float, float, float]]],
     parent_material_path: str | None = None,
+    species_twig_map: dict[str, str] | None = None,
 ) -> str:
     """Build Unreal Python code that assigns MA_Foliage_Trees-derived MICs to imports.
 
@@ -48,6 +49,21 @@ def _build_material_script(
         # a project that keeps MA_Foliage_Trees alongside ST_TreeCatalogEntry
         # in the template dir, which is the normal layout.
         parent_material_path = f"{project_path}/Materials/MA_Foliage_Trees"
+    # Leaf textures and foliage meshes live under Instances/ and are named
+    # after the TWIG ASSET, not the tree: douglas fir's foliage is
+    # "pacific_silver_fir_*". Emit the reverse map so those assets can be
+    # resolved back to every species that uses them (one twig serves several:
+    # PacificSilverFirTwig covers douglas fir, silver fir and Norway spruce).
+    twig_to_species: dict[str, list[str]] = {}
+    for species, folder in (species_twig_map or {}).items():
+        base = str(folder)
+        for suffix in ("_twigs_combined_skeletal", "_twigs_combined", "_twigs"):
+            if base.endswith(suffix):
+                base = base[: -len(suffix)]
+                break
+        twig_to_species.setdefault(base, []).append(species)
+    twig_map_json = json.dumps(twig_to_species, indent=2)
+
     colors_json = json.dumps(
         {s: {k: list(v) for k, v in d.items()} for s, d in species_colors.items()},
         indent=2,
@@ -75,6 +91,41 @@ SPECIES_COLORS = {colors_json}
 
 _FOLIAGE_TOKENS = ("foliage", "twig", "leaf", "leaves")
 _BARK_TOKENS = ("bark", "trunk", "stem", "wood")
+
+# twig asset base -> every species that uses it. Assets under Instances/ are
+# named after the TWIG, not the tree, so this is the only way back to a species.
+TWIG_TO_SPECIES = {twig_map_json}
+_ASSET_PREFIXES = ("SKM_", "PHYS_", "SKEL_", "SK_", "SM_", "MI_", "M_", "T_")
+
+
+def _strip_prefix(name):
+    for pfx in _ASSET_PREFIXES:
+        if name.startswith(pfx):
+            return name[len(pfx):]
+    return name
+
+
+def _species_from_instances_name(asset_name):
+    """Every tree species an Instances/ asset belongs to.
+
+    "T_pacific_silver_fir_foliage_diffuse_top" -> ["douglas_fir", "silver_fir",
+    "norway_spruce"]. The prefix has to go first: keeping it yielded
+    "T_pacific_silver_fir", which matched no species, so every leaf texture was
+    dropped and MI_<species>_Leaves inherited the master's default texture --
+    which is why leaves rendered with the bark image on them.
+    """
+    stem = _strip_prefix(str(asset_name))
+    for token in ("_twigs_combined", "_foliage_", "_foliage", "_twig"):
+        idx = stem.find(token)
+        if idx > 0:
+            base = stem[:idx]
+            hit = TWIG_TO_SPECIES.get(base)
+            if hit:
+                return list(hit)
+            # A twig asset the map does not know: fall back to treating the
+            # base as a species name, which is right when they coincide.
+            return [base]
+    return []
 
 asset_registry = unreal.AssetRegistryHelpers.get_asset_registry()
 asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
@@ -160,6 +211,42 @@ def _set_vector(mic, name, rgba):
     return False
 
 
+def _set_scalar(mic, name, value):
+    try:
+        mel.set_material_instance_scalar_parameter_value(mic, name, float(value))
+        return True
+    except Exception as e:
+        unreal.log_warning(f"Could not set scalar '{{name}}': {{e}}")
+    return False
+
+
+# Surface response, read off MegaPlants' own MI_Norway_Spruce_Bark_01 /
+# _Foliage_01. Nothing was overridden before, so every MIC sat on the master's
+# defaults and bark rendered as polished chrome -- flat, mirror-like and
+# smeared along the trunk UVs. These are species-independent response curves;
+# colour stays with the per-species tints from the CSV.
+_TRUNK_SCALARS = {{
+    "Roughness Min": 0.5,
+    "Roughness Max": 1.0,
+    "Roughness Contrast": 1.0,
+    "Roughness Strength": 1.0,
+    "Roughness AO": 5.0,
+    "Specular": 1.0782,
+    "Specular AO": 0.8,
+    "Specular Desaturation": 1.0,
+    "Normal Strength": 1.5,
+}}
+_LEAF_SCALARS = {{
+    "Roughness Min": 0.25,
+    "Roughness Contrast": 1.4,
+    "Roughness Leaves Strength": 6.0,
+    "Roughness Leaf Backside": 1.1,
+    "Roughness Health Mask": 1.0,
+    "Normal Strength": 1.0,
+    "Translucency Mask Threshold": 2.0,
+}}
+
+
 def _set_texture(mic, name, texture):
     try:
         mel.set_material_instance_texture_parameter_value(mic, name, texture)
@@ -201,6 +288,24 @@ if parent_mat is not None:
             continue
         TEXTURE_PARAM_NAMES[role] = p
         print(f"  [ok] texture role '{{role}}' -> parameter '{{p}}'")
+
+    # MA_Foliage_Trees exposes exactly two texture parameters, "Base Color" and
+    # "Normal", shared by bark and leaves and switched apart by the
+    # "DefaultLit Trunk" static switch -- MegaPlants' own foliage instance sets
+    # plain "Base Color" too. Neither name contains "leaf", so both classify as
+    # trunk roles and the leaf roles never exist; the leaf MIC was then left
+    # with no texture at all and inherited the master's default, which is why
+    # leaves rendered carrying the bark image. The leaf MIC is a separate
+    # instance, so pointing the leaf textures at the same parameter names is
+    # correct rather than a workaround.
+    for leaf_role, trunk_role in (("leaf_diffuse", "trunk_diffuse"),
+                                  ("leaf_normal", "trunk_normal")):
+        if leaf_role not in TEXTURE_PARAM_NAMES and trunk_role in TEXTURE_PARAM_NAMES:
+            TEXTURE_PARAM_NAMES[leaf_role] = TEXTURE_PARAM_NAMES[trunk_role]
+            print(
+                f"  [ok] texture role '{{leaf_role}}' -> parameter "
+                f"'{{TEXTURE_PARAM_NAMES[leaf_role]}}' (shared with {{trunk_role}})"
+            )
 
 
 # ----------------------------------------------------------------------
@@ -264,17 +369,16 @@ for ad in all_assets:
 
     rel = pkg[len(IMPORT_PATH):].lstrip("/") if pkg.startswith(IMPORT_PATH) else pkg
     parts = rel.split("/")
-    species = None
     if parts and parts[0] == "Instances":
-        name = str(ad.asset_name)
-        for token in ("_foliage_", "_twigs_combined_", "_foliage"):
-            idx = name.find(token)
-            if idx > 0:
-                species = name[:idx]
-                break
+        # One twig serves several species, so a leaf texture belongs to all of
+        # them, not one.
+        owners = _species_from_instances_name(str(ad.asset_name))
     elif parts:
-        species = parts[0]
-    if species is None or species not in species_found:
+        owners = [parts[0]]
+    else:
+        owners = []
+    owners = [sp for sp in owners if sp in species_found]
+    if not owners:
         continue
 
     name_lower = str(ad.asset_name).lower()
@@ -286,7 +390,8 @@ for ad in all_assets:
         role = "leaf_normal"
     else:
         role = "leaf_diffuse"
-    species_textures.setdefault(species, {{}}).setdefault(role, ad)
+    for sp in owners:
+        species_textures.setdefault(sp, {{}}).setdefault(role, ad)
 
 print(f"Found textures for {{len(species_textures)}} species")
 
@@ -310,6 +415,8 @@ if parent_mat is not None:
                 _set_static_switch(mic_l, "DefaultLit Trunk", False)
                 _set_vector(mic_l, "BaseColor Tint Leaves", leaf_rgba)
                 _set_vector(mic_l, "Translucency Tint Leaves", leaf_rgba)
+                for _sn, _sv in _LEAF_SCALARS.items():
+                    _set_scalar(mic_l, _sn, _sv)
                 leaf_diff = tex_bucket.get("leaf_diffuse")
                 if leaf_diff is not None and "leaf_diffuse" in TEXTURE_PARAM_NAMES:
                     _set_texture(mic_l, TEXTURE_PARAM_NAMES["leaf_diffuse"], leaf_diff.get_asset())
@@ -324,6 +431,8 @@ if parent_mat is not None:
             if mic_t is not None:
                 _set_static_switch(mic_t, "DefaultLit Trunk", True)
                 _set_vector(mic_t, "BaseColor Tint", bark_rgba)
+                for _sn, _sv in _TRUNK_SCALARS.items():
+                    _set_scalar(mic_t, _sn, _sv)
                 trunk_diff = tex_bucket.get("trunk_diffuse")
                 if trunk_diff is not None and "trunk_diffuse" in TEXTURE_PARAM_NAMES:
                     _set_texture(mic_t, TEXTURE_PARAM_NAMES["trunk_diffuse"], trunk_diff.get_asset())
@@ -375,11 +484,8 @@ def _species_for_asset(pkg_path, asset_name):
     rel = pkg_path[len(IMPORT_PATH):].lstrip("/") if pkg_path.startswith(IMPORT_PATH) else pkg_path
     parts = rel.split("/")
     if parts and parts[0] == "Instances":
-        for token in ("_foliage_", "_twigs_combined_", "_foliage"):
-            idx = asset_name.find(token)
-            if idx > 0:
-                return asset_name[:idx]
-        return None
+        owners = _species_from_instances_name(asset_name)
+        return owners[0] if owners else None
     if parts:
         return parts[0]
     return None

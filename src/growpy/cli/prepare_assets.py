@@ -539,6 +539,24 @@ CSV Format Support:
             logger.warning("Bark texture not found: %s", src_file)
             stats["textures_missing"] += 1
 
+        # The Grove ships a normal map beside almost every bark diffuse
+        # ("Beech60.jpg" / "Beech60Normal.jpg" -- 48 of its 97 texture files).
+        # Only the diffuse was ever copied, so imported trunks had no normal
+        # map at all: a perfectly flat surface which, with no roughness
+        # override either, renders as polished chrome with the specular
+        # smearing across the stretched trunk UVs.
+        src_normal = src_textures / f"{texture_stem}Normal{file_ext}"
+        if src_normal.exists():
+            dst_normal = dst_textures / f"{standardized_name}_bark_normal{file_ext}"
+            if resize_textures:
+                if not copy_and_resize_texture(src_normal, dst_normal):
+                    shutil.copy2(src_normal, dst_normal)
+            else:
+                shutil.copy2(src_normal, dst_normal)
+            stats["textures_copied"] += 1
+        else:
+            logger.debug("No bark normal map beside %s", src_file.name)
+
     # Generate PVE config files with null placeholders for each species
     dst_pve_configs = assets_dir / "pve_configs"
 
