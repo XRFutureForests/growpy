@@ -202,6 +202,11 @@ class GrowPyConfig:
         "export_dbh_from_allometry": "internal tuning, no CLI need identified",
         "export_twig_density": "internal tuning, no CLI need identified",
         "export_twig_density_per_species": "nested dict structure, config-only by design",
+        "quality_build_cutoff_thickness_per_species": (
+            "nested dict structure, config-only by design: each entry records a "
+            "measured cutoff sweep for that species, which belongs beside the "
+            "measurement in config, not on a command line"
+        ),
         "surround_grow_per_species": "nested dict structure, config-only by design",
         "surround_density_per_species": "nested dict structure, config-only by design",
         "export_twig_reattach_threshold": "internal tuning, no CLI need identified",
@@ -422,6 +427,29 @@ class GrowPyConfig:
     # each species' twig prototype size, not Grove's placement. See
     # get_twig_density_base().
     export_twig_density_per_species: dict[str, float] = field(default_factory=dict)
+    # Per-species override for the quality preset's build_cutoff_thickness, in
+    # metres. A preset name conflates render resolution with structural detail
+    # (see quality.toml, XRFF-404), and species differ in how thin their fine
+    # branches are, so one global floor cannot serve them all.
+    #
+    # Measured on silver_birch h15m r00 (2026-09-08), sweeping the cutoff while
+    # holding everything else:
+    #     0.0040  38.12 m2 wood,   888 twigs   <- the low preset's floor
+    #     0.0025 102.57 m2 wood, 3,455 twigs   (x2.69 wood, x3.89 twigs)
+    #     0.0000 105.64 m2 wood, 3,474 twigs   (+3% wood, +0.5% twigs)
+    # Essentially all of birch's fine branching sits between 2.5 and 4 mm, and
+    # the 4 mm floor cut straight through it -- taking the twig attachment
+    # points with it, which is why birch measured 0.27 of its Forrester leaf
+    # area and why no twig_density could have fixed it. Going below 2.5 mm buys
+    # almost nothing and costs triangles, so this is a floor to lower per
+    # species, not to remove.
+    #
+    # Both metrics above are resolution-independent (surface area is geometry,
+    # twig count is attachment points), so this override is the structural half
+    # of the preset and can be set without moving to a finer tessellation.
+    quality_build_cutoff_thickness_per_species: dict[str, float] = field(
+        default_factory=dict
+    )
     # Per-species override for the surround shell tracking the tree. Conifers
     # and broadleaves respond so differently to a growing shell that one global
     # value cannot serve both: measured 2026-08-25 at r08, grow = true takes
@@ -742,6 +770,11 @@ class GrowPyConfig:
             kwargs["export_dbh_from_allometry"] = export["radial_scale"]
         if "twig_density" in export:
             kwargs["export_twig_density"] = float(export["twig_density"])
+        if "build_cutoff_thickness_per_species" in export:
+            kwargs["quality_build_cutoff_thickness_per_species"] = {
+                str(k): float(v)
+                for k, v in export["build_cutoff_thickness_per_species"].items()
+            }
         if "twig_density_per_species" in export:
             kwargs["export_twig_density_per_species"] = {
                 str(k): float(v) for k, v in export["twig_density_per_species"].items()

@@ -4,7 +4,7 @@
 
 [forest]
 # Quality preset name -- must match a [quality.<name>] section in quality.toml
-quality = "high"
+quality = "low"
 # Maximum growth cycles per tree (1-250)
 # Trees exceeding this limit are capped (not scaled), silently losing their
 # upper height stages. Measured uncalibrated cycles-to-max-height: Douglas fir
@@ -67,7 +67,7 @@ height_interval = 5
 # h25 the tall conifers need the height-LOD ladder (XRFF-324) that does not
 # exist yet -- at [quality.high] an open-grown silver fir already exhausts a
 # 63.5 GB host at h20. See docs/dataset/dataset-overview.md.
-max_height = 25
+max_height = 15
 
 # --- Export options ---
 [export]
@@ -279,3 +279,26 @@ silver_fir = 0.0428          # measured 0.71x at 0.0304 -- pooled fit
 small_leaved_linden = 0.3119 # measured 0.45x at 0.139 -- pooled fit
 sycamore_maple = 0.0535      # measured 2.13x at 0.114 -- pooled fit
 wild_cherry = 0.0320         # measured 1.04x at 0.0331 -- pooled fit
+
+# --- Per-species structural detail -------------------------------------------
+# Overrides the active quality preset's build_cutoff_thickness (metres) for one
+# species. A preset name conflates render resolution with structural detail
+# (quality.toml, XRFF-404); this is the structural half, so a species can keep
+# a coarse tessellation and still keep its fine branches.
+#
+# Only set a species that measurably loses structure at the preset's floor.
+# Measured on silver_birch h15m r00 (2026-09-08), sweeping the cutoff alone:
+#
+#   cutoff   wood surface   twigs placed
+#   0.0040      38.12 m2         888      <- [quality.low]'s floor
+#   0.0025     102.57 m2       3,455      x2.69 wood, x3.89 twigs
+#   0.0000     105.64 m2       3,474      +3% wood, +0.5% twigs
+#
+# Birch's fine branches sit almost entirely between 2.5 and 4 mm, so the 4 mm
+# floor removed them and the twig attachment points with them -- it measured
+# 0.27 of its Forrester leaf area, and raising twig_density could not have
+# fixed that because the branches were gone. At 2.5 mm the same tree reaches
+# ~0.89 of target with no density change. Below 2.5 mm buys almost nothing and
+# costs triangles, so lower the floor, do not remove it.
+[export.build_cutoff_thickness_per_species]
+silver_birch = 0.0025        # measured: x2.69 wood, x3.89 twigs vs 0.0040

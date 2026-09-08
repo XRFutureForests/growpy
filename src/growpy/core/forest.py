@@ -930,6 +930,29 @@ def build_density_variant_model_sets(
     return variant_model_sets
 
 
+def _species_build_cutoff(species_name: str) -> float | None:
+    """The per-species build_cutoff_thickness override, if one is configured.
+
+    Reads ``[export] build_cutoff_thickness_per_species`` from config. Returns
+    None when the species has no entry, so the quality preset's value stands.
+    """
+    if not species_name:
+        return None
+    try:
+        from growpy.config.core import get_config
+
+        overrides = getattr(
+            get_config(), "quality_build_cutoff_thickness_per_species", {}
+        )
+    except Exception:  # noqa: BLE001 -- config is optional at this depth
+        return None
+    if not overrides:
+        return None
+    key = str(species_name).strip().lower().replace(" ", "_")
+    value = overrides.get(key)
+    return float(value) if value is not None else None
+
+
 def _build_models_for_grove(
     grove: gc.Grove,
     species_name: str,
@@ -977,13 +1000,29 @@ def _build_models_for_grove(
         models = grove.build_models(build_options)
         precut_models: list = []
     else:
+        # A species may lower the preset's cutoff without moving to a finer
+        # tessellation: the two are independent halves of a preset name (see
+        # quality.toml, XRFF-404). silver_birch's fine branches all sit between
+        # 2.5 and 4 mm, so the low preset's 4 mm floor deleted them along with
+        # their twig attachment points -- wood surface fell to 38 m2 against
+        # 103 at 2.5 mm, and no twig_density could put the foliage back on
+        # branches that no longer existed.
+        cutoff = quality_params.get("build_cutoff_thickness", 0.01)
+        species_cutoff = _species_build_cutoff(species_name)
+        if species_cutoff is not None and species_cutoff != cutoff:
+            logger.info(
+                "%s: build_cutoff_thickness %.4f -> %.4f (per-species override)",
+                species_name,
+                cutoff,
+                species_cutoff,
+            )
+            cutoff = species_cutoff
+
         build_options = {
             "resolution": quality_params.get("resolution", 24),
             "resolution_reduce": quality_params.get("resolution_reduce", 0.8),
             "build_cutoff_age": quality_params.get("build_cutoff_age", 0),
-            "build_cutoff_thickness": quality_params.get(
-                "build_cutoff_thickness", 0.01
-            ),
+            "build_cutoff_thickness": cutoff,
             "build_blend": quality_params.get("build_blend", True),
             "build_end_cap": quality_params.get("build_end_cap", True),
         }
