@@ -150,6 +150,31 @@ def measure_assembly(
             elif key not in unmatched:
                 unmatched.append(key)
         instances += len(indices)
+
+    if instances == 0:
+        # External-ref assembly (XRFF-389): no PointInstancer, one Xform per
+        # placement naming an already-imported asset. Read those instead, and
+        # strip the SK_/SM_ import prefix the package path carries.
+        for prim in stage.Traverse():
+            if not prim.GetName().startswith("Twig_"):
+                continue
+            attr = prim.GetAttribute("unreal:naniteAssembly:meshAssetPath")
+            if not attr or attr.Get() is None:
+                continue
+            key = str(attr.Get()).rsplit("/", 1)[-1].lower()
+            for prefix in ("sk_", "sm_"):
+                if key.startswith(prefix):
+                    key = key[len(prefix):]
+                    break
+            # The map is keyed with underscores stripped, matching the USD prim
+            # names the instancer path reads; a package path keeps them.
+            key = key.replace("_", "")
+            instances += 1
+            if key in areas:
+                leaf_area += areas[key]
+                used.add(key)
+            elif key not in unmatched:
+                unmatched.append(key)
     return leaf_area, instances, unmatched, used
 
 
