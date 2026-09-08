@@ -1079,11 +1079,23 @@ def generate_unreal_import_script(
         except Exception as exc:  # noqa: BLE001 -- degrade, never block the import
             logger.warning("Could not build species->twig map: %s", exc)
             _twig_map = {}
+        # Sidecars written by pack_pve_textures: parameters the master exposes
+        # but has no texture slot for (leaf backside colour).
+        import json as _json
+
+        _twig_params: dict[str, dict] = {}
+        for _sc in Path("data/assets/twigs").glob("*/textures/*_pve_params.json"):
+            try:
+                _base = _sc.name.split("_twig_pve_params.json")[0]
+                _twig_params[_base] = _json.loads(_sc.read_text(encoding="utf-8"))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("could not read %s: %s", _sc, exc)
         materials_code = _build_material_script(
             project_path,
             species_colors,
             parent_material_path=f"{db_path}/MA_Foliage_Trees",
             species_twig_map=_twig_map,
+            twig_params=_twig_params,
         )
         materials_name = "import_batch_98_materials.py"
         materials_label = "Assign MA_Foliage_Trees material instances"

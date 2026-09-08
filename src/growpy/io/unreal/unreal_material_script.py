@@ -20,6 +20,7 @@ def _build_material_script(
     species_colors: dict[str, dict[str, tuple[float, float, float, float]]],
     parent_material_path: str | None = None,
     species_twig_map: dict[str, str] | None = None,
+    twig_params: dict[str, dict[str, list[float]]] | None = None,
 ) -> str:
     """Build Unreal Python code that assigns MA_Foliage_Trees-derived MICs to imports.
 
@@ -63,6 +64,12 @@ def _build_material_script(
                 break
         twig_to_species.setdefault(base, []).append(species)
     twig_map_json = json.dumps(twig_to_species, indent=2)
+    # Parameters the master exposes but has no texture slot for, derived from
+    # maps the Grove ships and nothing used: the leaf underside's average
+    # colour drives BaseColor Tint Leaf Backside. 28 of the Grove's 46 twig
+    # assets are top/bottom pairs, so this is the only route their two-sided
+    # information has into the material.
+    twig_params_json = json.dumps(twig_params or {}, indent=2)
 
     colors_json = json.dumps(
         {s: {k: list(v) for k, v in d.items()} for s, d in species_colors.items()},
@@ -95,6 +102,7 @@ _BARK_TOKENS = ("bark", "trunk", "stem", "wood")
 # twig asset base -> every species that uses it. Assets under Instances/ are
 # named after the TWIG, not the tree, so this is the only way back to a species.
 TWIG_TO_SPECIES = {twig_map_json}
+TWIG_EXTRA_PARAMS = {twig_params_json}
 _ASSET_PREFIXES = ("SKM_", "PHYS_", "SKEL_", "SK_", "SM_", "MI_", "M_", "T_")
 
 
@@ -225,6 +233,14 @@ def _set_scalar(mic, name, value):
 # defaults and bark rendered as polished chrome -- flat, mirror-like and
 # smeared along the trunk UVs. These are species-independent response curves;
 # colour stays with the per-species tints from the CSV.
+# Health Offset gates the master's "Health Color Overlay", whose default is
+# (0.118, 0.004, 0.0) -- red. The parameter's own default is 0.0, which applies
+# that overlay at full strength, so every tree rendered with a red cast: the
+# beech trunk came out red and the fir needles yellow. MegaPlants sets 5.0 on
+# its foliage instance and we set nothing. Verified in the editor 2026-09-08:
+# 5.0 turns the fir green and the beech trunk from red to green.
+_HEALTH_OFFSET = 5.0
+
 _TRUNK_SCALARS = {{
     "Roughness Min": 0.5,
     "Roughness Max": 1.0,
@@ -235,6 +251,7 @@ _TRUNK_SCALARS = {{
     "Specular AO": 0.8,
     "Specular Desaturation": 1.0,
     "Normal Strength": 1.5,
+    "Health Offset": _HEALTH_OFFSET,
 }}
 _LEAF_SCALARS = {{
     "Roughness Min": 0.25,
@@ -244,6 +261,7 @@ _LEAF_SCALARS = {{
     "Roughness Health Mask": 1.0,
     "Normal Strength": 1.0,
     "Translucency Mask Threshold": 2.0,
+    "Health Offset": _HEALTH_OFFSET,
 }}
 
 
@@ -426,6 +444,11 @@ if parent_mat is not None:
                 _set_vector(mic_l, "Translucency Tint Leaves", leaf_rgba)
                 for _sn, _sv in _LEAF_SCALARS.items():
                     _set_scalar(mic_l, _sn, _sv)
+                for _twig, _extra in TWIG_EXTRA_PARAMS.items():
+                    if species in TWIG_TO_SPECIES.get(_twig, []):
+                        for _pn, _pv in _extra.items():
+                            _set_vector(mic_l, _pn, list(_pv) + [1.0])
+                            print(f"  [ok] {{species}}: {{_pn}} from {{_twig}}")
                 leaf_diff = tex_bucket.get("leaf_diffuse")
                 if leaf_diff is not None and "leaf_diffuse" in TEXTURE_PARAM_NAMES:
                     _set_texture(mic_l, TEXTURE_PARAM_NAMES["leaf_diffuse"], leaf_diff.get_asset())

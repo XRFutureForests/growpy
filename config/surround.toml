@@ -14,7 +14,9 @@
 # grove, so this only affects single-tree contexts.
 
 [surround]
-radii = [0.0, 8.0, 16.0]  # 0 = no surround; >0 = shell distance (meters)
+radii = [5.0]  # 0 = no surround; >0 = shell distance (meters)
+# Scoped to a single 5 m shell for the beech/fir iteration loop
+# (2026-09-08). The full dataset uses [0.0, 8.0, 16.0].
 # NOTE: 16 m is beyond the 4-10 m range docs/reference/grove-preset-reference.md
 # documents for surround_distance. Grove accepts it, but the shell is far enough
 # away that its effect is weak -- the earlier r18 variant came out nearly

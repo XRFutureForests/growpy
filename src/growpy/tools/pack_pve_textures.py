@@ -94,10 +94,16 @@ def _foliage_maps(twig_dir: Path) -> dict[str, Path]:
         stem = path.stem.lower()
         if "_foliage_normal" in stem:
             role, rank = "normal", 0
+        elif "fall" in stem and ("top" in stem or "_diffuse" in stem):
+            # Autumn variant: no texture slot for it, but its average colour
+            # drives the master's Season Color parameters.
+            role, rank = "fall", 0
         elif "_foliage_diffuse_top" in stem:
             role, rank = "diffuse", 0
         elif "_foliage_diffuse_bottom" in stem:
-            role, rank = "diffuse", 2
+            # The leaf underside. The master has no second texture slot, but
+            # BaseColor Tint Leaf Backside takes its average colour.
+            role, rank = "bottom", 0
         elif "_foliage_diffuse" in stem:
             role, rank = "diffuse", 1
         else:
@@ -106,6 +112,33 @@ def _foliage_maps(twig_dir: Path) -> dict[str, Path]:
         if current is None or rank < current[0]:
             ranked[role] = (rank, path)
     return {role: path for role, (_, path) in ranked.items()}
+
+
+def _mean_colour(path: Path) -> list[float] | None:
+    """Average linear-ish RGB of a map's opaque pixels, 0-1.
+
+    Used for the parameters the master exposes but has no texture slot for --
+    the leaf underside and the autumn variant. Transparent pixels are excluded
+    or the surrounding empty atlas would wash the average out.
+    """
+    try:
+        import numpy as np
+        from PIL import Image
+
+        im = Image.open(path)
+        rgb = np.asarray(im.convert("RGB"), dtype=float) / 255.0
+        if im.mode in ("RGBA", "LA") or "transparency" in im.info:
+            a = np.asarray(im.convert("RGBA").getchannel("A"), dtype=float) / 255.0
+            mask = a > 0.5
+            if mask.sum() < 64:
+                return None
+            rgb = rgb[mask]
+        else:
+            rgb = rgb.reshape(-1, 3)
+        return [round(float(v), 4) for v in rgb.mean(axis=0)]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("mean colour failed for %s: %s", path.name, exc)
+        return None
 
 
 def pack_asset(twig_dir: Path, dry_run: bool = False) -> dict[str, object]:
@@ -157,6 +190,9 @@ def pack_asset(twig_dir: Path, dry_run: bool = False) -> dict[str, object]:
         base.save(base_path)
     result["basecolor"] = base_path.name
 
+    # Bump maps are already converted to normals upstream, in
+    # process_twig_textures during asset preparation, so there is nothing extra
+    # to do for the 9 assets that ship bump instead of normal.
     normal_src = foliage.get("normal", candidates.get("normal"))
     if normal_src is not None:
         normal = _load(normal_src).convert("RGB")
@@ -175,6 +211,25 @@ def pack_asset(twig_dir: Path, dry_run: bool = False) -> dict[str, object]:
             packed.save(normal_path)
         result["normal"] = normal_path.name
         result["translucency"] = "translucent" in candidates
+
+    # Parameters the master exposes but has no texture slot for. Written as a
+    # sidecar so the material pass can wire them without re-opening the images.
+    params: dict[str, object] = {}
+    if foliage.get("bottom") is not None:
+        c = _mean_colour(foliage["bottom"])
+        if c:
+            params["BaseColor Tint Leaf Backside"] = c
+    if foliage.get("fall") is not None:
+        c = _mean_colour(foliage["fall"])
+        if c:
+            params["Season Color 1"] = c
+            params["Season Color 2"] = c
+    if params and not dry_run:
+        import json
+
+        (textures / f"{stem}_pve_params.json").write_text(
+            json.dumps(params, indent=2), encoding="utf-8")
+    result["params"] = params
     return result
 
 

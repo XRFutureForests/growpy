@@ -4,7 +4,7 @@
 
 [forest]
 # Quality preset name -- must match a [quality.<name>] section in quality.toml
-quality = "low"
+quality = "high"
 # Maximum growth cycles per tree (1-250)
 # Trees exceeding this limit are capped (not scaled), silently losing their
 # upper height stages. Measured uncalibrated cycles-to-max-height: Douglas fir
@@ -67,7 +67,7 @@ height_interval = 5
 # h25 the tall conifers need the height-LOD ladder (XRFF-324) that does not
 # exist yet -- at [quality.high] an open-grown silver fir already exhausts a
 # 63.5 GB host at h20. See docs/dataset/dataset-overview.md.
-max_height = 15
+max_height = 10
 
 # --- Export options ---
 [export]
