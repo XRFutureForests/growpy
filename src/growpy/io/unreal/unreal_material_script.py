@@ -390,8 +390,17 @@ for ad in all_assets:
         role = "leaf_normal"
     else:
         role = "leaf_diffuse"
+    # The packed *_pve_basecolor / *_pve_normal maps are the ones the master
+    # actually wants: colour+alpha and normal+translucency in the two texture
+    # parameters it exposes, the same contract MegaPlants ships as _CA/_NT.
+    # The raw Grove maps are RGB JPEGs with no alpha at all, so they cannot
+    # drive opacity or subsurface. Prefer packed, and let it override a raw map
+    # already registered for this role.
+    packed = "_pve_" in name_lower
     for sp in owners:
-        species_textures.setdefault(sp, {{}}).setdefault(role, ad)
+        bucket = species_textures.setdefault(sp, {{}})
+        if packed or role not in bucket:
+            bucket[role] = ad
 
 print(f"Found textures for {{len(species_textures)}} species")
 
