@@ -249,10 +249,17 @@ def _create_mic(name, parent, sub_path="", role=None):
             )
     if mic is None:
         return None
-    try:
-        mel.set_material_instance_parent(mic, parent)
-    except Exception as e:
-        unreal.log_warning(f"Could not set parent on {{name}}: {{e}}")
+    if full_path not in _CLONED:
+        # Only a factory-built instance needs its parent assigned. A clone
+        # already points at the master its reference used -- the PVE plugin's
+        # /ProceduralVegetationEditor/.../MA_Foliage_Trees. Re-pointing it at
+        # the project's same-named copy under /Game/Templates silently swaps
+        # the graph underneath: every parameter name still resolves, so the
+        # instances compare identical, but the tree renders violet.
+        try:
+            mel.set_material_instance_parent(mic, parent)
+        except Exception as e:
+            unreal.log_warning(f"Could not set parent on {{name}}: {{e}}")
     return mic
 
 
@@ -311,8 +318,31 @@ _LEAF_SCALARS = {{
 }}
 
 
+def _ensure_virtual(texture):
+    """Make a texture virtual-texture streamed, as MA_Foliage_Trees requires.
+
+    The PVE master samples through virtual texture samplers, and every
+    MegaPlants texture it ships is authored that way. Feeding it a
+    non-virtual texture is not an error UE refuses -- it logs
+    "expects texture ... to be Virtual" and the sampler returns garbage,
+    which renders as a colour that changes on every recompile (magenta,
+    violet, neon green). Enabling it here keeps the requirement attached to
+    the material that imposes it, whichever step imported the texture.
+    """
+    if texture is None:
+        return
+    try:
+        if not texture.get_editor_property("virtual_texture_streaming"):
+            texture.set_editor_property("virtual_texture_streaming", True)
+            editor_asset_lib.save_loaded_asset(texture)
+            print(f"  [ok] {{texture.get_name()}}: virtual texture streaming on")
+    except Exception as e:
+        unreal.log_warning(f"Could not make {{texture.get_name()}} virtual: {{e}}")
+
+
 def _set_texture(mic, name, texture):
     try:
+        _ensure_virtual(texture)
         mel.set_material_instance_texture_parameter_value(mic, name, texture)
         return True
     except Exception as e:
