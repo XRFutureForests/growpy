@@ -211,6 +211,7 @@ class GrowPyConfig:
         "surround_density_per_species": "nested dict structure, config-only by design",
         "export_twig_reattach_threshold": "internal tuning, no CLI need identified",
         "export_twig_recovery": "internal toggle, no CLI need identified",
+        "export_external_refs": "internal toggle, no CLI need identified",
         "twigs_planar_angle": "internal tuning, no CLI need identified",
         "twigs_planar_angle_per_twig": "nested dict structure, config-only by design",
         "twigs_boundary_edge_mm_per_twig": "nested dict structure, "
@@ -485,6 +486,7 @@ class GrowPyConfig:
     # crown sits below Grove's true (cutoff-free) density, with it on it
     # approaches that density from underneath.
     export_twig_recovery: bool = True
+    export_external_refs: bool = False
     # Reject a recovered twig once it lands closer than this fraction of the
     # tree's own median living-twig spacing to an already-placed twig, so
     # branches cut close together don't stack compensation twigs on top of
@@ -785,6 +787,8 @@ class GrowPyConfig:
             )
         if "twig_recovery" in export:
             kwargs["export_twig_recovery"] = bool(export["twig_recovery"])
+        if "external_refs" in export:
+            kwargs["export_external_refs"] = bool(export["external_refs"])
         if "twig_min_spacing_ratio" in export:
             kwargs["export_twig_min_spacing_ratio"] = float(
                 export["twig_min_spacing_ratio"]

@@ -108,6 +108,127 @@ class MissingTwigPrototypesError(RuntimeError):
     """
 
 
+def _external_ref_asset_path(twig_asset_name: str, project_path: str) -> str:
+    """UE package path of an already-imported twig prototype.
+
+    The twig library is imported once by batch 00 into
+    ``<project_path>/Instances/<family>_twigs_combined_skeletal/SkeletalMeshes``
+    and the family is the twig asset's own prefix, not the species -- silver_fir
+    is grown from ``pacific_silver_fir_*`` twigs.
+    """
+    stem = twig_asset_name
+    for token in ("_foliage_", "_foliage", "_twig_", "_twig"):
+        if token in stem:
+            stem = stem.split(token)[0]
+            break
+    return (
+        f"{project_path.rstrip('/')}/Instances/{stem}_twigs_combined_skeletal"
+        f"/SkeletalMeshes/SK_{twig_asset_name}"
+    )
+
+
+def _convert_instancer_to_external_refs(
+    stage, assembly_name: str, proto_asset_paths: dict
+) -> int:
+    """Replace the twig PointInstancer with one Xform per placement.
+
+    A PointInstancer makes UE import the prototype GEOMETRY out of the USD and
+    expand every instance into the combined Nanite mesh, which is what exhausts
+    memory on a dense crown. ``NaniteAssemblyExternalRefAPI`` instead names a
+    package path already in the project, so the tree USD carries only
+    transforms -- but the schema is read on a plain prim only:
+    ``GetExternalAssetRef`` sits after an ``if (Prim.IsA("PointInstancer")) return``
+    early-out in USDNaniteAssemblyTranslator.cpp, so the instancer has to go.
+
+    Returns the number of placements written.
+    """
+    from pxr import Gf, Sdf, UsdGeom
+
+    inst_prim = stage.GetPrimAtPath(f"/{assembly_name}/TwigInstances")
+    if not inst_prim or not inst_prim.IsValid():
+        return 0
+    inst = UsdGeom.PointInstancer(inst_prim)
+
+    positions = list(inst.GetPositionsAttr().Get() or [])
+    orients = list(inst.GetOrientationsAttr().Get() or [])
+    scales = list(inst.GetScalesAttr().Get() or [])
+    proto_idx = list(inst.GetProtoIndicesAttr().Get() or [])
+    proto_names = [t.name for t in inst.GetPrototypesRel().GetTargets()]
+    if not positions or not proto_idx:
+        return 0
+
+    joints_attr = inst_prim.GetAttribute("primvars:unreal:naniteAssembly:bindJoints")
+    weights_attr = inst_prim.GetAttribute(
+        "primvars:unreal:naniteAssembly:bindJointWeights"
+    )
+    bind_joints = list(joints_attr.Get() or []) if joints_attr else []
+    bind_weights = list(weights_attr.Get() or []) if weights_attr else []
+    per_instance = 0
+    if joints_attr and bind_joints:
+        per_instance = joints_attr.GetMetadata("elementSize") or (
+            len(bind_joints) // len(positions) if positions else 0
+        )
+
+    written = 0
+    for i, pos in enumerate(positions):
+        name = proto_names[proto_idx[i]] if proto_idx[i] < len(proto_names) else None
+        asset_path = proto_asset_paths.get(name)
+        if not asset_path:
+            continue
+        part = UsdGeom.Xform.Define(stage, f"/{assembly_name}/TwigParts/Twig_{i:05d}")
+        part.AddTranslateOp().Set(Gf.Vec3d(pos[0], pos[1], pos[2]))
+        if i < len(orients):
+            q = orients[i]
+            part.AddOrientOp().Set(
+                Gf.Quatf(
+                    float(q.GetReal()),
+                    Gf.Vec3f(*[float(v) for v in q.GetImaginary()]),
+                )
+            )
+        if i < len(scales):
+            part.AddScaleOp().Set(Gf.Vec3f(*[float(v) for v in scales[i]]))
+
+        prim = part.GetPrim()
+        schemas = Sdf.TokenListOp()
+        schemas.prependedItems = [
+            "NaniteAssemblyExternalRefAPI",
+            "NaniteAssemblySkelBindingAPI",
+        ]
+        prim.SetMetadata("apiSchemas", schemas)
+        prim.CreateAttribute(
+            "unreal:naniteAssembly:meshAssetPath",
+            Sdf.ValueTypeNames.Token,
+            False,
+            Sdf.VariabilityUniform,
+        ).Set(asset_path)
+
+        if per_instance:
+            lo, hi = i * per_instance, (i + 1) * per_instance
+            if hi <= len(bind_joints):
+                prim.CreateAttribute(
+                    "primvars:unreal:naniteAssembly:bindJoints",
+                    Sdf.ValueTypeNames.TokenArray,
+                    False,
+                    Sdf.VariabilityUniform,
+                ).Set(bind_joints[lo:hi])
+            if hi <= len(bind_weights):
+                prim.CreateAttribute(
+                    "primvars:unreal:naniteAssembly:bindJointWeights",
+                    Sdf.ValueTypeNames.FloatArray,
+                    False,
+                    Sdf.VariabilityUniform,
+                ).Set(bind_weights[lo:hi])
+        written += 1
+
+    # The prototypes exist only to feed the instancer; leaving them behind would
+    # re-import the very geometry this pass exists to avoid.
+    stage.RemovePrim(inst_prim.GetPath())
+    protos = stage.GetPrimAtPath(f"/{assembly_name}/TwigPrototypes")
+    if protos and protos.IsValid():
+        stage.RemovePrim(protos.GetPath())
+    return written
+
+
 def create_assembly(
     tree_usd_path: Path,
     output_path: Path,
@@ -176,6 +297,10 @@ def create_assembly(
         api_schemas = Sdf.TokenListOp()
         api_schemas.prependedItems = ["NaniteAssemblyRootAPI"]
         root_prim.SetMetadata("apiSchemas", api_schemas)
+        # Prototype prim name -> twig asset name, for the external-ref pass.
+        # Bound here because a twigless tree never reaches the prototype loop.
+        proto_to_asset: dict[str, str] = {}
+
         # Set kind metadata to 'group' as per Epic's official Nanite Assembly tutorial.
         # The root is a container of sub-components (tree mesh + twig instances).
         root_prim.SetMetadata("kind", "group")
@@ -340,6 +465,7 @@ def create_assembly(
                 # twig_type_to_proto_indices: grove_type -> [proto_idx, proto_idx, ...]
                 twig_type_to_proto_indices: dict[str, list[int]] = {}
                 prototype_paths = []
+                proto_to_asset: dict[str, str] = {}
                 seen_files: dict[str, int] = {}  # twig filename -> proto_idx (dedup)
 
                 from .texture_utils import copy_and_resize_texture
@@ -448,6 +574,7 @@ def create_assembly(
                         )
 
                     prototype_paths.append(Sdf.Path(proto_prim.GetPath()))
+                    proto_to_asset[proto_name] = twig_asset_name
 
                 # Collect all proto indices for random fallback
                 all_proto_indices_pool = list(range(len(prototype_paths)))
@@ -779,6 +906,31 @@ def create_assembly(
                 pass
 
         # Skeleton is already embedded if use_skeletal_mesh=True (handled earlier)
+
+        # Optionally hand UE package paths instead of geometry (XRFF-389).
+        if proto_to_asset:
+            try:
+                from growpy.config.core import get_config
+
+                cfg = get_config()
+                if getattr(cfg, "export_external_refs", False):
+                    project_path = getattr(
+                        cfg, "unreal_project_path", "/Game/Assets/TheGrove"
+                    )
+                    asset_paths = {
+                        proto: _external_ref_asset_path(asset, project_path)
+                        for proto, asset in proto_to_asset.items()
+                    }
+                    n = _convert_instancer_to_external_refs(
+                        stage, assembly_name, asset_paths
+                    )
+                    logger.info(
+                        "External refs: %d placements point at imported assets "
+                        "(no geometry in this USD)",
+                        n,
+                    )
+            except Exception as e:  # pragma: no cover - config/USD edge cases
+                logger.warning("External-ref conversion skipped: %s", e)
 
         # Save stage
         stage.GetRootLayer().Save()

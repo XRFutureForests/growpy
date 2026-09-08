@@ -192,6 +192,15 @@ max_skeleton_joints = 1000
 # twig_density, becomes the binding constraint on mature trees. A 10 m oak
 # reaches ~52k instances at natural density and a 15 m one goes well beyond.
 max_assembly_instances = 40000
+# Hand UE the package path of an already-imported twig instead of its geometry
+# (XRFF-389). With this off, the assembly is a PointInstancer whose prototypes
+# carry geometry, and NaniteAssemblyRootAPI expands every instance into one
+# combined Nanite mesh at import -- which is what runs the editor out of memory
+# on a dense crown. With it on, each placement becomes an Xform carrying
+# NaniteAssemblyExternalRefAPI + a meshAssetPath, so the tree USD holds only
+# transforms. The twig library must already be imported (batch 00) for the
+# paths to resolve.
+external_refs = true
 # Skip assembly validation (saves ~5-10% export time)
 skip_validation = true
 # Only export specific trees by fid (integer array)
