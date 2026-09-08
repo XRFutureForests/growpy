@@ -595,12 +595,27 @@ def _slot_is_foliage(pkg_path, slot_name, material_name):
     return True
 
 
-def _species_for_asset(pkg_path, asset_name):
+def _species_for_asset(pkg_path, asset_name, known=None):
+    """Species whose material instances this asset should use.
+
+    A shared twig belongs to several species -- pacific_silver_fir foliage is
+    used by douglas_fir, silver_fir and norway_spruce -- so taking owners[0]
+    picked a species that is not part of a scoped run and the asset was skipped
+    entirely. With external references the twig library assets keep their own
+    material, so skipping them leaves the needles on UsdPreviewSurface instead
+    of the PVE master. Prefer an owner this run actually built instances for.
+    """
     rel = pkg_path[len(IMPORT_PATH):].lstrip("/") if pkg_path.startswith(IMPORT_PATH) else pkg_path
     parts = rel.split("/")
     if parts and parts[0] == "Instances":
         owners = _species_from_instances_name(asset_name)
-        return owners[0] if owners else None
+        if not owners:
+            return None
+        if known:
+            for owner in owners:
+                if owner in known:
+                    return owner
+        return owners[0]
     if parts:
         return parts[0]
     return None
@@ -621,7 +636,7 @@ def _iter_slots(mesh, cls):
 assigned_count = 0
 skipped_count = 0
 for ad, pkg, cls in mesh_assets:
-    species = _species_for_asset(pkg, str(ad.asset_name))
+    species = _species_for_asset(pkg, str(ad.asset_name), mic_cache)
     if species is None or species not in mic_cache:
         skipped_count += 1
         continue
