@@ -1063,6 +1063,15 @@ def generate_unreal_import_script(
         # unreal.log_error ("Parent material not found"), which goes to UE's
         # log and not to ue_exec's stdout, so the batch still reports as
         # completed and every tree silently keeps its raw USD materials.
+        # Bark normals and packed PVE twig maps are referenced by no mesh, so
+        # the USD import never brings them in. Batch 97 imports them; batch 98
+        # then has something to wire onto the MICs.
+        from .unreal_texture_script import generate_texture_import_script
+
+        textures_name = "import_batch_97_textures.py"
+        generate_texture_import_script(script_dir, project_path=project_path)
+        batch_scripts.append((textures_name, "Import auxiliary textures"))
+
         from .pve_import_script import build_species_twig_map
 
         try:

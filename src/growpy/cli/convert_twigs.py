@@ -622,7 +622,35 @@ Output per twig:
         return 1
 
     _write_leaf_geometry_sidecars(twig_path)
+    _pack_pve_textures(twig_path)
     return 0
+
+
+def _pack_pve_textures(twig_path: Path) -> None:
+    """Combine each asset's twig maps into the two the PVE master takes.
+
+    ``MA_Foliage_Trees`` exposes exactly two texture parameters -- Base Color
+    (colour + alpha) and Normal (normal + translucency) -- which is why
+    MegaPlants ships ``_CA``/``_NT`` pairs. The Grove spreads the same
+    information across up to four files, and its diffuse maps are RGB JPEGs
+    with no alpha channel at all, so wiring them straight onto the master gave
+    leaves no opacity and no subsurface input.
+
+    Run here rather than left to the operator: step 1 re-copies the pristine
+    Grove textures, so a ``--clean`` dataset run would otherwise silently drop
+    the packed maps and put the raw ones back.
+    """
+    from growpy.tools.pack_pve_textures import pack_twig_assets
+
+    root = twig_path.parent if twig_path.is_file() else twig_path
+    try:
+        packed = pack_twig_assets(root)
+    except Exception as exc:  # noqa: BLE001 -- reported, never fatal
+        logger.warning("PVE texture packing failed: %s", exc)
+        return
+    logger.info(
+        "Packed PVE textures for %d twig asset(s) under %s", len(packed), root
+    )
 
 
 def _write_leaf_geometry_sidecars(twig_path: Path) -> None:

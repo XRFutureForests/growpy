@@ -128,6 +128,24 @@ def pack_asset(twig_dir: Path, dry_run: bool = False) -> dict[str, object]:
     return result
 
 
+def pack_twig_assets(
+    twigs_root: Path, species: str | None = None, dry_run: bool = False
+) -> list[dict[str, object]]:
+    """Pack every twig asset directory under `twigs_root`.
+
+    The shared entry point for the CLI and for `growpy-convert-twigs`, which
+    calls this at the end of the conversion so a dataset run needs no separate
+    packing step.
+    """
+    if not twigs_root.is_dir():
+        logger.warning("no such twigs root: %s", twigs_root)
+        return []
+    dirs = [p for p in sorted(twigs_root.iterdir()) if p.is_dir()]
+    if species:
+        dirs = [p for p in dirs if species.lower() in p.name.lower()]
+    return [pack_asset(twig_dir, dry_run) for twig_dir in dirs]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
