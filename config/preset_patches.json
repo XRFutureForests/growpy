@@ -255,7 +255,8 @@
   },
   "silver_fir": {
     "drop_decay": 0.18,
-    "drop_weak": 0.18
+    "drop_weak": 0.18,
+    "drop_shaded": 0.05
   },
   "silver_birch": {
     "drop_decay": 0.36,

@@ -295,7 +295,10 @@ european_oak = 0.1764        # measured 0.84x at 0.148
 norway_spruce = 0.0556       # measured 0.55x at 0.0305
 scots_pine = 0.0343          # measured 0.53x at 0.0181
 silver_birch = 0.1276        # measured 1.57x at 0.200 -- pooled fit
-silver_fir = 0.1253          # measured 0.34x at 0.0428 -- pooled fit, h05/h10 scope
+silver_fir = 0.1660          # measured 0.75x at 0.1253 -- pooled fit, h05-h20,
+                             # re-derived after drop_shaded 0.05. The ratio is now
+                             # flat across the ladder (0.73-0.78) where it used to
+                             # run 1.04-1.52, so one value finally serves all stages
 small_leaved_linden = 0.3119 # measured 0.45x at 0.139 -- pooled fit
 sycamore_maple = 0.0535      # measured 2.13x at 0.114 -- pooled fit
 wild_cherry = 0.0320         # measured 1.04x at 0.0331 -- pooled fit
