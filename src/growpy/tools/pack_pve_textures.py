@@ -196,21 +196,30 @@ def pack_asset(twig_dir: Path, dry_run: bool = False) -> dict[str, object]:
     normal_src = foliage.get("normal", candidates.get("normal"))
     if normal_src is not None:
         normal = _load(normal_src).convert("RGB")
-        if "translucent" in candidates:
-            trans = _load(candidates["translucent"]).convert("L")
-            if trans.size != normal.size:
-                trans = trans.resize(normal.size)
-        else:
-            # No translucency map: leave the channel black rather than white, so
-            # a species without the data reads as opaque instead of maximally
-            # translucent if the material samples it anyway.
-            trans = Image.new("L", normal.size, 0)
-        packed = Image.merge("RGBA", (*normal.split(), trans))
-        normal_path = textures / f"{stem}{NORMAL_SUFFIX}"
-        if not dry_run:
-            packed.save(normal_path)
-        result["normal"] = normal_path.name
-        result["translucency"] = "translucent" in candidates
+        result["flat_normal"] = False
+    else:
+        # No normal map in the source asset. Emit a flat tangent-space normal
+        # rather than no map at all: the PVE material instances are cloned from
+        # a MegaPlants reference, so a missing Normal leaves the reference
+        # species' packed map in the slot, which renders as visibly wrong
+        # shading (a violet fir crown lit by spruce normals).
+        normal = Image.new("RGB", base.size, (128, 128, 255))
+        result["flat_normal"] = True
+    if "translucent" in candidates:
+        trans = _load(candidates["translucent"]).convert("L")
+        if trans.size != normal.size:
+            trans = trans.resize(normal.size)
+    else:
+        # No translucency map: leave the channel black rather than white, so
+        # a species without the data reads as opaque instead of maximally
+        # translucent if the material samples it anyway.
+        trans = Image.new("L", normal.size, 0)
+    packed = Image.merge("RGBA", (*normal.split(), trans))
+    normal_path = textures / f"{stem}{NORMAL_SUFFIX}"
+    if not dry_run:
+        packed.save(normal_path)
+    result["normal"] = normal_path.name
+    result["translucency"] = "translucent" in candidates
 
     # Parameters the master exposes but has no texture slot for. Written as a
     # sidecar so the material pass can wire them without re-opening the images.

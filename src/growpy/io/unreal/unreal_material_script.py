@@ -189,18 +189,64 @@ def _set_static_switch(mic, name, value):
     return False
 
 
-def _create_mic(name, parent, sub_path=""):
+# Reference instances to clone. MA_Foliage_Trees exposes 38 scalars, 20 vectors
+# and 19 switches; an instance created from the factory leaves nearly all of
+# them at master defaults, and those defaults are not a usable configuration --
+# Health Offset defaults to 0.0, which applies the master's red
+# "Health Color Overlay" at full strength. Reconstructing Epic's setup
+# parameter by parameter was tried and repeatedly produced wrong colour
+# (magenta leaves, green bark). Cloning their shipped instance and overriding
+# only textures and species tint renders correctly on our meshes -- verified in
+# the editor 2026-09-08 with our own packed beech atlas.
+_REFERENCE_MIC = {{
+    "leaves": "/Game/Megaplant_Library/Tree_Norway_Spruce/Materials/"
+              "MI_Norway_Spruce_Foliage_01",
+    "trunk": "/Game/Megaplant_Library/Tree_Norway_Spruce/Materials/"
+             "MI_Norway_Spruce_Bark_01",
+}}
+
+
+# Package paths of instances that inherited Epic's configuration this run.
+_CLONED = set()
+
+# The BaseColor tints in MA_Foliage_Trees are not plain colours: their alpha
+# carries a blend amount, so writing a species RGB with a made-up alpha changes
+# behaviour rather than hue (bark went red, leaves magenta, and zeroing alpha
+# turned a summer beech autumn-orange). A cloned instance keeps Epic's values
+# untouched and species identity comes from the textures instead.
+
+
+def _is_cloned(mic):
+    return mic is not None and mic.get_path_name().split(".")[0] in _CLONED
+
+
+def _create_mic(name, parent, sub_path="", role=None):
     full_path = MATERIALS_PATH + ("/" + sub_path if sub_path else "") + "/" + name
     if editor_asset_lib.does_asset_exist(full_path):
         mic = editor_asset_lib.load_asset(full_path)
     else:
-        factory = unreal.MaterialInstanceConstantFactoryNew()
-        mic = asset_tools.create_asset(
-            name,
-            MATERIALS_PATH + ("/" + sub_path if sub_path else ""),
-            unreal.MaterialInstanceConstant,
-            factory,
-        )
+        ref = _REFERENCE_MIC.get(role or "")
+        mic = None
+        if ref and editor_asset_lib.does_asset_exist(ref):
+            # Duplicate rather than create: inherits a configuration that is
+            # known to render, instead of ~70 unset parameters.
+            mic = editor_asset_lib.duplicate_asset(ref, full_path)
+            if mic is not None:
+                _CLONED.add(full_path)
+                print(f"  [ok] {{name}} cloned from {{ref.split('/')[-1]}}")
+        if mic is None:
+            if ref:
+                unreal.log_warning(
+                    f"reference instance {{ref}} unavailable; {{name}} falls back "
+                    "to master defaults and will need its parameters checked"
+                )
+            factory = unreal.MaterialInstanceConstantFactoryNew()
+            mic = asset_tools.create_asset(
+                name,
+                MATERIALS_PATH + ("/" + sub_path if sub_path else ""),
+                unreal.MaterialInstanceConstant,
+                factory,
+            )
     if mic is None:
         return None
     try:
@@ -437,18 +483,24 @@ if parent_mat is not None:
         bark_rgba = colors.get("bark")
         tex_bucket = species_textures.get(species, {{}})
         if leaf_rgba is not None:
-            mic_l = _create_mic(f"MI_{{species}}_Leaves", parent_mat)
+            mic_l = _create_mic(f"MI_{{species}}_Leaves", parent_mat, role="leaves")
             if mic_l is not None:
-                _set_static_switch(mic_l, "DefaultLit Trunk", False)
-                _set_vector(mic_l, "BaseColor Tint Leaves", leaf_rgba)
-                _set_vector(mic_l, "Translucency Tint Leaves", leaf_rgba)
-                for _sn, _sv in _LEAF_SCALARS.items():
-                    _set_scalar(mic_l, _sn, _sv)
-                for _twig, _extra in TWIG_EXTRA_PARAMS.items():
-                    if species in TWIG_TO_SPECIES.get(_twig, []):
-                        for _pn, _pv in _extra.items():
-                            _set_vector(mic_l, _pn, list(_pv) + [1.0])
-                            print(f"  [ok] {{species}}: {{_pn}} from {{_twig}}")
+                # A cloned instance already carries a rendering configuration
+                # that works; overriding tints and scalars on top of it is what
+                # produced magenta leaves and red bark. Only the textures --
+                # the actual species signal -- are swapped in.
+                if not _is_cloned(mic_l):
+                    _set_static_switch(mic_l, "DefaultLit Trunk", False)
+                    _set_vector(mic_l, "BaseColor Tint Leaves", leaf_rgba)
+                    _set_vector(mic_l, "Translucency Tint Leaves", leaf_rgba)
+                    for _sn, _sv in _LEAF_SCALARS.items():
+                        _set_scalar(mic_l, _sn, _sv)
+                if not _is_cloned(mic_l):
+                    for _twig, _extra in TWIG_EXTRA_PARAMS.items():
+                        if species in TWIG_TO_SPECIES.get(_twig, []):
+                            for _pn, _pv in _extra.items():
+                                _set_vector(mic_l, _pn, list(_pv) + [1.0])
+                                print(f"  [ok] {{species}}: {{_pn}} from {{_twig}}")
                 leaf_diff = tex_bucket.get("leaf_diffuse")
                 if leaf_diff is not None and "leaf_diffuse" in TEXTURE_PARAM_NAMES:
                     _set_texture(mic_l, TEXTURE_PARAM_NAMES["leaf_diffuse"], leaf_diff.get_asset())
@@ -459,12 +511,13 @@ if parent_mat is not None:
                 editor_asset_lib.save_loaded_asset(mic_l)
                 entry["leaves"] = mic_l
         if bark_rgba is not None:
-            mic_t = _create_mic(f"MI_{{species}}_Trunk", parent_mat)
+            mic_t = _create_mic(f"MI_{{species}}_Trunk", parent_mat, role="trunk")
             if mic_t is not None:
-                _set_static_switch(mic_t, "DefaultLit Trunk", True)
-                _set_vector(mic_t, "BaseColor Tint", bark_rgba)
-                for _sn, _sv in _TRUNK_SCALARS.items():
-                    _set_scalar(mic_t, _sn, _sv)
+                if not _is_cloned(mic_t):
+                    _set_static_switch(mic_t, "DefaultLit Trunk", True)
+                    _set_vector(mic_t, "BaseColor Tint", bark_rgba)
+                    for _sn, _sv in _TRUNK_SCALARS.items():
+                        _set_scalar(mic_t, _sn, _sv)
                 trunk_diff = tex_bucket.get("trunk_diffuse")
                 if trunk_diff is not None and "trunk_diffuse" in TEXTURE_PARAM_NAMES:
                     _set_texture(mic_t, TEXTURE_PARAM_NAMES["trunk_diffuse"], trunk_diff.get_asset())
