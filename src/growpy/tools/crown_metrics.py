@@ -59,8 +59,42 @@ def _hull_area(pts: np.ndarray) -> float:
         return math.pi * rx * ry
 
 
+def _proto_key(name: str) -> str:
+    """Match a sidecar name to a USD prototype name.
+
+    USD prim names have to be valid identifiers, so the exporter strips the
+    underscores: ``european_beech_foliage_a`` becomes ``europeanbeechfoliagea``.
+    Comparing on a normalised key keeps the two sides in step without either
+    having to know how the other spells it.
+    """
+    return "".join(c for c in name.lower() if c.isalnum())
+
+
+def load_leaf_areas(twig_dir: Path) -> dict[str, float]:
+    """Prototype name -> leaf-only surface area in m2, from the twig sidecars.
+
+    Prefers ``*_leaf_area_geom.json`` over ``*_leaf_area.json``: the plain
+    sidecar reports whole-mesh area with the woody shoot included (XRFF-274),
+    which inflates a conifer spray most, since its needles and twig share one
+    material and the material-name exclusion cannot fire at all.
+    """
+    areas: dict[str, float] = {}
+    if not twig_dir.is_dir():
+        return areas
+    for suffix in ("_leaf_area.json", "_leaf_area_geom.json"):
+        for f in sorted(twig_dir.glob(f"*/*{suffix}")):
+            try:
+                data = json.loads(f.read_text())
+            except (OSError, ValueError):
+                continue
+            area = data.get("leaf_area_m2")
+            if area:
+                areas[_proto_key(f.name[: -len(suffix)])] = float(area)
+    return areas
+
+
 def measure_assembly(
-    path: Path, leaf_area_per_twig: float | None = None
+    path: Path, leaf_areas: dict[str, float] | None = None
 ) -> dict | None:
     from pxr import Usd, UsdGeom
 
@@ -69,12 +103,22 @@ def measure_assembly(
         return None
 
     pts = None
+    proto_idx = None
+    proto_names: list[str] = []
+    scales = None
     for prim in stage.Traverse():
         if prim.GetTypeName() == "PointInstancer":
             inst = UsdGeom.PointInstancer(prim)
             arr = inst.GetPositionsAttr().Get()
             if arr:
                 pts = np.asarray([(p[0], p[1], p[2]) for p in arr], dtype=float)
+            idx = inst.GetProtoIndicesAttr().Get()
+            if idx:
+                proto_idx = np.asarray(list(idx), dtype=int)
+            proto_names = [t.name for t in inst.GetPrototypesRel().GetTargets()]
+            sc = inst.GetScalesAttr().Get()
+            if sc:
+                scales = np.asarray([(v[0], v[1], v[2]) for v in sc], dtype=float)
             break
     if pts is None or len(pts) < 8:
         return None
@@ -97,11 +141,28 @@ def measure_assembly(
     crown_base = float(zs[idx])
 
     proj = _hull_area(pts[:, :2])
-    lai = (
-        (leaf_area_per_twig * len(pts) / proj)
-        if (leaf_area_per_twig and proj > 0)
-        else None
-    )
+    # Leaf area is summed per instance from its own prototype rather than from a
+    # mean: the prototypes of one species differ by well over an order of
+    # magnitude (beech foliage_a is 0.0101 m2, its smallest component 5e-9), so
+    # an average would track which prototypes happen to be listed rather than
+    # which ones the tree actually placed. Instance scale enters as its square,
+    # since leaf area is an area.
+    leaf_total = None
+    if leaf_areas and proto_idx is not None and proto_names:
+        per_proto = np.array(
+            [leaf_areas.get(_proto_key(n), 0.0) for n in proto_names],
+            dtype=float,
+        )
+        if per_proto.any():
+            n = min(len(proto_idx), len(pts))
+            areas = per_proto[np.clip(proto_idx[:n], 0, len(per_proto) - 1)]
+            if scales is not None and len(scales) >= n:
+                # Uniform-ish scale: use the geometric mean of the axes so a
+                # non-uniform squash does not bias the area either way.
+                factor = np.abs(scales[:n]).prod(axis=1) ** (2.0 / 3.0)
+                areas = areas * factor
+            leaf_total = float(areas.sum())
+    lai = (leaf_total / proj) if (leaf_total and proj > 0) else None
 
     return {
         "n_twigs": int(len(pts)),
@@ -111,6 +172,7 @@ def measure_assembly(
         "crown_ratio": round((height - crown_base) / height, 3),
         "crown_projection_m2": round(proj, 1),
         "crown_d_over_h": round(crown_d / height, 3),
+        "leaf_area_m2": round(leaf_total, 2) if leaf_total else None,
         "lai": round(lai, 2) if lai else None,
     }
 
@@ -188,6 +250,12 @@ def main() -> int:
     ap.add_argument("--stage", default="h25m", help="height stage to measure")
     ap.add_argument("--json", type=Path, help="also write raw metrics here")
     ap.add_argument(
+        "--twig-dir",
+        type=Path,
+        default=Path("data/assets/twigs"),
+        help="twig asset root holding the *_leaf_area_geom.json sidecars",
+    )
+    ap.add_argument(
         "--outlines",
         action="store_true",
         help="also render a crown-outline plot beside each assembly",
@@ -195,12 +263,15 @@ def main() -> int:
     args = ap.parse_args()
 
     root = Path(args.forest_dir)
+    leaf_areas = load_leaf_areas(args.twig_dir)
+    if not leaf_areas:
+        print(f"note: no leaf-area sidecars under {args.twig_dir}; LAI omitted")
     rows: dict[str, dict[int, dict]] = {}
     for f in sorted(root.glob(f"*/r*/*_{args.stage}_*_full_assembly.usd*")):
         m = _NAME.match(f.name)
         if not m:
             continue
-        v = measure_assembly(f)
+        v = measure_assembly(f, leaf_areas)
         if v:
             rows.setdefault(f.parts[-3], {})[int(m.group(2))] = v
             if args.outlines:
@@ -209,8 +280,11 @@ def main() -> int:
                 )
 
     radii = sorted({r for d in rows.values() for r in d})
-    print(f"stage {args.stage}   crown diameter (m) / crown base (m) / crown ratio")
-    print(f"{'species':<21}" + "".join(f"{f'r{r:02d}':>26}" for r in radii))
+    print(
+        f"stage {args.stage}   crown diameter (m) / crown base (m) / "
+        "crown ratio / LAI"
+    )
+    print(f"{'species':<21}" + "".join(f"{f'r{r:02d}':>34}" for r in radii))
     for sp in sorted(rows):
         cells = ""
         for r in radii:
@@ -219,9 +293,10 @@ def main() -> int:
                 (
                     f"{v['crown_diameter_m']:>10.1f}{v['crown_base_m']:>8.1f}"
                     f"{v['crown_ratio']:>8.2f}"
+                    + (f"{v['lai']:>8.2f}" if v.get("lai") else f"{'--':>8}")
                 )
                 if v
-                else f"{'--':>26}"
+                else f"{'--':>34}"
             )
         print(f"{sp:<21}{cells}")
 
