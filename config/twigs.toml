@@ -55,7 +55,19 @@ alpha_trim = 0.9
 # silhouette was a visible 1 mm staircase. 0.25 mm quadruples outline detail
 # (ash end twig: 476 -> 1,842 boundary edges) and the planar dissolve absorbs
 # the extra density, so the finished twig costs only ~1.6x more faces.
-boundary_edge_mm = 0.25
+# 2026-09-08: raised 0.25 -> 2.0 after measuring what the fine outline actually
+# costs. The note above put it at ~1.6x more faces; on the beech twig it is
+# 7.1x -- foliage_a 1,064 faces at 2.0 mm against 7,565 at 0.25 mm, with the
+# leaf area unchanged (0.0103 vs 0.01012 m2). That difference is what made
+# dense crowns unimportable: the beech h10m assembly expands to 45.2 M faces at
+# 0.25 mm, against 66,912 triangles for Epic's ENTIRE Norway Spruce library,
+# whose heaviest branch part is 4,404. Every one of our prototypes carried the
+# same ~1 mm2 of leaf per face regardless of size, so the fir size ladder
+# changed granularity without changing cost per unit of crown; at 2.0 mm the
+# beech reaches 9.7 mm2/face and the same tree lands near 6 M faces.
+# The staircase this trades away was judged on an ash end twig, not beech;
+# owner-chosen 2026-09-08 with the numbers above in hand.
+boundary_edge_mm = 2.0
 # Target interior edge length in millimeters (0 = maximum simplification; positive = target edge length).
 # When set, derives the decimation ratio automatically so interior faces
 # converge to this edge size regardless of input resolution.
