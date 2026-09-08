@@ -67,7 +67,7 @@ height_interval = 5
 # h25 the tall conifers need the height-LOD ladder (XRFF-324) that does not
 # exist yet -- at [quality.high] an open-grown silver fir already exhausts a
 # 63.5 GB host at h20. See docs/dataset/dataset-overview.md.
-max_height = 10
+max_height = 20
 
 # --- Export options ---
 [export]
@@ -288,7 +288,9 @@ density_variants = [] # e.g., ["full", "reduced", "bare"]
 # Measured on a clean full run: 11 species, 32 h15m trees, all on the geom basis.
 common_ash = 1.0307          # measured 0.78x at 0.800
 douglas_fir = 0.0959         # measured 0.42x at 0.0399
-european_beech = 0.6413      # measured 0.35x at 0.2231 -- h05/h10 scope
+european_beech = 1.0414      # measured 0.62x at 0.6413 -- h05-h20 scope,
+                             # re-derived after drop_shaded 0.1 shed the
+                             # shaded lower branches and with them their leaf
 european_oak = 0.1764        # measured 0.84x at 0.148
 norway_spruce = 0.0556       # measured 0.55x at 0.0305
 scots_pine = 0.0343          # measured 0.53x at 0.0181
