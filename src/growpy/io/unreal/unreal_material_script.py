@@ -74,6 +74,7 @@ PARENT_MATERIAL_PATH = "{parent_material_path}"
 SPECIES_COLORS = {colors_json}
 
 _FOLIAGE_TOKENS = ("foliage", "twig", "leaf", "leaves")
+_BARK_TOKENS = ("bark", "trunk", "stem", "wood")
 
 asset_registry = unreal.AssetRegistryHelpers.get_asset_registry()
 asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
@@ -348,8 +349,26 @@ print(f"Created/updated MICs for {{len(mic_cache)}} species")
 def _slot_is_foliage(pkg_path, slot_name, material_name):
     if "/Instances/" in pkg_path:
         return True
-    probe = ((slot_name or "") + " " + (material_name or "")).lower()
-    return any(tok in probe for tok in _FOLIAGE_TOKENS)
+    # Classify on the SLOT name alone. The slot name is fixed at import
+    # (MI_douglas_fir_bark_0 / MI_pacific_silver_fir_0) whereas the material
+    # name is whatever this pass last assigned -- so including it makes the
+    # test self-defeating: once a slot wrongly holds MI_<species>_Trunk, the
+    # bark token matches the material name and it stays Trunk forever. Fall
+    # back to the material name only when there is no slot name at all.
+    probe = (slot_name or material_name or "").lower()
+    if any(tok in probe for tok in _BARK_TOKENS):
+        return False
+    if any(tok in probe for tok in _FOLIAGE_TOKENS):
+        return True
+    # Default to foliage, not bark. A tree assembly carries exactly two slots
+    # and the foliage one is named after the TWIG ASSET's species, not after
+    # the foliage: douglas fir's is MI_pacific_silver_fir_0, common ash's is
+    # MI_one_leaved_ash_0 ("leaved" does not contain "leaf" or "leaves"), scots
+    # pine's is MI_scots_pine_0. None of them match a foliage token, so with a
+    # bark default every leaf slot on all 99 trees was assigned the Trunk
+    # material and the crowns rendered as bark. Bark slots are reliably named
+    # MI_<species>_bark, so testing for bark is the side that can be matched.
+    return True
 
 
 def _species_for_asset(pkg_path, asset_name):
