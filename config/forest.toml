@@ -240,6 +240,15 @@ density_variants = [] # e.g., ["full", "reduced", "bare"]
 # Re-derive after any change to twig assets, quality preset, or growth
 # calibration -- all three move the measured ratio.
 [export.twig_density_per_species]
+# 2026-09-08: european_beech and silver_fir re-derived by
+# `growpy-calibrate-crown-density --all-stages` against the CURRENT scoped run,
+# which is h05m/h10m at r05 only. Both measured 0.35 and 0.34 of their Forrester
+# target and the crowns read visibly sparse in UE. The ratio was steady across
+# the two stages (beech 0.40/0.29, fir 0.31/0.37), so a single value serves this
+# scope. It is NOT a substitute for the h15m calibration the rest of this table
+# carries: required density varies within a species across stages, and these two
+# values are pinned at the low end of the ladder. Re-derive the whole table at
+# full scope before dataset production.
 # Every value below was back-solved 2026-09-04 by `growpy-calibrate-crown-
 # density`, which is this table's own documented method made repeatable: export
 # at the configured density, measure each crown's ONE-SIDED leaf area as
@@ -270,12 +279,12 @@ density_variants = [] # e.g., ["full", "reduced", "bare"]
 # Measured on a clean full run: 11 species, 32 h15m trees, all on the geom basis.
 common_ash = 1.0307          # measured 0.78x at 0.800
 douglas_fir = 0.0959         # measured 0.42x at 0.0399
-european_beech = 0.2231      # measured 0.62x at 0.138
+european_beech = 0.6413      # measured 0.35x at 0.2231 -- h05/h10 scope
 european_oak = 0.1764        # measured 0.84x at 0.148
 norway_spruce = 0.0556       # measured 0.55x at 0.0305
 scots_pine = 0.0343          # measured 0.53x at 0.0181
 silver_birch = 0.1276        # measured 1.57x at 0.200 -- pooled fit
-silver_fir = 0.0428          # measured 0.71x at 0.0304 -- pooled fit
+silver_fir = 0.1253          # measured 0.34x at 0.0428 -- pooled fit, h05/h10 scope
 small_leaved_linden = 0.3119 # measured 0.45x at 0.139 -- pooled fit
 sycamore_maple = 0.0535      # measured 2.13x at 0.114 -- pooled fit
 wild_cherry = 0.0320         # measured 1.04x at 0.0331 -- pooled fit
