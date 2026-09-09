@@ -847,6 +847,17 @@ class GrowPyConfig:
             kwargs["unreal_db_path"] = str(unreal["db_path"])
         if "generate_pve_presets" in unreal:
             kwargs["unreal_generate_pve_presets"] = bool(unreal["generate_pve_presets"])
+            if kwargs["unreal_generate_pve_presets"]:
+                # UPVPresetLoaderSettings is UCLASS(meta=(DeprecatedNode, ...))
+                # on UE 5.8 and "produces no output", so the recipe JSON, the
+                # preset DataAssets and the graphs wired to them are all built
+                # for nothing. Warn rather than fail: UE 5.7 projects still work.
+                logger.warning(
+                    "[unreal] generate_pve_presets = true, but the PVE Preset "
+                    "Loader node is deprecated and produces no output on UE 5.8+. "
+                    "The current PVE route is [unreal.growth_data_json], which "
+                    "emits a skeleton for the Growth Data JSON Importer instead."
+                )
         if "pve_import_base" in unreal:
             kwargs["unreal_pve_import_base"] = str(unreal["pve_import_base"])
         watchdog = unreal.get("watchdog", {})

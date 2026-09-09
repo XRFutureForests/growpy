@@ -29,6 +29,7 @@ from growpy.pipelines.forest_stages import (
     write_export_control,
     write_icons,
     write_previews,
+    write_growth_data_json,
     write_pve_json,
     write_wind_json,
 )
@@ -527,6 +528,7 @@ class TestStagesRegistry:
         assert names == [
             "wind_json",
             "pve_json",
+            "growth_data_json",
             "preview",
             "export_control",
             "icons",
@@ -545,6 +547,8 @@ class TestStagesRegistry:
         assert once_per_tree_by_name["preview"] is False
         for name in (
             "wind_json",
+            # the growth data IS the skeleton, which does not vary with density
+            "growth_data_json",
             "export_control",
             "icons",
             "static_derive",
@@ -555,6 +559,7 @@ class TestStagesRegistry:
         expected = {
             "wind_json": write_wind_json,
             "pve_json": write_pve_json,
+            "growth_data_json": write_growth_data_json,
             "preview": write_previews,
             "export_control": write_export_control,
             "icons": write_icons,

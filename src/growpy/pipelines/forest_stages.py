@@ -581,9 +581,78 @@ def export_icons_only(ctx: TreeExportContext) -> None:
 # so generate_forest_stages() calls it directly (see below).
 StageGate = Callable[[TreeExportContext], bool]
 StageFn = Callable[[TreeExportContext], None]
+def _growth_data_json_settings() -> dict:
+    """Read ``[unreal.growth_data_json]`` from config/unreal.toml.
+
+    Kept local and tolerant: this is the PVE skeleton-direct experiment running
+    alongside the USD route, and a missing or malformed section must never take
+    a production export down. Defaults match the config comments.
+    """
+    defaults = {"enabled": False, "profile_mean": 0.8215, "min_branch_radius": 0.030}
+    try:
+        import tomllib
+
+        cfg_path = Path("config") / "unreal.toml"
+        if not cfg_path.is_file():
+            return defaults
+        with open(cfg_path, "rb") as fh:
+            section = tomllib.load(fh).get("unreal", {}).get("growth_data_json", {})
+        return {**defaults, **section}
+    except Exception:
+        return defaults
+
+
+def write_growth_data_json(ctx: TreeExportContext) -> None:
+    """Emit the growth-data JSON PVE's Growth Data JSON Importer consumes.
+
+    Distinct from ``write_pve_json``, which targets the deprecated Preset
+    Loader with a Megaplants-style recipe. This one feeds
+    ``UPVGrowthDataJsonImporterSettings`` -- a file path, no data asset, no
+    button -- and is the XRFF-390 skeleton-direct route.
+
+    ``ctx.radial_scale`` is the load-bearing argument: Grove's raw radii are not
+    the calibrated diameter, and passing 1.0 emits a trunk several times too
+    thick (see the exporter's docstring).
+    """
+    if not ctx.use_skeletal:
+        return
+    settings = _growth_data_json_settings()
+    if not settings.get("enabled"):
+        return
+
+    from growpy.io.unreal.pve_growth_data_exporter import (
+        generate_growth_data_from_grove,
+    )
+
+    out_path = ctx.tree_dir / f"{ctx.file_prefix}_growth_data.json"
+    try:
+        with ctx.timer.track("generate_growth_data_json"):
+            generate_growth_data_from_grove(
+                grove=ctx.grove,
+                output_path=out_path,
+                tree_index=ctx.tree_idx,
+                skeleton=ctx.skeleton,
+                verbose=True,
+                profile_mean=float(settings["profile_mean"]),
+                radial_scale=ctx.radial_scale,
+                min_branch_radius=float(settings["min_branch_radius"]),
+            )
+    except Exception as err:
+        logger.warning(
+            "Failed to generate growth-data JSON for %s fid=%d: %s",
+            ctx.species_name,
+            ctx.fid,
+            err,
+        )
+
+
 STAGES: list[tuple[str, StageGate, StageFn, bool]] = [
     ("wind_json", lambda c: c.cfg.unreal_generate_wind_data, write_wind_json, True),
     ("pve_json", lambda c: not c.skip_pve_json, write_pve_json, False),
+    # Skeleton-direct PVE route (XRFF-390). Gated by [unreal.growth_data_json]
+    # in config/unreal.toml, off by default. once_per_tree: the growth data is
+    # the skeleton, which does not vary with twig density.
+    ("growth_data_json", lambda c: True, write_growth_data_json, True),
     # Not once_per_tree: the preview now draws twig positions, which differ per
     # density variant (see write_previews).
     ("preview", lambda c: c.cfg.export_previews, write_previews, False),

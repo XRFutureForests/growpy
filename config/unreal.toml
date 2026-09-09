@@ -40,13 +40,27 @@ nanite_fallback_target = "percent_triangles"
 # Should be true for textured meshes to avoid UV seam artifacts at distance.
 nanite_lerp_uvs = true
 
-# --- PVE preset import (UE 5.7+ Procedural Vegetation Editor) ---
-# Generates a complementary UE Python script that creates
-# ProceduralVegetationPreset DataAssets from per-tree PVE JSON recipes,
-# alongside the existing skeletal-mesh assembly import. Requires the
-# Procedural Vegetation Editor plugin to be enabled in UE.
-# Combined presets and PVE graphs are colocated with tree meshes
-# at <project_path>/<species>/<scene>/.
+# --- PVE preset import (UE 5.7 only) --- DEPRECATED, DEAD ON UE 5.8 ---
+# Generated a complementary UE Python script that creates
+# ProceduralVegetationPreset DataAssets from per-tree PVE JSON recipes
+# (*_stems_unreal_pve.json), alongside the skeletal-mesh assembly import.
+#
+# DO NOT TURN THIS ON for UE 5.8+. The node those presets feed is declared
+#
+#   UCLASS(meta=(DeprecatedNode, DeprecationMessage="PVPresetLoaderSettings is
+#          deprecated and produces no output. Remove this node from your graph."))
+#
+# so everything downstream of it -- the recipe JSON, the preset DataAssets, the
+# graphs wired to them -- is built and then does nothing. `pve_graph_script.py`
+# already carries a `_is_ue_58_plus()` guard for exactly this.
+#
+# This is NOT the setting for the current PVE route. That is
+# [unreal.growth_data_json] below, which drives a different artifact entirely:
+# a SKELETON for PVGrowthDataJsonImporter, not a preset RECIPE for a dead node.
+# The two share an acronym and nothing else, which is why the old flag was left
+# in place and deprecated rather than quietly repurposed -- an existing config
+# saying `generate_pve_presets = true` must not silently start emitting a
+# different file.
 generate_pve_presets = false
 # Generate the UE wind-import script that applies *_DynamicWind.json sidecars
 # to skeletal meshes (per-tree wind JSON is always exported regardless).
@@ -62,3 +76,36 @@ generate_wind_data = true
 [unreal.watchdog]
 # editor_exe = "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Binaries\\Win64\\UnrealEditor.exe"
 # uproject = "D:\\Unreal\\XRLabDB 5.8\\XRLabDB.uproject"
+
+# ---------------------------------------------------------------------------
+# Growth-data JSON export for PVE's Growth Data JSON Importer (XRFF-390 route).
+#
+# This is the skeleton-direct route: growpy emits a growth-data JSON and PVE
+# builds the trunk mesh itself, instead of growpy authoring a Nanite assembly.
+# Off by default -- it is an experiment running alongside the USD route, and
+# turning it on adds a per-tree JSON to every step-4 export.
+#
+# profile_mean: mean radial multiplier of the PVE trunk profile the tree will be
+#   meshed with. A PVE profile is 100 multipliers that always peak at 1.0 and
+#   carve inward, so PointScale becomes the section's MAXIMUM radius and a
+#   tape-measured DBH reads mean(profile) times what was asked for. Emitted
+#   radii are divided by this so DBH survives. Measured 2026-09-09 on two
+#   independent skeletons: 0.775 and 0.784-0.793 against plantProfile_2's own
+#   0.7795. Epic's ten profiles run 0.599-0.822 -- a 37 % swing, so this is not
+#   optional. plantProfile_8 (0.8215) is the chosen default: roundest section
+#   with the mildest relief.
+#
+# min_branch_radius: drop branches whose thickest point is below this (metres),
+#   with their subtrees. Grove's raw skeleton is ~46,500 branches / 275,800
+#   points for a beech, against Epic's reference tree at 195 / 5,145. Point
+#   SPACING is already fine (0.067 m vs 0.072 m) -- it is branch COUNT that is
+#   wrong, and it also breaks foliage, since BranchDensity is per branch and
+#   46,500 branches against a ~13,400-instance target needs a density below 1.
+#   0.030 m keeps 649 branches at 27.3 points each, the closest structural match
+#   to the reference. NOTE: the threshold is in EMITTED units, so it interacts
+#   with the per-tree radial_scale -- 0.030 keeps 649 branches at scale 1.0 but
+#   only 95 at scale 0.5.
+[unreal.growth_data_json]
+enabled = true
+profile_mean = 0.8215
+min_branch_radius = 0.002
