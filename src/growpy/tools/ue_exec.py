@@ -349,9 +349,18 @@ def _kill_ue() -> bool:
 
 
 def _launch_ue(editor_exe: str, uproject: str) -> None:
-    """Launch UnrealEditor.exe with the given project, detached from this process."""
+    """Launch UnrealEditor.exe with the given project, detached from this process.
+
+    ``-unattended`` matters: the editor this relaunches has just been killed
+    mid-import, so it comes back holding auto-saved packages and opens the
+    "Restore Packages" modal. That modal blocks Python remote execution, so the
+    watchdog would restart the editor and then never be able to resume into it
+    -- the restart looks like it worked and every following batch fails to
+    connect. The flag suppresses that prompt and any other modal the relaunch
+    would otherwise stop on.
+    """
     subprocess.Popen(
-        [editor_exe, uproject],
+        [editor_exe, uproject, "-unattended"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         close_fds=True,
