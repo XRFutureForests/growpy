@@ -65,6 +65,42 @@ from ...config import get_config
 from ...constants import BREAST_HEIGHT_METERS
 
 
+def _bark_uv_v_scale(species_name: str | None) -> float:
+    """V scale that keeps a bark texture's own proportions on the trunk.
+
+    Grove lays trunk UVs out isotropically -- measured on a beech h20 stem, one
+    UV unit spans 0.0136 m both around the trunk and along it, a ratio of 0.999
+    -- so a UV tile is square and any texture is stretched to fill it. Every
+    Grove bark map is elongated (2:1 for the *_70 set, 4:1 for the *_60 set),
+    so each one is squashed vertically by exactly its own aspect ratio: a 2:1
+    fir map by 2x, a 4:1 beech map by 4x. It shows as horizontal banding with
+    the round lenticels smeared into ellipses.
+
+    Dividing V by the aspect makes one tile as tall as the texture is, relative
+    to its width. Returns 1.0 when there is no bark texture or it is square, so
+    a species without an elongated map is untouched.
+    """
+    if not species_name:
+        return 1.0
+    try:
+        from PIL import Image
+
+        from growpy.config.paths import get_bark_texture_path
+
+        path = get_bark_texture_path(species_name)
+        if path is None:
+            return 1.0
+        with Image.open(path) as img:
+            width, height = img.size
+        if width <= 0 or height <= 0:
+            return 1.0
+        aspect = height / width
+        return 1.0 / aspect if aspect > 1.0 else 1.0
+    except Exception as e:  # pragma: no cover - texture is optional
+        logger.debug("Bark aspect lookup failed for %s: %s", species_name, e)
+        return 1.0
+
+
 def build_tree_mesh(
     model: Any,
     skeleton: Any | None,
@@ -478,6 +514,19 @@ def build_tree_mesh(
             uv_primvar = primvars_api.CreatePrimvar(
                 "st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.faceVarying
             )
+            # Undo the square-tile assumption for elongated bark maps. Applied
+            # in place on the flat buffer so the big array is never copied.
+            v_scale = _bark_uv_v_scale(species_name)
+            if v_scale != 1.0:
+                uv_flat[1::2] *= v_scale
+                logger.info(
+                    "Bark UV: scaled V by %.3f for %s so the %.0f:1 texture "
+                    "keeps its proportions",
+                    v_scale,
+                    species_name,
+                    1.0 / v_scale,
+                )
+
             uv_primvar.Set(Vt.Vec2fArray.FromNumpy(uv_flat.reshape(uv_count, 2)))
             del uv_flat
 

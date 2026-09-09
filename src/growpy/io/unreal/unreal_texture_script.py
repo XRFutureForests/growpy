@@ -95,6 +95,7 @@ def _configure(task, kind):
                 "compression_settings", unreal.TextureCompressionSettings.TC_DEFAULT)
             tex.set_editor_property("srgb", True)
         tex.set_editor_property("compression_no_alpha", False)
+        tex.set_editor_property("virtual_texture_streaming", True)
         eal.save_loaded_asset(tex)
         done += 1
     return done
@@ -170,6 +171,33 @@ n += sum(_configure(t, kind) for kind, t in packed_tasks)
 print("")
 print("=" * 60)
 print("Auxiliary textures imported and configured: %d" % n)
+
+# MA_Foliage_Trees samples through virtual texture samplers, and UE does not
+# refuse a non-virtual texture -- it logs "expects texture ... to be Virtual"
+# and the sampler returns garbage, which renders as a colour that changes on
+# every recompile. Power-of-two sizing alone does not get auto-VT on import, and
+# the USD import creates its own textures that this batch never touched, so
+# sweep every texture under the import path rather than only the ones above.
+ar.scan_paths_synchronous([IMPORT_PATH], True)
+vt_done = 0
+vt_skipped = 0
+for a in ar.get_assets_by_path(IMPORT_PATH, True):
+    if str(a.asset_class_path.asset_name) != "Texture2D":
+        continue
+    tex = eal.load_asset(str(a.package_name))
+    if tex is None:
+        continue
+    try:
+        if tex.get_editor_property("virtual_texture_streaming"):
+            vt_skipped += 1
+            continue
+        tex.set_editor_property("virtual_texture_streaming", True)
+        eal.save_loaded_asset(tex)
+        vt_done += 1
+    except Exception as e:
+        print("  [warn] %s: %s" % (a.asset_name, e))
+print("Virtual texture streaming: %d converted, %d already virtual"
+      % (vt_done, vt_skipped))
 print("=" * 60)
 '''
 
