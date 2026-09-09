@@ -64,4 +64,6 @@ tests/manual/results/
 
 # Tooling runtime artifacts and scratch (not project code)
 /.hex-skills/
+# Deprecated: repo-root scratch. The workspace standard is data/tmp/ - fold this
+# in once no session is writing to tmp/.
 /tmp/
