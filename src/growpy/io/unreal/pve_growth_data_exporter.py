@@ -85,10 +85,28 @@ That matters beyond file size. Foliage density is set per branch
 (``BranchDensity``), so 46,515 branches against a Forrester target of ~13,400
 instances would need a density below 1, which the knob cannot express.
 
-``min_branch_radius`` drops every branch whose thickest point is below the
-threshold, together with its whole subtree, then renumbers the hierarchy. It is
-a PVE-route concern only and touches neither the USD route nor Grove's config,
-so the calibration Path A owns is unaffected.
+``min_branch_radius_fraction`` drops every branch whose thickest point is below
+that fraction of the TRUNK'S BASE RADIUS, together with its whole subtree, then
+renumbers the hierarchy. It is a PVE-route concern only and touches neither the
+USD route nor Grove's config, so the calibration Path A owns is unaffected.
+
+The threshold is relative for a reason. An absolute one is applied in emitted
+units, i.e. after ``radial_scale``, so it means different things on different
+trees: 0.030 m is 16 % of an uncalibrated trunk but 45 % of a calibrated one,
+and on a calibrated h15m beech it left **62 branches over 2 generations** where
+Epic's reference tree has 6 -- the entire crown hierarchy gone.
+
+Measured across 9 beeches (3 surround radii x 3 height stages), fraction 0.06
+holds **5-6 generations on every one**, at 321-1,978 branches:
+
+    r05  h05 321 br / 5 gen    h10 755 / 5    h15  791 / 5
+    r10  h05 376 br / 5 gen    h10 1102 / 5   h15 1426 / 5
+    r20  h05 379 br / 6 gen    h10 1120 / 6   h15 1978 / 6
+
+Note growpy's branch counts are not comparable to Epic's: Grove splits branches
+much more finely (~10 points per branch at full resolution against Beech_01's
+26.4), so a Grove "branch" is a shorter segment. Generations preserved is the
+meaningful measure, not branch count.
 """
 
 import json
@@ -195,6 +213,19 @@ def _ancestor_chains(
             cur = nxt
         chains.append([0] + list(reversed(chain)))
     return chains
+
+
+def _trunk_base_radius(data: dict) -> float:
+    """Thickest emitted radius on the trunk (branch 0). 0.0 if unavailable."""
+    prims = data["primitives"]["points"]
+    if not prims:
+        return 0.0
+    blm = data["points"]["attributes"]["budLateralMeristem"]["values"]
+    best = 0.0
+    for pi in prims[0]:
+        if 0 <= pi < len(blm) and blm[pi]:
+            best = max(best, float(blm[pi][0]))
+    return best
 
 
 def _decimate_growth_data(data: dict, min_branch_radius: float) -> dict:
@@ -304,6 +335,7 @@ def build_growth_data_json(
     profile_mean: float = 1.0,
     radial_scale: float = 1.0,
     min_branch_radius: float = 0.0,
+    min_branch_radius_fraction: float = 0.0,
 ) -> dict:
     """
     Build the growth-data JSON for PVE's Growth Data JSON Importer.
@@ -324,11 +356,15 @@ def build_growth_data_json(
             emits Grove's uncalibrated geometry: measured on an 11.4 m beech
             that is a 0.30 m base radius, i.e. DBH 0.60 m. 1.0 is the right
             value only for a skeleton whose radii are already calibrated.
-        min_branch_radius: Drop branches whose thickest point is below this
-            radius, in metres, along with their subtrees. 0.0 keeps everything,
-            which for a real Grove skeleton means ~46k branches -- see the
-            module docstring. Applied AFTER radial_scale and profile_mean, so
-            the threshold is in the same units as the emitted radii.
+        min_branch_radius: Absolute threshold in metres. Prefer
+            ``min_branch_radius_fraction``: an absolute value is applied in
+            emitted units and so does not survive ``radial_scale`` (see the
+            module docstring). Kept for cases where an exact metre cutoff is
+            genuinely wanted. Whichever of the two is LARGER wins.
+        min_branch_radius_fraction: Drop branches whose thickest point is below
+            this fraction of the trunk's base radius, with their subtrees. 0.06
+            holds 5-6 branch generations across every measured beech. 0.0 keeps
+            everything, which for a real Grove skeleton means ~46k branches.
 
     Returns:
         Dict matching the validated contract (see module docstring).
@@ -452,7 +488,12 @@ def build_growth_data_json(
             },
         },
     }
-    return _decimate_growth_data(built, min_branch_radius)
+    threshold = min_branch_radius
+    if min_branch_radius_fraction > 0.0:
+        threshold = max(
+            threshold, _trunk_base_radius(built) * min_branch_radius_fraction
+        )
+    return _decimate_growth_data(built, threshold)
 
 
 def generate_growth_data_from_grove(
@@ -464,6 +505,7 @@ def generate_growth_data_from_grove(
     profile_mean: float = 1.0,
     radial_scale: float = 1.0,
     min_branch_radius: float = 0.0,
+    min_branch_radius_fraction: float = 0.0,
 ) -> dict:
     """
     Build the growth-data JSON from a Grove simulation and write it to disk.
@@ -480,8 +522,9 @@ def generate_growth_data_from_grove(
             docstring.
         radial_scale: ``target_dbh_m / grove_dbh``. Grove's raw radii are not
             the calibrated diameter -- see ``build_growth_data_json``.
-        min_branch_radius: Drop branches thinner than this (metres) with their
-            subtrees. See ``build_growth_data_json``.
+        min_branch_radius: Absolute threshold in metres; prefer the fraction.
+        min_branch_radius_fraction: Drop branches thinner than this fraction of
+            the trunk's base radius. See ``build_growth_data_json``.
 
     Returns:
         The generated growth-data dictionary.
@@ -496,6 +539,7 @@ def generate_growth_data_from_grove(
         profile_mean=profile_mean,
         radial_scale=radial_scale,
         min_branch_radius=min_branch_radius,
+        min_branch_radius_fraction=min_branch_radius_fraction,
     )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

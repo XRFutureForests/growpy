@@ -95,7 +95,22 @@ generate_wind_data = true
 #   optional. plantProfile_8 (0.8215) is the chosen default: roundest section
 #   with the mildest relief.
 #
-# min_branch_radius: drop branches whose thickest point is below this (metres),
+# min_branch_radius_fraction: drop branches whose thickest point is below this
+#   fraction of the TRUNK'S BASE RADIUS, with their subtrees. Relative, not
+#   absolute, because an absolute cutoff is applied in emitted units and so does
+#   not survive radial_scale: 0.030 m is 16 % of an uncalibrated trunk but 45 %
+#   of a calibrated one, and on a calibrated h15m beech it left 62 branches over
+#   2 GENERATIONS where Epic's reference tree has 6 -- the whole crown hierarchy
+#   gone. Measured across 9 beeches (3 surround radii x 3 height stages), 0.06
+#   holds 5-6 generations on every one, at 321-1,978 branches. growpy's branch
+#   COUNTS are not comparable to Epic's -- Grove splits branches much more finely
+#   (~10 points per branch against Beech_01's 26.4) -- so generations preserved
+#   is the meaningful measure.
+#
+# min_branch_radius: absolute metre cutoff, kept for the rare case where one is
+#   genuinely wanted. Whichever of the two is larger wins. Leave at 0.0.
+#
+# (superseded note) drop branches whose thickest point is below this (metres),
 #   with their subtrees. Grove's raw skeleton is ~46,500 branches / 275,800
 #   points for a beech, against Epic's reference tree at 195 / 5,145. Point
 #   SPACING is already fine (0.067 m vs 0.072 m) -- it is branch COUNT that is
@@ -108,4 +123,5 @@ generate_wind_data = true
 [unreal.growth_data_json]
 enabled = true
 profile_mean = 0.8215
-min_branch_radius = 0.002
+min_branch_radius = 0.0
+min_branch_radius_fraction = 0.06

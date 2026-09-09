@@ -588,7 +588,12 @@ def _growth_data_json_settings() -> dict:
     alongside the USD route, and a missing or malformed section must never take
     a production export down. Defaults match the config comments.
     """
-    defaults = {"enabled": False, "profile_mean": 0.8215, "min_branch_radius": 0.030}
+    defaults = {
+        "enabled": False,
+        "profile_mean": 0.8215,
+        "min_branch_radius": 0.0,
+        "min_branch_radius_fraction": 0.06,
+    }
     try:
         import tomllib
 
@@ -636,6 +641,9 @@ def write_growth_data_json(ctx: TreeExportContext) -> None:
                 profile_mean=float(settings["profile_mean"]),
                 radial_scale=ctx.radial_scale,
                 min_branch_radius=float(settings["min_branch_radius"]),
+                min_branch_radius_fraction=float(
+                    settings["min_branch_radius_fraction"]
+                ),
             )
     except Exception as err:
         logger.warning(
