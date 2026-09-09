@@ -215,6 +215,70 @@ def _ancestor_chains(
     return chains
 
 
+def _length_from_root(
+    positions: list[list[float]],
+    branch_points: list[list[int]],
+    parent_of: list[int],
+    hierarchy: list[int],
+) -> list[float]:
+    """Cumulative PATH length from the tree base to each point, in metres.
+
+    This lands in ``budLateralMeristem[5]`` (RootDistance), which
+    ``AddGrowthMissingData`` copies into ``lengthFromRoot`` -- and PVE derives
+    BRANCH LENGTH from that attribute, not from geometry:
+
+        ComputeBranchLengths(PointLengthFromRootAttribute, BranchPointsAttribute)
+
+    So it also decides how many foliage instances a branch gets
+    (``LoopNumber = BranchDensity * branchLength / maxBranchLength``) and, via
+    ``FindPointByNormalizedLengthFromRoot``, WHERE along the branch they sit.
+
+    Writing the point's HEIGHT here instead -- as this exporter first did --
+    makes every horizontal branch read as near-zero length, so it floors to one
+    instance. Measured: 506 instances against a predicted 1,521 on a beech.
+    """
+    n = len(positions)
+    lfr = [0.0] * n
+    done = [False] * n
+
+    def dist(a: int, b: int) -> float:
+        pa, pb = positions[a], positions[b]
+        return (
+            (pa[0] - pb[0]) ** 2 + (pa[1] - pb[1]) ** 2 + (pa[2] - pb[2]) ** 2
+        ) ** 0.5
+
+    # Root-first, so a parent's values exist before its children need them.
+    for bi in sorted(range(len(branch_points)), key=lambda b: hierarchy[b]):
+        pts = branch_points[bi]
+        if not pts:
+            continue
+        start = 0.0
+        first = pts[0]
+        if done[first]:
+            # Shared junction point: continue from the value already assigned.
+            start = lfr[first]
+        else:
+            par = parent_of[bi] if bi < len(parent_of) else bi
+            if par != bi and 0 <= par < len(branch_points) and branch_points[par]:
+                # Branch does not share the junction, so attach to the nearest
+                # parent point that already has a value.
+                best, best_d = None, None
+                for q in branch_points[par]:
+                    if not done[q]:
+                        continue
+                    dq = dist(first, q)
+                    if best_d is None or dq < best_d:
+                        best, best_d = q, dq
+                if best is not None:
+                    start = lfr[best] + best_d
+        lfr[first] = start
+        done[first] = True
+        for prev, cur in zip(pts, pts[1:]):
+            lfr[cur] = lfr[prev] + dist(prev, cur)
+            done[cur] = True
+    return lfr
+
+
 def _trunk_base_radius(data: dict) -> float:
     """Thickest emitted radius on the trunk (branch 0). 0.0 if unavailable."""
     prims = data["primitives"]["points"]
@@ -417,10 +481,9 @@ def build_growth_data_json(
         for i in range(num_points)
     ]
 
-    # RootDistance is metre-scale in Epic's own data (17.3 near the top of a
-    # 23.5 m tree) and feeds lengthFromRoot/lengthFromSeed unscaled.
-    for i, pos in enumerate(positions):
-        meristem[i][5] = float(pos[1])  # height above the tree origin, metres
+    # RootDistance -> lengthFromRoot, which PVE uses as BRANCH LENGTH. It must
+    # be cumulative path length from the root, NOT height: height makes every
+    # horizontal branch zero-length. Metre-scale, matching Epic's own data.
 
     hormones = [[1.0, 0.0, 0.0, 0.0, 1.0, 0.0] for _ in range(num_points)]
     light = [[1.0, 0.0, 1.0, 0.0] for _ in range(num_points)]
@@ -456,6 +519,12 @@ def build_growth_data_json(
         for b in range(num_branches)
     ]
     branch_hierarchy = [len(chain) for chain in parents]
+
+    lfr = _length_from_root(
+        positions, primitive_points, parent_of, branch_hierarchy
+    )
+    for i in range(num_points):
+        meristem[i][5] = lfr[i]
 
     built = {
         "points": {
