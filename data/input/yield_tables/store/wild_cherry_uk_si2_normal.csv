@@ -1,0 +1,12 @@
+age,height,dbh,species_latin,region,management,site_index,source,table_id
+25.0,11.5,11.0,Prunus avium,UK,normal,2.0,pryor_cherry,FC_B75_t2
+30.0,13.8,15.0,Prunus avium,UK,normal,2.0,pryor_cherry,FC_B75_t2
+35.0,15.9,19.0,Prunus avium,UK,normal,2.0,pryor_cherry,FC_B75_t2
+40.0,17.5,22.0,Prunus avium,UK,normal,2.0,pryor_cherry,FC_B75_t2
+45.0,18.6,26.0,Prunus avium,UK,normal,2.0,pryor_cherry,FC_B75_t2
+50.0,19.4,29.0,Prunus avium,UK,normal,2.0,pryor_cherry,FC_B75_t2
+55.0,19.9,32.0,Prunus avium,UK,normal,2.0,pryor_cherry,FC_B75_t2
+60.0,20.2,35.0,Prunus avium,UK,normal,2.0,pryor_cherry,FC_B75_t2
+65.0,20.4,38.0,Prunus avium,UK,normal,2.0,pryor_cherry,FC_B75_t2
+70.0,20.5,41.0,Prunus avium,UK,normal,2.0,pryor_cherry,FC_B75_t2
+75.0,20.6,43.0,Prunus avium,UK,normal,2.0,pryor_cherry,FC_B75_t2

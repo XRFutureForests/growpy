@@ -133,6 +133,20 @@ def build_species_allometry(
         )
         return None
 
+    # A proxied table is another species' growth curve. It is a legitimate and,
+    # for several German species, officially prescribed substitution (see
+    # pylometree's SPECIES_PROXIES), but the exported DBH then does not come
+    # from this species' own allometry -- so say so loudly here and record it in
+    # the artifact, rather than leaving it to be discovered in the source title.
+    proxy_for = getattr(yield_data, "proxy_for", "")
+    if proxy_for:
+        logger.warning(
+            "%s has no yield table of its own -- DBH allometry is a SURROGATE "
+            "fitted from %s. Disclose this wherever the diameters are published.",
+            species_common,
+            yield_data.title,
+        )
+
     model = fit_height_dbh_model(yield_data.heights, yield_data.dbhs)
     if model is None:
         logger.warning("Height-DBH fit failed for %s", species_common)
@@ -154,6 +168,7 @@ def build_species_allometry(
         "common_name": species_common,
         "source": {
             "table_id": yield_data.table_id,
+            "surrogate": bool(proxy_for),
             "title": yield_data.title,
             "yield_class": yield_data.yield_class,
             "region": yield_data.region,

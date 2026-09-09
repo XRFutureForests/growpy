@@ -14,14 +14,27 @@
 # grove, so this only affects single-tree contexts.
 
 [surround]
-radii = [5.0]  # 0 = no surround; >0 = shell distance (meters)
-# Scoped to a single 5 m shell for the beech/fir iteration loop
-# (2026-09-08). The full dataset uses [0.0, 8.0, 16.0].
-# NOTE: 16 m is beyond the 4-10 m range docs/reference/grove-preset-reference.md
-# documents for surround_distance. Grove accepts it, but the shell is far enough
-# away that its effect is weak -- the earlier r18 variant came out nearly
-# indistinguishable from r00. Kept because a wide, weakly-competed variant is
-# wanted in the matrix; do not read it as a strongly-shaded case.
+radii = [5.0, 10.0, 20.0]  # 0 = no surround; >0 = shell distance (meters)
+# Owner-set 2026-09-09: the dataset matrix is 5 m / 10 m / 20 m, replacing the
+# earlier [0.0, 8.0, 16.0]. 11 species x 5 stages (h05..h25) x 3 radii = 165.
+#
+# There is deliberately NO r00 open-grown variant. r20 serves that role: the
+# note below already records that the weaker r16 shell came out nearly
+# indistinguishable from r00, and 20 m is weaker still, so the matrix covers
+# "5 m, 10 m, 20 m or open grown" in one set rather than needing a fourth.
+#
+# NOTE: 10 m and 20 m are beyond the 4-10 m range that
+# docs/reference/grove-preset-reference.md documents for surround_distance.
+# Grove accepts them, but at 20 m the shell's effect is weak -- treat r20 as the
+# weakly-competed / effectively open-grown end of the ladder, never as a shaded
+# case.
+#
+# CONSEQUENCE, do not skip: [surround.density_per_species] below was calibrated
+# at r08, and those values are per-species THRESHOLDS rather than a gradient
+# (see the note there). They do not transfer to r05/r10/r20 by interpolation and
+# must be re-swept before dataset production. Same for the drop_shaded /
+# shade_branches trials in config/preset_patches.json, which were tuned at r05
+# and set the crown envelope this table then fills.
 density = 0.45            # surrounding tree density (0..1), shared by all radii
 # History, because the value has moved twice for different reasons. It was
 # briefly lowered to 0.5 because 0.75 looked lethal -- norway_spruce collapsing
@@ -105,6 +118,9 @@ grow = true               # shell tracks the tree -- sustained competition
 #
 # 44 coarse arms + 20 refinement arms, all through the real pipeline. Sweep data
 # in data/tmp/run25m/sweep_out/.
+# STALE as of 2026-09-09: every value below was fitted at r08, and the radii
+# moved to [5.0, 10.0, 20.0]. Thresholds do not interpolate -- re-sweep before
+# dataset production. Harness: data/tmp/run25m/sweep_density.sh + check_radii.py.
 [surround.density_per_species]
 common_ash = 0.75
 douglas_fir = 0.38

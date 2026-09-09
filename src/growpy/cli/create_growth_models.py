@@ -441,7 +441,26 @@ def _ingest_yield_tables(
     )
 
     models_dir = script_dir / "data" / "input" / "yield_models"
-    provider_config = {"models_dir": str(models_dir.resolve())}
+    base_provider_config = {"models_dir": str(models_dir.resolve())}
+
+    # Every PDF provider reads the SAME config key ("pdf_path"), and the XLSX
+    # one reads "xlsx_path", so one shared dict could only ever feed a single
+    # provider -- which is why all five logged "PDF not found: ." and ingested
+    # nothing however many documents were on disk. Resolve each provider's own
+    # document from [yield_sources.documents] and hand it to that provider only.
+    documents: dict[str, Path] = {}
+    for provider_name, raw_path in config.yield_sources_documents.items():
+        doc = Path(raw_path)
+        if not doc.is_absolute():
+            doc = script_dir / doc
+        if doc.exists():
+            documents[provider_name] = doc
+        else:
+            logger.warning(
+                "Document configured for provider %s does not exist: %s",
+                provider_name,
+                doc,
+            )
 
     total_tables = 0
     total_errors = 0
@@ -452,6 +471,16 @@ def _ingest_yield_tables(
         logger.info("  %s", provider.description)
         count = 0
         errors = 0
+        provider_config = dict(base_provider_config)
+        document = documents.get(provider.name)
+        if document is not None:
+            key = (
+                "xlsx_path"
+                if document.suffix.lower() in (".xlsx", ".xls")
+                else "pdf_path"
+            )
+            provider_config[key] = str(document.resolve())
+            logger.info("  Source document: %s", document.name)
         try:
             for record in provider.iter_tables(species_mapping, provider_config):
                 issues = record.validate()

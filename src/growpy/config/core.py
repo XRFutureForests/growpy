@@ -248,6 +248,7 @@ class GrowPyConfig:
         "yield_sources_yield_tables_dir": "environment-level path, config-only",
         "yield_sources_preferred_region": "scenario-level setting, config-only",
         "yield_sources_preferred_site_index": "scenario-level setting, config-only",
+        "yield_sources_documents": "nested dict of source paths, config-only",
         "surround_radii": "scenario-level setting, config-only by design",
         "surround_density": "scenario-level setting, config-only by design",
         "surround_height": "scenario-level setting, config-only by design",
@@ -551,6 +552,11 @@ class GrowPyConfig:
     )
     yield_sources_preferred_region: str = ""
     yield_sources_preferred_site_index: float | None = None
+    # Per-provider source document for the yield-table providers that parse a
+    # local file (PDF or XLSX). Keyed on the pylometree provider name, because
+    # every PDF provider reads the same "pdf_path" key and so must be handed its
+    # own config -- see _ingest_yield_tables in cli/create_growth_models.py.
+    yield_sources_documents: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         # An unset pve_import_base follows project_path. Before this, it carried
@@ -912,6 +918,10 @@ class GrowPyConfig:
         if "preferred_site_index" in ys:
             val = float(ys["preferred_site_index"])
             kwargs["yield_sources_preferred_site_index"] = val if val > 0 else None
+        if "documents" in ys:
+            kwargs["yield_sources_documents"] = {
+                str(name): str(path) for name, path in ys["documents"].items()
+            }
         # [surround] - single-tree competition shell (replaces multi-tree clusters).
         # radii: 0 = no surround (open-grown baseline); >0 = shell distance (m).
         # A tree's surround_radius value picks which configured radius applies.

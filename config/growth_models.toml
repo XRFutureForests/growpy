@@ -134,3 +134,45 @@ preferred_region = ""
 # Per-species overrides in [calibration.species."..."] take priority.
 # 0 = no preference (auto-select by simulated grove h50)
 preferred_site_index = 0
+
+# 3. Source documents for the providers that parse a local file, keyed on the
+# pylometree provider name (`--list-providers`). Paths are relative to the
+# project root.
+#
+# MUST STAY LAST in this file: a TOML sub-table captures every key that follows
+# it, so any [yield_sources] key placed after this would land inside it instead.
+#
+# Why keyed per provider: every PDF provider reads the SAME config key
+# ("pdf_path"), so a single shared value could only ever feed one of them. Before
+# 2026-09-09 no path was passed at all and all five silently logged "PDF not
+# found: ." and ingested nothing -- which is why the store held 13 species and no
+# amount of re-running --ingest-yield-tables changed that.
+#
+# The classical German tables (Wiedemann/Schober/Gehrhardt/Wimmenauer, shipped
+# via ForestElementsR) cover the commercially dominant species only, so three
+# dataset species have no table of their own: Acer pseudoplatanus, Tilia cordata
+# and Prunus avium. Only the cherry gap is closed by a document.
+#
+#   pryor_cherry     FC Bulletin 75, Pryor 1988 -- wild cherry (Prunus avium).
+#                    Yields 2 measured yield classes (age 20-80, top height
+#                    12.5-24.7 m, DBH 12-49 cm).
+#
+# Acer pseudoplatanus and Tilia cordata keep the officially prescribed surrogate
+# tables instead (ash and beech respectively -- see pylometree's SPECIES_PROXIES
+# for the Bavarian State Forest assignment that sanctions them). Documents tried
+# and REJECTED for those two, so nobody repeats the search:
+#
+#   FC Booklet 48, both editions -- carries no per-species yield tables at all.
+#     The 1981 Edwards & Christie booklet is 32 pages of guidance with a single
+#     worked ash example; the 2016 "Forest Yield" handbook describes the model,
+#     whose tables ship as software. The printed British tables are in FC
+#     Booklet 34 (Hamilton & Christie), which we do not have.
+#   Brandenburg "Bergahorn im nordostdeutschen Tiefland" Ertragstafel -- an
+#     Oberhoehenbonitaet publication: height over age by site class, with no DBH
+#     column, so it cannot give a height-DBH relation.
+#   AFZ/DerWald Ertragstafelauszuege (2024 calendar extract) -- holds 12 species
+#     (Eiche, Roteiche, Birke, Erle, Esche, Pappel, Buche, Fichte, Kiefer,
+#     Tanne, Douglasie, Laerche). Winterlinde is NOT among them, despite the
+#     provider description claiming linden.
+[yield_sources.documents]
+pryor_cherry = "data/input/yield_documents/fcbu075_wild_cherry.pdf"
