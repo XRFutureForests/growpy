@@ -123,7 +123,8 @@ what selects the species the dataset pipeline produces.
 
 ```
 src/growpy/
-├── cli/              # the four pipeline steps + dataset_pipeline
+├── cli/              # the four pipeline steps, dataset_pipeline, init_config,
+│                     # build_allometry, sensitivity_analysis
 ├── config/templates/ # packaged starter TOMLs (growpy-init-config copies these)
 └── …                 # see docs/reference/module-reference.md
 src/the_grove_23/     # your licensed Grove install — not tracked

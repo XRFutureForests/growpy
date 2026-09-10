@@ -3,16 +3,19 @@
 Procedural tree/forest generation pipeline: CSV species data → The Grove 2.3 growth simulation → USD Nanite assemblies for Unreal Engine 5.7+. Trees grow to height milestones; stem diameter is realised at export from yield-table height-DBH allometry. Competition variants come from Grove's Surround shell. Outputs USD assemblies, PVE JSON, OBJ for Helios++ LiDAR.
 
 
-## Quick Navigation
+## Documentation Map
 
 | Need | Read |
 |------|------|
-| Documentation map | [docs/README.md](docs/README.md) |
-| Standards | [AGENTS.md](AGENTS.md) |
-| Principles | [AGENTS.md](AGENTS.md) |
-| Quickstart | [RUNBOOK.md](RUNBOOK.md) |
-| Dataset workflow | [docs/guides/dataset-workflow.md](docs/guides/dataset-workflow.md) |
-| Forest generation | [docs/guides/forest-generation.md](docs/guides/forest-generation.md) |
+| What growpy is, the dataset, why it is built this way | [README.md](README.md) |
+| Install, the four steps, dataset production, Unreal import, troubleshooting | [RUNBOOK.md](RUNBOOK.md) |
+| Guides, reference, internals | [docs/](docs/README.md) |
+| Why The Grove, why USD, the calibration records, Grove API analysis | XR Future Forests Lab knowledge hub (`04-LOGIC-TIER/growpy*`, `99-RESOURCES/vendor/the-grove/`) — **not** in this repo |
+| Tasks | Linear |
+
+Deep-dive documentation is deliberately not duplicated here. If you need to explain *why* an
+approach was chosen, write it in the knowledge hub and link to it. The Grove's own product
+documentation is not redistributed — point at thegrove3d.com.
 
 ## Source Layout
 
@@ -45,15 +48,6 @@ Procedural tree/forest generation pipeline: CSV species data → The Grove 2.3 g
 | `growpy-diagnose-growth` | Diagnose growth simulation results |
 | `growpy-visualize-tree` | Visualise individual tree output |
 | `growpy-sensitivity-analysis` | Run parameter sensitivity analysis |
-
-## Agent Entry
-
-- Purpose: Canonical repo map and routing layer for agents.
-- Read when: You need the project overview, local rules, or the next canonical doc.
-- Skip when: You already know the exact file or document to inspect.
-- Canonical: Yes.
-- Read next: `docs/README.md`, then the relevant canonical doc for the task.
-- Primary sources: `AGENTS.md`, `docs/README.md`.
 
 ## Critical Rules
 
@@ -88,7 +82,7 @@ Use `hex-line` first for repository text reads, search, and edits. Use `hex-grap
 | Activate env | `conda activate growpy` |
 | Install (editable) | `pip install -e .` |
 | Run tests | `pytest` |
-| Format | `black .` |
+| Format | `ruff format .` |
 | Lint | `ruff check .` |
 
 ## Maintenance
@@ -105,4 +99,4 @@ Use `hex-line` first for repository text reads, search, and edits. Use `hex-grap
 - [ ] CLI script table matches `pyproject.toml` entry points
 - [ ] Canonical docs listed here still exist
 
-**Last Updated:** 2026-05-11
+**Last Updated:** 2026-09-10

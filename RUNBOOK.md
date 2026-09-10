@@ -55,8 +55,11 @@ python -c "import the_grove_23_core as gc; print('Grove API ready')"
 Each reads its defaults from `config/*.toml` and runs without arguments.
 
 ```
-prepare_assets → convert_twigs → create_growth_models → generate_forest
+growpy-prepare-assets → growpy-convert-twigs → growpy-create-models → growpy-generate-forest
 ```
+
+`pip install -e .` puts these on your PATH. The equivalent
+`python src/growpy/cli/<step>.py` also works and is what older scripts use.
 
 ### Step 1 — prepare assets
 
@@ -64,9 +67,9 @@ Copies and standardises presets, textures and twigs out of Grove into `data/asse
 CSV-driven: only the species listed are processed.
 
 ```bash
-python src/growpy/cli/prepare_assets.py                # species from the default CSV
-python src/growpy/cli/prepare_assets.py --csv my.csv
-python src/growpy/cli/prepare_assets.py --all          # all 60 Grove species
+growpy-prepare-assets                # species from the default CSV
+growpy-prepare-assets --csv my.csv
+growpy-prepare-assets --all          # all 60 Grove species
 ```
 
 Produces `data/assets/{presets,textures,twigs}/`.
@@ -77,9 +80,9 @@ Produces `data/assets/{presets,textures,twigs}/`.
 boundary smoothing, interior decimation). Per-twig parameters live under `[twigs]`.
 
 ```bash
-python src/growpy/cli/convert_twigs.py
-python src/growpy/cli/convert_twigs.py --no-densify
-python src/growpy/cli/convert_twigs.py --alpha-trim 0.5
+growpy-convert-twigs
+growpy-convert-twigs --no-densify
+growpy-convert-twigs --alpha-trim 0.5
 ```
 
 Produces two USD variants per twig: `*_skeletal.usda` (skeleton, no materials) and
@@ -94,11 +97,11 @@ Simulates growth curves and fits height-to-age models. With `[calibration] enabl
 aligns to yield tables and re-simulates with the calibration applied.
 
 ```bash
-python src/growpy/cli/create_growth_models.py
-python src/growpy/cli/create_growth_models.py --species "European beech"
-python src/growpy/cli/create_growth_models.py --seeds 3 --cycles 35
-python src/growpy/cli/create_growth_models.py --ingest-yield-tables
-python src/growpy/cli/create_growth_models.py --ingest-yield-tables --clean-store
+growpy-create-models
+growpy-create-models --species "European beech"
+growpy-create-models --seeds 3 --cycles 35
+growpy-create-models --ingest-yield-tables
+growpy-create-models --ingest-yield-tables --clean-store
 ```
 
 Produces `data/assets/growth_models/` (JSON), calibration data written into `.seed.json`,
@@ -109,13 +112,13 @@ and comparison plots in `data/output/growth_comparison/`.
 Multi-species simulation from a CSV, exporting USD Nanite assemblies.
 
 ```bash
-python src/growpy/cli/generate_forest.py
-python src/growpy/cli/generate_forest.py --quality high
-python src/growpy/cli/generate_forest.py --height-interval 5
-python src/growpy/cli/generate_forest.py --export-obj --helios-scene
-python src/growpy/cli/generate_forest.py --skeleton-reduce 0.5
-python src/growpy/cli/generate_forest.py --export-trees 1,2
-python src/growpy/cli/generate_forest.py --preset-override drop_decay=0.1
+growpy-generate-forest
+growpy-generate-forest --quality high
+growpy-generate-forest --height-interval 5
+growpy-generate-forest --export-obj --helios-scene
+growpy-generate-forest --skeleton-reduce 0.5
+growpy-generate-forest --export-trees 1,2
+growpy-generate-forest --preset-override drop_decay=0.1
 ```
 
 **Input CSV:** `x`, `y`, `species`, `height` (optional `z`, `fid`, `dbh`, `twig_density`,
@@ -127,11 +130,22 @@ or Helios OBJ/scene files.
 
 ### Quality presets
 
-| Preset | Vertices | Skeleton | Use |
-|--------|----------|----------|-----|
-| `high` | 16 | length 0.75, reduce 0.333 | USD Nanite export (default) |
+Eight are defined in `quality.toml`. `resolution` is the radial vertex count around a
+branch; `skeleton_reduce` is the effective lever on bone count.
+
+| Preset | `resolution` | Skeleton | Use |
+|--------|-------------|----------|-----|
+| `ultra` | — | — | Maximum fidelity |
+| `high` | 16 | length 1.0, reduce 0.333 | USD Nanite export (the dataset default) |
+| `medium` | 12 | — | |
+| `low` | — | — | |
+| `performance` | — | — | Lowest cost |
 | `helios` | 9 | length 2.0, reduce 0.8 | OBJ export for LiDAR simulation |
 | `debug` | 8 | length 2.0, reduce 0.5 | Quick iteration |
+| `dataset_tall` | — | — | Tall-stage dataset runs |
+
+Read `config/quality.toml` for the full parameter set of each — the table above lists only
+the ones that differ in ways worth choosing between.
 
 `--skeleton-length`, `--skeleton-reduce`, `--skeleton-bias`, `--skeleton-connected` override
 the preset independently.
@@ -144,13 +158,13 @@ Species selection is config-driven, read from `tree_asset_lookup.csv`'s `Dataset
 preparation step is needed.
 
 ```bash
-python src/growpy/cli/dataset_pipeline.py --list                    # what's available
-python src/growpy/cli/dataset_pipeline.py --all --dry-run           # preview commands
-python src/growpy/cli/dataset_pipeline.py --pilot                   # beech + spruce
-python src/growpy/cli/dataset_pipeline.py --all                     # all 11 species
-python src/growpy/cli/dataset_pipeline.py --all --workers 4         # parallel by species
-python src/growpy/cli/dataset_pipeline.py --all --steps all --ingest-yield-tables
-python src/growpy/cli/dataset_pipeline.py --all --steps all --ingest-yield-tables --clean
+growpy-dataset-pipeline --list                    # what's available
+growpy-dataset-pipeline --all --dry-run           # preview commands
+growpy-dataset-pipeline --pilot                   # beech + spruce
+growpy-dataset-pipeline --all                     # all 11 species
+growpy-dataset-pipeline --all --workers 4         # parallel by species
+growpy-dataset-pipeline --all --steps all --ingest-yield-tables
+growpy-dataset-pipeline --all --steps all --ingest-yield-tables --clean
 ```
 
 `--generate-csvs` dumps the selected rows to `data/input/dataset/` for manual review only;
@@ -175,7 +189,7 @@ skip_validation = true
 
 ```bash
 conda activate growpy
-python src/growpy/cli/dataset_pipeline.py --all --steps all --ingest-yield-tables
+growpy-dataset-pipeline --all --steps all --ingest-yield-tables
 ```
 
 `data/assets/` and `data/output/` are regenerable — clearing them and re-running is the
@@ -186,10 +200,10 @@ normal recovery. `data/input/` is tracked and is not.
 ## 4. Helios++ export
 
 ```bash
-python src/growpy/cli/generate_forest.py --export-obj
-python src/growpy/cli/generate_forest.py --export-obj --helios-scene
-python src/growpy/cli/generate_forest.py --export-obj --individual-obj
-python src/growpy/cli/generate_forest.py --export-obj --obj-up-axis z
+growpy-generate-forest --export-obj
+growpy-generate-forest --export-obj --helios-scene
+growpy-generate-forest --export-obj --individual-obj
+growpy-generate-forest --export-obj --obj-up-axis z
 ```
 
 Converts USD assemblies to Wavefront OBJ with baked twig instances and material
@@ -258,6 +272,10 @@ $env:PYTHONPATH=".\src;.\src\the_grove_23\modules"       # PowerShell
 **`bpy` not found**
 `pip install bpy`, inside the activated environment.
 
+**`growpy-…` is not on PATH**
+`pip install -e .` was not run in the active environment, or you are in the wrong one. The
+`python src/growpy/cli/<step>.py` form works either way.
+
 **A tool reports R or Java "not installed"**
 You called `python.exe` directly instead of going through the environment. R and Java live
 inside the conda env. Use `conda activate growpy` or `conda run -n growpy …`.
@@ -266,7 +284,7 @@ inside the conda env. Use `conda activate growpy` or `conda run -n growpy …`.
 Unreal caps at 32,767 bones. `--skeleton-reduce` is the effective lever:
 
 ```bash
-python src/growpy/cli/generate_forest.py --skeleton-reduce 0.5 --skeleton-length 2.5
+growpy-generate-forest --skeleton-reduce 0.5 --skeleton-length 2.5
 ```
 
 **Generation is far slower than expected**
