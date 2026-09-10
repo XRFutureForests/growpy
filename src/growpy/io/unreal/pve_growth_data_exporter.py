@@ -526,6 +526,29 @@ def build_growth_data_json(
     for i in range(num_points):
         meristem[i][5] = lfr[i]
 
+    # budDevelopment[0] is Generation, and PVE reads it for StartGeneration /
+    # EndGeneration and for the Generation condition influence -- the mechanism
+    # Epic uses to put different foliage palettes on different branch orders.
+    # It used to ship as a hardcoded 1 on every point of every species, which
+    # made all of that silently select nothing (XRFF-431).
+    #
+    # The real depth is already computed one line up as `branch_hierarchy`, per
+    # BRANCH; the points just never received it. Broadcast it. Trunk is 1, its
+    # children 2, and so on, matching the 1-based `branchNumber` convention
+    # used for parents/children.
+    #
+    # NOTE this is the exporter's half only. Whether PVE's own
+    # AddGrowthMissingData recomputes branchHierarchyNumber on load, and whether
+    # its convention agrees with this one, is unverified -- get that wrong and
+    # generation gating selects nothing, which looks identical to the bug this
+    # replaces. Verify with two distributors on disjoint generation bands and
+    # confirm the instance counts split.
+    for _b, _pts in enumerate(primitive_points):
+        _gen = branch_hierarchy[_b] if _b < len(branch_hierarchy) else 1
+        for _p in _pts:
+            if 0 <= _p < num_points:
+                development[_p][0] = int(_gen)
+
     built = {
         "points": {
             "positions": positions,
