@@ -256,14 +256,14 @@
       "start": 0.0,
       "end": 0.3,
       "easing": "ease_in",
-      "transition_cycle": 8
+      "transition_cycle": 40
     },
     "drop_weak": 0.3,
     "drop_weak_curve": {
       "start": 0.0,
       "end": 0.3,
       "easing": "ease_in",
-      "transition_cycle": 8
+      "transition_cycle": 40
     }
   },
   "silver_birch": {
@@ -348,6 +348,28 @@
     "ones config no longer declares; preset_overrides.py evaluates them per cycle.",
     "The mechanism was already built; only the declaration was missing.",
     "",
+    "TRANSITION_CYCLE: 40 is PROVISIONAL, pending a 15/25/40 bracket.",
+    "",
+    "Do not read the earlier tc=8 vs tc=40 comparison as evidence -- BOTH RAN WITH",
+    "THE CURVE DISCONNECTED and produced byte-identical trees. Whether a species'",
+    "_curve blocks applied at all was wired to calibration_align_height, an",
+    "unrelated yield-table flag that was false, so every curve in every preset was",
+    "silently ignored and the simulation used the flat static value from cycle 0.",
+    "Fixed 2026-09-10 by giving species curves their own [forest] species_curves",
+    "flag (default on). Until that commit, NO ramp had ever run.",
+    "",
+    "What the numbers meant instead: the 'bole appeared' result (crown base 0.76 ->",
+    "7.19 m) came from a FLAT 0.3, not a ramp, and the plateau at 15-20 m is what a",
+    "flat 0.3 from cycle 0 does -- exactly PROBLEM 1's condition. With the ramp",
+    "actually connected, all three radii reached h20 where flat 0.3 got only r20",
+    "there, but cost went to 143 s/cycle past cycle 65 because a gentler ramp keeps",
+    "the tree bushy and Grove's per-access rebuild scales with size.",
+    "",
+    "So transition_cycle trades three things against each other: ladder length,",
+    "bole, and wall clock. Less early pruning buys height and costs the other two.",
+    "power = log(0.5)/log(tc/(cycles-1)) -- re-derive if growth_cycle_limit or the",
+    "milestone pacing changes. Spruce milestones: h05@14, h10@31, h15@47, h20@64.",
+    "",
     "VERIFY BOTH HALVES, as _why_drop_curves asks: height held to h25 AND a",
     "visible bole. The 2026-09-09 collapse re-screen covered common_ash and",
     "european_oak, NOT the conifers.",
@@ -362,14 +384,14 @@
       "start": 0.0,
       "end": 0.3,
       "easing": "ease_in",
-      "transition_cycle": 8
+      "transition_cycle": 40
     },
     "drop_weak": 0.3,
     "drop_weak_curve": {
       "start": 0.0,
       "end": 0.3,
       "easing": "ease_in",
-      "transition_cycle": 8
+      "transition_cycle": 40
     }
   }
 }

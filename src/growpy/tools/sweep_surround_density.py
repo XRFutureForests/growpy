@@ -387,7 +387,8 @@ def verify_arm(cfg: Path, density: float, seed: int, out_dir: Path) -> dict:
     return got
 
 
-def run_arm(species: str, cfg: Path, out_dir: Path, log: Path) -> tuple[int, float]:
+def run_arm(species: str, cfg: Path, out_dir: Path, log: Path,
+            max_height: float | None = None) -> tuple[int, float]:
     if out_dir.exists():
         shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -404,6 +405,12 @@ def run_arm(species: str, cfg: Path, out_dir: Path, log: Path) -> tuple[int, flo
                 # Inspection aids only, and together a large share of a run.
                 "--no-icons", "--no-previews", "--no-export-control",
                 "-v",
+                # Bracketing a preset key does not need the top of the ladder,
+                # and the top is where the cost is: a gentle drop ramp keeps the
+                # tree bushy, and Grove's per-access rebuild took one arm to
+                # 143 s/cycle past h20. Capping the height keeps a bracket arm
+                # to minutes instead of hours.
+                *(["--max-height", str(max_height)] if max_height else []),
             ],
             stdout=fh, stderr=subprocess.STDOUT, cwd=REPO, env=env,
         )
@@ -589,6 +596,10 @@ def main() -> int:
     ap.add_argument("--verify-only", action="store_true",
                     help="build and check each arm's config, run nothing")
     ap.add_argument("--dry-run", action="store_true", help="list arms and exit")
+    ap.add_argument("--max-height", type=float,
+                    help="cap the height ladder for this run (m). Use when "
+                         "bracketing a preset key: the top of the ladder is "
+                         "where the wall clock is spent.")
     ap.add_argument("--remeasure", action="store_true",
                     help="re-derive every row from the RETAINED assemblies "
                          "without re-simulating anything, and write them to a "
@@ -688,7 +699,8 @@ def main() -> int:
         if args.verify_only:
             continue
 
-        code, elapsed = run_arm(sp, cfg, out_dir, LOG_ROOT / f"{arm}.log")
+        code, elapsed = run_arm(sp, cfg, out_dir, LOG_ROOT / f"{arm}.log",
+                                max_height=args.max_height)
         status = "OK" if code == 0 else f"FAILED({code})"
         print(f"[{datetime.now():%H:%M:%S}]   RUN: {status} in {elapsed/60:.1f} min")
 
