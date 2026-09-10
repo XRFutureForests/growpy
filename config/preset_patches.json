@@ -253,17 +253,17 @@
     "drop_shaded": 0.05,
     "drop_decay": 0.3,
     "drop_decay_curve": {
-      "start": 0.0,
+      "start": 0.18,
       "end": 0.3,
       "easing": "ease_in",
-      "transition_cycle": 40
+      "transition_cycle": 15
     },
     "drop_weak": 0.3,
     "drop_weak_curve": {
-      "start": 0.0,
+      "start": 0.18,
       "end": 0.3,
       "easing": "ease_in",
-      "transition_cycle": 40
+      "transition_cycle": 15
     }
   },
   "silver_birch": {
@@ -348,50 +348,51 @@
     "ones config no longer declares; preset_overrides.py evaluates them per cycle.",
     "The mechanism was already built; only the declaration was missing.",
     "",
-    "TRANSITION_CYCLE: 40 is PROVISIONAL, pending a 15/25/40 bracket.",
+    "MEASURED AND SETTLED 2026-09-11: start 0.18 -> end 0.3, ease_in,",
+    "transition_cycle 15. Bracketed on norway_spruce d=0.6, capped at h20,",
+    "crown ratio at h20 against Sharma 0.52-0.68:",
     "",
-    "Do not read the earlier tc=8 vs tc=40 comparison as evidence -- BOTH RAN WITH",
-    "THE CURVE DISCONNECTED and produced byte-identical trees. Whether a species'",
-    "_curve blocks applied at all was wired to calibration_align_height, an",
-    "unrelated yield-table flag that was false, so every curve in every preset was",
-    "silently ignored and the simulation used the flat static value from cycle 0.",
-    "Fixed 2026-09-10 by giving species curves their own [forest] species_curves",
-    "flag (default on). Until that commit, NO ramp had ever run.",
+    "  start 0.30 (flat)  r20 only reaches h20   base 8.77  ratio 0.57  23 min",
+    "  start 0.18         r10 + r20 reach h20    base 7.49/6.84  0.63/0.66  63 min",
+    "  start 0.10         all three reach h20    base 2.4-2.8    0.86-0.89  122 min",
+    "  start 0.00         all three reach h20    base 2.1-2.6    0.85-0.90  22-198 min",
     "",
-    "What the numbers meant instead: the 'bole appeared' result (crown base 0.76 ->",
-    "7.19 m) came from a FLAT 0.3, not a ramp, and the plateau at 15-20 m is what a",
-    "flat 0.3 from cycle 0 does -- exactly PROBLEM 1's condition. With the ramp",
-    "actually connected, all three radii reached h20 where flat 0.3 got only r20",
-    "there, but cost went to 143 s/cycle past cycle 65 because a gentler ramp keeps",
-    "the tree bushy and Grove's per-access rebuild scales with size.",
+    "0.18 DOMINATES the flat control: it keeps the bole (two radii inside the",
+    "band, against one) AND gets an extra radius to h20. Below 0.18 the bole is",
+    "gone entirely and cost climbs steeply.",
     "",
-    "So transition_cycle trades three things against each other: ladder length,",
-    "bole, and wall clock. Less early pruning buys height and costs the other two.",
+    "WHY THE START MATTERS AND THE DELAY DOES NOT. A clear stem is made by",
+    "shedding the LOWEST branches while the tree is young. A ramp starting at 0",
+    "suppresses exactly that pruning, and once those branches are established and",
+    "thickened a higher drop rate later will not remove them. So crown base is a",
+    "legacy of the tree's youth, not a function of its mature drop rate -- which",
+    "contradicts this file's own earlier claim that a ramp ending at Grove's value",
+    "leaves the mature tree unchanged. It does not.",
+    "",
+    "transition_cycle is nearly a dead knob here: 15 and 25 produced IDENTICAL",
+    "trees on every measured column, and 40 differed trivially while costing 9x",
+    "the wall clock (198 min against 22). Kept at 15. Do not spend arms tuning it.",
+    "",
     "power = log(0.5)/log(tc/(cycles-1)) -- re-derive if growth_cycle_limit or the",
     "milestone pacing changes. Spruce milestones: h05@14, h10@31, h15@47, h20@64.",
     "",
-    "VERIFY BOTH HALVES, as _why_drop_curves asks: height held to h25 AND a",
-    "visible bole. The 2026-09-09 collapse re-screen covered common_ash and",
-    "european_oak, NOT the conifers.",
-    "",
-    "STILL FLAT-SCALED, deliberately untouched here: silver_birch,",
-    "small_leaved_linden, wild_cherry, common_ash all remain at 0.6x their Grove",
-    "values with no curve. Same defect, symptom not yet measured on them."
+    "r05 still does not reach h20 at 0.18. Per the owner's rule that admissibility",
+    "beats completeness, that is the answer, not a reason to lower the start."
   ],
   "norway_spruce": {
     "drop_decay": 0.3,
     "drop_decay_curve": {
-      "start": 0.0,
+      "start": 0.18,
       "end": 0.3,
       "easing": "ease_in",
-      "transition_cycle": 40
+      "transition_cycle": 15
     },
     "drop_weak": 0.3,
     "drop_weak_curve": {
-      "start": 0.0,
+      "start": 0.18,
       "end": 0.3,
       "easing": "ease_in",
-      "transition_cycle": 40
+      "transition_cycle": 15
     }
   }
 }
