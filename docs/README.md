@@ -1,94 +1,56 @@
-# GrowPy Documentation
+# docs — growpy
 
-## Start here
+Reference and workflow detail. Start with [README.md](../README.md) for what growpy is, and
+[RUNBOOK.md](../RUNBOOK.md) for the pipeline end to end.
 
-| Document | What it covers |
-|---|---|
-| [quickstart.md](quickstart.md) | Install, configure, and run the pipeline end-to-end |
-| [guides/dataset-workflow.md](guides/dataset-workflow.md) | Produce the multi-species dataset: config, species selection, growth interval/range, run recipes |
-| [guides/forest-generation.md](guides/forest-generation.md) | Build a single forest by hand from your own CSV (the 4-step pipeline) |
+## Guides — doing a thing
 
-## Guides
+| Document | Contents |
+|----------|----------|
+| [guides/dataset-workflow.md](guides/dataset-workflow.md) | Full multi-species dataset production |
+| [guides/forest-generation.md](guides/forest-generation.md) | A single forest run from your own CSV |
+| [guides/pve-preset-workflow.md](guides/pve-preset-workflow.md) | Procedural Vegetation Editor integration |
+| [guides/unreal-import.md](guides/unreal-import.md) | Getting assemblies into Unreal |
+| [guides/helios-export.md](guides/helios-export.md) | OBJ + scene XML for Helios++ LiDAR simulation |
 
-Task-oriented walkthroughs.
+## Reference — looking a thing up
 
-| Document | What it covers |
-|---|---|
-| [guides/dataset-workflow.md](guides/dataset-workflow.md) | Full dataset production with `dataset_pipeline.py` |
-| [guides/forest-generation.md](guides/forest-generation.md) | Manual single-forest run, step by step |
-| [guides/unreal-import.md](guides/unreal-import.md) | UE 5.7+ import: drag-drop vs scripts, wind, PVE, Nanite |
-| [guides/pve-preset-workflow.md](guides/pve-preset-workflow.md) | Procedural Vegetation Editor preset generation |
-| [guides/helios-export.md](guides/helios-export.md) | OBJ/MTL + Helios++ scene XML for LiDAR (secondary feature) |
-
-## Reference
-
-Look-up docs: CLI flags, configuration, Python API, domain concepts.
-
-| Document | What it covers |
-|---|---|
-| [reference/cli-reference.md](reference/cli-reference.md) | All CLI flags for every script |
-| [reference/configuration.md](reference/configuration.md) | Every TOML key + `tree_asset_lookup.csv` columns (incl. `Dataset`) |
-| [reference/package-api.md](reference/package-api.md) | Python API for embedding growpy |
-| [reference/grove-preset-reference.md](reference/grove-preset-reference.md) | Grove growth parameters and cycle-based curves |
-| [reference/crown-parameter-response.md](reference/crown-parameter-response.md) | Which knob moves which crown property, per species, measured |
-| [reference/pve-attribute-reference.md](reference/pve-attribute-reference.md) | PVE JSON schema and Grove-to-UE mapping |
-| [reference/pve-python-api.md](reference/pve-python-api.md) | PVE Python API reference |
-| [reference/grove-api-attributes.md](reference/grove-api-attributes.md) | Grove 2.3 API attribute reference |
-| [reference/nanite-import-settings.md](reference/nanite-import-settings.md) | UE Nanite import settings and rationale |
-| [reference/usd-builder.md](reference/usd-builder.md) | USD export internals (prims, layers, instancing) |
-| [reference/yield-table-calibration.md](reference/yield-table-calibration.md) | Yield table calibration math and decision tree |
-| [reference/coordinate-systems.md](reference/coordinate-systems.md) | Grove / Blender / USD / Unreal coordinate frames |
-| [reference/naming-conventions.md](reference/naming-conventions.md) | Species, file, and directory naming standards |
-| [reference/testing.md](reference/testing.md) | Testing framework and coverage |
-| [reference/adrs/](reference/adrs/) | Architecture decision records (tree engine, USD format, conda) |
-| [reference/guides/01-pipeline-subprocess-pattern.md](reference/guides/01-pipeline-subprocess-pattern.md) | Pipeline subprocess isolation pattern |
-
-## Architecture
-
-How the pipeline is wired and how data flows between steps.
-
-| Document | What it covers |
-|---|---|
-| [architecture/README.md](architecture/README.md) | Architecture hub |
-| [architecture/pipeline-overview.md](architecture/pipeline-overview.md) | 4-step + dataset pipeline as flowcharts |
-| [architecture/processing-logic.md](architecture/processing-logic.md) | Per-step algorithm walkthrough |
-| [architecture/module-reference.md](architecture/module-reference.md) | Per-module reference: purpose, key functions, inputs, outputs |
-| [architecture/module-graph.md](architecture/module-graph.md) | Mermaid dependency graph grouped by layer |
-| [architecture/data-flow.md](architecture/data-flow.md) | On-disk artefact contracts between steps |
-
-## Dataset
-
-| Document | What it covers |
-|---|---|
-| [dataset/dataset-specification.md](dataset/dataset-specification.md) | Species catalogue, asset hierarchy, naming |
-| [dataset/dataset-overview.md](dataset/dataset-overview.md) | Production status and preview gallery |
-
-## Project
-
-| Document | What it covers |
-|---|---|
-| [project/requirements.md](project/requirements.md) | Functional requirements (FR-XXX-NNN) with MoSCoW |
-| [project/architecture.md](project/architecture.md) | arc42 system architecture with C4 diagrams |
-| [project/tech_stack.md](project/tech_stack.md) | Technology versions, CLI scripts, dev commands |
-| [project/infrastructure.md](project/infrastructure.md) | Host requirements, env vars, CLI entry points |
-| [principles.md](principles.md) | Development principles and anti-patterns |
-| [documentation_standards.md](documentation_standards.md) | Documentation rules and verification requirements |
-| [tasks/README.md](tasks/README.md) | Task workflow, Linear integration, templates |
-| [tasks/kanban_board.md](tasks/kanban_board.md) | Live kanban board (Linear XRFF team) |
+| Document | Contents |
+|----------|----------|
+| [reference/cli-reference.md](reference/cli-reference.md) | Every CLI flag |
+| [reference/configuration.md](reference/configuration.md) | All TOML keys and species-lookup CSV columns |
+| [reference/module-reference.md](reference/module-reference.md) | Package modules and their responsibilities |
+| [reference/module-graph.md](reference/module-graph.md) | Import graph |
+| [reference/package-api.md](reference/package-api.md) | Public Python API |
+| [reference/usd-builder.md](reference/usd-builder.md) | How USD stages are assembled |
+| [reference/coordinate-systems.md](reference/coordinate-systems.md) | Axis and unit conventions across the pipeline |
+| [reference/naming-conventions.md](reference/naming-conventions.md) | Asset and file naming |
+| [reference/nanite-import-settings.md](reference/nanite-import-settings.md) | Unreal-side import settings |
+| [reference/grove-api-attributes.md](reference/grove-api-attributes.md) | Grove API attributes used |
+| [reference/grove-preset-reference.md](reference/grove-preset-reference.md) | Grove preset parameters |
+| [reference/crown-parameter-response.md](reference/crown-parameter-response.md) | How crown parameters respond |
+| [reference/pve-attribute-reference.md](reference/pve-attribute-reference.md) | PVE attributes |
+| [reference/pve-python-api.md](reference/pve-python-api.md) | PVE Python API |
+| [reference/testing.md](reference/testing.md) | Test suite layout and coverage |
 
 ## Internals
 
-Low-level implementation and reverse-engineering notes.
+| Document | Contents |
+|----------|----------|
+| [internals/nanite-assembly-readme.md](internals/nanite-assembly-readme.md) | How a Nanite assembly is structured |
+| [internals/pve-json-reverse-engineering.md](internals/pve-json-reverse-engineering.md) | The PVE JSON format, as reverse-engineered |
 
-| Document | What it covers |
-|---|---|
-| [internals/nanite-assembly-readme.md](internals/nanite-assembly-readme.md) | Nanite Assembly USD construction details |
-| [internals/pve-json-reverse-engineering.md](internals/pve-json-reverse-engineering.md) | PVE JSON format reverse-engineering notes |
+## Dataset
 
-## The Grove 2.3 (vendored upstream reference)
+| Document | Contents |
+|----------|----------|
+| [dataset/dataset-specification.md](dataset/dataset-specification.md) | Species catalogue and the full spec |
+| [dataset/dataset-overview.md](dataset/dataset-overview.md) | What the dataset contains and how it is organised |
 
-| | |
-|---|---|
-| [reference/vendor/the-grove/](reference/vendor/the-grove/) | Grove 2.3 core API documentation and website guides (third-party, kept verbatim) |
-| [internals/the-grove-addon-analysis/](internals/the-grove-addon-analysis/) | First-party reverse-engineering analysis of the vendored Grove addon (not third-party) |
-| [architecture/the-grove-tldr.md](architecture/the-grove-tldr.md) | First-party dev onboarding summary of Grove's architecture |
+---
+
+Design rationale — why The Grove, why USD, the crown-density calibration record, the
+yield-table calibration study, and the Grove API analysis — lives in the XR Future Forests Lab
+knowledge hub under `04-LOGIC-TIER/growpy*` and `99-RESOURCES/vendor/the-grove/`. The Grove's
+own product documentation is not redistributed here; see
+[thegrove3d.com](https://www.thegrove3d.com).

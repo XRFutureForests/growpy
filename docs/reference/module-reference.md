@@ -8,7 +8,7 @@ implementation details and are intentionally omitted.
 This document is the lookup table for "where does X live and what does it do".
 For the layered import view, see [module-graph.md](module-graph.md). For the
 end-to-end process flow with clickable nodes, see
-[pipeline-overview.md](pipeline-overview.md).
+[pipeline-overview.md](../README.md).
 
 > **Layout note (April 2026 refactor).** The `io/` package has been split into
 > three sub-packages: [`io/usd/`](../../src/growpy/io/usd/) (USD/Nanite

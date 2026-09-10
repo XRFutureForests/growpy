@@ -1,6 +1,6 @@
 # Unreal Engine Import Guide
 
-GrowPy emits USD Nanite Assemblies ready for UE 5.7+. This guide covers the full import path: plugins, settings, auto-import scripts, DynamicWind, PVE presets, and Nanite voxelization. Architectural details live in [architecture/processing-logic.md#unreal-handoff-scripts](../architecture/processing-logic.md#unreal-handoff-scripts).
+GrowPy emits USD Nanite Assemblies ready for UE 5.7+. This guide covers the full import path: plugins, settings, auto-import scripts, DynamicWind, PVE presets, and Nanite voxelization. Architectural details live in [architecture/processing-logic.md#unreal-handoff-scripts](../README.md#unreal-handoff-scripts).
 
 ## Prerequisites
 

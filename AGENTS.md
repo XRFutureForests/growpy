@@ -2,21 +2,15 @@
 
 Procedural tree/forest generation pipeline: CSV species data → The Grove 2.3 growth simulation → USD Nanite assemblies for Unreal Engine 5.7+. Trees grow to height milestones; stem diameter is realised at export from yield-table height-DBH allometry. Competition variants come from Grove's Surround shell. Outputs USD assemblies, PVE JSON, OBJ for Helios++ LiDAR.
 
-<!-- SCOPE: Canonical machine-facing entry point with repo map, critical rules, command overview, and links to detailed documentation ONLY. -->
-<!-- DOC_KIND: index -->
-<!-- DOC_ROLE: canonical -->
-<!-- READ_WHEN: Start here when you need the project map, local rules, or the next canonical document. -->
-<!-- SKIP_WHEN: Skip when you already know the exact target document or code area. -->
-<!-- PRIMARY_SOURCES: AGENTS.md, docs/README.md -->
 
 ## Quick Navigation
 
 | Need | Read |
 |------|------|
 | Documentation map | [docs/README.md](docs/README.md) |
-| Standards | [docs/documentation_standards.md](docs/documentation_standards.md) |
-| Principles | [docs/principles.md](docs/principles.md) |
-| Quickstart | [docs/quickstart.md](docs/quickstart.md) |
+| Standards | [AGENTS.md](AGENTS.md) |
+| Principles | [AGENTS.md](AGENTS.md) |
+| Quickstart | [RUNBOOK.md](RUNBOOK.md) |
 | Dataset workflow | [docs/guides/dataset-workflow.md](docs/guides/dataset-workflow.md) |
 | Forest generation | [docs/guides/forest-generation.md](docs/guides/forest-generation.md) |
 

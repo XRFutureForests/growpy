@@ -32,7 +32,7 @@ silver fir reaches 19.1 M mesh points at h25 and exhausts a 63.5 GB host at h20.
 and the one h30 attempt died on a `MemoryError`. Density variants are off for
 the same reason -- they triple export cost for an axis nothing consumes yet, as
 `DT_TreeCatalog` has no density column. See
-[crown-density-ratchet.md](crown-density-ratchet.md) for the measurements and
+[crown-density-ratchet.md](dataset-specification.md) for the measurements and
 XRFF-320 for the deliverables.
 
 Raising the target back to 639 means raising `[forest] max_height` **and**

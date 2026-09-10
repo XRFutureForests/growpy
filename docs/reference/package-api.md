@@ -156,10 +156,10 @@ generate_forest.py --> data/output/forest/ (USD assemblies)
 | Document | Description |
 |----------|-------------|
 | [CLI Reference](cli-reference.md) | Complete CLI flags for all scripts |
-| [Pipeline Overview](../architecture/pipeline-overview.md) | Architecture and data flow |
+| [Pipeline Overview](../README.md) | Architecture and data flow |
 | [Grove Preset Reference](grove-preset-reference.md) | Growth parameters |
 | [Coordinate Systems](coordinate-systems.md) | Grove/Blender/Unreal transforms |
 | [Naming Conventions](naming-conventions.md) | Species and file naming |
 | [USD Builder](usd-builder.md) | USD export internals |
-| [Module Reference](../architecture/module-reference.md) | Per-module purpose, functions, inputs, outputs |
-| [Grove API](vendor/the-grove/core-api/) | Grove core API documentation |
+| [Module Reference](module-reference.md) | Per-module purpose, functions, inputs, outputs |
+| [Grove API](https://www.thegrove3d.com) | Grove core API documentation |
