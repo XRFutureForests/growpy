@@ -249,13 +249,7 @@
     "Grove originals: norway_spruce 0.3/0.3, silver_fir 0.3/0.3,",
     "silver_birch 0.6/0.5, small_leaved_linden 0.6/0.2, wild_cherry 0.4/0.3."
   ],
-  "norway_spruce": {
-    "drop_decay": 0.18,
-    "drop_weak": 0.18
-  },
   "silver_fir": {
-    "drop_decay": 0.18,
-    "drop_weak": 0.18,
     "drop_shaded": 0.05
   },
   "silver_birch": {
@@ -310,5 +304,42 @@
     "",
     "2026-08-28, corrected after the full run measured the interpolated values: small_leaved_linden 0.65 came out at crown ratio 0.31 (over-suppressed) and european_beech 0.87 at 0.73 (under-suppressed) -- wrong in OPPOSITE directions, so neither was a systematic offset. Re-set to 0.78 and 0.84 respectively, bracketed by the measured pairs (linden 0.5->0.42, 0.9->0.88; beech 0.80->0.24, 0.87->0.73)."
   ],
-  "_why_drop_shaded_trial": "european_beech drop_shaded 0.1, measured 2026-09-08 -- NOT yet validated at a production radius. Every dataset preset shipped drop_shaded 0.0, so a shaded lower branch kept its wood after losing its foliage: on the beech h20 r05, 80% of twigs sat in the 15-25 m band over wood that was still there, and the crown base read 4.5 m on a 20 m tree. Bracketed at r05, crown base / ratio at h20: 0.0 -> 4.5 m / 0.77, 0.05 -> 6.7 m / 0.67, 0.1 -> 12.4 m / 0.39, 0.3 -> 15.2 m / 0.23, against Sharma et al. 2017's 0.57-0.60 for stand-grown beech. 0.1 gives exactly 0.57 at h10m and also WIDENS the crown (6.2 -> 7.0 m at h20) because shedding the shaded lower branches lets the upper crown expand. No height cost: all four milestones captured in 48 cycles, which matches _why_drop_curves listing beech among the species that hold their height. CAVEATS. Tuned at r05, which is tighter than any production radius ([0.0, 8.0, 16.0]) -- the h20 ratio of 0.39 is that tight shell, and should rise under r08, so re-validate there before dataset production. Says NOTHING about the conifers: norway_spruce and silver_fir already run 0.6-scaled drop rates to survive the growing shell, so they need their own bracket with the height guard watched. Leaf area falls when branches go (LAI 1.79 -> 1.27); that is corrected by re-running growpy-calibrate-crown-density, not by backing off this value -- drop_shaded sets the crown envelope, twig_density fills it."
+  "_why_drop_shaded_trial": "european_beech drop_shaded 0.1, measured 2026-09-08 -- NOT yet validated at a production radius. Every dataset preset shipped drop_shaded 0.0, so a shaded lower branch kept its wood after losing its foliage: on the beech h20 r05, 80% of twigs sat in the 15-25 m band over wood that was still there, and the crown base read 4.5 m on a 20 m tree. Bracketed at r05, crown base / ratio at h20: 0.0 -> 4.5 m / 0.77, 0.05 -> 6.7 m / 0.67, 0.1 -> 12.4 m / 0.39, 0.3 -> 15.2 m / 0.23, against Sharma et al. 2017's 0.57-0.60 for stand-grown beech. 0.1 gives exactly 0.57 at h10m and also WIDENS the crown (6.2 -> 7.0 m at h20) because shedding the shaded lower branches lets the upper crown expand. No height cost: all four milestones captured in 48 cycles, which matches _why_drop_curves listing beech among the species that hold their height. CAVEATS. Tuned at r05, which is tighter than any production radius ([0.0, 8.0, 16.0]) -- the h20 ratio of 0.39 is that tight shell, and should rise under r08, so re-validate there before dataset production. Says NOTHING about the conifers: norway_spruce and silver_fir already run 0.6-scaled drop rates to survive the growing shell, so they need their own bracket with the height guard watched. Leaf area falls when branches go (LAI 1.79 -> 1.27); that is corrected by re-running growpy-calibrate-crown-density, not by backing off this value -- drop_shaded sets the crown envelope, twig_density fills it.",
+  "_why_shade_branches": "silver_fir shade_branches = true, TRIAL 2026-09-09. drop_shaded 0.05 barely moved the fir's crown base (0.9 m on a 20 m tree, ratio 0.95) where 0.1 took the beech from 4.5 m to 12.4 m. The reason is that drop_shaded can only drop what the model marks as heavily shaded, and shade_branches governs whether BRANCHES cast shade on top of leaves. A broadleaf hardly needs it -- beech leaves shade the crown below regardless -- but a conifer carries its needles ON the branches, so with it off the fir's lower crown is never shaded and there is nothing to drop. grove-preset-reference.md lists shade_branches: true as the conifer setting (Scots Pine, with shade_alongside: 3, 'conifer needle shading pattern'). Changed ALONE, keeping drop_shaded at 0.05, so the effect is attributable. Watch the height guard: silver_fir is one of the species that collapses under the growing shell, and more shading means more branches flagged for dropping.",
+  "_why_conifer_drop_rates_restored": [
+    "2026-09-10 -- REMOVED the drop_decay/drop_weak patches from silver_fir and",
+    "norway_spruce, restoring Grove's own 0.3/0.3. Also removed the silver_fir",
+    "shade_branches=true trial, which _why_shade_branches proposed and the",
+    "2026-09-09 run disproved (crown ratio stayed at 0.96, exactly where",
+    "drop_shaded 0.05 alone had it). drop_shaded 0.05 is KEPT: it is a separate",
+    "deliberate term, measured as having essentially no effect on its own, so",
+    "leaving it holds this change to one variable.",
+    "",
+    "WHY. _why_drop_curves above describes the fix as a ramp and states that",
+    "'Each ramp ENDS at that species' own Grove value, so the mature tree is",
+    "unchanged'. preset_overrides.py implements exactly that -- a <param>_curve",
+    "block with start/end/easing/transition_cycle. NO SUCH BLOCK WAS EVER",
+    "WRITTEN, here or in any baked preset under data/assets/presets/. What was",
+    "applied instead is a flat 0.6x multiplier: every patched species sits at",
+    "exactly 0.6x its Grove value (fir/spruce 0.3->0.18, birch 0.6->0.36 and",
+    "0.5->0.30, linden 0.6->0.36 and 0.2->0.12, cherry 0.4->0.24 and 0.3->0.18).",
+    "So the mature tree WAS changed -- it self-pruned at 60% of the intended",
+    "rate for its entire life, not just as a seedling.",
+    "",
+    "That is the condition _why_drop_curves itself blames under PROBLEM 2 for",
+    "'opaque crowns with no visible bole, foliage all the way to the ground'.",
+    "Measured 2026-09-10 on the surround-density sweep: silver_fir and",
+    "norway_spruce read crown ratio 0.88-0.96 against a stand-grown 0.52-0.68,",
+    "with the crown base ~0.8 m on a 20 m tree. The two conifers with NO drop",
+    "patch (scots_pine 0.3/0.3, douglas_fir 0.5/0.2) develop a bole as shell",
+    "density rises. PROBLEM 2 was never fixed; it survived in a different shape.",
+    "",
+    "THE OTHER HALF OF THE BARGAIN. These ramps were added against PROBLEM 1,",
+    "real structural collapse. That was re-screened 2026-09-09 and found cured,",
+    "but the re-screen covered common_ash and european_oak, NOT the conifers.",
+    "So verify BOTH, exactly as _why_drop_curves asks: height held to h25 AND a",
+    "visible bole. If a conifer collapses again, the answer is to implement the",
+    "ramp that was documented -- a drop_decay_curve ending at 0.3 with",
+    "transition_cycle 8 -- not to reinstate a flat scale."
+  ]
 }
