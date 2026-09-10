@@ -95,6 +95,13 @@ generate_wind_data = true
 #   optional. plantProfile_8 (0.8215) is the chosen default: roundest section
 #   with the mildest relief.
 #
+#   THIS NUMBER IS HALF A CONTRACT. The other half is which pin of
+#   PVPlantProfileLoader the graph wires into MeshBuilder.Profile, and nothing
+#   checks that the two agree. Measured 2026-09-10: the test graph was on
+#   plantProfile_7 (0.7694) while this said 0.8215, so every exported trunk came
+#   out 6.3 % thin and still looked entirely plausible. If you change this value,
+#   change the pin; if you author a graph, assert the pin name.
+#
 # min_branch_radius_fraction: drop branches whose thickest point is below this
 #   fraction of the TRUNK'S BASE RADIUS, with their subtrees. Relative, not
 #   absolute, because an absolute cutoff is applied in emitted units and so does
