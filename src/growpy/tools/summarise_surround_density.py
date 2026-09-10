@@ -112,31 +112,59 @@ def load() -> list[dict]:
     return rows
 
 
-# DBH is recorded as integer centimetres, so 1 cm is the measurement quantum.
-# At h05 the stems are 5-7 cm, where that quantum is ~15-20% of the value and
-# two radii routinely land on the same integer. Treating such a tie as a failed
-# gradient rejected beech at d=0.90 -- the value every other line of evidence
-# says is correct -- purely on rounding at the smallest stage. Only a genuine
-# inversion beyond the quantum counts against an arm.
-DBH_TOL_CM = 1.0
+# WHICH AXIS SEPARATES THE THREE RADII DEPENDS ON HABIT -- measured 2026-09-10.
+#
+# On a broadleaf the shell moves the STEM. Beech at d=0.90 reads DBH 11/20/32 cm
+# at h15 across r05/r10/r20 -- a 21 cm spread, and the inversion of that ordering
+# is what disqualified d=0.80.
+#
+# On a conifer the shell does NOT move the stem at all. Norway spruce reads
+# 14/14/14 at h15, 22/22/22 at h20 and 30/30/30 at h25 -- identical to the
+# centimetre at every radius, at BOTH densities tested. A18 recorded the same for
+# silver fir. What does move is CROWN WIDTH: spruce crown diameter runs
+# 1.8/2.1/2.8 m at h10 through 2.9/3.1/3.6 m at h25, monotonic throughout.
+#
+# So gating every species on DBH is a broadleaf test that rejects all four
+# conifers on a property they were never going to have. Each habit is gated on
+# the axis that actually responds.
+CONIFERS = {"norway_spruce", "silver_fir", "douglas_fir", "scots_pine"}
+
+# DBH is recorded as integer centimetres, so 1 cm is the measurement quantum. At
+# h05 the stems are 5-7 cm, where that quantum is ~15-20% of the value and two
+# radii routinely land on the same integer; treating such a tie as a failed
+# gradient rejected beech at d=0.90, the value every other line of evidence says
+# is correct. Crown diameter is reported to 0.1 m, so its quantum is 0.1.
+GATE_FIELD = {False: ("dbh_cm", 1.0, "dbh"),
+              True: ("crown_diameter_m", 0.1, "crownø")}
 
 
-def dbh_ordering(cells: dict[str, dict]) -> tuple[str, str, float | None]:
-    """Classify the r05 -> r10 -> r20 DBH ordering for one stage of one arm.
+def gate_axis(species: str) -> tuple[str, float, str]:
+    """(csv field, tolerance, short label) that separates radii for this habit."""
+    return GATE_FIELD[species in CONIFERS]
 
-    Returns (verdict, detail, spread). r05 must be the THINNEST: it carries the
-    tightest shell. A tie within DBH_TOL_CM is quantisation and passes; a real
-    inversion fails. `spread` is r20 - r05, which is how much the shell is
-    actually discriminating between radii -- reported, not gated, because there
-    is no published threshold for it.
+
+def radius_ordering(cells: dict[str, dict], field: str,
+                    tol: float) -> tuple[str, str, float | None]:
+    """Classify the r05 -> r10 -> r20 ordering of `field` for one stage.
+
+    r05 carries the tightest shell, so it must sit LOWEST on whichever axis the
+    shell drives. Returns (verdict, detail, spread):
+
+      ok        monotonic and separated by more than the quantum
+      INVERTED  a real reversal -- the shell is working backwards
+      FLAT      spread within the quantum: the three radii are not three
+                variants at all, which defeats the point of having three
     """
-    vals = [fnum(cells.get(r), "dbh_cm") for r in RADII]
+    vals = [fnum(cells.get(r), field) for r in RADII]
     if any(v is None for v in vals):
         return "--", "", None
-    detail = "/".join(f"{int(v)}" for v in vals)
+    fmt = "{:.0f}" if field == "dbh_cm" else "{:.1f}"
+    detail = "/".join(fmt.format(v) for v in vals)
     spread = vals[2] - vals[0]
-    if vals[0] > vals[1] + DBH_TOL_CM or vals[1] > vals[2] + DBH_TOL_CM:
+    if vals[0] > vals[1] + tol or vals[1] > vals[2] + tol:
         return "INVERTED", detail, spread
+    if spread <= tol:
+        return "FLAT", detail, spread
     return "ok", detail, spread
 
 
@@ -176,8 +204,12 @@ def main() -> int:
 
     for species in sorted({s for s, _ in arms}):
         target_dh = DH_TARGET.get(species, DH_DEFAULT)
-        print(f"=== {species}   (crown d/h target {target_dh}) ===")
-        print(f"{'density':>8} {'models':>7} {'gate':>10} {'dbh r05/r10/r20':>18}"
+        field, tol, label = gate_axis(species)
+        habit = "conifer" if species in CONIFERS else "broadleaf"
+        print(f"=== {species}   ({habit}; gated on {label}; "
+              f"crown d/h target {target_dh}) ===")
+        print(f"{'density':>8} {'models':>7} {'gate':>10} "
+              f"{label + ' r05/r10/r20':>20}"
               f" {'spread':>7} {'ratio':>7} {'d/h':>7} {'fill':>7}"
               f"  cells outside gate")
 
@@ -186,25 +218,36 @@ def main() -> int:
             per_radius = arms[(species, density)]
             models = sum(len(v) for v in per_radius.values())
 
-            # Gate: every stage present at ALL THREE radii must be monotonic.
+            # INVERTED fails; FLAT only warns. They are different faults: an
+            # inversion means the shell is acting backwards, which is a defect
+            # and disqualifies the arm (beech at d=0.80). Flatness means the
+            # shell simply is not separating two radii at that stage -- true of
+            # every species at h05, where the tree is a sapling the shell has
+            # barely touched, and it says nothing about the mature tree. Worth
+            # seeing, because those cells are near-duplicates across radii, but
+            # not worth rejecting a good arm over.
             bad: list[str] = []
+            flat: list[str] = []
             checked = 0
             for stage in STAGES:
                 cells = {r: per_radius.get(r, {}).get(stage) for r in RADII}
                 if any(c is None for c in cells.values()):
                     continue
                 checked += 1
-                verdict, detail, _ = dbh_ordering(cells)
-                if verdict not in ("ok", "--"):
-                    bad.append(f"{stage}:{verdict}({detail})")
+                verdict, detail, _ = radius_ordering(cells, field, tol)
+                if verdict == "INVERTED":
+                    bad.append(f"{stage}:INVERTED({detail})")
+                elif verdict == "FLAT":
+                    flat.append(f"{stage}:flat({detail})")
             gate = "PASS" if checked and not bad else ("FAIL" if bad else "--")
 
             judged = per_radius.get("5", {}).get(args.stage)
             ratio = fnum(judged, "crown_ratio")
             dh = fnum(judged, "crown_d_over_h")
             fill = fnum(judged, "twigs_per_m3")
-            _, dbh_txt, spread = dbh_ordering(
-                {r: per_radius.get(r, {}).get(args.stage) for r in RADII})
+            _, dbh_txt, spread = radius_ordering(
+                {r: per_radius.get(r, {}).get(args.stage) for r in RADII},
+                field, tol)
 
             score = None
             if ratio is not None:
@@ -213,11 +256,11 @@ def main() -> int:
                     score += abs(dh - target_dh) / target_dh
 
             print(f"{density:>8} {models:>7} {gate:>10} {dbh_txt or '--':>18}"
-                  f" {'--' if spread is None else f'{spread:+.0f}':>7}"
+                  f" {'--' if spread is None else f'{spread:+.1f}':>7}"
                   f" {'--' if ratio is None else f'{ratio:.2f}':>7}"
                   f" {'--' if dh is None else f'{dh:.2f}':>7}"
                   f" {'--' if fill is None else f'{fill:.1f}':>7}"
-                  f"  {', '.join(bad) if bad else ''}")
+                  f"  {', '.join(bad + flat)}")
 
             if gate == "PASS" and score is not None:
                 candidates.append((score, density, models))
@@ -246,8 +289,10 @@ def main() -> int:
 
     print("NEEDS-SEEDS arms are the replication shortlist: re-run those "
           "densities with --seeds 512 999 7 before believing the choice.")
-    print("A FAIL on the gate is not a near-miss -- an inverted or flat DBH "
-          "gradient means the three radii are not three variants.")
+    print("A FAIL means INVERTED: the shell acted backwards on the gated axis, "
+          "so the arm is disqualified, not merely imperfect.")
+    print("A lowercase `flat` cell is a WARNING: those radii are near-duplicates "
+          "at that stage. Normal at h05; worth a look higher up the ladder.")
     return 0
 
 
