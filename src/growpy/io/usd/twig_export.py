@@ -464,23 +464,58 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), minimal_export=Tru
 from growpy.utils.naming import standardize_twig_name  # noqa: E402
 
 
-def _detect_leaf_material_indices(obj):
-    """Return a set of material indices that likely correspond to leaves/foliage.
+# Names that positively identify a foliage material. Checked FIRST, because the
+# exclude list below cannot see the real problem: on every two-material asset in
+# this library the woody material is called "<Species>Twigs", and "twig" cannot
+# be added to the exclude list without breaking the single-material assets whose
+# one material is also called "<Species>Twig" and IS the foliage.
+_LEAF_KEYWORDS = ("leaf", "leaves", "needle", "foliage", "frond")
 
-    Twig assets are primarily leaf/needle geometry. Any material NOT explicitly
-    tagged as bark/branch/wood/dead is assumed to be a leaf and eligible for
-    geometry processing (alpha trim, densify, interior decimate).
+# Fallback only, and deliberately unchanged: it is what keeps single-material
+# assets (silver fir, Scots pine) processing exactly as before.
+_WOOD_KEYWORDS = ("bark", "branch", "wood", "dead")
+
+
+def _detect_leaf_material_indices(obj):
+    """Return the material indices that carry leaves/needles.
+
+    Densification, alpha trim and interior decimation are all restricted to
+    these, so getting it wrong is expensive in triangles.
+
+    Two stages, positive first. Where any material names itself foliage
+    ("BeechLeaves", "PaperBirchSummerLeaves"), those ARE the leaf set and
+    everything else is wood. Only when no material says so does the old
+    exclude-by-keyword heuristic run.
+
+    Why the order matters, measured 2026-09-10: the exclude list never fired on
+    the two-material assets, because their woody material is named
+    "<Species>Twigs" -- "BeechTwigs", "OneLeavedAshTwigs" -- and "twig" is not a
+    wood keyword. So the stem was densified along with the leaves, and
+    BeechTwigC went from 769 faces in the blend to 18,046, of which 13,422 (74 %)
+    were stem. A twig stem is opaque: it has no alpha to carve, so subdividing
+    it buys nothing at all.
+
+    "twig" cannot simply join the wood keywords, because the single-material
+    assets name their one material "PacificSilverFirTwig", and excluding it
+    would leave an empty set and skip their processing entirely.
     """
-    exclude_kw = ("bark", "branch", "wood", "dead")
     mats = getattr(obj.data, "materials", []) or []
 
     if not mats:
         return {0}
 
+    names = [(mat.name if mat else "").lower() for mat in mats]
+
+    leaf_idxs = {
+        i for i, name in enumerate(names)
+        if any(k in name for k in _LEAF_KEYWORDS)
+    }
+    if leaf_idxs:
+        return leaf_idxs
+
     idxs = set()
-    for i, mat in enumerate(mats):
-        name = (mat.name if mat else "").lower()
-        if not any(k in name for k in exclude_kw):
+    for i, name in enumerate(names):
+        if not any(k in name for k in _WOOD_KEYWORDS):
             idxs.add(i)
 
     # If all materials were excluded, return empty set (skip processing)
