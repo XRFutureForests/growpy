@@ -505,6 +505,71 @@ def prune_arm(out_dir: Path) -> tuple[int, float]:
     return removed, freed / (1024 ** 3)
 
 
+ARM_DIR = re.compile(r"^(?P<species>.+)_d(?P<density>[0-9.]+)_s(?P<seed>\d+)$")
+
+
+def remeasure(args) -> int:
+    """Rebuild every row from the assemblies already on disk.
+
+    The point of keeping `_full_assembly.usdc` through pruning: an arm costs
+    20-30 minutes to simulate and seconds to measure, so a change to any crown
+    metric can be applied to the whole sweep without re-running a single tree.
+
+    Writes a NEW file rather than rewriting the live one. A sweep in progress
+    holds sweep_results.csv open in append mode, and rewriting underneath that
+    handle corrupts it.
+    """
+    out_root = args.work_dir / "out"
+    dest = args.work_dir / "sweep_results_remeasured.csv"
+    arm_dirs = sorted(d for d in out_root.glob("*") if d.is_dir())
+    if not arm_dirs:
+        raise SystemExit(f"no arm directories under {out_root}")
+
+    print(f"[{datetime.now():%H:%M:%S}] REMEASURE: {len(arm_dirs)} arm(s) from "
+          f"retained assemblies -> {dest.name}")
+    with dest.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow([
+            "run_utc", "species", "density", "seed", "radius", "stage",
+            "height_m", "dbh_cm", "crown_diameter_m", "crown_base_m",
+            "crown_ratio", "crown_d_over_h", "n_twigs", "twigs_per_m3",
+            "leaf_area_m2", "lai",
+            "in_sharma_band", "elapsed_s", "status",
+        ])
+        stamp = datetime.now(UTC).isoformat(timespec="seconds")
+        total = 0
+        for d in arm_dirs:
+            m = ARM_DIR.match(d.name)
+            if not m:
+                print(f"  skipped {d.name}: not an arm directory")
+                continue
+            wrote = 0
+            for stage in STAGES:
+                rows = measure_arm(
+                    d, stage, args.work_dir / "metrics" / f"{d.name}_{stage}.json")
+                for row in rows:
+                    ratio = row.get("crown_ratio")
+                    in_band = ("" if ratio is None else
+                               CROWN_RATIO_BAND[0] <= ratio <= CROWN_RATIO_BAND[1])
+                    writer.writerow([
+                        stamp, row.get("species", m["species"]),
+                        float(m["density"]), int(m["seed"]),
+                        row.get("radius"), stage,
+                        row.get("height_m"), row.get("dbh_cm"),
+                        row.get("crown_diameter_m"), row.get("crown_base_m"),
+                        ratio, row.get("crown_d_over_h"),
+                        row.get("n_twigs"), row.get("twigs_per_m3"),
+                        row.get("leaf_area_m2"), row.get("lai"),
+                        in_band, "", "OK",
+                    ])
+                    wrote += 1
+            total += wrote
+            print(f"  {d.name:<40} {wrote:>3} cell(s)")
+        fh.flush()
+    print(f"[{datetime.now():%H:%M:%S}] REMEASURE: {total} cell(s) -> {dest}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -524,6 +589,14 @@ def main() -> int:
     ap.add_argument("--verify-only", action="store_true",
                     help="build and check each arm's config, run nothing")
     ap.add_argument("--dry-run", action="store_true", help="list arms and exit")
+    ap.add_argument("--remeasure", action="store_true",
+                    help="re-derive every row from the RETAINED assemblies "
+                         "without re-simulating anything, and write them to a "
+                         "fresh CSV. Use after changing a crown metric: the "
+                         "arms cost hours, the measurement costs seconds. "
+                         "Writes <work-dir>/sweep_results_remeasured.csv so a "
+                         "running sweep's open handle on the live CSV is never "
+                         "disturbed.")
     ap.add_argument("--work-dir", type=Path, default=DEFAULT_WORK_DIR,
                     help="scratch directory for per-arm configs, output, "
                          "logs and the results CSV "
@@ -541,6 +614,9 @@ def main() -> int:
     HERE = args.work_dir
     CFG_ROOT, OUT_ROOT, LOG_ROOT = HERE / "cfg", HERE / "out", HERE / "logs"
     RESULTS = HERE / "sweep_results.csv"
+
+    if args.remeasure:
+        return remeasure(args)
 
     species_list = ALL_SPECIES if args.all else args.species
     arms = [
