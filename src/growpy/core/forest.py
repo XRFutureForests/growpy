@@ -122,7 +122,7 @@ def create_forest(
         if len(species_data) == 1 and surround_radius > 0:
             applied = enable_surround(
                 grove,
-                density=cfg.get_surround_density(species_name),
+                density=cfg.get_surround_density(species_name, surround_radius),
                 distance=surround_radius,
                 height=cfg.surround_height,
                 grow=cfg.get_surround_grow(species_name),
@@ -132,7 +132,7 @@ def create_forest(
                     "Surround enabled for %s (density=%.2f distance=%.1f "
                     "height=%.1f grow=%s)",
                     species_name,
-                    cfg.get_surround_density(species_name),
+                    cfg.get_surround_density(species_name, surround_radius),
                     surround_radius,
                     cfg.surround_height,
                     cfg.get_surround_grow(species_name),

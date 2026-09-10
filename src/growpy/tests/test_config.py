@@ -272,6 +272,71 @@ grow = false
         assert config.surround_height == pytest.approx(4.0)
         assert config.surround_grow is False
 
+    def test_density_per_species_radius_resolution_order(self, tmp_path):
+        """Shell density resolves radius cell -> species -> global, in that order.
+
+        The per-radius level is not a refinement of the per-species one: these
+        values are per-species thresholds measured against a particular shell
+        distance, so they do not transfer between radii by interpolation. A cell
+        must therefore win over its species' value, and leave every other cell
+        of the same species untouched.
+        """
+        toml_content = b"""
+[surround]
+radii = [5.0, 10.0, 20.0]
+density = 0.45
+
+[surround.density_per_species]
+european_beech = 0.9
+silver_fir = 0.7
+
+[surround.density_per_species_radius.european_beech]
+r05 = 0.6
+"""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(toml_content)
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+
+        # The overridden cell wins.
+        assert config.get_surround_density("european_beech", 5.0) == pytest.approx(0.6)
+        # Its sibling radii keep the per-species value.
+        assert config.get_surround_density("european_beech", 10.0) == pytest.approx(0.9)
+        assert config.get_surround_density("european_beech", 20.0) == pytest.approx(0.9)
+        # A species with no cell at all falls through to per-species.
+        assert config.get_surround_density("silver_fir", 5.0) == pytest.approx(0.7)
+        # A species in neither table falls through to the global.
+        assert config.get_surround_density("common_ash", 5.0) == pytest.approx(0.45)
+
+    def test_density_per_species_radius_accepts_common_names(self, tmp_path):
+        """Callers pass whatever the CSV holds, so both name forms must resolve."""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(
+            b"[surround]\ndensity = 0.45\n\n"
+            b"[surround.density_per_species_radius.european_beech]\nr05 = 0.6\n"
+        )
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+
+        assert config.get_surround_density("European beech", 5.0) == pytest.approx(0.6)
+        assert config.get_surround_density("european_beech", 5.0) == pytest.approx(0.6)
+
+    def test_density_per_species_radius_skipped_without_a_radius(self, tmp_path):
+        """radius=None means no shell (r00), so a cell must not leak into it."""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(
+            b"[surround]\ndensity = 0.45\n\n"
+            b"[surround.density_per_species]\neuropean_beech = 0.9\n\n"
+            b"[surround.density_per_species_radius.european_beech]\nr05 = 0.6\n"
+        )
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+
+        assert config.get_surround_density("european_beech") == pytest.approx(0.9)
+
+    def test_density_per_species_radius_defaults_empty(self):
+        """The table is opt-in; an absent one must not shadow anything."""
+        config = GrowPyConfig()
+        assert config.surround_density_per_species_radius == {}
+
+
     def test_toml_export_section(self, tmp_path):
         toml_content = b"""
 [export]

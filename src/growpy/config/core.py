@@ -209,6 +209,11 @@ class GrowPyConfig:
         ),
         "surround_grow_per_species": "nested dict structure, config-only by design",
         "surround_density_per_species": "nested dict structure, config-only by design",
+        "surround_density_per_species_radius": (
+            "nested dict structure, config-only by design: each entry records a "
+            "measured density sweep for one species at one shell radius, which "
+            "belongs beside the measurement in config, not on a command line"
+        ),
         "export_twig_reattach_threshold": "internal tuning, no CLI need identified",
         "export_twig_recovery": "internal toggle, no CLI need identified",
         "export_external_refs": "internal toggle, no CLI need identified",
@@ -476,6 +481,25 @@ class GrowPyConfig:
     # crown-diameter/height ratios (spruce 0.22, beech 0.30) without moving the
     # global for everyone.
     surround_density_per_species: dict[str, float] = field(default_factory=dict)
+
+    # Per-species AND per-radius override of the shell density, keyed
+    # species -> radius label -> value, where the radius label is the same
+    # ``rNN`` string the output directories use (radius_label(): r05, r10, r20).
+    #
+    # This level exists because the per-species values above are THRESHOLDS,
+    # not a gradient: measured 2026-08-28, the thresholds span 0.38 to 0.90, and
+    # at a shared density douglas_fir was already past its cliff (crown ratio
+    # 0.39) while european_beech had not reached its own (0.93). A threshold
+    # fitted at one shell distance therefore does not transfer to another by
+    # interpolation -- surround.toml records that the whole table was fitted at
+    # r08 and is stale for the [5, 10, 20] matrix.
+    #
+    # Falls back to surround_density_per_species, then to the global
+    # [surround] density, so only the species/radius cells that actually differ
+    # need an entry.
+    surround_density_per_species_radius: dict[str, dict[str, float]] = field(
+        default_factory=dict
+    )
 
 
     # Distance (m) beyond which a twig orphaned by the cutoff is pulled back
@@ -959,6 +983,13 @@ class GrowPyConfig:
             kwargs["surround_density_per_species"] = {
                 str(k): float(v) for k, v in surr["density_per_species"].items()
             }
+        if "density_per_species_radius" in surr:
+            kwargs["surround_density_per_species_radius"] = {
+                str(species): {
+                    str(label): float(value) for label, value in per_radius.items()
+                }
+                for species, per_radius in surr["density_per_species_radius"].items()
+            }
         if "grow_per_species" in surr:
             kwargs["surround_grow_per_species"] = {
                 str(k): bool(v) for k, v in surr["grow_per_species"].items()
@@ -1056,12 +1087,37 @@ class GrowPyConfig:
             result.append((name, vcfg))
         return result
 
-    def get_surround_density(self, species: str) -> float:
-        """Shell density for this species, falling back to [surround] density."""
+    def get_surround_density(self, species: str, radius: float | None = None) -> float:
+        """Shell density for this species, optionally at one shell radius.
+
+        Resolves in order: ``[surround.density_per_species_radius.<species>]``
+        keyed by the same ``rNN`` label the output directories use, then
+        ``[surround.density_per_species]``, then the global ``[surround]
+        density``.
+
+        The per-radius level is not a refinement of the per-species one, it is a
+        different quantity: these values are per-species THRESHOLDS rather than
+        a gradient, so a density that lands a species inside its target
+        crown-ratio band at one shell distance can sit past its cliff at a
+        tighter one and short of it at a wider one. They do not transfer between
+        radii by interpolation -- see the note at [surround.density_per_species]
+        in surround.toml.
+
+        ``radius=None`` skips the per-radius level, which is what a caller with
+        no shell (r00, open-grown) wants.
+        """
         from growpy.utils.naming import standardize_species_name
 
+        key = standardize_species_name(species) if species else ""
+        if radius is not None and self.surround_density_per_species_radius:
+            from growpy.config.paths import radius_label
+
+            per_radius = self.surround_density_per_species_radius.get(key)
+            if per_radius:
+                label = radius_label(radius)
+                if label in per_radius:
+                    return per_radius[label]
         if self.surround_density_per_species:
-            key = standardize_species_name(species)
             if key in self.surround_density_per_species:
                 return self.surround_density_per_species[key]
         return self.surround_density

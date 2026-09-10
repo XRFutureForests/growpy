@@ -133,3 +133,36 @@ silver_fir = 0.7
 small_leaved_linden = 0.9
 sycamore_maple = 0.65
 wild_cherry = 0.7
+
+# --- Per-species shell density AT ONE RADIUS ---------------------------------
+# Overrides [surround.density_per_species] above for a single species/radius
+# cell. Keys are species -> the same rNN label the output directories use
+# (radius_label(): r05, r10, r20). Anything with no entry falls through to the
+# per-species value, then to [surround] density, so only the cells that actually
+# differ need to appear.
+#
+# WHY THIS LEVEL EXISTS. The values above are per-species THRESHOLDS rather than
+# a gradient, and the note there records the consequence: at a shared 0.45,
+# douglas_fir was already past its cliff (crown ratio 0.39) while european_beech
+# had not reached its own (0.93). A threshold is a property of the species AND
+# the shell it is measured against, so it does not transfer from one radius to
+# another by interpolation. The whole table above was fitted at r08 against a
+# [0.0, 8.0, 16.0] matrix and is stale for [5.0, 10.0, 20.0].
+#
+# Added 2026-09-10 so the phase-2 re-sweep has somewhere to put what it measures
+# -- get_surround_density() previously took no radius at all, so a per-radius
+# result was not expressible.
+#
+# KNOWN FIRST CELL: european_beech at r05. Measured 2026-09-09, beech cannot
+# exceed 20 m at r05 and stops one stage short of the h25 ladder. Both cheap
+# explanations are ruled out -- with radii = [5.0] alone (so no sibling grove
+# could hijack the shared plateau counter) it stopped at h20 at plateau_cycles
+# = 5 AND at 20, so quadrupling the stall tolerance changed nothing. Its 0.9 is
+# the joint-highest density in the table, which makes the shell the remaining
+# suspect. Owner accepted a lower r05 density on 2026-09-10; the value comes
+# from the sweep, not from a guess.
+#
+# Fill from the sweep, e.g.:
+#   [surround.density_per_species_radius.european_beech]
+#   r05 = 0.6
+[surround.density_per_species_radius]

@@ -152,7 +152,15 @@ export_control = false
 #
 # This global value now applies only to species with no entry in
 # [export.twig_density_per_species] below.
-twig_density = 0.2
+#
+# 2026-09-10, OWNER DECISION: crown density correction is OFF. Twig placement is
+# done by PVE inside Unreal now, so growpy exports Grove's own twig points and
+# neither adds nor removes any. 1.0 is the no-op, not a tuned value:
+# assembly_export.py guards `if effective_density != 1.0`, so
+# densify_twig_placements is never called and the placement list passes through
+# untouched. The per-species table at the end of this file is emptied for the
+# same reason -- do not repopulate either without reversing that decision.
+twig_density = 1.0
 # Per-species values live in [export.twig_density_per_species] at the END of
 # this file -- a TOML sub-table captures every key that follows it, so it
 # cannot sit here in the middle of [export].
@@ -166,7 +174,19 @@ twig_reattach_threshold = 0.01
 # for judging compensation. Note Grove's own seed twig_density is inert in the
 # core API (1.0 / 0.25 / 0.0 all grow the same count), so with recovery off the
 # only remaining density lever is export twig_density below.
-twig_recovery = true
+#
+# 2026-09-10, OWNER DECISION: false. Paired with twig_density = 1.0 above this is
+# the "export exactly what Grove grew and the cutoff left" contract. Recovery
+# re-placed cutoff-orphaned twigs onto surviving surfaces and rejected those
+# landing too close (twig_min_spacing_ratio) -- it both moved and dropped points,
+# which is no longer wanted now that PVE owns placement.
+#
+# Know the cost: the cutoff takes ~82% of a beech's twigs and ~52% of a 20-cycle
+# oak's, and with recovery off none of them come back. Crown density is now PVE's
+# distributor (InstanceSpacing / MaxPerBranch), calibrated under XRFF-424 -- not
+# this file. twig_reattach_threshold and twig_min_spacing_ratio above are dead
+# while this is false; they are read only inside the recovery path.
+twig_recovery = false
 # Reject a recovered twig once it lands closer than this fraction of the
 # tree's own median living-twig spacing to an already-placed twig. Branches
 # cut close together otherwise stack several compensation twigs on top of
@@ -191,7 +211,15 @@ max_skeleton_joints = 1000
 # first), which thins the crown -- so with twig recovery active this cap, not
 # twig_density, becomes the binding constraint on mature trees. A 10 m oak
 # reaches ~52k instances at natural density and a 15 m one goes well beyond.
-max_assembly_instances = 40000
+#
+# 2026-09-10: raised 40000 -> 65000, Epic's actual Nanite assembly cap (Natsura
+# reports ~56k practical). At 40000 the 2026-09-09 run thinned beech h20/h25 from
+# a measured 45,840 / 55,359 / 66,863; at 65000 only the largest still binds.
+# This is the one remaining path that removes twig points, and it is kept
+# deliberately: a USD assembly past Epic's cap fails to build on the hybrid
+# route (XRFF-426). Note twig_recovery is now false, so the counts above are an
+# upper bound -- the cap should rarely bind at all.
+max_assembly_instances = 65000
 # Hand UE the package path of an already-imported twig instead of its geometry
 # (XRFF-389). With this off, the assembly is a PointInstancer whose prototypes
 # carry geometry, and NaniteAssemblyRootAPI expands every instance into one
@@ -286,22 +314,37 @@ density_variants = [] # e.g., ["full", "reduced", "bare"]
 # `_leaf_area_geom.json` split, and every species below reads it.
 #
 # Measured on a clean full run: 11 species, 32 h15m trees, all on the geom basis.
-common_ash = 1.0307          # measured 0.78x at 0.800
-douglas_fir = 0.0959         # measured 0.42x at 0.0399
-european_beech = 1.0414      # measured 0.62x at 0.6413 -- h05-h20 scope,
-                             # re-derived after drop_shaded 0.1 shed the
-                             # shaded lower branches and with them their leaf
-european_oak = 0.1764        # measured 0.84x at 0.148
-norway_spruce = 0.0556       # measured 0.55x at 0.0305
-scots_pine = 0.0343          # measured 0.53x at 0.0181
-silver_birch = 0.1276        # measured 1.57x at 0.200 -- pooled fit
-silver_fir = 0.1660          # measured 0.75x at 0.1253 -- pooled fit, h05-h20,
-                             # re-derived after drop_shaded 0.05. The ratio is now
-                             # flat across the ladder (0.73-0.78) where it used to
-                             # run 1.04-1.52, so one value finally serves all stages
-small_leaved_linden = 0.3119 # measured 0.45x at 0.139 -- pooled fit
-sycamore_maple = 0.0535      # measured 2.13x at 0.114 -- pooled fit
-wild_cherry = 0.0320         # measured 1.04x at 0.0331 -- pooled fit
+#
+# 2026-09-10, OWNER DECISION: THIS TABLE IS INTENTIONALLY EMPTY. Crown density
+# correction moved to PVE inside Unreal (see twig_density near the top of
+# [export]), so growpy exports Grove's own twig points unmodified. The
+# back-solved values are kept below as comments because they record a real
+# calibration run, NOT because they should be restored.
+#
+# They were already known broken when this decision was taken: re-measured
+# 2026-09-09, beech at 1.0414 came out at 3.07x its Forrester target rather than
+# the 1.0x it was set for, and the required compensation varies 3.2x across a
+# single species' height ladder at one radius (beech r05: 3.16 / 4.55 / 3.14 /
+# 1.42 at h05..h20). No single per-species constant can serve the ladder, which
+# is what XRFF-273's per-stage resolver existed to fix. If density correction
+# ever returns to growpy, start from that issue, not from these numbers.
+#
+# common_ash = 1.0307          # measured 0.78x at 0.800
+# douglas_fir = 0.0959         # measured 0.42x at 0.0399
+# european_beech = 1.0414      # measured 0.62x at 0.6413 -- h05-h20 scope,
+#                              # re-derived after drop_shaded 0.1 shed the
+#                              # shaded lower branches and with them their leaf
+# european_oak = 0.1764        # measured 0.84x at 0.148
+# norway_spruce = 0.0556       # measured 0.55x at 0.0305
+# scots_pine = 0.0343          # measured 0.53x at 0.0181
+# silver_birch = 0.1276        # measured 1.57x at 0.200 -- pooled fit
+# silver_fir = 0.1660          # measured 0.75x at 0.1253 -- pooled fit, h05-h20,
+#                              # re-derived after drop_shaded 0.05. The ratio is
+#                              # now flat across the ladder (0.73-0.78) where it
+#                              # used to run 1.04-1.52
+# small_leaved_linden = 0.3119 # measured 0.45x at 0.139 -- pooled fit
+# sycamore_maple = 0.0535      # measured 2.13x at 0.114 -- pooled fit
+# wild_cherry = 0.0320         # measured 1.04x at 0.0331 -- pooled fit
 
 # --- Per-species structural detail -------------------------------------------
 # Overrides the active quality preset's build_cutoff_thickness (metres) for one
