@@ -336,6 +336,37 @@ r05 = 0.6
         config = GrowPyConfig()
         assert config.surround_density_per_species_radius == {}
 
+    def test_species_curves_default_on(self):
+        """A curve declared in tracked config must take effect by default.
+
+        Regression: this was wired to `calibration_align_height`, an unrelated
+        yield-table flag that was false, so every `<param>_curve` block in every
+        preset was silently ignored. The conifer drop ramps had no effect no
+        matter how they were tuned -- transition_cycle 8 and 40 produced
+        byte-identical trees -- because the simulation ran on the preset's flat
+        static value instead.
+        """
+        assert GrowPyConfig().forest_species_curves is True
+
+    def test_species_curves_is_not_tied_to_align_height(self, tmp_path):
+        """The two settings are unrelated and must move independently."""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(
+            b"[forest]\nspecies_curves = true\n\n"
+            b"[calibration]\nalign_height = false\n"
+        )
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+
+        assert config.forest_species_curves is True
+        assert config.calibration_align_height is False
+
+    def test_species_curves_can_be_turned_off(self, tmp_path):
+        """Off is still reachable, to reproduce a pre-2026-09-10 run."""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(b"[forest]\nspecies_curves = false\n")
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.forest_species_curves is False
+
 
     def test_toml_export_section(self, tmp_path):
         toml_content = b"""

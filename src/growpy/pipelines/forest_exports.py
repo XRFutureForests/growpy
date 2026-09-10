@@ -155,7 +155,7 @@ def generate_forest_exports(
                 max_cycles,
                 smooth_iterations=smooth_iterations,
                 preset_overrides=preset_overrides,
-                use_species_curves=config.calibration_align_height,
+                use_species_curves=config.forest_species_curves,
             )
     except Exception as e:
         logger.error("Error creating/simulating forest: %s", e)

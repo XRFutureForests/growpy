@@ -246,6 +246,11 @@ class GrowPyConfig:
         "helios_simplification_enabled": "internal toggle, no CLI need identified",
         "helios_simplification_ratios": "nested dict structure, config-only",
         "helios_simplification_per_species": "nested dict, config-only",
+        "forest_species_curves": (
+            "dataset-shape setting, config-only: whether a species' declared "
+            "preset curves apply is a property of the run, not of one "
+            "invocation"
+        ),
         "calibration_align_height": "internal tuning, no CLI need identified",
         "calibration_plot": "dead CLI mapping removed in XRFF-292; config-only",
         "calibration_species": "nested dict structure, config-only by design",
@@ -355,6 +360,20 @@ class GrowPyConfig:
     forest_quality_above_height_threshold: float = 0.0
     forest_growth_cycle_limit: int = 65
     forest_plateau_cycles: int = 10
+    # Apply each species' own `<param>_curve` blocks from its seed preset during
+    # simulation (config/preset_patches.json -> data/assets/presets/*.seed.json,
+    # evaluated per cycle by preset_overrides.PresetOverrides).
+    #
+    # This used to be wired to `calibration_align_height`, which is an unrelated
+    # yield-table setting and was false, so EVERY declared curve was silently
+    # ignored. That is why the conifer drop ramps had no effect no matter how
+    # they were tuned: the tree ran on the preset's flat static value from cycle
+    # 0, which is exactly the condition the ramps existed to avoid. Found
+    # 2026-09-10 when transition_cycle 8 and 40 produced byte-identical trees.
+    #
+    # Default on: a curve declared in tracked config should take effect. Turn it
+    # off only to reproduce a pre-2026-09-10 run.
+    forest_species_curves: bool = True
     forest_smooth_iterations: int = 10
     forest_include_grove_attributes: bool = False
     forest_height_interval: float = 5.0
@@ -750,6 +769,8 @@ class GrowPyConfig:
             kwargs["forest_growth_cycle_limit"] = forest["growth_cycle_limit"]
         if "plateau_cycles" in forest:
             kwargs["forest_plateau_cycles"] = forest["plateau_cycles"]
+        if "species_curves" in forest:
+            kwargs["forest_species_curves"] = bool(forest["species_curves"])
         if "smooth_iterations" in forest:
             kwargs["forest_smooth_iterations"] = forest["smooth_iterations"]
         if "include_grove_attributes" in forest:

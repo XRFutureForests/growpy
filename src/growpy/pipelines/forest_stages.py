@@ -1243,7 +1243,7 @@ def generate_forest_stages(
             snapshot_cycles=[],
             smooth_iterations=smooth_iterations,
             preset_overrides=preset_overrides,
-            use_species_curves=config.calibration_align_height,
+            use_species_curves=config.forest_species_curves,
             quality_params=quality_params,
             height_interval=effective_interval,
             max_height=effective_max_height,
