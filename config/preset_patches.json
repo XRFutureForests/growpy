@@ -250,7 +250,21 @@
     "silver_birch 0.6/0.5, small_leaved_linden 0.6/0.2, wild_cherry 0.4/0.3."
   ],
   "silver_fir": {
-    "drop_shaded": 0.05
+    "drop_shaded": 0.05,
+    "drop_decay": 0.3,
+    "drop_decay_curve": {
+      "start": 0.0,
+      "end": 0.3,
+      "easing": "ease_in",
+      "transition_cycle": 8
+    },
+    "drop_weak": 0.3,
+    "drop_weak_curve": {
+      "start": 0.0,
+      "end": 0.3,
+      "easing": "ease_in",
+      "transition_cycle": 8
+    }
   },
   "silver_birch": {
     "drop_decay": 0.36,
@@ -307,39 +321,55 @@
   "_why_drop_shaded_trial": "european_beech drop_shaded 0.1, measured 2026-09-08 -- NOT yet validated at a production radius. Every dataset preset shipped drop_shaded 0.0, so a shaded lower branch kept its wood after losing its foliage: on the beech h20 r05, 80% of twigs sat in the 15-25 m band over wood that was still there, and the crown base read 4.5 m on a 20 m tree. Bracketed at r05, crown base / ratio at h20: 0.0 -> 4.5 m / 0.77, 0.05 -> 6.7 m / 0.67, 0.1 -> 12.4 m / 0.39, 0.3 -> 15.2 m / 0.23, against Sharma et al. 2017's 0.57-0.60 for stand-grown beech. 0.1 gives exactly 0.57 at h10m and also WIDENS the crown (6.2 -> 7.0 m at h20) because shedding the shaded lower branches lets the upper crown expand. No height cost: all four milestones captured in 48 cycles, which matches _why_drop_curves listing beech among the species that hold their height. CAVEATS. Tuned at r05, which is tighter than any production radius ([0.0, 8.0, 16.0]) -- the h20 ratio of 0.39 is that tight shell, and should rise under r08, so re-validate there before dataset production. Says NOTHING about the conifers: norway_spruce and silver_fir already run 0.6-scaled drop rates to survive the growing shell, so they need their own bracket with the height guard watched. Leaf area falls when branches go (LAI 1.79 -> 1.27); that is corrected by re-running growpy-calibrate-crown-density, not by backing off this value -- drop_shaded sets the crown envelope, twig_density fills it.",
   "_why_shade_branches": "silver_fir shade_branches = true, TRIAL 2026-09-09. drop_shaded 0.05 barely moved the fir's crown base (0.9 m on a 20 m tree, ratio 0.95) where 0.1 took the beech from 4.5 m to 12.4 m. The reason is that drop_shaded can only drop what the model marks as heavily shaded, and shade_branches governs whether BRANCHES cast shade on top of leaves. A broadleaf hardly needs it -- beech leaves shade the crown below regardless -- but a conifer carries its needles ON the branches, so with it off the fir's lower crown is never shaded and there is nothing to drop. grove-preset-reference.md lists shade_branches: true as the conifer setting (Scots Pine, with shade_alongside: 3, 'conifer needle shading pattern'). Changed ALONE, keeping drop_shaded at 0.05, so the effect is attributable. Watch the height guard: silver_fir is one of the species that collapses under the growing shell, and more shading means more branches flagged for dropping.",
   "_why_conifer_drop_rates_restored": [
-    "2026-09-10 -- REMOVED the drop_decay/drop_weak patches from silver_fir and",
-    "norway_spruce, restoring Grove's own 0.3/0.3. Also removed the silver_fir",
-    "shade_branches=true trial, which _why_shade_branches proposed and the",
-    "2026-09-09 run disproved (crown ratio stayed at 0.96, exactly where",
-    "drop_shaded 0.05 alone had it). drop_shaded 0.05 is KEPT: it is a separate",
-    "deliberate term, measured as having essentially no effect on its own, so",
-    "leaving it holds this change to one variable.",
+    "2026-09-10 -- silver_fir and norway_spruce now carry the drop_decay/drop_weak",
+    "RAMP that _why_drop_curves always described, declared as *_curve blocks so it",
+    "is tracked in config instead of living only in gitignored data/assets/.",
+    "Also removed the silver_fir shade_branches=true trial, which the 2026-09-09",
+    "run disproved (crown ratio stayed at 0.96, exactly where drop_shaded 0.05",
+    "alone had it). drop_shaded 0.05 is KEPT -- separate term, measured as having",
+    "almost no effect alone, so this stays a one-variable change.",
     "",
-    "WHY. _why_drop_curves above describes the fix as a ramp and states that",
-    "'Each ramp ENDS at that species' own Grove value, so the mature tree is",
-    "unchanged'. preset_overrides.py implements exactly that -- a <param>_curve",
-    "block with start/end/easing/transition_cycle. NO SUCH BLOCK WAS EVER",
-    "WRITTEN, here or in any baked preset under data/assets/presets/. What was",
-    "applied instead is a flat 0.6x multiplier: every patched species sits at",
-    "exactly 0.6x its Grove value (fir/spruce 0.3->0.18, birch 0.6->0.36 and",
-    "0.5->0.30, linden 0.6->0.36 and 0.2->0.12, cherry 0.4->0.24 and 0.3->0.18).",
-    "So the mature tree WAS changed -- it self-pruned at 60% of the intended",
-    "rate for its entire life, not just as a seedling.",
+    "WHAT WAS WRONG. The patch file held a FLAT 0.18 where Grove ships 0.3, i.e.",
+    "a 0.6x multiplier that never ends, so the tree self-pruned at 60% of the",
+    "intended rate for its whole life -- not just as a seedling. Measured",
+    "2026-09-10 on the surround-density sweep: silver_fir and norway_spruce read",
+    "crown ratio 0.88-0.96 against a stand-grown 0.52-0.68, crown base ~0.8 m on",
+    "a 20 m tree. That is exactly the condition _why_drop_curves blames under",
+    "PROBLEM 2 for 'opaque crowns with no visible bole, foliage all the way to",
+    "the ground'. The two conifers with no drop patch (scots_pine, douglas_fir)",
+    "develop a bole as shell density rises.",
     "",
-    "That is the condition _why_drop_curves itself blames under PROBLEM 2 for",
-    "'opaque crowns with no visible bole, foliage all the way to the ground'.",
-    "Measured 2026-09-10 on the surround-density sweep: silver_fir and",
-    "norway_spruce read crown ratio 0.88-0.96 against a stand-grown 0.52-0.68,",
-    "with the crown base ~0.8 m on a 20 m tree. The two conifers with NO drop",
-    "patch (scots_pine 0.3/0.3, douglas_fir 0.5/0.2) develop a bole as shell",
-    "density rises. PROBLEM 2 was never fixed; it survived in a different shape.",
+    "WHY A CURVE AND NOT JUST GROVE'S 0.3. Because PROBLEM 1 was real: applying",
+    "the full drop rate from cycle 0 is what killed seedlings and caused the",
+    "structural collapse the ramps were added against. The ramp protects the",
+    "seedling and then gets out of the way. A flat value -- at 0.18 or at 0.3 --",
+    "cannot do both, which is why the fix was specified as a curve in the first",
+    "place. prepare_assets._apply_preset_patch merges *_curve keys and retracts",
+    "ones config no longer declares; preset_overrides.py evaluates them per cycle.",
+    "The mechanism was already built; only the declaration was missing.",
     "",
-    "THE OTHER HALF OF THE BARGAIN. These ramps were added against PROBLEM 1,",
-    "real structural collapse. That was re-screened 2026-09-09 and found cured,",
-    "but the re-screen covered common_ash and european_oak, NOT the conifers.",
-    "So verify BOTH, exactly as _why_drop_curves asks: height held to h25 AND a",
-    "visible bole. If a conifer collapses again, the answer is to implement the",
-    "ramp that was documented -- a drop_decay_curve ending at 0.3 with",
-    "transition_cycle 8 -- not to reinstate a flat scale."
-  ]
+    "VERIFY BOTH HALVES, as _why_drop_curves asks: height held to h25 AND a",
+    "visible bole. The 2026-09-09 collapse re-screen covered common_ash and",
+    "european_oak, NOT the conifers.",
+    "",
+    "STILL FLAT-SCALED, deliberately untouched here: silver_birch,",
+    "small_leaved_linden, wild_cherry, common_ash all remain at 0.6x their Grove",
+    "values with no curve. Same defect, symptom not yet measured on them."
+  ],
+  "norway_spruce": {
+    "drop_decay": 0.3,
+    "drop_decay_curve": {
+      "start": 0.0,
+      "end": 0.3,
+      "easing": "ease_in",
+      "transition_cycle": 8
+    },
+    "drop_weak": 0.3,
+    "drop_weak_curve": {
+      "start": 0.0,
+      "end": 0.3,
+      "easing": "ease_in",
+      "transition_cycle": 8
+    }
+  }
 }
