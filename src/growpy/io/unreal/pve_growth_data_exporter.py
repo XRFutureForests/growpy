@@ -114,11 +114,15 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from ...core.twig import _quat_forward
 from .pve_grove_mapper import (
     _calculate_branch_parents_from_skeleton,
     _calculate_bud_directions,
 )
 from .pve_hierarchy_builder import build_hierarchy_arrays
+from .pve_skeleton_calculators import (
+    assign_axillary_from_twigs as _assign_axillary_from_twigs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -400,6 +404,8 @@ def build_growth_data_json(
     radial_scale: float = 1.0,
     min_branch_radius: float = 0.0,
     min_branch_radius_fraction: float = 0.0,
+    twig_positions: list | None = None,
+    twig_directions: list | None = None,
 ) -> dict:
     """
     Build the growth-data JSON for PVE's Growth Data JSON Importer.
@@ -429,6 +435,14 @@ def build_growth_data_json(
             this fraction of the trunk's base radius, with their subtrees. 0.06
             holds 5-6 branch generations across every measured beech. 0.0 keeps
             everything, which for a real Grove skeleton means ~46k branches.
+        twig_positions: Grove twig attachment points, world space Z-up. With
+            ``twig_directions``, seeds each branch's Axillary bud direction from
+            Grove's own twig frames instead of from branching topology -- see
+            ``assign_axillary_from_twigs``, which also records why the original
+            justification for this (an arbitrary-axis fallback) was measured to
+            be wrong, and that the visual benefit is unverified (XRFF-437).
+        twig_directions: Growth directions matching ``twig_positions``, i.e. +X
+            rotated by Grove's per-twig quaternion (``core.twig._quat_forward``).
 
     Returns:
         Dict matching the validated contract (see module docstring).
@@ -459,9 +473,22 @@ def build_growth_data_json(
     ]
 
     # 18 floats/point already; swap each 3-tuple to match the positions.
-    bud_directions = [
-        _swap_flat_vectors(list(d)) for d in _calculate_bud_directions(skeleton)
-    ]
+    # Grove's twig frames seed the Axillary slot BEFORE the swap, since both are
+    # in Grove Z-up at this point (XRFF-437).
+    bud_directions = [list(d) for d in _calculate_bud_directions(skeleton)]
+    if twig_positions and twig_directions:
+        stats = _assign_axillary_from_twigs(
+            skeleton, bud_directions, twig_positions, twig_directions
+        )
+        logger.info(
+            "Axillary seeded from Grove twigs: %d/%d branches "
+            "(%d without a twig, %d degenerate)",
+            stats["seeded"],
+            stats["branches"],
+            stats["no_twig"],
+            stats["degenerate"],
+        )
+    bud_directions = [_swap_flat_vectors(d) for d in bud_directions]
 
     # Radius -> budLateralMeristem[0], in metres, corrected for the profile.
     radii = list(getattr(skeleton, "point_attribute_radius", []) or [])
@@ -588,6 +615,57 @@ def build_growth_data_json(
     return _decimate_growth_data(built, threshold)
 
 
+def _grove_twig_frames(model: Any | None) -> tuple[list, list]:
+    """Twig attachment points and growth directions from a Grove model.
+
+    Grove stores twig locations at stride 3 and twig ORIENTATIONS at stride 4 --
+    unit quaternions (w, x, y, z). Rotating +X by that quaternion reproduces
+    ``get_twig_directions()`` exactly (``core.twig._quat_forward``), so the
+    quaternion is the authority on a twig's growth direction. Both are read once
+    and hoisted: Grove recomputes these arrays on every property access, and an
+    in-loop read is what took dataset production from 10 to 44 minutes before.
+
+    Returns two parallel lists, or two empty lists when the model has no twigs
+    or does not expose them.
+    """
+    if model is None:
+        return [], []
+    try:
+        locations = list(model.get_twig_locations() or ())
+        orientations = list(model.get_twig_orientations() or ())
+    except Exception as err:  # a model without twig support must not break export
+        logger.debug("No Grove twig frames available: %s", err)
+        return [], []
+
+    num = len(locations) // 3
+    if num == 0 or len(orientations) // 4 != num:
+        if num and orientations:
+            logger.warning(
+                "Twig array mismatch: %d locations vs %d quaternions; "
+                "skipping Axillary seeding",
+                num,
+                len(orientations) // 4,
+            )
+        return [], []
+
+    positions, directions = [], []
+    for i in range(num):
+        positions.append(
+            (locations[3 * i], locations[3 * i + 1], locations[3 * i + 2])
+        )
+        directions.append(
+            _quat_forward(
+                (
+                    orientations[4 * i],
+                    orientations[4 * i + 1],
+                    orientations[4 * i + 2],
+                    orientations[4 * i + 3],
+                )
+            )
+        )
+    return positions, directions
+
+
 def generate_growth_data_from_grove(
     grove: Any,
     output_path: Path,
@@ -598,6 +676,7 @@ def generate_growth_data_from_grove(
     radial_scale: float = 1.0,
     min_branch_radius: float = 0.0,
     min_branch_radius_fraction: float = 0.0,
+    model: Any | None = None,
 ) -> dict:
     """
     Build the growth-data JSON from a Grove simulation and write it to disk.
@@ -617,6 +696,10 @@ def generate_growth_data_from_grove(
         min_branch_radius: Absolute threshold in metres; prefer the fraction.
         min_branch_radius_fraction: Drop branches thinner than this fraction of
             the trunk's base radius. See ``build_growth_data_json``.
+        model: Grove model for this tree, used only to read its twig frames so
+            each branch's Axillary bud direction is seeded from Grove's twig
+            phase rather than from branching topology (XRFF-437). Optional:
+            without it the exported file is byte-for-byte what it was before.
 
     Returns:
         The generated growth-data dictionary.
@@ -626,12 +709,16 @@ def generate_growth_data_from_grove(
         if tree_index < len(skeletons):
             skeleton = skeletons[tree_index]
 
+    twig_positions, twig_directions = _grove_twig_frames(model)
+
     data = build_growth_data_json(
         skeleton,
         profile_mean=profile_mean,
         radial_scale=radial_scale,
         min_branch_radius=min_branch_radius,
         min_branch_radius_fraction=min_branch_radius_fraction,
+        twig_positions=twig_positions,
+        twig_directions=twig_directions,
     )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
