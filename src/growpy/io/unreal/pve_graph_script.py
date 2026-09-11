@@ -3,6 +3,11 @@ Generate UE Python scripts that create PVE Graphs from combined presets.
 
 EXPERIMENTAL -- UE 5.7+ Procedural Vegetation Editor (PVE) plugin only.
 
+SUPERSEDED by :mod:`growpy.io.unreal.pve_graph_builder`, which authors the
+same graphs on the Growth Data JSON route and works on UE 5.8. Prefer it for
+all new work; this module is kept only for UE 5.7 projects that still have
+working Preset Loader assets.
+
 BROKEN ON UE 5.8: the Preset Loader node (``PVPresetLoaderSettings``) this
 module wires into every generated graph is deprecated in UE 5.8 and
 "produces no output" per the plugin source -- the class still exists so
