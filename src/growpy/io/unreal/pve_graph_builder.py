@@ -57,6 +57,20 @@ establish. They are defaults here so no caller has to rediscover them.
   Left at the engine defaults, orientation therefore bites several times harder
   on a large tree than a small one. The defaults here make every twig obey.
 
+* **``relative_start`` is a strong lever with a hard cost.** It remaps each
+  branch's placement span into ``[start, end]`` of its length, so foliage sits on
+  the outer part of every branch rather than running back to the fork. On a 15 m
+  beech it lifts the lowest foliage from 0.14 m to 1.60 m and keeps leaves off
+  the thick inner span of primary limbs. But it is **not count-neutral against
+  0.0**: ``LoopNumber = max(int(density * lengthRatio), 1)`` always yields at
+  least one sample, and at 0.0 that sample lands exactly on the branch root and
+  is discarded. Any non-zero value keeps it, so every branch gains one instance
+  and the count acquires a floor of ``N >= branch count``. Re-solve densities
+  whenever it changes, and check that floor against the leaf-area target first --
+  on heavily decimated conifers it can already exceed the target at density 1.
+  (This is also where the fitted density law's ``-1.039 * branches`` intercept
+  comes from: it is the root-skip, not the ``max(loops, 1)`` floor.)
+
 * **``node_buds`` is read only under Whorled phyllotaxy.** Setting it under
   Spiral is a no-op; the formation angle is what varies (Distichous 180 degrees,
   Octastichous 135, and so on).
@@ -146,6 +160,8 @@ class DistributorSpec:
 
     branch_density: int
     spacing_basis: str = "BRANCH"
+    # Default 0.0 because a non-zero value changes the instance count, so it
+    # must travel with densities solved for it. See the module docstring.
     relative_start: float = 0.0
     relative_end: float = 1.0
     phyllotaxy_type: str = "SPIRAL"
