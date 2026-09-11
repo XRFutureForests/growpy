@@ -241,13 +241,28 @@ def main() -> int:
                     flat.append(f"{stage}:flat({detail})")
             gate = "PASS" if checked and not bad else ("FAIL" if bad else "--")
 
-            judged = per_radius.get("5", {}).get(args.stage)
+            # Score at the requested stage on r05 -- the most competed radius,
+            # so the closest thing to the stand-grown trees the literature
+            # measures. But r05 is also the FIRST radius to run short of the
+            # ladder (A53 expects that and accepts it), and reading only r05
+            # meant a species whose r05 stopped early reported "--" on every
+            # column and "NO arm passes", hiding perfectly good r10/r20 data.
+            # So fall back to the deepest stage r05 actually reached, and say
+            # which one was used.
+            judged_stage = args.stage
+            judged = per_radius.get("5", {}).get(judged_stage)
+            if judged is None:
+                have = [st for st in STAGES if st in per_radius.get("5", {})]
+                if have:
+                    judged_stage = have[-1]
+                    judged = per_radius["5"][judged_stage]
             ratio = fnum(judged, "crown_ratio")
             dh = fnum(judged, "crown_d_over_h")
             fill = fnum(judged, "twigs_per_m3")
             _, dbh_txt, spread = radius_ordering(
-                {r: per_radius.get(r, {}).get(args.stage) for r in RADII},
+                {r: per_radius.get(r, {}).get(judged_stage) for r in RADII},
                 field, tol)
+            at = "" if judged_stage == args.stage else f" @{judged_stage}"
 
             score = None
             if ratio is not None:
@@ -260,7 +275,7 @@ def main() -> int:
                   f" {'--' if ratio is None else f'{ratio:.2f}':>7}"
                   f" {'--' if dh is None else f'{dh:.2f}':>7}"
                   f" {'--' if fill is None else f'{fill:.1f}':>7}"
-                  f"  {', '.join(bad + flat)}")
+                  f"  {at}{' ' if at else ''}{', '.join(bad + flat)}")
 
             if gate == "PASS" and score is not None:
                 candidates.append((score, density, models))
