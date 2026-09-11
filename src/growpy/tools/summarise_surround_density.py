@@ -89,6 +89,11 @@ SEED_NOISE = 0.30
 
 STAGES = ["h05m", "h10m", "h15m", "h20m", "h25m"]
 RADII = ["8", "16"]
+# The reference radius for the crown score: the tightest shell in the set, so
+# the closest thing to the stand-grown trees the literature measures. Derived,
+# not written literally -- a hardcoded "5" survived the move from [5,10,20] to
+# [8,16] and silently blanked every crown column.
+TIGHTEST = RADII[0]
 
 
 def fnum(row: dict | None, key: str) -> float | None:
@@ -163,7 +168,7 @@ def radius_ordering(cells: dict[str, dict], field: str,
     spread = vals[-1] - vals[0]
     # Walk consecutive pairs rather than indexing three fixed slots: the radius
     # set is a config choice and has already gone from three values to two.
-    if any(a > b + tol for a, b in zip(vals, vals[1:])):
+    if any(a > b + tol for a, b in zip(vals, vals[1:], strict=False)):
         return "INVERTED", detail, spread
     if spread <= tol:
         return "FLAT", detail, spread
@@ -211,7 +216,7 @@ def main() -> int:
         print(f"=== {species}   ({habit}; gated on {label}; "
               f"crown d/h target {target_dh}) ===")
         print(f"{'density':>8} {'models':>7} {'gate':>10} "
-              f"{label + ' r05/r10/r20':>20}"
+              f"{label + ' ' + '/'.join('r' + r.zfill(2) for r in RADII):>20}"
               f" {'spread':>7} {'ratio':>7} {'d/h':>7} {'fill':>7}"
               f"  cells outside gate")
 
@@ -252,12 +257,12 @@ def main() -> int:
             # So fall back to the deepest stage r05 actually reached, and say
             # which one was used.
             judged_stage = args.stage
-            judged = per_radius.get("5", {}).get(judged_stage)
+            judged = per_radius.get(TIGHTEST, {}).get(judged_stage)
             if judged is None:
-                have = [st for st in STAGES if st in per_radius.get("5", {})]
+                have = [st for st in STAGES if st in per_radius.get(TIGHTEST, {})]
                 if have:
                     judged_stage = have[-1]
-                    judged = per_radius["5"][judged_stage]
+                    judged = per_radius[TIGHTEST][judged_stage]
             ratio = fnum(judged, "crown_ratio")
             dh = fnum(judged, "crown_d_over_h")
             fill = fnum(judged, "twigs_per_m3")
@@ -292,9 +297,9 @@ def main() -> int:
         line = f"  -> {best_density}  ({best_models} models)"
         if len(candidates) > 1:
             runner = candidates[1]
-            rb = fnum(arms[(species, best_density)].get("5", {}).get(args.stage),
+            rb = fnum(arms[(species, best_density)].get(TIGHTEST, {}).get(args.stage),
                       "crown_ratio")
-            rr = fnum(arms[(species, runner[1])].get("5", {}).get(args.stage),
+            rr = fnum(arms[(species, runner[1])].get(TIGHTEST, {}).get(args.stage),
                       "crown_ratio")
             if rb is not None and rr is not None and abs(rb - rr) < SEED_NOISE:
                 line += (f"   runner-up {runner[1]} is within seed noise "
