@@ -329,7 +329,8 @@ def _set_scalar(text: str, key: str, value: str) -> str:
     return "".join(out)
 
 
-def build_arm_config(arm: str, density: float, seed: int, out_dir: Path) -> Path:
+def build_arm_config(arm: str, density: float, seed: int, out_dir: Path,
+                     cycle_limit: int | None = None) -> Path:
     """Copy config/ and set exactly the three things an arm varies."""
     cfg = CFG_ROOT / arm
     if cfg.exists():
@@ -351,6 +352,19 @@ def build_arm_config(arm: str, density: float, seed: int, out_dir: Path) -> Path
     text = _set_scalar(text, "density", f"{density}")
     text = _set_scalar(text, "radii", "[" + ", ".join(str(r) for r in RADII) + "]")
     surround.write_text(text, encoding="utf-8")
+
+    if cycle_limit:
+        # THE lever that bounds an arm's wall clock. --max-height only bounds
+        # which stages are exported: once every milestone is captured the
+        # simulation keeps running to this limit or a plateau, and on a weak
+        # shell the tree never plateaus. Measured 2026-09-11: an arm wrote its
+        # last assembly at 13:35 and was still burning CPU two hours later with
+        # nothing left to produce. dataset_pipeline has no CLI flag for this, so
+        # it goes in the arm's own config.
+        forest_toml = cfg / "forest.toml"
+        ftext = forest_toml.read_text(encoding="utf-8")
+        ftext = _set_scalar(ftext, "growth_cycle_limit", str(cycle_limit))
+        forest_toml.write_text(ftext, encoding="utf-8")
 
     general = cfg / "general.toml"
     gtext = general.read_text(encoding="utf-8")
@@ -645,6 +659,10 @@ def main() -> int:
     ap.add_argument("--verify-only", action="store_true",
                     help="build and check each arm's config, run nothing")
     ap.add_argument("--dry-run", action="store_true", help="list arms and exit")
+    ap.add_argument("--growth-cycle-limit", type=int,
+                    help="hard cap on growth cycles. THIS is what bounds an "
+                         "arm's wall clock -- --max-height only bounds which "
+                         "stages are exported.")
     ap.add_argument("--max-height", type=float,
                     help="cap the height ladder for this run (m). Use when "
                          "bracketing a preset key: the top of the ladder is "
@@ -739,7 +757,8 @@ def main() -> int:
 
         print(f"[{datetime.now():%H:%M:%S}] ARM {index}/{len(arms)}: "
               f"{sp} density={density} seed={seed}")
-        cfg = build_arm_config(arm, density, seed, out_dir)
+        cfg = build_arm_config(arm, density, seed, out_dir,
+                               cycle_limit=args.growth_cycle_limit)
         resolved = verify_arm(cfg, density, seed, out_dir)
         print(f"[{datetime.now():%H:%M:%S}]   VERIFIED: density="
               f"{resolved['density']} radii={resolved['radii']} "
