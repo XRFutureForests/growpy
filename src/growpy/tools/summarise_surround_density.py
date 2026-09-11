@@ -88,7 +88,7 @@ DH_DEFAULT = 0.30
 SEED_NOISE = 0.30
 
 STAGES = ["h05m", "h10m", "h15m", "h20m", "h25m"]
-RADII = ["5", "10", "20"]
+RADII = ["8", "16"]
 
 
 def fnum(row: dict | None, key: str) -> float | None:
@@ -160,8 +160,10 @@ def radius_ordering(cells: dict[str, dict], field: str,
         return "--", "", None
     fmt = "{:.0f}" if field == "dbh_cm" else "{:.1f}"
     detail = "/".join(fmt.format(v) for v in vals)
-    spread = vals[2] - vals[0]
-    if vals[0] > vals[1] + tol or vals[1] > vals[2] + tol:
+    spread = vals[-1] - vals[0]
+    # Walk consecutive pairs rather than indexing three fixed slots: the radius
+    # set is a config choice and has already gone from three values to two.
+    if any(a > b + tol for a, b in zip(vals, vals[1:])):
         return "INVERTED", detail, spread
     if spread <= tol:
         return "FLAT", detail, spread

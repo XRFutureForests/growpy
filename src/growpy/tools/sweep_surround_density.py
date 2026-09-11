@@ -102,7 +102,7 @@ RESULTS = HERE / "sweep_results.csv"
 
 # The production ladder and radius set. Held fixed across every arm (A24/A28).
 STAGES = ["h05m", "h10m", "h15m", "h20m", "h25m"]
-RADII = [5.0, 10.0, 20.0]
+RADII = [8.0, 16.0]
 
 # The 11 dataset-flagged species, as config/tree_asset_lookup.csv spells them.
 # The CSV name is what --species matches; the output directory is the
@@ -171,21 +171,72 @@ FITTED_R08 = {
     "douglas_fir": 0.38,
 }
 
-# Offsets applied to a species' fitted value. Deliberately asymmetric: the
-# fitted value is a threshold that was approached from below, and the pilot
-# showed the downside is where both the gradient and the wall clock fall apart,
-# so the bracket leans up. Clamped into DENSITY_LIMITS.
-DEFAULT_OFFSETS = [-0.10, 0.0, +0.10, +0.20]
-DENSITY_LIMITS = (0.20, 0.95)
+# A SINGLE GLOBAL DENSITY RANGE, owner-set 2026-09-11: 0.75 to 0.95 inclusive.
+#
+# This replaces the per-species bracket around each fitted value. Two reasons it
+# is better, and one caveat.
+#
+# The fitted values spanned 0.38 to 0.90, so the old bracket reached as low as
+# 0.28. Everything measured says that end is wrong: the low arm was INADMISSIBLE
+# in every species tested -- beech 0.8 inverted its DBH gradient, spruce 0.6 and
+# pine 0.45 left the crown ratio far out of band, fir 0.6 failed the gate -- and
+# it was also the most expensive arm by 3-10x, because a weak shell means a big
+# tree and Grove's per-access rebuild scales with size. So this range is the
+# CHEAP end as well as the plausible one.
+#
+# THE FLOOR IS 0.55, not 0.75. Two of the four species measured so far have their
+# optimum below 0.75: norway_spruce lands in band at 0.70 (ratio 0.57) and
+# scots_pine crosses between 0.55 and 0.65. A 0.75 floor would have excluded
+# both. Those were measured at the tighter [5,10,20] radii and a wider shell
+# competes less, so the optima should shift UP at [8,16] -- but not necessarily
+# by the 0.05-0.15 needed to clear 0.75, and that is not worth betting a run on.
+# 0.50 is the hard minimum the owner set; 0.55 is the first step above it.
+#
+# THREE ARMS, step 0.20: 0.55 / 0.75 / 0.95. The full range at finer resolution
+# is not affordable at these radii -- one arm at the CHEAP end of the density
+# range measured 93 min at [8,16] against 9 min for the same arm at [5,10,20],
+# because both radii now run the full ladder and the trees are correspondingly
+# larger. Five arms projected to 55-140 h.
+#
+# THIS IS A COARSE PASS AND CANNOT RESOLVE THE BAND. The response is steep --
+# scots_pine moves crown ratio 0.87 -> 0.22 across a single 0.10 step, jumping
+# clean over a target band only 0.16 wide. So a 0.10 step BRACKETS the crossing;
+# it does not find it. Refine at 0.05 or finer around whichever pair of arms
+# straddles the band, per species. Two stages at 0.10 cost less than one stage at
+# 0.05 over a range wide enough to contain every optimum.
+#
+# CAVEAT worth watching in the results: for douglas_fir (fitted 0.38),
+# european_oak (0.45), scots_pine (0.55) and silver_birch (0.60) this range sits
+# well ABOVE their fitted value, and over-density crushes the crown -- beech at
+# 0.95 reads ratio 0.25 against a 0.52-0.68 target. If those species come out
+# uniformly over-suppressed at 0.75, the range is wrong for them specifically,
+# not the species. Note also those fitted values are themselves suspect: they
+# were measured with the old twig population and the broken drop rates.
+DENSITY_RANGE = (0.55, 0.95)
+DENSITY_STEP = 0.20
+
+# Kept only so a caller can still reproduce a pre-2026-09-11 per-species bracket
+# via --densities; nothing reads it by default any more.
+FITTED_R08 = {
+    "european_beech": 0.90,
+    "small_leaved_linden": 0.90,
+    "common_ash": 0.75,
+    "norway_spruce": 0.70,
+    "silver_fir": 0.70,
+    "wild_cherry": 0.70,
+    "sycamore_maple": 0.65,
+    "silver_birch": 0.60,
+    "scots_pine": 0.55,
+    "european_oak": 0.45,
+    "douglas_fir": 0.38,
+}
 
 
-def bracket_for(species: str, offsets: list[float]) -> list[float]:
-    """Density arms for one species, around its own fitted threshold."""
-    fitted = FITTED_R08.get(species_dir(species))
-    if fitted is None:
-        raise SystemExit(f"no fitted density known for {species!r}")
-    lo, hi = DENSITY_LIMITS
-    return sorted({round(min(max(fitted + o, lo), hi), 2) for o in offsets})
+def default_densities() -> list[float]:
+    """The density arms every species is swept over."""
+    lo, hi = DENSITY_RANGE
+    n = round((hi - lo) / DENSITY_STEP)
+    return [round(lo + i * DENSITY_STEP, 2) for i in range(n + 1)]
 
 # Assembly filename shape, copied from crown_metrics._NAME so DBH can be read
 # back off the name the tool measured. Groups: species, radius, height, DBH.
@@ -587,11 +638,9 @@ def main() -> int:
                     help="explicit density arms, applied to EVERY species. "
                          "Omit to bracket each species around its own fitted "
                          "threshold instead, which is what you want -- a "
-                         "global grid spends most of its wall clock on arms "
-                         "that were never admissible (see FITTED_R08).")
-    ap.add_argument("--offsets", nargs="+", type=float, default=DEFAULT_OFFSETS,
-                    help="offsets from each species' own fitted density "
-                         f"(default {DEFAULT_OFFSETS})")
+                         f"defaults to {DENSITY_RANGE[0]}-{DENSITY_RANGE[1]} "
+                         f"in steps of {DENSITY_STEP}, applied to every "
+                         "species (see DENSITY_RANGE).")
     ap.add_argument("--seeds", nargs="+", type=int, default=[512])
     ap.add_argument("--verify-only", action="store_true",
                     help="build and check each arm's config, run nothing")
@@ -633,7 +682,7 @@ def main() -> int:
     arms = [
         (sp, d, s)
         for sp in species_list
-        for d in (args.densities or bracket_for(sp, args.offsets))
+        for d in (args.densities or default_densities())
         for s in args.seeds
     ]
 
@@ -641,7 +690,8 @@ def main() -> int:
           f"= {len(species_list)} species x "
           + (f"{len(args.densities)} densities (explicit)"
              if args.densities else
-             f"{len(args.offsets)} offsets around each species' fitted density")
+             f"{len(default_densities())} densities "
+             f"{DENSITY_RANGE[0]}-{DENSITY_RANGE[1]}")
           + f" x {len(args.seeds)} seed(s)")
     print(f"[{datetime.now():%H:%M:%S}] SWEEP: radii {RADII} held fixed on every "
           f"arm (A24/A28); one arm yields {len(RADII)} radius cells")

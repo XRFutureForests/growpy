@@ -14,8 +14,25 @@
 # grove, so this only affects single-tree contexts.
 
 [surround]
-radii = [5.0, 10.0, 20.0]  # 0 = no surround; >0 = shell distance (meters)
-# Owner-set 2026-09-09: the dataset matrix is 5 m / 10 m / 20 m, replacing the
+radii = [8.0, 16.0]  # 0 = no surround; >0 = shell distance (meters)
+# Owner-set 2026-09-11: back to 8 m / 16 m. r05 was simply too tight -- it ran
+# short of the height ladder on every species measured (beech stopped at h20,
+# spruce and fir at h15), which forced the 'accept fewer models' compromise on
+# the whole catalog. 11 species x 5 stages x 2 radii = 110 models, down from a
+# nominal 165.
+#
+# r08 has a second advantage: [surround.density_per_species] below was FITTED at
+# r08, so those values now apply directly to the tightest radius instead of
+# being transplanted to one they were never measured at.
+#
+# r32 was considered and dropped. grove-preset-reference.md documents
+# surround_distance over 4-10 m; 16 m is already beyond it and 20 m was
+# measured as only weakly competing. A 32 m shell would likely be
+# indistinguishable from open-grown, i.e. the same 'radii do not discriminate'
+# failure at the wide end -- and a weaker shell means a bigger tree, which is
+# the expensive direction.
+#
+# Superseded note: # Owner-set 2026-09-09: the dataset matrix is 5 m / 10 m / 20 m, replacing the
 # earlier [0.0, 8.0, 16.0]. 11 species x 5 stages (h05..h25) x 3 radii = 165.
 #
 # There is deliberately NO r00 open-grown variant. r20 serves that role: the
