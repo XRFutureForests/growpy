@@ -644,11 +644,6 @@ def write_growth_data_json(ctx: TreeExportContext) -> None:
                 min_branch_radius_fraction=float(
                     settings["min_branch_radius_fraction"]
                 ),
-                # Seeds each branch's Axillary bud direction from Grove's own
-                # twig quaternions rather than from branching topology. NOT a
-                # bug fix -- see assign_axillary_from_twigs for the retracted
-                # premise and the unverified benefit (XRFF-437).
-                model=ctx.model,
             )
     except Exception as err:
         logger.warning(
