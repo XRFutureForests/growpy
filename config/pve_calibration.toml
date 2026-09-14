@@ -81,7 +81,10 @@ phyllotaxy_formation = "DISTICHOUS"
 prototype_leaf_area_m2 = 0.01583458005362597
 # Mean triangles per placed instance, for bin-packing Export clicks on predicted
 # geometry rather than on chain count. A fir instance is 1.7x a beech one.
-palette_flat_mean_triangles = 13456.4
+# 13456.4 until 2026-09-14, when the dataset run's step 2 regenerated the beech
+# twig prototypes (a/b 7.6k -> 10.1k/9.9k triangles, c/d/e 17-18k -> 9.6-10.8k;
+# leaf areas unchanged). Measured on the twelve r08/r16 exports: 9984-10003.
+palette_flat_mean_triangles = 9990.0
 # The history below was measured at this relative_start, NOT at the species'.
 history_relative_start = 0.0
 
@@ -259,7 +262,9 @@ build_density_source = "offline"
 # r08 / r16 -- the 2026-09-14 dataset run (max_height 15), solved OFFLINE with
 # the validated distributor model (growpy.io.unreal.pve_distributor_model:
 # 13 of 14 logged (tree, density) pairs exact) against each tree's Forrester
-# target. No Export click has measured these yet, hence the empty history.
+# target, then exported the same day through the pipeline route (/Game/PVE,
+# Voxelize): every one of the twelve landed on its predicted count exactly,
+# which is what the one-pair history records.
 # Chain self-check before solving: r05_h10m, r20_h15m and fir r10_h25m
 # re-derive from their JSONs to the recorded dbh, target and build_instances
 # exactly. These JSONs carry the tip-frame fix (46f9a03); the ones above do not.
@@ -274,11 +279,11 @@ s_ratio = 57.49
 source_height_m = 5.3949
 target_m2 = 8.36
 target_instances = 528
-history = []
+history = [[10, 530]]
 solved_density = 10
 build_density = 10
 build_instances = 530
-build_density_source = "offline"
+build_density_source = "measured"
 
 [pve_calibration.species.european_beech.trees.r08_h10m]
 growth_json = "European_Beech_r08_h10m_d13cm_full_growth_data.json"
@@ -290,11 +295,11 @@ s_ratio = 93.78
 source_height_m = 10.1949
 target_m2 = 35.39
 target_instances = 2235
-history = []
+history = [[24, 2272]]
 solved_density = 24
 build_density = 24
 build_instances = 2272
-build_density_source = "offline"
+build_density_source = "measured"
 
 [pve_calibration.species.european_beech.trees.r08_h15m]
 growth_json = "European_Beech_r08_h15m_d17cm_full_growth_data.json"
@@ -306,11 +311,11 @@ s_ratio = 60.77
 source_height_m = 15.3248
 target_m2 = 54.28
 target_instances = 3428
-history = []
+history = [[59, 3446]]
 solved_density = 59
 build_density = 59
 build_instances = 3446
-build_density_source = "offline"
+build_density_source = "measured"
 
 [pve_calibration.species.european_beech.trees.r16_h05m]
 growth_json = "European_Beech_r16_h05m_d07cm_full_growth_data.json"
@@ -322,11 +327,11 @@ s_ratio = 67.44
 source_height_m = 5.3965
 target_m2 = 10.69
 target_instances = 675
-history = []
+history = [[11, 663]]
 solved_density = 11
 build_density = 11
 build_instances = 663
-build_density_source = "offline"
+build_density_source = "measured"
 
 [pve_calibration.species.european_beech.trees.r16_h10m]
 growth_json = "European_Beech_r16_h10m_d19cm_full_growth_data.json"
@@ -338,11 +343,11 @@ s_ratio = 126.82
 source_height_m = 10.1575
 target_m2 = 68.79
 target_instances = 4344
-history = []
+history = [[36, 4358]]
 solved_density = 36
 build_density = 36
 build_instances = 4358
-build_density_source = "offline"
+build_density_source = "measured"
 
 [pve_calibration.species.european_beech.trees.r16_h15m]
 growth_json = "European_Beech_r16_h15m_d28cm_full_growth_data.json"
@@ -354,11 +359,11 @@ s_ratio = 103.97
 source_height_m = 15.3191
 target_m2 = 149.64
 target_instances = 9450
-history = []
+history = [[96, 9411]]
 solved_density = 96
 build_density = 96
 build_instances = 9411
-build_density_source = "offline"
+build_density_source = "measured"
 
 
 # ------------------------------------------------------------------ fir ----
@@ -494,9 +499,11 @@ build_density_source = "offline"
 # r08 / r16 -- the 2026-09-14 dataset run (max_height 15), solved OFFLINE with
 # the validated distributor model (growpy.io.unreal.pve_distributor_model:
 # 13 of 14 logged (tree, density) pairs exact) against each tree's Forrester
-# target. No Export click has measured these yet, hence the empty history.
-# Fir h05 sits near the one-per-branch
-# staircase (r16_h05m lands +4.7 %). Chain self-check before solving: r05_h10m, r20_h15m and fir r10_h25m
+# target, then exported the same day through the pipeline route (/Game/PVE,
+# Voxelize): every one of the twelve landed on its predicted count exactly,
+# which is what the one-pair history records.
+# Fir h05 sits near the one-per-branch staircase (r16_h05m lands +4.7 %).
+# Chain self-check before solving: r05_h10m, r20_h15m and fir r10_h25m
 # re-derive from their JSONs to the recorded dbh, target and build_instances
 # exactly. These JSONs carry the tip-frame fix (46f9a03); the ones above do not.
 
@@ -510,11 +517,11 @@ s_ratio = 73.17
 source_height_m = 5.1709
 target_m2 = 8.79
 target_instances = 437
-history = []
+history = [[19, 441]]
 solved_density = 19
 build_density = 19
 build_instances = 441
-build_density_source = "offline"
+build_density_source = "measured"
 
 [pve_calibration.species.silver_fir.trees.r08_h10m]
 growth_json = "Silver_Fir_r08_h10m_d10cm_full_growth_data.json"
@@ -526,11 +533,11 @@ s_ratio = 86.18
 source_height_m = 10.0033
 target_m2 = 13.76
 target_instances = 683
-history = []
+history = [[27, 683]]
 solved_density = 27
 build_density = 27
 build_instances = 683
-build_density_source = "offline"
+build_density_source = "measured"
 
 [pve_calibration.species.silver_fir.trees.r08_h15m]
 growth_json = "Silver_Fir_r08_h15m_d17cm_full_growth_data.json"
@@ -542,11 +549,11 @@ s_ratio = 107.03
 source_height_m = 15.0865
 target_m2 = 35.41
 target_instances = 1758
-history = []
+history = [[44, 1725]]
 solved_density = 44
 build_density = 44
 build_instances = 1725
-build_density_source = "offline"
+build_density_source = "measured"
 
 [pve_calibration.species.silver_fir.trees.r16_h05m]
 growth_json = "Silver_Fir_r16_h05m_d09cm_full_growth_data.json"
@@ -558,11 +565,11 @@ s_ratio = 75.23
 source_height_m = 5.0699
 target_m2 = 10.29
 target_instances = 511
-history = []
+history = [[21, 535]]
 solved_density = 21
 build_density = 21
 build_instances = 535
-build_density_source = "offline"
+build_density_source = "measured"
 
 [pve_calibration.species.silver_fir.trees.r16_h10m]
 growth_json = "Silver_Fir_r16_h10m_d13cm_full_growth_data.json"
@@ -574,11 +581,11 @@ s_ratio = 120.13
 source_height_m = 10.2935
 target_m2 = 19.95
 target_instances = 991
-history = []
+history = [[29, 1007]]
 solved_density = 29
 build_density = 29
 build_instances = 1007
-build_density_source = "offline"
+build_density_source = "measured"
 
 [pve_calibration.species.silver_fir.trees.r16_h15m]
 growth_json = "Silver_Fir_r16_h15m_d19cm_full_growth_data.json"
@@ -590,8 +597,8 @@ s_ratio = 128.25
 source_height_m = 15.0836
 target_m2 = 44.16
 target_instances = 2193
-history = []
+history = [[46, 2188]]
 solved_density = 46
 build_density = 46
 build_instances = 2188
-build_density_source = "offline"
+build_density_source = "measured"

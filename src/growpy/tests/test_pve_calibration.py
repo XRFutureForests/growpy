@@ -140,15 +140,22 @@ class TestShippedCalibration:
         cal = shipped.for_species("european_beech")
         assert cal.history_relative_start == 0.0
         assert all(t.build_density is not None for t in cal.trees.values())
-        assert {cal.resolve_density(t).source for t in cal.trees} == {"offline"}
+        sources = {t: cal.resolve_density(t).source for t in cal.trees}
+        assert {sources[t] for t in SHIPPED_DENSITIES["european_beech"]} == {"offline"}
+        # The r08/r16 set was solved offline too, but its one-pair history IS
+        # the 0.4 export, so it builds from a measurement.
+        assert {sources[t] for t in OFFLINE_R08_R16_DENSITIES["european_beech"]} == {
+            "measured"
+        }
 
     def test_fir_builds_from_its_measurements(self, shipped):
         cal = shipped.for_species("silver_fir")
         sources = {t: cal.resolve_density(t).source for t in cal.trees}
-        # Only r20_h25m was finished offline; the rest are exported measurements.
+        # Only r20_h25m was finished offline; the rest are exported measurements
+        # (five shipped on 2026-09-11, six r08/r16 on 2026-09-14).
         assert sources["r20_h25m"] == "offline"
         assert set(sources.values()) == {"measured", "offline"}
-        assert sum(1 for s in sources.values() if s == "measured") == 5
+        assert sum(1 for s in sources.values() if s == "measured") == 11
 
     def test_aggregate_leaf_area_is_what_shipped(self, shipped):
         total = sum(
