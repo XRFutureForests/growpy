@@ -330,7 +330,8 @@ def _set_scalar(text: str, key: str, value: str) -> str:
 
 
 def build_arm_config(arm: str, density: float, seed: int, out_dir: Path,
-                     cycle_limit: int | None = None) -> Path:
+                     cycle_limit: int | None = None,
+                     surround_height: float | None = None) -> Path:
     """Copy config/ and set exactly the three things an arm varies."""
     cfg = CFG_ROOT / arm
     if cfg.exists():
@@ -350,6 +351,14 @@ def build_arm_config(arm: str, density: float, seed: int, out_dir: Path,
         ),
     )
     text = _set_scalar(text, "density", f"{density}")
+    if surround_height is not None:
+        # A second lever, for species the radius set fails to separate. The
+        # shell's shading depends on its angular size from the tree, i.e. on
+        # height/distance -- so at a far radius a short shell subtends very
+        # little and may not compete at all. silver_birch and sycamore_maple
+        # measured byte-identical stems at r08 and r16 at every density, which
+        # is what "the shell is not reaching either of them" looks like.
+        text = _set_scalar(text, "height", f"{surround_height}")
     text = _set_scalar(text, "radii", "[" + ", ".join(str(r) for r in RADII) + "]")
     surround.write_text(text, encoding="utf-8")
 
@@ -659,6 +668,10 @@ def main() -> int:
     ap.add_argument("--verify-only", action="store_true",
                     help="build and check each arm's config, run nothing")
     ap.add_argument("--dry-run", action="store_true", help="list arms and exit")
+    ap.add_argument("--surround-height", type=float,
+                    help="override [surround] height (m) for every arm. The "
+                         "second lever when the radius set fails to separate a "
+                         "species -- shading scales with height/distance.")
     ap.add_argument("--growth-cycle-limit", type=int,
                     help="hard cap on growth cycles. THIS is what bounds an "
                          "arm's wall clock -- --max-height only bounds which "
@@ -758,7 +771,8 @@ def main() -> int:
         print(f"[{datetime.now():%H:%M:%S}] ARM {index}/{len(arms)}: "
               f"{sp} density={density} seed={seed}")
         cfg = build_arm_config(arm, density, seed, out_dir,
-                               cycle_limit=args.growth_cycle_limit)
+                               cycle_limit=args.growth_cycle_limit,
+                               surround_height=args.surround_height)
         resolved = verify_arm(cfg, density, seed, out_dir)
         print(f"[{datetime.now():%H:%M:%S}]   VERIFIED: density="
               f"{resolved['density']} radii={resolved['radii']} "
