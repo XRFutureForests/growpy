@@ -84,43 +84,6 @@ def _overlay_custom_twigs(custom_dir: Path, dst_dir: Path) -> list[str]:
     return applied
 
 
-def _warn_on_unbacked_edits(
-    dst_dir: Path, grove_dir: Path | None, custom_dir: Path | None
-) -> None:
-    """Say so before deleting a working file that nothing can restore.
-
-    This directory is about to be rmtree'd and rebuilt from the Grove source
-    plus the custom overlay. A file here that differs from BOTH was edited in
-    place, and ``data/assets/`` is gitignored -- so it exists nowhere else and
-    is about to be lost.
-
-    That is not hypothetical: the silver fir twig was welded to add a smaller
-    foliage variant, which took the UE foliage library from 1,364 MB to 86 MB,
-    and the edit lived only here. Put such a file under
-    ``data/input/custom_twigs/<TwigName>/`` and it survives every future run.
-    """
-    for working in sorted(dst_dir.glob("*.blend")):
-        candidates = [
-            directory / working.name
-            for directory in (custom_dir, grove_dir)
-            if directory is not None
-        ]
-        backed = any(
-            candidate.is_file()
-            and candidate.stat().st_size == working.stat().st_size
-            for candidate in candidates
-        )
-        if backed:
-            continue
-        logger.warning(
-            "%s differs from its Grove source and has no custom override, so "
-            "this rebuild will DISCARD it. If the edit matters, copy it to "
-            "%s/ first -- data/assets/ is regenerable and is not tracked.",
-            working,
-            (custom_dir or Path("data/input/custom_twigs")) .as_posix(),
-        )
-
-
 def load_species_csv(csv_path: Path, use_gbif: bool = True) -> pd.DataFrame:
     """Load and validate species CSV.
 
@@ -559,7 +522,6 @@ CSV Format Support:
             dst_twig_dir = dst_twigs / twig_name_snake
 
             if dst_twig_dir.exists():
-                _warn_on_unbacked_edits(dst_twig_dir, grove_twig_dir, custom_twig_dir)
                 shutil.rmtree(dst_twig_dir)
             shutil.copytree(src_twig_dir, dst_twig_dir)
             if custom_twig_dir is not None and custom_twig_dir != src_twig_dir:

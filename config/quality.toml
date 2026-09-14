@@ -68,7 +68,12 @@ build_cutoff_age = 0
 build_cutoff_thickness = 0.0025
 build_blend = true
 build_end_cap = true
-skeleton_length = 1.0
+# 0.5 m, not the 1.0 this profile used to carry: bones are what wind
+# animation and the skeletal assembly bind to, and a 1.0 m minimum leaves a
+# 15 m crown with too few to deform plausibly. Lower = more bones; the
+# ceiling is Unreal's 16-bit limit of 32,767 per mesh, guarded by
+# [export] max_skeleton_joints.
+skeleton_length = 0.5
 skeleton_reduce = 0.333
 skeleton_bias = 0.5
 skeleton_connected = true
