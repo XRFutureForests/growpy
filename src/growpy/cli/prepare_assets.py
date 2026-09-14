@@ -24,6 +24,43 @@ from growpy.utils.naming import camel_to_snake, standardize_species_name
 logger = logging.getLogger(__name__)
 
 
+_NORMAL_SUFFIXES = ("normal", "_normal", "-normal", " normal", "_norm", "nrm")
+
+
+def _index_bark_normals(src_textures: Path) -> dict[str, Path]:
+    """Map each bark diffuse stem (lowercased) to its normal map, if present.
+
+    The Grove's own naming is not consistent. 47 of its 48 bark normals are
+    ``<Stem>Normal.jpg``; ``Birch70_normal.jpg`` is not, and the single
+    hardcoded spelling this replaces therefore skipped it silently -- silver
+    birch shipped with no normal map at all, and a trunk with no normal map
+    renders as polished chrome.
+
+    Built by listing the directory rather than probing candidate filenames, so
+    it behaves on a case-sensitive filesystem too.
+    """
+    index: dict[str, Path] = {}
+    if not src_textures.is_dir():
+        return index
+
+    entries = [p for p in src_textures.iterdir() if p.is_file()]
+    stems = {p.stem.lower() for p in entries}
+
+    for path in entries:
+        low = path.stem.lower()
+        for suffix in _NORMAL_SUFFIXES:
+            if not low.endswith(suffix):
+                continue
+            base = low[: -len(suffix)].rstrip("_- ")
+            # Only claim it when a diffuse by that name actually exists;
+            # without this a texture legitimately ending in "Normal" would
+            # shadow one.
+            if base in stems:
+                index.setdefault(base, path)
+            break
+    return index
+
+
 def load_species_csv(csv_path: Path, use_gbif: bool = True) -> pd.DataFrame:
     """Load and validate species CSV.
 
@@ -503,6 +540,7 @@ CSV Format Support:
 
     # Copy bark textures with CamelCase -> snake_case conversion (preserves age numbers)
     src_textures = grove_dir / "textures"
+    normal_index = _index_bark_normals(src_textures)
     dst_textures = assets_dir / "textures"
 
     for _, row in df.iterrows():
@@ -545,9 +583,11 @@ CSV Format Support:
         # map at all: a perfectly flat surface which, with no roughness
         # override either, renders as polished chrome with the specular
         # smearing across the stretched trunk UVs.
-        src_normal = src_textures / f"{texture_stem}Normal{file_ext}"
-        if src_normal.exists():
-            dst_normal = dst_textures / f"{standardized_name}_bark_normal{file_ext}"
+        src_normal = normal_index.get(texture_stem.lower())
+        if src_normal is not None:
+            dst_normal = (
+                dst_textures / f"{standardized_name}_bark_normal{src_normal.suffix}"
+            )
             if resize_textures:
                 if not copy_and_resize_texture(src_normal, dst_normal):
                     shutil.copy2(src_normal, dst_normal)
@@ -555,7 +595,16 @@ CSV Format Support:
                 shutil.copy2(src_normal, dst_normal)
             stats["textures_copied"] += 1
         else:
-            logger.debug("No bark normal map beside %s", src_file.name)
+            # A warning, not a debug: 48 of the Grove's 49 bark diffuses ship a
+            # normal beside them, so a miss is a defect rather than a normal
+            # state. At debug level this stayed invisible -- silver_birch went
+            # without one because the Grove spells its file Birch70_normal.jpg
+            # while every other species spells it <Stem>Normal.jpg, and the
+            # trunk renders as polished chrome.
+            logger.warning(
+                "No bark normal map found for %s in %s", src_file.name, src_textures
+            )
+            stats["textures_missing"] += 1
 
     # Generate PVE config files with null placeholders for each species
     dst_pve_configs = assets_dir / "pve_configs"
