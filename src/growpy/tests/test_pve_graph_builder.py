@@ -74,6 +74,23 @@ class TestFoliageVectorSpec:
         # small tree's foliage.
         assert FoliageVectorSpec().affect_tip is True
 
+    def test_explicit_ramp_keys_and_blend_attribute(self):
+        # A dual entry blended on WorldUpDot is how a leader keeps pointing up
+        # while every other twig is flattened: AxisFlatten everywhere, crossing
+        # to AxisAim-on-up only when the growth axis is already near vertical.
+        spec = FoliageVectorSpec(
+            kind="aim", vector1="AXIS_FLATTEN", vector2="AXIS_AIM", dual=True,
+            blend_attribute="WORLD_UP_DOT",
+            ramp=((0.0, 0.0), (0.9, 0.0), (1.0, 1.0)),
+        )
+        assert spec.ramp[1] == (0.9, 0.0)
+        with pytest.raises(ValueError, match="blend_attribute"):
+            FoliageVectorSpec(blend_attribute="GRAVITY")
+        with pytest.raises(ValueError, match="ascending"):
+            FoliageVectorSpec(ramp=((1.0, 1.0), (0.0, 0.0)))
+        with pytest.raises(ValueError, match="two"):
+            FoliageVectorSpec(ramp=((0.0, 1.0),))
+
 
 class TestDistributorSpec:
     def test_scale_ramp_defaults_flat_at_one(self):
@@ -168,6 +185,25 @@ class TestGenerateScript:
         assert "'branch_density': 42" in body
         assert "'single_bud_tip': True" in body
         assert "'axil_angle_ramp': '(EditorCurveData=" in body
+
+    def test_ramp_keys_reach_the_script_in_order(self, tmp_path):
+        chain = _chain("SK_x", density=3)
+        dist = DistributorSpec(
+            branch_density=3,
+            aim=FoliageVectorSpec(
+                kind="aim", vector1="AXIS_FLATTEN", vector2="AXIS_AIM", dual=True,
+                blend_attribute="WORLD_UP_DOT",
+                ramp=((0.0, 0.0), (0.9, 0.0), (1.0, 1.0)),
+            ),
+        )
+        chain = TreeChainSpec(chain.growth_json, chain.mesh_name, dist)
+        path = generate_pve_graph_builder_script(tmp_path, [_graph(chains=(chain,))])
+        body = path.read_text(encoding="utf-8")
+        assert "'blend_attribute': 'WORLD_UP_DOT'" in body
+        assert (
+            "(InterpMode=RCIM_Linear,Time=0.900000,Value=0.000000),"
+            "(InterpMode=RCIM_Linear,Time=1.000000,Value=1.000000)"
+        ) in body
 
     def test_ramp_is_serialised_for_the_native_importer(self, tmp_path):
         # EditorCurveData has no EditAnywhere, so it is only reachable through

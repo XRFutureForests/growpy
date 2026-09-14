@@ -116,6 +116,15 @@ _FORMATIONS = frozenset(
     {"DISTICHOUS", "TRISTICHOUS", "PENTASTICHOUS", "OCTASTICHOUS", "PARASTICHOUS"}
 )
 _NANITE_SHAPE = frozenset({"NONE", "PRESERVE_AREA", "VOXELIZE"})
+_BLEND_ATTRIBUTES = frozenset(
+    {
+        "PLANT_GRADIENT",
+        "PLANT_GRADIENT_NORMALIZED",
+        "BRANCH_GRADIENT",
+        "BRANCH_GRADIENT_NORMALIZED",
+        "WORLD_UP_DOT",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -132,6 +141,11 @@ class FoliageVectorSpec:
     strength: float = 1.0
     affect_tip: bool = True
     flat_ramp: bool = True
+    # Explicit VectorRamp keys as (time, value) pairs; overrides flat_ramp.
+    # The ramp is evaluated on blend_attribute and blends Vector1 -> Vector2
+    # (0 -> 1) when dual, or scales Vector2's rotation when single.
+    ramp: tuple[tuple[float, float], ...] | None = None
+    blend_attribute: str = "PLANT_GRADIENT"
     vector1: str | None = None
     dual: bool = False
     kind: str = "face"
@@ -157,6 +171,16 @@ class FoliageVectorSpec:
             raise ValueError(f"strength must be in [0, 1], got {self.strength}")
         if len(self.axis) != 3 or all(abs(c) < 1e-9 for c in self.axis):
             raise ValueError(f"axis must be a non-zero 3-vector, got {self.axis!r}")
+        if self.blend_attribute not in _BLEND_ATTRIBUTES:
+            raise ValueError(
+                f"blend_attribute must be one of {sorted(_BLEND_ATTRIBUTES)}"
+            )
+        if self.ramp is not None:
+            if len(self.ramp) < 2 or any(len(k) != 2 for k in self.ramp):
+                raise ValueError("ramp needs at least two (time, value) keys")
+            times = [k[0] for k in self.ramp]
+            if times != sorted(times):
+                raise ValueError("ramp keys must be in ascending time order")
 
 
 @dataclass(frozen=True)
@@ -277,17 +301,22 @@ class PVEGraphSpec:
 
 
 def _ramp_text(start: float, end: float) -> str:
-    """A two-key linear FRichCurve, as UE's native struct serialiser spells it.
+    """A two-key linear ramp; see ``_ramp_keys_text`` for the general form."""
+    return _ramp_keys_text(((0.0, start), (1.0, end)))
+
+
+def _ramp_keys_text(keys) -> str:
+    """A linear FRichCurve over ``keys``, as UE's native struct serialiser
+    spells it.
 
     ``FPVFloatRamp::EditorCurveData`` is a plain UPROPERTY with no EditAnywhere,
     so ``set_editor_property`` cannot reach it. ``import_text`` runs the native
     serialiser and does.
     """
-    return (
-        "(EditorCurveData=(Keys=("
-        f"(InterpMode=RCIM_Linear,Time=0.000000,Value={start:.6f}),"
-        f"(InterpMode=RCIM_Linear,Time=1.000000,Value={end:.6f}))))"
+    body = ",".join(
+        f"(InterpMode=RCIM_Linear,Time={t:.6f},Value={v:.6f})" for t, v in keys
     )
+    return f"(EditorCurveData=(Keys=({body})))"
 
 
 def _vector_payload(spec: FoliageVectorSpec | None) -> dict | None:
@@ -301,7 +330,12 @@ def _vector_payload(spec: FoliageVectorSpec | None) -> dict | None:
         "strength": spec.strength,
         "affect_tip": spec.affect_tip,
         "dual": spec.dual,
-        "ramp": _ramp_text(1.0, 1.0) if spec.flat_ramp else None,
+        "ramp": (
+            _ramp_keys_text(spec.ramp)
+            if spec.ramp is not None
+            else (_ramp_text(1.0, 1.0) if spec.flat_ramp else None)
+        ),
+        "blend_attribute": spec.blend_attribute,
     }
 
 
@@ -485,7 +519,10 @@ def apply_vector_group(dist_settings, spec, group_prop, list_prop, entry_cls,
         if spec["dual"] and spec["vector1"]:
             setp(entry, "vector1", getattr(enum_cls, spec["vector1"]))
             setp(entry, "vector1_axis", unreal.Vector3f(*spec["axis"]))
+            setp(entry, "vector1_strength", float(spec["strength"]))
         setp(entry, ("affect_tip", "b_affect_tip"), bool(spec["affect_tip"]))
+        setp(entry, "blend_attribute",
+             getattr(unreal.PVAimVectorBlendAttribute, spec["blend_attribute"]))
         if spec["ramp"]:
             ramp = entry.get_editor_property("vector_ramp")
             ramp.import_text(spec["ramp"])
