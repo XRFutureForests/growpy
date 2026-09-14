@@ -9,6 +9,7 @@ import pytest
 from growpy.io.unreal.pve_graph_builder import (
     DistributorSpec,
     FoliageVectorSpec,
+    JitterSpec,
     PVEGraphSpec,
     TreeChainSpec,
     generate_pve_graph_builder_script,
@@ -90,6 +91,32 @@ class TestFoliageVectorSpec:
             FoliageVectorSpec(ramp=((1.0, 1.0), (0.0, 0.0)))
         with pytest.raises(ValueError, match="two"):
             FoliageVectorSpec(ramp=((0.0, 1.0),))
+
+
+class TestJitterSpec:
+    def test_degrees_become_a_fraction_of_a_half_turn(self, tmp_path):
+        # The engine's strength is multiplied by PI, so 18 deg = 0.1.
+        chain = _chain("SK_x", density=3)
+        dist = DistributorSpec(
+            branch_density=3, jitter=(JitterSpec("PITCH", 18.0, seed=7),)
+        )
+        chain = TreeChainSpec(chain.growth_json, chain.mesh_name, dist)
+        body = generate_pve_graph_builder_script(tmp_path, [_graph(chains=(chain,))])
+        body = body.read_text(encoding="utf-8")
+        assert "'mode': 'PITCH'" in body
+        assert "'strength': 0.1" in body
+        assert "'seed': 7" in body
+
+    def test_rejects_bad_mode_and_range(self):
+        with pytest.raises(ValueError, match="mode"):
+            JitterSpec("TWIST", 10.0)
+        with pytest.raises(ValueError, match="degrees"):
+            JitterSpec("ROLL", 0.0)
+        with pytest.raises(ValueError, match="degrees"):
+            JitterSpec("ROLL", 181.0)
+
+    def test_no_jitter_by_default(self):
+        assert DistributorSpec(branch_density=3).jitter == ()
 
 
 class TestDistributorSpec:

@@ -92,6 +92,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "FoliageVectorSpec",
+    "JitterSpec",
     "DistributorSpec",
     "TreeChainSpec",
     "PVEGraphSpec",
@@ -116,6 +117,7 @@ _FORMATIONS = frozenset(
     {"DISTICHOUS", "TRISTICHOUS", "PENTASTICHOUS", "OCTASTICHOUS", "PARASTICHOUS"}
 )
 _NANITE_SHAPE = frozenset({"NONE", "PRESERVE_AREA", "VOXELIZE"})
+_JITTER_MODES = frozenset({"ROLL", "PITCH", "YAW"})
 _BLEND_ATTRIBUTES = frozenset(
     {
         "PLANT_GRADIENT",
@@ -184,6 +186,29 @@ class FoliageVectorSpec:
 
 
 @dataclass(frozen=True)
+class JitterSpec:
+    """One random RollPitchYaw entry, applied AFTER the aim and face vectors.
+
+    ``degrees`` is the half-range: each instance gets a uniform draw in
+    ``[-degrees, +degrees]``. The engine stores it as a fraction of 180 deg
+    (``strength * PI`` radians), which is what the payload converts to. ROLL
+    spins about the growth axis, PITCH tilts about the spread axis, YAW swings
+    about the face normal. Beech leaves incline ~20-30 deg in life, so a
+    PITCH of that size on top of the planar spec is the natural amount.
+    """
+
+    mode: str
+    degrees: float
+    seed: int = 123456
+
+    def __post_init__(self) -> None:
+        if self.mode not in _JITTER_MODES:
+            raise ValueError(f"mode must be one of {sorted(_JITTER_MODES)}")
+        if not 0.0 < self.degrees <= 180.0:
+            raise ValueError(f"degrees must be in (0, 180], got {self.degrees}")
+
+
+@dataclass(frozen=True)
 class DistributorSpec:
     """Parametric foliage distributor settings for one tree."""
 
@@ -213,6 +238,7 @@ class DistributorSpec:
         default_factory=lambda: FoliageVectorSpec(kind="face", vector2="AXIS_AIM")
     )
     aim: FoliageVectorSpec | None = None
+    jitter: tuple[JitterSpec, ...] = ()
 
     def __post_init__(self) -> None:
         if self.branch_density < 1:
@@ -376,6 +402,14 @@ def _graph_payload(graph: PVEGraphSpec) -> dict:
                 "auto_align_end": c.distributor.auto_align_end,
                 "face": _vector_payload(c.distributor.face),
                 "aim": _vector_payload(c.distributor.aim),
+                "jitter": [
+                    {
+                        "mode": j.mode,
+                        "strength": j.degrees / 180.0,
+                        "seed": j.seed,
+                    }
+                    for j in c.distributor.jitter
+                ],
             }
             for c in graph.chains
         ],
@@ -699,6 +733,21 @@ def build(spec):
             unreal.PVFaceVectorSettings, unreal.PVFaceVectorType,
             chain["auto_align_end"],
         )
+        # Random roll/pitch/yaw is applied last in ApplyVectorSettings, so it
+        # perturbs the posed twig rather than the pre-pose frame.
+        vectors = dist_settings.get_editor_property("vector_settings")
+        rpy_group = vectors.get_editor_property("roll_pitch_yaw_settings")
+        rpy_entries = []
+        for j in chain["jitter"]:
+            rpy = unreal.PVRollPitchYawSettings()
+            setp(rpy, "mode", getattr(unreal.PVRollPitchYawMode, j["mode"]))
+            setp(rpy, "min_strength", -float(j["strength"]))
+            setp(rpy, "max_strength", float(j["strength"]))
+            setp(rpy, "random_seed", int(j["seed"]))
+            rpy_entries.append(rpy)
+        rpy_group.set_editor_property("roll_pitch_yaw", rpy_entries)
+        vectors.set_editor_property("roll_pitch_yaw_settings", rpy_group)
+        dist_settings.set_editor_property("vector_settings", vectors)
 
         export_node, export_settings = graph.add_node_of_type(unreal.PVExportSettings)
         export_node.set_node_position(1020, row)
