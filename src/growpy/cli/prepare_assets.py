@@ -61,6 +61,66 @@ def _index_bark_normals(src_textures: Path) -> dict[str, Path]:
     return index
 
 
+def _overlay_custom_twigs(custom_dir: Path, dst_dir: Path) -> list[str]:
+    """Copy every file under ``custom_dir`` over the Grove copy in ``dst_dir``.
+
+    An OVERLAY, not a replacement, so a hand-edited asset needs to track only
+    the file that actually changed rather than a whole copy of the Grove
+    directory beside it. That matters here for more than tidiness: the Grove
+    twigs are licensed commercial content and are deliberately gitignored, so a
+    full copy could not be committed even if it were wanted.
+
+    Returns the relative paths overlaid, for logging.
+    """
+    applied: list[str] = []
+    for source in sorted(custom_dir.rglob("*")):
+        if not source.is_file():
+            continue
+        relative = source.relative_to(custom_dir)
+        target = dst_dir / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        applied.append(str(relative).replace("\\", "/"))
+    return applied
+
+
+def _warn_on_unbacked_edits(
+    dst_dir: Path, grove_dir: Path | None, custom_dir: Path | None
+) -> None:
+    """Say so before deleting a working file that nothing can restore.
+
+    This directory is about to be rmtree'd and rebuilt from the Grove source
+    plus the custom overlay. A file here that differs from BOTH was edited in
+    place, and ``data/assets/`` is gitignored -- so it exists nowhere else and
+    is about to be lost.
+
+    That is not hypothetical: the silver fir twig was welded to add a smaller
+    foliage variant, which took the UE foliage library from 1,364 MB to 86 MB,
+    and the edit lived only here. Put such a file under
+    ``data/input/custom_twigs/<TwigName>/`` and it survives every future run.
+    """
+    for working in sorted(dst_dir.glob("*.blend")):
+        candidates = [
+            directory / working.name
+            for directory in (custom_dir, grove_dir)
+            if directory is not None
+        ]
+        backed = any(
+            candidate.is_file()
+            and candidate.stat().st_size == working.stat().st_size
+            for candidate in candidates
+        )
+        if backed:
+            continue
+        logger.warning(
+            "%s differs from its Grove source and has no custom override, so "
+            "this rebuild will DISCARD it. If the edit matters, copy it to "
+            "%s/ first -- data/assets/ is regenerable and is not tracked.",
+            working,
+            (custom_dir or Path("data/input/custom_twigs")) .as_posix(),
+        )
+
+
 def load_species_csv(csv_path: Path, use_gbif: bool = True) -> pd.DataFrame:
     """Load and validate species CSV.
 
@@ -472,34 +532,45 @@ CSV Format Support:
         else:
             twig_name_snake = twig_name_original
 
-        # Search order: custom twigs dir (CamelCase), Grove source, Grove reverse lookup
-        src_twig_dir = None
+        # Grove source and custom override are resolved SEPARATELY, because
+        # the custom directory is an OVERLAY rather than a replacement -- see
+        # _overlay_custom_twigs. A twig that exists only under custom_twigs
+        # still works: the overlay simply has no base to sit on.
+        grove_twig_dir = None
+        if any(c.isupper() for c in twig_name_original):
+            candidate = src_twigs / twig_name_original
+            if candidate.exists():
+                grove_twig_dir = candidate
+        if grove_twig_dir is None:
+            for src_dir in src_twigs.iterdir():
+                if src_dir.is_dir() and camel_to_snake(src_dir.name) == twig_name_snake:
+                    grove_twig_dir = src_dir
+                    break
 
-        # 1. Custom twigs directory (CamelCase match)
+        custom_twig_dir = None
         if custom_twigs_dir.exists():
             candidate = custom_twigs_dir / twig_name_original
             if candidate.exists():
-                src_twig_dir = candidate
+                custom_twig_dir = candidate
 
-        # 2. Grove source (CamelCase match)
-        if src_twig_dir is None and any(c.isupper() for c in twig_name_original):
-            candidate = src_twigs / twig_name_original
-            if candidate.exists():
-                src_twig_dir = candidate
-
-        # 3. Grove reverse lookup (snake_case -> CamelCase)
-        if src_twig_dir is None:
-            for src_dir in src_twigs.iterdir():
-                if src_dir.is_dir() and camel_to_snake(src_dir.name) == twig_name_snake:
-                    src_twig_dir = src_dir
-                    break
+        src_twig_dir = grove_twig_dir or custom_twig_dir
 
         if src_twig_dir is not None:
             dst_twig_dir = dst_twigs / twig_name_snake
 
             if dst_twig_dir.exists():
+                _warn_on_unbacked_edits(dst_twig_dir, grove_twig_dir, custom_twig_dir)
                 shutil.rmtree(dst_twig_dir)
             shutil.copytree(src_twig_dir, dst_twig_dir)
+            if custom_twig_dir is not None and custom_twig_dir != src_twig_dir:
+                overlaid = _overlay_custom_twigs(custom_twig_dir, dst_twig_dir)
+                if overlaid:
+                    logger.info(
+                        "Applied %d custom override(s) over %s: %s",
+                        len(overlaid),
+                        twig_name_original,
+                        ", ".join(sorted(overlaid)),
+                    )
 
             if resize_textures:
                 twig_textures_dir = dst_twig_dir / "textures"
