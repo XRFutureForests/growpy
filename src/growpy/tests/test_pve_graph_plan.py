@@ -211,15 +211,36 @@ class TestRetuneScript:
 
     def test_it_finds_the_export_node_by_mesh_name(self, script):
         assert "PVExportSettings" in script
-        assert "asset_name" in script
         assert "SK_one" in script
+        # asset_name is the property that does NOT exist -- it was the original
+        # bug, and naming it here keeps it from creeping back.
+        assert "asset_name" not in script
 
     def test_it_walks_back_to_the_distributor(self, script):
         assert "PVFoliageDistributorSettings" in script
         assert "input_pins" in script
 
-    def test_it_verifies_the_value_took(self, script):
-        assert 'spacing.get_editor_property("branch_density")' in script
+    def test_it_reads_the_mesh_name_off_the_nested_struct(self, script):
+        # PVExportSettings has no mesh_name; it lives on the nested
+        # export_settings struct. Reading it off the node raises, which matches
+        # zero export nodes and fails every retune. Found in a live editor.
+        assert 'get_editor_property("export_settings")' in script
+        assert 'get_editor_property("mesh_name")' in script
+
+    def test_it_writes_the_struct_chain_back(self, script):
+        # UE Python hands back structs BY VALUE, so setting a field mutates a
+        # copy. Without these assignments the density change is silently
+        # discarded -- and a read-back against the same copy still reports
+        # success, which is the exact failure this project keeps hitting.
+        assert 'parametric.set_editor_property("spacing_settings", spacing)' in script
+        assert (
+            'distributor.set_editor_property("parametric_settings", parametric)'
+            in script
+        )
+
+    def test_it_verifies_by_rereading_from_the_node(self, script):
+        # Not from the local copy that was just written to.
+        assert "fresh = (distributor.get_editor_property" in script
         assert "did not take" in script
 
     def test_it_fails_loudly(self, script):

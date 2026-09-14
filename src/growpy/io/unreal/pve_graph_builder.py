@@ -913,8 +913,12 @@ for entry in RETUNES:
         settings = node.get_settings()
         if type(settings).__name__ != "PVExportSettings":
             continue
+        # mesh_name lives on the NESTED export_settings struct, not on the node
+        # settings. Reading it off the node raises, which would match zero
+        # export nodes and fail every retune.
         try:
-            name = str(settings.get_editor_property("asset_name"))
+            export_struct = settings.get_editor_property("export_settings")
+            name = str(export_struct.get_editor_property("mesh_name"))
         except Exception:
             continue
         if name not in wanted:
@@ -947,16 +951,26 @@ for entry in RETUNES:
             missing.append("no distributor upstream of %s" % name)
             continue
 
+        # UE Python hands back structs BY VALUE. Setting a field on one of
+        # these mutates a copy, so each level has to be assigned back up the
+        # chain or the change is silently discarded -- and a read-back against
+        # the same copy would still report success. Re-read from the node after
+        # writing, which is the only check that proves anything.
         parametric = distributor.get_editor_property("parametric_settings")
         spacing = parametric.get_editor_property("spacing_settings")
         before = spacing.get_editor_property("branch_density")
         spacing.set_editor_property("branch_density", int(wanted[name]))
-        after = spacing.get_editor_property("branch_density")
-        if int(after) != int(wanted[name]):
+        parametric.set_editor_property("spacing_settings", spacing)
+        distributor.set_editor_property("parametric_settings", parametric)
+
+        fresh = (distributor.get_editor_property("parametric_settings")
+                 .get_editor_property("spacing_settings")
+                 .get_editor_property("branch_density"))
+        if int(fresh) != int(wanted[name]):
             missing.append("%s density did not take: wanted %s, read %s"
-                           % (name, wanted[name], after))
+                           % (name, wanted[name], fresh))
             continue
-        applied.append("%s %s -> %s" % (name, before, after))
+        applied.append("%s %s -> %s" % (name, before, fresh))
         seen.add(name)
 
     for name in wanted:
