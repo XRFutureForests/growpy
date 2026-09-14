@@ -86,15 +86,15 @@ class TestDiscovery:
     def test_it_finds_every_growth_json_keyed_by_species(self, forest_root):
         found = discover_growth_jsons(forest_root)
         assert set(found) == {"european_beech", "silver_fir"}
-        assert len(found["european_beech"]) == 9
-        assert len(found["silver_fir"]) == 6
+        assert len(found["european_beech"]) == 15
+        assert len(found["silver_fir"]) == 12
 
     def test_an_absent_root_yields_nothing(self, tmp_path):
         assert discover_growth_jsons(tmp_path / "absent") == {}
 
     def test_unrelated_json_is_ignored(self, forest_root):
         (forest_root / "european_beech" / "r05" / "notes.json").write_text("{}")
-        assert len(discover_growth_jsons(forest_root)["european_beech"]) == 9
+        assert len(discover_growth_jsons(forest_root)["european_beech"]) == 15
 
 
 class TestSplitByTriangles:
@@ -250,7 +250,7 @@ class TestRetuneScript:
 class TestPlanEndToEnd:
     def test_it_plans_every_shipped_tree(self, tmp_path, forest_root):
         plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
-        assert plan.chain_count == 15
+        assert plan.chain_count == 27
         assert plan.skipped == ()
         assert plan.script is not None
         assert plan.manifest is not None
@@ -331,7 +331,7 @@ class TestPlanEndToEnd:
         (directory / "Wild_Cherry_r05_h10m_d10cm_growth_data.json").write_text("{}")
 
         plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
-        assert plan.chain_count == 15
+        assert plan.chain_count == 27
         assert any("wild_cherry" in line for line in plan.skipped)
 
     def test_both_halves_land_in_one_place(self, tmp_path, forest_root):

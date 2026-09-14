@@ -256,6 +256,110 @@ build_density = 95
 build_instances = 11636
 build_density_source = "offline"
 
+# r08 / r16 -- the 2026-09-14 dataset run (max_height 15), solved OFFLINE with
+# the validated distributor model (growpy.io.unreal.pve_distributor_model:
+# 13 of 14 logged (tree, density) pairs exact) against each tree's Forrester
+# target. No Export click has measured these yet, hence the empty history.
+# Chain self-check before solving: r05_h10m, r20_h15m and fir r10_h25m
+# re-derive from their JSONs to the recorded dbh, target and build_instances
+# exactly. These JSONs carry the tip-frame fix (46f9a03); the ones above do not.
+
+[pve_calibration.species.european_beech.trees.r08_h05m]
+growth_json = "European_Beech_r08_h05m_d06cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 6.20
+branches = 358
+points = 4893
+s_ratio = 57.49
+source_height_m = 5.3949
+target_m2 = 8.36
+target_instances = 528
+history = []
+solved_density = 10
+build_density = 10
+build_instances = 530
+build_density_source = "offline"
+
+[pve_calibration.species.european_beech.trees.r08_h10m]
+growth_json = "European_Beech_r08_h10m_d13cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 13.29
+branches = 1085
+points = 14681
+s_ratio = 93.78
+source_height_m = 10.1949
+target_m2 = 35.39
+target_instances = 2235
+history = []
+solved_density = 24
+build_density = 24
+build_instances = 2272
+build_density_source = "offline"
+
+[pve_calibration.species.european_beech.trees.r08_h15m]
+growth_json = "European_Beech_r08_h15m_d17cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 16.67
+branches = 1143
+points = 14219
+s_ratio = 60.77
+source_height_m = 15.3248
+target_m2 = 54.28
+target_instances = 3428
+history = []
+solved_density = 59
+build_density = 59
+build_instances = 3446
+build_density_source = "offline"
+
+[pve_calibration.species.european_beech.trees.r16_h05m]
+growth_json = "European_Beech_r16_h05m_d07cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 7.06
+branches = 402
+points = 5726
+s_ratio = 67.44
+source_height_m = 5.3965
+target_m2 = 10.69
+target_instances = 675
+history = []
+solved_density = 11
+build_density = 11
+build_instances = 663
+build_density_source = "offline"
+
+[pve_calibration.species.european_beech.trees.r16_h10m]
+growth_json = "European_Beech_r16_h10m_d19cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 18.89
+branches = 1147
+points = 19577
+s_ratio = 126.82
+source_height_m = 10.1575
+target_m2 = 68.79
+target_instances = 4344
+history = []
+solved_density = 36
+build_density = 36
+build_instances = 4358
+build_density_source = "offline"
+
+[pve_calibration.species.european_beech.trees.r16_h15m]
+growth_json = "European_Beech_r16_h15m_d28cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 28.50
+branches = 1624
+points = 23823
+s_ratio = 103.97
+source_height_m = 15.3191
+target_m2 = 149.64
+target_instances = 9450
+history = []
+solved_density = 96
+build_density = 96
+build_instances = 9411
+build_density_source = "offline"
+
 
 # ------------------------------------------------------------------ fir ----
 
@@ -385,4 +489,109 @@ history = [[98, 6779]]
 solved_density = 89
 build_density = 86
 build_instances = 5654
+build_density_source = "offline"
+
+# r08 / r16 -- the 2026-09-14 dataset run (max_height 15), solved OFFLINE with
+# the validated distributor model (growpy.io.unreal.pve_distributor_model:
+# 13 of 14 logged (tree, density) pairs exact) against each tree's Forrester
+# target. No Export click has measured these yet, hence the empty history.
+# Fir h05 sits near the one-per-branch
+# staircase (r16_h05m lands +4.7 %). Chain self-check before solving: r05_h10m, r20_h15m and fir r10_h25m
+# re-derive from their JSONs to the recorded dbh, target and build_instances
+# exactly. These JSONs carry the tip-frame fix (46f9a03); the ones above do not.
+
+[pve_calibration.species.silver_fir.trees.r08_h05m]
+growth_json = "Silver_Fir_r08_h05m_d08cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 8.26
+branches = 1015
+points = 5939
+s_ratio = 73.17
+source_height_m = 5.1709
+target_m2 = 8.79
+target_instances = 437
+history = []
+solved_density = 19
+build_density = 19
+build_instances = 441
+build_density_source = "offline"
+
+[pve_calibration.species.silver_fir.trees.r08_h10m]
+growth_json = "Silver_Fir_r08_h10m_d10cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 10.45
+branches = 1714
+points = 12608
+s_ratio = 86.18
+source_height_m = 10.0033
+target_m2 = 13.76
+target_instances = 683
+history = []
+solved_density = 27
+build_density = 27
+build_instances = 683
+build_density_source = "offline"
+
+[pve_calibration.species.silver_fir.trees.r08_h15m]
+growth_json = "Silver_Fir_r08_h15m_d17cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 17.21
+branches = 3065
+points = 22445
+s_ratio = 107.03
+source_height_m = 15.0865
+target_m2 = 35.41
+target_instances = 1758
+history = []
+solved_density = 44
+build_density = 44
+build_instances = 1725
+build_density_source = "offline"
+
+[pve_calibration.species.silver_fir.trees.r16_h05m]
+growth_json = "Silver_Fir_r16_h05m_d09cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 8.97
+branches = 942
+points = 5705
+s_ratio = 75.23
+source_height_m = 5.0699
+target_m2 = 10.29
+target_instances = 511
+history = []
+solved_density = 21
+build_density = 21
+build_instances = 535
+build_density_source = "offline"
+
+[pve_calibration.species.silver_fir.trees.r16_h10m]
+growth_json = "Silver_Fir_r16_h10m_d13cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 12.72
+branches = 2360
+points = 17869
+s_ratio = 120.13
+source_height_m = 10.2935
+target_m2 = 19.95
+target_instances = 991
+history = []
+solved_density = 29
+build_density = 29
+build_instances = 1007
+build_density_source = "offline"
+
+[pve_calibration.species.silver_fir.trees.r16_h15m]
+growth_json = "Silver_Fir_r16_h15m_d19cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 19.33
+branches = 3918
+points = 26978
+s_ratio = 128.25
+source_height_m = 15.0836
+target_m2 = 44.16
+target_instances = 2193
+history = []
+solved_density = 46
+build_density = 46
+build_instances = 2188
 build_density_source = "offline"

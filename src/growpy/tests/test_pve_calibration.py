@@ -56,6 +56,27 @@ SHIPPED_DENSITIES = {
     },
 }
 
+# The r08/r16 trees of the 2026-09-14 run, solved OFFLINE with the validated
+# distributor model against Forrester and not yet measured by an Export click.
+OFFLINE_R08_R16_DENSITIES = {
+    "european_beech": {
+        "r08_h05m": 10,
+        "r08_h10m": 24,
+        "r08_h15m": 59,
+        "r16_h05m": 11,
+        "r16_h10m": 36,
+        "r16_h15m": 96,
+    },
+    "silver_fir": {
+        "r08_h05m": 19,
+        "r08_h10m": 27,
+        "r08_h15m": 44,
+        "r16_h05m": 21,
+        "r16_h10m": 29,
+        "r16_h15m": 46,
+    },
+}
+
 
 @pytest.fixture(scope="module")
 def shipped() -> PVECalibration:
@@ -96,13 +117,16 @@ class TestShippedCalibration:
     def test_the_file_is_tracked_and_loads(self, shipped):
         assert CALIBRATION_TOML.is_file()
         assert set(shipped.species) == {"european_beech", "silver_fir"}
-        assert sum(len(s.trees) for s in shipped.species.values()) == 15
+        assert sum(len(s.trees) for s in shipped.species.values()) == 27
 
     @pytest.mark.parametrize("species", sorted(SHIPPED_DENSITIES))
     def test_build_densities_are_the_shipped_ones(self, shipped, species):
         cal = shipped.for_species(species)
         resolved = {t: cal.resolve_density(t).density for t in cal.trees}
-        assert resolved == SHIPPED_DENSITIES[species]
+        assert resolved == {
+            **SHIPPED_DENSITIES[species],
+            **OFFLINE_R08_R16_DENSITIES[species],
+        }
 
     def test_beech_runs_on_the_outer_span_and_fir_does_not(self, shipped):
         # Beech adopted relative_start 0.4 to keep leaves off primary limbs;
@@ -129,10 +153,21 @@ class TestShippedCalibration:
     def test_aggregate_leaf_area_is_what_shipped(self, shipped):
         total = sum(
             cal.leaf_area_m2(tree_id)
-            for cal in shipped.species.values()
-            for tree_id in cal.trees
+            for species, cal in shipped.species.items()
+            for tree_id in SHIPPED_DENSITIES[species]
         )
         assert total == pytest.approx(815.4, abs=0.5)
+
+    def test_the_offline_r08_r16_set_lands_on_its_targets(self, shipped):
+        # Solved, not measured: the model that solved them reproduces 13 of 14
+        # logged exports exactly, so the aggregate should sit on Forrester
+        # until a click says otherwise. 460.0 m2 placed against 459.5 m2.
+        placed = target = 0.0
+        for species, cal in shipped.species.items():
+            for tree_id in OFFLINE_R08_R16_DENSITIES[species]:
+                placed += cal.leaf_area_m2(tree_id)
+                target += cal.tree(tree_id).target_m2
+        assert placed / target == pytest.approx(1.0, abs=0.005)
 
     def test_the_fir_h05_trees_ship_well_under_target(self, shipped):
         # The aggregate hides them: two large fir trees over by +2.4 % and
@@ -152,11 +187,21 @@ class TestShippedCalibration:
         on_target = [
             delta(species, tree_id)
             for species in sorted(shipped.species)
-            for tree_id in sorted(shipped.for_species(species).trees)
+            for tree_id in sorted(SHIPPED_DENSITIES[species])
             if not (species == "silver_fir" and tree_id.endswith("h05m"))
         ]
         assert len(on_target) == 12
         assert all(-0.021 <= d <= 0.032 for d in on_target), on_target
+
+        # The offline r08/r16 set is finer: the worst is fir r16_h05m at +4.7 %,
+        # again the staircase near the floor.
+        offline = [
+            delta(species, tree_id)
+            for species in sorted(shipped.species)
+            for tree_id in sorted(OFFLINE_R08_R16_DENSITIES[species])
+        ]
+        assert len(offline) == 12
+        assert all(-0.02 <= d <= 0.05 for d in offline), offline
 
     def test_every_tree_records_the_instances_its_density_places(self, shipped):
         for cal in shipped.species.values():
