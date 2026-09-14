@@ -73,12 +73,22 @@ DEFAULT_MASTER_MATERIAL = (
 
 # Known-good bark instances to duplicate when a species has none. Tried in
 # order; the script asserts the one it picks is parented to the master before
-# cloning it. The fir bark that shipped was made by cloning the spruce entry.
+# cloning it, so a wrong entry is skipped rather than propagated.
+#
+# These are the plugin's own StarterContent trees, verified present in a live
+# UE 5.8 project on 2026-09-14. Earlier guesses at Tree_European_Beech_01 /
+# Tree_Norway_Spruce_01 paths do not exist -- the samples live under
+# StarterContent/, and the run failed loudly rather than silently
+# factory-creating a broken material.
 DEFAULT_CLONE_SOURCES = (
-    "/ProceduralVegetationEditor/SampleAssets/Tree_Norway_Spruce_01/Materials"
-    "/MI_Norway_Spruce_Bark_01",
-    "/ProceduralVegetationEditor/SampleAssets/Tree_European_Beech_01/Materials"
-    "/MI_European_Beech_Bark_01",
+    "/ProceduralVegetationEditor/SampleAssets/StarterContent/DeciduousTree_01"
+    "/Materials/MI_LeafTree_01_Bark",
+    "/ProceduralVegetationEditor/SampleAssets/StarterContent/ConiferTree_01"
+    "/Materials/MI_Conifer_Bark_01",
+    "/ProceduralVegetationEditor/SampleAssets/StarterContent/DeciduousTree_01"
+    "/Materials/MI_PVE_Tree_01_Bark",
+    "/ProceduralVegetationEditor/SampleAssets/StarterContent/ConiferTree_01"
+    "/Materials/MI_PVE_ConiferTree_01_Bark",
 )
 
 _FORBIDDEN_MASTER_PREFIX = "/Game/Templates"

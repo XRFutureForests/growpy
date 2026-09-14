@@ -178,6 +178,21 @@ class TestShippedCalibration:
         declared = unreal["unreal"]["growth_data_json"]["profile_mean"]
         assert shipped.profile_mean == declared
 
+    def test_loading_the_config_dir_does_not_warn_about_this_section(self, caplog):
+        # It is read by name rather than through the merge, so GrowPyConfig
+        # does not own it -- but it is still a legitimate section, and being
+        # reported as a probable typo on every run is noise. Seen in a live UE
+        # run on 2026-09-14.
+        import logging
+
+        from growpy.config.core import GrowPyConfig
+
+        with caplog.at_level(logging.WARNING):
+            GrowPyConfig.from_toml(CONFIG_DIR, set_as_global=False)
+        assert not [
+            r for r in caplog.records if "pve_calibration" in r.message
+        ], "the tracked calibration section is reported as a typo"
+
     def test_profile_pin_is_the_one_the_builder_defaults_to(self, shipped):
         assert PVEGraphSpec.profile_pin == shipped.profile_pin
 

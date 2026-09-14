@@ -1074,6 +1074,11 @@ class GrowPyConfig:
             "yield_sources",
             "surround",
             "quality",
+            # Read by growpy.config.pve_calibration as a named file rather than
+            # through this merge -- it holds measured data, not settings this
+            # dataclass owns. Listed so a legitimate section is not reported as
+            # a typo. See config/README.md.
+            "pve_calibration",
         }
         for _section in data:
             if _section not in _known_sections:
