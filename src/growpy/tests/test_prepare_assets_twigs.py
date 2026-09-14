@@ -145,23 +145,42 @@ class TestUnbackedEditWarning:
         assert any("custom" in r.message for r in caplog.records)
 
 
-class TestTheFirWeldSpecifically:
-    """The asset this whole mechanism exists for."""
+class TestTheFirFoliageLadder:
+    """The asset this whole mechanism exists for.
+
+    Seven smaller sprays, grown in The Grove and appended to the silver fir
+    twig. They are what took the UE foliage library from 1,364 MB to 86 MB, and
+    they are not derivable from anything: they share 0 % of their vertices with
+    Grove's own spray and match no object in the Grove twig library. So they
+    are stored, not scripted.
+
+    They sit BESIDE the Grove .blend rather than merged into it, because
+    convert_twigs reads every .blend in a twig directory -- which also means
+    Grove's own shipped spray never has to be copied anywhere.
+    """
 
     OVERRIDE = Path("data/input/custom_twigs/PacificSilverFirTwig")
+    VARIANTS = OVERRIDE / "PacificSilverFirVariants.blend"
     GROVE = Path("src/the_grove_23/twigs/PacificSilverFirTwig")
 
-    def test_the_welded_blend_is_under_custom_twigs(self):
-        blend = self.OVERRIDE / "PacificSilverFirTwig.blend"
+    def test_the_variants_file_is_tracked(self):
         if not self.OVERRIDE.is_dir():
             pytest.skip("custom twig override not present in this checkout")
-        assert blend.is_file()
+        assert self.VARIANTS.is_file()
 
-    def test_it_differs_from_the_grove_source_it_overrides(self):
-        stock = self.GROVE / "PacificSilverFirTwig.blend"
-        welded = self.OVERRIDE / "PacificSilverFirTwig.blend"
-        if not (stock.is_file() and welded.is_file()):
+    def test_groves_own_blend_is_not_redistributed(self):
+        # The override directory must hold only our generated sprays. Grove's
+        # shipped twig is licensed commercial content and lives solely in
+        # src/the_grove_23/, which is gitignored.
+        if not self.OVERRIDE.is_dir():
+            pytest.skip("custom twig override not present in this checkout")
+        assert not (self.OVERRIDE / "PacificSilverFirTwig.blend").exists()
+
+    def test_it_is_far_smaller_than_groves_own_spray(self):
+        # A cheap proxy for "contains the seven variants, not Grove's 28k-vert
+        # original": if this ever approaches the Grove file's size, someone has
+        # merged the stock object back in.
+        if not (self.VARIANTS.is_file() and self.GROVE.is_dir()):
             pytest.skip("Grove source or override not present in this checkout")
-        # If these ever match, the override has been silently reverted to stock
-        # and the foliage size ladder is gone.
-        assert welded.stat().st_size != stock.stat().st_size
+        stock = self.GROVE / "PacificSilverFirTwig.blend"
+        assert self.VARIANTS.stat().st_size < 0.5 * stock.stat().st_size
