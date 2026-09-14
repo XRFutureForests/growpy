@@ -10,6 +10,7 @@ texture-before-material ordering -- rather than just the happy path.
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 import pytest
@@ -143,6 +144,15 @@ class TestPaletteLayout:
             export_folder="/Game/Exported",
         )
         assert len(graph.palette_meshes) == 5
+        # The graph instances the re-framed PARTS, never the raw imports: PVE
+        # places a part with mesh +Z as the growth axis, growpy authors +X.
+        assert all(m.endswith("_ZUP") for m in graph.palette_meshes)
+
+    def test_part_sits_beside_its_import(self):
+        proto = PalettePrototype("pacific_silver_fir_foliage_a", Path("x.usda"))
+        assert proto.part_path("/Game/PVE/Fir/Foliage") == (
+            proto.mesh_path("/Game/PVE/Fir/Foliage") + "_ZUP"
+        )
 
     def test_bark_material_name_is_derived_from_the_species(self):
         assert _spec().bark_material.endswith("/MI_european_beech_bark")
@@ -213,6 +223,14 @@ class TestGeneratedScript:
         assert "duplicate_asset" in script
         assert "MaterialInstanceConstantFactoryNew" not in script
 
+    def test_it_reframes_each_prototype_into_pves_part_frame(self, script):
+        # X->Z, Z->Y, Y->X as one proper rotation, refused unless the import
+        # is in growpy's authoring frame, and verified by reading the part back.
+        assert "unreal.Quat(-0.5, -0.5, -0.5, 0.5)" in script
+        assert "origin is not at the -X end" in script
+        assert "re-framed part has the wrong extents" in script
+        assert "'part': '" in script and "_ZUP'" in script
+
     def test_it_verifies_the_clone_source_is_parented_to_the_master(self, script):
         assert "def resolve_clone_source" in script
         assert "if parent == master:" in script
@@ -242,7 +260,9 @@ class TestGeneratedScript:
 
     def test_every_prototype_reaches_the_script(self, script):
         for species, count in (("european_beech", 5), ("pacific_silver_fir", 8)):
-            assert script.count(f"SM_{species}_foliage") == count
+            # once as the USD import, once as the re-framed part
+            assert script.count(f"SM_{species}_foliage") == 2 * count
+            assert len(re.findall(rf"SM_{species}_foliage\w*_ZUP", script)) == count
 
     def test_redeploying_to_the_same_path_overwrites(self, tmp_path):
         plan = PVEAssetPlan(species=(build_species_asset_spec("european_beech"),))

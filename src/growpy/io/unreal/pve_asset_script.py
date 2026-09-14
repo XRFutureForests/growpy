@@ -39,6 +39,19 @@ THREE TRAPS, ALL PAID FOR ALREADY
   that silently did not take is the failure mode this whole module exists to
   prevent.
 
+* **PVE places a part with mesh +Z as the growth axis and +Y as the leaf
+  face** (``FFoliageFacade::GetFoliageTransform`` is ``MakeFromYZ(Normal, Up)``),
+  and growpy authors every twig with the shoot on **+X** and the face on Z --
+  the frame its own PointInstancer route rotates. Handing the imported mesh to
+  PVE unchanged put the twig's length on the sideways axis and its face on the
+  growth axis, so no distributor setting could ever pose it (XRFF-438, measured
+  2026-09-14). The generated script therefore re-authors each imported prototype
+  into a ``SM_<name>_ZUP`` part (X->Z, Z->Y, Y->X, a proper rotation) and the
+  palette a graph receives names the parts, never the imports. The shared
+  ``*_twigs_combined_skeletal`` assets are untouched (XRFF-445). The guard
+  refuses a source whose origin is not at the -X end, so a prototype authored in
+  some other frame fails the import instead of being rotated into nonsense.
+
 The script is idempotent: an existing correct material is left alone, an
 existing wrong one is repaired **in place** (exported meshes reference it by
 path, so a repair reaches every tree already exported without a re-export), and
@@ -113,6 +126,14 @@ class PalettePrototype:
         """
         return f"{foliage_folder}/{self.name}/StaticMeshes/SM_{self.name}"
 
+    def part_path(self, foliage_folder: str) -> str:
+        """The re-framed copy PVE actually instances (see the module docstring).
+
+        Written by the generated script next to the import, under the same
+        ``StaticMeshes`` folder, so a re-import replaces both together.
+        """
+        return f"{self.mesh_path(foliage_folder)}_ZUP"
+
 
 @dataclass(frozen=True)
 class SpeciesAssetSpec:
@@ -156,13 +177,14 @@ class SpeciesAssetSpec:
 
     @property
     def palette_meshes(self) -> tuple[str, ...]:
-        """Palette mesh paths, in prototype order.
+        """Palette mesh paths, in prototype order -- the re-framed PARTS.
 
         This is the list a :class:`~growpy.io.unreal.pve_graph_builder.
         PVEGraphSpec` takes, so the graph and the import cannot disagree about
-        where a prototype lives.
+        where a prototype lives, nor about which of the two meshes per
+        prototype is the one in PVE's frame.
         """
-        return tuple(p.mesh_path(self.foliage_folder) for p in self.prototypes)
+        return tuple(p.part_path(self.foliage_folder) for p in self.prototypes)
 
 
 @dataclass(frozen=True)
@@ -276,6 +298,7 @@ def _plan_payload(plan: PVEAssetPlan) -> dict:
                         "name": p.name,
                         "source": str(Path(p.source).resolve()).replace("\\", "/"),
                         "mesh": p.mesh_path(s.foliage_folder),
+                        "part": p.part_path(s.foliage_folder),
                     }
                     for p in s.prototypes
                 ],
@@ -332,18 +355,85 @@ def _import(source, folder, name):
     return list(task.get_editor_property("imported_object_paths") or [])
 
 
+def _bounds(mesh):
+    box = mesh.get_bounds()
+    o, e = box.origin, box.box_extent
+    return (o.x - e.x, o.y - e.y, o.z - e.z, o.x + e.x, o.y + e.y, o.z + e.z)
+
+
+# growpy authoring frame -> PVE part frame: X->Z, Z->Y, Y->X. A 120 degree turn
+# about (1,1,1); a proper rotation, so no face is mirrored.
+_REFRAME = unreal.Quat(-0.5, -0.5, -0.5, 0.5)
+
+
+def reframe_prototype(mesh_path, part_path):
+    """Author the PVE part from the imported mesh. Returns a problem or None."""
+    src = eal.load_asset(mesh_path)
+    if src is None:
+        return "cannot re-frame, import missing: %s" % mesh_path
+    x0, y0, z0, x1, y1, z1 = _bounds(src)
+    # growpy puts the attachment at the origin and the shoot along +X; a
+    # broadleaf's spread may exceed its length, so only the origin is checked.
+    if not x0 > -0.35 * (x1 - x0):
+        return ("refusing to re-frame %s: origin is not at the -X end "
+                "(X %.2f..%.2f) -- not growpy's authoring frame" % (mesh_path, x0, x1))
+    dyn = unreal.DynamicMesh()
+    lod = unreal.GeometryScriptMeshReadLOD()
+    lod.set_editor_property("lod_type", unreal.GeometryScriptLODType.SOURCE_MODEL)
+    lod.set_editor_property("lod_index", 0)
+    unreal.GeometryScript_AssetUtils.copy_mesh_from_static_mesh(
+        src, dyn, unreal.GeometryScriptCopyMeshFromAssetOptions(), lod)
+    unreal.GeometryScript_MeshTransforms.transform_mesh(
+        dyn,
+        unreal.Transform(
+            unreal.Vector(0, 0, 0), _REFRAME.rotator(), unreal.Vector(1, 1, 1)),
+        True,
+    )
+    opts = unreal.GeometryScriptCreateNewStaticMeshAssetOptions()
+    opts.set_editor_property("enable_recompute_normals", False)
+    opts.set_editor_property("enable_recompute_tangents", False)
+    opts.set_editor_property("enable_nanite", False)
+    result = unreal.GeometryScript_NewAssetUtils.create_new_static_mesh_asset_from_mesh(
+        dyn, part_path, opts, None)
+    part = result[0] if isinstance(result, tuple) else result
+    if part is None:
+        return "re-frame produced no asset: %s" % part_path
+    # The new asset carries no materials; take the import's slots verbatim.
+    part.set_editor_property(
+        "static_materials", list(src.get_editor_property("static_materials")))
+    eal.save_asset(part_path, only_if_is_dirty=False)
+    # Read back: the shoot must now run along +Z from the origin.
+    px0, py0, pz0, px1, py1, pz1 = _bounds(eal.load_asset(part_path))
+    length_kept = abs((pz1 - pz0) - (x1 - x0)) < 0.01 * (x1 - x0) + 0.01
+    if not (pz0 > -0.35 * (pz1 - pz0) and length_kept):
+        return ("re-framed part has the wrong extents: %s Z %.2f..%.2f"
+                % (part_path, pz0, pz1))
+    return None
+
+
 def import_palette(spec):
-    """Import every *_static.usda prototype that is not already present."""
-    missing = []
+    """Import every *_static.usda prototype not already present, then author
+    its PVE part. Returns the problems found."""
+    problems = []
     for proto in spec["prototypes"]:
         if eal.does_asset_exist(proto["mesh"]):
             print("   palette exists: %s" % proto["name"])
+        else:
+            print("   importing %s" % proto["name"])
+            _import(proto["source"], spec["foliage_folder"], proto["name"])
+            if not eal.does_asset_exist(proto["mesh"]):
+                problems.append("palette mesh missing after import: %s" % proto["mesh"])
+                continue
+        if eal.does_asset_exist(proto["part"]):
             continue
-        print("   importing %s" % proto["name"])
-        _import(proto["source"], spec["foliage_folder"], proto["name"])
-        if not eal.does_asset_exist(proto["mesh"]):
-            missing.append(proto["mesh"])
-    return missing
+        print("   re-framing %s -> %s"
+              % (proto["name"], proto["part"].rsplit("/", 1)[-1]))
+        problem = reframe_prototype(proto["mesh"], proto["part"])
+        if problem:
+            problems.append(problem)
+        elif not eal.does_asset_exist(proto["part"]):
+            problems.append("palette part missing after re-frame: %s" % proto["part"])
+    return problems
 
 
 def import_bark_texture(entry, is_normal):
@@ -476,8 +566,7 @@ for spec in PLAN["species"]:
     print("")
     print("--- %s -> %s" % (spec["species"], spec["content_folder"]))
 
-    for mesh in import_palette(spec):
-        failures.append("palette mesh missing after import: %s" % mesh)
+    failures.extend(import_palette(spec))
 
     # Textures first, materials second: VT must be on before the material
     # points at the texture.
