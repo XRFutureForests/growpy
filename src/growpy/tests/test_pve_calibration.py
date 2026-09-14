@@ -16,6 +16,8 @@ from growpy.config.pve_calibration import (
     PVECalibration,
     SpeciesCalibration,
     TreeCalibration,
+    TwigJitter,
+    TwigPose,
     load_pve_calibration,
 )
 from growpy.io.unreal.pve_graph_builder import (
@@ -200,6 +202,22 @@ class TestShippedCalibration:
         assert shipped.for_species("silver_fir").bark_y_scale == 0.5
         assert shipped.for_species("european_beech").bark_y_scale is None
 
+    def test_the_measured_twig_pose_ships(self, shipped):
+        # Session 7 (2026-09-14): axil 30/40 measured on probe prisms, beech
+        # jitter judged in the crown. Restated so an edit has to be deliberate.
+        fir = shipped.for_species("silver_fir").pose
+        beech = shipped.for_species("european_beech").pose
+        assert (fir.reset_phyllotaxy, fir.axil_angle, fir.jitter) == (True, 30.0, ())
+        assert (beech.reset_phyllotaxy, beech.axil_angle) == (True, 40.0)
+        assert [(j.mode, j.degrees, j.seed) for j in beech.jitter] == [
+            ("PITCH", 20.0, 11),
+            ("ROLL", 12.0, 12),
+            ("YAW", 8.0, 13),
+        ]
+
+    def test_a_species_without_a_pose_section_gets_the_default(self):
+        assert _species().pose == TwigPose()
+
 
 class TestDensityResolution:
     def test_solved_density_is_never_built_from(self):
@@ -274,6 +292,16 @@ class TestValidation:
     def test_a_tree_with_no_growth_json_is_refused(self):
         with pytest.raises(ValueError, match="names no growth JSON"):
             _tree(growth_json="")
+
+    def test_an_unknown_jitter_mode_is_refused(self):
+        with pytest.raises(ValueError, match="mode"):
+            TwigJitter(mode="TILT", degrees=5.0)
+
+    def test_a_jitter_outside_the_half_turn_is_refused(self):
+        with pytest.raises(ValueError, match="degrees"):
+            TwigJitter(mode="ROLL", degrees=0.0)
+        with pytest.raises(ValueError, match="degrees"):
+            TwigJitter(mode="ROLL", degrees=181.0)
 
     def test_a_file_without_the_section_is_refused(self, tmp_path):
         path = tmp_path / "pve_calibration.toml"

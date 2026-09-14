@@ -151,6 +151,44 @@ class TreeCalibration:
 
 
 @dataclass(frozen=True)
+class TwigJitter:
+    """One random RollPitchYaw entry of a twig pose, half-range in degrees."""
+
+    mode: str
+    degrees: float
+    seed: int = 123456
+
+    def __post_init__(self) -> None:
+        if self.mode not in ("ROLL", "PITCH", "YAW"):
+            raise ValueError(
+                f"jitter mode must be ROLL, PITCH or YAW, got {self.mode!r}"
+            )
+        if not 0.0 < self.degrees <= 180.0:
+            raise ValueError(f"jitter degrees must be in (0, 180], got {self.degrees}")
+
+
+@dataclass(frozen=True)
+class TwigPose:
+    """How a species' twigs sit on their branches (XRFF-438, 2026-09-14).
+
+    None of this changes instance COUNTS -- a pose is a rotation -- so the
+    densities of a species stay valid whatever its pose says. The default is
+    the measured silver-fir pose: sprays on the sides, tilted ``axil_angle``
+    degrees toward the tip (0 = perpendicular), flattened, faces up; a leader
+    keeps pointing up. Beech adds jitter, because its leaves incline ~20-30 deg
+    in life rather than lying perfectly flat.
+    """
+
+    reset_phyllotaxy: bool = True
+    axil_angle: float = 30.0
+    jitter: tuple[TwigJitter, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not -90.0 <= self.axil_angle <= 90.0:
+            raise ValueError(f"axil_angle must be in [-90, 90], got {self.axil_angle}")
+
+
+@dataclass(frozen=True)
 class SpeciesCalibration:
     """Every calibrated tree of one species, plus the settings they share."""
 
@@ -166,6 +204,7 @@ class SpeciesCalibration:
     prototype_area_per_triangle_m2: float | None = None
     forrester_model_id: str | None = None
     law: DensityLaw | None = None
+    pose: TwigPose = TwigPose()
 
     def __post_init__(self) -> None:
         if not self.trees:
@@ -288,6 +327,24 @@ def _opt_float(value: Any) -> float | None:
     return None if value is None else float(value)
 
 
+def _pose(data: dict[str, Any] | None) -> TwigPose:
+    if not data:
+        return TwigPose()
+    jitter = tuple(
+        TwigJitter(
+            mode=str(j["mode"]).upper(),
+            degrees=float(j["degrees"]),
+            seed=int(j.get("seed", 123456)),
+        )
+        for j in data.get("jitter", [])
+    )
+    return TwigPose(
+        reset_phyllotaxy=bool(data.get("reset_phyllotaxy", True)),
+        axil_angle=float(data.get("axil_angle", 30.0)),
+        jitter=jitter,
+    )
+
+
 def _species(name: str, data: dict[str, Any]) -> SpeciesCalibration:
     relative_start = float(data.get("relative_start", 0.0))
     # Defaults to the species' own relative_start: a history with no recorded
@@ -314,6 +371,7 @@ def _species(name: str, data: dict[str, Any]) -> SpeciesCalibration:
         ),
         forrester_model_id=data.get("forrester_model_id"),
         law=_law(data.get("law")),
+        pose=_pose(data.get("pose")),
     )
 
 

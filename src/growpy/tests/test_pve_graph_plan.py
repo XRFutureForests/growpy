@@ -285,6 +285,35 @@ class TestPlanEndToEnd:
         assert by_species["SilverFir"] == 0.5
         assert by_species["EuropeanBeech"] is None
 
+    def test_the_measured_twig_pose_travels_with_the_densities(
+        self, tmp_path, forest_root
+    ):
+        # Session 7 (2026-09-14): the pose was measured on probe prisms and
+        # judged inside the crown; a plan that dropped it would export sprays
+        # standing on their tips again while every density looked right.
+        plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
+        by_species = {
+            c.mesh_name.split("_")[1]: c.distributor
+            for g in plan.graphs
+            for c in g.chains
+        }
+        fir, beech = by_species["SilverFir"], by_species["EuropeanBeech"]
+        assert (fir.axil_angle, beech.axil_angle) == (30.0, 40.0)
+        assert fir.jitter == ()
+        assert [(j.mode, j.degrees) for j in beech.jitter] == [
+            ("PITCH", 20.0),
+            ("ROLL", 12.0),
+            ("YAW", 8.0),
+        ]
+        for spec in (fir, beech):
+            assert spec.phyllotaxy_formation == "DISTICHOUS"
+            assert spec.reset_phyllotaxy and spec.single_bud_tip
+            assert spec.auto_align_end
+            assert spec.axil_angle_ramp == (1.0, 1.0)
+            assert spec.aim is not None and spec.aim.dual
+            assert spec.aim.blend_attribute == "WORLD_UP_DOT"
+            assert spec.face is not None and spec.face.affect_tip
+
     def test_the_profile_pin_comes_from_the_calibration(self, tmp_path, forest_root):
         # Half a contract each: the pin and profile_mean must agree, and
         # nothing in the engine checks that they do.

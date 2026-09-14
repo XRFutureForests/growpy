@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING
 from growpy.io.unreal.pve_graph_builder import (
     DistributorSpec,
     FoliageVectorSpec,
+    JitterSpec,
     PVEGraphSpec,
     TreeChainSpec,
     generate_pve_graph_builder_script,
@@ -152,12 +153,31 @@ def _chain_for(
             branch_density=resolved.density,
             relative_start=calibration.relative_start,
             phyllotaxy_formation=calibration.phyllotaxy_formation,
-            # The three settings the shipped trees depend on. Restated at the
-            # call site so a change to the builder's defaults cannot silently
-            # change what a pipeline run emits.
+            # The measured pose (XRFF-438, 2026-09-14). Restated at the call
+            # site so a change to the builder's defaults cannot silently change
+            # what a pipeline run emits. None of it changes instance counts.
+            reset_phyllotaxy=calibration.pose.reset_phyllotaxy,
+            axil_angle=calibration.pose.axil_angle,
+            axil_angle_ramp=(1.0, 1.0),  # constant; the engine default ramps it 0->1
+            single_bud_tip=True,
             scale_ramp=(1.0, 1.0),
+            # Tip Up = Apical first, then the aim entry flattens it -- except a
+            # leader, which the WorldUpDot blend leaves pointing up.
+            auto_align_end=True,
+            aim=FoliageVectorSpec(
+                kind="aim",
+                vector1="AXIS_FLATTEN",
+                vector2="AXIS_AIM",
+                dual=True,
+                affect_tip=True,
+                blend_attribute="WORLD_UP_DOT",
+                ramp=((0.0, 0.0), (0.9, 0.0), (1.0, 1.0)),
+            ),
             face=FoliageVectorSpec(kind="face", vector2="AXIS_AIM", affect_tip=True),
-            auto_align_end=False,
+            jitter=tuple(
+                JitterSpec(mode=j.mode, degrees=j.degrees, seed=j.seed)
+                for j in calibration.pose.jitter
+            ),
         ),
     )
 

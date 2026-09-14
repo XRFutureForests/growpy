@@ -73,7 +73,9 @@ profile_pin = "plantProfile_8"
 # below was re-solved for it (2026-09-11).
 relative_start = 0.4
 fraction = 0.06
-phyllotaxy_formation = "OCTASTICHOUS"
+# Beech is two-ranked (XRFF-438, 2026-09-14). A pose is a rotation, so it
+# changes no density below.
+phyllotaxy_formation = "DISTICHOUS"
 # Leaf area of one twig prototype at instance scale 1.0, m2. The shipped graphs
 # use a flat scale ramp at 1.0, so this is the area each placed instance carries.
 prototype_leaf_area_m2 = 0.01583458005362597
@@ -96,6 +98,19 @@ fitted_on = "r05_h15m densities 83, 166"
 tree = "r05_h15m"
 densities = [40, 83, 166]
 instances = [730, 2140, 5102]
+
+# How the rosettes sit on their branches: on the sides, tilted 40 deg toward
+# the tip, flattened, faces up, plus the inclination real beech leaves have
+# (~20-30 deg) as random pitch/roll/yaw. Applied after aim and face; measured
+# on PVG_BeechZJ 2026-09-14. Rotations only: densities below are unaffected.
+[pve_calibration.species.european_beech.pose]
+reset_phyllotaxy = true
+axil_angle = 40.0
+jitter = [
+    { mode = "PITCH", degrees = 20.0, seed = 11 },
+    { mode = "ROLL", degrees = 12.0, seed = 12 },
+    { mode = "YAW", degrees = 8.0, seed = 13 },
+]
 
 [pve_calibration.species.european_beech.trees.r05_h05m]
 growth_json = "beech_r05_h05m_f006.json"
@@ -252,7 +267,8 @@ build_density_source = "offline"
 # step-4 re-run grows a different tree.
 relative_start = 0.0
 fraction = 0.06
-phyllotaxy_formation = "OCTASTICHOUS"
+# Pectinate: two flat ranks per branch (XRFF-438, 2026-09-14).
+phyllotaxy_formation = "DISTICHOUS"
 prototype_leaf_area_m2 = 0.020138421345048785
 prototype_area_per_triangle_m2 = 8.645928697717079e-07
 palette_flat_mean_triangles = 23292.375
@@ -270,6 +286,13 @@ history_relative_start = 0.0
 slope_per_s = 0.948
 floor_per_branch = -1.039
 fitted_on = "european_beech r05_h15m"
+
+# Sprays on the sides, tilted 30 deg toward the tip, flat, faces up, one tip
+# spray continuing the branch, leader pointing up; no jitter -- a pectinate
+# spray is flat. Measured on PVG_FirZV 2026-09-14. Rotations only.
+[pve_calibration.species.silver_fir.pose]
+reset_phyllotaxy = true
+axil_angle = 30.0
 
 [pve_calibration.species.silver_fir.trees.r05_h05m]
 growth_json = "fir_r05_h05m_f060.json"
