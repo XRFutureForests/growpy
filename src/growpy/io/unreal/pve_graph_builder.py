@@ -373,6 +373,37 @@ tools = unreal.AssetToolsHelpers.get_asset_tools()
 editors = unreal.get_editor_subsystem(unreal.AssetEditorSubsystem)
 
 
+def preflight():
+    """Every palette mesh and bark material must exist BEFORE anything is built.
+
+    A graph names these by path. They are imported by the companion asset
+    script, which has to run first -- so without this the first graph would be
+    half-authored before failing, leaving an asset behind to be clicked by
+    mistake. Checked up front, nothing is created at all.
+    """
+    missing = []
+    for spec in GRAPHS:
+        for path in spec["palette_meshes"]:
+            if not eal.does_asset_exist(path):
+                missing.append("palette mesh %s" % path)
+        if not eal.does_asset_exist(spec["bark_material"]):
+            missing.append("bark material %s" % spec["bark_material"])
+    if missing:
+        for item in sorted(set(missing)):
+            print("MISSING: %s" % item)
+        raise RuntimeError(
+            "%d Content Browser asset(s) missing. Run the companion asset "
+            "script first -- growpy_pve_assets.py, beside this file -- which "
+            "imports the twig palette and builds the bark material. A graph "
+            "names both by path and cannot build without them."
+            % len(set(missing))
+        )
+    print("preflight: palette and bark present for %d graph(s)" % len(GRAPHS))
+
+
+preflight()
+
+
 def setp(obj, names, value):
     """Set the first property that exists, and RAISE if none do.
 

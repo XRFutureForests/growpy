@@ -122,6 +122,7 @@ class TestGenerateUnrealScripts:
         class _Plan:
             graphs = ()
             chain_count = 0
+            asset_script = Path("assets.py")
             script = Path("graphs.py")
             manifest = Path("manifest.json")
             retune_script = Path("retune.py")

@@ -72,9 +72,16 @@ class GrowthJson:
 
 @dataclass(frozen=True)
 class PVEGraphPlanResult:
-    """What was planned, and everything that was deliberately left out."""
+    """What was planned, and everything that was deliberately left out.
+
+    ``asset_script`` imports the twig palette and builds the bark material;
+    ``script`` authors the graphs that name both by path. They must be run in
+    that order, and the graph script's own preflight refuses to build anything
+    if they were not.
+    """
 
     graphs: tuple[PVEGraphSpec, ...] = ()
+    asset_script: Path | None = None
     script: Path | None = None
     manifest: Path | None = None
     retune_script: Path | None = None
@@ -184,7 +191,11 @@ def plan_pve_graphs(
         What was planned, including a ``skipped`` line per tree left out.
     """
     from growpy.config.pve_calibration import load_pve_calibration
-    from growpy.io.unreal.pve_asset_script import build_species_asset_spec
+    from growpy.io.unreal.pve_asset_script import (
+        PVEAssetPlan,
+        build_species_asset_spec,
+        generate_pve_asset_script,
+    )
 
     discovered = discover_growth_jsons(forest_root)
     if not discovered:
@@ -194,6 +205,7 @@ def plan_pve_graphs(
     calibration = load_pve_calibration(calibration_path)
 
     graphs: list[PVEGraphSpec] = []
+    asset_specs = []
     skipped: list[str] = []
 
     for species, entries in sorted(discovered.items()):
@@ -211,6 +223,7 @@ def plan_pve_graphs(
             skipped.append(f"{species}: {err}")
             continue
 
+        asset_specs.append(assets)
         mesh_prefix = f"SK_{assets.content_folder.rsplit('/', 1)[-1]}"
         chains: list[TreeChainSpec] = []
         instances: dict[str, int] = {}
@@ -265,8 +278,16 @@ def plan_pve_graphs(
     if not graphs:
         return PVEGraphPlanResult(skipped=tuple(skipped))
 
+    # Emitted beside the graph script and for exactly the species the run
+    # produced, rather than for every calibrated species: the palette a graph
+    # names is the palette that graph needs.
+    asset_script = generate_pve_asset_script(
+        output_dir, PVEAssetPlan(species=tuple(asset_specs))
+    )
+
     return PVEGraphPlanResult(
         graphs=tuple(graphs),
+        asset_script=asset_script,
         script=generate_pve_graph_builder_script(output_dir, graphs),
         manifest=write_coverage_manifest(output_dir, graphs),
         retune_script=generate_pve_retune_script(output_dir, graphs),

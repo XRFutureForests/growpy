@@ -126,14 +126,25 @@ def generate_unreal_scripts(
                 "'growth_json_only' (or [unreal.growth_data_json] enabled) set?"
             )
         else:
+            # Run order matters: a graph names its palette meshes and bark
+            # material by Content Browser path, so the asset script has to
+            # import them first. The graph script preflights for exactly this
+            # and refuses to build anything if they are absent.
             logger.info(
-                "Generated PVE graph script: %s (%d graph(s), %d chain(s))",
+                "PVE scripts, to run in this order with growpy-ue-exec:"
+            )
+            logger.info("  1. %s   (twig palette + bark material)", plan.asset_script)
+            logger.info(
+                "  2. %s   (%d graph(s), %d chain(s))",
                 plan.script,
                 len(plan.graphs),
                 plan.chain_count,
             )
             logger.info("PVE coverage manifest: %s", plan.manifest)
-            logger.info("PVE retune script: %s", plan.retune_script)
+            logger.info(
+                "PVE retune script (densities only, never re-authors): %s",
+                plan.retune_script,
+            )
 
     # Nanite voxelize script (run after UE restart for best VRAM headroom)
     if config.unreal_import_to_unreal and config.unreal_voxelization:

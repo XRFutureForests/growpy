@@ -134,14 +134,25 @@ generate_wind_data = true
 #   Loader node UE 5.8 deprecated to a no-op. The two emit different,
 #   incompatible graphs; do not merge them.
 #
-#   It needs two things to have run first: an export that emitted growth JSONs
+#   It needs an export that emitted growth JSONs to have run first
 #   (export_mode = "growth_json_only", or [unreal.growth_data_json] enabled
-#   below), and growpy-pve-assets, since a graph names its palette meshes and
-#   bark material by path and is useless without them.
+#   below). Nothing else: the palette and bark import is emitted alongside.
 #
-#   Emits three files into <output>/unreal_scripts/: the graph builder script,
-#   a coverage manifest of every expected mesh, and a retune script that sets
-#   densities on existing graphs in place.
+#   Emits four files into <output>/unreal_scripts/, to be run with
+#   growpy-ue-exec IN THIS ORDER:
+#
+#     1. growpy_pve_assets.py   imports the twig palette as static meshes and
+#                               builds the bark material instance
+#     2. growpy_pve_graphs.py   authors the graphs, which name both by path
+#
+#   plus pve_export_manifest.json (every expected mesh and the density it was
+#   asked for) and growpy_pve_retune.py (changes densities on existing graphs
+#   in place, never re-authors).
+#
+#   The order is enforced, not just documented: the graph script preflights
+#   every palette mesh and bark material and refuses to create anything if they
+#   are absent, so a missed first step cannot leave a half-authored graph
+#   behind to be clicked by mistake.
 #
 # pve_content_root: UE package path growpy-pve-assets imported the palette and
 #   bark under. A graph names those by path, so the two must agree.

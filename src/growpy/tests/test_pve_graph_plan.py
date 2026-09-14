@@ -284,10 +284,56 @@ class TestPlanEndToEnd:
         assert plan.chain_count == 15
         assert any("wild_cherry" in line for line in plan.skipped)
 
+    def test_both_halves_land_in_one_place(self, tmp_path, forest_root):
+        """The palette import and the graph authoring are two halves of one
+        job, so they are emitted together rather than one being a separate CLI
+        someone has to know about."""
+        plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
+        assert plan.asset_script is not None
+        assert plan.asset_script.parent == plan.script.parent
+        assert plan.asset_script.is_file()
+
+    def test_the_asset_script_covers_only_the_species_the_run_produced(
+        self, tmp_path, forest_root
+    ):
+        # Not every calibrated species -- the palette a graph names is the
+        # palette that graph needs.
+        plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
+        text = plan.asset_script.read_text(encoding="utf-8")
+        assert "european_beech" in text
+        assert "silver_fir" in text
+        assert "wild_cherry" not in text
+
+    def test_the_graph_script_refuses_to_build_without_the_palette(
+        self, tmp_path, forest_root
+    ):
+        # Run order is enforced, not documented: a graph names its palette and
+        # bark by Content Browser path, and a half-authored graph left behind
+        # after a mid-build failure is an asset to be clicked by mistake.
+        plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
+        text = plan.script.read_text(encoding="utf-8")
+        assert "def preflight()" in text
+        assert "growpy_pve_assets.py" in text
+        assert text.index("\npreflight()") < text.index("tools.create_asset")
+
+    def test_the_palette_the_graph_names_is_the_palette_the_assets_import(
+        self, tmp_path, forest_root
+    ):
+        plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
+        graph_text = plan.script.read_text(encoding="utf-8")
+        asset_text = plan.asset_script.read_text(encoding="utf-8")
+        mesh = (
+            "/Game/PVE_Test/EuropeanBeech/Foliage/european_beech_foliage_a"
+            "/StaticMeshes/SM_european_beech_foliage_a"
+        )
+        assert mesh in graph_text
+        assert mesh in asset_text
+
     def test_an_empty_export_authors_nothing(self, tmp_path):
         plan = plan_pve_graphs(tmp_path, tmp_path / "absent")
         assert plan.graphs == ()
         assert plan.script is None
+        assert plan.asset_script is None
 
     def test_the_generated_script_carries_every_mesh(self, tmp_path, forest_root):
         plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")

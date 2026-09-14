@@ -2,7 +2,13 @@
 
 The twig palette and the bark material are the two Content Browser pieces a PVE
 graph needs that the pipeline did not own (XRFF-440). This writes the script;
-``growpy-ue-exec`` runs it in the open editor::
+``growpy-ue-exec`` runs it in the open editor.
+
+**A forest export emits this script already**, beside the graph script, for the
+species that run produced -- see ``[unreal] generate_pve_graphs``. This CLI is
+the manual override: importing a species the current run did not export,
+re-importing after a texture change, or preparing a project before any export
+exists::
 
     growpy-pve-assets european_beech silver_fir
     growpy-ue-exec data/output/pve/growpy_pve_assets.py --restart-ram-limit 0
