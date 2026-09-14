@@ -607,28 +607,27 @@ def _growth_data_json_settings() -> dict:
         return defaults
 
 
-def write_growth_data_json(ctx: TreeExportContext) -> None:
-    """Emit the growth-data JSON PVE's Growth Data JSON Importer consumes.
+def _emit_growth_data_json(ctx: TreeExportContext) -> bool:
+    """Write one tree's growth-data JSON. The single emit path, deliberately.
 
-    Distinct from ``write_pve_json``, which targets the deprecated Preset
-    Loader with a Megaplants-style recipe. This one feeds
-    ``UPVGrowthDataJsonImporterSettings`` -- a file path, no data asset, no
-    button -- and is the XRFF-390 skeleton-direct route.
+    Both callers -- the post-assembly stage and the ``growth_json_only`` export
+    mode -- reach the exporter through here with no arguments of their own, so
+    the two cannot drift into emitting different files for the same tree. That
+    is the point: the mode exists to produce the artifact the USD route
+    produces, without producing the USD.
 
     ``ctx.radial_scale`` is the load-bearing argument: Grove's raw radii are not
     the calibrated diameter, and passing 1.0 emits a trunk several times too
-    thick (see the exporter's docstring).
-    """
-    if not ctx.use_skeletal:
-        return
-    settings = _growth_data_json_settings()
-    if not settings.get("enabled"):
-        return
+    thick (see the exporter's docstring). ``compute_radial_scale`` sets it well
+    before either caller runs.
 
+    Returns True if the file was written.
+    """
     from growpy.io.unreal.pve_growth_data_exporter import (
         generate_growth_data_from_grove,
     )
 
+    settings = _growth_data_json_settings()
     out_path = ctx.tree_dir / f"{ctx.file_prefix}_growth_data.json"
     try:
         with ctx.timer.track("generate_growth_data_json"):
@@ -652,6 +651,49 @@ def write_growth_data_json(ctx: TreeExportContext) -> None:
             ctx.fid,
             err,
         )
+        return False
+    return True
+
+
+def write_growth_data_json(ctx: TreeExportContext) -> None:
+    """Emit the growth-data JSON PVE's Growth Data JSON Importer consumes.
+
+    Distinct from ``write_pve_json``, which targets the deprecated Preset
+    Loader with a Megaplants-style recipe. This one feeds
+    ``UPVGrowthDataJsonImporterSettings`` -- a file path, no data asset, no
+    button -- and is the XRFF-390 skeleton-direct route.
+
+    This is the post-assembly stage, so it only ever runs alongside a USD
+    export and honours both opt-ins. ``export_mode = "growth_json_only"`` is
+    the way to get this artifact without paying for the assembly it replaces.
+    """
+    if not ctx.use_skeletal:
+        return
+    if not _growth_data_json_settings().get("enabled"):
+        return
+    _emit_growth_data_json(ctx)
+
+
+def export_growth_json_only(ctx: TreeExportContext) -> None:
+    """Write only the growth-data JSON (``config.export_mode ==
+    "growth_json_only"``), bypassing USD/Nanite/wind/PVE/previews/icons.
+
+    The PVE Growth Data JSON route *replaces* the Nanite assembly: PVE's mesher
+    rebuilds trunk and branches from this skeleton and its distributor places
+    the foliage. Emitting it as a post-assembly stage therefore meant paying
+    for the artifact it supersedes -- over nine minutes for one mature fir, and
+    the ``max_assembly_instances`` cap thinning crowns that the JSON route does
+    not thin.
+
+    NEITHER OPT-IN IS CONSULTED, BY DESIGN. ``export_skeletal`` and
+    ``[unreal.growth_data_json] enabled`` gate the post-assembly stage; a mode
+    whose only output is this file must not be able to emit nothing because a
+    second flag is off. The mode *is* the opt-in.
+
+    Sets ctx.export_success. ctx.usd_path stays None -- nothing is added to
+    exported_files, matching that no mesh asset exists to hand to Unreal.
+    """
+    ctx.export_success = _emit_growth_data_json(ctx)
 
 
 STAGES: list[tuple[str, StageGate, StageFn, bool]] = [
@@ -1184,6 +1226,41 @@ def generate_forest_stages(
                             logger.warning(
                                 "  Icon export failed for tree %d (%s) at "
                                 "cycle %d (h=%.1fm)",
+                                fid,
+                                species_name,
+                                cycle,
+                                height,
+                            )
+                        continue
+
+                    if config.export_mode == "growth_json_only":
+                        # The PVE Growth Data JSON route replaces the Nanite
+                        # assembly rather than accompanying it, so the assembly
+                        # and every post-assembly stage are skipped. Everything
+                        # this needs -- skeleton, grove, radial_scale, tree_dir,
+                        # file_prefix -- is already on ctx at this point.
+                        #
+                        # once_per_tree, exactly as the post-assembly stage is
+                        # registered: the growth data IS the skeleton, which
+                        # does not vary with twig density. Without this the mode
+                        # writes one identical file per density variant, each
+                        # under a different name.
+                        if variant_idx != 0:
+                            logger.debug(
+                                "growth_json_only: variant %d skipped "
+                                "(skeleton does not vary with density)",
+                                variant_idx,
+                            )
+                            continue
+                        with timer.track("stage_growth_json_only"):
+                            export_growth_json_only(ctx)
+                        if ctx.export_success:
+                            exported_stage_count += 1
+                            logger.info("  Growth JSON: %s", ctx.file_prefix)
+                        else:
+                            logger.warning(
+                                "  Growth-JSON export failed for tree %d (%s) "
+                                "at cycle %d (h=%.1fm)",
                                 fid,
                                 species_name,
                                 cycle,

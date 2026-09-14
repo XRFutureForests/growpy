@@ -97,14 +97,14 @@ def generate_forest_exports(
         logger.error("Missing required columns: %s", missing_cols)
         return
 
-    if config.export_mode in ("helios", "icons_only"):
+    if config.export_mode in ("helios", "icons_only", "growth_json_only"):
         logger.error(
             "export_mode = '%s' is only implemented for the multi-stage "
             "pipeline ([forest] height_interval > 0, the default). This run "
             "has height_interval = 0, which selects the standard growth-cycle "
-            "pipeline (generate_forest_exports) -- neither direct OBJ export "
-            "nor icons-only export is supported there. Set height_interval > "
-            "0, or use export_mode = 'unreal' with this pipeline.",
+            "pipeline (generate_forest_exports), where only 'unreal' is "
+            "implemented. Set height_interval > 0, or use export_mode = "
+            "'unreal' with this pipeline.",
             config.export_mode,
         )
         return

@@ -29,6 +29,7 @@ from growpy.pipelines.forest_stages import (
     write_export_control,
     write_icons,
     write_previews,
+    export_growth_json_only,
     write_growth_data_json,
     write_pve_json,
     write_wind_json,
@@ -348,6 +349,122 @@ class TestWriteWindJson:
             side_effect=RuntimeError("boom"),
         ):
             write_wind_json(ctx)  # must not raise
+
+
+class TestGrowthDataJson:
+    """The post-assembly stage and the growth_json_only export mode (XRFF-439).
+
+    Both reach the exporter through _emit_growth_data_json, which is what makes
+    the mode's output identical to the stage's rather than merely similar.
+    """
+
+    _EXPORTER = (
+        "growpy.io.unreal.pve_growth_data_exporter.generate_growth_data_from_grove"
+    )
+    _SETTINGS = "growpy.pipelines.forest_stages._growth_data_json_settings"
+    _ON = {
+        "enabled": True,
+        "profile_mean": 0.8215,
+        "min_branch_radius": 0.0,
+        "min_branch_radius_fraction": 0.06,
+    }
+
+    def test_stage_skipped_when_not_skeletal(self):
+        ctx = _make_ctx(use_skeletal=False)
+        with patch(self._SETTINGS, return_value=self._ON):
+            with patch(self._EXPORTER) as mock_gen:
+                write_growth_data_json(ctx)
+        mock_gen.assert_not_called()
+
+    def test_stage_skipped_when_flag_off(self):
+        ctx = _make_ctx(use_skeletal=True)
+        with patch(self._SETTINGS, return_value={**self._ON, "enabled": False}):
+            with patch(self._EXPORTER) as mock_gen:
+                write_growth_data_json(ctx)
+        mock_gen.assert_not_called()
+
+    def test_stage_emits_when_gated_on(self):
+        ctx = _make_ctx(use_skeletal=True)
+        ctx.radial_scale = 0.62
+        with patch(self._SETTINGS, return_value=self._ON):
+            with patch(self._EXPORTER) as mock_gen:
+                write_growth_data_json(ctx)
+        mock_gen.assert_called_once()
+
+    def test_mode_ignores_both_gates(self):
+        """A mode whose only output is this file must not be able to emit
+        nothing because export_skeletal or [unreal.growth_data_json] enabled is
+        off. The mode is the opt-in."""
+        ctx = _make_ctx(use_skeletal=False)
+        ctx.radial_scale = 0.62
+        with patch(self._SETTINGS, return_value={**self._ON, "enabled": False}):
+            with patch(self._EXPORTER) as mock_gen:
+                export_growth_json_only(ctx)
+        mock_gen.assert_called_once()
+        assert ctx.export_success is True
+
+    def test_mode_and_stage_emit_the_same_file(self):
+        """The acceptance claim: the mode's JSON is what the unreal mode would
+        have produced for the same tree -- same output path, same arguments."""
+        calls = []
+
+        def _capture(**kwargs):
+            calls.append(kwargs)
+
+        # The same tree down both paths -- one skeleton, one grove -- so the
+        # only thing that differs is which function was called.
+        tree = {
+            "skeleton": MagicMock(name="skeleton"),
+            "grove": MagicMock(name="grove"),
+        }
+
+        for fn, skeletal in (
+            (write_growth_data_json, True),
+            (export_growth_json_only, False),
+        ):
+            ctx = _make_ctx(use_skeletal=skeletal, **tree)
+            ctx.radial_scale = 0.62
+            with patch(self._SETTINGS, return_value=self._ON):
+                with patch(self._EXPORTER, side_effect=_capture):
+                    fn(ctx)
+
+        assert len(calls) == 2
+        stage, mode = calls
+        assert stage == mode
+
+    def test_radial_scale_is_passed_through_not_defaulted(self):
+        # Grove's raw radii are not the calibrated diameter; a 1.0 here emits a
+        # trunk several times too thick.
+        ctx = _make_ctx(use_skeletal=False)
+        ctx.radial_scale = 0.62
+        with patch(self._SETTINGS, return_value=self._ON):
+            with patch(self._EXPORTER) as mock_gen:
+                export_growth_json_only(ctx)
+        assert mock_gen.call_args.kwargs["radial_scale"] == 0.62
+
+    def test_output_path_is_the_prefixed_json_beside_the_tree(self):
+        ctx = _make_ctx(use_skeletal=False)
+        ctx.radial_scale = 1.0
+        with patch(self._SETTINGS, return_value=self._ON):
+            with patch(self._EXPORTER) as mock_gen:
+                export_growth_json_only(ctx)
+        out = mock_gen.call_args.kwargs["output_path"]
+        assert out == ctx.tree_dir / f"{ctx.file_prefix}_growth_data.json"
+
+    def test_mode_reports_failure_rather_than_raising(self):
+        ctx = _make_ctx(use_skeletal=False)
+        ctx.radial_scale = 1.0
+        with patch(self._SETTINGS, return_value=self._ON):
+            with patch(self._EXPORTER, side_effect=RuntimeError("boom")):
+                export_growth_json_only(ctx)  # must not raise
+        assert ctx.export_success is False
+
+    def test_stage_swallows_the_same_failure(self):
+        ctx = _make_ctx(use_skeletal=True)
+        ctx.radial_scale = 1.0
+        with patch(self._SETTINGS, return_value=self._ON):
+            with patch(self._EXPORTER, side_effect=RuntimeError("boom")):
+                write_growth_data_json(ctx)  # must not raise
 
 
 class TestWritePveJson:

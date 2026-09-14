@@ -408,6 +408,12 @@ class GrowPyConfig:
     # icon PNGs (branches + twigs, separate and merged) straight from the
     # Grove model -- see export_icons_only. For parameter tuning / visual
     # debugging runs where the mesh itself is not needed.
+    # "growth_json_only" writes just the PVE growth-data JSON per tree -- the
+    # skeleton PVE's mesher rebuilds the tree from. That artifact REPLACES the
+    # Nanite assembly rather than accompanying it, so emitting it as a
+    # post-assembly stage meant paying for what it supersedes. The mode is its
+    # own opt-in: it ignores export_skeletal and [unreal.growth_data_json]
+    # enabled, which gate the post-assembly stage.
     export_mode: str = "unreal"
     export_skeletal: bool = True
     export_static: bool = False
@@ -792,10 +798,10 @@ class GrowPyConfig:
             kwargs["export_usd_format"] = fmt
         if "mode" in export:
             mode = export["mode"].lower()
-            if mode not in ("unreal", "helios", "icons_only"):
+            if mode not in ("unreal", "helios", "icons_only", "growth_json_only"):
                 raise ValueError(
-                    f"export.mode must be 'unreal', 'helios', or 'icons_only', "
-                    f"got '{mode}'"
+                    f"export.mode must be 'unreal', 'helios', 'icons_only', or "
+                    f"'growth_json_only', got '{mode}'"
                 )
             kwargs["export_mode"] = mode
         if "skeletal" in export:

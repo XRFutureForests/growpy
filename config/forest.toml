@@ -88,6 +88,13 @@ usd_format = "usdc"
 # simulation, skipping USD/skeleton/PVE/Unreal script generation for that
 # tree (see helios.toml for OBJ export settings). Twig prototype meshes still
 # come from the small, pre-existing per-species twig USD assets.
+# "icons_only" writes just the icon PNGs from the Grove model.
+# "growth_json_only" writes just the PVE growth-data JSON -- the skeleton PVE
+# rebuilds the tree from, which REPLACES the Nanite assembly rather than
+# accompanying it. The mode is its own opt-in: unlike the post-assembly stage
+# it ignores both `skeletal` below and [unreal.growth_data_json] enabled, so a
+# run named growth_json_only cannot silently emit nothing.
+# Both are multi-stage only ([forest] height_interval > 0, the default).
 mode = "unreal"
 # Export skeletal mesh assemblies (required for Unreal animation/wind)
 skeletal = true

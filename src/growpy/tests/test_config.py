@@ -442,6 +442,17 @@ mode = "helios"
         config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
         assert config.export_mode == "helios"
 
+    def test_toml_export_mode_growth_json_only(self, tmp_path):
+        toml_content = b"""
+[export]
+mode = "growth_json_only"
+"""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(toml_content)
+
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.export_mode == "growth_json_only"
+
     def test_toml_export_mode_default_is_unreal(self):
         assert GrowPyConfig().export_mode == "unreal"
 

@@ -453,9 +453,12 @@ Unreal Engine Integration:
     # Validate export flags
     _resolve_static_export_for_obj(config)
 
-    # icons_only writes no mesh at all, so neither flag applies to it.
+    # icons_only and growth_json_only write no mesh at all, so neither flag
+    # applies to them -- and growth_json_only's natural configuration is
+    # exactly skeletal = false, static = false, which this guard would
+    # otherwise abort.
     if (
-        config.export_mode != "icons_only"
+        config.export_mode not in ("icons_only", "growth_json_only")
         and not config.export_skeletal
         and not config.export_static
     ):
