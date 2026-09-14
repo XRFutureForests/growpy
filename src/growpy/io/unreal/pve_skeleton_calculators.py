@@ -309,6 +309,28 @@ def calculate_bud_directions(skeleton: Any) -> list[list[float]]:
                         # so it must already be in UE space (Z-up).
                         directions.extend([dx, dy, dz])
 
+        # A branch's LAST point has no forward direction, so it used to fall
+        # through to the (0,0,1)/(1,0,0) fallback below. PVE lerps the tip
+        # instance's frame from that point, so every tip twig then stood
+        # vertically whatever the distributor was told. Use the incoming
+        # segment instead, exactly as PVE's own ComputeBudDirections does.
+        if not directions:
+            for _pl_idx, poly_line in point_to_polylines[point_idx]:
+                global_idx = point_idx + index_offset
+                pos_in_line = poly_line.index(global_idx)
+                if pos_in_line == 0:
+                    continue
+                prev_idx = poly_line[pos_in_line - 1] - index_offset
+                if not (0 <= prev_idx < num_points):
+                    continue
+                p0 = skeleton_points[prev_idx]
+                p1 = skeleton_points[point_idx]
+                dx, dy, dz = p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]
+                length = math.sqrt(dx * dx + dy * dy + dz * dz)
+                if length > 0.0001:
+                    directions.extend([dx / length, dy / length, dz / length])
+                    break
+
         # Fill bud_directions array (up to 6 buds = 18 floats)
         for i in range(min(len(directions), 18)):
             bud_directions[point_idx][i] = directions[i]

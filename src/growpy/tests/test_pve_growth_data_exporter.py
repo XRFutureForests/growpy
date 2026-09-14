@@ -96,6 +96,18 @@ class TestBuildGrowthDataJson:
         assert bud_dir["values"]
         assert len(bud_dir["values"]) == len(points)
 
+    def test_branch_tip_apical_follows_incoming_segment(self):
+        # A horizontal branch heading +X (Grove Z-up). The last point has no
+        # next point; its apical must be the incoming segment direction, not
+        # the (0,0,1) fallback, or PVE stands every tip twig vertically.
+        points = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (2.0, 0.0, 0.0)]
+        skel = _make_skeleton(points=points, poly_lines=[[0, 1, 2]])
+        data = build_growth_data_json(skel)
+        tip = data["points"]["attributes"]["budDirection"]["values"][2]
+        # JSON is Y-up: Grove (x, y, z) -> (x, z, y)
+        assert tip[0:3] == [1.0, 0.0, 0.0]
+        assert tip[15:18] == [0.0, 1.0, 0.0]  # up stays the most-upward perpendicular
+
     def test_schema_metadata_matches_pve_schema_conventions(self):
         points = [(0.0, 0.0, 0.0), (0.0, 0.0, 1.0)]
         skel = _make_skeleton(points=points, poly_lines=[[0, 1]])
