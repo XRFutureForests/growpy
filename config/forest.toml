@@ -67,7 +67,7 @@ height_interval = 5
 # h25 the tall conifers need the height-LOD ladder (XRFF-324) that does not
 # exist yet -- at [quality.high] an open-grown silver fir already exhausts a
 # 63.5 GB host at h20. See docs/dataset/dataset-overview.md.
-max_height = 25
+max_height = 15
 
 # --- Export options ---
 [export]
@@ -82,7 +82,7 @@ dbh_from_allometry = true
 # USD file format: "usda" (ASCII, human-readable) or "usdc" (binary, smaller/faster)
 # Binary USDC files are ~50% smaller on disk and faster for UE to parse,
 # significantly reducing memory pressure during import.
-usd_format = "usdc"
+usd_format = "usda"
 # Export target. "unreal" runs the full USD/Nanite/PVE pipeline. "helios"
 # writes OBJ directly from the Grove model per tree for Helios++ LiDAR
 # simulation, skipping USD/skeleton/PVE/Unreal script generation for that
