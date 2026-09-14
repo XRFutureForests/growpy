@@ -44,6 +44,7 @@ documentation is not redistributed — point at thegrove3d.com.
 | `growpy-generate-forest` | Run full forest generation pipeline |
 | `growpy-dataset-pipeline` | Dataset CSV planning and execution |
 | `growpy-pve-assets` | Generate the UE script that imports PVE twig palettes and bark materials |
+| `growpy-pve-leaf-area` | Report scale-corrected leaf area for the calibrated PVE trees |
 | `growpy-ue-exec` | Execute Unreal Engine import scripts |
 | `growpy-analyze-usda` | Analyse USD assembly output |
 | `growpy-diagnose-growth` | Diagnose growth simulation results |
