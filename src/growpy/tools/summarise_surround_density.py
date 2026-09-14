@@ -143,8 +143,28 @@ GATE_FIELD = {False: ("dbh_cm", 1.0, "dbh"),
               True: ("crown_diameter_m", 0.1, "crownø")}
 
 
-def gate_axis(species: str) -> tuple[str, float, str]:
-    """(csv field, tolerance, short label) that separates radii for this habit."""
+def gate_axis(species: str, override: str = "auto") -> tuple[str, float, str]:
+    """(csv field, tolerance, short label) that separates radii for this habit.
+
+    `override` forces one axis for every species. It exists because the habit
+    rule is not the only thing that decides whether an axis can carry a signal.
+    Exported DBH is `grove_dbh * radial_scale` with the scale clamped to
+    [0.5, 2.0]; whenever that clamp does NOT bind, the export lands on the
+    height-derived allometric target and BOTH radii print the same number by
+    construction, regardless of what the shell did. Measured on norway_spruce
+    grow=true at h15m: both radii export 14 cm, but at scales 1.1584 and 0.8125,
+    so Grove's own stems were 12.1 and 17.2 cm. The difference was real and the
+    correction erased it.
+
+    That is not a conifer property -- it applies to every species -- so gating
+    broadleaves on `dbh_cm` has been testing a partly-blind column. Use
+    "crown" to re-read an existing sweep on the axis the correction does not
+    touch; no re-simulation is needed, the field is already in the CSV.
+    """
+    if override == "dbh":
+        return GATE_FIELD[False]
+    if override == "crown":
+        return GATE_FIELD[True]
     return GATE_FIELD[species in CONIFERS]
 
 
@@ -208,6 +228,12 @@ def main() -> int:
                          "mature enough for the stand-grown literature to "
                          "apply, and still on most species' ladder)")
     ap.add_argument("--species", nargs="+", help="limit to these species dirs")
+    ap.add_argument("--gate-axis", choices=("auto", "dbh", "crown"),
+                    default="auto",
+                    help="axis the radius gate reads. auto = habit-aware "
+                         "(broadleaf dbh, conifer crown diameter). Use crown to "
+                         "re-read a sweep on the axis the clamped DBH "
+                         "correction cannot erase -- no re-simulation needed.")
     ap.add_argument("--work-dir", type=Path, default=DEFAULT_WORK_DIR,
                     help="sweep scratch directory holding sweep_results.csv "
                          "(default: data/tmp/surround_density_sweep)")
@@ -229,7 +255,13 @@ def main() -> int:
         arms[(r["species"], float(r["density"]))][r["radius"]][r["stage"]] = r
 
     print("RULE: admissibility beats completeness (owner, 2026-09-10).")
-    print("  GATE  = DBH monotonic r05 < r10 < r20 at every stage reached")
+    axis_txt = {"auto": "habit axis (broadleaf DBH, conifer crown ø)",
+                "dbh": "DBH", "crown": "crown ø"}[args.gate_axis]
+    ladder = " < ".join(f"r{int(float(r)):02d}" for r in RADII)
+    print(f"  GATE  = {axis_txt} monotonic {ladder} at every stage reached")
+    if args.gate_axis == "dbh" or args.gate_axis == "auto":
+        print("          NOTE exported DBH is clamped toward a height-derived "
+              "target, so it can read FLAT where the stems truly differ (A93)")
     print(f"  SCORE = crown ratio vs {RATIO_BAND[0]}-{RATIO_BAND[1]} "
           f"+ crown d/h vs target, judged at {args.stage}")
     print(f"  REPORTED ONLY = models yielded, fill/m3   "
@@ -237,7 +269,7 @@ def main() -> int:
 
     for species in sorted({s for s, _ in arms}):
         target_dh = DH_TARGET.get(species, DH_DEFAULT)
-        field, tol, label = gate_axis(species)
+        field, tol, label = gate_axis(species, args.gate_axis)
         habit = "conifer" if species in CONIFERS else "broadleaf"
         print(f"=== {species}   ({habit}; gated on {label}; "
               f"crown d/h target {target_dh}) ===")
