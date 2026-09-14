@@ -331,7 +331,8 @@ def _set_scalar(text: str, key: str, value: str) -> str:
 
 def build_arm_config(arm: str, density: float, seed: int, out_dir: Path,
                      cycle_limit: int | None = None,
-                     surround_height: float | None = None) -> Path:
+                     surround_height: float | None = None,
+                     surround_grow: bool | None = None) -> Path:
     """Copy config/ and set exactly the three things an arm varies."""
     cfg = CFG_ROOT / arm
     if cfg.exists():
@@ -351,13 +352,26 @@ def build_arm_config(arm: str, density: float, seed: int, out_dir: Path,
         ),
     )
     text = _set_scalar(text, "density", f"{density}")
+    if surround_grow is not None:
+        # grow and height are ALTERNATIVES, not companions. From Grove's own
+        # Python API documentation:
+        #
+        #     if self.grove_properties.surround_grow:
+        #         height = self.grove_properties.height      # the TREE's height
+        #     else:
+        #         height = self.grove_properties.surround_height
+        #
+        # `height` is a HIDDEN FloatProperty Grove writes each cycle, i.e. the
+        # tree's current height -- so with grow = true the shell tracks the tree
+        # and [surround] height is never read. The Blender add-on greys the
+        # height field out for exactly this reason. Setting a height without
+        # also setting grow = false therefore changes NOTHING.
+        text = _set_scalar(text, "grow", "true" if surround_grow else "false")
     if surround_height is not None:
-        # A second lever, for species the radius set fails to separate. The
-        # shell's shading depends on its angular size from the tree, i.e. on
-        # height/distance -- so at a far radius a short shell subtends very
-        # little and may not compete at all. silver_birch and sycamore_maple
-        # measured byte-identical stems at r08 and r16 at every density, which
-        # is what "the shell is not reaching either of them" looks like.
+        # Only meaningful together with --surround-grow false (see above). With
+        # a static shell the tree overtops its neighbours and is released: early
+        # suppression self-prunes the stem, then the crown develops free. That
+        # is the forest silhouette; a shell that grows forever never allows it.
         text = _set_scalar(text, "height", f"{surround_height}")
     text = _set_scalar(text, "radii", "[" + ", ".join(str(r) for r in RADII) + "]")
     surround.write_text(text, encoding="utf-8")
@@ -669,9 +683,14 @@ def main() -> int:
                     help="build and check each arm's config, run nothing")
     ap.add_argument("--dry-run", action="store_true", help="list arms and exit")
     ap.add_argument("--surround-height", type=float,
-                    help="override [surround] height (m) for every arm. The "
-                         "second lever when the radius set fails to separate a "
-                         "species -- shading scales with height/distance.")
+                    help="override [surround] height (m) for every arm. ONLY "
+                         "has an effect with --surround-grow false: Grove reads "
+                         "surround_height only when surround_grow is off.")
+    ap.add_argument("--surround-grow", choices=("true", "false"),
+                    help="override [surround] grow for every arm. false = a "
+                         "static neighbour canopy the tree can overtop; true = "
+                         "a shell that tracks the tree's own height forever, "
+                         "which makes --surround-height a no-op.")
     ap.add_argument("--growth-cycle-limit", type=int,
                     help="hard cap on growth cycles. THIS is what bounds an "
                          "arm's wall clock -- --max-height only bounds which "
@@ -772,13 +791,23 @@ def main() -> int:
               f"{sp} density={density} seed={seed}")
         cfg = build_arm_config(arm, density, seed, out_dir,
                                cycle_limit=args.growth_cycle_limit,
-                               surround_height=args.surround_height)
+                               surround_height=args.surround_height,
+                               surround_grow=(
+                                   None if args.surround_grow is None
+                                   else args.surround_grow == "true"))
         resolved = verify_arm(cfg, density, seed, out_dir)
         print(f"[{datetime.now():%H:%M:%S}]   VERIFIED: density="
               f"{resolved['density']} radii={resolved['radii']} "
               f"seed={resolved['seed']} twig_density={resolved['twig_density']} "
               f"recovery={resolved['twig_recovery']} "
-              f"cap={resolved['max_assembly_instances']}")
+              f"cap={resolved['max_assembly_instances']} "
+              # grow/height are echoed because they are ALTERNATIVES: Grove
+              # reads height only when grow is false, so a height set alongside
+              # grow=true is silently inert. Print both so an arm can never be
+              # read as testing a height it did not actually apply.
+              f"grow={resolved['grow']} "
+              f"height={resolved['height']}"
+              f"{' (INERT: grow=true)' if resolved['grow'] else ''}")
         if args.verify_only:
             continue
 
