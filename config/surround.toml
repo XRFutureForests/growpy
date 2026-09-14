@@ -97,7 +97,36 @@ density = 0.45            # surrounding tree density (0..1), shared by all radii
 # suppressing self-pruning -- which is what produced the opaque, bole-less
 # crowns in the 2026-08-23 dataset. Re-screen before trusting any of them.
 height = 6.5              # shell height (meters), shared by all radii
-grow = true               # shell tracks the tree -- sustained competition
+grow = false              # DEFAULT (conifers); broadleaves override below
+# RESTORED 2026-09-14. Commit 85fe679 shipped this as false plus the
+# [surround.grow_per_species] table below; commit 9047c4f (crown-geometry
+# calibration) flipped it to true and DELETED the table, leaving only the
+# explanatory comment below stranded. That commit message documents density and
+# add_regenerate at length and never mentions grow.
+#
+# grow and height are ALTERNATIVES. From Grove's own Python API documentation:
+#
+#     if surround_grow: height = grove_properties.height   # the TREE's height
+#     else:             height = grove_properties.surround_height
+#
+# grove_properties.height is a HIDDEN FloatProperty Grove writes every cycle, so
+# with grow = true the shell tracks the tree forever and `height` above is never
+# read -- the Blender add-on greys the field out (Panels.py:787).
+#
+# Re-measured 2026-09-14 at [8, 16], same seed and cap, static shell h = 6.5:
+#   norway_spruce  full h05..h20 ladder at BOTH radii (8 cells vs 7), and
+#                  Grove's own stem separates by radius at every stage
+#   silver_birch   r08 dies outright -- 4 cells, all r16
+# Static suits the conifer, growing suits the broadleaf: exactly the split
+# 85fe679 encoded.
+#
+# A STATIC SHELL MUST BE LOW ENOUGH TO OVERTOP. Bracketing height at
+# 6.5 / 13 / 20 / 25 m with grow = false gave cells 8 / 2 / 0 / 0 for spruce and
+# 4 / 0 / 1 / 0 for birch: at 20 m and above the tree never establishes
+# ("Growth plateau detected ... Stopping at cycle 43", 0 assemblies). A shell
+# taller than the tree is permanent suppression -- the same collapse as the
+# 2026-08-22..24 arms. The forest form comes from OVERTOPPING a fixed canopy, so
+# 6.5 (Grove's own preset default) is the working value, not a larger one.
 
 # Per-species override of `grow`. Conifers and broadleaves respond so
 # differently to a growing shell that one value cannot serve both. Measured
@@ -138,6 +167,17 @@ grow = true               # shell tracks the tree -- sustained competition
 # STALE as of 2026-09-09: every value below was fitted at r08, and the radii
 # moved to [5.0, 10.0, 20.0]. Thresholds do not interpolate -- re-sweep before
 # dataset production. Harness: data/tmp/run25m/sweep_density.sh + check_radii.py.
+[surround.grow_per_species]
+common_ash = true
+european_beech = true
+european_oak = true
+silver_birch = true
+small_leaved_linden = true
+sycamore_maple = true
+wild_cherry = true
+# conifers omitted deliberately -- they fall through to `grow = false` above:
+# douglas_fir, norway_spruce, scots_pine, silver_fir
+
 [surround.density_per_species]
 common_ash = 0.75
 douglas_fir = 0.38

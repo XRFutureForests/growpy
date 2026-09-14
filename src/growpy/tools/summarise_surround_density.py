@@ -148,6 +148,25 @@ def gate_axis(species: str) -> tuple[str, float, str]:
     return GATE_FIELD[species in CONIFERS]
 
 
+# Epic's Nanite assembly cap, mirrored from [export] max_assembly_instances.
+# When a tree exceeds it the exporter removes instances PROXIMITY-WEIGHTED
+# (crowded twigs first), so a capped cell's twig cloud is not a random subsample
+# -- it is preferentially thinned where foliage was densest. Every crown metric
+# is an order statistic over that cloud (crown_diameter = 95th percentile of
+# radial distance, crown_base = 10th percentile of height), so comparing a
+# capped cell against an uncapped one compares differently-biased estimators.
+# The cap cannot simply be raised: a USD assembly past it fails to build on the
+# hybrid route (XRFF-426), so the measurement has to account for it instead.
+ASSEMBLY_INSTANCE_CAP = 65000
+CAP_MARGIN = 100          # treat within this of the cap as capped
+
+
+def is_capped(cell: dict | None) -> bool:
+    """True when this cell's twig cloud was thinned by the instance cap."""
+    n = fnum(cell, "n_twigs")
+    return n is not None and n >= ASSEMBLY_INSTANCE_CAP - CAP_MARGIN
+
+
 def radius_ordering(cells: dict[str, dict], field: str,
                     tol: float) -> tuple[str, str, float | None]:
     """Classify the r05 -> r10 -> r20 ordering of `field` for one stage.
@@ -165,6 +184,13 @@ def radius_ordering(cells: dict[str, dict], field: str,
         return "--", "", None
     fmt = "{:.0f}" if field == "dbh_cm" else "{:.1f}"
     detail = "/".join(fmt.format(v) for v in vals)
+    # Refuse the comparison when the cap bit unevenly. Both-capped is still a
+    # like-for-like comparison; one-capped is not, and silently scoring it is
+    # how a thinning artefact becomes a "result".
+    capped = [is_capped(cells.get(r)) for r in RADII]
+    if any(capped) and not all(capped):
+        which = "/".join(r for r, c in zip(RADII, capped, strict=False) if c)
+        return "CAPPED", f"{detail} (r{which} at instance cap)", None
     spread = vals[-1] - vals[0]
     # Walk consecutive pairs rather than indexing three fixed slots: the radius
     # set is a config choice and has already gone from three values to two.
@@ -246,6 +272,11 @@ def main() -> int:
                     bad.append(f"{stage}:INVERTED({detail})")
                 elif verdict == "FLAT":
                     flat.append(f"{stage}:flat({detail})")
+                elif verdict == "CAPPED":
+                    # Not a fault in the tree -- a fault in the comparison. It
+                    # must not score as ok, but it is not evidence the shell
+                    # acted backwards either, so it warns like FLAT.
+                    flat.append(f"{stage}:CAPPED({detail})")
             gate = "PASS" if checked and not bad else ("FAIL" if bad else "--")
 
             # Score at the requested stage on r05 -- the most competed radius,
