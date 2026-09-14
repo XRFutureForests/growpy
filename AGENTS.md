@@ -43,6 +43,7 @@ documentation is not redistributed — point at thegrove3d.com.
 | `growpy-build-allometry` | Fit height-DBH allometry from yield tables (no Grove simulation) |
 | `growpy-generate-forest` | Run full forest generation pipeline |
 | `growpy-dataset-pipeline` | Dataset CSV planning and execution |
+| `growpy-pve-assets` | Generate the UE script that imports PVE twig palettes and bark materials |
 | `growpy-ue-exec` | Execute Unreal Engine import scripts |
 | `growpy-analyze-usda` | Analyse USD assembly output |
 | `growpy-diagnose-growth` | Diagnose growth simulation results |
