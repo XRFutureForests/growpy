@@ -84,6 +84,16 @@ class TestDistributorSpec:
     def test_auto_align_end_off_by_default(self):
         assert DistributorSpec(branch_density=17).auto_align_end is False
 
+    def test_axil_ramp_and_single_tip_are_emitted(self):
+        # The engine ramps the axil angle 0 -> 1 along the plant by default,
+        # so a constant angle needs the ramp flattened; and one instance at a
+        # tip is what a conifer leader wants.
+        spec = DistributorSpec(branch_density=17)
+        assert spec.axil_angle_ramp == (0.0, 1.0)
+        assert spec.single_bud_tip is True
+        flat = DistributorSpec(branch_density=17, axil_angle_ramp=(1.0, 1.0))
+        assert flat.axil_angle_ramp == (1.0, 1.0)
+
     def test_face_defaults_to_axis_aim(self):
         # AxisAim on world up lays sprays flat; AxisFlatten stands them on edge.
         spec = DistributorSpec(branch_density=17)
@@ -156,6 +166,8 @@ class TestGenerateScript:
         body = path.read_text(encoding="utf-8")
         assert "SK_Beech_r05" in body
         assert "'branch_density': 42" in body
+        assert "'single_bud_tip': True" in body
+        assert "'axil_angle_ramp': '(EditorCurveData=" in body
 
     def test_ramp_is_serialised_for_the_native_importer(self, tmp_path):
         # EditorCurveData has no EditAnywhere, so it is only reachable through

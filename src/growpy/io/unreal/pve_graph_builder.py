@@ -174,6 +174,11 @@ class DistributorSpec:
     node_buds: int = 1
     reset_phyllotaxy: bool = False
     axil_angle: float = 35.0
+    # The engine default is linear 0 -> 1 on the plant gradient, i.e. the
+    # effective angle is axil_angle * gradient: nil at the seed, full at the
+    # tips. (1.0, 1.0) makes it constant.
+    axil_angle_ramp: tuple[float, float] = (0.0, 1.0)
+    single_bud_tip: bool = True
     rotation: float = 0.0
     base_scale: float = 1.0
     scale_ramp_basis: str = "PLANT"
@@ -327,6 +332,8 @@ def _graph_payload(graph: PVEGraphSpec) -> dict:
                 "node_buds": c.distributor.node_buds,
                 "reset_phyllotaxy": c.distributor.reset_phyllotaxy,
                 "axil_angle": c.distributor.axil_angle,
+                "axil_angle_ramp": _ramp_text(*c.distributor.axil_angle_ramp),
+                "single_bud_tip": c.distributor.single_bud_tip,
                 "rotation": c.distributor.rotation,
                 "base_scale": c.distributor.base_scale,
                 "scale_ramp_basis": c.distributor.scale_ramp_basis,
@@ -581,6 +588,11 @@ def build(spec):
         setp(phyllotaxy, "maximum_node_buds", int(chain["node_buds"]))
         setp(phyllotaxy, "phyllotaxy_additional_angle", 0.0)
         setp(phyllotaxy, "phyllotaxy_offset", 0.0)
+        setp(
+            phyllotaxy,
+            ("single_bud_tip", "b_single_bud_tip"),
+            bool(chain["single_bud_tip"]),
+        )
         parametric.set_editor_property("phyllotaxy_settings", phyllotaxy)
 
         angles = parametric.get_editor_property("angle_settings")
@@ -588,6 +600,9 @@ def build(spec):
         setp(angles, "rotation", float(chain["rotation"]))
         setp(angles, "randomize_axil_angle_minimum", 0.0)
         setp(angles, "randomize_axil_angle_maximum", 0.0)
+        axil_ramp = angles.get_editor_property("axil_angle_ramp")
+        axil_ramp.import_text(chain["axil_angle_ramp"])
+        setp(angles, "axil_angle_ramp", axil_ramp)
         parametric.set_editor_property("angle_settings", angles)
 
         scale = parametric.get_editor_property("scale_settings")
