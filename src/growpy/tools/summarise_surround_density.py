@@ -204,13 +204,17 @@ def radius_ordering(cells: dict[str, dict], field: str,
         return "--", "", None
     fmt = "{:.0f}" if field == "dbh_cm" else "{:.1f}"
     detail = "/".join(fmt.format(v) for v in vals)
-    # Refuse the comparison when the cap bit unevenly. Both-capped is still a
-    # like-for-like comparison; one-capped is not, and silently scoring it is
-    # how a thinning artefact becomes a "result".
+    # Refuse the comparison whenever the cap bit AT ALL. One-sided capping is
+    # obviously not like-for-like. Both-sided is no better: two trees that
+    # naturally carried, say, 80k and 70k instances are thinned by 19% and 7%,
+    # and the thinning is proximity-weighted, so it strips the dense crown
+    # interior -- exactly where crown_base (10th percentile of twig height) is
+    # estimated. Worse, once both cells read the cap the pre-cap counts are
+    # gone, so the bias cannot even be quantified after the fact.
     capped = [is_capped(cells.get(r)) for r in RADII]
-    if any(capped) and not all(capped):
-        which = "/".join(r for r, c in zip(RADII, capped, strict=False) if c)
-        return "CAPPED", f"{detail} (r{which} at instance cap)", None
+    if any(capped):
+        which = "/".join(f"r{r}" for r, c in zip(RADII, capped, strict=False) if c)
+        return "CAPPED", f"{detail} ({which} at instance cap)", None
     spread = vals[-1] - vals[0]
     # Walk consecutive pairs rather than indexing three fixed slots: the radius
     # set is a config choice and has already gone from three values to two.
