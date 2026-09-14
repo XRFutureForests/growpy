@@ -189,7 +189,7 @@ def plan_pve_graphs(
     content_root: str = "/Game/PVE",
     graph_folder: str = "/Game/PVE/Graphs",
     triangle_cap: float = 120e6,
-    nanite_shape_preservation: str = "NONE",
+    nanite_shape_preservation: str = "VOXELIZE",
     calibration_path: Path | None = None,
 ) -> PVEGraphPlanResult:
     """Author graph scripts for every species in a finished forest export.
@@ -203,8 +203,11 @@ def plan_pve_graphs(
         triangle_cap: Predicted-triangle ceiling per graph, i.e. per Export
             click. One click is one failure unit -- see
             :func:`~growpy.io.unreal.pve_graph_builder.split_by_triangles`.
-        nanite_shape_preservation: ``NONE`` while iterating; ``VOXELIZE`` buys
-            distant-LOD silhouette quality at roughly 80x the export cost.
+        nanite_shape_preservation: ``VOXELIZE`` by default -- it is what makes
+            a tree hold its silhouette at distance, and it is the form the
+            result can actually be judged on. It costs roughly 80x the export
+            time, so pass ``NONE`` while iterating on densities or wiring,
+            where only the instance count matters.
         calibration_path: Override for the tracked calibration file.
 
     Returns:

@@ -314,6 +314,22 @@ class TestPlanEndToEnd:
             assert spec.aim.blend_attribute == "WORLD_UP_DOT"
             assert spec.face is not None and spec.face.affect_tip
 
+    def test_graphs_voxelize_by_default(self, tmp_path, forest_root):
+        # Voxelize is what holds a tree's silhouette at distance, and it is the
+        # form the result can be judged on. It costs ~80x the export time, so
+        # NONE stays available for iterating on densities and wiring.
+        plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
+        assert all(g.nanite_shape_preservation == "VOXELIZE" for g in plan.graphs)
+
+    def test_none_is_still_reachable_for_iteration(self, tmp_path, forest_root):
+        plan = plan_pve_graphs(
+            tmp_path,
+            forest_root,
+            content_root="/Game/PVE_Test",
+            nanite_shape_preservation="NONE",
+        )
+        assert all(g.nanite_shape_preservation == "NONE" for g in plan.graphs)
+
     def test_the_profile_pin_comes_from_the_calibration(self, tmp_path, forest_root):
         # Half a contract each: the pin and profile_mean must agree, and
         # nothing in the engine checks that they do.

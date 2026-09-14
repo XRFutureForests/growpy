@@ -154,6 +154,12 @@ generate_wind_data = true
 #   are absent, so a missed first step cannot leave a half-authored graph
 #   behind to be clicked by mistake.
 #
+#   Graphs are authored with Nanite shape preservation VOXELIZE: it is what
+#   holds a tree's silhouette at distance and the form the result can be judged
+#   on. It costs roughly 80x the export time, so pass
+#   nanite_shape_preservation="NONE" to plan_pve_graphs when iterating on
+#   densities or wiring, where only the instance count matters.
+#
 # pve_content_root: UE package path growpy-pve-assets imported the palette and
 #   bark under. A graph names those by path, so the two must agree.
 #
