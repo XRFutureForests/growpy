@@ -82,7 +82,9 @@ handful of clicks rather than one per tree.
 
 from __future__ import annotations
 
+import json
 import logging
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -94,6 +96,9 @@ __all__ = [
     "TreeChainSpec",
     "PVEGraphSpec",
     "generate_pve_graph_builder_script",
+    "generate_pve_retune_script",
+    "split_by_triangles",
+    "write_coverage_manifest",
 ]
 
 # Enum members as the UE Python API spells them.
@@ -677,6 +682,292 @@ for path in built:
     unreal.log("[PVE]   %s" % path)
 unreal.log("[PVE] each graph now needs one manual Export click in the editor.")
 '''
+
+
+def split_by_triangles(
+    chains: Sequence[TreeChainSpec],
+    instances_for: Callable[[TreeChainSpec], int],
+    triangles_per_instance: float,
+    cap: float,
+) -> list[tuple[TreeChainSpec, ...]]:
+    """Bin-pack chains into graphs under a predicted-triangle cap.
+
+    ONE EXPORT CLICK IS ONE FAILURE UNIT. The click builds every chain in its
+    graph and holds the whole result in memory until it finishes, and an export
+    is only durable once its package is saved -- so a click that dies takes its
+    whole graph with it. An autosave crash on a beech click carrying roughly
+    378 M foliage triangles destroyed nine meshes after every one of them had
+    already exported and logged.
+
+    SPLIT ON PREDICTED TRIANGLES, NOT ON CHAIN COUNT. A fir foliage instance
+    averages 23,292 triangles against a beech one's 13,456, so an equal number
+    of chains packs 1.7x the geometry into a fir click.
+
+    Largest first, first fit: an oversized tree takes a bin of its own rather
+    than pushing a nearly full bin over.
+
+    Args:
+        chains: Chains to pack.
+        instances_for: Predicted instance count for one chain. The offline
+            distributor model and the tracked calibration both supply this;
+            neither is imported here, so the packing stays testable.
+        triangles_per_instance: Mean triangles per placed foliage instance,
+            per species.
+        cap: Predicted-triangle ceiling for one graph, i.e. for one click.
+
+    Returns:
+        Groups of chains, each a graph. Order within a group is the packing
+        order, not the input order.
+    """
+    if cap <= 0:
+        raise ValueError(f"cap must be positive, got {cap}")
+    if triangles_per_instance <= 0:
+        raise ValueError(
+            f"triangles_per_instance must be positive, got {triangles_per_instance}"
+        )
+
+    weighted = sorted(
+        ((c, instances_for(c) * triangles_per_instance) for c in chains),
+        key=lambda pair: -pair[1],
+    )
+
+    bins: list[list[TreeChainSpec]] = []
+    loads: list[float] = []
+    for chain, triangles in weighted:
+        if triangles > cap:
+            # Cannot be split further -- a chain is one mesh. Its own bin keeps
+            # it from taking anything else down with it, but the click is still
+            # over the ceiling, so say so rather than let it look packed.
+            logger.warning(
+                "chain %s is predicted at %.0f M triangles, over the %.0f M cap: "
+                "it gets a click of its own, but that click is still oversized. "
+                "Lower its density, or accept the risk knowingly",
+                chain.mesh_name,
+                triangles / 1e6,
+                cap / 1e6,
+            )
+            bins.append([chain])
+            loads.append(triangles)
+            continue
+        for i, load in enumerate(loads):
+            if load + triangles <= cap:
+                bins[i].append(chain)
+                loads[i] = load + triangles
+                break
+        else:
+            bins.append([chain])
+            loads.append(triangles)
+
+    for i, load in enumerate(loads):
+        logger.info(
+            "  graph %d: %d chain(s), %.0f M predicted triangles",
+            i + 1,
+            len(bins[i]),
+            load / 1e6,
+        )
+    return [tuple(group) for group in bins]
+
+
+def write_coverage_manifest(
+    output_dir: Path,
+    graphs: Sequence[PVEGraphSpec],
+    manifest_name: str = "pve_export_manifest.json",
+) -> Path:
+    """List every mesh each graph is expected to export.
+
+    Post-export consolidation (XRFF-420) otherwise has to guess what should
+    exist. It also makes a lost click legible: after the autosave crash that
+    destroyed nine meshes, nothing recorded what the click had been asked for.
+
+    Densities travel with the names, because a mesh that exists is not
+    necessarily a mesh built at the density intended.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = output_dir / manifest_name
+    payload = {
+        "graphs": [
+            {
+                "graph_name": g.graph_name,
+                "graph_asset": f"{g.graph_folder}/{g.graph_name}",
+                "export_folder": g.export_folder,
+                "bark_material": g.bark_material,
+                "palette_meshes": list(g.palette_meshes),
+                "meshes": [
+                    {
+                        "mesh_name": c.mesh_name,
+                        "asset": f"{g.export_folder}/{c.mesh_name}",
+                        "growth_json": str(Path(c.growth_json)).replace("\\", "/"),
+                        "branch_density": c.distributor.branch_density,
+                        "relative_start": c.distributor.relative_start,
+                    }
+                    for c in g.chains
+                ],
+            }
+            for g in graphs
+        ],
+    }
+    payload["expected_mesh_count"] = sum(len(g["meshes"]) for g in payload["graphs"])
+    manifest_path.write_text(json.dumps(payload, indent=1), encoding="utf-8")
+    logger.info(
+        "Wrote PVE coverage manifest: %s (%d graph(s), %d mesh(es))",
+        manifest_path,
+        len(payload["graphs"]),
+        payload["expected_mesh_count"],
+    )
+    return manifest_path
+
+
+_RETUNE_TEMPLATE = '''\
+"""GrowPy PVE density retune -- auto-generated, do not edit.
+
+Sets branch_density on existing graphs IN PLACE. Never deletes and recreates a
+graph asset: delete_asset + create_asset leaves the package pending-kill, then
+get_mutable_pcg_graph() returns None on the recreated asset and the builder's
+recovery renames it under a _b suffix -- which happened twice on 2026-09-11 and
+left superseded graphs behind to be clicked by mistake.
+
+    growpy-ue-exec <this file> --restart-ram-limit 0
+"""
+
+import unreal
+
+RETUNES = {retunes}
+
+eal = unreal.EditorAssetLibrary
+PV = "/Script/ProceduralVegetation."
+
+applied, missing = [], []
+
+for entry in RETUNES:
+    graph_path = entry["graph_asset"]
+    pve = eal.load_asset(graph_path)
+    if pve is None:
+        missing.append("graph not found: %s" % graph_path)
+        continue
+
+    inst = unreal.new_object(
+        unreal.load_class(None, PV + "ProceduralVegetationInstance"))
+    gi = inst.get_editor_property("graph_instance")
+    gi.set_editor_property("procedural_vegetation", pve)
+    graph = gi.get_mutable_pcg_graph()
+    if graph is None:
+        missing.append("graph %s has no mutable PCG graph" % graph_path)
+        continue
+
+    nodes = list(graph.get_editor_property("nodes"))
+
+    # Find each export node by the mesh name it writes, then walk its input
+    # edges back to the distributor that feeds it. Matching on mesh name is
+    # what makes this safe: a graph holds one chain per tree and they are
+    # otherwise identical in shape.
+    wanted = dict((m["mesh_name"], m["branch_density"]) for m in entry["meshes"])
+    seen = set()
+
+    for node in nodes:
+        settings = node.get_settings()
+        if type(settings).__name__ != "PVExportSettings":
+            continue
+        try:
+            name = str(settings.get_editor_property("asset_name"))
+        except Exception:
+            continue
+        if name not in wanted:
+            continue
+
+        distributor = None
+        frontier, guard = [node], 0
+        while frontier and distributor is None and guard < 64:
+            guard += 1
+            nxt = []
+            for current in frontier:
+                for pin in list(current.get_editor_property("input_pins") or []):
+                    for edge in list(pin.get_editor_property("edges") or []):
+                        other = edge.get_editor_property("input_pin")
+                        upstream = other.get_editor_property("node") if other else None
+                        if upstream is None:
+                            continue
+                        up_settings = upstream.get_settings()
+                        if type(up_settings).__name__ == "PVFoliageDistributorSettings":
+                            distributor = up_settings
+                            break
+                        nxt.append(upstream)
+                    if distributor is not None:
+                        break
+                if distributor is not None:
+                    break
+            frontier = nxt
+
+        if distributor is None:
+            missing.append("no distributor upstream of %s" % name)
+            continue
+
+        parametric = distributor.get_editor_property("parametric_settings")
+        spacing = parametric.get_editor_property("spacing_settings")
+        before = spacing.get_editor_property("branch_density")
+        spacing.set_editor_property("branch_density", int(wanted[name]))
+        after = spacing.get_editor_property("branch_density")
+        if int(after) != int(wanted[name]):
+            missing.append("%s density did not take: wanted %s, read %s"
+                           % (name, wanted[name], after))
+            continue
+        applied.append("%s %s -> %s" % (name, before, after))
+        seen.add(name)
+
+    for name in wanted:
+        if name not in seen:
+            missing.append("no export node named %s in %s" % (name, graph_path))
+
+    eal.save_asset(graph_path, only_if_is_dirty=False)
+
+print("")
+for line in applied:
+    print("retuned: %s" % line)
+for line in missing:
+    print("FAIL: %s" % line)
+if missing:
+    raise RuntimeError("%d retune problem(s) -- see above" % len(missing))
+print("OK: retuned %d chain(s) in place" % len(applied))
+'''
+
+
+def generate_pve_retune_script(
+    output_dir: Path,
+    graphs: Sequence[PVEGraphSpec],
+    script_name: str = "growpy_pve_retune.py",
+) -> Path:
+    """Write a UE script that sets densities on existing graphs, in place.
+
+    Use this rather than re-authoring a graph whenever only a density changed.
+    Re-authoring means deleting the asset, and a deleted-then-recreated PVE
+    graph comes back with ``get_mutable_pcg_graph() == None``; the builder then
+    retries under a ``_b`` suffix and leaves the superseded graph behind to be
+    clicked by mistake.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    script_path = output_dir / script_name
+    retunes = [
+        {
+            "graph_asset": f"{g.graph_folder}/{g.graph_name}",
+            "meshes": [
+                {
+                    "mesh_name": c.mesh_name,
+                    "branch_density": c.distributor.branch_density,
+                }
+                for c in g.chains
+            ],
+        }
+        for g in graphs
+    ]
+    script_path.write_text(
+        _RETUNE_TEMPLATE.format(retunes=retunes), encoding="utf-8"
+    )
+    logger.info(
+        "Generated PVE retune script: %s (%d graph(s), %d chain(s))",
+        script_path,
+        len(graphs),
+        sum(len(g.chains) for g in graphs),
+    )
+    return script_path
 
 
 def generate_pve_graph_builder_script(

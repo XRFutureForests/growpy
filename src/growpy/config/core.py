@@ -241,6 +241,16 @@ class GrowPyConfig:
         "unreal_db_path": "environment-level path, config-only by design",
         # "unreal_generate_pve_presets" removed: now CLI-mapped via --pve (XRFF-293).
         "unreal_pve_import_base": "environment-level path, config-only by design",
+        "unreal_generate_pve_graphs": (
+            "scenario-level choice, config-only: the PVE Growth Data JSON route "
+            "needs a matching asset import and a calibrated species set, so it "
+            "is a project decision rather than a per-run flag"
+        ),
+        "unreal_pve_content_root": "environment-level path, config-only by design",
+        "unreal_pve_triangle_cap": (
+            "internal tuning, no CLI need identified: it is a property of the "
+            "machine's export headroom, not of a run"
+        ),
         "unreal_editor_exe": "environment-level path, config-only by design",
         "unreal_uproject": "environment-level path, config-only by design",
         "helios_simplification_enabled": "internal toggle, no CLI need identified",
@@ -556,6 +566,21 @@ class GrowPyConfig:
     unreal_nanite_lerp_uvs: bool = True
     unreal_db_path: str = "/Game/Assets/TheGrove"
     unreal_generate_pve_presets: bool = True
+    # The live PVE route (XRFF-442). Deliberately NOT the same flag as
+    # generate_pve_presets, which drives the deprecated Preset Loader: that
+    # flag's own note warns against silently changing what it emits, and the
+    # two routes produce different, incompatible graphs.
+    unreal_generate_pve_graphs: bool = False
+    # UE package path the twig palette and bark material were imported under
+    # by growpy-pve-assets. A graph names its palette meshes by path, so this
+    # must match what that step used.
+    unreal_pve_content_root: str = "/Game/PVE"
+    # Predicted-triangle ceiling per graph, i.e. per Export click. One click
+    # builds every chain in its graph and holds the result in memory until it
+    # finishes, so a click that dies takes its whole graph with it -- an
+    # autosave crash on a ~378 M-triangle beech click destroyed nine meshes
+    # that had all already exported and logged.
+    unreal_pve_triangle_cap: float = 120e6
     # Content Browser base for the wind/PVE post-import scripts. Empty means
     # "follow unreal_project_path", which is what you want: assemblies import to
     # project_path, so wind data and PVE presets have to look for them there.
@@ -911,6 +936,17 @@ class GrowPyConfig:
                 )
         if "pve_import_base" in unreal:
             kwargs["unreal_pve_import_base"] = str(unreal["pve_import_base"])
+        if "generate_pve_graphs" in unreal:
+            kwargs["unreal_generate_pve_graphs"] = bool(unreal["generate_pve_graphs"])
+        if "pve_content_root" in unreal:
+            kwargs["unreal_pve_content_root"] = str(unreal["pve_content_root"])
+        if "pve_triangle_cap" in unreal:
+            cap = float(unreal["pve_triangle_cap"])
+            if cap <= 0:
+                raise ValueError(
+                    f"[unreal] pve_triangle_cap must be positive, got {cap}"
+                )
+            kwargs["unreal_pve_triangle_cap"] = cap
         watchdog = unreal.get("watchdog", {})
         if "editor_exe" in watchdog:
             kwargs["unreal_editor_exe"] = str(watchdog["editor_exe"])

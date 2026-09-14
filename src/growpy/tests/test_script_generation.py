@@ -8,6 +8,8 @@ generates every optional script when enabled, and that both entry points
 really do share the same function object (not just look similar).
 """
 
+from pathlib import Path
+
 from growpy.io.unreal import script_generation
 
 
@@ -23,6 +25,10 @@ class _FakeConfig:
         self.unreal_generate_pve_presets = True
         self.unreal_pve_import_base = "/Game/GrowPy"
         self.unreal_import_to_unreal = True
+        # The live PVE route (XRFF-442), off by default like the real config.
+        self.unreal_generate_pve_graphs = False
+        self.unreal_pve_content_root = "/Game/PVE"
+        self.unreal_pve_triangle_cap = 120e6
         self.__dict__.update(overrides)
 
 
@@ -84,12 +90,13 @@ class TestGenerateUnrealScripts:
             tmp_path, _FakeConfig(), include_static=False
         )
 
+        # No "pve_graph_script": that generator wires the deprecated Preset
+        # Loader node and its graph produces nothing on UE 5.8+ (XRFF-442).
         assert calls == [
             "import_script",
             "cleanup_script",
             "wind_script",
             "pve_script",
-            "pve_graph_script",
             "voxelize_script",
         ]
         assert import_script == "import_script.py"
@@ -97,6 +104,60 @@ class TestGenerateUnrealScripts:
 
         # The bug this replaces: the CLI copy never set this key at all.
         assert captured_kwargs["import_script"]["nanite_cfg"]["voxelization"] is True
+
+    def test_the_live_pve_route_fires_only_when_its_own_flag_is_set(
+        self, tmp_path, monkeypatch
+    ):
+        """XRFF-442: graphs on the Growth Data JSON route.
+
+        Deliberately a separate flag from generate_pve_presets, which drives
+        the Preset Loader node UE 5.8 deprecated to a no-op -- the two emit
+        different, incompatible graphs.
+        """
+        calls: list[str] = []
+        self._patch_all_generators(monkeypatch, calls, {})
+
+        planned: list[dict] = []
+
+        class _Plan:
+            graphs = ()
+            chain_count = 0
+            script = Path("graphs.py")
+            manifest = Path("manifest.json")
+            retune_script = Path("retune.py")
+
+        def _plan(output_dir, forest_root, **kwargs):
+            planned.append(kwargs)
+            return _Plan()
+
+        monkeypatch.setattr(
+            "growpy.io.unreal.pve_graph_plan.plan_pve_graphs", _plan
+        )
+
+        # Preset route on, graph route off: the planner must not run.
+        script_generation.generate_unreal_scripts(
+            tmp_path, _FakeConfig(), include_static=False
+        )
+        assert planned == []
+
+        # Graph route on, preset route off. Reset first: the run above
+        # legitimately recorded the deprecated script.
+        calls.clear()
+        script_generation.generate_unreal_scripts(
+            tmp_path,
+            _FakeConfig(
+                unreal_generate_pve_presets=False,
+                unreal_generate_pve_graphs=True,
+                unreal_pve_content_root="/Game/PVE_Test",
+                unreal_pve_triangle_cap=2.0e8,
+            ),
+            include_static=False,
+        )
+        assert len(planned) == 1
+        assert planned[0]["content_root"] == "/Game/PVE_Test"
+        assert planned[0]["triangle_cap"] == 2.0e8
+        assert planned[0]["graph_folder"] == "/Game/PVE_Test/Graphs"
+        assert "pve_graph_script" not in calls
 
     def test_skips_optional_scripts_when_disabled(self, tmp_path, monkeypatch):
         calls: list[str] = []

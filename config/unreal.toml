@@ -127,6 +127,40 @@ generate_wind_data = true
 #   to the reference. NOTE: the threshold is in EMITTED units, so it interacts
 #   with the per-tree radial_scale -- 0.030 keeps 649 branches at scale 1.0 but
 #   only 95 at scale 0.5.
+# generate_pve_graphs: author PVE graphs on the Growth Data JSON route, from
+#   the growth JSONs a forest export emitted plus the densities in
+#   config/pve_calibration.toml. This is the LIVE PVE route and is deliberately
+#   a different flag from generate_pve_presets above, which drives the Preset
+#   Loader node UE 5.8 deprecated to a no-op. The two emit different,
+#   incompatible graphs; do not merge them.
+#
+#   It needs two things to have run first: an export that emitted growth JSONs
+#   (export_mode = "growth_json_only", or [unreal.growth_data_json] enabled
+#   below), and growpy-pve-assets, since a graph names its palette meshes and
+#   bark material by path and is useless without them.
+#
+#   Emits three files into <output>/unreal_scripts/: the graph builder script,
+#   a coverage manifest of every expected mesh, and a retune script that sets
+#   densities on existing graphs in place.
+#
+# pve_content_root: UE package path growpy-pve-assets imported the palette and
+#   bark under. A graph names those by path, so the two must agree.
+#
+# pve_triangle_cap: predicted-triangle ceiling per graph, i.e. per Export
+#   click. ONE CLICK IS ONE FAILURE UNIT -- it builds every chain in its graph
+#   and holds the result in memory until it finishes, and an export is durable
+#   only once its package is saved. An autosave crash on a beech click carrying
+#   ~378 M foliage triangles destroyed nine meshes that had all already
+#   exported and logged. Split on predicted TRIANGLES, not chain count: a fir
+#   foliage instance averages 23,292 triangles against a beech one's 13,456.
+#
+#   A single tree over the cap cannot be split further -- a chain is one mesh --
+#   so it gets a click of its own and a warning. At 120 M, four of the shipped
+#   fifteen are individually over it.
+generate_pve_graphs = false
+pve_content_root = "/Game/PVE"
+pve_triangle_cap = 120e6
+
 [unreal.growth_data_json]
 enabled = true
 profile_mean = 0.8215

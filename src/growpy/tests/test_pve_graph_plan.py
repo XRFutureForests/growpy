@@ -1,0 +1,346 @@
+"""Tests for the PVE graph planning path (XRFF-442).
+
+Covers the join from a finished forest export to runnable graph scripts:
+tree-id recovery, triangle-aware splitting, the coverage manifest, and the
+retune-in-place script. The recurring theme is refusal -- a density is a
+measurement, and a graph built at a guessed one looks entirely normal while
+exporting a tree that carries the wrong leaf area.
+"""
+
+from __future__ import annotations
+
+import ast
+import json
+from pathlib import Path
+
+import pytest
+
+from growpy.config.pve_calibration import load_pve_calibration
+from growpy.io.unreal.pve_graph_builder import (
+    DistributorSpec,
+    PVEGraphSpec,
+    TreeChainSpec,
+    generate_pve_retune_script,
+    split_by_triangles,
+    write_coverage_manifest,
+)
+from growpy.io.unreal.pve_graph_plan import (
+    discover_growth_jsons,
+    plan_pve_graphs,
+    tree_id_for,
+)
+
+SPECIES_TITLES = {"european_beech": "European_Beech", "silver_fir": "Silver_Fir"}
+
+
+def _chain(name: str, density: int = 10) -> TreeChainSpec:
+    return TreeChainSpec(
+        growth_json=Path(f"{name}.json"),
+        mesh_name=name,
+        distributor=DistributorSpec(branch_density=density),
+    )
+
+
+@pytest.fixture
+def forest_root(tmp_path) -> Path:
+    """A synthetic export laid out the way the pipeline lays one out."""
+    calibration = load_pve_calibration()
+    root = tmp_path / "forest"
+    for species, title in SPECIES_TITLES.items():
+        for tree_id in sorted(calibration.for_species(species).trees):
+            radius, height = tree_id.split("_")
+            directory = root / species / radius
+            directory.mkdir(parents=True, exist_ok=True)
+            name = f"{title}_{radius}_{height}_d20cm_d100_growth_data.json"
+            (directory / name).write_text("{}")
+    return root
+
+
+class TestTreeIdRecovery:
+    def test_it_reads_the_radius_from_the_directory_and_height_from_the_name(self):
+        path = Path(
+            "out/european_beech/r05"
+            "/European_Beech_r05_h15m_d10cm_d100_growth_data.json"
+        )
+        assert tree_id_for(path) == "r05_h15m"
+
+    def test_a_file_not_under_a_radius_directory_has_no_id(self):
+        # Standalone runs write tree_0001/, which carries no radius.
+        path = Path(
+            "out/european_beech/tree_0001"
+            "/european_beech_h15m_d10cm_growth_data.json"
+        )
+        assert tree_id_for(path) is None
+
+    def test_a_name_with_no_height_token_has_no_id(self):
+        path = Path("out/european_beech/r05/European_Beech_r05_growth_data.json")
+        assert tree_id_for(path) is None
+
+    def test_it_returns_none_rather_than_a_best_guess(self):
+        # A tree matched to the wrong calibration row builds at the wrong
+        # density and looks entirely normal, so there is no safe fallback.
+        assert tree_id_for(Path("nonsense.json")) is None
+
+
+class TestDiscovery:
+    def test_it_finds_every_growth_json_keyed_by_species(self, forest_root):
+        found = discover_growth_jsons(forest_root)
+        assert set(found) == {"european_beech", "silver_fir"}
+        assert len(found["european_beech"]) == 9
+        assert len(found["silver_fir"]) == 6
+
+    def test_an_absent_root_yields_nothing(self, tmp_path):
+        assert discover_growth_jsons(tmp_path / "absent") == {}
+
+    def test_unrelated_json_is_ignored(self, forest_root):
+        (forest_root / "european_beech" / "r05" / "notes.json").write_text("{}")
+        assert len(discover_growth_jsons(forest_root)["european_beech"]) == 9
+
+
+class TestSplitByTriangles:
+    def test_it_packs_under_the_cap(self):
+        chains = [_chain(f"SK_{i}") for i in range(4)]
+        groups = split_by_triangles(chains, lambda _c: 10, 1.0, 25.0)
+        assert sum(len(g) for g in groups) == 4
+        assert all(len(g) <= 2 for g in groups)
+
+    def test_it_splits_on_triangles_not_on_chain_count(self):
+        # A fir instance averages 23,292 triangles against a beech one's
+        # 13,456, so equal chain counts pack 1.7x the geometry.
+        chains = [_chain("SK_big"), _chain("SK_small")]
+        sizes = {"SK_big": 90, "SK_small": 10}
+        groups = split_by_triangles(chains, lambda c: sizes[c.mesh_name], 1.0, 100.0)
+        assert len(groups) == 1
+        groups = split_by_triangles(chains, lambda c: sizes[c.mesh_name], 1.0, 95.0)
+        assert len(groups) == 2
+
+    def test_largest_first_so_a_big_tree_does_not_overflow_a_full_bin(self):
+        chains = [_chain("SK_a"), _chain("SK_b"), _chain("SK_huge")]
+        sizes = {"SK_a": 30, "SK_b": 30, "SK_huge": 60}
+        groups = split_by_triangles(chains, lambda c: sizes[c.mesh_name], 1.0, 60.0)
+        assert len(groups) == 2
+        assert [c.mesh_name for c in groups[0]] == ["SK_huge"]
+
+    def test_an_oversized_chain_gets_its_own_bin_and_a_warning(self, caplog):
+        # A chain is one mesh and cannot be split further, so the cap cannot be
+        # honoured -- but it must not take other meshes down with it, and the
+        # overage must be visible rather than looking packed.
+        chains = [_chain("SK_monster"), _chain("SK_ordinary")]
+        sizes = {"SK_monster": 500, "SK_ordinary": 10}
+        with caplog.at_level("WARNING"):
+            groups = split_by_triangles(
+                chains, lambda c: sizes[c.mesh_name], 1.0, 100.0
+            )
+        assert [c.mesh_name for c in groups[0]] == ["SK_monster"]
+        assert any("SK_monster" in r.message for r in caplog.records)
+
+    def test_a_nonpositive_cap_is_refused(self):
+        with pytest.raises(ValueError, match="cap must be positive"):
+            split_by_triangles([_chain("SK_a")], lambda _c: 1, 1.0, 0)
+
+    def test_a_nonpositive_triangle_weight_is_refused(self):
+        with pytest.raises(ValueError, match="triangles_per_instance"):
+            split_by_triangles([_chain("SK_a")], lambda _c: 1, 0.0, 10.0)
+
+    def test_no_chains_yields_no_graphs(self):
+        assert split_by_triangles([], lambda _c: 1, 1.0, 10.0) == []
+
+
+class TestCoverageManifest:
+    def _graph(self) -> PVEGraphSpec:
+        return PVEGraphSpec(
+            graph_name="PVG_Test",
+            chains=(_chain("SK_one", 8), _chain("SK_two", 17)),
+            palette_meshes=("/Game/F/SM_a",),
+            bark_material="/Game/B/MI_bark",
+            export_folder="/Game/Exported",
+        )
+
+    def test_it_lists_every_expected_mesh(self, tmp_path):
+        path = write_coverage_manifest(tmp_path, [self._graph()])
+        data = json.loads(path.read_text())
+        assert data["expected_mesh_count"] == 2
+        names = [m["mesh_name"] for m in data["graphs"][0]["meshes"]]
+        assert names == ["SK_one", "SK_two"]
+
+    def test_it_records_the_density_each_mesh_was_asked_for(self, tmp_path):
+        # A mesh that exists is not necessarily a mesh built at the intended
+        # density, so consolidation needs both.
+        path = write_coverage_manifest(tmp_path, [self._graph()])
+        data = json.loads(path.read_text())
+        densities = {
+            m["mesh_name"]: m["branch_density"] for m in data["graphs"][0]["meshes"]
+        }
+        assert densities == {"SK_one": 8, "SK_two": 17}
+
+    def test_it_records_where_each_mesh_will_land(self, tmp_path):
+        path = write_coverage_manifest(tmp_path, [self._graph()])
+        data = json.loads(path.read_text())
+        assert data["graphs"][0]["meshes"][0]["asset"] == "/Game/Exported/SK_one"
+
+
+class TestRetuneScript:
+    def _graph(self) -> PVEGraphSpec:
+        return PVEGraphSpec(
+            graph_name="PVG_Test",
+            chains=(_chain("SK_one", 8),),
+            palette_meshes=("/Game/F/SM_a",),
+            bark_material="/Game/B/MI_bark",
+            export_folder="/Game/Exported",
+        )
+
+    @pytest.fixture
+    def script(self, tmp_path) -> str:
+        path = generate_pve_retune_script(tmp_path, [self._graph()])
+        return path.read_text(encoding="utf-8")
+
+    def test_it_is_valid_python(self, script):
+        ast.parse(script)
+
+    def test_it_never_deletes_or_recreates_a_graph(self, script):
+        # delete_asset + create_asset leaves the package pending-kill;
+        # get_mutable_pcg_graph() then returns None and the builder's recovery
+        # renames the asset under a _b suffix, leaving a superseded graph to be
+        # clicked by mistake.
+        # Call syntax, not bare names: the script's own docstring explains the
+        # trap by naming the two functions.
+        assert "delete_asset(" not in script
+        assert "create_asset(" not in script
+        assert "duplicate_asset(" not in script
+        assert "save_asset(" in script
+
+    def test_it_finds_the_export_node_by_mesh_name(self, script):
+        assert "PVExportSettings" in script
+        assert "asset_name" in script
+        assert "SK_one" in script
+
+    def test_it_walks_back_to_the_distributor(self, script):
+        assert "PVFoliageDistributorSettings" in script
+        assert "input_pins" in script
+
+    def test_it_verifies_the_value_took(self, script):
+        assert 'spacing.get_editor_property("branch_density")' in script
+        assert "did not take" in script
+
+    def test_it_fails_loudly(self, script):
+        assert "raise RuntimeError" in script
+
+
+class TestPlanEndToEnd:
+    def test_it_plans_every_shipped_tree(self, tmp_path, forest_root):
+        plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
+        assert plan.chain_count == 15
+        assert plan.skipped == ()
+        assert plan.script is not None
+        assert plan.manifest is not None
+        assert plan.retune_script is not None
+
+    def test_the_densities_are_the_calibrated_ones(self, tmp_path, forest_root):
+        plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
+        built = {
+            c.mesh_name: c.distributor.branch_density
+            for g in plan.graphs
+            for c in g.chains
+        }
+        assert built["SK_EuropeanBeech_r20_h15m"] == 95
+        assert built["SK_SilverFir_r20_h25m"] == 86
+        assert built["SK_SilverFir_r05_h25m"] == 158
+
+    def test_each_species_relative_start_travels_with_its_densities(
+        self, tmp_path, forest_root
+    ):
+        plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
+        starts = {
+            c.mesh_name.split("_")[1]: c.distributor.relative_start
+            for g in plan.graphs
+            for c in g.chains
+        }
+        assert starts["EuropeanBeech"] == 0.4
+        assert starts["SilverFir"] == 0.0
+
+    def test_only_fir_carries_the_bark_aspect_correction(self, tmp_path, forest_root):
+        plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
+        by_species = {g.graph_name.split("_")[1]: g.bark_y_scale for g in plan.graphs}
+        assert by_species["SilverFir"] == 0.5
+        assert by_species["EuropeanBeech"] is None
+
+    def test_the_profile_pin_comes_from_the_calibration(self, tmp_path, forest_root):
+        # Half a contract each: the pin and profile_mean must agree, and
+        # nothing in the engine checks that they do.
+        calibration = load_pve_calibration()
+        plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
+        assert all(g.profile_pin == calibration.profile_pin for g in plan.graphs)
+
+    def test_an_uncalibrated_species_is_skipped_and_reported(
+        self, tmp_path, forest_root
+    ):
+        # Authoring a chain at a plausible-looking density would export a tree
+        # carrying the wrong leaf area, visible only by measuring it.
+        directory = forest_root / "wild_cherry" / "r05"
+        directory.mkdir(parents=True)
+        (directory / "Wild_Cherry_r05_h10m_d10cm_growth_data.json").write_text("{}")
+
+        plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
+        assert plan.chain_count == 15
+        assert any("wild_cherry" in line for line in plan.skipped)
+
+    def test_an_empty_export_authors_nothing(self, tmp_path):
+        plan = plan_pve_graphs(tmp_path, tmp_path / "absent")
+        assert plan.graphs == ()
+        assert plan.script is None
+
+    def test_the_generated_script_carries_every_mesh(self, tmp_path, forest_root):
+        plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
+        text = plan.script.read_text(encoding="utf-8")
+        for graph in plan.graphs:
+            for chain in graph.chains:
+                assert f"'mesh_name': '{chain.mesh_name}'" in text
+
+    def test_the_manifest_and_the_script_agree(self, tmp_path, forest_root):
+        plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
+        data = json.loads(plan.manifest.read_text())
+        assert data["expected_mesh_count"] == plan.chain_count
+
+
+class TestPipelineWiring:
+    def test_the_new_route_is_off_by_default(self):
+        from growpy.config.core import GrowPyConfig
+
+        assert GrowPyConfig().unreal_generate_pve_graphs is False
+
+    def test_it_is_not_the_deprecated_preset_flag(self):
+        # generate_pve_presets drives the Preset Loader node, which UE 5.8
+        # deprecated to a no-op; its own note warns against repurposing it.
+        from growpy.config.core import GrowPyConfig
+
+        config = GrowPyConfig()
+        assert config.unreal_generate_pve_presets is not (
+            config.unreal_generate_pve_graphs
+        )
+
+    def test_the_flag_reads_from_toml(self, tmp_path):
+        from growpy.config.core import GrowPyConfig
+
+        toml = tmp_path / "growpy.toml"
+        toml.write_bytes(
+            b"[unreal]\ngenerate_pve_graphs = true\npve_triangle_cap = 2.5e8\n"
+        )
+        config = GrowPyConfig.from_toml(toml, set_as_global=False)
+        assert config.unreal_generate_pve_graphs is True
+        assert config.unreal_pve_triangle_cap == 2.5e8
+
+    def test_a_nonpositive_cap_is_refused(self, tmp_path):
+        from growpy.config.core import GrowPyConfig
+
+        toml = tmp_path / "growpy.toml"
+        toml.write_bytes(b"[unreal]\npve_triangle_cap = 0\n")
+        with pytest.raises(ValueError, match="pve_triangle_cap"):
+            GrowPyConfig.from_toml(toml, set_as_global=False)
+
+    def test_script_generation_calls_the_new_planner(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "io/unreal/script_generation.py"
+        ).read_text(encoding="utf-8")
+        assert "plan_pve_graphs" in source
+        assert "unreal_generate_pve_graphs" in source

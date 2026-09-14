@@ -100,15 +100,40 @@ def generate_unreal_scripts(
         )
         logger.info("Generated PVE preset import script: %s", pve_script)
 
-        from growpy.io.unreal.pve_graph_script import generate_pve_graph_script
+        # No graph script here. growpy.io.unreal.pve_graph_script wires the
+        # PVPresetLoader node, which UE 5.8 deprecated to a no-op, so the graph
+        # it built could not produce a tree on the engine we ship on -- it was
+        # emitted for nothing. The live route is unreal_generate_pve_graphs
+        # below. The module is kept for UE 5.7 projects to call directly.
 
-        pve_graph_script = generate_pve_graph_script(
-            output_dir=output_dir / "unreal_scripts",
-            forest_root=output_dir,
-            import_base=config.unreal_pve_import_base,
-            species_twig_map=twig_map,
+    # The live PVE route: graphs on the Growth Data JSON importer, authored by
+    # pve_graph_builder. Separate from generate_pve_presets above, which drives
+    # the Preset Loader node UE 5.8 deprecated to a no-op.
+    if config.unreal_generate_pve_graphs:
+        from growpy.io.unreal.pve_graph_plan import plan_pve_graphs
+
+        plan = plan_pve_graphs(
+            output_dir / "unreal_scripts",
+            output_dir,
+            content_root=config.unreal_pve_content_root,
+            graph_folder=f"{config.unreal_pve_content_root}/Graphs",
+            triangle_cap=config.unreal_pve_triangle_cap,
         )
-        logger.info("Generated PVE graph builder script: %s", pve_graph_script)
+        if plan.script is None:
+            logger.warning(
+                "PVE graphs requested but none authored -- no growth JSONs "
+                "matched a calibrated species. Is export_mode = "
+                "'growth_json_only' (or [unreal.growth_data_json] enabled) set?"
+            )
+        else:
+            logger.info(
+                "Generated PVE graph script: %s (%d graph(s), %d chain(s))",
+                plan.script,
+                len(plan.graphs),
+                plan.chain_count,
+            )
+            logger.info("PVE coverage manifest: %s", plan.manifest)
+            logger.info("PVE retune script: %s", plan.retune_script)
 
     # Nanite voxelize script (run after UE restart for best VRAM headroom)
     if config.unreal_import_to_unreal and config.unreal_voxelization:
