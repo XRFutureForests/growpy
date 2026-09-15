@@ -5,10 +5,12 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from growpy.pipelines.step_runner import (
+    COMPOUND_BAKE_SCRIPT,
     STEP_SCRIPTS,
     _build_step4_command,
     _build_step123_command,
     check_environment,
+    run_compound_bake,
     run_species_step4,
     run_step123,
 )
@@ -246,6 +248,29 @@ class TestRunStep123:
         run_step123(3, Path("all.csv"), extra_args=["--ingest-yield-tables"])
         cmd = mock_run.call_args[0][0]
         assert "--ingest-yield-tables" in cmd
+
+
+class TestRunCompoundBake:
+    """Step 2's second stage: the compound-part bake over the converted twigs."""
+
+    @patch("growpy.pipelines.step_runner.subprocess.run")
+    def test_dry_run_returns_true(self, mock_run):
+        assert run_compound_bake(dry_run=True) is True
+        mock_run.assert_not_called()
+
+    @patch("growpy.pipelines.step_runner.subprocess.run")
+    def test_runs_the_bake_over_the_dataset_species(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        assert run_compound_bake(verbose=True) is True
+        cmd = mock_run.call_args[0][0]
+        assert str(COMPOUND_BAKE_SCRIPT) in " ".join(str(c) for c in cmd)
+        assert "--dataset" in cmd
+        assert "--verbose" in cmd
+
+    @patch("growpy.pipelines.step_runner.subprocess.run")
+    def test_failure_returns_false(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=1)
+        assert run_compound_bake() is False
 
 
 class TestRunSpeciesStep4:
