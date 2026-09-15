@@ -249,6 +249,21 @@ older workflows — import it via the right-click scripted asset action on the S
 PVE integration: [docs/guides/pve-preset-workflow.md](docs/guides/pve-preset-workflow.md).
 Import settings: [docs/reference/nanite-import-settings.md](docs/reference/nanite-import-settings.md).
 
+**PVE export without a hand on the mouse.** A PVE graph's Export button is a toolkit action
+that no Python route reaches; `growpy-pve-export` drives the editor's own UI instead
+(remote Python opens the graph, a posted Ctrl+E fires the command, the dialogs are confirmed
+through Windows UI Automation) and saves the result. It needs no focus and works with the
+workstation locked:
+
+```bash
+growpy-pve-export /Game/PVE/Graphs/PVG_SilverFir_1 /Game/PVE/Graphs/PVG_SilverFir_2
+```
+
+One `Mesh exported successfully` line per export node marks success; targets that already
+exist under `ReplacePolicy = Replace` are overwritten (the prompt is confirmed). If the
+driver reports `NODIALOG`, the toolbar button is not at the default window offset
+(`--toolbar X,Y`); the tool then retries with a UI Automation search.
+
 ---
 
 ## 6. Testing

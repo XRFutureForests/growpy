@@ -29,7 +29,7 @@ documentation is not redistributed — point at thegrove3d.com.
 | `src/growpy/io/helios/` | OBJ export, Helios scene XML |
 | `src/growpy/config/` | TOML config, species overrides |
 | `src/growpy/utils/` | yield tables, allometry, analysis, logging, GBIF |
-| `src/growpy/tools/` | console tools: UE exec + import/viewport probes, crown metrics, surround-density sweep + summariser, PVE assets + leaf area, preflight, twig ladder, texture packing, diagnostics |
+| `src/growpy/tools/` | console tools: UE exec + import/viewport probes, crown metrics, surround-density sweep + summariser, PVE assets + leaf area + export click, preflight, twig ladder, texture packing, diagnostics |
 | `src/growpy/blender/` | grove_extract, twig_converter |
 
 ## CLI Scripts
@@ -50,6 +50,7 @@ documentation is not redistributed — point at thegrove3d.com.
 | `growpy-pack-pve-textures` | Pack twig textures into the two maps PVE's tree material expects |
 | `growpy-pve-assets` | Generate the UE script that imports PVE twig palettes and bark materials |
 | `growpy-pve-leaf-area` | Report scale-corrected leaf area for the calibrated PVE trees |
+| `growpy-pve-export` | Trigger the Export of PVE graphs in the running editor (posted Ctrl+E + UI Automation; works with the workstation locked) |
 | `growpy-preflight-assembly` | Validate a USD assembly before import (bindJoints, paths) |
 | `growpy-ue-exec` | Execute Unreal Engine import scripts (with watchdog) |
 | `growpy-ue-import-probe` / `growpy-ue-viewport-probe` | Gate 2 import cost and Gate 4 frame-time measurement |

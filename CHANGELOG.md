@@ -5,6 +5,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-09-15 (evening) — the PVE Export click runs unattended
+
+#### Added
+
+- **`growpy-pve-export`** triggers the Export of PVE graphs in the running editor without a
+  hand on the mouse. The Export button is a toolkit action (`FPVEditor::OnExport`) with no
+  Python or reflection route, so the tool drives the editor's own UI: remote Python enables
+  `Accessibility.Enable` and opens the graph, the PCG profiling log tells it when the graph
+  has executed, a posted mouse press + Ctrl+E fires the command, and the export-settings
+  dialog (Batch + Export) and the overwrite prompt (Continue) are confirmed through Windows
+  UI Automation. It then waits for one `Mesh exported successfully` line per export node and
+  saves the export folders. Needs neither focus nor an unlocked desktop (verified through a
+  locked workstation). A full-tree UI Automation walk of the editor costs 45–250 s, so the
+  toolbar button is addressed by its window offset and the dialogs by a shallow search that
+  skips the details view; `--toolbar X,Y` overrides the offset and a UIA search is the
+  fallback. Ships `pve_export_drive.ps1` + `pve_export_uia.ps1` as package data.
+
 ### 2026-09-15 (afternoon) — one density, a growing shell for every species, Grove's conifer presets
 
 #### Changed
