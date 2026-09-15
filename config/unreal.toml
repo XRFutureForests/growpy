@@ -66,16 +66,6 @@ generate_pve_presets = false
 # to skeletal meshes (per-tree wind JSON is always exported regardless).
 generate_wind_data = true
 
-# --- ue_exec auto-restart watchdog (tools/ue_exec.py) ---
-# Separate from the import-script generation above: read only by the
-# standalone ue_exec.py watchdog tool, not by generate_forest.py.
-# Machine-specific absolute paths -- not committed with real values since this
-# config file ships in a public repo. Set these to use the watchdog without
-# passing --editor-exe/--uproject on every invocation. --editor-exe/--uproject
-# always take priority when given.
-[unreal.watchdog]
-# editor_exe = "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Binaries\\Win64\\UnrealEditor.exe"
-# uproject = "D:\\Unreal\\XRLabDB 5.8\\XRLabDB.uproject"
 
 # ---------------------------------------------------------------------------
 # Growth-data JSON export for PVE's Growth Data JSON Importer (XRFF-390 route).
@@ -183,3 +173,20 @@ enabled = true
 profile_mean = 0.8215
 min_branch_radius = 0.0
 min_branch_radius_fraction = 0.06
+
+# ---------------------------------------------------------------------------
+# SUB-TABLES LAST. A TOML sub-table captures every key that follows it, so
+# [unreal.watchdog] and [unreal.growth_data_json] must stay at the end of
+# this file: until 2026-09-15 the watchdog table sat above generate_pve_graphs
+# and silently swallowed it (the flag read false no matter what it said).
+
+# --- ue_exec auto-restart watchdog (tools/ue_exec.py) ---
+# Separate from the import-script generation above: read only by the
+# standalone ue_exec.py watchdog tool, not by generate_forest.py.
+# Machine-specific absolute paths -- not committed with real values since this
+# config file ships in a public repo. Set these to use the watchdog without
+# passing --editor-exe/--uproject on every invocation. --editor-exe/--uproject
+# always take priority when given.
+[unreal.watchdog]
+# editor_exe = "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Binaries\\Win64\\UnrealEditor.exe"
+# uproject = "D:\\Unreal\\XRLabDB 5.8\\XRLabDB.uproject"

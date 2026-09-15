@@ -724,6 +724,40 @@ class TestGlobalConfig:
         set_global_config(None)
 
 
+class TestTrackedConfigTableShape:
+    """A TOML sub-table captures every key after it.
+
+    Every tracked config file with a ``[section.sub]`` table must keep its
+    plain ``[section]`` keys ABOVE the first sub-table, or they silently
+    land in the sub-table and the dataclass default wins. It happened to
+    ``[unreal] generate_pve_graphs`` (read false for weeks, 2026-09-15),
+    ``[surround] density_per_species`` (A35) and the beech twig density.
+    """
+
+    CONFIG_DIR = Path(__file__).resolve().parents[3] / "config"
+
+    @pytest.mark.parametrize(
+        "name, wanted",
+        [
+            (
+                "unreal.toml",
+                {"generate_pve_graphs", "pve_content_root", "pve_triangle_cap"},
+            ),
+            ("general.toml", {"random_seed", "csv_file", "output_dir"}),
+        ],
+    )
+    def test_plain_keys_are_not_swallowed_by_a_sub_table(self, name, wanted):
+        import tomllib
+
+        data = tomllib.loads((self.CONFIG_DIR / name).read_text(encoding="utf-8"))
+        section = data[name.split(".")[0]]
+        missing = {k for k in wanted if k not in section}
+        assert not missing, (
+            f"{name}: {sorted(missing)} sit below a [{name.split('.')[0]}.<sub>] "
+            f"table and are read into it -- move the sub-tables to the end"
+        )
+
+
 class TestFindConfigDir:
     """Tests for config directory discovery."""
 
