@@ -19,6 +19,16 @@ class TestGrowPyConfigDefaults:
         config = GrowPyConfig()
         assert config.random_seed == 42
 
+    def test_per_species_seed_overrides_the_global_one(self):
+        config = GrowPyConfig(
+            random_seed=512, random_seed_per_species={"norway_spruce": 7}
+        )
+        assert config.get_random_seed("norway_spruce") == 7
+        assert config.get_random_seed("Norway spruce") == 7
+        assert config.get_random_seed("european_beech") == 512
+        assert config.get_random_seed(None) == 512
+        assert GrowPyConfig().get_random_seed("norway_spruce") == 42
+
     def test_default_csv_file(self):
         config = GrowPyConfig()
         assert config.csv_file == Path("data/input/test.csv")

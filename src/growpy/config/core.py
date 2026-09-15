@@ -188,6 +188,7 @@ class GrowPyConfig:
     # by test_config.py::test_toml_settable_fields_have_mapping_or_are_allowlisted.
     TOML_ONLY_FIELDS: ClassVar[dict[str, str]] = {
         "random_seed": "determinism seed, not meant to vary per invocation",
+        "random_seed_per_species": "per-species reseed for a collapsed stage; config",
         "twigs_path": "path override via CLI positional arg, outside resolve()",
         "custom_twigs_dir": "internal override, no CLI need identified",
         "twigs_interior_boundary_rings": "fine-tuning param, no CLI need identified",
@@ -291,6 +292,10 @@ class GrowPyConfig:
 
     # [general]
     random_seed: int | None = 42
+    # A species whose tree collapses under the surround shell on the way to
+    # its top stage gets a different seed here, never a lower density (owner
+    # rule, 2026-09-15). Keyed by standardized name; absent = random_seed.
+    random_seed_per_species: dict[str, int] = field(default_factory=dict)
     csv_file: Path = field(default_factory=lambda: Path("data/input/test.csv"))
     output_dir: Path = field(default_factory=lambda: Path("data/output/forest"))
     verbose: bool = False
@@ -706,6 +711,10 @@ class GrowPyConfig:
         general = data.get("general", {})
         if "random_seed" in general:
             kwargs["random_seed"] = general["random_seed"]
+        if "random_seed_per_species" in general:
+            kwargs["random_seed_per_species"] = {
+                str(k): int(v) for k, v in general["random_seed_per_species"].items()
+            }
         if "csv_file" in general:
             kwargs["csv_file"] = Path(general["csv_file"])
         if "output_dir" in general:
@@ -1204,6 +1213,22 @@ class GrowPyConfig:
             if key in self.surround_grow_per_species:
                 return self.surround_grow_per_species[key]
         return self.surround_grow
+
+    def get_random_seed(self, species: str | None = None) -> int | None:
+        """The simulation seed for ``species``: its own reseed, else the global one.
+
+        ``[general.random_seed_per_species]`` exists for a species whose tree
+        collapses under the shell on the way to its top stage -- the owner's
+        rule (2026-09-15) is a different seed, never a lower density. Accepts
+        a common name or a standardized one.
+        """
+        from growpy.utils.naming import standardize_species_name
+
+        if species and self.random_seed_per_species:
+            key = standardize_species_name(species)
+            if key in self.random_seed_per_species:
+                return self.random_seed_per_species[key]
+        return self.random_seed
 
     def get_twig_density_base(self, species: str) -> float:
         """Return the crown-density multiplier relative to natural density.

@@ -25,8 +25,12 @@ def create_grove(species: str | None = None) -> gc.Grove:
     grove = gc.Grove()
     grove.clear_trees()
 
-    if config.random_seed is not None:
-        grove.set_random_seed(config.random_seed)
+    # A species that collapsed under the shell on the way to its top stage is
+    # reseeded ([general.random_seed_per_species]), never densified down
+    # (owner rule, 2026-09-15).
+    seed = config.get_random_seed(species)
+    if seed is not None:
+        grove.set_random_seed(seed)
 
     if species:
         preset_path = config.get_preset_path(species)

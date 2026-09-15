@@ -21,3 +21,11 @@ output_dir = "data/output/forest"
 verbose = true
 # Enable profiling to track execution time of each pipeline step
 profile = false
+
+# Per-species reseed, keyed on the standardized name. A species whose tree
+# collapses under the surround shell on the way to its top stage (the 0.75
+# growing shell can fold a conifer above ~20 m) gets a different seed here --
+# never a lower density (owner rule, 2026-09-15). Only the named species
+# change; everything else keeps random_seed. A sub-table captures every key
+# after it, so this MUST stay the last entry of the file.
+[general.random_seed_per_species]
