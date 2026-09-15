@@ -90,6 +90,9 @@ class SolvedDensity:
     target_m2: float
     scale_targets: tuple[float, ...] | None = None
     instance_area_m2: float | None = None
+    # True when an instance / triangle ceiling, not the target, chose the
+    # density -- the tree is deliberately short of its leaf area.
+    capped: bool = False
 
     @property
     def error(self) -> float:
@@ -193,13 +196,36 @@ def _bisect_density(area_at, target_m2: float) -> int:
     return min(candidates, key=lambda d: abs(area_at(d) - target_m2))
 
 
+def _largest_density_under(instances_at, max_instances: int) -> int:
+    """The largest density whose (monotone) instance count stays under the cap."""
+    lo, hi = _MIN_DENSITY, _MIN_DENSITY
+    while instances_at(hi) <= max_instances and hi < _MAX_DENSITY:
+        lo, hi = hi, hi * 2
+    hi = min(hi, _MAX_DENSITY)
+    if instances_at(hi) <= max_instances:
+        return hi
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        if instances_at(mid) <= max_instances:
+            lo = mid
+        else:
+            hi = mid
+    return lo
+
+
 def solve_flat(
     growth_json: Path,
     base: DistributorSpec,
     mean_prototype_area_m2: float,
     target_m2: float,
+    max_instances: int | None = None,
 ) -> SolvedDensity:
-    """Density for a flat palette: every instance carries the palette's mean area."""
+    """Density for a flat palette: every instance carries the palette's mean area.
+
+    ``max_instances`` caps the solve below the target when the target would
+    need more instances than one Nanite assembly (or one click) can carry;
+    the result then says ``capped`` and lands short of the target.
+    """
     from growpy.io.unreal.pve_distributor_model import simulate_placements
 
     cache: dict[int, int] = {}
@@ -216,6 +242,10 @@ def solve_flat(
     density = _bisect_density(
         lambda d: instances_at(d) * mean_prototype_area_m2, target_m2
     )
+    capped = False
+    if max_instances is not None and instances_at(density) > max_instances:
+        density = _largest_density_under(instances_at, max_instances)
+        capped = True
     instances = instances_at(density)
     return SolvedDensity(
         density=density,
@@ -223,6 +253,7 @@ def solve_flat(
         area_m2=instances * mean_prototype_area_m2,
         target_m2=target_m2,
         instance_area_m2=mean_prototype_area_m2,
+        capped=capped,
     )
 
 
@@ -233,6 +264,7 @@ def solve_graded(
     areas: Sequence[float],
     ladder: LadderSpec,
     target_m2: float,
+    max_instances: int | None = None,
 ) -> SolvedDensity:
     """Density and Scale targets for a graded ladder plus its apex spray.
 
@@ -277,6 +309,12 @@ def solve_graded(
         return cache[density]
 
     density = _bisect_density(lambda d: evaluate(d)[2] + apex_area, target_m2)
+    capped = False
+    if max_instances is not None and evaluate(density)[0] + 1 > max_instances:
+        density = _largest_density_under(
+            lambda d: evaluate(d)[0] + (1 if ladder.apex else 0), max_instances
+        )
+        capped = True
     main_instances, targets, main_area = evaluate(density)
     instances = main_instances + (1 if ladder.apex else 0)
     area = main_area + apex_area
@@ -287,6 +325,7 @@ def solve_graded(
         target_m2=target_m2,
         scale_targets=targets,
         instance_area_m2=area / instances if instances else None,
+        capped=capped,
     )
 
 

@@ -219,9 +219,7 @@ def mask_entries_for(mask_fraction: float, palette_size: int) -> tuple[int, int]
         for m in (max(1, int(masks_exact)), int(masks_exact) + 1):
             candidates.append((m / (real + m), repeats, m))
     nearest = sorted(candidates, key=lambda c: abs(c[0] - mask_fraction))[:3]
-    spelled = ", ".join(
-        f"{f:.4f} (repeats {r}, masks {m})" for f, r, m in nearest
-    )
+    spelled = ", ".join(f"{f:.4f} (repeats {r}, masks {m})" for f, r, m in nearest)
     raise ValueError(
         f"mask_fraction {mask_fraction} is not a ratio of whole palette entries "
         f"over {palette_size} meshes with up to {MAX_PALETTE_REPEATS} repeats; "
@@ -419,6 +417,7 @@ def _offline_chain(
     assets: SpeciesAssetSpec,
     palette_areas: Sequence[float],
     profile_mean: float,
+    max_instances: int | None = None,
 ) -> PlannedTree:
     """A chain for a tree with no measured row, from the offline model."""
     from growpy.io.unreal.pve_offline_solve import (
@@ -483,7 +482,13 @@ def _offline_chain(
     ladder = calibration.ladder
     if ladder is not None:
         solved = solve_graded(
-            entry.path, base, meshes, palette_areas, ladder, target_m2
+            entry.path,
+            base,
+            meshes,
+            palette_areas,
+            ladder,
+            target_m2,
+            max_instances=max_instances,
         )
         conditions = ConditionSpec(
             scale=ConditionInfluence(weight=ladder.scale_weight),
@@ -506,7 +511,9 @@ def _offline_chain(
         detail["scale_targets"] = [round(t, 6) for t in solved.scale_targets]
     else:
         mean_area = sum(palette_areas) / len(palette_areas)
-        solved = solve_flat(entry.path, base, mean_area, target_m2)
+        solved = solve_flat(
+            entry.path, base, mean_area, target_m2, max_instances=max_instances
+        )
         distributor = _pose_distributor(calibration, solved.density)
         palette = None
         layers = ()
@@ -516,6 +523,8 @@ def _offline_chain(
         predicted_instances=solved.instances,
         predicted_m2=round(solved.area_m2, 2),
         predicted_error=round(solved.error, 4),
+        capped=solved.capped,
+        max_instances=max_instances,
     )
     chain = TreeChainSpec(
         growth_json=entry.path,
@@ -572,6 +581,8 @@ def plan_pve_graphs(
     import_all_palettes: bool = True,
     calibration_path: Path | None = None,
     species: Sequence[str] | None = None,
+    max_assembly_instances: int = 60_000,
+    tree_triangle_cap: float = 400e6,
 ) -> PVEGraphPlanResult:
     """Author graph scripts for every species in a finished forest export.
 
@@ -601,6 +612,15 @@ def plan_pve_graphs(
             in the asset script, not only the one its graphs name.
         calibration_path: Override for the tracked calibration file.
         species: Standardized names to plan; None plans every species found.
+        max_assembly_instances: Ceiling on the instances an offline solve may
+            ask for -- 65,000 is Epic's Nanite assembly cap and an assembly
+            past it fails to build; 60,000 leaves room for the tip cap and
+            apex layers. A capped tree lands short of its leaf area and says
+            so in the manifest (``capped``).
+        tree_triangle_cap: Ceiling on one tree's predicted foliage triangles;
+            an ash r16_h25m solved to 806 M on 2026-09-15, which no click
+            should carry. Divided by the species' mean triangles per instance
+            it is the other bound on ``max_instances``.
 
     Returns:
         What was planned, including a ``skipped`` line per tree left out.
@@ -706,6 +726,10 @@ def plan_pve_graphs(
                         assets,
                         palette_areas,
                         calibration.profile_mean,
+                        max_instances=min(
+                            max_assembly_instances,
+                            int(tree_triangle_cap / triangles),
+                        ),
                     )
             except (KeyError, ValueError, FileNotFoundError) as err:
                 skipped.append(f"{species} {entry.tree_id}: {err}")
