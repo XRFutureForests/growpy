@@ -104,6 +104,7 @@ density = 0.75            # surrounding tree density (0..1), shared by all radii
 # crowns in the 2026-08-23 dataset. Re-screen before trusting any of them.
 height = 6.5              # shell height (meters), shared by all radii
 grow = true               # every species: the shell rises with the tree
+freeze_height = 0.0       # 0 = never; per-species table [surround.freeze_height_per_species] below
 # OWNER DECISION 2026-09-15 (afternoon): the shell grows with the CONIFERS too,
 # as it did for the 2026-08-13 catalog (radii [0, 8, 16], density 0.75, grow =
 # true, h05..h15), which is the in-stand conifer look the dataset wants: a
@@ -194,6 +195,22 @@ grow = true               # every species: the shell rises with the tree
 # Empty since 2026-09-15 (afternoon): grow = true for every species, see above.
 # The 85fe679 / ada7940 split it replaced was: the 7 broadleaves true, the 4
 # conifers (douglas_fir, norway_spruce, scots_pine, silver_fir) false.
+
+# Height (m) at which a GROWING shell stops rising and becomes a static wall
+# the tree overtops from then on; 0 = never (the shell tracks the tree forever).
+# This is the release a real canopy gives an emerging crown, and it is what the
+# conifers need to reach h20/h25 under grow = true: measured 2026-09-15 at
+# density 0.75, norway_spruce / silver_fir stop at exactly h15 and douglas_fir
+# at h20 with three different seeds (512, 999, 7 -- identical stop, identical
+# DBH; the cycles speed up ~50x once the crown folds), so the collapse is
+# structural, not seed noise, and the owner's reseed rule cannot fix it. With
+# the shell frozen at 15 m the tree stands in a fixed 15 m canopy, the stage
+# the static-shell A/B (above) showed runs the full ladder.
+[surround.freeze_height_per_species]
+douglas_fir = 15.0
+norway_spruce = 15.0
+scots_pine = 15.0
+silver_fir = 15.0
 
 # Owner decision 2026-09-15, judged at h15m (the production cap) on r08 crown
 # ratio against Sharma's 0.52-0.68, with the r08 crown BASE sitting above r16's

@@ -14,7 +14,11 @@ try:
         build_density_variant_model_sets,
         create_forest,
     )
-    from growpy.core.grove import enable_surround
+    from growpy.core.grove import (
+        disable_surround,
+        enable_surround,
+        freeze_surround_shell,
+    )
 
     _IMPORT_OK = True
 except (ImportError, OSError):
@@ -24,6 +28,8 @@ except (ImportError, OSError):
     _compute_grove_offsets = None
     create_forest = None
     enable_surround = None
+    disable_surround = None
+    freeze_surround_shell = None
 
 pytestmark = pytest.mark.skipif(
     not _IMPORT_OK,
@@ -158,6 +164,31 @@ class TestEnableSurround:
             return g.number_of_branches
 
         assert grow(surround=True) < grow(surround=False)
+
+
+class TestFreezeSurroundShell:
+    """Tests for fixing a growing Surround shell mid-simulation."""
+
+    def test_growing_shell_becomes_static_at_height(self):
+        grove = _gc.Grove()
+        grove.clear_trees()
+        enable_surround(grove, density=0.75, distance=8.0, height=6.5, grow=True)
+        assert freeze_surround_shell(grove, 15.0) is True
+        props = grove.get_properties()
+        assert props.surround_enabled is True
+        assert props.surround_grow is False
+        assert props.surround_height == pytest.approx(15.0)
+
+    def test_static_or_disabled_shell_is_left_alone(self):
+        grove = _gc.Grove()
+        grove.clear_trees()
+        enable_surround(grove, density=0.75, distance=8.0, height=6.5, grow=False)
+        assert freeze_surround_shell(grove, 15.0) is False
+        assert grove.get_properties().surround_height == pytest.approx(6.5)
+        disable_surround(grove)
+        assert freeze_surround_shell(grove, 15.0) is False
+        assert grove.get_properties().surround_enabled is False
+
 
 
 class TestCreateForestSurroundRadius:

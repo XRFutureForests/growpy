@@ -14,7 +14,13 @@ from tqdm import tqdm
 from ..config import get_config
 from ..config.preset_overrides import PresetOverrides, get_species_overrides
 from ..utils.log import is_verbose
-from .grove import add_tree_to_grove, create_grove, disable_surround, enable_surround
+from .grove import (
+    add_tree_to_grove,
+    create_grove,
+    disable_surround,
+    enable_surround,
+    freeze_surround_shell,
+)
 from .tree import extract_tree_heights, extract_tree_measurements
 
 
@@ -578,6 +584,15 @@ def _simulate_height_threshold_mode(
     prev_max_heights: dict[tuple[str, int], float] = {}
     cycles_without_growth = 0
 
+    # Shell freeze heights per species ([surround] freeze_height and its
+    # per-species table), and the groves whose shell has already been fixed.
+    cfg = get_config()
+    freeze_heights = {
+        species_name: cfg.get_surround_freeze_height(species_name)
+        for _g, species_name, *_rest in forest
+    }
+    shell_frozen: set[int] = set()
+
     cycle = 0
     pbar = tqdm(
         total=max_cycles,
@@ -644,6 +659,31 @@ def _simulate_height_threshold_mode(
                 if height > prev_h + 0.01:
                     any_growth = True
                     prev_max_heights[key] = height
+
+                # Shell freeze: once the tree stands at freeze_height the
+                # growing shell stops rising and becomes a static wall at that
+                # height, which the tree then overtops -- the release a real
+                # canopy gives an emerging crown. Without it the 0.75 growing
+                # shell folds every conifer between 15 and 20 m (three seeds,
+                # identical outcome, 2026-09-15); with the wall low enough to
+                # be overtopped the static shell runs the full ladder (A92).
+                freeze = freeze_heights.get(species_name, 0.0)
+                if (
+                    freeze > 0
+                    and grove_idx not in shell_frozen
+                    and height >= freeze
+                    and freeze_surround_shell(grove, freeze)
+                ):
+                    shell_frozen.add(grove_idx)
+                    logger.info(
+                        "[Shell freeze] Cycle %d: %s (r%s) reached %.1f m -- "
+                        "surround shell fixed at %.1f m from here on",
+                        cycle,
+                        species_name,
+                        _r[0] if _r else "?",
+                        height,
+                        freeze,
+                    )
 
                 # Find the lowest uncaptured milestone up to current height
                 curr_milestone = math.floor(height / height_interval) * height_interval

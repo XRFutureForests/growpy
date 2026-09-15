@@ -29,6 +29,25 @@ class TestGrowPyConfigDefaults:
         assert config.get_random_seed(None) == 512
         assert GrowPyConfig().get_random_seed("norway_spruce") == 42
 
+    def test_surround_freeze_height_is_off_unless_configured(self):
+        assert GrowPyConfig().get_surround_freeze_height("norway_spruce") == 0.0
+        config = GrowPyConfig(
+            surround_freeze_height=12.0,
+            surround_freeze_height_per_species={"norway_spruce": 15.0},
+        )
+        assert config.get_surround_freeze_height("Norway spruce") == 15.0
+        assert config.get_surround_freeze_height("european_beech") == 12.0
+
+    def test_surround_freeze_height_loads_from_toml(self, tmp_path):
+        (tmp_path / "surround.toml").write_text(
+            "[surround]\nfreeze_height = 0.0\n"
+            "[surround.freeze_height_per_species]\nsilver_fir = 15.0\n"
+        )
+        config = GrowPyConfig.from_toml(tmp_path, set_as_global=False)
+        assert config.surround_freeze_height == 0.0
+        assert config.get_surround_freeze_height("silver_fir") == 15.0
+        assert config.get_surround_freeze_height("european_oak") == 0.0
+
     def test_default_csv_file(self):
         config = GrowPyConfig()
         assert config.csv_file == Path("data/input/test.csv")

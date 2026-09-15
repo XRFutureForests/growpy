@@ -209,6 +209,8 @@ class GrowPyConfig:
             "measurement in config, not on a command line"
         ),
         "surround_grow_per_species": "nested dict structure, config-only by design",
+        "surround_freeze_height": "scenario-level setting, config-only by design",
+        "surround_freeze_height_per_species": "nested dict, config-only by design",
         "surround_density_per_species": "nested dict structure, config-only by design",
         "surround_density_per_species_radius": (
             "nested dict structure, config-only by design: each entry records a "
@@ -507,6 +509,15 @@ class GrowPyConfig:
     # under sustained shade instead of narrowing. Conifers therefore keep
     # grow = false; broadleaves get true.
     surround_grow_per_species: dict[str, bool] = field(default_factory=dict)
+    # Height (m) at which a GROWING shell stops rising and becomes a static
+    # wall the tree can overtop; 0 disables. Measured 2026-09-15 at density
+    # 0.75 / grow = true: norway_spruce, silver_fir and douglas_fir fold
+    # between 15 and 20 m at every seed tried (512, 999, 7 -- identical h15
+    # stops, identical DBH), while the same species under a static shell run
+    # the full ladder. A crown that emerges from a closed canopy is no longer
+    # shaded from the side, which is what the freeze reproduces.
+    surround_freeze_height: float = 0.0
+    surround_freeze_height_per_species: dict[str, float] = field(default_factory=dict)
     # Per-species shell density, for when one global value cannot serve the
     # set. The motivating case was measured BEFORE surround_grow_per_species
     # existed: at density 0.45 european_beech carried a 27.5 m crown at r08 --
@@ -1066,6 +1077,12 @@ class GrowPyConfig:
             kwargs["surround_grow_per_species"] = {
                 str(k): bool(v) for k, v in surr["grow_per_species"].items()
             }
+        if "freeze_height" in surr:
+            kwargs["surround_freeze_height"] = float(surr["freeze_height"])
+        if "freeze_height_per_species" in surr:
+            kwargs["surround_freeze_height_per_species"] = {
+                str(k): float(v) for k, v in surr["freeze_height_per_species"].items()
+            }
 
         # Warn about unrecognized top-level sections (usually a typo in the TOML);
         # such sections are otherwise silently ignored and defaults are used.
@@ -1198,6 +1215,21 @@ class GrowPyConfig:
             if key in self.surround_density_per_species:
                 return self.surround_density_per_species[key]
         return self.surround_density
+
+    def get_surround_freeze_height(self, species: str) -> float:
+        """Height (m) at which this species' growing shell is frozen; 0 = never.
+
+        Resolves ``[surround.freeze_height_per_species]`` first, falling back
+        to the global ``[surround] freeze_height``. Accepts a common name or a
+        standardized one.
+        """
+        from growpy.utils.naming import standardize_species_name
+
+        if self.surround_freeze_height_per_species:
+            key = standardize_species_name(species)
+            if key in self.surround_freeze_height_per_species:
+                return self.surround_freeze_height_per_species[key]
+        return self.surround_freeze_height
 
     def get_surround_grow(self, species: str) -> bool:
         """Whether the surround shell tracks this species' height.

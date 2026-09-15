@@ -140,3 +140,26 @@ def disable_surround(grove: gc.Grove) -> bool:
     props.surround_enabled = False
     grove.set_properties(props)
     return True
+
+
+def freeze_surround_shell(grove: gc.Grove, height: float) -> bool:
+    """Stop a growing Surround shell and fix it at ``height`` metres.
+
+    Called mid-simulation once the tree reaches the freeze height
+    (``[surround] freeze_height``): the shell that has grown with the tree so
+    far turns into a static wall the tree can overtop, the way a crown
+    emerging from a closed canopy stops being shaded from the side. A grove
+    with Surround off or already static is left untouched.
+
+    Returns:
+        True if the shell was frozen by this call, False otherwise.
+    """
+    props = grove.get_properties()
+    if not hasattr(props, "surround_enabled"):
+        return False
+    if not props.surround_enabled or not props.surround_grow:
+        return False
+    props.surround_grow = False
+    props.surround_height = float(height)
+    grove.set_properties(props)
+    return True
