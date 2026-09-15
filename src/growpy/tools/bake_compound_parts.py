@@ -84,12 +84,12 @@ DEFAULT_WELD_AREA_M2 = 0.01
 MANIFEST_SCHEMA = 1
 
 
-def _twig_variants(species: str) -> list[tuple[Path, float]]:
-    """Every converted ``*_static.usda`` of the species' twig with its leaf area.
+def _twig_variants(species: str) -> list[tuple[Path, float, int]]:
+    """Every converted ``*_static.usda`` of the species' twig: path, leaf area, faces.
 
-    Leaf area comes from the wood-corrected ``_leaf_area_geom.json`` sidecar
-    the converter writes beside each variant (XRFF-274); a variant without one
-    is skipped rather than guessed at.
+    Leaf area and face count come from the wood-corrected
+    ``_leaf_area_geom.json`` sidecar the converter writes beside each variant
+    (XRFF-274); a variant without one is skipped rather than guessed at.
     """
     from growpy.config.paths import get_twig_files_by_type
 
@@ -104,14 +104,33 @@ def _twig_variants(species: str) -> list[tuple[Path, float]]:
                 "%s: no leaf-area sidecar for %s, skipping", species, static.name
             )
             continue
-        area = float(json.loads(sidecar.read_text(encoding="utf-8"))["leaf_area_m2"])
+        data = json.loads(sidecar.read_text(encoding="utf-8"))
+        area = float(data["leaf_area_m2"])
+        faces = int(data.get("total_faces", 0))
         if area > 0.0:
-            variants.append((static, area))
+            variants.append((static, area, faces))
     return variants
 
 
-def resolve_weld_twig(species: str, weld_area_m2: float) -> tuple[Path, float]:
-    """The twig variant welded into every part: nearest ``weld_area_m2`` in leaf area.
+# A welded twig above this many faces makes a 40-twig part several million
+# faces: the Scots pine sprays convert to 83-172k faces at the global 0.25 mm
+# edge target and gave 0.3-1.7 GB parts on 2026-09-15, where the fir's 8.7k-face
+# sub-spray gives Epic's 0.1-0.7 M. Variants above it are only welded when
+# nothing lighter exists.
+DEFAULT_MAX_TWIG_FACES = 40_000
+
+
+def resolve_weld_twig(
+    species: str,
+    weld_area_m2: float,
+    max_twig_faces: int = DEFAULT_MAX_TWIG_FACES,
+) -> tuple[Path, float]:
+    """The twig variant welded into every part.
+
+    Nearest ``weld_area_m2`` in leaf area among the variants at or under
+    ``max_twig_faces``; if every variant is heavier, the lightest one, with a
+    warning -- the parts will be heavy and the twig's conversion profile
+    (``[twigs.boundary_edge_mm_per_twig]``) is the fix.
 
     Raises:
         FileNotFoundError: If the species has no converted twig with a
@@ -123,7 +142,20 @@ def resolve_weld_twig(species: str, weld_area_m2: float) -> tuple[Path, float]:
             f"{species}: no converted twig variant with a _leaf_area_geom.json "
             f"sidecar under data/assets/twigs/ -- run growpy-convert-twigs first"
         )
-    return min(variants, key=lambda v: abs(v[1] - weld_area_m2))
+    light = [v for v in variants if v[2] <= max_twig_faces]
+    if not light:
+        static, area, faces = min(variants, key=lambda v: v[2])
+        logger.warning(
+            "%s: every twig variant is above %d faces (lightest %s at %d); the "
+            "parts will be heavy -- give the twig a coarser boundary_edge_mm",
+            species,
+            max_twig_faces,
+            static.name,
+            faces,
+        )
+        return static, area
+    static, area, _ = min(light, key=lambda v: abs(v[1] - weld_area_m2))
+    return static, area
 
 
 def choose_typical_members(

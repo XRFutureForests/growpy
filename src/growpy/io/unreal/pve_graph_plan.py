@@ -569,7 +569,9 @@ def plan_pve_graphs(
     triangle_cap: float = 120e6,
     nanite_shape_preservation: str = "VOXELIZE",
     collision_generation: str = "ALL_GENERATIONS",
+    import_all_palettes: bool = True,
     calibration_path: Path | None = None,
+    species: Sequence[str] | None = None,
 ) -> PVEGraphPlanResult:
     """Author graph scripts for every species in a finished forest export.
 
@@ -595,7 +597,10 @@ def plan_pve_graphs(
             where only the instance count matters.
         collision_generation: ``ALL_GENERATIONS`` by default (owner,
             2026-09-15) -- trunk and branches collide in VR.
+        import_all_palettes: Stage every baked palette tier of each species
+            in the asset script, not only the one its graphs name.
         calibration_path: Override for the tracked calibration file.
+        species: Standardized names to plan; None plans every species found.
 
     Returns:
         What was planned, including a ``skipped`` line per tree left out.
@@ -603,6 +608,7 @@ def plan_pve_graphs(
     from growpy.config.paths import get_species_growth_habit
     from growpy.config.pve_calibration import load_pve_calibration
     from growpy.io.unreal.pve_asset_script import (
+        PALETTE_SOURCES,
         PVEAssetPlan,
         build_species_asset_spec,
         generate_pve_asset_script,
@@ -610,6 +616,14 @@ def plan_pve_graphs(
     from growpy.io.unreal.pve_offline_solve import mean_triangles_per_prototype
 
     discovered = discover_growth_jsons(forest_root)
+    if species is not None:
+        wanted = set(species)
+        unknown = wanted - set(discovered)
+        if unknown:
+            logger.warning(
+                "no growth JSONs under %s for %s", forest_root, sorted(unknown)
+            )
+        discovered = {k: v for k, v in discovered.items() if k in wanted}
     if not discovered:
         logger.info("No growth JSONs under %s -- nothing to author", forest_root)
         return PVEGraphPlanResult()
@@ -638,7 +652,26 @@ def plan_pve_graphs(
             skipped.append(f"{species}: {err}")
             continue
 
-        asset_specs.append(assets)
+        # The graph names only the chosen palette's parts, but the import
+        # stages every tier the pipeline baked for the species, so switching
+        # a species to its other palette is a plan change and a click, not a
+        # re-import.
+        import_spec = assets
+        if import_all_palettes:
+            for other in PALETTE_SOURCES:
+                if other == species_cal.palette:
+                    continue
+                try:
+                    extra = build_species_asset_spec(
+                        species, content_root=content_root, palette=other
+                    )
+                except FileNotFoundError as err:
+                    logger.info("%s: no %s palette to stage (%s)", species, other, err)
+                    continue
+                import_spec = dataclasses.replace(
+                    import_spec, prototypes=import_spec.prototypes + extra.prototypes
+                )
+        asset_specs.append(import_spec)
         mesh_prefix = f"SK_{assets.content_folder.rsplit('/', 1)[-1]}"
         triangles = species_cal.palette_flat_mean_triangles
         if triangles is None:

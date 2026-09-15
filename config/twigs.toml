@@ -118,3 +118,12 @@ PacificSilverFirTwigD = 2.0
 PacificSilverFirTwigE = 2.0
 PacificSilverFirTwigF = 2.0
 PacificSilverFirTwigG = 2.0
+# Scots pine, same reason (2026-09-15): at the global 0.25 its five sprays
+# convert to 83-172k faces each (5.2M faces/m2, 5x the fir at 2.0), which made
+# every compound part welded from them 0.3-1.7 GB and would make every placed
+# spray on a pine 10x a fir's. 2.0 lands them near the fir's 1M faces/m2.
+ScotsPineTwig = 2.0
+ScotsPineVariationATwig = 2.0
+ScotsPineVariationBTwig = 2.0
+ScotsPineVariationCApicalTwig = 2.0
+ScotsPineVariationCLateralTwig = 2.0
