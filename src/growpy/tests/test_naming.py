@@ -4,6 +4,7 @@ import pytest
 
 from growpy.utils.naming import (
     camel_to_snake,
+    filename_safe_species_slug,
     standardize_species_name,
     standardize_twig_name,
 )
@@ -71,6 +72,16 @@ class TestStandardizeSpeciesName:
 
     def test_hyphens(self):
         assert standardize_species_name("some-species") == "some_species"
+
+
+class TestFilenameSafeSpeciesSlug:
+    def test_hyphenated_common_name_matches_export_dir(self):
+        # The stale-export clean in forest_stages must land on the directory
+        # the export writes; the lookup table's one hyphenated name is the case
+        # that used to miss ("small-leaved_linden" vs "small_leaved_linden").
+        slug = filename_safe_species_slug("Small-leaved linden")
+        assert slug == "small_leaved_linden"
+        assert slug == standardize_species_name("Small-leaved linden")
 
 
 class TestStandardizeTwigName:

@@ -5,6 +5,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-09-15 — shell densities decided; the summariser gates on crown base, per seed
+
+#### Changed
+
+- **All 11 `[surround.density_per_species]` values re-fitted from the r08/r16 sweeps**
+  (conifers under the static shell): spruce / fir / pine 0.95, douglas 0.85, birch 0.70
+  (three seeds), beech 0.75, ash / oak / maple 0.55, linden / cherry 0.75. The previous
+  values were the 2026-08-28 growing-shell fits and had never been replaced by the sweep,
+  so the 2026-09-14 catalog ran at them; regenerated at the new values the same day.
+- `growpy-summarise-surround-density` groups arms by **seed** (a density passes only when
+  every seed passes; `n` and the ratio range are printed; `--min-seeds`), refuses to rank
+  a single-seed broadleaf on the crown-ø axis, and its default `--gate-axis` is now
+  **`base`**: r08's crown base must sit above r16's. The crown base was the sign-stable
+  radius axis in every sweep (31/31 static-conifer cells, 6/6 seeded birch cells), where
+  crown width flips with the seed. `habit` keeps the old broadleaf-DBH / conifer-crown-ø
+  split for re-reading earlier verdicts.
+
+#### Fixed
+
+- The stale-export clean at the start of step 4 derived the species directory with its
+  own normalisation that kept hyphens, so "Small-leaved linden" cleaned
+  `small-leaved_linden/` (absent) and the export's `small_leaved_linden/` was never
+  emptied: every re-run at a new density left the old DBH-named assemblies behind and
+  the run summary counted them (10 for 6 produced). Now uses the export's own slug.
+
 ### 2026-08-04 → 2026-09-14, condensed (186 commits on `dev`)
 
 No entries were written during this period; this block summarises it by theme. Commit

@@ -930,13 +930,12 @@ def generate_forest_stages(
     instances_dir.mkdir(parents=True, exist_ok=True)
     has_radius_col = "surround_radius" in forest_data.columns
     for sp in forest_data["species"].unique():
-        sp_dir_name = (
-            "".join(c for c in sp if c.isalnum() or c in (" ", "-", "_"))
-            .strip()
-            .replace(" ", "_")
-            .lower()
-        )
-        sp_dir = output_dir / sp_dir_name
+        # Same slug the export uses below, or the clean misses the directory: the
+        # inline normalisation this replaced kept hyphens, so "Small-leaved
+        # linden" cleaned `small-leaved_linden/` (absent) while the export wrote
+        # `small_leaved_linden/`, and every re-run at a new density left the old
+        # DBH-named assemblies behind (10 counted for 6 produced, 2026-09-15).
+        sp_dir = output_dir / filename_safe_species_slug(sp)
         if has_radius_col:
             for radius in forest_data.loc[
                 forest_data["species"] == sp, "surround_radius"
