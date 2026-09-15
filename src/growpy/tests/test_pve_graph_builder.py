@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 
 from growpy.io.unreal.pve_graph_builder import (
+    DEFAULT_SAPLING_WIND_SETTINGS,
+    DEFAULT_TREE_WIND_SETTINGS,
     DistributorSpec,
     FoliageVectorSpec,
     JitterSpec,
@@ -194,6 +196,25 @@ class TestPVEGraphSpec:
             _graph(nanite_shape_preservation="SMOOTH")
 
 
+class TestTreeChainSpec:
+    def test_defaults_to_the_tree_wind_preset(self):
+        # What the engine's own constructor would load; explicit so it is
+        # visible in the plan and checked by the script's preflight.
+        assert _chain().wind_settings == DEFAULT_TREE_WIND_SETTINGS
+        assert DEFAULT_TREE_WIND_SETTINGS.startswith("/ProceduralVegetationEditor/")
+        assert DEFAULT_SAPLING_WIND_SETTINGS != DEFAULT_TREE_WIND_SETTINGS
+
+    def test_rejects_an_empty_wind_asset(self):
+        # A null WindSettings exports bone chains with no simulation groups.
+        with pytest.raises(ValueError, match="wind_settings"):
+            TreeChainSpec(
+                growth_json=Path("t.json"),
+                mesh_name="SK_X",
+                distributor=DistributorSpec(branch_density=3),
+                wind_settings="",
+            )
+
+
 class TestGenerateScript:
     def test_writes_a_runnable_script(self, tmp_path):
         path = generate_pve_graph_builder_script(tmp_path, [_graph()])
@@ -212,6 +233,24 @@ class TestGenerateScript:
         assert "'branch_density': 42" in body
         assert "'single_bud_tip': True" in body
         assert "'axil_angle_ramp': '(EditorCurveData=" in body
+
+    def test_the_wind_asset_is_set_checked_and_read_back(self, tmp_path):
+        chain = TreeChainSpec(
+            growth_json=Path("t.json"),
+            mesh_name="SK_Sapling",
+            distributor=DistributorSpec(branch_density=3),
+            wind_settings=DEFAULT_SAPLING_WIND_SETTINGS,
+        )
+        path = generate_pve_graph_builder_script(tmp_path, [_graph(chains=(chain,))])
+        body = path.read_text(encoding="utf-8")
+        assert f"'wind_settings': '{DEFAULT_SAPLING_WIND_SETTINGS}'" in body
+        # Preflight refuses before anything is built, and the write is read
+        # back: the constructor pre-fills the TREE preset, so a dropped write
+        # would otherwise pass for success on every non-sapling chain.
+        preflight, build = body.split("def build(spec):", 1)
+        assert 'chain["wind_settings"]' in preflight
+        assert 'settings.set_editor_property("wind_settings", wind)' in build
+        assert 'written.get_editor_property("wind_settings")' in build
 
     def test_ramp_keys_reach_the_script_in_order(self, tmp_path):
         chain = _chain("SK_x", density=3)

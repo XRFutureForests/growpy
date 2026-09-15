@@ -75,6 +75,19 @@ establish. They are defaults here so no caller has to rediscover them.
   Spiral is a no-op; the formation angle is what varies (Distichous 180 degrees,
   Octastichous 135, and so on).
 
+* **``wind_settings`` is set explicitly, though the engine would fill it.**
+  ``UPVExportSettings()`` runs ``FPVExportParams::Initialize`` for every new
+  non-default node -- a Python ``add_node_of_type`` included -- and that loads
+  ``DefaultTreeWindSettings``. Verified by T3D on the r08 h05/h15 exports of
+  2026-09-15: every one carries ``DynamicWindSkeletalData`` with the tree
+  preset's three groups (0.6 trunk / 0.6 / 0.6). So an unset field is not
+  "no wind"; it is the tree preset on every tier, saplings included. Naming
+  the asset here makes the tier rule the plan applies (sapling preset for the
+  h05 tier, XRFF-461) and any per-species override (XRFF-235) visible in the
+  generated script and checked by its preflight, and it holds if a future
+  plugin drops the constructor default -- a null ``WindSettings`` exports bone
+  chains with no simulation groups, which is a tree that cannot sway.
+
 Each Export node needs one manual click in the editor -- the export is modal --
 but a graph with N chains yields N meshes per click, so a whole species costs a
 handful of clicks rather than one per tree.
@@ -100,7 +113,19 @@ __all__ = [
     "generate_pve_retune_script",
     "split_by_triangles",
     "write_coverage_manifest",
+    "DEFAULT_TREE_WIND_SETTINGS",
+    "DEFAULT_SAPLING_WIND_SETTINGS",
 ]
+
+# The plugin's own wind presets; every one of Epic's 43 MegaPlants trees
+# ships one of these or a per-species PVWindSettings asset. The sapling preset
+# differs from the tree one only in having no trunk group.
+DEFAULT_TREE_WIND_SETTINGS = (
+    "/ProceduralVegetationEditor/SampleAssets/WindSettings/DefaultTreeWindSettings"
+)
+DEFAULT_SAPLING_WIND_SETTINGS = (
+    "/ProceduralVegetationEditor/SampleAssets/WindSettings/DefaultSaplingWindSettings"
+)
 
 # Enum members as the UE Python API spells them.
 _FACE_VECTORS = frozenset(
@@ -276,15 +301,25 @@ class DistributorSpec:
 
 @dataclass(frozen=True)
 class TreeChainSpec:
-    """One tree: a growth JSON in, one exported mesh out."""
+    """One tree: a growth JSON in, one exported mesh out.
+
+    ``wind_settings`` is the ``PVWindSettings`` asset the Export node assigns;
+    the plan picks it by height tier (see :mod:`~growpy.io.unreal.pve_graph_plan`).
+    """
 
     growth_json: Path
     mesh_name: str
     distributor: DistributorSpec
+    wind_settings: str = DEFAULT_TREE_WIND_SETTINGS
 
     def __post_init__(self) -> None:
         if not self.mesh_name:
             raise ValueError("mesh_name must not be empty")
+        if not self.wind_settings:
+            raise ValueError(
+                f"chain {self.mesh_name!r} names no wind_settings asset; a null "
+                "WindSettings exports a tree with no simulation groups"
+            )
 
 
 @dataclass(frozen=True)
@@ -383,6 +418,7 @@ def _graph_payload(graph: PVEGraphSpec) -> dict:
             {
                 "growth_json": str(Path(c.growth_json).resolve()).replace("\\", "/"),
                 "mesh_name": c.mesh_name,
+                "wind_settings": c.wind_settings,
                 "branch_density": c.distributor.branch_density,
                 "spacing_basis": c.distributor.spacing_basis,
                 "relative_start": c.distributor.relative_start,
@@ -456,6 +492,9 @@ def preflight():
                 missing.append("palette mesh %s" % path)
         if not eal.does_asset_exist(spec["bark_material"]):
             missing.append("bark material %s" % spec["bark_material"])
+        for chain in spec["chains"]:
+            if not eal.does_asset_exist(chain["wind_settings"]):
+                missing.append("wind settings %s" % chain["wind_settings"])
     if missing:
         for item in sorted(set(missing)):
             print("MISSING: %s" % item)
@@ -463,10 +502,12 @@ def preflight():
             "%d Content Browser asset(s) missing. Run the companion asset "
             "script first -- growpy_pve_assets.py, beside this file -- which "
             "imports the twig palette and builds the bark material. A graph "
-            "names both by path and cannot build without them."
+            "names both by path and cannot build without them. A missing wind "
+            "preset means the ProceduralVegetationEditor plugin content is not "
+            "mounted."
             % len(set(missing))
         )
-    print("preflight: palette and bark present for %d graph(s)" % len(GRAPHS))
+    print("preflight: palette, bark and wind present for %d graph(s)" % len(GRAPHS))
 
 
 preflight()
@@ -771,7 +812,23 @@ def build(spec):
                 unreal.NaniteShapePreservation, spec["nanite_shape_preservation"]
             ),
         )
+        wind = eal.load_asset(chain["wind_settings"])
+        if wind is None:
+            raise RuntimeError(
+                "wind settings %s did not resolve" % chain["wind_settings"]
+            )
+        settings.set_editor_property("wind_settings", wind)
         export_settings.set_editor_property("export_settings", settings)
+        # Read back: the constructor already put the TREE preset here, so a
+        # dropped write would look exactly like success on every non-h05 chain.
+        written = export_settings.get_editor_property("export_settings")
+        got = written.get_editor_property("wind_settings")
+        got_path = got.get_path_name().split(".")[0] if got is not None else None
+        if got_path != chain["wind_settings"]:
+            raise RuntimeError(
+                "%s: wind_settings read back as %s, wanted %s"
+                % (chain["mesh_name"], got_path, chain["wind_settings"])
+            )
 
         for src, src_pin, dst, dst_pin in (
             (import_node, "Out", mesh_node, "In"),

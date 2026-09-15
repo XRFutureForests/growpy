@@ -43,6 +43,9 @@ __all__ = [
     "ResolvedDensity",
     "SpeciesCalibration",
     "TreeCalibration",
+    "TwigJitter",
+    "TwigPose",
+    "WindPresets",
     "load_pve_calibration",
 ]
 
@@ -189,6 +192,29 @@ class TwigPose:
 
 
 @dataclass(frozen=True)
+class WindPresets:
+    """Which ``PVWindSettings`` asset a species' Export nodes carry, per tier.
+
+    ``None`` means the plugin preset for that tier (the plan supplies it):
+    ``DefaultSaplingWindSettings`` for the h05 tier, ``DefaultTreeWindSettings``
+    above. A species that needs its own asset (XRFF-235) names it here; the
+    tier split stays. Wind is a post-export annotation -- it changes no
+    placement, so densities are unaffected.
+    """
+
+    tree: str | None = None
+    sapling: str | None = None
+
+    def __post_init__(self) -> None:
+        for tier, value in (("tree", self.tree), ("sapling", self.sapling)):
+            if value is not None and not value.startswith("/"):
+                raise ValueError(
+                    f"wind.{tier} must be a package path such as "
+                    f"/Game/PVE/Wind/WS_x, got {value!r}"
+                )
+
+
+@dataclass(frozen=True)
 class SpeciesCalibration:
     """Every calibrated tree of one species, plus the settings they share."""
 
@@ -205,6 +231,7 @@ class SpeciesCalibration:
     forrester_model_id: str | None = None
     law: DensityLaw | None = None
     pose: TwigPose = TwigPose()
+    wind: WindPresets = WindPresets()
 
     def __post_init__(self) -> None:
         if not self.trees:
@@ -345,6 +372,15 @@ def _pose(data: dict[str, Any] | None) -> TwigPose:
     )
 
 
+def _wind(data: dict[str, Any] | None) -> WindPresets:
+    if not data:
+        return WindPresets()
+    return WindPresets(
+        tree=None if data.get("tree") is None else str(data["tree"]),
+        sapling=None if data.get("sapling") is None else str(data["sapling"]),
+    )
+
+
 def _species(name: str, data: dict[str, Any]) -> SpeciesCalibration:
     relative_start = float(data.get("relative_start", 0.0))
     # Defaults to the species' own relative_start: a history with no recorded
@@ -372,6 +408,7 @@ def _species(name: str, data: dict[str, Any]) -> SpeciesCalibration:
         forrester_model_id=data.get("forrester_model_id"),
         law=_law(data.get("law")),
         pose=_pose(data.get("pose")),
+        wind=_wind(data.get("wind")),
     )
 
 

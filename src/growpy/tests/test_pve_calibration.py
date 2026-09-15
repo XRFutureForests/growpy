@@ -18,6 +18,7 @@ from growpy.config.pve_calibration import (
     TreeCalibration,
     TwigJitter,
     TwigPose,
+    WindPresets,
     load_pve_calibration,
 )
 from growpy.io.unreal.pve_graph_builder import (
@@ -364,6 +365,36 @@ class TestValidation:
     def test_a_missing_file_is_refused(self, tmp_path):
         with pytest.raises(FileNotFoundError):
             load_pve_calibration(tmp_path / "absent.toml")
+
+
+class TestWindPresets:
+    def test_a_species_without_a_wind_section_defers_to_the_plugin_presets(self):
+        # None per tier: the plan supplies DefaultSapling/DefaultTreeWindSettings.
+        assert _species().wind == WindPresets()
+        assert _species().wind.tree is None and _species().wind.sapling is None
+
+    def test_no_shipped_species_overrides_the_plugin_presets_yet(self, shipped):
+        # XRFF-235 is where a per-species asset would land. Until then a wind
+        # block in the tracked file would be a silent change to every export.
+        for species in shipped.species.values():
+            assert species.wind == WindPresets(), species.species
+
+    def test_an_override_is_read_per_tier(self, tmp_path):
+        path = tmp_path / "pve_calibration.toml"
+        path.write_text(
+            CALIBRATION_TOML.read_text(encoding="utf-8")
+            + "\n[pve_calibration.species.silver_fir.wind]\n"
+            + 'tree = "/Game/PVE/Wind/WS_Fir"\n',
+            encoding="utf-8",
+        )
+        wind = load_pve_calibration(path).for_species("silver_fir").wind
+        assert wind == WindPresets(tree="/Game/PVE/Wind/WS_Fir", sapling=None)
+
+    def test_a_bare_asset_name_is_refused(self):
+        # The builder loads it by package path; a bare name resolves to nothing
+        # and the preflight would fail a whole run over a typo here.
+        with pytest.raises(ValueError, match="package path"):
+            WindPresets(sapling="WS_Sapling")
 
 
 class TestRoundTripToGeneratedScript:

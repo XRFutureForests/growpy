@@ -15,8 +15,10 @@ from pathlib import Path
 
 import pytest
 
-from growpy.config.pve_calibration import load_pve_calibration
+from growpy.config.pve_calibration import WindPresets, load_pve_calibration
 from growpy.io.unreal.pve_graph_builder import (
+    DEFAULT_SAPLING_WIND_SETTINGS,
+    DEFAULT_TREE_WIND_SETTINGS,
     DistributorSpec,
     PVEGraphSpec,
     TreeChainSpec,
@@ -28,6 +30,7 @@ from growpy.io.unreal.pve_graph_plan import (
     discover_growth_jsons,
     plan_pve_graphs,
     tree_id_for,
+    wind_settings_for,
 )
 
 SPECIES_TITLES = {"european_beech": "European_Beech", "silver_fir": "Silver_Fir"}
@@ -95,6 +98,27 @@ class TestDiscovery:
     def test_unrelated_json_is_ignored(self, forest_root):
         (forest_root / "european_beech" / "r05" / "notes.json").write_text("{}")
         assert len(discover_growth_jsons(forest_root)["european_beech"]) == 15
+
+
+class TestWindTier:
+    def test_five_metres_and_under_is_a_sapling(self):
+        assert wind_settings_for("r08_h05m") == DEFAULT_SAPLING_WIND_SETTINGS
+        assert wind_settings_for("r20_h05m") == DEFAULT_SAPLING_WIND_SETTINGS
+        assert wind_settings_for("r08_h10m") == DEFAULT_TREE_WIND_SETTINGS
+        assert wind_settings_for("r05_h25m") == DEFAULT_TREE_WIND_SETTINGS
+
+    def test_a_species_override_replaces_its_own_tier_only(self):
+        # XRFF-235 will give species their own PVWindSettings; the tier split
+        # stays, because a 15 m tree on the sapling preset sways from the root.
+        presets = WindPresets(tree="/Game/PVE/Wind/WS_Fir")
+        assert wind_settings_for("r08_h15m", presets) == "/Game/PVE/Wind/WS_Fir"
+        assert wind_settings_for("r08_h05m", presets) == DEFAULT_SAPLING_WIND_SETTINGS
+
+    def test_an_id_without_a_height_is_refused(self):
+        # Never a guess: the tree preset on a sapling is the silent default
+        # this whole rule exists to replace.
+        with pytest.raises(ValueError, match="height token"):
+            wind_settings_for("tree_0001")
 
 
 class TestSplitByTriangles:
@@ -329,6 +353,28 @@ class TestPlanEndToEnd:
             nanite_shape_preservation="NONE",
         )
         assert all(g.nanite_shape_preservation == "NONE" for g in plan.graphs)
+
+    def test_the_h05_tier_ships_sapling_wind_and_the_rest_tree_wind(
+        self, tmp_path, forest_root
+    ):
+        # XRFF-461 (2026-09-15). The Export node's constructor pre-fills the
+        # tree preset on every node, saplings included; the plan is where the
+        # tier is known, so the plan is where the split is applied.
+        plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
+        by_tree = {c.mesh_name: c.wind_settings for g in plan.graphs for c in g.chains}
+        assert by_tree["SK_SilverFir_r08_h05m"] == DEFAULT_SAPLING_WIND_SETTINGS
+        assert by_tree["SK_EuropeanBeech_r20_h05m"] == DEFAULT_SAPLING_WIND_SETTINGS
+        assert by_tree["SK_EuropeanBeech_r08_h10m"] == DEFAULT_TREE_WIND_SETTINGS
+        assert by_tree["SK_SilverFir_r20_h25m"] == DEFAULT_TREE_WIND_SETTINGS
+        tiers = {name.rsplit("_", 1)[1] for name in by_tree}
+        assert tiers == {"h05m", "h10m", "h15m", "h25m"}
+        for name, asset in by_tree.items():
+            expected = (
+                DEFAULT_SAPLING_WIND_SETTINGS
+                if name.endswith("_h05m")
+                else DEFAULT_TREE_WIND_SETTINGS
+            )
+            assert asset == expected, name
 
     def test_the_profile_pin_comes_from_the_calibration(self, tmp_path, forest_root):
         # Half a contract each: the pin and profile_mean must agree, and

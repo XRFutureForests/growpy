@@ -32,6 +32,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from growpy.io.unreal.pve_graph_builder import (
+    DEFAULT_SAPLING_WIND_SETTINGS,
+    DEFAULT_TREE_WIND_SETTINGS,
     DistributorSpec,
     FoliageVectorSpec,
     JitterSpec,
@@ -44,7 +46,7 @@ from growpy.io.unreal.pve_graph_builder import (
 )
 
 if TYPE_CHECKING:
-    from growpy.config.pve_calibration import SpeciesCalibration
+    from growpy.config.pve_calibration import SpeciesCalibration, WindPresets
 
 logger = logging.getLogger(__name__)
 
@@ -54,10 +56,20 @@ __all__ = [
     "discover_growth_jsons",
     "plan_pve_graphs",
     "tree_id_for",
+    "wind_settings_for",
 ]
 
 _RADIUS = re.compile(r"^r\d+$")
 _HEIGHT = re.compile(r"_(h\d+m)_")
+_TREE_ID_HEIGHT = re.compile(r"_h(\d+)m$")
+
+# The h05 tier ships the sapling wind preset (no trunk group -- the whole
+# plant sways), everything taller the tree preset. Epic's own split is per
+# graph, not per height: its sapling graphs top out at 5.7 m and its beech
+# C/D (5.7 / 7.9 m) also take the sapling preset, while its 5 m aspen D takes
+# the tree one. A height cut is the nearest rule a per-tree pipeline can
+# apply; XRFF-235 can move it per species through the calibration.
+SAPLING_MAX_HEIGHT_M = 5
 
 GROWTH_JSON_SUFFIX = "_growth_data.json"
 
@@ -140,6 +152,29 @@ def discover_growth_jsons(forest_root: Path) -> dict[str, list[GrowthJson]]:
     return found
 
 
+def wind_settings_for(tree_id: str, presets: WindPresets | None = None) -> str:
+    """The ``PVWindSettings`` asset a tree's Export node carries.
+
+    Reads the height tier off the tree id (``r08_h05m`` -> 5 m). A species
+    override in ``presets`` replaces the plugin preset of its tier; the tier
+    rule itself is not overridable, because wind is a per-tree annotation and
+    a 15 m tree on the sapling preset would sway from the root.
+
+    Raises:
+        ValueError: If the tree id carries no readable height token.
+    """
+    match = _TREE_ID_HEIGHT.search(tree_id)
+    if not match:
+        raise ValueError(f"tree id {tree_id!r} carries no height token to tier by")
+    sapling = int(match.group(1)) <= SAPLING_MAX_HEIGHT_M
+    override = None
+    if presets is not None:
+        override = presets.sapling if sapling else presets.tree
+    if override:
+        return override
+    return DEFAULT_SAPLING_WIND_SETTINGS if sapling else DEFAULT_TREE_WIND_SETTINGS
+
+
 def _chain_for(
     entry: GrowthJson,
     calibration: SpeciesCalibration,
@@ -149,6 +184,7 @@ def _chain_for(
     return TreeChainSpec(
         growth_json=entry.path,
         mesh_name=f"{mesh_prefix}_{entry.tree_id}",
+        wind_settings=wind_settings_for(entry.tree_id, calibration.wind),
         distributor=DistributorSpec(
             branch_density=resolved.density,
             relative_start=calibration.relative_start,
