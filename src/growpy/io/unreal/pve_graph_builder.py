@@ -429,6 +429,10 @@ class DistributorSpec:
     jitter: tuple[JitterSpec, ...] = ()
     # None leaves the engine's ConditionSettings untouched (nothing active).
     conditions: ConditionSpec | None = None
+    # (start, end) branch generations this layer places on, inclusive, 1-based
+    # with the trunk = 1; None on a side leaves that limit off. The gate reads
+    # budDevelopment[0] of each branch's LAST point (XRFF-431).
+    generation_band: tuple[int | None, int | None] | None = None
 
     def __post_init__(self) -> None:
         if self.branch_density < 1:
@@ -462,6 +466,17 @@ class DistributorSpec:
             raise ValueError("face spec must be built with kind='face'")
         if self.aim is not None and self.aim.kind != "aim":
             raise ValueError("aim spec must be built with kind='aim'")
+        if self.generation_band is not None:
+            start, end = self.generation_band
+            if start is None and end is None:
+                raise ValueError("generation_band=(None, None) limits nothing")
+            if (start is not None and start < 1) or (end is not None and end < 1):
+                raise ValueError(
+                    f"generation_band is 1-based (trunk = 1), got "
+                    f"{self.generation_band}"
+                )
+            if start is not None and end is not None and start > end:
+                raise ValueError(f"generation_band start > end: {self.generation_band}")
 
 
 @dataclass(frozen=True)
@@ -575,6 +590,7 @@ def _vector_payload(spec: FoliageVectorSpec | None) -> dict | None:
         "blend_attribute": spec.blend_attribute,
     }
 
+
 def _palette_payload(palette: Sequence[PaletteEntry] | None) -> list | None:
     if palette is None:
         return None
@@ -601,8 +617,6 @@ def _conditions_payload(spec: ConditionSpec | None) -> dict | None:
     }
 
 
-
-
 def _graph_payload(graph: PVEGraphSpec) -> dict:
     return {
         "graph_name": graph.graph_name,
@@ -624,6 +638,11 @@ def _graph_payload(graph: PVEGraphSpec) -> dict:
                 "wind_settings": c.wind_settings,
                 "palette": _palette_payload(c.palette),
                 "conditions": _conditions_payload(c.distributor.conditions),
+                "generation_band": (
+                    list(c.distributor.generation_band)
+                    if c.distributor.generation_band is not None
+                    else None
+                ),
                 "branch_density": c.distributor.branch_density,
                 "spacing_basis": c.distributor.spacing_basis,
                 "relative_start": c.distributor.relative_start,
@@ -782,7 +801,6 @@ def apply_conditions(dist_settings, spec):
                 continue
         if not on:
             raise RuntimeError("condition %s did not activate on read-back" % name)
-
 
 
 preflight()
@@ -975,6 +993,23 @@ def build(spec):
         )
         setp(spacing, "relative_start", float(chain["relative_start"]))
         setp(spacing, "relative_end", float(chain["relative_end"]))
+        # Generation gating: both the limit flag and the bound, or the gate is
+        # off. budDevelopment[0] of a branch's last point is what it compares.
+        gen_start, gen_end = chain["generation_band"] or (None, None)
+        setp(
+            spacing,
+            ("limit_start_generation", "b_limit_start_generation"),
+            gen_start is not None,
+        )
+        if gen_start is not None:
+            setp(spacing, "start_generation", int(gen_start))
+        setp(
+            spacing,
+            ("limit_end_generation", "b_limit_end_generation"),
+            gen_end is not None,
+        )
+        if gen_end is not None:
+            setp(spacing, "end_generation", int(gen_end))
         parametric.set_editor_property("spacing_settings", spacing)
 
         phyllotaxy = parametric.get_editor_property("phyllotaxy_settings")

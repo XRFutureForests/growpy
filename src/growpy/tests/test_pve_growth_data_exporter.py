@@ -81,6 +81,38 @@ class TestBuildGrowthDataJson:
         assert prim_attrs["branchHierarchyNumber"]["values"] == [1, 2]
         assert data["primitives"]["points"] == [[0, 1, 2, 3], [2, 4, 5]]
 
+    def test_generation_is_the_branch_depth_and_the_attach_point_stays_the_parents(
+        self,
+    ):
+        # budDevelopment[0] is what StartGeneration/EndGeneration gate on, read
+        # off a branch's LAST point. A child's first point is the parent's
+        # point: PVE gives it to the parent (ForEachUniquePointOnBranches skips
+        # index 0 of a non-trunk branch), so writing it from the child would
+        # stamp the child's depth onto a parent whose tip carries a child.
+        points = [
+            (0.0, 0.0, 0.0),
+            (0.0, 0.0, 1.0),
+            (0.0, 0.0, 2.0),  # trunk tip, and the attach point of branch 1
+            (1.0, 0.0, 2.0),
+            (2.0, 0.0, 2.0),  # branch 1 tip, and the attach point of branch 2
+            (2.0, 1.0, 2.0),
+        ]
+        skel = _make_skeleton(
+            points=points, poly_lines=[[0, 1, 2], [2, 3, 4], [4, 5]]
+        )
+        data = build_growth_data_json(skel)
+        generation = [
+            v[0] for v in data["points"]["attributes"]["budDevelopment"]["values"]
+        ]
+        assert data["primitives"]["attributes"]["branchHierarchyNumber"]["values"] == [
+            1,
+            2,
+            3,
+        ]
+        # Trunk points 1, side branch interior 2, twig interior 3; the shared
+        # attach points 2 and 4 keep the depth of the branch they end.
+        assert generation == [1, 1, 1, 2, 2, 3]
+
     def test_branch_indices_rebased_to_zero(self):
         # Simulate Grove's global point indexing (offset starts at 10).
         points = [(0.0, 0.0, float(i)) for i in range(3)]

@@ -282,6 +282,34 @@ class TestConditionSpec:
             ConditionSpec(minimum_candidates=0)
 
 
+class TestGenerationBand:
+    def test_off_by_default_and_one_sided_bands_are_allowed(self):
+        assert DistributorSpec(branch_density=3).generation_band is None
+        assert DistributorSpec(branch_density=3, generation_band=(4, None))
+        assert DistributorSpec(branch_density=3, generation_band=(None, 2))
+
+    def test_rejects_an_empty_zero_based_or_inverted_band(self):
+        # The convention is 1-based with the trunk = 1 (Epic's own graphs and
+        # PVE's ComputeBudDevelopment: Generation = len(BranchParents)).
+        with pytest.raises(ValueError, match="limits nothing"):
+            DistributorSpec(branch_density=3, generation_band=(None, None))
+        with pytest.raises(ValueError, match="1-based"):
+            DistributorSpec(branch_density=3, generation_band=(0, 2))
+        with pytest.raises(ValueError, match="start > end"):
+            DistributorSpec(branch_density=3, generation_band=(3, 2))
+
+    def test_the_script_sets_the_flag_and_the_bound_together(self, tmp_path):
+        # StartGeneration without bLimitStartGeneration gates nothing.
+        chain = _chain("SK_Fill", density=3, generation_band=(3, None))
+        path = generate_pve_graph_builder_script(tmp_path, [_graph(chains=(chain,))])
+        body = path.read_text(encoding="utf-8")
+        assert "'generation_band': [3, None]" in body
+        build = body.split("def build(spec):", 1)[1]
+        assert '"limit_start_generation"' in build
+        assert 'setp(spacing, "start_generation", int(gen_start))' in build
+        assert '"limit_end_generation"' in build
+
+
 class TestGenerateScript:
     def test_writes_a_runnable_script(self, tmp_path):
         path = generate_pve_graph_builder_script(tmp_path, [_graph()])

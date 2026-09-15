@@ -537,15 +537,23 @@ def build_growth_data_json(
     # children 2, and so on, matching the 1-based `branchNumber` convention
     # used for parents/children.
     #
-    # NOTE this is the exporter's half only. Whether PVE's own
-    # AddGrowthMissingData recomputes branchHierarchyNumber on load, and whether
-    # its convention agrees with this one, is unverified -- get that wrong and
-    # generation gating selects nothing, which looks identical to the bug this
-    # replaces. Verify with two distributors on disjoint generation bands and
-    # confirm the instance counts split.
+    # A child's FIRST point is its attach point on the parent, shared with the
+    # parent's point list. PVE gives a shared point to the branch it is
+    # interior to -- ForEachUniquePointOnBranches skips index 0 of every
+    # non-trunk branch -- and the distributor reads a branch's generation off
+    # its LAST point (GetBranchGeneration, PVAttributesHelper.cpp:185-227).
+    # Writing the attach point from the child therefore stamped the child's
+    # generation onto the parent's tip wherever a child hung there: 93 of 1,015
+    # fir and 197 of 1,624 beech branches read one generation too deep, and a
+    # child dropped by decimation left its generation behind on the parent.
+    # Skip the attach point; the loader never recomputes budDevelopment
+    # (AddGrowthMissingData fills only pscale, lengths and hierarchy numbers),
+    # so what is written here is what the gate reads. Verified 2026-09-15 with
+    # two distributors on disjoint generation bands.
     for _b, _pts in enumerate(primitive_points):
         _gen = branch_hierarchy[_b] if _b < len(branch_hierarchy) else 1
-        for _p in _pts:
+        _first = 0 if branch_parent_number[_b] == 0 else 1
+        for _p in _pts[_first:]:
             if 0 <= _p < num_points:
                 development[_p][0] = int(_gen)
 
