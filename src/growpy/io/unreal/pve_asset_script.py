@@ -420,9 +420,18 @@ def reframe_prototype(mesh_path, part_path):
     x0, y0, z0, x1, y1, z1 = _bounds(src)
     # growpy puts the attachment at the origin and the shoot along +X; a
     # broadleaf's spread may exceed its length, so only the origin is checked.
-    if not x0 > -0.35 * (x1 - x0):
+    # An apical rosette (ash: leaves spread around the bud, X extent no longer
+    # than Y/Z) keeps its origin INSIDE the mesh in growpy's own frame, so only
+    # a shoot-shaped mesh with its origin away from the -X end is refused.
+    length = x1 - x0
+    end_anchored = x0 > -0.35 * length
+    rosette = length < 1.5 * max(y1 - y0, z1 - z0)
+    if not end_anchored and not rosette:
         return ("refusing to re-frame %s: origin is not at the -X end "
                 "(X %.2f..%.2f) -- not growpy's authoring frame" % (mesh_path, x0, x1))
+    if not end_anchored:
+        print("   rosette prototype (origin inside the mesh), re-framed as is: %s"
+              % mesh_path)
     dyn = unreal.DynamicMesh()
     lod = unreal.GeometryScriptMeshReadLOD()
     lod.set_editor_property("lod_type", unreal.GeometryScriptLODType.SOURCE_MODEL)
@@ -448,10 +457,12 @@ def reframe_prototype(mesh_path, part_path):
     part.set_editor_property(
         "static_materials", list(src.get_editor_property("static_materials")))
     eal.save_asset(part_path, only_if_is_dirty=False)
-    # Read back: the shoot must now run along +Z from the origin.
+    # Read back: the shoot must now run along +Z from the origin (a rosette
+    # only has to keep its length).
     px0, py0, pz0, px1, py1, pz1 = _bounds(eal.load_asset(part_path))
-    length_kept = abs((pz1 - pz0) - (x1 - x0)) < 0.01 * (x1 - x0) + 0.01
-    if not (pz0 > -0.35 * (pz1 - pz0) and length_kept):
+    length_kept = abs((pz1 - pz0) - length) < 0.01 * length + 0.01
+    anchored = pz0 > -0.35 * (pz1 - pz0) or not end_anchored
+    if not (anchored and length_kept):
         return ("re-framed part has the wrong extents: %s Z %.2f..%.2f"
                 % (part_path, pz0, pz1))
     return None
