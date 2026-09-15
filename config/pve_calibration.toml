@@ -409,6 +409,24 @@ fitted_on = "european_beech r05_h15m"
 reset_phyllotaxy = true
 axil_angle = 30.0
 
+# Scale-graded size ladder (XRFF-412, 2026-09-15). Every prototype advertises
+# a Scale target (per tree below, `scale_targets`, in ascending prototype-area
+# order: f e d c b a g foliage) and the distributor's Scale condition picks the
+# tier nearest a point's normalised radius, so the 0.09 m2 spray sits on the
+# thickest limbs and the 0.005 m2 sprays on the twigs. The main layer starts at
+# generation 2 (no sprays along the trunk); one apex layer (density 1, gen 1)
+# puts the largest spray on the leader. Settings measured on the six r08/r16
+# trees: the picker min-max normalises the distances across the palette, and
+# with six tiers within 0.004 of one another Epic's 0.3 / 2 draws six or seven
+# candidates for most samples; 0.1 / 1 picks the two big sprays by radius and
+# draws among the near-equal small ones at random.
+[pve_calibration.species.silver_fir.ladder]
+scale_weight = 1.0
+minimum_candidates = 1
+cutoff_threshold = 0.1
+apex = true
+main_generation_start = 2
+
 [pve_calibration.species.silver_fir.trees.r05_h05m]
 growth_json = "fir_r05_h05m_f060.json"
 fraction = 0.06
@@ -502,109 +520,129 @@ build_density = 86
 build_instances = 5654
 build_density_source = "offline"
 
-# r08 / r16 -- the 2026-09-14 dataset run (max_height 15), solved OFFLINE with
-# the validated distributor model (growpy.io.unreal.pve_distributor_model:
-# 13 of 14 logged (tree, density) pairs exact) against each tree's Forrester
-# target, then exported the same day through the pipeline route (/Game/PVE,
-# Voxelize): every one of the twelve landed on its predicted count exactly,
-# which is what the one-pair history records.
-# Fir h05 sits near the one-per-branch staircase (r16_h05m lands +4.7 %).
-# Chain self-check before solving: r05_h10m, r20_h15m and fir r10_h25m
-# re-derive from their JSONs to the recorded dbh, target and build_instances
-# exactly. These JSONs carry the tip-frame fix (46f9a03); the ones above do not.
+# r08 / r16 -- the dataset run as REGENERATED 2026-09-15 12:07-12:37 by the
+# surround-density sweep (config/surround.toml); the 2026-09-14 trees these
+# rows described until then (d08/d10/d17 and d09/d13/d19 cm) no longer exist
+# on disk, and their measured one-pair histories went with them (git history
+# has them). Solved OFFLINE for the Scale-graded ladder above with the
+# validated distributor model against each tree's Forrester target, dbh
+# re-derived from the JSON: main layer gen >= 2 at build_density plus one apex
+# instance, build_instances = main + 1. `instance_leaf_area_m2` is the expected
+# per-instance area under that grading (sum(mix_i * area_i) + apex) / n, so
+# target_instances = target_m2 / instance_leaf_area_m2. These JSONs carry the
+# generation fix (32e52ae).
+# CLICKED 2026-09-15 (PVG_Ladder_Probe, NONE): r08_h05m 270 and r08_h15m 1520
+# instances, both EXACT; per-tier counts off the assembly Nodes inside 3 sigma
+# everywhere and exact on every single-candidate tier (h15m: a 210, b 137,
+# g 178, foliage 192 -- the picker law is reproduced to the instance); one
+# apex spray on each leader (highest full spray 5.12 / 15.21 m = tree top);
+# leaf area 5.33 m2 (+3.8 %) and 30.47 m2 (-2.2 %) against Forrester. Those
+# two carry the click as history; the other four are the same solve, unclicked.
 
 [pve_calibration.species.silver_fir.trees.r08_h05m]
-growth_json = "Silver_Fir_r08_h05m_d08cm_full_growth_data.json"
+growth_json = "Silver_Fir_r08_h05m_d06cm_full_growth_data.json"
 fraction = 0.06
-dbh_cm = 8.26
-branches = 1015
-points = 5939
-s_ratio = 73.17
-source_height_m = 5.1709
-target_m2 = 8.79
-target_instances = 437
-history = [[19, 441]]
+dbh_cm = 6.22
+branches = 925
+points = 4599
+s_ratio = 55.79
+source_height_m = 5.1162
+target_m2 = 5.13
+target_instances = 264
+history = [[19, 270]]
 solved_density = 19
 build_density = 19
-build_instances = 441
+build_instances = 270
 build_density_source = "measured"
+scale_targets = [0.005450, 0.005765, 0.006076, 0.006272, 0.006573, 0.007356, 0.023583, 0.064237]
+instance_leaf_area_m2 = 0.01944615
 
 [pve_calibration.species.silver_fir.trees.r08_h10m]
-growth_json = "Silver_Fir_r08_h10m_d10cm_full_growth_data.json"
+growth_json = "Silver_Fir_r08_h10m_d09cm_full_growth_data.json"
 fraction = 0.06
-dbh_cm = 10.45
-branches = 1714
-points = 12608
-s_ratio = 86.18
-source_height_m = 10.0033
-target_m2 = 13.76
-target_instances = 683
-history = [[27, 683]]
-solved_density = 27
-build_density = 27
-build_instances = 683
-build_density_source = "measured"
+dbh_cm = 9.32
+branches = 1348
+points = 9504
+s_ratio = 65.70
+source_height_m = 10.1254
+target_m2 = 11.07
+target_instances = 559
+history = []
+solved_density = 30
+build_density = 30
+build_instances = 552
+build_density_source = "offline"
+scale_targets = [0.000206, 0.000567, 0.000996, 0.001642, 0.004517, 0.016755, 0.038840, 0.063281]
+instance_leaf_area_m2 = 0.01978260
 
 [pve_calibration.species.silver_fir.trees.r08_h15m]
-growth_json = "Silver_Fir_r08_h15m_d17cm_full_growth_data.json"
+growth_json = "Silver_Fir_r08_h15m_d16cm_full_growth_data.json"
 fraction = 0.06
-dbh_cm = 17.21
-branches = 3065
-points = 22445
-s_ratio = 107.03
-source_height_m = 15.0865
-target_m2 = 35.41
-target_instances = 1758
-history = [[44, 1725]]
-solved_density = 44
-build_density = 44
-build_instances = 1725
+dbh_cm = 16.09
+branches = 2630
+points = 19427
+s_ratio = 93.37
+source_height_m = 15.2067
+target_m2 = 31.16
+target_instances = 1557
+history = [[47, 1520]]
+solved_density = 47
+build_density = 47
+build_instances = 1520
 build_density_source = "measured"
+scale_targets = [0.000150, 0.000453, 0.000898, 0.001868, 0.011474, 0.022471, 0.049202, 0.081481]
+instance_leaf_area_m2 = 0.02000940
 
 [pve_calibration.species.silver_fir.trees.r16_h05m]
-growth_json = "Silver_Fir_r16_h05m_d09cm_full_growth_data.json"
+growth_json = "Silver_Fir_r16_h05m_d08cm_full_growth_data.json"
 fraction = 0.06
-dbh_cm = 8.97
-branches = 942
-points = 5705
-s_ratio = 75.23
-source_height_m = 5.0699
-target_m2 = 10.29
-target_instances = 511
-history = [[21, 535]]
-solved_density = 21
-build_density = 21
-build_instances = 535
-build_density_source = "measured"
+dbh_cm = 8.38
+branches = 969
+points = 5430
+s_ratio = 70.34
+source_height_m = 5.0526
+target_m2 = 9.04
+target_instances = 451
+history = []
+solved_density = 20
+build_density = 20
+build_instances = 435
+build_density_source = "offline"
+scale_targets = [0.000508, 0.001145, 0.001654, 0.001964, 0.002417, 0.009019, 0.023427, 0.061380]
+instance_leaf_area_m2 = 0.02005515
 
 [pve_calibration.species.silver_fir.trees.r16_h10m]
-growth_json = "Silver_Fir_r16_h10m_d13cm_full_growth_data.json"
+growth_json = "Silver_Fir_r16_h10m_d11cm_full_growth_data.json"
 fraction = 0.06
-dbh_cm = 12.72
-branches = 2360
-points = 17869
-s_ratio = 120.13
-source_height_m = 10.2935
-target_m2 = 19.95
-target_instances = 991
-history = [[29, 1007]]
+dbh_cm = 11.33
+branches = 1903
+points = 14032
+s_ratio = 96.12
+source_height_m = 10.1693
+target_m2 = 16.01
+target_instances = 832
+history = []
 solved_density = 29
 build_density = 29
-build_instances = 1007
-build_density_source = "measured"
+build_instances = 837
+build_density_source = "offline"
+scale_targets = [0.000216, 0.000490, 0.000913, 0.001661, 0.008994, 0.022675, 0.040911, 0.072062]
+instance_leaf_area_m2 = 0.01923569
 
 [pve_calibration.species.silver_fir.trees.r16_h15m]
-growth_json = "Silver_Fir_r16_h15m_d19cm_full_growth_data.json"
+growth_json = "Silver_Fir_r16_h15m_d18cm_full_growth_data.json"
 fraction = 0.06
-dbh_cm = 19.33
-branches = 3918
-points = 26978
-s_ratio = 128.25
-source_height_m = 15.0836
-target_m2 = 44.16
-target_instances = 2193
-history = [[46, 2188]]
+dbh_cm = 18.22
+branches = 3206
+points = 23114
+s_ratio = 109.74
+source_height_m = 15.2580
+target_m2 = 39.47
+target_instances = 1928
+history = []
 solved_density = 46
 build_density = 46
-build_instances = 2188
-build_density_source = "measured"
+build_instances = 1908
+build_density_source = "offline"
+scale_targets = [0.000158, 0.000509, 0.000979, 0.004949, 0.014338, 0.025059, 0.049799, 0.077854]
+instance_leaf_area_m2 = 0.02047263

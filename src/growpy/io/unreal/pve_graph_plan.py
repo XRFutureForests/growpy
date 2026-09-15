@@ -25,6 +25,8 @@ or by sorting.
 
 from __future__ import annotations
 
+import dataclasses
+import json
 import logging
 import re
 from collections.abc import Sequence
@@ -35,9 +37,14 @@ from typing import TYPE_CHECKING
 from growpy.io.unreal.pve_graph_builder import (
     DEFAULT_SAPLING_WIND_SETTINGS,
     DEFAULT_TREE_WIND_SETTINGS,
+    ConditionInfluence,
+    ConditionSpec,
     DistributorSpec,
+    FoliageLayer,
     FoliageVectorSpec,
     JitterSpec,
+    PaletteAttributes,
+    PaletteEntry,
     PVEGraphSpec,
     TreeChainSpec,
     generate_pve_graph_builder_script,
@@ -49,6 +56,7 @@ from growpy.io.unreal.pve_graph_builder import (
 
 if TYPE_CHECKING:
     from growpy.config.pve_calibration import SpeciesCalibration, WindPresets
+    from growpy.io.unreal.pve_asset_script import SpeciesAssetSpec
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +66,7 @@ __all__ = [
     "discover_growth_jsons",
     "mask_entries_for",
     "plan_pve_graphs",
+    "prototype_leaf_areas",
     "tree_id_for",
     "wind_settings_for",
 ]
@@ -220,55 +229,150 @@ def mask_entries_for(mask_fraction: float, palette_size: int) -> tuple[int, int]
     )
 
 
+def prototype_leaf_areas(assets: SpeciesAssetSpec) -> tuple[float, ...]:
+    """Leaf area (m2) of every palette prototype, in ``palette_meshes`` order.
+
+    Read from the ``<name>_leaf_area_geom.json`` sidecar beside each
+    ``_static.usda`` -- the wood-corrected one, which is what the species'
+    ``prototype_leaf_area_m2`` averages; the plain ``_leaf_area.json`` counts
+    the woody shoot as leaf (XRFF-274). Raises rather than guessing: a ladder
+    graded on the wrong areas lands the tree on the wrong leaf area while
+    every count looks right.
+    """
+    areas = []
+    for proto in assets.prototypes:
+        sidecar = Path(proto.source).parent / f"{proto.name}_leaf_area_geom.json"
+        if not sidecar.is_file():
+            raise FileNotFoundError(
+                f"{assets.species}: no leaf-area sidecar for prototype "
+                f"{proto.name!r} at {sidecar}"
+            )
+        areas.append(float(json.loads(sidecar.read_text())["leaf_area_m2"]))
+    return tuple(areas)
+
+
+def graded_palette(
+    meshes: Sequence[str],
+    areas: Sequence[float],
+    scale_targets: Sequence[float],
+) -> tuple[PaletteEntry, ...]:
+    """Each prototype with its Scale target, targets assigned by area rank.
+
+    ``scale_targets`` are in ascending prototype-leaf-area order (the way the
+    solver writes them); the k-th smallest prototype gets the k-th target.
+    """
+    if len(meshes) != len(areas):
+        raise ValueError("meshes and areas must pair up")
+    if len(scale_targets) != len(meshes):
+        raise ValueError(
+            f"scale_targets has {len(scale_targets)} entries for a palette of "
+            f"{len(meshes)} prototypes"
+        )
+    by_area = sorted(range(len(meshes)), key=lambda i: areas[i])
+    target_of = {i: scale_targets[rank] for rank, i in enumerate(by_area)}
+    return tuple(
+        PaletteEntry(mesh=m, attributes=PaletteAttributes(scale=target_of[i]))
+        for i, m in enumerate(meshes)
+    )
+
+
 def _chain_for(
     entry: GrowthJson,
     calibration: SpeciesCalibration,
     mesh_prefix: str,
     palette_meshes: Sequence[str] = (),
+    palette_areas: Sequence[float] | None = None,
 ) -> TreeChainSpec:
     resolved = calibration.resolve_density(entry.tree_id)
     tree = calibration.tree(entry.tree_id)
+    ladder = calibration.ladder
     palette = None
+    conditions = None
+    generation_band = None
+    layers: tuple[FoliageLayer, ...] = ()
     if tree.mask_fraction > 0.0:
         # Thinning below the one-per-branch floor (XRFF-462): the chain gets
         # a palette of its own with masks beside the shared meshes.
         repeats, masks = mask_entries_for(tree.mask_fraction, len(palette_meshes))
         palette = masked_palette(palette_meshes, masks, repeats=repeats)
+    if ladder is not None and tree.scale_targets is not None:
+        # Scale-graded ladder (XRFF-412): each prototype advertises a Scale
+        # target and the Scale condition picks the tiers nearest a point's
+        # normalised radius; the main layer starts above the trunk and one
+        # apex part goes on the leader. A tree without scale_targets stays
+        # flat -- the legacy radii were solved that way and still build.
+        if tree.mask_fraction > 0.0:
+            raise ValueError(
+                f"{entry.tree_id}: a masked and a graded palette cannot be "
+                f"combined -- the mask would need the same Scale target"
+            )
+        if palette_areas is None:
+            raise ValueError(
+                f"{entry.tree_id}: the ladder needs the prototype leaf areas"
+            )
+        palette = graded_palette(palette_meshes, palette_areas, tree.scale_targets)
+        conditions = ConditionSpec(
+            scale=ConditionInfluence(weight=ladder.scale_weight),
+            minimum_candidates=ladder.minimum_candidates,
+            cutoff_threshold=ladder.cutoff_threshold,
+        )
+        if ladder.apex:
+            generation_band = (ladder.main_generation_start, None)
+
+    distributor = DistributorSpec(
+        branch_density=resolved.density,
+        relative_start=calibration.relative_start,
+        phyllotaxy_formation=calibration.phyllotaxy_formation,
+        # The measured pose (XRFF-438, 2026-09-14). Restated at the call
+        # site so a change to the builder's defaults cannot silently change
+        # what a pipeline run emits. None of it changes instance counts.
+        reset_phyllotaxy=calibration.pose.reset_phyllotaxy,
+        axil_angle=calibration.pose.axil_angle,
+        axil_angle_ramp=(1.0, 1.0),  # constant; the engine default ramps it 0->1
+        single_bud_tip=True,
+        scale_ramp=(1.0, 1.0),
+        # Tip Up = Apical first, then the aim entry flattens it -- except a
+        # leader, which the WorldUpDot blend leaves pointing up.
+        auto_align_end=True,
+        aim=FoliageVectorSpec(
+            kind="aim",
+            vector1="AXIS_FLATTEN",
+            vector2="AXIS_AIM",
+            dual=True,
+            affect_tip=True,
+            blend_attribute="WORLD_UP_DOT",
+            ramp=((0.0, 0.0), (0.9, 0.0), (1.0, 1.0)),
+        ),
+        face=FoliageVectorSpec(kind="face", vector2="AXIS_AIM", affect_tip=True),
+        jitter=tuple(
+            JitterSpec(mode=j.mode, degrees=j.degrees, seed=j.seed)
+            for j in calibration.pose.jitter
+        ),
+        conditions=conditions,
+        generation_band=generation_band,
+    )
+    if ladder is not None and ladder.apex and tree.scale_targets is not None:
+        # One largest-tier part at the leader tip: density 1 places a single
+        # sample at the end of the only generation-1 branch.
+        largest = max(range(len(palette_meshes)), key=lambda i: palette_areas[i])
+        layers = (
+            FoliageLayer(
+                distributor=dataclasses.replace(
+                    distributor,
+                    branch_density=1,
+                    generation_band=(1, 1),
+                    conditions=None,
+                ),
+                palette=(PaletteEntry(mesh=palette_meshes[largest]),),
+            ),
+        )
     return TreeChainSpec(
         growth_json=entry.path,
         mesh_name=f"{mesh_prefix}_{entry.tree_id}",
         wind_settings=wind_settings_for(entry.tree_id, calibration.wind),
         palette=palette,
-        distributor=DistributorSpec(
-            branch_density=resolved.density,
-            relative_start=calibration.relative_start,
-            phyllotaxy_formation=calibration.phyllotaxy_formation,
-            # The measured pose (XRFF-438, 2026-09-14). Restated at the call
-            # site so a change to the builder's defaults cannot silently change
-            # what a pipeline run emits. None of it changes instance counts.
-            reset_phyllotaxy=calibration.pose.reset_phyllotaxy,
-            axil_angle=calibration.pose.axil_angle,
-            axil_angle_ramp=(1.0, 1.0),  # constant; the engine default ramps it 0->1
-            single_bud_tip=True,
-            scale_ramp=(1.0, 1.0),
-            # Tip Up = Apical first, then the aim entry flattens it -- except a
-            # leader, which the WorldUpDot blend leaves pointing up.
-            auto_align_end=True,
-            aim=FoliageVectorSpec(
-                kind="aim",
-                vector1="AXIS_FLATTEN",
-                vector2="AXIS_AIM",
-                dual=True,
-                affect_tip=True,
-                blend_attribute="WORLD_UP_DOT",
-                ramp=((0.0, 0.0), (0.9, 0.0), (1.0, 1.0)),
-            ),
-            face=FoliageVectorSpec(kind="face", vector2="AXIS_AIM", affect_tip=True),
-            jitter=tuple(
-                JitterSpec(mode=j.mode, degrees=j.degrees, seed=j.seed)
-                for j in calibration.pose.jitter
-            ),
-        ),
+        distributor=distributor,
+        layers=layers,
     )
 
 
@@ -338,12 +442,24 @@ def plan_pve_graphs(
 
         asset_specs.append(assets)
         mesh_prefix = f"SK_{assets.content_folder.rsplit('/', 1)[-1]}"
+        palette_areas = None
+        if species_cal.ladder is not None:
+            try:
+                palette_areas = prototype_leaf_areas(assets)
+            except FileNotFoundError as err:
+                # Only the graded trees need them; each of those is refused
+                # by _chain_for with its own line, the flat ones still build.
+                skipped.append(f"{species}: {err}")
         chains: list[TreeChainSpec] = []
         instances: dict[str, int] = {}
         for entry in entries:
             try:
                 chain = _chain_for(
-                    entry, species_cal, mesh_prefix, assets.palette_meshes
+                    entry,
+                    species_cal,
+                    mesh_prefix,
+                    assets.palette_meshes,
+                    palette_areas,
                 )
             except (KeyError, ValueError) as err:
                 skipped.append(f"{species} {entry.tree_id}: {err}")

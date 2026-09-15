@@ -130,6 +130,7 @@ __all__ = [
     "JitterSpec",
     "DistributorSpec",
     "TreeChainSpec",
+    "FoliageLayer",
     "PVEGraphSpec",
     "generate_pve_graph_builder_script",
     "generate_pve_retune_script",
@@ -395,7 +396,6 @@ class ConditionSpec:
         }
 
 
-
 @dataclass(frozen=True)
 class DistributorSpec:
     """Parametric foliage distributor settings for one tree."""
@@ -480,6 +480,24 @@ class DistributorSpec:
 
 
 @dataclass(frozen=True)
+class FoliageLayer:
+    """A distributor chained after the chain's main one, with its own palette.
+
+    Epic's graphs are one linear chain of 1-6 distributor + palette pairs; each
+    layer places over the same skeleton under its own gate and the export sees
+    the union. This is how an apex part on the leader (``generation_band=(1,
+    1)``, density 1) or a tip-cap layer rides beside the main placement.
+    """
+
+    distributor: DistributorSpec
+    palette: tuple[PaletteEntry, ...]
+
+    def __post_init__(self) -> None:
+        if not any(not e.use_as_mask for e in self.palette):
+            raise ValueError("a foliage layer's palette needs at least one real entry")
+
+
+@dataclass(frozen=True)
 class TreeChainSpec:
     """One tree: a growth JSON in, one exported mesh out.
 
@@ -495,6 +513,7 @@ class TreeChainSpec:
     distributor: DistributorSpec
     wind_settings: str = DEFAULT_TREE_WIND_SETTINGS
     palette: tuple[PaletteEntry, ...] | None = None
+    layers: tuple[FoliageLayer, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.mesh_name:
@@ -617,6 +636,38 @@ def _conditions_payload(spec: ConditionSpec | None) -> dict | None:
     }
 
 
+def _distributor_payload(d: DistributorSpec) -> dict:
+    return {
+        "conditions": _conditions_payload(d.conditions),
+        "generation_band": (
+            list(d.generation_band) if d.generation_band is not None else None
+        ),
+        "branch_density": d.branch_density,
+        "spacing_basis": d.spacing_basis,
+        "relative_start": d.relative_start,
+        "relative_end": d.relative_end,
+        "phyllotaxy_type": d.phyllotaxy_type,
+        "phyllotaxy_formation": d.phyllotaxy_formation,
+        "node_buds": d.node_buds,
+        "reset_phyllotaxy": d.reset_phyllotaxy,
+        "axil_angle": d.axil_angle,
+        "axil_angle_ramp": _ramp_text(*d.axil_angle_ramp),
+        "single_bud_tip": d.single_bud_tip,
+        "rotation": d.rotation,
+        "base_scale": d.base_scale,
+        "scale_ramp_basis": d.scale_ramp_basis,
+        "scale_ramp": _ramp_text(*d.scale_ramp),
+        "branch_scale_impact": d.branch_scale_impact,
+        "auto_align_end": d.auto_align_end,
+        "face": _vector_payload(d.face),
+        "aim": _vector_payload(d.aim),
+        "jitter": [
+            {"mode": j.mode, "strength": j.degrees / 180.0, "seed": j.seed}
+            for j in d.jitter
+        ],
+    }
+
+
 def _graph_payload(graph: PVEGraphSpec) -> dict:
     return {
         "graph_name": graph.graph_name,
@@ -637,38 +688,13 @@ def _graph_payload(graph: PVEGraphSpec) -> dict:
                 "mesh_name": c.mesh_name,
                 "wind_settings": c.wind_settings,
                 "palette": _palette_payload(c.palette),
-                "conditions": _conditions_payload(c.distributor.conditions),
-                "generation_band": (
-                    list(c.distributor.generation_band)
-                    if c.distributor.generation_band is not None
-                    else None
-                ),
-                "branch_density": c.distributor.branch_density,
-                "spacing_basis": c.distributor.spacing_basis,
-                "relative_start": c.distributor.relative_start,
-                "relative_end": c.distributor.relative_end,
-                "phyllotaxy_type": c.distributor.phyllotaxy_type,
-                "phyllotaxy_formation": c.distributor.phyllotaxy_formation,
-                "node_buds": c.distributor.node_buds,
-                "reset_phyllotaxy": c.distributor.reset_phyllotaxy,
-                "axil_angle": c.distributor.axil_angle,
-                "axil_angle_ramp": _ramp_text(*c.distributor.axil_angle_ramp),
-                "single_bud_tip": c.distributor.single_bud_tip,
-                "rotation": c.distributor.rotation,
-                "base_scale": c.distributor.base_scale,
-                "scale_ramp_basis": c.distributor.scale_ramp_basis,
-                "scale_ramp": _ramp_text(*c.distributor.scale_ramp),
-                "branch_scale_impact": c.distributor.branch_scale_impact,
-                "auto_align_end": c.distributor.auto_align_end,
-                "face": _vector_payload(c.distributor.face),
-                "aim": _vector_payload(c.distributor.aim),
-                "jitter": [
+                **_distributor_payload(c.distributor),
+                "layers": [
                     {
-                        "mode": j.mode,
-                        "strength": j.degrees / 180.0,
-                        "seed": j.seed,
+                        "palette": _palette_payload(layer.palette),
+                        **_distributor_payload(layer.distributor),
                     }
-                    for j in c.distributor.jitter
+                    for layer in c.layers
                 ],
             }
             for c in graph.chains
@@ -979,127 +1005,32 @@ def build(spec):
             unreal.PVFoliageDistributorSettings
         )
         dist_node.set_node_position(660, row)
-        dist_settings.set_editor_property(
-            "mode", unreal.PVDistributionSettingsMode.PARAMETRIC_SETTINGS
-        )
-        parametric = dist_settings.get_editor_property("parametric_settings")
-
-        spacing = parametric.get_editor_property("spacing_settings")
-        setp(spacing, "branch_density", int(chain["branch_density"]))
-        setp(
-            spacing,
-            "spacing_basis",
-            getattr(unreal.PVDistributionBasis, chain["spacing_basis"]),
-        )
-        setp(spacing, "relative_start", float(chain["relative_start"]))
-        setp(spacing, "relative_end", float(chain["relative_end"]))
-        # Generation gating: both the limit flag and the bound, or the gate is
-        # off. budDevelopment[0] of a branch's last point is what it compares.
-        gen_start, gen_end = chain["generation_band"] or (None, None)
-        setp(
-            spacing,
-            ("limit_start_generation", "b_limit_start_generation"),
-            gen_start is not None,
-        )
-        if gen_start is not None:
-            setp(spacing, "start_generation", int(gen_start))
-        setp(
-            spacing,
-            ("limit_end_generation", "b_limit_end_generation"),
-            gen_end is not None,
-        )
-        if gen_end is not None:
-            setp(spacing, "end_generation", int(gen_end))
-        parametric.set_editor_property("spacing_settings", spacing)
-
-        phyllotaxy = parametric.get_editor_property("phyllotaxy_settings")
-        setp(
-            phyllotaxy,
-            ("reset_phyllotaxy", "b_reset_phyllotaxy"),
-            bool(chain["reset_phyllotaxy"]),
-        )
-        setp(
-            phyllotaxy,
-            "phyllotaxy_type",
-            getattr(unreal.PhyllotaxyType, chain["phyllotaxy_type"]),
-        )
-        setp(
-            phyllotaxy,
-            "phyllotaxy_formation",
-            getattr(unreal.PhyllotaxyFormation, chain["phyllotaxy_formation"]),
-        )
-        # Read only under Whorled; harmless and explicit elsewhere.
-        setp(phyllotaxy, "minimum_node_buds", int(chain["node_buds"]))
-        setp(phyllotaxy, "maximum_node_buds", int(chain["node_buds"]))
-        setp(phyllotaxy, "phyllotaxy_additional_angle", 0.0)
-        setp(phyllotaxy, "phyllotaxy_offset", 0.0)
-        setp(
-            phyllotaxy,
-            ("single_bud_tip", "b_single_bud_tip"),
-            bool(chain["single_bud_tip"]),
-        )
-        parametric.set_editor_property("phyllotaxy_settings", phyllotaxy)
-
-        angles = parametric.get_editor_property("angle_settings")
-        setp(angles, "axil_angle", float(chain["axil_angle"]))
-        setp(angles, "rotation", float(chain["rotation"]))
-        setp(angles, "randomize_axil_angle_minimum", 0.0)
-        setp(angles, "randomize_axil_angle_maximum", 0.0)
-        axil_ramp = angles.get_editor_property("axil_angle_ramp")
-        axil_ramp.import_text(chain["axil_angle_ramp"])
-        setp(angles, "axil_angle_ramp", axil_ramp)
-        parametric.set_editor_property("angle_settings", angles)
-
-        scale = parametric.get_editor_property("scale_settings")
-        setp(
-            scale,
-            "scale_ramp_basis",
-            getattr(unreal.PVDistributionBasis, chain["scale_ramp_basis"]),
-        )
-        setp(scale, "base_scale", float(chain["base_scale"]))
-        setp(scale, "branch_scale_impact", float(chain["branch_scale_impact"]))
-        setp(scale, "randomize_scale_minimum", 1.0)
-        setp(scale, "randomize_scale_maximum", 1.0)
-        ramp = scale.get_editor_property("scale_ramp")
-        ramp.import_text(chain["scale_ramp"])
-        setp(scale, "scale_ramp", ramp)
-        parametric.set_editor_property("scale_settings", scale)
-        dist_settings.set_editor_property("parametric_settings", parametric)
-        apply_conditions(dist_settings, chain["conditions"])
+        configure_distributor(dist_settings, chain)
         # A chain with masks or attributes gets a palette of its own; the
         # shared node stays the plain one every other chain reads.
         chain_palette = palette_node
         if chain["palette"] is not None:
             chain_palette = make_palette(graph, chain["palette"], 400, row + 220)
 
-        apply_vector_group(
-            dist_settings, chain["aim"], "aim_vector_settings", "aim_vectors",
-            unreal.PVAimVectorSettings, unreal.PVAimVectorType,
-            chain["auto_align_end"],
-        )
-        apply_vector_group(
-            dist_settings, chain["face"], "face_vector_settings", "face_vectors",
-            unreal.PVFaceVectorSettings, unreal.PVFaceVectorType,
-            chain["auto_align_end"],
-        )
-        # Random roll/pitch/yaw is applied last in ApplyVectorSettings, so it
-        # perturbs the posed twig rather than the pre-pose frame.
-        vectors = dist_settings.get_editor_property("vector_settings")
-        rpy_group = vectors.get_editor_property("roll_pitch_yaw_settings")
-        rpy_entries = []
-        for j in chain["jitter"]:
-            rpy = unreal.PVRollPitchYawSettings()
-            setp(rpy, "mode", getattr(unreal.PVRollPitchYawMode, j["mode"]))
-            setp(rpy, "min_strength", -float(j["strength"]))
-            setp(rpy, "max_strength", float(j["strength"]))
-            setp(rpy, "random_seed", int(j["seed"]))
-            rpy_entries.append(rpy)
-        rpy_group.set_editor_property("roll_pitch_yaw", rpy_entries)
-        vectors.set_editor_property("roll_pitch_yaw_settings", rpy_group)
-        dist_settings.set_editor_property("vector_settings", vectors)
+        # Further layers chain distributor -> distributor, Epic's shape: each
+        # places over the same skeleton with its own palette and gate, and the
+        # export sees the union.
+        layer_edges = []
+        last_node = dist_node
+        for k, layer in enumerate(chain["layers"]):
+            x = 660 + 360 * (k + 1)
+            layer_node, layer_settings = graph.add_node_of_type(
+                unreal.PVFoliageDistributorSettings
+            )
+            layer_node.set_node_position(x, row)
+            configure_distributor(layer_settings, layer)
+            layer_palette = make_palette(graph, layer["palette"], x - 260, row + 220)
+            layer_edges.append((last_node, "Out", layer_node, "In"))
+            layer_edges.append((layer_palette, "Out", layer_node, "Foliage"))
+            last_node = layer_node
 
         export_node, export_settings = graph.add_node_of_type(unreal.PVExportSettings)
-        export_node.set_node_position(1020, row)
+        export_node.set_node_position(1020 + 360 * len(chain["layers"]), row)
         settings = export_settings.get_editor_property("export_settings")
         folder = unreal.DirectoryPath()
         folder.set_editor_property("path", spec["export_folder"])
@@ -1145,7 +1076,8 @@ def build(spec):
             (material_node, "Out", mesh_node, "MaterialDetails"),
             (mesh_node, "Out", dist_node, "In"),
             (chain_palette, "Out", dist_node, "Foliage"),
-            (dist_node, "Out", export_node, "In"),
+            *layer_edges,
+            (last_node, "Out", export_node, "In"),
         ):
             graph.add_edge(src, src_pin, dst, dst_pin)
 
@@ -1156,7 +1088,9 @@ def build(spec):
                 edges += len(out_pin.get_editor_property("edges"))
             except Exception:
                 pass
-    expected = 7 * len(spec["chains"])
+    expected = 7 * len(spec["chains"]) + 2 * sum(
+        len(c["layers"]) for c in spec["chains"]
+    )
     eal.save_asset(full)
     status = "OK" if edges == expected else "EDGE COUNT MISMATCH"
     unreal.log(
@@ -1168,6 +1102,141 @@ def build(spec):
             "%s wired %d edges, expected %d" % (name, edges, expected)
         )
     return full
+
+
+def configure_distributor(dist_settings, d):
+    """Write one distributor from a chain/layer payload and read the gate back."""
+    dist_settings.set_editor_property(
+        "mode", unreal.PVDistributionSettingsMode.PARAMETRIC_SETTINGS
+    )
+    parametric = dist_settings.get_editor_property("parametric_settings")
+
+    spacing = parametric.get_editor_property("spacing_settings")
+    setp(spacing, "branch_density", int(d["branch_density"]))
+    setp(
+        spacing,
+        "spacing_basis",
+        getattr(unreal.PVDistributionBasis, d["spacing_basis"]),
+    )
+    setp(spacing, "relative_start", float(d["relative_start"]))
+    setp(spacing, "relative_end", float(d["relative_end"]))
+    # Generation gating: both the limit flag and the bound, or the gate is
+    # off. budDevelopment[0] of a branch's last point is what it compares.
+    gen_start, gen_end = d["generation_band"] or (None, None)
+    setp(
+        spacing,
+        ("limit_start_generation", "b_limit_start_generation"),
+        gen_start is not None,
+    )
+    if gen_start is not None:
+        setp(spacing, "start_generation", int(gen_start))
+    setp(
+        spacing,
+        ("limit_end_generation", "b_limit_end_generation"),
+        gen_end is not None,
+    )
+    if gen_end is not None:
+        setp(spacing, "end_generation", int(gen_end))
+    parametric.set_editor_property("spacing_settings", spacing)
+
+    phyllotaxy = parametric.get_editor_property("phyllotaxy_settings")
+    setp(
+        phyllotaxy,
+        ("reset_phyllotaxy", "b_reset_phyllotaxy"),
+        bool(d["reset_phyllotaxy"]),
+    )
+    setp(
+        phyllotaxy,
+        "phyllotaxy_type",
+        getattr(unreal.PhyllotaxyType, d["phyllotaxy_type"]),
+    )
+    setp(
+        phyllotaxy,
+        "phyllotaxy_formation",
+        getattr(unreal.PhyllotaxyFormation, d["phyllotaxy_formation"]),
+    )
+    # Read only under Whorled; harmless and explicit elsewhere.
+    setp(phyllotaxy, "minimum_node_buds", int(d["node_buds"]))
+    setp(phyllotaxy, "maximum_node_buds", int(d["node_buds"]))
+    setp(phyllotaxy, "phyllotaxy_additional_angle", 0.0)
+    setp(phyllotaxy, "phyllotaxy_offset", 0.0)
+    setp(
+        phyllotaxy,
+        ("single_bud_tip", "b_single_bud_tip"),
+        bool(d["single_bud_tip"]),
+    )
+    parametric.set_editor_property("phyllotaxy_settings", phyllotaxy)
+
+    angles = parametric.get_editor_property("angle_settings")
+    setp(angles, "axil_angle", float(d["axil_angle"]))
+    setp(angles, "rotation", float(d["rotation"]))
+    setp(angles, "randomize_axil_angle_minimum", 0.0)
+    setp(angles, "randomize_axil_angle_maximum", 0.0)
+    axil_ramp = angles.get_editor_property("axil_angle_ramp")
+    axil_ramp.import_text(d["axil_angle_ramp"])
+    setp(angles, "axil_angle_ramp", axil_ramp)
+    parametric.set_editor_property("angle_settings", angles)
+
+    scale = parametric.get_editor_property("scale_settings")
+    setp(
+        scale,
+        "scale_ramp_basis",
+        getattr(unreal.PVDistributionBasis, d["scale_ramp_basis"]),
+    )
+    setp(scale, "base_scale", float(d["base_scale"]))
+    setp(scale, "branch_scale_impact", float(d["branch_scale_impact"]))
+    setp(scale, "randomize_scale_minimum", 1.0)
+    setp(scale, "randomize_scale_maximum", 1.0)
+    ramp = scale.get_editor_property("scale_ramp")
+    ramp.import_text(d["scale_ramp"])
+    setp(scale, "scale_ramp", ramp)
+    parametric.set_editor_property("scale_settings", scale)
+    dist_settings.set_editor_property("parametric_settings", parametric)
+    apply_conditions(dist_settings, d["conditions"])
+
+    apply_vector_group(
+        dist_settings, d["aim"], "aim_vector_settings", "aim_vectors",
+        unreal.PVAimVectorSettings, unreal.PVAimVectorType,
+        d["auto_align_end"],
+    )
+    apply_vector_group(
+        dist_settings, d["face"], "face_vector_settings", "face_vectors",
+        unreal.PVFaceVectorSettings, unreal.PVFaceVectorType,
+        d["auto_align_end"],
+    )
+    # Random roll/pitch/yaw is applied last in ApplyVectorSettings, so it
+    # perturbs the posed twig rather than the pre-pose frame.
+    vectors = dist_settings.get_editor_property("vector_settings")
+    rpy_group = vectors.get_editor_property("roll_pitch_yaw_settings")
+    rpy_entries = []
+    for j in d["jitter"]:
+        rpy = unreal.PVRollPitchYawSettings()
+        setp(rpy, "mode", getattr(unreal.PVRollPitchYawMode, j["mode"]))
+        setp(rpy, "min_strength", -float(j["strength"]))
+        setp(rpy, "max_strength", float(j["strength"]))
+        setp(rpy, "random_seed", int(j["seed"]))
+        rpy_entries.append(rpy)
+    rpy_group.set_editor_property("roll_pitch_yaw", rpy_entries)
+    vectors.set_editor_property("roll_pitch_yaw_settings", rpy_group)
+    dist_settings.set_editor_property("vector_settings", vectors)
+
+    # Read the gate back: a bound without its flag gates nothing, and a
+    # dropped flag would look like a graph that simply places everywhere.
+    fresh = dist_settings.get_editor_property("parametric_settings")
+    fresh = fresh.get_editor_property("spacing_settings")
+    for want, names in (
+        (gen_start is not None, ("limit_start_generation", "b_limit_start_generation")),
+        (gen_end is not None, ("limit_end_generation", "b_limit_end_generation")),
+    ):
+        got = None
+        for n in names:
+            try:
+                got = bool(fresh.get_editor_property(n))
+                break
+            except Exception:
+                continue
+        if got != want:
+            raise RuntimeError("generation gate %s read back %s" % (names[0], got))
 
 
 built = []
@@ -1375,11 +1444,16 @@ for entry in RETUNES:
         if name not in wanted:
             continue
 
+        # Walk upstream through every distributor: with chained layers the
+        # one nearest the export is an apex/fill layer, and the density that
+        # is being retuned belongs to the MAIN distributor, the one fed by the
+        # mesh builder rather than by another distributor.
         distributor = None
         frontier, guard = [node], 0
-        while frontier and distributor is None and guard < 64:
+        while frontier and guard < 64:
             guard += 1
             nxt = []
+            found_upstream_dist = False
             for current in frontier:
                 for pin in list(current.get_editor_property("input_pins") or []):
                     for edge in list(pin.get_editor_property("edges") or []):
@@ -1390,12 +1464,16 @@ for entry in RETUNES:
                         up_settings = upstream.get_settings()
                         if type(up_settings).__name__ == "PVFoliageDistributorSettings":
                             distributor = up_settings
+                            found_upstream_dist = True
+                            nxt = [upstream]
                             break
                         nxt.append(upstream)
-                    if distributor is not None:
+                    if found_upstream_dist:
                         break
-                if distributor is not None:
+                if found_upstream_dist:
                     break
+            if distributor is not None and not found_upstream_dist:
+                break
             frontier = nxt
 
         if distributor is None:

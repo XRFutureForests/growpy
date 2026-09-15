@@ -61,12 +61,17 @@ from __future__ import annotations
 import json
 import logging
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from growpy.io.unreal.pve_graph_builder import DistributorSpec
+    from growpy.io.unreal.pve_graph_builder import (
+        ConditionSpec,
+        DistributorSpec,
+        PaletteEntry,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +81,8 @@ __all__ = [
     "LeafAreaMeasurement",
     "MaskedCount",
     "expected_instances",
+    "expected_palette_mix",
+    "pick_candidates",
     "Placement",
     "measure_leaf_area",
     "ramp_eval",
@@ -96,11 +103,23 @@ _RAMP_TOLERANCE = 1e-6
 
 @dataclass(frozen=True)
 class Placement:
-    """One placed foliage instance."""
+    """One placed foliage instance.
+
+    ``generation`` is the branch's generation as the distributor reads it
+    (``GetBranchGeneration``: the last point's ``budDevelopment[0]``, +1 for a
+    one-point side branch). ``branch_scale`` and ``height`` are the point's
+    Scale / Height condition samples: radius and Z, min-max normalised the way
+    ``RemapPScalesToGradientRange`` / ``BuildNormalizedPointCaches`` do, then
+    lerped between the bracketing points. ``tip`` is the Tip sample.
+    """
 
     scale: float
     branch: int
     along_branch: float
+    generation: int = 1
+    branch_scale: float = 0.0
+    height: float = 0.0
+    tip: bool = False
 
 
 @dataclass(frozen=True)
@@ -211,12 +230,84 @@ def _load(path: Path):
     positions = data["points"]["positions"]
     branch_points = data["primitives"]["points"]
     attributes = data["primitives"]["attributes"]
+    point_attrs = data["points"].get("attributes", {})
+    meristem = point_attrs.get("budLateralMeristem", {}).get("values")
+    development = point_attrs.get("budDevelopment", {}).get("values")
     return (
         positions,
         branch_points,
         attributes["branchParentNumber"]["values"],
         attributes["branchNumber"]["values"],
+        # PointScale = LateralMeristem * 100 (AddGrowthMissingData), i.e. cm.
+        [m[0] * 100.0 for m in meristem] if meristem else None,
+        [d[0] for d in development] if development else None,
     )
+
+
+def _branch_generations(branch_points, parent, number, order, generation_of_point):
+    """Per-branch generation as ``GetBranchGeneration`` reads it.
+
+    From the last point's ``budDevelopment[0]``, +1 for a one-point side
+    branch; a JSON without ``budDevelopment`` gets the topological depth
+    (trunk = 1), which is what the exporter writes.
+    """
+    num_to_idx = {n: i for i, n in enumerate(number)}
+
+    def parent_index(b):
+        pi = num_to_idx.get(parent[b], -1)
+        return -1 if (parent[b] is None or pi < 0 or pi == b) else pi
+
+    depth = [1] * len(branch_points)
+    for b in order:
+        pi = parent_index(b)
+        depth[b] = 1 if pi < 0 else depth[pi] + 1
+    if generation_of_point is None:
+        return depth
+    out = []
+    for b, pts in enumerate(branch_points):
+        if not pts:
+            out.append(depth[b])
+            continue
+        g = generation_of_point[pts[-1]]
+        if len(pts) == 1 and parent_index(b) >= 0:
+            g += 1
+        out.append(int(g))
+    return out
+
+
+def _normalised_point_scales(
+    branch_points, lfr, radii_cm, relative_start, relative_end
+):
+    """``RemapPScalesToGradientRange``: radius min-max normalised over the
+    points inside the placement span of every branch that has a length."""
+    if radii_cm is None:
+        return None
+    lo, hi = math.inf, -math.inf
+    for pts in branch_points:
+        if len(pts) < 2:
+            continue
+        root, tip = lfr[pts[0]], lfr[pts[-1]]
+        if tip <= root + 1e-4:
+            continue
+        for p in pts:
+            gradient = min(max((lfr[p] - root) / (tip - root), 0.0), 1.0)
+            if relative_start <= gradient <= relative_end:
+                lo = min(lo, radii_cm[p])
+                hi = max(hi, radii_cm[p])
+    if not hi > lo:
+        return [0.0] * len(radii_cm)
+    return [
+        (min(max(r, lo), hi) - lo) / (hi - lo) for r in radii_cm
+    ]
+
+
+def _normalised_heights(positions):
+    """``BuildNormalizedPointCaches`` Height: UE Z (JSON y) min-max over points."""
+    zs = [p[1] for p in positions]
+    lo, hi = min(zs), max(zs)
+    if not hi > lo + 1e-4:
+        return [0.0] * len(zs)
+    return [(z - lo) / (hi - lo) for z in zs]
 
 
 def _walk_order(parent, number):
@@ -310,7 +401,9 @@ def simulate_placements(
     relative_end = distributor.relative_end
     base_scale = distributor.base_scale
 
-    positions, branch_points, parent, number = _load(growth_json)
+    positions, branch_points, parent, number, radii_cm, gen_of_point = _load(
+        growth_json
+    )
     order, roots = _walk_order(parent, number)
     root_set = set(roots)
 
@@ -350,6 +443,15 @@ def simulate_placements(
     avg_length = sum(lengths.values()) / len(lengths)
     avg_length = avg_length + (max_length - avg_length) * 0.33
 
+    generations = _branch_generations(
+        branch_points, parent, number, order, gen_of_point
+    )
+    band = distributor.generation_band
+    point_scales = _normalised_point_scales(
+        branch_points, lfr, radii_cm, relative_start, relative_end
+    )
+    heights = _normalised_heights(positions)
+
     placements: list[Placement] = []
     for branch in range(len(branch_points)):
         pts = branch_points[branch]
@@ -363,6 +465,13 @@ def simulate_placements(
         # and is discarded, which is why the count response near this floor is
         # a staircase rather than a slope.
         loops = max(loops, 1)
+        if band is not None:
+            # LimitStart/EndGeneration: the whole branch is skipped.
+            gen = generations[branch]
+            if (band[0] is not None and gen < band[0]) or (
+                band[1] is not None and gen > band[1]
+            ):
+                continue
         if len(pts) < 2:
             continue
 
@@ -428,6 +537,18 @@ def simulate_placements(
                     scale=ramp_eval(scale_ramp, lookup) * base_scale,
                     branch=branch,
                     along_branch=along,
+                    generation=generations[branch],
+                    branch_scale=(
+                        point_scales[point_a]
+                        + (point_scales[point_b] - point_scales[point_a]) * alpha
+                        if point_scales is not None
+                        else 0.0
+                    ),
+                    height=heights[point_a]
+                    + (heights[point_b] - heights[point_a]) * alpha,
+                    # bIsTipInstance: the sample sits on the branch tip.
+                    tip=abs(sample_lfr - lfr_tip) < 0.001
+                    and (along >= 0.999 or abs(along - relative_end) < 0.001),
                 )
             )
     return placements
@@ -495,3 +616,90 @@ def measure_leaf_area(
         mask_fraction=mask_fraction,
         points=points,
     )
+
+
+# The seven condition axes in TEnumRange order; the picker sums them in
+# this order, which only matters for float ties.
+_CONDITION_AXES = (
+    "light",
+    "scale",
+    "up_alignment",
+    "health",
+    "tip",
+    "height",
+    "generation",
+)
+
+
+def pick_candidates(
+    sample: dict[str, float],
+    entries: Sequence[PaletteEntry],
+    conditions: ConditionSpec | None,
+) -> list[int]:
+    """Palette indices the picker draws from, uniformly, for one placement.
+
+    ``PickCandidateIndex`` (``PVDistributionHelper.cpp:251-356``): no active
+    condition -> every entry. Otherwise each entry's weight is the sum over
+    active conditions of ``|entry.attr - (sample.attr + offset)| * weight``,
+    min-max normalised across entries; entries under ``cutoff_threshold`` are
+    candidates, padded to ``minimum_candidates`` with the next-lowest. Equal
+    weights are shuffled by the engine before the sort, so a tie at the
+    boundary is order-independent only in expectation; they are kept here in
+    palette order.
+    """
+    if not entries:
+        return []
+    active = conditions.active() if conditions is not None else {}
+    if not active:
+        return list(range(len(entries)))
+    weights = []
+    for entry in entries:
+        total = 0.0
+        for axis in _CONDITION_AXES:
+            influence = active.get(axis)
+            if influence is None:
+                continue
+            target = float(sample.get(axis, 0.0)) + influence.offset
+            value = float(getattr(entry.attributes, axis))
+            total += abs(value - target) * influence.weight
+        weights.append(total)
+    lo, hi = min(weights), max(weights)
+    has_range = hi > lo + 1e-4
+    normalised = [
+        (min(max(w, lo), hi) - lo) / (hi - lo) if has_range else 0.0 for w in weights
+    ]
+    ranked = sorted(range(len(entries)), key=lambda i: normalised[i])
+    minimum = min(max(conditions.minimum_candidates, 1), len(entries))
+    picked: list[int] = []
+    for i in ranked:
+        if normalised[i] < conditions.cutoff_threshold or len(picked) < minimum:
+            picked.append(i)
+        else:
+            break
+    return picked or [ranked[0]]
+
+
+def expected_palette_mix(
+    placements: Sequence[Placement],
+    entries: Sequence[PaletteEntry],
+    conditions: ConditionSpec | None,
+) -> list[float]:
+    """Expected picks per palette entry over ``placements``.
+
+    Each placement contributes ``1 / len(candidates)`` to every candidate the
+    picker would draw from, so the sum is the placement count; a mask entry's
+    share is what spawns nothing. Multiply by each entry's leaf area for the
+    expected leaf area of a graded palette.
+    """
+    mix = [0.0] * len(entries)
+    for p in placements:
+        sample = {
+            "scale": p.branch_scale,
+            "height": p.height,
+            "tip": 1.0 if p.tip else 0.0,
+        }
+        candidates = pick_candidates(sample, entries, conditions)
+        share = 1.0 / len(candidates)
+        for i in candidates:
+            mix[i] += share
+    return mix

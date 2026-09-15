@@ -24,11 +24,19 @@ from growpy.io.unreal.pve_distributor_model import (
     FLAT_RAMP,
     LeafAreaMeasurement,
     expected_instances,
+    expected_palette_mix,
     measure_leaf_area,
+    pick_candidates,
     ramp_eval,
     simulate_placements,
 )
-from growpy.io.unreal.pve_graph_builder import DistributorSpec
+from growpy.io.unreal.pve_graph_builder import (
+    ConditionInfluence,
+    ConditionSpec,
+    DistributorSpec,
+    PaletteAttributes,
+    PaletteEntry,
+)
 
 PROTOTYPE_AREA = 0.0158
 
@@ -230,6 +238,91 @@ class TestMaskedCount:
         assert masked.instances == round(0.75 * plain.instances)
         assert masked.area_m2 == pytest.approx(0.75 * plain.area_m2, abs=PROTOTYPE_AREA)
         assert plain.mask_fraction == 0.0 and masked.mask_fraction == 0.25
+
+
+class TestGenerationsAndSamples:
+    def test_a_generation_band_drops_whole_branches(self, tmp_path):
+        # The synthetic tree is one trunk (gen 1) with side branches (gen 2).
+        path = _tree(tmp_path)
+        everything = simulate_placements(path, _spec())
+        trunk_only = simulate_placements(path, _spec(generation_band=(1, 1)))
+        sides_only = simulate_placements(path, _spec(generation_band=(2, None)))
+        assert {p.generation for p in trunk_only} == {1}
+        assert {p.generation for p in sides_only} == {2}
+        assert len(trunk_only) + len(sides_only) == len(everything)
+        assert all(p.branch == 0 for p in trunk_only)
+
+    def test_the_tip_sample_marks_the_last_sample_of_a_branch(self, tmp_path):
+        placements = simulate_placements(_tree(tmp_path), _spec(branch_density=6))
+        by_branch: dict[int, list] = {}
+        for p in placements:
+            by_branch.setdefault(p.branch, []).append(p)
+        for branch, items in by_branch.items():
+            tips = [p for p in items if p.tip]
+            assert len(tips) == 1, branch
+            assert tips[0].along_branch == pytest.approx(1.0)
+
+    def test_branch_scale_is_zero_without_radii_and_unit_interval_with(self, tmp_path):
+        # The synthetic tree carries no budLateralMeristem; a real growth JSON
+        # does, and its normalised radius lands in [0, 1] with the trunk at 1.
+        placements = simulate_placements(_tree(tmp_path), _spec())
+        assert all(p.branch_scale == 0.0 for p in placements)
+        assert all(0.0 <= p.height <= 1.0 for p in placements)
+
+
+class TestPicker:
+    def _ladder(self):
+        return tuple(
+            PaletteEntry(mesh=f"/G/t{i}", attributes=PaletteAttributes(scale=s))
+            for i, s in enumerate((0.0, 0.25, 0.5, 0.75, 1.0))
+        )
+
+    def test_no_active_condition_means_every_entry(self):
+        entries = self._ladder()
+        assert pick_candidates({"scale": 0.9}, entries, None) == [0, 1, 2, 3, 4]
+        assert pick_candidates({"scale": 0.9}, entries, ConditionSpec()) == list(
+            range(5)
+        )
+
+    def test_the_scale_condition_keeps_the_nearest_targets(self):
+        # Weights |target - sample| min-max normalised over the five entries;
+        # under cutoff 0.3 with the sample at 0.0 that is the 0.0 and 0.25
+        # tiers (0.0 and 0.25 normalised), never the 0.5 one (0.5).
+        entries = self._ladder()
+        conditions = ConditionSpec(scale=ConditionInfluence(weight=0.9))
+        assert pick_candidates({"scale": 0.0}, entries, conditions) == [0, 1]
+        assert pick_candidates({"scale": 1.0}, entries, conditions) == [4, 3]
+        # An offset shifts the target the sample is compared against: 0.0 +
+        # 0.5 lands on the middle tier alone (its neighbours normalise to 0.5).
+        shifted = ConditionSpec(scale=ConditionInfluence(weight=0.9, offset=0.5))
+        assert pick_candidates({"scale": 0.0}, entries, shifted) == [2]
+
+    def test_minimum_candidates_pads_below_the_cutoff(self):
+        entries = self._ladder()
+        conditions = ConditionSpec(
+            scale=ConditionInfluence(weight=1.0),
+            cutoff_threshold=0.1,
+            minimum_candidates=3,
+        )
+        assert pick_candidates({"scale": 0.0}, entries, conditions) == [0, 1, 2]
+
+    def test_identical_entries_are_all_candidates(self):
+        # No range across entries -> every normalised weight is 0 -> all pass.
+        entries = tuple(PaletteEntry(mesh=f"/G/{i}") for i in range(3))
+        conditions = ConditionSpec(scale=ConditionInfluence())
+        assert pick_candidates({"scale": 0.7}, entries, conditions) == [0, 1, 2]
+
+    def test_expected_mix_sums_to_the_placement_count(self, tmp_path):
+        placements = simulate_placements(_tree(tmp_path), _spec())
+        entries = self._ladder()
+        conditions = ConditionSpec(scale=ConditionInfluence(weight=0.9))
+        mix = expected_palette_mix(placements, entries, conditions)
+        assert sum(mix) == pytest.approx(len(placements))
+        # Every synthetic sample is scale 0.0, so only the two lowest tiers win.
+        assert mix[2] == mix[3] == mix[4] == 0.0
+        assert mix[0] == mix[1] == pytest.approx(len(placements) / 2)
+        uniform = expected_palette_mix(placements, entries, None)
+        assert all(m == pytest.approx(len(placements) / 5) for m in uniform)
 
 
 class TestLeafArea:

@@ -12,6 +12,7 @@ from growpy.io.unreal.pve_graph_builder import (
     ConditionInfluence,
     ConditionSpec,
     DistributorSpec,
+    FoliageLayer,
     FoliageVectorSpec,
     JitterSpec,
     PaletteAttributes,
@@ -310,6 +311,44 @@ class TestGenerationBand:
         assert '"limit_end_generation"' in build
 
 
+class TestFoliageLayers:
+    def test_a_layer_needs_a_real_entry(self):
+        with pytest.raises(ValueError, match="real entry"):
+            FoliageLayer(
+                DistributorSpec(branch_density=1),
+                (PaletteEntry(mesh=None, use_as_mask=True),),
+            )
+
+    def test_layers_chain_after_the_main_distributor(self, tmp_path):
+        # Epic's apex: one part on the leader, density 1 on generation 1..1,
+        # chained distributor -> distributor so the export sees the union.
+        apex = FoliageLayer(
+            DistributorSpec(branch_density=1, generation_band=(1, 1)),
+            (PaletteEntry(mesh="/G/big"),),
+        )
+        chain = TreeChainSpec(
+            growth_json=Path("t.json"),
+            mesh_name="SK_Apex",
+            distributor=DistributorSpec(branch_density=19, generation_band=(2, None)),
+            layers=(apex,),
+        )
+        path = generate_pve_graph_builder_script(tmp_path, [_graph(chains=(chain,))])
+        body = path.read_text(encoding="utf-8")
+        compile(body, str(path), "exec")
+        assert "'layers': [{'palette': [{'mesh': '/G/big'" in body
+        assert "'generation_band': [1, 1]" in body
+        build = body.split("def build(spec):", 1)[1]
+        assert "configure_distributor(layer_settings, layer)" in build
+        assert '(last_node, "Out", export_node, "In")' in build
+        # 7 edges per chain plus 2 per layer (In from the previous distributor,
+        # Foliage from the layer's own palette) is what the edge check expects.
+        assert 'expected = 7 * len(spec["chains"]) + 2 * sum(' in build
+
+    def test_a_chain_without_layers_keeps_the_seven_edge_shape(self, tmp_path):
+        path = generate_pve_graph_builder_script(tmp_path, [_graph()])
+        assert "'layers': []" in path.read_text(encoding="utf-8")
+
+
 class TestGenerateScript:
     def test_writes_a_runnable_script(self, tmp_path):
         path = generate_pve_graph_builder_script(tmp_path, [_graph()])
@@ -369,7 +408,8 @@ class TestGenerateScript:
         # The shared palette stays; a chain with masks wires a node of its own.
         assert 'make_palette(graph, chain["palette"]' in build
         assert '(chain_palette, "Out", dist_node, "Foliage")' in build
-        assert 'apply_conditions(dist_settings, chain["conditions"])' in build
+        assert 'apply_conditions(dist_settings, d["conditions"])' in build
+        assert "configure_distributor(dist_settings, chain)" in build
 
     def test_an_unmasked_chain_carries_no_palette_of_its_own(self, tmp_path):
         path = generate_pve_graph_builder_script(tmp_path, [_graph()])

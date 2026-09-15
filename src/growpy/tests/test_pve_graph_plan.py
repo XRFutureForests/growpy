@@ -15,7 +15,11 @@ from pathlib import Path
 
 import pytest
 
-from growpy.config.pve_calibration import WindPresets, load_pve_calibration
+from growpy.config.pve_calibration import (
+    LadderSpec,
+    WindPresets,
+    load_pve_calibration,
+)
 from growpy.io.unreal.pve_graph_builder import (
     DEFAULT_SAPLING_WIND_SETTINGS,
     DEFAULT_TREE_WIND_SETTINGS,
@@ -29,6 +33,7 @@ from growpy.io.unreal.pve_graph_builder import (
 )
 from growpy.io.unreal.pve_graph_plan import (
     discover_growth_jsons,
+    graded_palette,
     mask_entries_for,
     plan_pve_graphs,
     tree_id_for,
@@ -145,7 +150,8 @@ class TestMaskEntries:
 
     def test_a_masked_tree_plans_a_palette_of_its_own(self, tmp_path, forest_root):
         # XRFF-462: the calibration's mask_fraction becomes a per-chain palette
-        # of the shared meshes plus masks; every other chain keeps None.
+        # of the shared meshes plus masks; every other flat chain keeps None
+        # (the graded fir r08/r16 chains carry a palette of their own kind).
         toml = (
             Path(__file__).resolve().parents[3] / "config" / "pve_calibration.toml"
         ).read_text(encoding="utf-8")
@@ -171,9 +177,109 @@ class TestMaskEntries:
         assert masked.palette is not None
         assert mask_fraction_of(masked.palette) == pytest.approx(0.25)
         assert len({e.mesh for e in masked.palette if e.mesh}) == 8
+        graded = {
+            f"SK_SilverFir_{r}_{h}"
+            for r in ("r08", "r16")
+            for h in ("h05m", "h10m", "h15m")
+        }
         assert all(
-            c.palette is None for n, c in chains.items() if n != "SK_SilverFir_r05_h05m"
+            c.palette is None
+            for n, c in chains.items()
+            if n != "SK_SilverFir_r05_h05m" and n not in graded
         )
+
+
+class TestLadder:
+    """XRFF-412: the Scale-graded fir ladder and its apex layer."""
+
+    def test_targets_are_assigned_by_prototype_area_rank(self):
+        # The solver writes scale_targets in ascending prototype-area order;
+        # the palette lists prototypes alphabetically, so the k-th smallest
+        # prototype -- not the k-th listed -- gets the k-th target.
+        meshes = ("/G/SM_a", "/G/SM_b", "/G/SM_c")
+        areas = (0.03, 0.005, 0.01)
+        entries = graded_palette(meshes, areas, (0.1, 0.2, 0.9))
+        by_mesh = {e.mesh: e.attributes.scale for e in entries}
+        assert by_mesh == {"/G/SM_b": 0.1, "/G/SM_c": 0.2, "/G/SM_a": 0.9}
+        assert all(not e.use_as_mask for e in entries)
+
+    def test_a_target_count_that_does_not_match_the_palette_is_refused(self):
+        with pytest.raises(ValueError, match="scale_targets has 2"):
+            graded_palette(("/G/a", "/G/b", "/G/c"), (1.0, 2.0, 3.0), (0.1, 0.2))
+        with pytest.raises(ValueError, match="pair up"):
+            graded_palette(("/G/a", "/G/b"), (1.0,), (0.1, 0.2))
+
+    def test_the_shipped_fir_ladder_settings(self):
+        cal = load_pve_calibration().for_species("silver_fir")
+        assert cal.ladder == LadderSpec(
+            scale_weight=1.0,
+            minimum_candidates=1,
+            cutoff_threshold=0.1,
+            apex=True,
+            main_generation_start=2,
+        )
+        assert load_pve_calibration().for_species("european_beech").ladder is None
+
+    def test_a_graded_tree_plans_a_scale_conditioned_palette_and_an_apex_layer(
+        self, tmp_path, forest_root
+    ):
+        plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
+        assert plan.skipped == ()
+        chains = {c.mesh_name: c for g in plan.graphs for c in g.chains}
+        chain = chains["SK_SilverFir_r08_h05m"]
+        cal = load_pve_calibration().for_species("silver_fir")
+        tree = cal.tree("r08_h05m")
+        # Main layer: every prototype carries its target, in area order.
+        assert chain.palette is not None and len(chain.palette) == 8
+        assert sorted(e.attributes.scale for e in chain.palette) == sorted(
+            tree.scale_targets
+        )
+        big = max(chain.palette, key=lambda e: e.attributes.scale)
+        assert big.mesh.endswith("SM_pacific_silver_fir_foliage_ZUP")
+        active = chain.distributor.conditions.active()
+        assert set(active) == {"scale"} and active["scale"].weight == 1.0
+        assert chain.distributor.conditions.cutoff_threshold == 0.1
+        assert chain.distributor.conditions.minimum_candidates == 1
+        assert chain.distributor.generation_band == (2, None)
+        assert chain.distributor.branch_density == tree.build_density
+        # Apex layer: one largest spray on the leader, ungraded.
+        assert len(chain.layers) == 1
+        apex = chain.layers[0]
+        assert apex.distributor.branch_density == 1
+        assert apex.distributor.generation_band == (1, 1)
+        assert apex.distributor.conditions is None
+        assert apex.distributor.axil_angle == chain.distributor.axil_angle
+        assert [e.mesh for e in apex.palette] == [big.mesh]
+
+    def test_a_fir_tree_without_targets_stays_flat(self, tmp_path, forest_root):
+        # The legacy radii were solved for a flat palette and still build
+        # that way; a species-level ladder must not refuse them.
+        plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
+        chains = {c.mesh_name: c for g in plan.graphs for c in g.chains}
+        legacy = chains["SK_SilverFir_r05_h25m"]
+        assert legacy.palette is None
+        assert legacy.distributor.conditions is None
+        assert legacy.distributor.generation_band is None
+        assert legacy.layers == ()
+
+    def test_a_masked_and_graded_tree_is_refused(self, tmp_path, forest_root):
+        toml = (
+            Path(__file__).resolve().parents[3] / "config" / "pve_calibration.toml"
+        ).read_text(encoding="utf-8")
+        anchor = 'growth_json = "Silver_Fir_r08_h05m_d06cm_full_growth_data.json"'
+        assert toml.count(anchor) == 1
+        override = tmp_path / "cal.toml"
+        override.write_text(
+            toml.replace(anchor, anchor + "\nmask_fraction = 0.25"), encoding="utf-8"
+        )
+        plan = plan_pve_graphs(
+            tmp_path,
+            forest_root,
+            content_root="/Game/PVE_Test",
+            calibration_path=override,
+        )
+        assert plan.chain_count == 26
+        assert any("r08_h05m" in s and "masked and a graded" in s for s in plan.skipped)
 
 
 class TestSplitByTriangles:

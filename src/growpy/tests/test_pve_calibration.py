@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from growpy.config.pve_calibration import (
+    LadderSpec,
     PVECalibration,
     SpeciesCalibration,
     TreeCalibration,
@@ -59,8 +60,11 @@ SHIPPED_DENSITIES = {
     },
 }
 
-# The r08/r16 trees of the 2026-09-14 run, solved OFFLINE with the validated
-# distributor model against Forrester and not yet measured by an Export click.
+# The r08/r16 trees, solved OFFLINE with the validated distributor model
+# against Forrester and not yet measured by an Export click. Beech: the
+# 2026-09-14 run. Fir: the run as REGENERATED 2026-09-15 by the surround
+# sweep, solved for the Scale-graded ladder (XRFF-412: main layer gen >= 2
+# plus one apex spray, so build_instances = main + 1).
 OFFLINE_R08_R16_DENSITIES = {
     "european_beech": {
         "r08_h05m": 10,
@@ -72,12 +76,23 @@ OFFLINE_R08_R16_DENSITIES = {
     },
     "silver_fir": {
         "r08_h05m": 19,
-        "r08_h10m": 27,
-        "r08_h15m": 44,
-        "r16_h05m": 21,
+        "r08_h10m": 30,
+        "r08_h15m": 47,
+        "r16_h05m": 20,
         "r16_h10m": 29,
         "r16_h15m": 46,
     },
+}
+
+# What the ladder solve of 2026-09-15 placed on the six fir trees: (main
+# instances + 1 apex, expected leaf area per instance under the grading).
+FIR_LADDER_BUILDS = {
+    "r08_h05m": (270, 0.01944615),
+    "r08_h10m": (552, 0.01978260),
+    "r08_h15m": (1520, 0.02000940),
+    "r16_h05m": (435, 0.02005515),
+    "r16_h10m": (837, 0.01923569),
+    "r16_h15m": (1908, 0.02047263),
 }
 
 
@@ -154,11 +169,23 @@ class TestShippedCalibration:
     def test_fir_builds_from_its_measurements(self, shipped):
         cal = shipped.for_species("silver_fir")
         sources = {t: cal.resolve_density(t).source for t in cal.trees}
-        # Only r20_h25m was finished offline; the rest are exported measurements
-        # (five shipped on 2026-09-11, six r08/r16 on 2026-09-14).
+        # Five shipped on 2026-09-11 are exported measurements; r20_h25m was
+        # finished offline. Of the six r08/r16 ladder trees (solved on the
+        # regenerated run -- their 2026-09-14 clicks measured trees that no
+        # longer exist) two were clicked on PVG_Ladder_Probe and landed exact.
         assert sources["r20_h25m"] == "offline"
         assert set(sources.values()) == {"measured", "offline"}
-        assert sum(1 for s in sources.values() if s == "measured") == 11
+        assert sum(1 for s in sources.values() if s == "measured") == 7
+        clicked = {"r08_h05m": ((19, 270),), "r08_h15m": ((47, 1520),)}
+        for tree_id in OFFLINE_R08_R16_DENSITIES["silver_fir"]:
+            tree = cal.tree(tree_id)
+            if tree_id in clicked:
+                assert sources[tree_id] == "measured", tree_id
+                assert tree.history == clicked[tree_id], tree_id
+                assert tree.build_instances == tree.history[-1][1], tree_id
+            else:
+                assert sources[tree_id] == "offline", tree_id
+                assert tree.history == (), tree_id
 
     def test_aggregate_leaf_area_is_what_shipped(self, shipped):
         total = sum(
@@ -173,13 +200,34 @@ class TestShippedCalibration:
     def test_the_offline_r08_r16_set_lands_on_its_targets(self, shipped):
         # Solved, not measured: the model that solved them reproduces 13 of 14
         # logged exports exactly, so the aggregate should sit on Forrester
-        # until a click says otherwise. 460.0 m2 placed against 459.5 m2.
+        # until a click says otherwise. Beech 302.5 m2 against 302.0; fir
+        # (ladder, per-instance areas) 110.5 against 111.9.
         placed = target = 0.0
         for species, cal in shipped.species.items():
             for tree_id in OFFLINE_R08_R16_DENSITIES[species]:
                 placed += cal.leaf_area_m2(tree_id)
                 target += cal.tree(tree_id).target_m2
         assert placed / target == pytest.approx(1.0, abs=0.005)
+
+    def test_the_fir_ladder_rows_are_the_solved_ones(self, shipped):
+        # XRFF-412 (2026-09-15). Eight targets per tree in ascending
+        # prototype-area order, at the tree's own placement-radius quantiles;
+        # the per-instance area replaces the species' flat mean in
+        # leaf_area_m2(). Restated so an edit has to be deliberate.
+        cal = shipped.for_species("silver_fir")
+        for tree_id, (instances, per_instance) in FIR_LADDER_BUILDS.items():
+            tree = cal.tree(tree_id)
+            assert tree.build_instances == instances, tree_id
+            assert tree.instance_leaf_area_m2 == pytest.approx(per_instance), tree_id
+            assert tree.scale_targets is not None and len(tree.scale_targets) == 8
+            assert list(tree.scale_targets) == sorted(tree.scale_targets)
+            assert 0.0 < tree.scale_targets[0] < tree.scale_targets[-1] < 0.1
+            assert cal.leaf_area_m2(tree_id) == pytest.approx(instances * per_instance)
+            assert tree.growth_json.endswith("_full_growth_data.json")
+        # The legacy fir radii stay flat and use the species mean.
+        for tree_id in SHIPPED_DENSITIES["silver_fir"]:
+            assert cal.tree(tree_id).scale_targets is None, tree_id
+            assert cal.tree(tree_id).instance_leaf_area_m2 is None, tree_id
 
     def test_every_shipped_tree_is_within_five_percent_of_target(self, shipped):
         # Until 2026-09-15 the aggregate hid three fir h05 trees short by
@@ -207,15 +255,15 @@ class TestShippedCalibration:
         assert len(on_target) == 15
         assert all(-0.03 <= d <= 0.032 for d in on_target), on_target
 
-        # The offline r08/r16 set is finer: the worst is fir r16_h05m at +4.7 %,
-        # again the staircase near the floor.
+        # The offline r08/r16 set is finer: the worst is fir r16_h05m at
+        # -3.5 %, again the staircase near the floor.
         offline = [
             delta(species, tree_id)
             for species in sorted(shipped.species)
             for tree_id in sorted(OFFLINE_R08_R16_DENSITIES[species])
         ]
         assert len(offline) == 12
-        assert all(-0.02 <= d <= 0.05 for d in offline), offline
+        assert all(-0.04 <= d <= 0.03 for d in offline), offline
 
     def test_every_tree_records_the_instances_its_density_places(self, shipped):
         for cal in shipped.species.values():
@@ -276,6 +324,17 @@ class TestShippedCalibration:
 
     def test_a_species_without_a_pose_section_gets_the_default(self):
         assert _species().pose == TwigPose()
+
+    def test_only_fir_ships_a_ladder(self, shipped):
+        assert shipped.for_species("silver_fir").ladder == LadderSpec(
+            scale_weight=1.0,
+            minimum_candidates=1,
+            cutoff_threshold=0.1,
+            apex=True,
+            main_generation_start=2,
+        )
+        assert shipped.for_species("european_beech").ladder is None
+        assert _species().ladder is None
 
 
 class TestDensityResolution:
@@ -362,6 +421,36 @@ class TestValidation:
         with pytest.raises(ValueError, match="mask_fraction"):
             _tree(mask_fraction=1.0, build_density=24)
         assert _tree().mask_fraction == 0.0
+
+    def test_a_graded_tree_needs_its_own_build_density(self):
+        # A graded palette changes the area per instance, so a history pair
+        # solved for the flat palette cannot stand in for it.
+        with pytest.raises(ValueError, match="scale_targets"):
+            _tree(scale_targets=(0.1, 0.5))
+        with pytest.raises(ValueError, match="scale_targets"):
+            _tree(scale_targets=(0.1, 1.5), build_density=20, build_instances=300)
+        with pytest.raises(ValueError, match="instance_leaf_area_m2"):
+            _tree(instance_leaf_area_m2=0.0)
+        graded = _tree(
+            scale_targets=(0.1, 0.5),
+            build_density=20,
+            build_instances=300,
+            instance_leaf_area_m2=0.02,
+        )
+        assert graded.resolve_density(0.0).instances == 300
+        assert _species(trees={"r05_h05m": graded}).leaf_area_m2(
+            "r05_h05m"
+        ) == pytest.approx(6.0)
+
+    def test_ladder_settings_are_bounded(self):
+        with pytest.raises(ValueError, match="scale_weight"):
+            LadderSpec(scale_weight=0.0)
+        with pytest.raises(ValueError, match="minimum_candidates"):
+            LadderSpec(minimum_candidates=0)
+        with pytest.raises(ValueError, match="cutoff_threshold"):
+            LadderSpec(cutoff_threshold=1.5)
+        with pytest.raises(ValueError, match="1-based"):
+            LadderSpec(main_generation_start=0)
 
     def test_an_unknown_jitter_mode_is_refused(self):
         with pytest.raises(ValueError, match="mode"):

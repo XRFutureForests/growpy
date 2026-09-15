@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "DensityLaw",
+    "LadderSpec",
     "PVECalibration",
     "ResolvedDensity",
     "SpeciesCalibration",
@@ -100,6 +101,14 @@ class TreeCalibration:
     # A history pair is an UNMASKED measurement, so a masked tree must carry
     # an explicit build_density / build_instances of its own.
     mask_fraction: float = 0.0
+    # Scale-graded ladder (XRFF-412): the Scale attribute each palette
+    # prototype advertises, in ascending prototype-leaf-area order, solved as
+    # quantiles of the tree's own placement radii so every tier is used about
+    # equally. None = the palette is flat (uniform pick, no condition).
+    scale_targets: tuple[float, ...] | None = None
+    # Expected leaf area per spawned instance under that grading, m2; None =
+    # the species' flat prototype mean applies.
+    instance_leaf_area_m2: float | None = None
 
     def __post_init__(self) -> None:
         if not self.growth_json:
@@ -130,6 +139,24 @@ class TreeCalibration:
                 f"tree {self.tree_id!r} builds with mask_fraction "
                 f"{self.mask_fraction} but names no build_density; its history "
                 f"was measured unmasked and cannot stand in"
+            )
+        if self.scale_targets is not None:
+            if not self.scale_targets or any(
+                not 0.0 <= t <= 1.0 for t in self.scale_targets
+            ):
+                raise ValueError(
+                    f"tree {self.tree_id!r} scale_targets must be non-empty "
+                    f"values in [0, 1], got {self.scale_targets}"
+                )
+            if self.build_density is None:
+                raise ValueError(
+                    f"tree {self.tree_id!r} carries scale_targets but no "
+                    f"build_density; a graded palette changes the leaf area per "
+                    f"instance, so its history was solved for a flat one"
+                )
+        if self.instance_leaf_area_m2 is not None and self.instance_leaf_area_m2 <= 0:
+            raise ValueError(
+                f"tree {self.tree_id!r} instance_leaf_area_m2 must be positive"
             )
 
     def resolve_density(self, relative_start: float) -> ResolvedDensity:
@@ -230,6 +257,50 @@ class WindPresets:
 
 
 @dataclass(frozen=True)
+class LadderSpec:
+    """How a species' size ladder is graded onto its branches (XRFF-412).
+
+    Epic's conifers give every palette entry a ``Scale`` target and activate
+    the Scale condition, so thick limbs take large parts and thin tips small
+    ones; the leader gets one large part from a dedicated apex layer gated to
+    generation 1, and the main layer starts at generation 2 so the trunk is
+    not sprayed along its whole length. The per-tree targets live on
+    :class:`TreeCalibration` because the normalised radius distribution is
+    the tree's own.
+
+    The picker min-max normalises each entry's distance to the sample across
+    the palette and keeps every entry under ``cutoff_threshold``. With
+    targets set at the tree's radius quantiles, the small tiers sit within a
+    few thousandths of one another while the two big sprays sit at 0.03 and
+    0.08, so a wide cutoff (Epic's 0.3 with two candidates) draws six or
+    seven candidates for most samples and the grading dissolves. 0.1 with a
+    single candidate picks the big sprays crisply by radius and still draws
+    among the near-equal small tiers at random -- measured on the six fir
+    r08/r16 trees, 2026-09-15.
+    """
+
+    scale_weight: float = 1.0
+    minimum_candidates: int = 1
+    cutoff_threshold: float = 0.1
+    apex: bool = True
+    main_generation_start: int = 2
+
+    def __post_init__(self) -> None:
+        if not 0.0 < self.scale_weight <= 1.0:
+            raise ValueError(f"scale_weight must be in (0, 1], got {self.scale_weight}")
+        if not 1 <= self.minimum_candidates <= 10:
+            raise ValueError(
+                f"minimum_candidates must be in [1, 10], got {self.minimum_candidates}"
+            )
+        if not 0.0 <= self.cutoff_threshold <= 1.0:
+            raise ValueError(
+                f"cutoff_threshold must be in [0, 1], got {self.cutoff_threshold}"
+            )
+        if self.main_generation_start < 1:
+            raise ValueError("main_generation_start is 1-based (trunk = 1)")
+
+
+@dataclass(frozen=True)
 class SpeciesCalibration:
     """Every calibrated tree of one species, plus the settings they share."""
 
@@ -247,6 +318,7 @@ class SpeciesCalibration:
     law: DensityLaw | None = None
     pose: TwigPose = TwigPose()
     wind: WindPresets = WindPresets()
+    ladder: LadderSpec | None = None
 
     def __post_init__(self) -> None:
         if not self.trees:
@@ -299,7 +371,10 @@ class SpeciesCalibration:
         resolved = self.resolve_density(tree_id)
         if resolved.instances is None:
             return None
-        return resolved.instances * self.prototype_leaf_area_m2
+        per_instance = self.tree(tree_id).instance_leaf_area_m2
+        if per_instance is None:
+            per_instance = self.prototype_leaf_area_m2
+        return resolved.instances * per_instance
 
 
 @dataclass(frozen=True)
@@ -359,6 +434,12 @@ def _tree(tree_id: str, data: dict[str, Any], history_relative_start: float):
         source_height_m=_opt_float(data.get("source_height_m")),
         generations=_opt_int(data.get("generations")),
         mask_fraction=float(data.get("mask_fraction", 0.0)),
+        scale_targets=(
+            tuple(float(t) for t in data["scale_targets"])
+            if data.get("scale_targets") is not None
+            else None
+        ),
+        instance_leaf_area_m2=_opt_float(data.get("instance_leaf_area_m2")),
     )
 
 
@@ -397,6 +478,18 @@ def _wind(data: dict[str, Any] | None) -> WindPresets:
     )
 
 
+def _ladder(data: dict[str, Any] | None) -> LadderSpec | None:
+    if data is None:
+        return None
+    return LadderSpec(
+        scale_weight=float(data.get("scale_weight", 1.0)),
+        minimum_candidates=int(data.get("minimum_candidates", 1)),
+        cutoff_threshold=float(data.get("cutoff_threshold", 0.1)),
+        apex=bool(data.get("apex", True)),
+        main_generation_start=int(data.get("main_generation_start", 2)),
+    )
+
+
 def _species(name: str, data: dict[str, Any]) -> SpeciesCalibration:
     relative_start = float(data.get("relative_start", 0.0))
     # Defaults to the species' own relative_start: a history with no recorded
@@ -425,6 +518,7 @@ def _species(name: str, data: dict[str, Any]) -> SpeciesCalibration:
         law=_law(data.get("law")),
         pose=_pose(data.get("pose")),
         wind=_wind(data.get("wind")),
+        ladder=_ladder(data.get("ladder")),
     )
 
 
