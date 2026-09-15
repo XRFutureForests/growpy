@@ -205,11 +205,13 @@ freeze_height = 0.0       # 0 = never; per-species table [surround.freeze_height
 # DBH; the cycles speed up ~50x once the crown folds), so the collapse is
 # structural, not seed noise, and the owner's reseed rule cannot fix it. With
 # the shell frozen at 15 m the tree stands in a fixed 15 m canopy, the stage
-# the static-shell A/B (above) showed runs the full ladder.
+# the static-shell A/B (above) showed runs the full ladder. Verified 2026-09-15:
+# spruce h05..h25 at both radii, a narrow cone over a long bole. scots_pine
+# runs the full ladder under the growing shell and is deliberately NOT frozen --
+# this is a collapse fix, not a style choice.
 [surround.freeze_height_per_species]
 douglas_fir = 15.0
 norway_spruce = 15.0
-scots_pine = 15.0
 silver_fir = 15.0
 
 # Owner decision 2026-09-15, judged at h15m (the production cap) on r08 crown
