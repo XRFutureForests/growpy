@@ -60,6 +60,7 @@ a missing one is cloned.
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -105,6 +106,13 @@ DEFAULT_CLONE_SOURCES = (
 )
 
 _FORBIDDEN_MASTER_PREFIX = "/Game/Templates"
+
+# Which prototype set a species' palette is built from. "twigs" = the per-object
+# twig prototypes growpy-convert-twigs writes under data/assets/twigs/ (a spray
+# or a leaf cluster each); "compound" = branch parts baked from a Grove tree of
+# the species with its twigs welded on (data/assets/compound_parts/
+# <species>_pve_palette.json), the MegaPlants unit -- XRFF-463.
+PALETTE_SOURCES = ("twigs", "compound")
 
 
 @dataclass(frozen=True)
@@ -224,10 +232,42 @@ def _camel(species: str) -> str:
     return "".join(part.capitalize() for part in species.split("_") if part)
 
 
+def _compound_prototypes(species: str) -> tuple[PalettePrototype, ...]:
+    """The baked compound parts of ``species``, in manifest order.
+
+    The manifest is what the bake wrote (name, file, welded twigs, leaf area);
+    the part USDs sit beside it, authored in growpy's twig frame (base at the
+    origin, axis +X) so the same re-frame applies to them.
+    """
+    from growpy.config.paths import get_assets_directory
+
+    manifest = get_assets_directory() / "compound_parts" / f"{species}_pve_palette.json"
+    if not manifest.is_file():
+        raise FileNotFoundError(
+            f"no compound palette for {species!r} at {manifest} -- bake one "
+            f"(tools/harvest_compound_parts.py) before asking for palette = "
+            f"'compound'"
+        )
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    prototypes = []
+    for entry in data.get("prototypes", []):
+        source = Path(entry["file"])
+        if not source.is_absolute():
+            source = manifest.parent / source.name
+        if not source.is_file():
+            raise FileNotFoundError(
+                f"{species!r} compound part {entry.get('name')!r} named by "
+                f"{manifest.name} is missing at {source}"
+            )
+        prototypes.append(PalettePrototype(name=str(entry["name"]), source=source))
+    return tuple(prototypes)
+
+
 def build_species_asset_spec(
     species: str,
     content_root: str = "/Game/PVE",
     folder_name: str | None = None,
+    palette: str = "twigs",
 ) -> SpeciesAssetSpec:
     """Resolve one species' palette and bark sources from disk.
 
@@ -235,6 +275,7 @@ def build_species_asset_spec(
     Twig directory and bark texture both resolve through
     ``config/tree_asset_lookup.csv``, so a species whose twig is another
     species' (Norway spruce uses the fir's) resolves to the right files.
+    ``palette`` picks the prototype set (see :data:`PALETTE_SOURCES`).
 
     Raises:
         FileNotFoundError: If the twig prototypes or either bark texture are
@@ -247,12 +288,17 @@ def build_species_asset_spec(
         get_twig_files_by_type,
     )
 
-    by_type = get_twig_files_by_type(species)
-    prototypes = tuple(
-        PalettePrototype(name=stem[: -len("_static")], source=paths[0])
-        for stem, paths in sorted(by_type.items())
-        if stem.endswith("_static") and paths
-    )
+    if palette not in PALETTE_SOURCES:
+        raise ValueError(f"palette must be one of {PALETTE_SOURCES}, got {palette!r}")
+    if palette == "compound":
+        prototypes = _compound_prototypes(species)
+    else:
+        by_type = get_twig_files_by_type(species)
+        prototypes = tuple(
+            PalettePrototype(name=stem[: -len("_static")], source=paths[0])
+            for stem, paths in sorted(by_type.items())
+            if stem.endswith("_static") and paths
+        )
     if not prototypes:
         raise FileNotFoundError(
             f"no *_static.usda twig prototypes found for {species!r} -- run "

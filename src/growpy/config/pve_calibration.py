@@ -319,6 +319,11 @@ class SpeciesCalibration:
     pose: TwigPose = TwigPose()
     wind: WindPresets = WindPresets()
     ladder: LadderSpec | None = None
+    # Which prototype set the palette is built from (XRFF-463): "twigs" = the
+    # per-object twig prototypes, "compound" = branch parts baked from a Grove
+    # tree with its twigs welded on. Compound parts carry 0.1-0.7 m2 each, so a
+    # density solved for one set is meaningless for the other.
+    palette: str = "twigs"
 
     def __post_init__(self) -> None:
         if not self.trees:
@@ -332,6 +337,11 @@ class SpeciesCalibration:
             raise ValueError(
                 f"species {self.species!r} prototype_leaf_area_m2 must be "
                 f"positive, got {self.prototype_leaf_area_m2}"
+            )
+        if self.palette not in ("twigs", "compound"):
+            raise ValueError(
+                f"species {self.species!r} palette must be 'twigs' or "
+                f"'compound', got {self.palette!r}"
             )
 
     def tree(self, tree_id: str) -> TreeCalibration:
@@ -519,6 +529,7 @@ def _species(name: str, data: dict[str, Any]) -> SpeciesCalibration:
         pose=_pose(data.get("pose")),
         wind=_wind(data.get("wind")),
         ladder=_ladder(data.get("ladder")),
+        palette=str(data.get("palette", "twigs")),
     )
 
 

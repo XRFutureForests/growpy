@@ -435,7 +435,9 @@ def plan_pve_graphs(
             )
             continue
         try:
-            assets = build_species_asset_spec(species, content_root=content_root)
+            assets = build_species_asset_spec(
+                species, content_root=content_root, palette=species_cal.palette
+            )
         except FileNotFoundError as err:
             skipped.append(f"{species}: {err}")
             continue
