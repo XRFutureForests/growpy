@@ -10,56 +10,54 @@ Species membership, `Max Height` and therefore stage count all come from
 `config/tree_asset_lookup.csv` (the `Dataset` column). That file is the single
 source of truth -- this page is a status view over it.
 
-Two numbers matter and they are not the same. The **full ladder** is what the
-species table below describes: every species grown to its own `Max Height`. The
-**configured run** is what `config/` actually produces today, and it is smaller
-because `[forest] max_height` caps the ladder at 25 m and `[export]
-density_variants` is empty.
+The **configured run** is what `config/` produces today; the earlier "full ladder"
+(639 = 71 stages × 3 radii × 3 densities) is history — the density axis was dropped, r00
+was dropped, and the height cap is 15 m. The generated record of every run is
+`data/output/forest/dataset_run_summary.md` (+ `.csv` with the full history); **that file,
+not this page, is the production status.**
 
-| Metric | Full ladder | Configured run |
-|---|---|---|
-| Species | 11 (4 conifer + 7 broadleaf) | 11 |
-| Surround radii | 3 (r00 open-grown, r08, r16) | 3 |
-| Height stages | 6--9 per species, 71 total | 5 per species (h05--h25), 55 total |
-| Density variants | 3 (full, reduced, bare) | 1 (full) |
-| **Total** | **639 models** (71 x 3 x 3) | **165 models** (55 x 3 x 1) |
-| Admitted in UE | 9 (2026-08-13, r00 h05/h10/h15 x 3 pilot species) | same |
+| Metric | Configured run (2026-09-14) |
+|---|---|
+| Species | 11 (4 conifer + 7 broadleaf; spruce and fir share a preset) |
+| Surround radii | 2 — r08, r16 (`[surround] radii`; no open-grown variant by decision) |
+| Height stages | h05, h10, h15 (`[forest] max_height = 15`) |
+| Density variants | 1 (full) — `[export] density_variants` empty |
+| **Total** | **66 assemblies**, 0 failed species, 1 h 20 min |
+| Imported into UE | the 66 as `DT_TreeCatalog` rows in XRLabDB; the four conifers still carry uncalibrated shell densities (XRFF-449) |
 
-The cap is not a placeholder. Above h25 the tall conifers need the height-LOD
-ladder that does not exist yet (XRFF-324): at `[quality.high]` an open-grown
-silver fir reaches 19.1 M mesh points at h25 and exhausts a 63.5 GB host at h20.
-`[quality.dataset_tall]` gets h20/h25 through at r00; h30+ has no asset at all,
-and the one h30 attempt died on a `MemoryError`. Density variants are off for
-the same reason -- they triple export cost for an axis nothing consumes yet, as
-`DT_TreeCatalog` has no density column. See
-[crown-density-ratchet.md](dataset-specification.md) for the measurements and
-XRFF-320 for the deliverables.
+The cap is not a placeholder. Above h15 the conifers need the height-LOD ladder that does
+not exist yet (XRFF-324): at `[quality.high]` an open-grown silver fir exhausts a 63.5 GB
+host at h20, and the one h30 attempt died on a `MemoryError`. Density variants are off
+because crown density is calibrated in the PVE distributor since 2026-09-10 and
+`DT_TreeCatalog` has no density column. Measurements: the knowledge hub's
+`04-LOGIC-TIER/growpy-surround-density-calibration` and `growpy-crown-density-ratchet`;
+deliverables: XRFF-320.
 
-Raising the target back to 639 means raising `[forest] max_height` **and**
-`[growth_models] max_height` together, and re-enabling `density_variants`.
+Raising the cap means raising `[forest] max_height` **and** `[growth_models] max_height`
+together.
 
 ## Production Status
 
-| # | Species | Std. name | Max height | Stages | r00 | r08 | r16 | Notes |
-|---|---|---|---|---|---|---|---|---|
-| 1 | Norway spruce | `norway_spruce` | 35 m | 7 | -- | -- | -- | |
-| 2 | Scots pine | `scots_pine` | 30 m | 6 | -- | -- | -- | |
-| 3 | Silver fir | `silver_fir` | 35 m | 7 | -- | -- | -- | Shares Norway spruce's Grove preset |
-| 4 | Douglas fir | `douglas_fir` | 45 m | 9 | -- | -- | -- | Needs ~147 cycles; cap is 160 |
-| 5 | European beech | `european_beech` | 30 m | 6 | -- | -- | -- | Pilot species |
-| 6 | European oak | `european_oak` | 30 m | 6 | -- | -- | -- | |
-| 7 | Common ash | `common_ash` | 30 m | 6 | -- | -- | -- | Slowest realised growth (0.23 m/cycle) |
-| 8 | Sycamore maple | `sycamore_maple` | 30 m | 6 | -- | -- | -- | Borrows common ash's yield table |
-| 9 | Silver birch | `silver_birch` | 30 m | 6 | -- | -- | -- | |
-| 10 | Small-leaved linden | `small_leaved_linden` | 30 m | 6 | -- | -- | -- | Borrows European beech's yield table |
-| 11 | Wild cherry | `wild_cherry` | 30 m | 6 | -- | -- | -- | Borrows silver birch's yield table |
+Per-species, per-run status is generated: `data/output/forest/dataset_run_summary.md`.
+The table below is the species catalogue with its *ladder* facts (max height from
+`tree_asset_lookup.csv`, stages at the 5 m interval); it does not track production.
 
-**Status key**: -- = not started, WIP = in progress, OK = complete, SKIP = intentionally skipped
+| # | Species | Std. name | Max height | Full-ladder stages | Notes |
+|---|---|---|---|---|---|
+| 1 | Norway spruce | `norway_spruce` | 35 m | 7 | |
+| 2 | Scots pine | `scots_pine` | 30 m | 6 | |
+| 3 | Silver fir | `silver_fir` | 35 m | 7 | Shares Norway spruce's Grove preset |
+| 4 | Douglas fir | `douglas_fir` | 45 m | 9 | Needs ~147 cycles; cap is 160 |
+| 5 | European beech | `european_beech` | 30 m | 6 | Pilot species |
+| 6 | European oak | `european_oak` | 30 m | 6 | |
+| 7 | Common ash | `common_ash` | 30 m | 6 | Slowest realised growth (0.23 m/cycle) |
+| 8 | Sycamore maple | `sycamore_maple` | 30 m | 6 | Borrows common ash's yield table |
+| 9 | Silver birch | `silver_birch` | 30 m | 6 | |
+| 10 | Small-leaved linden | `small_leaved_linden` | 30 m | 6 | Borrows European beech's yield table |
+| 11 | Wild cherry | `wild_cherry` | 30 m | 6 | Borrows silver birch's yield table |
 
-Each radius column covers whichever density variants `[export] density_variants`
-enables. That list is empty today, so a radius cell is one asset per stage,
-labelled `full`; mark OK when it passes the review checklist. With variants
-re-enabled a cell becomes three assets and all three must pass.
+Today's run stops every species at h15 (3 stages), so the full-ladder column is the
+ceiling the species *could* reach, not what is produced.
 
 European larch is present in `tree_asset_lookup.csv` but is **not** marked for
 the dataset, so it is not produced.

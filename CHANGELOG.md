@@ -5,6 +5,88 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-08-04 → 2026-09-14, condensed (186 commits on `dev`)
+
+No entries were written during this period; this block summarises it by theme. Commit
+subjects on `dev` carry the detail; the measurements are in the XR Future Forests Lab
+knowledge hub (`04-LOGIC-TIER/growpy-surround-density-calibration`,
+`growpy-crown-density-ratchet`) and on Linear XRFF-320 / XRFF-356 / XRFF-390.
+
+#### Changed — the dataset matrix
+
+- The catalog is **11 species × h05/h10/h15 × r08/r16 = 66 assemblies**. `[forest]
+  max_height` 25 → 15 and `usd_format` → `usda` (`5eacb91`); `[surround] radii` moved
+  [0, 8, 16] → [5, 10, 20] → **[8, 16]** (`fee285e`, owner decision 2026-09-11) — there is
+  deliberately no r00 open-grown variant. Density variants stay off.
+- **Crown density is no longer corrected in growpy** (`091b0ac`, 2026-09-10): it is
+  calibrated in the PVE distributor against Forrester (2017) leaf area. growpy owns crown
+  *structure*; the shell density varies per species and radius
+  (`[surround.density_per_species_radius]`, `3cc67e8`), with shell height as a second lever
+  (`bac10b5`) and a per-species grow/static split (broadleaves grow the shell, conifers
+  keep it static — `85fe679`, `ada7940`).
+- Crown geometry calibrated per species against published forest allometry (`9047c4f`);
+  the Grove knob → crown property map is documented per species (`8fa3068`). Conifer drop
+  ramps are declared, not flat-scaled, and get a floor so the tree still builds a stem
+  (`c477dff`, `c058f07`); wild cherry gets a drop-rate patch (it stalled at 15 m under
+  the shell, `339ce8d`). Shade-induced structural collapse traced to the shell and the
+  yield-table pacing curve, not branch shedding (`3bdec66`, `4fe9d5c`, `e615729`).
+
+#### Added — tools
+
+- `growpy-sweep-surround-density` / `growpy-summarise-surround-density`: the surround-density
+  sweep harness, in the repo with resume, pruning and per-arm measurement (`34f5a53`,
+  `b932418`); `growpy-crown-metrics` (forestry crown dimensions from exported assemblies,
+  `429fc3d`); `growpy-calibrate-crown-density`, `growpy-icon-metrics`.
+- `growpy-preflight-assembly`, `growpy-ue-import-probe`, `growpy-ue-viewport-probe`
+  (SceneCapture2D + post-tick collection, `b311386`); `ue_exec` watchdog gains a VRAM arm
+  (`7d15975`) and a resumable relaunched editor (`06f9fc3`).
+- `growpy-derive-twig-ladder` and the fir foliage size ladder (seven sprays overlaid on
+  the Grove twig, derived at conversion, not stored — `7f181da`, `69fc16d`, `8cbbe70`).
+
+#### Added — PVE route (in-engine growth)
+
+- **Growth-data JSON route** replaces the deprecated Preset-Loader path: real branch
+  generations, calibrated radius, decimation as a fraction of trunk radius (`2952f7d`,
+  `dd6dbea`, `9231d0e`); `lengthFromRoot` is path length (`9d36300`); a branch's last
+  point gets a real apical direction (`46f9a03`).
+- PVE graphs are **authored from growpy** per species from a forest export
+  (`1b6907a`, `1b07c44`; `generate_pve_graphs` in `unreal.toml`, still `false`), carrying
+  the measured twig pose (`26fcbe0`), jitter (`6c55842`), vector ramps (`d01180b`),
+  Voxelize by default (`fed4f0d`). The twig palette is authored in PVE's part frame at
+  import (`1e02276`, XRFF-445); palette + bark material have an owner,
+  `growpy-pve-assets` (`475f0eb`, `e47ceb3`); `growpy-pve-leaf-area` measures leaf area
+  at the scale the distributor actually places at (`6fe19f7`).
+- `config/pve_calibration.toml` tracks the measured densities and poses (`20e21c7`,
+  `11a7198`); it is read as its own file, not through the config merge.
+- Materials: per-species PVE material instances the MegaPlants way, virtual textures,
+  packed twig atlases (`daf1af5`, `8fa3263`, `0434b9e`, `b08af7b`).
+
+#### Added — compound foliage parts (XRFF-356, experimental)
+
+- A Grove subtree and its leaves bake into one welded USD part (`0db2e10`); parts are
+  shared by package path (`3d43e67`); a leafy subtree never gets a twigless prototype
+  (`b447752`); the compound path assembles correctly on a conifer (`4fb5c25`).
+
+#### Fixed
+
+- Step 4 no longer reports OK after an export failure or leaves a 0-byte artifact, and a
+  MemoryError is reported as memory (`0eebe4a`, XRFF-331/333); an import is recorded as
+  done only once its package is on disk (`d8436c5`, XRFF-332); a lost stage is named as a
+  build shortfall and counted per radius (`e753f16`, XRFF-334).
+- Twig orientation quaternion read as a quaternion, not a 3-vector (`646e8f5`); twigs
+  deleted by `build_cutoff_thickness` are recovered instead of guessed (`c491431`); dead
+  twigs no longer render as one upright cluster (`a279092`); DBH scaling axis and
+  branch-connection artefacts (`fc91ca7`, `ea0bac8`).
+- Assembly instance cap 100k → 40k applied before the bone remap (`34c9d9e`, `68dcd68`,
+  `a91bce4`); Grove `model.faces`/`model.points` hoisted out of the twig hot loops —
+  dataset production 44 min/17 assemblies → 10 min/99 (`d861957`).
+
+#### Removed
+
+- GitHub Actions CI workflow and pre-commit config (`3f06ce1`); the empty `.gitlab-ci.yml`
+  (`7faf244`); superseded tools (`45a1baa`).
+
+
 ### Fixed
 
 - Combined Helios OBJ export regenerated a fixed bark/twig_wood/twig_leaf

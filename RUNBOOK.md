@@ -170,19 +170,24 @@ growpy-dataset-pipeline --all --steps all --ingest-yield-tables --clean
 `--generate-csvs` dumps the selected rows to `data/input/dataset/` for manual review only;
 nothing reads them back.
 
-### Typical dataset configuration
+### Dataset configuration as it is run today
+
+The tracked `config/` is the production configuration; the values that define the
+catalog (66 assemblies, 2026-09-14) are:
 
 ```toml
 [forest]
 quality = "high"
 height_interval = 5
-growth_cycle_limit = 125
+max_height = 15            # the export cap; growth_models.toml caps calibration separately
+
+[surround]
+radii = [8.0, 16.0]        # no r00 open-grown variant by decision
 
 [export]
-density_variants = ["full", "reduced", "bare"]
+density_variants = []      # off: crown density is calibrated in PVE, not baked in
 skeletal = true
-skip_pve_json = true
-skip_validation = true
+usd_format = "usda"
 ```
 
 ### Full run from scratch

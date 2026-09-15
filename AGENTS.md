@@ -29,7 +29,7 @@ documentation is not redistributed — point at thegrove3d.com.
 | `src/growpy/io/helios/` | OBJ export, Helios scene XML |
 | `src/growpy/config/` | TOML config, species overrides |
 | `src/growpy/utils/` | yield tables, allometry, analysis, logging, GBIF |
-| `src/growpy/tools/` | ue_exec, diagnostics |
+| `src/growpy/tools/` | console tools: UE exec + import/viewport probes, crown metrics, surround-density sweep + summariser, PVE assets + leaf area, preflight, twig ladder, texture packing, diagnostics |
 | `src/growpy/blender/` | grove_extract, twig_converter |
 
 ## CLI Scripts
@@ -43,10 +43,17 @@ documentation is not redistributed — point at thegrove3d.com.
 | `growpy-build-allometry` | Fit height-DBH allometry from yield tables (no Grove simulation) |
 | `growpy-generate-forest` | Run full forest generation pipeline |
 | `growpy-dataset-pipeline` | Dataset CSV planning and execution |
+| `growpy-sweep-surround-density` / `growpy-summarise-surround-density` | Run and read the per-species surround-shell density sweep |
+| `growpy-crown-metrics` | Forestry crown dimensions from exported assemblies |
+| `growpy-calibrate-crown-density` / `growpy-icon-metrics` | Crown-density and icon-based crown-fill measurement |
+| `growpy-derive-twig-ladder` | Derive a twig size ladder from a Grove twig |
+| `growpy-pack-pve-textures` | Pack twig textures into the two maps PVE's tree material expects |
 | `growpy-pve-assets` | Generate the UE script that imports PVE twig palettes and bark materials |
 | `growpy-pve-leaf-area` | Report scale-corrected leaf area for the calibrated PVE trees |
-| `growpy-ue-exec` | Execute Unreal Engine import scripts |
-| `growpy-analyze-usda` | Analyse USD assembly output |
+| `growpy-preflight-assembly` | Validate a USD assembly before import (bindJoints, paths) |
+| `growpy-ue-exec` | Execute Unreal Engine import scripts (with watchdog) |
+| `growpy-ue-import-probe` / `growpy-ue-viewport-probe` | Gate 2 import cost and Gate 4 frame-time measurement |
+| `growpy-analyze-usda` | Analyse USD assembly output (triangle budget) |
 | `growpy-diagnose-growth` | Diagnose growth simulation results |
 | `growpy-visualize-tree` | Visualise individual tree output |
 | `growpy-sensitivity-analysis` | Run parameter sensitivity analysis |
@@ -101,4 +108,4 @@ Use `hex-line` first for repository text reads, search, and edits. Use `hex-grap
 - [ ] CLI script table matches `pyproject.toml` entry points
 - [ ] Canonical docs listed here still exist
 
-**Last Updated:** 2026-09-10
+**Last Updated:** 2026-09-15

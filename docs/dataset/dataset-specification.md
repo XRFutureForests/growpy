@@ -10,10 +10,12 @@ and previews see [dataset-overview.md](dataset-overview.md). The authoritative
 species catalogue is `config/tree_asset_lookup.csv`.
 
 **Purpose.** Systematically cover the most common tree species of southern Germany
-(Bavaria, Baden-Württemberg) at multiple growth stages, with open-grown and
-competition variants, and several foliage density levels per species.
+(Bavaria, Baden-Württemberg) at multiple growth stages, under two competition levels
+(Grove surround shells). Foliage density is *not* a dataset axis: since 2026-09-10 it is
+calibrated on the Unreal side (PVE distributor), and the density variants in `[export]`
+stay off.
 
-**Target engine.** Unreal Engine 5.7+ with Nanite and the Procedural Vegetation
+**Target engine.** Unreal Engine 5.7+ (5.8 for the PVE route) with Nanite and the Procedural Vegetation
 Editor (PVE).
 
 ## Species selection
@@ -49,13 +51,13 @@ columns in the lookup CSV — see [../reference/configuration.md](../reference/c
 
 ## Asset hierarchy
 
-Each asset is defined by four orthogonal dimensions:
+Each asset is defined by three dimensions (a fourth, density, exists in the config and is off):
 
 ```
 Species (11)
-  └─ Surround radius (3)   r00 open-grown, r08, r16 (via [surround] radii)
-       └─ Growth stage      every `height_interval` metres up to the height cap
-            └─ Density (≤3)  full, reduced, bare (via [export] density_variants)
+  └─ Surround radius (2)   r08, r16 (via [surround] radii — no open-grown r00 by decision, 2026-09-11)
+       └─ Growth stage      every `height_interval` metres up to `[forest] max_height` (15 m today: h05, h10, h15)
+            └─ Density (1)     full only; `[export] density_variants` is empty
 ```
 
 ### Surround radius
@@ -66,9 +68,12 @@ Each species is simulated once per entry in `[surround] radii`
 
 | Radius | fid | Layout |
 |---|---|---|
-| `r00` | 1 | no surround shell; wide crown, heavy branching (open-grown) |
-| `r08` | 2 | Grove's built-in **Surround** shell at 8 m; narrow crown, tall clear trunk |
-| `r16` | 3 | shell at 16 m -- weakly shaded, deliberately near-open |
+| `r08` | 1 | Grove's built-in **Surround** shell at 8 m; narrow crown, tall clear trunk |
+| `r16` | 2 | shell at 16 m -- weakly shaded, deliberately near-open |
+
+There is no `r00` open-grown row: a weaker shell was measured as nearly indistinguishable
+from open-grown, so r16 serves that role (owner decision 2026-09-11, recorded in
+`config/surround.toml`). A `surround_radius` of 0 is still accepted for ad-hoc CSVs.
 
 Rows are separated along x (`OPEN_TREE_X * i`) purely so they do not overlap;
 each is simulated in its own grove regardless, because Grove disables Surround
@@ -87,21 +92,20 @@ r16 as a wide, weakly-competed variant rather than a strongly-shaded one.
 ### Growth stage and density
 
 Stages are produced by `[forest] height_interval` (metres between stages) up to
-`[forest] max_height` (or the species' `Max Height`). Density variants are produced
-in one simulation via `[export] density_variants` (`full`/`reduced`/`bare`), defined
-in `quality.toml`.
+`[forest] max_height` (or the species' `Max Height`). Density variants *can* be produced
+in one simulation via `[export] density_variants` (`full`/`reduced`/`bare`, defined in
+`quality.toml`) but the list is empty in production: crown density is calibrated in the
+PVE distributor, not baked into assets.
 
-## Asset count estimate
+## Asset count
 
-The **full ladder** is `11 species × 3 radii × 6–9 stages × 3 densities` = 639
-assets: 71 stages in total across the species (each species' `Max Height` at the
-5 m interval), times 3 radii, times 3 densities.
-
-The **configured run** is smaller, because `[forest] max_height = 25` caps every
-species at the h05–h25 ladder and `[export] density_variants` is empty:
-`11 × 3 × 5 × 1` = **165 assets**, which is what `data/output/forest/` holds
-today. See [dataset-overview.md](dataset-overview.md) for why the cap is there
-and what raising it requires.
+The **configured run** is `11 species × 2 radii × 3 stages (h05, h10, h15) × 1 density` =
+**66 assets**, which is what `data/output/forest/` holds today
+(`dataset_run_summary.md`, 2026-09-14). The earlier full-ladder figure (639 = 71 stages ×
+3 radii × 3 densities) no longer describes any target: the density axis and r00 were
+dropped, and the cap is 15 m until the conifer height-LOD ladder exists (XRFF-324). See
+[dataset-overview.md](dataset-overview.md) for why the cap is there and what raising it
+requires.
 
 ## Naming convention
 

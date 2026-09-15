@@ -1,5 +1,16 @@
 # PVE Preset Generation and Import Workflow
 
+> **Superseded (2026-09).** This guide documents the **Preset-Loader route**
+> (`ProceduralVegetationPreset` DataAssets, `generate_pve_presets`), which UE 5.8 deprecated
+> and which is `false` in `config/unreal.toml`. The live route is the **Growth-Data JSON
+> route**: `generate_forest` emits a growth JSON per tree, `PVGrowthDataJsonImporter` ingests
+> it, and growpy authors the species graph, twig palette and bark material
+> (`generate_pve_graphs`, `growpy-pve-assets`, `config/pve_calibration.toml`) — see
+> [RUNBOOK.md](../../RUNBOOK.md), [../reference/pve-python-api.md](../reference/pve-python-api.md)
+> and [../internals/pve-json-reverse-engineering.md](../internals/pve-json-reverse-engineering.md).
+> Kept until XRFF-250 retires the preset code; `--skip-pve-json` and "presets are included
+> by default" below describe the old behaviour.
+
 This guide explains how to generate PVE (Procedural Vegetation Editor) preset JSON files from GrowPy and import them into Unreal Engine's Procedural Vegetation Editor.
 
 ## Overview

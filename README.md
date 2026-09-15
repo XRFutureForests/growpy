@@ -23,7 +23,7 @@ flowchart TB
     S3["3 · create_growth_models<br/>simulate growth curves,<br/>calibrate against yield tables"]
     S4["4 · generate_forest<br/>multi-species sim with light competition<br/>→ USD Nanite assemblies"]
     YT["yield tables<br/>via pylometree"]
-    OUT["USD assemblies · skeletal meshes<br/>wind data · PVE presets"]
+    OUT["USD assemblies · skeletal meshes<br/>wind data · PVE growth JSON + graphs"]
     UE["Unreal Engine 5.7+"]
     HEL["Helios++ OBJ<br/>LiDAR simulation"]
     GROVE --> S1 --> S2 --> S3 --> S4 --> OUT --> UE
@@ -61,13 +61,19 @@ same way:
 ## The dataset
 
 11 southern German species — 4 conifer, 7 broadleaf — chosen as the dominant trees of
-Bavaria and Baden-Württemberg. Each species produces two exported individuals:
+Bavaria and Baden-Württemberg. Each species is grown under two **surround radii**, Grove's
+statistical shell of virtual neighbours that gives the tall, self-pruned form of a
+forest-grown tree without simulating real neighbours:
 
-- **fid = 1** — open-grown, isolated, no light competition
-- **fid = 2** — competition centre, surrounded by three equilateral-triangle neighbours
+- **r08** — an 8 m shell, the tighter competition
+- **r16** — a 16 m shell, weaker competition (a weaker shell came out nearly indistinguishable
+  from open-grown, so there is deliberately no r00 open-grown variant)
 
-Neighbours (fid 101–103) take part in the simulation but are not exported. With density
-variants active, each tree gets `full`, `reduced` and `bare` at every height milestone.
+Every tree is exported at each height milestone up to the cap, `h05`, `h10`, `h15` today,
+so the catalog is **11 species × 3 stages × 2 radii = 66 Nanite assemblies**
+(`data/output/forest/dataset_run_summary.md` records the last run). Density variants
+(`full`/`reduced`/`bare`) exist in the config but are off: crown density is calibrated on
+the PVE side, and nothing downstream consumes a density axis.
 
 > **11 species is 10 distinct forms.** `norway_spruce` and `silver_fir` share a Grove preset,
 > twig and texture set, so they produce identical geometry. That matters for any published
@@ -109,12 +115,14 @@ arguments overriding. Resolution order: dataclass defaults → `config/*.toml` �
 | `[growth_models]` | Simulation cycles, seeds, plateau detection, timeouts |
 | `[calibration]` | Yield-table alignment for height and DBH, plot generation |
 | `[yield_sources]` | Ingested yield-table store path, region filter |
-| `[forest]` | Quality preset, growth-cycle limit, height interval, max height |
+| `[forest]` | Quality preset, growth-cycle limit, height interval, max height (the export cap) |
+| `[surround]` | Shell radii, per-species shell density and growth — the competition axis of the dataset |
 | `[quality.*]` | Named presets — mesh resolution, skeleton parameters |
 | `[export]` | USD format, skeletal/static mesh, twig density, density variants |
 | `[unreal]` | Import script generation, Unreal content path |
 | `[helios]` | OBJ export, scene XML, mesh simplification |
-| `[density_variant.*]` | Named density variants |
+| `[density_variant.*]` | Named density variants (off in production) |
+| `[pve_calibration]` | Measured PVE foliage densities and twig poses — read as its own file, treat as data |
 
 Species-to-asset mapping lives in `config/tree_asset_lookup.csv`; its `Dataset` column is
 what selects the species the dataset pipeline produces.
@@ -125,6 +133,8 @@ what selects the species the dataset pipeline produces.
 src/growpy/
 ├── cli/              # the four pipeline steps, dataset_pipeline, init_config,
 │                     # build_allometry, sensitivity_analysis
+├── tools/            # growpy-* console tools: UE exec/probes, crown metrics,
+│                     # surround-density sweep, PVE assets + leaf area, preflight
 ├── config/templates/ # packaged starter TOMLs (growpy-init-config copies these)
 └── …                 # see docs/reference/module-reference.md
 src/the_grove_23/     # your licensed Grove install — not tracked

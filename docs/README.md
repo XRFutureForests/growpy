@@ -9,7 +9,7 @@ Reference and workflow detail. Start with [README.md](../README.md) for what gro
 |----------|----------|
 | [guides/dataset-workflow.md](guides/dataset-workflow.md) | Full multi-species dataset production |
 | [guides/forest-generation.md](guides/forest-generation.md) | A single forest run from your own CSV |
-| [guides/pve-preset-workflow.md](guides/pve-preset-workflow.md) | Procedural Vegetation Editor integration |
+| [guides/pve-preset-workflow.md](guides/pve-preset-workflow.md) | **Superseded** Preset-Loader route; the live growth-JSON route is in RUNBOOK.md and the PVE references below |
 | [guides/unreal-import.md](guides/unreal-import.md) | Getting assemblies into Unreal |
 | [guides/helios-export.md](guides/helios-export.md) | OBJ + scene XML for Helios++ LiDAR simulation |
 
@@ -20,7 +20,7 @@ Reference and workflow detail. Start with [README.md](../README.md) for what gro
 | [reference/cli-reference.md](reference/cli-reference.md) | Every CLI flag |
 | [reference/configuration.md](reference/configuration.md) | All TOML keys and species-lookup CSV columns |
 | [reference/module-reference.md](reference/module-reference.md) | Package modules and their responsibilities |
-| [reference/module-graph.md](reference/module-graph.md) | Import graph |
+| [reference/module-graph.md](reference/module-graph.md) | Import graph (snapshot of 2026-04; layering rule still holds) |
 | [reference/package-api.md](reference/package-api.md) | Public Python API |
 | [reference/usd-builder.md](reference/usd-builder.md) | How USD stages are assembled |
 | [reference/coordinate-systems.md](reference/coordinate-systems.md) | Axis and unit conventions across the pipeline |
@@ -45,7 +45,7 @@ Reference and workflow detail. Start with [README.md](../README.md) for what gro
 | Document | Contents |
 |----------|----------|
 | [dataset/dataset-specification.md](dataset/dataset-specification.md) | Species catalogue and the full spec |
-| [dataset/dataset-overview.md](dataset/dataset-overview.md) | What the dataset contains and how it is organised |
+| [dataset/dataset-overview.md](dataset/dataset-overview.md) | The configured run and the species ladder; production status itself is the generated `data/output/forest/dataset_run_summary.md` |
 
 ---
 

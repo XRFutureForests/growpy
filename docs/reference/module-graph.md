@@ -1,5 +1,11 @@
 # Module Dependency Graph
 
+> **Snapshot of 2026-04-21.** The graph below predates the surround-density sweep, the PVE
+> growth-JSON route, the compound-parts harvester and most of `tools/` (24 console entry
+> points today, see `pyproject.toml`). Module *responsibilities* are current in
+> [module-reference.md](module-reference.md); treat this page as the layering rule plus an
+> old picture of it, and regenerate the graph before relying on any edge.
+
 This is the static import graph of the `growpy` package, grouped by layer. Edges
 show "imports from". Read top-to-bottom: each layer only depends on layers
 below it (with one documented exception in `io/`, where some `io/pve_*` modules

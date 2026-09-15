@@ -63,7 +63,8 @@ project_path             = "/Game/GrowPy/Trees"
 db_path                  = "/Game/Assets/TheGrove"
 voxelization             = true
 generate_wind_data       = true
-generate_pve_presets     = true
+generate_pve_presets     = false   # deprecated Preset-Loader route; leave false
+generate_pve_graphs      = false   # the live PVE route (growth JSON → authored graphs); XRFF-452 decides the default
 pve_import_base          = "/Game/GrowPy/PVE"
 
 [unreal.nanite]
