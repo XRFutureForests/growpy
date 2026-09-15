@@ -271,7 +271,7 @@ def radius_ordering(cells: dict[str, dict], field: str, tol: float,
 
 
 def judge_arm(per_radius: dict[str, dict[str, dict]], field: str, tol: float,
-              direction: int, stage: str) -> dict:
+              direction: int, stage: str, max_stage: str | None = None) -> dict:
     """Gate and score ONE arm (one species, one density, one seed).
 
     INVERTED fails; FLAT only warns. They are different faults: an inversion
@@ -286,7 +286,13 @@ def judge_arm(per_radius: dict[str, dict[str, dict]], field: str, tol: float,
     bad: list[str] = []
     flat: list[str] = []
     checked = 0
-    for st in STAGES:
+    # Stages above `max_stage` are neither gated nor scored: the production cap
+    # is h15 (forest.toml max_height), and above it the shell sits INSIDE a
+    # mature broadleaf's crown (A110 -- beech at h20 has a 10 m crown radius
+    # against an 8 m shell), which inverts the ordering for a tree the catalog
+    # never exports.
+    stages = STAGES if max_stage is None else STAGES[:STAGES.index(max_stage) + 1]
+    for st in stages:
         cells = {r: per_radius.get(r, {}).get(st) for r in RADII}
         if any(c is None for c in cells.values()):
             continue
@@ -298,6 +304,15 @@ def judge_arm(per_radius: dict[str, dict[str, dict]], field: str, tol: float,
             flat.append(f"{st}:flat({detail})")
         elif verdict == "CAPPED":
             flat.append(f"{st}:CAPPED({detail})")
+        # WALL: the crown reaches past its own shell. Owner definition
+        # 2026-09-15: the wall stands at the NEIGHBOURS' CROWN EDGE, so touching
+        # it is fine and only a crown whose p95 radius exceeds the distance is
+        # out of place (ash at r08: 9.0 m against 8). The shell is shade, not
+        # an obstacle (A122), so nothing else enforces this. Warns like FLAT.
+        for r in RADII:
+            crown = fnum(cells.get(r), "crown_diameter_m")
+            if crown is not None and crown / 2.0 > float(r):
+                flat.append(f"{st}:WALL(r{r} radius {crown / 2.0:.1f}>{r})")
     gate = "PASS" if checked and not bad else ("FAIL" if bad else "--")
 
     # Score at the requested stage on the tightest radius -- the most competed
@@ -356,6 +371,10 @@ def main() -> int:
                          "correction cannot erase; base reads the crown base "
                          "(r08 must sit HIGHER), the axis shading physically "
                          "drives. No re-simulation needed for either.")
+    ap.add_argument("--max-stage", choices=STAGES, default=None,
+                    help="ignore stages above this one in the gate (e.g. h15m, "
+                         "the production cap). Default: gate every stage the arm "
+                         "reached, including ones the catalog never exports.")
     ap.add_argument("--min-seeds", type=int, default=1,
                     help="seeds an arm needs before a PASS may be ranked "
                          "(default 1). Broadleaves on the crown-ø axis always "
@@ -364,10 +383,17 @@ def main() -> int:
     ap.add_argument("--work-dir", type=Path, default=DEFAULT_WORK_DIR,
                     help="sweep scratch directory holding sweep_results.csv "
                          "(default: data/tmp/surround_density_sweep)")
+    ap.add_argument("--radii", nargs="+", default=None,
+                    help="the work dir's shell distances as the CSV spells them, "
+                         "tightest first (default: 8 16). A radius probe run with "
+                         "sweep --radii 5 10 is read with --radii 5 10.")
     args = ap.parse_args()
 
-    global RESULTS
+    global RESULTS, RADII, TIGHTEST
     RESULTS = args.work_dir / "sweep_results.csv"
+    if args.radii:
+        RADII = [str(int(float(r))) for r in args.radii]
+        TIGHTEST = RADII[0]
 
     rows = load()
     if args.species:
@@ -423,7 +449,8 @@ def main() -> int:
         for density in sorted({d for s, d, _ in arms if s == species}):
             seeds = sorted(sd for s, d, sd in arms if s == species and d == density)
             per_seed = {sd: judge_arm(arms[(species, density, sd)], field, tol,
-                                      direction, args.stage) for sd in seeds}
+                                      direction, args.stage, args.max_stage)
+                        for sd in seeds}
             n = len(seeds)
             verdicts = [j["gate"] for j in per_seed.values()]
             # Every seed must pass. One inverted replicate is not "2 of 3" --

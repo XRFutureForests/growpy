@@ -5,6 +5,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-09-15 (afternoon) — one density, a growing shell for every species, Grove's conifer presets
+
+#### Changed
+
+- **`[surround] density = 0.75` for every species and radius**; the per-species and
+  per-radius density tables are empty (last fitted values kept in comments). Owner
+  decision: the fitted thresholds moved crown shape only marginally against seed noise; a
+  tree that collapses under 0.75 gets a different seed, not a different density.
+- **`[surround] grow = true` for every species** — the shell rises with the conifers too,
+  as it did for the 2026-08-13 catalog. The static conifer shell (2026-08-25 / 2026-09-14)
+  gave a bole but a crown 0.27–0.43 wide for its height; the growing one gives the
+  in-stand form (0.13–0.20). `[surround.grow_per_species]` is empty.
+- **Conifer presets are Grove's own again.** `preset_patches.json` no longer patches
+  norway_spruce or silver_fir (drop_decay/drop_weak ramps, fir `drop_shaded`); douglas_fir
+  and scots_pine were never patched. All four baked presets are key-for-key equal to
+  `src/the_grove_23/presets/`.
+- `growpy-sweep-surround-density --radii` and `growpy-summarise-surround-density --radii`
+  run and read a sweep at a shell-distance set other than the production one;
+  `--max-stage` on the summariser ignores stages above the production cap in the gate.
+
 ### 2026-09-15 — shell densities decided; the summariser gates on crown base, per seed
 
 #### Changed

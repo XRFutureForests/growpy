@@ -135,3 +135,30 @@ class TestSeedAwareGate:
         _write(tmp_path, rows)
         out = _run(monkeypatch, capsys, tmp_path, "--gate-axis", "base")
         assert "0.67 (0.67-0.67)" in out
+
+    def test_max_stage_ignores_cells_above_the_cap(self, tmp_path, monkeypatch, capsys):
+        # h10/h15 correct on the base axis, h20 inverted (the shell inside a
+        # mature broadleaf crown, A110) -- a stage the h15 catalog never exports.
+        rows = _arm("european_beech", 0.75, 512, dc=+1.0, db=-2.0)
+        rows.append(_row("european_beech", 0.75, 512, 8, "h20m",
+                         dbh=28, crown=20.0, base=4.5))
+        rows.append(_row("european_beech", 0.75, 512, 16, "h20m",
+                         dbh=38, crown=18.0, base=9.0))
+        _write(tmp_path, rows)
+        out = _run(monkeypatch, capsys, tmp_path, "--gate-axis", "base")
+        assert "h20m:INVERTED" in out and "FAIL" in out
+        out = _run(monkeypatch, capsys, tmp_path, "--gate-axis", "base",
+                   "--max-stage", "h15m")
+        assert "INVERTED" not in out and "-> 0.75" in out
+
+    def test_wall_warns_when_crown_radius_exceeds_shell_distance(
+            self, tmp_path, monkeypatch, capsys):
+        rows = _arm("common_ash", 0.75, 512, dc=+0.5, db=-1.0)
+        # r08 h15 crown diameter 18 m -> radius 9 m, past an 8 m wall.
+        for r in rows:
+            if r["radius"] == 8 and r["stage"] == "h15m":
+                r["crown_diameter_m"] = 18.0
+        _write(tmp_path, rows)
+        out = _run(monkeypatch, capsys, tmp_path, "--gate-axis", "base")
+        assert "h15m:WALL(r8 radius 9.0>8)" in out
+        assert "-> 0.75" in out  # a warning, not a gate failure

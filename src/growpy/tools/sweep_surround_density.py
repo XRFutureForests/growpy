@@ -699,6 +699,11 @@ def main() -> int:
                     help="cap the height ladder for this run (m). Use when "
                          "bracketing a preset key: the top of the ladder is "
                          "where the wall clock is spent.")
+    ap.add_argument("--radii", type=float, nargs="+", default=None,
+                    help="shell distances for every arm of THIS run (default: "
+                         "the production set). A24/A28 still apply: arms are only "
+                         "comparable to arms at the same set, so give a radius "
+                         "probe its own --work-dir.")
     ap.add_argument("--remeasure", action="store_true",
                     help="re-derive every row from the RETAINED assemblies "
                          "without re-simulating anything, and write them to a "
@@ -720,7 +725,9 @@ def main() -> int:
                          "been measured -- see prune_arm()")
     args = ap.parse_args()
 
-    global HERE, CFG_ROOT, OUT_ROOT, LOG_ROOT, RESULTS
+    global HERE, CFG_ROOT, OUT_ROOT, LOG_ROOT, RESULTS, RADII
+    if args.radii:
+        RADII = [float(r) for r in args.radii]
     HERE = args.work_dir
     CFG_ROOT, OUT_ROOT, LOG_ROOT = HERE / "cfg", HERE / "out", HERE / "logs"
     RESULTS = HERE / "sweep_results.csv"

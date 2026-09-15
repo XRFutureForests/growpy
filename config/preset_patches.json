@@ -249,23 +249,6 @@
     "Grove originals: norway_spruce 0.3/0.3, silver_fir 0.3/0.3,",
     "silver_birch 0.6/0.5, small_leaved_linden 0.6/0.2, wild_cherry 0.4/0.3."
   ],
-  "silver_fir": {
-    "drop_shaded": 0.05,
-    "drop_decay": 0.3,
-    "drop_decay_curve": {
-      "start": 0.18,
-      "end": 0.3,
-      "easing": "ease_in",
-      "transition_cycle": 15
-    },
-    "drop_weak": 0.3,
-    "drop_weak_curve": {
-      "start": 0.18,
-      "end": 0.3,
-      "easing": "ease_in",
-      "transition_cycle": 15
-    }
-  },
   "silver_birch": {
     "drop_decay": 0.36,
     "drop_weak": 0.3,
@@ -379,20 +362,5 @@
     "r05 still does not reach h20 at 0.18. Per the owner's rule that admissibility",
     "beats completeness, that is the answer, not a reason to lower the start."
   ],
-  "norway_spruce": {
-    "drop_decay": 0.3,
-    "drop_decay_curve": {
-      "start": 0.18,
-      "end": 0.3,
-      "easing": "ease_in",
-      "transition_cycle": 15
-    },
-    "drop_weak": 0.3,
-    "drop_weak_curve": {
-      "start": 0.18,
-      "end": 0.3,
-      "easing": "ease_in",
-      "transition_cycle": 15
-    }
-  }
+  "_why_conifer_patches_removed_2026_09_15": "Owner decision 2026-09-15 (afternoon): the four conifers run Grove's authored presets unmodified, as the 2026-08-13 catalog did. norway_spruce and silver_fir carried drop_decay/drop_weak ramps (start 0.18 -> end 0.3, ease_in, transition_cycle 15; c477dff/c058f07) and silver_fir drop_shaded 0.05 (e8e6f8e); douglas_fir and scots_pine were already unpatched. The ramps were fitted to a static shell that the conifers no longer use (surround.toml: grow = true for every species) and A78 measured a ramp making the bole worse, not better. Removed keys: {\"norway_spruce\": {\"drop_decay\": 0.3, \"drop_decay_curve\": {\"start\": 0.18, \"end\": 0.3, \"easing\": \"ease_in\", \"transition_cycle\": 15}, \"drop_weak\": 0.3, \"drop_weak_curve\": {\"start\": 0.18, \"end\": 0.3, \"easing\": \"ease_in\", \"transition_cycle\": 15}}, \"silver_fir\": {\"drop_shaded\": 0.05, \"drop_decay\": 0.3, \"drop_decay_curve\": {\"start\": 0.18, \"end\": 0.3, \"easing\": \"ease_in\", \"transition_cycle\": 15}, \"drop_weak\": 0.3, \"drop_weak_curve\": {\"start\": 0.18, \"end\": 0.3, \"easing\": \"ease_in\", \"transition_cycle\": 15}}}"
 }
