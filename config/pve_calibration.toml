@@ -70,6 +70,78 @@ profile_mean = 0.8215
 profile_pin = "plantProfile_8"
 
 
+# ------------------------------------------------------------- defaults ----
+#
+# A species with no [pve_calibration.species.<name>] block of its own is built
+# from this table, refined by the `conifer` / `broadleaf` sub-table of its
+# growth habit (tree_asset_lookup.csv, Competition Group). Such a species has
+# no measured rows: every one of its trees is solved OFFLINE by the plan
+# (io/unreal/pve_offline_solve.py) against Forrester (2017) leaf area at the
+# tree's own DBH times `fullness`, on the distributor model that reproduces
+# logged exports to the instance. The manifest marks those trees
+# `density_source = "offline"`.
+#
+# fullness is the owner's optics knob (direction of 2026-09-15: optics first,
+# leaf area reported, never solved to): the Forrester-calibrated fir read as a
+# skeleton, x4 as a conifer. Broadleaves start at x2 for the same reason. To
+# change it for one species give that species its own block (a block replaces
+# the defaults wholesale, so copy the habit's keys into it).
+#
+# A species WITH a block and measured rows builds from those rows unless its
+# block says `build_from = "offline"`, in which case the rows stay as the
+# record of what was measured and every tree is solved like the others.
+[pve_calibration.defaults]
+# Must match [unreal.growth_data_json].min_branch_radius_fraction in
+# unreal.toml -- it is what the growth JSONs of the run were decimated at.
+fraction = 0.06
+relative_start = 0.0
+phyllotaxy_formation = "DISTICHOUS"
+palette = "twigs"
+fullness = 1.0
+
+[pve_calibration.defaults.conifer]
+fullness = 4.0
+# Sprays on the sides, tilted 30 deg toward the tip, flat, faces up (the
+# measured silver-fir pose, XRFF-438).
+[pve_calibration.defaults.conifer.pose]
+reset_phyllotaxy = true
+axil_angle = 30.0
+# Scale-graded size ladder + apex spray (XRFF-412): the fir ladder (8 tiers,
+# shared by spruce and douglas) and the pine's five sprays are graded onto
+# branch radius, one big spray on the leader.
+[pve_calibration.defaults.conifer.ladder]
+scale_weight = 1.0
+minimum_candidates = 1
+cutoff_threshold = 0.1
+apex = true
+main_generation_start = 2
+
+[pve_calibration.defaults.broadleaf]
+fullness = 2.0
+# Foliage on the outer 60 % of every branch, as beech ships: keeps leaves off
+# the thick inner span of the primaries.
+relative_start = 0.4
+# Rosettes on the sides, tilted 40 deg toward the tip, faces up, plus the
+# inclination real leaves have as random pitch/roll/yaw (the beech pose).
+[pve_calibration.defaults.broadleaf.pose]
+reset_phyllotaxy = true
+axil_angle = 40.0
+jitter = [
+    { mode = "PITCH", degrees = 20.0, seed = 11 },
+    { mode = "ROLL", degrees = 12.0, seed = 12 },
+    { mode = "YAW", degrees = 8.0, seed = 13 },
+]
+# Graded here too: birch ships 18 leaf clusters spanning 30x in area and
+# cherry 8 spanning 54x, so grading them onto branch radius puts the big
+# clusters on the limbs and the small ones on the twigs, Epic's shape.
+[pve_calibration.defaults.broadleaf.ladder]
+scale_weight = 1.0
+minimum_candidates = 1
+cutoff_threshold = 0.1
+apex = true
+main_generation_start = 2
+
+
 # ---------------------------------------------------------------- beech ----
 
 [pve_calibration.species.european_beech]
@@ -93,6 +165,11 @@ prototype_leaf_area_m2 = 0.01583458005362597
 palette_flat_mean_triangles = 9990.0
 # The history below was measured at this relative_start, NOT at the species'.
 history_relative_start = 0.0
+# Production (2026-09-15 evening): every beech tree is solved offline at the
+# broadleaf fullness so h05..h25 at r08/r16 is one look; the rows below stay
+# as the measured record. Flat palette (no ladder), as measured.
+build_from = "offline"
+fullness = 2.0
 
 # Fitted instances law, used only to seed a solve:
 #   instances ~ slope_per_s * s_ratio + floor_per_branch * branches
@@ -394,6 +471,11 @@ forrester_model_id = "forrester2017_conifers_la"
 # Measured at 0.0, which is also what the species runs at, so these histories
 # are directly usable as build densities.
 history_relative_start = 0.0
+# Production (2026-09-15 evening): every fir tree is solved offline at the
+# conifer fullness so the whole ladder is one look; the rows below stay as
+# the measured record. Graded ladder + apex as before.
+build_from = "offline"
+fullness = 4.0
 
 # Borrowed from the beech fit -- no fir-specific fit was made. The law only
 # seeds a solve; every fir density below is measured or simulated.

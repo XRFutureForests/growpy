@@ -717,8 +717,10 @@ from .twig_geometry import (  # noqa: F401
     _get_alpha_texture_for_geometry,
     apply_normal_displacement,
     cut_along_alpha_contour,
+    densify_face_cap,
     densify_mesh,
     densify_mesh_to_target_edge,
+    mesh_surface_area,
     planar_dissolve,
     trim_by_alpha_mask,
 )
@@ -881,6 +883,11 @@ def process_twig_file(
         joined_objects.append(joined)
 
     mesh_objects = joined_objects
+
+    # Face-cap reference for densification: the largest variant in this file,
+    # so every variant is capped at the same faces-per-area (XRFF-412).
+    object_area = {obj.name: mesh_surface_area(obj.data) for obj in mesh_objects}
+    largest_area = max(object_area.values(), default=0.0)
 
     exported_files = []
     texture_manifest = {}
@@ -1054,6 +1061,9 @@ def process_twig_file(
                         target_edge_mm=obj_edge_mm,
                         material_indices=leaf_mats,
                         max_iterations=8,
+                        max_faces=densify_face_cap(
+                            object_area.get(obj.name, 0.0), largest_area
+                        ),
                     )
                     cut_along_alpha_contour(
                         obj,

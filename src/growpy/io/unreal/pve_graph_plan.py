@@ -276,6 +276,49 @@ def graded_palette(
     )
 
 
+def _pose_distributor(
+    calibration: SpeciesCalibration,
+    density: int,
+    *,
+    conditions: ConditionSpec | None = None,
+    generation_band: tuple[int | None, int | None] | None = None,
+) -> DistributorSpec:
+    """The species' measured twig pose at ``density`` (XRFF-438, 2026-09-14).
+
+    Restated here so a change to the builder's defaults cannot silently change
+    what a pipeline run emits. None of it changes instance counts.
+    """
+    return DistributorSpec(
+        branch_density=density,
+        relative_start=calibration.relative_start,
+        phyllotaxy_formation=calibration.phyllotaxy_formation,
+        reset_phyllotaxy=calibration.pose.reset_phyllotaxy,
+        axil_angle=calibration.pose.axil_angle,
+        axil_angle_ramp=(1.0, 1.0),  # constant; the engine default ramps it 0->1
+        single_bud_tip=True,
+        scale_ramp=(1.0, 1.0),
+        # Tip Up = Apical first, then the aim entry flattens it -- except a
+        # leader, which the WorldUpDot blend leaves pointing up.
+        auto_align_end=True,
+        aim=FoliageVectorSpec(
+            kind="aim",
+            vector1="AXIS_FLATTEN",
+            vector2="AXIS_AIM",
+            dual=True,
+            affect_tip=True,
+            blend_attribute="WORLD_UP_DOT",
+            ramp=((0.0, 0.0), (0.9, 0.0), (1.0, 1.0)),
+        ),
+        face=FoliageVectorSpec(kind="face", vector2="AXIS_AIM", affect_tip=True),
+        jitter=tuple(
+            JitterSpec(mode=j.mode, degrees=j.degrees, seed=j.seed)
+            for j in calibration.pose.jitter
+        ),
+        conditions=conditions,
+        generation_band=generation_band,
+    )
+
+
 def _chain_for(
     entry: GrowthJson,
     calibration: SpeciesCalibration,
@@ -283,6 +326,7 @@ def _chain_for(
     palette_meshes: Sequence[str] = (),
     palette_areas: Sequence[float] | None = None,
 ) -> TreeChainSpec:
+    """A chain from a MEASURED calibration row (the tree must have one)."""
     resolved = calibration.resolve_density(entry.tree_id)
     tree = calibration.tree(entry.tree_id)
     ladder = calibration.ladder
@@ -319,53 +363,14 @@ def _chain_for(
         if ladder.apex:
             generation_band = (ladder.main_generation_start, None)
 
-    distributor = DistributorSpec(
-        branch_density=resolved.density,
-        relative_start=calibration.relative_start,
-        phyllotaxy_formation=calibration.phyllotaxy_formation,
-        # The measured pose (XRFF-438, 2026-09-14). Restated at the call
-        # site so a change to the builder's defaults cannot silently change
-        # what a pipeline run emits. None of it changes instance counts.
-        reset_phyllotaxy=calibration.pose.reset_phyllotaxy,
-        axil_angle=calibration.pose.axil_angle,
-        axil_angle_ramp=(1.0, 1.0),  # constant; the engine default ramps it 0->1
-        single_bud_tip=True,
-        scale_ramp=(1.0, 1.0),
-        # Tip Up = Apical first, then the aim entry flattens it -- except a
-        # leader, which the WorldUpDot blend leaves pointing up.
-        auto_align_end=True,
-        aim=FoliageVectorSpec(
-            kind="aim",
-            vector1="AXIS_FLATTEN",
-            vector2="AXIS_AIM",
-            dual=True,
-            affect_tip=True,
-            blend_attribute="WORLD_UP_DOT",
-            ramp=((0.0, 0.0), (0.9, 0.0), (1.0, 1.0)),
-        ),
-        face=FoliageVectorSpec(kind="face", vector2="AXIS_AIM", affect_tip=True),
-        jitter=tuple(
-            JitterSpec(mode=j.mode, degrees=j.degrees, seed=j.seed)
-            for j in calibration.pose.jitter
-        ),
+    distributor = _pose_distributor(
+        calibration,
+        resolved.density,
         conditions=conditions,
         generation_band=generation_band,
     )
     if ladder is not None and ladder.apex and tree.scale_targets is not None:
-        # One largest-tier part at the leader tip: density 1 places a single
-        # sample at the end of the only generation-1 branch.
-        largest = max(range(len(palette_meshes)), key=lambda i: palette_areas[i])
-        layers = (
-            FoliageLayer(
-                distributor=dataclasses.replace(
-                    distributor,
-                    branch_density=1,
-                    generation_band=(1, 1),
-                    conditions=None,
-                ),
-                palette=(PaletteEntry(mesh=palette_meshes[largest]),),
-            ),
-        )
+        layers = (_apex_layer(distributor, palette_meshes, palette_areas),)
     return TreeChainSpec(
         growth_json=entry.path,
         mesh_name=f"{mesh_prefix}_{entry.tree_id}",
@@ -376,6 +381,185 @@ def _chain_for(
     )
 
 
+def _apex_layer(
+    distributor: DistributorSpec,
+    palette_meshes: Sequence[str],
+    palette_areas: Sequence[float],
+) -> FoliageLayer:
+    """One largest-tier part at the leader tip.
+
+    Density 1 places a single sample at the end of the only generation-1
+    branch.
+    """
+    largest = max(range(len(palette_meshes)), key=lambda i: palette_areas[i])
+    return FoliageLayer(
+        distributor=dataclasses.replace(
+            distributor,
+            branch_density=1,
+            generation_band=(1, 1),
+            conditions=None,
+        ),
+        palette=(PaletteEntry(mesh=palette_meshes[largest]),),
+    )
+
+
+@dataclass(frozen=True)
+class PlannedTree:
+    """One chain plus what it was built from, for the manifest."""
+
+    chain: TreeChainSpec
+    instances: int
+    detail: dict
+
+
+def _offline_chain(
+    entry: GrowthJson,
+    calibration: SpeciesCalibration,
+    mesh_prefix: str,
+    assets: SpeciesAssetSpec,
+    palette_areas: Sequence[float],
+    profile_mean: float,
+) -> PlannedTree:
+    """A chain for a tree with no measured row, from the offline model."""
+    from growpy.io.unreal.pve_offline_solve import (
+        compound_layout,
+        forrester_target,
+        solve_flat,
+        solve_graded,
+        tree_stats,
+    )
+
+    stats = tree_stats(entry.path, profile_mean)
+    forrester_m2, model_id, extrapolated = forrester_target(entry.species, stats.dbh_cm)
+    target_m2 = forrester_m2 * calibration.fullness
+    meshes = assets.palette_meshes
+    names = [p.name for p in assets.prototypes]
+    base = _pose_distributor(calibration, 1)
+    detail = {
+        "species": entry.species,
+        "tree_id": entry.tree_id,
+        "density_source": "offline",
+        "palette": calibration.palette,
+        "dbh_cm": round(stats.dbh_cm, 2),
+        "height_m": round(stats.height_m, 2),
+        "branches": stats.branches,
+        "points": stats.points,
+        "forrester_m2": round(forrester_m2, 2),
+        "forrester_model": model_id,
+        "forrester_extrapolated": extrapolated,
+        "fullness": calibration.fullness,
+        "target_m2": round(target_m2, 2),
+    }
+
+    if calibration.palette == "compound":
+        layout = compound_layout(
+            entry.path,
+            base,
+            names,
+            meshes,
+            palette_areas,
+            calibration.compound,
+            stats.longest_branch_m,
+        )
+        chain = TreeChainSpec(
+            growth_json=entry.path,
+            mesh_name=f"{mesh_prefix}_{entry.tree_id}",
+            wind_settings=wind_settings_for(entry.tree_id, calibration.wind),
+            palette=layout.palette,
+            distributor=layout.distributor,
+            layers=layout.layers,
+        )
+        detail.update(
+            layout="compound",
+            fill_density=layout.distributor.branch_density,
+            fill_instances=layout.fill_instances,
+            cap_instances=layout.cap_instances,
+            apex_instances=layout.apex_instances,
+            predicted_instances=layout.instances,
+            predicted_m2=round(layout.area_m2, 2),
+        )
+        return PlannedTree(chain=chain, instances=layout.instances, detail=detail)
+
+    ladder = calibration.ladder
+    if ladder is not None:
+        solved = solve_graded(
+            entry.path, base, meshes, palette_areas, ladder, target_m2
+        )
+        conditions = ConditionSpec(
+            scale=ConditionInfluence(weight=ladder.scale_weight),
+            minimum_candidates=ladder.minimum_candidates,
+            cutoff_threshold=ladder.cutoff_threshold,
+        )
+        distributor = _pose_distributor(
+            calibration,
+            solved.density,
+            conditions=conditions,
+            generation_band=(
+                (ladder.main_generation_start, None) if ladder.apex else None
+            ),
+        )
+        palette = graded_palette(meshes, palette_areas, solved.scale_targets)
+        layers = ()
+        if ladder.apex:
+            layers = (_apex_layer(distributor, meshes, palette_areas),)
+        detail["layout"] = "graded"
+        detail["scale_targets"] = [round(t, 6) for t in solved.scale_targets]
+    else:
+        mean_area = sum(palette_areas) / len(palette_areas)
+        solved = solve_flat(entry.path, base, mean_area, target_m2)
+        distributor = _pose_distributor(calibration, solved.density)
+        palette = None
+        layers = ()
+        detail["layout"] = "flat"
+    detail.update(
+        density=solved.density,
+        predicted_instances=solved.instances,
+        predicted_m2=round(solved.area_m2, 2),
+        predicted_error=round(solved.error, 4),
+    )
+    chain = TreeChainSpec(
+        growth_json=entry.path,
+        mesh_name=f"{mesh_prefix}_{entry.tree_id}",
+        wind_settings=wind_settings_for(entry.tree_id, calibration.wind),
+        palette=palette,
+        distributor=distributor,
+        layers=layers,
+    )
+    return PlannedTree(chain=chain, instances=solved.instances, detail=detail)
+
+
+def _measured_tree(
+    entry: GrowthJson,
+    calibration: SpeciesCalibration,
+    mesh_prefix: str,
+    assets: SpeciesAssetSpec,
+    palette_areas: Sequence[float],
+) -> PlannedTree:
+    chain = _chain_for(
+        entry, calibration, mesh_prefix, assets.palette_meshes, palette_areas
+    )
+    resolved = calibration.resolve_density(entry.tree_id)
+    if resolved.instances is None:
+        raise ValueError(
+            f"density {resolved.density} has no recorded instance count, so "
+            f"its click cannot be sized"
+        )
+    tree = calibration.tree(entry.tree_id)
+    detail = {
+        "species": entry.species,
+        "tree_id": entry.tree_id,
+        "density_source": resolved.source,
+        "palette": calibration.palette,
+        "layout": "graded" if tree.scale_targets is not None else "flat",
+        "dbh_cm": tree.dbh_cm,
+        "target_m2": tree.target_m2,
+        "density": resolved.density,
+        "predicted_instances": resolved.instances,
+        "predicted_m2": calibration.leaf_area_m2(entry.tree_id),
+    }
+    return PlannedTree(chain=chain, instances=resolved.instances, detail=detail)
+
+
 def plan_pve_graphs(
     output_dir: Path,
     forest_root: Path,
@@ -384,9 +568,16 @@ def plan_pve_graphs(
     graph_folder: str = "/Game/PVE/Graphs",
     triangle_cap: float = 120e6,
     nanite_shape_preservation: str = "VOXELIZE",
+    collision_generation: str = "ALL_GENERATIONS",
     calibration_path: Path | None = None,
 ) -> PVEGraphPlanResult:
     """Author graph scripts for every species in a finished forest export.
+
+    A tree with a measured calibration row builds at that density; every
+    other tree is solved offline against Forrester x the species' ``fullness``
+    (see :mod:`~growpy.io.unreal.pve_offline_solve`), and a species with no
+    calibration block at all is built from ``[pve_calibration.defaults]``. The
+    manifest records which was which, per tree.
 
     Args:
         output_dir: Where to write the scripts and the manifest.
@@ -402,17 +593,21 @@ def plan_pve_graphs(
             result can actually be judged on. It costs roughly 80x the export
             time, so pass ``NONE`` while iterating on densities or wiring,
             where only the instance count matters.
+        collision_generation: ``ALL_GENERATIONS`` by default (owner,
+            2026-09-15) -- trunk and branches collide in VR.
         calibration_path: Override for the tracked calibration file.
 
     Returns:
         What was planned, including a ``skipped`` line per tree left out.
     """
+    from growpy.config.paths import get_species_growth_habit
     from growpy.config.pve_calibration import load_pve_calibration
     from growpy.io.unreal.pve_asset_script import (
         PVEAssetPlan,
         build_species_asset_spec,
         generate_pve_asset_script,
     )
+    from growpy.io.unreal.pve_offline_solve import mean_triangles_per_prototype
 
     discovered = discover_growth_jsons(forest_root)
     if not discovered:
@@ -424,57 +619,77 @@ def plan_pve_graphs(
     graphs: list[PVEGraphSpec] = []
     asset_specs = []
     skipped: list[str] = []
+    details: dict[str, dict] = {}
 
     for species, entries in sorted(discovered.items()):
         try:
-            species_cal = calibration.for_species(species)
-        except KeyError:
-            skipped.append(
-                f"{species}: no PVE calibration, so no densities to build at "
-                f"({len(entries)} tree(s) skipped)"
+            species_cal = calibration.for_species(
+                species, habit=get_species_growth_habit(species)
             )
+        except KeyError as err:
+            skipped.append(f"{species}: {err} ({len(entries)} tree(s) skipped)")
             continue
         try:
             assets = build_species_asset_spec(
                 species, content_root=content_root, palette=species_cal.palette
             )
+            palette_areas = prototype_leaf_areas(assets)
         except FileNotFoundError as err:
             skipped.append(f"{species}: {err}")
             continue
 
         asset_specs.append(assets)
         mesh_prefix = f"SK_{assets.content_folder.rsplit('/', 1)[-1]}"
-        palette_areas = None
-        if species_cal.ladder is not None:
-            try:
-                palette_areas = prototype_leaf_areas(assets)
-            except FileNotFoundError as err:
-                # Only the graded trees need them; each of those is refused
-                # by _chain_for with its own line, the flat ones still build.
-                skipped.append(f"{species}: {err}")
+        triangles = species_cal.palette_flat_mean_triangles
+        if triangles is None:
+            triangles = mean_triangles_per_prototype(
+                [p.source for p in assets.prototypes]
+            )
+        logger.info(
+            "%s: palette %s (%d prototypes, mean %.4f m2, ~%.0f tris), %s calibration, "
+            "build from %s, fullness x%.2f",
+            species,
+            species_cal.palette,
+            len(palette_areas),
+            sum(palette_areas) / len(palette_areas),
+            triangles,
+            "derived" if species_cal.derived else "tracked",
+            species_cal.build_from,
+            species_cal.fullness,
+        )
         chains: list[TreeChainSpec] = []
         instances: dict[str, int] = {}
         for entry in entries:
             try:
-                chain = _chain_for(
-                    entry,
-                    species_cal,
-                    mesh_prefix,
-                    assets.palette_meshes,
-                    palette_areas,
-                )
-            except (KeyError, ValueError) as err:
+                if species_cal.builds_from_row(entry.tree_id):
+                    planned = _measured_tree(
+                        entry, species_cal, mesh_prefix, assets, palette_areas
+                    )
+                else:
+                    planned = _offline_chain(
+                        entry,
+                        species_cal,
+                        mesh_prefix,
+                        assets,
+                        palette_areas,
+                        calibration.profile_mean,
+                    )
+            except (KeyError, ValueError, FileNotFoundError) as err:
                 skipped.append(f"{species} {entry.tree_id}: {err}")
                 continue
-            resolved = species_cal.resolve_density(entry.tree_id)
-            if resolved.instances is None:
-                skipped.append(
-                    f"{species} {entry.tree_id}: density {resolved.density} has no "
-                    f"recorded instance count, so its click cannot be sized"
-                )
-                continue
-            chains.append(chain)
-            instances[chain.mesh_name] = resolved.instances
+            chains.append(planned.chain)
+            instances[planned.chain.mesh_name] = planned.instances
+            details[planned.chain.mesh_name] = planned.detail
+            logger.info(
+                "  %s: %s %s density %s -> %d instances, %s m2 (target %s)",
+                entry.tree_id,
+                planned.detail.get("density_source"),
+                planned.detail.get("layout"),
+                planned.detail.get("density", planned.detail.get("fill_density")),
+                planned.instances,
+                planned.detail.get("predicted_m2"),
+                planned.detail.get("target_m2"),
+            )
 
         if not chains:
             continue
@@ -485,7 +700,7 @@ def plan_pve_graphs(
             # Bound explicitly rather than closed over: this species' counts,
             # even if the call is ever deferred past the loop.
             lambda c, counts=instances: counts[c.mesh_name],
-            species_cal.palette_flat_mean_triangles,
+            triangles,
             triangle_cap,
         )
         label = assets.content_folder.rsplit("/", 1)[-1]
@@ -502,6 +717,7 @@ def plan_pve_graphs(
                     graph_folder=graph_folder,
                     profile_pin=calibration.profile_pin,
                     nanite_shape_preservation=nanite_shape_preservation,
+                    collision_generation=collision_generation,
                 )
             )
 
@@ -522,7 +738,7 @@ def plan_pve_graphs(
         graphs=tuple(graphs),
         asset_script=asset_script,
         script=generate_pve_graph_builder_script(output_dir, graphs),
-        manifest=write_coverage_manifest(output_dir, graphs),
+        manifest=write_coverage_manifest(output_dir, graphs, details=details),
         retune_script=generate_pve_retune_script(output_dir, graphs),
         skipped=tuple(skipped),
     )

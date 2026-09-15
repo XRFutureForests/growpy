@@ -1455,9 +1455,10 @@ def grow_grove(
     """
     import the_grove_23_core as gc
 
+    from growpy.config.paths import get_assets_directory
     from growpy.utils.analysis import find_max_height_in_branch
 
-    preset_path = Path("data/assets/presets") / f"{species}.seed.json"
+    preset_path = get_assets_directory() / "presets" / f"{species}.seed.json"
     if not preset_path.is_file():
         raise SystemExit(f"preset not found: {preset_path}")
 

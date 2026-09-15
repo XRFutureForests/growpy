@@ -521,9 +521,15 @@ CSV Format Support:
         if src_twig_dir is not None:
             dst_twig_dir = dst_twigs / twig_name_snake
 
-            if dst_twig_dir.exists():
-                shutil.rmtree(dst_twig_dir)
-            shutil.copytree(src_twig_dir, dst_twig_dir)
+            # Overlay, never wipe: this directory also holds what step 2
+            # produces (*_static/_skeletal.usda, leaf-area sidecars, the
+            # PVE-packed textures), and a plain `rmtree` here destroyed every
+            # converted twig asset of every species whenever step 1 re-ran
+            # (2026-09-10: a `--steps 1` rebake of two conifer presets wiped 7
+            # of 9 assets and the next run died on MissingTwigPrototypesError).
+            # `--clean` removes the whole twigs tree before this runs, which is
+            # the one supported way to start over.
+            shutil.copytree(src_twig_dir, dst_twig_dir, dirs_exist_ok=True)
             if custom_twig_dir is not None and custom_twig_dir != src_twig_dir:
                 overlaid = _overlay_custom_twigs(custom_twig_dir, dst_twig_dir)
                 if overlaid:

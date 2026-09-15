@@ -31,13 +31,14 @@ from __future__ import annotations
 
 import logging
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "CompoundSpec",
     "DensityLaw",
     "LadderSpec",
     "PVECalibration",
@@ -301,14 +302,70 @@ class LadderSpec:
 
 
 @dataclass(frozen=True)
+class CompoundSpec:
+    """How a species' compound (foliated-branch) palette is laid out (XRFF-463).
+
+    Epic's shape, read off the MegaPlants library (2026-09-15): a FILL layer
+    places parts along every branch above the trunk over the outer span, big
+    parts near the base and small ones toward the tip (Scale-graded), at a
+    spacing expressed against the trunk (PVE's loop count is
+    ``int(density * L / L_max)`` with ``L_max`` the longest branch); a TIP CAP
+    layer puts one small part on every branch end; an APEX layer puts one
+    mid-size part on the leader. Tiers are named by the bake's ``pNN`` suffix,
+    ascending in span.
+    """
+
+    fill_relative_start: float = 0.15
+    fill_relative_end: float = 0.90
+    fill_spacing_m: float = 0.4
+    fill_generation_start: int = 2
+    fill_tiers: tuple[str, ...] = ("p00", "p01", "p02")
+    cap_tier: str | None = "p00"
+    apex_tier: str | None = "p02"
+    scale_weight: float = 1.0
+    minimum_candidates: int = 1
+    cutoff_threshold: float = 0.1
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.fill_relative_start < self.fill_relative_end <= 1.0:
+            raise ValueError(
+                "compound fill needs 0 <= fill_relative_start < fill_relative_end "
+                f"<= 1, got {self.fill_relative_start} / {self.fill_relative_end}"
+            )
+        if self.fill_spacing_m <= 0.0:
+            raise ValueError("compound fill_spacing_m must be positive")
+        if self.fill_generation_start < 1:
+            raise ValueError("compound fill_generation_start is 1-based (trunk = 1)")
+        if not self.fill_tiers:
+            raise ValueError("compound fill_tiers must name at least one tier")
+        if not 0.0 < self.scale_weight <= 1.0:
+            raise ValueError(f"scale_weight must be in (0, 1], got {self.scale_weight}")
+        if not 1 <= self.minimum_candidates <= 10:
+            raise ValueError(
+                f"minimum_candidates must be in [1, 10], got {self.minimum_candidates}"
+            )
+        if not 0.0 <= self.cutoff_threshold <= 1.0:
+            raise ValueError(
+                f"cutoff_threshold must be in [0, 1], got {self.cutoff_threshold}"
+            )
+
+
+@dataclass(frozen=True)
 class SpeciesCalibration:
-    """Every calibrated tree of one species, plus the settings they share."""
+    """Every calibrated tree of one species, plus the settings they share.
+
+    ``trees`` may be empty: a species with no measured rows is built entirely
+    from the offline distributor model (see the plan). ``prototype_leaf_area_m2``
+    and ``palette_flat_mean_triangles`` may be None for the same reason -- the
+    plan derives them from the converted prototypes when the file does not
+    record them.
+    """
 
     species: str
     relative_start: float
     fraction: float
-    prototype_leaf_area_m2: float
-    palette_flat_mean_triangles: float
+    prototype_leaf_area_m2: float | None
+    palette_flat_mean_triangles: float | None
     history_relative_start: float
     trees: dict[str, TreeCalibration]
     phyllotaxy_formation: str = "OCTASTICHOUS"
@@ -324,16 +381,28 @@ class SpeciesCalibration:
     # tree with its twigs welded on. Compound parts carry 0.1-0.7 m2 each, so a
     # density solved for one set is meaningless for the other.
     palette: str = "twigs"
+    # Multiplier on the Forrester leaf-area target when a tree's density is
+    # solved offline (owner direction 2026-09-15: optics first -- the
+    # Forrester-calibrated fir read as a skeleton, x4 as a conifer). Leaf area
+    # is reported beside every tree; this is where it is steered.
+    fullness: float = 1.0
+    compound: CompoundSpec | None = None
+    # "measured": a tree with a row builds from it; "offline": every tree is
+    # solved by the plan and the rows stay as the record of what was measured
+    # (the 2026-09-15 direction: leaf area is reported, not held).
+    build_from: str = "measured"
+    # True when synthesised from [pve_calibration.defaults] rather than read
+    # from a species block of its own.
+    derived: bool = False
 
     def __post_init__(self) -> None:
-        if not self.trees:
-            raise ValueError(f"species {self.species!r} has no calibrated trees")
         if not 0.0 <= self.relative_start < 1.0:
             raise ValueError(
                 f"species {self.species!r} relative_start must be in [0, 1), "
                 f"got {self.relative_start}"
             )
-        if self.prototype_leaf_area_m2 <= 0.0:
+        area = self.prototype_leaf_area_m2
+        if area is not None and area <= 0.0:
             raise ValueError(
                 f"species {self.species!r} prototype_leaf_area_m2 must be "
                 f"positive, got {self.prototype_leaf_area_m2}"
@@ -343,6 +412,22 @@ class SpeciesCalibration:
                 f"species {self.species!r} palette must be 'twigs' or "
                 f"'compound', got {self.palette!r}"
             )
+        if self.fullness <= 0.0:
+            raise ValueError(
+                f"species {self.species!r} fullness must be positive, "
+                f"got {self.fullness}"
+            )
+        if self.build_from not in _BUILD_SOURCES:
+            raise ValueError(
+                f"species {self.species!r} build_from must be one of "
+                f"{sorted(_BUILD_SOURCES)}, got {self.build_from!r}"
+            )
+        if self.palette == "compound" and self.compound is None:
+            object.__setattr__(self, "compound", CompoundSpec())
+
+    def builds_from_row(self, tree_id: str) -> bool:
+        """Whether ``tree_id`` builds from its measured row rather than offline."""
+        return self.build_from == "measured" and tree_id in self.trees
 
     def tree(self, tree_id: str) -> TreeCalibration:
         try:
@@ -384,17 +469,27 @@ class SpeciesCalibration:
         per_instance = self.tree(tree_id).instance_leaf_area_m2
         if per_instance is None:
             per_instance = self.prototype_leaf_area_m2
+        if per_instance is None:
+            return None
         return resolved.instances * per_instance
 
 
 @dataclass(frozen=True)
 class PVECalibration:
-    """The whole tracked calibration."""
+    """The whole tracked calibration.
+
+    ``defaults`` is the raw ``[pve_calibration.defaults]`` table: the settings
+    a species with no block of its own is built with, optionally refined by a
+    ``conifer`` / ``broadleaf`` sub-table. Kept raw so :meth:`for_species` can
+    synthesise a :class:`SpeciesCalibration` per habit without pre-declaring
+    every species in the file.
+    """
 
     schema_version: int
     profile_mean: float
     profile_pin: str
     species: dict[str, SpeciesCalibration]
+    defaults: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.schema_version != SCHEMA_VERSION:
@@ -403,14 +498,42 @@ class PVECalibration:
                 f"the {SCHEMA_VERSION} this loader understands"
             )
 
-    def for_species(self, species: str) -> SpeciesCalibration:
+    def has_species(self, species: str) -> bool:
+        return species in self.species
+
+    def for_species(
+        self, species: str, habit: str | None = None
+    ) -> SpeciesCalibration:
+        """The species' own block, or one synthesised from ``defaults``.
+
+        A synthesised calibration carries no trees (every tree of the species
+        is then solved offline by the plan) and marks itself ``derived`` so a
+        log can say which trees were built on measured rows and which were not.
+
+        Raises:
+            KeyError: If the species has no block and there are no defaults.
+        """
         try:
             return self.species[species]
         except KeyError:
+            if not self.defaults:
+                raise KeyError(
+                    f"no PVE calibration for species {species!r} and no "
+                    f"[pve_calibration.defaults] to build it from; "
+                    f"calibrated: {sorted(self.species)}"
+                ) from None
+        data = dict(_merge_defaults(self.defaults, habit))
+        data.pop("trees", None)
+        if "fraction" not in data:
             raise KeyError(
-                f"no PVE calibration for species {species!r}; "
-                f"calibrated: {sorted(self.species)}"
-            ) from None
+                f"[pve_calibration.defaults] names no `fraction`, so a derived "
+                f"calibration for {species!r} cannot record what decimation its "
+                f"growth JSONs carry"
+            )
+        return _species(species, data, derived=True)
+
+
+_HABITS = ("conifer", "broadleaf")
 
 
 def _law(data: dict[str, Any] | None) -> DensityLaw | None:
@@ -500,7 +623,33 @@ def _ladder(data: dict[str, Any] | None) -> LadderSpec | None:
     )
 
 
-def _species(name: str, data: dict[str, Any]) -> SpeciesCalibration:
+def _compound(data: dict[str, Any] | None) -> CompoundSpec | None:
+    if data is None:
+        return None
+    kwargs: dict[str, Any] = {}
+    for key in (
+        "fill_relative_start",
+        "fill_relative_end",
+        "fill_spacing_m",
+        "scale_weight",
+        "cutoff_threshold",
+    ):
+        if key in data:
+            kwargs[key] = float(data[key])
+    for key in ("fill_generation_start", "minimum_candidates"):
+        if key in data:
+            kwargs[key] = int(data[key])
+    if "fill_tiers" in data:
+        kwargs["fill_tiers"] = tuple(str(t) for t in data["fill_tiers"])
+    for key in ("cap_tier", "apex_tier"):
+        if key in data:
+            kwargs[key] = None if data[key] in ("", None) else str(data[key])
+    return CompoundSpec(**kwargs)
+
+
+def _species(
+    name: str, data: dict[str, Any], *, derived: bool = False
+) -> SpeciesCalibration:
     relative_start = float(data.get("relative_start", 0.0))
     # Defaults to the species' own relative_start: a history with no recorded
     # measurement configuration is assumed to have been measured under the one
@@ -515,8 +664,8 @@ def _species(name: str, data: dict[str, Any]) -> SpeciesCalibration:
         species=name,
         relative_start=relative_start,
         fraction=float(data["fraction"]),
-        prototype_leaf_area_m2=float(data["prototype_leaf_area_m2"]),
-        palette_flat_mean_triangles=float(data["palette_flat_mean_triangles"]),
+        prototype_leaf_area_m2=_opt_float(data.get("prototype_leaf_area_m2")),
+        palette_flat_mean_triangles=_opt_float(data.get("palette_flat_mean_triangles")),
         history_relative_start=history_relative_start,
         trees=trees,
         phyllotaxy_formation=str(data.get("phyllotaxy_formation", "OCTASTICHOUS")),
@@ -530,7 +679,24 @@ def _species(name: str, data: dict[str, Any]) -> SpeciesCalibration:
         wind=_wind(data.get("wind")),
         ladder=_ladder(data.get("ladder")),
         palette=str(data.get("palette", "twigs")),
+        fullness=float(data.get("fullness", 1.0)),
+        compound=_compound(data.get("compound")),
+        build_from=str(data.get("build_from", "measured")),
+        derived=derived,
     )
+
+
+def _merge_defaults(defaults: dict[str, Any], habit: str | None) -> dict[str, Any]:
+    """The defaults block with its ``conifer`` / ``broadleaf`` sub-table folded in.
+
+    One level deep: a sub-table under the habit (``pose``, ``ladder``,
+    ``compound``) replaces the general one wholesale rather than merging
+    key-by-key, so a habit that names a pose owns that pose.
+    """
+    merged = {k: v for k, v in defaults.items() if k not in _HABITS}
+    if habit in _HABITS and isinstance(defaults.get(habit), dict):
+        merged.update(defaults[habit])
+    return merged
 
 
 def _default_path() -> Path:
@@ -561,6 +727,9 @@ def load_pve_calibration(path: Path | str | None = None) -> PVECalibration:
     data = raw.get("pve_calibration")
     if not data:
         raise ValueError(f"{toml_path} has no [pve_calibration] section")
+    defaults = data.get("defaults") or {}
+    if not isinstance(defaults, dict):
+        raise ValueError(f"{toml_path}: [pve_calibration.defaults] must be a table")
     calibration = PVECalibration(
         schema_version=int(data.get("schema_version", 0)),
         profile_mean=float(data["profile_mean"]),
@@ -569,6 +738,7 @@ def load_pve_calibration(path: Path | str | None = None) -> PVECalibration:
             name: _species(name, species_data)
             for name, species_data in sorted(data.get("species", {}).items())
         },
+        defaults=defaults,
     )
     logger.debug(
         "loaded PVE calibration from %s: %d species, %d trees",

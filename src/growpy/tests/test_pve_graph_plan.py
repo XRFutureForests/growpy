@@ -51,6 +51,36 @@ def _chain(name: str, density: int = 10) -> TreeChainSpec:
     )
 
 
+TRACKED_TOML = Path(__file__).resolve().parents[3] / "config" / "pve_calibration.toml"
+
+
+@pytest.fixture(autouse=True)
+def measured_calibration(tmp_path_factory, monkeypatch):
+    """The tracked file with beech and fir building from their MEASURED rows.
+
+    Production switched both to ``build_from = "offline"`` on 2026-09-15
+    (every tree solved on the distributor model, rows kept as the record).
+    These tests exercise the measured path on stub growth JSONs, which the
+    offline solve cannot read, so they run against the measured variant.
+    """
+    global MEASURED_TOML
+    text = TRACKED_TOML.read_text(encoding="utf-8")
+    assert text.count('build_from = "offline"') >= 2  # beech, fir (+ a comment)
+    measured = tmp_path_factory.mktemp("cal") / "pve_calibration.toml"
+    measured.write_text(
+        text.replace('build_from = "offline"', 'build_from = "measured"'),
+        encoding="utf-8",
+    )
+    MEASURED_TOML = measured
+    monkeypatch.setattr(
+        "growpy.config.pve_calibration._default_path", lambda: measured
+    )
+    return measured
+
+
+MEASURED_TOML = TRACKED_TOML
+
+
 @pytest.fixture
 def forest_root(tmp_path) -> Path:
     """A synthetic export laid out the way the pipeline lays one out."""
@@ -153,7 +183,7 @@ class TestMaskEntries:
         # of the shared meshes plus masks; every other flat chain keeps None
         # (the graded fir r08/r16 chains carry a palette of their own kind).
         toml = (
-            Path(__file__).resolve().parents[3] / "config" / "pve_calibration.toml"
+            MEASURED_TOML
         ).read_text(encoding="utf-8")
         anchor = "history = [[20, 281], [21, 329]]"  # fir r05_h05m's line
         assert toml.count(anchor) == 1
@@ -264,7 +294,7 @@ class TestLadder:
 
     def test_a_masked_and_graded_tree_is_refused(self, tmp_path, forest_root):
         toml = (
-            Path(__file__).resolve().parents[3] / "config" / "pve_calibration.toml"
+            MEASURED_TOML
         ).read_text(encoding="utf-8")
         anchor = 'growth_json = "Silver_Fir_r08_h05m_d06cm_full_growth_data.json"'
         assert toml.count(anchor) == 1

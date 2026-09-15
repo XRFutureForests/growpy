@@ -178,6 +178,8 @@ _FORMATIONS = frozenset(
     {"DISTICHOUS", "TRISTICHOUS", "PENTASTICHOUS", "OCTASTICHOUS", "PARASTICHOUS"}
 )
 _NANITE_SHAPE = frozenset({"NONE", "PRESERVE_AREA", "VOXELIZE"})
+# EPVCollisionGeneration (PVExportParams.h): None / TrunkOnly / AllGenerations.
+_COLLISION = frozenset({"NONE", "TRUNK_ONLY", "ALL_GENERATIONS"})
 _JITTER_MODES = frozenset({"ROLL", "PITCH", "YAW"})
 _BLEND_ATTRIBUTES = frozenset(
     {
@@ -552,6 +554,10 @@ class PVEGraphSpec:
     min_radius: float = 0.0
     create_nanite_foliage: bool = True
     nanite_shape_preservation: str = "VOXELIZE"
+    # ALL_GENERATIONS by default (owner, 2026-09-15): a twin tree is walked up
+    # to and under in VR, so trunk AND branches collide. NONE is the engine
+    # default and what every probe before this shipped.
+    collision_generation: str = "ALL_GENERATIONS"
 
     def __post_init__(self) -> None:
         if not self.chains:
@@ -561,6 +567,11 @@ class PVEGraphSpec:
         if self.nanite_shape_preservation not in _NANITE_SHAPE:
             raise ValueError(
                 f"nanite_shape_preservation must be one of {sorted(_NANITE_SHAPE)}"
+            )
+        if self.collision_generation not in _COLLISION:
+            raise ValueError(
+                f"collision_generation must be one of {sorted(_COLLISION)}, "
+                f"got {self.collision_generation!r}"
             )
         names = [c.mesh_name for c in self.chains]
         dupes = {n for n in names if names.count(n) > 1}
@@ -682,6 +693,7 @@ def _graph_payload(graph: PVEGraphSpec) -> dict:
         "min_radius": graph.min_radius,
         "create_nanite_foliage": graph.create_nanite_foliage,
         "nanite_shape_preservation": graph.nanite_shape_preservation,
+        "collision_generation": graph.collision_generation,
         "chains": [
             {
                 "growth_json": str(Path(c.growth_json).resolve()).replace("\\", "/"),
@@ -1043,7 +1055,8 @@ def build(spec):
             "create_nanite_foliage", bool(spec["create_nanite_foliage"])
         )
         settings.set_editor_property(
-            "collision_generation", unreal.PVCollisionGeneration.NONE
+            "collision_generation",
+            getattr(unreal.PVCollisionGeneration, spec["collision_generation"]),
         )
         settings.set_editor_property(
             "nanite_shape_preservation",
@@ -1068,6 +1081,17 @@ def build(spec):
                 "%s: wind_settings read back as %s, wanted %s"
                 % (chain["mesh_name"], got_path, chain["wind_settings"])
             )
+        for prop, enum_cls, wanted in (
+            ("collision_generation", unreal.PVCollisionGeneration,
+             spec["collision_generation"]),
+            ("nanite_shape_preservation", unreal.NaniteShapePreservation,
+             spec["nanite_shape_preservation"]),
+        ):
+            if written.get_editor_property(prop) != getattr(enum_cls, wanted):
+                raise RuntimeError(
+                    "%s: %s read back as %s, wanted %s"
+                    % (chain["mesh_name"], prop, written.get_editor_property(prop), wanted)
+                )
 
         for src, src_pin, dst, dst_pin in (
             (import_node, "Out", mesh_node, "In"),
@@ -1338,6 +1362,7 @@ def write_coverage_manifest(
     output_dir: Path,
     graphs: Sequence[PVEGraphSpec],
     manifest_name: str = "pve_export_manifest.json",
+    details: dict[str, dict] | None = None,
 ) -> Path:
     """List every mesh each graph is expected to export.
 
@@ -1346,10 +1371,14 @@ def write_coverage_manifest(
     destroyed nine meshes, nothing recorded what the click had been asked for.
 
     Densities travel with the names, because a mesh that exists is not
-    necessarily a mesh built at the density intended.
+    necessarily a mesh built at the density intended. ``details`` adds what
+    the plan knew per mesh (species, tree id, density source, predicted
+    instances and leaf area, target) so the catalog rows can be written from
+    the manifest alone.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = output_dir / manifest_name
+    details = details or {}
     payload = {
         "graphs": [
             {
@@ -1358,6 +1387,8 @@ def write_coverage_manifest(
                 "export_folder": g.export_folder,
                 "bark_material": g.bark_material,
                 "palette_meshes": list(g.palette_meshes),
+                "nanite_shape_preservation": g.nanite_shape_preservation,
+                "collision_generation": g.collision_generation,
                 "meshes": [
                     {
                         "mesh_name": c.mesh_name,
@@ -1365,6 +1396,9 @@ def write_coverage_manifest(
                         "growth_json": str(Path(c.growth_json)).replace("\\", "/"),
                         "branch_density": c.distributor.branch_density,
                         "relative_start": c.distributor.relative_start,
+                        "wind_settings": c.wind_settings,
+                        "layers": len(c.layers),
+                        **details.get(c.mesh_name, {}),
                     }
                     for c in g.chains
                 ],

@@ -58,6 +58,10 @@ STEP_SCRIPTS: dict[int, Path] = {
     4: Path("src/growpy/cli/generate_forest.py"),
 }
 
+# Step 2's second stage: the twigs it converted are welded into the compound
+# foliage parts the PVE palette is built from (XRFF-463).
+COMPOUND_BAKE_SCRIPT = Path("src/growpy/tools/bake_compound_parts.py")
+
 
 def check_environment() -> bool:
     """Verify that bpy is importable in the current Python environment."""
@@ -139,6 +143,33 @@ def run_step123(
         return False
 
     logger.info("Step %d: OK", step)
+    return True
+
+
+def run_compound_bake(dry_run: bool = False, verbose: bool = False) -> bool:
+    """Bake every dataset species' compound foliage parts (the tail of step 2).
+
+    The PVE route places foliated BRANCH parts, not single twigs (XRFF-463);
+    the parts weld the twig step 2 just converted, so this runs after the
+    conversion and, like it, as a subprocess in the growpy env (it loads the
+    Grove core). Returns True on success (or dry_run).
+    """
+    from pathlib import Path as PathlibPath
+
+    cmd = [sys.executable, str(COMPOUND_BAKE_SCRIPT), "--dataset"]
+    if verbose:
+        cmd.append("--verbose")
+    if dry_run:
+        logger.info("[DRY RUN] step 2 (compound parts): %s", " ".join(cmd))
+        return True
+
+    logger.info("Step 2 (compound parts): %s", COMPOUND_BAKE_SCRIPT.name)
+    project_root = PathlibPath(__file__).parent.parent.parent.parent
+    result = subprocess.run(_wrap_in_env(cmd), check=False, cwd=str(project_root))
+    if result.returncode != 0:
+        logger.error("Step 2 (compound parts) FAILED (exit code %d)", result.returncode)
+        return False
+    logger.info("Step 2 (compound parts): OK")
     return True
 
 

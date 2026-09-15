@@ -3,7 +3,8 @@
 
 Orchestrates the four-step dataset workflow for all species:
   Step 1 (prepare-assets):   copy Grove 2.3 assets for all species
-  Step 2 (convert-twigs):    convert .blend twigs to USD for all species
+  Step 2 (convert-twigs):    convert .blend twigs to USD for all species, then
+                             bake each species' compound foliage parts
   Step 3 (create-models):    run growth simulation and calibration for all species
   Step 4 (generate-forest):  generate tree meshes per species (one subprocess each)
 
@@ -53,6 +54,7 @@ from growpy.pipelines.dataset_job_planner import (
 from growpy.pipelines.run_summary import generate_run_summary
 from growpy.pipelines.step_runner import (
     check_environment,
+    run_compound_bake,
     run_parallel_step4,
     run_species_step4,
     run_step123,
@@ -66,7 +68,7 @@ def _clean_step(step: int) -> None:
     """Remove output directories for a pipeline step before re-running.
 
     Step 1: data/assets/{presets,textures,twigs,pve_configs}/
-    Step 2: *.usda files under data/assets/twigs/
+    Step 2: *.usda files under data/assets/twigs/, data/assets/compound_parts/
     Step 3: data/assets/growth_models/
     Step 4: data/output/forest/
     """
@@ -90,6 +92,10 @@ def _clean_step(step: int) -> None:
                 removed += 1
             if removed:
                 logger.info("Cleaned %d .usda files from %s", removed, twigs_dir)
+        compound_dir = assets / "compound_parts"
+        if compound_dir.exists():
+            shutil.rmtree(compound_dir)
+            logger.info("Cleaned %s", compound_dir)
     elif step == 3:
         models_dir = assets / "growth_models"
         if models_dir.exists():
@@ -307,6 +313,16 @@ def main():
         ),
     )
     parser.add_argument(
+        "--compound",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "After step 2's twig conversion, bake every species' compound "
+            "foliage parts (growpy-bake-compound-parts --dataset) for the PVE "
+            "palette. On by default; --no-compound converts twigs only."
+        ),
+    )
+    parser.add_argument(
         "--clean",
         action="store_true",
         help="Clean output directories for each step before running. "
@@ -453,6 +469,12 @@ def main():
             if not ok:
                 logger.error("Pipeline aborted at step %d.", step)
                 raise SystemExit(1)
+            # Step 2's second stage: weld the twigs just converted into the
+            # compound foliage parts the PVE palette is built from (XRFF-463).
+            if step == 2 and args.compound:
+                if not run_compound_bake(dry_run=args.dry_run, verbose=args.verbose):
+                    logger.error("Pipeline aborted at step 2 (compound parts).")
+                    raise SystemExit(1)
 
         else:  # step 4
             workers = max(1, args.workers)

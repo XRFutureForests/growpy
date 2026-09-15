@@ -137,6 +137,32 @@ class TestShippedCalibration:
         assert set(shipped.species) == {"european_beech", "silver_fir"}
         assert sum(len(s.trees) for s in shipped.species.values()) == 27
 
+    def test_defaults_synthesise_a_species_per_habit(self, shipped):
+        # The nine species without a block build from the defaults, refined by
+        # habit; beech and fir keep their own blocks and now build offline.
+        conifer = shipped.for_species("norway_spruce", habit="conifer")
+        broadleaf = shipped.for_species("european_oak", habit="broadleaf")
+        assert conifer.derived and broadleaf.derived
+        assert conifer.trees == {} and broadleaf.trees == {}
+        assert conifer.fullness == 4.0 and broadleaf.fullness == 2.0
+        assert conifer.relative_start == 0.0 and broadleaf.relative_start == 0.4
+        assert conifer.ladder is not None and broadleaf.ladder is not None
+        assert broadleaf.pose.jitter and not conifer.pose.jitter
+        assert conifer.fraction == 0.06
+        for name in ("european_beech", "silver_fir"):
+            assert not shipped.for_species(name).derived
+            assert shipped.for_species(name).build_from == "offline"
+
+    def test_no_defaults_means_no_synthesis(self, shipped):
+        bare = PVECalibration(
+            schema_version=shipped.schema_version,
+            profile_mean=shipped.profile_mean,
+            profile_pin=shipped.profile_pin,
+            species=shipped.species,
+        )
+        with pytest.raises(KeyError, match="no PVE calibration"):
+            bare.for_species("norway_spruce", habit="conifer")
+
     @pytest.mark.parametrize("species", sorted(SHIPPED_DENSITIES))
     def test_build_densities_are_the_shipped_ones(self, shipped, species):
         cal = shipped.for_species(species)
@@ -403,9 +429,29 @@ class TestValidation:
         with pytest.raises(ValueError, match="build_density_source"):
             _tree(build_density=8, build_density_source="guessed")
 
-    def test_a_species_with_no_trees_is_refused(self):
-        with pytest.raises(ValueError, match="no calibrated trees"):
-            _species(trees={})
+    def test_a_species_with_no_trees_builds_nothing_from_rows(self):
+        # Allowed since 2026-09-15: such a species is solved offline by the
+        # plan, tree by tree. Nothing builds from a row it does not have.
+        species = _species(trees={})
+        assert species.trees == {}
+        assert not species.builds_from_row("r08_h15m")
+
+    def test_build_from_offline_ignores_measured_rows(self):
+        species = _species(build_from="offline")
+        assert species.trees
+        assert not species.builds_from_row(next(iter(species.trees)))
+        with pytest.raises(ValueError, match="build_from"):
+            _species(build_from="guess")
+
+    def test_fullness_must_be_positive(self):
+        assert _species(fullness=4.0).fullness == 4.0
+        with pytest.raises(ValueError, match="fullness"):
+            _species(fullness=0.0)
+
+    def test_compound_palette_gets_a_default_layout(self):
+        species = _species(palette="compound")
+        assert species.compound is not None
+        assert species.compound.fill_tiers == ("p00", "p01", "p02")
 
     def test_a_tree_with_no_growth_json_is_refused(self):
         with pytest.raises(ValueError, match="names no growth JSON"):

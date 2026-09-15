@@ -174,7 +174,7 @@ generate_wind_data = true
 #   A single tree over the cap cannot be split further -- a chain is one mesh --
 #   so it gets a click of its own and a warning. At 120 M, four of the shipped
 #   fifteen are individually over it.
-generate_pve_graphs = false
+generate_pve_graphs = true
 pve_content_root = "/Game/PVE"
 pve_triangle_cap = 120e6
 
