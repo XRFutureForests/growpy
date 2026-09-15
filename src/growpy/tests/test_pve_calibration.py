@@ -33,7 +33,9 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 CONFIG_DIR = REPO_ROOT / "config"
 CALIBRATION_TOML = CONFIG_DIR / "pve_calibration.toml"
 
-# What was exported on 2026-09-11 and verified against Forrester. Restated here
+# What was exported on 2026-09-11 and verified against Forrester, with the three
+# fir h05 trees re-solved one density step up and re-measured on 2026-09-15
+# (XRFF-462: 20/19/20 -> 21/22/23). Restated here
 # rather than read from the file so an edit to either has to be deliberate.
 SHIPPED_DENSITIES = {
     "european_beech": {
@@ -48,11 +50,11 @@ SHIPPED_DENSITIES = {
         "r20_h15m": 95,
     },
     "silver_fir": {
-        "r05_h05m": 20,
+        "r05_h05m": 21,
         "r05_h25m": 158,
-        "r10_h05m": 19,
+        "r10_h05m": 22,
         "r10_h25m": 133,
-        "r20_h05m": 20,
+        "r20_h05m": 23,
         "r20_h25m": 86,
     },
 }
@@ -164,7 +166,9 @@ class TestShippedCalibration:
             for species, cal in shipped.species.items()
             for tree_id in SHIPPED_DENSITIES[species]
         )
-        assert total == pytest.approx(815.4, abs=0.5)
+        # 815.4 m2 as shipped on 2026-09-11; +7.6 m2 from the three fir h05
+        # re-solves of 2026-09-15 (+48, +157, +171 instances at 0.0201 m2).
+        assert total == pytest.approx(823.0, abs=0.5)
 
     def test_the_offline_r08_r16_set_lands_on_its_targets(self, shipped):
         # Solved, not measured: the model that solved them reproduces 13 of 14
@@ -177,29 +181,31 @@ class TestShippedCalibration:
                 target += cal.tree(tree_id).target_m2
         assert placed / target == pytest.approx(1.0, abs=0.005)
 
-    def test_the_fir_h05_trees_ship_well_under_target(self, shipped):
-        # The aggregate hides them: two large fir trees over by +2.4 % and
-        # +3.1 % roughly cancel three small ones short by 13-33 %. They sit near
-        # the distributor's one-sample-per-branch floor, where the response to
-        # density is a staircase. This pins the shortfall so it stays visible.
+    def test_every_shipped_tree_is_within_five_percent_of_target(self, shipped):
+        # Until 2026-09-15 the aggregate hid three fir h05 trees short by
+        # 13-33 %: one density step short on the distributor's staircase, where
+        # a branch whose loop count is 1 contributes nothing at relative_start
+        # 0.0. XRFF-462 re-solved them on the validated model and the click
+        # landed exactly (329 / 463 / 560). This pins every tree inside +-5 %.
         def delta(species: str, tree_id: str) -> float:
             cal = shipped.for_species(species)
             placed = cal.resolve_density(tree_id).instances
             return placed / cal.tree(tree_id).target_instances - 1.0
 
-        short = {
+        fir_h05 = {
             t: delta("silver_fir", t) for t in ("r05_h05m", "r10_h05m", "r20_h05m")
         }
-        assert all(d < -0.10 for d in short.values()), short
+        assert fir_h05 == pytest.approx(
+            {"r05_h05m": 0.0123, "r10_h05m": 0.0221, "r20_h05m": -0.0278}, abs=0.0005
+        )
 
         on_target = [
             delta(species, tree_id)
             for species in sorted(shipped.species)
             for tree_id in sorted(SHIPPED_DENSITIES[species])
-            if not (species == "silver_fir" and tree_id.endswith("h05m"))
         ]
-        assert len(on_target) == 12
-        assert all(-0.021 <= d <= 0.032 for d in on_target), on_target
+        assert len(on_target) == 15
+        assert all(-0.03 <= d <= 0.032 for d in on_target), on_target
 
         # The offline r08/r16 set is finer: the worst is fir r16_h05m at +4.7 %,
         # again the staircase near the floor.
@@ -345,6 +351,17 @@ class TestValidation:
     def test_a_tree_with_no_growth_json_is_refused(self):
         with pytest.raises(ValueError, match="names no growth JSON"):
             _tree(growth_json="")
+
+    def test_a_masked_tree_needs_its_own_build_density(self):
+        # A history pair is an unmasked measurement; masking changes the
+        # spawned count, so it cannot stand in for a masked build.
+        with pytest.raises(ValueError, match="mask_fraction"):
+            _tree(mask_fraction=0.25)
+        masked = _tree(mask_fraction=0.25, build_density=24, build_instances=318)
+        assert masked.resolve_density(0.0).instances == 318
+        with pytest.raises(ValueError, match="mask_fraction"):
+            _tree(mask_fraction=1.0, build_density=24)
+        assert _tree().mask_fraction == 0.0
 
     def test_an_unknown_jitter_mode_is_refused(self):
         with pytest.raises(ValueError, match="mode"):

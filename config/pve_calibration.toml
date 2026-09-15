@@ -39,14 +39,20 @@
 # 815.4 m2 of true leaf area against the 816.9 m2 of Forrester target recorded
 # below: -0.2 % aggregate.
 #
-# THE AGGREGATE HIDES THREE BAD TREES. Twelve of the fifteen land between
-# -2.1 % and +3.1 %. The three fir h05 trees do not: they ship at -13.5 %
-# (r05), -32.5 % (r10) and -32.5 % (r20), and two large fir trees over by
-# +2.4 % and +3.1 % roughly cancel them in the total. They sit near the
-# distributor's one-sample-per-branch floor, where a branch whose loop count is
-# 1 contributes nothing at relative_start 0.0 and the response to density is a
-# staircase rather than a slope -- 613 branches yielding 281 instances. Fixing
-# them means a coarser decimation fraction, which means regrowing the trees.
+# THE AGGREGATE HID THREE BAD TREES -- FIXED 2026-09-15 (XRFF-462). Twelve of
+# the fifteen landed between -2.1 % and +3.1 %; the three fir h05 trees shipped
+# at -13.5 % (r05), -32.5 % (r10) and -32.5 % (r20), one density step short on
+# the distributor's staircase (a branch whose loop count is 1 contributes
+# nothing at relative_start 0.0, so the count moves in steps of ~13 % of the
+# target). The validated distributor model put the next step inside +-5 %,
+# and the click confirmed it exactly: d21 -> 329 (+1.2 %), d22 -> 463 (+2.2 %),
+# d23 -> 560 (-2.8 %). Their `history` keeps the old pair beside the new one.
+# The `mask_fraction` knob (a `use_as_mask` palette entry thins the spawned
+# count to N*(1-f), binomially) was built for the case where no density step
+# lands inside tolerance; here none needed it. It was validated on the same
+# click: 570 points at f=6/14 spawned 331 (expected 326 +-24), 864 at f=4/12
+# spawned 593 (expected 576 +-28). A masked tree must carry its own
+# build_density/build_instances -- history pairs are unmasked measurements.
 # Read per-tree accuracy off `build_instances` against `target_instances`,
 # never off the aggregate.
 
@@ -413,9 +419,9 @@ generations = 4
 s_ratio = 51.08
 target_m2 = 6.55
 target_instances = 325
-history = [[20, 281]]
+history = [[20, 281], [21, 329]]
 solved_density = 21
-build_instances = 281
+build_instances = 329
 build_density_source = "measured"
 
 [pve_calibration.species.silver_fir.trees.r05_h25m]
@@ -443,9 +449,9 @@ generations = 4
 s_ratio = 60.94
 target_m2 = 9.12
 target_instances = 453
-history = [[19, 306]]
+history = [[19, 306], [22, 463]]
 solved_density = 22
-build_instances = 306
+build_instances = 463
 build_density_source = "measured"
 
 [pve_calibration.species.silver_fir.trees.r10_h25m]
@@ -473,9 +479,9 @@ generations = 4
 s_ratio = 66.42
 target_m2 = 11.6
 target_instances = 576
-history = [[20, 389]]
+history = [[20, 389], [23, 560]]
 solved_density = 23
-build_instances = 389
+build_instances = 560
 build_density_source = "measured"
 
 [pve_calibration.species.silver_fir.trees.r20_h25m]

@@ -88,6 +88,22 @@ establish. They are defaults here so no caller has to rediscover them.
   plugin drops the constructor default -- a null ``WindSettings`` exports bone
   chains with no simulation groups, which is a tree that cannot sway.
 
+* **A ``use_as_mask`` palette entry thins below the one-per-branch floor.**
+  The picker (``PVDistributionHelper.cpp:251-356``) chooses uniformly over
+  EVERY palette entry when no condition is active, masks included, and a mask
+  pick spawns nothing (``PVFoliage.cpp:104-176``). So with ``m`` masks beside
+  ``k`` real entries the spawned count is ``N * (1 - f)``, ``f = m / (k + m)``,
+  binomially spread (sd ``sqrt(N f (1 - f))``). That is a count knob the density
+  cannot reach: ``LoopNumber = max(int(density * length), 1)`` steps by whole
+  instances per branch, and on a small tree one density step is 10-15 % of the
+  target. A mask needs no mesh; Epic's own beech ships ``Branch_03`` as a mask.
+  With a condition active the pick is by attribute distance instead
+  (``weight = sum |entry.attr - (point.attr + offset)| * w``, min-max normalised,
+  candidates under ``cutoff_threshold`` but at least ``minimum_candidates``,
+  uniform among them), so **an entry attribute does nothing until its condition
+  is activated on the distributor, and vice versa** -- ``ConditionSpec`` and
+  ``PaletteAttributes`` are two halves of one setting.
+
 Each Export node needs one manual click in the editor -- the export is modal --
 but a graph with N chains yields N meshes per click, so a whole species costs a
 handful of clicks rather than one per tree.
@@ -105,6 +121,12 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "FoliageVectorSpec",
+    "PaletteAttributes",
+    "PaletteEntry",
+    "ConditionInfluence",
+    "ConditionSpec",
+    "masked_palette",
+    "mask_fraction_of",
     "JitterSpec",
     "DistributorSpec",
     "TreeChainSpec",
@@ -126,6 +148,19 @@ DEFAULT_TREE_WIND_SETTINGS = (
 DEFAULT_SAPLING_WIND_SETTINGS = (
     "/ProceduralVegetationEditor/SampleAssets/WindSettings/DefaultSaplingWindSettings"
 )
+
+# The distributor's condition axes, as PVDistributionConditionParams spells
+# them; each pairs a bActivate<Name> flag with a <Name>=(Weight, Offset).
+_CONDITIONS = (
+    "light",
+    "scale",
+    "up_alignment",
+    "health",
+    "tip",
+    "height",
+    "generation",
+)
+
 
 # Enum members as the UE Python API spells them.
 _FACE_VECTORS = frozenset(
@@ -234,6 +269,134 @@ class JitterSpec:
 
 
 @dataclass(frozen=True)
+class PaletteAttributes:
+    """Target values a palette entry advertises to the picker (0-1 each).
+
+    Read only for the conditions activated on the distributor's
+    :class:`ConditionSpec`; ``tip`` is a distance term like the others, not a
+    filter.
+    """
+
+    light: float = 0.0
+    scale: float = 0.0
+    up_alignment: float = 0.0
+    health: float = 0.0
+    tip: bool = False
+    height: float = 0.0
+    generation: float = 0.0
+
+    def __post_init__(self) -> None:
+        for name in _CONDITIONS:
+            if name == "tip":
+                continue
+            value = getattr(self, name)
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(f"attribute {name} must be in [0, 1], got {value}")
+
+
+@dataclass(frozen=True)
+class PaletteEntry:
+    """One palette slot: a prototype mesh, or a mask that consumes the pick."""
+
+    mesh: str | None
+    use_as_mask: bool = False
+    attributes: PaletteAttributes = PaletteAttributes()
+
+    def __post_init__(self) -> None:
+        if not self.use_as_mask and not self.mesh:
+            raise ValueError(
+                "a palette entry needs a mesh unless it is a mask; the palette "
+                "node refuses to execute with a [None] non-mask entry"
+            )
+
+
+def masked_palette(
+    meshes: Sequence[str],
+    mask_entries: int,
+    *,
+    repeats: int = 1,
+    attributes: PaletteAttributes | None = None,
+) -> tuple[PaletteEntry, ...]:
+    """``repeats`` copies of every mesh plus ``mask_entries`` masks.
+
+    Repeating the real entries is what makes the mask fraction fine-grained:
+    ``m / (r * k + m)`` steps by ~1/(r*k). Every entry carries the same
+    ``attributes`` so the picker sees no difference between them.
+    """
+    if not meshes:
+        raise ValueError("masked_palette needs at least one mesh")
+    if mask_entries < 0 or repeats < 1:
+        raise ValueError(
+            f"need mask_entries >= 0 and repeats >= 1, got {mask_entries} / {repeats}"
+        )
+    attributes = attributes or PaletteAttributes()
+    real = tuple(
+        PaletteEntry(mesh=m, attributes=attributes)
+        for _ in range(repeats)
+        for m in meshes
+    )
+    masks = tuple(
+        PaletteEntry(mesh=None, use_as_mask=True, attributes=attributes)
+        for _ in range(mask_entries)
+    )
+    return real + masks
+
+
+def mask_fraction_of(palette: Sequence[PaletteEntry]) -> float:
+    """Share of picks that spawn nothing under an unconditioned picker."""
+    if not palette:
+        return 0.0
+    return sum(1 for e in palette if e.use_as_mask) / len(palette)
+
+
+@dataclass(frozen=True)
+class ConditionInfluence:
+    """Weight and offset of one activated condition."""
+
+    weight: float = 1.0
+    offset: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.weight <= 1.0:
+            raise ValueError(f"weight must be in [0, 1], got {self.weight}")
+        if not -1.0 <= self.offset <= 1.0:
+            raise ValueError(f"offset must be in [-1, 1], got {self.offset}")
+
+
+@dataclass(frozen=True)
+class ConditionSpec:
+    """The distributor's ``ConditionSettings``; a condition is active iff set."""
+
+    cutoff_threshold: float = 0.3
+    minimum_candidates: int = 1
+    light: ConditionInfluence | None = None
+    scale: ConditionInfluence | None = None
+    up_alignment: ConditionInfluence | None = None
+    health: ConditionInfluence | None = None
+    tip: ConditionInfluence | None = None
+    height: ConditionInfluence | None = None
+    generation: ConditionInfluence | None = None
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.cutoff_threshold <= 1.0:
+            raise ValueError(
+                f"cutoff_threshold must be in [0, 1], got {self.cutoff_threshold}"
+            )
+        if not 1 <= self.minimum_candidates <= 10:
+            raise ValueError(
+                f"minimum_candidates must be in [1, 10], got {self.minimum_candidates}"
+            )
+
+    def active(self) -> dict[str, ConditionInfluence]:
+        return {
+            name: influence
+            for name in _CONDITIONS
+            if (influence := getattr(self, name)) is not None
+        }
+
+
+
+@dataclass(frozen=True)
 class DistributorSpec:
     """Parametric foliage distributor settings for one tree."""
 
@@ -264,6 +427,8 @@ class DistributorSpec:
     )
     aim: FoliageVectorSpec | None = None
     jitter: tuple[JitterSpec, ...] = ()
+    # None leaves the engine's ConditionSettings untouched (nothing active).
+    conditions: ConditionSpec | None = None
 
     def __post_init__(self) -> None:
         if self.branch_density < 1:
@@ -305,12 +470,16 @@ class TreeChainSpec:
 
     ``wind_settings`` is the ``PVWindSettings`` asset the Export node assigns;
     the plan picks it by height tier (see :mod:`~growpy.io.unreal.pve_graph_plan`).
+    ``palette`` gives the chain a palette node of its own -- masks and
+    attributes are per tree, while the graph's ``palette_meshes`` is the shared
+    plain palette every other chain uses.
     """
 
     growth_json: Path
     mesh_name: str
     distributor: DistributorSpec
     wind_settings: str = DEFAULT_TREE_WIND_SETTINGS
+    palette: tuple[PaletteEntry, ...] | None = None
 
     def __post_init__(self) -> None:
         if not self.mesh_name:
@@ -319,6 +488,13 @@ class TreeChainSpec:
             raise ValueError(
                 f"chain {self.mesh_name!r} names no wind_settings asset; a null "
                 "WindSettings exports a tree with no simulation groups"
+            )
+        if self.palette is not None and not any(
+            not e.use_as_mask for e in self.palette
+        ):
+            raise ValueError(
+                f"chain {self.mesh_name!r} palette has no real entry -- every "
+                "pick would be a mask and the tree would export bare"
             )
 
 
@@ -399,6 +575,33 @@ def _vector_payload(spec: FoliageVectorSpec | None) -> dict | None:
         "blend_attribute": spec.blend_attribute,
     }
 
+def _palette_payload(palette: Sequence[PaletteEntry] | None) -> list | None:
+    if palette is None:
+        return None
+    return [
+        {
+            "mesh": e.mesh,
+            "use_as_mask": e.use_as_mask,
+            "attributes": {name: getattr(e.attributes, name) for name in _CONDITIONS},
+        }
+        for e in palette
+    ]
+
+
+def _conditions_payload(spec: ConditionSpec | None) -> dict | None:
+    if spec is None:
+        return None
+    return {
+        "cutoff_threshold": spec.cutoff_threshold,
+        "minimum_candidates": spec.minimum_candidates,
+        "active": {
+            name: {"weight": inf.weight, "offset": inf.offset}
+            for name, inf in spec.active().items()
+        },
+    }
+
+
+
 
 def _graph_payload(graph: PVEGraphSpec) -> dict:
     return {
@@ -419,6 +622,8 @@ def _graph_payload(graph: PVEGraphSpec) -> dict:
                 "growth_json": str(Path(c.growth_json).resolve()).replace("\\", "/"),
                 "mesh_name": c.mesh_name,
                 "wind_settings": c.wind_settings,
+                "palette": _palette_payload(c.palette),
+                "conditions": _conditions_payload(c.distributor.conditions),
                 "branch_density": c.distributor.branch_density,
                 "spacing_basis": c.distributor.spacing_basis,
                 "relative_start": c.distributor.relative_start,
@@ -490,6 +695,10 @@ def preflight():
         for path in spec["palette_meshes"]:
             if not eal.does_asset_exist(path):
                 missing.append("palette mesh %s" % path)
+        for chain in spec["chains"]:
+            for entry in chain["palette"] or ():
+                if entry["mesh"] and not eal.does_asset_exist(entry["mesh"]):
+                    missing.append("palette mesh %s" % entry["mesh"])
         if not eal.does_asset_exist(spec["bark_material"]):
             missing.append("bark material %s" % spec["bark_material"])
         for chain in spec["chains"]:
@@ -508,6 +717,72 @@ def preflight():
             % len(set(missing))
         )
     print("preflight: palette, bark and wind present for %d graph(s)" % len(GRAPHS))
+
+
+def make_palette(graph, entries, x, y):
+    """A palette node from (mesh, use_as_mask, attributes) entries.
+
+    A mask entry carries no mesh: the palette node's own check skips masks
+    (PVFoliagePaletteSettings.cpp:203-206) and the picker still selects them.
+    """
+    node, settings = graph.add_node_of_type(unreal.PVFoliagePaletteSettings)
+    node.set_node_position(x, y)
+    infos = []
+    missing = []
+    for entry in entries:
+        info = unreal.PVFoliageInfo()
+        if entry["mesh"]:
+            mesh = eal.load_asset(entry["mesh"])
+            if mesh is None:
+                missing.append(entry["mesh"])
+                continue
+            info.set_editor_property("mesh", mesh)
+        setp(info, ("use_as_mask", "b_use_as_mask"), bool(entry["use_as_mask"]))
+        attrs = info.get_editor_property("attributes")
+        for name, value in entry["attributes"].items():
+            setp(attrs, name, bool(value) if name == "tip" else float(value))
+        info.set_editor_property("attributes", attrs)
+        infos.append(info)
+    if missing:
+        raise RuntimeError("palette meshes did not resolve: %s" % missing)
+    settings.set_editor_property("foliage_infos", infos)
+    written = settings.get_editor_property("foliage_infos")
+    masks = sum(1 for i in written if i.get_editor_property("use_as_mask"))
+    wanted = sum(1 for e in entries if e["use_as_mask"])
+    if len(written) != len(entries) or masks != wanted:
+        raise RuntimeError(
+            "palette read back %d entries / %d masks, wanted %d / %d"
+            % (len(written), masks, len(entries), wanted)
+        )
+    return node
+
+
+def apply_conditions(dist_settings, spec):
+    """Write ConditionSettings; None leaves the engine defaults (none active)."""
+    if spec is None:
+        return
+    cond = dist_settings.get_editor_property("condition_settings")
+    setp(cond, "cutoff_threshold", float(spec["cutoff_threshold"]))
+    setp(cond, "minimum_candidates", int(spec["minimum_candidates"]))
+    for name, inf in spec["active"].items():
+        setp(cond, ("activate_" + name, "b_activate_" + name), True)
+        influence = cond.get_editor_property(name)
+        setp(influence, "weight", float(inf["weight"]))
+        setp(influence, "offset", float(inf["offset"]))
+        cond.set_editor_property(name, influence)
+    dist_settings.set_editor_property("condition_settings", cond)
+    fresh = dist_settings.get_editor_property("condition_settings")
+    for name in spec["active"]:
+        on = False
+        for prop in ("activate_" + name, "b_activate_" + name):
+            try:
+                on = bool(fresh.get_editor_property(prop))
+                break
+            except Exception:
+                continue
+        if not on:
+            raise RuntimeError("condition %s did not activate on read-back" % name)
+
 
 
 preflight()
@@ -628,23 +903,15 @@ def build(spec):
         raise RuntimeError("trunk profile pin %s absent" % spec["profile_pin"])
     profile_pin = pins[0]
 
-    palette_node, palette_settings = graph.add_node_of_type(
-        unreal.PVFoliagePaletteSettings
+    palette_node = make_palette(
+        graph,
+        [
+            dict(mesh=path, use_as_mask=False, attributes=dict())
+            for path in spec["palette_meshes"]
+        ],
+        -260,
+        220,
     )
-    palette_node.set_node_position(-260, 220)
-    infos = []
-    missing = []
-    for path in spec["palette_meshes"]:
-        mesh = eal.load_asset(path)
-        if mesh is None:
-            missing.append(path)
-            continue
-        info = unreal.PVFoliageInfo()
-        info.set_editor_property("mesh", mesh)
-        infos.append(info)
-    if missing:
-        raise RuntimeError("palette meshes did not resolve: %s" % missing)
-    palette_settings.set_editor_property("foliage_infos", infos)
 
     bark = eal.load_asset(spec["bark_material"])
     if bark is None:
@@ -763,6 +1030,12 @@ def build(spec):
         setp(scale, "scale_ramp", ramp)
         parametric.set_editor_property("scale_settings", scale)
         dist_settings.set_editor_property("parametric_settings", parametric)
+        apply_conditions(dist_settings, chain["conditions"])
+        # A chain with masks or attributes gets a palette of its own; the
+        # shared node stays the plain one every other chain reads.
+        chain_palette = palette_node
+        if chain["palette"] is not None:
+            chain_palette = make_palette(graph, chain["palette"], 400, row + 220)
 
         apply_vector_group(
             dist_settings, chain["aim"], "aim_vector_settings", "aim_vectors",
@@ -836,7 +1109,7 @@ def build(spec):
             (radius_node, "Out", mesh_node, "BranchRadius"),
             (material_node, "Out", mesh_node, "MaterialDetails"),
             (mesh_node, "Out", dist_node, "In"),
-            (palette_node, "Out", dist_node, "Foliage"),
+            (chain_palette, "Out", dist_node, "Foliage"),
             (dist_node, "Out", export_node, "In"),
         ):
             graph.add_edge(src, src_pin, dst, dst_pin)

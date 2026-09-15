@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -41,6 +42,7 @@ from growpy.io.unreal.pve_graph_builder import (
     TreeChainSpec,
     generate_pve_graph_builder_script,
     generate_pve_retune_script,
+    masked_palette,
     split_by_triangles,
     write_coverage_manifest,
 )
@@ -54,6 +56,7 @@ __all__ = [
     "GrowthJson",
     "PVEGraphPlanResult",
     "discover_growth_jsons",
+    "mask_entries_for",
     "plan_pve_graphs",
     "tree_id_for",
     "wind_settings_for",
@@ -175,16 +178,67 @@ def wind_settings_for(tree_id: str, presets: WindPresets | None = None) -> str:
     return DEFAULT_SAPLING_WIND_SETTINGS if sapling else DEFAULT_TREE_WIND_SETTINGS
 
 
+# Real entries may be repeated up to this many times to reach a mask
+# fraction the palette size alone cannot express (f = m / (r * k + m)).
+MAX_PALETTE_REPEATS = 4
+_MASK_TOLERANCE = 1e-6
+
+
+def mask_entries_for(mask_fraction: float, palette_size: int) -> tuple[int, int]:
+    """``(repeats, masks)`` that realise ``mask_fraction`` over ``palette_size``.
+
+    The picker is uniform over entries, so the fraction is a ratio of whole
+    entries and only some values exist. Returns the smallest ``repeats`` that
+    hits the fraction exactly; raises otherwise, naming the nearest values a
+    caller could ask for instead, because a fraction the palette cannot spell
+    would silently build at the wrong count.
+    """
+    if not 0.0 <= mask_fraction < 1.0:
+        raise ValueError(f"mask_fraction must be in [0, 1), got {mask_fraction}")
+    if palette_size < 1:
+        raise ValueError(f"palette_size must be >= 1, got {palette_size}")
+    if mask_fraction == 0.0:
+        return 1, 0
+    candidates: list[tuple[float, int, int]] = []
+    for repeats in range(1, MAX_PALETTE_REPEATS + 1):
+        real = repeats * palette_size
+        # f = m / (real + m)  ->  m = f * real / (1 - f)
+        masks_exact = mask_fraction * real / (1.0 - mask_fraction)
+        masks = round(masks_exact)
+        if masks >= 1 and abs(masks - masks_exact) < _MASK_TOLERANCE * real:
+            return repeats, masks
+        for m in (max(1, int(masks_exact)), int(masks_exact) + 1):
+            candidates.append((m / (real + m), repeats, m))
+    nearest = sorted(candidates, key=lambda c: abs(c[0] - mask_fraction))[:3]
+    spelled = ", ".join(
+        f"{f:.4f} (repeats {r}, masks {m})" for f, r, m in nearest
+    )
+    raise ValueError(
+        f"mask_fraction {mask_fraction} is not a ratio of whole palette entries "
+        f"over {palette_size} meshes with up to {MAX_PALETTE_REPEATS} repeats; "
+        f"nearest: {spelled}"
+    )
+
+
 def _chain_for(
     entry: GrowthJson,
     calibration: SpeciesCalibration,
     mesh_prefix: str,
+    palette_meshes: Sequence[str] = (),
 ) -> TreeChainSpec:
     resolved = calibration.resolve_density(entry.tree_id)
+    tree = calibration.tree(entry.tree_id)
+    palette = None
+    if tree.mask_fraction > 0.0:
+        # Thinning below the one-per-branch floor (XRFF-462): the chain gets
+        # a palette of its own with masks beside the shared meshes.
+        repeats, masks = mask_entries_for(tree.mask_fraction, len(palette_meshes))
+        palette = masked_palette(palette_meshes, masks, repeats=repeats)
     return TreeChainSpec(
         growth_json=entry.path,
         mesh_name=f"{mesh_prefix}_{entry.tree_id}",
         wind_settings=wind_settings_for(entry.tree_id, calibration.wind),
+        palette=palette,
         distributor=DistributorSpec(
             branch_density=resolved.density,
             relative_start=calibration.relative_start,
@@ -288,7 +342,9 @@ def plan_pve_graphs(
         instances: dict[str, int] = {}
         for entry in entries:
             try:
-                chain = _chain_for(entry, species_cal, mesh_prefix)
+                chain = _chain_for(
+                    entry, species_cal, mesh_prefix, assets.palette_meshes
+                )
             except (KeyError, ValueError) as err:
                 skipped.append(f"{species} {entry.tree_id}: {err}")
                 continue

@@ -96,6 +96,10 @@ class TreeCalibration:
     s_ratio: float | None = None
     source_height_m: float | None = None
     generations: int | None = None
+    # Share of use_as_mask palette entries the tree builds with (XRFF-462).
+    # A history pair is an UNMASKED measurement, so a masked tree must carry
+    # an explicit build_density / build_instances of its own.
+    mask_fraction: float = 0.0
 
     def __post_init__(self) -> None:
         if not self.growth_json:
@@ -116,6 +120,17 @@ class TreeCalibration:
                     f"tree {self.tree_id!r} has a nonsensical history entry "
                     f"({density}, {instances})"
                 )
+        if not 0.0 <= self.mask_fraction < 1.0:
+            raise ValueError(
+                f"tree {self.tree_id!r} mask_fraction must be in [0, 1), "
+                f"got {self.mask_fraction}"
+            )
+        if self.mask_fraction > 0.0 and self.build_density is None:
+            raise ValueError(
+                f"tree {self.tree_id!r} builds with mask_fraction "
+                f"{self.mask_fraction} but names no build_density; its history "
+                f"was measured unmasked and cannot stand in"
+            )
 
     def resolve_density(self, relative_start: float) -> ResolvedDensity:
         """The density to build this tree at, or a refusal explaining why not.
@@ -343,6 +358,7 @@ def _tree(tree_id: str, data: dict[str, Any], history_relative_start: float):
         s_ratio=_opt_float(data.get("s_ratio")),
         source_height_m=_opt_float(data.get("source_height_m")),
         generations=_opt_int(data.get("generations")),
+        mask_fraction=float(data.get("mask_fraction", 0.0)),
     )
 
 

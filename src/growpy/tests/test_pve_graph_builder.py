@@ -9,12 +9,18 @@ import pytest
 from growpy.io.unreal.pve_graph_builder import (
     DEFAULT_SAPLING_WIND_SETTINGS,
     DEFAULT_TREE_WIND_SETTINGS,
+    ConditionInfluence,
+    ConditionSpec,
     DistributorSpec,
     FoliageVectorSpec,
     JitterSpec,
+    PaletteAttributes,
+    PaletteEntry,
     PVEGraphSpec,
     TreeChainSpec,
     generate_pve_graph_builder_script,
+    mask_fraction_of,
+    masked_palette,
 )
 
 
@@ -215,6 +221,67 @@ class TestTreeChainSpec:
             )
 
 
+class TestPalette:
+    def test_a_mask_needs_no_mesh_but_a_real_entry_does(self):
+        # The palette node's own check skips masks; a [None] non-mask entry
+        # fails the whole graph at execute time.
+        assert PaletteEntry(mesh=None, use_as_mask=True).mesh is None
+        with pytest.raises(ValueError, match="needs a mesh"):
+            PaletteEntry(mesh=None)
+
+    def test_attributes_are_unit_interval(self):
+        PaletteAttributes(scale=1.0, tip=True)
+        with pytest.raises(ValueError, match="height"):
+            PaletteAttributes(height=1.5)
+
+    def test_masked_palette_fraction_is_masks_over_entries(self):
+        # Uniform pick over every entry, mask included: f = m / (r*k + m).
+        palette = masked_palette(["/G/a", "/G/b", "/G/c"], 1)
+        assert len(palette) == 4
+        assert mask_fraction_of(palette) == pytest.approx(0.25)
+        doubled = masked_palette(["/G/a", "/G/b", "/G/c"], 2, repeats=2)
+        assert [e.mesh for e in doubled[:6]] == ["/G/a", "/G/b", "/G/c"] * 2
+        assert mask_fraction_of(doubled) == pytest.approx(0.25)
+        assert mask_fraction_of(masked_palette(["/G/a"], 0)) == 0.0
+
+    def test_masked_palette_rejects_nonsense(self):
+        with pytest.raises(ValueError, match="at least one mesh"):
+            masked_palette([], 1)
+        with pytest.raises(ValueError, match="repeats"):
+            masked_palette(["/G/a"], 1, repeats=0)
+
+    def test_a_chain_palette_of_only_masks_is_refused(self):
+        # Every pick would spawn nothing and the tree would export bare.
+        with pytest.raises(ValueError, match="no real entry"):
+            TreeChainSpec(
+                growth_json=Path("t.json"),
+                mesh_name="SK_X",
+                distributor=DistributorSpec(branch_density=3),
+                palette=(PaletteEntry(mesh=None, use_as_mask=True),),
+            )
+
+
+class TestConditionSpec:
+    def test_active_lists_only_the_set_conditions_in_engine_order(self):
+        spec = ConditionSpec(
+            tip=ConditionInfluence(),
+            scale=ConditionInfluence(weight=0.863),
+            minimum_candidates=2,
+        )
+        assert list(spec.active()) == ["scale", "tip"]
+        assert ConditionSpec().active() == {}
+
+    def test_ranges_follow_the_uproperty_clamps(self):
+        with pytest.raises(ValueError, match="weight"):
+            ConditionInfluence(weight=1.5)
+        with pytest.raises(ValueError, match="offset"):
+            ConditionInfluence(offset=-1.5)
+        with pytest.raises(ValueError, match="cutoff_threshold"):
+            ConditionSpec(cutoff_threshold=2.0)
+        with pytest.raises(ValueError, match="minimum_candidates"):
+            ConditionSpec(minimum_candidates=0)
+
+
 class TestGenerateScript:
     def test_writes_a_runnable_script(self, tmp_path):
         path = generate_pve_graph_builder_script(tmp_path, [_graph()])
@@ -251,6 +318,36 @@ class TestGenerateScript:
         assert 'chain["wind_settings"]' in preflight
         assert 'settings.set_editor_property("wind_settings", wind)' in build
         assert 'written.get_editor_property("wind_settings")' in build
+
+    def test_a_masked_chain_gets_its_own_palette_node_and_conditions(self, tmp_path):
+        chain = TreeChainSpec(
+            growth_json=Path("t.json"),
+            mesh_name="SK_Masked",
+            distributor=DistributorSpec(
+                branch_density=3,
+                conditions=ConditionSpec(
+                    scale=ConditionInfluence(weight=0.9), minimum_candidates=2
+                ),
+            ),
+            palette=masked_palette(["/G/a", "/G/b"], 1),
+        )
+        path = generate_pve_graph_builder_script(tmp_path, [_graph(chains=(chain,))])
+        body = path.read_text(encoding="utf-8")
+        compile(body, str(path), "exec")
+        assert "'use_as_mask': True" in body
+        assert "'active': {'scale': {'weight': 0.9, 'offset': 0.0}}" in body
+        assert "'minimum_candidates': 2" in body
+        build = body.split("def build(spec):", 1)[1]
+        # The shared palette stays; a chain with masks wires a node of its own.
+        assert 'make_palette(graph, chain["palette"]' in build
+        assert '(chain_palette, "Out", dist_node, "Foliage")' in build
+        assert 'apply_conditions(dist_settings, chain["conditions"])' in build
+
+    def test_an_unmasked_chain_carries_no_palette_of_its_own(self, tmp_path):
+        path = generate_pve_graph_builder_script(tmp_path, [_graph()])
+        body = path.read_text(encoding="utf-8")
+        assert "'palette': None" in body
+        assert "'conditions': None" in body
 
     def test_ramp_keys_reach_the_script_in_order(self, tmp_path):
         chain = _chain("SK_x", density=3)

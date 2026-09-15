@@ -23,11 +23,13 @@ from growpy.io.unreal.pve_graph_builder import (
     PVEGraphSpec,
     TreeChainSpec,
     generate_pve_retune_script,
+    mask_fraction_of,
     split_by_triangles,
     write_coverage_manifest,
 )
 from growpy.io.unreal.pve_graph_plan import (
     discover_growth_jsons,
+    mask_entries_for,
     plan_pve_graphs,
     tree_id_for,
     wind_settings_for,
@@ -119,6 +121,59 @@ class TestWindTier:
         # this whole rule exists to replace.
         with pytest.raises(ValueError, match="height token"):
             wind_settings_for("tree_0001")
+
+
+class TestMaskEntries:
+    def test_a_fraction_the_palette_can_spell_is_realised_exactly(self):
+        # 8 fir sprays: 3 masks -> 3/11; 1/3 needs 4 masks; 1/9 is one mask.
+        assert mask_entries_for(3 / 11, 8) == (1, 3)
+        assert mask_entries_for(1 / 3, 8) == (1, 4)
+        assert mask_entries_for(1 / 9, 8) == (1, 1)
+        assert mask_entries_for(0.0, 8) == (1, 0)
+
+    def test_repeats_unlock_finer_fractions(self):
+        # 1/17 = one mask over 16 real entries: every mesh twice.
+        assert mask_entries_for(1 / 17, 8) == (2, 1)
+
+    def test_an_unspellable_fraction_is_refused_with_the_nearest_ones(self):
+        # Building at the nearest ratio silently would land the count off.
+        with pytest.raises(ValueError, match="nearest") as err:
+            mask_entries_for(0.3, 8)
+        assert "repeats" in str(err.value)
+        with pytest.raises(ValueError, match="mask_fraction"):
+            mask_entries_for(1.0, 8)
+
+    def test_a_masked_tree_plans_a_palette_of_its_own(self, tmp_path, forest_root):
+        # XRFF-462: the calibration's mask_fraction becomes a per-chain palette
+        # of the shared meshes plus masks; every other chain keeps None.
+        toml = (
+            Path(__file__).resolve().parents[3] / "config" / "pve_calibration.toml"
+        ).read_text(encoding="utf-8")
+        anchor = "history = [[20, 281], [21, 329]]"  # fir r05_h05m's line
+        assert toml.count(anchor) == 1
+        override = tmp_path / "cal.toml"
+        override.write_text(
+            toml.replace(
+                anchor,
+                anchor + "\nbuild_density = 24\nmask_fraction = 0.25",
+            ),
+            encoding="utf-8",
+        )
+        plan = plan_pve_graphs(
+            tmp_path,
+            forest_root,
+            content_root="/Game/PVE_Test",
+            calibration_path=override,
+        )
+        chains = {c.mesh_name: c for g in plan.graphs for c in g.chains}
+        masked = chains["SK_SilverFir_r05_h05m"]
+        assert masked.distributor.branch_density == 24
+        assert masked.palette is not None
+        assert mask_fraction_of(masked.palette) == pytest.approx(0.25)
+        assert len({e.mesh for e in masked.palette if e.mesh}) == 8
+        assert all(
+            c.palette is None for n, c in chains.items() if n != "SK_SilverFir_r05_h05m"
+        )
 
 
 class TestSplitByTriangles:

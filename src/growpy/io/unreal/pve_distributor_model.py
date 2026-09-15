@@ -74,6 +74,8 @@ __all__ = [
     "ENGINE_DEFAULT_RAMP",
     "FLAT_RAMP",
     "LeafAreaMeasurement",
+    "MaskedCount",
+    "expected_instances",
     "Placement",
     "measure_leaf_area",
     "ramp_eval",
@@ -102,13 +104,59 @@ class Placement:
 
 
 @dataclass(frozen=True)
+class MaskedCount:
+    """Instances a masked palette spawns from ``points`` attachment points.
+
+    The picker chooses uniformly over every entry when no condition is
+    active, and a ``use_as_mask`` pick spawns nothing, so the spawned count is
+    binomial: mean ``points * (1 - f)``, sd ``sqrt(points * f * (1 - f))``.
+    ``expected`` is the rounded mean; ``band`` is the 2-sigma half-width the
+    click should land inside.
+    """
+
+    points: int
+    mask_fraction: float
+
+    @property
+    def mean(self) -> float:
+        return self.points * (1.0 - self.mask_fraction)
+
+    @property
+    def expected(self) -> int:
+        return round(self.mean)
+
+    @property
+    def sd(self) -> float:
+        return math.sqrt(self.points * self.mask_fraction * (1.0 - self.mask_fraction))
+
+    @property
+    def band(self) -> int:
+        return math.ceil(2.0 * self.sd)
+
+
+def expected_instances(points: int, mask_fraction: float = 0.0) -> MaskedCount:
+    """Spawned-instance statistics for ``points`` placements under a mask."""
+    if points < 0:
+        raise ValueError(f"points must be >= 0, got {points}")
+    if not 0.0 <= mask_fraction < 1.0:
+        raise ValueError(f"mask_fraction must be in [0, 1), got {mask_fraction}")
+    return MaskedCount(points=points, mask_fraction=mask_fraction)
+
+
+@dataclass(frozen=True)
 class LeafAreaMeasurement:
-    """Leaf area for one tree, with the scale correction made visible."""
+    """Leaf area for one tree, with the scale correction made visible.
+
+    ``instances`` is what the export spawns: the attachment-point count times
+    ``1 - mask_fraction``, rounded. ``points`` keeps the unmasked count.
+    """
 
     instances: int
     mean_scale: float
     mean_scale_squared: float
     prototype_leaf_area_m2: float
+    mask_fraction: float = 0.0
+    points: int | None = None
 
     @property
     def area_m2(self) -> float:
@@ -392,6 +440,7 @@ def measure_leaf_area(
     *,
     graph_scale_ramp=None,
     allow_plant_spacing: bool = False,
+    mask_fraction: float = 0.0,
 ) -> LeafAreaMeasurement:
     """Leaf area for one tree, corrected for instance scale.
 
@@ -404,6 +453,9 @@ def measure_leaf_area(
             mismatch raises -- a measurement taken against a different ramp
             than the graph carries reproduces the original bug exactly.
         allow_plant_spacing: See :func:`simulate_placements`.
+        mask_fraction: Share of ``use_as_mask`` entries in the palette; the
+            spawned count is the placement count times ``1 - mask_fraction``
+            (see :class:`MaskedCount`).
 
     Raises:
         ValueError: On a ramp mismatch, or an empty placement set.
@@ -432,12 +484,14 @@ def measure_leaf_area(
             f"{distributor.branch_density}, so there is no leaf area to report"
         )
 
-    count = len(placements)
-    mean_scale = sum(p.scale for p in placements) / count
-    mean_scale_squared = sum(p.scale * p.scale for p in placements) / count
+    points = len(placements)
+    mean_scale = sum(p.scale for p in placements) / points
+    mean_scale_squared = sum(p.scale * p.scale for p in placements) / points
     return LeafAreaMeasurement(
-        instances=count,
+        instances=expected_instances(points, mask_fraction).expected,
         mean_scale=mean_scale,
         mean_scale_squared=mean_scale_squared,
         prototype_leaf_area_m2=prototype_leaf_area_m2,
+        mask_fraction=mask_fraction,
+        points=points,
     )

@@ -23,6 +23,7 @@ from growpy.io.unreal.pve_distributor_model import (
     ENGINE_DEFAULT_RAMP,
     FLAT_RAMP,
     LeafAreaMeasurement,
+    expected_instances,
     measure_leaf_area,
     ramp_eval,
     simulate_placements,
@@ -199,6 +200,36 @@ class TestPlacement:
         )
         with pytest.raises(ValueError, match="degenerate"):
             simulate_placements(path, _spec())
+
+
+class TestMaskedCount:
+    def test_unmasked_is_the_point_count_exactly(self):
+        count = expected_instances(437)
+        assert (count.expected, count.sd, count.band) == (437, 0.0, 0)
+
+    def test_a_mask_thins_binomially(self):
+        # Uniform pick over k real + m mask entries: mean N(1-f), sd sqrt(Nf(1-f)).
+        count = expected_instances(437, 3 / 11)
+        assert count.expected == round(437 * 8 / 11)
+        assert count.sd == pytest.approx((437 * (3 / 11) * (8 / 11)) ** 0.5)
+        assert count.band == 19  # ceil(2 sd): what a click should land inside
+
+    def test_rejects_a_full_mask_and_negative_points(self):
+        with pytest.raises(ValueError, match="mask_fraction"):
+            expected_instances(10, 1.0)
+        with pytest.raises(ValueError, match="points"):
+            expected_instances(-1)
+
+    def test_leaf_area_reports_the_spawned_count_and_keeps_the_points(self, tmp_path):
+        path = _tree(tmp_path)
+        plain = measure_leaf_area(path, _spec(scale_ramp=FLAT_RAMP), PROTOTYPE_AREA)
+        masked = measure_leaf_area(
+            path, _spec(scale_ramp=FLAT_RAMP), PROTOTYPE_AREA, mask_fraction=0.25
+        )
+        assert masked.points == plain.instances
+        assert masked.instances == round(0.75 * plain.instances)
+        assert masked.area_m2 == pytest.approx(0.75 * plain.area_m2, abs=PROTOTYPE_AREA)
+        assert plain.mask_fraction == 0.0 and masked.mask_fraction == 0.25
 
 
 class TestLeafArea:
