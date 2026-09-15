@@ -164,9 +164,10 @@ grow = false              # DEFAULT (conifers); broadleaves override below
 #
 # 44 coarse arms + 20 refinement arms, all through the real pipeline. Sweep data
 # in data/tmp/run25m/sweep_out/.
-# STALE as of 2026-09-09: every value below was fitted at r08, and the radii
-# moved to [5.0, 10.0, 20.0]. Thresholds do not interpolate -- re-sweep before
-# dataset production. Harness: data/tmp/run25m/sweep_density.sh + check_radii.py.
+# RE-SWEPT 2026-09-11..14 at [8.0, 16.0] and RE-FITTED 2026-09-15 (values in the
+# table below; the 2026-08-28 numbers are kept in the per-line comments). The
+# 2026-08-28 values had never been replaced by the sweep and drove the
+# 2026-09-14 production run for all 11 species.
 [surround.grow_per_species]
 common_ash = true
 european_beech = true
@@ -178,18 +179,39 @@ wild_cherry = true
 # conifers omitted deliberately -- they fall through to `grow = false` above:
 # douglas_fir, norway_spruce, scots_pine, silver_fir
 
+# Owner decision 2026-09-15, judged at h15m (the production cap) on r08 crown
+# ratio against Sharma's 0.52-0.68, with the r08 crown BASE sitting above r16's
+# as the radius gate (growpy-summarise-surround-density --gate-axis base). The
+# base is the axis shading physically drives and the one that was sign-stable
+# across every seed and every static-shell conifer cell; crown width flips with
+# the seed on birch and is flat on spruce and pine. Conifers were measured
+# under the static shell (grow = false, h = 6.5) -- their 2026-08-28 values
+# were fitted under a growing shell and do not carry over. Ratio at r08 h15m:
+#
+#   norway_spruce  0.58   silver_fir 0.65   douglas_fir 0.62 (the one arm that
+#   passes on crown base AND crown width)   scots_pine 0.56 (r16 0.66; 0.55 is
+#   also in band at r08 but 0.75 at r16)
+#   silver_birch   0.64 mean over seeds 512 / 999 / 7 (0.56-0.70) -- the ONLY
+#   replicated value; at 0.60 the base does not separate (0/6) and ratio is 0.77
+#   european_beech 0.51   wild_cherry 0.55   small_leaved_linden 0.67
+#   sycamore_maple 0.68   common_ash 0.48 and european_oak 0.36 -- both below
+#   band even at the 0.55 floor, accepted out of band (owner, 2026-09-14)
+#
+# Every broadleaf but birch, and every conifer, is a SINGLE-SEED verdict; crown
+# ratio carries +/-0.15 seed noise (A30). Sweep data: data/tmp/sweep_phase2/
+# (growing shell), data/tmp/sweep_conifer_static/, data/tmp/sweep_birch_seeds/.
 [surround.density_per_species]
-common_ash = 0.75
-douglas_fir = 0.38
-european_beech = 0.9
-european_oak = 0.45
-norway_spruce = 0.7
-scots_pine = 0.55
-silver_birch = 0.6
-silver_fir = 0.7
-small_leaved_linden = 0.9
-sycamore_maple = 0.65
-wild_cherry = 0.7
+common_ash = 0.55            # was 0.75
+douglas_fir = 0.85           # was 0.38 (growing shell)
+european_beech = 0.75        # was 0.9
+european_oak = 0.55          # was 0.45
+norway_spruce = 0.95         # was 0.7 (growing shell)
+scots_pine = 0.95            # was 0.55 (growing shell)
+silver_birch = 0.7           # was 0.6
+silver_fir = 0.95            # was 0.7 (growing shell)
+small_leaved_linden = 0.75   # was 0.9
+sycamore_maple = 0.55        # was 0.65
+wild_cherry = 0.75           # was 0.7
 
 # --- Per-species shell density AT ONE RADIUS ---------------------------------
 # Overrides [surround.density_per_species] above for a single species/radius
