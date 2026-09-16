@@ -104,6 +104,18 @@ generate_wind_data = true
 #   (~10 points per branch against Beech_01's 26.4) -- so generations preserved
 #   is the meaningful measure.
 #
+#   0.06 IS ONLY RIGHT FOR SOME SPECIES (XRFF-466, 2026-09-16). The threshold
+#   is a fraction of the trunk BASE radius, and a mature trunk is fat, so the
+#   same fraction bites harder the older the tree gets. Measured undecimated on
+#   five broadleaves at h05..h25: at 0.06 a h25 ash keeps 196 branches of its
+#   10,114 and a spruce keeps 3,016, so the foliage solve strung 177 instances
+#   along a single ash branch -- the "caterpillar" the 110-tree catalog was
+#   judged on -- while the conifers looked right. 0.02 puts every broadleaf in
+#   the 1,000-7,000 band beech already sat in, at the SAME instance count and
+#   the same leaf area (the solve just runs a lower density): ash r16_h25m goes
+#   196 -> 1,056 branches and 177 -> 33 instances per branch. Per species, not
+#   global, in the sub-table at the end of this file.
+#
 # min_branch_radius: absolute metre cutoff, kept for the rare case where one is
 #   genuinely wanted. Whichever of the two is larger wins. Leave at 0.0.
 #
@@ -190,3 +202,29 @@ min_branch_radius_fraction = 0.06
 [unreal.watchdog]
 # editor_exe = "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Binaries\\Win64\\UnrealEditor.exe"
 # uproject = "D:\\Unreal\\XRLabDB 5.8\\XRLabDB.uproject"
+
+# --- per-species decimation fraction (XRFF-466, 2026-09-16) ---
+# Overrides [unreal.growth_data_json] min_branch_radius_fraction above, keyed by
+# standardized name. Branch counts at h05..h25, r08/r16, measured undecimated
+# (0.06 -> 0.02):
+#
+#   common ash            196- 398 ->   208-5,502
+#   European beech        365-1,879 -> 1,817-7,018
+#   European oak          295- 549 -> 1,627-4,711
+#   silver birch          309- 698 -> 1,472-8,278
+#   small-leaved linden   313-1,226 -> 2,008-5,130
+#
+# Not listed, deliberately:
+#   * the five conifers -- at 0.06 they already keep 433-3,016 branches and run
+#     at 1-19 instances per branch. A lower fraction buys no look and costs
+#     branch geometry to mesh.
+#   * sycamore maple and wild cherry -- they sit AT the one-instance-per-branch
+#     floor (1.0-4.2 per branch), so more branches would raise their instance
+#     count and their leaf area rather than spread the same foliage wider.
+#     Their crowns are too sparse, which is the opposite defect and not this one.
+[unreal.growth_data_json.min_branch_radius_fraction_per_species]
+common_ash = 0.02
+european_beech = 0.02
+european_oak = 0.02
+silver_birch = 0.02
+small_leaved_linden = 0.02

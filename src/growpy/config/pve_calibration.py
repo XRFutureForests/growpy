@@ -223,11 +223,38 @@ class TwigPose:
     degrees toward the tip (0 = perpendicular), flattened, faces up; a leader
     keeps pointing up. Beech adds jitter, because its leaves incline ~20-30 deg
     in life rather than lying perfectly flat.
+
+    The three variance knobs below are the exception to "nothing here changes
+    anything but rotation" (XRFF-467, 2026-09-16). Without them every spray on
+    a branch is the same size at the same angle in the same rhythm -- the
+    caterpillar the 110-tree catalog was judged on.
+
+    * ``randomize_scale`` is a uniform multiplier on each instance's scale. It
+      changes no count, but leaf area goes as scale squared, so the offline
+      solve corrects the density by ``E[scale^2]`` and a species' MEASURED
+      densities are only valid at the range they were measured under.
+    * ``randomize_axil_angle`` adds degrees to the axil angle per instance;
+      rotation only, counts and area untouched.
+    * ``spacing_ramp`` reshapes where along a branch the samples land. PVE
+      evaluates it on the even loop value before the relative remap, so the
+      count is untouched but the metronome rhythm is not.
     """
 
     reset_phyllotaxy: bool = True
     axil_angle: float = 30.0
     jitter: tuple[TwigJitter, ...] = ()
+    randomize_scale: tuple[float, float] = (1.0, 1.0)
+    randomize_axil_angle: tuple[float, float] = (0.0, 0.0)
+    spacing_ramp: tuple[tuple[float, float], ...] | None = None
+    # How successive instances advance around the branch. SPIRAL with the
+    # species' formation is the shipped arrangement; WHORLED reads node_buds
+    # and places that many at one node, which is the only random COUNT the
+    # distributor has. phyllotaxy_additional_angle is added to the formation
+    # angle, so under a PARASTICHOUS formation (base 0) it IS the advance --
+    # 137.5 is the golden angle.
+    phyllotaxy_type: str = "SPIRAL"
+    node_buds: tuple[int, int] = (1, 1)
+    phyllotaxy_additional_angle: float = 0.0
 
     def __post_init__(self) -> None:
         if not -90.0 <= self.axil_angle <= 90.0:
@@ -584,6 +611,14 @@ def _opt_float(value: Any) -> float | None:
     return None if value is None else float(value)
 
 
+def _pair(value: Any, default: tuple[float, float]) -> tuple[float, float]:
+    """A two-float (min, max) from TOML, or ``default`` when absent."""
+    if value is None:
+        return default
+    lo, hi = value
+    return (float(lo), float(hi))
+
+
 def _pose(data: dict[str, Any] | None) -> TwigPose:
     if not data:
         return TwigPose()
@@ -595,10 +630,27 @@ def _pose(data: dict[str, Any] | None) -> TwigPose:
         )
         for j in data.get("jitter", [])
     )
+    ramp = data.get("spacing_ramp")
     return TwigPose(
         reset_phyllotaxy=bool(data.get("reset_phyllotaxy", True)),
         axil_angle=float(data.get("axil_angle", 30.0)),
         jitter=jitter,
+        randomize_scale=_pair(data.get("randomize_scale"), (1.0, 1.0)),
+        randomize_axil_angle=_pair(data.get("randomize_axil_angle"), (0.0, 0.0)),
+        spacing_ramp=(
+            None
+            if ramp is None
+            else tuple((float(t), float(v)) for t, v in ramp)
+        ),
+        phyllotaxy_type=str(data.get("phyllotaxy_type", "SPIRAL")).upper(),
+        node_buds=(
+            (1, 1)
+            if data.get("node_buds") is None
+            else (int(data["node_buds"][0]), int(data["node_buds"][1]))
+        ),
+        phyllotaxy_additional_angle=float(
+            data.get("phyllotaxy_additional_angle", 0.0)
+        ),
     )
 
 

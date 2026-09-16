@@ -215,3 +215,29 @@ class TestMeanTriangles:
         empty.write_text("#usda 1.0\n")
         with pytest.raises(ValueError, match="faceVertexCounts"):
             mean_triangles_per_prototype([empty])
+
+
+class TestRandomizeScaleInTheSolve:
+    """XRFF-467: the solve has to divide E[scale^2] back out.
+
+    Randomising instance scale raises the area each instance carries (E[U^2]
+    >= 1 for any spread about 1.0), so a solve that ignores it asks for the
+    same instance count and lands the tree over its target -- invisibly,
+    because neither the count nor the triangle telemetry moves.
+    """
+
+    def test_the_identity_range_changes_nothing(self, tmp_path):
+        path = _tree(tmp_path)
+        plain = solve_flat(path, _base(), 0.02, 4.0)
+        identity = solve_flat(path, _base(randomize_scale=(1.0, 1.0)), 0.02, 4.0)
+        assert identity.density == plain.density
+        assert identity.area_m2 == pytest.approx(plain.area_m2)
+
+    def test_a_spread_lowers_the_density_it_asks_for(self, tmp_path):
+        path = _tree(tmp_path)
+        plain = solve_flat(path, _base(), 0.02, 4.0)
+        varied = solve_flat(path, _base(randomize_scale=(0.7, 1.3)), 0.02, 4.0)
+        assert varied.instance_area_m2 == pytest.approx(0.02 * 1.03)
+        assert varied.instances <= plain.instances
+        # Both still land on the target; that is the point of the correction.
+        assert abs(varied.error) < 0.10

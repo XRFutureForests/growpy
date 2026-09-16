@@ -88,9 +88,12 @@ framings = {{
     "outside_far": (base + unreal.Vector(-(r + 1.6 * h), 0.0, oz), _rot()),
     "crown_edge": (base + unreal.Vector(-(r + 60.0), 0.0, oz + 0.1 * h), _rot()),
     "low_back": (base + unreal.Vector(120.0, 0.0, min(250.0, oz)), _rot(8.0, 180.0)),
+    # Inside the crown, looking up and back across the trunk. It used to sit
+    # at 0.2 h with yaw 0, i.e. below the crown of a mature tree pointing AWAY
+    # from it: every h20/h25 frame came back as empty sky (2026-09-16).
     "inside_up": (
-        base + unreal.Vector(150.0, 0.0, max(150.0, oz - 0.3 * h)),
-        _rot(35.0, 0.0),
+        base + unreal.Vector(80.0, 0.0, oz),
+        _rot(45.0, 180.0),
     ),
     "edge_low": (base + unreal.Vector(-(r + 200.0), 0.0, 300.0), _rot()),
 }}

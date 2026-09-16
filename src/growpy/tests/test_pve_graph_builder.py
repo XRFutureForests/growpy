@@ -466,3 +466,139 @@ class TestGenerateScript:
         target = tmp_path / "nested" / "scripts"
         path = generate_pve_graph_builder_script(target, [_graph()])
         assert path.parent == target
+
+
+class TestPerInstanceVariance:
+    """XRFF-467: the randomisers growpy wrote at their identity values.
+
+    Every one of these settings exists in PVE and was written as 1.0/1.0 or
+    0.0/0.0 by the generated script, so a branch carried N copies of the same
+    spray at the same angle in the same rhythm. The tests here are about the
+    values actually reaching the script -- a knob written at its identity is
+    indistinguishable from a knob not written at all.
+    """
+
+    def test_defaults_are_the_engine_identity(self):
+        spec = DistributorSpec(branch_density=5)
+        assert spec.randomize_scale == (1.0, 1.0)
+        assert spec.randomize_axil_angle == (0.0, 0.0)
+        assert spec.spacing_ramp is None
+
+    def test_values_reach_the_generated_script(self, tmp_path):
+        chain = _chain(
+            randomize_scale=(0.7, 1.3),
+            randomize_axil_angle=(-20.0, 20.0),
+            random_seed=4242,
+        )
+        body = generate_pve_graph_builder_script(
+            tmp_path, [_graph(chains=(chain,))]
+        ).read_text(encoding="utf-8")
+        assert "'randomize_scale': [0.7, 1.3]" in body
+        assert "'randomize_axil_angle': [-20.0, 20.0]" in body
+        assert "'random_seed': 4242" in body
+        # And the writer reads them rather than the constants it used to pass.
+        assert 'float(d["randomize_scale"][0])' in body
+        assert 'float(d["randomize_axil_angle"][1])' in body
+        assert 'setp(dist_settings, "random_seed", int(d["random_seed"]))' in body
+
+    def test_spacing_ramp_is_serialised_for_the_native_importer(self, tmp_path):
+        chain = _chain(spacing_ramp=((0.0, 0.0), (0.5, 0.65), (1.0, 1.0)))
+        body = generate_pve_graph_builder_script(
+            tmp_path, [_graph(chains=(chain,))]
+        ).read_text(encoding="utf-8")
+        assert "InterpMode=RCIM_Linear,Time=0.500000,Value=0.650000" in body
+
+    def test_an_unset_spacing_ramp_leaves_the_engine_curve_alone(self, tmp_path):
+        body = generate_pve_graph_builder_script(
+            tmp_path, [_graph()]
+        ).read_text(encoding="utf-8")
+        assert "'spacing_ramp': None" in body
+        assert 'if d["spacing_ramp"] is not None:' in body
+
+    @pytest.mark.parametrize(
+        "kwargs, message",
+        [
+            ({"randomize_scale": (1.3, 0.7)}, "0 < min <= max"),
+            ({"randomize_scale": (0.0, 1.0)}, "0 < min <= max"),
+            ({"randomize_axil_angle": (20.0, -20.0)}, "min <= max"),
+            ({"randomize_axil_angle": (-120.0, 0.0)}, "min <= max"),
+            ({"spacing_ramp": ((0.0, 0.0),)}, "at least two keys"),
+            ({"spacing_ramp": ((0.0, 0.0), (0.8, 1.0))}, "ascend from 0.0 to 1.0"),
+            ({"spacing_ramp": ((0.0, 0.0), (1.0, 1.4))}, r"must be in \[0, 1\]"),
+        ],
+    )
+    def test_out_of_range_values_are_refused(self, kwargs, message):
+        with pytest.raises(ValueError, match=message):
+            DistributorSpec(branch_density=5, **kwargs)
+
+    def test_the_manifest_records_what_a_tree_was_built_with(self, tmp_path):
+        from growpy.io.unreal.pve_graph_builder import write_coverage_manifest
+
+        chain = _chain(randomize_scale=(0.8, 1.2), randomize_axil_angle=(-5.0, 5.0))
+        path = write_coverage_manifest(tmp_path, [_graph(chains=(chain,))])
+        import json
+
+        mesh = json.loads(path.read_text())["graphs"][0]["meshes"][0]
+        assert mesh["randomize_scale"] == [0.8, 1.2]
+        assert mesh["randomize_axil_angle"] == [-5.0, 5.0]
+        assert mesh["spacing_ramp"] is None
+
+
+class TestBranchScaleImpactBasis:
+    def test_it_is_refused_under_the_plant_basis(self):
+        # XRFF-467 listed branch_scale_impact = 0.0 among the flat settings,
+        # but ComputeAttachmentScale reads it only inside the
+        # `ScaleRampBasis == Branch` arm: written under Plant it does nothing.
+        with pytest.raises(ValueError, match="silent no-op"):
+            DistributorSpec(branch_density=5, branch_scale_impact=0.3)
+
+    def test_it_is_allowed_under_the_branch_basis(self):
+        spec = DistributorSpec(
+            branch_density=5, branch_scale_impact=0.3, scale_ramp_basis="BRANCH"
+        )
+        assert spec.branch_scale_impact == 0.3
+
+
+class TestPhyllotaxyArrangement:
+    """The knobs that decide whether sprays rank up along a branch or wrap it.
+
+    XRFF-467's randomisers made every instance a different size and angle, but
+    the ARRANGEMENT stayed Distichous -- a 180 degree advance, i.e. strictly
+    two ranks, which is the caterpillar silhouette even at one spray per
+    branch. These three were written as constants until 2026-09-16.
+    """
+
+    def test_defaults_are_the_shipped_arrangement(self):
+        spec = DistributorSpec(branch_density=5)
+        assert spec.node_buds == (1, 1)
+        assert spec.phyllotaxy_additional_angle == 0.0
+        assert spec.phyllotaxy_offset == 0.0
+
+    def test_values_reach_the_generated_script(self, tmp_path):
+        chain = _chain(
+            phyllotaxy_type="WHORLED",
+            node_buds=(2, 3),
+            phyllotaxy_additional_angle=137.5,
+            phyllotaxy_offset=15.0,
+        )
+        body = generate_pve_graph_builder_script(
+            tmp_path, [_graph(chains=(chain,))]
+        ).read_text(encoding="utf-8")
+        assert "'node_buds': [2, 3]" in body
+        assert "'phyllotaxy_additional_angle': 137.5" in body
+        assert "'phyllotaxy_offset': 15.0" in body
+        assert 'int(d["node_buds"][0])' in body
+        assert 'float(d["phyllotaxy_additional_angle"])' in body
+
+    def test_a_bud_range_outside_whorled_is_refused(self):
+        # ResolvePhyllotaxy pins MinBuds/MaxBuds to 1 under Spiral, so a range
+        # written there is a count knob that quietly does nothing.
+        with pytest.raises(ValueError, match="only under phyllotaxy_type"):
+            DistributorSpec(branch_density=5, node_buds=(2, 3))
+
+    @pytest.mark.parametrize("buds", [(0, 2), (3, 2), (1,)])
+    def test_a_malformed_bud_range_is_refused(self, buds):
+        with pytest.raises(ValueError, match="node_buds"):
+            DistributorSpec(
+                branch_density=5, phyllotaxy_type="WHORLED", node_buds=buds
+            )

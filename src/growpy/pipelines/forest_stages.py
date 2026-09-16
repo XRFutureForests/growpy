@@ -582,11 +582,16 @@ def export_icons_only(ctx: TreeExportContext) -> None:
 StageGate = Callable[[TreeExportContext], bool]
 StageFn = Callable[[TreeExportContext], None]
 def _growth_data_json_settings() -> dict:
-    """Read ``[unreal.growth_data_json]`` from config/unreal.toml.
+    """Read ``[unreal.growth_data_json]`` from the resolved config dir.
 
     Kept local and tolerant: this is the PVE skeleton-direct experiment running
     alongside the USD route, and a missing or malformed section must never take
     a production export down. Defaults match the config comments.
+
+    Resolved through ``_find_config_dir`` rather than the literal ``config/``
+    it used to read, so a run pointed at another config dir with
+    ``GROWPY_CONFIG`` (a decimation probe, say) decimates at ITS fraction
+    rather than silently at the repo's.
     """
     defaults = {
         "enabled": False,
@@ -597,7 +602,10 @@ def _growth_data_json_settings() -> dict:
     try:
         import tomllib
 
-        cfg_path = Path("config") / "unreal.toml"
+        from growpy.config.core import _find_config_dir
+
+        cfg_dir = _find_config_dir()
+        cfg_path = (cfg_dir or Path("config")) / "unreal.toml"
         if not cfg_path.is_file():
             return defaults
         with open(cfg_path, "rb") as fh:
@@ -605,6 +613,30 @@ def _growth_data_json_settings() -> dict:
         return {**defaults, **section}
     except Exception:
         return defaults
+
+
+def _min_branch_radius_fraction_for(settings: dict, species: str) -> float:
+    """The decimation fraction for one species (XRFF-466, 2026-09-16).
+
+    ``[unreal.growth_data_json.min_branch_radius_fraction_per_species]`` first,
+    then the global key. Per species because the right value differs by growth
+    habit, not by taste: at 0.06 a h25 ash keeps 196 branches and a spruce
+    3,016, so the solver strings 177 instances along a single ash branch while
+    the conifers look fine. The threshold is a fraction of the TRUNK BASE
+    radius, and a mature trunk is fat, so the same fraction bites harder the
+    older the tree gets -- which is why the count falls as the ladder climbs.
+    """
+    per_species = settings.get("min_branch_radius_fraction_per_species") or {}
+    if per_species:
+        try:
+            from growpy.utils.naming import standardize_species_name
+
+            key = standardize_species_name(species)
+        except Exception:
+            key = species
+        if key in per_species:
+            return float(per_species[key])
+    return float(settings["min_branch_radius_fraction"])
 
 
 def _emit_growth_data_json(ctx: TreeExportContext) -> bool:
@@ -628,6 +660,7 @@ def _emit_growth_data_json(ctx: TreeExportContext) -> bool:
     )
 
     settings = _growth_data_json_settings()
+    fraction = _min_branch_radius_fraction_for(settings, ctx.species_name)
     out_path = ctx.tree_dir / f"{ctx.file_prefix}_growth_data.json"
     try:
         with ctx.timer.track("generate_growth_data_json"):
@@ -640,9 +673,7 @@ def _emit_growth_data_json(ctx: TreeExportContext) -> bool:
                 profile_mean=float(settings["profile_mean"]),
                 radial_scale=ctx.radial_scale,
                 min_branch_radius=float(settings["min_branch_radius"]),
-                min_branch_radius_fraction=float(
-                    settings["min_branch_radius_fraction"]
-                ),
+                min_branch_radius_fraction=fraction,
             )
     except Exception as err:
         logger.warning(

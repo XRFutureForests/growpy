@@ -776,6 +776,33 @@ class TestTrackedConfigTableShape:
             f"table and are read into it -- move the sub-tables to the end"
         )
 
+    def test_the_per_species_fraction_table_did_not_swallow_its_own_section(self):
+        """XRFF-466 added a sub-table INSIDE [unreal.growth_data_json].
+
+        Written above the plain keys it would swallow every one of them and the
+        exporter would silently fall back to its hard-coded defaults -- with no
+        error, just trees decimated at the wrong fraction.
+        """
+        import tomllib
+
+        data = tomllib.loads(
+            (self.CONFIG_DIR / "unreal.toml").read_text(encoding="utf-8")
+        )
+        section = data["unreal"]["growth_data_json"]
+        for key in (
+            "enabled",
+            "profile_mean",
+            "min_branch_radius",
+            "min_branch_radius_fraction",
+        ):
+            assert key in section, (
+                f"{key} sits below "
+                f"[unreal.growth_data_json.min_branch_radius_fraction_per_species]"
+            )
+        per_species = section["min_branch_radius_fraction_per_species"]
+        assert per_species, "the per-species table is empty"
+        assert all(isinstance(v, float) for v in per_species.values())
+
 
 class TestFindConfigDir:
     """Tests for config directory discovery."""

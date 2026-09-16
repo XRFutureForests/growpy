@@ -91,8 +91,12 @@ profile_pin = "plantProfile_8"
 # block says `build_from = "offline"`, in which case the rows stay as the
 # record of what was measured and every tree is solved like the others.
 [pve_calibration.defaults]
-# Must match [unreal.growth_data_json].min_branch_radius_fraction in
-# unreal.toml -- it is what the growth JSONs of the run were decimated at.
+# A RECORD, not a setting: what the growth JSONs of the run were decimated at.
+# Nothing reads it. Since XRFF-466 (2026-09-16) the fraction is per species in
+# [unreal.growth_data_json.min_branch_radius_fraction_per_species] -- 0.02 for
+# ash, beech, oak, birch and linden, 0.06 for everything else -- so this value
+# is the default that still applies to the species with no override. Read the
+# per-tree `fraction` below, or unreal.toml, for what a given tree was built at.
 fraction = 0.06
 relative_start = 0.0
 phyllotaxy_formation = "DISTICHOUS"
@@ -106,6 +110,11 @@ fullness = 4.0
 [pve_calibration.defaults.conifer.pose]
 reset_phyllotaxy = true
 axil_angle = 30.0
+# Per-instance variance (XRFF-467, 2026-09-16). A pectinate spray is a flat,
+# regular structure, so conifers get half the broadleaf spread: enough that no
+# two sprays on a branch match, not enough to break the rank.
+randomize_scale = [0.8, 1.2]
+randomize_axil_angle = [-12.0, 12.0]
 # Scale-graded size ladder + apex spray (XRFF-412): the fir ladder (8 tiers,
 # shared by spruce and douglas) and the pine's five sprays are graded onto
 # branch radius, one big spray on the leader.
@@ -131,6 +140,24 @@ jitter = [
     { mode = "ROLL", degrees = 12.0, seed = 12 },
     { mode = "YAW", degrees = 8.0, seed = 13 },
 ]
+# Per-instance variance (XRFF-467, 2026-09-16). Until this, every rosette on a
+# branch was the same size at the same angle in the same rhythm -- the
+# "caterpillar" the 110-tree catalog was judged on. randomize_scale is a
+# uniform multiplier on instance scale, so leaf area moves by E[scale^2]
+# = (a^2 + ab + b^2) / 3 = 1.03 here; the offline solve divides it back out,
+# which is why a MEASURED density is only valid at the range it was measured
+# under. randomize_axil_angle is degrees on top of axil_angle (so 20-60 deg
+# here) and is pure rotation.
+#
+# The third lever PVE offers is `spacing_ramp`, which reshapes where along a
+# branch the samples land. It is wired and left OFF: the ramp is deterministic
+# and shared by every branch, so it is a repeated motif rather than variance,
+# and PVE exposes no random spacing. Two other knobs XRFF-467 listed are
+# deliberately not used -- `rotation` twists each successive instance by a
+# fixed angle (a drift, not a random), and `branch_scale_impact` is read only
+# under ScaleRampBasis = Branch, which these graphs are not.
+randomize_scale = [0.7, 1.3]
+randomize_axil_angle = [-20.0, 20.0]
 # Graded here too: birch ships 18 leaf clusters spanning 30x in area and
 # cherry 8 spanning 54x, so grading them onto branch radius puts the big
 # clusters on the limbs and the small ones on the twigs, Epic's shape.
@@ -189,6 +216,11 @@ instances = [730, 2140, 5102]
 # the tip, flattened, faces up, plus the inclination real beech leaves have
 # (~20-30 deg) as random pitch/roll/yaw. Applied after aim and face; measured
 # on PVG_BeechZJ 2026-09-14. Rotations only: densities below are unaffected.
+# The two randomisers are XRFF-467 (2026-09-16) and match the broadleaf
+# defaults; a species block replaces the defaults wholesale, so they have to
+# be repeated here. randomize_scale is NOT rotation-only -- it moves leaf area
+# by E[scale^2] = 1.03, so the measured densities below (build_from =
+# "offline" since 2026-09-15, so unused) predate it.
 [pve_calibration.species.european_beech.pose]
 reset_phyllotaxy = true
 axil_angle = 40.0
@@ -197,6 +229,8 @@ jitter = [
     { mode = "ROLL", degrees = 12.0, seed = 12 },
     { mode = "YAW", degrees = 8.0, seed = 13 },
 ]
+randomize_scale = [0.7, 1.3]
+randomize_axil_angle = [-20.0, 20.0]
 
 [pve_calibration.species.european_beech.trees.r05_h05m]
 growth_json = "beech_r05_h05m_f006.json"
@@ -490,6 +524,9 @@ fitted_on = "european_beech r05_h15m"
 [pve_calibration.species.silver_fir.pose]
 reset_phyllotaxy = true
 axil_angle = 30.0
+# XRFF-467, matching the conifer defaults (a species block replaces them).
+randomize_scale = [0.8, 1.2]
+randomize_axil_angle = [-12.0, 12.0]
 
 # Scale-graded size ladder (XRFF-412, 2026-09-15). Every prototype advertises
 # a Scale target (per tree below, `scale_targets`, in ascending prototype-area

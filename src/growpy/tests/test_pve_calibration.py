@@ -20,6 +20,7 @@ from growpy.config.pve_calibration import (
     TwigJitter,
     TwigPose,
     WindPresets,
+    _pose,
     load_pve_calibration,
 )
 from growpy.io.unreal.pve_graph_builder import (
@@ -612,3 +613,55 @@ class TestRoundTripToGeneratedScript:
         text = script.read_text(encoding="utf-8")
         fir = text.split("PVG_Fir_Ship", 1)[1]
         assert "'bark_y_scale': 0.5" in fir
+
+
+class TestPerInstanceVariance:
+    """XRFF-467 (2026-09-16): the shipped spread, and how it is keyed.
+
+    A species block replaces the defaults wholesale, so a randomiser added to
+    ``[pve_calibration.defaults.<habit>.pose]`` does NOT reach beech or fir --
+    they carry their own pose tables. That is the trap these tests exist for:
+    the catalog would rebuild with nine species varied and two not.
+    """
+
+    def test_the_shipped_defaults_carry_a_spread_per_habit(self, shipped):
+        conifer = shipped.for_species("norway_spruce", habit="conifer").pose
+        broadleaf = shipped.for_species("european_oak", habit="broadleaf").pose
+        assert broadleaf.randomize_scale == (0.7, 1.3)
+        assert broadleaf.randomize_axil_angle == (-20.0, 20.0)
+        # A pectinate spray is a flat, regular structure: half the spread.
+        assert conifer.randomize_scale == (0.8, 1.2)
+        assert conifer.randomize_axil_angle == (-12.0, 12.0)
+
+    def test_the_two_species_with_their_own_block_are_not_left_behind(self, shipped):
+        beech = shipped.for_species("european_beech").pose
+        fir = shipped.for_species("silver_fir").pose
+        assert beech.randomize_scale == (0.7, 1.3)
+        assert beech.randomize_axil_angle == (-20.0, 20.0)
+        assert fir.randomize_scale == (0.8, 1.2)
+        assert fir.randomize_axil_angle == (-12.0, 12.0)
+
+    def test_the_spacing_ramp_ships_off(self, shipped):
+        # Wired but deliberately unused: the ramp is shared by every branch,
+        # so it is a repeated motif rather than variance.
+        for name, habit in (
+            ("european_oak", "broadleaf"),
+            ("norway_spruce", "conifer"),
+            ("european_beech", None),
+            ("silver_fir", None),
+        ):
+            assert shipped.for_species(name, habit=habit).pose.spacing_ramp is None
+
+    def test_a_pose_without_the_keys_is_the_engine_identity(self):
+        pose = _pose({"axil_angle": 25.0})
+        assert pose.randomize_scale == (1.0, 1.0)
+        assert pose.randomize_axil_angle == (0.0, 0.0)
+        assert pose.spacing_ramp is None
+
+    def test_the_knobs_reach_the_distributor_the_plan_builds(self, shipped):
+        from growpy.io.unreal.pve_graph_plan import _pose_distributor
+
+        cal = shipped.for_species("european_oak", habit="broadleaf")
+        spec = _pose_distributor(cal, 12)
+        assert spec.randomize_scale == (0.7, 1.3)
+        assert spec.randomize_axil_angle == (-20.0, 20.0)

@@ -21,6 +21,8 @@ from growpy.pipelines.forest_stages import (
     GROWTH_CYCLE_LIMIT,
     SMOOTH_ITERATIONS,
     STAGES,
+    _growth_data_json_settings,
+    _min_branch_radius_fraction_for,
     compute_radial_scale,
     derive_static,
     export_obj_direct,
@@ -729,3 +731,76 @@ class TestStagesRegistry:
         assert gate(ctx) is True
         ctx.cfg.export_static = False
         assert gate(ctx) is False
+
+
+class TestMinBranchRadiusFractionPerSpecies:
+    """XRFF-466 (2026-09-16): the decimation fraction is a per-species knob.
+
+    At a global 0.06 a h25 common ash keeps 196 branches and a Norway spruce
+    3,016, so the solver strung 177 foliage instances along a single ash branch
+    ("caterpillar") while the conifers looked right. 0.02 on ash takes the same
+    instance count and the same leaf area onto 1,056 branches -- 33 per branch.
+    Conifers keep 0.06 deliberately: a lower fraction there buys nothing and
+    costs branches to mesh.
+    """
+
+    _BASE = {
+        "enabled": True,
+        "profile_mean": 0.8215,
+        "min_branch_radius": 0.0,
+        "min_branch_radius_fraction": 0.06,
+    }
+
+    def test_the_global_key_is_used_when_no_table_exists(self):
+        assert _min_branch_radius_fraction_for(self._BASE, "Common ash") == 0.06
+
+    def test_a_species_entry_wins(self):
+        settings = {
+            **self._BASE,
+            "min_branch_radius_fraction_per_species": {"common_ash": 0.02},
+        }
+        assert _min_branch_radius_fraction_for(settings, "Common ash") == 0.02
+        assert _min_branch_radius_fraction_for(settings, "common_ash") == 0.02
+        # Untabled species still take the global value.
+        assert _min_branch_radius_fraction_for(settings, "Norway spruce") == 0.06
+
+    def test_the_stage_passes_the_resolved_fraction_to_the_exporter(self):
+        ctx = _make_ctx(use_skeletal=True, species_name="Common ash")
+        ctx.radial_scale = 0.62
+        settings = {
+            **self._BASE,
+            "min_branch_radius_fraction_per_species": {"common_ash": 0.02},
+        }
+        with patch(
+            "growpy.pipelines.forest_stages._growth_data_json_settings",
+            return_value=settings,
+        ):
+            with patch(
+                "growpy.io.unreal.pve_growth_data_exporter."
+                "generate_growth_data_from_grove"
+            ) as mock_gen:
+                write_growth_data_json(ctx)
+        assert mock_gen.call_args.kwargs["min_branch_radius_fraction"] == 0.02
+
+
+class TestGrowthDataJsonSettingsFollowTheConfigDir:
+    """A run pointed at another config dir must decimate at ITS fraction.
+
+    The reader used to open the literal ``config/unreal.toml`` relative to the
+    working directory, so a GROWPY_CONFIG probe silently used the repo's value
+    and its output was indistinguishable from the production run's.
+    """
+
+    def test_growpy_config_is_honoured(self, tmp_path, monkeypatch):
+        (tmp_path / "unreal.toml").write_text(
+            "[unreal.growth_data_json]\n"
+            "enabled = true\n"
+            "min_branch_radius_fraction = 0.02\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("GROWPY_CONFIG", str(tmp_path))
+        settings = _growth_data_json_settings()
+        assert settings["enabled"] is True
+        assert settings["min_branch_radius_fraction"] == 0.02
+        # Keys the probe file does not name keep their defaults.
+        assert settings["profile_mean"] == 0.8215

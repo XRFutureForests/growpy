@@ -410,7 +410,20 @@ class DistributorSpec:
     relative_end: float = 1.0
     phyllotaxy_type: str = "SPIRAL"
     phyllotaxy_formation: str = "OCTASTICHOUS"
-    node_buds: int = 1
+    # Instances per NODE, drawn uniformly from this inclusive range. Read only
+    # under Whorled phyllotaxy: `ResolvePhyllotaxy` pins both ends to 1 under
+    # Spiral and to 2 under Opposite/Decussate. Under Whorled it is the one
+    # genuinely random COUNT the distributor has -- 2-3 sprays at one node, at
+    # 90 degrees plus the phyllotaxy advance, is a cluster rather than a row.
+    node_buds: tuple[int, int] = (1, 1)
+    # Added to the formation angle before the per-instance advance. The engine
+    # writes it into FormationDegrees, so under Spiral/Parastichous (base 0)
+    # it IS the advance: 137.5 gives the golden-angle spiral, which wraps
+    # successive sprays around the branch instead of stacking them in ranks.
+    phyllotaxy_additional_angle: float = 0.0
+    # Rotates the whole branch's phyllotaxy phase. Constant per distributor,
+    # so it shifts every branch by the same amount rather than varying them.
+    phyllotaxy_offset: float = 0.0
     reset_phyllotaxy: bool = False
     axil_angle: float = 35.0
     # The engine default is linear 0 -> 1 on the plant gradient, i.e. the
@@ -423,6 +436,28 @@ class DistributorSpec:
     scale_ramp_basis: str = "PLANT"
     scale_ramp: tuple[float, float] = (1.0, 1.0)
     branch_scale_impact: float = 0.0
+    # XRFF-467, the per-instance randomisers. PVE exposes all three; growpy
+    # wrote them at their identity values until 2026-09-16, so every spray on
+    # a branch came out the same size at the same angle in the same rhythm --
+    # the "caterpillar" the owner saw on the 110-tree catalog.
+    #
+    # randomize_scale is a uniform (min, max) MULTIPLIER on the ramp value
+    # (`ComputeAttachmentScale`: ScaleRamp x RandomScaleFactor x BaseScale).
+    # Leaf area goes as scale squared, so turning it on multiplies a tree's
+    # area by E[U^2] = (a^2 + ab + b^2) / 3 -- which is why the offline solve
+    # reads it (see pve_distributor_model.expected_scale_squared_factor).
+    randomize_scale: tuple[float, float] = (1.0, 1.0)
+    # Degrees ADDED to axil_angle per instance, uniform in (min, max), before
+    # the [-90, 90] clamp. Purely a rotation: it changes no count.
+    randomize_axil_angle: tuple[float, float] = (0.0, 0.0)
+    # SpacingRamp: PVE evaluates it on the even 0..1 loop value BEFORE the
+    # relative_start/end remap, so it moves where along a branch the samples
+    # land without changing how many there are. The engine default is the
+    # identity linear ramp, which is the metronome spacing; None keeps it.
+    spacing_ramp: tuple[tuple[float, float], ...] | None = None
+    # The distributor node's own seed. Two layers over one skeleton draw the
+    # same randoms at the same (branch, loop) index unless this differs.
+    random_seed: int = 123456
     auto_align_end: bool = False
     face: FoliageVectorSpec | None = field(
         default_factory=lambda: FoliageVectorSpec(kind="face", vector2="AXIS_AIM")
@@ -455,6 +490,19 @@ class DistributorSpec:
             raise ValueError(
                 f"phyllotaxy_formation must be one of {sorted(_FORMATIONS)}"
             )
+        if len(self.node_buds) != 2 or not 1 <= self.node_buds[0] <= self.node_buds[1]:
+            raise ValueError(
+                "node_buds must be (min, max) with 1 <= min <= max, got "
+                f"{self.node_buds!r}"
+            )
+        if self.node_buds != (1, 1) and self.phyllotaxy_type != "WHORLED":
+            # ResolvePhyllotaxy pins MinBuds/MaxBuds to 1 under Spiral and to 2
+            # under Opposite/Decussate, so a range written anywhere else is a
+            # silent no-op dressed as a count knob.
+            raise ValueError(
+                "node_buds is read only under phyllotaxy_type = 'WHORLED'; "
+                f"under {self.phyllotaxy_type!r} the engine pins it"
+            )
         if not 0.0 <= self.relative_start < self.relative_end <= 1.0:
             raise ValueError(
                 "require 0 <= relative_start < relative_end <= 1, got "
@@ -464,6 +512,49 @@ class DistributorSpec:
             raise ValueError(
                 f"scale_ramp must be two positive values, got {self.scale_ramp!r}"
             )
+        if self.branch_scale_impact and self.scale_ramp_basis.upper() != "BRANCH":
+            # ComputeAttachmentScale reads BranchScaleImpact only inside the
+            # `ScaleRampBasis == Branch` arm, so under Plant it is a silent
+            # no-op -- the same shape of lost write as Vector1 without duals.
+            raise ValueError(
+                "branch_scale_impact is read only under "
+                "scale_ramp_basis = 'BRANCH'; under "
+                f"{self.scale_ramp_basis!r} it is a silent no-op"
+            )
+        if len(self.randomize_scale) != 2 or not (
+            0.0 < self.randomize_scale[0] <= self.randomize_scale[1]
+        ):
+            raise ValueError(
+                "randomize_scale must be (min, max) with 0 < min <= max, got "
+                f"{self.randomize_scale!r}"
+            )
+        lo, hi = (
+            self.randomize_axil_angle
+            if len(self.randomize_axil_angle) == 2
+            else (None, None)
+        )
+        if lo is None or not -90.0 <= lo <= hi <= 90.0:
+            raise ValueError(
+                "randomize_axil_angle must be (min, max) degrees with "
+                f"-90 <= min <= max <= 90, got {self.randomize_axil_angle!r}"
+            )
+        if self.spacing_ramp is not None:
+            keys = self.spacing_ramp
+            if len(keys) < 2:
+                raise ValueError(
+                    f"spacing_ramp needs at least two keys, got {keys!r}"
+                )
+            times = [t for t, _ in keys]
+            if times != sorted(times) or times[0] != 0.0 or times[-1] != 1.0:
+                raise ValueError(
+                    "spacing_ramp times must ascend from 0.0 to 1.0, got "
+                    f"{times!r}"
+                )
+            if any(not 0.0 <= v <= 1.0 for _, v in keys):
+                raise ValueError(
+                    "spacing_ramp values are the normalised position along the "
+                    f"branch and must be in [0, 1], got {keys!r}"
+                )
         if self.face is not None and self.face.kind != "face":
             raise ValueError("face spec must be built with kind='face'")
         if self.aim is not None and self.aim.kind != "aim":
@@ -659,7 +750,9 @@ def _distributor_payload(d: DistributorSpec) -> dict:
         "relative_end": d.relative_end,
         "phyllotaxy_type": d.phyllotaxy_type,
         "phyllotaxy_formation": d.phyllotaxy_formation,
-        "node_buds": d.node_buds,
+        "node_buds": list(d.node_buds),
+        "phyllotaxy_additional_angle": d.phyllotaxy_additional_angle,
+        "phyllotaxy_offset": d.phyllotaxy_offset,
         "reset_phyllotaxy": d.reset_phyllotaxy,
         "axil_angle": d.axil_angle,
         "axil_angle_ramp": _ramp_text(*d.axil_angle_ramp),
@@ -669,6 +762,12 @@ def _distributor_payload(d: DistributorSpec) -> dict:
         "scale_ramp_basis": d.scale_ramp_basis,
         "scale_ramp": _ramp_text(*d.scale_ramp),
         "branch_scale_impact": d.branch_scale_impact,
+        "randomize_scale": list(d.randomize_scale),
+        "randomize_axil_angle": list(d.randomize_axil_angle),
+        "spacing_ramp": (
+            _ramp_keys_text(d.spacing_ramp) if d.spacing_ramp is not None else None
+        ),
+        "random_seed": d.random_seed,
         "auto_align_end": d.auto_align_end,
         "face": _vector_payload(d.face),
         "aim": _vector_payload(d.aim),
@@ -1133,6 +1232,7 @@ def configure_distributor(dist_settings, d):
     dist_settings.set_editor_property(
         "mode", unreal.PVDistributionSettingsMode.PARAMETRIC_SETTINGS
     )
+    setp(dist_settings, "random_seed", int(d["random_seed"]))
     parametric = dist_settings.get_editor_property("parametric_settings")
 
     spacing = parametric.get_editor_property("spacing_settings")
@@ -1161,6 +1261,12 @@ def configure_distributor(dist_settings, d):
     )
     if gen_end is not None:
         setp(spacing, "end_generation", int(gen_end))
+    # SpacingRamp reshapes WHERE the even loop values land along the branch;
+    # None leaves the engine's identity linear curve (metronome spacing).
+    if d["spacing_ramp"] is not None:
+        spacing_ramp = spacing.get_editor_property("spacing_ramp")
+        spacing_ramp.import_text(d["spacing_ramp"])
+        setp(spacing, "spacing_ramp", spacing_ramp)
     parametric.set_editor_property("spacing_settings", spacing)
 
     phyllotaxy = parametric.get_editor_property("phyllotaxy_settings")
@@ -1180,10 +1286,14 @@ def configure_distributor(dist_settings, d):
         getattr(unreal.PhyllotaxyFormation, d["phyllotaxy_formation"]),
     )
     # Read only under Whorled; harmless and explicit elsewhere.
-    setp(phyllotaxy, "minimum_node_buds", int(d["node_buds"]))
-    setp(phyllotaxy, "maximum_node_buds", int(d["node_buds"]))
-    setp(phyllotaxy, "phyllotaxy_additional_angle", 0.0)
-    setp(phyllotaxy, "phyllotaxy_offset", 0.0)
+    setp(phyllotaxy, "minimum_node_buds", int(d["node_buds"][0]))
+    setp(phyllotaxy, "maximum_node_buds", int(d["node_buds"][1]))
+    setp(
+        phyllotaxy,
+        "phyllotaxy_additional_angle",
+        float(d["phyllotaxy_additional_angle"]),
+    )
+    setp(phyllotaxy, "phyllotaxy_offset", float(d["phyllotaxy_offset"]))
     setp(
         phyllotaxy,
         ("single_bud_tip", "b_single_bud_tip"),
@@ -1194,8 +1304,8 @@ def configure_distributor(dist_settings, d):
     angles = parametric.get_editor_property("angle_settings")
     setp(angles, "axil_angle", float(d["axil_angle"]))
     setp(angles, "rotation", float(d["rotation"]))
-    setp(angles, "randomize_axil_angle_minimum", 0.0)
-    setp(angles, "randomize_axil_angle_maximum", 0.0)
+    setp(angles, "randomize_axil_angle_minimum", float(d["randomize_axil_angle"][0]))
+    setp(angles, "randomize_axil_angle_maximum", float(d["randomize_axil_angle"][1]))
     axil_ramp = angles.get_editor_property("axil_angle_ramp")
     axil_ramp.import_text(d["axil_angle_ramp"])
     setp(angles, "axil_angle_ramp", axil_ramp)
@@ -1209,8 +1319,8 @@ def configure_distributor(dist_settings, d):
     )
     setp(scale, "base_scale", float(d["base_scale"]))
     setp(scale, "branch_scale_impact", float(d["branch_scale_impact"]))
-    setp(scale, "randomize_scale_minimum", 1.0)
-    setp(scale, "randomize_scale_maximum", 1.0)
+    setp(scale, "randomize_scale_minimum", float(d["randomize_scale"][0]))
+    setp(scale, "randomize_scale_maximum", float(d["randomize_scale"][1]))
     ramp = scale.get_editor_property("scale_ramp")
     ramp.import_text(d["scale_ramp"])
     setp(scale, "scale_ramp", ramp)
@@ -1396,6 +1506,15 @@ def write_coverage_manifest(
                         "growth_json": str(Path(c.growth_json)).replace("\\", "/"),
                         "branch_density": c.distributor.branch_density,
                         "relative_start": c.distributor.relative_start,
+                        "randomize_scale": list(c.distributor.randomize_scale),
+                        "randomize_axil_angle": list(
+                            c.distributor.randomize_axil_angle
+                        ),
+                        "spacing_ramp": (
+                            [list(k) for k in c.distributor.spacing_ramp]
+                            if c.distributor.spacing_ramp is not None
+                            else None
+                        ),
                         "wind_settings": c.wind_settings,
                         "layers": len(c.layers),
                         **details.get(c.mesh_name, {}),

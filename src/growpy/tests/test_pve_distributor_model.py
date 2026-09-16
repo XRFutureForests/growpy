@@ -25,6 +25,7 @@ from growpy.io.unreal.pve_distributor_model import (
     LeafAreaMeasurement,
     expected_instances,
     expected_palette_mix,
+    expected_scale_squared_factor,
     measure_leaf_area,
     pick_candidates,
     ramp_eval,
@@ -516,3 +517,98 @@ class TestCli:
         empty = tmp_path / "empty"
         empty.mkdir()
         assert main(["--growth-json-dir", str(empty)]) == 1
+
+
+class TestRandomizeScale:
+    """XRFF-467: a randomised instance scale is not free of leaf area.
+
+    ``ComputeAttachmentScale`` multiplies the ramp value by a uniform draw, and
+    area goes as scale squared, so the right correction is the SECOND moment
+    E[U^2] = (a^2 + ab + b^2)/3 and not the mean. Using the mean would leave
+    every randomised tree a few per cent over its Forrester target with nothing
+    in the telemetry to show it -- the same shape of bug as the scale-blind
+    count measurement this module was written for.
+    """
+
+    def test_the_identity_range_is_exactly_one(self):
+        assert expected_scale_squared_factor(_spec()) == pytest.approx(1.0)
+
+    def test_it_is_the_second_moment_not_the_mean(self):
+        spec = _spec(randomize_scale=(0.7, 1.3))
+        # mean is 1.0; E[U^2] = (0.49 + 0.91 + 1.69) / 3
+        assert expected_scale_squared_factor(spec) == pytest.approx(1.03)
+        assert expected_scale_squared_factor(spec) > 1.0
+
+    def test_measured_area_carries_the_factor(self, tmp_path):
+        path = _tree(tmp_path)
+        plain = measure_leaf_area(path, _spec(scale_ramp=FLAT_RAMP), PROTOTYPE_AREA)
+        varied = measure_leaf_area(
+            path,
+            _spec(scale_ramp=FLAT_RAMP, randomize_scale=(0.7, 1.3)),
+            PROTOTYPE_AREA,
+        )
+        assert varied.instances == plain.instances
+        assert varied.correction_factor == pytest.approx(1.03)
+        assert varied.area_m2 == pytest.approx(plain.area_m2 * 1.03)
+
+
+class TestSpacingRamp:
+    """PVE evaluates SpacingRamp on the even loop value before the relative
+    remap, so it redistributes samples without changing how many there are."""
+
+    def test_it_moves_placements_without_changing_the_count(self, tmp_path):
+        path = _tree(tmp_path)
+        even = simulate_placements(path, _spec(relative_start=0.2))
+        curved = simulate_placements(
+            path,
+            _spec(
+                relative_start=0.2,
+                spacing_ramp=((0.0, 0.0), (0.5, 0.8), (1.0, 1.0)),
+            ),
+        )
+        assert len(curved) == len(even)
+        assert [p.along_branch for p in curved] != [p.along_branch for p in even]
+
+    def test_the_identity_ramp_reproduces_no_ramp(self, tmp_path):
+        path = _tree(tmp_path)
+        plain = simulate_placements(path, _spec(relative_start=0.2))
+        identity = simulate_placements(
+            path, _spec(relative_start=0.2, spacing_ramp=((0.0, 0.0), (1.0, 1.0)))
+        )
+        assert [p.along_branch for p in identity] == pytest.approx(
+            [p.along_branch for p in plain]
+        )
+
+
+class TestWhorledBudCount:
+    """A Whorled node places 2-3 instances, not one.
+
+    The model counted one instance per accepted sample, which is right for
+    every phyllotaxy the engine pins to a single bud -- but Whorled reads the
+    range, so a solve against it would ask for two to three times the density
+    it needs and the tree would land that far over its Forrester target.
+    """
+
+    def test_spiral_is_one_instance_per_sample(self, tmp_path):
+        path = _tree(tmp_path)
+        assert len(simulate_placements(path, _spec())) == len(
+            simulate_placements(path, _spec(node_buds=(1, 1)))
+        )
+
+    def test_whorled_multiplies_by_the_mean_of_the_range(self, tmp_path):
+        path = _tree(tmp_path)
+        one = simulate_placements(path, _spec())
+        whorled = simulate_placements(
+            path, _spec(phyllotaxy_type="WHORLED", node_buds=(2, 3))
+        )
+        # mean of [2, 3] rounds to 3 per node, minus the single-bud tips.
+        tips = sum(1 for p in one if p.tip)
+        assert len(whorled) == 3 * (len(one) - tips) + tips
+
+    def test_a_tip_keeps_one_bud_under_single_bud_tip(self, tmp_path):
+        path = _tree(tmp_path)
+        spec = _spec(
+            phyllotaxy_type="WHORLED", node_buds=(2, 2), single_bud_tip=False
+        )
+        one = simulate_placements(path, _spec())
+        assert len(simulate_placements(path, spec)) == 2 * len(one)

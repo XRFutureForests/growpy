@@ -284,7 +284,9 @@ def _pose_distributor(
     """The species' measured twig pose at ``density`` (XRFF-438, 2026-09-14).
 
     Restated here so a change to the builder's defaults cannot silently change
-    what a pipeline run emits. None of it changes instance counts.
+    what a pipeline run emits. None of it changes instance counts -- but
+    ``randomize_scale`` does change leaf AREA (as scale squared), which is why
+    the offline solve reads it off this same spec (XRFF-467).
     """
     return DistributorSpec(
         branch_density=density,
@@ -295,6 +297,12 @@ def _pose_distributor(
         axil_angle_ramp=(1.0, 1.0),  # constant; the engine default ramps it 0->1
         single_bud_tip=True,
         scale_ramp=(1.0, 1.0),
+        randomize_scale=calibration.pose.randomize_scale,
+        randomize_axil_angle=calibration.pose.randomize_axil_angle,
+        spacing_ramp=calibration.pose.spacing_ramp,
+        phyllotaxy_type=calibration.pose.phyllotaxy_type,
+        node_buds=calibration.pose.node_buds,
+        phyllotaxy_additional_angle=calibration.pose.phyllotaxy_additional_angle,
         # Tip Up = Apical first, then the aim entry flattens it -- except a
         # leader, which the WorldUpDot blend leaves pointing up.
         auto_align_end=True,
@@ -525,6 +533,11 @@ def _offline_chain(
         predicted_error=round(solved.error, 4),
         capped=solved.capped,
         max_instances=max_instances,
+        # The cheap metric for XRFF-466: 177 instances strung along one of
+        # ash's 196 branches is a caterpillar whatever the pose says.
+        instances_per_branch=(
+            round(solved.instances / stats.branches, 1) if stats.branches else None
+        ),
     )
     chain = TreeChainSpec(
         growth_json=entry.path,
@@ -565,6 +578,10 @@ def _measured_tree(
         "density": resolved.density,
         "predicted_instances": resolved.instances,
         "predicted_m2": calibration.leaf_area_m2(entry.tree_id),
+        "branches": tree.branches,
+        "instances_per_branch": (
+            round(resolved.instances / tree.branches, 1) if tree.branches else None
+        ),
     }
     return PlannedTree(chain=chain, instances=resolved.instances, detail=detail)
 

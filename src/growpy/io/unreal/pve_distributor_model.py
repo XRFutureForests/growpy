@@ -82,6 +82,7 @@ __all__ = [
     "MaskedCount",
     "expected_instances",
     "expected_palette_mix",
+    "expected_scale_squared_factor",
     "pick_candidates",
     "Placement",
     "measure_leaf_area",
@@ -223,6 +224,24 @@ def _normalise_ramp(ramp) -> tuple[tuple[float, float], ...]:
     if len(keys) == 2 and all(isinstance(k, (int, float)) for k in keys):
         return ((0.0, float(keys[0])), (1.0, float(keys[1])))
     return tuple((float(t), float(v)) for t, v in keys)
+
+
+def expected_scale_squared_factor(distributor) -> float:
+    """``E[U^2]`` for the distributor's ``randomize_scale`` multiplier.
+
+    ``ComputeAttachmentScale`` multiplies the ramp value by a uniform draw in
+    ``[min, max]``, and leaf area goes as scale squared, so a tree's area is
+    scaled by ``E[U^2] = (a^2 + ab + b^2) / 3`` -- NOT by the mean ``(a+b)/2``.
+    At the identity ``(1.0, 1.0)`` this is exactly 1.0, so a solve that folds
+    it in is unchanged for every graph built before XRFF-467.
+
+    Turning randomisation on therefore makes each instance carry MORE area on
+    average than its prototype (E[U^2] >= mean^2 for any spread), which the
+    offline solve has to correct for or every randomised tree lands over its
+    Forrester target.
+    """
+    lo, hi = getattr(distributor, "randomize_scale", (1.0, 1.0))
+    return (lo * lo + lo * hi + hi * hi) / 3.0
 
 
 def _load(path: Path):
@@ -395,6 +414,23 @@ def simulate_placements(
         )
 
     scale_ramp = _normalise_ramp(distributor.scale_ramp)
+    # SpacingRamp is evaluated on the even loop value BEFORE the relative
+    # remap (PVParametricDistributionHelper.cpp:322-332), so it redistributes
+    # the samples along the branch without changing how many there are.
+    spacing_ramp = (
+        _normalise_ramp(distributor.spacing_ramp)
+        if getattr(distributor, "spacing_ramp", None) is not None
+        else None
+    )
+    # Only Whorled reads the node-bud range; ResolvePhyllotaxy pins it to 1
+    # under Spiral and to 2 under Opposite/Decussate.
+    node_bud_range = (
+        tuple(getattr(distributor, "node_buds", (1, 1)))
+        if distributor.phyllotaxy_type.upper() == "WHORLED"
+        else None
+    )
+    if node_bud_range == (1, 1):
+        node_bud_range = None
     ramp_basis = distributor.scale_ramp_basis.upper()
     density = distributor.branch_density
     relative_start = distributor.relative_start
@@ -480,7 +516,9 @@ def simulate_placements(
         for j in range(loops):
             base_value = j / max(loops - 1, 1)
             # SpacingRamp's default is the identity 0->1 linear.
-            along = base_value
+            along = base_value if spacing_ramp is None else ramp_eval(
+                spacing_ramp, base_value
+            )
             # RelativeStart/End remap the placement span into a sub-range of
             # the branch. It moves WHERE instances go, never how many -- which
             # is why an early test saw identical counts at 0.6 and 0.8 and
@@ -551,6 +589,21 @@ def simulate_placements(
                     and (along >= 0.999 or abs(along - relative_end) < 0.001),
                 )
             )
+            # Whorled places NumBuds instances at this node, drawn uniformly
+            # from [MinimumNodeBuds, MaximumNodeBuds] (the engine's
+            # IndexedRandomIntInclusive), except on a tip under
+            # bSingleBudTip. Every other phyllotaxy is pinned to one bud by
+            # ResolvePhyllotaxy, so this loop is a no-op there.
+            extra = 0
+            if node_bud_range is not None and not (
+                placements[-1].tip and distributor.single_bud_tip
+            ):
+                lo, hi = node_bud_range
+                # The draw is per (branch, loop, seed); the model is not
+                # seed-faithful, so it spreads the range evenly instead.
+                extra = int((lo + hi) / 2.0 + 0.5) - 1
+            for _ in range(max(extra, 0)):
+                placements.append(placements[-1])
     return placements
 
 
@@ -606,8 +659,16 @@ def measure_leaf_area(
         )
 
     points = len(placements)
-    mean_scale = sum(p.scale for p in placements) / points
-    mean_scale_squared = sum(p.scale * p.scale for p in placements) / points
+    # Placement.scale is the deterministic ramp x base_scale; the per-instance
+    # randomize_scale draw multiplies it, and it enters the area as its second
+    # moment. Both factors are 1.0 at the identity range.
+    lo, hi = getattr(distributor, "randomize_scale", (1.0, 1.0))
+    mean_scale = sum(p.scale for p in placements) / points * (lo + hi) / 2.0
+    mean_scale_squared = (
+        sum(p.scale * p.scale for p in placements)
+        / points
+        * expected_scale_squared_factor(distributor)
+    )
     return LeafAreaMeasurement(
         instances=expected_instances(points, mask_fraction).expected,
         mean_scale=mean_scale,

@@ -226,8 +226,15 @@ def solve_flat(
     need more instances than one Nanite assembly (or one click) can carry;
     the result then says ``capped`` and lands short of the target.
     """
-    from growpy.io.unreal.pve_distributor_model import simulate_placements
+    from growpy.io.unreal.pve_distributor_model import (
+        expected_scale_squared_factor,
+        simulate_placements,
+    )
 
+    # A randomised instance scale multiplies leaf area by E[scale^2], not by
+    # its mean; 1.0 at the identity range, so this is inert for every graph
+    # solved before XRFF-467.
+    area_per_instance = mean_prototype_area_m2 * expected_scale_squared_factor(base)
     cache: dict[int, int] = {}
 
     def instances_at(density: int) -> int:
@@ -240,7 +247,7 @@ def solve_flat(
         return cache[density]
 
     density = _bisect_density(
-        lambda d: instances_at(d) * mean_prototype_area_m2, target_m2
+        lambda d: instances_at(d) * area_per_instance, target_m2
     )
     capped = False
     if max_instances is not None and instances_at(density) > max_instances:
@@ -250,9 +257,9 @@ def solve_flat(
     return SolvedDensity(
         density=density,
         instances=instances,
-        area_m2=instances * mean_prototype_area_m2,
+        area_m2=instances * area_per_instance,
         target_m2=target_m2,
-        instance_area_m2=mean_prototype_area_m2,
+        instance_area_m2=area_per_instance,
         capped=capped,
     )
 
@@ -275,6 +282,7 @@ def solve_graded(
     """
     from growpy.io.unreal.pve_distributor_model import (
         expected_palette_mix,
+        expected_scale_squared_factor,
         simulate_placements,
     )
     from growpy.io.unreal.pve_graph_plan import graded_palette
@@ -284,8 +292,11 @@ def solve_graded(
         minimum_candidates=ladder.minimum_candidates,
         cutoff_threshold=ladder.cutoff_threshold,
     )
+    # Randomised instance scale: leaf area goes as E[scale^2], 1.0 at the
+    # identity range (XRFF-467).
+    scale_sq = expected_scale_squared_factor(base)
     largest = max(range(len(areas)), key=lambda i: areas[i])
-    apex_area = areas[largest] if ladder.apex else 0.0
+    apex_area = areas[largest] * scale_sq if ladder.apex else 0.0
     cache: dict[int, tuple[int, tuple[float, ...], float]] = {}
 
     def evaluate(density: int) -> tuple[int, tuple[float, ...], float]:
@@ -304,7 +315,7 @@ def solve_graded(
             cache[density] = (
                 len(placements),
                 targets,
-                sum(m * a for m, a in zip(mix, areas, strict=True)),
+                sum(m * a for m, a in zip(mix, areas, strict=True)) * scale_sq,
             )
         return cache[density]
 
@@ -359,6 +370,7 @@ def compound_layout(
     """
     from growpy.io.unreal.pve_distributor_model import (
         expected_palette_mix,
+        expected_scale_squared_factor,
         simulate_placements,
     )
     from growpy.io.unreal.pve_graph_plan import graded_palette
@@ -389,7 +401,9 @@ def compound_layout(
     )
     fill = dataclasses.replace(fill_probe, conditions=conditions)
     mix = expected_palette_mix(fill_placements, palette, conditions)
-    area = sum(m * a for m, a in zip(mix, fill_areas, strict=True))
+    # Randomised instance scale: area goes as E[scale^2] (XRFF-467).
+    scale_sq = expected_scale_squared_factor(base)
+    area = sum(m * a for m, a in zip(mix, fill_areas, strict=True)) * scale_sq
 
     layers: list[FoliageLayer] = []
     cap_instances = apex_instances = 0
@@ -399,7 +413,7 @@ def compound_layout(
             pose, branch_density=1, generation_band=(spec.fill_generation_start, None)
         )
         cap_instances = len(simulate_placements(growth_json, cap))
-        area += cap_instances * areas[cap_idx]
+        area += cap_instances * areas[cap_idx] * scale_sq
         layers.append(
             FoliageLayer(distributor=cap, palette=(PaletteEntry(mesh=meshes[cap_idx]),))
         )
@@ -407,7 +421,7 @@ def compound_layout(
         apex_idx = _tier_index(names, spec.apex_tier)
         apex = dataclasses.replace(pose, branch_density=1, generation_band=(1, 1))
         apex_instances = len(simulate_placements(growth_json, apex))
-        area += apex_instances * areas[apex_idx]
+        area += apex_instances * areas[apex_idx] * scale_sq
         layers.append(
             FoliageLayer(
                 distributor=apex, palette=(PaletteEntry(mesh=meshes[apex_idx]),)
