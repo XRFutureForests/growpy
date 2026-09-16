@@ -56,7 +56,18 @@ public static class UEW32 {
 }
 "@
 
-function Get-UEPid { [uint32](Get-Process UnrealEditor -ErrorAction Stop | Select-Object -First 1).Id }
+# Two editors can be open (2026-09-16: a second project beside XRLabDB made the
+# first process win and every window lookup fail with NOWINDOW). Prefer the
+# process whose main window title carries $env:GROWPY_UE_PROJECT.
+function Get-UEPid {
+  $procs = @(Get-Process UnrealEditor -ErrorAction Stop)
+  $want = $env:GROWPY_UE_PROJECT
+  if ($want -and $procs.Count -gt 1) {
+    $hit = $procs | Where-Object { $_.MainWindowTitle -like "*$want*" } | Select-Object -First 1
+    if ($hit) { return [uint32]$hit.Id }
+  }
+  [uint32]($procs | Select-Object -First 1).Id
+}
 
 function Wait-UEHwnd([uint32]$ProcessId, [string]$Title, [int]$Sec) {
   $deadline = (Get-Date).AddSeconds($Sec)
