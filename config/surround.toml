@@ -236,6 +236,21 @@ silver_fir = 15.0
 # ratio carries +/-0.15 seed noise (A30). Sweep data: data/tmp/sweep_phase2/
 # (growing shell), data/tmp/sweep_conifer_static/, data/tmp/sweep_birch_seeds/.
 [surround.density_per_species]
+# Crown-separation ladder, 2026-09-16 evening (production run). Gate: the r08
+# crown diameter at least 10 % under r16 at h15 AND h25 (growpy-crown-metrics
+# on the USD assemblies). At 0.75 / grow = true eight species failed, all on
+# h25: the r08 broadleaf pushes one limb THROUGH the 8 m ring of virtual
+# neighbours and spreads in the open light beyond it (ash 27 m, beech 28 m),
+# while the frozen conifers equalise above their 15 m shell. Arms tried per
+# species: static 25 m shell at 0.75 and 0.90 (collapses every seedling to
+# 0-10 m; beech instead grows a 266 cm DBH monster), growing shell at 0.90
+# (passes linden +20 % and douglas fir +23 %, worsens the escape elsewhere),
+# growing shell at 0.60 (wild cherry: -32 % -> -2 %, the best of its arms).
+# Ash, beech, spruce, fir and pine keep 0.75: no arm beat it. Record in
+# data/tmp/production_2026-09-16/promotion.json and the run handover.
+wild_cherry = 0.6
+small_leaved_linden = 0.9
+douglas_fir = 0.9
 # Empty since 2026-09-15 (afternoon): 0.75 for every species, see [surround].
 # Last fitted values (2026-09-15 morning, r08/r16 sweeps, conifers static):
 #   common_ash 0.55  douglas_fir 0.85  european_beech 0.75  european_oak 0.55

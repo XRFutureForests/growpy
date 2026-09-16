@@ -48,6 +48,18 @@ class TestGrowPyConfigDefaults:
         assert config.get_surround_freeze_height("silver_fir") == 15.0
         assert config.get_surround_freeze_height("european_oak") == 0.0
 
+    def test_surround_height_per_species_falls_back_to_global(self, tmp_path):
+        # Arm B of the 2026-09-16 crown-separation ladder: a static shell at
+        # the goal height for one species, the global height for the rest.
+        assert GrowPyConfig(surround_height=6.5).get_surround_height("scots_pine") == 6.5
+        (tmp_path / "surround.toml").write_text(
+            "[surround]\nheight = 6.5\n"
+            "[surround.height_per_species]\ncommon_ash = 25.0\n"
+        )
+        config = GrowPyConfig.from_toml(tmp_path, set_as_global=False)
+        assert config.get_surround_height("Common ash") == 25.0
+        assert config.get_surround_height("european_oak") == 6.5
+
     def test_default_csv_file(self):
         config = GrowPyConfig()
         assert config.csv_file == Path("data/input/test.csv")
