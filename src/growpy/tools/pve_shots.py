@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -108,7 +109,10 @@ def _run_in_editor(source: str, timeout: float = 300.0) -> list[str]:
     from growpy.io.unreal import ue_remote
 
     fd, path = tempfile.mkstemp(prefix="growpy_pve_shots_", suffix=".py")
-    Path(path).write_text(source, encoding="utf-8")
+    # Close the mkstemp handle before the editor opens the file: with it
+    # still open the editor answered "Could not load Python file" (2026-09-16).
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(source)
     try:
         result = ue_remote.run_file(path, timeout=timeout)
     finally:
@@ -237,7 +241,9 @@ def main(argv: list[str] | None = None) -> int:
     if not row:
         logger.error("nothing to shoot")
         return 1
-    out_dir = args.out or args.manifest.parent / "shots"
+    # Absolute: the spawn script writes actors.json from inside the editor,
+    # whose working directory is not growpy's.
+    out_dir = (args.out or args.manifest.parent / "shots").resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     actors_json = out_dir / "actors.json"
 

@@ -47,9 +47,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--shape",
-        default="VOXELIZE",
-        choices=("VOXELIZE", "PRESERVE_AREA", "NONE"),
-        help="Nanite shape preservation on the Export nodes (default VOXELIZE)",
+        default="PRESERVE_AREA",
+        choices=("PRESERVE_AREA", "VOXELIZE", "NONE"),
+        help=(
+            "Nanite shape preservation on the Export nodes (default PRESERVE_AREA; "
+            "VOXELIZE has no voxel-size knob and erased the card foliage of every "
+            "tree in the 2026-09-16 run)"
+        ),
     )
     parser.add_argument(
         "--collision",
@@ -57,6 +61,18 @@ def main(argv: list[str] | None = None) -> int:
         choices=("ALL_GENERATIONS", "TRUNK_ONLY", "NONE"),
     )
     parser.add_argument("--calibration", type=Path, default=None)
+    parser.add_argument(
+        "--max-instances",
+        type=int,
+        default=60_000,
+        help=(
+            "cap on foliage instances per tree (default 60000). The Nanite "
+            "build of a Voxelize export asserts (Bits <= Mask, "
+            "NaniteResources.h:93) above roughly 40k instances of a 2-material "
+            "palette -- linden r16_h25m at 57.6k, 2026-09-16 -- so a species "
+            "that trips it is re-planned lower"
+        ),
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
     logging.basicConfig(
@@ -84,6 +100,7 @@ def main(argv: list[str] | None = None) -> int:
         collision_generation=args.collision,
         calibration_path=args.calibration,
         species=args.species or None,
+        max_assembly_instances=args.max_instances,
     )
     if plan.script is None:
         logger.error(

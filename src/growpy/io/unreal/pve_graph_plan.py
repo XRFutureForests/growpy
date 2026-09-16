@@ -576,7 +576,7 @@ def plan_pve_graphs(
     content_root: str = "/Game/PVE",
     graph_folder: str = "/Game/PVE/Graphs",
     triangle_cap: float = 120e6,
-    nanite_shape_preservation: str = "VOXELIZE",
+    nanite_shape_preservation: str = "PRESERVE_AREA",
     collision_generation: str = "ALL_GENERATIONS",
     import_all_palettes: bool = True,
     calibration_path: Path | None = None,
@@ -601,10 +601,15 @@ def plan_pve_graphs(
         triangle_cap: Predicted-triangle ceiling per graph, i.e. per Export
             click. One click is one failure unit -- see
             :func:`~growpy.io.unreal.pve_graph_builder.split_by_triangles`.
-        nanite_shape_preservation: ``VOXELIZE`` by default -- it is what makes
-            a tree hold its silhouette at distance, and it is the form the
-            result can actually be judged on. It costs roughly 80x the export
-            time, so pass ``NONE`` while iterating on densities or wiring,
+        nanite_shape_preservation: ``PRESERVE_AREA`` by default. ``VOXELIZE``
+            was the default (and the owner's ask, 2026-09-15) until the
+            production run showed what it does to card foliage: the export
+            node has no voxel-size knob, the voxels are coarser than a leaf or
+            a needle spray, and every one of the 110 Voxelize exports rendered
+            as a bare, pale skeleton with a few dots along the branches -- the
+            same beech h05 exported with ``PRESERVE_AREA`` beside it was a
+            green tree (probe 2026-09-16 04:40). Voxelize also cost ~80x the
+            export time. Pass ``NONE`` while iterating on densities or wiring,
             where only the instance count matters.
         collision_generation: ``ALL_GENERATIONS`` by default (owner,
             2026-09-15) -- trunk and branches collide in VR.
