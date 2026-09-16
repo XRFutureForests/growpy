@@ -101,17 +101,26 @@ unreal.log("PVEXPORT_OPEN %s" % aes.open_editor_for_assets([asset]))
 UE_SAVE_SCRIPT = """\
 import unreal
 
-# Only what this export dirtied. Walking the export folder with save_asset()
-# LOADS every sibling mesh, and a loaded PVE skeletal mesh rebuilds its Nanite
-# data on load (260 s each, 2026-09-16), so a folder of ten trees turned one
-# 30 s export into a 40 min save.
+# Every dirty package under the content root, not just the export folder:
+# the export converts each palette static mesh into a skeletal-mesh part
+# (SKM_<name>, beside the static mesh under <Species>/Foliage/...) and the
+# tree's Nanite assembly references those parts by path. Unsaved, they are
+# gone with the editor session and every tree reloads as a bare skeleton
+# ("Failed to build Nanite Assembly part from skeletal mesh (SKM_...)",
+# 2026-09-16 -- the whole first production batch). Only dirty packages, and
+# never a walk of the folder with save_asset(): that LOADS every sibling mesh,
+# and a loaded PVE skeletal mesh rebuilds its Nanite data on load (260 s each).
+roots = sorted(set("/".join(f.split("/")[:3]) for f in {folders!r}))
 dirty = [str(p.get_name()) for p in unreal.EditorLoadingAndSavingUtils.get_dirty_content_packages()]
-keep = [p for p in dirty if any(p.startswith(f + "/") for f in {folders!r}) or p in {assets!r}]
+keep = [p for p in dirty if any(p.startswith(r + "/") for r in roots) or p in {assets!r}]
 saved = 0
 for path in keep:
     if unreal.EditorAssetLibrary.save_asset(path, only_if_is_dirty=True):
         saved += 1
 unreal.log("PVEXPORT_SAVED %d" % saved)
+for path in keep:
+    if "/SKM_" in path:
+        unreal.log("PVEXPORT_PART %s" % path)
 """
 
 UE_CLOSE_SCRIPT = """\
@@ -360,7 +369,7 @@ def export_graphs(
             for line in _run_in_editor(
                 UE_SAVE_SCRIPT.format(folders=folders, assets=assets), timeout=1800
             ):
-                if "PVEXPORT_SAVED" in line:
+                if "PVEXPORT_SAVED" in line or "PVEXPORT_PART" in line:
                     logger.info("  %s", line.split("LogPython:")[-1].strip())
         if not keep_open:
             _run_in_editor(UE_CLOSE_SCRIPT.format(path=path))
