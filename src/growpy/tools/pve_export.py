@@ -122,15 +122,36 @@ unreal.log("PVEXPORT_CLOSED")
 """
 
 
-def _run_in_editor(source: str, timeout: float = 600.0) -> list[str]:
-    """Execute Python source in the editor; return its log lines."""
+def _run_in_editor(
+    source: str, timeout: float = 600.0, attempts: int = 4, pause: float = 30.0
+) -> list[str]:
+    """Execute Python source in the editor; return its log lines.
+
+    The connect-back is retried: right after a save the editor can sit in GC
+    or package writing for longer than the remote handshake allows, and one
+    ``ConnectionError`` there cost a whole export run on 2026-09-16 (three
+    times in a night, each on the graph after a 23-prototype palette save).
+    """
     from growpy.io.unreal import ue_remote
 
     fd, path = tempfile.mkstemp(prefix="growpy_pve_export_", suffix=".py")
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         fh.write(source)
     try:
-        result = ue_remote.run_file(path, timeout=timeout)
+        for attempt in range(1, attempts + 1):
+            try:
+                result = ue_remote.run_file(path, timeout=timeout)
+                break
+            except ConnectionError:
+                if attempt == attempts:
+                    raise
+                logger.warning(
+                    "  editor did not answer (attempt %d/%d); retrying in %.0f s",
+                    attempt,
+                    attempts,
+                    pause,
+                )
+                time.sleep(pause)
     finally:
         try:
             os.unlink(path)
