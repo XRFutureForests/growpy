@@ -101,14 +101,15 @@ unreal.log("PVEXPORT_OPEN %s" % aes.open_editor_for_assets([asset]))
 UE_SAVE_SCRIPT = """\
 import unreal
 
-eal = unreal.EditorAssetLibrary
+# Only what this export dirtied. Walking the export folder with save_asset()
+# LOADS every sibling mesh, and a loaded PVE skeletal mesh rebuilds its Nanite
+# data on load (260 s each, 2026-09-16), so a folder of ten trees turned one
+# 30 s export into a 40 min save.
+dirty = [str(p.get_name()) for p in unreal.EditorLoadingAndSavingUtils.get_dirty_content_packages()]
+keep = [p for p in dirty if any(p.startswith(f + "/") for f in {folders!r}) or p in {assets!r}]
 saved = 0
-for folder in {folders!r}:
-    for path in eal.list_assets(folder, recursive=True, include_folder=False):
-        if eal.save_asset(path, only_if_is_dirty=True):
-            saved += 1
-for path in {assets!r}:
-    if eal.does_asset_exist(path) and eal.save_asset(path, only_if_is_dirty=True):
+for path in keep:
+    if unreal.EditorAssetLibrary.save_asset(path, only_if_is_dirty=True):
         saved += 1
 unreal.log("PVEXPORT_SAVED %d" % saved)
 """

@@ -185,14 +185,15 @@ if not eal.does_asset_exist(TEMPLATE_STRUCT):
 folder = CATALOG.rsplit("/", 1)[0]
 if not eal.does_directory_exist(folder):
     eal.make_directory(folder)
-if eal.does_asset_exist(CATALOG):
-    existing = eal.load_asset(CATALOG)
-    if existing is not None:
-        unreal.get_editor_subsystem(unreal.AssetEditorSubsystem).close_all_editors_for_asset(existing)
-    eal.delete_asset(CATALOG)
-    unreal.SystemLibrary.collect_garbage()
 table = None
-if eal.does_asset_exist(TEMPLATE_TABLE):
+if eal.does_asset_exist(CATALOG):
+    # Reuse a catalog that already exists: once PCG_Trees points at it the
+    # delete fails (it is referenced) and the duplicate then finds the path
+    # taken (2026-09-16). fill_data_table_from_csv_string replaces the rows.
+    table = eal.load_asset(CATALOG)
+    if table is not None:
+        unreal.get_editor_subsystem(unreal.AssetEditorSubsystem).close_all_editors_for_asset(table)
+if table is None and eal.does_asset_exist(TEMPLATE_TABLE):
     table = eal.duplicate_asset(TEMPLATE_TABLE, CATALOG)
 if table is None:
     factory = unreal.DataTableFactory()
