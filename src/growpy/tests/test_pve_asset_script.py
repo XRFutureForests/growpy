@@ -50,7 +50,7 @@ class TestSpecResolution:
     """Resolution from the real asset tree -- counts are discovered, not typed."""
 
     @pytest.mark.parametrize(
-        "species,expected", [("european_beech", 5), ("silver_fir", 8)]
+        "species,expected", [("european_beech", 5), ("silver_fir", 9)]
     )
     def test_prototype_counts_come_from_disk(self, species, expected):
         spec = build_species_asset_spec(species)
@@ -75,7 +75,7 @@ class TestSpecResolution:
         # Acceptance: not beech/fir-specific. Norway spruce shares the fir's
         # twig and has never had PVE assets built.
         spec = build_species_asset_spec("norway_spruce")
-        assert len(spec.prototypes) == 8
+        assert len(spec.prototypes) == 9
         assert spec.bark_material.endswith("/MI_norway_spruce_bark")
 
     def test_a_missing_normal_map_is_named_not_silently_skipped(self, monkeypatch):
@@ -259,7 +259,7 @@ class TestGeneratedScript:
         assert DEFAULT_MASTER_MATERIAL in script
 
     def test_every_prototype_reaches_the_script(self, script):
-        for species, count in (("european_beech", 5), ("pacific_silver_fir", 8)):
+        for species, count in (("european_beech", 5), ("pacific_silver_fir", 9)):
             # once as the USD import, once as the re-framed part
             assert script.count(f"SM_{species}_foliage") == 2 * count
             assert len(re.findall(rf"SM_{species}_foliage\w*_ZUP", script)) == count

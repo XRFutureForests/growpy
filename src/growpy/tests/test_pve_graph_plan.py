@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -67,10 +68,21 @@ def measured_calibration(tmp_path_factory, monkeypatch):
     text = TRACKED_TOML.read_text(encoding="utf-8")
     assert text.count('build_from = "offline"') >= 2  # beech, fir (+ a comment)
     measured = tmp_path_factory.mktemp("cal") / "pve_calibration.toml"
-    measured.write_text(
-        text.replace('build_from = "offline"', 'build_from = "measured"'),
-        encoding="utf-8",
-    )
+    text = text.replace('build_from = "offline"', 'build_from = "measured"')
+    # The fir rows are the record of an 8-tier ladder; the palette on disk
+    # grew to 9 on 2026-09-16 (the `_h` three-fingered tip spray, by area
+    # between `a` and `g`). A measured row is graded against the palette it
+    # was measured on, so the variant slots a seventh target between the
+    # sixth and the old seventh rather than editing the record. Production
+    # builds fir offline and never reads these targets.
+    def _pad(match: re.Match) -> str:
+        targets = [float(t) for t in match.group(1).split(",")]
+        assert len(targets) == 8
+        targets.insert(6, (targets[5] + targets[6]) / 2)
+        return "scale_targets = [" + ", ".join(f"{t:.6f}" for t in targets) + "]"
+
+    text = re.sub(r"^scale_targets = \[([^\]]+)\]", _pad, text, flags=re.MULTILINE)
+    measured.write_text(text, encoding="utf-8")
     MEASURED_TOML = measured
     monkeypatch.setattr(
         "growpy.config.pve_calibration._default_path", lambda: measured
@@ -206,7 +218,8 @@ class TestMaskEntries:
         assert masked.distributor.branch_density == 24
         assert masked.palette is not None
         assert mask_fraction_of(masked.palette) == pytest.approx(0.25)
-        assert len({e.mesh for e in masked.palette if e.mesh}) == 8
+        # the fir ladder: full spray, a-f, g (4 shoots), h (3 shoots, 2026-09-16)
+        assert len({e.mesh for e in masked.palette if e.mesh}) == 9
         graded = {
             f"SK_SilverFir_{r}_{h}"
             for r in ("r08", "r16")
@@ -247,6 +260,7 @@ class TestLadder:
             cutoff_threshold=0.1,
             apex=True,
             main_generation_start=2,
+            tip_tier="_h",
         )
         assert load_pve_calibration().for_species("european_beech").ladder is None
 
@@ -260,7 +274,7 @@ class TestLadder:
         cal = load_pve_calibration().for_species("silver_fir")
         tree = cal.tree("r08_h05m")
         # Main layer: every prototype carries its target, in area order.
-        assert chain.palette is not None and len(chain.palette) == 8
+        assert chain.palette is not None and len(chain.palette) == 9
         assert sorted(e.attributes.scale for e in chain.palette) == sorted(
             tree.scale_targets
         )
@@ -272,14 +286,21 @@ class TestLadder:
         assert chain.distributor.conditions.minimum_candidates == 1
         assert chain.distributor.generation_band == (2, None)
         assert chain.distributor.branch_density == tree.build_density
-        # Apex layer: one largest spray on the leader, ungraded.
-        assert len(chain.layers) == 1
-        apex = chain.layers[0]
+        # Apex layer: one largest spray on the leader, ungraded. Tip cap: the
+        # three-fingered `_h` at density 1 on every main-layer branch end.
+        assert len(chain.layers) == 2
+        apex, cap = chain.layers
         assert apex.distributor.branch_density == 1
         assert apex.distributor.generation_band == (1, 1)
         assert apex.distributor.conditions is None
         assert apex.distributor.axil_angle == chain.distributor.axil_angle
         assert [e.mesh for e in apex.palette] == [big.mesh]
+        assert cap.distributor.branch_density == 1
+        assert cap.distributor.generation_band == (2, None)
+        assert cap.distributor.conditions is None
+        assert [e.mesh for e in cap.palette] == [
+            m for m in (e.mesh for e in chain.palette) if m.endswith("foliage_h_ZUP")
+        ]
 
     def test_a_fir_tree_without_targets_stays_flat(self, tmp_path, forest_root):
         # The legacy radii were solved for a flat palette and still build
@@ -494,11 +515,27 @@ class TestPlanEndToEnd:
         assert starts["EuropeanBeech"] == 0.4
         assert starts["SilverFir"] == 0.0
 
-    def test_only_fir_carries_the_bark_aspect_correction(self, tmp_path, forest_root):
+    def test_bark_y_scale_follows_the_texture_aspect(self, tmp_path, forest_root):
+        # PVE maps the trunk square in world space, so a W x H bark keeps its
+        # aspect only at YScale = W / H. Fir pins 0.5 (= its 1024 x 2048);
+        # beech has no pin and takes 1024 / 4096 from beech_60_bark.jpg --
+        # the owner saw it squashed at the native 1.0 (2026-09-16).
         plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
         by_species = {g.graph_name.split("_")[1]: g.bark_y_scale for g in plan.graphs}
         assert by_species["SilverFir"] == 0.5
-        assert by_species["EuropeanBeech"] is None
+        assert by_species["EuropeanBeech"] == pytest.approx(0.25)
+
+    def test_bark_aspect_is_width_over_height_and_tolerates_a_missing_file(
+        self, tmp_path
+    ):
+        from PIL import Image
+
+        from growpy.io.unreal.pve_graph_plan import bark_aspect_y_scale
+
+        tall = tmp_path / "tall.png"
+        Image.new("RGB", (16, 64)).save(tall)
+        assert bark_aspect_y_scale(tall) == pytest.approx(0.25)
+        assert bark_aspect_y_scale(tmp_path / "absent.png") is None
 
     def test_the_measured_twig_pose_travels_with_the_densities(
         self, tmp_path, forest_root

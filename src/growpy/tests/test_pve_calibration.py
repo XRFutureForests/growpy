@@ -20,6 +20,7 @@ from growpy.config.pve_calibration import (
     TwigJitter,
     TwigPose,
     WindPresets,
+    _ladder,
     _pose,
     load_pve_calibration,
 )
@@ -145,8 +146,13 @@ class TestShippedCalibration:
         broadleaf = shipped.for_species("european_oak", habit="broadleaf")
         assert conifer.derived and broadleaf.derived
         assert conifer.trees == {} and broadleaf.trees == {}
-        assert conifer.fullness == 4.0 and broadleaf.fullness == 2.0
-        assert conifer.relative_start == 0.0 and broadleaf.relative_start == 0.4
+        # Broadleaf defaults are round-2 R4 (2026-09-16): x6, outer 15 %, 70 deg.
+        assert conifer.fullness == 4.0 and broadleaf.fullness == 6.0
+        assert conifer.relative_start == 0.0 and broadleaf.relative_start == 0.85
+        assert broadleaf.pose.axil_angle == 70.0
+        # Beech keeps its own x2 / 0.4 block beside the R4 defaults.
+        beech = shipped.for_species("european_beech")
+        assert beech.fullness == 2.0 and beech.relative_start == 0.4
         assert conifer.ladder is not None and broadleaf.ladder is not None
         assert broadleaf.pose.jitter and not conifer.pose.jitter
         assert conifer.fraction == 0.06
@@ -359,9 +365,24 @@ class TestShippedCalibration:
             cutoff_threshold=0.1,
             apex=True,
             main_generation_start=2,
+            # the three-fingered spray on every branch end (2026-09-16)
+            tip_tier="_h",
         )
         assert shipped.for_species("european_beech").ladder is None
         assert _species().ladder is None
+
+    def test_conifer_defaults_carry_the_tip_tier_and_broadleaf_do_not(self, shipped):
+        # Spruce and douglas share the fir twig, so they inherit the cap via
+        # the conifer defaults; a broadleaf rosette has no branch-end spray.
+        spruce = shipped.for_species("norway_spruce", habit="conifer")
+        oak = shipped.for_species("european_oak", habit="broadleaf")
+        assert spruce.ladder.tip_tier == "_h"
+        assert oak.ladder.tip_tier is None
+
+    def test_an_empty_tip_tier_reads_as_none(self):
+        assert _ladder({"tip_tier": ""}).tip_tier is None
+        assert _ladder({}).tip_tier is None
+        assert _ladder({"tip_tier": "_h"}).tip_tier == "_h"
 
 
 class TestDensityResolution:

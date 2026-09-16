@@ -119,6 +119,18 @@ generate_wind_data = true
 # min_branch_radius: absolute metre cutoff, kept for the rare case where one is
 #   genuinely wanted. Whichever of the two is larger wins. Leave at 0.0.
 #
+# min_point_spacing: thin the points ALONG every surviving branch to at least
+#   this path length apart (metres); root, tip and every point a child attaches
+#   to are always kept. Points are the bones of the skeletal mesh PVE exports,
+#   and Grove samples a node every internode -- 0.063 m on a beech against
+#   0.11 m on an oak -- so at the same fraction a beech carries 2-3x the bones
+#   and stops opening in UE (r16_h15m at 0.02: 6,866 branches, 82,408 bones,
+#   XRFF-471). Branch COUNT is the look and belongs to the fraction; point
+#   count is only the weight. quality.toml's skeleton_length is NOT this knob:
+#   it tags bones for the USD skeletal mesh and never touches the raw skeleton
+#   this JSON is built from (a beech regrown at 1.0 m came out byte-identical).
+#   0.0 keeps every node. Per species in the sub-table at the end of this file.
+#
 # (superseded note) drop branches whose thickest point is below this (metres),
 #   with their subtrees. Grove's raw skeleton is ~46,500 branches / 275,800
 #   points for a beech, against Epic's reference tree at 195 / 5,145. Point
@@ -185,6 +197,7 @@ enabled = true
 profile_mean = 0.8215
 min_branch_radius = 0.0
 min_branch_radius_fraction = 0.06
+min_point_spacing = 0.0
 
 # ---------------------------------------------------------------------------
 # SUB-TABLES LAST. A TOML sub-table captures every key that follows it, so
@@ -224,7 +237,21 @@ min_branch_radius_fraction = 0.06
 #     Their crowns are too sparse, which is the opposite defect and not this one.
 [unreal.growth_data_json.min_branch_radius_fraction_per_species]
 common_ash = 0.02
-european_beech = 0.02
+# 0.03, not 0.02 (2026-09-16): 0.02 is 82,408 bones at r16_h15m and UE will
+# not open it. With min_point_spacing 0.2 below, 0.03 is 19,240 bones there
+# and <= 22,342 at h25 (the 0.06 catalog opened at 27,526-29,828), keeping
+# 3,322-4,403 branches over 6-7 generations. Measured offline on the
+# undecimated run, data/tmp/subset_2026-09-16/gate_grid_beech.txt.
+european_beech = 0.03
 european_oak = 0.02
 silver_birch = 0.02
 small_leaved_linden = 0.02
+
+# --- per-species point spacing (XRFF-471, 2026-09-16) ---
+# Overrides [unreal.growth_data_json] min_point_spacing above, keyed by
+# standardized name. Bones per tree at h15, r08/r16, undecimated beech run,
+# fraction 0.03: 0.0 m 38,495/55,997 -> 0.15 m 15,689/22,447 -> 0.20 m
+# 13,565/19,240 -> 0.25 m 12,210/17,236. Only beech needs it: oak sits at
+# 3.6 points per branch and fir at 4.7, beech at 12.
+[unreal.growth_data_json.min_point_spacing_per_species]
+european_beech = 0.2

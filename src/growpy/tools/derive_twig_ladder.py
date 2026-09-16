@@ -247,15 +247,18 @@ def _build_object(source, face_indices, name, shoot_face_indices):
     return obj
 
 
-def plan_ladder(parts, fine, cluster_size, shoot_min_m):
+def plan_ladder(parts, fine, cluster_sizes, shoot_min_m):
     """Pick the variants to emit. Returns (plan, sub_sprays, n_needles).
 
-    `plan` is a list of (suffix, face_indices, area). The fine tier is spread
-    evenly across the area-sorted sub-sprays rather than taken from the top,
-    because a conifer spray carries several shoots of near-identical size and
-    emitting all of them would be near-duplicate prototypes. One middle-tier
-    variant groups the largest sub-spray with its nearest neighbours, which is
-    what the next size up actually looks like on the tree.
+    `plan` is a list of (suffix, face_indices, area, shoot_faces). The fine
+    tier is spread evenly across the area-sorted sub-sprays rather than taken
+    from the top, because a conifer spray carries several shoots of
+    near-identical size and emitting all of them would be near-duplicate
+    prototypes. Then one middle-tier variant per entry of `cluster_sizes`
+    groups the largest sub-spray with its nearest neighbours, which is what
+    the next size up actually looks like on the tree: 4 is the shipped
+    middle tier, 3 (largest plus its two neighbours) is the three-fingered
+    spray a conifer branch ends in, used as the tip cap (2026-09-16).
     """
     subs, n_needles = _sub_sprays(parts, shoot_min_m)
     ordered = sorted(subs, key=lambda s: -s["area"])
@@ -274,19 +277,22 @@ def plan_ladder(parts, fine, cluster_size, shoot_min_m):
         key=lambda s: sum(
             (a - b) ** 2 for a, b in zip(s["centre"], anchor["centre"], strict=True)
         ),
-    )[: max(2, cluster_size)]
+    )
 
     letters = "abcdefghijklmnopqrstuvwxyz"
     plan = [
         (letters[i], p["faces"], p["area"], p["shoot_faces"])
         for i, p in enumerate(picks)
     ]
-    if len(picks) < len(letters):
+    for size in cluster_sizes:
+        if len(plan) >= len(letters):
+            break
+        cluster = nearest_first[: max(2, size)]
         plan.append(
             (
-                letters[len(picks)],
-                [f for s in nearest_first for f in s["faces"]],
-                sum(s["area"] for s in nearest_first),
+                letters[len(plan)],
+                [f for s in cluster for f in s["faces"]],
+                sum(s["area"] for s in cluster),
                 # The cluster is oriented on the shoot it was grown around, not
                 # on the union: the union's own principal axis is meaningless.
                 anchor["shoot_faces"],
@@ -327,10 +333,23 @@ def main(argv: list[str] | None = None) -> int:
         "--fine", type=int, default=6, help="fine-tier variants to emit (default: 6)"
     )
     parser.add_argument(
-        "--cluster-size",
+        "--cluster-sizes",
         type=int,
-        default=4,
-        help="sub-sprays grouped into the middle-tier variant (default: 4)",
+        nargs="+",
+        default=[4, 3],
+        help=(
+            "sub-sprays grouped into each middle-tier variant, one variant per "
+            "value, lettered after the fine tier (default: 4 3)"
+        ),
+    )
+    parser.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help=(
+            "write only the variants whose object is not in the file yet -- adds "
+            "a new cluster tier to an already derived asset without duplicating "
+            "the rest"
+        ),
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="report the ladder without writing"
@@ -387,7 +406,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         plan, subs, n_needles = plan_ladder(
-            parts, args.fine, args.cluster_size, args.shoot_min
+            parts, args.fine, args.cluster_sizes, args.shoot_min
         )
     except ValueError as exc:
         logger.error("%s", exc)
@@ -434,8 +453,26 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         return 0
 
+    existing = {o.name for o in bpy.data.objects if o.type == "MESH"}
+    written = 0
     for suffix, faces, _, shoot_faces in plan:
-        _build_object(source, faces, f"{source.name}{suffix.upper()}", shoot_faces)
+        name = f"{source.name}{suffix.upper()}"
+        if name in existing:
+            if args.skip_existing:
+                logger.info("   %s exists, kept", name)
+                continue
+            logger.error(
+                "%s already holds %s -- pass --skip-existing to add only the "
+                "missing variants, or split a pristine copy",
+                args.blend.name,
+                name,
+            )
+            return 1
+        _build_object(source, faces, name, shoot_faces)
+        written += 1
+    if not written:
+        logger.info("nothing to write: every planned variant already exists")
+        return 0
 
     destination = args.out or args.blend
     destination.parent.mkdir(parents=True, exist_ok=True)

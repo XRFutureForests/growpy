@@ -118,23 +118,41 @@ randomize_axil_angle = [-12.0, 12.0]
 # Scale-graded size ladder + apex spray (XRFF-412): the fir ladder (8 tiers,
 # shared by spruce and douglas) and the pine's five sprays are graded onto
 # branch radius, one big spray on the leader.
+#
+# tip_tier (2026-09-16, owner): the picker hands every branch END the smallest
+# tier, because the end is the thinnest point -- on the fir a single 0.005 m2
+# shoot -- and the short branches at the top get nothing at all (one loop at
+# relative_start 0 lands on the root and is discarded), which read as bare
+# tops. A density-1 cap layer puts the three-fingered spray `_h` (the largest
+# sub-spray plus its two neighbours, 0.0225 m2, derived by
+# growpy-derive-twig-ladder --cluster-sizes 4 3) on every branch end of the
+# main layer's generations; the solve counts it, so the main density lands
+# the total on target. A species whose palette has no such tier (the pine)
+# gets a warning and no cap.
 [pve_calibration.defaults.conifer.ladder]
 scale_weight = 1.0
 minimum_candidates = 1
 cutoff_threshold = 0.1
 apex = true
 main_generation_start = 2
+tip_tier = "_h"
 
 [pve_calibration.defaults.broadleaf]
-fullness = 2.0
-# Foliage on the outer 60 % of every branch, as beech ships: keeps leaves off
-# the thick inner span of the primaries.
-relative_start = 0.4
-# Rosettes on the sides, tilted 40 deg toward the tip, faces up, plus the
+# OWNER DECISION 2026-09-16 (evening, full run): round-2 R4 for every graded
+# broadleaf (oak, ash, birch, linden, maple, cherry) -- fullness x6, foliage on
+# the outer 15 %, 70 deg fan. At fullness x2 the offline solve gave oak a
+# density of 2 = ONE spray per branch at 40 % along, so the outer 60 % of
+# every branch was bare and the primaries read as whips; x6 filled them ("a
+# real oak canopy"). Inert at h20-h25 where the trees are instance-capped.
+# Beech is the exception: x6 packed 9-10 rosettes into the outer 15 % and read
+# worse, so its own block keeps x2 / 0.4 / 40 deg plus the mask.
+fullness = 6.0
+relative_start = 0.85
+# Rosettes on the sides, fanned 70 deg toward the tip, faces up, plus the
 # inclination real leaves have as random pitch/roll/yaw (the beech pose).
 [pve_calibration.defaults.broadleaf.pose]
 reset_phyllotaxy = true
-axil_angle = 40.0
+axil_angle = 70.0
 jitter = [
     { mode = "PITCH", degrees = 20.0, seed = 11 },
     { mode = "ROLL", degrees = 12.0, seed = 12 },
@@ -197,6 +215,13 @@ history_relative_start = 0.0
 # as the measured record. Flat palette (no ladder), as measured.
 build_from = "offline"
 fullness = 2.0
+# Owner, 2026-09-16 afternoon: beech rosettes toward the branch ends sit "in
+# close and regular succession". PVE spaces its samples evenly along a branch
+# and cannot randomise that; a masked palette makes a random 3 in 8 of them
+# spawn nothing (3 masks beside the 5 rosettes), and the offline solve raises
+# the density by 1/(1-0.375) so the expected count and leaf area are the
+# same. Flat palette only -- a graded ladder cannot take a mask.
+mask_fraction = 0.375
 
 # Fitted instances law, used only to seed a solve:
 #   instances ~ slope_per_s * s_ratio + floor_per_branch * branches
@@ -498,8 +523,11 @@ phyllotaxy_formation = "DISTICHOUS"
 prototype_leaf_area_m2 = 0.020138421345048785
 prototype_area_per_triangle_m2 = 8.645928697717079e-07
 palette_flat_mean_triangles = 23292.375
-# The fir bark texture needs its V repeat halved or the bark tiles at the wrong
-# aspect. Beech needs no correction, so it carries no bark_y_scale at all.
+# PVE maps the trunk square in world space (one V repeat = one circumference
+# of length), so a W x H bark keeps its aspect only at YScale = W / H. Since
+# 2026-09-16 the plan derives that from the texture (fir_70_bark 1024 x 2048
+# -> 0.5, beech_60_bark 1024 x 4096 -> 0.25); this pin is the same value and
+# stays as the measured record. A species without a pin follows its texture.
 bark_y_scale = 0.5
 forrester_model_id = "forrester2017_conifers_la"
 # Measured at 0.0, which is also what the species runs at, so these histories
@@ -545,6 +573,8 @@ minimum_candidates = 1
 cutoff_threshold = 0.1
 apex = true
 main_generation_start = 2
+# Three-fingered spray on every branch end (see the conifer defaults).
+tip_tier = "_h"
 
 [pve_calibration.species.silver_fir.trees.r05_h05m]
 growth_json = "fir_r05_h05m_f060.json"

@@ -305,6 +305,18 @@ class LadderSpec:
     single candidate picks the big sprays crisply by radius and still draws
     among the near-equal small tiers at random -- measured on the six fir
     r08/r16 trees, 2026-09-15.
+
+    ``tip_tier`` (2026-09-16) names one prototype, by name suffix, to sit at
+    the END of every branch the main layer covers, as a density-1 cap layer
+    like the compound layout's. Two reasons the main layer cannot do this on
+    its own: the Scale picker hands a branch tip the SMALLEST tier, because
+    the tip is the thinnest point (on the fir that is a single 0.005 m2
+    shoot); and a branch shorter than ``2 x L_max / density`` gets one loop,
+    which at ``relative_start = 0`` lands on the root and is discarded, so
+    the short branches at the top of a conifer carry nothing at all. A cap
+    at density 1 places at ``along = 1.0`` on every branch, both included.
+    The solve counts its area, so the main density lands the total on target.
+    None keeps the ladder as it was.
     """
 
     scale_weight: float = 1.0
@@ -312,6 +324,7 @@ class LadderSpec:
     cutoff_threshold: float = 0.1
     apex: bool = True
     main_generation_start: int = 2
+    tip_tier: str | None = None
 
     def __post_init__(self) -> None:
         if not 0.0 < self.scale_weight <= 1.0:
@@ -413,6 +426,16 @@ class SpeciesCalibration:
     # Forrester-calibrated fir read as a skeleton, x4 as a conifer). Leaf area
     # is reported beside every tree; this is where it is steered.
     fullness: float = 1.0
+    # Share of foliage samples that spawn nothing (XRFF-462's palette masks,
+    # lifted to the species). The offline solve raises the density to keep
+    # the same expected count and leaf area; what changes is the rhythm --
+    # the samples still sit on the distributor's even grid, but a random
+    # 1 in n of them is missing, which is the one irregularity PVE offers
+    # along a branch (spacing itself cannot be randomised). Owner, 2026-09-16:
+    # beech rosettes toward the branch ends "placed in close and regular
+    # succession". Must be a ratio the palette can spell (mask_entries_for);
+    # a graded ladder cannot take it.
+    mask_fraction: float = 0.0
     compound: CompoundSpec | None = None
     # "measured": a tree with a row builds from it; "offline": every tree is
     # solved by the plan and the rows stay as the record of what was measured
@@ -438,6 +461,11 @@ class SpeciesCalibration:
             raise ValueError(
                 f"species {self.species!r} palette must be 'twigs' or "
                 f"'compound', got {self.palette!r}"
+            )
+        if not 0.0 <= self.mask_fraction < 1.0:
+            raise ValueError(
+                f"species {self.species!r} mask_fraction must be in [0, 1), "
+                f"got {self.mask_fraction}"
             )
         if self.fullness <= 0.0:
             raise ValueError(
@@ -672,6 +700,9 @@ def _ladder(data: dict[str, Any] | None) -> LadderSpec | None:
         cutoff_threshold=float(data.get("cutoff_threshold", 0.1)),
         apex=bool(data.get("apex", True)),
         main_generation_start=int(data.get("main_generation_start", 2)),
+        tip_tier=(
+            None if data.get("tip_tier") in ("", None) else str(data["tip_tier"])
+        ),
     )
 
 
@@ -732,6 +763,7 @@ def _species(
         ladder=_ladder(data.get("ladder")),
         palette=str(data.get("palette", "twigs")),
         fullness=float(data.get("fullness", 1.0)),
+        mask_fraction=float(data.get("mask_fraction", 0.0)),
         compound=_compound(data.get("compound")),
         build_from=str(data.get("build_from", "measured")),
         derived=derived,

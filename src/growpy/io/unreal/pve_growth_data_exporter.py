@@ -394,12 +394,97 @@ def _decimate_growth_data(data: dict, min_branch_radius: float) -> dict:
     return {"points": out_points, "primitives": out_prims}
 
 
+def _resample_growth_data(data: dict, min_point_spacing: float) -> dict:
+    """Thin the points ALONG every branch to at least ``min_point_spacing``.
+
+    Points in this JSON become bones in the skeletal mesh PVE exports, and
+    Grove samples a node every internode -- 0.063 m on a beech, 0.11 m on an
+    oak -- so a beech carries 2-3x the bones of an oak with the same branch
+    count (beech r16_h15m at fraction 0.02: 6,866 branches, 82,408 points; UE
+    would not open it, XRFF-471). Branch COUNT is the look and is set by the
+    decimation above; point count is only the weight, and this is the knob
+    for it. ``skeleton_length`` in quality.toml is NOT: that tags bones for
+    the USD skeletal mesh (``tag_bone_id``) and never touches
+    ``skeleton.points``, which is what this file is built from.
+
+    Pure post-process on the finished JSON, like the decimation: no branch is
+    dropped and no attribute is recomputed, points are filtered and
+    renumbered. Every branch keeps its root and its tip, and every point a
+    child branch attaches to (a child's first point is shared with the
+    parent's list) is kept so no child is left hanging off a chord. Between
+    those, an interior point is kept once the path length since the last kept
+    point reaches the spacing. ``lengthFromRoot`` keeps the original arc
+    length, which PVE reads as branch length.
+    """
+    prims = data["primitives"]
+    pts = data["points"]
+    branch_points = prims["points"]
+    if not branch_points or min_point_spacing <= 0.0:
+        return data
+
+    positions = pts["positions"]
+    parent_no = prims["attributes"]["branchParentNumber"]["values"]
+    anchors = {
+        bp[0] for b, bp in enumerate(branch_points) if bp and parent_no[b] != 0
+    }
+
+    def dist(a, b):
+        return sum((x - y) ** 2 for x, y in zip(a, b, strict=True)) ** 0.5
+
+    thinned = []
+    for bp in branch_points:
+        if len(bp) <= 2:
+            thinned.append(list(bp))
+            continue
+        kept = [bp[0]]
+        since_kept = 0.0
+        for i in range(1, len(bp) - 1):
+            since_kept += dist(positions[bp[i - 1]], positions[bp[i]])
+            if bp[i] in anchors or since_kept >= min_point_spacing:
+                kept.append(bp[i])
+                since_kept = 0.0
+        kept.append(bp[-1])
+        thinned.append(kept)
+
+    seen = set()
+    kept_points = []
+    for bp in thinned:
+        for pi in bp:
+            if pi not in seen:
+                seen.add(pi)
+                kept_points.append(pi)
+    if len(kept_points) == len(positions):
+        return data
+    new_of_point = {pi: i for i, pi in enumerate(kept_points)}
+
+    def take(seq, idx):
+        return [seq[i] for i in idx]
+
+    out_points = {
+        "positions": take(positions, kept_points),
+        "attributes": {
+            k: dict(v, values=take(v["values"], kept_points))
+            for k, v in pts["attributes"].items()
+        },
+    }
+    out_prims = {
+        "points": [[new_of_point[pi] for pi in bp] for bp in thinned],
+        "attributes": prims["attributes"],
+    }
+    logger.info(
+        "resampled at min_point_spacing=%.3f m: %d -> %d points on %d branches",
+        min_point_spacing, len(positions), len(kept_points), len(branch_points),
+    )
+    return {"points": out_points, "primitives": out_prims}
+
+
 def build_growth_data_json(
     skeleton: Any,
     profile_mean: float = 1.0,
     radial_scale: float = 1.0,
     min_branch_radius: float = 0.0,
     min_branch_radius_fraction: float = 0.0,
+    min_point_spacing: float = 0.0,
 ) -> dict:
     """
     Build the growth-data JSON for PVE's Growth Data JSON Importer.
@@ -429,6 +514,10 @@ def build_growth_data_json(
             this fraction of the trunk's base radius, with their subtrees. 0.06
             holds 5-6 branch generations across every measured beech. 0.0 keeps
             everything, which for a real Grove skeleton means ~46k branches.
+        min_point_spacing: Thin the points along every surviving branch to
+            at least this path length apart (root, tip and every attach point
+            are always kept). Points are the exported bones; see
+            ``_resample_growth_data``. 0.0 keeps Grove's every node.
 
     Returns:
         Dict matching the validated contract (see module docstring).
@@ -593,7 +682,9 @@ def build_growth_data_json(
         threshold = max(
             threshold, _trunk_base_radius(built) * min_branch_radius_fraction
         )
-    return _decimate_growth_data(built, threshold)
+    return _resample_growth_data(
+        _decimate_growth_data(built, threshold), min_point_spacing
+    )
 
 
 def generate_growth_data_from_grove(
@@ -606,6 +697,7 @@ def generate_growth_data_from_grove(
     radial_scale: float = 1.0,
     min_branch_radius: float = 0.0,
     min_branch_radius_fraction: float = 0.0,
+    min_point_spacing: float = 0.0,
 ) -> dict:
     """
     Build the growth-data JSON from a Grove simulation and write it to disk.
@@ -625,6 +717,8 @@ def generate_growth_data_from_grove(
         min_branch_radius: Absolute threshold in metres; prefer the fraction.
         min_branch_radius_fraction: Drop branches thinner than this fraction of
             the trunk's base radius. See ``build_growth_data_json``.
+        min_point_spacing: Thin the points along every branch to at least
+            this path length apart. See ``build_growth_data_json``.
 
     Returns:
         The generated growth-data dictionary.
@@ -640,6 +734,7 @@ def generate_growth_data_from_grove(
         radial_scale=radial_scale,
         min_branch_radius=min_branch_radius,
         min_branch_radius_fraction=min_branch_radius_fraction,
+        min_point_spacing=min_point_spacing,
     )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

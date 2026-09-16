@@ -599,6 +599,7 @@ def _growth_data_json_settings() -> dict:
         "profile_mean": 0.8215,
         "min_branch_radius": 0.0,
         "min_branch_radius_fraction": 0.06,
+        "min_point_spacing": 0.0,
     }
     try:
         import tomllib
@@ -616,6 +617,28 @@ def _growth_data_json_settings() -> dict:
         return defaults
 
 
+def _per_species_setting(
+    settings: dict, key: str, species: str, default: float
+) -> float:
+    """``settings[key + "_per_species"][species]`` if tabled, else the global key.
+
+    The species is matched by its standardized name, so both the display name
+    and the snake_case key resolve. ``default`` covers a settings dict built
+    without the global key (older callers hand one in).
+    """
+    per_species = settings.get(f"{key}_per_species") or {}
+    if per_species:
+        try:
+            from growpy.utils.naming import standardize_species_name
+
+            lookup = standardize_species_name(species)
+        except Exception:
+            lookup = species
+        if lookup in per_species:
+            return float(per_species[lookup])
+    return float(settings.get(key, default))
+
+
 def _min_branch_radius_fraction_for(settings: dict, species: str) -> float:
     """The decimation fraction for one species (XRFF-466, 2026-09-16).
 
@@ -627,17 +650,22 @@ def _min_branch_radius_fraction_for(settings: dict, species: str) -> float:
     radius, and a mature trunk is fat, so the same fraction bites harder the
     older the tree gets -- which is why the count falls as the ladder climbs.
     """
-    per_species = settings.get("min_branch_radius_fraction_per_species") or {}
-    if per_species:
-        try:
-            from growpy.utils.naming import standardize_species_name
+    return _per_species_setting(
+        settings, "min_branch_radius_fraction", species, 0.06
+    )
 
-            key = standardize_species_name(species)
-        except Exception:
-            key = species
-        if key in per_species:
-            return float(per_species[key])
-    return float(settings["min_branch_radius_fraction"])
+
+def _min_point_spacing_for(settings: dict, species: str) -> float:
+    """The along-branch point spacing for one species (XRFF-471, 2026-09-16).
+
+    ``[unreal.growth_data_json.min_point_spacing_per_species]`` first, then the
+    global key. Points are the bones PVE exports, and Grove's internode sets
+    how many a branch carries: 0.063 m on a beech against 0.11 m on an oak,
+    so at the same fraction a beech is 2-3x the bones and stops opening in UE
+    (82,408 at h15 / 0.02). The spacing thins points WITHIN a branch and keeps
+    every branch, so the look the fraction bought is untouched.
+    """
+    return _per_species_setting(settings, "min_point_spacing", species, 0.0)
 
 
 def _emit_growth_data_json(ctx: TreeExportContext) -> bool:
@@ -662,6 +690,7 @@ def _emit_growth_data_json(ctx: TreeExportContext) -> bool:
 
     settings = _growth_data_json_settings()
     fraction = _min_branch_radius_fraction_for(settings, ctx.species_name)
+    spacing = _min_point_spacing_for(settings, ctx.species_name)
     out_path = ctx.tree_dir / f"{ctx.file_prefix}_growth_data.json"
     try:
         with ctx.timer.track("generate_growth_data_json"):
@@ -675,6 +704,7 @@ def _emit_growth_data_json(ctx: TreeExportContext) -> bool:
                 radial_scale=ctx.radial_scale,
                 min_branch_radius=float(settings["min_branch_radius"]),
                 min_branch_radius_fraction=fraction,
+                min_point_spacing=spacing,
             )
     except Exception as err:
         logger.warning(

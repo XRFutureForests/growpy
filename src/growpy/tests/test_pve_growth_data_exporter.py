@@ -148,3 +148,83 @@ class TestBuildGrowthDataJson:
         assert prim_attrs["branchNumber"]["isArray"] is False
         assert prim_attrs["children"]["isArray"] is True
         assert data["points"]["attributes"]["budDirection"]["isArray"] is True
+
+
+class TestMinPointSpacing:
+    """Points are the exported bones; the spacing thins them WITHIN a branch.
+
+    Beech at fraction 0.02 was 82,408 points at r16_h15m and UE would not open
+    it (XRFF-471). The fraction sets branch count (the look); Grove's internode
+    sets points per branch (the weight), and this is the only knob for it --
+    quality.toml's skeleton_length tags USD bones and never reaches this file.
+    """
+
+    # Trunk 0..5 straight up at 0.5 m steps; a side branch from point 2 with
+    # 0.5 m steps; a twig from the side branch's interior point 7.
+    _POINTS = [
+        (0.0, 0.0, 0.0),
+        (0.0, 0.0, 0.5),
+        (0.0, 0.0, 1.0),  # attach point of branch 1
+        (0.0, 0.0, 1.5),
+        (0.0, 0.0, 2.0),
+        (0.0, 0.0, 2.5),
+        (0.5, 0.0, 1.0),
+        (1.0, 0.0, 1.0),  # attach point of branch 2 (interior of branch 1)
+        (1.5, 0.0, 1.0),
+        (2.0, 0.0, 1.0),
+        (1.0, 0.5, 1.0),
+        (1.0, 1.0, 1.0),
+    ]
+    _LINES = [[0, 1, 2, 3, 4, 5], [2, 6, 7, 8, 9], [7, 10, 11]]
+
+    def test_zero_keeps_every_node(self):
+        skel = _make_skeleton(points=self._POINTS, poly_lines=self._LINES)
+        data = build_growth_data_json(skel, min_point_spacing=0.0)
+        assert len(data["points"]["positions"]) == 12
+        assert data["primitives"]["points"] == self._LINES
+
+    def test_keeps_root_tip_and_attach_points_and_thins_between(self):
+        skel = _make_skeleton(points=self._POINTS, poly_lines=self._LINES)
+        data = build_growth_data_json(skel, min_point_spacing=1.0)
+        prims = data["primitives"]["points"]
+        pos = data["points"]["positions"]
+        # Trunk: root, the attach point at 1.0 m, 2.0 m, the tip at 2.5 m.
+        assert [pos[i][1] for i in prims[0]] == [0.0, 1.0, 2.0, 2.5]
+        # Side branch: attach, the twig's anchor at 1.0 m along, tip at 2.0 m.
+        assert [pos[i][0] for i in prims[1]] == [0.0, 1.0, 2.0]
+        # The twig is shorter than the spacing: root and tip only.
+        assert len(prims[2]) == 2
+        # Shared points stay shared after renumbering.
+        assert prims[1][0] == prims[0][1]
+        assert prims[2][0] == prims[1][1]
+        # No branch dropped, hierarchy untouched, every point attribute
+        # renumbered with the positions.
+        assert data["primitives"]["attributes"]["branchParentNumber"]["values"] == [
+            0,
+            1,
+            2,
+        ]
+        assert len(pos) == 4 + 2 + 1
+        for attr in data["points"]["attributes"].values():
+            assert len(attr["values"]) == len(pos)
+
+    def test_an_attach_point_is_kept_even_short_of_the_spacing(self):
+        # At 1.2 m the trunk would keep 1.5 m, not 1.0 m -- unless a child
+        # hangs there. Same skeleton with the child decimated away: the point
+        # is no longer an anchor and the plain spacing rule takes over.
+        skel = _make_skeleton(points=self._POINTS, poly_lines=self._LINES)
+        data = build_growth_data_json(skel, min_point_spacing=1.2)
+        pos = data["points"]["positions"]
+        assert [pos[i][1] for i in data["primitives"]["points"][0]] == [0.0, 1.0, 2.5]
+        # Every radius is 0 on a mock skeleton, so an absolute cutoff keeps
+        # only the trunk (the decimation never returns an empty tree).
+        trunk_only = build_growth_data_json(
+            skel, min_branch_radius=1.0, min_point_spacing=1.2
+        )
+        assert len(trunk_only["primitives"]["points"]) == 1
+        pos = trunk_only["points"]["positions"]
+        assert [pos[i][1] for i in trunk_only["primitives"]["points"][0]] == [
+            0.0,
+            1.5,
+            2.5,
+        ]

@@ -93,6 +93,9 @@ class SolvedDensity:
     # True when an instance / triangle ceiling, not the target, chose the
     # density -- the tree is deliberately short of its leaf area.
     capped: bool = False
+    # Instances a graded ladder's tip-cap layer adds (LadderSpec.tip_tier):
+    # one per branch of the main layer's generations, at the branch end.
+    tip_cap_instances: int = 0
 
     @property
     def error(self) -> float:
@@ -272,13 +275,19 @@ def solve_graded(
     ladder: LadderSpec,
     target_m2: float,
     max_instances: int | None = None,
+    names: Sequence[str] | None = None,
 ) -> SolvedDensity:
     """Density and Scale targets for a graded ladder plus its apex spray.
 
     Per candidate density: simulate the main layer (gen >= the ladder's start),
     set each tier's Scale target at the placements' radius quantiles, take the
     picker's expected mix over the graded palette and sum the area; the apex
-    spray (the largest prototype, density 1 on generation 1) is added on top.
+    spray (the largest prototype, density 1 on generation 1) is added on top,
+    and so is the tip cap when the ladder names a ``tip_tier`` -- one part of
+    that tier at the end of every main-layer branch, density 1, whose count
+    does not depend on the density being solved. ``names`` (the prototype
+    names, in ``meshes`` order) is what the tier suffix is matched against
+    and is required for a tip cap.
     """
     from growpy.io.unreal.pve_distributor_model import (
         expected_palette_mix,
@@ -297,6 +306,24 @@ def solve_graded(
     scale_sq = expected_scale_squared_factor(base)
     largest = max(range(len(areas)), key=lambda i: areas[i])
     apex_area = areas[largest] * scale_sq if ladder.apex else 0.0
+    cap_instances = 0
+    cap_area = 0.0
+    if ladder.tip_tier:
+        if names is None:
+            raise ValueError(
+                f"ladder tip_tier {ladder.tip_tier!r} needs the prototype names"
+            )
+        cap_idx = _tier_index(names, ladder.tip_tier)
+        cap = dataclasses.replace(
+            base,
+            branch_density=1,
+            generation_band=(ladder.main_generation_start, None),
+            conditions=None,
+        )
+        cap_instances = len(simulate_placements(growth_json, cap))
+        cap_area = cap_instances * areas[cap_idx] * scale_sq
+    fixed_instances = cap_instances + (1 if ladder.apex else 0)
+    fixed_area = apex_area + cap_area
     cache: dict[int, tuple[int, tuple[float, ...], float]] = {}
 
     def evaluate(density: int) -> tuple[int, tuple[float, ...], float]:
@@ -319,16 +346,19 @@ def solve_graded(
             )
         return cache[density]
 
-    density = _bisect_density(lambda d: evaluate(d)[2] + apex_area, target_m2)
+    density = _bisect_density(lambda d: evaluate(d)[2] + fixed_area, target_m2)
     capped = False
-    if max_instances is not None and evaluate(density)[0] + 1 > max_instances:
+    over = max_instances is not None and (
+        evaluate(density)[0] + fixed_instances > max_instances
+    )
+    if over:
         density = _largest_density_under(
-            lambda d: evaluate(d)[0] + (1 if ladder.apex else 0), max_instances
+            lambda d: evaluate(d)[0] + fixed_instances, max_instances
         )
         capped = True
     main_instances, targets, main_area = evaluate(density)
-    instances = main_instances + (1 if ladder.apex else 0)
-    area = main_area + apex_area
+    instances = main_instances + fixed_instances
+    area = main_area + fixed_area
     return SolvedDensity(
         density=density,
         instances=instances,
@@ -337,6 +367,7 @@ def solve_graded(
         scale_targets=targets,
         instance_area_m2=area / instances if instances else None,
         capped=capped,
+        tip_cap_instances=cap_instances,
     )
 
 

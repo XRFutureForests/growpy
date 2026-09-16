@@ -154,6 +154,109 @@ class TestSolveGraded:
             solved.area_m2 / solved.instances
         )
 
+    def test_a_tip_tier_caps_every_main_layer_branch_and_is_counted(self, tmp_path):
+        # 2026-09-16: the picker hands a branch end the smallest tier and the
+        # short branches get nothing; a tip_tier puts one named part on every
+        # branch end at density 1, and the solve lands the total WITH it.
+        path = _tree(tmp_path)
+        names = ("fir_foliage_f", "fir_foliage_a", "fir_foliage_h", "fir_foliage")
+        meshes = tuple(f"/G/SM_{n}" for n in names)
+        areas = (0.005, 0.009, 0.0225, 0.09)
+        plain = solve_graded(path, _base(), meshes, areas, LadderSpec(), 1.0)
+        capped = solve_graded(
+            path,
+            _base(),
+            meshes,
+            areas,
+            LadderSpec(tip_tier="_h"),
+            1.0,
+            names=names,
+        )
+        assert plain.tip_cap_instances == 0
+        assert capped.tip_cap_instances == 10  # one per side branch end
+        # main placements (gen >= 2) plus the apex still ride beside the cap
+        assert capped.instances - capped.tip_cap_instances >= 2
+        # The cap carries 10 x 0.0225 m2 of the 1.0 m2 target, so the main
+        # layer is solved to a LOWER density than without it.
+        assert capped.density <= plain.density
+        assert abs(capped.area_m2 - 1.0) < 0.5
+
+    def test_a_tip_tier_needs_the_prototype_names(self, tmp_path):
+        path = _tree(tmp_path)
+        with pytest.raises(ValueError, match="prototype names"):
+            solve_graded(
+                path,
+                _base(),
+                ("/G/a", "/G/b"),
+                (0.1, 0.2),
+                LadderSpec(tip_tier="_h"),
+                1.0,
+            )
+
+
+class TestOfflineFlatMask:
+    """A species-level mask_fraction on the offline flat path (2026-09-16).
+
+    Owner: beech rosettes toward the branch ends sit "in close and regular
+    succession". PVE cannot randomise spacing; a masked palette makes a
+    random 1-in-n of the evenly spaced samples spawn nothing, and the solve
+    raises the density so the expected count and leaf area are unchanged.
+    """
+
+    def _plan(self, tmp_path, mask):
+        from growpy.config.pve_calibration import SpeciesCalibration
+        from growpy.io.unreal.pve_asset_script import build_species_asset_spec
+        from growpy.io.unreal.pve_graph_plan import (
+            GrowthJson,
+            _offline_chain,
+            prototype_leaf_areas,
+        )
+
+        assets = build_species_asset_spec("european_beech")
+        calibration = SpeciesCalibration(
+            species="european_beech",
+            relative_start=0.4,
+            fraction=0.03,
+            prototype_leaf_area_m2=None,
+            palette_flat_mean_triangles=None,
+            history_relative_start=0.4,
+            trees={},
+            fullness=2.0,
+            mask_fraction=mask,
+            build_from="offline",
+        )
+        entry = GrowthJson(
+            path=_tree(tmp_path, branches=12),
+            species="european_beech",
+            tree_id="r08_h10m",
+        )
+        return _offline_chain(
+            entry, calibration, "SK_Beech", assets, prototype_leaf_areas(assets), PROFILE_MEAN
+        )
+
+    def test_a_mask_keeps_the_expected_count_and_area_at_a_higher_density(self, tmp_path):
+        from growpy.io.unreal.pve_graph_builder import mask_fraction_of
+
+        plain = self._plan(tmp_path, 0.0)
+        masked = self._plan(tmp_path, 0.375)  # 3 masks over the 5 beech rosettes
+        assert plain.chain.palette is None
+        assert masked.chain.palette is not None
+        assert mask_fraction_of(masked.chain.palette) == pytest.approx(0.375)
+        assert (
+            masked.chain.distributor.branch_density
+            > plain.chain.distributor.branch_density
+        )
+        assert masked.detail["mask_fraction"] == pytest.approx(0.375)
+        assert masked.detail["placements"] > masked.instances
+        # Same leaf-area target, landed within the staircase either way.
+        assert abs(masked.detail["predicted_m2"] - plain.detail["predicted_m2"]) < (
+            0.35 * plain.detail["target_m2"]
+        )
+
+    def test_an_unspellable_mask_is_refused(self, tmp_path):
+        with pytest.raises(ValueError, match="nearest"):
+            self._plan(tmp_path, 0.3)
+
 
 class TestCompoundLayout:
     def test_fill_cap_and_apex_are_laid_out_and_counted(self, tmp_path):

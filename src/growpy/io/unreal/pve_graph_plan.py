@@ -49,13 +49,18 @@ from growpy.io.unreal.pve_graph_builder import (
     TreeChainSpec,
     generate_pve_graph_builder_script,
     generate_pve_retune_script,
+    mask_fraction_of,
     masked_palette,
     split_by_triangles,
     write_coverage_manifest,
 )
 
 if TYPE_CHECKING:
-    from growpy.config.pve_calibration import SpeciesCalibration, WindPresets
+    from growpy.config.pve_calibration import (
+        LadderSpec,
+        SpeciesCalibration,
+        WindPresets,
+    )
     from growpy.io.unreal.pve_asset_script import SpeciesAssetSpec
 
 logger = logging.getLogger(__name__)
@@ -227,6 +232,30 @@ def mask_entries_for(mask_fraction: float, palette_size: int) -> tuple[int, int]
     )
 
 
+def bark_aspect_y_scale(texture: Path | str) -> float | None:
+    """``YScale`` that keeps a W x H bark texture's pixel aspect on a PVE trunk.
+
+    PVE's mesher maps the trunk square in world space: one U repeat is the
+    circumference and one V repeat is one circumference of length
+    (``MakeSegmentArray``: ``Dist / (2 pi PointScale)``), and
+    ``TrunkGenerationMaterialSetup.YScale`` multiplies V. A tall texture
+    therefore keeps its aspect only at ``YScale = W / H`` -- every bark the
+    dataset ships is 1:2 or 1:4 (beech 1024 x 4096), and at the native 1.0 the
+    bark reads squashed (owner, 2026-09-16). None if the file cannot be read.
+    """
+    try:
+        from PIL import Image
+
+        with Image.open(texture) as image:
+            width, height = image.size
+    except Exception as exc:  # noqa: BLE001 - a missing map is a plan warning
+        logger.warning("bark texture %s unreadable (%s): native tiling", texture, exc)
+        return None
+    if not width or not height:
+        return None
+    return width / height
+
+
 def prototype_leaf_areas(assets: SpeciesAssetSpec) -> tuple[float, ...]:
     """Leaf area (m2) of every palette prototype, in ``palette_meshes`` order.
 
@@ -331,6 +360,7 @@ def _chain_for(
     mesh_prefix: str,
     palette_meshes: Sequence[str] = (),
     palette_areas: Sequence[float] | None = None,
+    palette_names: Sequence[str] = (),
 ) -> TreeChainSpec:
     """A chain from a MEASURED calibration row (the tree must have one)."""
     resolved = calibration.resolve_density(entry.tree_id)
@@ -377,6 +407,12 @@ def _chain_for(
     )
     if ladder is not None and ladder.apex and tree.scale_targets is not None:
         layers = (_apex_layer(distributor, palette_meshes, palette_areas),)
+    if ladder is not None and ladder.tip_tier and tree.scale_targets is not None:
+        # Tier names are the prototype names, never the mesh paths (those
+        # end in _ZUP).
+        layers += (
+            _tip_cap_layer(distributor, ladder, palette_names, palette_meshes),
+        )
     return TreeChainSpec(
         growth_json=entry.path,
         mesh_name=f"{mesh_prefix}_{entry.tree_id}",
@@ -406,6 +442,33 @@ def _apex_layer(
             conditions=None,
         ),
         palette=(PaletteEntry(mesh=palette_meshes[largest]),),
+    )
+
+
+def _tip_cap_layer(
+    distributor: DistributorSpec,
+    ladder: LadderSpec,
+    names: Sequence[str],
+    palette_meshes: Sequence[str],
+) -> FoliageLayer:
+    """One ``tip_tier`` part at the end of every main-layer branch.
+
+    Density 1 places a single sample at ``along = 1.0`` on every branch in
+    the band -- including the short ones the main layer leaves bare, because
+    their one loop lands on the root at ``relative_start = 0`` and is
+    discarded. The offline solve counts these (``tip_cap_instances``).
+    """
+    from growpy.io.unreal.pve_offline_solve import _tier_index
+
+    tier = _tier_index(names, ladder.tip_tier)
+    return FoliageLayer(
+        distributor=dataclasses.replace(
+            distributor,
+            branch_density=1,
+            generation_band=(ladder.main_generation_start, None),
+            conditions=None,
+        ),
+        palette=(PaletteEntry(mesh=palette_meshes[tier]),),
     )
 
 
@@ -489,6 +552,16 @@ def _offline_chain(
 
     ladder = calibration.ladder
     if ladder is not None:
+        if ladder.tip_tier and not any(n.endswith(ladder.tip_tier) for n in names):
+            # The conifer defaults name the fir ladder's `_h`; a species with
+            # its own sprays (the pine) has no such tier and gets no cap.
+            logger.warning(
+                "%s: ladder tip_tier %r matches none of %s -- no tip cap",
+                entry.species,
+                ladder.tip_tier,
+                names,
+            )
+            ladder = dataclasses.replace(ladder, tip_tier=None)
         solved = solve_graded(
             entry.path,
             base,
@@ -497,6 +570,7 @@ def _offline_chain(
             ladder,
             target_m2,
             max_instances=max_instances,
+            names=names,
         )
         conditions = ConditionSpec(
             scale=ConditionInfluence(weight=ladder.scale_weight),
@@ -515,15 +589,40 @@ def _offline_chain(
         layers = ()
         if ladder.apex:
             layers = (_apex_layer(distributor, meshes, palette_areas),)
+        if ladder.tip_tier:
+            layers += (_tip_cap_layer(distributor, ladder, names, meshes),)
+            detail["tip_cap_instances"] = solved.tip_cap_instances
+            detail["tip_tier"] = ladder.tip_tier
         detail["layout"] = "graded"
         detail["scale_targets"] = [round(t, 6) for t in solved.scale_targets]
     else:
         mean_area = sum(palette_areas) / len(palette_areas)
-        solved = solve_flat(
-            entry.path, base, mean_area, target_m2, max_instances=max_instances
-        )
-        distributor = _pose_distributor(calibration, solved.density)
+        mask = calibration.mask_fraction
         palette = None
+        if mask > 0.0:
+            # A random 1-in-n of the samples spawns nothing (XRFF-462's masks
+            # at species level): the solve pays for it with a higher density
+            # so the expected count and area are unchanged, and the manifest
+            # carries the expected SPAWNED instances.
+            repeats, masks = mask_entries_for(mask, len(meshes))
+            palette = masked_palette(meshes, masks, repeats=repeats)
+            mask = mask_fraction_of(palette)
+        solved = solve_flat(
+            entry.path,
+            base,
+            mean_area * (1.0 - mask),
+            target_m2,
+            max_instances=(
+                None if max_instances is None else int(max_instances / (1.0 - mask))
+            ),
+        )
+        if mask > 0.0:
+            solved = dataclasses.replace(
+                solved, instances=int(round(solved.instances * (1.0 - mask)))
+            )
+            detail["mask_fraction"] = round(mask, 4)
+            detail["placements"] = int(round(solved.instances / (1.0 - mask)))
+        distributor = _pose_distributor(calibration, solved.density)
         layers = ()
         detail["layout"] = "flat"
     detail.update(
@@ -558,7 +657,12 @@ def _measured_tree(
     palette_areas: Sequence[float],
 ) -> PlannedTree:
     chain = _chain_for(
-        entry, calibration, mesh_prefix, assets.palette_meshes, palette_areas
+        entry,
+        calibration,
+        mesh_prefix,
+        assets.palette_meshes,
+        palette_areas,
+        palette_names=[p.name for p in assets.prototypes],
     )
     resolved = calibration.resolve_density(entry.tree_id)
     if resolved.instances is None:
@@ -783,6 +887,17 @@ def plan_pve_graphs(
             triangle_cap,
         )
         label = assets.content_folder.rsplit("/", 1)[-1]
+        # The calibration may pin the bark aspect; otherwise it follows the
+        # texture's own W/H (the fir's hand-set 0.5 is exactly its 1024/2048).
+        bark_y_scale = species_cal.bark_y_scale
+        if bark_y_scale is None:
+            bark_y_scale = bark_aspect_y_scale(assets.bark_color)
+            logger.info(
+                "%s: bark YScale %s from %s",
+                species,
+                "native" if bark_y_scale is None else f"{bark_y_scale:.4f}",
+                Path(assets.bark_color).name,
+            )
         for index, group in enumerate(groups, 1):
             suffix = "" if len(groups) == 1 else f"_{index}"
             graphs.append(
@@ -791,7 +906,7 @@ def plan_pve_graphs(
                     chains=group,
                     palette_meshes=assets.palette_meshes,
                     bark_material=assets.bark_material,
-                    bark_y_scale=species_cal.bark_y_scale,
+                    bark_y_scale=bark_y_scale,
                     export_folder=f"{content_root}/Exported/{label}",
                     graph_folder=graph_folder,
                     profile_pin=calibration.profile_pin,

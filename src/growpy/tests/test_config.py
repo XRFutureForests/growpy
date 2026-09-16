@@ -794,6 +794,7 @@ class TestTrackedConfigTableShape:
             "profile_mean",
             "min_branch_radius",
             "min_branch_radius_fraction",
+            "min_point_spacing",
         ):
             assert key in section, (
                 f"{key} sits below "

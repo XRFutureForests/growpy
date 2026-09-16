@@ -23,6 +23,7 @@ from growpy.pipelines.forest_stages import (
     STAGES,
     _growth_data_json_settings,
     _min_branch_radius_fraction_for,
+    _min_point_spacing_for,
     compute_radial_scale,
     derive_static,
     export_obj_direct,
@@ -786,6 +787,59 @@ class TestMinBranchRadiusFractionPerSpecies:
             ) as mock_gen:
                 write_growth_data_json(ctx)
         assert mock_gen.call_args.kwargs["min_branch_radius_fraction"] == 0.02
+
+
+class TestMinPointSpacingPerSpecies:
+    """XRFF-471: the along-branch point spacing is per species, like the fraction.
+
+    Points are the exported bones. Beech's 0.063 m internode gives it 2-3x
+    the bones of an oak at the same fraction, and at 0.02 it stopped opening
+    in UE (82,408 at r16_h15m); oak and fir never needed thinning.
+    """
+
+    _BASE = {
+        "enabled": True,
+        "profile_mean": 0.8215,
+        "min_branch_radius": 0.0,
+        "min_branch_radius_fraction": 0.06,
+        "min_point_spacing": 0.0,
+    }
+
+    def test_off_by_default(self):
+        assert _min_point_spacing_for(self._BASE, "European beech") == 0.0
+
+    def test_a_species_entry_wins(self):
+        settings = {
+            **self._BASE,
+            "min_point_spacing_per_species": {"european_beech": 0.2},
+        }
+        assert _min_point_spacing_for(settings, "European beech") == 0.2
+        assert _min_point_spacing_for(settings, "european_beech") == 0.2
+        assert _min_point_spacing_for(settings, "European oak") == 0.0
+
+    def test_the_stage_passes_the_resolved_spacing_to_the_exporter(self):
+        ctx = _make_ctx(use_skeletal=True, species_name="European beech")
+        ctx.radial_scale = 0.62
+        settings = {
+            **self._BASE,
+            "min_point_spacing_per_species": {"european_beech": 0.2},
+        }
+        with patch(
+            "growpy.pipelines.forest_stages._growth_data_json_settings",
+            return_value=settings,
+        ):
+            with patch(
+                "growpy.io.unreal.pve_growth_data_exporter."
+                "generate_growth_data_from_grove"
+            ) as mock_gen:
+                write_growth_data_json(ctx)
+        assert mock_gen.call_args.kwargs["min_point_spacing"] == 0.2
+
+    def test_a_settings_dict_without_the_key_still_resolves(self):
+        # Older callers and tests build the settings dict by hand without the
+        # key; the reader itself always supplies the default.
+        settings = {k: v for k, v in self._BASE.items() if k != "min_point_spacing"}
+        assert _min_point_spacing_for(settings, "Common ash") == 0.0
 
 
 class TestGrowthDataJsonSettingsFollowTheConfigDir:
