@@ -36,6 +36,7 @@ from growpy.pipelines.forest_stages import (
     write_pve_json,
     write_wind_json,
 )
+from growpy.io.tamf import write_tamf
 from growpy.pipelines.tree_export_context import TreeExportContext
 
 
@@ -648,6 +649,7 @@ class TestStagesRegistry:
             "wind_json",
             "pve_json",
             "growth_data_json",
+            "tamf",
             "preview",
             "export_control",
             "icons",
@@ -664,6 +666,8 @@ class TestStagesRegistry:
         once_per_tree_by_name = {name: once for name, _gate, _fn, once in STAGES}
         assert once_per_tree_by_name["pve_json"] is False
         assert once_per_tree_by_name["preview"] is False
+        # the asset id and twig density in the record differ per variant
+        assert once_per_tree_by_name["tamf"] is False
         for name in (
             "wind_json",
             # the growth data IS the skeleton, which does not vary with density
@@ -679,6 +683,7 @@ class TestStagesRegistry:
             "wind_json": write_wind_json,
             "pve_json": write_pve_json,
             "growth_data_json": write_growth_data_json,
+            "tamf": write_tamf,
             "preview": write_previews,
             "export_control": write_export_control,
             "icons": write_icons,

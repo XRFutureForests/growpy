@@ -37,6 +37,10 @@ class TreeExportContext:
     instances_dir: Path
     timer: Any
     grove: Any = None  # species' grove instance, for PVE JSON
+    # Competition context and captured cycle, carried for the TAMF record
+    # (io/tamf.py); 0.0 / None mean open-grown / not a milestone capture.
+    surround_radius_m: float = 0.0
+    cycle: int | None = None
     use_skeletal: bool = True
     use_static_only: bool = False
     skip_validation: bool = False

@@ -32,6 +32,7 @@ from growpy.config.quality import get_quality_preset
 from growpy.core.forest import simulate_forest_growth_with_snapshots
 from growpy.core.twig import extract_twig_placements_from_model
 from growpy.io.forest_export import export_individual_trees  # noqa: F401
+from growpy.io.tamf import write_tamf
 from growpy.io.usd.assembly_export import export_tree_as_nanite_assembly
 from growpy.io.usd.preview import (
     generate_export_control_image as _generate_export_control_image,
@@ -734,6 +735,9 @@ STAGES: list[tuple[str, StageGate, StageFn, bool]] = [
     # in config/unreal.toml, off by default. once_per_tree: the growth data is
     # the skeleton, which does not vary with twig density.
     ("growth_data_json", lambda c: True, write_growth_data_json, True),
+    # TAMF record (profile metadata) next to the asset and on the USD default
+    # prim. Per variant: the asset id and twig density differ per variant.
+    ("tamf", lambda c: True, write_tamf, False),
     # Not once_per_tree: the preview now draws twig positions, which differ per
     # density variant (see write_previews).
     ("preview", lambda c: c.cfg.export_previews, write_previews, False),
@@ -1147,6 +1151,8 @@ def generate_forest_stages(
                     instances_dir=instances_dir,
                     timer=timer,
                     grove=species_grove_map.get(species_name),
+                    surround_radius_m=tree_surround_radius,
+                    cycle=cycle,
                     use_skeletal=use_skeletal,
                     use_static_only=use_static_only,
                     skip_validation=skip_validation,
@@ -1233,6 +1239,7 @@ def generate_forest_stages(
                         if ctx.export_success:
                             exported_files.append(str(ctx.usd_path))
                             logger.info("  Exported (OBJ): %s", ctx.usd_path.name)
+                            write_tamf(ctx)
                         else:
                             logger.warning(
                                 "  OBJ export failed for tree %d (%s) at cycle %d (h=%.1fm)",
@@ -1287,6 +1294,7 @@ def generate_forest_stages(
                         if ctx.export_success:
                             exported_stage_count += 1
                             logger.info("  Growth JSON: %s", ctx.file_prefix)
+                            write_tamf(ctx)
                         else:
                             logger.warning(
                                 "  Growth-JSON export failed for tree %d (%s) "

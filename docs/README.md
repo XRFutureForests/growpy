@@ -25,6 +25,7 @@ Reference and workflow detail. Start with [README.md](../README.md) for what gro
 | [reference/usd-builder.md](reference/usd-builder.md) | How USD stages are assembled |
 | [reference/coordinate-systems.md](reference/coordinate-systems.md) | Axis and unit conventions across the pipeline |
 | [reference/naming-conventions.md](reference/naming-conventions.md) | Asset and file naming |
+| [reference/tamf.md](reference/tamf.md) | TAMF metadata record written next to every exported asset (schema in `schemas/`) |
 | [reference/nanite-import-settings.md](reference/nanite-import-settings.md) | Unreal-side import settings |
 | [reference/grove-api-attributes.md](reference/grove-api-attributes.md) | Grove API attributes used |
 | [reference/grove-preset-reference.md](reference/grove-preset-reference.md) | Grove preset parameters |

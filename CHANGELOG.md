@@ -5,6 +5,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-09-16 — every exported asset carries a TAMF record
+
+#### Added
+
+- **TAMF (Tree Asset Metadata Format) 0.2** — `io/tamf.py` writes `<prefix>.tamf.json` next to
+  every exported stage on all three routes (USD assembly, PVE growth JSON, Helios OBJ) and, on
+  the USD route, the same record as `customData["tamf"]` on the default prim. The record
+  states species (GBIF key), the captured height and the exported DBH, the height–DBH
+  calibration exactly as the allometry artifact fitted it (yield-table file, region, site
+  index, power-law parameters, R², fitted height range), the competition context and surround
+  radius, crown base/tip height and plan-view crown area from the skeleton, and the geometric
+  contract (metres, Z-up, stem-base origin, CityGML LoD3). `age_years`, `leaf_area_m2` and
+  `stem_volume_m3` are `null` — pacing is disabled, foliage is placed in PVE, no volume
+  integration exists — so the record never claims more than the pipeline did. Schema:
+  `schemas/tamf.schema.json`; reference: `docs/reference/tamf.md`. `TreeExportContext` gains
+  `surround_radius_m` and `cycle`. Asset-side exchange component of the Digital Forest Twin
+  profile (publications `digital-forest-twin-standard`).
+
 ### 2026-09-15 (evening) — the PVE Export click runs unattended
 
 #### Added

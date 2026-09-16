@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/XRFutureForests/growpy/blob/main/schemas/tamf.schema.json",
+  "title": "Tree Asset Metadata Format (TAMF) 0.2",
+  "description": "One record per exported tree asset: which species and growth stage the geometry represents, what calibration produced that stage, which competition context was assumed, the structural quantities the geometry embodies, and the geometric contract it was exported under. Asset-side exchange component of the Digital Forest Twin profile. Emitted by growpy as <asset>.tamf.json and as USD customData['tamf'] on the default prim.",
+  "type": "object",
+  "required": ["tamf_version", "asset", "species", "source", "growth_stage", "structure"],
+  "additionalProperties": false,
+  "properties": {
+    "tamf_version": { "const": "0.2" },
+    "asset": {
+      "type": "object",
+      "description": "Geometric contract: what a consumer needs to place the asset without opening it.",
+      "required": ["id", "format", "units", "up_axis", "origin", "level_of_detail"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "format": { "enum": ["usd", "pve_growth_json", "obj"] },
+        "path": { "type": ["string", "null"], "description": "Asset file name relative to this record." },
+        "units": { "const": "m" },
+        "up_axis": { "enum": ["Z", "Y"] },
+        "origin": { "enum": ["stem_base"] },
+        "level_of_detail": {
+          "enum": ["LoD0", "LoD1", "LoD2", "LoD3", "LoD4"],
+          "description": "CityGML representation LoD (0 footprint, 1 height, 2 crown+trunk volumes, 3 3D morphology, 4 internal detail)."
+        },
+        "geometry_class": {
+          "enum": ["implicit", "explicit"],
+          "description": "implicit = prototype instanced with a transform; explicit = the tree's own measured geometry."
+        }
+      }
+    },
+    "species": {
+      "type": "object",
+      "required": ["scientific_name", "common_name"],
+      "additionalProperties": false,
+      "properties": {
+        "scientific_name": { "type": ["string", "null"] },
+        "common_name": { "type": ["string", "null"] },
+        "gbif_taxon_key": { "type": ["integer", "null"] }
+      }
+    },
+    "source": {
+      "type": "object",
+      "description": "Binding to the twin: a measured tree entity, or a generated stage of a species series.",
+      "required": ["kind", "process"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["measured", "generated"] },
+        "tree_entity_id": { "type": ["string", "null"], "description": "Required (non-null) when kind = measured." },
+        "campaign_id": { "type": ["string", "integer", "null"] },
+        "variant_id": { "type": ["string", "integer", "null"] },
+        "process": { "type": "string", "minLength": 1 },
+        "dataset": { "type": ["string", "null"], "description": "Required (non-null) when kind = generated." },
+        "generated": { "type": ["string", "null"], "format": "date-time" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "measured" } } },
+          "then": { "properties": { "tree_entity_id": { "type": "string", "minLength": 1 } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "generated" } } },
+          "then": { "properties": { "dataset": { "type": "string", "minLength": 1 } } }
+        }
+      ]
+    },
+    "growth_stage": {
+      "type": "object",
+      "required": ["height_m", "dbh_cm", "age_years", "calibration", "competition_context"],
+      "additionalProperties": false,
+      "properties": {
+        "height_m": { "type": "number", "exclusiveMinimum": 0 },
+        "dbh_cm": { "type": ["number", "null"], "minimum": 0 },
+        "age_years": { "type": ["number", "null"], "description": "null unless an age model was actually applied." },
+        "growth_cycles": { "type": ["integer", "null"], "description": "Simulator cycle at which the stage was captured; not an age." },
+        "calibration": {
+          "type": "object",
+          "description": "What empirical source calibrated which quantity. Never claims a quantity the pipeline did not calibrate.",
+          "required": ["source", "quantity"],
+          "additionalProperties": false,
+          "properties": {
+            "source": { "enum": ["yield_table", "inventory", "none"] },
+            "reference": { "type": ["string", "null"], "description": "Table or record identifier, e.g. the yield-table file." },
+            "region": { "type": ["string", "null"] },
+            "site_index": { "type": ["number", "null"] },
+            "surrogate": { "type": "boolean", "description": "true when a related species' table stood in." },
+            "quantity": { "enum": ["dbh_from_height", "dbh_measured", "dbh_from_simulation", "age_from_height"] },
+            "function": { "enum": ["power_law", "chapman_richards", null] },
+            "parameters": { "type": "object", "additionalProperties": { "type": ["number", "null"] } },
+            "r_squared": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+            "height_range_m": {
+              "type": ["array", "null"], "items": { "type": "number" }, "minItems": 2, "maxItems": 2,
+              "description": "Fitted height range; outside it the calibration extrapolates."
+            },
+            "age_pacing": { "enum": ["enabled", "disabled"] }
+          }
+        },
+        "competition_context": { "enum": ["open_grown", "surround"] },
+        "surround_radius_m": { "type": ["number", "null"], "exclusiveMinimum": 0 }
+      }
+    },
+    "structure": {
+      "type": "object",
+      "description": "Forestry quantities the geometry embodies, in inventory units. null = not derived.",
+      "required": ["crown_base_height_m", "crown_diameter_m", "leaf_area_m2", "stem_volume_m3"],
+      "additionalProperties": false,
+      "properties": {
+        "crown_base_height_m": { "type": ["number", "null"], "minimum": 0 },
+        "crown_tip_height_m": { "type": ["number", "null"], "minimum": 0 },
+        "crown_projection_area_m2": { "type": ["number", "null"], "minimum": 0 },
+        "crown_diameter_m": { "type": ["number", "null"], "minimum": 0 },
+        "leaf_area_m2": { "type": ["number", "null"], "minimum": 0 },
+        "stem_volume_m3": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Namespaced, producer-specific blocks (x-<producer>); not part of the profile.",
+      "patternProperties": { "^x-[a-z0-9-]+$": { "type": "object" } },
+      "additionalProperties": false
+    }
+  }
+}
