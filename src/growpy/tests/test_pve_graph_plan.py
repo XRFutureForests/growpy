@@ -566,12 +566,13 @@ class TestPlanEndToEnd:
             assert spec.aim.blend_attribute == "WORLD_UP_DOT"
             assert spec.face is not None and spec.face.affect_tip
 
-    def test_graphs_preserve_area_by_default(self, tmp_path, forest_root):
-        # PRESERVE_AREA keeps card foliage; Voxelize (the earlier default) has
-        # no voxel-size knob and erased every leaf and needle spray of the
-        # 2026-09-16 run. NONE stays available for iterating on densities.
+    def test_graphs_voxelize_by_default(self, tmp_path, forest_root):
+        # VOXELIZE is the owner's ask. It was blamed for bare exports on
+        # 2026-09-16; the real cause was the unsaved SKM_ palette parts, and
+        # the 2026-09-17 probe showed Voxelize keeps every leaf. NONE stays
+        # available for iterating on densities.
         plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
-        assert all(g.nanite_shape_preservation == "PRESERVE_AREA" for g in plan.graphs)
+        assert all(g.nanite_shape_preservation == "VOXELIZE" for g in plan.graphs)
 
     def test_none_is_still_reachable_for_iteration(self, tmp_path, forest_root):
         plan = plan_pve_graphs(

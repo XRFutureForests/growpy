@@ -697,7 +697,7 @@ def plan_pve_graphs(
     content_root: str = "/Game/PVE",
     graph_folder: str = "/Game/PVE/Graphs",
     triangle_cap: float = 120e6,
-    nanite_shape_preservation: str = "PRESERVE_AREA",
+    nanite_shape_preservation: str = "VOXELIZE",
     collision_generation: str = "ALL_GENERATIONS",
     import_all_palettes: bool = True,
     calibration_path: Path | None = None,
@@ -722,16 +722,18 @@ def plan_pve_graphs(
         triangle_cap: Predicted-triangle ceiling per graph, i.e. per Export
             click. One click is one failure unit -- see
             :func:`~growpy.io.unreal.pve_graph_builder.split_by_triangles`.
-        nanite_shape_preservation: ``PRESERVE_AREA`` by default. ``VOXELIZE``
-            was the default (and the owner's ask, 2026-09-15) until the
-            production run showed what it does to card foliage: the export
-            node has no voxel-size knob, the voxels are coarser than a leaf or
-            a needle spray, and every one of the 110 Voxelize exports rendered
-            as a bare, pale skeleton with a few dots along the branches -- the
-            same beech h05 exported with ``PRESERVE_AREA`` beside it was a
-            green tree (probe 2026-09-16 04:40). Voxelize also cost ~80x the
-            export time. Pass ``NONE`` while iterating on densities or wiring,
-            where only the instance count matters.
+        nanite_shape_preservation: ``VOXELIZE`` by default (the owner's ask,
+            2026-09-15). It was switched to ``PRESERVE_AREA`` for one day: the
+            2026-09-16 production run saw every Voxelize export reload as a
+            bare, pale skeleton and blamed the voxelisation. The real cause was
+            found the same night -- the export creates ``SKM_`` skeletal-mesh
+            palette parts that nobody saved, so EVERY export reloaded bare
+            (fixed in ``growpy-pve-export``). A probe on 2026-09-17 (beech
+            r08_h10m, Voxelize, fresh editor) rendered indistinguishable from
+            the PRESERVE_AREA export. Voxelize costs ~5-10x the export time on
+            a large tree (ash h25: 430-530 s against ~60 s). Pass ``NONE``
+            while iterating on densities or wiring, where only the instance
+            count matters.
         collision_generation: ``ALL_GENERATIONS`` by default (owner,
             2026-09-15) -- trunk and branches collide in VR.
         import_all_palettes: Stage every baked palette tier of each species

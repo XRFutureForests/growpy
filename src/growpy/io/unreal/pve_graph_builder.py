@@ -644,7 +644,7 @@ class PVEGraphSpec:
     da_vinci_rule_strength: float = 0.0
     min_radius: float = 0.0
     create_nanite_foliage: bool = True
-    nanite_shape_preservation: str = "PRESERVE_AREA"
+    nanite_shape_preservation: str = "VOXELIZE"
     # ALL_GENERATIONS by default (owner, 2026-09-15): a twin tree is walked up
     # to and under in VR, so trunk AND branches collide. NONE is the engine
     # default and what every probe before this shipped.

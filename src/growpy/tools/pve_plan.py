@@ -47,12 +47,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--shape",
-        default="PRESERVE_AREA",
+        default="VOXELIZE",
         choices=("PRESERVE_AREA", "VOXELIZE", "NONE"),
         help=(
-            "Nanite shape preservation on the Export nodes (default PRESERVE_AREA; "
-            "VOXELIZE has no voxel-size knob and erased the card foliage of every "
-            "tree in the 2026-09-16 run)"
+            "Nanite shape preservation on the Export nodes (default VOXELIZE, the "
+            "owner's ask; the 2026-09-16 'Voxelize erased the foliage' finding was "
+            "the unsaved SKM_ palette parts -- probed 2026-09-17, foliage intact)"
         ),
     )
     parser.add_argument(
