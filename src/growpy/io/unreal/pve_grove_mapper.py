@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 from ...config.pve_species_overrides import apply_species_overrides
 from .pve_foliage_extractor import extract_foliage_data
 from .pve_growth_defaults import get_default_growth_params, merge_growth_params
-from .pve_hierarchy_builder import build_hierarchy_arrays
+from .pve_hierarchy_builder import build_compound_hierarchy, build_hierarchy_arrays
 from .pve_schema import create_empty_pve_preset
 from .pve_skeleton_calculators import (
     calculate_branch_gradients as _calculate_branch_gradients,
@@ -38,6 +38,52 @@ from .pve_skeleton_calculators import (
     calculate_lod_gradients as _calculate_lod_gradients,
 )
 from .pve_skeleton_calculators import max_branch_generation as _max_branch_generation
+
+
+def _attribute_values(
+    primitives_data: dict, attribute: str, fallback: list[int]
+) -> list[int]:
+    """Read an already-populated primitive attribute, or `fallback` if absent."""
+    entry = primitives_data["attributes"].get(attribute)
+    if not entry:
+        return fallback
+    values = entry.get("values", entry.get("value"))
+    return values if values else fallback
+
+
+def _compound_source_parents(primitives_data: dict, num_branches: int) -> list[int]:
+    """Immediate parent per branch, roots self-referencing."""
+    return _attribute_values(
+        primitives_data, "branchParentNumber", list(range(num_branches))
+    )
+
+
+def _compound_source_generations(primitives_data: dict, num_branches: int) -> list[int]:
+    """0-based branchGeneration per branch."""
+    return _attribute_values(
+        primitives_data, "branchGeneration", [0] * num_branches
+    )
+
+
+def _apply_compound_globals(pve_data: dict) -> None:
+    """Set the two compound globals from the compound layer just built.
+
+    `compoundMaxBranchNumber` is the CLUSTER count, not the branch count -- in
+    `Beech_01` it is 88 against 195 branches. `compoundMaxBranchGeneration` is
+    the compound range, which the shipped presets hold at 2-3 while topological
+    depth runs far deeper (XRFF-360).
+    """
+    global_attrs = pve_data.get("globalAttributes")
+    primitives = pve_data.get("primitives")
+    if not global_attrs or not primitives:
+        return
+
+    numbers = _attribute_values(primitives, "compoundBranchNumber", [])
+    generations = _attribute_values(primitives, "compoundBranchGeneration", [])
+    if "compoundMaxBranchNumber" in global_attrs and numbers:
+        global_attrs["compoundMaxBranchNumber"]["value"] = len(set(numbers))
+    if "compoundMaxBranchGeneration" in global_attrs and generations:
+        global_attrs["compoundMaxBranchGeneration"]["value"] = max(generations)
 
 
 def _detect_foliage_variants(species_name: str) -> list[str]:
@@ -208,6 +254,10 @@ def map_grove_to_pve(
     if profile:
         timings["map_primitives"] = time.perf_counter() - t0
 
+    # The compound globals count clusters, so they can only be resolved once the
+    # primitives carry the compound layer (XRFF-360).
+    _apply_compound_globals(pve_data)
+
     # Apply species-specific overrides from config files
     t0 = time.perf_counter() if profile else 0
     pve_data = apply_species_overrides(
@@ -350,12 +400,13 @@ def _compute_global_metadata_from_skeleton(global_attrs: dict, skeleton: Any) ->
             max_len = max(max_len, branch_len)
         global_attrs["max_curve_length"]["value"] = max_len
 
-    # compoundMaxBranchGeneration: max branch depth
+    # compoundMaxBranchGeneration / compoundMaxBranchNumber are seeded from raw
+    # topology here so the globals are never empty, then corrected against the
+    # compound layer once the primitives exist -- see _apply_compound_globals().
     if "compoundMaxBranchGeneration" in global_attrs:
         max_gen = _max_branch_generation(skeleton)
         global_attrs["compoundMaxBranchGeneration"]["value"] = max_gen
 
-    # compoundMaxBranchNumber: same as branch count for now
     if "compoundMaxBranchNumber" in global_attrs:
         global_attrs["compoundMaxBranchNumber"]["value"] = num_branches
 
@@ -1048,54 +1099,28 @@ def _map_primitives_from_skeleton(
             0
         ] * num_branches
 
-    # compoundBranchGeneration: Use same as branchGeneration
-    if "compoundBranchGeneration" in primitives_data["attributes"]:
-        if "branchGeneration" in primitives_data["attributes"]:
-            gen_key = (
-                "values"
-                if "values" in primitives_data["attributes"]["branchGeneration"]
-                else "value"
-            )
-            generations = primitives_data["attributes"]["branchGeneration"][gen_key]
-        else:
-            generations = [0] * num_branches
+    # The compound layer is a second, coarser hierarchy: a compound branch is a
+    # CLUSTER of branches collapsing a main axis and its continuations, which is
+    # why the shipped MegaPlants presets cap compoundMaxBranchGeneration at 2-3
+    # while branchGeneration runs to 6. Copying branchGeneration/branchNumber
+    # into these three fields made the layer information-free (XRFF-360).
+    compound = build_compound_hierarchy(
+        _compound_source_parents(primitives_data, num_branches),
+        _compound_source_generations(primitives_data, num_branches),
+    )
+    for attribute, key in (
+        ("compoundBranchGeneration", "compound_generation"),
+        ("compoundBranchNumber", "compound_number"),
+        ("compoundBranchParentNumber", "compound_parent_number"),
+    ):
+        if attribute not in primitives_data["attributes"]:
+            continue
         value_key = (
             "values"
-            if "values" in primitives_data["attributes"]["compoundBranchGeneration"]
+            if "values" in primitives_data["attributes"][attribute]
             else "value"
         )
-        primitives_data["attributes"]["compoundBranchGeneration"][
-            value_key
-        ] = generations
-
-    # compoundBranchNumber: Sequential numbering
-    if "compoundBranchNumber" in primitives_data["attributes"]:
-        value_key = (
-            "values"
-            if "values" in primitives_data["attributes"]["compoundBranchNumber"]
-            else "value"
-        )
-        primitives_data["attributes"]["compoundBranchNumber"][value_key] = list(
-            range(num_branches)
-        )
-
-    # compoundBranchParentNumber: Use same as branchParentNumber
-    if "compoundBranchParentNumber" in primitives_data["attributes"]:
-        if "branchParentNumber" in primitives_data["attributes"]:
-            parent_key = (
-                "values"
-                if "values" in primitives_data["attributes"]["branchParentNumber"]
-                else "value"
-            )
-            parents = primitives_data["attributes"]["branchParentNumber"][parent_key]
-        else:
-            parents = [0] * num_branches
-        value_key = (
-            "values"
-            if "values" in primitives_data["attributes"]["compoundBranchParentNumber"]
-            else "value"
-        )
-        primitives_data["attributes"]["compoundBranchParentNumber"][value_key] = parents
+        primitives_data["attributes"][attribute][value_key] = compound[key]
     if profile:
         timings["populate_attrs"] = time.perf_counter() - t0
 

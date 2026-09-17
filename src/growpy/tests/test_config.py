@@ -19,6 +19,47 @@ class TestGrowPyConfigDefaults:
         config = GrowPyConfig()
         assert config.random_seed == 42
 
+    def test_per_species_seed_overrides_the_global_one(self):
+        config = GrowPyConfig(
+            random_seed=512, random_seed_per_species={"norway_spruce": 7}
+        )
+        assert config.get_random_seed("norway_spruce") == 7
+        assert config.get_random_seed("Norway spruce") == 7
+        assert config.get_random_seed("european_beech") == 512
+        assert config.get_random_seed(None) == 512
+        assert GrowPyConfig().get_random_seed("norway_spruce") == 42
+
+    def test_surround_freeze_height_is_off_unless_configured(self):
+        assert GrowPyConfig().get_surround_freeze_height("norway_spruce") == 0.0
+        config = GrowPyConfig(
+            surround_freeze_height=12.0,
+            surround_freeze_height_per_species={"norway_spruce": 15.0},
+        )
+        assert config.get_surround_freeze_height("Norway spruce") == 15.0
+        assert config.get_surround_freeze_height("european_beech") == 12.0
+
+    def test_surround_freeze_height_loads_from_toml(self, tmp_path):
+        (tmp_path / "surround.toml").write_text(
+            "[surround]\nfreeze_height = 0.0\n"
+            "[surround.freeze_height_per_species]\nsilver_fir = 15.0\n"
+        )
+        config = GrowPyConfig.from_toml(tmp_path, set_as_global=False)
+        assert config.surround_freeze_height == 0.0
+        assert config.get_surround_freeze_height("silver_fir") == 15.0
+        assert config.get_surround_freeze_height("european_oak") == 0.0
+
+    def test_surround_height_per_species_falls_back_to_global(self, tmp_path):
+        # Arm B of the 2026-09-16 crown-separation ladder: a static shell at
+        # the goal height for one species, the global height for the rest.
+        assert GrowPyConfig(surround_height=6.5).get_surround_height("scots_pine") == 6.5
+        (tmp_path / "surround.toml").write_text(
+            "[surround]\nheight = 6.5\n"
+            "[surround.height_per_species]\ncommon_ash = 25.0\n"
+        )
+        config = GrowPyConfig.from_toml(tmp_path, set_as_global=False)
+        assert config.get_surround_height("Common ash") == 25.0
+        assert config.get_surround_height("european_oak") == 6.5
+
     def test_default_csv_file(self):
         config = GrowPyConfig()
         assert config.csv_file == Path("data/input/test.csv")
@@ -47,25 +88,61 @@ class TestGrowPyConfigDefaults:
         config = GrowPyConfig()
         assert config.export_static is False
 
-    def test_default_export_previews(self):
+    def test_previews_off_by_default(self):
+        """Visual QA aid; only the icons feed dataset_overview.md/.csv."""
         config = GrowPyConfig()
-        assert config.export_previews is True
+        assert config.export_previews is False
+
+    def test_export_control_images_off_by_default(self):
+        """QA aid nothing downstream consumes, and the costliest image stage."""
+        config = GrowPyConfig()
+        assert config.export_control_images is False
 
     def test_default_export_icons(self):
         config = GrowPyConfig()
         assert config.export_icons is True
 
-    def test_default_export_twig_density_is_none(self):
+    def test_default_export_twig_density_is_natural(self):
+        # 1.0 == Grove's natural density, since cutoff losses are now recovered
+        # rather than compensated for by a multiplier.
         config = GrowPyConfig()
-        assert config.export_twig_density is None
+        assert config.export_twig_density == 1.0
 
-    def test_default_export_twig_density_conifer(self):
+    def test_default_twig_reattach_threshold(self):
         config = GrowPyConfig()
-        assert config.export_twig_density_conifer == 1.0
+        assert config.export_twig_reattach_threshold == 0.01
 
-    def test_default_export_twig_density_broadleaf(self):
+    def test_default_twig_min_spacing_ratio(self):
         config = GrowPyConfig()
-        assert config.export_twig_density_broadleaf == 2.5
+        assert config.export_twig_min_spacing_ratio == 0.5
+
+    def test_twig_recovery_on_by_default(self):
+        config = GrowPyConfig()
+        assert config.export_twig_recovery is True
+
+    def test_default_twigs_planar_angle(self):
+        config = GrowPyConfig()
+        assert config.twigs_planar_angle == 1.0
+
+    def test_twig_density_per_species_empty_by_default(self):
+        config = GrowPyConfig()
+        assert config.export_twig_density_per_species == {}
+
+    def test_twig_density_base_falls_back_to_global(self):
+        config = GrowPyConfig(export_twig_density=0.25)
+        assert config.get_twig_density_base("Silver fir") == 0.25
+
+    def test_twig_density_base_prefers_per_species(self):
+        config = GrowPyConfig(
+            export_twig_density=0.25,
+            export_twig_density_per_species={"silver_fir": 0.016},
+        )
+        assert config.get_twig_density_base("silver_fir") == 0.016
+        # Common names must resolve to the same entry as standardized ones,
+        # because the export call site passes the common name.
+        assert config.get_twig_density_base("Silver fir") == 0.016
+        # A species with no override still gets the global value.
+        assert config.get_twig_density_base("Common ash") == 0.25
 
     def test_default_growth_models_cycles(self):
         config = GrowPyConfig()
@@ -121,6 +198,55 @@ verbose = true
         assert config.forest_quality == "high"  # default preserved
 
 
+class TestPveImportBaseFollowsProjectPath:
+    """An unset pve_import_base must follow project_path.
+
+    It used to carry its own default, so a config that pointed project_path
+    somewhere else silently sent the wind and PVE post-import scripts to a path
+    with no assemblies in it. The assemblies imported fine and then failed every
+    wind/PVE check downstream, with no warning.
+    """
+
+    def test_unset_follows_project_path(self):
+        config = GrowPyConfig(unreal_project_path="/Game/Assets/TheGrove_dec25")
+        assert config.unreal_pve_import_base == "/Game/Assets/TheGrove_dec25"
+
+    def test_unset_follows_project_path_default(self):
+        config = GrowPyConfig()
+        assert config.unreal_pve_import_base == config.unreal_project_path
+
+    def test_explicit_value_is_preserved(self):
+        config = GrowPyConfig(
+            unreal_project_path="/Game/Assets/TheGrove_dec25",
+            unreal_pve_import_base="/Game/Somewhere/Else",
+        )
+        assert config.unreal_pve_import_base == "/Game/Somewhere/Else"
+
+    def test_toml_project_path_propagates(self, tmp_path):
+        toml_content = b"""
+[unreal]
+project_path = "/Game/Assets/TheGrove_dec25"
+"""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(toml_content)
+
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.unreal_project_path == "/Game/Assets/TheGrove_dec25"
+        assert config.unreal_pve_import_base == "/Game/Assets/TheGrove_dec25"
+
+    def test_toml_explicit_override_still_splits(self, tmp_path):
+        toml_content = b"""
+[unreal]
+project_path = "/Game/Assets/TheGrove_dec25"
+pve_import_base = "/Game/Assets/TheGrove"
+"""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(toml_content)
+
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.unreal_pve_import_base == "/Game/Assets/TheGrove"
+
+
 class TestGrowPyConfigSurroundSection:
     """Tests for [surround] radii parsing."""
 
@@ -139,7 +265,21 @@ radii = [15.0, 0.0, 7.0]
         config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
         assert config.surround_radii == [0.0, 7.0, 15.0]
 
-    def test_zero_radius_always_included(self, tmp_path):
+    def test_radii_taken_literally_without_forcing_zero(self, tmp_path):
+        """A configured radii list is used as written -- 0.0 is NOT injected.
+
+        This used to force an open-grown baseline into every set, so
+        ``radii = [7.0, 15.0]`` resolved to [0.0, 7.0, 15.0]. That made it
+        impossible to build one radius on its own, and because
+        generate_forest_stages wipes a radius subdirectory before writing it,
+        a run meant to add one radius would also delete an existing, complete
+        r00 and rewrite it under that run's config. Observed 2026-08-23: a
+        shaded pass destroyed 15 finished r00 stage-cells.
+
+        Wanting a baseline in the dataset is still right -- it just belongs to
+        whoever writes the config (config/surround.toml lists 0.0 explicitly),
+        not to the parser, which should not disagree with the file it read.
+        """
         toml_content = b"""
 [surround]
 radii = [7.0, 15.0]
@@ -148,7 +288,14 @@ radii = [7.0, 15.0]
         toml_file.write_bytes(toml_content)
 
         config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
-        assert config.surround_radii == [0.0, 7.0, 15.0]
+        assert config.surround_radii == [7.0, 15.0]
+
+    def test_single_radius_stays_single(self, tmp_path):
+        """The per-radius production passes depend on this exactly."""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(b"[surround]\nradii = [5.0]\n")
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.surround_radii == [5.0]
 
     def test_surround_shape_params(self, tmp_path):
         toml_content = b"""
@@ -166,6 +313,102 @@ grow = false
         assert config.surround_height == pytest.approx(4.0)
         assert config.surround_grow is False
 
+    def test_density_per_species_radius_resolution_order(self, tmp_path):
+        """Shell density resolves radius cell -> species -> global, in that order.
+
+        The per-radius level is not a refinement of the per-species one: these
+        values are per-species thresholds measured against a particular shell
+        distance, so they do not transfer between radii by interpolation. A cell
+        must therefore win over its species' value, and leave every other cell
+        of the same species untouched.
+        """
+        toml_content = b"""
+[surround]
+radii = [5.0, 10.0, 20.0]
+density = 0.45
+
+[surround.density_per_species]
+european_beech = 0.9
+silver_fir = 0.7
+
+[surround.density_per_species_radius.european_beech]
+r05 = 0.6
+"""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(toml_content)
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+
+        # The overridden cell wins.
+        assert config.get_surround_density("european_beech", 5.0) == pytest.approx(0.6)
+        # Its sibling radii keep the per-species value.
+        assert config.get_surround_density("european_beech", 10.0) == pytest.approx(0.9)
+        assert config.get_surround_density("european_beech", 20.0) == pytest.approx(0.9)
+        # A species with no cell at all falls through to per-species.
+        assert config.get_surround_density("silver_fir", 5.0) == pytest.approx(0.7)
+        # A species in neither table falls through to the global.
+        assert config.get_surround_density("common_ash", 5.0) == pytest.approx(0.45)
+
+    def test_density_per_species_radius_accepts_common_names(self, tmp_path):
+        """Callers pass whatever the CSV holds, so both name forms must resolve."""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(
+            b"[surround]\ndensity = 0.45\n\n"
+            b"[surround.density_per_species_radius.european_beech]\nr05 = 0.6\n"
+        )
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+
+        assert config.get_surround_density("European beech", 5.0) == pytest.approx(0.6)
+        assert config.get_surround_density("european_beech", 5.0) == pytest.approx(0.6)
+
+    def test_density_per_species_radius_skipped_without_a_radius(self, tmp_path):
+        """radius=None means no shell (r00), so a cell must not leak into it."""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(
+            b"[surround]\ndensity = 0.45\n\n"
+            b"[surround.density_per_species]\neuropean_beech = 0.9\n\n"
+            b"[surround.density_per_species_radius.european_beech]\nr05 = 0.6\n"
+        )
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+
+        assert config.get_surround_density("european_beech") == pytest.approx(0.9)
+
+    def test_density_per_species_radius_defaults_empty(self):
+        """The table is opt-in; an absent one must not shadow anything."""
+        config = GrowPyConfig()
+        assert config.surround_density_per_species_radius == {}
+
+    def test_species_curves_default_on(self):
+        """A curve declared in tracked config must take effect by default.
+
+        Regression: this was wired to `calibration_align_height`, an unrelated
+        yield-table flag that was false, so every `<param>_curve` block in every
+        preset was silently ignored. The conifer drop ramps had no effect no
+        matter how they were tuned -- transition_cycle 8 and 40 produced
+        byte-identical trees -- because the simulation ran on the preset's flat
+        static value instead.
+        """
+        assert GrowPyConfig().forest_species_curves is True
+
+    def test_species_curves_is_not_tied_to_align_height(self, tmp_path):
+        """The two settings are unrelated and must move independently."""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(
+            b"[forest]\nspecies_curves = true\n\n"
+            b"[calibration]\nalign_height = false\n"
+        )
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+
+        assert config.forest_species_curves is True
+        assert config.calibration_align_height is False
+
+    def test_species_curves_can_be_turned_off(self, tmp_path):
+        """Off is still reachable, to reproduce a pre-2026-09-10 run."""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(b"[forest]\nspecies_curves = false\n")
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.forest_species_curves is False
+
+
     def test_toml_export_section(self, tmp_path):
         toml_content = b"""
 [export]
@@ -181,11 +424,11 @@ twig_density = 0.5
         assert config.export_static is True
         assert config.export_twig_density == 0.5
 
-
     def test_toml_export_previews_and_icons(self, tmp_path):
         toml_content = b"""
 [export]
 previews = false
+export_control = false
 icons = false
 """
         toml_file = tmp_path / "growpy.toml"
@@ -193,21 +436,41 @@ icons = false
 
         config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
         assert config.export_previews is False
+        assert config.export_control_images is False
         assert config.export_icons is False
 
-    def test_toml_export_twig_density_conifer_broadleaf(self, tmp_path):
-        toml_content = b"""
-[export]
-twig_density_conifer = 0.8
-twig_density_broadleaf = 3.0
-"""
-        toml_file = tmp_path / "growpy.toml"
-        toml_file.write_bytes(toml_content)
+    def test_toml_retired_per_habit_density_keys_raise(self, tmp_path):
+        # These were hand-set guesses at the cutoff loss. Failing loudly beats
+        # silently ignoring them and shipping a crown at the wrong density.
+        for key in ("twig_density_conifer", "twig_density_broadleaf"):
+            toml_file = tmp_path / f"growpy_{key}.toml"
+            toml_file.write_bytes(f"[export]\n{key} = 0.8\n".encode())
+            with pytest.raises(ValueError, match="was retired"):
+                GrowPyConfig.from_toml(toml_file, set_as_global=False)
 
+    def test_toml_twig_reattach_threshold(self, tmp_path):
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(b"[export]\ntwig_reattach_threshold = 0.05\n")
         config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
-        assert config.export_twig_density is None
-        assert config.export_twig_density_conifer == 0.8
-        assert config.export_twig_density_broadleaf == 3.0
+        assert config.export_twig_reattach_threshold == 0.05
+
+    def test_toml_twig_min_spacing_ratio(self, tmp_path):
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(b"[export]\ntwig_min_spacing_ratio = 0.75\n")
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.export_twig_min_spacing_ratio == 0.75
+
+    def test_toml_twig_recovery_off(self, tmp_path):
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(b"[export]\ntwig_recovery = false\n")
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.export_twig_recovery is False
+
+    def test_toml_twigs_planar_angle(self, tmp_path):
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(b"[twigs]\nplanar_angle = 2.5\n")
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.twigs_planar_angle == 2.5
 
     def test_toml_export_mode_helios(self, tmp_path):
         toml_content = b"""
@@ -219,6 +482,17 @@ mode = "helios"
 
         config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
         assert config.export_mode == "helios"
+
+    def test_toml_export_mode_growth_json_only(self, tmp_path):
+        toml_content = b"""
+[export]
+mode = "growth_json_only"
+"""
+        toml_file = tmp_path / "growpy.toml"
+        toml_file.write_bytes(toml_content)
+
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.export_mode == "growth_json_only"
 
     def test_toml_export_mode_default_is_unreal(self):
         assert GrowPyConfig().export_mode == "unreal"
@@ -462,8 +736,6 @@ class TestCliMappingsConsistency:
         assert not overlap, f"Fields both allowlisted and CLI-mapped: {sorted(overlap)}"
 
 
-
-
 class TestGlobalConfig:
     """Tests for global config singleton management."""
 
@@ -481,6 +753,68 @@ class TestGlobalConfig:
 
     def teardown_method(self):
         set_global_config(None)
+
+
+class TestTrackedConfigTableShape:
+    """A TOML sub-table captures every key after it.
+
+    Every tracked config file with a ``[section.sub]`` table must keep its
+    plain ``[section]`` keys ABOVE the first sub-table, or they silently
+    land in the sub-table and the dataclass default wins. It happened to
+    ``[unreal] generate_pve_graphs`` (read false for weeks, 2026-09-15),
+    ``[surround] density_per_species`` (A35) and the beech twig density.
+    """
+
+    CONFIG_DIR = Path(__file__).resolve().parents[3] / "config"
+
+    @pytest.mark.parametrize(
+        "name, wanted",
+        [
+            (
+                "unreal.toml",
+                {"generate_pve_graphs", "pve_content_root", "pve_triangle_cap"},
+            ),
+            ("general.toml", {"random_seed", "csv_file", "output_dir"}),
+        ],
+    )
+    def test_plain_keys_are_not_swallowed_by_a_sub_table(self, name, wanted):
+        import tomllib
+
+        data = tomllib.loads((self.CONFIG_DIR / name).read_text(encoding="utf-8"))
+        section = data[name.split(".")[0]]
+        missing = {k for k in wanted if k not in section}
+        assert not missing, (
+            f"{name}: {sorted(missing)} sit below a [{name.split('.')[0]}.<sub>] "
+            f"table and are read into it -- move the sub-tables to the end"
+        )
+
+    def test_the_per_species_fraction_table_did_not_swallow_its_own_section(self):
+        """XRFF-466 added a sub-table INSIDE [unreal.growth_data_json].
+
+        Written above the plain keys it would swallow every one of them and the
+        exporter would silently fall back to its hard-coded defaults -- with no
+        error, just trees decimated at the wrong fraction.
+        """
+        import tomllib
+
+        data = tomllib.loads(
+            (self.CONFIG_DIR / "unreal.toml").read_text(encoding="utf-8")
+        )
+        section = data["unreal"]["growth_data_json"]
+        for key in (
+            "enabled",
+            "profile_mean",
+            "min_branch_radius",
+            "min_branch_radius_fraction",
+            "min_point_spacing",
+        ):
+            assert key in section, (
+                f"{key} sits below "
+                f"[unreal.growth_data_json.min_branch_radius_fraction_per_species]"
+            )
+        per_species = section["min_branch_radius_fraction_per_species"]
+        assert per_species, "the per-species table is empty"
+        assert all(isinstance(v, float) for v in per_species.values())
 
 
 class TestFindConfigDir:
@@ -560,37 +894,40 @@ class TestDensityVariants:
         assert variants[0][0] == "bare"
 
 
-
 class TestGetTwigDensityBase:
-    """Tests for GrowPyConfig.get_twig_density_base species-type resolution."""
+    """get_twig_density_base is now species-independent.
 
-    def test_explicit_override_wins_for_any_species(self, monkeypatch):
+    The per-habit constants it used to resolve existed only to guess at the twig
+    loss from build_cutoff_thickness. Recovery restores those twigs exactly, per
+    tree, so the multiplier is purely artistic and must not vary by species.
+    """
+
+    def test_returns_configured_density(self):
         config = GrowPyConfig(export_twig_density=0.7)
-        monkeypatch.setattr(
-            "growpy.config.paths.get_species_growth_habit", lambda species: "broadleaf"
-        )
         assert config.get_twig_density_base("European beech") == 0.7
 
-    def test_broadleaf_species_uses_broadleaf_default(self, monkeypatch):
-        config = GrowPyConfig()
+    def test_default_is_natural_density(self):
+        assert GrowPyConfig().get_twig_density_base("European oak") == 1.0
+
+    def test_identical_across_growth_habits(self, monkeypatch):
+        # Would have returned 2.5 vs 1.0 before; a beech and a spruce must now
+        # get the same multiplier, because each tree self-calibrates.
+        config = GrowPyConfig(export_twig_density=1.3)
         monkeypatch.setattr(
             "growpy.config.paths.get_species_growth_habit", lambda species: "broadleaf"
         )
-        assert config.get_twig_density_base("European beech") == 2.5
-
-    def test_conifer_species_uses_conifer_default(self, monkeypatch):
-        config = GrowPyConfig()
+        broadleaf = config.get_twig_density_base("European beech")
         monkeypatch.setattr(
             "growpy.config.paths.get_species_growth_habit", lambda species: "conifer"
         )
-        assert config.get_twig_density_base("Norway spruce") == 1.0
+        assert config.get_twig_density_base("Norway spruce") == broadleaf == 1.3
 
-    def test_unclassified_species_falls_back_to_conifer_default(self, monkeypatch):
-        config = GrowPyConfig()
+    def test_unclassified_species_resolves(self, monkeypatch):
+        config = GrowPyConfig(export_twig_density=0.9)
         monkeypatch.setattr(
             "growpy.config.paths.get_species_growth_habit", lambda species: None
         )
-        assert config.get_twig_density_base("Unknown species") == 1.0
+        assert config.get_twig_density_base("Unknown species") == 0.9
 
 
 class TestGetSimplificationRatios:
@@ -599,22 +936,34 @@ class TestGetSimplificationRatios:
     def test_unlisted_species_returns_all_globals(self):
         config = GrowPyConfig(
             helios_simplification_ratios={
-                "bark": 0.2, "wood": 0.2, "leaf": 0.5, "fruit": 0.2,
+                "bark": 0.2,
+                "wood": 0.2,
+                "leaf": 0.5,
+                "fruit": 0.2,
             }
         )
         assert config.get_simplification_ratios("selected_scots_pine") == {
-            "bark": 0.2, "wood": 0.2, "leaf": 0.5, "fruit": 0.2,
+            "bark": 0.2,
+            "wood": 0.2,
+            "leaf": 0.5,
+            "fruit": 0.2,
         }
 
     def test_per_species_override_merges_over_globals(self):
         config = GrowPyConfig(
             helios_simplification_ratios={
-                "bark": 0.2, "wood": 0.2, "leaf": 0.5, "fruit": 0.2,
+                "bark": 0.2,
+                "wood": 0.2,
+                "leaf": 0.5,
+                "fruit": 0.2,
             },
             helios_simplification_per_species={
                 "selected_european_oak": {"bark": 0.1},
             },
         )
         assert config.get_simplification_ratios("selected_european_oak") == {
-            "bark": 0.1, "wood": 0.2, "leaf": 0.5, "fruit": 0.2,
+            "bark": 0.1,
+            "wood": 0.2,
+            "leaf": 0.5,
+            "fruit": 0.2,
         }

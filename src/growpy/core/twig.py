@@ -13,6 +13,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Grove's twig frame quaternion, (w, x, y, z). Rotating +X by it reproduces
+# get_twig_directions() exactly, so it carries the growth direction AND the
+# phyllotactic roll Grove derives from the species preset.
+IDENTITY_QUAT = (1.0, 0.0, 0.0, 0.0)
+
 
 @dataclass
 class TwigPlacement:
@@ -21,14 +26,19 @@ class TwigPlacement:
     type: str  # 'twig_long', 'twig_short', 'twig_upward', 'twig_dead'
     position: tuple[float, float, float]
     normal: tuple[float, float, float]  # Facing direction (from get_twig_directions)
-    orientation: tuple[float, float, float] = (
-        0.0,
-        0.0,
-        1.0,
-    )  # Up vector (from get_twig_orientations)
+    orientation: tuple[float, float, float, float] = IDENTITY_QUAT
+    # Grove's twig frame quaternion (w, x, y, z) from get_twig_orientations()
     scale: float = 1.0
     bone_id: int | None = None  # Direct bone ID from point_attribute_bone_id
     branch_id: int | None = None  # Branch ID for binding to branch_X joints
+    prototype: int | None = None
+    # Index into this twig type's prototype list. None means "any", and
+    # `assembly_export` then draws one at random -- right for 1:1 twigs, where
+    # every prototype is the same size and the draw is free variation. A
+    # compound part is not: prototypes span 51 to 139,500 faces, so a random
+    # draw puts the wrong-sized part on the branch and inflates the flattened
+    # fallback total to instances x MEAN rather than the sum actually
+    # needed (XRFF-365).
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
@@ -40,6 +50,7 @@ class TwigPlacement:
             "scale": self.scale,
             "bone_id": self.bone_id,
             "branch_id": self.branch_id,
+            "prototype": self.prototype,
         }
 
 
@@ -169,6 +180,143 @@ def rotation_matrix_to_quaternion(
         return (1.0, 0.0, 0.0, 0.0)
 
 
+# Angle between a twig's growth direction and its parent branch axis. 0 deg lays
+# the twig flat along the bark, so its leaves fan straight into the branch mesh;
+# 90 deg stands it edge-on. Real twigs leave the branch somewhere in between.
+DEFAULT_TWIG_BRANCH_ANGLE_RAD = math.radians(50.0)
+
+# Distance (m) beyond which a twig orphaned by build_cutoff_thickness is pulled
+# back onto the surviving surface instead of left where Grove placed it. Most
+# orphans sit ~1 mm out; long-shoot species such as Scots pine strand a third
+# of theirs 10-100 mm out, which reads as floating foliage.
+DEFAULT_TWIG_REATTACH_THRESHOLD = 0.01
+
+# Branches removed close together each leave behind a reattached twig, and
+# those orphans keep their pre-cutoff position -- so several compensation
+# twigs can land on top of each other, or on top of twigs that already
+# survived nearby, reading as an unnatural dense tuft. A recovered twig is
+# rejected once it lands closer than this fraction of the tree's own median
+# living-twig spacing, so the crowding guard self-calibrates to how dense
+# THIS crown's real twigs already are rather than using a fixed distance.
+# 0 disables the guard.
+DEFAULT_TWIG_MIN_SPACING_RATIO = 0.5
+
+
+def _normalize(v: tuple[float, float, float]) -> tuple[float, float, float] | None:
+    """Return the unit vector, or None when the input is degenerate."""
+    length = math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+    if length < 1e-12:
+        return None
+    return (v[0] / length, v[1] / length, v[2] / length)
+
+
+def _grid_cell(
+    p: tuple[float, float, float], cell_size: float
+) -> tuple[int, int, int]:
+    """Spatial hash bucket for ``p`` at the given cell size."""
+    return (
+        math.floor(p[0] / cell_size),
+        math.floor(p[1] / cell_size),
+        math.floor(p[2] / cell_size),
+    )
+
+
+def _face_area(vertices: list, face: list[int]) -> float:
+    """Area of a polygon face via fan triangulation."""
+    if len(face) < 3:
+        return 0.0
+    v0 = vertices[face[0]]
+    total = 0.0
+    for k in range(1, len(face) - 1):
+        a = vertices[face[k]]
+        b = vertices[face[k + 1]]
+        ux, uy, uz = a[0] - v0[0], a[1] - v0[1], a[2] - v0[2]
+        wx, wy, wz = b[0] - v0[0], b[1] - v0[1], b[2] - v0[2]
+        cx = uy * wz - uz * wy
+        cy = uz * wx - ux * wz
+        cz = ux * wy - uy * wx
+        total += 0.5 * math.sqrt(cx * cx + cy * cy + cz * cz)
+    return total
+
+
+def _polygon_normal(
+    face_verts: list[tuple[float, float, float]],
+) -> tuple[float, float, float]:
+    """Newell normal of a polygon given its vertex coordinates.
+
+    Grove documents the twig duplication triangle's normal as the twig's
+    orientation, so this recovers a growth direction straight from the mesh for
+    faces that have no entry in the twig arrays.
+    """
+    normal = [0.0, 0.0, 0.0]
+    n = len(face_verts)
+    for i in range(n):
+        v1 = face_verts[i]
+        v2 = face_verts[(i + 1) % n]
+        normal[0] += (v1[1] - v2[1]) * (v1[2] + v2[2])
+        normal[1] += (v1[2] - v2[2]) * (v1[0] + v2[0])
+        normal[2] += (v1[0] - v2[0]) * (v1[1] + v2[1])
+    return _normalize((normal[0], normal[1], normal[2])) or (0.0, 0.0, 1.0)
+
+
+def _quat_forward(
+    q: tuple[float, float, float, float],
+) -> tuple[float, float, float]:
+    """The +X axis rotated by a (w, x, y, z) unit quaternion.
+
+    Grove's twig frame carries the growth direction on +X, so this recovers a
+    twig's direction from its quaternion (measured against
+    get_twig_directions(): 0.00 deg error).
+    """
+    w, x, y, z = q
+    return (
+        1.0 - 2.0 * (y * y + z * z),
+        2.0 * (x * y + w * z),
+        2.0 * (x * z - w * y),
+    )
+
+
+def direction_to_quaternion(
+    direction: tuple[float, float, float],
+    reference: tuple[float, float, float] | None = None,
+) -> tuple[float, float, float, float]:
+    """Quaternion (w, x, y, z) rotating +X onto ``direction``.
+
+    Grove twig assets grow along +X from their pivot, so the growth direction is
+    the frame's X axis. ``reference`` (normally the parent branch axis) resolves
+    the roll about that axis, keeping the leaf plane oriented relative to the
+    branch instead of to an arbitrary world axis.
+    """
+    x_axis = _normalize(direction)
+    if x_axis is None:
+        return IDENTITY_QUAT
+    ref = _normalize(reference) if reference is not None else None
+    if ref is None:
+        ref = (0.0, 0.0, 1.0)
+    d = ref[0] * x_axis[0] + ref[1] * x_axis[1] + ref[2] * x_axis[2]
+    z_axis = _normalize(
+        (ref[0] - d * x_axis[0], ref[1] - d * x_axis[1], ref[2] - d * x_axis[2])
+    )
+    if z_axis is None:
+        alt = (1.0, 0.0, 0.0) if abs(x_axis[0]) < 0.9 else (0.0, 1.0, 0.0)
+        d = alt[0] * x_axis[0] + alt[1] * x_axis[1] + alt[2] * x_axis[2]
+        z_axis = _normalize(
+            (alt[0] - d * x_axis[0], alt[1] - d * x_axis[1], alt[2] - d * x_axis[2])
+        ) or (0.0, 0.0, 1.0)
+    y_axis = (
+        z_axis[1] * x_axis[2] - z_axis[2] * x_axis[1],
+        z_axis[2] * x_axis[0] - z_axis[0] * x_axis[2],
+        z_axis[0] * x_axis[1] - z_axis[1] * x_axis[0],
+    )
+    return rotation_matrix_to_quaternion(
+        [
+            [x_axis[0], y_axis[0], z_axis[0]],
+            [x_axis[1], y_axis[1], z_axis[1]],
+            [x_axis[2], y_axis[2], z_axis[2]],
+        ]
+    )
+
+
 def extract_twig_placements_from_model(
     model: Any,
     twig_types: list[str] | None = None,
@@ -197,12 +345,11 @@ def extract_twig_placements_from_model(
 
     placements = {twig_type: [] for twig_type in twig_types}
 
-    # Use Grove API methods for twig data - these return flat lists with 3 floats per twig
+    # Grove twig arrays. Locations and directions hold 3 floats per twig;
+    # orientations hold a unit QUATERNION -- 4 floats per twig, (w, x, y, z).
     twig_locations = model.get_twig_locations()  # [x1, y1, z1, x2, y2, z2, ...]
     twig_directions = model.get_twig_directions()  # [dx1, dy1, dz1, dx2, dy2, dz2, ...]
-    twig_orientations = (
-        model.get_twig_orientations()
-    )  # [ox1, oy1, oz1, ox2, oy2, oz2, ...]
+    twig_orientations = model.get_twig_orientations()  # [w1, x1, y1, z1, w2, ...]
 
     # Calculate number of twigs from flat array length
     num_twigs = len(twig_locations) // 3
@@ -216,13 +363,23 @@ def extract_twig_placements_from_model(
             f"but twig_directions has {num_directions}. Grove API returned inconsistent data."
         )
 
+    # Orientations are quaternions (stride 4). Reading them at stride 3 yields
+    # non-unit garbage, so verify the stride rather than trusting it.
+    num_orientations = len(twig_orientations) // 4
+    if twig_orientations and num_orientations != num_twigs:
+        raise ValueError(
+            f"Twig array length mismatch: twig_locations has {num_twigs} twigs "
+            f"but twig_orientations has {num_orientations} quaternions "
+            f"({len(twig_orientations)} floats). Grove API returned inconsistent data."
+        )
+
     if verbose:
         logger.debug("TWIG EXTRACTION: %d twigs in Grove API arrays", num_twigs)
         logger.debug(
             "  twig_locations=%d  twig_directions=%d  twig_orientations=%d",
             len(twig_locations) // 3,
             len(twig_directions) // 3,
-            len(twig_orientations) // 3,
+            len(twig_orientations) // 4,
         )
 
     # Extract bone IDs for binding - prefer branch-based approach if available
@@ -280,6 +437,18 @@ def extract_twig_placements_from_model(
                     branch_root_bones[local_branch_id] = bone_idx
 
     faces = model.faces
+    # Grove rebuilds the entire point list on every `.points` access (~19 ms at
+    # 685k points), and the dead-twig branch in the face loop below reads it once
+    # per face -- on a pre-cutoff oak that was 8.4k rebuilds, ~2.7 min per
+    # exported stage. Materialise it once here instead. Only that branch needs
+    # it: when scaled_points is given the centroid is computed from there.
+    points = None if scaled_points is not None else list(model.points)
+    # Grove's get_twig_* arrays cover LIVING twigs only, but the mesh still
+    # carries a full frame for the dead ones: point_attribute_orientation holds
+    # the twig duplication triangle's quaternion. Measured on a 12-cycle oak it
+    # reproduces get_twig_orientations() to 0.00 deg on every living twig face,
+    # and every dead face carries a unit quaternion too.
+    point_orientations = getattr(model, "point_attribute_orientation", None)
 
     # Get twig type attributes for all faces
     twig_type_attrs = {}
@@ -309,32 +478,49 @@ def extract_twig_placements_from_model(
 
             # Dead twigs have face attributes but NO entries in Grove's
             # twig location/direction/orientation arrays (those only hold
-            # living twigs).  Use face centroid + default vectors instead.
+            # living twigs). Take their frame off the mesh instead: Grove
+            # documents the duplication triangle's normal as the twig's
+            # orientation, and point_attribute_orientation carries the same
+            # quaternion it exposes for living twigs.
             if is_dead:
-                cx, cy, cz = 0.0, 0.0, 0.0
-                n = len(face)
                 if scaled_points is not None:
-                    for vi in face:
-                        sp = scaled_points[vi]
-                        cx += sp[0]
-                        cy += sp[1]
-                        cz += sp[2]
+                    face_verts = [scaled_points[vi] for vi in face]
                 else:
-                    pts = model.points
+                    face_verts = []
                     for vi in face:
-                        p = pts[vi]
+                        p = points[vi]
                         if hasattr(p, "x"):
-                            cx += p.x
-                            cy += p.y
-                            cz += p.z
+                            face_verts.append((p.x, p.y, p.z))
                         else:
-                            cx += p[0]
-                            cy += p[1]
-                            cz += p[2]
-                inv_n = 1.0 / n
-                position = (cx * inv_n, cy * inv_n, cz * inv_n)
-                normal = (0.0, 0.0, 1.0)
-                orientation = (0.0, 0.0, 1.0)
+                            face_verts.append((p[0], p[1], p[2]))
+                inv_n = 1.0 / len(face_verts)
+                position = (
+                    sum(v[0] for v in face_verts) * inv_n,
+                    sum(v[1] for v in face_verts) * inv_n,
+                    sum(v[2] for v in face_verts) * inv_n,
+                )
+                orientation = IDENTITY_QUAT
+                if point_orientations is not None and len(face) > 0:
+                    vert_idx = face[0]
+                    if vert_idx < len(point_orientations):
+                        q = point_orientations[vert_idx]
+                        if q is not None and len(q) == 4:
+                            orientation = (
+                                float(q[0]),
+                                float(q[1]),
+                                float(q[2]),
+                                float(q[3]),
+                            )
+                if orientation == IDENTITY_QUAT:
+                    # No quaternion available: fall back to the triangle normal,
+                    # which is the orientation Grove documents. Building the
+                    # quaternion here rather than leaving it identity keeps the
+                    # exporter off its constant world-axis fallback, which would
+                    # aim every dead twig in the same direction.
+                    normal = _polygon_normal(face_verts)
+                    orientation = direction_to_quaternion(normal)
+                else:
+                    normal = _quat_forward(orientation)
             else:
                 # Living twig — index into Grove arrays
                 if twig_idx >= num_twigs:
@@ -362,12 +548,14 @@ def extract_twig_placements_from_model(
                     twig_directions[base_idx + 1],
                     twig_directions[base_idx + 2],
                 )
-                orientation = (0.0, 0.0, 1.0)
-                if twig_orientations and base_idx + 2 < len(twig_orientations):
+                orientation = IDENTITY_QUAT
+                quat_idx = twig_idx * 4
+                if twig_orientations and quat_idx + 3 < len(twig_orientations):
                     orientation = (
-                        twig_orientations[base_idx],
-                        twig_orientations[base_idx + 1],
-                        twig_orientations[base_idx + 2],
+                        twig_orientations[quat_idx],
+                        twig_orientations[quat_idx + 1],
+                        twig_orientations[quat_idx + 2],
+                        twig_orientations[quat_idx + 3],
                     )
 
             # BONE & BRANCH ASSIGNMENT:
@@ -391,10 +579,7 @@ def extract_twig_placements_from_model(
                     twig_bone_id = global_bone_id
 
             # Branch ID: prefer face_attribute_branch_id (covers all branches)
-            if (
-                face_branch_ids is not None
-                and face_idx < len(face_branch_ids)
-            ):
+            if face_branch_ids is not None and face_idx < len(face_branch_ids):
                 global_branch_id = face_branch_ids[face_idx]
                 branch_id_for_twig = global_branch_id - branch_id_offset
 
@@ -487,6 +672,506 @@ def extract_twig_placements_from_model(
     return placements
 
 
+def _quat_multiply(
+    a: tuple[float, float, float, float], b: tuple[float, float, float, float]
+) -> tuple[float, float, float, float]:
+    """Hamilton product of two (w, x, y, z) quaternions."""
+    aw, ax, ay, az = a
+    bw, bx, by, bz = b
+    return (
+        aw * bw - ax * bx - ay * by - az * bz,
+        aw * bx + ax * bw + ay * bz - az * by,
+        aw * by - ax * bz + ay * bw + az * bx,
+        aw * bz + ax * by - ay * bx + az * bw,
+    )
+
+
+def shortest_arc_quaternion(
+    from_vec: tuple[float, float, float], to_vec: tuple[float, float, float]
+) -> tuple[float, float, float, float]:
+    """Quaternion rotating ``from_vec`` onto ``to_vec`` by the shortest arc.
+
+    Used to re-aim a recovered twig without discarding the roll Grove gave it:
+    applying this to the twig's own quaternion turns the growth direction while
+    carrying the leaf plane along with it.
+    """
+    a = _normalize(from_vec)
+    b = _normalize(to_vec)
+    if a is None or b is None:
+        return IDENTITY_QUAT
+    d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+    if d >= 1.0 - 1e-9:
+        return IDENTITY_QUAT
+    if d <= -1.0 + 1e-9:
+        # Antiparallel: any perpendicular axis gives a valid 180 deg rotation.
+        axis = _normalize((a[1], -a[0], 0.0)) or _normalize((0.0, a[2], -a[1]))
+        if axis is None:
+            return IDENTITY_QUAT
+        return (0.0, axis[0], axis[1], axis[2])
+    cross = (
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    )
+    s = math.sqrt((1.0 + d) * 2.0)
+    inv_s = 1.0 / s
+    q = (s * 0.5, cross[0] * inv_s, cross[1] * inv_s, cross[2] * inv_s)
+    length = math.sqrt(sum(c * c for c in q))
+    if length < 1e-12:
+        return IDENTITY_QUAT
+    return (q[0] / length, q[1] / length, q[2] / length, q[3] / length)
+
+
+def _closest_points_on_triangles(p, a, b, c):
+    """Vectorised closest point on a triangle (Ericson). All arrays (N, 3)."""
+    import numpy as np
+
+    ab, ac, ap = b - a, c - a, p - a
+    d1 = np.einsum("ij,ij->i", ab, ap)
+    d2 = np.einsum("ij,ij->i", ac, ap)
+    bp = p - b
+    d3 = np.einsum("ij,ij->i", ab, bp)
+    d4 = np.einsum("ij,ij->i", ac, bp)
+    cp = p - c
+    d5 = np.einsum("ij,ij->i", ab, cp)
+    d6 = np.einsum("ij,ij->i", ac, cp)
+    va = d3 * d6 - d5 * d4
+    vb = d5 * d2 - d1 * d6
+    vc = d1 * d4 - d3 * d2
+    denom = 1.0 / np.maximum(va + vb + vc, 1e-30)
+    out = a + ab * (vb * denom)[:, None] + ac * (vc * denom)[:, None]
+    edge_bc = (va <= 0) & ((d4 - d3) >= 0) & ((d5 - d6) >= 0)
+    t = ((d4 - d3) / np.maximum((d4 - d3) + (d5 - d6), 1e-30))[:, None]
+    out = np.where(edge_bc[:, None], b + t * (c - b), out)
+    edge_ac = (vb <= 0) & (d2 >= 0) & (d6 <= 0)
+    t = (d2 / np.maximum(d2 - d6, 1e-30))[:, None]
+    out = np.where(edge_ac[:, None], a + t * ac, out)
+    edge_ab = (vc <= 0) & (d1 >= 0) & (d3 <= 0)
+    t = (d1 / np.maximum(d1 - d3, 1e-30))[:, None]
+    out = np.where(edge_ab[:, None], a + t * ab, out)
+    out = np.where(((d6 >= 0) & (d5 <= d6))[:, None], c, out)
+    out = np.where(((d3 >= 0) & (d4 <= d3))[:, None], b, out)
+    out = np.where(((d1 <= 0) & (d2 <= 0))[:, None], a, out)
+    return out
+
+
+def _barycentric(p, a, b, c):
+    """Barycentric weights of p within triangle (a, b, c). All arrays (N, 3)."""
+    import numpy as np
+
+    v0, v1, v2 = b - a, c - a, p - a
+    d00 = np.einsum("ij,ij->i", v0, v0)
+    d01 = np.einsum("ij,ij->i", v0, v1)
+    d11 = np.einsum("ij,ij->i", v1, v1)
+    d20 = np.einsum("ij,ij->i", v2, v0)
+    d21 = np.einsum("ij,ij->i", v2, v1)
+    denom = np.maximum(d00 * d11 - d01 * d01, 1e-30)
+    v = (d11 * d20 - d01 * d21) / denom
+    w = (d00 * d21 - d01 * d20) / denom
+    return 1.0 - v - w, v, w
+
+
+def _triangulate_faces(faces):
+    """Fan-triangulate polygon faces, keeping a map back to the source face."""
+    tris = []
+    owner = []
+    for face_idx, face in enumerate(faces):
+        for k in range(1, len(face) - 1):
+            tris.append((face[0], face[k], face[k + 1]))
+            owner.append(face_idx)
+    return tris, owner
+
+
+def recover_cutoff_twig_placements(
+    precut_placements: dict[str, list[TwigPlacement]],
+    cut_twig_positions: list[tuple[float, float, float]],
+    cut_model: Any,
+    bones_info: list | None = None,
+    scaled_points: list[tuple[float, float, float]] | None = None,
+    reattach_threshold: float = DEFAULT_TWIG_REATTACH_THRESHOLD,
+    match_tolerance: float = 1e-6,
+    candidate_faces: int = 16,
+    min_spacing_ratio: float = DEFAULT_TWIG_MIN_SPACING_RATIO,
+) -> dict[str, list[TwigPlacement]]:
+    """Return the twigs that ``build_cutoff_thickness`` deleted, reattached.
+
+    ``build_cutoff_thickness`` drops branches thinner than the threshold, and
+    Grove does not redistribute the twigs that were sitting on them -- so the
+    crown silently loses foliage (measured: 52% of a 20-cycle oak's twigs, 82%
+    of a beech's). Rather than synthesising replacements, this recovers the
+    exact twigs Grove computed, with their own positions, directions and
+    phyllotactic quaternions.
+
+    The post-cutoff twig set is a strict positional subset of the pre-cutoff
+    set, so the lost twigs are an exact diff rather than a heuristic match.
+
+    Most orphans sit within ~1 mm of the surviving surface, because the branch
+    that was removed was thinner than the cutoff. Species with long, sparse
+    side shoots are the exception -- on Scots pine 30% of orphans end up more
+    than 10 mm out (max ~100 mm), left hanging where the deleted shoot used to
+    reach. Those are pulled back onto the surviving surface and re-aimed along
+    the direction the removed shoot ran, so the twig asset stands in for the
+    shoot instead of floating past its tip.
+
+    Args:
+        precut_placements: Placements extracted from a cutoff=0 build. Their
+            positions must be Grove's raw twig locations (no scaled_points),
+            so they can be matched against cut_twig_positions.
+        cut_twig_positions: Raw Grove twig locations surviving the cutoff.
+        cut_model: The production (post-cutoff) model, supplying the surviving
+            surface and the bone/branch attributes to bind against.
+        bones_info: Optional bone list for branch_id fallback.
+        scaled_points: Optional radially-scaled vertex positions for cut_model.
+            When given, recovered twigs are displaced by the same amount the
+            local surface moved, so they stay attached after DBH scaling.
+        reattach_threshold: Distance (m) beyond which an orphan is pulled back
+            onto the surface and re-aimed instead of kept in place.
+        match_tolerance: Distance (m) below which a pre-cutoff twig counts as
+            having survived.
+        candidate_faces: Nearest faces examined per orphan when finding the
+            closest surface point.
+        min_spacing_ratio: Reject a recovered twig once it lands closer than
+            this fraction of the tree's own median living-twig spacing to an
+            already-placed twig (survivor or already-recovered). Keeps
+            branches that were cut close together from stacking several
+            compensation twigs on top of each other. 0 disables the guard.
+
+    Returns:
+        Dict of twig type to the recovered TwigPlacement objects. Empty when
+        nothing was lost.
+    """
+    import numpy as np
+    from scipy.spatial import cKDTree
+
+    cut_tree = None
+
+    lost: list[TwigPlacement] = []
+    survived_count = 0
+    # twig_dead is excluded: cut_twig_positions holds Grove's LIVING twig
+    # locations only, and dead placements are face centroids, so every one of
+    # them would fail to match and be "recovered" on top of the dead placements
+    # the cut model already produced. They are not lost to the cutoff anyway --
+    # the cut model marks its own dead faces.
+    for twig_type, plist in precut_placements.items():
+        if not plist or twig_type == "twig_dead":
+            continue
+        if not cut_twig_positions:
+            lost.extend(plist)
+            continue
+        if cut_tree is None:
+            cut_tree = cKDTree(np.asarray(cut_twig_positions, dtype=np.float64))
+        pts = np.asarray([p.position for p in plist], dtype=np.float64)
+        dist, _ = cut_tree.query(pts, k=1)
+        for placement, d in zip(plist, dist):
+            if d <= match_tolerance:
+                survived_count += 1
+            else:
+                lost.append(placement)
+
+    recovered: dict[str, list[TwigPlacement]] = {}
+    if not lost:
+        logger.info(
+            "Twig recovery: nothing lost to cutoff (%d twigs survived)", survived_count
+        )
+        return recovered
+
+    verts = np.asarray(
+        [
+            (p.x, p.y, p.z) if hasattr(p, "x") else (p[0], p[1], p[2])
+            for p in cut_model.points
+        ],
+        dtype=np.float64,
+    )
+    if len(verts) == 0:
+        logger.warning("Twig recovery: cut model has no vertices, skipping")
+        return recovered
+
+    # Materialise once. cut_model.faces is a Grove property that rebuilds the
+    # entire face list on every access (~17 ms at 91k faces), and the recovery
+    # loop below indexes it once per orphaned twig -- reading it through the
+    # attribute there made this function O(orphans x faces) and dominated
+    # dataset production. A plain list also indexes ~220x faster than the
+    # sequence Grove returns.
+    faces = list(cut_model.faces)
+    tris, tri_owner = _triangulate_faces(faces)
+    if not tris:
+        logger.warning("Twig recovery: cut model has no faces, skipping")
+        return recovered
+    tri_idx = np.asarray(tris, dtype=np.int64)
+    tri_owner_arr = np.asarray(tri_owner, dtype=np.int64)
+    centroids = verts[tri_idx].mean(axis=1)
+
+    scaled_verts = (
+        np.asarray(scaled_points, dtype=np.float64)
+        if scaled_points is not None
+        else None
+    )
+    if scaled_verts is not None and len(scaled_verts) != len(verts):
+        logger.warning(
+            "Twig recovery: scaled_points has %d entries but the model has %d "
+            "vertices; ignoring the scaled positions",
+            len(scaled_verts),
+            len(verts),
+        )
+        scaled_verts = None
+
+    lost_pos = np.asarray([p.position for p in lost], dtype=np.float64)
+    k = min(candidate_faces, len(centroids))
+    _, cand = cKDTree(centroids).query(lost_pos, k=k)
+    cand = cand.reshape(len(lost_pos), k)
+
+    rows = np.repeat(np.arange(len(lost_pos)), k)
+    flat = cand.ravel()
+    ftri = tri_idx[flat]
+    closest = _closest_points_on_triangles(
+        lost_pos[rows], verts[ftri[:, 0]], verts[ftri[:, 1]], verts[ftri[:, 2]]
+    )
+    dists = np.linalg.norm(lost_pos[rows] - closest, axis=1).reshape(-1, k)
+    best = np.argmin(dists, axis=1)
+    best_flat = np.arange(len(lost_pos)) * k + best
+    best_tri = flat[best_flat]
+    best_dist = dists[np.arange(len(lost_pos)), best]
+    best_point = closest[best_flat]
+
+    bt = tri_idx[best_tri]
+    u, v, w = _barycentric(
+        best_point, verts[bt[:, 0]], verts[bt[:, 1]], verts[bt[:, 2]]
+    )
+    if scaled_verts is not None:
+        surface_scaled = (
+            scaled_verts[bt[:, 0]] * u[:, None]
+            + scaled_verts[bt[:, 1]] * v[:, None]
+            + scaled_verts[bt[:, 2]] * w[:, None]
+        )
+    else:
+        surface_scaled = best_point
+    surface_shift = surface_scaled - best_point
+
+    bone_ids = getattr(cut_model, "point_attribute_bone_id", None)
+    face_branch_ids = getattr(cut_model, "face_attribute_branch_id", None)
+    branch_id_offset = 0
+    if bones_info and len(bones_info) > 0 and len(bones_info[0]) >= 8:
+        branch_id_offset = int(bones_info[0][7])
+
+    reattached = 0
+    skipped_crowded = 0
+
+    min_spacing = 0.0
+    if min_spacing_ratio > 0.0 and len(cut_twig_positions) >= 2:
+        survivor_arr = np.asarray(cut_twig_positions, dtype=np.float64)
+        nn_dist, _ = cKDTree(survivor_arr).query(survivor_arr, k=2)
+        min_spacing = float(np.median(nn_dist[:, 1])) * min_spacing_ratio
+
+    # Spatial hash of every position a twig already occupies, seeded with the
+    # survivors so recovered twigs are also kept clear of them. Grown as each
+    # recovered twig is accepted, so later orphans see earlier acceptances.
+    accepted_positions: list[tuple[float, float, float]] = list(cut_twig_positions)
+    spacing_grid: dict[tuple[int, int, int], list[int]] = {}
+    if min_spacing > 0.0:
+        for idx, p in enumerate(accepted_positions):
+            spacing_grid.setdefault(_grid_cell(p, min_spacing), []).append(idx)
+
+    def _too_close(p: tuple[float, float, float]) -> bool:
+        if min_spacing <= 0.0:
+            return False
+        cx, cy, cz = _grid_cell(p, min_spacing)
+        min_sq = min_spacing * min_spacing
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for dz in (-1, 0, 1):
+                    for idx in spacing_grid.get((cx + dx, cy + dy, cz + dz), ()):
+                        q = accepted_positions[idx]
+                        d2 = (
+                            (p[0] - q[0]) ** 2
+                            + (p[1] - q[1]) ** 2
+                            + (p[2] - q[2]) ** 2
+                        )
+                        if d2 < min_sq:
+                            return True
+        return False
+
+    def _accept(p: tuple[float, float, float]) -> None:
+        if min_spacing <= 0.0:
+            return
+        idx = len(accepted_positions)
+        accepted_positions.append(p)
+        spacing_grid.setdefault(_grid_cell(p, min_spacing), []).append(idx)
+
+    for i, placement in enumerate(lost):
+        face_idx = int(tri_owner_arr[best_tri[i]])
+        face = faces[face_idx]
+
+        twig_bone_id = None
+        if bone_ids:
+            counts: dict[int, int] = {}
+            for vi in face:
+                if vi < len(bone_ids):
+                    bid = bone_ids[vi]
+                    counts[bid] = counts.get(bid, 0) + 1
+            if counts:
+                twig_bone_id = max(counts, key=counts.get)
+
+        branch_id = None
+        if face_branch_ids is not None and face_idx < len(face_branch_ids):
+            branch_id = face_branch_ids[face_idx] - branch_id_offset
+
+        far_reattach = False
+        if best_dist[i] <= reattach_threshold:
+            # Close enough to the surviving bark to stay where Grove put it;
+            # only follow whatever displacement radial scaling applied locally.
+            position = (
+                placement.position[0] + surface_shift[i][0],
+                placement.position[1] + surface_shift[i][1],
+                placement.position[2] + surface_shift[i][2],
+            )
+            normal = placement.normal
+            orientation = placement.orientation
+        else:
+            # Orphaned far out where a long shoot was deleted. Pull it back to
+            # the bark and re-aim it along the shoot, preserving Grove's roll.
+            position = (
+                float(surface_scaled[i][0]),
+                float(surface_scaled[i][1]),
+                float(surface_scaled[i][2]),
+            )
+            outward = _normalize(
+                (
+                    float(placement.position[0] - best_point[i][0]),
+                    float(placement.position[1] - best_point[i][1]),
+                    float(placement.position[2] - best_point[i][2]),
+                )
+            )
+            if outward is None:
+                normal = placement.normal
+                orientation = placement.orientation
+            else:
+                normal = outward
+                orientation = _quat_multiply(
+                    shortest_arc_quaternion(placement.normal, outward),
+                    placement.orientation,
+                )
+            far_reattach = True
+
+        # Skip rather than stack: a branch cut close to an already-placed
+        # twig gets no compensation twig at all, instead of one crowding on
+        # top of it.
+        if _too_close(position):
+            skipped_crowded += 1
+            continue
+        _accept(position)
+        if far_reattach:
+            reattached += 1
+
+        recovered.setdefault(placement.type, []).append(
+            TwigPlacement(
+                type=placement.type,
+                position=position,
+                normal=normal,
+                orientation=orientation,
+                scale=placement.scale,
+                bone_id=twig_bone_id,
+                branch_id=branch_id,
+            )
+        )
+
+    logger.info(
+        "Twig recovery: restored %d twigs lost to cutoff (%d survived, "
+        "%d re-aimed onto the surface beyond %.0f mm, %d skipped as too "
+        "crowded): %s",
+        len(lost) - skipped_crowded,
+        survived_count,
+        reattached,
+        reattach_threshold * 1000.0,
+        skipped_crowded,
+        {t: len(p) for t, p in recovered.items()},
+    )
+    return recovered
+
+
+def thin_placements_to_limit(
+    placements: dict[str, list[TwigPlacement]],
+    max_instances: int,
+    seed: int = 42,
+) -> dict[str, list[TwigPlacement]]:
+    """Thin twig placements down to ``max_instances``, crowded twigs first.
+
+    Unreal's NaniteAssemblyRootAPI expands every instance into one combined
+    Nanite build, so an uncapped crown can exhaust GPU/system RAM on import.
+    Instances are dropped with a probability weighted by how crowded each twig
+    is -- the distance to its nearest neighbour relative to their combined
+    size -- so overlapping twigs go before comfortably spaced ones. The weight
+    is computed across all twig types together (so overlap *between* types
+    counts too), then each type is thinned by the same ratio, preserving the
+    type mix.
+
+    The selection depends only on position and scale, never on bone or branch
+    ids, so this can be applied at any point after the placements are final and
+    before the assembly is written. Applying it early keeps the per-twig bone
+    remap from processing instances that are about to be discarded.
+
+    Args:
+        placements: Twig placements keyed by twig type.
+        max_instances: Instance ceiling. 0 or less disables thinning.
+        seed: Seed for the weighted sampling, so crowns are reproducible.
+
+    Returns:
+        A new dict with the same keys, thinned. The input is never modified.
+        Returned unchanged when already at or below the limit.
+    """
+    total = sum(len(p) for p in placements.values())
+    if max_instances <= 0 or total <= max_instances:
+        return placements
+
+    import numpy as np
+    from scipy.spatial import cKDTree
+
+    rng = np.random.default_rng(seed)
+
+    all_positions: list[tuple[float, float, float]] = []
+    all_scales: list[float] = []
+    type_of_global_idx: list[str] = []
+    for twig_type, p_list in placements.items():
+        for p in p_list:
+            all_positions.append(p.position)
+            all_scales.append(p.scale)
+            type_of_global_idx.append(twig_type)
+
+    positions_arr = np.asarray(all_positions, dtype=np.float64)
+    scales_arr = np.asarray(all_scales, dtype=np.float64)
+
+    # k=2: column 0 is the twig itself (distance 0), column 1 its nearest other.
+    nn_dist, nn_idx = cKDTree(positions_arr).query(positions_arr, k=2)
+    nearest_dist = nn_dist[:, 1]
+    nearest_scale = scales_arr[nn_idx[:, 1]]
+
+    # Comfortable-spacing ratio: >1 = well spaced, <1 = likely overlapping.
+    combined_size = scales_arr + nearest_scale
+    keep_weight = np.clip(
+        nearest_dist / np.maximum(combined_size, 1e-6), 1e-3, None
+    )
+
+    per_type_indices: dict[str, list[int]] = {}
+    for global_i, twig_type in enumerate(type_of_global_idx):
+        per_type_indices.setdefault(twig_type, []).append(global_i)
+
+    ratio = max_instances / total
+    thinned: dict[str, list[TwigPlacement]] = {}
+    for twig_type, p_list in placements.items():
+        if not p_list:
+            thinned[twig_type] = []
+            continue
+        keep = max(1, int(len(p_list) * ratio))
+        type_weights = keep_weight[per_type_indices[twig_type]]
+        # Efraimidis-Spirakis weighted sampling without replacement:
+        # keys = U^(1/weight), keep the largest keys.
+        u = rng.random(len(type_weights))
+        keys = u ** (1.0 / type_weights)
+        order = np.argsort(-keys)[:keep]
+        thinned[twig_type] = [p_list[i] for i in order]
+
+    return thinned
+
+
 def densify_twig_placements(
     model: Any,
     placements: dict[str, list[TwigPlacement]],
@@ -494,6 +1179,7 @@ def densify_twig_placements(
     bones_info: list | None = None,
     seed: int = 42,
     youth_bias: float = 1.0,
+    branch_angle: float = DEFAULT_TWIG_BRANCH_ANGLE_RAD,
     scaled_points: list[tuple[float, float, float]] | None = None,
 ) -> dict[str, list[TwigPlacement]]:
     """Adjust twig placement count to match a target density multiplier.
@@ -512,6 +1198,8 @@ def densify_twig_placements(
             build_cutoff_thickness is active (e.g. 4.6 for cutoff=0.005).
         bones_info: Optional bone list for bone/branch assignment.
         seed: Random seed for reproducibility.
+        branch_angle: Angle in radians between a synthetic twig's growth
+            direction and its parent branch axis.
         scaled_points: Optional list of (x, y, z) tuples from the radially-scaled
             mesh. When provided, face centroids for synthetic placements are
             computed from these instead of model.points.
@@ -534,7 +1222,13 @@ def densify_twig_placements(
         for twig_type, plist in placements.items():
             if not plist:
                 continue
-            keep_count = max(0, int(len(plist) * keep_ratio + 0.5))
+            # Floor of 1: a twig type that had placements must keep at least
+            # one. Without this, a small tree thinned hard rounds to zero and
+            # exports with NO foliage at all -- measured on a 5 m / 2 cm-DBH
+            # wild cherry whose 4 total placements became 0 at density 0.04,
+            # shipping three completely bald assets. A slightly-too-dense
+            # sapling is a cosmetic error; a leafless tree is a broken asset.
+            keep_count = max(1, int(len(plist) * keep_ratio + 0.5))
             if keep_count >= len(plist):
                 continue
             rng.shuffle(plist)
@@ -579,6 +1273,14 @@ def densify_twig_placements(
     if max_age < 1e-6:
         max_age = 1.0
 
+    # Vertex coords as tuples, for face centre/area/normal maths below.
+    if scaled_points is not None:
+        verts = scaled_points
+    else:
+        verts = [
+            (p.x, p.y, p.z) if hasattr(p, "x") else (p[0], p[1], p[2]) for p in points
+        ]
+
     candidate_faces = []
     candidate_weights = []
     for fi in range(num_faces):
@@ -597,8 +1299,16 @@ def densify_twig_placements(
         # Skip very old faces (trunk base, etc.)
         if youth < 0.01:
             continue
+        # Weight by face AREA as well as youth. Sampling faces uniformly makes
+        # twig density track TESSELLATION density rather than bark area:
+        # junction blend geometry and thin branches carry many tiny faces and
+        # would otherwise collect a hugely disproportionate share of twigs.
+        area = _face_area(verts, face)
+        if area <= 0.0:
+            continue
+        youth_weight = youth**youth_bias if youth_bias != 1.0 else youth
         candidate_faces.append(fi)
-        candidate_weights.append(youth ** youth_bias if youth_bias != 1.0 else youth)
+        candidate_weights.append(area * youth_weight)
 
     if not candidate_faces:
         logger.debug("densify: no candidate faces available")
@@ -617,12 +1327,6 @@ def densify_twig_placements(
         type_dist = {t: 1.0 / len(living_types) for t in living_types}
     else:
         type_dist = {t: type_counts[t] / total_living for t in living_types}
-
-    # Pre-compute vertex coords as tuples for face center calculation
-    if scaled_points is not None:
-        verts = scaled_points
-    else:
-        verts = [(p.x, p.y, p.z) if hasattr(p, "x") else (p[0], p[1], p[2]) for p in points]
 
     # Bone assignment helpers
     bone_ids = getattr(model, "point_attribute_bone_id", None)
@@ -648,10 +1352,7 @@ def densify_twig_placements(
             n_sample,
             num_to_add,
         )
-    keys = [
-        rng.random() ** (1.0 / w) if w > 1e-12 else 0.0
-        for w in candidate_weights
-    ]
+    keys = [rng.random() ** (1.0 / w) if w > 1e-12 else 0.0 for w in candidate_weights]
     order = sorted(range(len(candidate_faces)), key=lambda i: -keys[i])
     chosen_faces = [candidate_faces[i] for i in order[:n_sample]]
 
@@ -669,8 +1370,8 @@ def densify_twig_placements(
                 chosen_type = t
                 break
 
-        # Compute face center and normal
-        center, normal = get_face_center_and_normal(verts, face)
+        # Compute face center and outward normal
+        center, face_normal = get_face_center_and_normal(verts, face)
 
         # Bone assignment via vertex voting (same as extract_twig_placements_from_model)
         twig_bone_id = None
@@ -684,34 +1385,58 @@ def densify_twig_placements(
             if bone_counts:
                 twig_bone_id = max(bone_counts, key=bone_counts.get)
 
+        bone_axis = None
         if twig_bone_id is not None and bones_info:
             local_bone = twig_bone_id - bone_id_offset
             branch_id_for_twig = bone_to_branch.get(local_bone)
-            # Replace geometric face normal (radially outward from branch cylinder)
-            # with bone direction (along branch axis toward tip). Face normals make
-            # synthetic twigs point like spikes perpendicular to the branch, which
-            # causes foliage meshes to be edge-on and nearly invisible. Bone direction
-            # matches how Grove's own get_twig_directions() orients apical twigs.
             if 0 <= local_bone < len(bones_info):
                 _bd = bones_info[local_bone]
                 if len(_bd) >= 4:
                     _s, _e = _bd[2], _bd[3]
                     if hasattr(_s, "x"):
-                        _dx, _dy, _dz = _e.x - _s.x, _e.y - _s.y, _e.z - _s.z
+                        _delta = (_e.x - _s.x, _e.y - _s.y, _e.z - _s.z)
                     else:
-                        _dx, _dy, _dz = _e[0] - _s[0], _e[1] - _s[1], _e[2] - _s[2]
-                    _blen = math.sqrt(_dx * _dx + _dy * _dy + _dz * _dz)
-                    if _blen > 1e-6:
-                        normal = (_dx / _blen, _dy / _blen, _dz / _blen)
+                        _delta = (_e[0] - _s[0], _e[1] - _s[1], _e[2] - _s[2])
+                    bone_axis = _normalize(_delta)
 
-        # Orientation: default Z-up in Grove space
-        orientation = (0.0, 0.0, 1.0)
+        # Emergence direction. The face normal alone points straight out of the
+        # bark, leaving foliage edge-on; the bone axis alone is TANGENT to the
+        # bark, which buries half of each twig's leaves inside the branch. Tilt
+        # the face's own outward normal toward the branch axis instead, so the
+        # twig leaves the surface at a natural angle from where it is attached.
+        normal = face_normal
+        if bone_axis is not None:
+            axial = (
+                face_normal[0] * bone_axis[0]
+                + face_normal[1] * bone_axis[1]
+                + face_normal[2] * bone_axis[2]
+            )
+            radial = _normalize(
+                (
+                    face_normal[0] - axial * bone_axis[0],
+                    face_normal[1] - axial * bone_axis[1],
+                    face_normal[2] - axial * bone_axis[2],
+                )
+            )
+            if radial is not None:
+                cos_t = math.cos(branch_angle)
+                sin_t = math.sin(branch_angle)
+                normal = (
+                    _normalize(
+                        (
+                            cos_t * bone_axis[0] + sin_t * radial[0],
+                            cos_t * bone_axis[1] + sin_t * radial[1],
+                            cos_t * bone_axis[2] + sin_t * radial[2],
+                        )
+                    )
+                    or face_normal
+                )
 
         placement = TwigPlacement(
             type=chosen_type,
             position=center,
             normal=normal,
-            orientation=orientation,
+            orientation=direction_to_quaternion(normal, bone_axis),
             scale=1.0,
             bone_id=twig_bone_id,
             branch_id=branch_id_for_twig,

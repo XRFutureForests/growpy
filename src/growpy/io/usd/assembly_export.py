@@ -99,6 +99,136 @@ def _copy_twig_file_cached(source_path: "Path", dest_dir: "Path") -> "Path":
     return dest_path
 
 
+class MissingTwigPrototypesError(RuntimeError):
+    """A tree grew twigs but no prototype USD exists to instance them with.
+
+    Deliberately its own type so create_assembly's broad `except Exception ->
+    return False` cannot swallow it: this is a build-input error the operator
+    must fix (re-run step 2), not a per-tree failure worth continuing past.
+    """
+
+
+def _external_ref_asset_path(twig_asset_name: str, project_path: str) -> str:
+    """UE package path of an already-imported twig prototype.
+
+    The twig library is imported once by batch 00 into
+    ``<project_path>/Instances/<family>_twigs_combined_skeletal/SkeletalMeshes``
+    and the family is the twig asset's own prefix, not the species -- silver_fir
+    is grown from ``pacific_silver_fir_*`` twigs.
+    """
+    stem = twig_asset_name
+    for token in ("_foliage_", "_foliage", "_twig_", "_twig"):
+        if token in stem:
+            stem = stem.split(token)[0]
+            break
+    return (
+        f"{project_path.rstrip('/')}/Instances/{stem}_twigs_combined_skeletal"
+        f"/SkeletalMeshes/SK_{twig_asset_name}"
+    )
+
+
+def _convert_instancer_to_external_refs(
+    stage, assembly_name: str, proto_asset_paths: dict
+) -> int:
+    """Replace the twig PointInstancer with one Xform per placement.
+
+    A PointInstancer makes UE import the prototype GEOMETRY out of the USD and
+    expand every instance into the combined Nanite mesh, which is what exhausts
+    memory on a dense crown. ``NaniteAssemblyExternalRefAPI`` instead names a
+    package path already in the project, so the tree USD carries only
+    transforms -- but the schema is read on a plain prim only:
+    ``GetExternalAssetRef`` sits after an ``if (Prim.IsA("PointInstancer")) return``
+    early-out in USDNaniteAssemblyTranslator.cpp, so the instancer has to go.
+
+    Returns the number of placements written.
+    """
+    from pxr import Gf, Sdf, UsdGeom
+
+    inst_prim = stage.GetPrimAtPath(f"/{assembly_name}/TwigInstances")
+    if not inst_prim or not inst_prim.IsValid():
+        return 0
+    inst = UsdGeom.PointInstancer(inst_prim)
+
+    positions = list(inst.GetPositionsAttr().Get() or [])
+    orients = list(inst.GetOrientationsAttr().Get() or [])
+    scales = list(inst.GetScalesAttr().Get() or [])
+    proto_idx = list(inst.GetProtoIndicesAttr().Get() or [])
+    proto_names = [t.name for t in inst.GetPrototypesRel().GetTargets()]
+    if not positions or not proto_idx:
+        return 0
+
+    joints_attr = inst_prim.GetAttribute("primvars:unreal:naniteAssembly:bindJoints")
+    weights_attr = inst_prim.GetAttribute(
+        "primvars:unreal:naniteAssembly:bindJointWeights"
+    )
+    bind_joints = list(joints_attr.Get() or []) if joints_attr else []
+    bind_weights = list(weights_attr.Get() or []) if weights_attr else []
+    per_instance = 0
+    if joints_attr and bind_joints:
+        per_instance = joints_attr.GetMetadata("elementSize") or (
+            len(bind_joints) // len(positions) if positions else 0
+        )
+
+    written = 0
+    for i, pos in enumerate(positions):
+        name = proto_names[proto_idx[i]] if proto_idx[i] < len(proto_names) else None
+        asset_path = proto_asset_paths.get(name)
+        if not asset_path:
+            continue
+        part = UsdGeom.Xform.Define(stage, f"/{assembly_name}/TwigParts/Twig_{i:05d}")
+        part.AddTranslateOp().Set(Gf.Vec3d(pos[0], pos[1], pos[2]))
+        if i < len(orients):
+            q = orients[i]
+            part.AddOrientOp().Set(
+                Gf.Quatf(
+                    float(q.GetReal()),
+                    Gf.Vec3f(*[float(v) for v in q.GetImaginary()]),
+                )
+            )
+        if i < len(scales):
+            part.AddScaleOp().Set(Gf.Vec3f(*[float(v) for v in scales[i]]))
+
+        prim = part.GetPrim()
+        schemas = Sdf.TokenListOp()
+        schemas.prependedItems = [
+            "NaniteAssemblyExternalRefAPI",
+            "NaniteAssemblySkelBindingAPI",
+        ]
+        prim.SetMetadata("apiSchemas", schemas)
+        prim.CreateAttribute(
+            "unreal:naniteAssembly:meshAssetPath",
+            Sdf.ValueTypeNames.Token,
+            False,
+            Sdf.VariabilityUniform,
+        ).Set(asset_path)
+
+        if per_instance:
+            lo, hi = i * per_instance, (i + 1) * per_instance
+            if hi <= len(bind_joints):
+                prim.CreateAttribute(
+                    "primvars:unreal:naniteAssembly:bindJoints",
+                    Sdf.ValueTypeNames.TokenArray,
+                    False,
+                    Sdf.VariabilityUniform,
+                ).Set(bind_joints[lo:hi])
+            if hi <= len(bind_weights):
+                prim.CreateAttribute(
+                    "primvars:unreal:naniteAssembly:bindJointWeights",
+                    Sdf.ValueTypeNames.FloatArray,
+                    False,
+                    Sdf.VariabilityUniform,
+                ).Set(bind_weights[lo:hi])
+        written += 1
+
+    # The prototypes exist only to feed the instancer; leaving them behind would
+    # re-import the very geometry this pass exists to avoid.
+    stage.RemovePrim(inst_prim.GetPath())
+    protos = stage.GetPrimAtPath(f"/{assembly_name}/TwigPrototypes")
+    if protos and protos.IsValid():
+        stage.RemovePrim(protos.GetPath())
+    return written
+
+
 def create_assembly(
     tree_usd_path: Path,
     output_path: Path,
@@ -167,6 +297,10 @@ def create_assembly(
         api_schemas = Sdf.TokenListOp()
         api_schemas.prependedItems = ["NaniteAssemblyRootAPI"]
         root_prim.SetMetadata("apiSchemas", api_schemas)
+        # Prototype prim name -> twig asset name, for the external-ref pass.
+        # Bound here because a twigless tree never reaches the prototype loop.
+        proto_to_asset: dict[str, str] = {}
+
         # Set kind metadata to 'group' as per Epic's official Nanite Assembly tutorial.
         # The root is a container of sub-components (tree mesh + twig instances).
         root_prim.SetMetadata("kind", "group")
@@ -219,12 +353,43 @@ def create_assembly(
             skeleton_path = f"/{assembly_name}/{tree_mesh_name}/{ref_skel_name}"
             skeleton_rel.SetTargets([Sdf.Path(skeleton_path)])
 
+        # A tree that grew twigs but has no prototype to instance them with is a
+        # broken asset, not an asset without foliage. This used to pass silently:
+        # `if twig_usd_paths:` simply skipped the whole block, the assembly was
+        # written with nothing but the tree reference (~1 KB against the 0.7-4 MB
+        # a real one takes), and step 4 still reported "All N captured milestone
+        # stage(s) exported". A whole 20-cell run was produced that way on
+        # 2026-08-24 after data/output/forest/Instances/ -- where step 2 puts the
+        # converted twig USDs -- was deleted along with the rest of the output
+        # directory. Nothing downstream noticed until the file sizes were read by
+        # hand. Fail here instead: the fix is to re-run step 2 (convert-twigs).
+        if twig_placements and not twig_usd_paths:
+            placement_total = sum(len(v) for v in twig_placements.values())
+            raise MissingTwigPrototypesError(
+                f"{species_name}: {placement_total} twig placement(s) were extracted "
+                f"but no twig prototype USDs were supplied, so the assembly would "
+                f"contain no foliage. This usually means the converted twig assets "
+                f"are missing -- re-run step 2 (growpy-convert-twigs) to rebuild "
+                f"them, then re-run step 4."
+            )
+
         # Add twigs if provided
         if twig_usd_paths:
             pass
 
             # Use twig placements extracted from Grove model
             if twig_placements:
+                # Safety net: the cap is normally applied earlier, in
+                # export_tree_as_nanite_assembly, so the per-twig bone remap
+                # never processes instances that get discarded here. This is a
+                # no-op when the caller already thinned.
+                from ...core.twig import thin_placements_to_limit
+
+                twig_placements = thin_placements_to_limit(
+                    twig_placements,
+                    _get_config().export_max_assembly_instances,
+                )
+
                 # Convert TwigPlacement objects to dict format
                 placements = {}
                 for twig_type, placement_list in twig_placements.items():
@@ -233,9 +398,11 @@ def create_assembly(
                             {
                                 "position": p.position,
                                 "normal": p.normal,
+                                "orientation": p.orientation,
                                 "scale": p.scale,
                                 "bone_id": p.bone_id,
                                 "branch_id": p.branch_id,  # CRITICAL: branch_id for binding to branch_X joints
+                                "prototype": p.prototype,
                             }
                             for p in placement_list
                         ]
@@ -244,75 +411,6 @@ def create_assembly(
                 for twig_type, p_list in placements.items():
                     logger.info("  %s: %d instances", twig_type, len(p_list))
 
-                # Cap instance count to prevent OOM during Nanite Assembly build.
-                # NaniteAssemblyRootAPI triggers a combined Nanite build that
-                # expands all instances; this can easily exceed GPU/system RAM.
-                cfg = _get_config()
-                max_inst = cfg.export_max_assembly_instances
-                if max_inst > 0 and total_twigs > max_inst:
-                    import numpy as _np
-                    from scipy.spatial import cKDTree as _cKDTree
-
-                    _rng = _np.random.default_rng(42)
-
-                    # Build a proximity-crowding weight across ALL twig types
-                    # combined, so overlap between different twig types (not
-                    # just within the same type) is penalized too.
-                    all_positions: list[tuple[float, float, float]] = []
-                    all_scales: list[float] = []
-                    type_of_global_idx: list[str] = []
-                    for twig_type, p_list in placements.items():
-                        for p in p_list:
-                            all_positions.append(p["position"])
-                            all_scales.append(p.get("scale", 1.0))
-                            type_of_global_idx.append(twig_type)
-
-                    positions_arr = _np.asarray(all_positions, dtype=_np.float64)
-                    scales_arr = _np.asarray(all_scales, dtype=_np.float64)
-
-                    tree = _cKDTree(positions_arr)
-                    # k=2: column 0 is self (distance 0), column 1 is the
-                    # nearest OTHER instance.
-                    nn_dist, nn_idx = tree.query(positions_arr, k=2)
-                    nearest_dist = nn_dist[:, 1]
-                    nearest_scale = scales_arr[nn_idx[:, 1]]
-
-                    # Comfortable-spacing ratio: distance to nearest neighbor
-                    # relative to both twigs' combined size. >1 = comfortably
-                    # spaced, <1 = likely overlapping -- weighted toward removal.
-                    combined_size = scales_arr + nearest_scale
-                    keep_weight = nearest_dist / _np.maximum(combined_size, 1e-6)
-                    keep_weight = _np.clip(keep_weight, 1e-3, None)
-
-                    # Group global weight indices back per twig type, in the
-                    # same order as placements[twig_type] so indices line up.
-                    per_type_indices: dict[str, list[int]] = {}
-                    for global_i, twig_type in enumerate(type_of_global_idx):
-                        per_type_indices.setdefault(twig_type, []).append(global_i)
-
-                    ratio = max_inst / total_twigs
-                    for twig_type in list(placements.keys()):
-                        original = len(placements[twig_type])
-                        keep = max(1, int(original * ratio))
-                        type_weights = keep_weight[per_type_indices[twig_type]]
-
-                        # Efraimidis-Spirakis weighted sampling without
-                        # replacement: keys = U^(1/weight), keep largest keys.
-                        u = _rng.random(len(type_weights))
-                        keys = u ** (1.0 / type_weights)
-                        order = _np.argsort(-keys)[:keep]
-                        placements[twig_type] = [
-                            placements[twig_type][i] for i in order
-                        ]
-
-                    capped_total = sum(len(p) for p in placements.values())
-                    logger.warning(
-                        "Capped assembly instances from %d to %d "
-                        "(max_assembly_instances=%d, proximity-weighted)",
-                        total_twigs,
-                        capped_total,
-                        max_inst,
-                    )
             else:
                 placements = {}
                 logger.warning("No twig placements available!")
@@ -335,9 +433,9 @@ def create_assembly(
                 # Flatten all twig variants into a single prototype list.
                 # twig_type_to_proto_indices maps grove type -> list of proto indices
                 # so each placement can randomly pick among them.
-                remapped_twig_paths: list[tuple[str, Path, Path]] = (
-                    []
-                )  # (grove_type, output_path, source_path)
+                remapped_twig_paths: list[
+                    tuple[str, Path, Path]
+                ] = []  # (grove_type, output_path, source_path)
                 for grove_type, source_paths in twig_usd_paths.items():
                     for source_twig_path in source_paths:
                         output_twig_path = twig_dest_dir / source_twig_path.name
@@ -367,6 +465,7 @@ def create_assembly(
                 # twig_type_to_proto_indices: grove_type -> [proto_idx, proto_idx, ...]
                 twig_type_to_proto_indices: dict[str, list[int]] = {}
                 prototype_paths = []
+                proto_to_asset: dict[str, str] = {}
                 seen_files: dict[str, int] = {}  # twig filename -> proto_idx (dedup)
 
                 from .texture_utils import copy_and_resize_texture
@@ -475,6 +574,7 @@ def create_assembly(
                         )
 
                     prototype_paths.append(Sdf.Path(proto_prim.GetPath()))
+                    proto_to_asset[proto_name] = twig_asset_name
 
                 # Collect all proto indices for random fallback
                 all_proto_indices_pool = list(range(len(prototype_paths)))
@@ -536,20 +636,39 @@ def create_assembly(
                         )
 
                         from growpy.core.twig import (
+                            IDENTITY_QUAT,
                             normal_to_rotation_matrix,
                             rotation_matrix_to_quaternion,
                         )
 
                         for placement in placement_list:
                             pos = placement["position"]
-                            normal = placement["normal"]
                             twig_scale = placement.get("scale", 1.0)
 
-                            rot_matrix = normal_to_rotation_matrix(normal)
-                            quat = rotation_matrix_to_quaternion(rot_matrix)
+                            # Grove supplies a per-twig unit quaternion carrying
+                            # both the growth direction and the phyllotactic roll
+                            # it derives from the species preset. Prefer it.
+                            # Rebuilding the frame from the direction vector alone
+                            # (the fallback) has to invent the roll from a fixed
+                            # world axis, which also flips discontinuously.
+                            quat = placement.get("orientation")
+                            if not quat or len(quat) != 4 or quat == IDENTITY_QUAT:
+                                rot_matrix = normal_to_rotation_matrix(
+                                    placement["normal"]
+                                )
+                                quat = rotation_matrix_to_quaternion(rot_matrix)
 
-                            # Randomly select among available prototypes for this type
-                            proto_idx = _rng.choice(type_proto_indices)
+                            # Honour an explicit prototype assignment; fall
+                            # back to a random draw, which is the right answer
+                            # for 1:1 twigs (uniform size, free variation) and
+                            # the wrong one for compound parts (XRFF-365).
+                            assigned = placement.get("prototype")
+                            if assigned is not None and 0 <= assigned < len(
+                                type_proto_indices
+                            ):
+                                proto_idx = type_proto_indices[assigned]
+                            else:
+                                proto_idx = _rng.choice(type_proto_indices)
 
                             all_positions.append(Gf.Vec3f(pos[0], pos[1], pos[2]))
                             all_orientations.append(
@@ -625,6 +744,7 @@ def create_assembly(
                         # Debug: Track bone_id usage
                         bone_id_usage = {}
                         invalid_bone_ids = []
+                        invalid_bone_count = 0
 
                         # Iterate through placements in same order as instance creation
                         # CRITICAL: Must match instance creation loop logic exactly
@@ -672,14 +792,27 @@ def create_assembly(
                                         bone_id_usage.get(bone_id, 0) + 1
                                     )
                                 else:
-                                    # Fallback to tree root if bone_id is invalid
+                                    # Fallback to the tree root if bone_id is
+                                    # invalid -- and it must be the skeleton's
+                                    # OWN root name. `tree_export` authors
+                                    # "tree_root", never "root", and a bindJoints
+                                    # token UE cannot resolve is not skipped per
+                                    # instance: UE drops it, the array stops
+                                    # matching instance count, and the WHOLE
+                                    # PointInstancer is discarded -- the import
+                                    # "succeeds" with no assembly (XRFF-384).
+                                    root_joint = joint_names[0]
                                     if use_dual_binding:
-                                        bind_joints.extend(["root", "root"])
+                                        bind_joints.extend([root_joint, root_joint])
                                         bind_weights.extend([1.0, 0.0])
                                     else:
-                                        bind_joints.append("root")
+                                        bind_joints.append(root_joint)
                                         bind_weights.append(1.0)
-                                    # Track invalid bone_ids
+                                    # Track invalid bone_ids. Count them all
+                                    # -- the sample below stops at 10, and
+                                    # reporting its length under-reports the
+                                    # real total (XRFF-385).
+                                    invalid_bone_count += 1
                                     if len(invalid_bone_ids) < 10:
                                         invalid_bone_ids.append(
                                             (bone_id, len(joint_names))
@@ -706,12 +839,17 @@ def create_assembly(
                                 logger.debug("  Bone ID usage: %s", dict(sorted_usage))
                         if invalid_bone_ids:
                             logger.warning(
-                                "%d invalid bone_ids (bone_id, joint_count):",
+                                "%d invalid bone_ids, showing %d "
+                                "(bone_id, joint_count):",
+                                invalid_bone_count,
                                 len(invalid_bone_ids),
                             )
                             for bid, jcount in invalid_bone_ids:
                                 logger.warning(
-                                    "  bone_id=%d, joint_names length=%d",
+                                    # %s, not %d: a placement whose bone did not
+                                    # survive base-mesh filtering arrives as None
+                                    # and must still be reportable.
+                                    "  bone_id=%s, joint_names length=%d",
                                     bid,
                                     jcount,
                                 )
@@ -769,6 +907,31 @@ def create_assembly(
 
         # Skeleton is already embedded if use_skeletal_mesh=True (handled earlier)
 
+        # Optionally hand UE package paths instead of geometry (XRFF-389).
+        if proto_to_asset:
+            try:
+                from growpy.config.core import get_config
+
+                cfg = get_config()
+                if getattr(cfg, "export_external_refs", False):
+                    project_path = getattr(
+                        cfg, "unreal_project_path", "/Game/Assets/TheGrove"
+                    )
+                    asset_paths = {
+                        proto: _external_ref_asset_path(asset, project_path)
+                        for proto, asset in proto_to_asset.items()
+                    }
+                    n = _convert_instancer_to_external_refs(
+                        stage, assembly_name, asset_paths
+                    )
+                    logger.info(
+                        "External refs: %d placements point at imported assets "
+                        "(no geometry in this USD)",
+                        n,
+                    )
+            except Exception as e:  # pragma: no cover - config/USD edge cases
+                logger.warning("External-ref conversion skipped: %s", e)
+
         # Save stage
         stage.GetRootLayer().Save()
 
@@ -791,11 +954,31 @@ def create_assembly(
 
     except ImportError:
         return False
+    except MissingTwigPrototypesError:
+        # Never downgrade this to `return False`: a missing twig prototype set
+        # is an input error affecting EVERY tree in the run, and swallowing it
+        # is what let a 20-cell run of foliage-free 1 KB assemblies report
+        # success on 2026-08-24.
+        raise
     except Exception:
         import traceback
 
         traceback.print_exc()
         return False
+
+
+def _raw_twig_positions(model: Any) -> list[tuple[float, float, float]]:
+    """Grove's unmodified twig locations for a built model, as (x, y, z).
+
+    Recovery matches pre- and post-cutoff twigs by position, so both sides must
+    use Grove's raw coordinates -- not the radially-scaled face centroids that
+    extract_twig_placements_from_model substitutes when DBH scaling is active.
+    """
+    try:
+        flat = model.get_twig_locations()
+    except Exception:
+        return []
+    return [(flat[i], flat[i + 1], flat[i + 2]) for i in range(0, len(flat) - 2, 3)]
 
 
 def export_tree_as_nanite_assembly(
@@ -817,6 +1000,7 @@ def export_tree_as_nanite_assembly(
     twig_density: float | None = None,
     twig_placements_out: dict | None = None,
     instances_dir: Path | None = None,
+    precut_model: Any | None = None,
 ) -> bool:
     """Export Grove tree as Unreal Engine Nanite Assembly.
 
@@ -858,6 +1042,12 @@ def export_tree_as_nanite_assembly(
         instances_dir: Optional shared directory for twig USD files and textures.
             When set, twig files are copied here instead of alongside the assembly,
             and assembly references use relative paths to this directory.
+        precut_model: Optional model built with build_cutoff_thickness=0 from
+            the same grove. When given, twigs the cutoff deleted are recovered
+            from it with Grove's own positions and quaternions instead of being
+            approximated by the twig_density multiplier. A cheap low-resolution
+            build is enough -- its twig arrays are identical to a full-
+            resolution one.
 
 
     Returns:
@@ -962,6 +1152,8 @@ def export_tree_as_nanite_assembly(
 
         # Pass scaled points to twig extraction so positions come from
         # face centroids of the already-scaled mesh (None when no scaling).
+        # Pass scaled points to twig extraction so positions come from
+        # face centroids of the already-scaled mesh (None when no scaling).
         _sp = _scaled_pts if _scaled_pts else None
 
         # Extract twig placements from Grove model BEFORE creating assembly
@@ -984,17 +1176,120 @@ def export_tree_as_nanite_assembly(
                     logger.exception("Twig extraction failed")
                     twig_placements = None
 
+            # Restore the twigs build_cutoff_thickness deleted. Grove drops the
+            # branches below the threshold but does not redistribute the twigs
+            # that sat on them, so the crown silently thins (52% of a 20-cycle
+            # oak, 82% of a beech). Recovering Grove's own lost twigs keeps
+            # their authentic positions, directions and phyllotactic
+            # quaternions, and self-calibrates per tree -- unlike a per-species
+            # density constant, which cannot track the loss ratio because it
+            # varies with species, age and cutoff alike.
+            recovered_count = 0
+            if (
+                twig_placements
+                and precut_model is not None
+                and _get_config().export_twig_recovery
+            ):
+                with _track("recover_cutoff_twigs"):
+                    try:
+                        from ...core.twig import recover_cutoff_twig_placements
+
+                        precut_placements = extract_twig_placements_from_model(
+                            precut_model,
+                            bones_info=bones_info if not use_static_mesh else None,
+                        )
+                        raw_cut_positions = _raw_twig_positions(model)
+                        recovered = recover_cutoff_twig_placements(
+                            precut_placements,
+                            raw_cut_positions,
+                            model,
+                            bones_info=bones_info if not use_static_mesh else None,
+                            scaled_points=_sp,
+                            reattach_threshold=(
+                                _get_config().export_twig_reattach_threshold
+                            ),
+                            min_spacing_ratio=(
+                                _get_config().export_twig_min_spacing_ratio
+                            ),
+                        )
+                        for twig_type, plist in recovered.items():
+                            twig_placements.setdefault(twig_type, []).extend(plist)
+                            recovered_count += len(plist)
+                    except Exception:
+                        logger.exception(
+                            "Twig recovery failed; falling back to the "
+                            "configured density multiplier"
+                        )
+                        recovered_count = 0
+
+            # Dead twigs are instanced only when the species actually ships a
+            # dead-twig model; create_nanite_assembly and the Helios OBJ export
+            # both skip the type otherwise.
+            #
+            # Ordering note, so this is not "fixed" again: dropping them here
+            # rather than after densify_twig_placements does NOT change the
+            # living twig count. densify thins each twig type independently by
+            # the same ratio (`keep_count = max(1, len(plist) * keep_ratio)`
+            # per type), so twig_dead is thinned inside its own bucket and
+            # never draws budget from twig_long/twig_upward. Verified
+            # 2026-08-07 on the r00 pilot: silver fir h05/h10 exported 30 and
+            # 145 instances with the drop on either side of densify.
+            #
+            # The budget dead twigs genuinely can steal is the GLOBAL one in
+            # thin_placements_to_limit, which caps across all types at once --
+            # that is what the 2026-08-05 sycamore maple fix addressed, and
+            # this block already sits ahead of it. Dropping ahead of densify
+            # too is kept only because it makes effective_density mean a
+            # multiplier on the twigs that will actually be instanced, which
+            # composes more predictably once the cap is also binding.
+            if twig_placements and twig_placements.get("twig_dead"):
+                if twig_usd_paths is None:
+                    with _track("twig_lookup"):
+                        try:
+                            from .tree_export import get_twig_usd_map_for_species
+
+                            twig_usd_paths = get_twig_usd_map_for_species(
+                                species_name,
+                                prefer_skeletal=True,
+                                prefer_static=False,
+                            )
+                        except Exception:
+                            twig_usd_paths = None
+                if not (twig_usd_paths or {}).get("twig_dead"):
+                    _dead_count = len(twig_placements["twig_dead"])
+                    twig_placements = {
+                        t: p for t, p in twig_placements.items() if t != "twig_dead"
+                    }
+                    logger.info(
+                        "Dropped %d dead-twig placements before the density "
+                        "adjustment: %s ships no dead-twig asset, so none "
+                        "would be instanced",
+                        _dead_count,
+                        species_name,
+                    )
+
             # Adjust twig count: density > 1.0 adds synthetic placements on
             # non-twig faces; density < 1.0 randomly thins existing placements
             if twig_placements:
                 from ...config import get_config
 
                 cfg = get_config()
-                # CSV twig_density is a per-tree scale factor applied to the
-                # TOML base (export_twig_density, or the species-type default
-                # from export_twig_density_conifer/broadleaf).  When absent, scale is 1.0.
+                # Crown density = configured base x the per-tree CSV/variant
+                # scale. Both apply whether or not recovery ran.
+                #
+                # The base used to be skipped after a successful recovery, back
+                # when it was a per-habit guess at the cutoff loss and would
+                # have double-counted. It is now a plain artistic multiplier, so
+                # skipping it silently ignored [export] twig_density on every
+                # tree with a cutoff active -- i.e. exactly when someone reaches
+                # for it to thin an overloaded crown. It is also the only
+                # working density lever: Grove's own seed twig_density is inert
+                # in the core API (1.0 / 0.25 / 0.0 all grow the same twig
+                # count), so this must not be bypassed.
                 twig_scale = twig_density if twig_density is not None else 1.0
-                effective_density = cfg.get_twig_density_base(species_name) * twig_scale
+                effective_density = (
+                    cfg.get_twig_density_base(species_name) * twig_scale
+                )
                 if effective_density != 1.0:
                     with _track("adjust_twig_density"):
                         from ...core.twig import densify_twig_placements
@@ -1006,6 +1301,30 @@ def export_tree_as_nanite_assembly(
                             bones_info=bones_info if not use_static_mesh else None,
                             youth_bias=cfg.export_youth_bias,
                             scaled_points=_sp,
+                        )
+
+            # Thin to the assembly instance cap here, before the per-twig bone
+            # remap below and before twig_placements_out is published, so
+            # neither spends work on instances the assembly would discard.
+            # The selection uses only position and scale, so capping here is
+            # equivalent to capping at assembly-write time.
+            if twig_placements:
+                with _track("cap_twig_instances"):
+                    from ...core.twig import thin_placements_to_limit
+
+                    _max_inst = _get_config().export_max_assembly_instances
+                    _before = sum(len(p) for p in twig_placements.values())
+                    twig_placements = thin_placements_to_limit(
+                        twig_placements, _max_inst
+                    )
+                    _after = sum(len(p) for p in twig_placements.values())
+                    if _after < _before:
+                        logger.warning(
+                            "Capped assembly instances from %d to %d "
+                            "(max_assembly_instances=%d, proximity-weighted)",
+                            _before,
+                            _after,
+                            _max_inst,
                         )
 
             # CRITICAL: Remap twig bone_ids from UNFILTERED to FILTERED indices

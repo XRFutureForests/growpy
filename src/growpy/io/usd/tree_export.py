@@ -47,8 +47,11 @@ from __future__ import annotations
 
 import logging
 import math
+from array import array as _pyarray
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 from ...utils.pxr_init import ensure_pxr_with_unreal_schema
 
@@ -60,6 +63,42 @@ from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade, UsdSkel, Vt
 
 from ...config import get_config
 from ...constants import BREAST_HEIGHT_METERS
+
+
+def _bark_uv_v_scale(species_name: str | None) -> float:
+    """V scale that keeps a bark texture's own proportions on the trunk.
+
+    Grove lays trunk UVs out isotropically -- measured on a beech h20 stem, one
+    UV unit spans 0.0136 m both around the trunk and along it, a ratio of 0.999
+    -- so a UV tile is square and any texture is stretched to fill it. Every
+    Grove bark map is elongated (2:1 for the *_70 set, 4:1 for the *_60 set),
+    so each one is squashed vertically by exactly its own aspect ratio: a 2:1
+    fir map by 2x, a 4:1 beech map by 4x. It shows as horizontal banding with
+    the round lenticels smeared into ellipses.
+
+    Dividing V by the aspect makes one tile as tall as the texture is, relative
+    to its width. Returns 1.0 when there is no bark texture or it is square, so
+    a species without an elongated map is untouched.
+    """
+    if not species_name:
+        return 1.0
+    try:
+        from PIL import Image
+
+        from growpy.config.paths import get_bark_texture_path
+
+        path = get_bark_texture_path(species_name)
+        if path is None:
+            return 1.0
+        with Image.open(path) as img:
+            width, height = img.size
+        if width <= 0 or height <= 0:
+            return 1.0
+        aspect = height / width
+        return 1.0 / aspect if aspect > 1.0 else 1.0
+    except Exception as e:  # pragma: no cover - texture is optional
+        logger.debug("Bark aspect lookup failed for %s: %s", species_name, e)
+        return 1.0
 
 
 def build_tree_mesh(
@@ -117,9 +156,9 @@ def build_tree_mesh(
         include_skeleton: If True and skeleton provided, add skeleton structure (skeletal mesh)
         include_grove_attributes: If True, add Grove metadata attributes as primvars (for analysis)
         scaled_points_out: Optional mutable list. When provided and radial_scale != 1.0,
-            filled with (x, y, z) tuples of the final mesh points in Grove's Y-up
-            coordinate space (before USD axis swap). Used by assembly export to
-            compute twig face centroids from the scaled mesh.
+            filled with (x, y, z) tuples of the final mesh points in Grove's
+            Z-up coordinate space (written to USD unswapped). Used by assembly
+            export to compute twig face centroids from the scaled mesh.
 
     Returns:
         bool: True if USD file was created successfully
@@ -183,11 +222,13 @@ def build_tree_mesh(
         # branches scale proportionally with the trunk. Full correction
         # at breast height, 30% correction retained at the crown.
         #
-        # Scale direction: at branch-trunk junctions, the scaling axis
-        # transitions from the trunk axis (at the connection surface) to
-        # the branch axis (further along the branch). This prevents gaps
-        # when shrinking — branch-base vertices follow the trunk surface
-        # inward rather than collapsing toward their own branch centerline.
+        # Scale direction: at every bone-to-bone junction (trunk-to-branch
+        # and branch-to-sub-branch alike), the scaling axis transitions
+        # smoothly between the parent bone's axis and the child bone's axis
+        # near the connection, applied symmetrically on both the parent-
+        # owned and child-owned sides of the seam. This prevents gaps and
+        # cracks at connection points regardless of which bone Grove
+        # happened to weight a given seam vertex to.
         #
         # Requires bones_info + vertex bone IDs; skipped otherwise.
         if (
@@ -196,7 +237,7 @@ def build_tree_mesh(
             and getattr(model, "point_attribute_bone_id", None)
         ):
             vertex_bone_ids = model.point_attribute_bone_id
-            tree_height = max((p.y for p in points), default=0.0)
+            tree_height = max((p.z for p in points), default=0.0)
             breast_height = BREAST_HEIGHT_METERS
             blend_start = breast_height
             blend_end = max(breast_height + 1.0, tree_height * 0.85)
@@ -209,27 +250,31 @@ def build_tree_mesh(
 
             bone_id_offset = min(vertex_bone_ids)
 
-            # Trunk branch_id = first bone's branch_id (bone index 7)
-            trunk_branch_id = int(bones_info[0][7]) if len(bones_info[0]) >= 8 else -1
-
-            # Build per-bone data
+            # Build per-bone axis/start plus direct parent/child links.
+            # Every bone-to-bone connection (trunk-to-branch and
+            # branch-to-sub-branch alike) is handled the same way below —
+            # there is no special-casing of which branch order a bone
+            # belongs to.
             bone_axes = []
             bone_starts = []
-            bone_branch_ids = []
+            bone_lengths = []
+            bone_parent: list[int | None] = []
             for bone in bones_info:
                 sp, ep = bone[2], bone[3]
                 dx = ep.x - sp.x
                 dy = ep.y - sp.y
                 dz = ep.z - sp.z
                 length = math.sqrt(dx * dx + dy * dy + dz * dz)
+                bone_lengths.append(length)
                 if length > 1e-6:
                     inv = 1.0 / length
                     bone_axes.append((dx * inv, dy * inv, dz * inv))
                 else:
-                    bone_axes.append((0.0, 1.0, 0.0))
+                    bone_axes.append((0.0, 0.0, 1.0))
                 bone_starts.append((sp.x, sp.y, sp.z))
-                bone_branch_ids.append(
-                    int(bone[7]) if len(bone) >= 8 else trunk_branch_id
+                parent_local = bone[1] - bone_id_offset
+                bone_parent.append(
+                    parent_local if 0 <= parent_local < len(bones_info) else None
                 )
 
             # Normalize bone_starts to local space.
@@ -242,89 +287,62 @@ def build_tree_mesh(
                 for bx, by, bz in bone_starts
             ]
 
-            # Determine which bones are trunk (order 0) vs branch
-            is_trunk_bone = [
-                bone_branch_ids[i] == trunk_branch_id for i in range(len(bones_info))
+            # Invert parent links so each bone knows its direct children.
+            bone_children: dict[int, list[int]] = {}
+            for idx, parent_local in enumerate(bone_parent):
+                if parent_local is not None:
+                    bone_children.setdefault(parent_local, []).append(idx)
+
+            # Distance (meters) over which the scaling axis transitions across a
+            # bone-to-bone junction, computed PER BONE. It must exceed a
+            # branch's own radius so surface vertices at the connection follow
+            # the wider parent's surface instead of collapsing toward the
+            # child's own centerline -- but a single fixed distance (previously
+            # 0.5 m) is longer than most bones. Over half of a mature tree's
+            # bones are shorter than that, so the parent-side and child-side
+            # blends overlapped across the whole bone and its own axis was never
+            # used, smearing the scaling direction on every short branch.
+            # Capping at 40% of each bone's length leaves at least the middle
+            # fifth of every bone scaling along its own axis.
+            AXIS_BLEND_MAX = 0.5
+            AXIS_BLEND_LENGTH_FRACTION = 0.4
+            bone_blend_dist = [
+                max(1e-4, min(AXIS_BLEND_MAX, AXIS_BLEND_LENGTH_FRACTION * length))
+                for length in bone_lengths
             ]
 
-            # For each non-trunk bone, find the parent trunk bone axis
-            # so we can blend the scaling direction at junctions.
-            # Walk parent chain until we hit a trunk bone.
-            parent_trunk_axis: list[tuple[float, float, float] | None] = [None] * len(
-                bones_info
-            )
-            parent_trunk_start: list[tuple[float, float, float] | None] = [None] * len(
-                bones_info
-            )
-            for idx in range(len(bones_info)):
-                if is_trunk_bone[idx]:
-                    continue
-                cur = idx
-                visited = set()
-                while cur >= 0 and cur not in visited:
-                    visited.add(cur)
-                    parent_global = bones_info[cur][1]
-                    parent_local = parent_global - bone_id_offset
-                    if parent_local < 0 or parent_local >= len(bones_info):
-                        break
-                    if is_trunk_bone[parent_local]:
-                        parent_trunk_axis[idx] = bone_axes[parent_local]
-                        parent_trunk_start[idx] = bone_starts[parent_local]
-                        break
-                    cur = parent_local
+            def _lerp_frame(
+                ax: float,
+                ay: float,
+                az: float,
+                bx: float,
+                by: float,
+                bz: float,
+                target_idx: int,
+                weight: float,
+            ) -> tuple[float, float, float, float, float, float]:
+                """Blend (axis, origin) toward target_idx's own frame by `weight`."""
+                tax, tay, taz = bone_axes[target_idx]
+                tbx, tby, tbz = bone_starts[target_idx]
+                nax = ax + (tax - ax) * weight
+                nay = ay + (tay - ay) * weight
+                naz = az + (taz - az) * weight
+                ln = math.sqrt(nax * nax + nay * nay + naz * naz)
+                if ln > 1e-6:
+                    inv_ln = 1.0 / ln
+                    nax *= inv_ln
+                    nay *= inv_ln
+                    naz *= inv_ln
+                nbx = bx + (tbx - bx) * weight
+                nby = by + (tby - by) * weight
+                nbz = bz + (tbz - bz) * weight
+                return nax, nay, naz, nbx, nby, nbz
 
-            # Cumulative bone-chain distance from the first non-trunk bone
-            # (branch root) to each bone along the branch. Used to blend
-            # the scaling axis from trunk direction to branch direction.
-            branch_root_of = {}
-            for idx in range(len(bones_info)):
-                if is_trunk_bone[idx] or parent_trunk_axis[idx] is None:
-                    continue
-                # Walk parent chain to find first non-trunk bone (root)
-                cur = idx
-                visited = set()
-                root = idx
-                while cur >= 0 and cur not in visited:
-                    visited.add(cur)
-                    parent_global = bones_info[cur][1]
-                    parent_local = parent_global - bone_id_offset
-                    if parent_local < 0 or parent_local >= len(bones_info):
-                        break
-                    if is_trunk_bone[parent_local]:
-                        root = cur
-                        break
-                    root = parent_local
-                    cur = parent_local
-                branch_root_of[idx] = root
-
-            junction_chain_dist = {}
-            for idx in branch_root_of:
-                root = branch_root_of[idx]
-                if idx == root:
-                    junction_chain_dist[idx] = 0.0
-                else:
-                    dist = 0.0
-                    cur = idx
-                    visited = set()
-                    while cur != root and cur >= 0 and cur not in visited:
-                        visited.add(cur)
-                        parent_global = bones_info[cur][1]
-                        parent_local = parent_global - bone_id_offset
-                        if parent_local < 0 or parent_local >= len(bones_info):
-                            break
-                        csx, csy, csz = bone_starts[cur]
-                        cpx, cpy, cpz = bone_starts[parent_local]
-                        ddx, ddy, ddz = csx - cpx, csy - cpy, csz - cpz
-                        dist += math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz)
-                        cur = parent_local
-                    junction_chain_dist[idx] = dist
-
-            # Distance over which the scaling axis transitions from trunk
-            # to branch direction. Must exceed trunk radius so surface
-            # vertices at the junction follow the trunk surface.
-            axis_blend_dist = 0.5
-
-            usd_points = []
+            # Preallocated typed buffer, filled by index: the scaled path runs
+            # over every vertex (7M+ on an h15 open-grown conifer), and a
+            # Python list of that many Gf.Vec3f is memory this export cannot
+            # afford. Same output, one array instead of N objects.
+            pts_out = np.empty((len(points), 3), dtype=np.float32)
             for i, p in enumerate(points):
                 local_idx = vertex_bone_ids[i] - bone_id_offset
                 local_idx = max(0, min(local_idx, len(bone_axes) - 1))
@@ -333,110 +351,184 @@ def build_tree_mesh(
                 # blending to crown_scale at blend_end. crown_scale
                 # keeps partial correction so branches don't appear
                 # under/oversized relative to the trunk.
-                if p.y <= blend_start:
+                if p.z <= blend_start:
                     s = radial_scale
-                elif p.y >= blend_end:
+                elif p.z >= blend_end:
                     s = crown_scale
                 else:
-                    t = (p.y - blend_start) / blend_range
+                    t = (p.z - blend_start) / blend_range
                     t = t * t * (3.0 - 2.0 * t)
                     s = radial_scale + (crown_scale - radial_scale) * t
 
                 if abs(s - 1.0) < 1e-6:
-                    usd_points.append(Gf.Vec3f(p.x, p.y, p.z))
+                    pts_out[i, 0] = p.x
+                    pts_out[i, 1] = p.y
+                    pts_out[i, 2] = p.z
                     continue
 
-                # Determine scaling axis and reference point.
-                # Trunk bones: use own axis directly.
-                # Branch bones near junction: blend from trunk axis to
-                # branch axis so vertices at the connection surface move
-                # with the trunk rather than toward the branch centerline.
-                if (
-                    not is_trunk_bone[local_idx]
-                    and parent_trunk_axis[local_idx] is not None
-                ):
-                    chain_d = junction_chain_dist.get(local_idx, 0.0)
-                    jax, jay, jaz = bone_axes[local_idx]
-                    jsx, jsy, jsz = bone_starts[local_idx]
-                    along = max(
-                        0.0,
-                        (p.x - jsx) * jax + (p.y - jsy) * jay + (p.z - jsz) * jaz,
-                    )
-                    dist_along = chain_d + along
-                    if dist_along >= axis_blend_dist:
-                        # Far enough from junction — use branch axis
-                        ax, ay, az = jax, jay, jaz
-                        bx, by, bz = jsx, jsy, jsz
-                    else:
-                        # Blend axis: trunk axis -> branch axis
-                        at = dist_along / axis_blend_dist
-                        at = at * at * (3.0 - 2.0 * at)
-                        pt_axis = parent_trunk_axis[local_idx] or (0.0, 1.0, 0.0)
-                        pt_start = parent_trunk_start[local_idx] or (0.0, 0.0, 0.0)
-                        tax, tay, taz = pt_axis
-                        ax = tax + (jax - tax) * at
-                        ay = tay + (jay - tay) * at
-                        az = taz + (jaz - taz) * at
-                        ln = math.sqrt(ax * ax + ay * ay + az * az)
-                        if ln > 1e-6:
-                            inv_ln = 1.0 / ln
-                            ax *= inv_ln
-                            ay *= inv_ln
-                            az *= inv_ln
-                        # Blend reference point: trunk start -> bone start
-                        tbx, tby, tbz = pt_start
-                        bx = tbx + (jsx - tbx) * at
-                        by = tby + (jsy - tby) * at
-                        bz = tbz + (jsz - tbz) * at
-                else:
-                    ax, ay, az = bone_axes[local_idx]
-                    bx, by, bz = bone_starts[local_idx]
+                # Start from this vertex's own bone frame.
+                ax, ay, az = bone_axes[local_idx]
+                bx, by, bz = bone_starts[local_idx]
+
+                # Near this bone's own start: blend toward the parent bone
+                # so vertices right at the connection move with the wider
+                # parent surface instead of snapping to this bone's own
+                # direction.
+                parent_local = bone_parent[local_idx]
+                if parent_local is not None:
+                    blend_self = bone_blend_dist[local_idx]
+                    vx0, vy0, vz0 = p.x - bx, p.y - by, p.z - bz
+                    along = max(0.0, vx0 * ax + vy0 * ay + vz0 * az)
+                    if along < blend_self:
+                        w = 1.0 - along / blend_self
+                        w = w * w * (3.0 - 2.0 * w)
+                        ax, ay, az, bx, by, bz = _lerp_frame(
+                            ax, ay, az, bx, by, bz, parent_local, w
+                        )
+
+                # Near where a child bone begins: blend toward that child
+                # so the parent surface matches the child's own blended
+                # axis at the same connection. This applies regardless of
+                # whether Grove happened to weight this specific vertex to
+                # the parent or to the child bone — otherwise the two
+                # halves of the same seam scale along different axes and
+                # tear apart once radial_scale != 1.0.
+                children = bone_children.get(local_idx)
+                if children:
+                    best_along = None
+                    best_child = None
+                    best_blend = None
+                    for child_idx in children:
+                        child_blend = bone_blend_dist[child_idx]
+                        cax, cay, caz = bone_axes[child_idx]
+                        csx, csy, csz = bone_starts[child_idx]
+                        cvx, cvy, cvz = p.x - csx, p.y - csy, p.z - csz
+                        cdot = cvx * cax + cvy * cay + cvz * caz
+                        along = max(0.0, cdot)
+                        if along >= child_blend:
+                            continue
+                        perp_x = cvx - cdot * cax
+                        perp_y = cvy - cdot * cay
+                        perp_z = cvz - cdot * caz
+                        perp_dist = math.sqrt(
+                            perp_x * perp_x + perp_y * perp_y + perp_z * perp_z
+                        )
+                        child_bone = bones_info[child_idx]
+                        child_radius = (
+                            child_bone[4] if len(child_bone) >= 5 else child_blend
+                        )
+                        if perp_dist > child_radius * 2.0:
+                            continue
+                        if best_along is None or along < best_along:
+                            best_along = along
+                            best_child = child_idx
+                            best_blend = child_blend
+                    if best_child is not None:
+                        w = best_along / best_blend
+                        w = w * w * (3.0 - 2.0 * w)
+                        ax, ay, az, bx, by, bz = _lerp_frame(
+                            ax, ay, az, bx, by, bz, best_child, w
+                        )
 
                 vx, vy, vz = p.x - bx, p.y - by, p.z - bz
                 dot = vx * ax + vy * ay + vz * az
                 px, py, pz = vx - dot * ax, vy - dot * ay, vz - dot * az
-                usd_points.append(
-                    Gf.Vec3f(
-                        p.x + (s - 1.0) * px,
-                        p.y + (s - 1.0) * py,
-                        p.z + (s - 1.0) * pz,
-                    )
-                )
+                pts_out[i, 0] = p.x + (s - 1.0) * px
+                pts_out[i, 1] = p.y + (s - 1.0) * py
+                pts_out[i, 2] = p.z + (s - 1.0) * pz
+
+            usd_points = Vt.Vec3fArray.FromNumpy(pts_out)
+            del pts_out
         else:
-            usd_points = [Gf.Vec3f(p.x, p.y, p.z) for p in points]
+            # Same reasoning as the faces/UV block below: stream straight into
+            # a typed buffer instead of building 7M+ Gf.Vec3f Python objects.
+            pts_flat = np.fromiter(
+                (c for p in points for c in (p.x, p.y, p.z)),
+                dtype=np.float32,
+                count=len(points) * 3,
+            )
+            usd_points = Vt.Vec3fArray.FromNumpy(pts_flat.reshape(-1, 3))
+            del pts_flat
 
         # Export scaled vertex positions for twig face centroid computation.
         # Assembly export uses these to place twigs on the already-scaled mesh
         # instead of applying a separate radial transform.
         if scaled_points_out is not None and radial_scale != 1.0:
+            # Deliberately plain float tuples, not the numpy array the rest
+            # of this function now uses. Twig placement positions derived
+            # from these end up in Gf.Vec3f/Gf.Quath, which are Boost.Python
+            # bindings that accept float but reject numpy.float32 -- and the
+            # numpy scalars propagate silently through centroid and normal
+            # arithmetic before failing deep in the assembly export. The
+            # memory saved here is not worth leaking a dtype across three
+            # module boundaries.
             scaled_points_out.extend((pt[0], pt[1], pt[2]) for pt in usd_points)
 
-        # Convert faces to USD format
-        face_vertex_counts = [len(face) for face in faces]
-        face_vertex_indices = []
+        # Convert faces to USD format.
+        #
+        # Typed buffers rather than Python lists throughout this block. These
+        # are the largest arrays in the export and Python-object copies of them
+        # are what put an open-grown 25 m conifer out of reach: profiled on an
+        # h15 open-grown silver fir (155k branches, 7.0M points, 6.6M faces,
+        # 24.9M face-varying UVs), list(model.uvs) alone cost 3.4 GB and
+        # list(model.faces) 1.5 GB, against ~200 MB and ~130 MB for the
+        # equivalent typed arrays. h25 is roughly 3x larger again.
+        #
+        # array('i') keeps 4 bytes per index while still supporting append in a
+        # single pass; the index total is not known up front because caps are
+        # triangles while the shaft is quads, so it cannot be preallocated.
+        face_counts_buf = _pyarray("i")
+        face_indices_buf = _pyarray("i")
         for face in faces:
-            face_vertex_indices.extend(face)
+            face_counts_buf.append(len(face))
+            face_indices_buf.extend(face)
 
         # Set mesh topology
         mesh.CreatePointsAttr(usd_points)
-        mesh.CreateFaceVertexCountsAttr(face_vertex_counts)
-        mesh.CreateFaceVertexIndicesAttr(face_vertex_indices)
+        mesh.CreateFaceVertexCountsAttr(
+            Vt.IntArray.FromNumpy(np.frombuffer(face_counts_buf, dtype=np.int32))
+        )
+        mesh.CreateFaceVertexIndicesAttr(
+            Vt.IntArray.FromNumpy(np.frombuffer(face_indices_buf, dtype=np.int32))
+        )
+        del face_counts_buf, face_indices_buf
 
         # Add UVs for texture mapping
         # CRITICAL: UVs are required for bark textures to display correctly
         if uvs and len(uvs) > 0:
             primvars_api = UsdGeom.PrimvarsAPI(mesh)
 
-            # Convert Grove UVs to USD format
-            # Grove UVs are tuples (u, v)
-            usd_uvs = [Gf.Vec2f(uv[0], uv[1]) for uv in uvs]
+            # Grove UVs are (u, v) tuples, one per face-vertex, so this is the
+            # biggest array of the lot. np.fromiter with an explicit count
+            # allocates the result once and streams into it -- no intermediate
+            # Python list of tuples and no list of Gf.Vec2f.
+            uv_count = len(uvs)
+            uv_flat = np.fromiter(
+                (c for uv in uvs for c in (uv[0], uv[1])),
+                dtype=np.float32,
+                count=uv_count * 2,
+            )
 
             # Create UV primvar with faceVarying interpolation
             # faceVarying means one UV per face-vertex (matches face_vertex_indices)
             uv_primvar = primvars_api.CreatePrimvar(
                 "st", Sdf.ValueTypeNames.TexCoord2fArray, UsdGeom.Tokens.faceVarying
             )
-            uv_primvar.Set(usd_uvs)
+            # Undo the square-tile assumption for elongated bark maps. Applied
+            # in place on the flat buffer so the big array is never copied.
+            v_scale = _bark_uv_v_scale(species_name)
+            if v_scale != 1.0:
+                uv_flat[1::2] *= v_scale
+                logger.info(
+                    "Bark UV: scaled V by %.3f for %s so the %.0f:1 texture "
+                    "keeps its proportions",
+                    v_scale,
+                    species_name,
+                    1.0 / v_scale,
+                )
+
+            uv_primvar.Set(Vt.Vec2fArray.FromNumpy(uv_flat.reshape(uv_count, 2)))
+            del uv_flat
 
         # Add all model attributes from Grove (face and point attributes)
         # These provide rich data for analysis but add ~70% file size
@@ -485,9 +577,71 @@ def build_tree_mesh(
         stage.Save()
         return True
 
-    except Exception as e:
-        logger.error("USD export failed: %s", e, exc_info=True)
+    except MemoryError:
+        # Name memory as the cause when memory is the cause (XRFF-333). The
+        # generic handler below reports whatever USD call happened to be next
+        # in line, and read bottom-up that traceback points at the primvar --
+        # which sent a debugging session into this module's UV handling when
+        # the actual condition was an out-of-memory host.
+        logger.error(
+            "Out of memory building the USD mesh for %s (%s): %s points, %s "
+            "faces, %s face-varying UVs. This is a host memory limit, not a "
+            "USD error. Use a coarser preset for this stage "
+            "([quality.dataset_tall] raises build_cutoff_thickness, which is "
+            "the triangle-budget lever) rather than looking for a schema bug.",
+            species_name or "unknown species",
+            output_path.name,
+            _safe_len(locals().get("points")),
+            _safe_len(locals().get("faces")),
+            _safe_len(locals().get("uvs")),
+        )
+        stage = None
+        _discard_partial_export(output_path)
         return False
+
+    except Exception as e:
+        logger.error(
+            "USD export failed for %s: %s", output_path.name, e, exc_info=True
+        )
+        stage = None
+        _discard_partial_export(output_path)
+        return False
+
+
+def _safe_len(value: Any) -> str:
+    """Length of `value` for a log line, or "?" if it does not have one.
+
+    Called only from the failure handlers, where a local may be unbound or hold
+    a partially built buffer. A diagnostic must never raise on its way out.
+    """
+    try:
+        return f"{len(value):,}"
+    except Exception:
+        return "?"
+
+
+def _discard_partial_export(output_path: Path) -> None:
+    """Delete the file `Usd.Stage.CreateNew` left behind by a failed export.
+
+    CreateNew writes the file the moment it is called, so any failure before
+    `stage.Save()` leaves a 0-byte .usdc on disk (XRFF-331). Nothing
+    downstream checks size, so a consumer globbing `*_stems_skeletal.usdc`
+    would pick the empty file up as if it were a real asset.
+
+    If the layer is still held open the unlink can fail; say so loudly rather
+    than leave a silent empty artifact for someone to trip over later.
+    """
+    try:
+        if output_path.exists():
+            output_path.unlink()
+            logger.info("Removed incomplete export artifact: %s", output_path.name)
+    except OSError as exc:
+        logger.warning(
+            "Could not remove the incomplete export artifact %s: %s. It is a "
+            "partial file, not a usable asset -- delete it before re-running.",
+            output_path,
+            exc,
+        )
 
 
 def strip_skeleton_from_usd(skeletal_path: Path, static_path: Path) -> bool:
@@ -1213,9 +1367,7 @@ def _build_usdskel_from_bones(
     # Build joints using bones_info
     bone_id_to_joint_path = {}
     bone_positions = {}
-    branch_id_to_joint_path = (
-        {}
-    )  # Maps local branch_id to joint path ending with branch_X
+    branch_id_to_joint_path = {}  # Maps local branch_id to joint path ending with branch_X
 
     # Create lookup dict for bones_info by global bone ID
     bones_info_dict = {}
@@ -1513,13 +1665,38 @@ def get_twig_usd_map_for_species(
 
     twig_usd_map: dict[str, list[Path]] = {}
 
-    # Map Grove attribute names to twig file keywords
+    # Map Grove attribute names to twig file keywords.
+    #
+    # WORD tokens only. A trailing letter is a VARIANT, not a type: growpy
+    # builds one variant per mesh object in a twig .blend, and for an asset
+    # whose ladder was derived by `growpy-derive-twig-ladder` those letters are
+    # ordered by SIZE. The letter rules that used to live here
+    # (`foliage_a_`/`foliage_c_` -> twig_long, `foliage_b_`/`foliage_d_` ->
+    # twig_short, `foliage_e_` -> twig_upward) were guessing a type from a
+    # letter, and on a size ladder the guess is meaningless: giving
+    # PacificSilverFirTwig a 7-variant ladder silently dropped its `f`, `g` and
+    # the original full spray from the 1:1 path altogether -- for silver fir,
+    # Norway spruce, grand fir and Douglas fir, which all share that asset --
+    # while landing `a` and `c` on the branch tips for no reason. Species that
+    # name their objects the way Grove does (birch, oak, ash, sycamore, pine:
+    # apical/lateral/upward) are unaffected; a letter-only set now falls to the
+    # variety fallback below, which is what it always should have done.
+    #
+    # twig_dead is deliberately narrow and is resolved last. Grove's own slot
+    # detection (the_grove_23 Twigs.py) tests lateral, then apical, then upward,
+    # then "dead", first match wins -- so a name carrying a living-type token is
+    # that type and never a dead twig. "fall"/"winter" are seasons, not Grove's
+    # dead-twig slot: growpy's own standardize_twig_name stamps a "dead" season
+    # token onto FALL foliage (utils/naming.py), so matching those here made an
+    # ordinary autumn apical twig register as a dead-twig asset and rendered
+    # Grove's dead positions with it.
     type_mapping = {
-        "twig_long": ["apical", "long", "end", "terminal", "foliage_a_", "foliage_c_"],
-        "twig_short": ["lateral", "short", "side", "foliage_b_", "foliage_d_"],
-        "twig_upward": ["upward", "up", "foliage_e_"],
-        "twig_dead": ["dead", "fall", "winter"],
+        "twig_long": ["apical", "long", "end", "terminal"],
+        "twig_short": ["lateral", "short", "side"],
+        "twig_upward": ["upward", "up"],
+        "twig_dead": ["dead"],
     }
+    living_types = ("twig_long", "twig_short", "twig_upward")
 
     def _resolve_usd_path(twig_paths):
         """Find a valid USD file path from a list of twig paths."""
@@ -1556,20 +1733,61 @@ def get_twig_usd_map_for_species(
                         return usd_file
         return None
 
-    # Collect ALL matching twig files per grove type
+    # Collect ALL matching twig files per grove type. Files already claimed by a
+    # living type are withheld from twig_dead, mirroring Grove's first-match-wins
+    # precedence; dict order puts twig_dead last so the set is complete by then.
+    claimed_by_living: set[str] = set()
     for grove_type, keywords in type_mapping.items():
         matched_paths = []
         for keyword in keywords:
             for twig_type, twig_paths in twig_files_by_type.items():
-                if keyword in twig_type.lower():
-                    resolved = _resolve_usd_path(twig_paths)
-                    if resolved and resolved not in matched_paths:
-                        matched_paths.append(resolved)
+                if keyword not in twig_type.lower():
+                    continue
+                if grove_type in living_types:
+                    claimed_by_living.add(twig_type)
+                elif twig_type in claimed_by_living:
+                    continue
+                resolved = _resolve_usd_path(twig_paths)
+                if resolved and resolved not in matched_paths:
+                    matched_paths.append(resolved)
         if matched_paths:
             twig_usd_map[grove_type] = matched_paths
 
-    # If no type-specific matches found, assign all available twigs to all grove types
-    # randomly. This handles species with non-standard naming.
+    # Variants carrying no type token at all, in a set where some others do:
+    # scots_pine ships `apical_c` and `lateral_c` beside a plain `a`, `b` and an
+    # unsuffixed spray. They are variety within the types the set does name, so
+    # they join those rather than being dropped -- the letter rules used to pick
+    # them up by accident, and removing those rules must not lose them. Only the
+    # types that already matched are extended, so a species gains no type Grove
+    # would then render with a stand-in.
+    if twig_usd_map:
+        dead_tokens = type_mapping["twig_dead"]
+        leftovers = []
+        for twig_type, twig_paths in twig_files_by_type.items():
+            if twig_type in claimed_by_living:
+                continue
+            if any(token in twig_type.lower() for token in dead_tokens):
+                continue
+            resolved = _resolve_usd_path(twig_paths)
+            if resolved and resolved not in leftovers:
+                leftovers.append(resolved)
+        for grove_type in living_types:
+            if grove_type not in twig_usd_map:
+                continue
+            for path in leftovers:
+                if path not in twig_usd_map[grove_type]:
+                    twig_usd_map[grove_type].append(path)
+
+    # No type token anywhere in the set: the variants are variety, not types --
+    # a letter-only twig directory (european_beech a-e, PacificSilverFirTwig's
+    # derived ladder) or non-standard naming. Every variant then serves every
+    # living type, which uses all the art instead of guessing a type per file.
+    # Note the draw between them is RANDOM (`TwigPlacement.prototype = None`),
+    # which assumes the variants are interchangeable in size. That holds for
+    # beech (0.0094-0.0217 m2) and not for a derived SIZE ladder
+    # (PacificSilverFirTwig spans 0.0053-0.1089 m2, 20x), so a ladder species'
+    # crown leaf area varies per draw and its twig_density must be re-derived
+    # against the mean of the set rather than one asset.
     # twig_dead is excluded: without a dedicated dead-twig asset, dead positions
     # should be skipped (assembly_export does this when the type has no prototypes)
     # rather than filled with living foliage at the default upright orientation.

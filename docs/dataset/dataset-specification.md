@@ -10,10 +10,12 @@ and previews see [dataset-overview.md](dataset-overview.md). The authoritative
 species catalogue is `config/tree_asset_lookup.csv`.
 
 **Purpose.** Systematically cover the most common tree species of southern Germany
-(Bavaria, Baden-Württemberg) at multiple growth stages, with open-grown and
-competition variants, and several foliage density levels per species.
+(Bavaria, Baden-Württemberg) at multiple growth stages, under two competition levels
+(Grove surround shells). Foliage density is *not* a dataset axis: since 2026-09-10 it is
+calibrated on the Unreal side (PVE distributor), and the density variants in `[export]`
+stay off.
 
-**Target engine.** Unreal Engine 5.7+ with Nanite and the Procedural Vegetation
+**Target engine.** Unreal Engine 5.7+ (5.8 for the PVE route) with Nanite and the Procedural Vegetation
 Editor (PVE).
 
 ## Species selection
@@ -38,59 +40,78 @@ Membership is controlled by the `Dataset` column in `config/tree_asset_lookup.cs
 |---|---|---|---|
 | European beech | *Fagus sylvatica* | slow_broadleaf | 30 |
 | European oak | *Quercus robur* | slow_broadleaf | 30 |
-| Common ash | *Fraxinus excelsior* | fast_broadleaf | 30 |
-| Sycamore maple | *Acer pseudoplatanus* | slow_broadleaf | 25 |
-| Small-leaved linden | *Tilia cordata* | fast_broadleaf | 25 |
-| Silver birch | *Betula pendula* | fast_broadleaf | 25 |
-| Wild cherry | *Prunus avium* | slow_broadleaf | 20 |
+| Common ash | *Fraxinus excelsior* | fast_broadleaf_wide | 30 |
+| Sycamore maple | *Acer pseudoplatanus* | slow_broadleaf | 30 |
+| Small-leaved linden | *Tilia cordata* | fast_broadleaf_wide | 30 |
+| Silver birch | *Betula pendula* | fast_broadleaf | 30 |
+| Wild cherry | *Prunus avium* | slow_broadleaf | 30 |
 
 To add or remove a species, edit the `Dataset` / `Max Height` / `Competition Group`
 columns in the lookup CSV — see [../reference/configuration.md](../reference/configuration.md).
 
 ## Asset hierarchy
 
-Each asset is defined by four orthogonal dimensions:
+Each asset is defined by three dimensions (a fourth, density, exists in the config and is off):
 
 ```
 Species (11)
-  └─ Individual (2)         open-grown, surround
-       └─ Growth stage      every `height_interval` metres up to the height cap
-            └─ Density (≤3)  full, reduced, bare (via [export] density_variants)
+  └─ Surround radius (2)   r08, r16 (via [surround] radii — no open-grown r00 by decision, 2026-09-11)
+       └─ Growth stage      every `height_interval` metres up to `[forest] max_height` (15 m today: h05, h10, h15)
+            └─ Density (1)     full only; `[export] density_variants` is empty
 ```
 
-### Individual
+### Surround radius
 
-Each species is simulated as two single-tree individuals (see the generated
-`{species}_merged.csv`):
+Each species is simulated once per entry in `[surround] radii`
+(`config/surround.toml`), one job row per radius, all built from config by
+`dataset_csv_planner.build_job_matrix()`:
 
-| Individual | Layout |
-|---|---|
-| `open_grown` | one tree (fid=1) placed at `x=100`, no light competition; wide crown, heavy branching |
-| `surround` | one tree (fid=2) at the origin with Grove's built-in **Surround** light-competition shell enabled; narrow crown, tall clear trunk |
+| Radius | fid | Layout |
+|---|---|---|
+| `r08` | 1 | Grove's built-in **Surround** shell at 8 m; narrow crown, tall clear trunk |
+| `r16` | 2 | shell at 16 m -- weakly shaded, deliberately near-open |
 
-The `surround` individual replaces the earlier multi-tree competition cluster:
-instead of planting neighbour trees and thinning them outward, Grove shades the
-single tree against a statistical shell (`enable_surround`), giving the same
+There is no `r00` open-grown row: a weaker shell was measured as nearly indistinguishable
+from open-grown, so r16 serves that role (owner decision 2026-09-11, recorded in
+`config/surround.toml`). A `surround_radius` of 0 is still accepted for ad-hoc CSVs.
+
+Rows are separated along x (`OPEN_TREE_X * i`) purely so they do not overlap;
+each is simulated in its own grove regardless, because Grove disables Surround
+when several trees share a grove.
+
+The surround shell replaces the earlier multi-tree competition cluster: instead
+of planting neighbour trees and thinning them outward, Grove shades the single
+tree against a statistical shell (`enable_surround`), giving the same
 forest-grown form at a fraction of the cost. Shell parameters come from the
-`[surround]` section in `config/surround.toml`.
+`[surround]` section in `config/surround.toml`, where `grow` and `density` both
+take per-species overrides.
+
+16 m is beyond the 4-10 m range Grove documents for `surround_distance`, so read
+r16 as a wide, weakly-competed variant rather than a strongly-shaded one.
 
 ### Growth stage and density
 
 Stages are produced by `[forest] height_interval` (metres between stages) up to
-`[forest] max_height` (or the species' `Max Height`). Density variants are produced
-in one simulation via `[export] density_variants` (`full`/`reduced`/`bare`), defined
-in `quality.toml`.
+`[forest] max_height` (or the species' `Max Height`). Density variants *can* be produced
+in one simulation via `[export] density_variants` (`full`/`reduced`/`bare`, defined in
+`quality.toml`) but the list is empty in production: crown density is calibrated in the
+PVE distributor, not baked into assets.
 
-## Asset count estimate
+## Asset count
 
-Roughly `11 species × 2 individuals × ~5–9 stages × ≤3 densities`. With a 5 m
-interval, tall conifers yield the most stages; shorter broadleaf fewer. The exact
-count depends on `height_interval`, `max_height`, and how many density variants are
-enabled.
+The **configured run** is `11 species × 2 radii × 3 stages (h05, h10, h15) × 1 density` =
+**66 assets**, which is what `data/output/forest/` holds today
+(`dataset_run_summary.md`, 2026-09-14). The earlier full-ladder figure (639 = 71 stages ×
+3 radii × 3 densities) no longer describes any target: the density axis and r00 were
+dropped, and the cap is 15 m until the conifer height-LOD ladder exists (XRFF-324). See
+[dataset-overview.md](dataset-overview.md) for why the cap is there and what raising it
+requires.
 
 ## Naming convention
 
-Per-species output lives under `data/output/forest/<species>/tree_####/`. In
-multi-stage mode filenames embed cycle/height/DBH:
-`<species>_c{cycle}_h{height}_d{dbh}_assembly.usda`. See
+Per-species output lives under `data/output/forest/<species>/<radius>/`, one
+subdirectory per surround radius, with filenames embedding radius, height
+milestone, DBH and density variant:
+`<Species>_r{RR}_h{HH}m_d{DD}cm_{density}_assembly.usdc`. Runs without a radius
+axis fall back to `<species>/tree_####/` and drop the `r{RR}` token. See
 [../reference/naming-conventions.md](../reference/naming-conventions.md).

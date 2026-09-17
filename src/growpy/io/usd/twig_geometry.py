@@ -89,8 +89,51 @@ def _measure_average_edge_length(mesh, material_indices=None):
     return total_length / len(edge_set)
 
 
+# Face-count guard for densify_mesh_to_target_edge: use_grid_fill subdivision
+# multiplies faces by (cuts+1)^2 per iteration, so a mesh far above the target
+# edge length would explode without one.
+MAX_DENSIFY_FACES = 400_000
+# Below this a mesh could not follow any outline at all; the asset-relative
+# cap never goes lower.
+MIN_DENSIFY_FACES = 20_000
+
+
+def mesh_surface_area(mesh, material_indices=None):
+    """Total face area (Blender units squared) of ``mesh``.
+
+    Args:
+        mesh: Blender mesh data
+        material_indices: Optional set of material indices to restrict to
+    """
+    return float(
+        sum(
+            poly.area
+            for poly in mesh.polygons
+            if not material_indices or poly.material_index in material_indices
+        )
+    )
+
+
+def densify_face_cap(area, reference_area, max_faces=MAX_DENSIFY_FACES):
+    """The face cap for one variant of an asset, proportional to its area.
+
+    The cap is a memory guard, not a quality target, but a per-object cap
+    binds unevenly across one asset's size ladder: the largest variant stops
+    at the cap before it reaches the target edge length while the small ones
+    keep subdividing, so the small ones end up several times HEAVIER per unit
+    leaf area than the whole spray -- measured on PacificSilverFirTwig,
+    5.8M faces/m2 on the fine tier against 0.99M on the full spray (XRFF-412).
+    Scaling the cap by ``area / reference_area``, with the reference being the
+    largest variant in the same file, keeps faces-per-area consistent across
+    the ladder and leaves a single-object asset exactly where it was.
+    """
+    if reference_area <= 0.0 or area <= 0.0:
+        return max_faces
+    return int(max(MIN_DENSIFY_FACES, min(max_faces, max_faces * area / reference_area)))
+
+
 def densify_mesh_to_target_edge(
-    obj, target_edge_mm, material_indices=None, max_iterations=8
+    obj, target_edge_mm, material_indices=None, max_iterations=8, max_faces=None
 ):
     """Densify mesh by iteratively subdividing until target edge length is reached.
 
@@ -102,11 +145,14 @@ def densify_mesh_to_target_edge(
         target_edge_mm: Target edge length in millimeters (e.g., 0.5 for 0.5mm edges)
         material_indices: Optional set of material indices to restrict densification
         max_iterations: Maximum subdivision iterations to prevent runaway (default: 8)
+        max_faces: Face-count guard for this object (default: MAX_DENSIFY_FACES).
+            Pass :func:`densify_face_cap` so every variant of one asset is
+            capped at the same faces-per-area.
 
     Returns:
         Final average edge length in mm
     """
-    MAX_DENSIFY_FACES = 400_000  # cap face growth from use_grid_fill subdivision ((cuts+1)^2 per iteration)
+    face_cap = MAX_DENSIFY_FACES if max_faces is None else int(max_faces)
     if target_edge_mm is None or target_edge_mm <= 0:
         return 0.0
 
@@ -160,7 +206,7 @@ def densify_mesh_to_target_edge(
 
             # use_grid_fill multiplies faces by (cuts+1)^2 per iteration; cap
             # growth so meshes far above the target edge length don't explode
-            while cuts > 0 and target_face_count * (cuts + 1) ** 2 > MAX_DENSIFY_FACES:
+            while cuts > 0 and target_face_count * (cuts + 1) ** 2 > face_cap:
                 cuts -= 1
             if cuts == 0:
                 bm.free()
@@ -846,6 +892,69 @@ def _is_likely_tube_component(component, boundary_edge_set):
         return True
 
     return False
+
+
+def planar_dissolve(obj, angle_deg: float = 1.0) -> tuple[int, int, int, int]:
+    """Merge coplanar faces without moving the silhouette.
+
+    Densification subdivides flat leaf interiors into thousands of coplanar
+    triangles for one reason only: to give ``cut_along_alpha_contour`` fine
+    enough edges to carve an accurate outline. Once that outline exists the
+    interior tessellation carries no shape information -- it is a flat sheet
+    described by far more triangles than it needs.
+
+    Dissolving edges whose two adjacent faces are within ``angle_deg`` merges
+    those flat regions back into n-gons, which are then re-triangulated. The
+    carved outline survives because a boundary edge has only one adjacent face
+    and so is never a dissolve candidate. This is shape-preserving by
+    construction, unlike collapse decimation, which moves vertices and erodes
+    exactly the silhouette the contour cut just paid for.
+
+    Delimiters keep material, UV, seam and sharp boundaries intact so texture
+    mapping and the bark/leaf split are unaffected.
+
+    Args:
+        obj: Blender mesh object, called AFTER the alpha contour cut.
+        angle_deg: Max angle between adjacent faces still treated as coplanar.
+            Small values (~1 deg) merge only genuinely flat regions.
+
+    Returns:
+        (faces_before, faces_after, boundary_edges_before, boundary_edges_after).
+        The two boundary counts are the outline-preservation check: they should
+        be near-identical, dropping only where redundant collinear points sat
+        on a straight run of contour.
+    """
+    import math
+
+    mesh = obj.data
+    if not mesh or angle_deg <= 0.0:
+        return (0, 0, 0, 0)
+
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+
+    faces_before = len(bm.faces)
+    boundary_before = sum(1 for e in bm.edges if len(e.link_faces) == 1)
+
+    bmesh.ops.dissolve_limit(
+        bm,
+        angle_limit=math.radians(angle_deg),
+        verts=list(bm.verts),
+        edges=list(bm.edges),
+        delimit={"MATERIAL", "UV", "SEAM", "SHARP"},
+    )
+    # Back to triangles: the exporter and Nanite both want a triangulated mesh,
+    # and an n-gon fan over a flat region costs (n - 2) triangles instead of the
+    # hundreds the densified version carried.
+    bmesh.ops.triangulate(bm, faces=list(bm.faces))
+
+    faces_after = len(bm.faces)
+    boundary_after = sum(1 for e in bm.edges if len(e.link_faces) == 1)
+
+    bm.to_mesh(mesh)
+    bm.free()
+    mesh.update()
+    return (faces_before, faces_after, boundary_before, boundary_after)
 
 
 def _apply_interior_decimate(

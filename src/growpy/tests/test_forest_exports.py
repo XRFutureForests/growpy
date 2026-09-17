@@ -42,3 +42,19 @@ class TestExportModeHeliosGuard:
 
         assert any("helios" in r.message for r in caplog.records)
         assert list(tmp_path.iterdir()) == []
+
+    def test_growth_json_only_mode_is_refused_here_too(self, tmp_path, caplog):
+        # Same reason: the branch lives in forest_stages, so this pipeline
+        # would otherwise fall through and run the full USD path -- exactly
+        # the cost the mode exists to avoid (XRFF-439).
+        config = GrowPyConfig()
+        config.export_mode = "growth_json_only"
+        forest_data = pd.DataFrame(
+            {"species": ["European beech"], "x": [0.0], "y": [0.0], "height": [10.0]}
+        )
+
+        with caplog.at_level(logging.ERROR):
+            generate_forest_exports(forest_data, tmp_path, config)
+
+        assert any("growth_json_only" in r.message for r in caplog.records)
+        assert list(tmp_path.iterdir()) == []

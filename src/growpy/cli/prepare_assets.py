@@ -24,6 +24,66 @@ from growpy.utils.naming import camel_to_snake, standardize_species_name
 logger = logging.getLogger(__name__)
 
 
+_NORMAL_SUFFIXES = ("normal", "_normal", "-normal", " normal", "_norm", "nrm")
+
+
+def _index_bark_normals(src_textures: Path) -> dict[str, Path]:
+    """Map each bark diffuse stem (lowercased) to its normal map, if present.
+
+    The Grove's own naming is not consistent. 47 of its 48 bark normals are
+    ``<Stem>Normal.jpg``; ``Birch70_normal.jpg`` is not, and the single
+    hardcoded spelling this replaces therefore skipped it silently -- silver
+    birch shipped with no normal map at all, and a trunk with no normal map
+    renders as polished chrome.
+
+    Built by listing the directory rather than probing candidate filenames, so
+    it behaves on a case-sensitive filesystem too.
+    """
+    index: dict[str, Path] = {}
+    if not src_textures.is_dir():
+        return index
+
+    entries = [p for p in src_textures.iterdir() if p.is_file()]
+    stems = {p.stem.lower() for p in entries}
+
+    for path in entries:
+        low = path.stem.lower()
+        for suffix in _NORMAL_SUFFIXES:
+            if not low.endswith(suffix):
+                continue
+            base = low[: -len(suffix)].rstrip("_- ")
+            # Only claim it when a diffuse by that name actually exists;
+            # without this a texture legitimately ending in "Normal" would
+            # shadow one.
+            if base in stems:
+                index.setdefault(base, path)
+            break
+    return index
+
+
+def _overlay_custom_twigs(custom_dir: Path, dst_dir: Path) -> list[str]:
+    """Copy every file under ``custom_dir`` over the Grove copy in ``dst_dir``.
+
+    An OVERLAY, not a replacement, so a hand-edited asset needs to track only
+    the file that actually changed rather than a whole copy of the Grove
+    directory beside it. That matters here for more than tidiness: the Grove
+    twigs are licensed commercial content and are deliberately gitignored, so a
+    full copy could not be committed even if it were wanted.
+
+    Returns the relative paths overlaid, for logging.
+    """
+    applied: list[str] = []
+    for source in sorted(custom_dir.rglob("*")):
+        if not source.is_file():
+            continue
+        relative = source.relative_to(custom_dir)
+        target = dst_dir / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        applied.append(str(relative).replace("\\", "/"))
+    return applied
+
+
 def load_species_csv(csv_path: Path, use_gbif: bool = True) -> pd.DataFrame:
     """Load and validate species CSV.
 
@@ -113,6 +173,89 @@ def load_species_csv(csv_path: Path, use_gbif: bool = True) -> pd.DataFrame:
         raise ValueError(f"CSV missing required columns: {missing}")
 
     return df
+
+
+def _load_preset_patches() -> dict:
+    """Read config/preset_patches.json, the tracked home for per-species edits.
+
+    ``data/assets/`` is gitignored, so an edit made only to a copied preset is
+    invisible to review and is erased by the next clean rebuild -- which is how
+    the drop_decay_curve/drop_weak_curve ramps went missing while the docs, the
+    copy-skip guard below and growth_models.toml all still described them as
+    applied. Keeping them here makes a clean rebuild reproduce them.
+
+    Returns an empty dict when the file is absent, so this stays optional.
+    """
+    import json as _json
+
+    from growpy.config.core import _find_config_dir
+
+    # Follows GROWPY_CONFIG, so a pilot config dir can carry its own patches.
+    config_dir = _find_config_dir()
+    if config_dir is None:
+        return {}
+    patch_file = config_dir / "preset_patches.json"
+    if not patch_file.exists():
+        return {}
+    try:
+        with open(patch_file, encoding="utf-8") as f:
+            data = _json.load(f)
+    except (OSError, ValueError) as exc:
+        logger.warning("Could not read %s: %s -- no patches applied", patch_file, exc)
+        return {}
+    # Keys starting with "_" are prose (rationale for each entry), not species.
+    return {k: v for k, v in data.items() if not k.startswith("_")}
+
+
+def _apply_preset_patch(preset_path: Path, patch: dict | None) -> None:
+    """Merge one species' tracked patch into a freshly copied preset.
+
+    Shallow merge: a patch key replaces the Grove value outright. Keys ending in
+    ``_curve`` are not Grove properties -- growpy's PresetOverrides reads them
+    and applies them per cycle (see config/preset_overrides.py).
+    """
+    import json as _json
+
+    patch = patch or {}
+
+    with open(preset_path, encoding="utf-8") as f:
+        preset = _json.load(f)
+
+    # Retract "{param}_curve" ramps that config no longer declares. Without
+    # this the patch file can only ever ADD: data/assets/ is gitignored and the
+    # copy-skip guard above refuses to overwrite any preset carrying a _curve,
+    # so a ramp deleted from preset_patches.json would survive on disk forever
+    # and keep shaping the dataset with nothing in review to show for it. That
+    # is how the drop_decay_curve/drop_weak_curve ramps outlived the reason for
+    # their existence (see config/preset_patches.json for the full history).
+    stale = [
+        k for k in preset
+        if k.endswith("_curve") and k not in patch
+    ]
+    for k in stale:
+        del preset[k]
+
+    if not patch and not stale:
+        return
+
+    preset.update(patch)
+    with open(preset_path, "w", encoding="utf-8") as f:
+        _json.dump(preset, f, indent=4)
+    if patch:
+        logger.info(
+            "Patched %s with %d key(s) from preset_patches.json: %s",
+            preset_path.name,
+            len(patch),
+            ", ".join(sorted(patch)),
+        )
+    if stale:
+        logger.info(
+            "Retracted %d undeclared curve override(s) from %s: %s",
+            len(stale),
+            preset_path.name,
+            ", ".join(sorted(stale)),
+        )
+
 
 
 def main():
@@ -275,6 +418,7 @@ CSV Format Support:
     # Copy presets with standardized naming
     src_presets = grove_dir / "presets"
     dst_presets = assets_dir / "presets"
+    preset_patches = _load_preset_patches()
 
     for _, row in df.iterrows():
         preset_file = row["Preset"]
@@ -307,11 +451,22 @@ CSV Format Support:
                             "skipping overwrite",
                             dst_file.name,
                         )
+                        # Still reapply the tracked patch. The guard protects
+                        # step 3's calibration from being clobbered by a fresh
+                        # copy; it must not also block a config-declared patch
+                        # from reaching a preset that already exists, or the
+                        # patch would only ever land on a clean rebuild.
+                        # _apply_preset_patch is a shallow update with fixed
+                        # values, so repeating it is a no-op.
+                        _apply_preset_patch(
+                            dst_file, preset_patches.get(standardized_name)
+                        )
                         stats["presets_copied"] += 1
                         continue
                 except Exception:
                     pass
             shutil.copy2(src_file, dst_file)
+            _apply_preset_patch(dst_file, preset_patches.get(standardized_name))
             stats["presets_copied"] += 1
         else:
             logger.warning("Preset not found: %s (for %s)", preset_file, common_name)
@@ -340,34 +495,50 @@ CSV Format Support:
         else:
             twig_name_snake = twig_name_original
 
-        # Search order: custom twigs dir (CamelCase), Grove source, Grove reverse lookup
-        src_twig_dir = None
+        # Grove source and custom override are resolved SEPARATELY, because
+        # the custom directory is an OVERLAY rather than a replacement -- see
+        # _overlay_custom_twigs. A twig that exists only under custom_twigs
+        # still works: the overlay simply has no base to sit on.
+        grove_twig_dir = None
+        if any(c.isupper() for c in twig_name_original):
+            candidate = src_twigs / twig_name_original
+            if candidate.exists():
+                grove_twig_dir = candidate
+        if grove_twig_dir is None:
+            for src_dir in src_twigs.iterdir():
+                if src_dir.is_dir() and camel_to_snake(src_dir.name) == twig_name_snake:
+                    grove_twig_dir = src_dir
+                    break
 
-        # 1. Custom twigs directory (CamelCase match)
+        custom_twig_dir = None
         if custom_twigs_dir.exists():
             candidate = custom_twigs_dir / twig_name_original
             if candidate.exists():
-                src_twig_dir = candidate
+                custom_twig_dir = candidate
 
-        # 2. Grove source (CamelCase match)
-        if src_twig_dir is None and any(c.isupper() for c in twig_name_original):
-            candidate = src_twigs / twig_name_original
-            if candidate.exists():
-                src_twig_dir = candidate
-
-        # 3. Grove reverse lookup (snake_case -> CamelCase)
-        if src_twig_dir is None:
-            for src_dir in src_twigs.iterdir():
-                if src_dir.is_dir() and camel_to_snake(src_dir.name) == twig_name_snake:
-                    src_twig_dir = src_dir
-                    break
+        src_twig_dir = grove_twig_dir or custom_twig_dir
 
         if src_twig_dir is not None:
             dst_twig_dir = dst_twigs / twig_name_snake
 
-            if dst_twig_dir.exists():
-                shutil.rmtree(dst_twig_dir)
-            shutil.copytree(src_twig_dir, dst_twig_dir)
+            # Overlay, never wipe: this directory also holds what step 2
+            # produces (*_static/_skeletal.usda, leaf-area sidecars, the
+            # PVE-packed textures), and a plain `rmtree` here destroyed every
+            # converted twig asset of every species whenever step 1 re-ran
+            # (2026-09-10: a `--steps 1` rebake of two conifer presets wiped 7
+            # of 9 assets and the next run died on MissingTwigPrototypesError).
+            # `--clean` removes the whole twigs tree before this runs, which is
+            # the one supported way to start over.
+            shutil.copytree(src_twig_dir, dst_twig_dir, dirs_exist_ok=True)
+            if custom_twig_dir is not None and custom_twig_dir != src_twig_dir:
+                overlaid = _overlay_custom_twigs(custom_twig_dir, dst_twig_dir)
+                if overlaid:
+                    logger.info(
+                        "Applied %d custom override(s) over %s: %s",
+                        len(overlaid),
+                        twig_name_original,
+                        ", ".join(sorted(overlaid)),
+                    )
 
             if resize_textures:
                 twig_textures_dir = dst_twig_dir / "textures"
@@ -408,6 +579,7 @@ CSV Format Support:
 
     # Copy bark textures with CamelCase -> snake_case conversion (preserves age numbers)
     src_textures = grove_dir / "textures"
+    normal_index = _index_bark_normals(src_textures)
     dst_textures = assets_dir / "textures"
 
     for _, row in df.iterrows():
@@ -442,6 +614,35 @@ CSV Format Support:
                 stats["textures_copied"] += 1
         else:
             logger.warning("Bark texture not found: %s", src_file)
+            stats["textures_missing"] += 1
+
+        # The Grove ships a normal map beside almost every bark diffuse
+        # ("Beech60.jpg" / "Beech60Normal.jpg" -- 48 of its 97 texture files).
+        # Only the diffuse was ever copied, so imported trunks had no normal
+        # map at all: a perfectly flat surface which, with no roughness
+        # override either, renders as polished chrome with the specular
+        # smearing across the stretched trunk UVs.
+        src_normal = normal_index.get(texture_stem.lower())
+        if src_normal is not None:
+            dst_normal = (
+                dst_textures / f"{standardized_name}_bark_normal{src_normal.suffix}"
+            )
+            if resize_textures:
+                if not copy_and_resize_texture(src_normal, dst_normal):
+                    shutil.copy2(src_normal, dst_normal)
+            else:
+                shutil.copy2(src_normal, dst_normal)
+            stats["textures_copied"] += 1
+        else:
+            # A warning, not a debug: 48 of the Grove's 49 bark diffuses ship a
+            # normal beside them, so a miss is a defect rather than a normal
+            # state. At debug level this stayed invisible -- silver_birch went
+            # without one because the Grove spells its file Birch70_normal.jpg
+            # while every other species spells it <Stem>Normal.jpg, and the
+            # trunk renders as polished chrome.
+            logger.warning(
+                "No bark normal map found for %s in %s", src_file.name, src_textures
+            )
             stats["textures_missing"] += 1
 
     # Generate PVE config files with null placeholders for each species

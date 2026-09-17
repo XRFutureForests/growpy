@@ -50,9 +50,12 @@ def _build_import_block(
     config_block = ""
 
     return f"""
+_t0 = time.time()
+_outcome = "error"
 if "{label}" in _completed_files:
     skipped_count += 1
     print(f"  Skipped (already imported): {label}")
+    print(f"  [ASSET] outcome=skipped seconds={{time.time() - _t0:.1f}} label={label}")
 else:
     try:
         import_task = unreal.AssetImportTask()
@@ -102,13 +105,29 @@ else:
         except Exception as _ace:
             print(f"  finish_all_compilation err: {{_ace}}")
 
-        if import_task.imported_object_paths:
+        if import_task.imported_object_paths and _package_saved_to_disk(
+            import_task.imported_object_paths
+        ):
             imported_count += 1
+            _outcome = "imported"
             _record_file_done("{label}")
             print(f"  Imported: {label}")
 {config_block}
+        elif import_task.imported_object_paths:
+            # Objects exist in memory but no package reached disk. Deliberately
+            # NOT recorded as done: done.txt is the resume contract, so a false
+            # entry means a re-run skips this asset forever and the coverage
+            # count inherits the gap silently (XRFF-332).
+            failed_count += 1
+            _outcome = "failed"
+            unreal.log_warning(
+                "Objects created but no package reached disk (disk full, or a "
+                "permissions/path problem): {label} -- NOT recorded as done, "
+                "re-run to retry"
+            )
         else:
             failed_count += 1
+            _outcome = "failed"
             unreal.log_warning("Failed to import: {label}")
 
         _log_rss("post {label}")
@@ -139,7 +158,7 @@ else:
                 "r.D3D12.FreeUnusedResources",
             ):
                 try:
-                    unreal.KismetSystemLibrary.execute_console_command(_w, _cmd)
+                    unreal.SystemLibrary.execute_console_command(_w, _cmd)
                 except Exception:
                     pass
             # Re-enable Nanite pool and streaming at reduced caps
@@ -149,7 +168,7 @@ else:
                 "r.Nanite.Streaming.MaxPendingPages 32",
             ):
                 try:
-                    unreal.KismetSystemLibrary.execute_console_command(_w, _re_cmd)
+                    unreal.SystemLibrary.execute_console_command(_w, _re_cmd)
                 except Exception:
                     pass
 
@@ -161,6 +180,17 @@ else:
 
         # Adaptive wait: pause until VRAM settles below threshold
         _wait_for_vram("{label}", min_delay=IMPORT_DELAY)
+
+        # Machine-parseable per-asset record, read by
+        # growpy.tools.ue_import_probe. Timed to here rather than to the
+        # import call because the GC and VRAM settle are part of what an
+        # asset actually costs in a run. Without this only per-batch
+        # wall-clock exists, which is how a batch that skipped every asset
+        # was once recorded as having built three in 3.9 s (XRFF-323).
+        print(
+            f"  [ASSET] outcome={{_outcome}} "
+            f"seconds={{time.time() - _t0:.1f}} label={label}"
+        )
 
         _ws = _log_rss("gc   {label}")
         if _ws > RSS_LIMIT_GB:
@@ -175,6 +205,10 @@ else:
     except Exception as e:
         failed_count += 1
         unreal.log_error(f"Error importing {label}: {{e}}")
+        print(
+            f"  [ASSET] outcome=error "
+            f"seconds={{time.time() - _t0:.1f}} label={label}"
+        )
 """
 
 
@@ -312,7 +346,13 @@ DB_PATH = "{db_path}"
 STRUCT_NAME = "ST_TreeCatalogEntry"
 DATATABLE_NAME = "DT_TreeCatalog"
 STRUCT_PATH = DB_PATH + "/" + STRUCT_NAME
-DATATABLE_PATH = DB_PATH + "/" + DATATABLE_NAME
+# The struct is the reusable schema and stays in DB_PATH (Templates). The
+# DataTable is per-dataset working data, not template data -- it is never
+# created/filled/deleted in DB_PATH. It lives under IMPORT_PATH instead,
+# duplicated from a DB_PATH copy the first time (if one exists there) so any
+# hand-authored template DataTable in Templates is left untouched.
+TEMPLATE_DATATABLE_PATH = DB_PATH + "/" + DATATABLE_NAME
+DATATABLE_PATH = IMPORT_PATH + "/" + DATATABLE_NAME
 
 asset_registry = unreal.AssetRegistryHelpers.get_asset_registry()
 asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
@@ -470,20 +510,39 @@ else:
     if tree_struct is not None:
         print(f"Using struct: {{STRUCT_PATH}}")
 
-        # Delete existing DataTable if present (recreate with fresh data)
+        # Delete existing working DataTable if present (recreate with fresh
+        # data). Only ever touches DATATABLE_PATH (under IMPORT_PATH) -- the
+        # Templates copy at TEMPLATE_DATATABLE_PATH, if any, is never deleted
+        # or modified by this script.
         if editor_asset_lib.does_asset_exist(DATATABLE_PATH):
             editor_asset_lib.delete_asset(DATATABLE_PATH)
             print(f"Deleted existing DataTable: {{DATATABLE_PATH}}")
 
-        # Create DataTable with the struct as row type
-        try:
-            dt_factory = unreal.DataTableFactory()
-            dt_factory.set_editor_property("struct", tree_struct)
-            data_table = asset_tools.create_asset(
-                DATATABLE_NAME, DB_PATH, unreal.DataTable, dt_factory
-            )
-        except Exception as e:
-            unreal.log_warning(f"Could not create DataTable: {{e}}")
+        # Prefer duplicating a hand-authored template from DB_PATH (Templates)
+        # so any preset row-editor settings on it carry over; fall back to
+        # creating fresh from the struct if no template DataTable exists there.
+        if editor_asset_lib.does_asset_exist(TEMPLATE_DATATABLE_PATH):
+            try:
+                data_table = editor_asset_lib.duplicate_asset(
+                    TEMPLATE_DATATABLE_PATH, DATATABLE_PATH
+                )
+                if data_table is not None:
+                    print(
+                        f"Duplicated template DataTable: {{TEMPLATE_DATATABLE_PATH}} "
+                        f"-> {{DATATABLE_PATH}}"
+                    )
+            except Exception as e:
+                unreal.log_warning(f"Could not duplicate template DataTable: {{e}}")
+
+        if data_table is None:
+            try:
+                dt_factory = unreal.DataTableFactory()
+                dt_factory.set_editor_property("struct", tree_struct)
+                data_table = asset_tools.create_asset(
+                    DATATABLE_NAME, IMPORT_PATH, unreal.DataTable, dt_factory
+                )
+            except Exception as e:
+                unreal.log_warning(f"Could not create DataTable: {{e}}")
 
         if data_table is not None:
             print(f"Created DataTable: {{DATATABLE_PATH}}")
@@ -652,7 +711,7 @@ _VRAM_SAVED = {{}}
 if _world:
     # Drop all quality to Medium for reduced VRAM during import
     try:
-        unreal.KismetSystemLibrary.execute_console_command(_world, "scalability 1")
+        unreal.SystemLibrary.execute_console_command(_world, "scalability 1")
     except Exception:
         pass
     for _vk, _vv in (
@@ -670,7 +729,7 @@ if _world:
         ("r.AllowCachedUniformExpressions", "0"),
     ):
         try:
-            unreal.KismetSystemLibrary.execute_console_command(_world, f"{{_vk}} {{_vv}}")
+            unreal.SystemLibrary.execute_console_command(_world, f"{{_vk}} {{_vv}}")
         except Exception:
             pass
     print("VRAM management active (Lumen/VSM off, Nanite capped, RT Nanite off)")
@@ -683,6 +742,35 @@ if os.path.isfile(_BATCH_PROGRESS):
     if _completed_files:
         print(f"Resuming: {{len(_completed_files)}} files already imported")
         print(f"Delete {batch_progress_name} to re-import all\\n")
+
+_CONTENT_DIR = unreal.Paths.convert_relative_path_to_full(
+    unreal.Paths.project_content_dir()
+)
+
+def _package_saved_to_disk(object_paths):
+    """True if at least one imported object's package is a real file on disk.
+
+    `import_task.imported_object_paths` being non-empty means UE created the
+    objects, not that the package was written. With import_task.save = True the
+    save can still fail -- a full disk, or a permissions or path problem -- and
+    nothing re-checked it. Recording done.txt on the object paths alone made
+    the resume contract lie: the asset was skipped on every later run because
+    the batch believed it was finished (XRFF-332).
+    """
+    for _op in object_paths or []:
+        _pkg = str(_op)
+        _tail = _pkg.rsplit("/", 1)[-1]
+        if "." in _tail:
+            # Strip the ObjectName suffix: /Game/A/SK_x.SK_x -> /Game/A/SK_x
+            _pkg = _pkg[: len(_pkg) - len(_tail) + _tail.index(".")]
+        if not _pkg.startswith("/Game/"):
+            continue
+        _rel = _pkg[len("/Game/") :].replace("/", os.sep)
+        for _ext in (".uasset", ".umap"):
+            _fp = os.path.join(_CONTENT_DIR, _rel + _ext)
+            if os.path.isfile(_fp) and os.path.getsize(_fp) > 0:
+                return True
+    return False
 
 def _record_file_done(label):
     """Append a completed file label to the batch progress file."""
@@ -704,7 +792,7 @@ skipped_count = 0
 # --- Restore rendering settings ---
 if _world:
     try:
-        unreal.KismetSystemLibrary.execute_console_command(_world, "scalability 3")
+        unreal.SystemLibrary.execute_console_command(_world, "scalability 3")
     except Exception:
         pass
     for _rk, _rv in (
@@ -721,7 +809,7 @@ if _world:
         ("r.AllowCachedUniformExpressions", "1"),
     ):
         try:
-            unreal.KismetSystemLibrary.execute_console_command(_world, f"{{_rk}} {{_rv}}")
+            unreal.SystemLibrary.execute_console_command(_world, f"{{_rk}} {{_rv}}")
         except Exception:
             pass
     print("Rendering settings restored")
@@ -966,7 +1054,49 @@ def generate_unreal_import_script(
     # Material batch: create MA_Foliage_Trees-derived MICs and assign to meshes
     species_colors = _load_species_colors()
     if species_colors:
-        materials_code = _build_material_script(project_path, species_colors)
+        # Parent material resolves from db_path (the reusable-template dir),
+        # not project_path/Materials. The two are different things: the created
+        # MICs are per-dataset working data and stay under IMPORT_PATH, while
+        # MA_Foliage_Trees is hand-authored template data living alongside
+        # ST_TreeCatalogEntry -- which the DataTable script below already
+        # resolves from db_path. Without this the batch aborts via
+        # unreal.log_error ("Parent material not found"), which goes to UE's
+        # log and not to ue_exec's stdout, so the batch still reports as
+        # completed and every tree silently keeps its raw USD materials.
+        # Bark normals and packed PVE twig maps are referenced by no mesh, so
+        # the USD import never brings them in. Batch 97 imports them; batch 98
+        # then has something to wire onto the MICs.
+        from .unreal_texture_script import generate_texture_import_script
+
+        textures_name = "import_batch_97_textures.py"
+        generate_texture_import_script(script_dir, project_path=project_path)
+        batch_scripts.append((textures_name, "Import auxiliary textures"))
+
+        from .pve_import_script import build_species_twig_map
+
+        try:
+            _twig_map = build_species_twig_map()
+        except Exception as exc:  # noqa: BLE001 -- degrade, never block the import
+            logger.warning("Could not build species->twig map: %s", exc)
+            _twig_map = {}
+        # Sidecars written by pack_pve_textures: parameters the master exposes
+        # but has no texture slot for (leaf backside colour).
+        import json as _json
+
+        _twig_params: dict[str, dict] = {}
+        for _sc in Path("data/assets/twigs").glob("*/textures/*_pve_params.json"):
+            try:
+                _base = _sc.name.split("_twig_pve_params.json")[0]
+                _twig_params[_base] = _json.loads(_sc.read_text(encoding="utf-8"))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("could not read %s: %s", _sc, exc)
+        materials_code = _build_material_script(
+            project_path,
+            species_colors,
+            parent_material_path=f"{db_path}/MA_Foliage_Trees",
+            species_twig_map=_twig_map,
+            twig_params=_twig_params,
+        )
         materials_name = "import_batch_98_materials.py"
         materials_label = "Assign MA_Foliage_Trees material instances"
         (script_dir / materials_name).write_text(materials_code, encoding="utf-8")

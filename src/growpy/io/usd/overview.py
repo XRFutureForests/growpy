@@ -18,7 +18,8 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 _ICON_PATTERN = re.compile(
-    r"^(.+?)_r(\d+(?:\.\d+)?)_(h\d+m)_(d\d+cm)_(.+?)_icon_(front|side|top)\.png$",
+    r"^(.+?)_r(\d+(?:\.\d+)?)_(h\d+m)_(d\d+cm)_(.+?)_icon_"
+    r"(front|side|top)(_twigs|_twigsonly|_branches|_skeleton|_merged)?\.png$",
     re.IGNORECASE,
 )
 
@@ -113,20 +114,32 @@ DISPLAY_GROWTH_COLUMNS = [
 ]
 
 
-def _parse_icon_files(forest_dir: Path) -> dict:
+def _parse_icon_files(
+    forest_dir: Path, component: str | None = None, view: str = "front"
+) -> dict:
     """Scan forest output and return structured icon data.
 
     Returns dict keyed by (species_clean, radius_m) with values being
     dicts of {height_meters (int): (relative_path, absolute_path)}.
-    Uses front-view icons only for overview display.
+    ``view`` selects front/side/top. The top view is what shows crown
+    SPREAD -- the front view foreshortens it, so a crown that is too wide is
+    much easier to spot from above.
+
+    ``component`` selects which per-view image to collect: ``None`` for the
+    plain branch icon, or a suffix such as ``"twigsonly"`` for the component
+    images written when [export] icon_components is on. The twigs-only view is
+    the only one that shows crown density without branch strokes drawn over it,
+    which is what makes twig placement judgeable at a glance.
     """
     entries = {}
+    want = f"_{component}" if component else None
     for png in sorted(forest_dir.rglob("*_icon_*.png")):
         m = _ICON_PATTERN.match(png.name)
         if not m:
             continue
-        view = m.group(6).lower()
-        if view != "front":
+        if m.group(6).lower() != view:
+            continue
+        if (m.group(7) or None) != want:
             continue
         species_title = m.group(1)
         radius_m = float(m.group(2))
@@ -326,6 +339,70 @@ def generate_overview_markdown(
         lines.append(f"| {species_display} | {radius_display} | {' | '.join(cells)} |")
 
     lines.append("")
+
+    # Twig-position table. The plain icon above shows branch architecture only;
+    # this one shows where the twigs actually sit, which is the only way to
+    # judge crown density and placement without the branch strokes drawn over
+    # it. Twig dots render semi-transparent (io/usd/preview.py _TWIG_ALPHA), so
+    # overlap reads as density rather than saturating flat.
+    twig_entries = _parse_icon_files(forest_dir, component="twigsonly")
+    if twig_entries:
+        lines.append("## Twig Positions (crown density)")
+        lines.append("")
+        lines.append(
+            "Twig placement only, no branch strokes. Darker green = more twigs "
+            "overlapping at that point."
+        )
+        lines.append("")
+        lines.append(f"| Species | Radius | {col_headers} |")
+        lines.append(f"| {separator} |")
+        for _, row in df.iterrows():
+            sp_key = row["species"]
+            radius_display = row["radius"]
+            species_display = sp_key.replace("_", " ").title()
+            # radius column is a label like "r08"; recover the metre value
+            rnum = float(re.findall(r"[\d.]+", str(radius_display))[0])
+            heights = twig_entries.get((sp_key, rnum), {})
+            cells = []
+            for col in icon_cols:
+                h = int(re.findall(r"\d+", col)[0])
+                snapped = {_snap_to_interval(k, interval): v for k, v in heights.items()}
+                hit = snapped.get(h)
+                cells.append(f"![{col.replace('icon_', '')}]({hit[0]})" if hit else "")
+            lines.append(
+                f"| {species_display} | {radius_display} | {' | '.join(cells)} |"
+            )
+        lines.append("")
+
+    # Top-view table. Crown spread is what the front view cannot show: a tree
+    # whose crown is far too wide reads as merely "full" from the side.
+    top_entries = _parse_icon_files(forest_dir, view="top")
+    if top_entries:
+        lines.append("## Crown Spread (top view)")
+        lines.append("")
+        lines.append(
+            "Looking down the stem axis. Crown diameter and asymmetry are "
+            "judged here, not from the front view."
+        )
+        lines.append("")
+        lines.append(f"| Species | Radius | {col_headers} |")
+        lines.append(f"| {separator} |")
+        for _, row in df.iterrows():
+            sp_key = row["species"]
+            radius_display = row["radius"]
+            species_display = sp_key.replace("_", " ").title()
+            rnum = float(re.findall(r"[\d.]+", str(radius_display))[0])
+            heights = top_entries.get((sp_key, rnum), {})
+            snapped = {_snap_to_interval(k, interval): v for k, v in heights.items()}
+            cells = []
+            for col in icon_cols:
+                h = int(re.findall(r"\d+", col)[0])
+                hit = snapped.get(h)
+                cells.append(f"![{col.replace('icon_', '')}]({hit[0]})" if hit else "")
+            lines.append(
+                f"| {species_display} | {radius_display} | {' | '.join(cells)} |"
+            )
+        lines.append("")
 
     # Preset parameters table
     lines.append("## Preset Parameters")

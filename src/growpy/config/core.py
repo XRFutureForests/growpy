@@ -15,6 +15,7 @@ To seed a fresh project with a starter config/ directory, run
 import logging
 import os
 import tomllib
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Optional
@@ -163,7 +164,9 @@ class GrowPyConfig:
         "static": "export_static",
         "skip_validation": "export_skip_validation",
         "previews": "export_previews",
+        "export_control": "export_control_images",
         "icons": "export_icons",
+        "icon_components": "export_icon_components",
         # [unreal]
         "import_to_unreal": "unreal_import_to_unreal",
         "unreal_project_path": "unreal_project_path",
@@ -185,6 +188,7 @@ class GrowPyConfig:
     # by test_config.py::test_toml_settable_fields_have_mapping_or_are_allowlisted.
     TOML_ONLY_FIELDS: ClassVar[dict[str, str]] = {
         "random_seed": "determinism seed, not meant to vary per invocation",
+        "random_seed_per_species": "per-species reseed for a collapsed stage; config",
         "twigs_path": "path override via CLI positional arg, outside resolve()",
         "custom_twigs_dir": "internal override, no CLI need identified",
         "twigs_interior_boundary_rings": "fine-tuning param, no CLI need identified",
@@ -198,8 +202,38 @@ class GrowPyConfig:
         "export_max_assembly_instances": "internal tuning, no CLI need identified",
         "export_dbh_from_allometry": "internal tuning, no CLI need identified",
         "export_twig_density": "internal tuning, no CLI need identified",
-        "export_twig_density_conifer": "internal tuning, no CLI need identified",
-        "export_twig_density_broadleaf": "internal tuning, no CLI need identified",
+        "export_twig_density_per_species": "nested dict structure, config-only by design",
+        "quality_build_cutoff_thickness_per_species": (
+            "nested dict structure, config-only by design: each entry records a "
+            "measured cutoff sweep for that species, which belongs beside the "
+            "measurement in config, not on a command line"
+        ),
+        "surround_grow_per_species": "nested dict structure, config-only by design",
+        "surround_freeze_height": "scenario-level setting, config-only by design",
+        "surround_freeze_height_per_species": "nested dict, config-only by design",
+        "surround_height_per_species": "nested dict, config-only by design",
+        "surround_density_per_species": "nested dict structure, config-only by design",
+        "surround_density_per_species_radius": (
+            "nested dict structure, config-only by design: each entry records a "
+            "measured density sweep for one species at one shell radius, which "
+            "belongs beside the measurement in config, not on a command line"
+        ),
+        "export_twig_reattach_threshold": "internal tuning, no CLI need identified",
+        "export_twig_recovery": "internal toggle, no CLI need identified",
+        "export_external_refs": "internal toggle, no CLI need identified",
+        "twigs_planar_angle": "internal tuning, no CLI need identified",
+        "twigs_planar_angle_per_twig": "nested dict structure, config-only by design",
+        "twigs_boundary_edge_mm_per_twig": "nested dict structure, "
+        "config-only by design",
+        "twigs_compound_boundary_edge_mm": "conversion profile, selected by "
+        "output role rather than by CLI",
+        "twigs_compound_planar_angle": "conversion profile, selected by "
+        "output role rather than by CLI",
+        "twigs_compound_alpha_trim": "conversion profile, selected by "
+        "output role rather than by CLI",
+        "twigs_compound_interior_edge_mm": "conversion profile, selected by "
+        "output role rather than by CLI",
+        "export_twig_min_spacing_ratio": "internal tuning, no CLI need identified",
         "export_youth_bias": "internal tuning, no CLI need identified",
         "export_density_variants": "scenario-level choice, config-only by design",
         "density_variant_defs": "nested dict structure, config-only by design",
@@ -211,22 +245,45 @@ class GrowPyConfig:
         "unreal_db_path": "environment-level path, config-only by design",
         # "unreal_generate_pve_presets" removed: now CLI-mapped via --pve (XRFF-293).
         "unreal_pve_import_base": "environment-level path, config-only by design",
+        "unreal_generate_pve_graphs": (
+            "scenario-level choice, config-only: the PVE Growth Data JSON route "
+            "needs a matching asset import and a calibrated species set, so it "
+            "is a project decision rather than a per-run flag"
+        ),
+        "unreal_pve_content_root": "environment-level path, config-only by design",
+        "unreal_pve_triangle_cap": (
+            "internal tuning, no CLI need identified: it is a property of the "
+            "machine's export headroom, not of a run"
+        ),
         "unreal_editor_exe": "environment-level path, config-only by design",
         "unreal_uproject": "environment-level path, config-only by design",
         "helios_simplification_enabled": "internal toggle, no CLI need identified",
         "helios_simplification_ratios": "nested dict structure, config-only",
         "helios_simplification_per_species": "nested dict, config-only",
+        "forest_species_curves": (
+            "dataset-shape setting, config-only: whether a species' declared "
+            "preset curves apply is a property of the run, not of one "
+            "invocation"
+        ),
         "calibration_align_height": "internal tuning, no CLI need identified",
         "calibration_plot": "dead CLI mapping removed in XRFF-292; config-only",
-        "calibration_yield_tables_dir": "environment-level path, config-only",
         "calibration_species": "nested dict structure, config-only by design",
         "yield_sources_store_dir": "environment-level path, config-only by design",
+        "yield_sources_yield_tables_dir": "environment-level path, config-only",
         "yield_sources_preferred_region": "scenario-level setting, config-only",
         "yield_sources_preferred_site_index": "scenario-level setting, config-only",
+        "yield_sources_documents": "nested dict of source paths, config-only",
         "surround_radii": "scenario-level setting, config-only by design",
         "surround_density": "scenario-level setting, config-only by design",
         "surround_height": "scenario-level setting, config-only by design",
         "surround_grow": "scenario-level setting, config-only by design",
+        "forest_quality_above_height": (
+            "dataset-shape setting, config-only: it pairs with a threshold and "
+            "is set per production pass, not per invocation"
+        ),
+        "forest_quality_above_height_threshold": (
+            "dataset-shape setting, config-only; see forest_quality_above_height"
+        ),
     }
 
     # Keys a [density_variant.*] dict may override from the active quality
@@ -236,9 +293,12 @@ class GrowPyConfig:
         {"twig_density", "build_cutoff_age", "build_cutoff_thickness"}
     )
 
-
     # [general]
     random_seed: int | None = 42
+    # A species whose tree collapses under the surround shell on the way to
+    # its top stage gets a different seed here, never a lower density (owner
+    # rule, 2026-09-15). Keyed by standardized name; absent = random_seed.
+    random_seed_per_species: dict[str, int] = field(default_factory=dict)
     csv_file: Path = field(default_factory=lambda: Path("data/input/test.csv"))
     output_dir: Path = field(default_factory=lambda: Path("data/output/forest"))
     verbose: bool = False
@@ -254,8 +314,45 @@ class GrowPyConfig:
         default_factory=lambda: Path("data/input/custom_twigs")
     )
     twigs_densify: bool = True
+    # Max angle (degrees) between adjacent faces still counted as coplanar when
+    # generalising a twig after the alpha contour cut. Densification only
+    # exists to give that cut fine edges to carve; afterwards the flat interior
+    # carries no shape and dissolving it back costs nothing visually. Boundary
+    # edges have a single adjacent face and are never dissolve candidates, so
+    # the carved outline is preserved exactly. Result is re-triangulated.
+    # 0 disables the pass.
+    twigs_planar_angle: float = 1.0
+    # Per-twig overrides of twigs_planar_angle, keyed on the twig OBJECT name as
+    # printed by the "Planar dissolve:" log line (e.g. "OneLeavedAshSideTwig").
+    # Twigs whose leaves meet at shallow angles lose a little edge fidelity at
+    # the global setting and want a smaller value; needle twigs tolerate more.
+    twigs_planar_angle_per_twig: dict[str, float] = field(default_factory=dict)
+    # Per-twig overrides of twigs_boundary_edge_mm, keyed on the same twig
+    # OBJECT name. The densification target is absolute so that one asset's
+    # variants come out at a consistent density, but MAX_DENSIFY_FACES caps
+    # each object independently -- so when the target is too fine for the
+    # largest variant to reach, the small ones subdivide far past it and end up
+    # heavier per unit leaf area than the whole spray (XRFF-412).
+    twigs_boundary_edge_mm_per_twig: dict[str, float] = field(default_factory=dict)
+    # NOTE: Grove's own seed twig_density is INERT in the core API -- measured
+    # on a 20-cycle Douglas fir, 1.0 / 0.25 / 0.0 all yield 11,606 living twigs
+    # (0.0 does not even disable them). It is a Blender-addon-only setting, so
+    # crown density cannot be reduced at the source; the only working lever is
+    # post-hoc thinning via export_twig_density below.
     twigs_alpha_trim: float = 0.75
     twigs_boundary_edge_mm: float = 0.5
+    # Compound-part conversion profile (XRFF-359). The settings above were
+    # tuned for a single small twig seen close up, which costs 7,565 faces on
+    # one exported beech twig. A compound part carries a whole subtree's worth
+    # of them -- measured on a 25-cycle beech at cut 0.030, the mean part
+    # carries 19 twigs and the largest 361, i.e. 144k and 2.73M faces -- and
+    # each leaf is much smaller on screen there, so the fidelity is wasted.
+    # None means "fall back to the close-range value", so the compound profile
+    # defaults to current behaviour until it is set.
+    twigs_compound_boundary_edge_mm: float | None = None
+    twigs_compound_planar_angle: float | None = None
+    twigs_compound_alpha_trim: float | None = None
+    twigs_compound_interior_edge_mm: float | None = None
 
     # [growth_models]
     growth_models_cycles: int = 25
@@ -271,8 +368,30 @@ class GrowPyConfig:
 
     # [forest]
     forest_quality: str = "high"
+    # Alternate quality preset for tall milestone stages, and the height (m) at
+    # or above which it applies. "" disables it and every stage uses
+    # forest_quality. Exists because mesh cost scales with tree size far faster
+    # than perceived detail: an open-grown silver fir meshes to 4.5M points at
+    # h10, 7.0M at h15 and ~23M projected at h25 -- a 1.07 GB stems file at h15
+    # alone, and the h25 export exhausts a 63.5 GB host.
+    forest_quality_above_height: str = ""
+    forest_quality_above_height_threshold: float = 0.0
     forest_growth_cycle_limit: int = 65
     forest_plateau_cycles: int = 10
+    # Apply each species' own `<param>_curve` blocks from its seed preset during
+    # simulation (config/preset_patches.json -> data/assets/presets/*.seed.json,
+    # evaluated per cycle by preset_overrides.PresetOverrides).
+    #
+    # This used to be wired to `calibration_align_height`, which is an unrelated
+    # yield-table setting and was false, so EVERY declared curve was silently
+    # ignored. That is why the conifer drop ramps had no effect no matter how
+    # they were tuned: the tree ran on the preset's flat static value from cycle
+    # 0, which is exactly the condition the ramps existed to avoid. Found
+    # 2026-09-10 when transition_cycle 8 and 40 produced byte-identical trees.
+    #
+    # Default on: a curve declared in tracked config should take effect. Turn it
+    # off only to reproduce a pre-2026-09-10 run.
+    forest_species_curves: bool = True
     forest_smooth_iterations: int = 10
     forest_include_grove_attributes: bool = False
     forest_height_interval: float = 5.0
@@ -302,27 +421,161 @@ class GrowPyConfig:
     # script generation entirely for that tree (see pipelines/forest_stages.py
     # export_obj_direct). Twig prototype meshes still come from the small,
     # pre-existing per-species twig USD assets -- only the trunk and the
-    # per-instance twig placement math bypass USD.
+    # per-instance twig placement math bypass USD. "icons_only" skips USD/
+    # Nanite/wind/PVE/previews/export-control entirely and writes just the
+    # icon PNGs (branches + twigs, separate and merged) straight from the
+    # Grove model -- see export_icons_only. For parameter tuning / visual
+    # debugging runs where the mesh itself is not needed.
+    # "growth_json_only" writes just the PVE growth-data JSON per tree -- the
+    # skeleton PVE's mesher rebuilds the tree from. That artifact REPLACES the
+    # Nanite assembly rather than accompanying it, so emitting it as a
+    # post-assembly stage meant paying for what it supersedes. The mode is its
+    # own opt-in: it ignores export_skeletal and [unreal.growth_data_json]
+    # enabled, which gate the post-assembly stage.
     export_mode: str = "unreal"
     export_skeletal: bool = True
     export_static: bool = False
-    # Preview PNGs, export-control PNGs, and front/side/top icon PNGs are
-    # generated once per tree (not per density variant). Both default true so
-    # the current always-on behavior is unchanged -- see XRFF-290.
-    export_previews: bool = True
+    # Per-tree PNGs, generated once per tree rather than per density variant
+    # (XRFF-290). Only the icons are a dataset deliverable: dataset_overview.md
+    # and dataset_overview.csv are built from them. The preview (branch
+    # architecture from the skeleton polylines) and the export-control render
+    # (mesh edges + skeleton joints, read back from the exported USD) are
+    # visual QA aids that nothing downstream consumes, and together they are
+    # ~27% of a full dataset run -- the export-control alone is 15.4%. Both
+    # default off; enable per run with --previews / --export-control when
+    # inspecting a specific tree.
     export_icons: bool = True
+    export_previews: bool = False
+    export_control_images: bool = False
+    # Per-view branches/twigsonly/skeleton/merged component files alongside
+    # the plain/twigs icon pair (see io/usd/preview.py generate_icon_image).
+    # Off by default, same reasoning as export_previews/export_control_images
+    # above: a QA aid nothing downstream reads, and it roughly quadruples the
+    # icons stage's per-tree image count. Only meaningful when export_icons
+    # is also on.
+    export_icon_components: bool = False
     export_max_skeleton_joints: int = 0  # 0 = no limit; 250 = Nanite Assembly USD
     export_max_assembly_instances: int = (
         0  # 0 = no limit; cap twig instances per assembly
     )
     export_skip_validation: bool = True
-    # Base twig density multiplier. None (default) = auto-select by species
-    # growth habit via export_twig_density_conifer / export_twig_density_broadleaf
-    # (see tree_asset_lookup.csv Competition Group). Set explicitly in TOML to
-    # override uniformly for all species, restoring the old single-value behavior.
-    export_twig_density: float | None = None
-    export_twig_density_conifer: float = 1.0
-    export_twig_density_broadleaf: float = 2.5
+    # Crown density multiplier relative to Grove's NATURAL twig density.
+    # 1.0 = exactly what Grove grew. Twigs deleted by build_cutoff_thickness are
+    # restored by recovery (see core.twig.recover_cutoff_twig_placements), so
+    # this is a purely artistic knob and no longer has to compensate for the
+    # cutoff. The per-tree CSV twig_density column multiplies with it.
+    #
+    # It replaced export_twig_density_conifer / export_twig_density_broadleaf,
+    # which were hand-set compensation guesses. Measured cutoff losses vary far
+    # more within a growth habit than between habits (oak 2.09x vs beech 5.43x;
+    # spruce 1.04x vs pine 2.20x) and also move with tree age and cutoff, so no
+    # per-habit constant could track them.
+    export_twig_density: float = 1.0
+    # Per-species override of export_twig_density, keyed on standardized name
+    # (e.g. "douglas_fir"). Required rather than optional: the density needed to
+    # match literature leaf area spans ~60x across the dataset because it tracks
+    # each species' twig prototype size, not Grove's placement. See
+    # get_twig_density_base().
+    export_twig_density_per_species: dict[str, float] = field(default_factory=dict)
+    # Per-species override for the quality preset's build_cutoff_thickness, in
+    # metres. A preset name conflates render resolution with structural detail
+    # (see quality.toml, XRFF-404), and species differ in how thin their fine
+    # branches are, so one global floor cannot serve them all.
+    #
+    # Measured on silver_birch h15m r00 (2026-09-08), sweeping the cutoff while
+    # holding everything else:
+    #     0.0040  38.12 m2 wood,   888 twigs   <- the low preset's floor
+    #     0.0025 102.57 m2 wood, 3,455 twigs   (x2.69 wood, x3.89 twigs)
+    #     0.0000 105.64 m2 wood, 3,474 twigs   (+3% wood, +0.5% twigs)
+    # Essentially all of birch's fine branching sits between 2.5 and 4 mm, and
+    # the 4 mm floor cut straight through it -- taking the twig attachment
+    # points with it, which is why birch measured 0.27 of its Forrester leaf
+    # area and why no twig_density could have fixed it. Going below 2.5 mm buys
+    # almost nothing and costs triangles, so this is a floor to lower per
+    # species, not to remove.
+    #
+    # Both metrics above are resolution-independent (surface area is geometry,
+    # twig count is attachment points), so this override is the structural half
+    # of the preset and can be set without moving to a finer tessellation.
+    quality_build_cutoff_thickness_per_species: dict[str, float] = field(
+        default_factory=dict
+    )
+    # Per-species override for the surround shell tracking the tree. Conifers
+    # and broadleaves respond so differently to a growing shell that one global
+    # value cannot serve both: measured 2026-08-25 at r08, grow = true takes
+    # european_oak to a realistic crown (0.52 of open-grown at density 0.4-0.5)
+    # but reduces norway_spruce to a bottlebrush at EVERY density down to 0.2
+    # (crown 0.22-0.39 of open, foliage hugging the stem, no conical taper) --
+    # its monopodial architecture (add_only_on_end 1.0) collapses laterally
+    # under sustained shade instead of narrowing. Conifers therefore keep
+    # grow = false; broadleaves get true.
+    surround_grow_per_species: dict[str, bool] = field(default_factory=dict)
+    # Height (m) at which a GROWING shell stops rising and becomes a static
+    # wall the tree can overtop; 0 disables. Measured 2026-09-15 at density
+    # 0.75 / grow = true: norway_spruce, silver_fir and douglas_fir fold
+    # between 15 and 20 m at every seed tried (512, 999, 7 -- identical h15
+    # stops, identical DBH), while the same species under a static shell run
+    # the full ladder. A crown that emerges from a closed canopy is no longer
+    # shaded from the side, which is what the freeze reproduces.
+    surround_freeze_height: float = 0.0
+    surround_freeze_height_per_species: dict[str, float] = field(default_factory=dict)
+    # Per-species STATIC shell height (m), read only where grow is false for
+    # that species: a shell fixed at the goal height (25 m for the dataset)
+    # shades the tree from the side for its whole life instead of rising with
+    # it. Added 2026-09-16 as arm B of the crown-separation ladder -- under
+    # the growing shell the r08 ash/beech overtop it and balloon to 27 m at
+    # h25, wider than r16.
+    surround_height_per_species: dict[str, float] = field(default_factory=dict)
+    # Per-species shell density, for when one global value cannot serve the
+    # set. The motivating case was measured BEFORE surround_grow_per_species
+    # existed: at density 0.45 european_beech carried a 27.5 m crown at r08 --
+    # wider than the widest beech in a 5,666-tree field dataset (19.7 m, Sharma
+    # et al. 2017, Silva Fennica 51(5):1740) -- while at 0.75 it came in near
+    # 14.5 m, and european_oak became a whip above ~0.5.
+    #
+    # The grow split fixed that case on its own: re-measured on the 2026-08-28
+    # run (growpy-crown-metrics, h25m), beech is 29.8 m at r00 and 8.9 m at
+    # r08, so the override table is empty. Kept because the knob is the right
+    # place to correct a single species against published
+    # crown-diameter/height ratios (spruce 0.22, beech 0.30) without moving the
+    # global for everyone.
+    surround_density_per_species: dict[str, float] = field(default_factory=dict)
+
+    # Per-species AND per-radius override of the shell density, keyed
+    # species -> radius label -> value, where the radius label is the same
+    # ``rNN`` string the output directories use (radius_label(): r05, r10, r20).
+    #
+    # This level exists because the per-species values above are THRESHOLDS,
+    # not a gradient: measured 2026-08-28, the thresholds span 0.38 to 0.90, and
+    # at a shared density douglas_fir was already past its cliff (crown ratio
+    # 0.39) while european_beech had not reached its own (0.93). A threshold
+    # fitted at one shell distance therefore does not transfer to another by
+    # interpolation -- surround.toml records that the whole table was fitted at
+    # r08 and is stale for the [5, 10, 20] matrix.
+    #
+    # Falls back to surround_density_per_species, then to the global
+    # [surround] density, so only the species/radius cells that actually differ
+    # need an entry.
+    surround_density_per_species_radius: dict[str, dict[str, float]] = field(
+        default_factory=dict
+    )
+
+
+    # Distance (m) beyond which a twig orphaned by the cutoff is pulled back
+    # onto the surviving surface instead of left where Grove placed it.
+    export_twig_reattach_threshold: float = 0.01
+    # Restore the twigs build_cutoff_thickness deleted. False exports Grove's
+    # surviving placements untouched, which is the reference for judging
+    # whether compensation over- or under-fills the crown: with it off the
+    # crown sits below Grove's true (cutoff-free) density, with it on it
+    # approaches that density from underneath.
+    export_twig_recovery: bool = True
+    export_external_refs: bool = False
+    # Reject a recovered twig once it lands closer than this fraction of the
+    # tree's own median living-twig spacing to an already-placed twig, so
+    # branches cut close together don't stack compensation twigs on top of
+    # each other. 0 disables the guard.
+    export_twig_min_spacing_ratio: float = 0.5
     export_youth_bias: float = 1.0
     export_density_variants: list = field(default_factory=list)
     density_variant_defs: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -337,7 +590,26 @@ class GrowPyConfig:
     unreal_nanite_lerp_uvs: bool = True
     unreal_db_path: str = "/Game/Assets/TheGrove"
     unreal_generate_pve_presets: bool = True
-    unreal_pve_import_base: str = "/Game/Assets/TheGrove"
+    # The live PVE route (XRFF-442). Deliberately NOT the same flag as
+    # generate_pve_presets, which drives the deprecated Preset Loader: that
+    # flag's own note warns against silently changing what it emits, and the
+    # two routes produce different, incompatible graphs.
+    unreal_generate_pve_graphs: bool = False
+    # UE package path the twig palette and bark material were imported under
+    # by growpy-pve-assets. A graph names its palette meshes by path, so this
+    # must match what that step used.
+    unreal_pve_content_root: str = "/Game/PVE"
+    # Predicted-triangle ceiling per graph, i.e. per Export click. One click
+    # builds every chain in its graph and holds the result in memory until it
+    # finishes, so a click that dies takes its whole graph with it -- an
+    # autosave crash on a ~378 M-triangle beech click destroyed nine meshes
+    # that had all already exported and logged.
+    unreal_pve_triangle_cap: float = 120e6
+    # Content Browser base for the wind/PVE post-import scripts. Empty means
+    # "follow unreal_project_path", which is what you want: assemblies import to
+    # project_path, so wind data and PVE presets have to look for them there.
+    # Set explicitly only to deliberately split them across two paths.
+    unreal_pve_import_base: str = ""
     unreal_editor_exe: str = ""  # ue_exec auto-restart watchdog; empty = not configured
     unreal_uproject: str = ""  # ue_exec auto-restart watchdog; empty = not configured
 
@@ -366,18 +638,80 @@ class GrowPyConfig:
     # height-DBH allometry artifact, which needs no simulation.
     export_dbh_from_allometry: bool = True
     calibration_plot: bool = True
-    calibration_yield_tables_dir: Path = field(
-        default_factory=lambda: Path("data/input/yield_tables")
-    )
     # Per-species overrides: {species_name: {site_index, flushes_per_year, ...}}
     calibration_species: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     # [yield_sources]
+    yield_sources_yield_tables_dir: Path = field(
+        default_factory=lambda: Path("data/input/yield_tables")
+    )
     yield_sources_store_dir: Path = field(
         default_factory=lambda: Path("data/input/yield_tables/store")
     )
     yield_sources_preferred_region: str = ""
     yield_sources_preferred_site_index: float | None = None
+    # Per-provider source document for the yield-table providers that parse a
+    # local file (PDF or XLSX). Keyed on the pylometree provider name, because
+    # every PDF provider reads the same "pdf_path" key and so must be handed its
+    # own config -- see _ingest_yield_tables in cli/create_growth_models.py.
+    yield_sources_documents: dict[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # An unset pve_import_base follows project_path. Before this, it carried
+        # its own default, so any config that set project_path away from that
+        # default silently sent the wind and PVE scripts to a path with no
+        # assemblies in it -- no warning, no error, just assets that import fine
+        # and then fail every wind/PVE check downstream.
+        if not self.unreal_pve_import_base:
+            self.unreal_pve_import_base = self.unreal_project_path
+
+    # Conversion knobs shared by both twig profiles, in (config field, TOML key)
+    # form. The compound profile mirrors each one with a `compound_` prefix.
+    _TWIG_PROFILE_KEYS: ClassVar[tuple[str, ...]] = (
+        "boundary_edge_mm",
+        "planar_angle",
+        "alpha_trim",
+        "interior_edge_mm",
+    )
+
+    def get_twig_conversion_profile(
+        self, role: str = "twig", explicit: Iterable[str] | None = None
+    ) -> dict[str, float]:
+        """Conversion settings for one output role (XRFF-359).
+
+        Two roles share one pipeline:
+
+        * ``"twig"`` -- a single small twig seen close up, the settings the
+          dataset has always used.
+        * ``"compound"`` -- a twig destined to be welded into a compound
+          foliage part, where it is one of ~19 in the same mesh and much
+          smaller on screen, so the close-range fidelity is wasted.
+
+        Any compound key left unset falls back to its close-range value, so
+        adding the role changes nothing until the profile is configured.
+
+        Args:
+            role: Which profile to resolve.
+            explicit: Keys the caller set on the command line. `resolve()` has
+                already written those onto the base fields, and a TOML compound
+                value must not silently beat a flag the user typed -- every
+                other flag in this CLI wins over TOML.
+        """
+        if role not in ("twig", "compound"):
+            raise ValueError(
+                f"unknown twig conversion role {role!r}; expected 'twig' or 'compound'"
+            )
+
+        typed = set(explicit or ())
+        profile = {}
+        for key in self._TWIG_PROFILE_KEYS:
+            base = getattr(self, f"twigs_{key}")
+            if role == "compound" and key not in typed:
+                override = getattr(self, f"twigs_compound_{key}")
+                if override is not None:
+                    base = override
+            profile[key] = base
+        return profile
 
     @classmethod
     def from_toml(cls, toml_path: Path, set_as_global: bool = True) -> "GrowPyConfig":
@@ -396,6 +730,10 @@ class GrowPyConfig:
         general = data.get("general", {})
         if "random_seed" in general:
             kwargs["random_seed"] = general["random_seed"]
+        if "random_seed_per_species" in general:
+            kwargs["random_seed_per_species"] = {
+                str(k): int(v) for k, v in general["random_seed_per_species"].items()
+            }
         if "csv_file" in general:
             kwargs["csv_file"] = Path(general["csv_file"])
         if "output_dir" in general:
@@ -420,6 +758,16 @@ class GrowPyConfig:
             kwargs["custom_twigs_dir"] = Path(twigs["custom_twigs_dir"])
         if "densify" in twigs:
             kwargs["twigs_densify"] = twigs["densify"]
+        if "planar_angle" in twigs:
+            kwargs["twigs_planar_angle"] = float(twigs["planar_angle"])
+        if "planar_angle_per_twig" in twigs:
+            kwargs["twigs_planar_angle_per_twig"] = {
+                str(k): float(v) for k, v in twigs["planar_angle_per_twig"].items()
+            }
+        if "boundary_edge_mm_per_twig" in twigs:
+            kwargs["twigs_boundary_edge_mm_per_twig"] = {
+                str(k): float(v) for k, v in twigs["boundary_edge_mm_per_twig"].items()
+            }
         if "alpha_trim" in twigs:
             kwargs["twigs_alpha_trim"] = twigs["alpha_trim"]
         if "boundary_edge_mm" in twigs:
@@ -428,6 +776,26 @@ class GrowPyConfig:
             kwargs["twigs_interior_edge_mm"] = twigs["interior_edge_mm"]
         if "interior_boundary_rings" in twigs:
             kwargs["twigs_interior_boundary_rings"] = twigs["interior_boundary_rings"]
+        # Compound-part conversion profile (XRFF-359); absent keys stay None
+        # and fall back to the close-range values above.
+        #
+        # Spelled out rather than looped: test_config's drift guard
+        # (test_toml_settable_fields_have_mapping_or_are_allowlisted) walks this
+        # function's AST and only sees kwargs keys that are literal strings, so a
+        # loop would make these four invisible to it and the TOML_ONLY_FIELDS
+        # entries above inert.
+        if "compound_boundary_edge_mm" in twigs:
+            kwargs["twigs_compound_boundary_edge_mm"] = float(
+                twigs["compound_boundary_edge_mm"]
+            )
+        if "compound_planar_angle" in twigs:
+            kwargs["twigs_compound_planar_angle"] = float(twigs["compound_planar_angle"])
+        if "compound_alpha_trim" in twigs:
+            kwargs["twigs_compound_alpha_trim"] = float(twigs["compound_alpha_trim"])
+        if "compound_interior_edge_mm" in twigs:
+            kwargs["twigs_compound_interior_edge_mm"] = float(
+                twigs["compound_interior_edge_mm"]
+            )
 
         # [growth_models]
         gm = data.get("growth_models", {})
@@ -450,10 +818,18 @@ class GrowPyConfig:
         forest = data.get("forest", {})
         if "quality" in forest:
             kwargs["forest_quality"] = forest["quality"]
+        if "quality_above_height" in forest:
+            kwargs["forest_quality_above_height"] = forest["quality_above_height"]
+        if "quality_above_height_threshold" in forest:
+            kwargs["forest_quality_above_height_threshold"] = float(
+                forest["quality_above_height_threshold"]
+            )
         if "growth_cycle_limit" in forest:
             kwargs["forest_growth_cycle_limit"] = forest["growth_cycle_limit"]
         if "plateau_cycles" in forest:
             kwargs["forest_plateau_cycles"] = forest["plateau_cycles"]
+        if "species_curves" in forest:
+            kwargs["forest_species_curves"] = bool(forest["species_curves"])
         if "smooth_iterations" in forest:
             kwargs["forest_smooth_iterations"] = forest["smooth_iterations"]
         if "include_grove_attributes" in forest:
@@ -475,9 +851,10 @@ class GrowPyConfig:
             kwargs["export_usd_format"] = fmt
         if "mode" in export:
             mode = export["mode"].lower()
-            if mode not in ("unreal", "helios"):
+            if mode not in ("unreal", "helios", "icons_only", "growth_json_only"):
                 raise ValueError(
-                    f"export.mode must be 'unreal' or 'helios', got '{mode}'"
+                    f"export.mode must be 'unreal', 'helios', 'icons_only', or "
+                    f"'growth_json_only', got '{mode}'"
                 )
             kwargs["export_mode"] = mode
         if "skeletal" in export:
@@ -494,19 +871,48 @@ class GrowPyConfig:
             kwargs["export_skip_validation"] = export["skip_validation"]
         if "previews" in export:
             kwargs["export_previews"] = bool(export["previews"])
+        if "export_control" in export:
+            kwargs["export_control_images"] = bool(export["export_control"])
         if "icons" in export:
             kwargs["export_icons"] = bool(export["icons"])
+        if "icon_components" in export:
+            kwargs["export_icon_components"] = bool(export["icon_components"])
         # Deprecated alias: export.radial_scale -> export_dbh_from_allometry
         if "radial_scale" in export:
             kwargs["export_dbh_from_allometry"] = export["radial_scale"]
         if "twig_density" in export:
             kwargs["export_twig_density"] = float(export["twig_density"])
-        if "twig_density_conifer" in export:
-            kwargs["export_twig_density_conifer"] = float(export["twig_density_conifer"])
-        if "twig_density_broadleaf" in export:
-            kwargs["export_twig_density_broadleaf"] = float(
-                export["twig_density_broadleaf"]
+        if "build_cutoff_thickness_per_species" in export:
+            kwargs["quality_build_cutoff_thickness_per_species"] = {
+                str(k): float(v)
+                for k, v in export["build_cutoff_thickness_per_species"].items()
+            }
+        if "twig_density_per_species" in export:
+            kwargs["export_twig_density_per_species"] = {
+                str(k): float(v) for k, v in export["twig_density_per_species"].items()
+            }
+        if "twig_reattach_threshold" in export:
+            kwargs["export_twig_reattach_threshold"] = float(
+                export["twig_reattach_threshold"]
             )
+        if "twig_recovery" in export:
+            kwargs["export_twig_recovery"] = bool(export["twig_recovery"])
+        if "external_refs" in export:
+            kwargs["export_external_refs"] = bool(export["external_refs"])
+        if "twig_min_spacing_ratio" in export:
+            kwargs["export_twig_min_spacing_ratio"] = float(
+                export["twig_min_spacing_ratio"]
+            )
+        for _retired in ("twig_density_conifer", "twig_density_broadleaf"):
+            if _retired in export:
+                raise ValueError(
+                    f"[export] {_retired} was retired: it was a hand-set guess at "
+                    "how many twigs build_cutoff_thickness deletes, and the real "
+                    "loss varies more within a growth habit than between habits. "
+                    "Those twigs are now recovered from Grove directly. Use "
+                    "[export] twig_density as a plain multiplier on natural "
+                    "density (1.0 = as grown)."
+                )
         if "youth_bias" in export:
             kwargs["export_youth_bias"] = export["youth_bias"]
         if "export_trees" in export:
@@ -545,12 +951,35 @@ class GrowPyConfig:
             kwargs["unreal_db_path"] = str(unreal["db_path"])
         if "generate_pve_presets" in unreal:
             kwargs["unreal_generate_pve_presets"] = bool(unreal["generate_pve_presets"])
+            if kwargs["unreal_generate_pve_presets"]:
+                # UPVPresetLoaderSettings is UCLASS(meta=(DeprecatedNode, ...))
+                # on UE 5.8 and "produces no output", so the recipe JSON, the
+                # preset DataAssets and the graphs wired to them are all built
+                # for nothing. Warn rather than fail: UE 5.7 projects still work.
+                logger.warning(
+                    "[unreal] generate_pve_presets = true, but the PVE Preset "
+                    "Loader node is deprecated and produces no output on UE 5.8+. "
+                    "The current PVE route is [unreal.growth_data_json], which "
+                    "emits a skeleton for the Growth Data JSON Importer instead."
+                )
         if "pve_import_base" in unreal:
             kwargs["unreal_pve_import_base"] = str(unreal["pve_import_base"])
-        if "editor_exe" in unreal:
-            kwargs["unreal_editor_exe"] = str(unreal["editor_exe"])
-        if "uproject" in unreal:
-            kwargs["unreal_uproject"] = str(unreal["uproject"])
+        if "generate_pve_graphs" in unreal:
+            kwargs["unreal_generate_pve_graphs"] = bool(unreal["generate_pve_graphs"])
+        if "pve_content_root" in unreal:
+            kwargs["unreal_pve_content_root"] = str(unreal["pve_content_root"])
+        if "pve_triangle_cap" in unreal:
+            cap = float(unreal["pve_triangle_cap"])
+            if cap <= 0:
+                raise ValueError(
+                    f"[unreal] pve_triangle_cap must be positive, got {cap}"
+                )
+            kwargs["unreal_pve_triangle_cap"] = cap
+        watchdog = unreal.get("watchdog", {})
+        if "editor_exe" in watchdog:
+            kwargs["unreal_editor_exe"] = str(watchdog["editor_exe"])
+        if "uproject" in watchdog:
+            kwargs["unreal_uproject"] = str(watchdog["uproject"])
 
         # [helios]
         helios = data.get("helios", {})
@@ -595,8 +1024,6 @@ class GrowPyConfig:
             kwargs["calibration_align_height"] = cal["align_height"]
         if "plot" in cal:
             kwargs["calibration_plot"] = cal["plot"]
-        if "yield_tables_dir" in cal:
-            kwargs["calibration_yield_tables_dir"] = Path(cal["yield_tables_dir"])
         if "align_dbh" in cal:
             # Deprecated alias: DBH realisation no longer belongs to calibration.
             kwargs["export_dbh_from_allometry"] = cal["align_dbh"]
@@ -610,32 +1037,86 @@ class GrowPyConfig:
         ys = data.get("yield_sources", {})
         if "store_dir" in ys:
             kwargs["yield_sources_store_dir"] = Path(ys["store_dir"])
+        if "yield_tables_dir" in ys:
+            kwargs["yield_sources_yield_tables_dir"] = Path(ys["yield_tables_dir"])
         if "preferred_region" in ys:
             kwargs["yield_sources_preferred_region"] = ys["preferred_region"]
         if "preferred_site_index" in ys:
             val = float(ys["preferred_site_index"])
             kwargs["yield_sources_preferred_site_index"] = val if val > 0 else None
+        if "documents" in ys:
+            kwargs["yield_sources_documents"] = {
+                str(name): str(path) for name, path in ys["documents"].items()
+            }
         # [surround] - single-tree competition shell (replaces multi-tree clusters).
         # radii: 0 = no surround (open-grown baseline); >0 = shell distance (m).
         # A tree's surround_radius value picks which configured radius applies.
         surr = data.get("surround", {})
         if "radii" in surr:
-            radii = {float(r) for r in surr["radii"]}
-            radii.add(0.0)
-            kwargs["surround_radii"] = sorted(radii)
+            # Take the list literally. This used to force 0.0 into every
+            # configured set to guarantee an open-grown baseline, which made it
+            # impossible to build one radius on its own: `radii = [5.0]` silently
+            # became [0.0, 5.0]. That matters because generate_forest_stages
+            # wipes each radius subdirectory before writing, so a run intended to
+            # add r05 also DELETED an existing, complete r00 and regenerated it
+            # under whatever config that run happened to carry. Observed
+            # 2026-08-23: a shaded pass destroyed 15 finished r00 stage-cells,
+            # and because it rewrote them the assembly count kept climbing while
+            # data was being lost. Callers that want the baseline list 0.0.
+            kwargs["surround_radii"] = sorted({float(r) for r in surr["radii"]})
         if "density" in surr:
             kwargs["surround_density"] = float(surr["density"])
         if "height" in surr:
             kwargs["surround_height"] = float(surr["height"])
         if "grow" in surr:
             kwargs["surround_grow"] = bool(surr["grow"])
+        if "density_per_species" in surr:
+            kwargs["surround_density_per_species"] = {
+                str(k): float(v) for k, v in surr["density_per_species"].items()
+            }
+        if "density_per_species_radius" in surr:
+            kwargs["surround_density_per_species_radius"] = {
+                str(species): {
+                    str(label): float(value) for label, value in per_radius.items()
+                }
+                for species, per_radius in surr["density_per_species_radius"].items()
+            }
+        if "grow_per_species" in surr:
+            kwargs["surround_grow_per_species"] = {
+                str(k): bool(v) for k, v in surr["grow_per_species"].items()
+            }
+        if "freeze_height" in surr:
+            kwargs["surround_freeze_height"] = float(surr["freeze_height"])
+        if "freeze_height_per_species" in surr:
+            kwargs["surround_freeze_height_per_species"] = {
+                str(k): float(v) for k, v in surr["freeze_height_per_species"].items()
+            }
+        if "height_per_species" in surr:
+            kwargs["surround_height_per_species"] = {
+                str(k): float(v) for k, v in surr["height_per_species"].items()
+            }
 
         # Warn about unrecognized top-level sections (usually a typo in the TOML);
         # such sections are otherwise silently ignored and defaults are used.
         _known_sections = {
-            "general", "assets", "twigs", "growth_models", "forest", "export",
-            "density_variant", "unreal", "helios", "calibration", "yield_sources",
-            "surround", "quality",
+            "general",
+            "assets",
+            "twigs",
+            "growth_models",
+            "forest",
+            "export",
+            "density_variant",
+            "unreal",
+            "helios",
+            "calibration",
+            "yield_sources",
+            "surround",
+            "quality",
+            # Read by growpy.config.pve_calibration as a named file rather than
+            # through this merge -- it holds measured data, not settings this
+            # dataclass owns. Listed so a legitimate section is not reported as
+            # a typo. See config/README.md.
+            "pve_calibration",
         }
         for _section in data:
             if _section not in _known_sections:
@@ -699,8 +1180,7 @@ class GrowPyConfig:
         for name in self.export_density_variants:
             if name not in self.density_variant_defs:
                 raise ValueError(
-                    f"Density variant '{name}' not defined "
-                    f"in [density_variant.{name}]"
+                    f"Density variant '{name}' not defined in [density_variant.{name}]"
                 )
             vcfg = self.density_variant_defs[name]
             unknown = set(vcfg) - self.DENSITY_VARIANT_KEYS
@@ -713,26 +1193,124 @@ class GrowPyConfig:
             result.append((name, vcfg))
         return result
 
-    def get_twig_density_base(self, species: str) -> float:
-        """Resolve the base twig-density multiplier for a species.
+    def get_surround_density(self, species: str, radius: float | None = None) -> float:
+        """Shell density for this species, optionally at one shell radius.
 
-        An explicit ``export_twig_density`` (set via [export] twig_density in
-        TOML) overrides everything uniformly, for back-compat with a single
-        global knob. Otherwise the species' growth habit (conifer/broadleaf,
-        from tree_asset_lookup.csv's Competition Group column) picks between
-        export_twig_density_conifer and export_twig_density_broadleaf.
-        Species without a resolvable growth habit fall back to the conifer
-        value (the more conservative default).
+        Resolves in order: ``[surround.density_per_species_radius.<species>]``
+        keyed by the same ``rNN`` label the output directories use, then
+        ``[surround.density_per_species]``, then the global ``[surround]
+        density``.
+
+        The per-radius level is not a refinement of the per-species one, it is a
+        different quantity: these values are per-species THRESHOLDS rather than
+        a gradient, so a density that lands a species inside its target
+        crown-ratio band at one shell distance can sit past its cliff at a
+        tighter one and short of it at a wider one. They do not transfer between
+        radii by interpolation -- see the note at [surround.density_per_species]
+        in surround.toml.
+
+        ``radius=None`` skips the per-radius level, which is what a caller with
+        no shell (r00, open-grown) wants.
         """
-        if self.export_twig_density is not None:
-            return self.export_twig_density
+        from growpy.utils.naming import standardize_species_name
 
-        from .paths import get_species_growth_habit
+        key = standardize_species_name(species) if species else ""
+        if radius is not None and self.surround_density_per_species_radius:
+            from growpy.config.paths import radius_label
 
-        habit = get_species_growth_habit(species)
-        if habit == "broadleaf":
-            return self.export_twig_density_broadleaf
-        return self.export_twig_density_conifer
+            per_radius = self.surround_density_per_species_radius.get(key)
+            if per_radius:
+                label = radius_label(radius)
+                if label in per_radius:
+                    return per_radius[label]
+        if self.surround_density_per_species:
+            if key in self.surround_density_per_species:
+                return self.surround_density_per_species[key]
+        return self.surround_density
+
+    def get_surround_freeze_height(self, species: str) -> float:
+        """Height (m) at which this species' growing shell is frozen; 0 = never.
+
+        Resolves ``[surround.freeze_height_per_species]`` first, falling back
+        to the global ``[surround] freeze_height``. Accepts a common name or a
+        standardized one.
+        """
+        from growpy.utils.naming import standardize_species_name
+
+        if self.surround_freeze_height_per_species:
+            key = standardize_species_name(species)
+            if key in self.surround_freeze_height_per_species:
+                return self.surround_freeze_height_per_species[key]
+        return self.surround_freeze_height
+
+    def get_surround_height(self, species: str) -> float:
+        """Static shell height (m) for this species.
+
+        Resolves ``[surround.height_per_species]`` first, falling back to the
+        global ``[surround] height``. Only meaningful where the species' shell
+        does not grow (see :meth:`get_surround_grow`).
+        """
+        from growpy.utils.naming import standardize_species_name
+
+        if self.surround_height_per_species:
+            key = standardize_species_name(species)
+            if key in self.surround_height_per_species:
+                return self.surround_height_per_species[key]
+        return self.surround_height
+
+    def get_surround_grow(self, species: str) -> bool:
+        """Whether the surround shell tracks this species' height.
+
+        Resolves ``[surround.grow_per_species]`` first, falling back to the
+        global ``[surround] grow``. Accepts a common name ("Silver fir") or a
+        standardized one ("silver_fir").
+        """
+        from growpy.utils.naming import standardize_species_name
+
+        if self.surround_grow_per_species:
+            key = standardize_species_name(species)
+            if key in self.surround_grow_per_species:
+                return self.surround_grow_per_species[key]
+        return self.surround_grow
+
+    def get_random_seed(self, species: str | None = None) -> int | None:
+        """The simulation seed for ``species``: its own reseed, else the global one.
+
+        ``[general.random_seed_per_species]`` exists for a species whose tree
+        collapses under the shell on the way to its top stage -- the owner's
+        rule (2026-09-15) is a different seed, never a lower density. Accepts
+        a common name or a standardized one.
+        """
+        from growpy.utils.naming import standardize_species_name
+
+        if species and self.random_seed_per_species:
+            key = standardize_species_name(species)
+            if key in self.random_seed_per_species:
+                return self.random_seed_per_species[key]
+        return self.random_seed
+
+    def get_twig_density_base(self, species: str) -> float:
+        """Return the crown-density multiplier relative to natural density.
+
+        Resolves ``[export.twig_density_per_species]`` first, falling back to
+        the global ``[export] twig_density``. Per-species values are required,
+        not a nicety: measured 2026-08-06, the density each species needs to
+        hit its literature leaf area spans ~60x (douglas_fir 0.016 vs
+        common_ash 0.96), because it is dominated by how much leaf area that
+        species' twig prototype carries -- 0.109 m2 for the shared fir spray
+        against 0.023 m2 for ash -- not by Grove's placement. A single global
+        constant is therefore wrong for almost every species at once.
+
+        Accepts either a common name ("Silver fir") or an already-standardized
+        one ("silver_fir"); both resolve to the same entry.
+        """
+        from growpy.utils.naming import standardize_species_name
+
+        if self.export_twig_density_per_species:
+            key = standardize_species_name(species)
+            if key in self.export_twig_density_per_species:
+                return self.export_twig_density_per_species[key]
+        return self.export_twig_density
 
     def get_simplification_ratios(self, species_clean: str) -> dict[str, float]:
         """Return Helios OBJ simplification ratios for a species.

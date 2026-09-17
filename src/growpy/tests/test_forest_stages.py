@@ -21,16 +21,23 @@ from growpy.pipelines.forest_stages import (
     GROWTH_CYCLE_LIMIT,
     SMOOTH_ITERATIONS,
     STAGES,
+    _growth_data_json_settings,
+    _min_branch_radius_fraction_for,
+    _min_point_spacing_for,
     compute_radial_scale,
     derive_static,
     export_obj_direct,
     export_assembly,
     resolve_target_dbh,
+    write_export_control,
     write_icons,
     write_previews,
+    export_growth_json_only,
+    write_growth_data_json,
     write_pve_json,
     write_wind_json,
 )
+from growpy.io.tamf import write_tamf
 from growpy.pipelines.tree_export_context import TreeExportContext
 
 
@@ -348,6 +355,122 @@ class TestWriteWindJson:
             write_wind_json(ctx)  # must not raise
 
 
+class TestGrowthDataJson:
+    """The post-assembly stage and the growth_json_only export mode (XRFF-439).
+
+    Both reach the exporter through _emit_growth_data_json, which is what makes
+    the mode's output identical to the stage's rather than merely similar.
+    """
+
+    _EXPORTER = (
+        "growpy.io.unreal.pve_growth_data_exporter.generate_growth_data_from_grove"
+    )
+    _SETTINGS = "growpy.pipelines.forest_stages._growth_data_json_settings"
+    _ON = {
+        "enabled": True,
+        "profile_mean": 0.8215,
+        "min_branch_radius": 0.0,
+        "min_branch_radius_fraction": 0.06,
+    }
+
+    def test_stage_skipped_when_not_skeletal(self):
+        ctx = _make_ctx(use_skeletal=False)
+        with patch(self._SETTINGS, return_value=self._ON):
+            with patch(self._EXPORTER) as mock_gen:
+                write_growth_data_json(ctx)
+        mock_gen.assert_not_called()
+
+    def test_stage_skipped_when_flag_off(self):
+        ctx = _make_ctx(use_skeletal=True)
+        with patch(self._SETTINGS, return_value={**self._ON, "enabled": False}):
+            with patch(self._EXPORTER) as mock_gen:
+                write_growth_data_json(ctx)
+        mock_gen.assert_not_called()
+
+    def test_stage_emits_when_gated_on(self):
+        ctx = _make_ctx(use_skeletal=True)
+        ctx.radial_scale = 0.62
+        with patch(self._SETTINGS, return_value=self._ON):
+            with patch(self._EXPORTER) as mock_gen:
+                write_growth_data_json(ctx)
+        mock_gen.assert_called_once()
+
+    def test_mode_ignores_both_gates(self):
+        """A mode whose only output is this file must not be able to emit
+        nothing because export_skeletal or [unreal.growth_data_json] enabled is
+        off. The mode is the opt-in."""
+        ctx = _make_ctx(use_skeletal=False)
+        ctx.radial_scale = 0.62
+        with patch(self._SETTINGS, return_value={**self._ON, "enabled": False}):
+            with patch(self._EXPORTER) as mock_gen:
+                export_growth_json_only(ctx)
+        mock_gen.assert_called_once()
+        assert ctx.export_success is True
+
+    def test_mode_and_stage_emit_the_same_file(self):
+        """The acceptance claim: the mode's JSON is what the unreal mode would
+        have produced for the same tree -- same output path, same arguments."""
+        calls = []
+
+        def _capture(**kwargs):
+            calls.append(kwargs)
+
+        # The same tree down both paths -- one skeleton, one grove -- so the
+        # only thing that differs is which function was called.
+        tree = {
+            "skeleton": MagicMock(name="skeleton"),
+            "grove": MagicMock(name="grove"),
+        }
+
+        for fn, skeletal in (
+            (write_growth_data_json, True),
+            (export_growth_json_only, False),
+        ):
+            ctx = _make_ctx(use_skeletal=skeletal, **tree)
+            ctx.radial_scale = 0.62
+            with patch(self._SETTINGS, return_value=self._ON):
+                with patch(self._EXPORTER, side_effect=_capture):
+                    fn(ctx)
+
+        assert len(calls) == 2
+        stage, mode = calls
+        assert stage == mode
+
+    def test_radial_scale_is_passed_through_not_defaulted(self):
+        # Grove's raw radii are not the calibrated diameter; a 1.0 here emits a
+        # trunk several times too thick.
+        ctx = _make_ctx(use_skeletal=False)
+        ctx.radial_scale = 0.62
+        with patch(self._SETTINGS, return_value=self._ON):
+            with patch(self._EXPORTER) as mock_gen:
+                export_growth_json_only(ctx)
+        assert mock_gen.call_args.kwargs["radial_scale"] == 0.62
+
+    def test_output_path_is_the_prefixed_json_beside_the_tree(self):
+        ctx = _make_ctx(use_skeletal=False)
+        ctx.radial_scale = 1.0
+        with patch(self._SETTINGS, return_value=self._ON):
+            with patch(self._EXPORTER) as mock_gen:
+                export_growth_json_only(ctx)
+        out = mock_gen.call_args.kwargs["output_path"]
+        assert out == ctx.tree_dir / f"{ctx.file_prefix}_growth_data.json"
+
+    def test_mode_reports_failure_rather_than_raising(self):
+        ctx = _make_ctx(use_skeletal=False)
+        ctx.radial_scale = 1.0
+        with patch(self._SETTINGS, return_value=self._ON):
+            with patch(self._EXPORTER, side_effect=RuntimeError("boom")):
+                export_growth_json_only(ctx)  # must not raise
+        assert ctx.export_success is False
+
+    def test_stage_swallows_the_same_failure(self):
+        ctx = _make_ctx(use_skeletal=True)
+        ctx.radial_scale = 1.0
+        with patch(self._SETTINGS, return_value=self._ON):
+            with patch(self._EXPORTER, side_effect=RuntimeError("boom")):
+                write_growth_data_json(ctx)  # must not raise
+
+
 class TestWritePveJson:
     """Tests for write_pve_json (XRFF-289)."""
 
@@ -417,21 +540,52 @@ class TestWritePveJson:
 class TestWritePreviews:
     """Tests for write_previews (XRFF-289)."""
 
-    def test_generates_preview_and_export_control(self):
+    def test_generates_preview_and_stashes_bounds(self):
+        ctx = _make_ctx(dims_suffix="h10m_d15cm")
+        with patch(
+            "growpy.pipelines.forest_stages._generate_preview_image",
+            return_value="bounds",
+        ) as mock_preview:
+            write_previews(ctx)
+        mock_preview.assert_called_once()
+        assert ctx.preview_bounds == "bounds"
+
+    def test_does_not_generate_the_export_control_image(self):
+        # Split into its own stage so it can be disabled independently.
         ctx = _make_ctx(dims_suffix="h10m_d15cm")
         with (
             patch(
                 "growpy.pipelines.forest_stages._generate_preview_image",
                 return_value="bounds",
-            ) as mock_preview,
+            ),
             patch(
                 "growpy.pipelines.forest_stages._generate_export_control_image"
             ) as mock_control,
         ):
             write_previews(ctx)
-        mock_preview.assert_called_once()
+        mock_control.assert_not_called()
+
+
+class TestWriteExportControl:
+    """Tests for write_export_control, split out of write_previews."""
+
+    def test_uses_the_preview_bounds_when_previews_ran(self):
+        ctx = _make_ctx(dims_suffix="h10m_d15cm")
+        ctx.preview_bounds = "bounds"
+        with patch(
+            "growpy.pipelines.forest_stages._generate_export_control_image"
+        ) as mock_control:
+            write_export_control(ctx)
         mock_control.assert_called_once()
         assert mock_control.call_args.kwargs["view_bounds"] == "bounds"
+
+    def test_falls_back_to_its_own_bounds_when_previews_are_off(self):
+        ctx = _make_ctx(dims_suffix="h10m_d15cm")
+        with patch(
+            "growpy.pipelines.forest_stages._generate_export_control_image"
+        ) as mock_control:
+            write_export_control(ctx)
+        assert mock_control.call_args.kwargs["view_bounds"] is None
 
 
 class TestWriteIcons:
@@ -492,20 +646,47 @@ class TestStagesRegistry:
 
     def test_stage_names_and_order(self):
         names = [name for name, *_ in STAGES]
-        assert names == ["wind_json", "pve_json", "preview", "icons", "static_derive"]
+        assert names == [
+            "wind_json",
+            "pve_json",
+            "growth_data_json",
+            "tamf",
+            "preview",
+            "export_control",
+            "icons",
+            "static_derive",
+        ]
 
     def test_once_per_tree_flags(self):
-        """pve_json now runs per density variant (XRFF-283); the rest stay once_per_tree."""
+        """pve_json (XRFF-283) and preview run per density variant; the rest don't.
+
+        preview draws twig positions, which are exactly what a density variant
+        changes -- running it once per tree would label variant 0's crown as
+        every other variant's.
+        """
         once_per_tree_by_name = {name: once for name, _gate, _fn, once in STAGES}
         assert once_per_tree_by_name["pve_json"] is False
-        for name in ("wind_json", "preview", "icons", "static_derive"):
+        assert once_per_tree_by_name["preview"] is False
+        # the asset id and twig density in the record differ per variant
+        assert once_per_tree_by_name["tamf"] is False
+        for name in (
+            "wind_json",
+            # the growth data IS the skeleton, which does not vary with density
+            "growth_data_json",
+            "export_control",
+            "icons",
+            "static_derive",
+        ):
             assert once_per_tree_by_name[name] is True, f"{name} should be once_per_tree"
 
     def test_stage_functions_match_extracted_functions(self):
         expected = {
             "wind_json": write_wind_json,
             "pve_json": write_pve_json,
+            "growth_data_json": write_growth_data_json,
+            "tamf": write_tamf,
             "preview": write_previews,
+            "export_control": write_export_control,
             "icons": write_icons,
             "static_derive": derive_static,
         }
@@ -556,3 +737,129 @@ class TestStagesRegistry:
         assert gate(ctx) is True
         ctx.cfg.export_static = False
         assert gate(ctx) is False
+
+
+class TestMinBranchRadiusFractionPerSpecies:
+    """XRFF-466 (2026-09-16): the decimation fraction is a per-species knob.
+
+    At a global 0.06 a h25 common ash keeps 196 branches and a Norway spruce
+    3,016, so the solver strung 177 foliage instances along a single ash branch
+    ("caterpillar") while the conifers looked right. 0.02 on ash takes the same
+    instance count and the same leaf area onto 1,056 branches -- 33 per branch.
+    Conifers keep 0.06 deliberately: a lower fraction there buys nothing and
+    costs branches to mesh.
+    """
+
+    _BASE = {
+        "enabled": True,
+        "profile_mean": 0.8215,
+        "min_branch_radius": 0.0,
+        "min_branch_radius_fraction": 0.06,
+    }
+
+    def test_the_global_key_is_used_when_no_table_exists(self):
+        assert _min_branch_radius_fraction_for(self._BASE, "Common ash") == 0.06
+
+    def test_a_species_entry_wins(self):
+        settings = {
+            **self._BASE,
+            "min_branch_radius_fraction_per_species": {"common_ash": 0.02},
+        }
+        assert _min_branch_radius_fraction_for(settings, "Common ash") == 0.02
+        assert _min_branch_radius_fraction_for(settings, "common_ash") == 0.02
+        # Untabled species still take the global value.
+        assert _min_branch_radius_fraction_for(settings, "Norway spruce") == 0.06
+
+    def test_the_stage_passes_the_resolved_fraction_to_the_exporter(self):
+        ctx = _make_ctx(use_skeletal=True, species_name="Common ash")
+        ctx.radial_scale = 0.62
+        settings = {
+            **self._BASE,
+            "min_branch_radius_fraction_per_species": {"common_ash": 0.02},
+        }
+        with patch(
+            "growpy.pipelines.forest_stages._growth_data_json_settings",
+            return_value=settings,
+        ):
+            with patch(
+                "growpy.io.unreal.pve_growth_data_exporter."
+                "generate_growth_data_from_grove"
+            ) as mock_gen:
+                write_growth_data_json(ctx)
+        assert mock_gen.call_args.kwargs["min_branch_radius_fraction"] == 0.02
+
+
+class TestMinPointSpacingPerSpecies:
+    """XRFF-471: the along-branch point spacing is per species, like the fraction.
+
+    Points are the exported bones. Beech's 0.063 m internode gives it 2-3x
+    the bones of an oak at the same fraction, and at 0.02 it stopped opening
+    in UE (82,408 at r16_h15m); oak and fir never needed thinning.
+    """
+
+    _BASE = {
+        "enabled": True,
+        "profile_mean": 0.8215,
+        "min_branch_radius": 0.0,
+        "min_branch_radius_fraction": 0.06,
+        "min_point_spacing": 0.0,
+    }
+
+    def test_off_by_default(self):
+        assert _min_point_spacing_for(self._BASE, "European beech") == 0.0
+
+    def test_a_species_entry_wins(self):
+        settings = {
+            **self._BASE,
+            "min_point_spacing_per_species": {"european_beech": 0.2},
+        }
+        assert _min_point_spacing_for(settings, "European beech") == 0.2
+        assert _min_point_spacing_for(settings, "european_beech") == 0.2
+        assert _min_point_spacing_for(settings, "European oak") == 0.0
+
+    def test_the_stage_passes_the_resolved_spacing_to_the_exporter(self):
+        ctx = _make_ctx(use_skeletal=True, species_name="European beech")
+        ctx.radial_scale = 0.62
+        settings = {
+            **self._BASE,
+            "min_point_spacing_per_species": {"european_beech": 0.2},
+        }
+        with patch(
+            "growpy.pipelines.forest_stages._growth_data_json_settings",
+            return_value=settings,
+        ):
+            with patch(
+                "growpy.io.unreal.pve_growth_data_exporter."
+                "generate_growth_data_from_grove"
+            ) as mock_gen:
+                write_growth_data_json(ctx)
+        assert mock_gen.call_args.kwargs["min_point_spacing"] == 0.2
+
+    def test_a_settings_dict_without_the_key_still_resolves(self):
+        # Older callers and tests build the settings dict by hand without the
+        # key; the reader itself always supplies the default.
+        settings = {k: v for k, v in self._BASE.items() if k != "min_point_spacing"}
+        assert _min_point_spacing_for(settings, "Common ash") == 0.0
+
+
+class TestGrowthDataJsonSettingsFollowTheConfigDir:
+    """A run pointed at another config dir must decimate at ITS fraction.
+
+    The reader used to open the literal ``config/unreal.toml`` relative to the
+    working directory, so a GROWPY_CONFIG probe silently used the repo's value
+    and its output was indistinguishable from the production run's.
+    """
+
+    def test_growpy_config_is_honoured(self, tmp_path, monkeypatch):
+        (tmp_path / "unreal.toml").write_text(
+            "[unreal.growth_data_json]\n"
+            "enabled = true\n"
+            "min_branch_radius_fraction = 0.02\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("GROWPY_CONFIG", str(tmp_path))
+        settings = _growth_data_json_settings()
+        assert settings["enabled"] is True
+        assert settings["min_branch_radius_fraction"] == 0.02
+        # Keys the probe file does not name keep their defaults.
+        assert settings["profile_mean"] == 0.8215

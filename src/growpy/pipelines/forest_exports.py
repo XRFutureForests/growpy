@@ -27,9 +27,7 @@ from growpy.io.forest_export import export_individual_trees
 from growpy.io.usd.tree_export import (
     handle_bone_limit_error as _handle_bone_limit_error,
 )
-from growpy.io.usd.tree_export import (
-    is_bone_limit_error as _is_bone_limit_error,
-)
+from growpy.io.usd.tree_export import is_bone_limit_error as _is_bone_limit_error
 from growpy.utils.profiling import ProfileTimer
 
 GROWTH_CYCLE_LIMIT = 10
@@ -99,14 +97,15 @@ def generate_forest_exports(
         logger.error("Missing required columns: %s", missing_cols)
         return
 
-    if config.export_mode == "helios":
+    if config.export_mode in ("helios", "icons_only", "growth_json_only"):
         logger.error(
-            "export_mode = 'helios' (direct OBJ export) is only implemented for "
-            "the multi-stage pipeline ([forest] height_interval > 0, the default). "
-            "This run has height_interval = 0, which selects the standard "
-            "growth-cycle pipeline (generate_forest_exports) -- helios direct "
-            "export is not supported there. Set height_interval > 0, or use "
-            "export_mode = 'unreal' with this pipeline."
+            "export_mode = '%s' is only implemented for the multi-stage "
+            "pipeline ([forest] height_interval > 0, the default). This run "
+            "has height_interval = 0, which selects the standard growth-cycle "
+            "pipeline (generate_forest_exports), where only 'unreal' is "
+            "implemented. Set height_interval > 0, or use export_mode = "
+            "'unreal' with this pipeline.",
+            config.export_mode,
         )
         return
 
@@ -156,7 +155,7 @@ def generate_forest_exports(
                 max_cycles,
                 smooth_iterations=smooth_iterations,
                 preset_overrides=preset_overrides,
-                use_species_curves=config.calibration_align_height,
+                use_species_curves=config.forest_species_curves,
             )
     except Exception as e:
         logger.error("Error creating/simulating forest: %s", e)

@@ -25,8 +25,12 @@ def create_grove(species: str | None = None) -> gc.Grove:
     grove = gc.Grove()
     grove.clear_trees()
 
-    if config.random_seed is not None:
-        grove.set_random_seed(config.random_seed)
+    # A species that collapsed under the shell on the way to its top stage is
+    # reseeded ([general.random_seed_per_species]), never densified down
+    # (owner rule, 2026-09-15).
+    seed = config.get_random_seed(species)
+    if seed is not None:
+        grove.set_random_seed(seed)
 
     if species:
         preset_path = config.get_preset_path(species)
@@ -111,5 +115,51 @@ def enable_surround(
     props.surround_distance = float(distance)
     props.surround_height = float(height)
     props.surround_grow = bool(grow)
+    grove.set_properties(props)
+    return True
+
+
+def disable_surround(grove: gc.Grove) -> bool:
+    """Turn Grove's Surround shell off on a grove.
+
+    Needed because Surround is a *preset* property: 4 of the 11 dataset species
+    (european_beech, norway_spruce, scots_pine, silver_fir) ship
+    ``surround_enabled = true`` in their Grove 2.3 seed.json, so a grove built
+    from those presets is already competing against a shell before growpy asks
+    for one. Without this the r00 "open-grown" variant is open-grown for 7
+    species and forest-grown at the preset's own distance (8-10 m) for the other
+    4 -- the same label on two different growth regimes.
+
+    Returns:
+        True if the surround properties were applied, False if the running
+        Grove build does not expose them.
+    """
+    props = grove.get_properties()
+    if not hasattr(props, "surround_enabled"):
+        return False
+    props.surround_enabled = False
+    grove.set_properties(props)
+    return True
+
+
+def freeze_surround_shell(grove: gc.Grove, height: float) -> bool:
+    """Stop a growing Surround shell and fix it at ``height`` metres.
+
+    Called mid-simulation once the tree reaches the freeze height
+    (``[surround] freeze_height``): the shell that has grown with the tree so
+    far turns into a static wall the tree can overtop, the way a crown
+    emerging from a closed canopy stops being shaded from the side. A grove
+    with Surround off or already static is left untouched.
+
+    Returns:
+        True if the shell was frozen by this call, False otherwise.
+    """
+    props = grove.get_properties()
+    if not hasattr(props, "surround_enabled"):
+        return False
+    if not props.surround_enabled or not props.surround_grow:
+        return False
+    props.surround_grow = False
+    props.surround_height = float(height)
     grove.set_properties(props)
     return True

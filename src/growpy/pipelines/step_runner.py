@@ -58,6 +58,10 @@ STEP_SCRIPTS: dict[int, Path] = {
     4: Path("src/growpy/cli/generate_forest.py"),
 }
 
+# Step 2's second stage: the twigs it converted are welded into the compound
+# foliage parts the PVE palette is built from (XRFF-463).
+COMPOUND_BAKE_SCRIPT = Path("src/growpy/tools/bake_compound_parts.py")
+
 
 def check_environment() -> bool:
     """Verify that bpy is importable in the current Python environment."""
@@ -142,6 +146,33 @@ def run_step123(
     return True
 
 
+def run_compound_bake(dry_run: bool = False, verbose: bool = False) -> bool:
+    """Bake every dataset species' compound foliage parts (the tail of step 2).
+
+    The PVE route places foliated BRANCH parts, not single twigs (XRFF-463);
+    the parts weld the twig step 2 just converted, so this runs after the
+    conversion and, like it, as a subprocess in the growpy env (it loads the
+    Grove core). Returns True on success (or dry_run).
+    """
+    from pathlib import Path as PathlibPath
+
+    cmd = [sys.executable, str(COMPOUND_BAKE_SCRIPT), "--dataset"]
+    if verbose:
+        cmd.append("--verbose")
+    if dry_run:
+        logger.info("[DRY RUN] step 2 (compound parts): %s", " ".join(cmd))
+        return True
+
+    logger.info("Step 2 (compound parts): %s", COMPOUND_BAKE_SCRIPT.name)
+    project_root = PathlibPath(__file__).parent.parent.parent.parent
+    result = subprocess.run(_wrap_in_env(cmd), check=False, cwd=str(project_root))
+    if result.returncode != 0:
+        logger.error("Step 2 (compound parts) FAILED (exit code %d)", result.returncode)
+        return False
+    logger.info("Step 2 (compound parts): OK")
+    return True
+
+
 def _build_step4_command(
     species_name: str,
     max_height: float = 0,
@@ -150,7 +181,11 @@ def _build_step4_command(
     pve: bool | None = None,
     wind: bool | None = None,
     previews: bool | None = None,
+    export_control: bool | None = None,
     icons: bool | None = None,
+    profile: bool | None = None,
+    icon_components: bool | None = None,
+    icons_only: bool = False,
 ) -> list:
     """Build the generate_forest.py command for one dataset species.
 
@@ -158,9 +193,11 @@ def _build_step4_command(
     for the species itself from config, so there is no CSV to hand over and
     no --export-trees filter to compute: it exports all the rows it built.
 
-    pve/wind/previews/icons are tri-state (None = use TOML default) and are
-    only appended when explicitly set, mirroring resolve()'s CLI-over-TOML
-    semantics.
+    pve, wind, previews, export_control, icons, icon_components and profile
+    are tri-state (None = use the TOML default) and are only appended when
+    explicitly set, mirroring resolve()'s CLI-over-TOML semantics. icons_only
+    is a plain on/off switch (--icons-only is store_true in generate_forest.py,
+    no TOML default to fall back to).
     """
     cmd = [sys.executable, str(STEP_SCRIPTS[4]), "--species", species_name]
     if max_height > 0:
@@ -175,8 +212,16 @@ def _build_step4_command(
         cmd.append("--wind" if wind else "--no-wind")
     if previews is not None:
         cmd.append("--previews" if previews else "--no-previews")
+    if export_control is not None:
+        cmd.append("--export-control" if export_control else "--no-export-control")
     if icons is not None:
         cmd.append("--icons" if icons else "--no-icons")
+    if icon_components is not None:
+        cmd.append("--icon-components" if icon_components else "--no-icon-components")
+    if profile is not None:
+        cmd.append("--profile" if profile else "--no-profile")
+    if icons_only:
+        cmd.append("--icons-only")
     return cmd
 
 
@@ -189,7 +234,11 @@ def run_species_step4(
     pve: bool | None = None,
     wind: bool | None = None,
     previews: bool | None = None,
+    export_control: bool | None = None,
     icons: bool | None = None,
+    profile: bool | None = None,
+    icon_components: bool | None = None,
+    icons_only: bool = False,
 ) -> bool:
     """Run generate_forest.py for one dataset species.
 
@@ -205,7 +254,11 @@ def run_species_step4(
         pve,
         wind,
         previews,
+        export_control,
         icons,
+        profile,
+        icon_components=icon_components,
+        icons_only=icons_only,
     )
 
     if dry_run:
@@ -237,7 +290,19 @@ def run_species_step4(
 
 def _run_species_worker(args: tuple) -> tuple:
     """Top-level picklable worker for ProcessPoolExecutor."""
-    species_name, max_height, verbose, pve, wind, previews, icons = args
+    (
+        species_name,
+        max_height,
+        verbose,
+        pve,
+        wind,
+        previews,
+        export_control,
+        icons,
+        profile,
+        icon_components,
+        icons_only,
+    ) = args
     t0 = time.monotonic()
     ok = run_species_step4(
         species_name,
@@ -247,7 +312,11 @@ def _run_species_worker(args: tuple) -> tuple:
         pve=pve,
         wind=wind,
         previews=previews,
+        export_control=export_control,
         icons=icons,
+        profile=profile,
+        icon_components=icon_components,
+        icons_only=icons_only,
     )
     elapsed = time.monotonic() - t0
     return species_name, ok, elapsed
@@ -261,7 +330,11 @@ def run_parallel_step4(
     pve: bool | None = None,
     wind: bool | None = None,
     previews: bool | None = None,
+    export_control: bool | None = None,
     icons: bool | None = None,
+    profile: bool | None = None,
+    icon_components: bool | None = None,
+    icons_only: bool = False,
 ) -> tuple[list, dict]:
     """Run step 4 for multiple species in parallel.
 
@@ -274,7 +347,19 @@ def run_parallel_step4(
         futures = {
             pool.submit(
                 _run_species_worker,
-                (species, max_height, verbose, pve, wind, previews, icons),
+                (
+                    species,
+                    max_height,
+                    verbose,
+                    pve,
+                    wind,
+                    previews,
+                    export_control,
+                    icons,
+                    profile,
+                    icon_components,
+                    icons_only,
+                ),
             ): species
             for species in species_list
         }

@@ -11,13 +11,21 @@
 
 [general]
 # Random seed for reproducible tree generation (remove to randomize)
-random_seed = 2026
+random_seed = 512
 # Default input CSV with tree positions and species
 # CSV columns: x, y, species, height (optional: z, fid, dbh)
 csv_file = "data/input/dataset/all_species.csv"
 # Output directory for generated trees (species subdirectories created automatically)
 output_dir = "data/output/forest"
 # Enable verbose output (INFO-level logging). Use --verbose / --quiet to override.
-verbose = false
+verbose = true
 # Enable profiling to track execution time of each pipeline step
 profile = false
+
+# Per-species reseed, keyed on the standardized name. A species whose tree
+# collapses under the surround shell on the way to its top stage (the 0.75
+# growing shell can fold a conifer above ~20 m) gets a different seed here --
+# never a lower density (owner rule, 2026-09-15). Only the named species
+# change; everything else keeps random_seed. A sub-table captures every key
+# after it, so this MUST stay the last entry of the file.
+[general.random_seed_per_species]

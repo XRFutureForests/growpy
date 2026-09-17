@@ -14,8 +14,14 @@ from tqdm import tqdm
 from ..config import get_config
 from ..config.preset_overrides import PresetOverrides, get_species_overrides
 from ..utils.log import is_verbose
-from .grove import add_tree_to_grove, create_grove, enable_surround
-from .tree import extract_tree_measurements
+from .grove import (
+    add_tree_to_grove,
+    create_grove,
+    disable_surround,
+    enable_surround,
+    freeze_surround_shell,
+)
+from .tree import extract_tree_heights, extract_tree_measurements
 
 
 class GroveEntry(NamedTuple):
@@ -37,7 +43,8 @@ class TreeSnapshot(NamedTuple):
     """Per-tree snapshot captured at a growth milestone.
 
     NamedTuple for tuple-compatible unpacking plus named-field access.
-    Fields: ``(model, skeleton, bones_info, height, dbh, variant_models)``.
+    Fields: ``(model, skeleton, bones_info, height, dbh, variant_models,
+    precut_model)``.
     """
 
     model: Any
@@ -49,6 +56,9 @@ class TreeSnapshot(NamedTuple):
     # Empty when no density variants are configured (see
     # build_density_variant_model_sets() / XRFF-288).
     variant_models: dict = {}
+    # Same tree built with build_cutoff_thickness=0, so twig recovery can
+    # restore the twigs the cutoff deleted. None when unavailable.
+    precut_model: Any = None
 
 
 # Type aliases built on the named tuples.
@@ -111,22 +121,27 @@ def create_forest(
             fids.append(fid)
 
         # Grove's Surround shell gives single-tree light competition: enable it
-        # whenever this group's surround_radius is nonzero.
+        # whenever this group's surround_radius is nonzero, and turn it OFF
+        # explicitly when it is zero. The explicit off matters because Surround
+        # is a preset property and 4 of the 11 dataset species ship it enabled
+        # (see disable_surround) -- without it, r00 is not open-grown for those.
         if len(species_data) == 1 and surround_radius > 0:
             applied = enable_surround(
                 grove,
-                density=cfg.surround_density,
+                density=cfg.get_surround_density(species_name, surround_radius),
                 distance=surround_radius,
-                height=cfg.surround_height,
-                grow=cfg.surround_grow,
+                height=cfg.get_surround_height(species_name),
+                grow=cfg.get_surround_grow(species_name),
             )
             if applied:
                 logger.info(
-                    "Surround enabled for %s (density=%.2f distance=%.1f height=%.1f)",
+                    "Surround enabled for %s (density=%.2f distance=%.1f "
+                    "height=%.1f grow=%s)",
                     species_name,
-                    cfg.surround_density,
+                    cfg.get_surround_density(species_name, surround_radius),
                     surround_radius,
-                    cfg.surround_height,
+                    cfg.get_surround_height(species_name),
+                    cfg.get_surround_grow(species_name),
                 )
             else:
                 logger.warning(
@@ -134,6 +149,9 @@ def create_forest(
                     "expose surround properties",
                     species_name,
                 )
+        elif surround_radius <= 0:
+            if disable_surround(grove):
+                logger.info("Surround disabled for %s (open-grown)", species_name)
 
         forest.append(
             GroveEntry(grove, species_name, len(species_data), fids, surround_radius)
@@ -168,12 +186,19 @@ def _run_single_growth_cycle(
     species_overrides: dict[str, PresetOverrides],
     preset_overrides: PresetOverrides | None,
     frozen_grove_indices: set | None = None,
+    shade_cache: dict | None = None,
 ) -> None:
     """Run one growth cycle: apply overrides, shade competition, simulate.
 
     Args:
         frozen_grove_indices: Set of grove indices to skip simulation for.
             Frozen groves still contribute shade geometry but do not grow.
+        shade_cache: Optional dict reused across cycles to hold each frozen
+            grove's shade geometry. A frozen grove is skipped by both
+            weigh_and_bend() and simulate(), so its geometry cannot change --
+            rebuilding it every cycle is pure waste, and it is the *largest*
+            grove that freezes first (the open-grown r00 tree finishes its
+            milestone ladder long before the shaded radii finish theirs).
     """
     frozen = frozen_grove_indices or set()
 
@@ -187,9 +212,26 @@ def _run_single_growth_cycle(
 
     if len(groves) > 1:
         all_coords = []
-        for grove in groves:
-            all_coords.extend(grove.build_shade_geometry_flat())
-        for grove in groves:
+        for grove_idx, grove in enumerate(groves):
+            if grove_idx in frozen:
+                if shade_cache is None:
+                    all_coords.extend(grove.build_shade_geometry_flat())
+                    continue
+                cached = shade_cache.get(grove_idx)
+                if cached is None:
+                    cached = list(grove.build_shade_geometry_flat())
+                    shade_cache[grove_idx] = cached
+                all_coords.extend(cached)
+            else:
+                if shade_cache is not None:
+                    shade_cache.pop(grove_idx, None)
+                all_coords.extend(grove.build_shade_geometry_flat())
+        for grove_idx, grove in enumerate(groves):
+            # Shading a frozen grove changes nothing: it is about to be skipped
+            # by simulate() anyway. Its geometry still went into all_coords
+            # above, so it keeps shading everyone else.
+            if grove_idx in frozen:
+                continue
             grove.calculate_shade_together(all_coords)
 
     for grove_idx, (grove, *_rest) in enumerate(forest):
@@ -314,6 +356,9 @@ def simulate_forest_growth_with_snapshots(
     max_height: float = 0.0,
     species_max_height: dict[str, float] | None = None,
     plateau_cycles: int = 10,
+    on_capture: Any = None,
+    tall_quality_params: dict | None = None,
+    tall_quality_threshold: float = 0.0,
 ) -> tuple[SnapshotData, dict[int, dict[str, dict[int, float]]]]:
     """Simulate forest growth and capture snapshots at height milestones.
 
@@ -341,6 +386,13 @@ def simulate_forest_growth_with_snapshots(
             species' calibrated growth model). When set, each species stops capturing
             milestones above its own max and is considered complete at that height.
             Combined with max_height by taking the lower of the two when both apply.
+        on_capture: Optional ``fn(cycle, {species: [TreeSnapshot, ...]},
+            milestone_map)`` invoked as soon as a cycle's models are built. When
+            given, that cycle is handed over and immediately dropped instead of
+            being retained until the end, so peak memory is one milestone rather
+            than the whole ladder -- the difference between fitting in RAM and
+            not, for an open-grown 25 m conifer. The returned SnapshotData is
+            then empty by design; milestone_map is still complete.
 
     Returns:
         Tuple of:
@@ -420,6 +472,9 @@ def simulate_forest_growth_with_snapshots(
             max_height=max_height,
             species_max_height=species_max_height,
             plateau_cycles=plateau_cycles,
+            on_capture=on_capture,
+            tall_quality_params=tall_quality_params,
+            tall_quality_threshold=tall_quality_threshold,
         )
     else:
         snapshots = _simulate_cycle_based_mode(
@@ -456,6 +511,9 @@ def _simulate_height_threshold_mode(
     max_height: float = 0.0,
     species_max_height: dict[str, float] | None = None,
     plateau_cycles: int = 10,
+    on_capture: Any = None,
+    tall_quality_params: dict | None = None,
+    tall_quality_threshold: float = 0.0,
 ) -> tuple[SnapshotData, dict[int, dict[str, dict[int, float]]]]:
     """Run simulation with height-threshold-based snapshots.
 
@@ -526,6 +584,15 @@ def _simulate_height_threshold_mode(
     prev_max_heights: dict[tuple[str, int], float] = {}
     cycles_without_growth = 0
 
+    # Shell freeze heights per species ([surround] freeze_height and its
+    # per-species table), and the groves whose shell has already been fixed.
+    cfg = get_config()
+    freeze_heights = {
+        species_name: cfg.get_surround_freeze_height(species_name)
+        for _g, species_name, *_rest in forest
+    }
+    shell_frozen: set[int] = set()
+
     cycle = 0
     pbar = tqdm(
         total=max_cycles,
@@ -540,6 +607,9 @@ def _simulate_height_threshold_mode(
     # the same species (e.g. a fast open-grown tree no longer waits on its
     # slower, shaded competition siblings before it stops growing).
     frozen_grove_indices: set = set()
+    # Shade geometry of frozen groves, rebuilt once per freeze (see
+    # _run_single_growth_cycle). Keyed by grove index.
+    frozen_shade_cache: dict = {}
 
     # Build species -> grove index mapping for freezing
     species_grove_indices: dict[str, list[int]] = {}
@@ -565,6 +635,7 @@ def _simulate_height_threshold_mode(
             species_overrides,
             preset_overrides,
             frozen_grove_indices=frozen_grove_indices,
+            shade_cache=frozen_shade_cache,
         )
 
         # Cheaply measure heights at every cycle (skip frozen groves)
@@ -572,12 +643,14 @@ def _simulate_height_threshold_mode(
         new_crossings: dict[str, dict[int, float]] = {}
         any_growth = False
 
-        for grove_idx, (grove, species_name, tree_count, fids, *_r) in enumerate(forest):
+        for grove_idx, (grove, species_name, tree_count, fids, *_r) in enumerate(
+            forest
+        ):
             if grove_idx in frozen_grove_indices:
                 continue
             offset = grove_offsets[grove_idx]
-            measurements = extract_tree_measurements(grove)
-            for tree_idx, (height, _dbh) in enumerate(measurements):
+            heights = extract_tree_heights(grove, tree_count)
+            for tree_idx, height in enumerate(heights):
                 global_idx = offset + tree_idx
                 key = (species_name, global_idx)
 
@@ -586,6 +659,31 @@ def _simulate_height_threshold_mode(
                 if height > prev_h + 0.01:
                     any_growth = True
                     prev_max_heights[key] = height
+
+                # Shell freeze: once the tree stands at freeze_height the
+                # growing shell stops rising and becomes a static wall at that
+                # height, which the tree then overtops -- the release a real
+                # canopy gives an emerging crown. Without it the 0.75 growing
+                # shell folds every conifer between 15 and 20 m (three seeds,
+                # identical outcome, 2026-09-15); with the wall low enough to
+                # be overtopped the static shell runs the full ladder (A92).
+                freeze = freeze_heights.get(species_name, 0.0)
+                if (
+                    freeze > 0
+                    and grove_idx not in shell_frozen
+                    and height >= freeze
+                    and freeze_surround_shell(grove, freeze)
+                ):
+                    shell_frozen.add(grove_idx)
+                    logger.info(
+                        "[Shell freeze] Cycle %d: %s (r%s) reached %.1f m -- "
+                        "surround shell fixed at %.1f m from here on",
+                        cycle,
+                        species_name,
+                        _r[0] if _r else "?",
+                        height,
+                        freeze,
+                    )
 
                 # Find the lowest uncaptured milestone up to current height
                 curr_milestone = math.floor(height / height_interval) * height_interval
@@ -637,7 +735,9 @@ def _simulate_height_threshold_mode(
 
         # Build models from groves and merge per species (supports split groves)
         merged_data: dict[str, list] = {}
-        for grove_idx, (grove, species_name, tree_count, fids, *_r) in enumerate(forest):
+        for grove_idx, (grove, species_name, tree_count, fids, *_r) in enumerate(
+            forest
+        ):
             if species_name not in species_with_crossings:
                 continue
             offset = grove_offsets[grove_idx]
@@ -648,8 +748,26 @@ def _simulate_height_threshold_mode(
                 for gidx in new_crossings.get(species_name, {})
             )
             if grove_has_crossing:
+                # Tall stages may build at a coarser preset. Mesh cost climbs
+                # with tree size much faster than visible detail (an open-grown
+                # silver fir: 4.5M points at h10, 7.0M at h15, ~23M at h25), so
+                # the top of the ladder can dominate the whole dataset's cost.
+                # Chosen per grove from the milestone its own tree is crossing,
+                # so a shaded variant that is still short keeps full quality at
+                # the same cycle a taller sibling drops to the coarse preset.
+                grove_qp = quality_params
+                if tall_quality_params is not None and tall_quality_threshold > 0:
+                    grove_milestones = [
+                        m
+                        for gidx, m in new_crossings.get(species_name, {}).items()
+                        if offset <= gidx < offset + tree_count
+                    ]
+                    if grove_milestones and max(grove_milestones) >= (
+                        tall_quality_threshold
+                    ):
+                        grove_qp = tall_quality_params
                 tree_data = _build_models_for_grove(
-                    grove, species_name, cycle, quality_params
+                    grove, species_name, cycle, grove_qp
                 )
                 if tree_data:
                     merged_data.setdefault(species_name, []).extend(tree_data)
@@ -683,6 +801,28 @@ def _simulate_height_threshold_mode(
                         global_idx,
                         milestone_h,
                     )
+
+        # Hand this cycle straight to the caller and drop it. Retaining every
+        # milestone until an export phase at the end is what made an open-grown
+        # 25 m conifer impossible to build: models are the bulk of the memory,
+        # and holding h05..h25 at once measured 37 GB before export even began
+        # (MemoryError on a 63.5 GB host). Exporting at capture caps the
+        # retained geometry at a single milestone instead of the whole ladder.
+        # Safe to do here rather than after simulation: every model and skeleton
+        # was already built from this cycle's grove state, and the later
+        # _apply_smoothing() pass mutates grove nodes, not the built models.
+        if on_capture is not None and snapshots.get(cycle):
+            on_capture(cycle, snapshots[cycle], milestone_map)
+            del snapshots[cycle]
+            # merged_data and tree_data still reference the same TreeSnapshots,
+            # and merged_data is only rebuilt at the NEXT milestone -- so
+            # without this the stage just exported stays resident through all
+            # the cycles leading up to the next one, and two full stages are
+            # alive at once while that one is being built. A stage is ~5 GB of
+            # models for a mature open-grown conifer, so this is not bookkeeping.
+            merged_data.clear()
+            tree_data = None
+            del tree_data
 
         # Freeze each grove individually once its own trees have captured
         # all their milestones (see frozen_grove_indices comment above).
@@ -830,6 +970,29 @@ def build_density_variant_model_sets(
     return variant_model_sets
 
 
+def _species_build_cutoff(species_name: str) -> float | None:
+    """The per-species build_cutoff_thickness override, if one is configured.
+
+    Reads ``[export] build_cutoff_thickness_per_species`` from config. Returns
+    None when the species has no entry, so the quality preset's value stands.
+    """
+    if not species_name:
+        return None
+    try:
+        from growpy.config.core import get_config
+
+        overrides = getattr(
+            get_config(), "quality_build_cutoff_thickness_per_species", {}
+        )
+    except Exception:  # noqa: BLE001 -- config is optional at this depth
+        return None
+    if not overrides:
+        return None
+    key = str(species_name).strip().lower().replace(" ", "_")
+    value = overrides.get(key)
+    return float(value) if value is not None else None
+
+
 def _build_models_for_grove(
     grove: gc.Grove,
     species_name: str,
@@ -840,30 +1003,97 @@ def _build_models_for_grove(
 
     Returns list of TreeSnapshot (model, skeleton, bones_info, height, dbh) per tree.
     """
+    icons_only = quality_params.get("icons_only", False)
     skeleton_connected = quality_params.get("skeleton_connected", True)
     skeletons = grove.build_skeletons(skeleton_connected)
 
-    skeleton_length = quality_params.get("skeleton_length", 2.0)
-    skeleton_reduce = quality_params.get("skeleton_reduce", 0.4)
-    skeleton_bias = quality_params.get("skeleton_bias", 0.5)
+    if icons_only:
+        # Bone tagging exists purely for skinning/binding an assembly export;
+        # icons_only never binds twigs to bones, so skip it entirely.
+        tree_bones: list = [[] for _ in range(len(grove.trees))]
+    else:
+        skeleton_length = quality_params.get("skeleton_length", 2.0)
+        skeleton_reduce = quality_params.get("skeleton_reduce", 0.4)
+        skeleton_bias = quality_params.get("skeleton_bias", 0.5)
 
-    all_bones = grove.tag_bone_id(
-        skeleton_length,
-        skeleton_reduce**2,
-        skeleton_bias,
-        skeleton_connected,
-    )
-    tree_bones = split_bones_by_tree(all_bones, len(grove.trees))
+        all_bones = grove.tag_bone_id(
+            skeleton_length,
+            skeleton_reduce**2,
+            skeleton_bias,
+            skeleton_connected,
+        )
+        tree_bones = split_bones_by_tree(all_bones, len(grove.trees))
 
-    build_options = {
-        "resolution": quality_params.get("resolution", 24),
-        "resolution_reduce": quality_params.get("resolution_reduce", 0.8),
-        "build_cutoff_age": quality_params.get("build_cutoff_age", 0),
-        "build_cutoff_thickness": quality_params.get("build_cutoff_thickness", 0.01),
-        "build_blend": quality_params.get("build_blend", True),
-        "build_end_cap": quality_params.get("build_end_cap", True),
-    }
-    models = grove.build_models(build_options)
+    if icons_only:
+        # Icons read twig positions/directions and the skeleton above, never
+        # mesh geometry -- build at the cheapest resolution, no blend/end-cap,
+        # and with the cutoff disabled so twig extraction sees Grove's full
+        # raw output directly (no recovery pass needed, nothing was cut).
+        build_options = {
+            "resolution": 4,
+            "resolution_reduce": 1.0,
+            "build_cutoff_age": 0,
+            "build_cutoff_thickness": 0.0,
+            "build_blend": False,
+            "build_end_cap": False,
+        }
+        models = grove.build_models(build_options)
+        precut_models: list = []
+    else:
+        # A species may lower the preset's cutoff without moving to a finer
+        # tessellation: the two are independent halves of a preset name (see
+        # quality.toml, XRFF-404). silver_birch's fine branches all sit between
+        # 2.5 and 4 mm, so the low preset's 4 mm floor deleted them along with
+        # their twig attachment points -- wood surface fell to 38 m2 against
+        # 103 at 2.5 mm, and no twig_density could put the foliage back on
+        # branches that no longer existed.
+        cutoff = quality_params.get("build_cutoff_thickness", 0.01)
+        species_cutoff = _species_build_cutoff(species_name)
+        if species_cutoff is not None and species_cutoff != cutoff:
+            logger.info(
+                "%s: build_cutoff_thickness %.4f -> %.4f (per-species override)",
+                species_name,
+                cutoff,
+                species_cutoff,
+            )
+            cutoff = species_cutoff
+
+        build_options = {
+            "resolution": quality_params.get("resolution", 24),
+            "resolution_reduce": quality_params.get("resolution_reduce", 0.8),
+            "build_cutoff_age": quality_params.get("build_cutoff_age", 0),
+            "build_cutoff_thickness": cutoff,
+            "build_blend": quality_params.get("build_blend", True),
+            "build_end_cap": quality_params.get("build_end_cap", True),
+        }
+        models = grove.build_models(build_options)
+
+        # Companion build with the cutoff disabled, so the export can recover the
+        # twigs the cutoff deletes instead of guessing a density multiplier. Grove
+        # returns identical twig arrays regardless of mesh resolution, so this is
+        # built at the cheapest resolution -- only its twig data is used.
+        precut_models = []
+        if build_options["build_cutoff_thickness"] or build_options["build_cutoff_age"]:
+            try:
+                precut_models = grove.build_models(
+                    {
+                        **build_options,
+                        "resolution": 4,
+                        "resolution_reduce": 1.0,
+                        "build_blend": False,
+                        "build_end_cap": False,
+                        "build_cutoff_age": 0,
+                        "build_cutoff_thickness": 0.0,
+                    }
+                )
+            except Exception:
+                logger.warning(
+                    "  %s: pre-cutoff build failed; twig recovery unavailable",
+                    species_name,
+                    exc_info=True,
+                )
+                precut_models = []
+
     measurements = extract_tree_measurements(grove)
 
     if len(models) < len(grove.trees):
@@ -907,7 +1137,15 @@ def _build_models_for_grove(
             for vname, vmodels in variant_model_sets.items()
         }
         tree_snapshots.append(
-            TreeSnapshot(model, skeleton, bones, height, dbh, tree_variant_models)
+            TreeSnapshot(
+                model,
+                skeleton,
+                bones,
+                height,
+                dbh,
+                tree_variant_models,
+                precut_models[tree_idx] if tree_idx < len(precut_models) else None,
+            )
         )
 
     if tree_snapshots:

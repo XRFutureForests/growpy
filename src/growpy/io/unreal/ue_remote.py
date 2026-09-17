@@ -106,6 +106,49 @@ def discover_nodes(timeout: float = 3.0, bind_address: str = MULTICAST_BIND) -> 
         sock.close()
 
 
+def target_project_name() -> str | None:
+    """The project this client is meant to drive: ``GROWPY_UE_PROJECT``, else
+    the stem of ``[unreal] uproject`` in config, else None (first node wins)."""
+    env = os.environ.get("GROWPY_UE_PROJECT")
+    if env:
+        return env
+    try:
+        from growpy.config import get_config
+
+        uproject = getattr(get_config(), "unreal_uproject", None)
+    except Exception:
+        return None
+    if not uproject:
+        return None
+    name = os.path.basename(str(uproject))
+    return name[:-9] if name.lower().endswith(".uproject") else name
+
+
+def pick_node(nodes: list[dict]) -> dict:
+    """Choose the editor to talk to among the discovered nodes.
+
+    With two editors open (2026-09-16: the owner opened a second project while
+    the export ran) the first pong won and the export scripts landed in the
+    wrong editor. A node whose ``project_name`` matches the configured project
+    is preferred; otherwise the first node is used and a warning names the
+    alternatives.
+    """
+    if len(nodes) == 1:
+        return nodes[0]
+    want = target_project_name()
+    if want:
+        for node in nodes:
+            if str(node.get("project_name", "")).lower() == want.lower():
+                return node
+    logger.warning(
+        "%d UE editors answered (%s); using the first -- set GROWPY_UE_PROJECT or "
+        "[unreal] uproject to pin one",
+        len(nodes),
+        ", ".join(str(n.get("project_name", "?")) for n in nodes),
+    )
+    return nodes[0]
+
+
 def run_command(
     code: str,
     node_id: str = None,
@@ -138,7 +181,7 @@ def run_command(
                 "Ensure UE is running with Python Remote Execution enabled "
                 "(Edit > Editor Preferences > Plugins > Python > Remote Execution)."
             )
-        node_id = nodes[0]["node_id"]
+        node_id = pick_node(nodes)["node_id"]
         logger.info("Found UE node: %s", node_id)
 
     # Open UDP broadcast socket

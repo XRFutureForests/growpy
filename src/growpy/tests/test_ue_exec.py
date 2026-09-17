@@ -155,7 +155,7 @@ class TestUeExecRestartConfigValidation:
         )
         captured = {}
 
-        def _fake_run(script_path, port, timeout, editor_exe, uproject, *rest):
+        def _fake_run(script_path, port, timeout, editor_exe, uproject, *rest, **kw):
             captured["editor_exe"] = editor_exe
             captured["uproject"] = uproject
             return True, False

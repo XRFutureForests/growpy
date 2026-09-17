@@ -5,6 +5,169 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-17
+
+### 2026-09-16 — every exported asset carries a TAMF record
+
+#### Added
+
+- **TAMF (Tree Asset Metadata Format) 0.2** — `io/tamf.py` writes `<prefix>.tamf.json` next to
+  every exported stage on all three routes (USD assembly, PVE growth JSON, Helios OBJ) and, on
+  the USD route, the same record as `customData["tamf"]` on the default prim. The record
+  states species (GBIF key), the captured height and the exported DBH, the height–DBH
+  calibration exactly as the allometry artifact fitted it (yield-table file, region, site
+  index, power-law parameters, R², fitted height range), the competition context and surround
+  radius, crown base/tip height and plan-view crown area from the skeleton, and the geometric
+  contract (metres, Z-up, stem-base origin, CityGML LoD3). `age_years`, `leaf_area_m2` and
+  `stem_volume_m3` are `null` — pacing is disabled, foliage is placed in PVE, no volume
+  integration exists — so the record never claims more than the pipeline did. Schema:
+  `schemas/tamf.schema.json`; reference: `docs/reference/tamf.md`. `TreeExportContext` gains
+  `surround_radius_m` and `cycle`. Asset-side exchange component of the Digital Forest Twin
+  profile (publications `digital-forest-twin-standard`).
+
+### 2026-09-15 (evening) — the PVE Export click runs unattended
+
+#### Added
+
+- **`growpy-pve-export`** triggers the Export of PVE graphs in the running editor without a
+  hand on the mouse. The Export button is a toolkit action (`FPVEditor::OnExport`) with no
+  Python or reflection route, so the tool drives the editor's own UI: remote Python enables
+  `Accessibility.Enable` and opens the graph, the PCG profiling log tells it when the graph
+  has executed, a posted mouse press + Ctrl+E fires the command, and the export-settings
+  dialog (Batch + Export) and the overwrite prompt (Continue) are confirmed through Windows
+  UI Automation. It then waits for one `Mesh exported successfully` line per export node and
+  saves the export folders. Needs neither focus nor an unlocked desktop (verified through a
+  locked workstation). A full-tree UI Automation walk of the editor costs 45–250 s, so the
+  toolbar button is addressed by its window offset and the dialogs by a shallow search that
+  skips the details view; `--toolbar X,Y` overrides the offset and a UIA search is the
+  fallback. Ships `pve_export_drive.ps1` + `pve_export_uia.ps1` as package data.
+
+### 2026-09-15 (afternoon) — one density, a growing shell for every species, Grove's conifer presets
+
+#### Changed
+
+- **`[surround] density = 0.75` for every species and radius**; the per-species and
+  per-radius density tables are empty (last fitted values kept in comments). Owner
+  decision: the fitted thresholds moved crown shape only marginally against seed noise; a
+  tree that collapses under 0.75 gets a different seed, not a different density.
+- **`[surround] grow = true` for every species** — the shell rises with the conifers too,
+  as it did for the 2026-08-13 catalog. The static conifer shell (2026-08-25 / 2026-09-14)
+  gave a bole but a crown 0.27–0.43 wide for its height; the growing one gives the
+  in-stand form (0.13–0.20). `[surround.grow_per_species]` is empty.
+- **Conifer presets are Grove's own again.** `preset_patches.json` no longer patches
+  norway_spruce or silver_fir (drop_decay/drop_weak ramps, fir `drop_shaded`); douglas_fir
+  and scots_pine were never patched. All four baked presets are key-for-key equal to
+  `src/the_grove_23/presets/`.
+- `growpy-sweep-surround-density --radii` and `growpy-summarise-surround-density --radii`
+  run and read a sweep at a shell-distance set other than the production one;
+  `--max-stage` on the summariser ignores stages above the production cap in the gate.
+
+### 2026-09-15 — shell densities decided; the summariser gates on crown base, per seed
+
+#### Changed
+
+- **All 11 `[surround.density_per_species]` values re-fitted from the r08/r16 sweeps**
+  (conifers under the static shell): spruce / fir / pine 0.95, douglas 0.85, birch 0.70
+  (three seeds), beech 0.75, ash / oak / maple 0.55, linden / cherry 0.75. The previous
+  values were the 2026-08-28 growing-shell fits and had never been replaced by the sweep,
+  so the 2026-09-14 catalog ran at them; regenerated at the new values the same day.
+- `growpy-summarise-surround-density` groups arms by **seed** (a density passes only when
+  every seed passes; `n` and the ratio range are printed; `--min-seeds`), refuses to rank
+  a single-seed broadleaf on the crown-ø axis, and its default `--gate-axis` is now
+  **`base`**: r08's crown base must sit above r16's. The crown base was the sign-stable
+  radius axis in every sweep (31/31 static-conifer cells, 6/6 seeded birch cells), where
+  crown width flips with the seed. `habit` keeps the old broadleaf-DBH / conifer-crown-ø
+  split for re-reading earlier verdicts.
+
+#### Fixed
+
+- The stale-export clean at the start of step 4 derived the species directory with its
+  own normalisation that kept hyphens, so "Small-leaved linden" cleaned
+  `small-leaved_linden/` (absent) and the export's `small_leaved_linden/` was never
+  emptied: every re-run at a new density left the old DBH-named assemblies behind and
+  the run summary counted them (10 for 6 produced). Now uses the export's own slug.
+
+### 2026-08-04 → 2026-09-14, condensed (186 commits on `dev`)
+
+No entries were written during this period; this block summarises it by theme. Commit
+subjects on `dev` carry the detail; the measurements are in the XR Future Forests Lab
+knowledge hub (`04-LOGIC-TIER/growpy-surround-density-calibration`,
+`growpy-crown-density-ratchet`) and on Linear XRFF-320 / XRFF-356 / XRFF-390.
+
+#### Changed — the dataset matrix
+
+- The catalog is **11 species × h05/h10/h15 × r08/r16 = 66 assemblies**. `[forest]
+  max_height` 25 → 15 and `usd_format` → `usda` (`5eacb91`); `[surround] radii` moved
+  [0, 8, 16] → [5, 10, 20] → **[8, 16]** (`fee285e`, owner decision 2026-09-11) — there is
+  deliberately no r00 open-grown variant. Density variants stay off.
+- **Crown density is no longer corrected in growpy** (`091b0ac`, 2026-09-10): it is
+  calibrated in the PVE distributor against Forrester (2017) leaf area. growpy owns crown
+  *structure*; the shell density varies per species and radius
+  (`[surround.density_per_species_radius]`, `3cc67e8`), with shell height as a second lever
+  (`bac10b5`) and a per-species grow/static split (broadleaves grow the shell, conifers
+  keep it static — `85fe679`, `ada7940`).
+- Crown geometry calibrated per species against published forest allometry (`9047c4f`);
+  the Grove knob → crown property map is documented per species (`8fa3068`). Conifer drop
+  ramps are declared, not flat-scaled, and get a floor so the tree still builds a stem
+  (`c477dff`, `c058f07`); wild cherry gets a drop-rate patch (it stalled at 15 m under
+  the shell, `339ce8d`). Shade-induced structural collapse traced to the shell and the
+  yield-table pacing curve, not branch shedding (`3bdec66`, `4fe9d5c`, `e615729`).
+
+#### Added — tools
+
+- `growpy-sweep-surround-density` / `growpy-summarise-surround-density`: the surround-density
+  sweep harness, in the repo with resume, pruning and per-arm measurement (`34f5a53`,
+  `b932418`); `growpy-crown-metrics` (forestry crown dimensions from exported assemblies,
+  `429fc3d`); `growpy-calibrate-crown-density`, `growpy-icon-metrics`.
+- `growpy-preflight-assembly`, `growpy-ue-import-probe`, `growpy-ue-viewport-probe`
+  (SceneCapture2D + post-tick collection, `b311386`); `ue_exec` watchdog gains a VRAM arm
+  (`7d15975`) and a resumable relaunched editor (`06f9fc3`).
+- `growpy-derive-twig-ladder` and the fir foliage size ladder (seven sprays overlaid on
+  the Grove twig, derived at conversion, not stored — `7f181da`, `69fc16d`, `8cbbe70`).
+
+#### Added — PVE route (in-engine growth)
+
+- **Growth-data JSON route** replaces the deprecated Preset-Loader path: real branch
+  generations, calibrated radius, decimation as a fraction of trunk radius (`2952f7d`,
+  `dd6dbea`, `9231d0e`); `lengthFromRoot` is path length (`9d36300`); a branch's last
+  point gets a real apical direction (`46f9a03`).
+- PVE graphs are **authored from growpy** per species from a forest export
+  (`1b6907a`, `1b07c44`; `generate_pve_graphs` in `unreal.toml`, still `false`), carrying
+  the measured twig pose (`26fcbe0`), jitter (`6c55842`), vector ramps (`d01180b`),
+  Voxelize by default (`fed4f0d`). The twig palette is authored in PVE's part frame at
+  import (`1e02276`, XRFF-445); palette + bark material have an owner,
+  `growpy-pve-assets` (`475f0eb`, `e47ceb3`); `growpy-pve-leaf-area` measures leaf area
+  at the scale the distributor actually places at (`6fe19f7`).
+- `config/pve_calibration.toml` tracks the measured densities and poses (`20e21c7`,
+  `11a7198`); it is read as its own file, not through the config merge.
+- Materials: per-species PVE material instances the MegaPlants way, virtual textures,
+  packed twig atlases (`daf1af5`, `8fa3263`, `0434b9e`, `b08af7b`).
+
+#### Added — compound foliage parts (XRFF-356, experimental)
+
+- A Grove subtree and its leaves bake into one welded USD part (`0db2e10`); parts are
+  shared by package path (`3d43e67`); a leafy subtree never gets a twigless prototype
+  (`b447752`); the compound path assembles correctly on a conifer (`4fb5c25`).
+
+#### Fixed
+
+- Step 4 no longer reports OK after an export failure or leaves a 0-byte artifact, and a
+  MemoryError is reported as memory (`0eebe4a`, XRFF-331/333); an import is recorded as
+  done only once its package is on disk (`d8436c5`, XRFF-332); a lost stage is named as a
+  build shortfall and counted per radius (`e753f16`, XRFF-334).
+- Twig orientation quaternion read as a quaternion, not a 3-vector (`646e8f5`); twigs
+  deleted by `build_cutoff_thickness` are recovered instead of guessed (`c491431`); dead
+  twigs no longer render as one upright cluster (`a279092`); DBH scaling axis and
+  branch-connection artefacts (`fc91ca7`, `ea0bac8`).
+- Assembly instance cap 100k → 40k applied before the bone remap (`34c9d9e`, `68dcd68`,
+  `a91bce4`); Grove `model.faces`/`model.points` hoisted out of the twig hot loops —
+  dataset production 44 min/17 assemblies → 10 min/99 (`d861957`).
+
+#### Removed
+
+- GitHub Actions CI workflow and pre-commit config (`3f06ce1`); the empty `.gitlab-ci.yml`
+  (`7faf244`); superseded tools (`45a1baa`).
+
 ## [0.4.0] - 2026-08-03
 
 ### Fixed

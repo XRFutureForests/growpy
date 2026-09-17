@@ -4,6 +4,7 @@ import pytest
 
 from growpy.utils.naming import (
     camel_to_snake,
+    filename_safe_species_slug,
     standardize_species_name,
     standardize_twig_name,
 )
@@ -73,6 +74,16 @@ class TestStandardizeSpeciesName:
         assert standardize_species_name("some-species") == "some_species"
 
 
+class TestFilenameSafeSpeciesSlug:
+    def test_hyphenated_common_name_matches_export_dir(self):
+        # The stale-export clean in forest_stages must land on the directory
+        # the export writes; the lookup table's one hyphenated name is the case
+        # that used to miss ("small-leaved_linden" vs "small_leaved_linden").
+        slug = filename_safe_species_slug("Small-leaved linden")
+        assert slug == "small_leaved_linden"
+        assert slug == standardize_species_name("Small-leaved linden")
+
+
 class TestStandardizeTwigName:
     """Tests for twig name standardization."""
 
@@ -91,6 +102,35 @@ class TestStandardizeTwigName:
         name, meta = standardize_twig_name("BeechDeadTwig", "beech")
         assert name == "beech_dead"
         assert meta["type"] == "dead"
+        assert meta["season"] is None
+
+    def test_fall_is_a_season_not_a_dead_twig(self):
+        # A fall twig is a complete twig with autumn-coloured leaves -- an
+        # alternative to the summer set. Typing it "dead" made downstream asset
+        # resolution render it at Grove's dead-twig positions.
+        name, meta = standardize_twig_name(
+            "SycamoreMapleFallApicalTwig", "sycamore_maple_fall"
+        )
+        assert meta["type"] == "apical"
+        assert meta["season"] == "fall"
+        assert "dead" not in name
+
+    def test_fall_lateral_keeps_its_slot(self):
+        _, meta = standardize_twig_name(
+            "SycamoreMapleFallLateralTwig", "sycamore_maple_fall"
+        )
+        assert meta["type"] == "lateral"
+        assert meta["season"] == "fall"
+
+    def test_summer_twig_is_a_season(self):
+        _, meta = standardize_twig_name("EuropeanBeechSummerTwig", "european_beech")
+        assert meta["season"] == "summer"
+        assert meta["type"] != "dead"
+
+    def test_winter_is_a_season_not_a_dead_twig(self):
+        _, meta = standardize_twig_name("SomeSpeciesWinterTwig", "some_species")
+        assert meta["season"] == "winter"
+        assert meta["type"] != "dead"
 
     def test_variation_detection(self):
         name, meta = standardize_twig_name(

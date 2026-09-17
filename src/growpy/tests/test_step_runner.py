@@ -5,10 +5,12 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from growpy.pipelines.step_runner import (
+    COMPOUND_BAKE_SCRIPT,
     STEP_SCRIPTS,
     _build_step4_command,
     _build_step123_command,
     check_environment,
+    run_compound_bake,
     run_species_step4,
     run_step123,
 )
@@ -140,6 +142,40 @@ class TestBuildStep4Command:
         assert "--icons" not in cmd
         assert "--no-icons" not in cmd
 
+    def test_profile_appended_when_true(self):
+        cmd = _build_step4_command("European Beech", profile=True)
+        assert "--profile" in cmd
+
+    def test_no_profile_appended_when_false(self):
+        cmd = _build_step4_command("European Beech", profile=False)
+        assert "--no-profile" in cmd
+
+    def test_profile_omitted_when_none(self):
+        cmd = _build_step4_command("European Beech", profile=None)
+        assert "--profile" not in cmd
+        assert "--no-profile" not in cmd
+
+    def test_export_control_appended_when_true(self):
+        cmd = _build_step4_command("European Beech", export_control=True)
+        assert "--export-control" in cmd
+
+    def test_no_export_control_appended_when_false(self):
+        cmd = _build_step4_command("European Beech", export_control=False)
+        assert "--no-export-control" in cmd
+
+    def test_export_control_omitted_when_none(self):
+        cmd = _build_step4_command("European Beech", export_control=None)
+        assert "--export-control" not in cmd
+        assert "--no-export-control" not in cmd
+
+    def test_export_control_is_independent_of_previews(self):
+        # The point of the split: keep the preview, drop the costly control render.
+        cmd = _build_step4_command(
+            "European Beech", previews=True, export_control=False
+        )
+        assert "--previews" in cmd
+        assert "--no-export-control" in cmd
+
 
 class TestBuildStep123Command:
     """Tests for step 1-3 command construction."""
@@ -212,6 +248,29 @@ class TestRunStep123:
         run_step123(3, Path("all.csv"), extra_args=["--ingest-yield-tables"])
         cmd = mock_run.call_args[0][0]
         assert "--ingest-yield-tables" in cmd
+
+
+class TestRunCompoundBake:
+    """Step 2's second stage: the compound-part bake over the converted twigs."""
+
+    @patch("growpy.pipelines.step_runner.subprocess.run")
+    def test_dry_run_returns_true(self, mock_run):
+        assert run_compound_bake(dry_run=True) is True
+        mock_run.assert_not_called()
+
+    @patch("growpy.pipelines.step_runner.subprocess.run")
+    def test_runs_the_bake_over_the_dataset_species(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0)
+        assert run_compound_bake(verbose=True) is True
+        cmd = mock_run.call_args[0][0]
+        assert str(COMPOUND_BAKE_SCRIPT) in " ".join(str(c) for c in cmd)
+        assert "--dataset" in cmd
+        assert "--verbose" in cmd
+
+    @patch("growpy.pipelines.step_runner.subprocess.run")
+    def test_failure_returns_false(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=1)
+        assert run_compound_bake() is False
 
 
 class TestRunSpeciesStep4:

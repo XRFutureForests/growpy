@@ -7,7 +7,14 @@
 /data/tmp/
 /data/megaplant/
 
-# User-specific twig assets (Blender files + textures). Keep only .gitkeep tracked.
+# User-specific twig assets (Blender files + textures). Keep only .gitkeep
+# tracked -- these are a user's own working files, and the Grove twigs they
+# derive from are licensed commercial content.
+#
+# Project overrides that the DATASET depends on are the exception and are
+# un-ignored individually below. prepare_assets treats this directory as an
+# OVERLAY on the Grove source, so an override tracks only the file that
+# actually changed, never a copy of the Grove directory.
 /data/input/custom_twigs/*
 !/data/input/custom_twigs/.gitkeep
 
@@ -64,6 +71,8 @@ tests/manual/results/
 
 # Tooling runtime artifacts and scratch (not project code)
 /.hex-skills/
+# Deprecated: repo-root scratch. The workspace standard is data/tmp/ - fold this
+# in once no session is writing to tmp/.
 /tmp/
 
 # AI agent tooling (dev branch only - kept off main for a clean public tree)

@@ -68,13 +68,19 @@ skeleton_connected = true
 # Only keys listed here override; others inherited from active [quality.*] preset.
 # Referenced by name in export.density_variants list in config/forest.toml.
 
+# twig_density is relative to Grove's NATURAL density (1.0 = as grown), since
+# twig recovery restores whatever build_cutoff_thickness deleted -- so the
+# number means the same thing on every species and at every age.
+#
+# build_cutoff_thickness is deliberately NOT overridden here: with recovery
+# active it no longer thins the crown, only the mesh triangle budget. Set it in
+# the [quality.*] preset instead.
+
 [density_variant.full]
-twig_density = 1.5
+twig_density = 1.0
 
 [density_variant.reduced]
-twig_density = 0.75
-build_cutoff_thickness = 0.01 # meters diameter (same unit as quality preset)
+twig_density = 0.6
 
 [density_variant.bare]
 twig_density = 0.25
-build_cutoff_thickness = 0.02 # meters diameter

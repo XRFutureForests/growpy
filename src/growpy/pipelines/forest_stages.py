@@ -11,13 +11,12 @@ from __future__ import annotations
 import json
 import logging
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from collections.abc import Callable
 
 import bpy  # noqa: F401  (required; generate_forest_stages runs Grove via bpy)
 import pandas as pd
-from tqdm import tqdm
 
 from growpy import (
     GrowPyConfig,
@@ -31,7 +30,9 @@ from growpy.config.preset_overrides import (
 )
 from growpy.config.quality import get_quality_preset
 from growpy.core.forest import simulate_forest_growth_with_snapshots
+from growpy.core.twig import extract_twig_placements_from_model
 from growpy.io.forest_export import export_individual_trees  # noqa: F401
+from growpy.io.tamf import write_tamf
 from growpy.io.usd.assembly_export import export_tree_as_nanite_assembly
 from growpy.io.usd.preview import (
     generate_export_control_image as _generate_export_control_image,
@@ -113,6 +114,8 @@ def _warn_uncaptured_milestones(
     species_max_height: dict[str, float],
     interval: float,
     max_cycles: int,
+    run_max_height: float = 0.0,
+    tree_radius_labels: dict[str, list[float]] | None = None,
 ) -> None:
     """Warn when a species failed to capture every milestone up to its ceiling.
 
@@ -122,34 +125,76 @@ def _warn_uncaptured_milestones(
     where the realized rate ranges about 0.23-0.55 m/cycle across the dataset
     species, so a shortfall usually means ``[forest] growth_cycle_limit`` is
     too low rather than anything being wrong with the species.
+
+    Checked per surround-radius tree, not pooled across a species' variants:
+    milestones reached by the least-competed tree (typically r00) used to
+    mask a denser variant (r08/r16) plateauing early under Grove's own
+    shading dynamics, so a shortfall specific to one radius went unreported
+    as long as any other radius for that species reached the ceiling.
+
+    ``run_max_height`` clips the ceiling to this run's configured height cap
+    (``[forest] max_height`` / ``--max-height``) when set, so a deliberately
+    capped run (e.g. a 25m preview) is not warned about stages above its own
+    cap that were never going to be captured. ``tree_radius_labels`` is an
+    optional ``{species: [radius_m, ...]}`` (indexed by tree_idx) used to name
+    which radius fell short instead of just its tree index.
     """
     if not species_max_height:
         return
 
-    captured: dict[str, set] = {}
+    # captured[(species, tree_idx)] -- per-tree, not pooled across radii.
+    captured: dict[tuple[str, int], set] = {}
     for species_snapshots in milestone_map.values():
         for species_name, tree_milestones in species_snapshots.items():
-            captured.setdefault(species_name, set()).update(tree_milestones.values())
+            for tree_idx, h in tree_milestones.items():
+                captured.setdefault((species_name, tree_idx), set()).add(h)
+
+    tree_idxs_by_species: dict[str, set[int]] = {}
+    for species_name, tree_idx in captured:
+        tree_idxs_by_species.setdefault(species_name, set()).add(tree_idx)
 
     for species, ceiling in sorted(species_max_height.items()):
+        if run_max_height > 0:
+            ceiling = min(ceiling, run_max_height)
         expected = set()
         m = interval
         while m <= ceiling:
             expected.add(m)
             m += interval
-        missing = sorted(expected - captured.get(species, set()))
-        if missing:
+        if not expected:
+            continue
+
+        radii = tree_radius_labels.get(species) if tree_radius_labels else None
+        tree_ids = (
+            range(len(radii))
+            if radii
+            else sorted(tree_idxs_by_species.get(species, set())) or [None]
+        )
+        for tree_idx in tree_ids:
+            reached = captured.get((species, tree_idx), set())
+            missing = sorted(expected - reached)
+            if not missing:
+                continue
+            if tree_idx is None:
+                label = ""
+            elif radii and tree_idx < len(radii):
+                label = f" (r{radii[tree_idx]:.0f})"
+            else:
+                label = f" (tree {tree_idx})"
             logger.warning(
-                "%s reached only %.0fm of its %.0fm target: %d stage(s) missing "
-                "(%s). Raise [forest] growth_cycle_limit (currently %d) or lower "
-                "Max Height for this species.",
+                "%s%s reached only %.0fm of its %.0fm target: %d stage(s) "
+                "missing (%s). Raise [forest] growth_cycle_limit (currently "
+                "%d), raise plateau_cycles, or lower Max Height for this "
+                "species.",
                 species,
-                max(captured.get(species, {0.0})),
+                label,
+                max(reached, default=0.0),
                 ceiling,
                 len(missing),
                 ", ".join(f"{h:.0f}m" for h in missing),
                 max_cycles,
             )
+
 
 
 def _write_species_info(
@@ -241,11 +286,7 @@ def compute_radial_scale(ctx: TreeExportContext) -> None:
     reflects the actually-exported mesh after clamping.
     """
     radial_scale = 1.0
-    if (
-        ctx.cfg.export_dbh_from_allometry
-        and ctx.target_dbh_m
-        and ctx.grove_dbh > 0.001
-    ):
+    if ctx.cfg.export_dbh_from_allometry and ctx.target_dbh_m and ctx.grove_dbh > 0.001:
         radial_scale = ctx.target_dbh_m / ctx.grove_dbh
         if ctx.dbh_from_csv:
             radial_scale = max(0.1, min(radial_scale, 5.0))
@@ -278,6 +319,7 @@ def export_assembly(ctx: TreeExportContext) -> None:
     try:
         ctx.export_success = export_tree_as_nanite_assembly(
             model=ctx.model,
+            precut_model=ctx.precut_model,
             skeleton=ctx.skeleton if ctx.use_skeletal else None,
             bones_info=ctx.bones_info if ctx.use_skeletal else None,
             output_path=ctx.usd_path,
@@ -363,26 +405,65 @@ def write_pve_json(ctx: TreeExportContext) -> None:
 
 
 def write_previews(ctx: TreeExportContext) -> None:
-    """Generate the preview image and export-control image for this tree."""
-    stems_base = f"{ctx.species_clean}_{ctx.dims_suffix}"
-    preview_bounds = _generate_preview_image(
-        ctx.tree_dir, ctx.species_clean, ctx.file_prefix, ctx.skeleton, ctx.timer
+    """Generate the 2D preview image for this tree+variant.
+
+    Stashes the resulting view bounds on the context so write_export_control()
+    can frame its render identically when both stages run.
+
+    Passes the final twig placements so the preview gets its foliage row. This
+    is why the stage is NOT once_per_tree: the branch skeleton is identical
+    across density variants, so a once-per-tree preview would show variant 0's
+    crown and silently label it as every other variant's.
+    """
+    ctx.preview_bounds = _generate_preview_image(
+        ctx.tree_dir,
+        ctx.species_clean,
+        ctx.file_prefix,
+        ctx.skeleton,
+        ctx.timer,
+        twig_placements=ctx.twig_placements,
     )
+
+
+def write_export_control(ctx: TreeExportContext) -> None:
+    """Generate the export-control image for this tree.
+
+    Gated separately from write_previews because this is by far the most
+    expensive of the image stages -- 15.4% of a full dataset run, roughly 3x
+    the preview itself. When previews are disabled ctx.preview_bounds is None
+    and the control render picks its own bounds.
+    """
     _generate_export_control_image(
         ctx.tree_dir,
         ctx.species_clean,
         ctx.file_prefix,
         ctx.timer,
-        view_bounds=preview_bounds,
-        stems_file_base=stems_base,
+        view_bounds=ctx.preview_bounds,
+        stems_file_base=f"{ctx.species_clean}_{ctx.dims_suffix}",
     )
 
 
 def write_icons(ctx: TreeExportContext) -> None:
-    """Generate front/side/top icon images for this tree."""
+    """Generate front/side/top icon images for this tree.
+
+    Passes twig placements so each view also gets a ``_twigs`` variant. The
+    plain icons stay unchanged -- dataset_overview.csv references those.
+
+    When ``ctx.cfg.export_icon_components`` is on, also passes bones_info so
+    each view additionally gets separate branches/twigsonly/skeleton/merged
+    component files (see generate_icon_image). Off by default -- a
+    production run does not pay for these unless asked.
+    """
     for _view in ("front", "side", "top"):
         _generate_icon_image(
-            ctx.tree_dir, ctx.file_prefix, ctx.skeleton, ctx.timer, view=_view
+            ctx.tree_dir,
+            ctx.file_prefix,
+            ctx.skeleton,
+            ctx.timer,
+            view=_view,
+            twig_placements=ctx.twig_placements,
+            bones_info=ctx.bones_info if ctx.use_skeletal else None,
+            export_components=ctx.cfg.export_icon_components,
         )
 
 
@@ -453,6 +534,44 @@ def export_obj_direct(ctx: TreeExportContext) -> None:
     ctx.usd_path = obj_path
     ctx.export_success = obj_path is not None
 
+
+def export_icons_only(ctx: TreeExportContext) -> None:
+    """Write icon PNGs directly from the Grove model (config.export_mode ==
+    "icons_only"), bypassing USD/Nanite/wind/PVE/previews/export-control
+    entirely.
+
+    For parameter-tuning / visual-debugging dataset runs where only the
+    branch+twig silhouette matters and the mesh itself is not needed. Twig
+    placements come straight from Grove's raw twig arrays -- no density
+    adjustment, cutoff recovery, instance cap, or bone remap, since those
+    exist only to match what an assembly would instance and there is no
+    assembly here to match. bones_info is not passed, so the skeleton overlay
+    is skipped too: front/side/top icons plus the branches/twigsonly/merged
+    component files, nothing else.
+
+    Sets ctx.export_success. ctx.usd_path stays None -- nothing is added to
+    exported_files, matching that no mesh asset exists to hand to Unreal.
+    """
+    try:
+        ctx.twig_placements = extract_twig_placements_from_model(ctx.model)
+    except Exception:
+        logger.exception("Twig extraction failed for %s", ctx.species_name)
+        ctx.twig_placements = {}
+
+    for _view in ("front", "side", "top"):
+        _generate_icon_image(
+            ctx.tree_dir,
+            ctx.file_prefix,
+            ctx.skeleton,
+            ctx.timer,
+            view=_view,
+            twig_placements=ctx.twig_placements,
+            bones_info=None,
+            export_components=True,
+        )
+    ctx.export_success = True
+
+
 # Post-assembly stage registry: (name, gate, stage_fn, once_per_tree).
 #
 # `gate(ctx)` decides whether the stage runs at all -- False logs a debug
@@ -463,15 +582,204 @@ def export_obj_direct(ctx: TreeExportContext) -> None:
 # so generate_forest_stages() calls it directly (see below).
 StageGate = Callable[[TreeExportContext], bool]
 StageFn = Callable[[TreeExportContext], None]
+def _growth_data_json_settings() -> dict:
+    """Read ``[unreal.growth_data_json]`` from the resolved config dir.
+
+    Kept local and tolerant: this is the PVE skeleton-direct experiment running
+    alongside the USD route, and a missing or malformed section must never take
+    a production export down. Defaults match the config comments.
+
+    Resolved through ``_find_config_dir`` rather than the literal ``config/``
+    it used to read, so a run pointed at another config dir with
+    ``GROWPY_CONFIG`` (a decimation probe, say) decimates at ITS fraction
+    rather than silently at the repo's.
+    """
+    defaults = {
+        "enabled": False,
+        "profile_mean": 0.8215,
+        "min_branch_radius": 0.0,
+        "min_branch_radius_fraction": 0.06,
+        "min_point_spacing": 0.0,
+    }
+    try:
+        import tomllib
+
+        from growpy.config.core import _find_config_dir
+
+        cfg_dir = _find_config_dir()
+        cfg_path = (cfg_dir or Path("config")) / "unreal.toml"
+        if not cfg_path.is_file():
+            return defaults
+        with open(cfg_path, "rb") as fh:
+            section = tomllib.load(fh).get("unreal", {}).get("growth_data_json", {})
+        return {**defaults, **section}
+    except Exception:
+        return defaults
+
+
+def _per_species_setting(
+    settings: dict, key: str, species: str, default: float
+) -> float:
+    """``settings[key + "_per_species"][species]`` if tabled, else the global key.
+
+    The species is matched by its standardized name, so both the display name
+    and the snake_case key resolve. ``default`` covers a settings dict built
+    without the global key (older callers hand one in).
+    """
+    per_species = settings.get(f"{key}_per_species") or {}
+    if per_species:
+        try:
+            from growpy.utils.naming import standardize_species_name
+
+            lookup = standardize_species_name(species)
+        except Exception:
+            lookup = species
+        if lookup in per_species:
+            return float(per_species[lookup])
+    return float(settings.get(key, default))
+
+
+def _min_branch_radius_fraction_for(settings: dict, species: str) -> float:
+    """The decimation fraction for one species (XRFF-466, 2026-09-16).
+
+    ``[unreal.growth_data_json.min_branch_radius_fraction_per_species]`` first,
+    then the global key. Per species because the right value differs by growth
+    habit, not by taste: at 0.06 a h25 ash keeps 196 branches and a spruce
+    3,016, so the solver strings 177 instances along a single ash branch while
+    the conifers look fine. The threshold is a fraction of the TRUNK BASE
+    radius, and a mature trunk is fat, so the same fraction bites harder the
+    older the tree gets -- which is why the count falls as the ladder climbs.
+    """
+    return _per_species_setting(
+        settings, "min_branch_radius_fraction", species, 0.06
+    )
+
+
+def _min_point_spacing_for(settings: dict, species: str) -> float:
+    """The along-branch point spacing for one species (XRFF-471, 2026-09-16).
+
+    ``[unreal.growth_data_json.min_point_spacing_per_species]`` first, then the
+    global key. Points are the bones PVE exports, and Grove's internode sets
+    how many a branch carries: 0.063 m on a beech against 0.11 m on an oak,
+    so at the same fraction a beech is 2-3x the bones and stops opening in UE
+    (82,408 at h15 / 0.02). The spacing thins points WITHIN a branch and keeps
+    every branch, so the look the fraction bought is untouched.
+    """
+    return _per_species_setting(settings, "min_point_spacing", species, 0.0)
+
+
+def _emit_growth_data_json(ctx: TreeExportContext) -> bool:
+    """Write one tree's growth-data JSON. The single emit path, deliberately.
+
+    Both callers -- the post-assembly stage and the ``growth_json_only`` export
+    mode -- reach the exporter through here with no arguments of their own, so
+    the two cannot drift into emitting different files for the same tree. That
+    is the point: the mode exists to produce the artifact the USD route
+    produces, without producing the USD.
+
+    ``ctx.radial_scale`` is the load-bearing argument: Grove's raw radii are not
+    the calibrated diameter, and passing 1.0 emits a trunk several times too
+    thick (see the exporter's docstring). ``compute_radial_scale`` sets it well
+    before either caller runs.
+
+    Returns True if the file was written.
+    """
+    from growpy.io.unreal.pve_growth_data_exporter import (
+        generate_growth_data_from_grove,
+    )
+
+    settings = _growth_data_json_settings()
+    fraction = _min_branch_radius_fraction_for(settings, ctx.species_name)
+    spacing = _min_point_spacing_for(settings, ctx.species_name)
+    out_path = ctx.tree_dir / f"{ctx.file_prefix}_growth_data.json"
+    try:
+        with ctx.timer.track("generate_growth_data_json"):
+            generate_growth_data_from_grove(
+                grove=ctx.grove,
+                output_path=out_path,
+                tree_index=ctx.tree_idx,
+                skeleton=ctx.skeleton,
+                verbose=True,
+                profile_mean=float(settings["profile_mean"]),
+                radial_scale=ctx.radial_scale,
+                min_branch_radius=float(settings["min_branch_radius"]),
+                min_branch_radius_fraction=fraction,
+                min_point_spacing=spacing,
+            )
+    except Exception as err:
+        logger.warning(
+            "Failed to generate growth-data JSON for %s fid=%d: %s",
+            ctx.species_name,
+            ctx.fid,
+            err,
+        )
+        return False
+    return True
+
+
+def write_growth_data_json(ctx: TreeExportContext) -> None:
+    """Emit the growth-data JSON PVE's Growth Data JSON Importer consumes.
+
+    Distinct from ``write_pve_json``, which targets the deprecated Preset
+    Loader with a Megaplants-style recipe. This one feeds
+    ``UPVGrowthDataJsonImporterSettings`` -- a file path, no data asset, no
+    button -- and is the XRFF-390 skeleton-direct route.
+
+    This is the post-assembly stage, so it only ever runs alongside a USD
+    export and honours both opt-ins. ``export_mode = "growth_json_only"`` is
+    the way to get this artifact without paying for the assembly it replaces.
+    """
+    if not ctx.use_skeletal:
+        return
+    if not _growth_data_json_settings().get("enabled"):
+        return
+    _emit_growth_data_json(ctx)
+
+
+def export_growth_json_only(ctx: TreeExportContext) -> None:
+    """Write only the growth-data JSON (``config.export_mode ==
+    "growth_json_only"``), bypassing USD/Nanite/wind/PVE/previews/icons.
+
+    The PVE Growth Data JSON route *replaces* the Nanite assembly: PVE's mesher
+    rebuilds trunk and branches from this skeleton and its distributor places
+    the foliage. Emitting it as a post-assembly stage therefore meant paying
+    for the artifact it supersedes -- over nine minutes for one mature fir, and
+    the ``max_assembly_instances`` cap thinning crowns that the JSON route does
+    not thin.
+
+    NEITHER OPT-IN IS CONSULTED, BY DESIGN. ``export_skeletal`` and
+    ``[unreal.growth_data_json] enabled`` gate the post-assembly stage; a mode
+    whose only output is this file must not be able to emit nothing because a
+    second flag is off. The mode *is* the opt-in.
+
+    Sets ctx.export_success. ctx.usd_path stays None -- nothing is added to
+    exported_files, matching that no mesh asset exists to hand to Unreal.
+    """
+    ctx.export_success = _emit_growth_data_json(ctx)
+
+
 STAGES: list[tuple[str, StageGate, StageFn, bool]] = [
     ("wind_json", lambda c: c.cfg.unreal_generate_wind_data, write_wind_json, True),
     ("pve_json", lambda c: not c.skip_pve_json, write_pve_json, False),
-    ("preview", lambda c: c.cfg.export_previews, write_previews, True),
+    # Skeleton-direct PVE route (XRFF-390). Gated by [unreal.growth_data_json]
+    # in config/unreal.toml, off by default. once_per_tree: the growth data is
+    # the skeleton, which does not vary with twig density.
+    ("growth_data_json", lambda c: True, write_growth_data_json, True),
+    # TAMF record (profile metadata) next to the asset and on the USD default
+    # prim. Per variant: the asset id and twig density differ per variant.
+    ("tamf", lambda c: True, write_tamf, False),
+    # Not once_per_tree: the preview now draws twig positions, which differ per
+    # density variant (see write_previews).
+    ("preview", lambda c: c.cfg.export_previews, write_previews, False),
+    (
+        "export_control",
+        lambda c: c.cfg.export_control_images,
+        write_export_control,
+        True,
+    ),
     ("icons", lambda c: c.cfg.export_icons, write_icons, True),
     ("static_derive", lambda c: c.cfg.export_static, derive_static, True),
 ]
-
-
 
 
 def generate_forest_stages(
@@ -491,8 +799,18 @@ def generate_forest_stages(
     skip_validation: bool = False,
     skeleton_overrides: dict[str, Any] | None = None,
     export_tree_ids: set | None = None,
-) -> None:
+) -> int:
     """Generate trees at multiple growth stages using height-based milestones.
+
+    Returns the number of milestone stages that the simulation captured but that
+    failed to export. Zero means every captured stage reached disk. The caller
+    turns a non-zero count into a non-zero exit code -- without that, an export
+    failure is a single warning line in a log nobody reads while the process
+    still exits 0, `Step 4 [X]: OK` is printed, and the stage is simply missing
+    from the dataset. Counting *captured* milestones rather than a fixed matrix
+    size is deliberate: a shaded radius legitimately plateaus below 25 m, so a
+    static expectation would cry wolf on every run.
+
 
     Exports multiple tree models at different heights from a single tree position,
     with height and DBH encoded in the filename for easy asset selection.
@@ -522,9 +840,10 @@ def generate_forest_stages(
         timer: Optional ProfileTimer for tracking execution times
         skip_pve_json: If True, skip PVE preset JSON generation
         skip_validation: If True, skip assembly validation
-    """
-    from growpy.utils.log import is_verbose
 
+    Returns:
+        Count of captured milestone stages that failed to export (0 = clean).
+    """
     if timer is None:
         timer = ProfileTimer(enabled=False)
 
@@ -548,7 +867,7 @@ def generate_forest_stages(
     if missing_cols:
         logger.error("Missing required columns: %s", missing_cols)
         logger.error("  Multi-stage mode requires height to bound milestones")
-        return
+        return 1
 
     forest_data = forest_data.copy()
     if "fid" not in forest_data.columns:
@@ -606,13 +925,52 @@ def generate_forest_stages(
     quality_params["skip_pve_json"] = skip_pve_json
     quality_params["skip_validation"] = skip_validation
     quality_params["export_tree_ids"] = export_tree_ids
-    quality_params["density_variants"] = config.get_density_variants()
+    icons_only = config.export_mode == "icons_only"
+    quality_params["icons_only"] = icons_only
+    # Density variants exist to compare assembly instance density -- moot
+    # when there is no assembly, and each one is an extra grove.build_models()
+    # call icons_only has no use for.
+    quality_params["density_variants"] = (
+        [] if icons_only else config.get_density_variants()
+    )
 
     # Apply skeleton overrides (allows simplified skeleton with ultra mesh)
     if skeleton_overrides:
         for key, value in skeleton_overrides.items():
             quality_params[key] = value
         logger.info("[Skeleton Overrides] Applied: %s", skeleton_overrides)
+
+    # Optional coarser preset for the tall stages. Mesh cost scales with tree
+    # size far faster than visible detail does -- an open-grown silver fir is
+    # 4.5M points at h10, 7.0M at h15 and ~23M projected at h25 -- so the top
+    # of the ladder can cost more than the rest of the dataset combined while
+    # adding branch detail no viewer resolves. Control flags (icons_only,
+    # skip_pve_json, density_variants, ...) are carried over unchanged; only
+    # the mesh/skeleton keys come from the alternate preset.
+    tall_quality_params = None
+    tall_quality_threshold = float(config.forest_quality_above_height_threshold or 0.0)
+    if config.forest_quality_above_height and tall_quality_threshold > 0:
+        tall_quality_params = {
+            **quality_params,
+            **get_quality_preset(config.forest_quality_above_height),
+        }
+        # Re-apply the two the caller forces after preset lookup above.
+        tall_quality_params["skeleton_bias"] = 0.5
+        tall_quality_params["skeleton_connected"] = True
+        if skeleton_overrides:
+            for key, value in skeleton_overrides.items():
+                tall_quality_params[key] = value
+        logger.info(
+            "Stages at or above %.0fm build with the '%s' preset (res %s -> %s, "
+            "cutoff %s -> %s); below that, '%s'",
+            tall_quality_threshold,
+            config.forest_quality_above_height,
+            quality_params.get("resolution"),
+            tall_quality_params.get("resolution"),
+            quality_params.get("build_cutoff_thickness"),
+            tall_quality_params.get("build_cutoff_thickness"),
+            quality,
+        )
 
     # Build species-to-grove mapping for PVE JSON generation
     species_grove_map: dict[str, Any] = {}
@@ -631,45 +989,18 @@ def generate_forest_stages(
             ", ".join(f"{sp} {h:.1f}m" for sp, h in sorted(species_max_height.items())),
         )
 
-    # Run simulation with height-threshold-based snapshots
-    with timer.track("simulate_with_snapshots"):
-        snapshots, milestone_map = simulate_forest_growth_with_snapshots(
-            forest,
-            max_cycles=global_max_cycles,
-            snapshot_cycles=[],
-            smooth_iterations=smooth_iterations,
-            preset_overrides=preset_overrides,
-            use_species_curves=config.calibration_align_height,
-            quality_params=quality_params,
-            height_interval=effective_interval,
-            max_height=effective_max_height,
-            species_max_height=species_max_height,
-            plateau_cycles=plateau_cycles if plateau_cycles is not None else 10,
-        )
-
-    # A species that never reaches its ceiling silently produces fewer stages,
-    # which is how the Douglas fir shortfall went unnoticed. Report it.
-    _warn_uncaptured_milestones(
-        milestone_map, species_max_height, effective_interval, global_max_cycles
-    )
-
-    if not snapshots:
-        logger.error("No snapshots captured during simulation")
-        return
-
     # Clean stale exports (only subdirectories that this CSV will write to)
     output_dir.mkdir(parents=True, exist_ok=True)
     # Ensure shared instances directory exists (don't wipe -- other species may share it)
     instances_dir.mkdir(parents=True, exist_ok=True)
     has_radius_col = "surround_radius" in forest_data.columns
     for sp in forest_data["species"].unique():
-        sp_dir_name = (
-            "".join(c for c in sp if c.isalnum() or c in (" ", "-", "_"))
-            .strip()
-            .replace(" ", "_")
-            .lower()
-        )
-        sp_dir = output_dir / sp_dir_name
+        # Same slug the export uses below, or the clean misses the directory: the
+        # inline normalisation this replaced kept hyphens, so "Small-leaved
+        # linden" cleaned `small-leaved_linden/` (absent) while the export wrote
+        # `small_leaved_linden/`, and every re-run at a new density left the old
+        # DBH-named assemblies behind (10 counted for 6 produced, 2026-09-15).
+        sp_dir = output_dir / filename_safe_species_slug(sp)
         if has_radius_col:
             for radius in forest_data.loc[
                 forest_data["species"] == sp, "surround_radius"
@@ -681,9 +1012,10 @@ def generate_forest_stages(
         elif sp_dir.exists():
             shutil.rmtree(sp_dir)
 
-    # Export each snapshot
+    # Stages are exported as the simulation captures them (see _export_cycle),
+    # not in a phase of their own -- so there is no total to announce here.
     logger.info("\n%s", "=" * 60)
-    logger.info("PHASE 3: EXPORTING STAGES (%d cycles)", len(snapshots))
+    logger.info("PHASE 2/3: SIMULATING AND EXPORTING STAGES")
     logger.info("%s", "=" * 60)
 
     # Cache height-DBH models and fallback curves per species for radial scaling
@@ -704,9 +1036,27 @@ def generate_forest_stages(
 
     exported_files = []
     _species_info_written: set = set()
-    for cycle, species_snapshots in tqdm(
-        snapshots.items(), desc="Exporting stages", disable=not is_verbose()
-    ):
+    # Counts stages that actually reached disk, so the run can be compared
+    # against the milestones the simulation captured and fail if any is missing.
+    # Must be bound before _export_cycle below, which declares it nonlocal.
+    exported_stage_count = 0
+    # (species, surround_radius) -> cycles at which a captured milestone was
+    # lost because Grove returned no model. Mutated in place from
+    # _export_cycle, so it needs no nonlocal declaration. Reported per radius
+    # at the end: a species that reaches h25 open-grown but loses stages at
+    # r08 must not be recorded as reaching h25 outright (XRFF-334).
+    radius_missed: dict[tuple[str, float], list[int]] = {}
+
+    def _export_cycle(cycle, species_snapshots, milestone_map):
+        """Export one captured milestone cycle, then let it be freed.
+
+        Invoked by the simulation as each cycle's models are built (see
+        simulate_forest_growth_with_snapshots' on_capture) rather than from
+        a phase running after every stage is already in memory: holding
+        h05..h25 of an open-grown 25 m conifer at once measured 37 GB and
+        died with MemoryError on a 63.5 GB host.
+        """
+        nonlocal exported_stage_count
         for species_name, tree_data_list in species_snapshots.items():
             # Get fids and max cycles for this species from forest data
             species_rows = forest_data[forest_data["species"] == species_name]
@@ -718,6 +1068,7 @@ def generate_forest_stages(
                 height,
                 _dbh,
                 variant_models,
+                precut_model,
             ) in enumerate(tree_data_list):
                 # Get tree's fid and max cycles before skip checks
                 if tree_idx < len(species_rows):
@@ -741,13 +1092,38 @@ def generate_forest_stages(
                     tree_surround_radius = 0.0
 
                 if model is None:
-                    logger.warning(
-                        "  Skipping %s tree %d (fid=%d) at cycle %d: model is None",
-                        species_name,
-                        tree_idx,
-                        fid,
-                        cycle,
-                    )
+                    # `model is None` is not a growth statement. It means
+                    # grove.build_models() returned a shorter list than
+                    # grove.trees for this cycle, so models[tree_idx] was out
+                    # of range (see core/forest.py's build_models shortfall
+                    # warning). A tree that simply never grew tall enough does
+                    # not appear here at all -- it just never crosses the
+                    # milestone. Reporting the internal state made a build
+                    # shortfall look like expected shading behaviour, and left
+                    # per-species coverage claims ambiguous across radii
+                    # (XRFF-334).
+                    #
+                    # Only warn where a milestone was actually expected. Grove
+                    # returns a short list on every captured cycle once it
+                    # starts, so warning unconditionally buried the signal in
+                    # one line per tree per cycle.
+                    if tree_idx in milestone_map.get(cycle, {}).get(
+                        species_name, {}
+                    ):
+                        radius_missed.setdefault(
+                            (species_name, tree_surround_radius), []
+                        ).append(cycle)
+                        logger.warning(
+                            "  %s r%02d (fid=%d): Grove built no model at cycle "
+                            "%d, so its h%.0fm milestone was lost. This is a "
+                            "build shortfall, not slower growth under shade -- "
+                            "the stage will be missing from this radius only.",
+                            species_name,
+                            int(tree_surround_radius),
+                            fid,
+                            cycle,
+                            milestone_map[cycle][species_name][tree_idx],
+                        )
                     continue
 
                 # Only export trees that triggered a milestone crossing at this
@@ -770,13 +1146,23 @@ def generate_forest_stages(
                 grove_dbh = _dbh if _dbh else 0.0
 
                 # Shared per-tree work (independent of density variant)
-                twig_usd_map = get_twig_usd_map_for_species(
-                    species_name, config, prefer_skeletal=True, prefer_static=False
-                )
-                try:
-                    model.triangulate()
-                except Exception:
-                    logger.warning("Model triangulation failed for %s", species_name)
+                if config.export_mode == "icons_only":
+                    # No USD twig prototypes to match, no mesh to build --
+                    # icons read Grove's arrays directly.
+                    twig_usd_map = {}
+                else:
+                    twig_usd_map = get_twig_usd_map_for_species(
+                        species_name, config, prefer_skeletal=True, prefer_static=False
+                    )
+                if config.export_mode != "icons_only":
+                    # Triangulation only matters for the mesh USD export;
+                    # icons read Grove's twig/skeleton arrays, not faces.
+                    try:
+                        model.triangulate()
+                    except Exception:
+                        logger.warning(
+                            "Model triangulation failed for %s", species_name
+                        )
 
                 use_skeletal = config.export_skeletal
                 use_static_only = not use_skeletal and config.export_static
@@ -795,16 +1181,27 @@ def generate_forest_stages(
                     instances_dir=instances_dir,
                     timer=timer,
                     grove=species_grove_map.get(species_name),
+                    surround_radius_m=tree_surround_radius,
+                    cycle=cycle,
                     use_skeletal=use_skeletal,
                     use_static_only=use_static_only,
                     skip_validation=skip_validation,
                     include_grove_attributes=include_grove_attributes,
                     skip_pve_json=quality_params.get("skip_pve_json", False),
                 )
-                resolve_target_dbh(
-                    ctx, cycle, h_dbh_model_cache, target_dbh_cache, csv_dbh_map
-                )
-                compute_radial_scale(ctx)
+                if config.export_mode == "icons_only":
+                    # No allometry/calibration lookups, no DBH target, no
+                    # radial rescale -- the filename and the model both use
+                    # exactly what Grove grew.
+                    ctx.target_dbh_m = None
+                    ctx.dbh_from_csv = False
+                    ctx.filename_dbh = grove_dbh
+                    ctx.radial_scale = 1.0
+                else:
+                    resolve_target_dbh(
+                        ctx, cycle, h_dbh_model_cache, target_dbh_cache, csv_dbh_map
+                    )
+                    compute_radial_scale(ctx)
 
                 dbh_str = format_dbh_for_filename(ctx.filename_dbh)
                 dims_suffix = f"{height_str}_{dbh_str}"
@@ -828,6 +1225,7 @@ def generate_forest_stages(
                     ctx.variant_idx = variant_idx
                     ctx.twig_density = effective_twig_density
                     ctx.model = effective_model
+                    ctx.precut_model = precut_model
 
                     # Build output directory and filename prefix
                     if has_radius_col:
@@ -871,9 +1269,66 @@ def generate_forest_stages(
                         if ctx.export_success:
                             exported_files.append(str(ctx.usd_path))
                             logger.info("  Exported (OBJ): %s", ctx.usd_path.name)
+                            write_tamf(ctx)
                         else:
                             logger.warning(
                                 "  OBJ export failed for tree %d (%s) at cycle %d (h=%.1fm)",
+                                fid,
+                                species_name,
+                                cycle,
+                                height,
+                            )
+                        continue
+
+                    if config.export_mode == "icons_only":
+                        # Icon PNGs straight from the Grove model -- no USD/
+                        # Nanite/wind/PVE/previews/export-control, none of
+                        # which this mode needs.
+                        with timer.track("stage_icons_only"):
+                            export_icons_only(ctx)
+                        if ctx.export_success:
+                            exported_stage_count += 1
+                            logger.info("  Icons: %s", ctx.file_prefix)
+                        else:
+                            logger.warning(
+                                "  Icon export failed for tree %d (%s) at "
+                                "cycle %d (h=%.1fm)",
+                                fid,
+                                species_name,
+                                cycle,
+                                height,
+                            )
+                        continue
+
+                    if config.export_mode == "growth_json_only":
+                        # The PVE Growth Data JSON route replaces the Nanite
+                        # assembly rather than accompanying it, so the assembly
+                        # and every post-assembly stage are skipped. Everything
+                        # this needs -- skeleton, grove, radial_scale, tree_dir,
+                        # file_prefix -- is already on ctx at this point.
+                        #
+                        # once_per_tree, exactly as the post-assembly stage is
+                        # registered: the growth data IS the skeleton, which
+                        # does not vary with twig density. Without this the mode
+                        # writes one identical file per density variant, each
+                        # under a different name.
+                        if variant_idx != 0:
+                            logger.debug(
+                                "growth_json_only: variant %d skipped "
+                                "(skeleton does not vary with density)",
+                                variant_idx,
+                            )
+                            continue
+                        with timer.track("stage_growth_json_only"):
+                            export_growth_json_only(ctx)
+                        if ctx.export_success:
+                            exported_stage_count += 1
+                            logger.info("  Growth JSON: %s", ctx.file_prefix)
+                            write_tamf(ctx)
+                        else:
+                            logger.warning(
+                                "  Growth-JSON export failed for tree %d (%s) "
+                                "at cycle %d (h=%.1fm)",
                                 fid,
                                 species_name,
                                 cycle,
@@ -886,6 +1341,8 @@ def generate_forest_stages(
                         export_assembly(ctx)
 
                     if ctx.export_success:
+                        if variant_idx == 0:
+                            exported_stage_count += 1
                         exported_files.append(str(ctx.usd_path))
                         logger.info("  Exported: %s", ctx.usd_path.name)
 
@@ -910,4 +1367,83 @@ def generate_forest_stages(
                             height,
                         )
 
+
+    # A species that never reaches its ceiling silently produces fewer stages,
+    # which is how the Douglas fir shortfall went unnoticed. Report it.
+    # Per-radius so a shortfall specific to one surround-radius variant (the
+    # heavily-shaded r08/r16, typically) is not masked by a less-competed
+    # sibling (r00) reaching the same species' ceiling.
+    species_tree_radii: dict[str, list[float]] = {}
+    if "surround_radius" in forest_data.columns:
+        for sp_name, group in forest_data.groupby("species", sort=False):
+            species_tree_radii[sp_name] = [
+                float(r) if pd.notna(r) else 0.0 for r in group["surround_radius"]
+            ]
+
+    # Run simulation with height-threshold-based snapshots
+    with timer.track("simulate_with_snapshots"):
+        snapshots, milestone_map = simulate_forest_growth_with_snapshots(
+            forest,
+            max_cycles=global_max_cycles,
+            snapshot_cycles=[],
+            smooth_iterations=smooth_iterations,
+            preset_overrides=preset_overrides,
+            use_species_curves=config.forest_species_curves,
+            quality_params=quality_params,
+            height_interval=effective_interval,
+            max_height=effective_max_height,
+            species_max_height=species_max_height,
+            plateau_cycles=plateau_cycles if plateau_cycles is not None else 10,
+            on_capture=_export_cycle,
+            tall_quality_params=tall_quality_params,
+            tall_quality_threshold=tall_quality_threshold,
+        )
+
+    _warn_uncaptured_milestones(
+        milestone_map,
+        species_max_height,
+        effective_interval,
+        global_max_cycles,
+        run_max_height=effective_max_height,
+        tree_radius_labels=species_tree_radii,
+    )
+
+    # Every milestone the simulation captured is a stage that MUST reach disk.
+    # Anything short of that is a silent hole in the dataset, so count it and
+    # let the caller fail the run.
+    captured_stage_count = sum(
+        len(trees)
+        for per_species in milestone_map.values()
+        for trees in per_species.values()
+    )
     logger.info("\nExported %d tree stage files", len(exported_files))
+
+    # Per-radius coverage, so "silver_fir reaches h25" can never be recorded
+    # from an open-grown run alone while r08/r16 quietly stopped lower
+    # (XRFF-334).
+    if radius_missed:
+        logger.warning("\nStages lost to Grove build shortfalls, by radius:")
+        for (sp_name, radius), cycles in sorted(radius_missed.items()):
+            logger.warning(
+                "  %s r%02d: %d stage(s) lost at cycle(s) %s. Coverage for this "
+                "species must be stated per radius, not per species.",
+                sp_name,
+                int(radius),
+                len(cycles),
+                ", ".join(str(c) for c in sorted(cycles)),
+            )
+
+    shortfall = captured_stage_count - exported_stage_count
+    if shortfall > 0:
+        logger.error(
+            "%d of %d captured milestone stage(s) failed to export. The dataset "
+            "is INCOMPLETE -- see the 'Export failed' / 'build shortfall' "
+            "warnings above for which trees, radii and cycles.",
+            shortfall,
+            captured_stage_count,
+        )
+    else:
+        logger.info(
+            "All %d captured milestone stage(s) exported", captured_stage_count
+        )
+    return max(0, shortfall)

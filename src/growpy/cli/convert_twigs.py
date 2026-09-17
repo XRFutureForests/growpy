@@ -136,6 +136,54 @@ def find_textures_for_material(
 
     return texture_map
 
+def _derive_ladders_for_single_object_assets(blend_files: list[Path]) -> None:
+    """Split a one-spray twig ASSET into a foliage size ladder (XRFF-412).
+
+    growpy builds one USD variant per mesh OBJECT, so an asset modelled as a
+    single spray gives the whole crown one leaf size. PacificSilverFirTwig ships
+    exactly one 0.109 m2 spray, shared by silver fir, Norway spruce, Douglas fir
+    and Sitka spruce, and that single size is what forced those species to crown
+    densities an order of magnitude below the broadleaves.
+
+    Derived here, in the conversion, rather than by hand: step 1 of the dataset
+    pipeline re-copies the pristine Grove assets, so a `--clean` run would
+    otherwise silently drop the ladder and revert those species to the one
+    spray -- taking the crown densities calibrated against the ladder with it.
+
+    The test is per twig DIRECTORY, not per file, because an asset's variety can
+    be spread across several .blend files: ScotsPineTwig ships four blends of
+    one or two objects each, five in total, and testing each file alone split
+    three of them and took that asset from 5 variants to 26. A directory holding
+    one object between all its files is the single-spray case; anything else is
+    an artist's own variant set and is left alone.
+    """
+    import bpy
+
+    from growpy.tools.derive_twig_ladder import main as derive_main
+
+    by_dir: dict[Path, list[Path]] = {}
+    for blend_file in blend_files:
+        by_dir.setdefault(blend_file.parent, []).append(blend_file)
+
+    for twig_dir, files in sorted(by_dir.items()):
+        counts = []
+        for blend_file in files:
+            bpy.ops.wm.open_mainfile(filepath=str(blend_file))
+            counts.append(len([o for o in bpy.data.objects if o.type == "MESH"]))
+        if sum(counts) != 1:
+            continue
+
+        target = files[counts.index(1)]
+        logger.info(
+            "%s holds one mesh object in total -- deriving a foliage size "
+            "ladder from %s",
+            twig_dir.name,
+            target.name,
+        )
+        if derive_main([str(target)]) != 0:
+            logger.warning("ladder derivation failed for %s, converting as-is", target)
+
+
 
 def process_twig_directory(
     twig_dir: Path,
@@ -148,9 +196,13 @@ def process_twig_directory(
     alpha_trim_threshold: float = 0.5,
     alpha_trim_method: str = "all",
     boundary_edge_mm: float = 0.5,
+    boundary_edge_mm_per_twig: dict[str, float] | None = None,
     interior_decimate_ratio: float = 0.0,
     interior_edge_mm: float = 0.0,
     interior_boundary_rings: int = 1,
+    planar_angle: float = 1.0,
+    planar_angle_per_twig: dict[str, float] | None = None,
+    output_root: Path | None = None,
 ) -> dict[str, list[Path]]:
     """Process all twig blend files in a directory.
 
@@ -199,6 +251,8 @@ def process_twig_directory(
     if not blend_files:
         return {}
 
+    _derive_ladders_for_single_object_assets(blend_files)
+
     # Import twig_export module directly
     from growpy.io.usd.twig_export import process_twig_file
 
@@ -211,7 +265,15 @@ def process_twig_directory(
     ):
         try:
             twig_dir_name = blend_file.parent.name
-            output_dir = blend_file.parent
+            # Default: write beside the .blend, which is where every consumer
+            # looks. `output_root` mirrors the per-twig folder underneath it
+            # instead, so a second conversion profile cannot overwrite the
+            # dataset's own assets (XRFF-359).
+            if output_root is None:
+                output_dir = blend_file.parent
+            else:
+                output_dir = output_root / twig_dir_name
+                output_dir.mkdir(parents=True, exist_ok=True)
 
             # Always use the twig's native name (directory without _twig suffix).
             # Species that share a twig (e.g. Norway spruce using PacificSilverFirTwig)
@@ -229,9 +291,12 @@ def process_twig_directory(
                 alpha_trim_threshold=alpha_trim_threshold,
                 alpha_trim_method=alpha_trim_method,
                 boundary_edge_mm=boundary_edge_mm,
+                boundary_edge_mm_per_twig=boundary_edge_mm_per_twig,
                 interior_decimate_ratio=interior_decimate_ratio,
                 interior_edge_mm=interior_edge_mm,
                 interior_boundary_rings=interior_boundary_rings,
+                planar_angle=planar_angle,
+                planar_angle_per_twig=planar_angle_per_twig,
             )
 
             if exported_files:
@@ -291,6 +356,35 @@ Output per twig:
         help="Path to twig directory or single .blend file (default: from config)",
     )
     parser.add_argument(
+        # NOT --profile: CLI_MAPPINGS already binds "profile" to the profiling
+        # flag, so that name would set config.profile to "twig".
+        "--conversion-profile",
+        choices=["twig", "compound"],
+        default="twig",
+        help=(
+            "Conversion profile (XRFF-359). 'twig' is the close-range default "
+            "used for the dataset's own twig assets. 'compound' applies the "
+            "coarser [twigs] compound_* settings, for twigs that will be welded "
+            "into a compound foliage part where each leaf is far smaller on "
+            "screen. The trimming and densification still happen here, per "
+            "twig -- welding comes afterwards and cannot do them, because a "
+            "welded part has lost the per-leaf alpha texture association the "
+            "contour cut needs."
+        ),
+    )
+    parser.add_argument(
+        "--output-root",
+        type=Path,
+        default=None,
+        help=(
+            "Write converted twigs under this directory (one folder per twig) "
+            "instead of beside each .blend. Required with "
+            "--conversion-profile compound, whose coarser output would "
+            "otherwise overwrite the dataset's own close-range assets, so it "
+            "must be OUTSIDE the twig source tree."
+        ),
+    )
+    parser.add_argument(
         "--csv",
         type=Path,
         default=None,
@@ -346,6 +440,16 @@ Output per twig:
     )
     args = parser.parse_args()
 
+    if args.conversion_profile != "twig" and args.output_root is None:
+        logger.error(
+            "--conversion-profile %s needs --output-root: converted twigs are "
+            "written beside their .blend under the same names, so a second "
+            "profile would overwrite the dataset's close-range assets.",
+            args.conversion_profile,
+        )
+        return 1
+
+
     # Resolve config: TOML defaults + CLI overrides
     config.resolve(args)
     if args.quiet:
@@ -356,6 +460,31 @@ Output per twig:
     twig_path = args.path if args.path is not None else config.twigs_path
     if not twig_path.is_absolute():
         twig_path = project_root / twig_path
+
+    # Presence of --output-root is not enough. `process_twig_directory` writes to
+    # `output_root / <twig folder>`, which for --output-root data/assets/twigs is
+    # byte-identical to the default "beside the .blend" path -- so the most
+    # natural-looking value silently defeats the guard above. The coarse assets
+    # would also land inside the tree that three consumers discover twigs in by
+    # rglob (analyze_usda, leaf_geometry, twig_silhouette), where a duplicate
+    # basename is resolved by filesystem order.
+    if args.output_root is not None:
+        output_root = args.output_root
+        if not output_root.is_absolute():
+            output_root = project_root / output_root
+        resolved_root = output_root.resolve()
+        resolved_source = twig_path.resolve()
+        if resolved_root == resolved_source or resolved_source in resolved_root.parents:
+            logger.error(
+                "--output-root %s is inside the twig source tree %s: converted "
+                "twigs would land on the assets being read from. Choose a "
+                "directory outside it.",
+                resolved_root,
+                resolved_source,
+            )
+            return 1
+        args.output_root = output_root
+
 
     # Resolve CSV path
     csv_path = config.csv_file
@@ -430,6 +559,47 @@ Output per twig:
                 logger.error("Error processing CSV file: %s", e)
                 return 1
 
+    # The two profiles differ only in these four knobs; everything else about
+    # the conversion, including the alpha contour cut and the densification it
+    # depends on, is identical (XRFF-359).
+    # Flags the user actually typed. argparse leaves these None otherwise, and
+    # resolve() has already written them onto the base fields, so the compound
+    # profile must not override them.
+    typed = {
+        key
+        for key, value in (
+            ("alpha_trim", args.alpha_trim),
+            ("boundary_edge_mm", args.boundary_edge_mm),
+            ("interior_edge_mm", args.interior_edge_mm),
+        )
+        if value is not None
+    }
+    profile = config.get_twig_conversion_profile(args.conversion_profile, typed)
+    if args.conversion_profile != "twig":
+        logger.info(
+            "Conversion profile '%s': boundary_edge_mm=%.3f planar_angle=%.3f "
+            "alpha_trim=%.3f interior_edge_mm=%.3f",
+            args.conversion_profile,
+            profile["boundary_edge_mm"],
+            profile["planar_angle"],
+            profile["alpha_trim"],
+            profile["interior_edge_mm"],
+        )
+
+    convert_kwargs = {
+        "include_skeleton": True,
+        "densify": config.twigs_densify,
+        "alpha_trim_threshold": min(max(0.0, profile["alpha_trim"]), 1.0),
+        "boundary_edge_mm": max(0.01, profile["boundary_edge_mm"]),
+        "boundary_edge_mm_per_twig": config.twigs_boundary_edge_mm_per_twig,
+        "interior_decimate_ratio": 0.000001,
+        "interior_edge_mm": max(0.0, profile["interior_edge_mm"]),
+        "interior_boundary_rings": max(0, int(config.twigs_interior_boundary_rings)),
+        "planar_angle": max(0.0, profile["planar_angle"]),
+        "planar_angle_per_twig": config.twigs_planar_angle_per_twig,
+        "output_root": args.output_root,
+    }
+
     if twig_path.is_file() and twig_path.suffix == ".blend":
         # Single file
         process_twig_directory(
@@ -437,13 +607,7 @@ Output per twig:
             ["usda"],
             True,
             twig_filter,
-            include_skeleton=True,
-            densify=config.twigs_densify,
-            alpha_trim_threshold=min(max(0.0, config.twigs_alpha_trim), 1.0),
-            boundary_edge_mm=max(0.01, config.twigs_boundary_edge_mm),
-            interior_decimate_ratio=0.000001,
-            interior_edge_mm=max(0.0, config.twigs_interior_edge_mm),
-            interior_boundary_rings=max(0, int(config.twigs_interior_boundary_rings)),
+            **convert_kwargs,
         )
     elif twig_path.is_dir():
         # Directory
@@ -452,18 +616,82 @@ Output per twig:
             ["usda"],
             True,
             twig_filter,
-            include_skeleton=True,
-            densify=config.twigs_densify,
-            alpha_trim_threshold=min(max(0.0, config.twigs_alpha_trim), 1.0),
-            boundary_edge_mm=max(0.01, config.twigs_boundary_edge_mm),
-            interior_decimate_ratio=0.000001,
-            interior_edge_mm=max(0.0, config.twigs_interior_edge_mm),
-            interior_boundary_rings=max(0, int(config.twigs_interior_boundary_rings)),
+            **convert_kwargs,
         )
     else:
         return 1
 
+    _write_leaf_geometry_sidecars(twig_path)
+    _pack_pve_textures(twig_path)
     return 0
+
+
+def _pack_pve_textures(twig_path: Path) -> None:
+    """Combine each asset's twig maps into the two the PVE master takes.
+
+    ``MA_Foliage_Trees`` exposes exactly two texture parameters -- Base Color
+    (colour + alpha) and Normal (normal + translucency) -- which is why
+    MegaPlants ships ``_CA``/``_NT`` pairs. The Grove spreads the same
+    information across up to four files, and its diffuse maps are RGB JPEGs
+    with no alpha channel at all, so wiring them straight onto the master gave
+    leaves no opacity and no subsurface input.
+
+    Run here rather than left to the operator: step 1 re-copies the pristine
+    Grove textures, so a ``--clean`` dataset run would otherwise silently drop
+    the packed maps and put the raw ones back.
+    """
+    from growpy.tools.pack_pve_textures import pack_twig_assets
+
+    root = twig_path.parent if twig_path.is_file() else twig_path
+    try:
+        packed = pack_twig_assets(root)
+    except Exception as exc:  # noqa: BLE001 -- reported, never fatal
+        logger.warning("PVE texture packing failed: %s", exc)
+        return
+    logger.info(
+        "Packed PVE textures for %d twig asset(s) under %s", len(packed), root
+    )
+
+
+def _write_leaf_geometry_sidecars(twig_path: Path) -> None:
+    """Measure each converted prototype's leaf/wood split (XRFF-274).
+
+    The `<prototype>_leaf_area.json` sidecar `twig_export` writes tags leaves by
+    MATERIAL, so on an asset that ships one material for the whole twig it
+    reports the woody shoot as leaf: every fir ladder variant came out with
+    `leaf_faces == total_faces`, overstating leaf area by 8-35%. The split here
+    is topological instead, and lands beside it as
+    `<prototype>_leaf_area_geom.json` -- it does not overwrite the material one,
+    so a caller chooses which basis it wants (see `crown_geometry.compute_lai`'s
+    `leaf_area_provisional` flag).
+
+    Written here rather than left to a separate tool because a crown density
+    calibrated against leaf area is only reproducible if a clean run of the
+    pipeline regenerates the number it was calibrated on.
+    """
+    from growpy.utils.leaf_geometry import run_over_all_twigs
+
+    root = twig_path.parent if twig_path.is_file() else twig_path
+    try:
+        results = run_over_all_twigs(root)
+    except Exception as exc:  # noqa: BLE001 -- diagnostic, never fatal
+        # The conversion itself has already succeeded and been written; a
+        # measurement failure must not discard it.
+        logger.warning("leaf/wood split not measured for %s: %s", root, exc)
+        return
+    if not results:
+        return
+    wood = sum(r.get("wood_area_m2", 0.0) or 0.0 for r in results)
+    leaf = sum(r.get("leaf_area_m2", 0.0) or 0.0 for r in results)
+    total = leaf + wood
+    logger.info(
+        "leaf/wood split: %d prototype(s), %.5f m2 leaf + %.5f m2 wood "
+        "(%.1f%% wood) -> *_leaf_area_geom.json",
+        len(results),
+        leaf,
+        wood,
+        100.0 * wood / total if total else 0.0,
+    )
 
 
 if __name__ == "__main__":

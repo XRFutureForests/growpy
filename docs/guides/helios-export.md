@@ -1,6 +1,6 @@
 # Helios++ OBJ Export Guide
 
-GrowPy can bake the forest it generates into Wavefront OBJ + Helios++ scene XML so you can run virtual LiDAR scans against it. This guide covers the workflow end-to-end; for the algorithmic details see [architecture/processing-logic.md#helios-obj-export](../architecture/processing-logic.md#helios-obj-export).
+GrowPy can bake the forest it generates into Wavefront OBJ + Helios++ scene XML so you can run virtual LiDAR scans against it. This guide covers the workflow end-to-end; for the algorithmic details see [architecture/processing-logic.md#helios-obj-export](../README.md#helios-obj-export).
 
 ## When to use this
 

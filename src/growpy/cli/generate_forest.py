@@ -80,7 +80,6 @@ def _resolve_forest_data(args, config, project_root):
     return pd.read_csv(csv_path)
 
 
-
 def _resolve_static_export_for_obj(config) -> bool:
     """Force static mesh export on when OBJ export needs it.
 
@@ -309,13 +308,48 @@ Unreal Engine Integration:
         "--previews",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Generate preview/export-control PNGs per tree (default: from config).",
+        help=(
+            "Generate the preview PNG per tree (branch architecture from the "
+            "skeleton). Visual QA aid, off by default; see --export-control."
+        ),
+    )
+    parser.add_argument(
+        "--export-control",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Generate the export-control PNG per tree: mesh edges plus "
+            "skeleton joints, read back from the exported USD. QA aid, off by "
+            "default -- it is the costliest image stage by a wide margin."
+        ),
     )
     parser.add_argument(
         "--icons",
         action=argparse.BooleanOptionalAction,
         default=None,
         help="Generate front/side/top icon PNGs per tree (default: from config).",
+    )
+    parser.add_argument(
+        "--icon-components",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Also generate separate branches/twigsonly/skeleton/merged "
+            "component PNGs per icon view (default: from config). Only "
+            "meaningful when --icons is also on."
+        ),
+    )
+    parser.add_argument(
+        "--icons-only",
+        action="store_true",
+        help=(
+            "Fast path for parameter tuning / visual debugging: write only "
+            "the icon PNGs (branches + twigs, no skeleton) straight from the "
+            "Grove model, skipping USD/Nanite/wind/PVE/previews/export-control "
+            "and the calibration/DBH/height-scaling and bone-tagging work "
+            "those need. Sets export_mode = 'icons_only'; --skeletal/--static "
+            "are ignored."
+        ),
     )
 
     # Mesh type export flags (independent, any combination works)
@@ -403,6 +437,11 @@ Unreal Engine Integration:
     config = get_config()
     config.resolve(args)
 
+    # export_mode is a scenario-level choice (config-only, no CLI_MAPPINGS
+    # entry -- see config/core.py), so --icons-only is applied here instead.
+    if args.icons_only:
+        config.export_mode = "icons_only"
+
     # --quiet overrides --verbose and config
     if args.quiet:
         config.verbose = False
@@ -414,7 +453,15 @@ Unreal Engine Integration:
     # Validate export flags
     _resolve_static_export_for_obj(config)
 
-    if not config.export_skeletal and not config.export_static:
+    # icons_only and growth_json_only write no mesh at all, so neither flag
+    # applies to them -- and growth_json_only's natural configuration is
+    # exactly skeletal = false, static = false, which this guard would
+    # otherwise abort.
+    if (
+        config.export_mode not in ("icons_only", "growth_json_only")
+        and not config.export_skeletal
+        and not config.export_static
+    ):
         logger.error(
             "No mesh export types enabled. "
             "Enable at least one of: --skeletal, --static, or --export-obj"
@@ -471,10 +518,14 @@ Unreal Engine Integration:
         # Detect multi-stage mode (config value already merged with CLI by resolve())
         is_multistage = config.forest_height_interval > 0
 
+        # Non-zero once any captured milestone stage fails to reach disk, so a
+        # partial dataset cannot exit 0 and be reported as OK.
+        stage_shortfall = 0
+
         with timer.track("total_forest_generation"):
             if is_multistage:
                 # Multi-stage export mode: generate trees at height milestones
-                generate_forest_stages(
+                stage_shortfall = generate_forest_stages(
                     forest_data,
                     output_dir,
                     config,
@@ -595,6 +646,14 @@ Unreal Engine Integration:
     except Exception as e:
         logger.error("Forest generation failed: %s", e)
         logger.debug("Traceback:", exc_info=True)
+        return 1
+
+    if stage_shortfall > 0:
+        logger.error(
+            "Exiting non-zero: %d milestone stage(s) were simulated but never "
+            "written.",
+            stage_shortfall,
+        )
         return 1
 
     return 0

@@ -14,7 +14,278 @@
 # grove, so this only affects single-tree contexts.
 
 [surround]
-radii = [0.0, 8.0, 16.0]  # 0 = no surround; >0 = shell distance (meters)
-density = 0.5             # surrounding tree density (0..1), shared by all radii
-height = 1.0              # shell height (meters), shared by all radii
-grow = true               # shell grows together with the tree
+radii = [8.0, 16.0]  # 0 = no surround; >0 = shell distance (meters)
+# Owner-set 2026-09-11: back to 8 m / 16 m. r05 was simply too tight -- it ran
+# short of the height ladder on every species measured (beech stopped at h20,
+# spruce and fir at h15), which forced the 'accept fewer models' compromise on
+# the whole catalog. 11 species x 5 stages x 2 radii = 110 models, down from a
+# nominal 165.
+#
+# r08 has a second advantage: [surround.density_per_species] below was FITTED at
+# r08, so those values now apply directly to the tightest radius instead of
+# being transplanted to one they were never measured at.
+#
+# r32 was considered and dropped. grove-preset-reference.md documents
+# surround_distance over 4-10 m; 16 m is already beyond it and 20 m was
+# measured as only weakly competing. A 32 m shell would likely be
+# indistinguishable from open-grown, i.e. the same 'radii do not discriminate'
+# failure at the wide end -- and a weaker shell means a bigger tree, which is
+# the expensive direction.
+#
+# Superseded note: # Owner-set 2026-09-09: the dataset matrix is 5 m / 10 m / 20 m, replacing the
+# earlier [0.0, 8.0, 16.0]. 11 species x 5 stages (h05..h25) x 3 radii = 165.
+#
+# There is deliberately NO r00 open-grown variant. r20 serves that role: the
+# note below already records that the weaker r16 shell came out nearly
+# indistinguishable from r00, and 20 m is weaker still, so the matrix covers
+# "5 m, 10 m, 20 m or open grown" in one set rather than needing a fourth.
+#
+# NOTE: 10 m and 20 m are beyond the 4-10 m range that
+# docs/reference/grove-preset-reference.md documents for surround_distance.
+# Grove accepts them, but at 20 m the shell's effect is weak -- treat r20 as the
+# weakly-competed / effectively open-grown end of the ladder, never as a shaded
+# case.
+#
+# CONSEQUENCE, do not skip: [surround.density_per_species] below was calibrated
+# at r08, and those values are per-species THRESHOLDS rather than a gradient
+# (see the note there). They do not transfer to r05/r10/r20 by interpolation and
+# must be re-swept before dataset production. Same for the drop_shaded /
+# shade_branches trials in config/preset_patches.json, which were tuned at r05
+# and set the crown envelope this table then fills.
+density = 0.75            # surrounding tree density (0..1), shared by all radii
+# OWNER DECISION 2026-09-15 (afternoon): ONE density, 0.75, for every species and
+# radius -- the value the 2026-08-13 catalog was grown at. The per-species and
+# per-radius thresholds below moved crown shape only marginally against the
+# seed-to-seed noise, so they are retired; a tree that collapses under 0.75 gets
+# a different SEED, not a different density. The tables below are kept empty
+# (their last values in comments) so the resolver falls through to this value.
+# History, because the value has moved twice for different reasons. It was
+# briefly lowered to 0.5 because 0.75 looked lethal -- norway_spruce collapsing
+# 18.1 -> 4.5 m at r08 and european_oak reduced to a bare whip. Both were
+# actually caused by `grow = true` below, not by density, so 0.75 was restored
+# 2026-08-24 once the shell was fixed: all 11 species hold 25 m at 0.75 with no
+# preset patches at all.
+#
+# Lowered again to 0.45 on 2026-08-25, for the reason recorded at
+# [surround.grow_per_species] below: 0.40-0.50 is european_oak's realistic band,
+# and above ~0.6 it becomes a whip.
+#
+# A single global is a poor fit for the whole set, which is what
+# [surround.density_per_species] below exists for. Do not tune this number for
+# one species -- measure with `growpy-crown-metrics` and override that species
+# instead.
+#
+# Shell height, and whether the shell tracks the tree's own height.
+#
+# These two were 0.5 / true and that combination is what caused every
+# "structural collapse" chased through 2026-08-22..24. With grow = true the
+# neighbour shell rises with the tree FOREVER: no matter how tall it gets, it is
+# still shaded exactly as much as when it was a sapling. No tree can ever become
+# dominant, so under sustained shade it eventually loses structure outright.
+#
+# A/B on norway_spruce at r08, same seed (512), same density, same calibration,
+# nothing differing but these two keys (data/tmp/run25m/export_mutation_test.py):
+#
+#     height 0.5, grow = true   ->  reached 15 m, peak 19.91 -> final 1.07 m
+#                                   (109-cycle stall: collapse)
+#     height 6.5, grow = false  ->  reached 25.0 m, held 25.10, zero stalls
+#
+# 6.5 / false is what every Grove preset ships. The preset author's model is a
+# stand of fixed-height neighbours that a dominant tree overtops -- which is
+# also what happens in a real stand, and it produces the classic forest form:
+# early suppression self-prunes the lower stem, then the crown develops free
+# above the neighbours. That is the silhouette we want and could not get by
+# tuning drop rates.
+#
+# Everything built on top of the old values is therefore suspect. The
+# drop_decay/drop_weak ramps in config/preset_patches.json existed only to keep
+# trees alive under a shell they could never escape, and they did it by
+# suppressing self-pruning -- which is what produced the opaque, bole-less
+# crowns in the 2026-08-23 dataset. Re-screen before trusting any of them.
+height = 6.5              # shell height (meters), shared by all radii
+grow = true               # every species: the shell rises with the tree
+freeze_height = 0.0       # 0 = never; per-species table [surround.freeze_height_per_species] below
+# OWNER DECISION 2026-09-15 (afternoon): the shell grows with the CONIFERS too,
+# as it did for the 2026-08-13 catalog (radii [0, 8, 16], density 0.75, grow =
+# true, h05..h15), which is the in-stand conifer look the dataset wants: a
+# narrow crown (crown diameter / height 0.13-0.20 at r08) with a lifted base.
+# The static shell (below, restored 2026-09-14) gave a bole too but a crown
+# 0.27-0.43 wide for its height. Known cost: under a growing 0.75 shell a
+# conifer can collapse on the way to h25 (3bdec66's A/B: spruce 19.9 -> 1.1 m at
+# r08) -- above h15 that is where a seed change or a lower density is needed.
+#
+# WHAT THE WALL STANDS FOR (owner definition, 2026-09-15): the neighbours' CROWN
+# EDGE, not their stems. A crown may reach the shell; only a crown whose p95
+# radius exceeds the shell distance is out of place. The shell is shade, not an
+# obstacle -- at r08 ash puts 17 % of its twig points past the 8 m wall and
+# nothing in Grove or the export clips them -- so this is a measurement rule
+# (growpy-summarise-surround-density prints WALL(...) per cell), not a physical
+# one. The radii are chosen against it.
+# RESTORED 2026-09-14. Commit 85fe679 shipped this as false plus the
+# [surround.grow_per_species] table below; commit 9047c4f (crown-geometry
+# calibration) flipped it to true and DELETED the table, leaving only the
+# explanatory comment below stranded. That commit message documents density and
+# add_regenerate at length and never mentions grow.
+#
+# grow and height are ALTERNATIVES. From Grove's own Python API documentation:
+#
+#     if surround_grow: height = grove_properties.height   # the TREE's height
+#     else:             height = grove_properties.surround_height
+#
+# grove_properties.height is a HIDDEN FloatProperty Grove writes every cycle, so
+# with grow = true the shell tracks the tree forever and `height` above is never
+# read -- the Blender add-on greys the field out (Panels.py:787).
+#
+# Re-measured 2026-09-14 at [8, 16], same seed and cap, static shell h = 6.5:
+#   norway_spruce  full h05..h20 ladder at BOTH radii (8 cells vs 7), and
+#                  Grove's own stem separates by radius at every stage
+#   silver_birch   r08 dies outright -- 4 cells, all r16
+# Static suits the conifer, growing suits the broadleaf: exactly the split
+# 85fe679 encoded.
+#
+# A STATIC SHELL MUST BE LOW ENOUGH TO OVERTOP. Bracketing height at
+# 6.5 / 13 / 20 / 25 m with grow = false gave cells 8 / 2 / 0 / 0 for spruce and
+# 4 / 0 / 1 / 0 for birch: at 20 m and above the tree never establishes
+# ("Growth plateau detected ... Stopping at cycle 43", 0 assemblies). A shell
+# taller than the tree is permanent suppression -- the same collapse as the
+# 2026-08-22..24 arms. The forest form comes from OVERTOPPING a fixed canopy, so
+# 6.5 (Grove's own preset default) is the working value, not a larger one.
+
+# Per-species override of `grow`. Conifers and broadleaves respond so
+# differently to a growing shell that one value cannot serve both. Measured
+# 2026-08-25 at r08, crown width as a fraction of that species' own open-grown
+# r00 crown (data/tmp/run25m/export_mutation_test.py, confirmed against the
+# rendered icons):
+#
+#   european_oak, grow = true   d0.40 -> 0.52   d0.50 -> 0.64   realistic
+#   norway_spruce, grow = true  d0.20 -> 0.39 ... d0.75 -> 0.22, bottlebrush at
+#                               EVERY density -- foliage hugging the stem with
+#                               no conical taper, never a narrow forest crown
+#
+# A conifer's monopodial architecture (add_only_on_end = 1.0, whorled laterals)
+# collapses laterally under sustained shade rather than narrowing, so it needs
+# the static shell. Broadleaves rebuild laterally and narrow properly.
+#
+# density is 0.45: oak's realistic band is 0.40-0.50, and above ~0.6 it becomes
+# a whip with the crown confined to the top quarter.
+
+# Per-species shell density, calibrated 2026-08-28 against published forest
+# allometry by measuring the EXPORTED assemblies (growpy-crown-metrics reads the
+# TwigInstances PointInstancer, so these are real metres of foliage envelope,
+# not an icon proxy).
+#
+# Targets: crown diameter / height ~0.22 for spruce and ~0.30 for beech, and a
+# crown ratio of 0.52-0.68 -- Sharma et al. 2017, Silva Fennica 51(5):1740
+# (n=5526 spruce, 5666 beech) and Silva Fennica's companion HCB model in PLOS
+# One 12(10):e0186394. Open-grown r00 is deliberately NOT held to these.
+#
+# One global density cannot work. Each species has a THRESHOLD, not a gradient,
+# and the thresholds span 0.38 to 0.90: at a shared 0.45 douglas_fir was already
+# past its cliff (crown ratio 0.39) while european_beech had not reached its own
+# (0.93). That is exactly why earlier rounds produced "some species slimmer,
+# others untouched".
+#
+# 44 coarse arms + 20 refinement arms, all through the real pipeline. Sweep data
+# in data/tmp/run25m/sweep_out/.
+# RE-SWEPT 2026-09-11..14 at [8.0, 16.0] and RE-FITTED 2026-09-15 (values in the
+# table below; the 2026-08-28 numbers are kept in the per-line comments). The
+# 2026-08-28 values had never been replaced by the sweep and drove the
+# 2026-09-14 production run for all 11 species.
+[surround.grow_per_species]
+# Empty since 2026-09-15 (afternoon): grow = true for every species, see above.
+# The 85fe679 / ada7940 split it replaced was: the 7 broadleaves true, the 4
+# conifers (douglas_fir, norway_spruce, scots_pine, silver_fir) false.
+
+# Height (m) at which a GROWING shell stops rising and becomes a static wall
+# the tree overtops from then on; 0 = never (the shell tracks the tree forever).
+# This is the release a real canopy gives an emerging crown, and it is what the
+# conifers need to reach h20/h25 under grow = true: measured 2026-09-15 at
+# density 0.75, norway_spruce / silver_fir stop at exactly h15 and douglas_fir
+# at h20 with three different seeds (512, 999, 7 -- identical stop, identical
+# DBH; the cycles speed up ~50x once the crown folds), so the collapse is
+# structural, not seed noise, and the owner's reseed rule cannot fix it. With
+# the shell frozen at 15 m the tree stands in a fixed 15 m canopy, the stage
+# the static-shell A/B (above) showed runs the full ladder. Verified 2026-09-15:
+# spruce h05..h25 at both radii, a narrow cone over a long bole. scots_pine
+# runs the full ladder under the growing shell and is deliberately NOT frozen --
+# this is a collapse fix, not a style choice.
+[surround.freeze_height_per_species]
+douglas_fir = 15.0
+norway_spruce = 15.0
+silver_fir = 15.0
+
+# Owner decision 2026-09-15, judged at h15m (the production cap) on r08 crown
+# ratio against Sharma's 0.52-0.68, with the r08 crown BASE sitting above r16's
+# as the radius gate (growpy-summarise-surround-density --gate-axis base). The
+# base is the axis shading physically drives and the one that was sign-stable
+# across every seed and every static-shell conifer cell; crown width flips with
+# the seed on birch and is flat on spruce and pine. Conifers were measured
+# under the static shell (grow = false, h = 6.5) -- their 2026-08-28 values
+# were fitted under a growing shell and do not carry over. Ratio at r08 h15m:
+#
+#   norway_spruce  0.58   silver_fir 0.65   douglas_fir 0.62 (the one arm that
+#   passes on crown base AND crown width)   scots_pine 0.56 (r16 0.66; 0.55 is
+#   also in band at r08 but 0.75 at r16)
+#   silver_birch   0.64 mean over seeds 512 / 999 / 7 (0.56-0.70) -- the ONLY
+#   replicated value; at 0.60 the base does not separate (0/6) and ratio is 0.77
+#   european_beech 0.51   wild_cherry 0.55   small_leaved_linden 0.67
+#   sycamore_maple 0.68   common_ash 0.48 and european_oak 0.36 -- both below
+#   band even at the 0.55 floor, accepted out of band (owner, 2026-09-14)
+#
+# Every broadleaf but birch, and every conifer, is a SINGLE-SEED verdict; crown
+# ratio carries +/-0.15 seed noise (A30). Sweep data: data/tmp/sweep_phase2/
+# (growing shell), data/tmp/sweep_conifer_static/, data/tmp/sweep_birch_seeds/.
+[surround.density_per_species]
+# Crown-separation ladder, 2026-09-16 evening (production run). Gate: the r08
+# crown diameter at least 10 % under r16 at h15 AND h25 (growpy-crown-metrics
+# on the USD assemblies). At 0.75 / grow = true eight species failed, all on
+# h25: the r08 broadleaf pushes one limb THROUGH the 8 m ring of virtual
+# neighbours and spreads in the open light beyond it (ash 27 m, beech 28 m),
+# while the frozen conifers equalise above their 15 m shell. Arms tried per
+# species: static 25 m shell at 0.75 and 0.90 (collapses every seedling to
+# 0-10 m; beech instead grows a 266 cm DBH monster), growing shell at 0.90
+# (passes linden +20 % and douglas fir +23 %, worsens the escape elsewhere),
+# growing shell at 0.60 (wild cherry: -32 % -> -2 %, the best of its arms).
+# Ash, beech, spruce, fir and pine keep 0.75: no arm beat it. Record in
+# data/tmp/production_2026-09-16/promotion.json and the run handover.
+wild_cherry = 0.6
+small_leaved_linden = 0.9
+douglas_fir = 0.9
+# Empty since 2026-09-15 (afternoon): 0.75 for every species, see [surround].
+# Last fitted values (2026-09-15 morning, r08/r16 sweeps, conifers static):
+#   common_ash 0.55  douglas_fir 0.85  european_beech 0.75  european_oak 0.55
+#   norway_spruce 0.95  scots_pine 0.95  silver_birch 0.7  silver_fir 0.95
+#   small_leaved_linden 0.75  sycamore_maple 0.55  wild_cherry 0.75
+
+# --- Per-species shell density AT ONE RADIUS ---------------------------------
+# Overrides [surround.density_per_species] above for a single species/radius
+# cell. Keys are species -> the same rNN label the output directories use
+# (radius_label(): r05, r10, r20). Anything with no entry falls through to the
+# per-species value, then to [surround] density, so only the cells that actually
+# differ need to appear.
+#
+# WHY THIS LEVEL EXISTS. The values above are per-species THRESHOLDS rather than
+# a gradient, and the note there records the consequence: at a shared 0.45,
+# douglas_fir was already past its cliff (crown ratio 0.39) while european_beech
+# had not reached its own (0.93). A threshold is a property of the species AND
+# the shell it is measured against, so it does not transfer from one radius to
+# another by interpolation. The whole table above was fitted at r08 against a
+# [0.0, 8.0, 16.0] matrix and is stale for [5.0, 10.0, 20.0].
+#
+# Added 2026-09-10 so the phase-2 re-sweep has somewhere to put what it measures
+# -- get_surround_density() previously took no radius at all, so a per-radius
+# result was not expressible.
+#
+# KNOWN FIRST CELL: european_beech at r05. Measured 2026-09-09, beech cannot
+# exceed 20 m at r05 and stops one stage short of the h25 ladder. Both cheap
+# explanations are ruled out -- with radii = [5.0] alone (so no sibling grove
+# could hijack the shared plateau counter) it stopped at h20 at plateau_cycles
+# = 5 AND at 20, so quadrupling the stall tolerance changed nothing. Its 0.9 is
+# the joint-highest density in the table, which makes the shell the remaining
+# suspect. Owner accepted a lower r05 density on 2026-09-10; the value comes
+# from the sweep, not from a guess.
+#
+# Fill from the sweep, e.g.:
+#   [surround.density_per_species_radius.european_beech]
+#   r05 = 0.6
+[surround.density_per_species_radius]

@@ -15,6 +15,7 @@ from typing import Any
 
 import bpy
 
+from ..core.twig import IDENTITY_QUAT
 from .skeleton_builder import (
     build_joint_hierarchy,
     calculate_vertex_weights,
@@ -150,17 +151,15 @@ def _add_bark_material(
         tex_reader.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
             f"./textures/{texture_file.name}"
         )
-        tex_reader.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set(
-            "sRGB"
-        )
+        tex_reader.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set("sRGB")
         tex_reader.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
         tex_reader.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
             uv_reader.ConnectableAPI(), "result"
         )
 
-        shader.CreateInput(
-            "diffuseColor", Sdf.ValueTypeNames.Color3f
-        ).ConnectToSource(tex_reader.ConnectableAPI(), "rgb")
+        shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).ConnectToSource(
+            tex_reader.ConnectableAPI(), "rgb"
+        )
 
         # Check for a matching normal map (same stem with _normal suffix)
         normal_candidates = [
@@ -174,23 +173,21 @@ def _add_bark_material(
                 break
 
         if normal_file:
-            normal_reader = UsdShade.Shader.Define(
-                stage, f"{mat_path}/NormalTexture"
-            )
+            normal_reader = UsdShade.Shader.Define(stage, f"{mat_path}/NormalTexture")
             normal_reader.CreateIdAttr("UsdUVTexture")
             normal_reader.CreateInput("file", Sdf.ValueTypeNames.Asset).Set(
                 f"./textures/{normal_file.name}"
             )
-            normal_reader.CreateInput(
-                "sourceColorSpace", Sdf.ValueTypeNames.Token
-            ).Set("raw")
+            normal_reader.CreateInput("sourceColorSpace", Sdf.ValueTypeNames.Token).Set(
+                "raw"
+            )
             normal_reader.CreateOutput("rgb", Sdf.ValueTypeNames.Float3)
-            normal_reader.CreateInput(
-                "st", Sdf.ValueTypeNames.Float2
-            ).ConnectToSource(uv_reader.ConnectableAPI(), "result")
-            shader.CreateInput(
-                "normal", Sdf.ValueTypeNames.Normal3f
-            ).ConnectToSource(normal_reader.ConnectableAPI(), "rgb")
+            normal_reader.CreateInput("st", Sdf.ValueTypeNames.Float2).ConnectToSource(
+                uv_reader.ConnectableAPI(), "result"
+            )
+            shader.CreateInput("normal", Sdf.ValueTypeNames.Normal3f).ConnectToSource(
+                normal_reader.ConnectableAPI(), "rgb"
+            )
 
         # Copy texture files to output textures/ subdirectory
         output_dir = Path(stage.GetRootLayer().realPath).parent
@@ -462,7 +459,12 @@ def _add_twig_instances(
             nrm = p.get("normal", (1.0, 0.0, 0.0))
             scl = float(p.get("scale", 1.0))
 
-            q = _normal_to_quaternion(nrm)
+            # Prefer Grove's own twig quaternion: it carries the growth
+            # direction AND the phyllotactic roll. Deriving the frame from the
+            # direction vector alone has to invent the roll from a world axis.
+            q = p.get("orientation")
+            if not q or len(q) != 4 or tuple(q) == IDENTITY_QUAT:
+                q = _normal_to_quaternion(nrm)
             positions.append(Gf.Vec3f(float(pos[0]), float(pos[1]), float(pos[2])))
             orientations.append(
                 Gf.Quath(float(q[0]), float(q[1]), float(q[2]), float(q[3]))

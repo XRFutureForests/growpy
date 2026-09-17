@@ -311,6 +311,10 @@ python src/growpy/cli/dataset_pipeline.py --pilot
 # All species, step 4 only
 python src/growpy/cli/dataset_pipeline.py --all
 
+# Turn the visual QA renders back on for a tree you are inspecting
+# (both are off by default; a plain run produces only the overview icons)
+python src/growpy/cli/dataset_pipeline.py --all --steps 4 --previews --export-control
+
 # Full pipeline (steps 1-4) for all species
 python src/growpy/cli/dataset_pipeline.py --all --steps all
 
@@ -347,7 +351,17 @@ python src/growpy/cli/dataset_pipeline.py --list
 | `--max-height FLOAT` | Cap tree heights for step 4 (for faster testing) |
 | `--workers INT` | Parallel workers for step 4 (default: min(4, cpu_count)) |
 | `--ingest-yield-tables` | Ingest yield tables from external providers before step 3 calibration |
+| `--clean` | Wipe each step's output directories before running (implies `--clean-store` for step 3) |
 | `--clean-store` | Clear existing yield table store before re-ingestion (requires `--ingest-yield-tables`) |
+| `--calibrate` / `--no-calibrate` | Override step 3 calibration for this run only (default: from TOML) |
+| `--pve` / `--no-pve` | Override step 4 PVE preset generation (default: from TOML) |
+| `--wind` / `--no-wind` | Override step 4 wind-data generation (default: from TOML) |
+| `--previews` / `--no-previews` | Preview PNG: branch architecture from the skeleton. Visual QA aid, **off by default** |
+| `--export-control` / `--no-export-control` | Export-control PNG: mesh edges + skeleton joints, a QA aid nothing downstream consumes. **Off by default** -- ~15% of a full run |
+| `--icons` / `--no-icons` | Override step 4 icon PNG generation (default: from TOML). `dataset_overview.md` and `dataset_overview.csv` are built from these |
+| `--profile` / `--no-profile` | Override step 4 profiling (default: from TOML). Prints a per-stage timing report from each species subprocess |
+| `-v`, `--verbose` | INFO-level logging; the pipeline logs only warnings and errors otherwise |
+| `-q`, `--quiet` | Suppress INFO-level logging (warnings and errors only) |
 
 ## Diagnostic Tools
 

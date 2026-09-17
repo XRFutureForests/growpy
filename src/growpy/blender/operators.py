@@ -6,6 +6,7 @@ from pathlib import Path
 
 import bpy
 
+from ..core.twig import IDENTITY_QUAT
 from . import grove_extract, twig_converter, usd_export
 
 
@@ -73,14 +74,19 @@ def _extract_twig_placements(model) -> dict[str, list[dict]]:
         position = (loc[base], loc[base + 1], loc[base + 2])
         normal = (dirs[base], dirs[base + 1], dirs[base + 2])
 
-        if orientations and base + 2 < len(orientations):
+        # get_twig_orientations() is a unit QUATERNION per twig -- 4 floats in
+        # (w, x, y, z) order, not a 3-float up vector. Indexing it at stride 3
+        # yields misaligned, non-unit garbage.
+        quat_idx = twig_idx * 4
+        if orientations and quat_idx + 3 < len(orientations):
             orientation = (
-                orientations[base],
-                orientations[base + 1],
-                orientations[base + 2],
+                orientations[quat_idx],
+                orientations[quat_idx + 1],
+                orientations[quat_idx + 2],
+                orientations[quat_idx + 3],
             )
         else:
-            orientation = (0.0, 0.0, 1.0)
+            orientation = IDENTITY_QUAT
 
         bone_id = None
         if bone_ids:

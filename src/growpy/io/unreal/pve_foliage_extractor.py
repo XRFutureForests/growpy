@@ -42,36 +42,30 @@ def grove_to_pve_vector(grove_vec: tuple[float, float, float]) -> list[float]:
     return [x, z, y]
 
 
-def quaternion_to_up_normal(
+def quaternion_to_pve_up(
     quat: tuple[float, float, float, float],
-) -> tuple[list[float], list[float]]:
-    """
-    Convert quaternion to up and normal vectors for PVE.
+) -> list[float]:
+    """PVE up vector for a Grove twig frame quaternion.
 
     Args:
-        quat: (x, y, z, w) quaternion
+        quat: Grove's twig frame quaternion, **(w, x, y, z)** scalar-first --
+            the order ``TwigPlacement.orientation`` and ``IDENTITY_QUAT`` use.
 
     Returns:
-        Tuple of (up_vector, normal_vector) in PVE format
+        [x, z, y] up vector in PVE format, Y-up.
+
+    Grove's twig frame carries the growth direction on +X (see
+    ``twig._quat_forward``) and builds +Z perpendicular to it from the parent
+    branch axis, so +Z is the frame's up. This rotates the local +Z axis by the
+    quaternion, matching ``_quat_forward``'s formulation for +X.
     """
-    try:
-        from scipy.spatial.transform import Rotation
-    except ImportError:
-        # Fallback - use default up/normal
-        return [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]
-
-    # Convert to rotation matrix
-    rot = Rotation.from_quat([quat[0], quat[1], quat[2], quat[3]])
-
-    # Extract up and normal in Grove space
-    up_grove = rot.apply([0, 0, 1])  # Local Z
-    normal_grove = rot.apply([0, 1, 0])  # Local Y
-
-    # Convert to PVE space
-    up_pve = grove_to_pve_vector(up_grove)
-    normal_pve = grove_to_pve_vector(normal_grove)
-
-    return up_pve, normal_pve
+    w, x, y, z = quat
+    up_grove = (
+        2.0 * (x * z + w * y),
+        2.0 * (y * z - w * x),
+        1.0 - 2.0 * (x * x + y * y),
+    )
+    return grove_to_pve_vector(up_grove)
 
 
 def get_twig_name_for_species(
@@ -244,7 +238,7 @@ def extract_foliage_data(
                 # TwigPlacement has: type, position, normal, orientation, scale, bone_id, branch_id
                 position = placement.position  # Tuple (x, y, z)
                 normal = placement.normal  # Tuple (x, y, z) - facing direction
-                orientation = placement.orientation  # Tuple (x, y, z) - up vector
+                orientation = placement.orientation  # (w, x, y, z) quaternion
                 scale_value = placement.scale
 
                 # Skip dead twig placements — no dedicated dead twig assets
@@ -287,7 +281,7 @@ def extract_foliage_data(
 
                 # Convert direction vectors (no scaling, just axis swap)
                 pve_normal = grove_to_pve_vector(normal)
-                pve_up = grove_to_pve_vector(orientation)
+                pve_up = quaternion_to_pve_up(orientation)
 
                 # Normalize the normal (facing direction) for instancer_N
                 nx, ny, nz = pve_normal

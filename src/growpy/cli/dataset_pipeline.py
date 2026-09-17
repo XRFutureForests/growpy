@@ -3,7 +3,8 @@
 
 Orchestrates the four-step dataset workflow for all species:
   Step 1 (prepare-assets):   copy Grove 2.3 assets for all species
-  Step 2 (convert-twigs):    convert .blend twigs to USD for all species
+  Step 2 (convert-twigs):    convert .blend twigs to USD for all species, then
+                             bake each species' compound foliage parts
   Step 3 (create-models):    run growth simulation and calibration for all species
   Step 4 (generate-forest):  generate tree meshes per species (one subprocess each)
 
@@ -25,6 +26,11 @@ Usage:
     # Generate CSVs then run only step 4 for pilot species:
     python src/growpy/cli/dataset_pipeline.py --generate-csvs
     python src/growpy/cli/dataset_pipeline.py --pilot --steps 4
+
+    # The visual QA renders (branch preview, mesh edges + skeleton joints) are
+    # off by default -- turn them on when inspecting a specific tree:
+    python src/growpy/cli/dataset_pipeline.py --all --steps 4 \
+        --previews --export-control
 
 See docs/dataset-specification.md for the step-by-step production guide.
 """
@@ -48,6 +54,7 @@ from growpy.pipelines.dataset_job_planner import (
 from growpy.pipelines.run_summary import generate_run_summary
 from growpy.pipelines.step_runner import (
     check_environment,
+    run_compound_bake,
     run_parallel_step4,
     run_species_step4,
     run_step123,
@@ -61,8 +68,8 @@ def _clean_step(step: int) -> None:
     """Remove output directories for a pipeline step before re-running.
 
     Step 1: data/assets/{presets,textures,twigs,pve_configs}/
-    Step 2: *.usda files under data/assets/twigs/
-    Step 3: data/assets/growth_models/ + yield table store
+    Step 2: *.usda files under data/assets/twigs/, data/assets/compound_parts/
+    Step 3: data/assets/growth_models/
     Step 4: data/output/forest/
     """
     from growpy.config.paths import get_assets_directory, get_data_directory
@@ -85,15 +92,20 @@ def _clean_step(step: int) -> None:
                 removed += 1
             if removed:
                 logger.info("Cleaned %d .usda files from %s", removed, twigs_dir)
+        compound_dir = assets / "compound_parts"
+        if compound_dir.exists():
+            shutil.rmtree(compound_dir)
+            logger.info("Cleaned %s", compound_dir)
     elif step == 3:
         models_dir = assets / "growth_models"
         if models_dir.exists():
             shutil.rmtree(models_dir)
             logger.info("Cleaned %s", models_dir)
-        store_dir = data / "input" / "yield_tables" / "store"
-        if store_dir.exists():
-            shutil.rmtree(store_dir)
-            logger.info("Cleaned yield table store: %s", store_dir)
+        # The yield table store under data/input/ is NOT cleaned here. Nothing
+        # in a plain --clean run repopulates it -- step 3 only re-ingests when
+        # --ingest-yield-tables is given -- so deleting it would leave
+        # calibration running against an empty store. When ingestion does run,
+        # it clears the store itself first (see _ingest_yield_tables(clean=)).
     elif step == 4:
         forest_dir = data / "output" / "forest"
         if forest_dir.exists():
@@ -133,6 +145,7 @@ def main():
             "  %(prog)s --pilot --dry-run\n"
             "  %(prog)s --all --steps all\n"
             "  %(prog)s --species 'European Beech' --steps 4 --max-height 15\n"
+            "  %(prog)s --all --steps 4 --previews --export-control\n"
         ),
     )
 
@@ -252,13 +265,62 @@ def main():
         "--previews",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Override step 4 preview/export-control PNGs this run (default: TOML).",
+        help=(
+            "Generate step 4 preview PNGs (branch architecture from the "
+            "skeleton). Visual QA aid, off by default -- dataset_overview.md "
+            "is built from --icons, not from these."
+        ),
+    )
+    parser.add_argument(
+        "--export-control",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Generate step 4 export-control PNGs (mesh edges + skeleton "
+            "joints). QA aid, off by default: nothing downstream reads it and "
+            "it is 15.4%% of a full dataset run, roughly 3x the preview."
+        ),
     )
     parser.add_argument(
         "--icons",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="Override step 4 icon PNGs this run (default: from TOML).",
+        help=(
+            "Override step 4 icon PNGs this run (default: from TOML). "
+            "Inspection aids only -- see --previews."
+        ),
+    )
+    parser.add_argument(
+        "--icon-components",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Override step 4 icon-component PNGs this run (default: from "
+            "TOML). Adds separate branches/twigsonly/skeleton/merged PNGs "
+            "per icon view. Only meaningful when --icons is also on."
+        ),
+    )
+    parser.add_argument(
+        "--icons-only",
+        action="store_true",
+        help=(
+            "Fast path for parameter tuning / visual debugging: step 4 writes "
+            "only icon PNGs (branches + twigs, no skeleton) straight from the "
+            "Grove model per species, skipping USD/Nanite/wind/PVE/previews/ "
+            "export-control and the calibration/DBH/height-scaling and "
+            "bone-tagging work those need. Overrides --previews/--export-control/ "
+            "--pve/--wind (all skipped regardless)."
+        ),
+    )
+    parser.add_argument(
+        "--compound",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "After step 2's twig conversion, bake every species' compound "
+            "foliage parts (growpy-bake-compound-parts --dataset) for the PVE "
+            "palette. On by default; --no-compound converts twigs only."
+        ),
     )
     parser.add_argument(
         "--clean",
@@ -280,8 +342,12 @@ def main():
     )
     parser.add_argument(
         "--profile",
-        action="store_true",
-        help="Enable profiling to track execution time of each processing step",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Override step 4 profiling this run (default: from TOML). Prints a "
+            "per-stage timing report from each species subprocess."
+        ),
     )
 
     args = parser.parse_args()
@@ -292,13 +358,18 @@ def main():
     # Provenance: make this run's TOML-override switches visible in the log.
     # None means "use config/*.toml" for that switch.
     logger.info(
-        "Effective switches: calibrate=%s pve=%s wind=%s previews=%s icons=%s "
-        "(None = from TOML)",
+        "Effective switches: calibrate=%s pve=%s wind=%s previews=%s "
+        "export_control=%s icons=%s icon_components=%s profile=%s "
+        "icons_only=%s (None = from TOML)",
         args.calibrate,
         args.pve,
         args.wind,
         args.previews,
+        args.export_control,
         args.icons,
+        args.icon_components,
+        args.profile,
+        args.icons_only,
     )
 
     # --generate-csvs: generate CSVs, then continue or exit
@@ -398,6 +469,12 @@ def main():
             if not ok:
                 logger.error("Pipeline aborted at step %d.", step)
                 raise SystemExit(1)
+            # Step 2's second stage: weld the twigs just converted into the
+            # compound foliage parts the PVE palette is built from (XRFF-463).
+            if step == 2 and args.compound:
+                if not run_compound_bake(dry_run=args.dry_run, verbose=args.verbose):
+                    logger.error("Pipeline aborted at step 2 (compound parts).")
+                    raise SystemExit(1)
 
         else:  # step 4
             workers = max(1, args.workers)
@@ -418,7 +495,11 @@ def main():
                     pve=args.pve,
                     wind=args.wind,
                     previews=args.previews,
+                    export_control=args.export_control,
                     icons=args.icons,
+                    icon_components=args.icon_components,
+                    profile=args.profile,
+                    icons_only=args.icons_only,
                 )
             else:
                 failed = []
@@ -432,7 +513,11 @@ def main():
                         pve=args.pve,
                         wind=args.wind,
                         previews=args.previews,
+                        export_control=args.export_control,
                         icons=args.icons,
+                        icon_components=args.icon_components,
+                        profile=args.profile,
+                        icons_only=args.icons_only,
                     )
                     elapsed_by_species[species] = time.monotonic() - t0
                     if not ok:

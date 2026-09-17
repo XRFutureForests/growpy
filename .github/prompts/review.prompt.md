@@ -54,7 +54,6 @@
 ### 8. **Git & Deployment**
 - [ ] Changes are properly committed
 - [ ] Commit messages are meaningful
-- [ ] GitLab CI pipeline will pass
 - [ ] Docker build/deployment considerations
 
 ## Review Process

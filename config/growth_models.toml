@@ -14,7 +14,7 @@ seeds = 1
 height_threshold = 0.01
 # Stop after N consecutive cycles without significant growth (1-20)
 # Lower values = earlier termination, prevents wasting time on plateaued trees
-max_cycles_without_growth = 15
+max_cycles_without_growth = 5
 # Maximum simulation time per seed in seconds (10-3600)
 # Increase for complex species; prevents stuck simulations
 # Safety net only -- max_height below is the primary, cheap stopping signal.
@@ -25,14 +25,25 @@ max_cycles_without_growth = 15
 # decelerates per the yield table and is cheap regardless (~13min for all
 # 11 species combined in that same run) -- the height target below is what
 # keeps Pass 1 bounded without relying on the timeout to do the work.
-timeout = 400
+timeout = 300
 # Target height in meters for calibration's simulations. Growth stops early
 # once reached, instead of always running `cycles` cycles.
 # 0 = no target -- DO NOT use 0 for full dataset runs (see timeout comment
 # above); a real target here is the primary time-bounding mechanism.
 # Independent of [forest] max_height in forest.toml (the step 4 export height
 # cap): that setting must NOT silently truncate calibration too.
-max_height = 20
+#
+# 25 to match [forest] max_height in forest.toml: calibrating over exactly the
+# exported height range means the height-DBH fit is never extrapolated in
+# production. The trimmed cycles are the expensive ones -- per-cycle cost grows
+# superlinearly with tree size (Douglas fir: 1.1 s/cycle early, 30+ s/cycle past
+# 15 m; it reached 15 m at cycle 42 but 20 m only at 57) -- so raising this is
+# not free. Raise it together with the forest cap whenever taller trees are
+# exported, so calibration always covers at least the export range.
+#
+# 2026-08-22: 15 -> 25 for the h05..h25 dataset ladder. Watch `timeout` below:
+# Pass 1 is uncalibrated and now has 10 more metres to climb per seed.
+max_height = 25
 
 # --- Growth-pacing calibration (integrated into create_growth_models.py) ---
 # Aligns Grove's growth SPEED to a yield table's height-at-age curve. Costs two
@@ -46,46 +57,69 @@ max_height = 20
 # the allometry artifact instead (growpy-build-allometry), which is fitted from
 # yield table columns alone and needs no simulation.
 [calibration]
+# Was enabled 2026-08-05 to test growth pacing (uncalibrated Douglas fir reached
+# 20 m only at cycle 64 and carried 86.7 cm DBH against 18.3 cm at 19.75 m in
+# the si1 yield table). That reasoning still holds for the CSV -> plot path; it
+# does not hold for dataset production, and the cost turned out to be severe:
+# Disabled 2026-08-24. The yield-table grow_length pacing DESTROYS two species.
+# Screened at r08, corrected shell, no preset patches
+# (data/tmp/run25m/export_mutation_test.py), peak vs final height:
+#
+#     calibrated     silver_birch 17.9 -> 0.8    wild_cherry 19.4 -> 1.2
+#     uncalibrated   silver_birch 25.1 -> 25.1   wild_cherry 25.4 -> 25.4
+#
+# and it is not the surround: silver_birch collapses the same way at r00 with no
+# shell at all (15.81 -> 1.17 calibrated, holds 25.09 uncalibrated). Its pacing
+# array is also the shortest in the set at 75 cycles against a 160-cycle run.
+# Uncalibrated, 11/11 species hold 25 m and the worst stall across all of them
+# is 4 cycles, inside [forest] plateau_cycles = 5.
+#
+# Little is lost. This flag only paces HEIGHT during simulation, and dataset
+# production captures at fixed milestones (h05..h25), so the exported heights are
+# the same either way. DBH is realised at export from the yield-table allometry
+# artifact (forest.toml dbh_from_allometry, fitted by growpy-build-allometry with
+# no Grove simulation), which is explicitly documented to stay useful with
+# calibration off -- so yield-table fidelity survives where it actually lands.
+# The dataclass default for calibration_enabled is False for the same reason.
 enabled = false
-# Align grove height growth to yield table height curve.
-# Applies per-cycle grow_length multipliers AND any generic "{param}_curve"
-# ramp overrides (see docs/reference/grove-preset-reference.md) from a
-# species' seed.json during simulation (step 4). Independent of enabled
-# above -- step 4 checks this flag directly and loads whatever a species'
-# seed.json carries, calibration-derived or not.
-# Must be true for the drop_decay_curve/drop_weak_curve ramps added to
-# norway_spruce/silver_fir/silver_birch to take effect (see those
-# seed.json files) -- without a gradual ramp-in, those species' static
-# drop_decay/drop_weak values combine with Grove's own growth-deceleration
-# to collapse the tree's structure (confirmed via per-cycle node-count
-# tracing: healthy growth to near-target height, then a multi-cycle node
-# crash with no recovery) before reaching the 20m dataset target.
-# Safe to leave true now that fresh presets (data/assets/presets/*.seed.json)
-# carry no baked-in _yield_table_calibration data -- prepare_assets.py's
-# copy-skip guard (see its comment) preserves both that block and any
-# "_curve" key, so a clean re-copy won't reintroduce the old
-# decelerating-grow_length bug this flag was previously turned off to avoid.
-align_height = true
+# Align grove height growth to the yield table height curve. Applies the
+# per-cycle grow_length multipliers AND any generic "{param}_curve" ramp
+# overrides from a species' seed.json during simulation (step 4).
+#
+# Disabled 2026-08-24, together with `enabled` above. These two are INDEPENDENT
+# and that is a trap: `enabled` only governs whether step 3 COMPUTES the
+# calibration, while this flag governs whether step 4 APPLIES the per-cycle
+# arrays already sitting in each seed.json. Setting enabled = false alone
+# changed nothing -- step 4 kept logging "cycle arrays: 1 from seed.json
+# (calibration)" for all 11 species, and silver_birch/wild_cherry would have
+# collapsed exactly as before. Both must be false to actually stop the pacing.
+#
+# NOTE the coupling: this flag also gates the generic "{param}_curve" ramp
+# overrides (drop_decay_curve etc.). With it false, a ramp added to
+# config/preset_patches.json will NOT take effect. There are deliberately no
+# ramps right now -- 11/11 species hold 25 m without them -- but if one is ever
+# needed again this must go back to true, and the pacing arrays must then be
+# stripped from the affected seed.json instead.
+align_height = false
 # DBH alignment moved to [export] dbh_from_allometry in forest.toml -- it is
 # independent of calibration, since its input is the allometry artifact rather
 # than a simulated curve. `align_dbh` here is still read as a deprecated alias.
 
-# Directory for local yield table CSVs.
-# Format: age,height,dbh (age in years, height in meters, dbh in centimeters)
-# File naming: <standardized_species_name>.csv (e.g., norway_spruce.csv)
-yield_tables_dir = "data/input/yield_tables"
 # Generate comparison plots (even without calibration)
 # Plots are saved alongside growth models in data/assets/growth_models/<species>/
 plot = true
-# Yield table resolution order per species:
-#   1. Local CSV in yield_tables_dir (by standardized name)
-#   2. Ingested store (pylometree-ingest output in yield_sources.store_dir)
-# Species without yield data use uncalibrated Grove output for both height and DBH.
 
-# --- Yield table store ---
-# Pre-ingested yield tables from pylometree providers.
-# Run: pylometree-ingest --store-dir data/input/yield_tables/store
+# --- Yield table sources ---
+# Two yield-data sources, tried in order per species. Species without yield
+# data in either source use uncalibrated Grove output for both height and DBH.
 [yield_sources]
+# 1. Local CSV directory (by standardized species name).
+# Format: age,height,dbh (age in years, height in meters, dbh in centimeters)
+# File naming: <standardized_species_name>.csv (e.g., norway_spruce.csv)
+yield_tables_dir = "data/input/yield_tables"
+# 2. Ingested store, used when no local CSV matches -- pre-ingested yield
+# tables from pylometree providers.
+# Run: pylometree-ingest --store-dir data/input/yield_tables/store
 # Directory for the normalized yield table store (ingested CSVs + manifest)
 store_dir = "data/input/yield_tables/store"
 # Preferred region filter for table selection (case-insensitive exact match)
@@ -101,3 +135,44 @@ preferred_region = ""
 # 0 = no preference (auto-select by simulated grove h50)
 preferred_site_index = 0
 
+# 3. Source documents for the providers that parse a local file, keyed on the
+# pylometree provider name (`--list-providers`). Paths are relative to the
+# project root.
+#
+# MUST STAY LAST in this file: a TOML sub-table captures every key that follows
+# it, so any [yield_sources] key placed after this would land inside it instead.
+#
+# Why keyed per provider: every PDF provider reads the SAME config key
+# ("pdf_path"), so a single shared value could only ever feed one of them. Before
+# 2026-09-09 no path was passed at all and all five silently logged "PDF not
+# found: ." and ingested nothing -- which is why the store held 13 species and no
+# amount of re-running --ingest-yield-tables changed that.
+#
+# The classical German tables (Wiedemann/Schober/Gehrhardt/Wimmenauer, shipped
+# via ForestElementsR) cover the commercially dominant species only, so three
+# dataset species have no table of their own: Acer pseudoplatanus, Tilia cordata
+# and Prunus avium. Only the cherry gap is closed by a document.
+#
+#   pryor_cherry     FC Bulletin 75, Pryor 1988 -- wild cherry (Prunus avium).
+#                    Yields 2 measured yield classes (age 20-80, top height
+#                    12.5-24.7 m, DBH 12-49 cm).
+#
+# Acer pseudoplatanus and Tilia cordata keep the officially prescribed surrogate
+# tables instead (ash and beech respectively -- see pylometree's SPECIES_PROXIES
+# for the Bavarian State Forest assignment that sanctions them). Documents tried
+# and REJECTED for those two, so nobody repeats the search:
+#
+#   FC Booklet 48, both editions -- carries no per-species yield tables at all.
+#     The 1981 Edwards & Christie booklet is 32 pages of guidance with a single
+#     worked ash example; the 2016 "Forest Yield" handbook describes the model,
+#     whose tables ship as software. The printed British tables are in FC
+#     Booklet 34 (Hamilton & Christie), which we do not have.
+#   Brandenburg "Bergahorn im nordostdeutschen Tiefland" Ertragstafel -- an
+#     Oberhoehenbonitaet publication: height over age by site class, with no DBH
+#     column, so it cannot give a height-DBH relation.
+#   AFZ/DerWald Ertragstafelauszuege (2024 calendar extract) -- holds 12 species
+#     (Eiche, Roteiche, Birke, Erle, Esche, Pappel, Buche, Fichte, Kiefer,
+#     Tanne, Douglasie, Laerche). Winterlinde is NOT among them, despite the
+#     provider description claiming linden.
+[yield_sources.documents]
+pryor_cherry = "data/input/yield_documents/fcbu075_wild_cherry.pdf"

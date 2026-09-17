@@ -44,10 +44,20 @@ GROWPY_CONFIG=/path/to/custom/config python -m growpy.cli.generate_forest
 | `surround.toml` | `[surround]` | step 3 & 4 (light-competition shell) |
 | `unreal.toml` | `[unreal]` | Unreal Engine import script generation |
 | `helios.toml` | `[helios]`, `[helios.simplification]` | Helios++ LiDAR export |
+| `pve_calibration.toml` | `[pve_calibration]` | PVE foliage graph authoring (read on its own, **not** via the merge -- see below) |
 | `tree_asset_lookup.csv` | -- | species name/preset/twig/growth-model resolution |
 
 Regenerate a fresh starter set (without touching files that already exist)
 with `growpy-init-config`; pass `--force` to overwrite.
+
+### One exception to the merge
+
+`pve_calibration.toml` is read by `growpy.config.pve_calibration` as a named
+file, not through the deep-merge above, because it holds measured data rather
+than settings `GrowPyConfig` knows about. Its section must stay in that file --
+moving `[pve_calibration]` into another `*.toml` will merge fine and then not be
+found. Every density in it was bought with an Export click in the live editor,
+so treat an edit to those numbers as a change to a measurement, not a setting.
 
 ## Editing
 

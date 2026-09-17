@@ -60,6 +60,16 @@ POST_IMPORT_SCRIPTS = [
     "growpy_wind_import.py",
     "growpy_pve_preset_import.py",
     "growpy_pve_graph_builder.py",
+    # Voxelize last of the mesh passes: it rewrites Nanite settings and queues a
+    # rebuild per assembly, so it wants whatever VRAM headroom is left. It was
+    # generated but absent from this list until 2026-09-04, which is why every
+    # imported growpy asset carried shape_preservation=NONE while the MegaPlants
+    # reference assets use VOXELIZE. It keeps a done-marker and resumes, so a
+    # watchdog restart mid-pass is recoverable.
+    "growpy_nanite_voxelize.py",
+    # Prune after voxelize: deletes the SK_*_stems sources, which are ~78% of a
+    # tree folder and have no hard referencers.
+    "growpy_prune_intermediates.py",
 ]
 
 
@@ -150,7 +160,7 @@ if _w:
         "r.D3D12.FreeUnusedResources",
     ):
         try:
-            unreal.KismetSystemLibrary.execute_console_command(_w, _cmd)
+            unreal.SystemLibrary.execute_console_command(_w, _cmd)
         except Exception:
             pass
 try:
@@ -205,7 +215,7 @@ if _w:
         "r.Nanite.Streaming.MaxPendingPages 32",
     ):
         try:
-            unreal.KismetSystemLibrary.execute_console_command(_w, _cmd)
+            unreal.SystemLibrary.execute_console_command(_w, _cmd)
         except Exception:
             pass
 print("CLEANUP COMPLETE")
@@ -339,9 +349,18 @@ def _kill_ue() -> bool:
 
 
 def _launch_ue(editor_exe: str, uproject: str) -> None:
-    """Launch UnrealEditor.exe with the given project, detached from this process."""
+    """Launch UnrealEditor.exe with the given project, detached from this process.
+
+    ``-unattended`` matters: the editor this relaunches has just been killed
+    mid-import, so it comes back holding auto-saved packages and opens the
+    "Restore Packages" modal. That modal blocks Python remote execution, so the
+    watchdog would restart the editor and then never be able to resume into it
+    -- the restart looks like it worked and every following batch fails to
+    connect. The flag suppresses that prompt and any other modal the relaunch
+    would otherwise stop on.
+    """
     subprocess.Popen(
-        [editor_exe, uproject],
+        [editor_exe, uproject, "-unattended"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         close_fds=True,
@@ -382,15 +401,21 @@ class _RamWatchdog:
     scripts -- handles the rest safely.
     """
 
-    def __init__(self, ram_limit: float, poll_interval: float):
+    def __init__(
+        self,
+        ram_limit: float,
+        poll_interval: float,
+        vram_limit: float = 0.0,
+    ):
         self.ram_limit = ram_limit
+        self.vram_limit = vram_limit
         self.poll_interval = poll_interval
         self._stop = threading.Event()
         self._triggered = threading.Event()
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:
-        if self.ram_limit <= 0:
+        if self.ram_limit <= 0 and self.vram_limit <= 0:
             return
         self._stop.clear()
         self._triggered.clear()
@@ -399,19 +424,40 @@ class _RamWatchdog:
 
     def _run(self) -> None:
         while not self._stop.is_set():
-            ram = _get_system_ram()
-            if ram is not None:
-                _, _, pct = ram
-                if pct >= self.ram_limit:
-                    logger.warning(
-                        "  [Watchdog] RAM %.1f%% >= restart threshold %.1f%% -- "
-                        "killing UE before it OOMs",
-                        pct,
-                        self.ram_limit,
-                    )
-                    self._triggered.set()
-                    _kill_ue()
-                    return
+            # VRAM first. Both editor losses on 2026-09-07 were GPU device
+            # removals -- a 2 GB CreateReservedResource refused at ~14.5 GB of a
+            # 23.4 GB budget -- while system RAM sat at 1.2 GB of 47.8 GB. A
+            # RAM-only watchdog cannot see that coming and never fired.
+            if self.vram_limit > 0:
+                vram = _get_gpu_vram()
+                if vram is not None:
+                    _, _, pct = vram
+                    if pct >= self.vram_limit:
+                        logger.warning(
+                            "  [Watchdog] VRAM %.1f%% >= restart threshold %.1f%% "
+                            "-- killing UE before the GPU device is removed",
+                            pct,
+                            self.vram_limit,
+                        )
+                        self._triggered.set()
+                        _kill_ue()
+                        return
+
+            if self.ram_limit > 0:
+                ram = _get_system_ram()
+                if ram is not None:
+                    _, _, pct = ram
+                    if pct >= self.ram_limit:
+                        logger.warning(
+                            "  [Watchdog] RAM %.1f%% >= restart threshold %.1f%% -- "
+                            "killing UE before it OOMs",
+                            pct,
+                            self.ram_limit,
+                        )
+                        self._triggered.set()
+                        _kill_ue()
+                        return
+
             if self._stop.wait(self.poll_interval):
                 return
 
@@ -434,6 +480,7 @@ def _run_single_with_restart(
     restart_ram_limit: float,
     restart_poll_interval: float,
     max_restarts: int,
+    restart_vram_limit: float = 0.0,
 ) -> tuple[bool, bool]:
     """Run a script, auto-restarting UE on crash or RAM-threshold breach.
 
@@ -444,7 +491,9 @@ def _run_single_with_restart(
     """
     attempts = 0
     while True:
-        watchdog = _RamWatchdog(restart_ram_limit, restart_poll_interval)
+        watchdog = _RamWatchdog(
+            restart_ram_limit, restart_poll_interval, restart_vram_limit
+        )
         watchdog.start()
         try:
             ok, aborted = _run_single(script_path, port, timeout)
@@ -458,6 +507,19 @@ def _run_single_with_restart(
         # crash -- don't mask it with blind retries.
         if _ue_alive():
             return ok, aborted
+
+        # --restart-ram-limit 0 documents itself as "disables auto-restart", but
+        # only the RAM watchdog honoured it: an unreachable editor was restarted
+        # regardless. On 2026-09-07 that silently relaunched a user's editor
+        # twice after a GPU crash, during a session where restarting had not
+        # been agreed. Treat 0 as "never launch UE on my behalf", everywhere.
+        if not restart_ram_limit and not restart_vram_limit:
+            logger.error(
+                "  [Restart] UE not reachable and auto-restart is disabled "
+                "(--restart-ram-limit 0); leaving the editor alone. %s did not run.",
+                script_path.name,
+            )
+            return False, False
 
         attempts += 1
         if attempts > max_restarts:
@@ -490,7 +552,8 @@ def run_batches(
     batch_delay: float = 10.0,
     editor_exe: str | None = None,
     uproject: str | None = None,
-    restart_ram_limit: float = 82.0,
+    restart_ram_limit: float = 95.0,
+    restart_vram_limit: float = 0.0,
     restart_poll_interval: float = 10.0,
     max_restarts: int = 10,
 ) -> list[str]:
@@ -536,6 +599,7 @@ def run_batches(
             restart_ram_limit,
             restart_poll_interval,
             max_restarts,
+            restart_vram_limit=restart_vram_limit,
         )
         elapsed = time.monotonic() - t0
 
@@ -657,13 +721,36 @@ def main():
         ),
     )
     parser.add_argument(
+        "--restart-vram-limit",
+        type=float,
+        default=0.0,
+        help=(
+            "GPU VRAM %% threshold that triggers an automatic UE kill+restart"
+            "+resume. Off by default (0), so --restart-ram-limit 0 keeps meaning \"disable the watchdog entirely\". "
+            "Added 2026-09-07: two editor losses that day were GPU device "
+            "removals (DXGI_ERROR_DEVICE_REMOVED on a 2 GB reserved-resource "
+            "allocation at ~14.5 GB of a 23.4 GB budget) while system RAM sat "
+            "at 1.2 GB of 47.8 GB. The RAM-only watchdog could not see them "
+            "coming. Nanite mesh builds are VRAM-bound, so this is usually the "
+            "arm that matters for an import."
+        ),
+    )
+    parser.add_argument(
         "--restart-ram-limit",
         type=float,
-        default=82.0,
+        default=95.0,
         help=(
             "System RAM %% threshold that triggers an automatic UE kill+restart"
             "+resume, both proactively during a script and after a failed "
-            "between-batch cleanup. 0 disables auto-restart (default: 82)"
+            "between-batch cleanup. 0 disables auto-restart (default: 95).\n"
+            "Raised from 82 on 2026-08-07: a single silver_fir h15 Nanite "
+            "assembly (122.4M expanded triangles) peaks at 85.1%% RAM on a "
+            "63.5 GB machine and takes 61 minutes to build. At 82 the "
+            "watchdog killed the editor mid-build every time, relaunched, "
+            "retried the same asset and looped forever without ever "
+            "reporting a failure. Any limit below the peak a legitimate "
+            "asset needs is unbreakable, so the threshold must sit above "
+            "the heaviest asset in the dataset, not below it."
         ),
     )
     parser.add_argument(
@@ -713,7 +800,9 @@ def main():
     config = get_config()
     editor_exe = args.editor_exe or config.unreal_editor_exe or None
     uproject = args.uproject or config.unreal_uproject or None
-    if args.restart_ram_limit > 0 and (not editor_exe or not uproject):
+    if (args.restart_ram_limit > 0 or args.restart_vram_limit > 0) and (
+        not editor_exe or not uproject
+    ):
         parser.error(
             "Auto-restart watchdog is enabled (--restart-ram-limit > 0) but "
             "editor_exe/uproject could not be resolved. Set [unreal] editor_exe "
@@ -738,6 +827,7 @@ def main():
             editor_exe=args.editor_exe,
             uproject=args.uproject,
             restart_ram_limit=args.restart_ram_limit,
+            restart_vram_limit=args.restart_vram_limit,
             restart_poll_interval=args.restart_poll_interval,
             max_restarts=args.max_restarts,
         )
@@ -764,6 +854,7 @@ def main():
         args.restart_ram_limit,
         args.restart_poll_interval,
         args.max_restarts,
+        restart_vram_limit=args.restart_vram_limit,
     )
     if aborted_memory:
         logger.error(

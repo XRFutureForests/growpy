@@ -12,6 +12,14 @@ project_path = "/Game/Assets/TheGrove"
 # created). Lives under /Content/Templates in the project, not under
 # project_path -- the old /Game/Assets/TheGrove location is no longer used.
 db_path = "/Game/Templates"
+# Content Browser base the wind and PVE post-import scripts search for
+# assemblies. Leave unset (or empty) so it follows project_path -- assemblies
+# import to project_path, so wind data and PVE presets have to look for them
+# there. Setting it to something else deliberately splits the two, which is
+# almost never what you want: the assemblies still import fine and then silently
+# fail every wind/PVE check, because the post-import scripts are searching a
+# path that has no assemblies in it.
+# pve_import_base = ""
 # Automatically set Nanite shape preservation to Voxelize on imported assemblies.
 # Voxelization produces the best visual quality but adds significant import time.
 # Set to false for faster testing iterations; re-enable for production exports.
@@ -32,22 +40,218 @@ nanite_fallback_target = "percent_triangles"
 # Should be true for textured meshes to avoid UV seam artifacts at distance.
 nanite_lerp_uvs = true
 
-# --- PVE preset import (UE 5.7+ Procedural Vegetation Editor) ---
-# Generates a complementary UE Python script that creates
-# ProceduralVegetationPreset DataAssets from per-tree PVE JSON recipes,
-# alongside the existing skeletal-mesh assembly import. Requires the
-# Procedural Vegetation Editor plugin to be enabled in UE.
-# Combined presets and PVE graphs are colocated with tree meshes
-# at <project_path>/<species>/<scene>/.
+# --- PVE preset import (UE 5.7 only) --- DEPRECATED, DEAD ON UE 5.8 ---
+# Generated a complementary UE Python script that creates
+# ProceduralVegetationPreset DataAssets from per-tree PVE JSON recipes
+# (*_stems_unreal_pve.json), alongside the skeletal-mesh assembly import.
+#
+# DO NOT TURN THIS ON for UE 5.8+. The node those presets feed is declared
+#
+#   UCLASS(meta=(DeprecatedNode, DeprecationMessage="PVPresetLoaderSettings is
+#          deprecated and produces no output. Remove this node from your graph."))
+#
+# so everything downstream of it -- the recipe JSON, the preset DataAssets, the
+# graphs wired to them -- is built and then does nothing. `pve_graph_script.py`
+# already carries a `_is_ue_58_plus()` guard for exactly this.
+#
+# This is NOT the setting for the current PVE route. That is
+# [unreal.growth_data_json] below, which drives a different artifact entirely:
+# a SKELETON for PVGrowthDataJsonImporter, not a preset RECIPE for a dead node.
+# The two share an acronym and nothing else, which is why the old flag was left
+# in place and deprecated rather than quietly repurposed -- an existing config
+# saying `generate_pve_presets = true` must not silently start emitting a
+# different file.
 generate_pve_presets = false
 # Generate the UE wind-import script that applies *_DynamicWind.json sidecars
 # to skeletal meshes (per-tree wind JSON is always exported regardless).
 generate_wind_data = true
 
+
+# ---------------------------------------------------------------------------
+# Growth-data JSON export for PVE's Growth Data JSON Importer (XRFF-390 route).
+#
+# This is the skeleton-direct route: growpy emits a growth-data JSON and PVE
+# builds the trunk mesh itself, instead of growpy authoring a Nanite assembly.
+# Off by default -- it is an experiment running alongside the USD route, and
+# turning it on adds a per-tree JSON to every step-4 export.
+#
+# profile_mean: mean radial multiplier of the PVE trunk profile the tree will be
+#   meshed with. A PVE profile is 100 multipliers that always peak at 1.0 and
+#   carve inward, so PointScale becomes the section's MAXIMUM radius and a
+#   tape-measured DBH reads mean(profile) times what was asked for. Emitted
+#   radii are divided by this so DBH survives. Measured 2026-09-09 on two
+#   independent skeletons: 0.775 and 0.784-0.793 against plantProfile_2's own
+#   0.7795. Epic's ten profiles run 0.599-0.822 -- a 37 % swing, so this is not
+#   optional. plantProfile_8 (0.8215) is the chosen default: roundest section
+#   with the mildest relief.
+#
+#   THIS NUMBER IS HALF A CONTRACT. The other half is which pin of
+#   PVPlantProfileLoader the graph wires into MeshBuilder.Profile, and nothing
+#   checks that the two agree. Measured 2026-09-10: the test graph was on
+#   plantProfile_7 (0.7694) while this said 0.8215, so every exported trunk came
+#   out 6.3 % thin and still looked entirely plausible. If you change this value,
+#   change the pin; if you author a graph, assert the pin name.
+#
+# min_branch_radius_fraction: drop branches whose thickest point is below this
+#   fraction of the TRUNK'S BASE RADIUS, with their subtrees. Relative, not
+#   absolute, because an absolute cutoff is applied in emitted units and so does
+#   not survive radial_scale: 0.030 m is 16 % of an uncalibrated trunk but 45 %
+#   of a calibrated one, and on a calibrated h15m beech it left 62 branches over
+#   2 GENERATIONS where Epic's reference tree has 6 -- the whole crown hierarchy
+#   gone. Measured across 9 beeches (3 surround radii x 3 height stages), 0.06
+#   holds 5-6 generations on every one, at 321-1,978 branches. growpy's branch
+#   COUNTS are not comparable to Epic's -- Grove splits branches much more finely
+#   (~10 points per branch against Beech_01's 26.4) -- so generations preserved
+#   is the meaningful measure.
+#
+#   0.06 IS ONLY RIGHT FOR SOME SPECIES (XRFF-466, 2026-09-16). The threshold
+#   is a fraction of the trunk BASE radius, and a mature trunk is fat, so the
+#   same fraction bites harder the older the tree gets. Measured undecimated on
+#   five broadleaves at h05..h25: at 0.06 a h25 ash keeps 196 branches of its
+#   10,114 and a spruce keeps 3,016, so the foliage solve strung 177 instances
+#   along a single ash branch -- the "caterpillar" the 110-tree catalog was
+#   judged on -- while the conifers looked right. 0.02 puts every broadleaf in
+#   the 1,000-7,000 band beech already sat in, at the SAME instance count and
+#   the same leaf area (the solve just runs a lower density): ash r16_h25m goes
+#   196 -> 1,056 branches and 177 -> 33 instances per branch. Per species, not
+#   global, in the sub-table at the end of this file.
+#
+# min_branch_radius: absolute metre cutoff, kept for the rare case where one is
+#   genuinely wanted. Whichever of the two is larger wins. Leave at 0.0.
+#
+# min_point_spacing: thin the points ALONG every surviving branch to at least
+#   this path length apart (metres); root, tip and every point a child attaches
+#   to are always kept. Points are the bones of the skeletal mesh PVE exports,
+#   and Grove samples a node every internode -- 0.063 m on a beech against
+#   0.11 m on an oak -- so at the same fraction a beech carries 2-3x the bones
+#   and stops opening in UE (r16_h15m at 0.02: 6,866 branches, 82,408 bones,
+#   XRFF-471). Branch COUNT is the look and belongs to the fraction; point
+#   count is only the weight. quality.toml's skeleton_length is NOT this knob:
+#   it tags bones for the USD skeletal mesh and never touches the raw skeleton
+#   this JSON is built from (a beech regrown at 1.0 m came out byte-identical).
+#   0.0 keeps every node. Per species in the sub-table at the end of this file.
+#
+# (superseded note) drop branches whose thickest point is below this (metres),
+#   with their subtrees. Grove's raw skeleton is ~46,500 branches / 275,800
+#   points for a beech, against Epic's reference tree at 195 / 5,145. Point
+#   SPACING is already fine (0.067 m vs 0.072 m) -- it is branch COUNT that is
+#   wrong, and it also breaks foliage, since BranchDensity is per branch and
+#   46,500 branches against a ~13,400-instance target needs a density below 1.
+#   0.030 m keeps 649 branches at 27.3 points each, the closest structural match
+#   to the reference. NOTE: the threshold is in EMITTED units, so it interacts
+#   with the per-tree radial_scale -- 0.030 keeps 649 branches at scale 1.0 but
+#   only 95 at scale 0.5.
+# generate_pve_graphs: author PVE graphs on the Growth Data JSON route, from
+#   the growth JSONs a forest export emitted plus the densities in
+#   config/pve_calibration.toml. This is the LIVE PVE route and is deliberately
+#   a different flag from generate_pve_presets above, which drives the Preset
+#   Loader node UE 5.8 deprecated to a no-op. The two emit different,
+#   incompatible graphs; do not merge them.
+#
+#   It needs an export that emitted growth JSONs to have run first
+#   (export_mode = "growth_json_only", or [unreal.growth_data_json] enabled
+#   below). Nothing else: the palette and bark import is emitted alongside.
+#
+#   Emits four files into <output>/unreal_scripts/, to be run with
+#   growpy-ue-exec IN THIS ORDER:
+#
+#     1. growpy_pve_assets.py   imports the twig palette as static meshes and
+#                               builds the bark material instance
+#     2. growpy_pve_graphs.py   authors the graphs, which name both by path
+#
+#   plus pve_export_manifest.json (every expected mesh and the density it was
+#   asked for) and growpy_pve_retune.py (changes densities on existing graphs
+#   in place, never re-authors).
+#
+#   The order is enforced, not just documented: the graph script preflights
+#   every palette mesh and bark material and refuses to create anything if they
+#   are absent, so a missed first step cannot leave a half-authored graph
+#   behind to be clicked by mistake.
+#
+#   Graphs are authored with Nanite shape preservation VOXELIZE: it is what
+#   holds a tree's silhouette at distance and the form the result can be judged
+#   on. It costs roughly 80x the export time, so pass
+#   nanite_shape_preservation="NONE" to plan_pve_graphs when iterating on
+#   densities or wiring, where only the instance count matters.
+#
+# pve_content_root: UE package path growpy-pve-assets imported the palette and
+#   bark under. A graph names those by path, so the two must agree.
+#
+# pve_triangle_cap: predicted-triangle ceiling per graph, i.e. per Export
+#   click. ONE CLICK IS ONE FAILURE UNIT -- it builds every chain in its graph
+#   and holds the result in memory until it finishes, and an export is durable
+#   only once its package is saved. An autosave crash on a beech click carrying
+#   ~378 M foliage triangles destroyed nine meshes that had all already
+#   exported and logged. Split on predicted TRIANGLES, not chain count: a fir
+#   foliage instance averages 23,292 triangles against a beech one's 13,456.
+#
+#   A single tree over the cap cannot be split further -- a chain is one mesh --
+#   so it gets a click of its own and a warning. At 120 M, four of the shipped
+#   fifteen are individually over it.
+generate_pve_graphs = true
+pve_content_root = "/Game/PVE"
+pve_triangle_cap = 120e6
+
+[unreal.growth_data_json]
+enabled = true
+profile_mean = 0.8215
+min_branch_radius = 0.0
+min_branch_radius_fraction = 0.06
+min_point_spacing = 0.0
+
+# ---------------------------------------------------------------------------
+# SUB-TABLES LAST. A TOML sub-table captures every key that follows it, so
+# [unreal.watchdog] and [unreal.growth_data_json] must stay at the end of
+# this file: until 2026-09-15 the watchdog table sat above generate_pve_graphs
+# and silently swallowed it (the flag read false no matter what it said).
+
 # --- ue_exec auto-restart watchdog (tools/ue_exec.py) ---
+# Separate from the import-script generation above: read only by the
+# standalone ue_exec.py watchdog tool, not by generate_forest.py.
 # Machine-specific absolute paths -- not committed with real values since this
 # config file ships in a public repo. Set these to use the watchdog without
 # passing --editor-exe/--uproject on every invocation. --editor-exe/--uproject
 # always take priority when given.
-# editor_exe = "C:\\Program Files\\Epic Games\\UE_5.7\\Engine\\Binaries\\Win64\\UnrealEditor.exe"
-# uproject = "D:\\Unreal\\XRLabDemo\\XRLabDemo.uproject"
+[unreal.watchdog]
+# editor_exe = "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Binaries\\Win64\\UnrealEditor.exe"
+# uproject = "D:\\Unreal\\XRLabDB 5.8\\XRLabDB.uproject"
+
+# --- per-species decimation fraction (XRFF-466, 2026-09-16) ---
+# Overrides [unreal.growth_data_json] min_branch_radius_fraction above, keyed by
+# standardized name. Branch counts at h05..h25, r08/r16, measured undecimated
+# (0.06 -> 0.02):
+#
+#   common ash            196- 398 ->   208-5,502
+#   European beech        365-1,879 -> 1,817-7,018
+#   European oak          295- 549 -> 1,627-4,711
+#   silver birch          309- 698 -> 1,472-8,278
+#   small-leaved linden   313-1,226 -> 2,008-5,130
+#
+# Not listed, deliberately:
+#   * the five conifers -- at 0.06 they already keep 433-3,016 branches and run
+#     at 1-19 instances per branch. A lower fraction buys no look and costs
+#     branch geometry to mesh.
+#   * sycamore maple and wild cherry -- they sit AT the one-instance-per-branch
+#     floor (1.0-4.2 per branch), so more branches would raise their instance
+#     count and their leaf area rather than spread the same foliage wider.
+#     Their crowns are too sparse, which is the opposite defect and not this one.
+[unreal.growth_data_json.min_branch_radius_fraction_per_species]
+common_ash = 0.02
+# 0.03, not 0.02 (2026-09-16): 0.02 is 82,408 bones at r16_h15m and UE will
+# not open it. With min_point_spacing 0.2 below, 0.03 is 19,240 bones there
+# and <= 22,342 at h25 (the 0.06 catalog opened at 27,526-29,828), keeping
+# 3,322-4,403 branches over 6-7 generations. Measured offline on the
+# undecimated run, data/tmp/subset_2026-09-16/gate_grid_beech.txt.
+european_beech = 0.03
+european_oak = 0.02
+silver_birch = 0.02
+small_leaved_linden = 0.02
+
+# --- per-species point spacing (XRFF-471, 2026-09-16) ---
+# Overrides [unreal.growth_data_json] min_point_spacing above, keyed by
+# standardized name. Bones per tree at h15, r08/r16, undecimated beech run,
+# fraction 0.03: 0.0 m 38,495/55,997 -> 0.15 m 15,689/22,447 -> 0.20 m
+# 13,565/19,240 -> 0.25 m 12,210/17,236. Only beech needs it: oak sits at
+# 3.6 points per branch and fir at 4.7, beech at 12.
+[unreal.growth_data_json.min_point_spacing_per_species]
+european_beech = 0.2

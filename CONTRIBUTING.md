@@ -40,12 +40,14 @@ Contributions are accepted under the same AGPL-3.0-or-later license.
 - `data/input/` — curated input assets (custom twigs, tables); gitignored for
   generated output
 - `docs/` — user and developer documentation
-- `src/growpy/tests/` — test suite
+- `tests/` — test suite (`pytest`; ≈ 1,860 tests as of 2026-09-14)
 
 ## Code style
 
-- **Python**: Black (88 char line length), snake_case, type hints on public
-  functions, prefer early returns over nested conditionals.
+- **Python**: `ruff format` / `ruff check` (88 char line length), snake_case, type hints on
+  public functions, prefer early returns over nested conditionals. There is no CI and no
+  pre-commit hook (both removed 2026-09-01) — run `ruff` and `pytest` yourself before a
+  pull request.
 - **CLI**: each pipeline stage exposes an entry point (`growpy-*`) via
   `[project.scripts]` in `pyproject.toml`.
 - `.editorconfig` enforces whitespace conventions.

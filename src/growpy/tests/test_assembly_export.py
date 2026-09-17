@@ -147,6 +147,73 @@ class TestCreateAssemblyUniqueNaming:
 
 
 
+class TestCreateAssemblyRequiresTwigPrototypes:
+    """Regression test: twig placements with no prototypes must not pass silently.
+
+    `if twig_usd_paths:` used to skip the entire twig block, so an assembly with
+    no foliage was written (~1 KB against 0.7-4 MB for a real one) and step 4
+    still reported every milestone stage exported. A 20-cell run was produced
+    that way after data/output/forest/Instances/ -- where step 2 writes the
+    converted twig USDs -- was deleted with the rest of the output directory.
+    """
+
+    def _stub_tree(self, tmp_path):
+        from pxr import Usd
+
+        tree_usd = tmp_path / "european_oak_stems.usda"
+        stage = Usd.Stage.CreateNew(str(tree_usd))
+        stage.DefinePrim("/european_oak_stems", "Xform")
+        stage.GetRootLayer().Save()
+        return tree_usd
+
+    def test_raises_when_placements_have_no_prototypes(self, tmp_path):
+        import pytest
+
+        tree_usd = self._stub_tree(tmp_path)
+        placements = {"twig_long": [object(), object(), object()]}
+
+        with pytest.raises(RuntimeError, match="no twig prototype USDs"):
+            create_assembly(
+                tree_usd_path=tree_usd,
+                output_path=tmp_path / "oak_assembly.usda",
+                species_name="European Oak",
+                twig_usd_paths=None,
+                twig_placements=placements,
+                use_skeletal_mesh=False,
+                validate=False,
+            )
+
+    def test_error_names_the_recovery_step(self, tmp_path):
+        import pytest
+
+        tree_usd = self._stub_tree(tmp_path)
+        with pytest.raises(RuntimeError) as exc:
+            create_assembly(
+                tree_usd_path=tree_usd,
+                output_path=tmp_path / "oak_assembly.usda",
+                species_name="European Oak",
+                twig_usd_paths={},
+                twig_placements={"twig_short": [object()]},
+                use_skeletal_mesh=False,
+                validate=False,
+            )
+        # The message has to say how to recover, or the next person re-derives it.
+        assert "step 2" in str(exc.value)
+
+    def test_a_genuinely_twigless_tree_still_exports(self, tmp_path):
+        """No placements AND no prototypes is legitimate -- do not break it."""
+        tree_usd = self._stub_tree(tmp_path)
+        assert create_assembly(
+            tree_usd_path=tree_usd,
+            output_path=tmp_path / "bare_assembly.usda",
+            species_name="European Oak",
+            twig_usd_paths=None,
+            twig_placements=None,
+            use_skeletal_mesh=False,
+            validate=False,
+        )
+
+
 class TestCreateCombinedTwigUsda:
     """Regression: the wrapper glob must use the twig extension, not the
     configured tree extension -- twigs are always .usda regardless of

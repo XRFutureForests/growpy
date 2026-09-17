@@ -1,0 +1,797 @@
+# PVE foliage calibration -- the shipped 15-tree set
+# =================================================
+#
+# Every density here was bought with an Export click in the live editor. Losing
+# this file means re-earning it by hand, which is why it is tracked rather than
+# living in data/tmp/ (XRFF-441; it was scratch until 2026-09-14).
+#
+# It records what the PVE Growth Data JSON route needs and cannot derive from a
+# growth JSON: how dense the foliage distributor must run to hit each tree's
+# Forrester leaf-area target, and the settings that density was solved under.
+# Change any of those settings and every density below is wrong.
+#
+# THREE TRAPS THIS SCHEMA EXISTS TO SURVIVE
+# -----------------------------------------
+#
+# 1. `solved_density` IS NOT A BUILD DENSITY. It is the solver's recommendation,
+#    and it is not guaranteed to have been computed against the growth JSON the
+#    `history` was measured on -- for the fir h05 trees it was computed at a
+#    different decimation fraction. Near the distributor's `max(loops, 1)` floor
+#    the instance response is a staircase, so building with a stale
+#    recommendation landed +47 % out. Build from `build_density`, or from the
+#    last measured `history` pair, never from `solved_density`.
+#
+# 2. A `history` IS ONLY VALID AT THE `relative_start` IT WAS MEASURED UNDER.
+#    A non-zero `relative_start` keeps the branch-root sample that 0.0 discards,
+#    so it adds exactly one instance per branch. Beech runs at 0.4 but its
+#    history was measured at 0.0, which is why every beech tree carries an
+#    explicit `build_density` re-solved for 0.4. The loader refuses to fall back
+#    to a history measured under a different value.
+#
+# 3. THE TWO SPECIES ENCODE THE DECIMATION FRACTION DIFFERENTLY IN FILENAMES --
+#    beech `_f006`, fir `_f060`, both meaning 0.06. Never reconstruct a filename
+#    from `fraction`. Each tree names its growth JSON explicitly, because a glob
+#    on the tree id alone matches four files for fir r05_h05m.
+#
+# WHAT WAS SHIPPED
+# ----------------
+# 15 trees (9 European beech, 6 silver fir) exported 2026-09-11, carrying
+# 815.4 m2 of true leaf area against the 816.9 m2 of Forrester target recorded
+# below: -0.2 % aggregate.
+#
+# THE AGGREGATE HID THREE BAD TREES -- FIXED 2026-09-15 (XRFF-462). Twelve of
+# the fifteen landed between -2.1 % and +3.1 %; the three fir h05 trees shipped
+# at -13.5 % (r05), -32.5 % (r10) and -32.5 % (r20), one density step short on
+# the distributor's staircase (a branch whose loop count is 1 contributes
+# nothing at relative_start 0.0, so the count moves in steps of ~13 % of the
+# target). The validated distributor model put the next step inside +-5 %,
+# and the click confirmed it exactly: d21 -> 329 (+1.2 %), d22 -> 463 (+2.2 %),
+# d23 -> 560 (-2.8 %). Their `history` keeps the old pair beside the new one.
+# The `mask_fraction` knob (a `use_as_mask` palette entry thins the spawned
+# count to N*(1-f), binomially) was built for the case where no density step
+# lands inside tolerance; here none needed it. It was validated on the same
+# click: 570 points at f=6/14 spawned 331 (expected 326 +-24), 864 at f=4/12
+# spawned 593 (expected 576 +-28). A masked tree must carry its own
+# build_density/build_instances -- history pairs are unmasked measurements.
+# Read per-tree accuracy off `build_instances` against `target_instances`,
+# never off the aggregate.
+
+[pve_calibration]
+schema_version = 1
+
+# HALF A CONTRACT EACH. `profile_mean` is the mean radial multiplier of the PVE
+# trunk profile; growpy divides emitted radii by it so a tape-measured DBH
+# survives. `profile_pin` is which pin of PVPlantProfileLoader the graph must
+# wire into MeshBuilder.Profile. Nothing in the engine checks the two agree --
+# a graph on plantProfile_7 (0.7694) against a config saying 0.8215 produced
+# trunks 6.3 % thin that still looked entirely plausible. Change one, change the
+# other. Must match [unreal.growth_data_json].profile_mean in unreal.toml.
+profile_mean = 0.8215
+profile_pin = "plantProfile_8"
+
+
+# ------------------------------------------------------------- defaults ----
+#
+# A species with no [pve_calibration.species.<name>] block of its own is built
+# from this table, refined by the `conifer` / `broadleaf` sub-table of its
+# growth habit (tree_asset_lookup.csv, Competition Group). Such a species has
+# no measured rows: every one of its trees is solved OFFLINE by the plan
+# (io/unreal/pve_offline_solve.py) against Forrester (2017) leaf area at the
+# tree's own DBH times `fullness`, on the distributor model that reproduces
+# logged exports to the instance. The manifest marks those trees
+# `density_source = "offline"`.
+#
+# fullness is the owner's optics knob (direction of 2026-09-15: optics first,
+# leaf area reported, never solved to): the Forrester-calibrated fir read as a
+# skeleton, x4 as a conifer. Broadleaves start at x2 for the same reason. To
+# change it for one species give that species its own block (a block replaces
+# the defaults wholesale, so copy the habit's keys into it).
+#
+# A species WITH a block and measured rows builds from those rows unless its
+# block says `build_from = "offline"`, in which case the rows stay as the
+# record of what was measured and every tree is solved like the others.
+[pve_calibration.defaults]
+# A RECORD, not a setting: what the growth JSONs of the run were decimated at.
+# Nothing reads it. Since XRFF-466 (2026-09-16) the fraction is per species in
+# [unreal.growth_data_json.min_branch_radius_fraction_per_species] -- 0.02 for
+# ash, beech, oak, birch and linden, 0.06 for everything else -- so this value
+# is the default that still applies to the species with no override. Read the
+# per-tree `fraction` below, or unreal.toml, for what a given tree was built at.
+fraction = 0.06
+relative_start = 0.0
+phyllotaxy_formation = "DISTICHOUS"
+palette = "twigs"
+fullness = 1.0
+
+[pve_calibration.defaults.conifer]
+fullness = 4.0
+# Sprays on the sides, tilted 30 deg toward the tip, flat, faces up (the
+# measured silver-fir pose, XRFF-438).
+[pve_calibration.defaults.conifer.pose]
+reset_phyllotaxy = true
+axil_angle = 30.0
+# Per-instance variance (XRFF-467, 2026-09-16). A pectinate spray is a flat,
+# regular structure, so conifers get half the broadleaf spread: enough that no
+# two sprays on a branch match, not enough to break the rank.
+randomize_scale = [0.8, 1.2]
+randomize_axil_angle = [-12.0, 12.0]
+# Scale-graded size ladder + apex spray (XRFF-412): the fir ladder (8 tiers,
+# shared by spruce and douglas) and the pine's five sprays are graded onto
+# branch radius, one big spray on the leader.
+#
+# tip_tier (2026-09-16, owner): the picker hands every branch END the smallest
+# tier, because the end is the thinnest point -- on the fir a single 0.005 m2
+# shoot -- and the short branches at the top get nothing at all (one loop at
+# relative_start 0 lands on the root and is discarded), which read as bare
+# tops. A density-1 cap layer puts the three-fingered spray `_h` (the largest
+# sub-spray plus its two neighbours, 0.0225 m2, derived by
+# growpy-derive-twig-ladder --cluster-sizes 4 3) on every branch end of the
+# main layer's generations; the solve counts it, so the main density lands
+# the total on target. A species whose palette has no such tier (the pine)
+# gets a warning and no cap.
+[pve_calibration.defaults.conifer.ladder]
+scale_weight = 1.0
+minimum_candidates = 1
+cutoff_threshold = 0.1
+apex = true
+main_generation_start = 2
+tip_tier = "_h"
+
+[pve_calibration.defaults.broadleaf]
+# OWNER DECISION 2026-09-16 (evening, full run): round-2 R4 for every graded
+# broadleaf (oak, ash, birch, linden, maple, cherry) -- fullness x6, foliage on
+# the outer 15 %, 70 deg fan. At fullness x2 the offline solve gave oak a
+# density of 2 = ONE spray per branch at 40 % along, so the outer 60 % of
+# every branch was bare and the primaries read as whips; x6 filled them ("a
+# real oak canopy"). Inert at h20-h25 where the trees are instance-capped.
+# Beech is the exception: x6 packed 9-10 rosettes into the outer 15 % and read
+# worse, so its own block keeps x2 / 0.4 / 40 deg plus the mask.
+fullness = 6.0
+relative_start = 0.85
+# Rosettes on the sides, fanned 70 deg toward the tip, faces up, plus the
+# inclination real leaves have as random pitch/roll/yaw (the beech pose).
+[pve_calibration.defaults.broadleaf.pose]
+reset_phyllotaxy = true
+axil_angle = 70.0
+jitter = [
+    { mode = "PITCH", degrees = 20.0, seed = 11 },
+    { mode = "ROLL", degrees = 12.0, seed = 12 },
+    { mode = "YAW", degrees = 8.0, seed = 13 },
+]
+# Per-instance variance (XRFF-467, 2026-09-16). Until this, every rosette on a
+# branch was the same size at the same angle in the same rhythm -- the
+# "caterpillar" the 110-tree catalog was judged on. randomize_scale is a
+# uniform multiplier on instance scale, so leaf area moves by E[scale^2]
+# = (a^2 + ab + b^2) / 3 = 1.03 here; the offline solve divides it back out,
+# which is why a MEASURED density is only valid at the range it was measured
+# under. randomize_axil_angle is degrees on top of axil_angle (so 20-60 deg
+# here) and is pure rotation.
+#
+# The third lever PVE offers is `spacing_ramp`, which reshapes where along a
+# branch the samples land. It is wired and left OFF: the ramp is deterministic
+# and shared by every branch, so it is a repeated motif rather than variance,
+# and PVE exposes no random spacing. Two other knobs XRFF-467 listed are
+# deliberately not used -- `rotation` twists each successive instance by a
+# fixed angle (a drift, not a random), and `branch_scale_impact` is read only
+# under ScaleRampBasis = Branch, which these graphs are not.
+randomize_scale = [0.7, 1.3]
+randomize_axil_angle = [-20.0, 20.0]
+# Graded here too: birch ships 18 leaf clusters spanning 30x in area and
+# cherry 8 spanning 54x, so grading them onto branch radius puts the big
+# clusters on the limbs and the small ones on the twigs, Epic's shape.
+[pve_calibration.defaults.broadleaf.ladder]
+scale_weight = 1.0
+minimum_candidates = 1
+cutoff_threshold = 0.1
+apex = true
+main_generation_start = 2
+
+
+# ---------------------------------------------------------------- beech ----
+
+[pve_calibration.species.european_beech]
+# Foliage on the outer 60 % of every branch. This lifts the lowest foliage on
+# r20_h15m from 0.14 m to 1.60 m and keeps leaves off the thick inner span of
+# primary limbs. It is NOT count-neutral against 0.0, so every build_density
+# below was re-solved for it (2026-09-11).
+relative_start = 0.4
+fraction = 0.06
+# Beech is two-ranked (XRFF-438, 2026-09-14). A pose is a rotation, so it
+# changes no density below.
+phyllotaxy_formation = "DISTICHOUS"
+# Leaf area of one twig prototype at instance scale 1.0, m2. The shipped graphs
+# use a flat scale ramp at 1.0, so this is the area each placed instance carries.
+prototype_leaf_area_m2 = 0.01583458005362597
+# Mean triangles per placed instance, for bin-packing Export clicks on predicted
+# geometry rather than on chain count. A fir instance is 1.7x a beech one.
+# 13456.4 until 2026-09-14, when the dataset run's step 2 regenerated the beech
+# twig prototypes (a/b 7.6k -> 10.1k/9.9k triangles, c/d/e 17-18k -> 9.6-10.8k;
+# leaf areas unchanged). Measured on the twelve r08/r16 exports: 9984-10003.
+palette_flat_mean_triangles = 9990.0
+# The history below was measured at this relative_start, NOT at the species'.
+history_relative_start = 0.0
+# Production (2026-09-15 evening): every beech tree is solved offline at the
+# broadleaf fullness so h05..h25 at r08/r16 is one look; the rows below stay
+# as the measured record. Flat palette (no ladder), as measured.
+build_from = "offline"
+fullness = 2.0
+# Owner, 2026-09-16 afternoon: beech rosettes toward the branch ends sit "in
+# close and regular succession". PVE spaces its samples evenly along a branch
+# and cannot randomise that; a masked palette makes a random 3 in 8 of them
+# spawn nothing (3 masks beside the 5 rosettes), and the offline solve raises
+# the density by 1/(1-0.375) so the expected count and leaf area are the
+# same. Flat palette only -- a graded ladder cannot take a mask.
+mask_fraction = 0.375
+
+# Fitted instances law, used only to seed a solve:
+#   instances ~ slope_per_s * s_ratio + floor_per_branch * branches
+# Fitted on the r05_h15m anchor at densities 83 and 166. The -1.039 intercept is
+# the branch-root skip at relative_start = 0.0, not the max(loops, 1) floor.
+[pve_calibration.species.european_beech.law]
+slope_per_s = 0.9482564501593719
+floor_per_branch = -1.0391908975979773
+fitted_on = "r05_h15m densities 83, 166"
+
+[pve_calibration.species.european_beech.anchor]
+tree = "r05_h15m"
+densities = [40, 83, 166]
+instances = [730, 2140, 5102]
+
+# How the rosettes sit on their branches: on the sides, tilted 40 deg toward
+# the tip, flattened, faces up, plus the inclination real beech leaves have
+# (~20-30 deg) as random pitch/roll/yaw. Applied after aim and face; measured
+# on PVG_BeechZJ 2026-09-14. Rotations only: densities below are unaffected.
+# The two randomisers are XRFF-467 (2026-09-16) and match the broadleaf
+# defaults; a species block replaces the defaults wholesale, so they have to
+# be repeated here. randomize_scale is NOT rotation-only -- it moves leaf area
+# by E[scale^2] = 1.03, so the measured densities below (build_from =
+# "offline" since 2026-09-15, so unused) predate it.
+[pve_calibration.species.european_beech.pose]
+reset_phyllotaxy = true
+axil_angle = 40.0
+jitter = [
+    { mode = "PITCH", degrees = 20.0, seed = 11 },
+    { mode = "ROLL", degrees = 12.0, seed = 12 },
+    { mode = "YAW", degrees = 8.0, seed = 13 },
+]
+randomize_scale = [0.7, 1.3]
+randomize_axil_angle = [-20.0, 20.0]
+
+[pve_calibration.species.european_beech.trees.r05_h05m]
+growth_json = "beech_r05_h05m_f006.json"
+fraction = 0.06
+dbh_cm = 5.34
+branches = 321
+points = 4093
+s_ratio = 48.4
+source_height_m = 5.3965
+target_m2 = 6.32
+target_instances = 399
+history = [[16, 357], [20, 523], [17, 394]]
+solved_density = 17
+build_density = 8
+build_instances = 391
+build_density_source = "offline"
+
+[pve_calibration.species.european_beech.trees.r05_h10m]
+growth_json = "beech_r05_h10m_f006.json"
+fraction = 0.06
+dbh_cm = 9.06
+branches = 755
+points = 9342
+s_ratio = 58.88
+source_height_m = 10.141
+target_m2 = 17.15
+target_instances = 1083
+history = [[33, 1085]]
+solved_density = 33
+build_density = 17
+build_instances = 1098
+build_density_source = "offline"
+
+[pve_calibration.species.european_beech.trees.r05_h15m]
+growth_json = "beech_r05_h15m_f006.json"
+fraction = 0.06
+dbh_cm = 10.84
+branches = 791
+points = 8863
+s_ratio = 37.63
+source_height_m = 15.3393
+target_m2 = 24.08
+target_instances = 1521
+history = [[66, 1522]]
+solved_density = 66
+build_density = 40
+build_instances = 1521
+build_density_source = "offline"
+
+[pve_calibration.species.european_beech.trees.r10_h05m]
+growth_json = "beech_r10_h05m_f006.json"
+fraction = 0.06
+dbh_cm = 6.52
+branches = 376
+points = 5120
+s_ratio = 63.46
+source_height_m = 5.392
+target_m2 = 9.21
+target_instances = 582
+history = [[16, 526], [20, 758], [17, 574]]
+solved_density = 17
+build_density = 10
+build_instances = 570
+build_density_source = "offline"
+
+[pve_calibration.species.european_beech.trees.r10_h10m]
+growth_json = "beech_r10_h10m_f006.json"
+fraction = 0.06
+dbh_cm = 15.28
+branches = 1102
+points = 16236
+s_ratio = 102.23
+source_height_m = 10.1524
+target_m2 = 46.03
+target_instances = 2907
+history = [[42, 2903]]
+solved_density = 42
+build_density = 29
+build_instances = 2873
+build_density_source = "offline"
+
+[pve_calibration.species.european_beech.trees.r10_h15m]
+growth_json = "beech_r10_h15m_f006.json"
+fraction = 0.06
+dbh_cm = 19.71
+branches = 1426
+points = 17277
+s_ratio = 74.19
+source_height_m = 15.3185
+target_m2 = 74.55
+target_instances = 4708
+history = [[88, 4764]]
+solved_density = 87
+build_density = 66
+build_instances = 4715
+build_density_source = "offline"
+
+[pve_calibration.species.european_beech.trees.r20_h05m]
+growth_json = "beech_r20_h05m_f006.json"
+fraction = 0.06
+dbh_cm = 7.06
+branches = 379
+points = 5496
+s_ratio = 64.55
+source_height_m = 5.3934
+target_m2 = 10.68
+target_instances = 675
+history = [[17, 594], [22, 893], [18, 656]]
+solved_density = 18
+build_density = 12
+build_instances = 686
+build_density_source = "offline"
+
+[pve_calibration.species.european_beech.trees.r20_h10m]
+growth_json = "beech_r20_h10m_f006.json"
+fraction = 0.06
+dbh_cm = 19.98
+branches = 1120
+points = 19683
+s_ratio = 129.12
+source_height_m = 9.874
+target_m2 = 76.47
+target_instances = 4829
+history = [[49, 4929]]
+solved_density = 48
+build_density = 39
+build_instances = 4801
+build_density_source = "offline"
+
+[pve_calibration.species.european_beech.trees.r20_h15m]
+growth_json = "beech_r20_h15m_f006.json"
+fraction = 0.06
+dbh_cm = 31.76
+branches = 1978
+points = 29381
+s_ratio = 129.16
+source_height_m = 14.9228
+target_m2 = 183.73
+target_instances = 11603
+history = [[112, 11587]]
+solved_density = 112
+build_density = 95
+build_instances = 11636
+build_density_source = "offline"
+
+# r08 / r16 -- the 2026-09-14 dataset run (max_height 15), solved OFFLINE with
+# the validated distributor model (growpy.io.unreal.pve_distributor_model:
+# 13 of 14 logged (tree, density) pairs exact) against each tree's Forrester
+# target, then exported the same day through the pipeline route (/Game/PVE,
+# Voxelize): every one of the twelve landed on its predicted count exactly,
+# which is what the one-pair history records.
+# Chain self-check before solving: r05_h10m, r20_h15m and fir r10_h25m
+# re-derive from their JSONs to the recorded dbh, target and build_instances
+# exactly. These JSONs carry the tip-frame fix (46f9a03); the ones above do not.
+
+[pve_calibration.species.european_beech.trees.r08_h05m]
+growth_json = "European_Beech_r08_h05m_d06cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 6.20
+branches = 358
+points = 4893
+s_ratio = 57.49
+source_height_m = 5.3949
+target_m2 = 8.36
+target_instances = 528
+history = [[10, 530]]
+solved_density = 10
+build_density = 10
+build_instances = 530
+build_density_source = "measured"
+
+[pve_calibration.species.european_beech.trees.r08_h10m]
+growth_json = "European_Beech_r08_h10m_d13cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 13.29
+branches = 1085
+points = 14681
+s_ratio = 93.78
+source_height_m = 10.1949
+target_m2 = 35.39
+target_instances = 2235
+history = [[24, 2272]]
+solved_density = 24
+build_density = 24
+build_instances = 2272
+build_density_source = "measured"
+
+[pve_calibration.species.european_beech.trees.r08_h15m]
+growth_json = "European_Beech_r08_h15m_d17cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 16.67
+branches = 1143
+points = 14219
+s_ratio = 60.77
+source_height_m = 15.3248
+target_m2 = 54.28
+target_instances = 3428
+history = [[59, 3446]]
+solved_density = 59
+build_density = 59
+build_instances = 3446
+build_density_source = "measured"
+
+[pve_calibration.species.european_beech.trees.r16_h05m]
+growth_json = "European_Beech_r16_h05m_d07cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 7.06
+branches = 402
+points = 5726
+s_ratio = 67.44
+source_height_m = 5.3965
+target_m2 = 10.69
+target_instances = 675
+history = [[11, 663]]
+solved_density = 11
+build_density = 11
+build_instances = 663
+build_density_source = "measured"
+
+[pve_calibration.species.european_beech.trees.r16_h10m]
+growth_json = "European_Beech_r16_h10m_d19cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 18.89
+branches = 1147
+points = 19577
+s_ratio = 126.82
+source_height_m = 10.1575
+target_m2 = 68.79
+target_instances = 4344
+history = [[36, 4358]]
+solved_density = 36
+build_density = 36
+build_instances = 4358
+build_density_source = "measured"
+
+[pve_calibration.species.european_beech.trees.r16_h15m]
+growth_json = "European_Beech_r16_h15m_d28cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 28.50
+branches = 1624
+points = 23823
+s_ratio = 103.97
+source_height_m = 15.3191
+target_m2 = 149.64
+target_instances = 9450
+history = [[96, 9411]]
+solved_density = 96
+build_density = 96
+build_instances = 9411
+build_density_source = "measured"
+
+
+# ------------------------------------------------------------------ fir ----
+
+[pve_calibration.species.silver_fir]
+# Fir stays at 0.0. Four of six trees already have more branches than their
+# Forrester target allows, so the one-instance-per-branch floor that a non-zero
+# relative_start imposes would put them over target at density 1. Adopting it
+# needs a coarser decimation fraction, which means regrowing the trees -- and a
+# step-4 re-run grows a different tree.
+relative_start = 0.0
+fraction = 0.06
+# Pectinate: two flat ranks per branch (XRFF-438, 2026-09-14).
+phyllotaxy_formation = "DISTICHOUS"
+prototype_leaf_area_m2 = 0.020138421345048785
+prototype_area_per_triangle_m2 = 8.645928697717079e-07
+palette_flat_mean_triangles = 23292.375
+# PVE maps the trunk square in world space (one V repeat = one circumference
+# of length), so a W x H bark keeps its aspect only at YScale = W / H. Since
+# 2026-09-16 the plan derives that from the texture (fir_70_bark 1024 x 2048
+# -> 0.5, beech_60_bark 1024 x 4096 -> 0.25); this pin is the same value and
+# stays as the measured record. A species without a pin follows its texture.
+bark_y_scale = 0.5
+forrester_model_id = "forrester2017_conifers_la"
+# Measured at 0.0, which is also what the species runs at, so these histories
+# are directly usable as build densities.
+history_relative_start = 0.0
+# Production (2026-09-15 evening): every fir tree is solved offline at the
+# conifer fullness so the whole ladder is one look; the rows below stay as
+# the measured record. Graded ladder + apex as before.
+build_from = "offline"
+fullness = 4.0
+
+# Borrowed from the beech fit -- no fir-specific fit was made. The law only
+# seeds a solve; every fir density below is measured or simulated.
+[pve_calibration.species.silver_fir.law]
+slope_per_s = 0.948
+floor_per_branch = -1.039
+fitted_on = "european_beech r05_h15m"
+
+# Sprays on the sides, tilted 30 deg toward the tip, flat, faces up, one tip
+# spray continuing the branch, leader pointing up; no jitter -- a pectinate
+# spray is flat. Measured on PVG_FirZV 2026-09-14. Rotations only.
+[pve_calibration.species.silver_fir.pose]
+reset_phyllotaxy = true
+axil_angle = 30.0
+# XRFF-467, matching the conifer defaults (a species block replaces them).
+randomize_scale = [0.8, 1.2]
+randomize_axil_angle = [-12.0, 12.0]
+
+# Scale-graded size ladder (XRFF-412, 2026-09-15). Every prototype advertises
+# a Scale target (per tree below, `scale_targets`, in ascending prototype-area
+# order: f e d c b a g foliage) and the distributor's Scale condition picks the
+# tier nearest a point's normalised radius, so the 0.09 m2 spray sits on the
+# thickest limbs and the 0.005 m2 sprays on the twigs. The main layer starts at
+# generation 2 (no sprays along the trunk); one apex layer (density 1, gen 1)
+# puts the largest spray on the leader. Settings measured on the six r08/r16
+# trees: the picker min-max normalises the distances across the palette, and
+# with six tiers within 0.004 of one another Epic's 0.3 / 2 draws six or seven
+# candidates for most samples; 0.1 / 1 picks the two big sprays by radius and
+# draws among the near-equal small ones at random.
+[pve_calibration.species.silver_fir.ladder]
+scale_weight = 1.0
+minimum_candidates = 1
+cutoff_threshold = 0.1
+apex = true
+main_generation_start = 2
+# Three-fingered spray on every branch end (see the conifer defaults).
+tip_tier = "_h"
+
+[pve_calibration.species.silver_fir.trees.r05_h05m]
+growth_json = "fir_r05_h05m_f060.json"
+fraction = 0.06
+dbh_cm = 7.07
+branches = 613
+points = 3581
+generations = 4
+s_ratio = 51.08
+target_m2 = 6.55
+target_instances = 325
+history = [[20, 281], [21, 329]]
+solved_density = 21
+build_instances = 329
+build_density_source = "measured"
+
+[pve_calibration.species.silver_fir.trees.r05_h25m]
+growth_json = "fir_r05_h25m_f060.json"
+fraction = 0.06
+dbh_cm = 31.84
+branches = 2711
+points = 21048
+generations = 5
+s_ratio = 56.52
+target_m2 = 113.79
+target_instances = 5651
+history = [[158, 5788]]
+solved_density = 155
+build_instances = 5788
+build_density_source = "measured"
+
+[pve_calibration.species.silver_fir.trees.r10_h05m]
+growth_json = "fir_r10_h05m_f060.json"
+fraction = 0.06
+dbh_cm = 8.42
+branches = 630
+points = 4215
+generations = 4
+s_ratio = 60.94
+target_m2 = 9.12
+target_instances = 453
+history = [[19, 306], [22, 463]]
+solved_density = 22
+build_instances = 463
+build_density_source = "measured"
+
+[pve_calibration.species.silver_fir.trees.r10_h25m]
+growth_json = "fir_r10_h25m_f060.json"
+fraction = 0.06
+dbh_cm = 31.84
+branches = 3538
+points = 27130
+generations = 4
+s_ratio = 73.82
+target_m2 = 113.82
+target_instances = 5652
+history = [[133, 5829]]
+solved_density = 130
+build_instances = 5829
+build_density_source = "measured"
+
+[pve_calibration.species.silver_fir.trees.r20_h05m]
+growth_json = "fir_r20_h05m_f060.json"
+fraction = 0.06
+dbh_cm = 9.56
+branches = 668
+points = 4564
+generations = 4
+s_ratio = 66.42
+target_m2 = 11.6
+target_instances = 576
+history = [[20, 389], [23, 560]]
+solved_density = 23
+build_instances = 560
+build_density_source = "measured"
+
+[pve_calibration.species.silver_fir.trees.r20_h25m]
+growth_json = "fir_r20_h25m_f060.json"
+fraction = 0.06
+dbh_cm = 31.84
+branches = 6956
+points = 50816
+generations = 3
+s_ratio = 139.2
+target_m2 = 113.82
+target_instances = 5652
+# The plan's single measurement on the fraction-0.06 JSON left this tree
+# mid-solve; 86 was solved offline against that measured point.
+history = [[98, 6779]]
+solved_density = 89
+build_density = 86
+build_instances = 5654
+build_density_source = "offline"
+
+# r08 / r16 -- the dataset run as REGENERATED 2026-09-15 12:07-12:37 by the
+# surround-density sweep (config/surround.toml); the 2026-09-14 trees these
+# rows described until then (d08/d10/d17 and d09/d13/d19 cm) no longer exist
+# on disk, and their measured one-pair histories went with them (git history
+# has them). Solved OFFLINE for the Scale-graded ladder above with the
+# validated distributor model against each tree's Forrester target, dbh
+# re-derived from the JSON: main layer gen >= 2 at build_density plus one apex
+# instance, build_instances = main + 1. `instance_leaf_area_m2` is the expected
+# per-instance area under that grading (sum(mix_i * area_i) + apex) / n, so
+# target_instances = target_m2 / instance_leaf_area_m2. These JSONs carry the
+# generation fix (32e52ae).
+# CLICKED 2026-09-15 (PVG_Ladder_Probe, NONE): r08_h05m 270 and r08_h15m 1520
+# instances, both EXACT; per-tier counts off the assembly Nodes inside 3 sigma
+# everywhere and exact on every single-candidate tier (h15m: a 210, b 137,
+# g 178, foliage 192 -- the picker law is reproduced to the instance); one
+# apex spray on each leader (highest full spray 5.12 / 15.21 m = tree top);
+# leaf area 5.33 m2 (+3.8 %) and 30.47 m2 (-2.2 %) against Forrester. Those
+# two carry the click as history; the other four are the same solve, unclicked.
+
+[pve_calibration.species.silver_fir.trees.r08_h05m]
+growth_json = "Silver_Fir_r08_h05m_d06cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 6.22
+branches = 925
+points = 4599
+s_ratio = 55.79
+source_height_m = 5.1162
+target_m2 = 5.13
+target_instances = 264
+history = [[19, 270]]
+solved_density = 19
+build_density = 19
+build_instances = 270
+build_density_source = "measured"
+scale_targets = [0.005450, 0.005765, 0.006076, 0.006272, 0.006573, 0.007356, 0.023583, 0.064237]
+instance_leaf_area_m2 = 0.01944615
+
+[pve_calibration.species.silver_fir.trees.r08_h10m]
+growth_json = "Silver_Fir_r08_h10m_d09cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 9.32
+branches = 1348
+points = 9504
+s_ratio = 65.70
+source_height_m = 10.1254
+target_m2 = 11.07
+target_instances = 559
+history = []
+solved_density = 30
+build_density = 30
+build_instances = 552
+build_density_source = "offline"
+scale_targets = [0.000206, 0.000567, 0.000996, 0.001642, 0.004517, 0.016755, 0.038840, 0.063281]
+instance_leaf_area_m2 = 0.01978260
+
+[pve_calibration.species.silver_fir.trees.r08_h15m]
+growth_json = "Silver_Fir_r08_h15m_d16cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 16.09
+branches = 2630
+points = 19427
+s_ratio = 93.37
+source_height_m = 15.2067
+target_m2 = 31.16
+target_instances = 1557
+history = [[47, 1520]]
+solved_density = 47
+build_density = 47
+build_instances = 1520
+build_density_source = "measured"
+scale_targets = [0.000150, 0.000453, 0.000898, 0.001868, 0.011474, 0.022471, 0.049202, 0.081481]
+instance_leaf_area_m2 = 0.02000940
+
+[pve_calibration.species.silver_fir.trees.r16_h05m]
+growth_json = "Silver_Fir_r16_h05m_d08cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 8.38
+branches = 969
+points = 5430
+s_ratio = 70.34
+source_height_m = 5.0526
+target_m2 = 9.04
+target_instances = 451
+history = []
+solved_density = 20
+build_density = 20
+build_instances = 435
+build_density_source = "offline"
+scale_targets = [0.000508, 0.001145, 0.001654, 0.001964, 0.002417, 0.009019, 0.023427, 0.061380]
+instance_leaf_area_m2 = 0.02005515
+
+[pve_calibration.species.silver_fir.trees.r16_h10m]
+growth_json = "Silver_Fir_r16_h10m_d11cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 11.33
+branches = 1903
+points = 14032
+s_ratio = 96.12
+source_height_m = 10.1693
+target_m2 = 16.01
+target_instances = 832
+history = []
+solved_density = 29
+build_density = 29
+build_instances = 837
+build_density_source = "offline"
+scale_targets = [0.000216, 0.000490, 0.000913, 0.001661, 0.008994, 0.022675, 0.040911, 0.072062]
+instance_leaf_area_m2 = 0.01923569
+
+[pve_calibration.species.silver_fir.trees.r16_h15m]
+growth_json = "Silver_Fir_r16_h15m_d18cm_full_growth_data.json"
+fraction = 0.06
+dbh_cm = 18.22
+branches = 3206
+points = 23114
+s_ratio = 109.74
+source_height_m = 15.2580
+target_m2 = 39.47
+target_instances = 1928
+history = []
+solved_density = 46
+build_density = 46
+build_instances = 1908
+build_density_source = "offline"
+scale_targets = [0.000158, 0.000509, 0.000979, 0.004949, 0.014338, 0.025059, 0.049799, 0.077854]
+instance_leaf_area_m2 = 0.02047263

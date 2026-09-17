@@ -722,7 +722,7 @@ The attribute descriptions in this document were derived from:
    - Actual working PVE presets exported from the Quixel/Houdini pipeline
    - Cross-file comparison revealed which attributes are per-instance vs per-species
 
-3. **The Grove 2.3 API documentation** (`docs/reference/vendor/the-grove/core-api/`):
+3. **The Grove 2.3 API documentation** (`https://www.thegrove3d.com/core-api/`):
    - `Properties.md` -- Runtime property access
    - `Presets.md` -- Preset serialization
    - `Grove.md` -- Simulation and build API

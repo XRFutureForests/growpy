@@ -4,7 +4,7 @@
 
 [forest]
 # Quality preset name -- must match a [quality.<name>] section in quality.toml
-quality = "medium"
+quality = "high"
 # Maximum growth cycles per tree (1-250)
 # Trees exceeding this limit are capped (not scaled), silently losing their
 # upper height stages. Measured uncalibrated cycles-to-max-height: Douglas fir
@@ -16,12 +16,26 @@ growth_cycle_limit = 160
 # early, short of growth_cycle_limit above. Height-milestone dataset
 # production shares this single counter across whichever radius groves for a
 # species are still growing (each radius freezes independently once it
-# captures all its own milestones) -- a heavily-shaded grove (e.g. r08/r16)
-# can hit a genuine temporary lull under Grove's own shading/pruning dynamics
-# well before growth_cycle_limit, silently truncating its upper height
-# stages. Raised from the code default of 10: observed real stalls of
-# 7-9 consecutive cycles for some species/radius combos reaching 15-20m.
-plateau_cycles = 25
+# captures all its own milestones). Below the code default of 10;
+# owner-confirmed intentional (2026-08-13, 7eb273b).
+#
+# 2026-08-22: this knob was NOT the cause of the missing upper stages, and the
+# note that used to sit here -- "expect shaded radii to fall short ... that is
+# this knob and Grove's competition model working as configured, not a bug" --
+# was wrong. Per-cycle height tracing (data/tmp/run25m/seed_probe.py) shows the
+# shaded trees do not stall, they LOSE STRUCTURE: at r05, common_ash peaked at
+# 23.4 m and ended at 0.6 m, silver_birch 12.3 -> 1.4, norway_spruce 17.1 ->
+# 6.5, silver_fir 18.1 -> 5.1, wild_cherry 20.6 -> 4.4, scots_pine 20.5 ->
+# 13.6, european_oak 19.6 -> 12.7. Seven of eleven species. Plateau detection
+# ratchets on historical maximum height, so a collapsing tree reads as a
+# plateaued one and the ladder simply ends -- which is why raising
+# plateau_cycles to 15 changed nothing and looked like confirmation.
+#
+# The cause is Grove's structural collapse at high cycle counts under sustained
+# shade, and the remedy is the documented drop_decay_curve/drop_weak_curve
+# ease-in ramps now carried in config/preset_patches.json. With them,
+# norway_spruce and silver_fir both reach the full h25 ladder at r05.
+plateau_cycles = 5
 # Number of grove.smooth() passes on branch angles (int, 0-20, 0 = disabled)
 # Each pass reduces sharp corner angles between branch segments.
 # Higher values = smoother, more organic branches; 10-20 for production.
@@ -41,8 +55,20 @@ height_interval = 5
 # Reduces growth cycles and number of height stages for faster runs
 # 0 = no limit (use full CSV heights)
 # This is a step-4 (export) setting only; step 3's calibration has its own
-# independent [growth_models] max_height in growth_models.toml.
-max_height = 20
+# independent [growth_models] max_height in growth_models.toml -- keep the two
+# in step, so calibration always covers at least the exported range.
+# 25 (owner, 2026-09-15 evening): the dataset target is the h05/h10/h15/h20/h25
+# ladder at the two surround radii in [surround] radii (r08/r16), i.e. up to
+# 110 assemblies (11 species x 5 stages x 2 radii). Raising this without
+# raising the calibration cap would export h20/h25 off the end of the fitted
+# curves.
+#
+# Above h25 the tall conifers need the height-LOD ladder (XRFF-324) that does
+# not exist yet -- at [quality.high] an open-grown silver fir already exhausts
+# a 63.5 GB host at h20. A species that collapses under the 0.75 growing
+# shell on the way to h25 gets a different seed, not a lower density (owner
+# rule, 2026-09-15). See docs/dataset/dataset-overview.md.
+max_height = 25
 
 # --- Export options ---
 [export]
@@ -57,7 +83,20 @@ dbh_from_allometry = true
 # USD file format: "usda" (ASCII, human-readable) or "usdc" (binary, smaller/faster)
 # Binary USDC files are ~50% smaller on disk and faster for UE to parse,
 # significantly reducing memory pressure during import.
-usd_format = "usdc"
+usd_format = "usda"
+# Export target. "unreal" runs the full USD/Nanite/PVE pipeline. "helios"
+# writes OBJ directly from the Grove model per tree for Helios++ LiDAR
+# simulation, skipping USD/skeleton/PVE/Unreal script generation for that
+# tree (see helios.toml for OBJ export settings). Twig prototype meshes still
+# come from the small, pre-existing per-species twig USD assets.
+# "icons_only" writes just the icon PNGs from the Grove model.
+# "growth_json_only" writes just the PVE growth-data JSON -- the skeleton PVE
+# rebuilds the tree from, which REPLACES the Nanite assembly rather than
+# accompanying it. The mode is its own opt-in: unlike the post-assembly stage
+# it ignores both `skeletal` below and [unreal.growth_data_json] enabled, so a
+# run named growth_json_only cannot silently emit nothing.
+# Both are multi-stage only ([forest] height_interval > 0, the default).
+mode = "unreal"
 # Export skeletal mesh assemblies (required for Unreal animation/wind)
 skeletal = true
 # Export static mesh assemblies (geometry only, no skeleton)
@@ -65,33 +104,139 @@ skeletal = true
 # Disabled: UE 5.7/5.8 Nanite Assembly builder deadlocks on StaticMesh targets
 # (no skeleton) -- see docs/guides/unreal-import.md troubleshooting.
 static = false
-# Base twig density multiplier applied to all trees globally.
-# Default: auto-selects by species growth habit --
-# broadleaf species get twig_density_broadleaf, conifers get twig_density_conifer.
-# Uncomment to force a single uniform base for all species instead:
-# twig_density = 1.0
-# Per-tree scaling: the input CSV twig_density column is a scale factor
-# multiplied with this base (e.g., base=2.0, CSV=0.5 -> effective 1.0).
-# Range: 0.0 (no twigs) to 3.0+ (dense canopy)
-twig_density_conifer = 1.0
-twig_density_broadleaf = 2.0
+
+# Per-tree preview PNGs. dataset_overview.md/.csv are built from `icons`.
+icons = true
+# Per-view component PNGs alongside the plain/twigs pair: branches-only,
+# TWIGS-ONLY, skeleton and merged (io/usd/preview.py generate_icon_image).
+# On because the twigs-only view is the only one that shows crown density
+# without branch strokes on top of it, which is what the plain _twigs overlay
+# cannot separate. Roughly quadruples the icons stage's image count; the icons
+# stage is a small fraction of a run, so this is worth it for a dataset that
+# gets judged visually.
+icon_components = true
+# Left OFF deliberately. `previews` re-draws branch architecture, which the
+# plain icon already shows, and `export_control` (mesh edges + skeleton joints
+# read back from the exported USD) is 15.4% of a full run on its own. Enable
+# per-run with --previews / --export-control when inspecting one tree.
+previews = false
+export_control = false
+# Crown density multiplier, relative to Grove's NATURAL twig density.
+# 1.0 = exactly what Grove grew. Twigs that build_cutoff_thickness deletes are
+# restored from Grove directly (twig recovery), so this no longer has to
+# compensate for the cutoff -- it is a purely artistic knob.
+# The per-tree CSV twig_density column multiplies with this base.
+# Range: 0.0 (no twigs) to 2.0+ (denser than natural; adds synthetic twigs).
+#
+# Replaces twig_density_conifer / twig_density_broadleaf, which were hand-set
+# guesses at the cutoff loss. Measured losses vary more within a growth habit
+# than between habits (oak 2.09x vs beech 5.43x; spruce 1.04x vs pine 2.20x)
+# and shift with tree age and cutoff, so no per-habit constant could track them.
+#
+# 0.04, down from 0.5, set 2026-08-06 against published leaf-area allometry
+# rather than by eye. Measured on silver fir h15m (d=18cm, r00): at 0.5 the
+# crown carried 2,473 m2 of one-sided leaf area against 38.6-146 m2 from
+# Forrester et al. 2017 (DOI 10.1016/j.foreco.2017.04.011), i.e. 17-64x too
+# much depending on which DBH the equation is fed. Implied needle dry mass at
+# 0.5 was 458 kg on a tree whose entire aboveground biomass is 288 kg -- the
+# old density was physically impossible, which is what crashed the UE import:
+# 22,723 instances x 107,876 faces expands to 2.45 BILLION triangles at import,
+# versus 147M at 0.03. See XRFF-272/273/318.
+#
+# 0.04 is deliberately at the top of the defensible band (crown LAI ~13 against
+# a real 4-9), chosen for looks after 0.03 read slightly thin in Blender. The
+# honest fix for "correct leaf area but looks sparse" is a SMALLER twig asset,
+# not more leaf area: every instance is the same 39x35cm, 0.109 m2 spray at
+# scale 1.0 regardless of tree size, so ~1,400 of them cannot help but leave
+# gaps in a 90 m2 crown shell.
+#
+# This is still a single global constant and cannot be right for every tree:
+# the over-density factor grew 20x -> 56x -> 64x across the same silver fir's
+# h05m/h10m/h15m stages. XRFF-273 replaces this with a per-tree target.
+#
+# Thinning is random within each twig type, which preserves the spatial
+# distribution statistically; overlap is handled separately by
+# twig_min_spacing_ratio during recovery.
+#
+# This global value now applies only to species with no entry in
+# [export.twig_density_per_species] below.
+#
+# 2026-09-10, OWNER DECISION: crown density correction is OFF. Twig placement is
+# done by PVE inside Unreal now, so growpy exports Grove's own twig points and
+# neither adds nor removes any. 1.0 is the no-op, not a tuned value:
+# assembly_export.py guards `if effective_density != 1.0`, so
+# densify_twig_placements is never called and the placement list passes through
+# untouched. The per-species table at the end of this file is emptied for the
+# same reason -- do not repopulate either without reversing that decision.
+twig_density = 1.0
+# Per-species values live in [export.twig_density_per_species] at the END of
+# this file -- a TOML sub-table captures every key that follows it, so it
+# cannot sit here in the middle of [export].
+# Distance (m) beyond which a twig orphaned by the cutoff is pulled back onto
+# the surviving surface and re-aimed, instead of left where Grove placed it.
+# Most orphans sit ~1 mm out; long-shoot species (Scots pine) strand a third of
+# theirs 10-100 mm out, which would otherwise read as floating foliage.
+twig_reattach_threshold = 0.01
+# Restore the twigs build_cutoff_thickness deleted (twig recovery).
+# Set false to export Grove's surviving placements untouched -- the reference
+# for judging compensation. Note Grove's own seed twig_density is inert in the
+# core API (1.0 / 0.25 / 0.0 all grow the same count), so with recovery off the
+# only remaining density lever is export twig_density below.
+#
+# 2026-09-10, OWNER DECISION: false. Paired with twig_density = 1.0 above this is
+# the "export exactly what Grove grew and the cutoff left" contract. Recovery
+# re-placed cutoff-orphaned twigs onto surviving surfaces and rejected those
+# landing too close (twig_min_spacing_ratio) -- it both moved and dropped points,
+# which is no longer wanted now that PVE owns placement.
+#
+# Know the cost: the cutoff takes ~82% of a beech's twigs and ~52% of a 20-cycle
+# oak's, and with recovery off none of them come back. Crown density is now PVE's
+# distributor (InstanceSpacing / MaxPerBranch), calibrated under XRFF-424 -- not
+# this file. twig_reattach_threshold and twig_min_spacing_ratio above are dead
+# while this is false; they are read only inside the recovery path.
+twig_recovery = false
+# Reject a recovered twig once it lands closer than this fraction of the
+# tree's own median living-twig spacing to an already-placed twig. Branches
+# cut close together otherwise stack several compensation twigs on top of
+# each other, reading as an unnatural dense tuft. 0 disables the guard.
+twig_min_spacing_ratio = 0.75
 # Youth bias exponent for synthetic twig placement.
 # Controls how strongly additional twigs prefer younger branches.
 # 1.0 = linear (default), >1.0 = stronger youth preference, <1.0 = more uniform.
 # At 2.0 a branch at youth=0.5 gets 25% weight vs 100% for the youngest.
 # Range: 0.0 (uniform placement) to 3.0+ (extreme youth preference)
-youth_bias = 2.0
+youth_bias = 1.5
 # Maximum skeleton joints for Nanite Assembly USD export.
 # Nanite encodes bone indices in 8-bit fields (max 256).
 # 0 = no limit (use for PVE native skeletal mesh path which has no constraint).
 # 250 = safe default for Nanite Assembly USD import path.
-max_skeleton_joints = 250
+max_skeleton_joints = 1000
 # Maximum twig instances per Nanite Assembly.
 # During UE import, NaniteAssemblyRootAPI expands all instances into a combined
 # Nanite mesh which can consume extreme amounts of RAM.
-# 0 = no limit.  5000 = safe default for 64 GB systems.
-# Instances beyond this limit are randomly removed (uniform across twig types).
-max_assembly_instances = 23000
+# 0 = no limit.
+# Instances beyond this limit are removed proximity-weighted (crowded twigs go
+# first), which thins the crown -- so with twig recovery active this cap, not
+# twig_density, becomes the binding constraint on mature trees. A 10 m oak
+# reaches ~52k instances at natural density and a 15 m one goes well beyond.
+#
+# 2026-09-10: raised 40000 -> 65000, Epic's actual Nanite assembly cap (Natsura
+# reports ~56k practical). At 40000 the 2026-09-09 run thinned beech h20/h25 from
+# a measured 45,840 / 55,359 / 66,863; at 65000 only the largest still binds.
+# This is the one remaining path that removes twig points, and it is kept
+# deliberately: a USD assembly past Epic's cap fails to build on the hybrid
+# route (XRFF-426). Note twig_recovery is now false, so the counts above are an
+# upper bound -- the cap should rarely bind at all.
+max_assembly_instances = 65000
+# Hand UE the package path of an already-imported twig instead of its geometry
+# (XRFF-389). With this off, the assembly is a PointInstancer whose prototypes
+# carry geometry, and NaniteAssemblyRootAPI expands every instance into one
+# combined Nanite mesh at import -- which is what runs the editor out of memory
+# on a dense crown. With it on, each placement becomes an Xform carrying
+# NaniteAssemblyExternalRefAPI + a meshAssetPath, so the tree USD holds only
+# transforms. The twig library must already be imported (batch 00) for the
+# paths to resolve.
+external_refs = true
 # Skip assembly validation (saves ~5-10% export time)
 skip_validation = true
 # Only export specific trees by fid (integer array)
@@ -106,3 +251,128 @@ export_trees = []
 # When active, CSV twig_density column is ignored.
 # Variant definitions are in quality.toml under [density_variant.*].
 density_variants = [] # e.g., ["full", "reduced", "bare"]
+
+
+# Per-species crown density, keyed on standardized name. Overrides
+# [export] twig_density above for the species listed.
+#
+# MUST STAY LAST in this file: a TOML sub-table captures every key that
+# follows it, so any [export] key placed after this would silently land
+# inside this table instead.
+#
+# Back-solved 2026-08-06 from a measured dataset run: every species was
+# exported at a uniform 0.04, its actual one-sided leaf area computed as
+# sum(instances_i x prototype_leaf_area_i) from the per-twig sidecars, and
+# compared against Forrester et al. 2017 (DOI 10.1016/j.foreco.2017.04.011).
+# value = 0.04 / measured_ratio, using the mean over the three surround radii
+# at h15m.
+#
+# The spread is 103x (silver_fir 0.0078 to common_ash 0.80), so a single global
+# constant cannot serve the dataset. It is driven mostly by how much leaf area
+# each species' twig prototype carries -- the shared fir spray is 0.109 m2
+# against 0.023 m2 for ash -- NOT by Grove's placement. Note common_ash lands
+# near Grove's natural density: its crown was never over-dense, and the
+# "crowns are 20-70x too dense" finding was specific to the three species
+# sharing the large fir spray.
+#
+# Calibrated on h15m deliberately. Required density also varies within a
+# species across height stages (conifers need ~3x more at h05m than at h15m),
+# and h15m is both the heaviest asset and the one that blows UE's memory
+# budget, so it is the safe stage to pin. Consequence: h05m/h10m conifers come
+# out sparser than target. Fixing that properly needs the per-tree resolver
+# (XRFF-273).
+#
+# Re-derive after any change to twig assets, quality preset, or growth
+# calibration -- all three move the measured ratio.
+[export.twig_density_per_species]
+# 2026-09-08: european_beech and silver_fir re-derived by
+# `growpy-calibrate-crown-density --all-stages` against the CURRENT scoped run,
+# which is h05m/h10m at r05 only. Both measured 0.35 and 0.34 of their Forrester
+# target and the crowns read visibly sparse in UE. The ratio was steady across
+# the two stages (beech 0.40/0.29, fir 0.31/0.37), so a single value serves this
+# scope. It is NOT a substitute for the h15m calibration the rest of this table
+# carries: required density varies within a species across stages, and these two
+# values are pinned at the low end of the ladder. Re-derive the whole table at
+# full scope before dataset production.
+# Every value below was back-solved 2026-09-04 by `growpy-calibrate-crown-
+# density`, which is this table's own documented method made repeatable: export
+# at the configured density, measure each crown's ONE-SIDED leaf area as
+# sum(instances_i x prototype_leaf_area_i) off the exported PointInstancer, and
+# divide by the ratio to the published target. Re-run that tool after any change
+# to twig assets, quality preset or growth calibration, and re-export FIRST --
+# it reads areas off disk and densities out of this file, so a stale export
+# quietly yields a wrong suggestion.
+#
+# Two things changed under this round, and both moved every species.
+#
+# Targets are now per TREE. Forrester et al. (2017) leaf-area equations live in
+# pylometree (model_type "leaf_area") and are evaluated at each tree's own
+# diameter, instead of comparing a mean over three radii against one 38.6 m2
+# figure -- that figure being the pooled-conifer fit at d=18 cm, while these
+# h15m trees run d=14-30 cm. Eight species get a species-specific fit; Abies
+# alba, Acer pseudoplatanus and Tilia cordata have none and use the pooled one.
+# Betula pendula and Prunus avium have one but it was fitted over d 1-14 and
+# 1-10 cm, so mature trees fall back to the pooled broadleaved fit rather than
+# extrapolate a power law past its data.
+#
+# Leaf area is now measured leaf-only. The `<prototype>_leaf_area.json` sidecars
+# tag leaves by MATERIAL, so on any asset shipping one material the woody shoot
+# counted as leaf -- 8.7% of apparent leaf area across the converted library,
+# 35% on the worst fir variant. `convert-twigs` now also writes the topological
+# `_leaf_area_geom.json` split, and every species below reads it.
+#
+# Measured on a clean full run: 11 species, 32 h15m trees, all on the geom basis.
+#
+# 2026-09-10, OWNER DECISION: THIS TABLE IS INTENTIONALLY EMPTY. Crown density
+# correction moved to PVE inside Unreal (see twig_density near the top of
+# [export]), so growpy exports Grove's own twig points unmodified. The
+# back-solved values are kept below as comments because they record a real
+# calibration run, NOT because they should be restored.
+#
+# They were already known broken when this decision was taken: re-measured
+# 2026-09-09, beech at 1.0414 came out at 3.07x its Forrester target rather than
+# the 1.0x it was set for, and the required compensation varies 3.2x across a
+# single species' height ladder at one radius (beech r05: 3.16 / 4.55 / 3.14 /
+# 1.42 at h05..h20). No single per-species constant can serve the ladder, which
+# is what XRFF-273's per-stage resolver existed to fix. If density correction
+# ever returns to growpy, start from that issue, not from these numbers.
+#
+# common_ash = 1.0307          # measured 0.78x at 0.800
+# douglas_fir = 0.0959         # measured 0.42x at 0.0399
+# european_beech = 1.0414      # measured 0.62x at 0.6413 -- h05-h20 scope,
+#                              # re-derived after drop_shaded 0.1 shed the
+#                              # shaded lower branches and with them their leaf
+# european_oak = 0.1764        # measured 0.84x at 0.148
+# norway_spruce = 0.0556       # measured 0.55x at 0.0305
+# scots_pine = 0.0343          # measured 0.53x at 0.0181
+# silver_birch = 0.1276        # measured 1.57x at 0.200 -- pooled fit
+# silver_fir = 0.1660          # measured 0.75x at 0.1253 -- pooled fit, h05-h20,
+#                              # re-derived after drop_shaded 0.05. The ratio is
+#                              # now flat across the ladder (0.73-0.78) where it
+#                              # used to run 1.04-1.52
+# small_leaved_linden = 0.3119 # measured 0.45x at 0.139 -- pooled fit
+# sycamore_maple = 0.0535      # measured 2.13x at 0.114 -- pooled fit
+# wild_cherry = 0.0320         # measured 1.04x at 0.0331 -- pooled fit
+
+# --- Per-species structural detail -------------------------------------------
+# Overrides the active quality preset's build_cutoff_thickness (metres) for one
+# species. A preset name conflates render resolution with structural detail
+# (quality.toml, XRFF-404); this is the structural half, so a species can keep
+# a coarse tessellation and still keep its fine branches.
+#
+# Only set a species that measurably loses structure at the preset's floor.
+# Measured on silver_birch h15m r00 (2026-09-08), sweeping the cutoff alone:
+#
+#   cutoff   wood surface   twigs placed
+#   0.0040      38.12 m2         888      <- [quality.low]'s floor
+#   0.0025     102.57 m2       3,455      x2.69 wood, x3.89 twigs
+#   0.0000     105.64 m2       3,474      +3% wood, +0.5% twigs
+#
+# Birch's fine branches sit almost entirely between 2.5 and 4 mm, so the 4 mm
+# floor removed them and the twig attachment points with them -- it measured
+# 0.27 of its Forrester leaf area, and raising twig_density could not have
+# fixed that because the branches were gone. At 2.5 mm the same tree reaches
+# ~0.89 of target with no density change. Below 2.5 mm buys almost nothing and
+# costs triangles, so lower the floor, do not remove it.
+[export.build_cutoff_thickness_per_species]
+silver_birch = 0.0025        # measured: x2.69 wood, x3.89 twigs vs 0.0040

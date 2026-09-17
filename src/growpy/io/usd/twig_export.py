@@ -464,23 +464,58 @@ def add_skeleton_to_usd_file(usd_path, pivot_point=(0, 0, 0), minimal_export=Tru
 from growpy.utils.naming import standardize_twig_name  # noqa: E402
 
 
-def _detect_leaf_material_indices(obj):
-    """Return a set of material indices that likely correspond to leaves/foliage.
+# Names that positively identify a foliage material. Checked FIRST, because the
+# exclude list below cannot see the real problem: on every two-material asset in
+# this library the woody material is called "<Species>Twigs", and "twig" cannot
+# be added to the exclude list without breaking the single-material assets whose
+# one material is also called "<Species>Twig" and IS the foliage.
+_LEAF_KEYWORDS = ("leaf", "leaves", "needle", "foliage", "frond")
 
-    Twig assets are primarily leaf/needle geometry. Any material NOT explicitly
-    tagged as bark/branch/wood/dead is assumed to be a leaf and eligible for
-    geometry processing (alpha trim, densify, interior decimate).
+# Fallback only, and deliberately unchanged: it is what keeps single-material
+# assets (silver fir, Scots pine) processing exactly as before.
+_WOOD_KEYWORDS = ("bark", "branch", "wood", "dead")
+
+
+def _detect_leaf_material_indices(obj):
+    """Return the material indices that carry leaves/needles.
+
+    Densification, alpha trim and interior decimation are all restricted to
+    these, so getting it wrong is expensive in triangles.
+
+    Two stages, positive first. Where any material names itself foliage
+    ("BeechLeaves", "PaperBirchSummerLeaves"), those ARE the leaf set and
+    everything else is wood. Only when no material says so does the old
+    exclude-by-keyword heuristic run.
+
+    Why the order matters, measured 2026-09-10: the exclude list never fired on
+    the two-material assets, because their woody material is named
+    "<Species>Twigs" -- "BeechTwigs", "OneLeavedAshTwigs" -- and "twig" is not a
+    wood keyword. So the stem was densified along with the leaves, and
+    BeechTwigC went from 769 faces in the blend to 18,046, of which 13,422 (74 %)
+    were stem. A twig stem is opaque: it has no alpha to carve, so subdividing
+    it buys nothing at all.
+
+    "twig" cannot simply join the wood keywords, because the single-material
+    assets name their one material "PacificSilverFirTwig", and excluding it
+    would leave an empty set and skip their processing entirely.
     """
-    exclude_kw = ("bark", "branch", "wood", "dead")
     mats = getattr(obj.data, "materials", []) or []
 
     if not mats:
         return {0}
 
+    names = [(mat.name if mat else "").lower() for mat in mats]
+
+    leaf_idxs = {
+        i for i, name in enumerate(names)
+        if any(k in name for k in _LEAF_KEYWORDS)
+    }
+    if leaf_idxs:
+        return leaf_idxs
+
     idxs = set()
-    for i, mat in enumerate(mats):
-        name = (mat.name if mat else "").lower()
-        if not any(k in name for k in exclude_kw):
+    for i, name in enumerate(names):
+        if not any(k in name for k in _WOOD_KEYWORDS):
             idxs.add(i)
 
     # If all materials were excluded, return empty set (skip processing)
@@ -559,6 +594,45 @@ def _save_face_material_sidecar(obj, output_dir: Path, standardized_name: str) -
         json.dump(
             {"materials": mat_names, "face_material_indices": face_mat_indices}, f
         )
+
+
+def _save_leaf_area_sidecar(obj, output_dir: Path, standardized_name: str) -> float:
+    """Record this twig's one-sided leaf area, for leaf area index (LAI) work.
+
+    Written for EVERY twig, unlike the face-material sidecar, which bails out
+    when a twig has fewer than two materials -- that skipped exactly the
+    single-material conifer twigs whose crown density we most need to measure.
+    Leaf faces come from :func:`_detect_leaf_material_indices`, which treats
+    anything not tagged bark/branch/wood/dead as leaf, so a one-material needle
+    spray correctly counts as all leaf.
+
+    Called after all geometry processing, so the area matches the exported mesh
+    (the planar dissolve is area-preserving, but the alpha contour cut is not --
+    it removes the transparent border, which is the point).
+
+    Multiplied by a prototype's instance count in an assembly, this gives total
+    crown leaf area without re-deriving anything from the exported USD.
+    """
+    mesh = obj.data
+    leaf_idx = _detect_leaf_material_indices(obj)
+    leaf_area = 0.0
+    leaf_faces = 0
+    for poly in mesh.polygons:
+        if poly.material_index in leaf_idx:
+            leaf_area += poly.area
+            leaf_faces += 1
+
+    with open(output_dir / f"{standardized_name}_leaf_area.json", "w") as f:
+        json.dump(
+            {
+                "leaf_area_m2": leaf_area,
+                "leaf_faces": leaf_faces,
+                "total_faces": len(mesh.polygons),
+                "leaf_material_indices": sorted(leaf_idx),
+            },
+            f,
+        )
+    return leaf_area
 
 
 def _gather_texture_candidates(blend_dir, standardized_name, species, metadata):
@@ -643,8 +717,11 @@ from .twig_geometry import (  # noqa: F401
     _get_alpha_texture_for_geometry,
     apply_normal_displacement,
     cut_along_alpha_contour,
+    densify_face_cap,
     densify_mesh,
     densify_mesh_to_target_edge,
+    mesh_surface_area,
+    planar_dissolve,
     trim_by_alpha_mask,
 )
 
@@ -660,10 +737,13 @@ def process_twig_file(
     alpha_trim_threshold=0.0,
     alpha_trim_method="all",
     boundary_edge_mm=0.5,
+    boundary_edge_mm_per_twig=None,
     boundary_band_mm=1.0,
     interior_decimate_ratio=0.0,
     interior_edge_mm=0.0,
     interior_boundary_rings=1,
+    planar_angle=1.0,
+    planar_angle_per_twig=None,
 ):
     """Process a single twig blend file.
 
@@ -686,6 +766,12 @@ def process_twig_file(
         boundary_edge_mm: Target leaf edge length in millimeters for pre-densification
             before the alpha contour cut (default: 0.5). Smaller values = denser
             mesh and finer Nanite detail; larger values = faster export, coarser mesh.
+        boundary_edge_mm_per_twig: Optional per-object overrides of
+            boundary_edge_mm, keyed on the twig OBJECT name (the same key
+            planar_angle_per_twig uses). Needed where one asset ships variants
+            of very different sizes: the target is absolute, but the
+            MAX_DENSIFY_FACES cap is per object, so a small variant subdivides
+            much further than a large one before the cap stops it (XRFF-412).
         boundary_band_mm: Distance from silhouette in mm to include (default: 1.0)
         interior_decimate_ratio: Fallback decimation ratio for interior faces (0-1).
             Ignored when interior_edge_mm > 0.
@@ -797,6 +883,11 @@ def process_twig_file(
         joined_objects.append(joined)
 
     mesh_objects = joined_objects
+
+    # Face-cap reference for densification: the largest variant in this file,
+    # so every variant is capped at the same faces-per-area (XRFF-412).
+    object_area = {obj.name: mesh_surface_area(obj.data) for obj in mesh_objects}
+    largest_area = max(object_area.values(), default=0.0)
 
     exported_files = []
     texture_manifest = {}
@@ -956,11 +1047,23 @@ def process_twig_file(
                     and alpha_img is not None
                     and alpha_trim_threshold > 0.0
                 ):
+                    # Per-twig override, same key as planar_angle_per_twig below.
+                    # The absolute target only delivers the "consistent density
+                    # across twig sizes" its docstring promises when it actually
+                    # binds: MAX_DENSIFY_FACES is a per-OBJECT cap, so a small
+                    # variant of the same asset subdivides far further than a
+                    # large one before hitting it (XRFF-412).
+                    obj_edge_mm = (boundary_edge_mm_per_twig or {}).get(
+                        obj.name, boundary_edge_mm
+                    )
                     densify_mesh_to_target_edge(
                         obj,
-                        target_edge_mm=boundary_edge_mm,
+                        target_edge_mm=obj_edge_mm,
                         material_indices=leaf_mats,
                         max_iterations=8,
+                        max_faces=densify_face_cap(
+                            object_area.get(obj.name, 0.0), largest_area
+                        ),
                     )
                     cut_along_alpha_contour(
                         obj,
@@ -989,6 +1092,32 @@ def process_twig_file(
                         interior_edge_mm=interior_edge_mm,
                     )
 
+                # Generalise the densified interior. Densification exists only
+                # to give the contour cut fine edges to carve; once the outline
+                # is cut, the flat interior is described by far more triangles
+                # than its shape needs. Dissolving coplanar faces merges them
+                # back without touching the outline -- boundary edges have one
+                # adjacent face and are never dissolve candidates -- so this is
+                # shape-preserving, unlike collapse decimation.
+                # Per-twig override, keyed on the object name printed below, so
+                # a twig whose leaves meet at shallow angles can be generalised
+                # more gently without giving up the reduction on the others.
+                obj_angle = (planar_angle_per_twig or {}).get(obj.name, planar_angle)
+                if obj_angle > 0.0:
+                    fb, fa, bb, ba = planar_dissolve(obj, angle_deg=obj_angle)
+                    if fb:
+                        logger.info(
+                            "Planar dissolve: %s %d -> %d faces (%.1fx), "
+                            "outline %d -> %d boundary edges (angle %.2f deg)",
+                            obj.name,
+                            fb,
+                            fa,
+                            fb / fa if fa else 0.0,
+                            bb,
+                            ba,
+                            obj_angle,
+                        )
+
                 # Recalculate normals
                 bpy.context.view_layer.objects.active = obj
                 bpy.ops.object.mode_set(mode="EDIT")
@@ -999,6 +1128,10 @@ def process_twig_file(
             # Save per-face material mapping for downstream OBJ simplification
             # Must happen AFTER all geometry processing so face indices match exported USD
             _save_face_material_sidecar(obj, output_dir, standardized_name)
+            _leaf_m2 = _save_leaf_area_sidecar(obj, output_dir, standardized_name)
+            logger.info(
+                "Leaf area: %s %.4f m2 one-sided", standardized_name, _leaf_m2
+            )
 
             bpy.ops.object.select_all(action="DESELECT")
             mount_point.select_set(True)

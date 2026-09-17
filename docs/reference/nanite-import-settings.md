@@ -5,9 +5,9 @@ How `[unreal]` settings in `unreal.toml` map to UE
 why each one matters for forest imports, and where the rationale comes from.
 
 These settings are applied post-import in
-[unreal_nanite_script.py:_configure_nanite_assembly](../src/growpy/io/unreal/unreal_nanite_script.py)
+[unreal_nanite_script.py:_configure_nanite_assembly](../../src/growpy/io/unreal/unreal_nanite_script.py)
 (injected as a preamble into batch scripts by
-[`unreal_scripts.py`](../src/growpy/io/unreal/unreal_scripts.py))
+[`unreal_scripts.py`](../../src/growpy/io/unreal/unreal_scripts.py))
 on every assembly mesh produced by the pipeline.
 
 ## Why these settings matter
@@ -47,7 +47,7 @@ The two single biggest wins are:
 
 ## Order of operations matters
 
-In [`_configure_nanite_assembly`](../src/growpy/io/unreal/unreal_nanite_script.py),
+In [`_configure_nanite_assembly`](../../src/growpy/io/unreal/unreal_nanite_script.py),
 properties are applied in this order:
 
 1. `shape_preservation` → Voxelize
