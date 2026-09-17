@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-17
+
 ### 2026-09-16 — every exported asset carries a TAMF record
 
 #### Added
@@ -166,6 +168,7 @@ knowledge hub (`04-LOGIC-TIER/growpy-surround-density-calibration`,
 - GitHub Actions CI workflow and pre-commit config (`3f06ce1`); the empty `.gitlab-ci.yml`
   (`7faf244`); superseded tools (`45a1baa`).
 
+## [0.4.0] - 2026-08-03
 
 ### Fixed
 
@@ -353,6 +356,19 @@ knowledge hub (`04-LOGIC-TIER/growpy-surround-density-calibration`,
   for Douglas fir, Norway spruce, small-leaved linden, silver birch, common
   ash and Scots pine. Assets exported before this change used the old values
   and should be regenerated.
+
+## [0.3.1] - 2026-07-29
+
+### Removed
+
+- `.claude/`, `CLAUDE.md`, `AGENTS.md`, and `.github/copilot-instructions.md`
+  from `main` — dev-workflow tooling, not project documentation; they now
+  live on a `dev` branch instead.
+- A stale tracked `.coverage` report and personal `.vscode/` editor config
+  (which included an Unreal remote-python port and a Claude Code permission
+  flag) — both untracked, kept locally via `.gitignore`.
+- An orphaned `claude-code-skills` submodule gitlink with no matching
+  `.gitmodules` entry.
 
 ## [0.3.0] - 2026-07-27
 
