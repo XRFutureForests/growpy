@@ -255,3 +255,21 @@ small_leaved_linden = 0.02
 # 3.6 points per branch and fir at 4.7, beech at 12.
 [unreal.growth_data_json.min_point_spacing_per_species]
 european_beech = 0.2
+
+# --- per-species crown-base cut (XRFF-476, 2026-09-17) ---
+# Listing a species drops every side branch attached BELOW the tree's own
+# crown base (p10 of its living twig heights, the growpy-crown-metrics rule)
+# minus this margin in metres, subtree included, at growth-JSON export. Grove's
+# Surround shell self-prunes a conifer's lower crown but leaves the dead stubs
+# in the skeleton, and PVE's distributor plus the `_h` tip cap foliate every
+# branch: on the 2026-09-16 catalog 21-23 % of spruce/fir h15 instances and
+# 35 % of pine r08_h25m sat below the crown base (owner: "too many twigs
+# placed on the lower part of the trunk"). Margin 0.0 is what reaches the
+# <= 5 % acceptance -- a 1 m margin still leaves 13-15 % at spruce h15. Not
+# listed: douglas fir (2-5 %, judged fine) and every broadleaf (an h25 ash
+# carries 18 % below its p10 line, and nobody objected to it). A pure
+# post-process, so an emitted JSON can be re-cut without a regrow.
+[unreal.growth_data_json.crown_base_cut_margin_per_species]
+norway_spruce = 0.0
+silver_fir = 0.0
+scots_pine = 0.0

@@ -230,14 +230,14 @@ def solve_flat(
     the result then says ``capped`` and lands short of the target.
     """
     from growpy.io.unreal.pve_distributor_model import (
-        expected_scale_squared_factor,
+        expected_area_factor,
         simulate_placements,
     )
 
     # A randomised instance scale multiplies leaf area by E[scale^2], not by
     # its mean; 1.0 at the identity range, so this is inert for every graph
     # solved before XRFF-467.
-    area_per_instance = mean_prototype_area_m2 * expected_scale_squared_factor(base)
+    area_per_instance = mean_prototype_area_m2 * expected_area_factor(base)
     cache: dict[int, int] = {}
 
     def instances_at(density: int) -> int:
@@ -290,8 +290,8 @@ def solve_graded(
     and is required for a tip cap.
     """
     from growpy.io.unreal.pve_distributor_model import (
+        expected_area_factor,
         expected_palette_mix,
-        expected_scale_squared_factor,
         simulate_placements,
     )
     from growpy.io.unreal.pve_graph_plan import graded_palette
@@ -303,7 +303,7 @@ def solve_graded(
     )
     # Randomised instance scale: leaf area goes as E[scale^2], 1.0 at the
     # identity range (XRFF-467).
-    scale_sq = expected_scale_squared_factor(base)
+    scale_sq = expected_area_factor(base)
     largest = max(range(len(areas)), key=lambda i: areas[i])
     apex_area = areas[largest] * scale_sq if ladder.apex else 0.0
     cap_instances = 0
@@ -400,8 +400,8 @@ def compound_layout(
     area from the expected mix; neither is solved to a target.
     """
     from growpy.io.unreal.pve_distributor_model import (
+        expected_area_factor,
         expected_palette_mix,
-        expected_scale_squared_factor,
         simulate_placements,
     )
     from growpy.io.unreal.pve_graph_plan import graded_palette
@@ -433,7 +433,7 @@ def compound_layout(
     fill = dataclasses.replace(fill_probe, conditions=conditions)
     mix = expected_palette_mix(fill_placements, palette, conditions)
     # Randomised instance scale: area goes as E[scale^2] (XRFF-467).
-    scale_sq = expected_scale_squared_factor(base)
+    scale_sq = expected_area_factor(base)
     area = sum(m * a for m, a in zip(mix, fill_areas, strict=True)) * scale_sq
 
     layers: list[FoliageLayer] = []

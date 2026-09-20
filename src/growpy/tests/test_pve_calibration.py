@@ -385,6 +385,44 @@ class TestShippedCalibration:
         assert _ladder({"tip_tier": "_h"}).tip_tier == "_h"
 
 
+class TestHeightKeyedOverrides:
+    """XRFF-475 / XRFF-474: per-tree start and the base-scale ceiling."""
+
+    def test_broadleaf_defaults_ramp_the_start_and_cap_the_scale(self, shipped):
+        oak = shipped.for_species("european_oak", habit="broadleaf")
+        assert oak.relative_start_by_height == ((11.0, 0.85), (25.0, 0.35))
+        assert oak.max_base_scale == 1.5
+        # h05-h10 keep what they were judged right at; h25 spreads.
+        assert oak.relative_start_for(5.0) == 0.85
+        assert oak.relative_start_for(10.0) == 0.85
+        assert oak.relative_start_for(18.0) == pytest.approx(0.6)
+        assert oak.relative_start_for(25.0) == 0.35
+        assert oak.relative_start_for(30.0) == 0.35
+        # Conifers and beech are untouched.
+        spruce = shipped.for_species("norway_spruce", habit="conifer")
+        beech = shipped.for_species("european_beech")
+        for cal in (spruce, beech):
+            assert cal.relative_start_by_height is None
+            assert cal.max_base_scale == 1.0
+            assert cal.relative_start_for(25.0) == cal.relative_start
+
+    def test_no_ramp_means_the_flat_start(self):
+        assert _species(relative_start=0.3).relative_start_for(25.0) == 0.3
+
+    def test_a_ramp_needs_two_ascending_keys_in_range(self):
+        with pytest.raises(ValueError, match="strictly ascending"):
+            _species(relative_start_by_height=((25.0, 0.5), (10.0, 0.85)))
+        with pytest.raises(ValueError, match=">= 2 keys"):
+            _species(relative_start_by_height=((10.0, 0.85),))
+        with pytest.raises(ValueError, match=r"\[0, 1\)"):
+            _species(relative_start_by_height=((10.0, 0.85), (25.0, 1.0)))
+
+    def test_max_base_scale_is_a_ceiling_at_or_above_one(self):
+        assert _species(max_base_scale=2.0).max_base_scale == 2.0
+        with pytest.raises(ValueError, match="max_base_scale"):
+            _species(max_base_scale=0.9)
+
+
 class TestDensityResolution:
     def test_solved_density_is_never_built_from(self):
         # It is the solver's recommendation and is not guaranteed to be on the
@@ -648,8 +686,18 @@ class TestPerInstanceVariance:
     def test_the_shipped_defaults_carry_a_spread_per_habit(self, shipped):
         conifer = shipped.for_species("norway_spruce", habit="conifer").pose
         broadleaf = shipped.for_species("european_oak", habit="broadleaf").pose
-        assert broadleaf.randomize_scale == (0.7, 1.3)
-        assert broadleaf.randomize_axil_angle == (-20.0, 20.0)
+        # Widened 2026-09-17 with the golden-angle phyllotaxy and the tip-heavy
+        # spacing gradient (owner: still a caterpillar on the 1.5x ash ladder).
+        assert broadleaf.randomize_scale == (0.6, 1.4)
+        assert broadleaf.randomize_axil_angle == (-30.0, 30.0)
+        assert broadleaf.phyllotaxy_additional_angle == 137.5
+        assert broadleaf.spacing_ramp == (
+            (0.0, 0.0), (0.25, 0.366), (0.5, 0.618), (0.75, 0.823), (1.0, 1.0)
+        )
+        graded = shipped.for_species("european_oak", habit="broadleaf")
+        assert graded.phyllotaxy_formation == "PARASTICHOUS"
+        assert shipped.for_species("european_beech").phyllotaxy_formation != "PARASTICHOUS"
+        assert shipped.for_species("european_beech").pose.spacing_ramp is None
         # A pectinate spray is a flat, regular structure: half the spread.
         assert conifer.randomize_scale == (0.8, 1.2)
         assert conifer.randomize_axil_angle == (-12.0, 12.0)
@@ -662,16 +710,23 @@ class TestPerInstanceVariance:
         assert fir.randomize_scale == (0.8, 1.2)
         assert fir.randomize_axil_angle == (-12.0, 12.0)
 
-    def test_the_spacing_ramp_ships_off(self, shipped):
-        # Wired but deliberately unused: the ramp is shared by every branch,
-        # so it is a repeated motif rather than variance.
+    def test_the_spacing_ramp_ships_only_as_the_broadleaf_gradient(self, shipped):
+        # The ramp is shared by every branch, so it is a repeated motif rather
+        # than variance -- which is why it stays off everywhere except the
+        # graded broadleaves, where it is the inboard-to-tip density GRADIENT
+        # the owner asked for on 2026-09-17 (not a randomiser).
         for name, habit in (
-            ("european_oak", "broadleaf"),
             ("norway_spruce", "conifer"),
             ("european_beech", None),
             ("silver_fir", None),
         ):
             assert shipped.for_species(name, habit=habit).pose.spacing_ramp is None
+        ramp = shipped.for_species("european_oak", habit="broadleaf").pose.spacing_ramp
+        assert ramp is not None and ramp[0] == (0.0, 0.0) and ramp[-1] == (1.0, 1.0)
+        # Monotonic and concave: every quarter of the samples covers less
+        # branch than the one before it, so the tip end is the dense one.
+        spans = [b[1] - a[1] for a, b in zip(ramp, ramp[1:], strict=False)]
+        assert all(s > 0 for s in spans) and spans == sorted(spans, reverse=True)
 
     def test_a_pose_without_the_keys_is_the_engine_identity(self):
         pose = _pose({"axil_angle": 25.0})
@@ -684,5 +739,8 @@ class TestPerInstanceVariance:
 
         cal = shipped.for_species("european_oak", habit="broadleaf")
         spec = _pose_distributor(cal, 12)
-        assert spec.randomize_scale == (0.7, 1.3)
-        assert spec.randomize_axil_angle == (-20.0, 20.0)
+        assert spec.randomize_scale == (0.6, 1.4)
+        assert spec.randomize_axil_angle == (-30.0, 30.0)
+        assert spec.spacing_ramp == cal.pose.spacing_ramp
+        assert spec.phyllotaxy_formation == "PARASTICHOUS"
+        assert spec.phyllotaxy_additional_angle == 137.5

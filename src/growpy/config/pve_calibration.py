@@ -444,6 +444,19 @@ class SpeciesCalibration:
     # True when synthesised from [pve_calibration.defaults] rather than read
     # from a species block of its own.
     derived: bool = False
+    # Per-tree start keyed on TREE HEIGHT (XRFF-475, 2026-09-17): a piecewise-
+    # linear ramp of ``[[height_m, relative_start], ...]`` evaluated at the
+    # tree's own height and held flat outside the keys. ``relative_start`` is
+    # a fraction of EACH branch's length, so one value cannot be right for a
+    # 0.7 m h10 twig and a 2 m h25 limb. None keeps the flat value. Only the
+    # offline-built trees read it; a measured row was measured at one start
+    # and stays valid only there.
+    relative_start_by_height: tuple[tuple[float, float], ...] | None = None
+    # Ceiling on the instance base scale the plan may spend to close a leaf-
+    # area gap the instance cap leaves (XRFF-474): a capped tree gets
+    # ``min(max_base_scale, sqrt(target / area_at_cap))``, an uncapped one
+    # stays at 1.0. Area goes as scale squared; leaves grow with it.
+    max_base_scale: float = 1.0
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.relative_start < 1.0:
@@ -479,6 +492,32 @@ class SpeciesCalibration:
             )
         if self.palette == "compound" and self.compound is None:
             object.__setattr__(self, "compound", CompoundSpec())
+        ramp = self.relative_start_by_height
+        if ramp is not None:
+            if len(ramp) < 2 or any(
+                b[0] <= a[0] for a, b in zip(ramp, ramp[1:], strict=False)
+            ):
+                raise ValueError(
+                    f"species {self.species!r} relative_start_by_height needs >= 2 "
+                    f"keys with strictly ascending heights, got {ramp}"
+                )
+            if any(not 0.0 <= v < 1.0 for _, v in ramp):
+                raise ValueError(
+                    f"species {self.species!r} relative_start_by_height values "
+                    f"must be in [0, 1), got {ramp}"
+                )
+        if self.max_base_scale < 1.0:
+            raise ValueError(
+                f"species {self.species!r} max_base_scale must be >= 1.0, "
+                f"got {self.max_base_scale}"
+            )
+
+    def relative_start_for(self, height_m: float) -> float:
+        """``relative_start`` for a tree of ``height_m`` (the species' flat
+        value when no height ramp is configured)."""
+        if self.relative_start_by_height is None:
+            return self.relative_start
+        return _interp(self.relative_start_by_height, height_m)
 
     def builds_from_row(self, tree_id: str) -> bool:
         """Whether ``tree_id`` builds from its measured row rather than offline."""
@@ -647,6 +686,25 @@ def _pair(value: Any, default: tuple[float, float]) -> tuple[float, float]:
     return (float(lo), float(hi))
 
 
+def _ramp(value: Any) -> tuple[tuple[float, float], ...] | None:
+    """A ``[[x, y], ...]`` ramp from TOML, or None when absent."""
+    if value is None:
+        return None
+    return tuple((float(x), float(y)) for x, y in value)
+
+
+def _interp(keys: tuple[tuple[float, float], ...], x: float) -> float:
+    """Piecewise-linear ``y`` at ``x``, held flat outside the first/last key."""
+    if x <= keys[0][0]:
+        return keys[0][1]
+    if x >= keys[-1][0]:
+        return keys[-1][1]
+    for (x0, y0), (x1, y1) in zip(keys, keys[1:], strict=False):
+        if x0 <= x <= x1:
+            return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+    return keys[-1][1]
+
+
 def _pose(data: dict[str, Any] | None) -> TwigPose:
     if not data:
         return TwigPose()
@@ -765,6 +823,8 @@ def _species(
         fullness=float(data.get("fullness", 1.0)),
         mask_fraction=float(data.get("mask_fraction", 0.0)),
         compound=_compound(data.get("compound")),
+        relative_start_by_height=_ramp(data.get("relative_start_by_height")),
+        max_base_scale=float(data.get("max_base_scale", 1.0)),
         build_from=str(data.get("build_from", "measured")),
         derived=derived,
     )

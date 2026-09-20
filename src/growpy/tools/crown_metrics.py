@@ -98,6 +98,39 @@ def load_leaf_areas(twig_dir: Path) -> dict[str, float]:
     return areas
 
 
+# Crown base: the height below which CROWN_BASE_PCT of the foliage sits.
+#
+# This was 2% until 2026-09-10 and that was too deep in the tail to be a
+# stable estimate. Measured on the density sweep: a beech at shell density
+# 0.90 reads crown_base **7.62 m at p2 but 14.32 m at p5** -- a 6.7 m jump
+# from moving the percentile three points, because roughly 70 stray twigs
+# hang below the actual crown. Neighbouring arms move smoothly over the same
+# range, so it is not a real feature of the tree. The knock-on was material:
+# crown_ratio read 0.62 at p2 (inside Sharma's 0.52-0.68 band) and 0.25 at
+# p10, which is the difference between that density looking correct and
+# looking over-suppressed.
+#
+# p10 keeps the point of the share-based rule -- ignore the handful of stray
+# low twigs that would drag a simple minimum to the ground -- while sitting
+# far enough out of the tail to be reproducible. It is deliberately a single
+# named constant: crown_ratio and every downstream comparison depend on it,
+# so it must not be changed without re-measuring the whole sweep.
+CROWN_BASE_PCT = 0.10
+
+
+def crown_base_from_heights(heights) -> float:
+    """The crown base (m) of a foliage envelope given its twig heights.
+
+    One rule, two readers: this tool measures it off the USD assembly and
+    the growth-JSON export reads it off the same twig placements to cut the
+    self-pruned lower branches (XRFF-476), so both see the same number.
+    """
+    zs = np.sort(np.asarray(list(heights), dtype=float))
+    if len(zs) == 0:
+        raise ValueError("crown base needs at least one twig height")
+    return float(zs[int(CROWN_BASE_PCT * len(zs))])
+
+
 def measure_assembly(
     path: Path, leaf_areas: dict[str, float] | None = None
 ) -> dict | None:
@@ -155,28 +188,7 @@ def measure_assembly(
     radial = np.hypot(pts[:, 0], pts[:, 1])
     crown_d = 2.0 * float(np.percentile(radial, 95))
 
-    # Crown base: the height below which CROWN_BASE_PCT of the foliage sits.
-    #
-    # This was 2% until 2026-09-10 and that was too deep in the tail to be a
-    # stable estimate. Measured on the density sweep: a beech at shell density
-    # 0.90 reads crown_base **7.62 m at p2 but 14.32 m at p5** -- a 6.7 m jump
-    # from moving the percentile three points, because roughly 70 stray twigs
-    # hang below the actual crown. Neighbouring arms move smoothly over the same
-    # range, so it is not a real feature of the tree. The knock-on was material:
-    # crown_ratio read 0.62 at p2 (inside Sharma's 0.52-0.68 band) and 0.25 at
-    # p10, which is the difference between that density looking correct and
-    # looking over-suppressed.
-    #
-    # p10 keeps the point of the share-based rule -- ignore the handful of stray
-    # low twigs that would drag a simple minimum to the ground -- while sitting
-    # far enough out of the tail to be reproducible. It is deliberately a single
-    # named constant: crown_ratio and every downstream comparison depend on it,
-    # so it must not be changed without re-measuring the whole sweep.
-    CROWN_BASE_PCT = 0.10
-    order = np.argsort(z)
-    zs = z[order]
-    idx = int(CROWN_BASE_PCT * len(zs))
-    crown_base = float(zs[idx])
+    crown_base = crown_base_from_heights(z)
 
     proj = _hull_area(pts[:, :2])
     # Leaf area is summed per instance from its own prototype rather than from a

@@ -244,6 +244,20 @@ def expected_scale_squared_factor(distributor) -> float:
     return (lo * lo + lo * hi + hi * hi) / 3.0
 
 
+def expected_area_factor(distributor) -> float:
+    """Leaf-area multiplier per instance under a FLAT scale ramp at 1.0.
+
+    ``ComputeAttachmentScale`` is ``ramp x BaseScale x U``, so on the flat
+    ramp every instance carries ``base_scale^2 x E[U^2]`` times its
+    prototype's area. This is what the offline solvers multiply the palette
+    areas by; :func:`measure_leaf_area` reads the ramp off the placements
+    instead and applies only the random factor. ``base_scale`` (XRFF-474) is
+    the free leaf-area lever once the instance cap binds.
+    """
+    base = float(getattr(distributor, "base_scale", 1.0))
+    return expected_scale_squared_factor(distributor) * base * base
+
+
 def _load(path: Path):
     data = json.loads(Path(path).read_text())
     positions = data["points"]["positions"]

@@ -148,15 +148,53 @@ tip_tier = "_h"
 # worse, so its own block keeps x2 / 0.4 / 40 deg plus the mask.
 fullness = 6.0
 relative_start = 0.85
+# Height-keyed per-tree overrides (2026-09-17). Both are piecewise-linear on
+# the tree's height, held flat outside the keys, and only read for trees the
+# plan solves offline (every graded broadleaf).
+#
+# relative_start_by_height (XRFF-475): the start is a fraction of EACH
+# branch's length, so 0.85 puts foliage on the outer 11 cm of an h10 ash's
+# median foliated branch (0.7 m) and on the outer 30 cm of an h25's (2.0 m)
+# -- with 33 capped instances crammed into that span, plus a bare metre
+# inboard on the 3-15 m primaries. Owner, 2026-09-17: "most of the twigs
+# placed very close to the tips of the branches". A length-derived rule
+# (1 - span / L) runs the wrong way (it rises with L), so the ramp is on
+# height: h05-h10 keep the 0.85 they were judged right at (the first key sits
+# above the 10.0-10.4 m the h10 trees actually reach), h25 spreads the same
+# instances over the outer half. Count-neutral (the start moves where
+# instances go, not how many), so no regrow and no re-solve.
+#
+# Owner verdict on the 1.5x / 0.5 ash ladder (2026-09-17 afternoon): density
+# good; "still a strong tendency to place the twigs near the branch tips ...
+# distributed a bit more loosely when getting closer to the stem, no need for
+# such a drastic cut". So the start goes further inboard (0.35 at h25) and
+# the hard edge is replaced by the spacing_ramp gradient in the pose below.
+relative_start_by_height = [[11.0, 0.85], [25.0, 0.35]]
+# Graded broadleaves advance around the branch at the golden angle instead
+# of the two-ranked 180 deg alternation: same count, but no two neighbours
+# share a plane, which is the cheapest cure for the "caterpillar" the owner
+# saw again on the 2026-09-17 ash ladder. Beech keeps its own block.
+phyllotaxy_formation = "PARASTICHOUS"
+# max_base_scale (XRFF-474): the free leaf-area lever once the 40 k instance
+# cap binds -- area goes as scale squared, and the twig palettes of ash, oak
+# and linden are single whole-twig objects (0.012-0.025 m2) that no ladder
+# can enlarge. Need-based: a capped tree gets min(max, sqrt(target / area at
+# the cap)), an uncapped one (cherry, h05-h15) stays at 1.0, so nothing that
+# reaches its target changes. At 1.5 ash r16_h25m goes from 17 % to ~38 % of
+# its target on the same instances, oak 29 -> 65 %, linden 38 -> 85 %, birch
+# and maple close their gap under the cap. Leaves grow with it, so the owner
+# judges the renders; 2.0 (ash 68 %) is the other candidate. Compound parts
+# (XRFF-463) are the structural answer if neither reads right.
+max_base_scale = 1.5
 # Rosettes on the sides, fanned 70 deg toward the tip, faces up, plus the
 # inclination real leaves have as random pitch/roll/yaw (the beech pose).
 [pve_calibration.defaults.broadleaf.pose]
 reset_phyllotaxy = true
 axil_angle = 70.0
 jitter = [
-    { mode = "PITCH", degrees = 20.0, seed = 11 },
-    { mode = "ROLL", degrees = 12.0, seed = 12 },
-    { mode = "YAW", degrees = 8.0, seed = 13 },
+    { mode = "PITCH", degrees = 25.0, seed = 11 },
+    { mode = "ROLL", degrees = 15.0, seed = 12 },
+    { mode = "YAW", degrees = 12.0, seed = 13 },
 ]
 # Per-instance variance (XRFF-467, 2026-09-16). Until this, every rosette on a
 # branch was the same size at the same angle in the same rhythm -- the
@@ -168,14 +206,28 @@ jitter = [
 # here) and is pure rotation.
 #
 # The third lever PVE offers is `spacing_ramp`, which reshapes where along a
-# branch the samples land. It is wired and left OFF: the ramp is deterministic
-# and shared by every branch, so it is a repeated motif rather than variance,
-# and PVE exposes no random spacing. Two other knobs XRFF-467 listed are
-# deliberately not used -- `rotation` twists each successive instance by a
-# fixed angle (a drift, not a random), and `branch_scale_impact` is read only
-# under ScaleRampBasis = Branch, which these graphs are not.
-randomize_scale = [0.7, 1.3]
-randomize_axil_angle = [-20.0, 20.0]
+# branch the samples land: evaluated on the even loop value BEFORE the
+# relative remap, so it moves samples without changing their number. It is
+# deterministic and shared by every branch (PVE exposes no random spacing),
+# which is why it was left off for variance -- but it is exactly the tool for
+# a GRADIENT. Owner, 2026-09-17: twigs "distributed a bit more loosely when
+# getting closer to the stem". This ramp is the inverse CDF of a linear
+# density rising from 0.5x at the inboard start to 1.5x at the tip (tip 3x
+# the base, no cluster at either end): x = (sqrt(1 + 8 t) - 1) / 2. With the
+# h25 start at 0.35 the outer half of the span carries 62 % of the instances.
+# Two other knobs XRFF-467 listed are deliberately not used -- `rotation`
+# twists each successive instance by a fixed angle (a drift, not a random),
+# and `branch_scale_impact` is read only under ScaleRampBasis = Branch, which
+# these graphs are not.
+spacing_ramp = [[0.0, 0.0], [0.25, 0.366], [0.5, 0.618], [0.75, 0.823], [1.0, 1.0]]
+# Widened 2026-09-17 with the golden-angle phyllotaxy above (owner: "a bit of
+# randomness ... would help the natural look"): E[scale^2] = 1.053, divided
+# back out by the solve.
+randomize_scale = [0.6, 1.4]
+randomize_axil_angle = [-30.0, 30.0]
+# Golden angle (see phyllotaxy_formation above); the formation's own base
+# angle is 0 under PARASTICHOUS, so this IS the advance.
+phyllotaxy_additional_angle = 137.5
 # Graded here too: birch ships 18 leaf clusters spanning 30x in area and
 # cherry 8 spanning 54x, so grading them onto branch radius puts the big
 # clusters on the limbs and the small ones on the twigs, Epic's shape.

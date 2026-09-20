@@ -1506,6 +1506,7 @@ def write_coverage_manifest(
                         "growth_json": str(Path(c.growth_json)).replace("\\", "/"),
                         "branch_density": c.distributor.branch_density,
                         "relative_start": c.distributor.relative_start,
+                        "base_scale": c.distributor.base_scale,
                         "randomize_scale": list(c.distributor.randomize_scale),
                         "randomize_axil_angle": list(
                             c.distributor.randomize_axil_angle

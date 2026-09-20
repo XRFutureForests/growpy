@@ -28,6 +28,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import math
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -309,17 +310,25 @@ def _pose_distributor(
     *,
     conditions: ConditionSpec | None = None,
     generation_band: tuple[int | None, int | None] | None = None,
+    relative_start: float | None = None,
+    base_scale: float = 1.0,
 ) -> DistributorSpec:
     """The species' measured twig pose at ``density`` (XRFF-438, 2026-09-14).
 
     Restated here so a change to the builder's defaults cannot silently change
     what a pipeline run emits. None of it changes instance counts -- but
     ``randomize_scale`` does change leaf AREA (as scale squared), which is why
-    the offline solve reads it off this same spec (XRFF-467).
+    the offline solve reads it off this same spec (XRFF-467). ``relative_start``
+    and ``base_scale`` are the per-tree values an offline build resolves from
+    the species' height ramps (XRFF-475 / XRFF-474); a measured row keeps the
+    species' flat start it was measured at.
     """
     return DistributorSpec(
         branch_density=density,
-        relative_start=calibration.relative_start,
+        relative_start=(
+            calibration.relative_start if relative_start is None else relative_start
+        ),
+        base_scale=base_scale,
         phyllotaxy_formation=calibration.phyllotaxy_formation,
         reset_phyllotaxy=calibration.pose.reset_phyllotaxy,
         axil_angle=calibration.pose.axil_angle,
@@ -504,7 +513,10 @@ def _offline_chain(
     target_m2 = forrester_m2 * calibration.fullness
     meshes = assets.palette_meshes
     names = [p.name for p in assets.prototypes]
-    base = _pose_distributor(calibration, 1)
+    # Height-keyed per-tree start (XRFF-475): a fraction of each branch, so
+    # it rides on the base spec and the solve and the graph agree.
+    relative_start = calibration.relative_start_for(stats.height_m)
+    base = _pose_distributor(calibration, 1, relative_start=relative_start)
     detail = {
         "species": entry.species,
         "tree_id": entry.tree_id,
@@ -577,9 +589,9 @@ def _offline_chain(
             minimum_candidates=ladder.minimum_candidates,
             cutoff_threshold=ladder.cutoff_threshold,
         )
-        distributor = _pose_distributor(
-            calibration,
-            solved.density,
+        distributor = dataclasses.replace(
+            base,
+            branch_density=solved.density,
             conditions=conditions,
             generation_band=(
                 (ladder.main_generation_start, None) if ladder.apex else None
@@ -622,9 +634,35 @@ def _offline_chain(
             )
             detail["mask_fraction"] = round(mask, 4)
             detail["placements"] = int(round(solved.instances / (1.0 - mask)))
-        distributor = _pose_distributor(calibration, solved.density)
+        distributor = dataclasses.replace(base, branch_density=solved.density)
         layers = ()
         detail["layout"] = "flat"
+    base_scale = 1.0
+    if solved.capped and calibration.max_base_scale > 1.0 and solved.area_m2 > 0:
+        # The cap bound before the target was reached: spend instance scale
+        # on the gap (XRFF-474). Area goes as scale squared and the density
+        # at the cap does not move, so the solve is rescaled, not re-run.
+        base_scale = min(
+            calibration.max_base_scale, math.sqrt(target_m2 / solved.area_m2)
+        )
+        scaled_area = solved.area_m2 * base_scale * base_scale
+        solved = dataclasses.replace(
+            solved,
+            area_m2=scaled_area,
+            instance_area_m2=(
+                scaled_area / solved.instances if solved.instances else None
+            ),
+        )
+        distributor = dataclasses.replace(distributor, base_scale=base_scale)
+        layers = tuple(
+            dataclasses.replace(
+                layer,
+                distributor=dataclasses.replace(
+                    layer.distributor, base_scale=base_scale
+                ),
+            )
+            for layer in layers
+        )
     detail.update(
         density=solved.density,
         predicted_instances=solved.instances,

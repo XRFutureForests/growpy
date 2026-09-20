@@ -312,8 +312,6 @@ def _decimate_growth_data(data: dict, min_branch_radius: float) -> dict:
         return data
 
     blm = pts["attributes"]["budLateralMeristem"]["values"]
-    parent_no = prims["attributes"]["branchParentNumber"]["values"]
-    hier = prims["attributes"]["branchHierarchyNumber"]["values"]
 
     def thickest(bi):
         best = 0.0
@@ -322,10 +320,58 @@ def _decimate_growth_data(data: dict, min_branch_radius: float) -> dict:
                 best = max(best, float(blm[pi][0]))
         return best
 
+    return _keep_branches(
+        data,
+        lambda bi: thickest(bi) >= min_branch_radius,
+        f"decimated at min_branch_radius={min_branch_radius:.4f} m",
+    )
+
+
+def _prune_below_height(data: dict, cut_height_m: float) -> dict:
+    """Drop every side branch attached below ``cut_height_m`` (XRFF-476).
+
+    Grove's Surround shell self-prunes a conifer's lower crown but leaves the
+    short dead branches in the skeleton; PVE's distributor has no height gate
+    and foliates every one of them, so 20-35 % of a spruce's or pine's
+    instances sat below the crown base the USD twigs measure. The height is
+    the branch's ATTACHMENT (its first point, JSON y = up, metres); a branch
+    that starts below the cut goes with its whole subtree, the trunk never
+    does. A pure post-process like :func:`_decimate_growth_data`, so it can
+    be re-applied to an emitted JSON without a regrow.
+    """
+    prims = data["primitives"]
+    branch_points = prims["points"]
+    if not branch_points or cut_height_m <= 0.0:
+        return data
+    positions = data["points"]["positions"]
+    parent_no = prims["attributes"]["branchParentNumber"]["values"]
+
+    def attached_above(bi):
+        pts = branch_points[bi]
+        if parent_no[bi] == 0 or not pts:
+            return True
+        return positions[pts[0]][1] >= cut_height_m
+
+    return _keep_branches(
+        data, attached_above, f"pruned below {cut_height_m:.2f} m"
+    )
+
+
+def _keep_branches(data: dict, survives, why: str) -> dict:
+    """Filter-and-renumber: keep the branches ``survives(bi)`` accepts whose
+    ancestors all survived, then rebuild the point arrays and the hierarchy
+    attributes so what remains is connected."""
+    prims = data["primitives"]
+    pts = data["points"]
+    branch_points = prims["points"]
+    num_branches = len(branch_points)
+    parent_no = prims["attributes"]["branchParentNumber"]["values"]
+    hier = prims["attributes"]["branchHierarchyNumber"]["values"]
+
     # Root-first, so an ancestor's verdict is always already known.
     keep = [False] * num_branches
     for bi in sorted(range(num_branches), key=lambda b: hier[b]):
-        if thickest(bi) < min_branch_radius:
+        if not survives(bi):
             continue
         par = parent_no[bi]            # 1-based; 0 means no parent (trunk)
         keep[bi] = True if par == 0 else keep[par - 1]
@@ -387,9 +433,8 @@ def _decimate_growth_data(data: dict, min_branch_radius: float) -> dict:
     }
 
     logger.info(
-        "decimated at min_branch_radius=%.4f m: %d -> %d branches, %d -> %d points",
-        min_branch_radius, num_branches,
-        n, len(pts["positions"]), len(kept_points),
+        "%s: %d -> %d branches, %d -> %d points",
+        why, num_branches, n, len(pts["positions"]), len(kept_points),
     )
     return {"points": out_points, "primitives": out_prims}
 
@@ -485,6 +530,7 @@ def build_growth_data_json(
     min_branch_radius: float = 0.0,
     min_branch_radius_fraction: float = 0.0,
     min_point_spacing: float = 0.0,
+    crown_base_cut_m: float | None = None,
 ) -> dict:
     """
     Build the growth-data JSON for PVE's Growth Data JSON Importer.
@@ -518,6 +564,10 @@ def build_growth_data_json(
             at least this path length apart (root, tip and every attach point
             are always kept). Points are the exported bones; see
             ``_resample_growth_data``. 0.0 keeps Grove's every node.
+        crown_base_cut_m: Drop every side branch attached below this height
+            (metres, with its subtree) before resampling -- the measured crown
+            base of the tree's own twig assembly, so a conifer's self-pruned
+            stubs carry no foliage (XRFF-476). None keeps every branch.
 
     Returns:
         Dict matching the validated contract (see module docstring).
@@ -682,9 +732,10 @@ def build_growth_data_json(
         threshold = max(
             threshold, _trunk_base_radius(built) * min_branch_radius_fraction
         )
-    return _resample_growth_data(
-        _decimate_growth_data(built, threshold), min_point_spacing
-    )
+    built = _decimate_growth_data(built, threshold)
+    if crown_base_cut_m is not None:
+        built = _prune_below_height(built, crown_base_cut_m)
+    return _resample_growth_data(built, min_point_spacing)
 
 
 def generate_growth_data_from_grove(
@@ -698,6 +749,7 @@ def generate_growth_data_from_grove(
     min_branch_radius: float = 0.0,
     min_branch_radius_fraction: float = 0.0,
     min_point_spacing: float = 0.0,
+    crown_base_cut_m: float | None = None,
 ) -> dict:
     """
     Build the growth-data JSON from a Grove simulation and write it to disk.
@@ -719,6 +771,8 @@ def generate_growth_data_from_grove(
             the trunk's base radius. See ``build_growth_data_json``.
         min_point_spacing: Thin the points along every branch to at least
             this path length apart. See ``build_growth_data_json``.
+        crown_base_cut_m: Drop side branches attached below this height. See
+            ``build_growth_data_json``.
 
     Returns:
         The generated growth-data dictionary.
@@ -735,6 +789,7 @@ def generate_growth_data_from_grove(
         min_branch_radius=min_branch_radius,
         min_branch_radius_fraction=min_branch_radius_fraction,
         min_point_spacing=min_point_spacing,
+        crown_base_cut_m=crown_base_cut_m,
     )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

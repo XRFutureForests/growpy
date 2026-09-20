@@ -344,3 +344,13 @@ class TestRandomizeScaleInTheSolve:
         assert varied.instances <= plain.instances
         # Both still land on the target; that is the point of the correction.
         assert abs(varied.error) < 0.10
+
+    def test_base_scale_enters_the_solve_as_its_square(self, tmp_path):
+        # XRFF-474: base_scale is the free leaf-area lever once the cap
+        # binds; the solve must credit each instance base_scale^2 x area.
+        path = _tree(tmp_path)
+        plain = solve_flat(path, _base(), 0.02, 4.0)
+        scaled = solve_flat(path, _base(base_scale=2.0), 0.02, 4.0)
+        assert scaled.instance_area_m2 == pytest.approx(0.02 * 4.0)
+        assert scaled.instances < plain.instances
+        assert abs(scaled.error) < 0.10
